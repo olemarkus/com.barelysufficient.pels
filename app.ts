@@ -10,8 +10,6 @@ import { PlanEngine } from './lib/plan/planEngine';
 import { DevicePlan, ShedBehavior } from './lib/plan/planTypes';
 import { PlanService } from './lib/plan/planService';
 import { isPlanConverging } from './lib/plan/planStateHelpers';
-import { TARGET_CONFIRMATION_STUCK_POLL_MS } from './lib/plan/planConstants';
-import { getLatestDeviceObservationMs, isDeviceObservationStale } from './lib/plan/planObservationPolicy';
 import { buildPlanCapacityStateSummary } from './lib/plan/planLogging';
 import { HomeyDeviceLike, TargetDeviceSnapshot } from './lib/utils/types';
 import { PriceCoordinator } from './lib/price/priceCoordinator';
@@ -74,7 +72,6 @@ import { runStartupStep, startAppServices } from './lib/app/appLifecycleHelpers'
 import { addPerfDuration, incPerfCounter } from './lib/utils/perfCounters';
 import { startPerfLogger } from './lib/app/perfLogging';
 import { VOLATILE_WRITE_THROTTLE_MS } from './lib/utils/timingConstants';
-import { toStableFingerprint } from './lib/utils/stableFingerprint';
 import { startResourceWarningListeners as startResourceWarnings } from './lib/app/appResourceWarningHelpers';
 import { createFlowRebuildScheduler, type FlowRebuildScheduler } from './lib/app/appFlowRebuildScheduler';
 import { migrateManagedDevices as migrateManagedDevicesHelper } from './lib/app/appManagedDeviceMigration';
@@ -95,11 +92,12 @@ import { emitSettingsUiPowerUpdatedForApp } from './lib/app/settingsUiAppRuntime
 import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';
 import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/src/deviceDiagnosticsTypes';
 import type { DeviceControlProfiles, SteppedLoadProfile } from './lib/utils/types';
-const SNAPSHOT_REFRESH_MINUTE_INTERVALS = [25, 55];
-const TARGET_CONFIRMATION_POLL_INTERVAL_MS = TARGET_CONFIRMATION_STUCK_POLL_MS;
-const STALE_OBSERVATION_FALLBACK_REFRESH_INTERVAL_MS = 60 * 1000;
+import { AppHomeyEnergyHelpers } from './lib/app/appHomeyEnergyHelpers';
+import {
+  AppSnapshotHelpers,
+  type RefreshTargetDevicesSnapshotOptions,
+} from './lib/app/appSnapshotHelpers';
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
-const HOMEY_ENERGY_POLL_INTERVAL_MS = 10_000;
 // Let non-urgent power deltas settle before rebuilding the full plan again.
 const POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 15000;
 const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 100 : 30 * 1000;
@@ -107,20 +105,6 @@ const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
 const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000; const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const POWER_TRACKER_PERSIST_DELAY_MS = VOLATILE_WRITE_THROTTLE_MS;
 type PriceOptimizationSettings = Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
-
-function toPersistedTargetSnapshotFingerprint(value: unknown): string {
-  if (!Array.isArray(value)) return toStableFingerprint(value);
-  return toStableFingerprint(value.map((entry) => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;
-    const {
-      lastFreshDataMs: _lastFreshDataMs,
-      lastUpdated: _lastUpdated,
-      lastLocalWriteMs: _lastLocalWriteMs,
-      ...rest
-    } = entry as Record<string, unknown>;
-    return rest;
-  }));
-}
 
 class PelsApp extends Homey.App {
   private powerTracker: PowerTrackerState = {};
@@ -147,12 +131,6 @@ class PelsApp extends Homey.App {
   private planEngine!: PlanEngine;
   private planService!: PlanService;
   private defaultComputeDynamicSoftLimit?: () => number;
-  private snapshotRefreshTimer?: ReturnType<typeof setTimeout>;
-  private staleObservationRefreshTimer?: ReturnType<typeof setTimeout>;
-  private staleObservationRefreshStopped = true;
-  private targetConfirmationPollInterval?: ReturnType<typeof setInterval>;
-  private isSnapshotRefreshing = false;
-  private snapshotRefreshPending = false;
   private lastKnownPowerKw: Record<string, number> = {};
   private expectedPowerKwOverrides: Record<string, { kw: number; ts: number }> = {};
   private overheadToken?: Homey.FlowToken;
@@ -162,19 +140,46 @@ class PelsApp extends Homey.App {
   private powerSampleLoop?: Promise<void>;
   private powerSampleRerunRequested = false;
   private pendingPowerSampleRequest?: { currentPowerW: number; nowMs: number };
-  private postActuationRefreshTimer?: ReturnType<typeof setTimeout>;
   private realtimeDeviceReconcileTimer?: ReturnType<typeof setTimeout>;
   private realtimeDeviceReconcileState = realtimeReconcile.createRealtimeDeviceReconcileState();
-  private deviceObservationStaleById = new Map<string, boolean>();
   private heartbeatInterval?: ReturnType<typeof setInterval>;
-  private homeyEnergyPollInterval?: ReturnType<typeof setInterval>;
   private stopPriceLowestTriggerChecker?: () => void;
   private stopPerfLogging?: () => void;
   private stopResourceWarningListeners?: () => void;
   private stopSettingsHandler?: () => void;
   private structuredLogger?: PinoLogger;
   private flowRebuildScheduler?: FlowRebuildScheduler;
+  private readonly snapshotHelpers = new AppSnapshotHelpers({
+    homey: this.homey,
+    getDeviceManager: () => this.deviceManager,
+    getPlanEngine: () => this.planEngine,
+    getPlanService: () => this.planService,
+    getLatestTargetSnapshot: () => this.latestTargetSnapshot,
+    resolveManagedState: (deviceId) => this.resolveManagedState(deviceId),
+    isCapacityControlEnabled: (deviceId) => this.isCapacityControlEnabled(deviceId),
+    getStructuredLogger: (component) => this.getStructuredLogger(component),
+    logDebug: (topic, ...args) => this.logDebug(topic, ...args),
+    error: (...args) => this.error(...args),
+    getNow: () => this.getNow(),
+    logPeriodicStatus: (options) => this.logPeriodicStatus(options),
+    disableUnsupportedDevices: (snapshot) => disableUnsupportedDevicesHelper({
+      snapshot,
+      settings: this.homey.settings,
+      logDebug: (...args: unknown[]) => this.logDebug('devices', ...args),
+    }),
+    recordPowerSample: async (powerW) => this.recordPowerSample(powerW),
+  });
+  private readonly homeyEnergyHelpers = new AppHomeyEnergyHelpers({
+    homey: this.homey,
+    getDeviceManager: () => this.deviceManager,
+    recordPowerSample: async (powerW) => this.recordPowerSample(powerW),
+    logDebug: (topic, ...args) => this.logDebug(topic, ...args),
+    error: (...args) => this.error(...args),
+  });
   private static readonly EXPECTED_OVERRIDE_EQUALS_EPSILON_KW = 0.000001;
+  private get postActuationRefreshTimer(): ReturnType<typeof setTimeout> | undefined {
+    return this.snapshotHelpers.getPostActuationRefreshTimer();
+  }
   private setExpectedOverride(deviceId: string, kw: number): boolean {
     if (this.getSteppedLoadProfile(deviceId)) {
       throw new Error(
@@ -549,7 +554,6 @@ class PelsApp extends Homey.App {
     this.stopSettingsHandler = settingsHandler.stop;
   }
   async onUninit(): Promise<void> {
-    this.staleObservationRefreshStopped = true;
     this.clearUninitTimers();
     realtimeReconcile.clearRealtimeDeviceReconcileState(this.realtimeDeviceReconcileState);
     this.stopUninitServices();
@@ -563,13 +567,10 @@ class PelsApp extends Homey.App {
     if (this.powerTrackerSaveTimer) this.persistPowerTrackerState();
     if (this.powerTrackerPruneTimer) clearTimeout(this.powerTrackerPruneTimer);
     if (this.powerTrackerPruneInterval) clearInterval(this.powerTrackerPruneInterval);
-    if (this.snapshotRefreshTimer) clearTimeout(this.snapshotRefreshTimer);
-    if (this.staleObservationRefreshTimer) clearTimeout(this.staleObservationRefreshTimer);
-    if (this.targetConfirmationPollInterval) clearInterval(this.targetConfirmationPollInterval);
     if (this.powerSampleRebuildState.timer) clearTimeout(this.powerSampleRebuildState.timer);
     if (this.realtimeDeviceReconcileTimer) clearTimeout(this.realtimeDeviceReconcileTimer);
-    if (this.postActuationRefreshTimer) clearTimeout(this.postActuationRefreshTimer);
-    this.stopHomeyEnergyPoll();
+    this.snapshotHelpers.stop();
+    this.homeyEnergyHelpers.stop();
   }
   private stopUninitServices(): void {
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
@@ -942,168 +943,31 @@ class PelsApp extends Homey.App {
     return (status?.priceLevel || this.planService?.getLastNotifiedPriceLevel() || PriceLevel.UNKNOWN) as PriceLevel;
   }
   private startHomeyEnergyPoll(): void {
-    if (this.homeyEnergyPollInterval) clearInterval(this.homeyEnergyPollInterval);
-    if (this.homey.settings.get('power_source') !== 'homey_energy') return;
-    // Fire immediately so the first reading doesn't wait for the interval
-    this.pollHomeyEnergyPower()
-      .catch((e) => this.error('Homey Energy initial poll failed', e));
-    this.homeyEnergyPollInterval = setInterval(() => {
-      this.pollHomeyEnergyPower()
-        .catch((e) => this.error('Homey Energy poll failed', e));
-    }, HOMEY_ENERGY_POLL_INTERVAL_MS);
+    this.homeyEnergyHelpers.start();
   }
 
   private stopHomeyEnergyPoll(): void {
-    if (this.homeyEnergyPollInterval) {
-      clearInterval(this.homeyEnergyPollInterval);
-      this.homeyEnergyPollInterval = undefined;
-    }
+    this.homeyEnergyHelpers.stop();
   }
 
   private async pollHomeyEnergyPower(): Promise<void> {
-    const homePowerW = await this.deviceManager.pollHomePowerW();
-    if (typeof homePowerW === 'number') {
-      this.logDebug('devices', `Homey Energy poll: ${homePowerW}W`);
-      await this.recordPowerSample(homePowerW);
-    } else {
-      this.logDebug('devices', 'Homey Energy poll: no cumulative power reading available');
-    }
+    await this.homeyEnergyHelpers.pollNow();
   }
 
   private startPeriodicSnapshotRefresh(): void {
-    if (this.snapshotRefreshTimer) clearTimeout(this.snapshotRefreshTimer);
-    this.scheduleNextSnapshotRefresh();
-    this.startStaleObservationRefreshFallback();
-
-    if (this.targetConfirmationPollInterval) clearInterval(this.targetConfirmationPollInterval);
-    this.targetConfirmationPollInterval = setInterval(() => {
-      this.pollStuckTargetConfirmations()
-        .catch((e) => this.error('Pending target confirmation poll failed', e));
-    }, TARGET_CONFIRMATION_POLL_INTERVAL_MS);
-  }
-
-  private startStaleObservationRefreshFallback(): void {
-    this.staleObservationRefreshStopped = false;
-    if (this.staleObservationRefreshTimer) clearTimeout(this.staleObservationRefreshTimer);
-    this.scheduleStaleObservationRefreshFallback();
-  }
-
-  private scheduleStaleObservationRefreshFallback(): void {
-    if (this.staleObservationRefreshStopped) return;
-    this.staleObservationRefreshTimer = setTimeout(async () => {
-      try {
-        await this.refreshStaleDeviceObservations();
-      } catch (e) {
-        this.error('Stale device observation refresh failed', e);
-      } finally {
-        if (!this.staleObservationRefreshStopped) {
-          this.scheduleStaleObservationRefreshFallback();
-        }
-      }
-    }, STALE_OBSERVATION_FALLBACK_REFRESH_INTERVAL_MS);
+    this.snapshotHelpers.startPeriodicSnapshotRefresh();
   }
 
   private async refreshStaleDeviceObservations(): Promise<void> {
-    if (!this.deviceManager || this.isSnapshotRefreshing) return;
-    const snapshot = this.latestTargetSnapshot.filter((device) => this.resolveManagedState(device.id));
-    this.logDeviceFreshnessTransitions(snapshot, 'stale_observation_check');
-    const staleDevices = snapshot.filter((device) => isDeviceObservationStale(device));
-    if (staleDevices.length === 0) return;
-
-    this.logDebug(
-      'devices',
-      `Refreshing target devices snapshot because ${staleDevices.length}/${snapshot.length} managed devices are stale`,
-    );
-    const staleDeviceIds = new Set(staleDevices.map((device) => device.id));
-    await this.refreshTargetDevicesSnapshot({ targeted: true });
-    const refreshedSnapshot = this.latestTargetSnapshot.filter((device) => this.resolveManagedState(device.id));
-    const refreshedById = new Map(refreshedSnapshot.map((device) => [device.id, device]));
-    let freshAfterRefreshDevices = 0;
-    let stillStaleAfterRefreshDevices = 0;
-    for (const deviceId of staleDeviceIds) {
-      const refreshedDevice = refreshedById.get(deviceId);
-      if (!refreshedDevice || isDeviceObservationStale(refreshedDevice)) {
-        stillStaleAfterRefreshDevices += 1;
-      } else {
-        freshAfterRefreshDevices += 1;
-      }
-    }
-    this.getStructuredLogger('devices')?.info({
-      event: 'stale_device_observation_refresh',
-      staleDevices: staleDevices.length,
-      devicesTotal: snapshot.length,
-      refreshedDevices: staleDevices.length,
-      freshAfterRefreshDevices,
-      stillStaleAfterRefreshDevices,
-    });
-  }
-
-  private logDeviceFreshnessTransitions(
-    snapshot: TargetDeviceSnapshot[],
-    source: string,
-  ): void {
-    const activeDeviceIds = new Set(snapshot.map((device) => device.id));
-    for (const deviceId of this.deviceObservationStaleById.keys()) {
-      if (!activeDeviceIds.has(deviceId)) this.deviceObservationStaleById.delete(deviceId);
-    }
-
-    const nowMs = Date.now();
-    for (const device of snapshot) {
-      const isStale = isDeviceObservationStale(device);
-      const wasStale = this.deviceObservationStaleById.get(device.id);
-      this.deviceObservationStaleById.set(device.id, isStale);
-      if (wasStale === undefined || wasStale === isStale) continue;
-
-      const lastObservationMs = getLatestDeviceObservationMs(device);
-      const ageMs = typeof lastObservationMs === 'number' ? Math.max(0, nowMs - lastObservationMs) : null;
-      const planDevice = this.planService?.getLatestPlanSnapshot()?.devices.find((d) => d.id === device.id);
-      this.getStructuredLogger('devices')?.info({
-        event: isStale ? 'device_became_stale' : 'device_became_fresh',
-        deviceId: device.id,
-        deviceName: device.name,
-        ageMs,
-        lastObservationAt: typeof lastObservationMs === 'number' ? new Date(lastObservationMs).toISOString() : null,
-        source,
-        currentPowerW: resolveSnapshotPowerW(device),
-        isControlled: this.isCapacityControlEnabled(device.id),
-        isShed: planDevice ? planDevice.plannedState === 'shed' : null,
-      });
-    }
+    await this.snapshotHelpers.refreshStaleDeviceObservations();
   }
 
   private scheduleNextSnapshotRefresh(): void {
-    const now = this.getNow();
-    const currentMinute = now.getMinutes();
-    const nextMinute = SNAPSHOT_REFRESH_MINUTE_INTERVALS.find((m) => m > currentMinute);
-
-    const next = new Date(now);
-    if (nextMinute !== undefined) {
-      next.setMinutes(nextMinute, 0, 0);
-    } else {
-      next.setHours(now.getHours() + 1, SNAPSHOT_REFRESH_MINUTE_INTERVALS[0], 0, 0);
-    }
-
-    this.snapshotRefreshTimer = setTimeout(async () => {
-      let refreshed = false;
-      try {
-        await this.refreshTargetDevicesSnapshot({ targeted: true });
-        refreshed = true;
-      } catch (e) {
-        this.error('Periodic snapshot refresh failed', e);
-      }
-      this.logPeriodicStatus({ includeDeviceHealth: refreshed });
-      this.scheduleNextSnapshotRefresh();
-    }, next.getTime() - now.getTime());
+    this.snapshotHelpers.scheduleNextSnapshotRefresh();
   }
 
   private async pollStuckTargetConfirmations(): Promise<void> {
-    if (!this.planEngine?.hasPendingTargetCommandsOlderThan(TARGET_CONFIRMATION_STUCK_POLL_MS)) return;
-    this.logDebug(
-      'devices',
-      `Pending target confirmation older than ${Math.round(TARGET_CONFIRMATION_STUCK_POLL_MS / 1000)}s; `
-      + 'polling device state',
-    );
-    await this.refreshTargetDevicesSnapshot({ targeted: true });
+    await this.snapshotHelpers.pollStuckTargetConfirmations();
   }
   private logPeriodicStatus(options: { includeDeviceHealth?: boolean } = {}): void {
     const periodicStatusParams = {
@@ -1138,87 +1002,13 @@ class PelsApp extends Homey.App {
   parseDevicesForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] {
     return this.deviceManager.parseDeviceListForTests(list);
   }
-  private static readonly POST_ACTUATION_REFRESH_DELAY_MS = 5_000;
   private schedulePostActuationRefresh(): void {
-    if (this.postActuationRefreshTimer) {
-      this.logDebug('plan', 'Post-actuation snapshot refresh already scheduled');
-      return;
-    }
-    this.logDebug(
-      'plan',
-      `Scheduling post-actuation snapshot refresh in ${Math.round(PelsApp.POST_ACTUATION_REFRESH_DELAY_MS / 1000)} s`,
-    );
-    this.postActuationRefreshTimer = setTimeout(async () => {
-      this.postActuationRefreshTimer = undefined;
-      this.logDebug('plan', 'Running post-actuation targeted snapshot refresh');
-      try {
-        await this.refreshTargetDevicesSnapshot({ targeted: true, recordHomeyEnergySample: false });
-      } catch (err) {
-        this.error('Post-actuation snapshot refresh failed:', err);
-      }
-    }, PelsApp.POST_ACTUATION_REFRESH_DELAY_MS);
+    this.snapshotHelpers.schedulePostActuationRefresh();
   }
   private async refreshTargetDevicesSnapshot(
-    options: { fast?: boolean; targeted?: boolean; recordHomeyEnergySample?: boolean } = {},
+    options: RefreshTargetDevicesSnapshotOptions = {},
   ): Promise<void> {
-    if (this.isSnapshotRefreshing) {
-      this.snapshotRefreshPending = true;
-      this.logDebug('devices', 'Snapshot refresh already in progress, queued another refresh');
-      return;
-    }
-    this.isSnapshotRefreshing = true;
-    try {
-      do {
-        this.snapshotRefreshPending = false;
-        this.logDebug('devices', 'Refreshing target devices snapshot');
-        await this.deviceManager.refreshSnapshot({
-          includeLivePower: options.fast !== true,
-          targetedRefresh: options.targeted,
-        });
-        const snapshot = this.latestTargetSnapshot;
-        this.logDeviceFreshnessTransitions(
-          snapshot.filter((device) => this.resolveManagedState(device.id)),
-          'snapshot_refresh',
-        );
-        await this.planService?.syncLivePlanState('snapshot_refresh');
-        this.planService?.syncHeadroomCardState({
-          devices: snapshot,
-          cleanupMissingDevices: true,
-        });
-        const existingSnapshot = this.homey.settings.get('target_devices_snapshot') as unknown;
-        if (toPersistedTargetSnapshotFingerprint(existingSnapshot) !== toPersistedTargetSnapshotFingerprint(snapshot)) {
-          this.homey.settings.set('target_devices_snapshot', snapshot);
-          this.getStructuredLogger('devices')?.info({
-            event: 'target_devices_snapshot_written',
-            reasonCode: options.targeted === true ? 'targeted_refresh' : 'snapshot_refresh',
-            deviceCount: snapshot.length,
-            targetedRefresh: options.targeted === true,
-          });
-        } else {
-          this.getStructuredLogger('devices')?.debug({
-            event: 'target_devices_snapshot_write_skipped',
-            reasonCode: 'unchanged',
-            deviceCount: snapshot.length,
-            targetedRefresh: options.targeted === true,
-          });
-          this.logDebug('devices', 'Target devices snapshot unchanged, skipping settings write');
-        }
-        disableUnsupportedDevicesHelper({
-          snapshot,
-          settings: this.homey.settings,
-          logDebug: (...args: unknown[]) => this.logDebug('devices', ...args),
-        });
-        if (options.recordHomeyEnergySample !== false && this.homey.settings.get('power_source') === 'homey_energy') {
-          const homePowerW = this.deviceManager.getHomePowerW();
-          if (typeof homePowerW === 'number') {
-            await this.recordPowerSample(homePowerW);
-          }
-        }
-      } while (this.snapshotRefreshPending);
-    } finally {
-      this.isSnapshotRefreshing = false;
-      this.snapshotRefreshPending = false;
-    }
+    await this.snapshotHelpers.refreshTargetDevicesSnapshot(options);
   }
   public getCombinedHourlyPrices = (): unknown => this.priceCoordinator.getCombinedHourlyPrices();
   private getTimeZone = (): string => this.homey.clock.getTimezone();
@@ -1272,13 +1062,6 @@ class PelsApp extends Homey.App {
   public applyPlanActions = (plan: DevicePlan) => this.planService.applyPlanActions(plan);
   public applySheddingToDevice = (deviceId: string, deviceName?: string, reason?: string) =>
     this.planService.applySheddingToDevice(deviceId, deviceName, reason);
-}
-
-function resolveSnapshotPowerW(device: TargetDeviceSnapshot): number | null {
-  const kw = typeof device.measuredPowerKw === 'number'
-    ? device.measuredPowerKw
-    : device.powerKw;
-  return typeof kw === 'number' && Number.isFinite(kw) ? kw * 1000 : null;
 }
 
 export = PelsApp;

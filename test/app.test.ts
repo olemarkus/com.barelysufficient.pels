@@ -1485,7 +1485,7 @@ describe('MyApp initialization', () => {
       lastObservedValue: 23,
       lastObservedSource: 'snapshot_refresh',
     };
-    const refreshSpy = vi.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     try {
       await (app as any).pollStuckTargetConfirmations();
@@ -2157,7 +2157,7 @@ describe('periodic snapshot refresh scheduling', () => {
 
     const app = createApp();
     await initApp(app);
-    const refreshSpy = vi.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
     const logSpy = vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
 
     (app as any).startPeriodicSnapshotRefresh();
@@ -2178,11 +2178,11 @@ describe('periodic snapshot refresh scheduling', () => {
     vi.spyOn(app as any, 'getNow').mockReturnValue(new Date('2026-03-21T10:00:00Z'));
 
     let resolveRefresh: (() => void) | undefined;
-    const refreshSpy = vi.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockImplementation(() => (
+    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockImplementation(() => (
       new Promise<void>((resolve) => { resolveRefresh = resolve; })
     ));
     const logSpy = vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
-    const rescheduleSpy = vi.spyOn(app as any, 'scheduleNextSnapshotRefresh');
+    const rescheduleSpy = vi.spyOn((app as any).snapshotHelpers, 'scheduleNextSnapshotRefresh');
 
     (app as any).scheduleNextSnapshotRefresh();
 
@@ -2208,7 +2208,7 @@ describe('periodic snapshot refresh scheduling', () => {
 
     const app = createApp();
     await initApp(app);
-    const refreshSpy = vi.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
 
     (app as any).startPeriodicSnapshotRefresh();
 
@@ -2233,7 +2233,7 @@ describe('periodic snapshot refresh scheduling', () => {
     }));
     (app as any).deviceManager.setSnapshotForTests(staleSnapshot);
 
-    const refreshSpy = vi.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
 
     (app as any).startPeriodicSnapshotRefresh();
 
@@ -2253,7 +2253,7 @@ describe('periodic snapshot refresh scheduling', () => {
     await initApp(app);
 
     let resolveRefresh: (() => void) | undefined;
-    const refreshSpy = vi.spyOn(app as any, 'refreshStaleDeviceObservations').mockImplementation(() => (
+    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshStaleDeviceObservations').mockImplementation(() => (
       new Promise<void>((resolve) => { resolveRefresh = resolve; })
     ));
 
@@ -2277,7 +2277,7 @@ describe('periodic snapshot refresh scheduling', () => {
 
     const app = createApp();
     await initApp(app);
-    const refreshSpy = vi.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
 
     (app as any).startPeriodicSnapshotRefresh();
 
@@ -2333,7 +2333,7 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('does not arm multiple concurrent post-actuation refresh timers', async () => {
     const app = createApp();
-    const refreshSpy = vi.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
     const logDebugSpy = vi.spyOn(app as any, 'logDebug').mockImplementation(() => undefined);
 
     (app as any).schedulePostActuationRefresh();
@@ -2347,7 +2347,7 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('runs post-actuation refresh without recording a Homey Energy sample', async () => {
     const app = createApp();
-    const refreshSpy = vi.spyOn(app as any, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
 
     (app as any).schedulePostActuationRefresh();
     await vi.advanceTimersByTimeAsync(5_000);
