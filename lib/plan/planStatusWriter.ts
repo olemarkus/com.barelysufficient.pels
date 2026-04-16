@@ -11,11 +11,13 @@ import {
 } from './planStatusHelpers';
 import {
   STATUS_POWER_BUCKET_MS,
-  type PelsStatusComputation,
-  type PelsStatusWriteReason,
-  type StatusPlanChanges,
 } from './planServiceInternals';
-import type { DevicePlan } from './planTypes';
+import type {
+  DevicePlan,
+  PelsStatusComputation,
+  PelsStatusWriteReason,
+  StatusPlanChanges,
+} from './planTypes';
 
 type PlanStatusWriterDeps = {
   homey: Homey.App['homey'];
