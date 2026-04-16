@@ -423,6 +423,16 @@ export default tseslint.config(
     },
   },
   {
+    // The signal rebuild scheduler still keeps timer/promise coalescing local so the current
+    // safety envelope is reviewable in one module while Phase 9 unifies the rebuild coalescers.
+    // Target: <=500 after the unified scheduler lands and absorbs the remaining state machine.
+    files: ['lib/app/appPowerRebuildScheduler.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 575, skipBlankLines: true, skipComments: true }],
+      'max-lines-per-function': ['warn', { max: 150, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
     // PriceService still coordinates spot/grid refresh, storage, and combined-price publication
     // across the Homey/runtime boundary. Target: <=560 while that orchestration remains local.
     files: ['lib/price/priceService.ts'],

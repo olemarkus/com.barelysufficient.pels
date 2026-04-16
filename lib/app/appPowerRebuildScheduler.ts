@@ -1,6 +1,3 @@
-/* eslint-disable max-lines, max-lines-per-function --
- * Rebuild scheduling keeps the mutable timer/promise state and suppression logic together.
- */
 import type CapacityGuard from '../core/capacityGuard';
 import { addPerfDuration, incPerfCounter, incPerfCounters } from '../utils/perfCounters';
 import {
@@ -198,9 +195,7 @@ const armPendingTimer = (params: {
     const latest = getState();
     const reason = latest.pendingReason ?? fallbackReason;
     const nextState = {
-      ...latest,
-      timer: undefined,
-      pendingDueMs: undefined,
+      ...clearPendingState(latest),
       lastMs: Date.now(),
     };
     setState(nextState);
@@ -209,8 +204,6 @@ const armPendingTimer = (params: {
         logError(error as Error);
       })
       .finally(() => {
-        const latest = getState();
-        setState(clearPendingState(latest));
         resolve();
       });
   }, Math.max(0, dueMs - Date.now()));
@@ -239,25 +232,27 @@ const createPendingRebuild = (params: {
     logError,
   } = params;
   const dueMs = state.lastMs + minIntervalMs;
+  let pendingResolve!: () => void;
   const pending = new Promise<void>((resolve) => {
-    const timer = armPendingTimer({
-      getState,
-      setState,
-      dueMs,
-      fallbackReason: triggerReason,
-      performRebuild,
-      logError,
-      resolve,
-    });
-    const latest = getState();
-    setState({
-      ...withPendingInputs(latest, currentPowerW, softLimitKw, triggerReason),
-      timer,
-      pendingDueMs: dueMs,
-      pendingResolve: resolve,
-    });
+    pendingResolve = resolve;
   });
-  setState({ ...getState(), pending });
+  const timer = armPendingTimer({
+    getState,
+    setState,
+    dueMs,
+    fallbackReason: triggerReason,
+    performRebuild,
+    logError,
+    resolve: pendingResolve,
+  });
+  const latest = getState();
+  setState({
+    ...withPendingInputs(latest, currentPowerW, softLimitKw, triggerReason),
+    pending,
+    timer,
+    pendingDueMs: dueMs,
+    pendingResolve,
+  });
   return pending;
 };
 

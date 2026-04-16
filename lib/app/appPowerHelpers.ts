@@ -1,7 +1,12 @@
-export { type PowerSampleRebuildState, schedulePlanRebuildFromSignal } from './appPowerRebuildScheduler';
+export {
+  type PowerSampleRebuildState,
+  schedulePlanRebuildFromPowerSample,
+  schedulePlanRebuildFromSignal,
+} from './appPowerRebuildScheduler';
 export {
   persistPowerTrackerStateForApp,
   prunePowerTrackerHistoryForApp,
+  recordDailyBudgetCap,
   recordPowerSampleForApp,
   updateDailyBudgetAndRecordCapForApp,
 } from './appPowerSampleIngest';
