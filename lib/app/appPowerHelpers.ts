@@ -28,6 +28,7 @@ export type PowerSampleRebuildState = {
 
 type RebuildDecision = {
   shouldRebuild: boolean;
+  controlBoundaryActive: boolean;
   deltaW: number;
   deltaMeaningful: boolean;
   maxIntervalExceeded: boolean;
@@ -93,6 +94,7 @@ const resolvePowerDelta = (params: {
 
 const resolveRebuildDecision = (params: {
   state: PowerSampleRebuildState;
+  nowMs: number;
   elapsedMs: number;
   maxIntervalMs: number;
   limitKw: number;
@@ -100,9 +102,12 @@ const resolveRebuildDecision = (params: {
   powerDeltaW?: number;
   headroomKw?: number | null;
   isInShortfall?: boolean;
+  hardCapBreach?: HardCapBreach;
+  planConvergenceActive?: boolean;
 }): RebuildDecision => {
   const {
     state,
+    nowMs,
     elapsedMs,
     maxIntervalMs,
     limitKw,
@@ -110,8 +115,12 @@ const resolveRebuildDecision = (params: {
     powerDeltaW,
     headroomKw,
     isInShortfall,
+    hardCapBreach,
+    planConvergenceActive,
   } = params;
   const headroomTight = resolveHeadroomTight(headroomKw);
+  const controlBoundaryActive = headroomTight || Boolean(isInShortfall);
+  const hardCapBreachActive = hardCapBreach?.breached ?? false;
   const { deltaW, deltaMeaningful } = resolvePowerDelta({
     currentPowerW,
     powerDeltaW,
@@ -121,20 +130,25 @@ const resolveRebuildDecision = (params: {
   const maxIntervalExceeded = maxIntervalMs > 0 && elapsedMs >= maxIntervalMs;
   const backoffActive = isTightNoopBackoffActive({
     state,
-    nowMs: Date.now(),
+    nowMs,
     headroomTight,
     isInShortfall,
+    hardCapBreachActive,
     deltaMeaningful,
   });
+  // Ordinary power movement stays on the status-only path unless it crosses a real
+  // control boundary, the plan is still converging on a recent action, or the periodic
+  // convergence window expires.
   const shouldRebuild = state.lastMs === 0
     || (!backoffActive && (
-      headroomTight
-      || isInShortfall
-      || deltaMeaningful
+      controlBoundaryActive
+      || hardCapBreachActive
+      || (planConvergenceActive === true && deltaMeaningful)
       || maxIntervalExceeded
     ));
   return {
     shouldRebuild,
+    controlBoundaryActive,
     deltaW,
     deltaMeaningful,
     maxIntervalExceeded,
@@ -147,18 +161,22 @@ const resolveRebuildReason = (params: {
   state: PowerSampleRebuildState;
   decision: RebuildDecision;
   isInShortfall?: boolean;
+  hardCapBreach?: HardCapBreach;
+  planConvergenceActive?: boolean;
 }): string => {
-  const { state, decision, isInShortfall } = params;
+  const { state, decision, isInShortfall, hardCapBreach, planConvergenceActive } = params;
   if (state.lastMs === 0) return 'initial';
   if (isInShortfall) return 'shortfall';
+  if (hardCapBreach?.breached) return 'hard_cap_breach';
   if (decision.headroomTight) return 'headroom_tight';
+  if (planConvergenceActive === true && decision.deltaMeaningful) return 'power_sample_convergence';
   if (decision.deltaMeaningful) return 'power_delta';
   if (decision.maxIntervalExceeded) return 'max_interval';
   return 'unknown';
 };
 
 const isTightReason = (reason: string): boolean => (
-  reason === 'headroom_tight' || reason === 'shortfall'
+  reason === 'headroom_tight' || reason === 'shortfall' || reason === 'hard_cap_breach'
 );
 
 function isTightNoopBackoffActive(params: {
@@ -166,10 +184,18 @@ function isTightNoopBackoffActive(params: {
   nowMs: number;
   headroomTight: boolean;
   isInShortfall?: boolean;
+  hardCapBreachActive?: boolean;
   deltaMeaningful: boolean;
 }): boolean {
-  const { state, nowMs, headroomTight, isInShortfall, deltaMeaningful } = params;
-  if (!headroomTight && !isInShortfall) return false;
+  const {
+    state,
+    nowMs,
+    headroomTight,
+    isInShortfall,
+    hardCapBreachActive,
+    deltaMeaningful,
+  } = params;
+  if (!headroomTight && !isInShortfall && !hardCapBreachActive) return false;
   if (deltaMeaningful) return false;
   return isFutureMs(state.backoffUntilMs, nowMs)
     || isFutureMs(state.mitigationHoldoffUntilMs, nowMs);
@@ -204,6 +230,39 @@ const shouldApplyTightMitigationHoldoff = (
 ): boolean => {
   if (!isTightReason(reason) || !outcome || outcome.failed) return false;
   return outcome.actionChanged || outcome.appliedActions;
+};
+
+const handleSkippedRebuildDecision = (params: {
+  state: PowerSampleRebuildState;
+  decision: RebuildDecision;
+  now: number;
+  hardCapBreach?: HardCapBreach;
+  isInShortfall?: boolean;
+  setState: (state: PowerSampleRebuildState) => void;
+}): void => {
+  const {
+    state,
+    decision,
+    now,
+    hardCapBreach,
+    isInShortfall,
+    setState,
+  } = params;
+  if (!decision.headroomTight && !isInShortfall && !hardCapBreach?.breached && hasTightNoopBackoffState(state)) {
+    setState(resetTightNoopBackoff(state));
+  }
+  incPerfCounters([
+    'plan_rebuild_skipped_total',
+    decision.deltaMeaningful
+      ? 'plan_rebuild_skipped_non_boundary_delta_total'
+      : 'plan_rebuild_skipped_insignificant_total',
+  ]);
+  if (decision.backoffActive) {
+    incPerfCounter('plan_rebuild_skipped_tight_noop_backoff_total');
+    if (isFutureMs(state.mitigationHoldoffUntilMs, now)) {
+      incPerfCounter('plan_rebuild_skipped_tight_mitigation_holdoff_total');
+    }
+  }
 };
 
 const hasTightNoopBackoffState = (state: PowerSampleRebuildState): boolean => (
@@ -337,6 +396,7 @@ export function schedulePlanRebuildFromPowerSample(params: {
   softLimitKw?: number;
   headroomKw?: number | null;
   isInShortfall?: boolean;
+  planConvergenceActive?: boolean;
   hardCapBreach?: HardCapBreach;
   onTightNoopHardCapBreach?: (deficitKw: number) => Promise<void>;
 }): Promise<void> {
@@ -353,6 +413,7 @@ export function schedulePlanRebuildFromPowerSample(params: {
     softLimitKw,
     headroomKw,
     isInShortfall,
+    planConvergenceActive,
     hardCapBreach,
     onTightNoopHardCapBreach,
   } = params;
@@ -362,6 +423,7 @@ export function schedulePlanRebuildFromPowerSample(params: {
 
   const decision = resolveRebuildDecision({
     state,
+    nowMs: now,
     elapsedMs,
     maxIntervalMs,
     limitKw,
@@ -369,27 +431,26 @@ export function schedulePlanRebuildFromPowerSample(params: {
     powerDeltaW,
     headroomKw,
     isInShortfall,
+    hardCapBreach,
+    planConvergenceActive,
   });
   const triggerReason = resolveRebuildReason({
     state,
     decision,
     isInShortfall,
+    hardCapBreach,
+    planConvergenceActive,
   });
 
   if (!decision.shouldRebuild) {
-    if (!decision.headroomTight && !isInShortfall && hasTightNoopBackoffState(state)) {
-      setState(resetTightNoopBackoff(state));
-    }
-    incPerfCounters([
-      'plan_rebuild_skipped_total',
-      'plan_rebuild_skipped_insignificant_total',
-    ]);
-    if (decision.backoffActive) {
-      incPerfCounter('plan_rebuild_skipped_tight_noop_backoff_total');
-      if (isFutureMs(state.mitigationHoldoffUntilMs, now)) {
-        incPerfCounter('plan_rebuild_skipped_tight_mitigation_holdoff_total');
-      }
-    }
+    handleSkippedRebuildDecision({
+      state,
+      decision,
+      now,
+      hardCapBreach,
+      isInShortfall,
+      setState,
+    });
     // Skip rebuild, but don't update lastMs or state, so we stay ready.
     return Promise.resolve();
   }
@@ -486,6 +547,7 @@ export function schedulePlanRebuildFromSignal(params: {
   powerDeltaW?: number;
   capacitySettings: { limitKw: number; marginKw: number };
   capacityGuard?: CapacityGuard;
+  planConvergenceActive?: boolean;
 }): Promise<void> {
   const rebuildStart = Date.now();
   const {
@@ -500,6 +562,7 @@ export function schedulePlanRebuildFromSignal(params: {
     powerDeltaW,
     capacitySettings,
     capacityGuard,
+    planConvergenceActive,
   } = params;
   const softLimitKw = capacityGuard?.getSoftLimit()
     ?? Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
@@ -516,9 +579,14 @@ export function schedulePlanRebuildFromSignal(params: {
   });
   const headroomTight = resolveHeadroomTight(headroomKw);
   const stableIntervalMs = typeof stableMinIntervalMs === 'number' ? stableMinIntervalMs : minIntervalMs;
-  const effectiveMinIntervalMs = (!headroomTight && !isInShortfall)
-    ? Math.max(minIntervalMs, stableIntervalMs)
-    : minIntervalMs;
+  const effectiveMinIntervalMs = (
+    planConvergenceActive === true
+    || headroomTight
+    || isInShortfall
+    || hardCapBreach.breached
+  )
+    ? minIntervalMs
+    : Math.max(minIntervalMs, stableIntervalMs);
   if (effectiveMinIntervalMs > minIntervalMs) {
     incPerfCounter('plan_rebuild_signal_stable_interval_total');
   }
@@ -535,6 +603,7 @@ export function schedulePlanRebuildFromSignal(params: {
     softLimitKw,
     headroomKw,
     isInShortfall,
+    planConvergenceActive,
     hardCapBreach,
     onTightNoopHardCapBreach: async (deficitKw) => {
       await capacityGuard?.checkShortfall(false, deficitKw);
