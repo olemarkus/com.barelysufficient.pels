@@ -106,13 +106,16 @@ file.
       Design note: `notes/complexity-cleanup/rebuild-scheduler-unification.md`.
       Files: `lib/app/appFlowRebuildScheduler.ts`, `lib/app/appPowerHelpers.ts`,
       `lib/plan/planService.ts`.
-- [ ] Split `lib/app/appPowerHelpers.ts` (898 LOC, 8 concerns) into three focused modules: pure
-      rebuild-decision policy, a rebuild scheduler state machine, and a power-sample
-      ingest/persistence path. Must preserve the tight-noop backoff and mitigation holdoff
-      contracts; unblocks the coalescer unification.
+- [x] Split `lib/app/appPowerHelpers.ts` into three focused modules:
+      `appPowerRebuildPolicy.ts`, `appPowerRebuildScheduler.ts`, and
+      `appPowerSampleIngest.ts`. The compatibility barrel remains at
+      `appPowerHelpers.ts`. Tight-noop backoff and mitigation holdoff were preserved, which
+      unblocks the coalescer unification follow-up.
       Why P1: one file currently owns decision, scheduling, backoff, holdoff, hard-cap fast path,
       sample ingest, persistence, and pruning.
-      Files: `lib/app/appPowerHelpers.ts`, `test/appPowerHelpers.test.ts`.
+      Files: `lib/app/appPowerHelpers.ts`, `lib/app/appPowerRebuildPolicy.ts`,
+      `lib/app/appPowerRebuildScheduler.ts`, `lib/app/appPowerSampleIngest.ts`,
+      `test/appPowerHelpers.test.ts`.
 - [ ] Introduce a `TimerRegistry` helper and route the ten timer fields on `app.ts` through it so
       `onUninit` cannot silently leak a newly added timer.
       Why P1: timer cleanup is enforced today only by author discipline; each new timer is a new

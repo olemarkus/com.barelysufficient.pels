@@ -1,7 +1,9 @@
 # PlanRebuildScheduler — design note
 
 > **Status:** Design note (2026-04-16). Pre-implementation. Identified during the complexity
-> review; scheduled as Phase 9 in `README.md`, depends on Phase 8 (appPowerHelpers split).
+> review; scheduled as Phase 9 in `README.md`. Phase 8 has landed via the
+> `appPowerRebuildPolicy.ts` / `appPowerRebuildScheduler.ts` / `appPowerSampleIngest.ts` split,
+> so this note now describes the next step instead of a blocked prerequisite.
 
 ## Problem
 
@@ -127,15 +129,15 @@ scheduler registers its timer under a stable name so `onUninit` teardown is auto
 
 ## Migration plan
 
-Land this as Phase 9, after Phase 8 (appPowerHelpers split) provides a stable decision module as
-input.
+Land this as Phase 9, now that Phase 8 has provided a stable decision module as input.
 
 1. Introduce `PlanRebuildScheduler` as a new file, not wired anywhere.
 2. Port `appFlowRebuildScheduler`'s contract onto the `flow` intent kind. Route flow-card call
    sites through the new scheduler. Delete `appFlowRebuildScheduler.ts`.
 3. Port `schedulePlanRebuildFromSignal` onto the `signal` + `hardCap` intent kinds. The pure
-   decision module (from Phase 8) decides which kind to raise. Route power-sample call sites
-   through the new scheduler. Shrink `appPowerHelpers.ts` accordingly.
+   decision module in `appPowerRebuildPolicy.ts` decides which kind to raise. Route power-sample
+   call sites through the new scheduler. Shrink the compatibility barrel and
+   `appPowerRebuildScheduler.ts` accordingly.
 4. Port `planService.pendingNonActionSnapshotTimer` onto the `snapshot` intent kind. Route
    snapshot write call sites through the new scheduler. `PlanService` stops owning the timer.
 5. Lint sweep: remove unused helpers from the three former locations.
@@ -161,8 +163,8 @@ Before the first migration step lands:
 - **Medium-high.** This is safety-envelope code. Misplacing the backoff reset, the holdoff
   window, or the priority comparison can silently cause rebuild storms, missed hard-caps, or
   starved snapshot updates.
-- **Blocks on Phase 8.** Starting this before the appPowerHelpers split means porting decision
-  logic that will be moved again; double work and more review surface.
+- **Depends on the landed Phase 8 boundary staying stable.** If the new policy/scheduler split
+  regresses back into a mixed module, Phase 9 will regain the double-work risk the split removed.
 - **Behavior change surface.** The priority rule is a new invariant; today's behavior is
   "whichever timer fires first wins." Landing this note's design strengthens the guarantee but
   changes observable ordering for adjacent-arriving intents.

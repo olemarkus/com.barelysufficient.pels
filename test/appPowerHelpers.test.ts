@@ -10,13 +10,15 @@ vi.mock('../lib/utils/perfCounters', async (importOriginal) => {
 
 import CapacityGuard from '../lib/core/capacityGuard';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
-import type { PowerSampleRebuildState } from '../lib/app/appPowerHelpers';
 import {
   recordDailyBudgetCap,
   recordPowerSampleForApp,
+} from '../lib/app/appPowerSampleIngest';
+import type { PowerSampleRebuildState } from '../lib/app/appPowerRebuildScheduler';
+import {
   schedulePlanRebuildFromPowerSample,
   schedulePlanRebuildFromSignal,
-} from '../lib/app/appPowerHelpers';
+} from '../lib/app/appPowerRebuildScheduler';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';
 
 const createCapacityGuardMock = (params: {

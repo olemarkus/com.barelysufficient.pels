@@ -122,31 +122,21 @@ just combines conceptually identical ones.
 
 **Prerequisite:** Phase 1 (backoff simplification reduces the gate interaction surface).
 
-### 8. `appPowerHelpers.ts` — 898 LOC, eight concerns in one file
+### 8. `appPowerHelpers.ts` — landed
 
-Identified during the 2026-04-16 critical review. One module currently owns: rebuild-decision
-policy, pending/coalesced scheduling, tight-noop exponential backoff
-(`TIGHT_NOOP_BACKOFF_MS = [15000, 30000, 60000]`), tight-mitigation holdoff
-(`TIGHT_MITIGATION_HOLDOFF_MS = 15000`), hard-cap breach fast-path, power-sample integration,
-sample persistence, sample pruning. `PowerSampleRebuildState` has 12 fields including two timers
-and a pending promise. `schedulePlanRebuildFromPowerSample` is 143 LOC with 8 parameter fields.
+The split identified during the 2026-04-16 critical review has now landed. The previous monolith
+was decomposed into:
 
-**Simplification:** Split into three modules:
+- `appPowerRebuildPolicy.ts` — pure decision/backoff/holdoff policy helpers.
+- `appPowerRebuildScheduler.ts` — the timer/promise state machine for signal-driven rebuilds.
+- `appPowerSampleIngest.ts` — power-sample ingest, persistence, pruning, and budget-cap recording.
+- `appPowerHelpers.ts` — compatibility barrel used by existing call sites.
 
-- `planRebuildDecision.ts` — pure: `shouldRebuildFromDecision`, `resolveRebuildReason`,
-  `isTightNoopOutcome`, `shouldApplyTightNoopBackoff`, `shouldApplyTightMitigationHoldoff`,
-  `resolveTightNoopBackoffMs`, `isTightNoopBackoffActive`.
-- `planRebuildScheduler.ts` — state machine: owns the pending-rebuild timer and promise,
-  `armPendingTimer`, `createPendingRebuild`, `coalescePendingRebuild`, `clearPendingState`,
-  `withPendingInputs`, `buildPostRebuildState`. One public `schedule(intent)` surface.
-- `powerSampleIngest.ts` — persistence/pruning/cap-recording side.
+The tight-noop exponential backoff and tight-mitigation holdoff contracts were preserved during
+the split, and `test/appPowerHelpers.test.ts` remains the main regression coverage for this area.
 
-**Risk:** Medium. This module encodes the safety envelope around plan rebuilds — tight-noop
-backoff and mitigation holdoff prevent pathological rebuild storms. The 1401-line
-`test/appPowerHelpers.test.ts` is the main insurance.
-
-**Prerequisite:** Coverage audit of `appPowerHelpers.test.ts` confirming every backoff/holdoff
-branch is covered before the split begins.
+**Remaining follow-up:** use the cleaner policy/scheduler boundary as the Phase 8 prerequisite for
+the cross-file rebuild-scheduler unification work described below.
 
 ### 9. Triple plan-rebuild coalescer — cross-file race window
 
@@ -167,10 +157,10 @@ intents: `requestRebuild(reason, priority)`, `requestSnapshotWrite(reason)`,
 See [`rebuild-scheduler-unification.md`](rebuild-scheduler-unification.md) for the state-machine
 design, preserved invariants, and migration plan.
 
-**Risk:** Medium-high. Safety-envelope code. Land after appPowerHelpers has been split so the
+**Risk:** Medium-high. Safety-envelope code. The appPowerHelpers split has now landed, so the
 decision module is a stable input to the new scheduler.
 
-**Prerequisite:** Phase 8 (appPowerHelpers split).
+**Prerequisite:** satisfied by the landed appPowerHelpers split.
 
 ### 10. Timer lifecycle scatter in `app.ts`
 
