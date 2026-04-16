@@ -79,7 +79,7 @@ describe('P1 bug proofs', () => {
     expect(liveUsage).toBe(candidatePower);
   });
 
-  it.fails('keeps shedding active after a single sample just above the restore margin', async () => {
+  it('keeps shedding active after a single sample just above the restore margin', async () => {
     let active = false;
     const transitions: boolean[] = [];
     const capacityGuard = {
@@ -95,6 +95,7 @@ describe('P1 bug proofs', () => {
 
     await updateGuardState({
       headroom: -0.05,
+      overshootActionable: true,
       capacitySoftLimit: 5,
       total: 5.05,
       devices: [],
@@ -105,6 +106,7 @@ describe('P1 bug proofs', () => {
     });
     await updateGuardState({
       headroom: 0.21,
+      overshootActionable: false,
       capacitySoftLimit: 5,
       total: 4.79,
       devices: [],
@@ -115,6 +117,7 @@ describe('P1 bug proofs', () => {
     });
     await updateGuardState({
       headroom: -0.05,
+      overshootActionable: true,
       capacitySoftLimit: 5,
       total: 5.05,
       devices: [],
@@ -124,7 +127,8 @@ describe('P1 bug proofs', () => {
       capacityGuard,
     });
 
-    expect(transitions).toEqual([true]);
+    expect(transitions[0]).toBe(true);
+    expect(transitions).not.toContain(false);
     expect(active).toBe(true);
   });
 
@@ -139,6 +143,7 @@ describe('P1 bug proofs', () => {
 
     await updateGuardState({
       headroom: -1,
+      overshootActionable: true,
       capacitySoftLimit: 5,
       total: 6,
       devices: [

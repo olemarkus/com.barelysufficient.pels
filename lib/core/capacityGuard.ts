@@ -23,13 +23,18 @@ export type CapacityGuardOptions = {
   capacityStateSummaryProvider?: CapacityStateSummaryProvider;
 };
 
+const SHEDDING_CLEAR_HYSTERESIS_KW = 0.2;
+
+export function getSheddingClearThresholdKw(restoreMarginKw: number): number {
+  return restoreMarginKw + SHEDDING_CLEAR_HYSTERESIS_KW;
+}
+
 /**
  * CapacityGuard - State container for capacity management.
  * The Plan (buildDevicePlanSnapshot) is the single decision-maker for shedding.
  * Guard tracks state (sheddingActive, shortfall) and provides shortfall hysteresis.
  */
 export default class CapacityGuard {
-  private static readonly SHEDDING_CLEAR_HYSTERESIS_KW = 0.2;
   private static readonly SHORTFALL_CLEAR_MARGIN_KW = 0.2;
   private static readonly SHORTFALL_CLEAR_SUSTAIN_MS = 60000; // 60 seconds of sustained positive headroom
 
@@ -160,7 +165,7 @@ export default class CapacityGuard {
     }
     if (!active && this.sheddingActive) {
       const headroom = clearHeadroomKw ?? this.headroom();
-      const clearThreshold = this.restoreMarginKw + CapacityGuard.SHEDDING_CLEAR_HYSTERESIS_KW;
+      const clearThreshold = getSheddingClearThresholdKw(this.restoreMarginKw);
       if (headroom !== null && headroom < clearThreshold) {
         return;
       }

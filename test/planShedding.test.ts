@@ -3270,6 +3270,47 @@ describe('buildSheddingPlan', () => {
     expect(guard.isSheddingActive()).toBe(true);
   });
 
+  it('does not try to clear shedding on a single sample just above the restore margin', async () => {
+    let sheddingActive = true;
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockImplementation(() => sheddingActive),
+      setSheddingActive: vi.fn().mockImplementation(async (active: boolean) => {
+        sheddingActive = active;
+      }),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getRestoreMargin: vi.fn().mockReturnValue(0.2),
+      getShortfallThreshold: vi.fn().mockReturnValue(5),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [],
+        total: 4.79,
+        softLimit: 5,
+        capacitySoftLimit: 5,
+        headroomRaw: 0.21,
+        headroom: 0.21,
+        softLimitSource: 'capacity',
+      }),
+      createPlanEngineState(),
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    );
+
+    expect(result.sheddingActive).toBe(true);
+    expect(result.updates.lastRecoveryMs).toBeUndefined();
+    expect(
+      capacityGuard.setSheddingActive.mock.calls.some(([active]) => active === false),
+    ).toBe(false);
+  });
+
   it('clears shedding using the active plan headroom even if capacity guard headroom is lower', async () => {
     const guard = new CapacityGuard({
       limitKw: 4,

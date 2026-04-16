@@ -1,4 +1,5 @@
 import type CapacityGuard from '../core/capacityGuard';
+import { getSheddingClearThresholdKw } from '../core/capacityGuard';
 import type { PlanCapacityStateSummary } from '../core/capacityStateSummary';
 import type { PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanContext } from './planContext';
@@ -255,7 +256,7 @@ export async function updateGuardState(params: {
   }
 
   const restoreMargin = capacityGuard?.getRestoreMargin() ?? 0.2;
-  const canDisable = headroom !== null && headroom >= restoreMargin;
+  const canDisable = headroom !== null && headroom >= getSheddingClearThresholdKw(restoreMargin);
   const current = capacityGuard?.isSheddingActive() ?? false;
   if (canDisable) {
     await capacityGuard?.setSheddingActive(false, headroom);
