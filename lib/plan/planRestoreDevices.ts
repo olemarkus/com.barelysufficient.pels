@@ -1,5 +1,6 @@
 import { getSteppedLoadHighestStep } from '../utils/deviceControlProfiles';
 import type { DevicePlanDevice } from './planTypes';
+import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { sortByPriorityAsc, sortByPriorityDesc } from './planSort';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 
@@ -10,13 +11,13 @@ export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): boolean {
 }
 
 export function isBinaryRestoreCandidate(device: DevicePlanDevice): boolean {
-  return isRestoreLiveEligibleDevice(device) && device.currentState === 'off';
+  return isRestoreLiveEligibleDevice(device) && resolveEffectiveCurrentOn(device) === false;
 }
 
 export function isSteppedRestoreCandidate(device: DevicePlanDevice): boolean {
   if (!isSteppedLoadDevice(device) || !device.steppedLoadProfile?.steps?.length) return false;
   if (!isRestoreLiveEligibleDevice(device)) return false;
-  return device.currentState === 'off'
+  return resolveEffectiveCurrentOn(device) === false
     || (
       device.selectedStepId !== undefined
       && device.selectedStepId !== getSteppedLoadHighestStep(device.steppedLoadProfile)?.id
@@ -25,7 +26,10 @@ export function isSteppedRestoreCandidate(device: DevicePlanDevice): boolean {
 
 export function isSwapRestoreCandidate(device: DevicePlanDevice): boolean {
   return isRestoreLiveEligibleDevice(device)
-    && (device.currentState === 'on' || device.currentState === 'not_applicable');
+    && (
+      resolveEffectiveCurrentOn(device) === true
+      || device.currentState === 'not_applicable'
+    );
 }
 
 export function getOffDevices(planDevices: DevicePlanDevice[]): DevicePlanDevice[] {

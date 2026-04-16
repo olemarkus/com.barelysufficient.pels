@@ -1874,7 +1874,7 @@ describe('buildSheddingPlan', () => {
     expect(result.shedSet.has('hall')).toBe(true);
   });
 
-  it('treats a pending restore as provisionally live so it can still be shed during overshoot', async () => {
+  it('does not let a pending restore make an observed-off device shed-eligible during overshoot', async () => {
     const state = createPlanEngineState();
     state.pendingBinaryCommands.tank = {
       capabilityId: 'onoff',
@@ -1922,8 +1922,8 @@ describe('buildSheddingPlan', () => {
       },
     );
 
-    expect(result.shedSet.has('tank')).toBe(true);
-    expect(result.shedReasons.get('tank')).toBe('shed due to capacity');
+    expect(result.shedSet.has('tank')).toBe(false);
+    expect(result.shedReasons.get('tank')).toBeUndefined();
   });
 
   it('checks shortfall in daily mode when hard-cap deficit exists and no candidates remain', async () => {

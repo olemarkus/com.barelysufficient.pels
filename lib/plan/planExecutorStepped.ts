@@ -19,6 +19,7 @@ import {
   recordActivationSetbackForDevice,
 } from './planExecutorSupport';
 import { setBinaryControl } from './planBinaryControl';
+import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { resolveSteppedLoadCommandPendingMs } from './planObservationPolicy';
 import { isSteppedLoadDevice, resolveSteppedKeepDesiredStepId } from './planSteppedLoad';
 import type { PlanActuationMode } from './planExecutor';
@@ -138,7 +139,8 @@ export const applySteppedLoadRestore = async (
       logMessage: `Capacity: skip stepped-load restore for ${name}, plannedState is ${dev.plannedState}`,
     });
   }
-  if (dev.currentState !== 'off') {
+  const effectiveCurrentOn = resolveEffectiveCurrentOn(dev);
+  if (effectiveCurrentOn !== false) {
     return logSteppedLoadRestoreSkip(ctx, {
       dev,
       mode,
@@ -155,7 +157,7 @@ export const applySteppedLoadRestore = async (
     && dev.steppedLoadProfile
     && !isSteppedLoadOffStep(dev.steppedLoadProfile, desiredStepId);
   const stepViolated = Boolean(
-    dev.currentState === 'off'
+    effectiveCurrentOn === false
     && desiredIsNonOff
     && desiredStepId !== dev.selectedStepId,
   );

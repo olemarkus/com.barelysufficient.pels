@@ -6,6 +6,7 @@ import type { PowerTrackerState } from '../core/powerTracker';
 import type { PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
+import { resolveEffectiveCurrentOn, resolveObservedCurrentState } from './planCurrentState';
 import { resolveCandidatePower } from './planCandidatePower';
 import {
   getSteppedLoadShedTargetStep,
@@ -475,13 +476,17 @@ function isEligibleForShedding(params: {
   nowTs: number;
 }): boolean {
   const { device, state, nowTs } = params;
-  if (device.observationStale === true) return true;
-  if (device.currentOn !== false) return true;
-  return isPendingBinaryCommandActive({
-    pending: state.pendingBinaryCommands[device.id],
-    nowMs: nowTs,
-    communicationModel: device.communicationModel,
-  }) && state.pendingBinaryCommands[device.id]?.desired === true;
+  const effectiveCurrentOn = resolveEffectiveCurrentOn({
+    ...device,
+    currentState: resolveObservedCurrentState(device),
+  }, {
+    pendingPresent: isPendingBinaryCommandActive({
+      pending: state.pendingBinaryCommands[device.id],
+      nowMs: nowTs,
+      communicationModel: device.communicationModel,
+    }),
+  });
+  return effectiveCurrentOn !== false;
 }
 
 function buildTemperatureCandidate(params: {
@@ -637,7 +642,11 @@ function isNonSteppedDeviceRecovering(
   candidate: PlanInputDevice,
   state: Pick<PlanEngineState, 'lastDeviceShedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>,
 ): boolean {
-  if (candidate.controllable === false || isSteppedLoadDevice(candidate) || candidate.currentOn !== false) {
+  const effectiveCurrentOn = resolveEffectiveCurrentOn({
+    ...candidate,
+    currentState: resolveObservedCurrentState(candidate),
+  });
+  if (candidate.controllable === false || isSteppedLoadDevice(candidate) || effectiveCurrentOn !== false) {
     return false;
   }
   if (state.swapByDevice[candidate.id]?.swappedOutFor || state.swapByDevice[candidate.id]?.pendingTarget) {

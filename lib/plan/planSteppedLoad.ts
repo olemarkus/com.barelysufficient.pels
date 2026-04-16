@@ -12,6 +12,10 @@ import {
 } from '../utils/deviceControlProfiles';
 import type { SteppedLoadProfile, SteppedLoadStep } from '../utils/types';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
+import {
+  resolveEffectiveCurrentOn,
+  resolveObservedSteppedLoadCurrentState,
+} from './planCurrentState';
 
 type StepCapableDevice = Pick<
   PlanInputDevice | DevicePlanDevice,
@@ -37,17 +41,7 @@ const getSteppedLoadProfileForDevice = (
   device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'>,
 ): SteppedLoadProfile | null => (isSteppedLoadDevice(device) ? (device.steppedLoadProfile ?? null) : null);
 
-export const resolveSteppedLoadCurrentState = (
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId'> & { currentOn: boolean },
-): string => {
-  const profile = getSteppedLoadProfileForDevice(device);
-  if (!profile) {
-    return device.currentOn ? 'on' : 'off';
-  }
-  if (device.currentOn === false) return 'off';
-  if (!device.selectedStepId) return 'unknown';
-  return isSteppedLoadOffStep(profile, device.selectedStepId) ? 'off' : 'on';
-};
+export const resolveSteppedLoadCurrentState = resolveObservedSteppedLoadCurrentState;
 
 export const resolveSteppedLoadInitialDesiredStepId = (
   device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId'>,
@@ -68,13 +62,15 @@ export const resolveSteppedKeepDesiredStepId = (
   const lowestActiveStepId = getSteppedLoadLowestActiveStep(profile)?.id;
   if (!lowestActiveStepId) return device.desiredStepId;
 
-  if (device.currentState === 'on') {
+  const effectiveCurrentOn = resolveEffectiveCurrentOn(device);
+
+  if (effectiveCurrentOn === true) {
     return device.desiredStepId && isSteppedLoadOffStep(profile, device.desiredStepId)
       ? lowestActiveStepId
       : device.desiredStepId;
   }
 
-  if (device.currentState === 'off') {
+  if (effectiveCurrentOn === false) {
     return lowestActiveStepId;
   }
 
@@ -89,7 +85,7 @@ export const getSteppedLoadNextRestoreStep = (
   const profile = getSteppedLoadProfileForDevice(device);
   if (!profile) return null;
 
-  if (device.currentState === 'off') {
+  if (resolveEffectiveCurrentOn(device) === false) {
     return getSteppedLoadRestoreStep(profile);
   }
 
@@ -121,7 +117,7 @@ export const getSteppedLoadShedTargetStep = (params: {
     : getSteppedLoadOffStep(profile) ?? getSteppedLoadLowestStep(profile);
   if (!targetStep) return null;
 
-  if (device.currentState === 'off') {
+  if (resolveEffectiveCurrentOn(device) === false) {
     return targetStep;
   }
 
@@ -196,7 +192,7 @@ export const resolveSteppedLoadRestoreDeltaKw = (params: {
 }): number => {
   const { device, fromStepId, toStepId } = params;
   if (!isSteppedLoadDevice(device)) return 0;
-  const currentPlanningKw = device.currentState === 'off'
+  const currentPlanningKw = resolveEffectiveCurrentOn(device) === false
     ? 0
     : resolveSteppedLoadPlanningKw(device, fromStepId);
   const nextPlanningKw = resolveSteppedLoadPlanningKw(device, toStepId);
