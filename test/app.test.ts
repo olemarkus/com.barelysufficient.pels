@@ -2184,7 +2184,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const logSpy = vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
     const rescheduleSpy = vi.spyOn((app as any).snapshotHelpers, 'scheduleNextSnapshotRefresh');
 
-    (app as any).snapshotHelpers.scheduleNextSnapshotRefresh();
+    (app as any).startPeriodicSnapshotRefresh();
 
     vi.advanceTimersByTime(25 * 60 * 1000);
     await Promise.resolve();
@@ -2269,6 +2269,32 @@ describe('periodic snapshot refresh scheduling', () => {
     expect(refreshSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('does not reschedule periodic refresh after stop during an in-flight refresh', async () => {
+    const app = createApp();
+    vi.spyOn(app as any, 'getNow').mockReturnValue(new Date('2026-03-21T10:00:00Z'));
+    vi.spyOn(app as any, 'logPeriodicStatus').mockImplementation(() => {});
+
+    let resolveRefresh: (() => void) | undefined;
+    const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockImplementation(() => (
+      new Promise<void>((resolve) => { resolveRefresh = resolve; })
+    ));
+    const rescheduleSpy = vi.spyOn((app as any).snapshotHelpers, 'scheduleNextSnapshotRefresh');
+
+    (app as any).startPeriodicSnapshotRefresh();
+
+    vi.advanceTimersByTime(25 * 60 * 1000);
+    await Promise.resolve();
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(rescheduleSpy).toHaveBeenCalledTimes(1);
+
+    (app as any).snapshotHelpers.stop();
+    resolveRefresh?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(rescheduleSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('wraps to next hour when past :55', async () => {
     vi.setSystemTime(new Date('2026-03-21T10:56:00Z'));
 
@@ -2345,6 +2371,19 @@ describe('periodic snapshot refresh scheduling', () => {
     expect(logDebugSpy).toHaveBeenCalledWith('plan', 'Post-actuation snapshot refresh already scheduled');
   });
 
+  it('clears post-actuation timer state on stop so it can be armed again', () => {
+    const app = createApp();
+
+    (app as any).schedulePostActuationRefresh();
+    expect((app as any).snapshotHelpers.getPostActuationRefreshTimer()).toBeDefined();
+
+    (app as any).snapshotHelpers.stop();
+    expect((app as any).snapshotHelpers.getPostActuationRefreshTimer()).toBeUndefined();
+
+    (app as any).schedulePostActuationRefresh();
+    expect((app as any).snapshotHelpers.getPostActuationRefreshTimer()).toBeDefined();
+  });
+
   it('runs post-actuation refresh without recording a Homey Energy sample', async () => {
     const app = createApp();
     const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
@@ -2354,5 +2393,18 @@ describe('periodic snapshot refresh scheduling', () => {
 
     expect(refreshSpy).toHaveBeenCalledTimes(1);
     expect(refreshSpy).toHaveBeenCalledWith({ targeted: true, recordHomeyEnergySample: false });
+  });
+
+  it('clears stale Homey Energy interval state when polling is disabled', () => {
+    const app = createApp();
+
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    (app as any).startHomeyEnergyPoll();
+    expect((app as any).homeyEnergyHelpers.pollInterval).toBeDefined();
+
+    mockHomeyInstance.settings.set('power_source', 'flow');
+    (app as any).startHomeyEnergyPoll();
+
+    expect((app as any).homeyEnergyHelpers.pollInterval).toBeUndefined();
   });
 });
