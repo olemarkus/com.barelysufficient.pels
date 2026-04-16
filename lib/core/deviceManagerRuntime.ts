@@ -20,6 +20,7 @@ type RealtimeReconcileResult = {
   shouldReconcilePlan: boolean;
   changes: RealtimeDeviceReconcileChange[];
   observedCapabilityIds: string[];
+  currentSnapshot: TargetDeviceSnapshot | null;
 };
 
 export function updateLastKnownPower(params: {
@@ -107,6 +108,12 @@ export function reconcileRealtimeDeviceUpdate(params: {
     hasPendingBinarySettleWindow,
   } = params;
   const deviceId = device.id;
+  if (!deviceId) return {
+    shouldReconcilePlan: false,
+    changes: [],
+    observedCapabilityIds: [],
+    currentSnapshot: null,
+  };
 
   const parsed = parseDevice(device, Date.now());
   const snapshotIndex = latestSnapshot.findIndex((entry) => entry.id === deviceId);
@@ -114,9 +121,19 @@ export function reconcileRealtimeDeviceUpdate(params: {
   if (!parsed) {
     if (snapshotIndex >= 0) {
       latestSnapshot.splice(snapshotIndex, 1);
-      return { shouldReconcilePlan: false, changes: [], observedCapabilityIds: [] };
+      return {
+        shouldReconcilePlan: false,
+        changes: [],
+        observedCapabilityIds: [],
+        currentSnapshot: null,
+      };
     }
-    return { shouldReconcilePlan: false, changes: [], observedCapabilityIds: [] };
+    return {
+      shouldReconcilePlan: false,
+      changes: [],
+      observedCapabilityIds: [],
+      currentSnapshot: null,
+    };
   }
 
   // Only let the raw device value bypass local-state preservation when the settle
@@ -149,6 +166,7 @@ export function reconcileRealtimeDeviceUpdate(params: {
     shouldReconcilePlan: changes.length > 0,
     changes,
     observedCapabilityIds,
+    currentSnapshot: parsed,
   };
 }
 

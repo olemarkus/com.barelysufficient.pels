@@ -23,6 +23,7 @@ export type HandleRealtimeDeviceUpdateResult = {
   shouldReconcilePlan: boolean;
   changes: RealtimeDeviceReconcileChange[];
   observedCapabilityIds: string[];
+  currentSnapshot: TargetDeviceSnapshot | null;
 };
 
 type BinarySettleOutcome = 'settled' | 'drift' | 'none';
@@ -67,6 +68,7 @@ export function handleRealtimeDeviceUpdate(params: {
       shouldReconcilePlan: false,
       changes: [],
       observedCapabilityIds: [],
+      currentSnapshot: null,
     };
   }
   const label = device.name;
@@ -85,8 +87,7 @@ export function handleRealtimeDeviceUpdate(params: {
     parseDevice: (nextDevice, nowTs) => parseDevice(nextDevice, nowTs),
   });
   const settleResult = applyPendingBinarySettleToDeviceUpdate({
-    latestSnapshot,
-    deviceId,
+    currentSnapshot: result.currentSnapshot,
     changes: result.changes,
     rawBinaryValue,
     notePendingBinarySettleObservation,
@@ -114,6 +115,7 @@ export function handleRealtimeDeviceUpdate(params: {
       shouldReconcilePlan: false,
       changes: filteredChanges,
       observedCapabilityIds: result.observedCapabilityIds,
+      currentSnapshot: result.currentSnapshot,
     };
   }
   emitPlanReconcile({
@@ -126,12 +128,12 @@ export function handleRealtimeDeviceUpdate(params: {
     shouldReconcilePlan: true,
     changes: filteredChanges,
     observedCapabilityIds: result.observedCapabilityIds,
+    currentSnapshot: result.currentSnapshot,
   };
 }
 
 function applyPendingBinarySettleToDeviceUpdate(params: {
-  latestSnapshot: TargetDeviceSnapshot[];
-  deviceId: string;
+  currentSnapshot: TargetDeviceSnapshot | null;
   changes: RealtimeDeviceReconcileChange[];
   rawBinaryValue: boolean | undefined;
   notePendingBinarySettleObservation?: PendingBinarySettleObservationRecorder;
@@ -140,13 +142,12 @@ function applyPendingBinarySettleToDeviceUpdate(params: {
   binarySettleOutcome: BinarySettleOutcome;
 } {
   const {
-    latestSnapshot,
-    deviceId,
+    currentSnapshot,
     changes,
     rawBinaryValue,
     notePendingBinarySettleObservation,
   } = params;
-  const currentSnapshot = latestSnapshot.find((entry) => entry.id === deviceId);
+  const deviceId = currentSnapshot?.id;
   const binaryCapabilityId = currentSnapshot?.controlCapabilityId;
 
   // rawBinaryValue is undefined when the device.update payload contained no explicit
@@ -154,6 +155,7 @@ function applyPendingBinarySettleToDeviceUpdate(params: {
   if (
     rawBinaryValue === undefined
     || !currentSnapshot
+    || !deviceId
     || typeof binaryCapabilityId !== 'string'
     || !notePendingBinarySettleObservation
   ) {
