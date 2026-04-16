@@ -101,7 +101,8 @@ export const applySteppedLoadCommand = async (
     }
   }
   const previousStepId = dev.selectedStepId ?? dev.lastDesiredStepId;
-  if (dev.stepCommandPending && dev.lastDesiredStepId === desiredStepId) {
+  const sameDesiredStepPendingState = getSameDesiredStepPendingState(dev, desiredStepId);
+  if (sameDesiredStepPendingState === 'pending') {
     return logSteppedLoadCommandSkip(ctx, {
       dev,
       mode,
@@ -109,6 +110,20 @@ export const applySteppedLoadCommand = async (
       logMessage: `Capacity: skip stepped-load command for ${dev.name || dev.id}, `
         + `awaiting confirmation of ${desiredStepId}`,
       fields: { desiredStepId },
+    });
+  }
+  if (sameDesiredStepPendingState === 'backoff') {
+    return logSteppedLoadCommandSkip(ctx, {
+      dev,
+      mode,
+      reasonCode: 'retry_backoff',
+      logMessage: `Capacity: skip stepped-load command for ${dev.name || dev.id}, `
+        + `retry backoff for ${desiredStepId} remains active`,
+      fields: {
+        desiredStepId,
+        nextRetryAtMs: dev.nextStepCommandRetryAtMs ?? null,
+        retryCount: dev.stepCommandRetryCount ?? 0,
+      },
     });
   }
   return executeSteppedLoadCommand(ctx, {
@@ -261,7 +276,12 @@ const logSteppedLoadCommandSkip = (
   params: {
     dev: PlanDevice;
     mode: PlanActuationMode;
-    reasonCode: 'missing_step' | 'step_up_blocked' | 'waiting_for_confirmation' | 'missing_trigger';
+    reasonCode:
+      | 'missing_step'
+      | 'step_up_blocked'
+      | 'waiting_for_confirmation'
+      | 'retry_backoff'
+      | 'missing_trigger';
     logMessage: string;
     fields: Record<string, unknown>;
   },
@@ -279,6 +299,29 @@ const logSteppedLoadCommandSkip = (
   ctx.logDebug(logMessage);
   return false;
 };
+
+function getSameDesiredStepPendingState(
+  dev: Pick<
+    PlanDevice,
+    | 'lastDesiredStepId'
+    | 'stepCommandPending'
+    | 'stepCommandStatus'
+    | 'nextStepCommandRetryAtMs'
+  >,
+  desiredStepId: string,
+  nowMs: number = Date.now(),
+): 'pending' | 'backoff' | null {
+  if (dev.lastDesiredStepId !== desiredStepId) return null;
+  if (dev.stepCommandPending) return 'pending';
+  if (
+    dev.stepCommandStatus === 'stale'
+    && typeof dev.nextStepCommandRetryAtMs === 'number'
+    && nowMs < dev.nextStepCommandRetryAtMs
+  ) {
+    return 'backoff';
+  }
+  return null;
+}
 
 const executeSteppedLoadCommand = async (
   ctx: PlanExecutorSteppedContext,

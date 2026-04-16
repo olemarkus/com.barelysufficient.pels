@@ -20,6 +20,7 @@ import type {
   SteppedLoadProfile,
   TargetDeviceSnapshot,
 } from '../utils/types';
+import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from '../plan/planConstants';
 import { LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS } from '../plan/planObservationPolicy';
 
 export const STEPPED_LOAD_COMMAND_STALE_MS = LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS;
@@ -30,6 +31,8 @@ export type SteppedLoadDesiredRuntimeState = {
   changedAtMs: number;
   lastIssuedAtMs?: number;
   pendingWindowMs?: number;
+  retryCount: number;
+  nextRetryAtMs?: number;
   pending: boolean;
   status: SteppedLoadCommandStatus;
 };
@@ -117,6 +120,8 @@ export const decorateSnapshotWithDeviceControl = (params: {
       && (selectedStepId ? !isSteppedLoadOffStep(profile, selectedStepId) : snapshot.currentOn),
     lastDesiredStepChangeAt: desired?.changedAtMs,
     lastStepCommandIssuedAt: desired?.lastIssuedAtMs,
+    stepCommandRetryCount: desired?.retryCount,
+    nextStepCommandRetryAtMs: desired?.nextRetryAtMs,
     stepCommandPending: desired?.pending ?? false,
     stepCommandStatus: desired?.status ?? 'idle',
   };
@@ -138,12 +143,18 @@ export const markSteppedLoadDesiredStepIssued = (params: {
     issuedAtMs = Date.now(),
     pendingWindowMs,
   } = params;
+  const previousDesired = runtimeState.steppedLoadDesiredByDeviceId[deviceId];
+  const retryCount = previousDesired?.stepId === desiredStepId
+    ? previousDesired.retryCount + 1
+    : 0;
   runtimeState.steppedLoadDesiredByDeviceId[deviceId] = {
     stepId: desiredStepId,
     previousStepId,
     changedAtMs: issuedAtMs,
     lastIssuedAtMs: issuedAtMs,
     pendingWindowMs,
+    retryCount,
+    nextRetryAtMs: undefined,
     pending: true,
     status: 'pending',
   };
@@ -178,6 +189,8 @@ export const reportSteppedLoadActualStep = (params: {
   if (desired?.stepId === stepId) {
     runtimeState.steppedLoadDesiredByDeviceId[deviceId] = {
       ...desired,
+      retryCount: 0,
+      nextRetryAtMs: undefined,
       pending: false,
       status: 'success',
     };
@@ -197,6 +210,10 @@ export const pruneStaleSteppedLoadCommandStates = (
     if (nowMs - desired.lastIssuedAtMs < pendingWindowMs) continue;
     runtimeState.steppedLoadDesiredByDeviceId[deviceId] = {
       ...desired,
+      nextRetryAtMs:
+        desired.lastIssuedAtMs
+        + pendingWindowMs
+        + resolveSteppedLoadCommandRetryDelayMs(desired.retryCount),
       pending: false,
       status: 'stale',
     };
@@ -204,6 +221,13 @@ export const pruneStaleSteppedLoadCommandStates = (
   }
   return changed;
 };
+
+function resolveSteppedLoadCommandRetryDelayMs(retryCount: number): number {
+  const normalizedRetryCount = Number.isFinite(retryCount) ? Math.max(0, Math.trunc(retryCount)) : 0;
+  return STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS[
+    Math.min(normalizedRetryCount, STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS.length - 1)
+  ];
+}
 
 export class AppDeviceControlHelpers {
   private readonly runtimeState: DeviceControlRuntimeState = createDeviceControlRuntimeState();

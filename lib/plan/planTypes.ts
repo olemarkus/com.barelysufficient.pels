@@ -51,6 +51,9 @@ export type DevicePlanDevice = {
   selectedStepId?: string;
   desiredStepId?: string;
   lastDesiredStepId?: string;
+  lastStepCommandIssuedAt?: number;
+  stepCommandRetryCount?: number;
+  nextStepCommandRetryAtMs?: number;
   actualStepId?: string;
   assumedStepId?: string;
   actualStepSource?: SteppedLoadActualStepSource;
@@ -124,6 +127,9 @@ export type PlanInputDevice = {
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
   desiredStepId?: string;
+  lastStepCommandIssuedAt?: number;
+  stepCommandRetryCount?: number;
+  nextStepCommandRetryAtMs?: number;
   actualStepId?: string;
   assumedStepId?: string;
   actualStepSource?: SteppedLoadActualStepSource;
