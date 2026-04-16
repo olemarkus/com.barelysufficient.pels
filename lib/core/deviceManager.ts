@@ -388,6 +388,7 @@ export class DeviceManager extends EventEmitter {
             emitPlanReconcile: (event) => this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event),
             emitObservedState: (event: ObservedDeviceStateEvent) => this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, event),
         });
+        this.syncLatestSnapshotIndex();
         if (deviceId && result.hadChanges) {
             recordDeviceUpdateObservation({
                 state: this.observationState,
@@ -432,7 +433,7 @@ export class DeviceManager extends EventEmitter {
     setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void { this.setSnapshot(snapshot); }
     setSnapshot(snapshot: TargetDeviceSnapshot[]): void {
         this.latestSnapshot = snapshot;
-        this.latestSnapshotById = new Map(snapshot.map((device) => [device.id, device]));
+        this.syncLatestSnapshotIndex();
     }
     /** Inject a device update directly into the reconcile path. Test-only. */
     injectDeviceUpdateForTest(device: HomeyDeviceLike): void { this.handleRealtimeDeviceUpdate(device); }
@@ -840,6 +841,10 @@ export class DeviceManager extends EventEmitter {
                 this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event)
             ),
         };
+    }
+
+    private syncLatestSnapshotIndex(): void {
+        this.latestSnapshotById = new Map(this.latestSnapshot.map((device) => [device.id, device]));
     }
 
     private getCapabilityObj(device: HomeyDeviceLike): DeviceCapabilityMap {
