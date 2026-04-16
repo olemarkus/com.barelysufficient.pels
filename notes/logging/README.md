@@ -1,5 +1,9 @@
 # Structured Logging Notes
 
+> Status note: this document is still the logging policy reference, but the event inventory below
+> is now a representative high-value slice rather than an exhaustive list. The codebase currently
+> emits additional structured events beyond the ones enumerated here.
+
 This note is for contributors changing runtime logging.
 
 ## Policy

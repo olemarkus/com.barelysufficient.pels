@@ -1,7 +1,9 @@
 # Temperature Device Starvation Detection v1
 
-This note captures the planned temperature-device starvation model for future work.
-It does not describe the current implementation.
+This note captures the intended starvation model and the remaining rollout target.
+Core intended-target / suppression-state diagnostics now exist in `lib/plan/planDiagnostics.ts`
+and `lib/diagnostics/deviceDiagnosticsService.ts`, but flows/insights and any remaining
+integration gaps should still follow this note.
 
 The feature is detection only:
 
