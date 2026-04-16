@@ -117,6 +117,7 @@ export const applySteppedLoadCommand = async (
     desiredStep,
     desiredStepId,
     previousStepId,
+    profile,
   });
 };
 
@@ -286,6 +287,7 @@ const executeSteppedLoadCommand = async (
     desiredStep: NonNullable<ReturnType<typeof getSteppedLoadStep>>;
     desiredStepId: string;
     previousStepId: string | undefined;
+    profile: NonNullable<PlanDevice['steppedLoadProfile']>;
   },
 ): Promise<boolean> => {
   const {
@@ -295,6 +297,7 @@ const executeSteppedLoadCommand = async (
     desiredStep,
     desiredStepId,
     previousStepId,
+    profile,
   } = params;
   const triggerCard = ctx.getDesiredSteppedLoadTrigger();
   if (!triggerCard?.trigger) {
@@ -323,7 +326,7 @@ const executeSteppedLoadCommand = async (
       issuedAtMs: now,
       pendingWindowMs: resolveSteppedLoadCommandPendingMs(dev.communicationModel),
     });
-    const nextDirection = resolveSteppedLoadDirection(dev, dev.steppedLoadProfile!, desiredStep.id, previousStepId);
+    const nextDirection = resolveSteppedLoadDirection(dev, profile, desiredStep.id, previousStepId);
     ctx.structuredLog?.info({
       event: 'stepped_load_command_requested',
       deviceId: dev.id,
@@ -352,14 +355,15 @@ const executeSteppedLoadCommand = async (
       ctx.recordShedActuation(dev.id, dev.name, now);
       return true;
     }
-      ctx.recordRestoreActuation(dev.id, dev.name, now);
-      recordActivationAttemptStarted({
-        state: ctx.state,
-        diagnostics: ctx.deviceDiagnostics,
-        deviceId: dev.id,
-        name: dev.name,
-        nowTs: now,
-        source: 'tracked_step_up',
+
+    ctx.recordRestoreActuation(dev.id, dev.name, now);
+    recordActivationAttemptStarted({
+      state: ctx.state,
+      diagnostics: ctx.deviceDiagnostics,
+      deviceId: dev.id,
+      name: dev.name,
+      nowTs: now,
+      source: 'tracked_step_up',
     });
     return true;
   } catch (error) {
