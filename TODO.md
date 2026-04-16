@@ -120,6 +120,33 @@ file.
       Why P1: the device detail panel mixes render logic, stepped-load draft state, diagnostics
       refresh, and repeated `setSetting(...)` save paths in one 900+ line file.
       Files: `packages/settings-ui/src/ui/deviceDetail.ts`, related device-detail helpers/tests.
+- [ ] Unify the three plan-rebuild coalescers (`appFlowRebuildScheduler`,
+      `schedulePlanRebuildFromSignal` in `appPowerHelpers.ts`, `planService` snapshot throttler)
+      into a single `PlanRebuildScheduler` with prioritised intents so rebuild/snapshot/hardCap
+      debouncing shares one state machine and one cancellation story.
+      Why P1: the three coalescers do not coordinate, which leaves a race window between
+      flow-card-driven and signal-driven rebuilds and spreads tight-noop backoff across files.
+      Design note: `notes/complexity-cleanup/rebuild-scheduler-unification.md`.
+      Files: `lib/app/appFlowRebuildScheduler.ts`, `lib/app/appPowerHelpers.ts`,
+      `lib/plan/planService.ts`.
+- [ ] Split `lib/app/appPowerHelpers.ts` (898 LOC, 8 concerns) into three focused modules: pure
+      rebuild-decision policy, a rebuild scheduler state machine, and a power-sample
+      ingest/persistence path. Must preserve the tight-noop backoff and mitigation holdoff
+      contracts; unblocks the coalescer unification.
+      Why P1: one file currently owns decision, scheduling, backoff, holdoff, hard-cap fast path,
+      sample ingest, persistence, and pruning.
+      Files: `lib/app/appPowerHelpers.ts`, `test/appPowerHelpers.test.ts`.
+- [ ] Introduce a `TimerRegistry` helper and route the ten timer fields on `app.ts` through it so
+      `onUninit` cannot silently leak a newly added timer.
+      Why P1: timer cleanup is enforced today only by author discipline; each new timer is a new
+      failure mode. Centralising gives a uniform debug surface and a clean teardown.
+      Files: `app.ts`, new `lib/app/timerRegistry.ts`.
+- [ ] Replace the four large dependency bags at `app.ts` init sites (init settings handler, init
+      plan engine, register flow cards, start app services — 22-28 callbacks each) with a single
+      `AppContext` struct passed by reference.
+      Why P1: the bags are the largest single source of `app.ts` bulk and they drift independently
+      as new features land. Collapsing them also enables cleanup of the one-line delegate getters.
+      Files: `app.ts`, `lib/app/**`.
 
 ## P2 Simplification and cleanup
 
@@ -132,6 +159,24 @@ file.
 - [ ] Audit whether daily-budget confidence scoring materially changes control decisions. If it is
       purely informational, simplify it aggressively.
       Files: `lib/dailyBudget/dailyBudgetConfidence.ts`, daily budget service/plan paths.
+- [ ] Stop granting blanket `max-lines` exemptions. Classify each currently-oversized runtime file
+      as either Bucket A ("must shrink to <=500") or Bucket B ("documented exception with a
+      concrete raised ceiling"), replace file-level `eslint-disable` pragmas with per-file config
+      overrides in `eslint.config.mjs` that cite the structural reason.
+      Why P2: the files most in need of the LOC rule are currently the ones waived from it, which
+      makes the limit effectively unenforced in the hotspots.
+      Proposal: `notes/complexity-cleanup/god-file-policy.md`.
+      Files: `eslint.config.mjs`, file-level disables in `app.ts`, `lib/**`.
+- [ ] Land the Phase 1 file consolidations once their target files have headroom: merge
+      `planRestoreAdmission.ts` and `planRestoreSupport.ts` into `planRestoreSwap.ts`; merge
+      `planStatusHelpers.ts` into `planStatusWriter.ts`; merge `appRealtimeDeviceReconcileRuntime.ts`
+      into `appRealtimeDeviceReconcile.ts`; bundle the tiny plan files (`planCandidatePower`,
+      `planSort`, `planHourContext`, `planOvershoot`, `planStateHelpers`, `planObservationPolicy`)
+      into a single `planBuilderHelpers.ts`; merge `planDebugDedupe.ts` and `planReasonStrings.ts`
+      into a new `planReasonFormatting.ts`.
+      Why P2: low-risk move-only work reducing directory surface. Blocked only where targets are
+      currently at or over the 500 LOC ceiling.
+      Files: `lib/plan/**`, `lib/app/appRealtimeDeviceReconcile*`.
 
 ## P3 Tooling, architecture, and future work
 
