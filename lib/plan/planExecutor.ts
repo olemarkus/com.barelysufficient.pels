@@ -284,13 +284,16 @@ export class PlanExecutor {
     return this.steppedExecutorContext;
   }
 
-  private async applyShedAction(dev: DevicePlan['devices'][number]): Promise<PlanActionHandleResult> {
+  private async applyShedAction(
+    dev: DevicePlan['devices'][number],
+    snapshot?: TargetDeviceSnapshot,
+  ): Promise<PlanActionHandleResult> {
     if (dev.plannedState !== 'shed') return { handled: false, wrote: false };
     const shedAction = dev.shedAction ?? 'turn_off';
     if (shedAction === 'set_temperature') {
       return this.applyShedTemperature(dev);
     }
-    return this.applyShedOff(dev);
+    return this.applyShedOff(dev, snapshot);
   }
 
   private async applyShedTemperature(dev: DevicePlan['devices'][number]): Promise<PlanActionHandleResult> {
@@ -314,11 +317,11 @@ export class PlanExecutor {
     return applyShedTemperaturePlan(this.buildTargetExecutorContext(), dev, targetCap, plannedTarget);
   }
 
-  private async applyShedOff(dev: DevicePlan['devices'][number]): Promise<PlanActionHandleResult> {
-    const snapshot = this.latestTargetSnapshot.find((entry) => entry.id === dev.id);
-    const currentOn = typeof snapshot?.currentOn === 'boolean'
-      ? snapshot.currentOn
-      : resolveEffectiveCurrentOn(dev);
+  private async applyShedOff(
+    dev: DevicePlan['devices'][number],
+    snapshot?: TargetDeviceSnapshot,
+  ): Promise<PlanActionHandleResult> {
+    const currentOn = snapshot?.currentOn ?? resolveEffectiveCurrentOn(dev);
     if (currentOn === false) return { handled: true, wrote: false };
     const reason = dev.reason;
     const isSwap = reason ? reason.includes('swapped out for') : false;
@@ -759,7 +762,7 @@ export class PlanExecutor {
           if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
           continue;
         }
-        const shedResult = await this.applyShedAction(dev);
+        const shedResult = await this.applyShedAction(dev, snapshot);
         if (shedResult.handled) {
           if (shedResult.wrote) deviceWriteCount += 1;
           continue;
