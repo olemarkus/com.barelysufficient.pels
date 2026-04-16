@@ -32,7 +32,6 @@ import {
 import {
   OPERATING_MODE_SETTING,
 } from './lib/utils/settingsKeys';
-import type { HeadroomForDeviceDecision } from './lib/plan/planHeadroomDevice';
 import { isPowerTrackerState } from './lib/utils/appTypeGuards';
 import {
   cancelPendingPowerRebuild,
@@ -1001,11 +1000,6 @@ class PelsApp extends Homey.App {
   private getShedBehavior = (deviceId: string) => getShedBehaviorHelper(deviceId, this.shedBehaviors);
   private computeDynamicSoftLimit = () => this.planService.computeDynamicSoftLimit();
   private computeShortfallThreshold = () => this.planService.computeShortfallThreshold();
-  private handleShortfall = (deficitKw: number) => this.planService.handleShortfall(deficitKw);
-  private handleShortfallCleared = () => this.planService.handleShortfallCleared();
-  private evaluateHeadroomForDevice = (
-    params: Parameters<PlanService['evaluateHeadroomForDevice']>[0],
-  ): HeadroomForDeviceDecision | null => this.planService.evaluateHeadroomForDevice(params);
   public getDeviceDiagnosticsUiPayload(): SettingsUiDeviceDiagnosticsPayload {
     return this.deviceDiagnosticsService?.getUiPayload?.()
       ?? { generatedAt: Date.now(), windowDays: 21, diagnosticsByDeviceId: {} };
