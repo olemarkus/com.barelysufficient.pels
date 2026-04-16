@@ -100,8 +100,9 @@ export const applySteppedLoadCommand = async (
       });
     }
   }
+  const now = Date.now();
   const previousStepId = dev.selectedStepId ?? dev.lastDesiredStepId;
-  const sameDesiredStepPendingState = getSameDesiredStepPendingState(dev, desiredStepId);
+  const sameDesiredStepPendingState = getSameDesiredStepPendingState(dev, desiredStepId, now);
   if (sameDesiredStepPendingState === 'pending') {
     return logSteppedLoadCommandSkip(ctx, {
       dev,
@@ -134,6 +135,7 @@ export const applySteppedLoadCommand = async (
     desiredStepId,
     previousStepId,
     profile,
+    now,
   });
 };
 
@@ -333,6 +335,7 @@ const executeSteppedLoadCommand = async (
     desiredStepId: string;
     previousStepId: string | undefined;
     profile: NonNullable<PlanDevice['steppedLoadProfile']>;
+    now: number;
   },
 ): Promise<boolean> => {
   const {
@@ -343,6 +346,7 @@ const executeSteppedLoadCommand = async (
     desiredStepId,
     previousStepId,
     profile,
+    now,
   } = params;
   const triggerCard = ctx.getDesiredSteppedLoadTrigger();
   if (!triggerCard?.trigger) {
@@ -354,7 +358,6 @@ const executeSteppedLoadCommand = async (
       fields: { desiredStepId: desiredStep.id },
     });
   }
-  const now = Date.now();
   const planningPowerW = desiredStep.planningPowerW;
   try {
     const triggerPromise = triggerCard.trigger({
