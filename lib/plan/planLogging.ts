@@ -4,7 +4,7 @@ import {
   type CapacityStateSummarySource,
   type PlanCapacityStateSummary,
 } from '../core/capacityStateSummary';
-import { resolveEffectiveCurrentOn, resolveObservedCurrentState } from './planCurrentState';
+import { resolveEffectiveCurrentOn } from './planCurrentState';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { resolveCandidatePower } from './planCandidatePower';
 
@@ -179,10 +179,7 @@ function isActiveControlledDevice(device: DevicePlanDevice): boolean {
 
 function isActiveInputDevice(device: PlanInputDevice): boolean {
   if (device.observationStale === true) return false;
-  return resolveEffectiveCurrentOn({
-    ...device,
-    currentState: resolveObservedCurrentState(device),
-  }) === true;
+  return resolveEffectiveCurrentOn(device) === true;
 }
 
 function isZeroDrawControlledDevice(device: DevicePlanDevice): boolean {
