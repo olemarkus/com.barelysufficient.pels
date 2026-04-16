@@ -1,5 +1,6 @@
 import type { DeviceControlModel, SteppedLoadProfile } from '../utils/types';
 import { getSteppedLoadRestoreStep } from '../utils/deviceControlProfiles';
+import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 
 type PowerSource = 'measured' | 'expected' | 'planning' | 'configured' | 'stepped' | 'off' | 'fallback';
@@ -82,14 +83,8 @@ export function resolveCandidatePower(device: PowerCandidate): number {
 }
 
 export function resolveLiveUsagePowerKw(device: LiveUsageCandidate): number | null {
-  if (
-    device.currentState === 'off'
-    || (
-      device.currentOn === false
-      && device.currentState !== 'unknown'
-      && device.currentState !== 'not_applicable'
-    )
-  ) {
+  const effectiveCurrentOn = resolveEffectiveCurrentOn(device);
+  if (effectiveCurrentOn === false && device.currentState !== 'not_applicable') {
     return typeof device.measuredPowerKw === 'number' && Number.isFinite(device.measuredPowerKw)
       ? Math.max(0, device.measuredPowerKw)
       : 0;

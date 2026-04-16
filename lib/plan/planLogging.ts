@@ -4,6 +4,7 @@ import {
   type CapacityStateSummarySource,
   type PlanCapacityStateSummary,
 } from '../core/capacityStateSummary';
+import { resolveEffectiveCurrentOn } from './planCurrentState';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { resolveCandidatePower } from './planCandidatePower';
 
@@ -106,6 +107,7 @@ function buildPlannedShedCounts(
 
 function sumReducibleControlledLoadKw<T extends {
   controllable?: boolean;
+  currentState?: string;
   currentOn?: boolean;
   measuredPowerKw?: number;
   expectedPowerKw?: number;
@@ -114,7 +116,7 @@ function sumReducibleControlledLoadKw<T extends {
 }>(devices: T[], isShed: (device: T) => boolean): number {
   let totalKw = 0;
   for (const device of devices) {
-    if (device.controllable === false || device.currentOn === false || isShed(device)) continue;
+    if (device.controllable === false || resolveEffectiveCurrentOn(device) === false || isShed(device)) continue;
     const power = resolveCandidatePower(device);
     if (power !== null && power > 0) {
       totalKw += power;
@@ -172,17 +174,12 @@ export function buildPlanSignature(plan: DevicePlan): string {
 
 function isActiveControlledDevice(device: DevicePlanDevice): boolean {
   if (device.observationStale === true) return false;
-  if (device.controlModel === 'stepped_load') {
-    return device.currentState !== 'off'
-      && device.currentState !== 'unknown'
-      && device.currentState !== 'not_applicable';
-  }
-  return device.currentOn === true || device.currentState === 'on';
+  return resolveEffectiveCurrentOn(device) === true;
 }
 
 function isActiveInputDevice(device: PlanInputDevice): boolean {
   if (device.observationStale === true) return false;
-  return device.currentOn === true;
+  return resolveEffectiveCurrentOn(device) === true;
 }
 
 function isZeroDrawControlledDevice(device: DevicePlanDevice): boolean {

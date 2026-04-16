@@ -1,7 +1,7 @@
 import type { DevicePlan, PlanInputDevice } from './planTypes';
 import { getSteppedLoadStep, isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
 import type { SteppedLoadProfile } from '../utils/types';
-import { resolveObservedCurrentState } from './planStateResolution';
+import { resolveEffectiveCurrentOn, resolveObservedCurrentState } from './planCurrentState';
 
 export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevice[]): DevicePlan {
   const liveById = new Map(liveDevices.map((device) => [device.id, device]));
@@ -187,8 +187,8 @@ function hasSettledPostActuationState(
   ) {
     return false;
   }
-  if (requiresBinaryRestore(baseDevice) && liveDevice.currentState !== 'on') return false;
-  if (requiresBinaryShed(baseDevice) && liveDevice.currentState !== 'off') return false;
+  if (requiresBinaryRestore(baseDevice) && resolveEffectiveCurrentOn(liveDevice) !== true) return false;
+  if (requiresBinaryShed(baseDevice) && resolveEffectiveCurrentOn(liveDevice) !== false) return false;
   if (requiresTargetUpdate(baseDevice) && liveDevice.currentTarget !== baseDevice.plannedTarget) return false;
   return true;
 }
@@ -196,12 +196,12 @@ function hasSettledPostActuationState(
 function requiresBinaryRestore(device: DevicePlan['devices'][number]): boolean {
   return device.controllable !== false
     && device.plannedState === 'keep'
-    && device.currentState === 'off';
+    && resolveEffectiveCurrentOn(device) === false;
 }
 
 function requiresBinaryShed(device: DevicePlan['devices'][number]): boolean {
   return device.plannedState === 'shed'
-    && device.currentState !== 'off'
+    && resolveEffectiveCurrentOn(device) !== false
     && device.shedAction !== 'set_temperature';
 }
 

@@ -43,6 +43,7 @@ import {
   applySteppedLoadShedOff,
   type PlanExecutorSteppedContext,
 } from './planExecutorStepped';
+import { resolveEffectiveCurrentOn } from './planCurrentState';
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
@@ -314,7 +315,7 @@ export class PlanExecutor {
   }
 
   private async applyShedOff(dev: DevicePlan['devices'][number]): Promise<PlanActionHandleResult> {
-    if (dev.currentState === 'off') return { handled: true, wrote: false };
+    if (resolveEffectiveCurrentOn(dev) === false) return { handled: true, wrote: false };
     const reason = dev.reason;
     const isSwap = reason ? reason.includes('swapped out for') : false;
     return {
@@ -328,7 +329,7 @@ export class PlanExecutor {
     mode: PlanActuationMode,
   ): Promise<boolean> {
     if (isSteppedLoadDevice(dev)) return false;
-    if (dev.plannedState !== 'keep' || dev.currentState !== 'off') return false;
+    if (dev.plannedState !== 'keep' || resolveEffectiveCurrentOn(dev) !== false) return false;
     const snapshot = this.latestTargetSnapshot.find((d) => d.id === dev.id);
     if (snapshot?.deviceClass === 'evcharger') {
       this.logDebug(`Capacity: evaluating EV restore for ${dev.name || dev.id} (${formatEvSnapshot(snapshot)})`);
@@ -448,7 +449,7 @@ export class PlanExecutor {
     snapshot?: TargetDeviceSnapshot,
   ): Promise<boolean> {
     if (dev.plannedState !== 'keep') return false;
-    if (dev.currentState !== 'off') return false;
+    if (resolveEffectiveCurrentOn(dev) !== false) return false;
     const lastShed = this.state.lastDeviceShedMs[dev.id];
     if (!lastShed) return false;
     const name = dev.name || dev.id;
@@ -577,7 +578,7 @@ export class PlanExecutor {
     return plan.devices.some((dev) => (
       dev.controllable === false
       && dev.plannedState === 'keep'
-      && dev.currentState === 'off'
+      && resolveEffectiveCurrentOn(dev) === false
       && Boolean(this.state.lastDeviceShedMs[dev.id])
     ));
   }
@@ -730,7 +731,7 @@ export class PlanExecutor {
           if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
           continue;
         }
-        if (isSteppedLoadDevice(dev) && dev.plannedState === 'keep' && dev.currentState === 'off') {
+        if (isSteppedLoadDevice(dev) && dev.plannedState === 'keep' && resolveEffectiveCurrentOn(dev) === false) {
           const onoffViolated = snapshot?.currentOn === false;
           const preRestoreStepIssued = onoffViolated
             ? await this.applySteppedLoadCommand(dev, mode, { recordPlanActuation: false })
