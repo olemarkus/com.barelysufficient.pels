@@ -5,6 +5,7 @@ import { createMetaLine } from './components.ts';
 import { getPriceIndicatorIcon, type PriceIndicatorTone } from './priceIndicator.ts';
 import {
   formatDeviceOverview,
+  isDeviceOverviewSteppedModeTransition,
   type DeviceOverviewStrings,
   type DeviceOverviewSnapshot,
 } from '../../../shared-domain/src/deviceOverview.ts';
@@ -300,19 +301,28 @@ const isOnLikeState = (value: string | undefined): boolean => {
 const isOffLikeState = (state?: string): boolean =>
   state === 'off' || state === 'unknown';
 
+const hasSteppedRestorePending = (dev: PlanDeviceSnapshot): boolean => (
+  isSteppedLoadDevice(dev)
+  && isOffLikeState(dev.currentState)
+  && Boolean(dev.selectedStepId && dev.desiredStepId && dev.selectedStepId !== dev.desiredStepId)
+);
+
+const isPlanBadgeActiveState = (dev: PlanDeviceSnapshot): boolean => (
+  isDeviceOverviewSteppedModeTransition(dev)
+  || dev.currentState === 'not_applicable'
+  || isOnLikeState(dev.currentState)
+);
+
 const resolvePlanBadgeState = (
   dev: PlanDeviceSnapshot,
 ): 'active' | 'inactive' | 'shed' | 'uncontrolled' | 'restoring' | 'unknown' => {
-  const steppedRestorePending = isSteppedLoadDevice(dev)
-    && Boolean(dev.selectedStepId && dev.desiredStepId && dev.selectedStepId !== dev.desiredStepId);
   if (dev.controllable === false) return 'uncontrolled';
   if (isGrayStateDevice(dev)) return 'unknown';
   if (dev.plannedState === 'inactive') return 'inactive';
   if (dev.plannedState === 'shed') return 'shed';
   if (dev.binaryCommandPending && isOffLikeState(dev.currentState)) return 'restoring';
-  if (steppedRestorePending) return 'restoring';
-  if (dev.currentState === 'not_applicable') return 'active';
-  if (isOnLikeState(dev.currentState)) return 'active';
+  if (hasSteppedRestorePending(dev)) return 'restoring';
+  if (isPlanBadgeActiveState(dev)) return 'active';
   return 'restoring';
 };
 
