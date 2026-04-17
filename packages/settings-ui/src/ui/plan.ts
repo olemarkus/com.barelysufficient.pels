@@ -275,15 +275,6 @@ const buildPlanTemperatureLine = (dev: PlanDeviceSnapshot) => {
   return createMetaLine('Temperature', `${currentTemp} / target ${targetTextWithPending}`);
 };
 
-const isRestoreCooldownReason = (reason: string | undefined): boolean => {
-  if (!reason) return false;
-  return reason.startsWith('cooldown (restore') || reason === 'restore throttled';
-};
-
-const isRestoreCooldownState = (dev: PlanDeviceSnapshot): boolean => (
-  dev.plannedState === 'shed' && isRestoreCooldownReason(dev.reason)
-);
-
 const buildPlanPowerLine = (overview: DeviceOverviewStrings) => {
   return overview.powerMsg ? createMetaLine('Power', overview.powerMsg) : null;
 };
@@ -317,19 +308,11 @@ const resolvePlanBadgeState = (
   if (dev.controllable === false) return 'uncontrolled';
   if (isGrayStateDevice(dev)) return 'unknown';
   if (dev.plannedState === 'inactive') return 'inactive';
-  const restoreCooldownState = resolveRestoreCooldownBadgeState(dev);
-  if (restoreCooldownState) return restoreCooldownState;
   if (dev.plannedState === 'shed') return 'shed';
   if (dev.binaryCommandPending && isOffLikeState(dev.currentState)) return 'restoring';
   if (steppedRestorePending) return 'restoring';
   if (dev.currentState === 'not_applicable') return 'active';
   if (isOnLikeState(dev.currentState)) return 'active';
-  return 'restoring';
-};
-
-const resolveRestoreCooldownBadgeState = (dev: PlanDeviceSnapshot): 'active' | 'restoring' | null => {
-  if (!isRestoreCooldownState(dev)) return null;
-  if (dev.currentState === 'not_applicable' || isOnLikeState(dev.currentState)) return 'active';
   return 'restoring';
 };
 

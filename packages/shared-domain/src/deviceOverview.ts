@@ -42,12 +42,6 @@ const isGrayStateDevice = (device: DeviceOverviewSnapshot): boolean => {
   return currentState === 'unknown' || currentState === 'disappeared';
 };
 
-const isOnLikeState = (value: string | undefined): boolean => {
-  const normalized = normalizeState(value);
-  if (!normalized) return false;
-  return normalized !== 'off' && normalized !== 'unknown' && normalized !== 'not_applicable';
-};
-
 const isOffLikeState = (state?: string): boolean => {
   const normalized = normalizeState(state);
   return normalized === 'off' || normalized === 'unknown';
@@ -111,19 +105,6 @@ const resolvePlannedPowerState = (
   }
 };
 
-const isRestoreCooldownReason = (reason: string | undefined): boolean => {
-  if (!reason) return false;
-  return reason.startsWith('cooldown (restore') || reason === 'restore throttled';
-};
-
-const isRestoreCooldownState = (device: DeviceOverviewSnapshot): boolean => (
-  device.plannedState === 'shed' && isRestoreCooldownReason(device.reason)
-);
-
-const isActiveStatusDevice = (device: DeviceOverviewSnapshot): boolean => (
-  device.currentState === 'not_applicable' || isOnLikeState(device.currentState)
-);
-
 const resolveShedStateMsg = (device: DeviceOverviewSnapshot): string => {
   if (device.shedAction === 'set_temperature') return 'Shed (lowered temperature)';
   if (device.shedAction === 'set_step') {
@@ -143,9 +124,6 @@ const resolveStateMsg = (device: DeviceOverviewSnapshot): string => {
   if (device.controllable === false) return 'Capacity control off';
   if (isGrayStateDevice(device)) {
     return device.available === false ? 'Unavailable' : 'State unknown';
-  }
-  if (isRestoreCooldownState(device)) {
-    return isOffLikeState(device.currentState) ? 'Shed (restore cooldown)' : 'Active';
   }
   if (device.plannedState === 'shed') return resolveShedStateMsg(device);
   if (device.plannedState === 'inactive') return 'Inactive';
@@ -216,7 +194,9 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
 
   let statusMsg = 'Waiting for headroom';
   if (device.reason) {
-    statusMsg = isActiveStatusDevice(device) ? formatActivePlanStatusReason(device.reason) : device.reason;
+    statusMsg = device.plannedState === 'keep'
+      ? formatActivePlanStatusReason(device.reason)
+      : device.reason;
   }
 
   return {
