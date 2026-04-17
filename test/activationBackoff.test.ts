@@ -611,11 +611,12 @@ describe('activation backoff', () => {
     })).toBe(true);
 
     expect(diagnostics.recordControlEvent).toHaveBeenCalledWith({
-      kind: 'tracked_transition',
-      direction: 'down',
+      kind: 'tracked_usage_drop',
       deviceId: 'dev-1',
       name: 'Heater',
       nowTs: start + 120_000,
+      fromKw: 3.2,
+      toKw: 1,
     });
     expect(diagnostics.recordActivationTransition).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -675,20 +676,17 @@ describe('activation backoff', () => {
 
     expect(diagnostics.recordControlEvent).toHaveBeenCalledTimes(3);
     expect(diagnostics.recordControlEvent).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      kind: 'tracked_transition',
-      direction: 'down',
+      kind: 'tracked_usage_drop',
       deviceId: 'dev-1',
       reconciliation: 'snapshot_refresh',
     }));
     expect(diagnostics.recordControlEvent).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      kind: 'tracked_transition',
-      direction: 'down',
+      kind: 'tracked_usage_drop',
       deviceId: 'dev-2',
       reconciliation: 'snapshot_refresh',
     }));
     expect(diagnostics.recordControlEvent).toHaveBeenNthCalledWith(3, expect.objectContaining({
-      kind: 'tracked_transition',
-      direction: 'down',
+      kind: 'tracked_usage_drop',
       deviceId: 'dev-3',
       reconciliation: 'snapshot_refresh',
     }));
@@ -719,8 +717,7 @@ describe('activation backoff', () => {
     })).toBe(true);
 
     expect(diagnostics.recordControlEvent).toHaveBeenCalledWith(expect.objectContaining({
-      kind: 'tracked_transition',
-      direction: 'up',
+      kind: 'tracked_usage_rise',
       deviceId: 'dev-1',
       reconciliation: 'post_actuation',
     }));
@@ -751,8 +748,7 @@ describe('activation backoff', () => {
 
     const [event] = diagnostics.recordControlEvent.mock.calls[0];
     expect(event).toMatchObject({
-      kind: 'tracked_transition',
-      direction: 'up',
+      kind: 'tracked_usage_rise',
       deviceId: 'dev-1',
     });
     expect(event.reconciliation).toBeUndefined();
@@ -780,8 +776,7 @@ describe('activation backoff', () => {
     })).toBe(true);
 
     expect(diagnostics.recordControlEvent).toHaveBeenCalledWith(expect.objectContaining({
-      kind: 'tracked_transition',
-      direction: 'up',
+      kind: 'tracked_usage_rise',
       deviceId: 'dev-1',
       reconciliation: 'startup',
     }));
@@ -812,8 +807,7 @@ describe('activation backoff', () => {
 
     const [event] = diagnostics.recordControlEvent.mock.calls[0];
     expect(event).toMatchObject({
-      kind: 'tracked_transition',
-      direction: 'up',
+      kind: 'tracked_usage_rise',
       deviceId: 'dev-1',
     });
     expect(event.reconciliation).toBeUndefined();
@@ -846,8 +840,7 @@ describe('activation backoff', () => {
 
     const [event] = diagnostics.recordControlEvent.mock.calls[0];
     expect(event).toMatchObject({
-      kind: 'tracked_transition',
-      direction: 'up',
+      kind: 'tracked_usage_rise',
       deviceId: 'dev-1',
     });
     expect(event.reconciliation).toBeUndefined();

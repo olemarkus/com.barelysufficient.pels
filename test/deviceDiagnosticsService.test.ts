@@ -82,6 +82,15 @@ const getStarvationState = (service: DeviceDiagnosticsService, deviceId = 'heate
   }).liveByDeviceId[deviceId]?.starvation)
 );
 
+const getLiveControlState = (service: DeviceDiagnosticsService, deviceId = 'heater-1') => (
+  ((service as unknown as {
+    liveByDeviceId: Record<string, {
+      openShedTs?: number;
+      openRestoreTs?: number;
+    }>;
+  }).liveByDeviceId[deviceId])
+);
+
 describe('DeviceDiagnosticsService', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -128,13 +137,13 @@ describe('DeviceDiagnosticsService', () => {
     const setbackTs = restoreTs + (5 * 60 * 1000);
 
     service.recordControlEvent({
-      kind: 'shed',
+      kind: 'pels_shed',
       deviceId: 'heater-1',
       name: 'Hall Heater',
       nowTs: shedTs,
     });
     service.recordControlEvent({
-      kind: 'restore',
+      kind: 'pels_restore',
       deviceId: 'heater-1',
       name: 'Hall Heater',
       nowTs: restoreTs,
@@ -156,7 +165,7 @@ describe('DeviceDiagnosticsService', () => {
       nowTs: setbackTs,
     }, { name: 'Hall Heater' });
     service.recordControlEvent({
-      kind: 'shed',
+      kind: 'pels_shed',
       deviceId: 'heater-1',
       name: 'Hall Heater',
       nowTs: setbackTs,
@@ -188,18 +197,20 @@ describe('DeviceDiagnosticsService', () => {
     const start = Date.now();
 
     service.recordControlEvent({
-      kind: 'tracked_transition',
-      direction: 'down',
+      kind: 'tracked_usage_drop',
       deviceId: 'heater-1',
       name: 'Hall Heater',
       nowTs: start,
+      fromKw: 3.2,
+      toKw: 0.8,
     });
     service.recordControlEvent({
-      kind: 'tracked_transition',
-      direction: 'up',
+      kind: 'tracked_usage_rise',
       deviceId: 'heater-1',
       name: 'Hall Heater',
       nowTs: start + (2 * 60 * 1000),
+      fromKw: 0.8,
+      toKw: 3.2,
     });
 
     const summary = service.getUiPayload(start + (2 * 60 * 1000)).diagnosticsByDeviceId['heater-1'];
@@ -215,21 +226,22 @@ describe('DeviceDiagnosticsService', () => {
     });
   });
 
-  it('logs tracked-transition reconciliation tags when present', () => {
+  it('logs tracked-usage reconciliation tags when present', () => {
     const { service, logDebug } = createDeps();
     const start = Date.now();
 
     service.recordControlEvent({
-      kind: 'tracked_transition',
-      direction: 'down',
+      kind: 'tracked_usage_drop',
       reconciliation: 'startup',
       deviceId: 'heater-1',
       name: 'Hall Heater',
       nowTs: start,
+      fromKw: 3.2,
+      toKw: 0.8,
     });
 
     expect(logDebug).toHaveBeenCalledWith(expect.stringContaining(
-      'direction=down reconciliation=startup',
+      'fromKw=3.200 toKw=0.800 reconciliation=startup',
     ));
   });
 
@@ -261,6 +273,126 @@ describe('DeviceDiagnosticsService', () => {
     expect(service.getUiPayload(start + (12 * 60 * 1000)).diagnosticsByDeviceId['heater-1']?.windows['1d'].unmetDemandMs)
       .toBe(60 * 1000);
     expect(logDebug).toHaveBeenCalledWith(expect.stringContaining('Diagnostics: gap skipped deviceId=heater-1'));
+  });
+
+  it('opens and closes PELS control timers only for PELS shed and restore events', () => {
+    const { service } = createDeps();
+    const shedTs = Date.now();
+    const restoreTs = shedTs + (7 * 60 * 1000);
+
+    service.recordControlEvent({
+      kind: 'pels_shed',
+      deviceId: 'heater-1',
+      name: 'Hall Heater',
+      nowTs: shedTs,
+    });
+
+    expect(getLiveControlState(service)?.openShedTs).toBe(shedTs);
+    expect(getLiveControlState(service)?.openRestoreTs).toBeUndefined();
+    expect(service.getUiPayload(shedTs).diagnosticsByDeviceId['heater-1']?.windows['1d']).toMatchObject({
+      shedCount: 1,
+      restoreCount: 0,
+      avgShedToRestoreMs: null,
+    });
+
+    service.recordControlEvent({
+      kind: 'pels_restore',
+      deviceId: 'heater-1',
+      name: 'Hall Heater',
+      nowTs: restoreTs,
+    });
+
+    expect(getLiveControlState(service)?.openShedTs).toBeUndefined();
+    expect(getLiveControlState(service)?.openRestoreTs).toBe(restoreTs);
+    expect(service.getUiPayload(restoreTs).diagnosticsByDeviceId['heater-1']?.windows['1d']).toMatchObject({
+      shedCount: 1,
+      restoreCount: 1,
+      avgShedToRestoreMs: 7 * 60 * 1000,
+    });
+  });
+
+  it('does not let tracked usage drops increment shed counters or touch open shed timers', () => {
+    const { service, logDebug } = createDeps();
+    const shedTs = Date.now();
+    const trackedDropTs = shedTs + (90 * 1000);
+
+    service.recordControlEvent({
+      kind: 'pels_shed',
+      deviceId: 'heater-1',
+      name: 'Hall Heater',
+      nowTs: shedTs,
+    });
+    service.recordControlEvent({
+      kind: 'tracked_usage_drop',
+      deviceId: 'heater-1',
+      name: 'Hall Heater',
+      nowTs: trackedDropTs,
+      fromKw: 3.2,
+      toKw: 1.0,
+    });
+
+    expect(getLiveControlState(service)?.openShedTs).toBe(shedTs);
+    expect(getLiveControlState(service)?.openRestoreTs).toBeUndefined();
+    expect(service.getUiPayload(trackedDropTs).diagnosticsByDeviceId['heater-1']?.windows['1d']).toMatchObject({
+      shedCount: 1,
+      restoreCount: 0,
+      avgShedToRestoreMs: null,
+      avgRestoreToSetbackMs: null,
+    });
+    expect(logDebug.mock.calls
+      .map(([message]) => message)
+      .filter((message): message is string => typeof message === 'string' && message.includes('Diagnostics: shed recorded')))
+      .toHaveLength(1);
+    expect(logDebug).toHaveBeenCalledWith(
+      expect.stringContaining('Diagnostics: tracked usage drop observed deviceId=heater-1'),
+    );
+  });
+
+  it('measures restore-to-setback only from real PELS events when tracked usage changes intervene', () => {
+    const { service } = createDeps();
+    const restoreTs = Date.now();
+    const trackedDropTs = restoreTs + (10 * 1000);
+    const trackedRiseTs = restoreTs + (25 * 1000);
+    const pelsShedTs = restoreTs + (5 * 60 * 1000);
+
+    service.recordControlEvent({
+      kind: 'pels_restore',
+      deviceId: 'heater-1',
+      name: 'Hall Heater',
+      nowTs: restoreTs,
+    });
+    service.recordControlEvent({
+      kind: 'tracked_usage_drop',
+      deviceId: 'heater-1',
+      name: 'Hall Heater',
+      nowTs: trackedDropTs,
+      fromKw: 3.0,
+      toKw: 0.4,
+    });
+    service.recordControlEvent({
+      kind: 'tracked_usage_rise',
+      deviceId: 'heater-1',
+      name: 'Hall Heater',
+      nowTs: trackedRiseTs,
+      fromKw: 0.4,
+      toKw: 3.0,
+    });
+    service.recordControlEvent({
+      kind: 'pels_shed',
+      deviceId: 'heater-1',
+      name: 'Hall Heater',
+      nowTs: pelsShedTs,
+    });
+
+    expect(getLiveControlState(service)?.openShedTs).toBe(pelsShedTs);
+    expect(getLiveControlState(service)?.openRestoreTs).toBeUndefined();
+    expect(service.getUiPayload(pelsShedTs).diagnosticsByDeviceId['heater-1']?.windows['1d']).toMatchObject({
+      shedCount: 1,
+      restoreCount: 1,
+      avgRestoreToSetbackMs: 5 * 60 * 1000,
+      minRestoreToSetbackMs: 5 * 60 * 1000,
+      maxRestoreToSetbackMs: 5 * 60 * 1000,
+    });
   });
 
   it('enters starvation only after fifteen minutes of continuous qualifying suppression', () => {
@@ -800,7 +932,7 @@ describe('DeviceDiagnosticsService', () => {
 
     service.recordControlEvent({
       nowTs: start,
-      kind: 'shed',
+      kind: 'pels_shed',
       deviceId: 'heater-1',
     });
     vi.runOnlyPendingTimers();
@@ -810,7 +942,7 @@ describe('DeviceDiagnosticsService', () => {
     vi.setSystemTime(new Date(secondTs));
     service.recordControlEvent({
       nowTs: secondTs,
-      kind: 'restore',
+      kind: 'pels_restore',
       deviceId: 'heater-1',
     });
 
@@ -834,7 +966,7 @@ describe('DeviceDiagnosticsService', () => {
       const { service } = createDeps();
       service.recordControlEvent({
         nowTs: Date.UTC(2026, 2, 9, 10, 0, 0),
-        kind: 'shed',
+        kind: 'pels_shed',
         deviceId: 'heater-1',
       });
 
@@ -853,7 +985,7 @@ describe('DeviceDiagnosticsService', () => {
     try {
       service.recordControlEvent({
         nowTs: Date.UTC(2026, 2, 9, 10, 0, 0),
-        kind: 'shed',
+        kind: 'pels_shed',
         deviceId: 'heater-1',
       });
 
