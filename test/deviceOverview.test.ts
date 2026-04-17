@@ -335,36 +335,36 @@ describe('device overview transition signatures', () => {
     }));
   });
 
-  it('preserves semantic headroom-cooldown changes while ignoring countdown decay', () => {
+  it('preserves semantic recent-PELS headroom-cooldown changes while ignoring countdown decay', () => {
     const base = formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
-      reason: 'headroom cooldown (45s remaining; usage 6.00 -> 3.50kW)',
+      reason: 'headroom cooldown (45s remaining; recent PELS shed)',
     });
     const countdownOnly = formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
-      reason: 'headroom cooldown (30s remaining; usage 6.00 -> 3.50kW)',
+      reason: 'headroom cooldown (30s remaining; recent PELS shed)',
     });
-    const usageChanged = formatDeviceOverview({
+    const sourceChanged = formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
-      reason: 'headroom cooldown (30s remaining; usage 5.50 -> 3.50kW)',
+      reason: 'headroom cooldown (30s remaining; recent PELS restore)',
     });
 
     expect(buildDeviceOverviewTransitionSignature({
       ...base,
-      reason: 'headroom cooldown (45s remaining; usage 6.00 -> 3.50kW)',
+      reason: 'headroom cooldown (45s remaining; recent PELS shed)',
     })).toBe(buildDeviceOverviewTransitionSignature({
       ...countdownOnly,
-      reason: 'headroom cooldown (30s remaining; usage 6.00 -> 3.50kW)',
+      reason: 'headroom cooldown (30s remaining; recent PELS shed)',
     }));
     expect(buildDeviceOverviewTransitionSignature({
       ...base,
-      reason: 'headroom cooldown (45s remaining; usage 6.00 -> 3.50kW)',
+      reason: 'headroom cooldown (45s remaining; recent PELS shed)',
     })).not.toBe(buildDeviceOverviewTransitionSignature({
-      ...usageChanged,
-      reason: 'headroom cooldown (30s remaining; usage 5.50 -> 3.50kW)',
+      ...sourceChanged,
+      reason: 'headroom cooldown (30s remaining; recent PELS restore)',
     }));
   });
 
