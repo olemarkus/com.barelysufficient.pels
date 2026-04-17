@@ -484,4 +484,40 @@ describe('plan diagnostics observations', () => {
     expect(observation.pauseReason).toBe('headroom_cooldown');
     expect(observation.suppressionState).toBe('paused');
   });
+
+  it('preserves explicit keep-state hold reasons over headroom cooldown metadata', () => {
+    const observation = buildObservation({
+      inputDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        deviceType: 'temperature',
+        managed: true,
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+        currentOn: false,
+        targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
+      },
+      planDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        currentState: 'off',
+        plannedState: 'keep',
+        currentTarget: 18,
+        plannedTarget: 21,
+        reason: 'meter settling (30s remaining)',
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+        headroomCardBlocked: true,
+        headroomCardCooldownSource: 'step_down',
+      },
+      desiredForMode: { 'heater-1': 21 },
+    });
+
+    expect(observation.pauseReason).toBe('cooldown');
+    expect(observation.suppressionState).toBe('paused');
+  });
 });

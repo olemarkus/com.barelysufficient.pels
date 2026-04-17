@@ -11,6 +11,7 @@ import {
   syncHeadroomCardState,
   syncHeadroomCardTrackedUsage,
   type HeadroomCardDeviceLike,
+  type HeadroomDeviceKwSource,
   type HeadroomForDeviceDecision,
 } from './planHeadroomDevice';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
@@ -251,11 +252,13 @@ export class PlanEngine {
   public syncHeadroomCardTrackedUsage(params: {
     deviceId: string;
     trackedKw: number;
+    trackedKwSource?: HeadroomDeviceKwSource;
   }): boolean {
     return syncHeadroomCardTrackedUsage({
       state: this.state,
       deviceId: params.deviceId,
       trackedKw: params.trackedKw,
+      trackedKwSource: params.trackedKwSource,
       diagnostics: this.deviceDiagnostics,
     });
   }

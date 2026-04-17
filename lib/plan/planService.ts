@@ -48,7 +48,11 @@ import type {
   PlanInputDevice,
   StatusPlanChanges,
 } from './planTypes';
-import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from './planHeadroomDevice';
+import type {
+  HeadroomCardDeviceLike,
+  HeadroomDeviceKwSource,
+  HeadroomForDeviceDecision,
+} from './planHeadroomDevice';
 import type { PlanActuationMode, PlanActuationResult } from './planExecutor';
 
 const SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS = 1500;
@@ -415,6 +419,7 @@ export class PlanService {
   syncHeadroomCardTrackedUsage(params: {
     deviceId: string;
     trackedKw: number;
+    trackedKwSource?: HeadroomDeviceKwSource;
   }): boolean {
     return this.deps.planEngine.syncHeadroomCardTrackedUsage(params);
   }

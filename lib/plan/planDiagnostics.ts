@@ -270,7 +270,11 @@ const resolveStarvationSuppression = (params: {
     return noStarvationSuppression();
   }
   const reason = (device.reason || '').trim();
+  const headroomCooldown = resolveSuppressionFromHeadroomCooldown(device);
   if (!reason) {
+    if (headroomCooldown.suppressionState !== 'none') {
+      return headroomCooldown;
+    }
     return {
       suppressionState: device.plannedState === 'shed' ? 'paused' : 'none',
       countingCause: null,
@@ -278,12 +282,14 @@ const resolveStarvationSuppression = (params: {
     };
   }
 
-  const headroomCooldown = resolveSuppressionFromHeadroomCooldown(device);
-  if (headroomCooldown.suppressionState !== 'none') {
+  const normalized = resolveSuppressionFromReason(reason);
+  if (
+    headroomCooldown.suppressionState !== 'none'
+    && normalized.pauseReason === 'keep'
+  ) {
     return headroomCooldown;
   }
 
-  const normalized = resolveSuppressionFromReason(reason);
   if (normalized.suppressionState !== 'none') {
     return normalized;
   }
