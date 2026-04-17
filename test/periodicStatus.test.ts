@@ -146,4 +146,26 @@ describe('periodic status used kWh', () => {
     expect(fields.shortfallBudgetHeadroomKw).toBeCloseTo(3.4, 8);
     expect(fields.shortfallBudgetThresholdKw).toBe(8.6);
   });
+
+  it('includes the current starved device count in periodic status', () => {
+    const nowMs = Date.UTC(2025, 0, 1, 10, 30, 0);
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
+    const fields = buildPeriodicStatusLogFields({
+      capacityGuard: {
+        getLastTotalPower: () => 3,
+        getSoftLimit: () => 5,
+        getShortfallThreshold: () => 6,
+        isSheddingActive: () => false,
+        isInShortfall: () => false,
+      },
+      powerTracker: {},
+      capacitySettings: { limitKw: 6, marginKw: 1 },
+      operatingMode: 'Home',
+      capacityDryRun: false,
+      starvedDeviceCount: 2,
+    });
+    nowSpy.mockRestore();
+
+    expect(fields.starvedDeviceCount).toBe(2);
+  });
 });

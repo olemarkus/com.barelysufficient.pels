@@ -23,11 +23,13 @@ const createDeps = (params: { initialState?: unknown; isDebugEnabled?: boolean }
     }),
   };
   const logDebug = vi.fn();
+  const structuredInfo = vi.fn();
   const error = vi.fn();
   const service = new DeviceDiagnosticsService({
     homey: { settings } as never,
     getTimeZone: () => 'Europe/Oslo',
     isDebugEnabled: () => isDebugEnabled,
+    structuredLog: { info: structuredInfo } as never,
     logDebug,
     error,
   });
@@ -36,6 +38,7 @@ const createDeps = (params: { initialState?: unknown; isDebugEnabled?: boolean }
     store,
     settings,
     logDebug,
+    structuredInfo,
     error,
   };
 };
@@ -473,6 +476,164 @@ describe('DeviceDiagnosticsService', () => {
     expect(starvation?.starvationEpisodeStartedAt).toBeUndefined();
     expect(starvation?.starvationCause).toBeNull();
     expect(starvation?.starvationPauseReason).toBeNull();
+  });
+
+  it('emits structured logs for starvation lifecycle transitions', () => {
+    const { service, structuredInfo } = createDeps();
+    const start = Date.now();
+
+    service.observePlanSample({
+      nowTs: start,
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (9 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (16 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (20 * 60 * 1000),
+      observations: [buildObservation({
+        suppressionState: 'paused',
+        countingCause: null,
+        pauseReason: 'keep',
+      })],
+    });
+    service.observePlanSample({
+      nowTs: start + (25 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (30 * 60 * 1000),
+      observations: [buildObservation({
+        currentTemperatureC: 21,
+      })],
+    });
+    service.observePlanSample({
+      nowTs: start + (40 * 60 * 1000),
+      observations: [buildObservation({
+        currentTemperatureC: 21,
+      })],
+    });
+
+    expect(structuredInfo.mock.calls).toEqual([
+      [expect.objectContaining({
+        event: 'device_starvation_started',
+        deviceId: 'heater-1',
+        deviceName: 'Hall Heater',
+        cause: 'capacity',
+        starvationEpisodeStartedAtMs: start + (15 * 60 * 1000),
+        starvedDurationMs: 60 * 1000,
+      })],
+      [expect.objectContaining({
+        event: 'device_starvation_paused',
+        deviceId: 'heater-1',
+        deviceName: 'Hall Heater',
+        pauseReason: 'keep',
+        transitionAtMs: start + (20 * 60 * 1000),
+        starvedDurationMs: 5 * 60 * 1000,
+      })],
+      [expect.objectContaining({
+        event: 'device_starvation_resumed',
+        deviceId: 'heater-1',
+        deviceName: 'Hall Heater',
+        cause: 'capacity',
+        transitionAtMs: start + (25 * 60 * 1000),
+        starvedDurationMs: 5 * 60 * 1000,
+      })],
+      [expect.objectContaining({
+        event: 'device_starvation_cleared',
+        deviceId: 'heater-1',
+        deviceName: 'Hall Heater',
+        transitionAtMs: start + (40 * 60 * 1000),
+        starvedDurationMs: 10 * 60 * 1000,
+      })],
+    ]);
+  });
+
+  it('emits structured hard-reset logs and updates the live starved device count', () => {
+    const { service, structuredInfo } = createDeps();
+    const start = Date.now();
+
+    service.observePlanSample({
+      nowTs: start,
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (9 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (16 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+
+    expect(service.getCurrentStarvedDeviceCount()).toBe(1);
+
+    service.observePlanSample({
+      nowTs: start + (18 * 60 * 1000),
+      observations: [buildObservation({
+        eligibleForStarvation: false,
+        observationFresh: false,
+        currentTemperatureC: null,
+        intendedNormalTargetC: null,
+        targetStepC: null,
+        suppressionState: 'none',
+        countingCause: null,
+        pauseReason: null,
+      })],
+    });
+
+    expect(service.getCurrentStarvedDeviceCount()).toBe(0);
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'device_starvation_hard_reset',
+      deviceId: 'heater-1',
+      deviceName: 'Hall Heater',
+      reasonCode: 'device_no_longer_eligible',
+      transitionAtMs: start + (18 * 60 * 1000),
+      starvedDurationMs: 3 * 60 * 1000,
+      wasStarved: true,
+    }));
+  });
+
+  it('counts only starved devices observed in the latest plan sample', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    service.observePlanSample({
+      nowTs: start,
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (9 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (16 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+
+    expect(service.getCurrentStarvedDeviceCount()).toBe(1);
+
+    service.observePlanSample({
+      nowTs: start + (17 * 60 * 1000),
+      observations: [],
+    });
+
+    expect(service.getCurrentStarvedDeviceCount()).toBe(0);
+
+    service.observePlanSample({
+      nowTs: start + (18 * 60 * 1000),
+      observations: [buildObservation({
+        deviceId: 'heater-2',
+        name: 'Bedroom Heater',
+      })],
+    });
+
+    expect(service.getCurrentStarvedDeviceCount()).toBe(0);
   });
 
   it('repairs invalid persisted payloads and prunes expired day buckets', () => {
