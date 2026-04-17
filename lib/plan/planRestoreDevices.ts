@@ -4,6 +4,8 @@ import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { sortByPriorityAsc, sortByPriorityDesc } from './planSort';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 
+export const NEUTRAL_STARTUP_HOLD_REASON = 'left off';
+
 export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): boolean {
   return device.controllable !== false
     && device.observationStale !== true
@@ -142,7 +144,7 @@ export function markOffDevicesStayOff(params: {
       ? reasonOverride(dev)
       : resolveOffDeviceReason(timing, defaultReason, getLastControlledMs?.(dev.id));
     if (nextReason === null) {
-      setDevice(dev.id, { plannedState: 'keep', reason: undefined });
+      setDevice(dev.id, { plannedState: 'shed', reason: NEUTRAL_STARTUP_HOLD_REASON });
       continue;
     }
     setDevice(dev.id, { plannedState: 'shed', reason: nextReason });

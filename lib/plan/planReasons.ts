@@ -20,6 +20,11 @@ import { sortByPriorityAsc } from './planSort';
 import { RESTORE_ADMISSION_FLOOR_KW, RESTORE_CONFIRM_RETRY_MS } from './planConstants';
 import { resolveCapacityRestoreBlockReason } from './planRestoreTiming';
 import { emitRestoreDebugEventOnChange } from './planDebugDedupe';
+import { NEUTRAL_STARTUP_HOLD_REASON } from './planRestoreDevices';
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 function shouldNormalizeReason(reason: ClassifiedPlanReason): boolean {
   return reason.code === 'none'
@@ -77,6 +82,7 @@ function maybeApplyShortfallReason(params: {
 }): PlanReasonDecision | null {
   const { dev, guardInShortfall, currentReason, headroomRaw } = params;
   if (!guardInShortfall || isSwapReason(currentReason) || isBudgetReason(currentReason)) return null;
+  if (currentReason.text === NEUTRAL_STARTUP_HOLD_REASON) return null;
   if (isShortfallReason(currentReason)) return null;
   const { needed: estimatedNeed } = computeBaseRestoreNeed(dev);
   return { code: 'shortfall', neededKw: estimatedNeed, headroomKw: headroomRaw };
@@ -89,7 +95,12 @@ function maybeApplyCooldownReason(params: {
   shedCooldownRemainingSec: number | null;
 }): PlanReasonDecision | null {
   const { currentReason, inCooldown, activeOvershoot, shedCooldownRemainingSec } = params;
-  if (inCooldown && !activeOvershoot && !isSwapReason(currentReason)) {
+  if (
+    inCooldown
+    && !activeOvershoot
+    && !isSwapReason(currentReason)
+    && currentReason.text !== NEUTRAL_STARTUP_HOLD_REASON
+  ) {
     return { code: 'cooldown_shedding', remainingSec: shedCooldownRemainingSec };
   }
   return null;
@@ -129,6 +140,7 @@ const SHED_REASON_RULES: readonly ReasonPatternRule[] = [
   { pattern: /^shed due to capacity(?: .+)?$/, label: 'capacity shed' },
   { pattern: /^shed due to hourly budget(?: .+)?$/, label: 'hourly budget shed' },
   { pattern: /^shed due to daily budget(?: .+)?$/, label: 'daily budget shed' },
+  { pattern: new RegExp(`^${escapeRegex(NEUTRAL_STARTUP_HOLD_REASON)}$`), label: 'neutral hold' },
   { pattern: /^shortfall(?: \(.+\))?$/, label: 'shortfall shed' },
   { pattern: /^cooldown \(shedding, \d+s remaining\)$/, label: 'shedding cooldown' },
   { pattern: /^cooldown \(restore, \d+s remaining\)$/, label: 'restore cooldown' },
@@ -668,6 +680,10 @@ function applyHoldToDevice(params: {
     pendingRestoreDelaySec,
     debugStructured,
   } = params;
+
+  if (dev.plannedState === 'shed' && dev.reason === NEUTRAL_STARTUP_HOLD_REASON) {
+    return { device: dev, availableHeadroom, restoredOneThisCycle };
+  }
 
   const decision = resolveHoldDecision({
     dev,

@@ -1,6 +1,7 @@
 import { PriceLevel } from '../price/priceLevels';
 import type { DevicePlan } from '../plan/planTypes';
 import type { DevicePlanDevice } from '../plan/planTypes';
+import { NEUTRAL_STARTUP_HOLD_REASON } from '../plan/planRestoreDevices';
 
 export function buildPelsStatus(params: {
   plan: DevicePlan;
@@ -113,6 +114,7 @@ function isRestoreHoldShedReason(reason: string | undefined): boolean {
   return reason.startsWith('meter settling')
     || reason.startsWith('cooldown (restore')
     || reason === 'restore throttled'
+    || reason === NEUTRAL_STARTUP_HOLD_REASON
     || reason.startsWith('restore pending');
 }
 

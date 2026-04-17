@@ -1,4 +1,5 @@
 import { applyShedTemperatureHold, finalizePlanDevices, normalizeShedReasons } from '../lib/plan/planReasons';
+import { NEUTRAL_STARTUP_HOLD_REASON } from '../lib/plan/planRestoreDevices';
 import { createPlanEngineState } from '../lib/plan/planState';
 import { buildPlanDevice } from './utils/planTestUtils';
 
@@ -91,6 +92,43 @@ describe('normalizeShedReasons', () => {
 
     expect(device?.reason).toBe('shed due to capacity');
   });
+
+  it('preserves neutral startup holds during shed cooldown normalization', () => {
+    const [device] = normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'dev-neutral',
+        plannedState: 'shed',
+        reason: NEUTRAL_STARTUP_HOLD_REASON,
+      })],
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      headroomRaw: null,
+      inCooldown: true,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: 25,
+    });
+
+    expect(device?.reason).toBe(NEUTRAL_STARTUP_HOLD_REASON);
+  });
+
+  it('preserves neutral startup holds during shortfall normalization', () => {
+    const [device] = normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'dev-neutral',
+        plannedState: 'shed',
+        reason: NEUTRAL_STARTUP_HOLD_REASON,
+        expectedPowerKw: 1,
+      })],
+      shedReasons: new Map(),
+      guardInShortfall: true,
+      headroomRaw: 0.15,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+    });
+
+    expect(device?.reason).toBe(NEUTRAL_STARTUP_HOLD_REASON);
+  });
 });
 
 describe('finalizePlanDevices', () => {
@@ -169,5 +207,40 @@ describe('applyShedTemperatureHold', () => {
 
     expect(result.planDevices[0]?.reason).toBe('swap pending');
     expect(result.planDevices[0]?.plannedTarget).toBe(16);
+  });
+
+  it('preserves neutral startup holds for set_temperature devices', () => {
+    const state = createPlanEngineState();
+
+    const result = applyShedTemperatureHold({
+      planDevices: [buildPlanDevice({
+        id: 'dev-temp',
+        name: 'Thermostat',
+        currentState: 'off',
+        plannedState: 'shed',
+        currentTarget: 21,
+        plannedTarget: 21,
+        currentOn: false,
+        shedAction: 'set_temperature',
+        shedTemperature: 16,
+        reason: NEUTRAL_STARTUP_HOLD_REASON,
+      })],
+      state,
+      shedReasons: new Map(),
+      inShedWindow: true,
+      inCooldown: false,
+      activeOvershoot: false,
+      availableHeadroom: 1,
+      restoredOneThisCycle: false,
+      restoredThisCycle: new Set(),
+      shedCooldownRemainingSec: null,
+      holdDuringRestoreCooldown: false,
+      restoreCooldownSeconds: 60,
+      restoreCooldownRemainingSec: null,
+      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
+    });
+
+    expect(result.planDevices[0]?.reason).toBe(NEUTRAL_STARTUP_HOLD_REASON);
+    expect(result.planDevices[0]?.plannedTarget).toBe(21);
   });
 });

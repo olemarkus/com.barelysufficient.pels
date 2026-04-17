@@ -3,7 +3,13 @@ import type { RestoreTiming } from './planRestoreTiming';
 import type { SwapState } from './planSwapState';
 import type { PlanEngineState } from './planState';
 import type { StructuredDebugEmitter } from '../logging/logger';
-import { getInactiveReason, getSteppedRestoreCandidates, isRestoreLiveEligibleDevice } from './planRestoreDevices';
+import { resolveEffectiveCurrentOn } from './planCurrentState';
+import {
+  getInactiveReason,
+  getSteppedRestoreCandidates,
+  isRestoreLiveEligibleDevice,
+  NEUTRAL_STARTUP_HOLD_REASON,
+} from './planRestoreDevices';
 import { resolveCapacityRestoreBlockReason, resolveMeterSettlingRemainingSec } from './planRestoreTiming';
 import {
   getSteppedLoadNextRestoreStep,
@@ -53,12 +59,30 @@ export function markSteppedDevicesStayAtCurrentLevel(params: {
   } = params;
   const steppedDevices = getSteppedRestoreCandidates(Array.from(deviceMap.values()));
   for (const dev of steppedDevices) {
+    const currentOff = resolveEffectiveCurrentOn(dev) === false;
+    const neverControlledStartupHold = timing.inStartupStabilization
+      && currentOff
+      && getLastControlledMs?.(dev.id) === undefined;
+    if (neverControlledStartupHold) {
+      setRestorePlanDevice(deviceMap, dev.id, {
+        plannedState: 'shed',
+        reason: NEUTRAL_STARTUP_HOLD_REASON,
+      });
+      continue;
+    }
     const reason = resolveCapacityRestoreBlockReason({
       timing,
       showStartupStabilization: getLastControlledMs ? getLastControlledMs(dev.id) !== undefined : true,
     });
-    if (!reason) continue;
-    setRestorePlanDevice(deviceMap, dev.id, { reason });
+    if (!reason) {
+      if (!currentOff) continue;
+      setRestorePlanDevice(deviceMap, dev.id, {
+        plannedState: 'shed',
+        reason: NEUTRAL_STARTUP_HOLD_REASON,
+      });
+      continue;
+    }
+    setRestorePlanDevice(deviceMap, dev.id, currentOff ? { plannedState: 'shed', reason } : { reason });
   }
 }
 
