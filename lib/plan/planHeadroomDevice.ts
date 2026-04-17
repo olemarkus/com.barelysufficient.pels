@@ -6,21 +6,23 @@ import {
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import {
   emitActivationTransitions,
+  resolveHeadroomCardCooldown,
+  syncHeadroomCardState,
+} from './planHeadroomState';
+import {
+  resolveObservedHeadroomDeviceKw,
   type HeadroomCardCooldownSource,
   type HeadroomCardDeviceLike,
   type HeadroomDeviceKwSource,
-  resolveHeadroomCardCooldown,
-  resolveObservedHeadroomDeviceKw,
-  syncHeadroomCardState,
-} from './planHeadroomState';
+} from './planHeadroomSupport';
 
-export type { HeadroomCardCooldownSource, HeadroomCardDeviceLike };
+export type { HeadroomCardCooldownSource, HeadroomCardDeviceLike } from './planHeadroomSupport';
 export {
   resolveHeadroomCardCooldown,
-  resolveObservedHeadroomDeviceKw,
   syncHeadroomCardState,
   syncHeadroomCardTrackedUsage,
 } from './planHeadroomState';
+export { resolveObservedHeadroomDeviceKw } from './planHeadroomSupport';
 
 export type HeadroomForDeviceDecision = {
   allowed: boolean;
