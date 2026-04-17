@@ -48,6 +48,7 @@ import {
   reserveHeadroomForPendingRestores,
 } from './planRestoreSupport';
 import { buildMeterSettlingReason } from './planReasonStrings';
+import { resolveEffectiveCurrentOn } from './planCurrentState';
 
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;
@@ -556,7 +557,12 @@ function markOffDevicesMeterSettling(params: {
   const snapshot: DevicePlanDevice[] = [];
   for (const dev of deviceMap.values()) snapshot.push(dev);
 
-  for (const dev of getOffDevices(snapshot)) {
+  const meterSettlingDevices = [
+    ...getOffDevices(snapshot),
+    ...getSteppedRestoreCandidates(snapshot).filter((dev) => resolveEffectiveCurrentOn(dev) === false),
+  ];
+
+  for (const dev of meterSettlingDevices) {
     const inactiveReason = getInactiveReason(dev);
     if (inactiveReason) {
       setDevice(deviceMap, dev.id, {
