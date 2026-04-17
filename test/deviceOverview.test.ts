@@ -115,8 +115,83 @@ describe('device overview transition signatures', () => {
     });
 
     expect(base.usageMsg).not.toBe(usageOnly.usageMsg);
-    expect(buildDeviceOverviewTransitionSignature(base))
-      .toBe(buildDeviceOverviewTransitionSignature(usageOnly));
+    expect(buildDeviceOverviewTransitionSignature({ ...base, reason: 'keep' }))
+      .toBe(buildDeviceOverviewTransitionSignature({ ...usageOnly, reason: 'keep' }));
+  });
+
+  it('ignores countdown-only cooldown and backoff changes', () => {
+    const restoreCooldown = formatDeviceOverview({
+      currentState: 'off',
+      plannedState: 'shed',
+      reason: 'cooldown (restore, 30s remaining)',
+      shedAction: 'turn_off',
+    });
+    const restoreCooldownTick = formatDeviceOverview({
+      currentState: 'off',
+      plannedState: 'shed',
+      reason: 'cooldown (restore, 24s remaining)',
+      shedAction: 'turn_off',
+    });
+    const activationBackoff = formatDeviceOverview({
+      currentState: 'off',
+      plannedState: 'shed',
+      reason: 'activation backoff (1535s remaining)',
+      shedAction: 'turn_off',
+    });
+    const activationBackoffTick = formatDeviceOverview({
+      currentState: 'off',
+      plannedState: 'shed',
+      reason: 'activation backoff (1503s remaining)',
+      shedAction: 'turn_off',
+    });
+
+    expect(buildDeviceOverviewTransitionSignature({
+      ...restoreCooldown,
+      reason: 'cooldown (restore, 30s remaining)',
+    })).toBe(buildDeviceOverviewTransitionSignature({
+      ...restoreCooldownTick,
+      reason: 'cooldown (restore, 24s remaining)',
+    }));
+    expect(buildDeviceOverviewTransitionSignature({
+      ...activationBackoff,
+      reason: 'activation backoff (1535s remaining)',
+    })).toBe(buildDeviceOverviewTransitionSignature({
+      ...activationBackoffTick,
+      reason: 'activation backoff (1503s remaining)',
+    }));
+  });
+
+  it('preserves semantic headroom-cooldown changes while ignoring countdown decay', () => {
+    const base = formatDeviceOverview({
+      currentState: 'on',
+      plannedState: 'keep',
+      reason: 'headroom cooldown (45s remaining; usage 6.00 -> 3.50kW)',
+    });
+    const countdownOnly = formatDeviceOverview({
+      currentState: 'on',
+      plannedState: 'keep',
+      reason: 'headroom cooldown (30s remaining; usage 6.00 -> 3.50kW)',
+    });
+    const usageChanged = formatDeviceOverview({
+      currentState: 'on',
+      plannedState: 'keep',
+      reason: 'headroom cooldown (30s remaining; usage 5.50 -> 3.50kW)',
+    });
+
+    expect(buildDeviceOverviewTransitionSignature({
+      ...base,
+      reason: 'headroom cooldown (45s remaining; usage 6.00 -> 3.50kW)',
+    })).toBe(buildDeviceOverviewTransitionSignature({
+      ...countdownOnly,
+      reason: 'headroom cooldown (30s remaining; usage 6.00 -> 3.50kW)',
+    }));
+    expect(buildDeviceOverviewTransitionSignature({
+      ...base,
+      reason: 'headroom cooldown (45s remaining; usage 6.00 -> 3.50kW)',
+    })).not.toBe(buildDeviceOverviewTransitionSignature({
+      ...usageChanged,
+      reason: 'headroom cooldown (30s remaining; usage 5.50 -> 3.50kW)',
+    }));
   });
 
   it('changes when power, state, or status changes', () => {
@@ -128,33 +203,42 @@ describe('device overview transition signatures', () => {
       expectedPowerKw: 1,
     });
 
-    expect(buildDeviceOverviewTransitionSignature(base)).not.toBe(
-      buildDeviceOverviewTransitionSignature(formatDeviceOverview({
-        currentState: 'off',
-        plannedState: 'keep',
+    expect(buildDeviceOverviewTransitionSignature({ ...base, reason: 'keep' })).not.toBe(
+      buildDeviceOverviewTransitionSignature({
+        ...formatDeviceOverview({
+          currentState: 'off',
+          plannedState: 'keep',
+          reason: 'keep',
+          measuredPowerKw: 0,
+          expectedPowerKw: 1,
+        }),
         reason: 'keep',
-        measuredPowerKw: 0,
-        expectedPowerKw: 1,
-      })),
+      }),
     );
-    expect(buildDeviceOverviewTransitionSignature(base)).not.toBe(
-      buildDeviceOverviewTransitionSignature(formatDeviceOverview({
-        currentState: 'on',
-        plannedState: 'shed',
-        shedAction: 'turn_off',
+    expect(buildDeviceOverviewTransitionSignature({ ...base, reason: 'keep' })).not.toBe(
+      buildDeviceOverviewTransitionSignature({
+        ...formatDeviceOverview({
+          currentState: 'on',
+          plannedState: 'shed',
+          shedAction: 'turn_off',
+          reason: 'keep',
+          measuredPowerKw: 0,
+          expectedPowerKw: 1,
+        }),
         reason: 'keep',
-        measuredPowerKw: 0,
-        expectedPowerKw: 1,
-      })),
+      }),
     );
-    expect(buildDeviceOverviewTransitionSignature(base)).not.toBe(
-      buildDeviceOverviewTransitionSignature(formatDeviceOverview({
-        currentState: 'on',
-        plannedState: 'keep',
+    expect(buildDeviceOverviewTransitionSignature({ ...base, reason: 'keep' })).not.toBe(
+      buildDeviceOverviewTransitionSignature({
+        ...formatDeviceOverview({
+          currentState: 'on',
+          plannedState: 'keep',
+          reason: 'restore throttled',
+          measuredPowerKw: 0,
+          expectedPowerKw: 1,
+        }),
         reason: 'restore throttled',
-        measuredPowerKw: 0,
-        expectedPowerKw: 1,
-      })),
+      }),
     );
   });
 });

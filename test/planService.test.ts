@@ -637,6 +637,53 @@ describe('PlanService', () => {
     expect(overviewDebugStructured).not.toHaveBeenCalled();
   });
 
+  it('suppresses countdown-only cooldown changes for overview logs, snapshots, and plan updates', async () => {
+    const overviewDebugStructured = vi.fn();
+    const settingsSet = vi.fn();
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    const cooldownPlan = buildPlan(20, 'cooldown (restore, 30s remaining)', {}, {
+      currentState: 'off',
+      plannedState: 'shed',
+      shedAction: 'turn_off',
+    });
+    const cooldownTickPlan = buildPlan(20, 'cooldown (restore, 24s remaining)', {}, {
+      currentState: 'off',
+      plannedState: 'shed',
+      shedAction: 'turn_off',
+    });
+    const { service } = createPlanService({
+      homey: {
+        settings: { set: settingsSet },
+        api: { realtime },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: vi
+          .fn()
+          .mockResolvedValueOnce(cooldownPlan)
+          .mockResolvedValueOnce(cooldownTickPlan),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+      } as any,
+      overviewDebugStructured,
+    });
+
+    await service.rebuildPlanFromCache();
+    overviewDebugStructured.mockClear();
+    settingsSet.mockClear();
+    realtime.mockClear();
+
+    await service.rebuildPlanFromCache();
+
+    expect(overviewDebugStructured).not.toHaveBeenCalled();
+    expect(settingsSet.mock.calls.filter((call: unknown[]) => call[0] === 'device_plan_snapshot')).toHaveLength(0);
+    expect(realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated')).toHaveLength(0);
+  });
+
   it('does not cache overview signatures when the overview emitter is missing', async () => {
     const samePlan = buildPlan(20, 'keep', {}, {
       currentState: 'on',
