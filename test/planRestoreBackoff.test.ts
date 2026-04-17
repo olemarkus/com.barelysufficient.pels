@@ -10,8 +10,9 @@ import {
   recordActivationSetback,
 } from '../lib/plan/planActivationBackoff';
 import { RESTORE_ADMISSION_FLOOR_KW, SWAP_TIMEOUT_MS } from '../lib/plan/planConstants';
+import { NEUTRAL_STARTUP_HOLD_REASON } from '../lib/plan/planRestoreDevices';
 import { planRestoreForSteppedDevice } from '../lib/plan/planRestoreHelpers';
-import { applyShedTemperatureHold, finalizePlanDevices } from '../lib/plan/planReasons';
+import { applyShedTemperatureHold } from '../lib/plan/planReasons';
 import { createPlanEngineState } from '../lib/plan/planState';
 import { applyRestorePlan } from '../lib/plan/planRestore';
 import { resolveMeterSettlingRemainingSec } from '../lib/plan/planRestoreTiming';
@@ -890,7 +891,7 @@ describe('restore cooldown backoff', () => {
     })).toBe(60);
   });
 
-  it('keeps never-controlled off devices neutral in the finalized startup plan', () => {
+  it('keeps never-controlled off devices shed with a neutral startup-hold reason', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
@@ -921,10 +922,9 @@ describe('restore cooldown backoff', () => {
       },
     });
 
-    const finalized = finalizePlanDevices(result.planDevices);
-    const device = finalized.planDevices.find((entry) => entry.id === 'dev-off');
-    expect(device?.plannedState).toBe('keep');
-    expect(device?.reason).toBeUndefined();
+    const device = result.planDevices.find((entry) => entry.id === 'dev-off');
+    expect(device?.plannedState).toBe('shed');
+    expect(device?.reason).toBe(NEUTRAL_STARTUP_HOLD_REASON);
   });
 
   it('shows startup stabilization for off devices PELS controlled before restart', () => {
@@ -1035,6 +1035,119 @@ describe('restore cooldown backoff', () => {
     const device = result.planDevices.find((entry) => entry.id === 'dev-step');
     expect(device?.desiredStepId).toBe('low');
     expect(device?.reason).toBe('startup stabilization');
+  });
+
+  it('keeps off stepped devices shed with a neutral startup-hold reason when never controlled', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.startupRestoreBlockedUntilMs = now + 60_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step-off',
+          name: 'Startup Tank Off',
+          currentState: 'off',
+          selectedStepId: 'off',
+          desiredStepId: 'off',
+          measuredPowerKw: 0,
+          planningPowerKw: 0,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const device = result.planDevices.find((entry) => entry.id === 'dev-step-off');
+    expect(device?.plannedState).toBe('shed');
+    expect(device?.reason).toBe(NEUTRAL_STARTUP_HOLD_REASON);
+  });
+
+  it('keeps off stepped devices shed with startup stabilization when previously controlled', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.startupRestoreBlockedUntilMs = now + 60_000;
+    state.lastDeviceControlledMs['dev-step-off'] = now - (10 * 60_000);
+
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step-off',
+          name: 'Startup Tank Off',
+          currentState: 'off',
+          selectedStepId: 'off',
+          desiredStepId: 'off',
+          measuredPowerKw: 0,
+          planningPowerKw: 0,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const device = result.planDevices.find((entry) => entry.id === 'dev-step-off');
+    expect(device?.plannedState).toBe('shed');
+    expect(device?.reason).toBe('startup stabilization');
+  });
+
+  it('prefers neutral startup hold over cooldown for never-controlled off stepped devices', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.startupRestoreBlockedUntilMs = now + 60_000;
+    state.lastInstabilityMs = now - 5_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step-off',
+          name: 'Startup Tank Off',
+          currentState: 'off',
+          selectedStepId: 'off',
+          desiredStepId: 'off',
+          measuredPowerKw: 0,
+          planningPowerKw: 0,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const device = result.planDevices.find((entry) => entry.id === 'dev-step-off');
+    expect(device?.plannedState).toBe('shed');
+    expect(device?.reason).toBe(NEUTRAL_STARTUP_HOLD_REASON);
   });
 
   it('does not block non-capacity restores during startup stabilization', () => {

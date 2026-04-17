@@ -1,4 +1,5 @@
 import { buildPelsStatus } from '../lib/core/pelsStatus';
+import { NEUTRAL_STARTUP_HOLD_REASON } from '../lib/plan/planRestoreDevices';
 import type { DevicePlan } from '../lib/plan/planTypes';
 
 describe('pels status limit reason', () => {
@@ -55,9 +56,13 @@ describe('pels status limit reason', () => {
 
   it.each([
     ['capacity', 'meter settling (45s remaining)'],
+    ['capacity', 'cooldown (restore, 45s remaining)'],
     ['capacity', 'restore throttled'],
+    ['capacity', NEUTRAL_STARTUP_HOLD_REASON],
     ['daily', 'meter settling (45s remaining)'],
+    ['daily', 'cooldown (restore, 45s remaining)'],
     ['daily', 'restore throttled'],
+    ['daily', NEUTRAL_STARTUP_HOLD_REASON],
   ] as const)('reports none for %s source when shed reason is "%s"', (softLimitSource, reason) => {
     const plan = buildPlan({
       softLimitSource,
