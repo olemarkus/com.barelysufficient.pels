@@ -12,7 +12,6 @@ import { buildInitialPlanDevices } from './planDevices';
 import { applyRestorePlan, type RestorePlanResult } from './planRestore';
 import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from './planUsage';
 import {
-  formatHeadroomCooldownReason,
   resolveHeadroomCardCooldown,
   syncHeadroomCardState,
 } from './planHeadroomDevice';
@@ -488,29 +487,9 @@ export class PlanBuilder {
           headroomCardCooldownToKw: cooldown.dropToKw,
         };
 
-        if (!this.shouldOverrideReasonWithHeadroomCooldown(device)) {
-          return nextDevice;
-        }
-
-        return {
-          ...nextDevice,
-          reason: formatHeadroomCooldownReason({
-            source: cooldown.source,
-            remainingSec: cooldown.remainingSec,
-            dropFromKw: cooldown.dropFromKw,
-            dropToKw: cooldown.dropToKw,
-          }),
-        };
+        return nextDevice;
       });
     });
-  }
-
-  private shouldOverrideReasonWithHeadroomCooldown(device: DevicePlanDevice): boolean {
-    if (device.controllable === false) return false;
-    if (device.plannedState !== 'keep') return false;
-    if (device.currentState === 'off' || device.currentState === 'unknown') return false;
-    if (!device.reason) return true;
-    return device.reason === 'keep' || device.reason.startsWith('keep (');
   }
 
   private observeDiagnostics(params: {

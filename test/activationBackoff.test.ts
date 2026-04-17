@@ -507,6 +507,7 @@ describe('activation backoff', () => {
       nowTs: start + 2 * 60 * 1000,
     });
     expect(setbackDecision?.cooldownSource).toBe('step_down');
+    expect(setbackDecision?.observedKwSource).toBe('measuredPowerKw');
     expect(state.activationAttemptByDevice['dev-1']?.penaltyLevel).toBe(1);
 
     const recoveredDevice = {

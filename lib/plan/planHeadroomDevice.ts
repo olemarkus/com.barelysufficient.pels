@@ -8,6 +8,7 @@ import {
   emitActivationTransitions,
   type HeadroomCardCooldownSource,
   type HeadroomCardDeviceLike,
+  type HeadroomDeviceKwSource,
   resolveHeadroomCardCooldown,
   resolveObservedHeadroomDeviceKw,
   syncHeadroomCardState,
@@ -26,6 +27,7 @@ export type HeadroomForDeviceDecision = {
   cooldownSource: HeadroomCardCooldownSource | null;
   cooldownRemainingSec: number | null;
   observedKw: number;
+  observedKwSource: HeadroomDeviceKwSource;
   calculatedHeadroomForDeviceKw: number;
   penaltyLevel: number;
   requiredKwWithPenalty: number;
@@ -35,10 +37,6 @@ export type HeadroomForDeviceDecision = {
   dropToKw: number | null;
   stateChanged: boolean;
 };
-
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
 
 export const evaluateHeadroomForDevice = (params: {
   state: PlanEngineState;
@@ -79,7 +77,7 @@ export const evaluateHeadroomForDevice = (params: {
   });
   emitActivationTransitions(diagnostics, device.name, penaltyInfo.transitions);
 
-  const observedKw = resolveObservedHeadroomDeviceKw(device);
+  const { kw: observedKw, source: observedKwSource } = resolveObservedHeadroomDeviceKw(device);
   const calculatedHeadroomForDeviceKw = headroom + observedKw;
   const penalty = applyActivationPenalty({
     baseRequiredKw: requiredKw,
@@ -95,6 +93,7 @@ export const evaluateHeadroomForDevice = (params: {
     cooldownSource: cooldown?.source ?? null,
     cooldownRemainingSec: cooldown?.remainingSec ?? null,
     observedKw,
+    observedKwSource,
     calculatedHeadroomForDeviceKw,
     penaltyLevel: penaltyInfo.penaltyLevel,
     requiredKwWithPenalty: penalty.requiredKwWithPenalty,
@@ -104,22 +103,4 @@ export const evaluateHeadroomForDevice = (params: {
     dropToKw: cooldown?.dropToKw ?? null,
     stateChanged: stateChanged || penaltyInfo.stateChanged,
   };
-};
-
-export const formatHeadroomCooldownReason = (params: {
-  source: HeadroomCardCooldownSource;
-  remainingSec: number;
-  dropFromKw?: number | null;
-  dropToKw?: number | null;
-}): string => {
-  const { source, remainingSec, dropFromKw, dropToKw } = params;
-  if (source === 'step_down') {
-    const fromText = isFiniteNumber(dropFromKw) ? dropFromKw.toFixed(2) : 'unknown';
-    const toText = isFiniteNumber(dropToKw) ? dropToKw.toFixed(2) : 'unknown';
-    return `headroom cooldown (${remainingSec}s remaining; usage ${fromText} -> ${toText}kW)`;
-  }
-  if (source === 'pels_shed') {
-    return `headroom cooldown (${remainingSec}s remaining; recent PELS shed)`;
-  }
-  return `headroom cooldown (${remainingSec}s remaining; recent PELS restore)`;
 };
