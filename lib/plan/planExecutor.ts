@@ -357,6 +357,7 @@ export class PlanExecutor {
   ): Promise<boolean> {
     if (isSteppedLoadDevice(dev)) return false;
     if (dev.plannedState !== 'keep' || resolveEffectiveCurrentOn(dev) !== false) return false;
+    if (isRestoreHoldReason(dev.reason)) return false;
     const snapshot = this.latestTargetSnapshot.find((d) => d.id === dev.id);
     if (snapshot?.deviceClass === 'evcharger') {
       this.logDebug(`Capacity: evaluating EV restore for ${dev.name} (${formatEvSnapshot(snapshot)})`);
@@ -482,6 +483,7 @@ export class PlanExecutor {
   ): Promise<boolean> {
     if (dev.plannedState !== 'keep') return false;
     if (resolveEffectiveCurrentOn(dev) !== false) return false;
+    if (isRestoreHoldReason(dev.reason)) return false;
     const lastShed = this.state.lastDeviceShedMs[dev.id];
     if (!lastShed) return false;
     const name = dev.name;
@@ -824,4 +826,10 @@ export class PlanExecutor {
     const lastRestoreMs = this.state.lastDeviceRestoreMs[deviceId];
     return !lastRestoreMs || lastRestoreMs < lastShedMs ? 'shed_state' : 'current_plan';
   }
+}
+
+function isRestoreHoldReason(reason: string | undefined): boolean {
+  if (!reason) return false;
+  return /^meter settling \(\d+s remaining\)$/.test(reason)
+    || /^cooldown \(restore, \d+s remaining\)$/.test(reason);
 }

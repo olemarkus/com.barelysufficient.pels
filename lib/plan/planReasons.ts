@@ -112,6 +112,7 @@ const KEEP_REASON_RULES: readonly ReasonPatternRule[] = [
   { pattern: /^keep(?: \(.+\))?$/, label: 'keep' },
   { pattern: /^restore .+ -> .+ \(need .+\)$/, label: 'stepped restore admission' },
   { pattern: /^cooldown \(shedding, \d+s remaining\)$/, label: 'shedding cooldown' },
+  { pattern: /^cooldown \(restore, \d+s remaining\)$/, label: 'restore cooldown' },
   { pattern: /^meter settling \(\d+s remaining\)$/, label: 'meter settling' },
   { pattern: /^restore throttled$/, label: 'restore throttle' },
   { pattern: /^waiting for other devices to recover$/, label: 'recovery gate' },
