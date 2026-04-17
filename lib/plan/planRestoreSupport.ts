@@ -23,11 +23,23 @@ export function reserveHeadroomForPendingRestores(
   const pending = computePendingRestorePowerKw(planDevices, lastDeviceRestoreMs, Date.now());
   if (pending.pendingKw <= 0) return rawHeadroom;
   const adjusted = rawHeadroom - pending.pendingKw;
+  const devices: Array<{ deviceId: string; deviceName?: string }> = [];
+  const deviceNames: string[] = [];
+  for (const deviceId of pending.deviceIds) {
+    const deviceName = deviceNameById?.get(deviceId);
+    if (typeof deviceName === 'string' && deviceName.length > 0) {
+      devices.push({ deviceId, deviceName });
+      deviceNames.push(deviceName);
+      continue;
+    }
+    devices.push({ deviceId });
+  }
   debugStructured?.({
     event: 'restore_headroom_reserved',
     pendingKw: pending.pendingKw,
     deviceIds: pending.deviceIds,
-    deviceNames: pending.deviceIds.map((id) => deviceNameById?.get(id) ?? id),
+    ...(deviceNames.length > 0 ? { deviceNames } : {}),
+    devices,
     headroomAfterKw: adjusted,
   });
   return adjusted;

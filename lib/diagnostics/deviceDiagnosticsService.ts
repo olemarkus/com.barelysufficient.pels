@@ -91,7 +91,7 @@ export type DeviceDiagnosticsControlEvent = {
   kind: 'shed' | 'restore';
   origin: DeviceDiagnosticsControlEventOrigin;
   deviceId: string;
-  name: string;
+  name?: string;
   nowTs?: number;
 };
 
@@ -152,7 +152,7 @@ export type DeviceDiagnosticsRecorder = {
   }) => void;
   recordControlEvent: (event: DeviceDiagnosticsControlEvent) => void;
   recordActivationTransition: (transition: DeviceDiagnosticsBackoffTransition, params: {
-    name: string;
+    name?: string;
   }) => void;
   getUiPayload: (nowTs?: number) => SettingsUiDeviceDiagnosticsPayload;
 };
@@ -390,7 +390,9 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     const nowTs = event.nowTs ?? Date.now();
     this.ensureDayRollover(nowTs);
     const live = this.getLiveDeviceState(event.deviceId);
-    live.name = event.name;
+    if (typeof event.name === 'string' && event.name.length > 0) {
+      live.name = event.name;
+    }
     if (event.kind === 'shed') {
       this.addCount(event.deviceId, nowTs, 'shedCount', 1);
       if (isFiniteNumber(live.openRestoreTs)) {
@@ -427,10 +429,12 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
 
   recordActivationTransition(
     transition: DeviceDiagnosticsBackoffTransition,
-    params: { name: string },
+    params: { name?: string },
   ): void {
     const live = this.getLiveDeviceState(transition.deviceId);
-    live.name = params.name;
+    if (typeof params.name === 'string' && params.name.length > 0) {
+      live.name = params.name;
+    }
     this.ensureDayRollover(transition.nowTs);
 
     switch (transition.kind) {

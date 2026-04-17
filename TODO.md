@@ -36,7 +36,7 @@ file.
 - [x] Fix price-optimization transition logging at hour boundaries so logs reflect the resulting
       state, not the previous one.
       Files: price optimization transition logic and tests.
-- [ ] Sweep logging and diagnostics to ensure `deviceId` is always the identity field and
+- [x] Sweep logging and diagnostics to ensure `deviceId` is always the identity field and
       `deviceName` stays a plain label without `name || id` fallback rewriting.
       Files: structured logging call sites, diagnostics helpers, executor/reconcile logging.
 
