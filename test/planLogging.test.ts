@@ -368,4 +368,46 @@ describe('plan logging helpers', () => {
     expect(buildPlanDebugSummarySignatureFromEvent(buildPlanDebugSummaryEvent(plan)))
       .toBe(JSON.stringify(buildPlanDebugSummaryEvent(plan)));
   });
+
+  it('groups legacy restore cooldown reasons under one restore-blocked bucket', () => {
+    const plan = {
+      meta: {
+        totalKw: 2.2,
+        softLimitKw: 3,
+        capacitySoftLimitKw: 3,
+        dailySoftLimitKw: null,
+        softLimitSource: 'capacity',
+        headroomKw: 0.8,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater 1',
+          currentOn: false,
+          currentState: 'off',
+          plannedState: 'shed',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+          reason: 'cooldown (restore, 45s remaining)',
+        },
+        {
+          id: 'dev-2',
+          name: 'Heater 2',
+          currentOn: false,
+          currentState: 'off',
+          plannedState: 'shed',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+          reason: 'cooldown (restore, 12s remaining)',
+        },
+      ],
+    } as unknown as DevicePlan;
+
+    expect(buildPlanDebugSummaryEvent(plan)).toEqual(expect.objectContaining({
+      restoreBlockedCount: 2,
+      restoreBlockedReasons: [{ reason: 'cooldown (restore)', count: 2 }],
+    }));
+  });
 });

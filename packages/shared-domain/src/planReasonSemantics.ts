@@ -9,6 +9,7 @@ export const PLAN_REASON_CODES = {
   dailyBudget: 'daily_budget',
   shortfall: 'shortfall',
   cooldownShedding: 'cooldown_shedding',
+  cooldownRestore: 'cooldown_restore',
   meterSettling: 'meter_settling',
   activationBackoff: 'activation_backoff',
   restorePending: 'restore_pending',
@@ -69,6 +70,7 @@ export type ComparablePlanReason =
   | ComparableTextReason;
 
 const COOLDOWN_SHEDDING_REASON = /^cooldown \(shedding, \d+s remaining\)$/;
+const COOLDOWN_RESTORE_REASON = /^cooldown \(restore, \d+s remaining\)$/;
 const METER_SETTLING_REASON = /^meter settling \(\d+s remaining\)$/;
 const ACTIVATION_BACKOFF_REASON = /^activation backoff \(\d+s remaining\)$/;
 const RESTORE_PENDING_REASON = /^restore pending \(\d+s remaining\)$/;
@@ -106,6 +108,9 @@ function matchKeepReason(trimmed: string): ComparablePlanReason | null {
 function matchCountdownReason(trimmed: string): ComparablePlanReason | null {
   if (COOLDOWN_SHEDDING_REASON.test(trimmed)) {
     return { code: PLAN_REASON_CODES.cooldownShedding };
+  }
+  if (COOLDOWN_RESTORE_REASON.test(trimmed)) {
+    return { code: PLAN_REASON_CODES.cooldownRestore };
   }
   if (METER_SETTLING_REASON.test(trimmed)) {
     return { code: PLAN_REASON_CODES.meterSettling };
