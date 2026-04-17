@@ -54,11 +54,25 @@ describe('device overview formatter', () => {
       shedAction: 'turn_off',
     })).toEqual({
       powerMsg: 'off',
-      stateMsg: 'Shed (restore cooldown)',
+      stateMsg: 'Shed (powered off)',
       usageMsg: 'Unknown',
       statusMsg: 'cooldown (restore, 10s remaining)',
     });
 
+    expect(formatDeviceOverview({
+      currentState: 'on',
+      plannedState: 'shed',
+      reason: 'cooldown (restore, 10s remaining)',
+      shedAction: 'turn_off',
+    })).toEqual({
+      powerMsg: 'on → off',
+      stateMsg: 'Shed (powered off)',
+      usageMsg: 'Unknown',
+      statusMsg: 'cooldown (restore, 10s remaining)',
+    });
+  });
+
+  it('keeps stabilizing rewrites for keep devices only', () => {
     expect(formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
