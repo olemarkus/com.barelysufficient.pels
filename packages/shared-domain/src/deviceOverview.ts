@@ -1,3 +1,5 @@
+import { buildComparablePlanReason } from './planReasonSemantics.js';
+
 export type DeviceOverviewSnapshot = {
   currentState?: string;
   plannedState?: string;
@@ -208,11 +210,11 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
 };
 
 export const buildDeviceOverviewTransitionSignature = (
-  overview: Pick<DeviceOverviewStrings, 'powerMsg' | 'stateMsg' | 'statusMsg'>,
+  overview: Pick<DeviceOverviewStrings, 'powerMsg' | 'stateMsg'> & { reason?: string },
 ): string => (
   JSON.stringify({
     powerMsg: overview.powerMsg,
     stateMsg: overview.stateMsg,
-    statusMsg: overview.statusMsg,
+    reason: buildComparablePlanReason(overview.reason),
   })
 );

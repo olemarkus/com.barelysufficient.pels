@@ -443,7 +443,11 @@ export class PlanService {
     for (const device of plan.devices) {
       nextDeviceIds.add(device.id);
       const overview = formatDeviceOverview(device);
-      const signature = buildDeviceOverviewTransitionSignature(overview);
+      const signature = buildDeviceOverviewTransitionSignature({
+        powerMsg: overview.powerMsg,
+        stateMsg: overview.stateMsg,
+        reason: device.reason,
+      });
       const previousSignature = this.lastOverviewSignatureByDeviceId.get(device.id);
       this.lastOverviewSignatureByDeviceId.set(device.id, signature);
       if (signature === previousSignature) continue;
