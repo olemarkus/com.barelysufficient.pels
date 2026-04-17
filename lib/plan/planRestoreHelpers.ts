@@ -44,16 +44,20 @@ export function markSteppedDevicesStayAtCurrentLevel(params: {
   | 'shedCooldownRemainingSec'
   | 'restoreCooldownRemainingSec'
   | 'startupStabilizationRemainingSec'>;
+  getLastControlledMs?: (deviceId: string) => number | undefined;
 }): void {
   const {
     deviceMap,
     timing,
+    getLastControlledMs,
   } = params;
-  const reason = resolveCapacityRestoreBlockReason({ timing });
-  if (!reason) return;
-
   const steppedDevices = getSteppedRestoreCandidates(Array.from(deviceMap.values()));
   for (const dev of steppedDevices) {
+    const reason = resolveCapacityRestoreBlockReason({
+      timing,
+      showStartupStabilization: getLastControlledMs ? getLastControlledMs(dev.id) !== undefined : true,
+    });
+    if (!reason) continue;
     setRestorePlanDevice(deviceMap, dev.id, { reason });
   }
 }

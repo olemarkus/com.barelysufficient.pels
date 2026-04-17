@@ -152,6 +152,7 @@ export function applyRestorePlan(params: {
       timing,
       setDevice: (id, updates) => setDevice(deviceMap, id, updates),
       reasonOverride: (dev) => formatUnknownHeadroomReason(dev),
+      getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
     });
   } else if (
     sheddingActive
@@ -163,10 +164,12 @@ export function applyRestorePlan(params: {
       deviceMap,
       timing: effectiveTiming,
       setDevice: (id, updates) => setDevice(deviceMap, id, updates),
+      getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
     });
     markSteppedDevicesStayAtCurrentLevel({
       deviceMap,
       timing: effectiveTiming,
+      getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
     });
   }
 
