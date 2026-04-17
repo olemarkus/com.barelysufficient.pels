@@ -215,6 +215,24 @@ describe('DeviceDiagnosticsService', () => {
     });
   });
 
+  it('logs tracked-transition reconciliation tags when present', () => {
+    const { service, logDebug } = createDeps();
+    const start = Date.now();
+
+    service.recordControlEvent({
+      kind: 'tracked_transition',
+      direction: 'down',
+      reconciliation: 'startup',
+      deviceId: 'heater-1',
+      name: 'Hall Heater',
+      nowTs: start,
+    });
+
+    expect(logDebug).toHaveBeenCalledWith(expect.stringContaining(
+      'direction=down reconciliation=startup',
+    ));
+  });
+
   it('does not backfill observation gaps larger than ten minutes', () => {
     const { service, logDebug } = createDeps();
     const start = Date.now();

@@ -8,7 +8,11 @@ import {
   recordActivationSetback,
   syncActivationPenaltyState,
 } from '../lib/plan/planActivationBackoff';
-import { OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS } from '../lib/plan/planConstants';
+import {
+  OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS,
+  RESTORE_COOLDOWN_MS,
+  SHED_COOLDOWN_MS,
+} from '../lib/plan/planConstants';
 import type { PlanContext } from '../lib/plan/planContext';
 import type { DevicePlanDevice } from '../lib/plan/planTypes';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
@@ -44,6 +48,17 @@ const buildPlanDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanD
   plannedState: 'keep',
   currentTarget: null,
   plannedTarget: null,
+  ...overrides,
+});
+
+const buildTrackedDevice = (overrides: Record<string, unknown> = {}) => ({
+  id: 'dev-1',
+  name: 'Heater',
+  currentOn: true,
+  available: true,
+  expectedPowerKw: 0,
+  measuredPowerKw: 0,
+  powerKw: 0,
   ...overrides,
 });
 
@@ -609,6 +624,150 @@ describe('activation backoff', () => {
       }),
       { name: 'Heater' },
     );
+  });
+
+  it('tags snapshot-refresh tracked transitions during startup with snapshot_refresh reconciliation', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+    const diagnostics = {
+      recordControlEvent: vi.fn(),
+      recordActivationTransition: vi.fn(),
+    };
+
+    syncHeadroomCardState({
+      state,
+      devices: [
+        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', expectedPowerKw: 3.2, powerKw: 3.2 }),
+        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', expectedPowerKw: 2.4, powerKw: 2.4 }),
+        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', expectedPowerKw: 1.8, powerKw: 1.8 }),
+      ] as any,
+      nowTs: start,
+    });
+
+    expect(syncHeadroomCardState({
+      state,
+      devices: [
+        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', expectedPowerKw: 0.8, powerKw: 0.8 }),
+        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', expectedPowerKw: 0.5, powerKw: 0.5 }),
+        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', expectedPowerKw: 0.2, powerKw: 0.2 }),
+      ] as any,
+      nowTs: start + 5_000,
+      reconciliationContext: 'snapshot_refresh',
+      diagnostics: diagnostics as any,
+    })).toBe(true);
+
+    expect(diagnostics.recordControlEvent).toHaveBeenCalledTimes(3);
+    expect(diagnostics.recordControlEvent).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      kind: 'tracked_transition',
+      direction: 'down',
+      deviceId: 'dev-1',
+      reconciliation: 'snapshot_refresh',
+    }));
+    expect(diagnostics.recordControlEvent).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      kind: 'tracked_transition',
+      direction: 'down',
+      deviceId: 'dev-2',
+      reconciliation: 'snapshot_refresh',
+    }));
+    expect(diagnostics.recordControlEvent).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      kind: 'tracked_transition',
+      direction: 'down',
+      deviceId: 'dev-3',
+      reconciliation: 'snapshot_refresh',
+    }));
+  });
+
+  it('tags tracked step-ups after a recent restore as post_actuation reconciliation', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+    const diagnostics = {
+      recordControlEvent: vi.fn(),
+      recordActivationTransition: vi.fn(),
+    };
+
+    state.appStartedAtMs = start - (Math.max(SHED_COOLDOWN_MS, RESTORE_COOLDOWN_MS) + 1);
+    state.lastDeviceRestoreMs['dev-1'] = start;
+
+    syncHeadroomCardState({
+      state,
+      devices: [buildTrackedDevice()] as any,
+      nowTs: start,
+    });
+
+    expect(syncHeadroomCardState({
+      state,
+      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, measuredPowerKw: 1.0 })] as any,
+      nowTs: start + 5_000,
+      diagnostics: diagnostics as any,
+    })).toBe(true);
+
+    expect(diagnostics.recordControlEvent).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'tracked_transition',
+      direction: 'up',
+      deviceId: 'dev-1',
+      reconciliation: 'post_actuation',
+    }));
+  });
+
+  it('leaves steady-state tracked transitions untagged outside reconciliation windows', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+    const diagnostics = {
+      recordControlEvent: vi.fn(),
+      recordActivationTransition: vi.fn(),
+    };
+
+    state.appStartedAtMs = start - (Math.max(SHED_COOLDOWN_MS, RESTORE_COOLDOWN_MS) + 1);
+
+    syncHeadroomCardState({
+      state,
+      devices: [buildTrackedDevice()] as any,
+      nowTs: start,
+    });
+
+    expect(syncHeadroomCardState({
+      state,
+      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, measuredPowerKw: 1.0 })] as any,
+      nowTs: start + (2 * 60 * 1000),
+      diagnostics: diagnostics as any,
+    })).toBe(true);
+
+    const [event] = diagnostics.recordControlEvent.mock.calls[0];
+    expect(event).toMatchObject({
+      kind: 'tracked_transition',
+      direction: 'up',
+      deviceId: 'dev-1',
+    });
+    expect(event.reconciliation).toBeUndefined();
+  });
+
+  it('treats the reconciliation-window boundary as inclusive', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+    const diagnostics = {
+      recordControlEvent: vi.fn(),
+      recordActivationTransition: vi.fn(),
+    };
+
+    syncHeadroomCardState({
+      state,
+      devices: [buildTrackedDevice()] as any,
+      nowTs: start,
+    });
+
+    expect(syncHeadroomCardState({
+      state,
+      devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, measuredPowerKw: 1.0 })] as any,
+      nowTs: start + Math.max(SHED_COOLDOWN_MS, RESTORE_COOLDOWN_MS),
+      diagnostics: diagnostics as any,
+    })).toBe(true);
+
+    expect(diagnostics.recordControlEvent).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'tracked_transition',
+      direction: 'up',
+      deviceId: 'dev-1',
+      reconciliation: 'startup',
+    }));
   });
 });
 

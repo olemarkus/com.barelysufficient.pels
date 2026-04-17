@@ -1,8 +1,19 @@
+import type { DeviceDiagnosticsTrackedTransitionReconciliation } from '../diagnostics/deviceDiagnosticsService';
+import { RESTORE_COOLDOWN_MS, SHED_COOLDOWN_MS } from './planConstants';
 import type { HeadroomCardState, PlanEngineState } from './planState';
 
 export type HeadroomCardCooldownSource = 'step_down' | 'pels_shed' | 'pels_restore';
 export type HeadroomDeviceKwSource = 'expectedPowerKw' | 'powerKw' | 'measuredPowerKw' | 'fallback_zero';
 export type ResolvedHeadroomDeviceKw = { kw: number; source: HeadroomDeviceKwSource };
+export type HeadroomTrackedTransitionContext = Extract<
+  DeviceDiagnosticsTrackedTransitionReconciliation,
+  'snapshot_refresh'
+>;
+
+const TRACKED_TRANSITION_RECONCILIATION_WINDOW_MS = Math.max(
+  SHED_COOLDOWN_MS,
+  RESTORE_COOLDOWN_MS,
+);
 
 export type HeadroomCardDeviceLike = {
   id: string;
@@ -26,6 +37,16 @@ export type HeadroomCooldownCandidate = {
 
 export const isFiniteNumber = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value)
+);
+
+const isWithinReconciliationWindow = (
+  startMs: number | undefined,
+  nowTs: number,
+  windowMs: number,
+): boolean => (
+  isFiniteNumber(startMs)
+  && nowTs >= startMs
+  && nowTs <= startMs + windowMs
 );
 
 export const ensureHeadroomEntry = (
@@ -64,6 +85,38 @@ export const resolveHeadroomDeviceName = (params: {
   ?? params.deviceName
   ?? params.state.headroomCardByDevice[params.deviceId]?.deviceName
 );
+
+export const resolveTrackedTransitionReconciliation = (params: {
+  state: PlanEngineState;
+  deviceId: string;
+  nowTs: number;
+  context?: HeadroomTrackedTransitionContext;
+}): DeviceDiagnosticsTrackedTransitionReconciliation | undefined => {
+  const { state, deviceId, nowTs, context } = params;
+  if (context === 'snapshot_refresh') return context;
+  if (isWithinReconciliationWindow(
+    state.appStartedAtMs,
+    nowTs,
+    TRACKED_TRANSITION_RECONCILIATION_WINDOW_MS,
+  )) {
+    return 'startup';
+  }
+  if (
+    isWithinReconciliationWindow(
+      state.lastDeviceShedMs[deviceId],
+      nowTs,
+      TRACKED_TRANSITION_RECONCILIATION_WINDOW_MS,
+    )
+    || isWithinReconciliationWindow(
+      state.lastDeviceRestoreMs[deviceId],
+      nowTs,
+      TRACKED_TRANSITION_RECONCILIATION_WINDOW_MS,
+    )
+  ) {
+    return 'post_actuation';
+  }
+  return undefined;
+};
 
 export const resolveTrackedHeadroomDeviceKw = (
   device: Pick<HeadroomCardDeviceLike, 'expectedPowerKw' | 'powerKw'>,

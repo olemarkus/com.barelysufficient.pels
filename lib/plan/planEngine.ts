@@ -239,11 +239,13 @@ export class PlanEngine {
   public syncHeadroomCardState(params: {
     devices: HeadroomCardDeviceLike[];
     cleanupMissingDevices?: boolean;
+    reconciliationContext?: 'snapshot_refresh';
   }): boolean {
     return syncHeadroomCardState({
       state: this.state,
       devices: params.devices,
       cleanupMissingDevices: params.cleanupMissingDevices,
+      reconciliationContext: params.reconciliationContext,
       diagnostics: this.deviceDiagnostics,
     });
   }
@@ -251,11 +253,13 @@ export class PlanEngine {
   public syncHeadroomCardTrackedUsage(params: {
     deviceId: string;
     trackedKw: number;
+    reconciliationContext?: 'snapshot_refresh';
   }): boolean {
     return syncHeadroomCardTrackedUsage({
       state: this.state,
       deviceId: params.deviceId,
       trackedKw: params.trackedKw,
+      reconciliationContext: params.reconciliationContext,
       diagnostics: this.deviceDiagnostics,
     });
   }

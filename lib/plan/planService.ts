@@ -408,6 +408,7 @@ export class PlanService {
   syncHeadroomCardState(params: {
     devices: HeadroomCardDeviceLike[];
     cleanupMissingDevices?: boolean;
+    reconciliationContext?: 'snapshot_refresh';
   }): boolean {
     return this.deps.planEngine.syncHeadroomCardState(params);
   }
@@ -415,6 +416,7 @@ export class PlanService {
   syncHeadroomCardTrackedUsage(params: {
     deviceId: string;
     trackedKw: number;
+    reconciliationContext?: 'snapshot_refresh';
   }): boolean {
     return this.deps.planEngine.syncHeadroomCardTrackedUsage(params);
   }
