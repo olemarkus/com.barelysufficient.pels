@@ -336,13 +336,13 @@ export class PlanBuilder {
       }
     }
     if (latestDeviceId === null) return;
-    const deviceName = deviceNameById.get(latestDeviceId) ?? latestDeviceId;
+    const deviceName = deviceNameById.get(latestDeviceId);
     const result = recordActivationSetback({ state: this.state, deviceId: latestDeviceId, nowTs });
     if (result.bumped) {
       this.deps.structuredLog?.info({
         event: 'overshoot_attributed',
         deviceId: latestDeviceId,
-        deviceName,
+        ...(typeof deviceName === 'string' && deviceName.length > 0 ? { deviceName } : {}),
         restoreAgeMs: nowTs - latestRestoreMs,
         penaltyLevel: result.penaltyLevel,
       });

@@ -101,6 +101,8 @@ This note is for contributors changing runtime logging.
 ## Contributor Guidance
 
 - Prefer stable field names over embedding meaning in a formatted message string.
+- `deviceId` is the identity field in structured logs and diagnostics. `deviceName` is only a
+  display label when actually known; do not rewrite a missing name to the id.
 - Any future Settings UI device-log or diagnostics surface that shows the per-device overview
   wording should reuse `packages/shared-domain/src/deviceOverview.ts` rather than rebuilding
   `powerMsg`/`stateMsg`/`usageMsg`/`statusMsg` separately in the UI.

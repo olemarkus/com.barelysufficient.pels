@@ -43,6 +43,36 @@ describe('appRealtimeDeviceReconcile', () => {
     vi.useRealTimers();
   });
 
+  it('omits deviceName from reconcile payloads when no label is known', () => {
+    vi.useFakeTimers();
+    const debugStructured = createDebugStructuredMock();
+
+    const timer = scheduleRealtimeDeviceReconcile({
+      state: createRealtimeDeviceReconcileState(),
+      hasPendingTimer: false,
+      event: {
+        deviceId: 'dev-1',
+        capabilityId: 'onoff',
+      },
+      debugStructured,
+      onTimerFired: vi.fn(),
+      onFlush: vi.fn().mockResolvedValue(undefined),
+      onError: vi.fn(),
+    });
+
+    expect(timer).toBeDefined();
+    expect(debugStructured).toHaveBeenCalledWith({
+      event: 'realtime_reconcile_queued',
+      deviceId: 'dev-1',
+      capabilityId: 'onoff',
+      planExpectation: undefined,
+      changes: undefined,
+    });
+
+    if (timer) clearTimeout(timer);
+    vi.useRealTimers();
+  });
+
   it('skips reconcile when the live device state already matches the current plan', () => {
     const debugStructured = createDebugStructuredMock();
 
