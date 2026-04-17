@@ -1,6 +1,7 @@
 import {
   buildDeviceOverviewTransitionSignature,
   formatDeviceOverview,
+  getDeviceOverviewReportedStepId,
 } from '../packages/shared-domain/src/deviceOverview';
 
 describe('device overview formatter', () => {
@@ -94,6 +95,25 @@ describe('device overview formatter', () => {
       measuredPowerKw: 0,
       reason: 'keep',
     }).usageMsg).toBe('Measured: 0.00 kW / Expected: 3.00 kW (reported: low / target: max)');
+  });
+
+  it('prefers the latest confirmed reported step when stale reportedStepId lags actualStepId', () => {
+    const device = {
+      controlModel: 'stepped_load' as const,
+      currentState: 'on',
+      plannedState: 'keep',
+      reportedStepId: 'low',
+      actualStepId: 'max',
+      actualStepSource: 'reported' as const,
+      targetStepId: 'max',
+      planningPowerKw: 3,
+      measuredPowerKw: 0,
+      reason: 'keep',
+    };
+
+    expect(getDeviceOverviewReportedStepId(device)).toBe('max');
+    expect(formatDeviceOverview(device).usageMsg)
+      .toBe('Measured: 0.00 kW / Expected: 3.00 kW (reported: max)');
   });
 
   it('handles missing optional values consistently', () => {

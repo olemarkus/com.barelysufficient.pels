@@ -53,8 +53,8 @@ const isOffLikeState = (state?: string): boolean => {
   return normalized === 'off' || normalized === 'unknown';
 };
 
-const getReportedStepId = (device: DeviceOverviewSnapshot): string | undefined => (
-  device.reportedStepId ?? (device.actualStepSource === 'reported' ? device.actualStepId : undefined)
+export const getDeviceOverviewReportedStepId = (device: DeviceOverviewSnapshot): string | undefined => (
+  (device.actualStepSource === 'reported' ? device.actualStepId : undefined) ?? device.reportedStepId
 );
 
 const getTargetStepId = (device: DeviceOverviewSnapshot): string | undefined => (
@@ -66,7 +66,7 @@ const getPlannerStepId = (device: DeviceOverviewSnapshot): string | undefined =>
 );
 
 const getSteppedUsageStepText = (device: DeviceOverviewSnapshot): string | null => {
-  const reportedStepId = getReportedStepId(device);
+  const reportedStepId = getDeviceOverviewReportedStepId(device);
   const targetStepId = getTargetStepId(device);
 
   if (reportedStepId) {
