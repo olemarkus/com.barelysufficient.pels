@@ -7,6 +7,7 @@ import { startRuntimeSpan } from '../utils/runtimeTrace';
 import {
   buildDeviceOverviewTransitionSignature,
   formatDeviceOverview,
+  getDeviceOverviewReportedStepId,
   getDeviceOverviewExpectedPowerKw,
 } from '../../packages/shared-domain/src/deviceOverview';
 import {
@@ -64,7 +65,7 @@ function buildOverviewSignatureForDevice(
     powerMsg: overview.powerMsg,
     stateMsg: overview.stateMsg,
     reason: device.reason,
-    reportedStepId: device.reportedStepId,
+    reportedStepId: getDeviceOverviewReportedStepId(device),
     targetStepId: resolveOverviewTargetStepId(device) ?? undefined,
   });
 }
@@ -87,7 +88,7 @@ function buildOverviewEventForDevice(
     reason: device.reason ?? null,
     measuredPowerKw: device.measuredPowerKw ?? null,
     expectedPowerKw: getDeviceOverviewExpectedPowerKw(device) ?? null,
-    reportedStepId: device.reportedStepId ?? null,
+    reportedStepId: getDeviceOverviewReportedStepId(device) ?? null,
     targetStepId: resolveOverviewTargetStepId(device),
     desiredStepId: device.desiredStepId ?? null,
   };

@@ -578,6 +578,41 @@ describe('PlanService', () => {
     }));
   });
 
+  it('logs the freshest confirmed reported step in overview events', async () => {
+    const overviewDebugStructured = vi.fn();
+    const { service } = createPlanService({
+      planEngine: {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
+          controlModel: 'stepped_load',
+          currentState: 'on',
+          plannedState: 'keep',
+          measuredPowerKw: 0,
+          planningPowerKw: 3,
+          reportedStepId: 'low',
+          actualStepId: 'max',
+          actualStepSource: 'reported',
+          targetStepId: 'max',
+        })),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+      } as any,
+      overviewDebugStructured,
+    });
+
+    await service.rebuildPlanFromCache();
+
+    expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'device_overview_changed',
+      reportedStepId: 'max',
+      targetStepId: 'max',
+      usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW (reported: max)',
+    }));
+  });
+
   it('does not log repeated identical overview snapshots', async () => {
     const overviewDebugStructured = vi.fn();
     const samePlan = buildPlan(20, 'keep', {}, {
