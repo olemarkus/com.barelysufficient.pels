@@ -448,4 +448,40 @@ describe('plan diagnostics observations', () => {
     expect(restoreObservation.pauseReason).toBe('restore');
     expect(restoreObservation.suppressionState).toBe('paused');
   });
+
+  it('treats keep devices with headroom cooldown metadata as paused by headroom cooldown', () => {
+    const observation = buildObservation({
+      inputDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        deviceType: 'temperature',
+        managed: true,
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
+      },
+      planDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        currentState: 'not_applicable',
+        plannedState: 'keep',
+        currentTarget: 18,
+        plannedTarget: 21,
+        reason: 'keep',
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+        headroomCardBlocked: true,
+        headroomCardCooldownSource: 'step_down',
+      },
+      desiredForMode: { 'heater-1': 21 },
+    });
+
+    expect(observation.pauseReason).toBe('headroom_cooldown');
+    expect(observation.suppressionState).toBe('paused');
+  });
 });

@@ -750,7 +750,7 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-temp-only')?.contains('cheap')).toBe(true);
   });
 
-  it('renders headroom cooldown status text without changing the active state UI', async () => {
+  it('keeps the active keep status text when cooldown metadata is present', async () => {
     await renderPlanSnapshot({
       devices: [
         {
@@ -759,13 +759,18 @@ describe('plan device state', () => {
           currentState: 'on',
           plannedState: 'keep',
           controllable: true,
-          reason: 'headroom cooldown (45s remaining; usage 6.00 -> 3.50kW)',
+          reason: 'keep',
+          headroomCardBlocked: true,
+          headroomCardCooldownSec: 45,
+          headroomCardCooldownSource: 'step_down',
+          headroomCardCooldownFromKw: 6.0,
+          headroomCardCooldownToKw: 3.5,
         },
       ],
     });
 
     expect(getStateText()).toBe('Active');
-    expect(getStatusText()).toBe('stabilizing after recent step-down (45s remaining; usage 6.00 -> 3.50kW)');
+    expect(getStatusText()).toBe('keep');
     expect(getBadgeClassList('dev-1')?.contains('cheap')).toBe(true);
   });
 });

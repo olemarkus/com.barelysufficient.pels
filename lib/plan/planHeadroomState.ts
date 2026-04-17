@@ -11,6 +11,8 @@ import {
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 
 export type HeadroomCardCooldownSource = 'step_down' | 'pels_shed' | 'pels_restore';
+export type HeadroomDeviceKwSource = 'expectedPowerKw' | 'powerKw' | 'measuredPowerKw' | 'fallback_zero';
+type ResolvedHeadroomDeviceKw = { kw: number; source: HeadroomDeviceKwSource };
 
 export type HeadroomCardDeviceLike = {
   id: string;
@@ -64,6 +66,7 @@ const removeHeadroomCardStateForDevice = (
   if (!entry) return;
   if (!options.keepLastObserved) {
     delete entry.lastObservedKw;
+    delete entry.lastObservedKwSource;
   }
   delete entry.lastStepDownMs;
   removeStepDownCooldown(cards, deviceId);
@@ -110,10 +113,12 @@ const updateHeadroomCardLastObserved = (
   state: PlanEngineState,
   deviceId: string,
   trackedKw: number,
+  trackedKwSource: HeadroomDeviceKwSource,
   deviceName?: string,
 ): void => {
   const entry = ensureHeadroomEntry(state, deviceId);
   entry.lastObservedKw = trackedKw;
+  entry.lastObservedKwSource = trackedKwSource;
   if (deviceName) {
     entry.deviceName = deviceName;
   }
@@ -324,24 +329,25 @@ const maybeRecordTrackedStepDown = (params: {
 
 const resolveTrackedHeadroomDeviceKw = (
   device: Pick<HeadroomCardDeviceLike, 'expectedPowerKw' | 'powerKw'>,
-): number => {
-  if (isFiniteNumber(device.expectedPowerKw)) return device.expectedPowerKw;
-  if (isFiniteNumber(device.powerKw)) return device.powerKw;
-  return 0;
+): ResolvedHeadroomDeviceKw => {
+  if (isFiniteNumber(device.expectedPowerKw)) return { kw: device.expectedPowerKw, source: 'expectedPowerKw' };
+  if (isFiniteNumber(device.powerKw)) return { kw: device.powerKw, source: 'powerKw' };
+  return { kw: 0, source: 'fallback_zero' };
 };
 
 export const resolveObservedHeadroomDeviceKw = (
   device: Pick<HeadroomCardDeviceLike, 'measuredPowerKw' | 'powerKw'>,
-): number => {
-  if (isFiniteNumber(device.measuredPowerKw)) return device.measuredPowerKw;
-  if (isFiniteNumber(device.powerKw)) return device.powerKw;
-  return 0;
+): ResolvedHeadroomDeviceKw => {
+  if (isFiniteNumber(device.measuredPowerKw)) return { kw: device.measuredPowerKw, source: 'measuredPowerKw' };
+  if (isFiniteNumber(device.powerKw)) return { kw: device.powerKw, source: 'powerKw' };
+  return { kw: 0, source: 'fallback_zero' };
 };
 
 const syncHeadroomCardTrackedKw = (params: {
   state: PlanEngineState;
   deviceId: string;
   trackedKw: number;
+  trackedKwSource: HeadroomDeviceKwSource;
   nowTs: number;
   device?: HeadroomCardDeviceLike;
   deviceName?: string;
@@ -351,6 +357,7 @@ const syncHeadroomCardTrackedKw = (params: {
     state,
     deviceId,
     trackedKw,
+    trackedKwSource,
     nowTs,
     device,
     deviceName,
@@ -369,7 +376,7 @@ const syncHeadroomCardTrackedKw = (params: {
   let stateChanged = expiredChanged || penaltyInfo.stateChanged;
 
   if (!isFiniteNumber(previousTrackedKw)) {
-    updateHeadroomCardLastObserved(state, deviceId, trackedKw, name);
+    updateHeadroomCardLastObserved(state, deviceId, trackedKw, trackedKwSource, name);
     return stateChanged;
   }
 
@@ -396,7 +403,7 @@ const syncHeadroomCardTrackedKw = (params: {
     diagnostics,
   }) || stateChanged;
 
-  updateHeadroomCardLastObserved(state, deviceId, trackedKw, name);
+  updateHeadroomCardLastObserved(state, deviceId, trackedKw, trackedKwSource, name);
   return stateChanged;
 };
 
@@ -405,15 +412,19 @@ const syncHeadroomCardDevice = (params: {
   device: HeadroomCardDeviceLike;
   nowTs: number;
   diagnostics?: DeviceDiagnosticsRecorder;
-}): boolean => syncHeadroomCardTrackedKw({
-  state: params.state,
-  deviceId: params.device.id,
-  trackedKw: resolveTrackedHeadroomDeviceKw(params.device),
-  nowTs: params.nowTs,
-  device: params.device,
-  deviceName: params.device.name,
-  diagnostics: params.diagnostics,
-});
+}): boolean => {
+  const { kw: trackedKw, source: trackedKwSource } = resolveTrackedHeadroomDeviceKw(params.device);
+  return syncHeadroomCardTrackedKw({
+    state: params.state,
+    deviceId: params.device.id,
+    trackedKw,
+    trackedKwSource,
+    nowTs: params.nowTs,
+    device: params.device,
+    deviceName: params.device.name,
+    diagnostics: params.diagnostics,
+  });
+};
 
 const getStepDownCooldown = (
   state: PlanEngineState,
@@ -516,6 +527,7 @@ export const syncHeadroomCardTrackedUsage = (params: {
   state: params.state,
   deviceId: params.deviceId,
   trackedKw: params.trackedKw,
+  trackedKwSource: 'powerKw',
   nowTs: params.nowTs ?? Date.now(),
   diagnostics: params.diagnostics,
 });

@@ -1157,7 +1157,7 @@ describe('Device plan snapshot', () => {
     expect(devPlan?.reason).not.toContain('cooldown');
   });
 
-  it('shows headroom cooldown on active devices after a meaningful step-down', async () => {
+  it('keeps the selected keep reason on active devices after a meaningful tracked step-down', async () => {
     const dev1 = new MockDevice('dev-1', 'EV Charger', ['measure_power', 'onoff']);
     await dev1.setCapabilityValue('measure_power', 1190);
     await dev1.setCapabilityValue('onoff', true);
@@ -1193,7 +1193,7 @@ describe('Device plan snapshot', () => {
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('keep');
-    expect(devPlan?.reason).toMatch(/^headroom cooldown \(\d+s remaining; usage 3\.50 -> 1\.19kW\)$/);
+    expect(devPlan?.reason).toBe('keep');
     expect(devPlan?.headroomCardBlocked).toBe(true);
     expect(devPlan?.headroomCardCooldownSec).toBeGreaterThanOrEqual(55);
     expect(devPlan?.headroomCardCooldownSec).toBeLessThanOrEqual(60);

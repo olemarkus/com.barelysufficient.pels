@@ -595,7 +595,7 @@ function logHeadroomCheck(params: {
     `Headroom check for device "${deviceName}": `
     + `soft limit=${softLimit.toFixed(2)}kW, `
     + `current power=${currentPower?.toFixed(2) ?? 'unknown'}kW, `
-    + `device consumption=${decision.observedKw.toFixed(2)}kW, `
+    + `device consumption=${decision.observedKw.toFixed(2)}kW (${decision.observedKwSource}), `
     + `expected power=${expectedPowerKwStr}kW${sourceStr}, `
     + `headroom for device=${decision.calculatedHeadroomForDeviceKw.toFixed(2)}kW `
     + `(required=${requiredKw.toFixed(2)}kW, effective=${decision.requiredKwWithPenalty.toFixed(2)}kW)`

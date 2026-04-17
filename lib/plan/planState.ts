@@ -30,6 +30,7 @@ export type ActivationAttemptState = {
 
 export type HeadroomCardState = {
   lastObservedKw?: number;
+  lastObservedKwSource?: 'expectedPowerKw' | 'powerKw' | 'measuredPowerKw' | 'fallback_zero';
   deviceName?: string;
   lastStepDownMs?: number;
   cooldownUntilMs?: number;
