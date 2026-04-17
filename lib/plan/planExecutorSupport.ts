@@ -179,7 +179,6 @@ export const recordDiagnosticsRestore = (params: {
 }): void => {
   params.diagnostics?.recordControlEvent({
     kind: 'restore',
-    origin: 'pels',
     deviceId: params.deviceId,
     name: params.name,
     nowTs: params.nowTs,
@@ -194,7 +193,6 @@ export const recordDiagnosticsShed = (params: {
 }): void => {
   params.diagnostics?.recordControlEvent({
     kind: 'shed',
-    origin: 'pels',
     deviceId: params.deviceId,
     name: params.name,
     nowTs: params.nowTs,

@@ -207,8 +207,8 @@ const maybeStartTrackedActivationAttempt = (params: {
   if (startResult.started) {
     if (name) {
       diagnostics?.recordControlEvent({
-        kind: 'restore',
-        origin: 'tracked',
+        kind: 'tracked_transition',
+        direction: 'up',
         deviceId,
         name,
         nowTs,
@@ -257,8 +257,8 @@ const maybeRecordTrackedStepDown = (params: {
   const name = resolveHeadroomDeviceName({ state, deviceId, device, deviceName });
   if (name) {
     diagnostics?.recordControlEvent({
-      kind: 'shed',
-      origin: 'tracked',
+      kind: 'tracked_transition',
+      direction: 'down',
       deviceId,
       name,
       nowTs,

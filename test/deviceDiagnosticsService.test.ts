@@ -129,14 +129,12 @@ describe('DeviceDiagnosticsService', () => {
 
     service.recordControlEvent({
       kind: 'shed',
-      origin: 'pels',
       deviceId: 'heater-1',
       name: 'Hall Heater',
       nowTs: shedTs,
     });
     service.recordControlEvent({
       kind: 'restore',
-      origin: 'pels',
       deviceId: 'heater-1',
       name: 'Hall Heater',
       nowTs: restoreTs,
@@ -159,7 +157,6 @@ describe('DeviceDiagnosticsService', () => {
     }, { name: 'Hall Heater' });
     service.recordControlEvent({
       kind: 'shed',
-      origin: 'pels',
       deviceId: 'heater-1',
       name: 'Hall Heater',
       nowTs: setbackTs,
@@ -184,6 +181,38 @@ describe('DeviceDiagnosticsService', () => {
     });
     expect(summary.windows['1d'].avgShedToRestoreMs).toBe(20 * 60 * 1000);
     expect(summary.windows['1d'].avgRestoreToSetbackMs).toBe(5 * 60 * 1000);
+  });
+
+  it('accepts tracked transitions without counting them as shed or restore actions', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    service.recordControlEvent({
+      kind: 'tracked_transition',
+      direction: 'down',
+      deviceId: 'heater-1',
+      name: 'Hall Heater',
+      nowTs: start,
+    });
+    service.recordControlEvent({
+      kind: 'tracked_transition',
+      direction: 'up',
+      deviceId: 'heater-1',
+      name: 'Hall Heater',
+      nowTs: start + (2 * 60 * 1000),
+    });
+
+    const summary = service.getUiPayload(start + (2 * 60 * 1000)).diagnosticsByDeviceId['heater-1'];
+    expect(summary).toMatchObject({
+      windows: {
+        '1d': expect.objectContaining({
+          shedCount: 0,
+          restoreCount: 0,
+          avgShedToRestoreMs: null,
+          avgRestoreToSetbackMs: null,
+        }),
+      },
+    });
   });
 
   it('does not backfill observation gaps larger than ten minutes', () => {
@@ -639,7 +668,7 @@ describe('DeviceDiagnosticsService', () => {
   it('repairs invalid persisted payloads and prunes expired day buckets', () => {
     const versionMismatch = createDeps({
       initialState: {
-      version: 0,
+      version: 1,
       windowDays: 21,
       generatedAt: 0,
       devicesById: {},
@@ -648,14 +677,14 @@ describe('DeviceDiagnosticsService', () => {
 
     expect(versionMismatch.settings.set).toHaveBeenCalledWith(
       DEVICE_DIAGNOSTICS_STATE_KEY,
-      expect.objectContaining({ version: 1 }),
+      expect.objectContaining({ version: 2 }),
     );
     expect(versionMismatch.logDebug).toHaveBeenCalledWith(
       expect.stringContaining('Diagnostics: reset persisted payload reason="version mismatch'),
     );
 
     const validOldState = {
-      version: 1,
+      version: 2,
       windowDays: 21,
       generatedAt: Date.now(),
       devicesById: {
@@ -713,7 +742,7 @@ describe('DeviceDiagnosticsService', () => {
 
     expect(invalid.settings.set).toHaveBeenCalledWith(
       DEVICE_DIAGNOSTICS_STATE_KEY,
-      expect.objectContaining({ version: 1, devicesById: {} }),
+      expect.objectContaining({ version: 2, devicesById: {} }),
     );
     expect(invalid.logDebug).toHaveBeenCalledWith(
       expect.stringContaining('Diagnostics: reset persisted payload reason="invalid persisted payload"'),
@@ -754,7 +783,6 @@ describe('DeviceDiagnosticsService', () => {
     service.recordControlEvent({
       nowTs: start,
       kind: 'shed',
-      origin: 'pels',
       deviceId: 'heater-1',
     });
     vi.runOnlyPendingTimers();
@@ -765,7 +793,6 @@ describe('DeviceDiagnosticsService', () => {
     service.recordControlEvent({
       nowTs: secondTs,
       kind: 'restore',
-      origin: 'pels',
       deviceId: 'heater-1',
     });
 
@@ -790,7 +817,6 @@ describe('DeviceDiagnosticsService', () => {
       service.recordControlEvent({
         nowTs: Date.UTC(2026, 2, 9, 10, 0, 0),
         kind: 'shed',
-        origin: 'pels',
         deviceId: 'heater-1',
       });
 
@@ -810,7 +836,6 @@ describe('DeviceDiagnosticsService', () => {
       service.recordControlEvent({
         nowTs: Date.UTC(2026, 2, 9, 10, 0, 0),
         kind: 'shed',
-        origin: 'pels',
         deviceId: 'heater-1',
       });
 
