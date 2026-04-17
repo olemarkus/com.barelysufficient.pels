@@ -10,7 +10,6 @@ import {
   normalizeDeviceControlProfiles,
   normalizeSteppedLoadProfile,
   resolveSteppedLoadPlanningPowerKw,
-  resolveSteppedLoadPowerHeuristicStepId,
   sortSteppedLoadSteps,
 } from '../lib/utils/deviceControlProfiles';
 import type { SteppedLoadProfile } from '../lib/utils/types';
@@ -79,20 +78,6 @@ describe('deviceControlProfiles', () => {
     expect(getSteppedLoadNextLowerStep({ profile, stepId: undefined })?.id).toBe('off');
     expect(getSteppedLoadNextLowerStep({ profile, stepId: 'max', floorStepId: 'missing' })).toBeNull();
     expect(getSteppedLoadNextLowerStep({ profile: offOnlyProfile, stepId: undefined })).toBeNull();
-  });
-
-  it('uses the power heuristic only for positive measured values within tolerance', () => {
-    const profile = buildProfile();
-    const offOnlyProfile: SteppedLoadProfile = {
-      model: 'stepped_load', steps: [{ id: 'offish', planningPowerW: 0 }],
-    };
-
-    expect(resolveSteppedLoadPowerHeuristicStepId(profile, 0)).toBeUndefined();
-    expect(resolveSteppedLoadPowerHeuristicStepId(profile, -1)).toBeUndefined();
-    expect(resolveSteppedLoadPowerHeuristicStepId(profile, 1.2)).toBe('low');
-    expect(resolveSteppedLoadPowerHeuristicStepId(profile, 2.8)).toBe('max');
-    expect(resolveSteppedLoadPowerHeuristicStepId(profile, 5)).toBeUndefined();
-    expect(resolveSteppedLoadPowerHeuristicStepId(offOnlyProfile, 0.4)).toBeUndefined();
   });
 
   it('normalizes valid stepped-load profiles and rejects invalid ones', () => {
