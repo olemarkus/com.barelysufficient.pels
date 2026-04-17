@@ -73,6 +73,18 @@ const resolveSteppedLoadActualStepSource = (
   return undefined;
 };
 
+const resolveSteppedLoadStepSource = (params: {
+  reportedStepId: string | undefined;
+  heuristicStepId: string | undefined;
+  defaultStepId: string | undefined;
+}): 'reported' | 'power_heuristic' | 'profile_default' | undefined => {
+  const { reportedStepId, heuristicStepId, defaultStepId } = params;
+  if (reportedStepId) return 'reported';
+  if (heuristicStepId) return 'power_heuristic';
+  if (defaultStepId) return 'profile_default';
+  return undefined;
+};
+
 const resolveSteppedLoadCurrentOn = (params: {
   snapshot: TargetDeviceSnapshot;
   profile: SteppedLoadProfile;
@@ -110,16 +122,26 @@ export const decorateSnapshotWithDeviceControl = (params: {
   const desiredStepId = getSteppedLoadStep(profile, desired?.stepId)?.id;
   const heuristicStepId = resolveSteppedLoadPowerHeuristicStepId(profile, snapshot.measuredPowerKw);
   const defaultStepId = getSteppedLoadHighestStep(profile)?.id;
-  const selectedStepId = reportedStepId ?? heuristicStepId ?? defaultStepId;
+  const inferredStepId = reportedStepId ? undefined : heuristicStepId ?? defaultStepId;
+  const stepSource = resolveSteppedLoadStepSource({
+    reportedStepId,
+    heuristicStepId,
+    defaultStepId,
+  });
+  const selectedStepId = reportedStepId ?? inferredStepId;
   const actualStepId = reportedStepId ?? heuristicStepId;
   const actualStepSource = resolveSteppedLoadActualStepSource(reportedStepId, heuristicStepId);
-  const assumedStepId = reportedStepId ? undefined : heuristicStepId ?? defaultStepId;
+  const assumedStepId = inferredStepId;
   const planningPowerKw = resolveSteppedLoadPlanningPowerKw(profile, selectedStepId);
 
   return {
     ...snapshot,
     controlModel: 'stepped_load',
     steppedLoadProfile: profile,
+    reportedStepId,
+    targetStepId: desiredStepId,
+    inferredStepId,
+    stepSource,
     selectedStepId,
     desiredStepId,
     actualStepId,

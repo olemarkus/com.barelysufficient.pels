@@ -94,6 +94,10 @@ describe('appDeviceControlHelpers', () => {
     });
 
     expect(decorated.controlModel).toBe('stepped_load');
+    expect(decorated.reportedStepId).toBeUndefined();
+    expect(decorated.targetStepId).toBeUndefined();
+    expect(decorated.inferredStepId).toBe('max');
+    expect(decorated.stepSource).toBe('profile_default');
     expect(decorated.selectedStepId).toBe('max');
     expect(decorated.actualStepId).toBeUndefined();
     expect(decorated.assumedStepId).toBe('max');
@@ -166,6 +170,10 @@ describe('appDeviceControlHelpers', () => {
     });
 
     expect(decorated.selectedStepId).toBe('low');
+    expect(decorated.reportedStepId).toBeUndefined();
+    expect(decorated.targetStepId).toBeUndefined();
+    expect(decorated.inferredStepId).toBe('low');
+    expect(decorated.stepSource).toBe('power_heuristic');
     expect(decorated.actualStepId).toBe('low');
     expect(decorated.assumedStepId).toBe('low');
     expect(decorated.actualStepSource).toBe('power_heuristic');
@@ -190,6 +198,10 @@ describe('appDeviceControlHelpers', () => {
       nowMs: 1500,
     });
     expect(pendingDecorated.desiredStepId).toBe('low');
+    expect(pendingDecorated.targetStepId).toBe('low');
+    expect(pendingDecorated.reportedStepId).toBeUndefined();
+    expect(pendingDecorated.inferredStepId).toBe('max');
+    expect(pendingDecorated.stepSource).toBe('profile_default');
     expect(pendingDecorated.selectedStepId).toBe('max');
     expect(pendingDecorated.assumedStepId).toBe('max');
     expect(pendingDecorated.stepCommandPending).toBe(true);
@@ -210,6 +222,10 @@ describe('appDeviceControlHelpers', () => {
       nowMs: 1700,
     });
     expect(reportedDecorated.selectedStepId).toBe('low');
+    expect(reportedDecorated.reportedStepId).toBe('low');
+    expect(reportedDecorated.targetStepId).toBe('low');
+    expect(reportedDecorated.inferredStepId).toBeUndefined();
+    expect(reportedDecorated.stepSource).toBe('reported');
     expect(reportedDecorated.actualStepId).toBe('low');
     expect(reportedDecorated.assumedStepId).toBeUndefined();
     expect(reportedDecorated.actualStepSource).toBe('reported');
@@ -231,6 +247,10 @@ describe('appDeviceControlHelpers', () => {
       nowMs: 2000 + STEPPED_LOAD_COMMAND_STALE_MS + 1,
     });
     expect(staleDecorated.selectedStepId).toBe('low');
+    expect(staleDecorated.reportedStepId).toBe('low');
+    expect(staleDecorated.targetStepId).toBe('off');
+    expect(staleDecorated.inferredStepId).toBeUndefined();
+    expect(staleDecorated.stepSource).toBe('reported');
     expect(staleDecorated.desiredStepId).toBe('off');
     expect(staleDecorated.stepCommandPending).toBe(false);
     expect(staleDecorated.stepCommandStatus).toBe('stale');

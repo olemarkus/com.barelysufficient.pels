@@ -116,7 +116,7 @@ describe('plan usage line', () => {
     expect(getUsageText()).toBe('Measured: 0.00 kW / Expected: 1.00 kW');
   });
 
-  it('shows stepped-load planning and live usage in the overview row', async () => {
+  it('shows stepped-load planning and live usage with inferred-step labeling', async () => {
     await renderPlanSnapshot({
       devices: [
         {
@@ -134,10 +134,10 @@ describe('plan usage line', () => {
     });
 
     expect(getPowerText()).toBeUndefined();
-    expect(getUsageText()).toBe('Measured: 0.00 kW / Expected: 3.00 kW (max)');
+    expect(getUsageText()).toBe('Measured: 0.00 kW / Expected: 3.00 kW (inferred: max)');
   });
 
-  it('shows stepped-load usage without extra assumption labels', async () => {
+  it('shows stepped-load usage with explicit inferred-step labels', async () => {
     await renderPlanSnapshot({
       devices: [
         {
@@ -156,7 +156,7 @@ describe('plan usage line', () => {
     });
 
     expect(getPowerText()).toBeUndefined();
-    expect(getUsageText()).toBe('Measured: 0.00 kW / Expected: 3.00 kW (max)');
+    expect(getUsageText()).toBe('Measured: 0.00 kW / Expected: 3.00 kW (inferred: max)');
   });
 });
 
@@ -525,7 +525,7 @@ describe('plan device state', () => {
 
     expect(getPowerText()).toBeUndefined();
     expect(getStateText()).toBe('Restoring');
-    expect(getUsageText()).toBe('Measured: 0.60 kW / Expected: 3.00 kW (low → max)');
+    expect(getUsageText()).toBe('Measured: 0.60 kW / Expected: 3.00 kW (inferred: low / target: max)');
     expect(getBadgeClassList('dev-step-restore')?.contains('neutral')).toBe(true);
   });
 
@@ -550,7 +550,7 @@ describe('plan device state', () => {
 
     expect(getPowerText()).toBeUndefined();
     expect(getStateText()).toBe('Shed to low');
-    expect(getUsageText()).toBe('Measured: 1.10 kW / Expected: 1.25 kW (max → low)');
+    expect(getUsageText()).toBe('Measured: 1.10 kW / Expected: 1.25 kW (inferred: max / target: low)');
     expect(getBadgeClassList('dev-step-shed')?.contains('expensive')).toBe(true);
   });
 

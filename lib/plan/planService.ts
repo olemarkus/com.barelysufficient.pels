@@ -52,6 +52,50 @@ import type { PlanActuationMode, PlanActuationResult } from './planExecutor';
 
 const SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS = 1500;
 
+function resolveOverviewTargetStepId(device: DevicePlan['devices'][number]): string | null {
+  return device.targetStepId ?? device.desiredStepId ?? null;
+}
+
+function buildOverviewSignatureForDevice(
+  device: DevicePlan['devices'][number],
+  overview: ReturnType<typeof formatDeviceOverview>,
+): string {
+  return buildDeviceOverviewTransitionSignature({
+    powerMsg: overview.powerMsg,
+    stateMsg: overview.stateMsg,
+    reason: device.reason,
+    reportedStepId: device.reportedStepId,
+    targetStepId: resolveOverviewTargetStepId(device) ?? undefined,
+    inferredStepId: device.inferredStepId,
+  });
+}
+
+function buildOverviewEventForDevice(
+  device: DevicePlan['devices'][number],
+  overview: ReturnType<typeof formatDeviceOverview>,
+): Record<string, unknown> {
+  return {
+    component: 'overview',
+    event: 'device_overview_changed',
+    deviceId: device.id,
+    deviceName: device.name,
+    powerMsg: overview.powerMsg,
+    stateMsg: overview.stateMsg,
+    usageMsg: overview.usageMsg,
+    statusMsg: overview.statusMsg,
+    currentState: device.currentState,
+    plannedState: device.plannedState,
+    reason: device.reason ?? null,
+    measuredPowerKw: device.measuredPowerKw ?? null,
+    expectedPowerKw: getDeviceOverviewExpectedPowerKw(device) ?? null,
+    reportedStepId: device.reportedStepId ?? null,
+    targetStepId: resolveOverviewTargetStepId(device),
+    inferredStepId: device.inferredStepId ?? null,
+    stepSource: device.stepSource ?? null,
+    desiredStepId: device.desiredStepId ?? null,
+  };
+}
+
 const createPlanSnapshotFallbackScheduler = (deps: {
   getNowMs: () => number;
   resolveDueAtMs: (state: PlanRebuildSchedulerState) => number;
@@ -560,30 +604,11 @@ export class PlanService {
     for (const device of plan.devices) {
       nextDeviceIds.add(device.id);
       const overview = formatDeviceOverview(device);
-      const signature = buildDeviceOverviewTransitionSignature({
-        powerMsg: overview.powerMsg,
-        stateMsg: overview.stateMsg,
-        reason: device.reason,
-      });
+      const signature = buildOverviewSignatureForDevice(device, overview);
       const previousSignature = this.lastOverviewSignatureByDeviceId.get(device.id);
       this.lastOverviewSignatureByDeviceId.set(device.id, signature);
       if (signature === previousSignature) continue;
-      this.deps.overviewDebugStructured({
-        component: 'overview',
-        event: 'device_overview_changed',
-        deviceId: device.id,
-        deviceName: device.name,
-        powerMsg: overview.powerMsg,
-        stateMsg: overview.stateMsg,
-        usageMsg: overview.usageMsg,
-        statusMsg: overview.statusMsg,
-        currentState: device.currentState,
-        plannedState: device.plannedState,
-        reason: device.reason ?? null,
-        measuredPowerKw: device.measuredPowerKw ?? null,
-        expectedPowerKw: getDeviceOverviewExpectedPowerKw(device) ?? null,
-        desiredStepId: device.desiredStepId ?? null,
-      });
+      this.deps.overviewDebugStructured(buildOverviewEventForDevice(device, overview));
     }
 
     for (const deviceId of this.lastOverviewSignatureByDeviceId.keys()) {

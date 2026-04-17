@@ -13,10 +13,15 @@ export type DeviceOverviewSnapshot = {
   shedAction?: 'turn_off' | 'set_temperature' | 'set_step';
   shedTemperature?: number | null;
   currentTarget?: unknown;
+  reportedStepId?: string;
+  targetStepId?: string;
+  inferredStepId?: string;
+  stepSource?: 'reported' | 'power_heuristic' | 'profile_default';
   selectedStepId?: string;
   desiredStepId?: string;
   actualStepId?: string;
   assumedStepId?: string;
+  actualStepSource?: 'reported' | 'assumed' | 'power_heuristic' | 'profile_default';
   binaryCommandPending?: boolean;
   observationStale?: boolean;
 };
@@ -50,24 +55,57 @@ const isOffLikeState = (state?: string): boolean => {
   return normalized === 'off' || normalized === 'unknown';
 };
 
-const getDisplayedSteppedStepId = (device: DeviceOverviewSnapshot): string | undefined => (
-  device.actualStepId ?? device.assumedStepId ?? device.selectedStepId
+const getReportedStepId = (device: DeviceOverviewSnapshot): string | undefined => (
+  device.reportedStepId ?? (device.actualStepSource === 'reported' ? device.actualStepId : undefined)
+);
+
+const getTargetStepId = (device: DeviceOverviewSnapshot): string | undefined => (
+  device.targetStepId ?? device.desiredStepId
+);
+
+const getInferredStepId = (device: DeviceOverviewSnapshot): string | undefined => {
+  if (device.inferredStepId) return device.inferredStepId;
+  if (device.assumedStepId) return device.assumedStepId;
+  if (!getReportedStepId(device) && device.actualStepSource === 'power_heuristic') {
+    return device.actualStepId;
+  }
+  if (!getReportedStepId(device)) return device.selectedStepId;
+  return undefined;
+};
+
+const getEffectiveSteppedStepId = (device: DeviceOverviewSnapshot): string | undefined => (
+  getReportedStepId(device) ?? getInferredStepId(device)
 );
 
 const getSteppedUsageStepText = (device: DeviceOverviewSnapshot): string | null => {
-  const selectedStepId = getDisplayedSteppedStepId(device);
-  const desiredStepId = device.desiredStepId;
-  if (!selectedStepId && !desiredStepId) return null;
-  if (!selectedStepId) return desiredStepId ? `→ ${desiredStepId}` : null;
-  if (desiredStepId && desiredStepId !== selectedStepId) {
-    return `${selectedStepId} → ${desiredStepId}`;
+  const reportedStepId = getReportedStepId(device);
+  const targetStepId = getTargetStepId(device);
+  const inferredStepId = getInferredStepId(device);
+
+  if (reportedStepId) {
+    if (targetStepId && targetStepId !== reportedStepId) {
+      return `reported: ${reportedStepId} / target: ${targetStepId}`;
+    }
+    return `reported: ${reportedStepId}`;
   }
-  return selectedStepId;
+
+  if (inferredStepId) {
+    if (targetStepId && targetStepId !== inferredStepId) {
+      return `inferred: ${inferredStepId} / target: ${targetStepId}`;
+    }
+    return `inferred: ${inferredStepId}`;
+  }
+
+  return targetStepId ? `target: ${targetStepId}` : null;
 };
 
 const getSteppedRestorePending = (device: DeviceOverviewSnapshot): boolean => (
   isSteppedLoadDevice(device)
-  && Boolean(device.selectedStepId && device.desiredStepId && device.selectedStepId !== device.desiredStepId)
+  && Boolean(
+    getEffectiveSteppedStepId(device)
+    && getTargetStepId(device)
+    && getEffectiveSteppedStepId(device) !== getTargetStepId(device),
+  )
 );
 
 const resolvePlannedPowerState = (
@@ -109,7 +147,7 @@ const isActiveStatusDevice = (device: DeviceOverviewSnapshot): boolean => (
 const resolveShedStateMsg = (device: DeviceOverviewSnapshot): string => {
   if (device.shedAction === 'set_temperature') return 'Shed (lowered temperature)';
   if (device.shedAction === 'set_step') {
-    return device.desiredStepId ? `Shed to ${device.desiredStepId}` : 'Shed (reduced step)';
+    return getTargetStepId(device) ? `Shed to ${getTargetStepId(device)}` : 'Shed (reduced step)';
   }
   return 'Shed (powered off)';
 };
@@ -210,11 +248,19 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
 };
 
 export const buildDeviceOverviewTransitionSignature = (
-  overview: Pick<DeviceOverviewStrings, 'powerMsg' | 'stateMsg'> & { reason?: string },
+  overview: Pick<DeviceOverviewStrings, 'powerMsg' | 'stateMsg'> & {
+    reason?: string;
+    reportedStepId?: string;
+    targetStepId?: string;
+    inferredStepId?: string;
+  },
 ): string => (
   JSON.stringify({
     powerMsg: overview.powerMsg,
     stateMsg: overview.stateMsg,
     reason: buildComparablePlanReason(overview.reason),
+    reportedStepId: overview.reportedStepId ?? null,
+    targetStepId: overview.targetStepId ?? null,
+    inferredStepId: overview.inferredStepId ?? null,
   })
 );

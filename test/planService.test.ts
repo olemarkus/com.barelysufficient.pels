@@ -572,6 +572,10 @@ describe('PlanService', () => {
       reason: 'keep',
       measuredPowerKw: 0,
       expectedPowerKw: 3,
+      reportedStepId: null,
+      targetStepId: null,
+      inferredStepId: null,
+      stepSource: null,
       desiredStepId: null,
     }));
   });

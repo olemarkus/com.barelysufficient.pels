@@ -23,6 +23,37 @@ PELS must keep these concepts separate:
 
 Most bugs in this area come from collapsing two of those into one.
 
+## Stepped-Load Step Semantics
+
+Stepped loads need the same separation, but for step identity rather than only binary on/off state.
+
+Use these meanings consistently:
+
+- `reportedStepId`: confirmed device feedback only. This is the observed step.
+- `targetStepId`: the step PELS currently wants. This is planner/runtime intent.
+- `inferredStepId`: fallback step chosen from telemetry heuristics or profile default when there is
+  no confirmed report.
+- `stepSource`: why the current effective step value exists. Supported values are `reported`,
+  `power_heuristic`, and `profile_default`.
+
+Legacy compatibility fields still exist in some snapshots and plans:
+
+- `selectedStepId`: planner-effective current step. This may be reported or inferred.
+- `desiredStepId`: legacy alias for the current target step.
+- `actualStepId`: legacy best-effort concrete step. Historically this could mean reported or
+  heuristic, so do not treat it as confirmed by name alone.
+- `assumedStepId`: legacy inferred/fallback step.
+
+Contributor rules:
+
+- planner logic may use the effective step (`reportedStepId ?? inferredStepId`) as a conservative
+  operating assumption
+- overview/UI wording must use `reportedStepId` for confirmed observed step
+- if there is no `reportedStepId`, wording must say the step is inferred or assumed rather than
+  presenting it as confirmed
+- do not use `selectedStepId` or `actualStepId` as human-facing observed truth without first
+  resolving whether they are actually reported or merely inferred
+
 ## Generic Device-State Assumptions
 
 These rules are intentionally generic. They apply across vendors, transports, and device models.
