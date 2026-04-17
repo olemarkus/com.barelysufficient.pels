@@ -74,6 +74,7 @@ const getSteppedModeTransitionText = (device: DeviceOverviewSnapshot): string | 
 
 export const isDeviceOverviewSteppedModeTransition = (device: DeviceOverviewSnapshot): boolean => (
   isSteppedLoadDevice(device)
+  && !isGrayStateDevice(device)
   && isOnLikeState(device.currentState)
   && getSteppedModeTransitionText(device) !== null
 );
