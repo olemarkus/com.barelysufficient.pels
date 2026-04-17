@@ -29,6 +29,7 @@ export type PeriodicStatusLogFields = {
   hourRemainingKWh: number;
   sheddingActive: boolean;
   capacityShortfall: boolean;
+  starvedDeviceCount: number;
   mode: string;
   dryRun: boolean;
 };
@@ -39,8 +40,16 @@ export function buildPeriodicStatusLogFields(params: {
   capacitySettings: { limitKw: number; marginKw: number };
   operatingMode: string;
   capacityDryRun: boolean;
+  starvedDeviceCount?: number;
 }): PeriodicStatusLogFields {
-  const { capacityGuard, powerTracker, capacitySettings, operatingMode, capacityDryRun } = params;
+  const {
+    capacityGuard,
+    powerTracker,
+    capacitySettings,
+    operatingMode,
+    capacityDryRun,
+    starvedDeviceCount = 0,
+  } = params;
   const metrics = resolveCapacityStatusMetrics({ capacityGuard, capacitySettings });
   const hourCapKWh = resolveUsableCapacityKw(capacitySettings);
   const sheddingActive = capacityGuard?.isSheddingActive() ?? false;
@@ -59,6 +68,7 @@ export function buildPeriodicStatusLogFields(params: {
     hourRemainingKWh,
     sheddingActive,
     capacityShortfall: inShortfall,
+    starvedDeviceCount,
     mode: operatingMode,
     dryRun: capacityDryRun,
   };

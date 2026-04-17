@@ -410,6 +410,7 @@ class PelsApp extends Homey.App {
     this.deviceDiagnosticsService = createDeviceDiagnosticsService({
       homey: this.homey, getTimeZone: () => this.getTimeZone(),
       isDebugEnabled: () => this.debugLoggingTopics.has('diagnostics'),
+      structuredLog: this.structuredLogger,
       logDebug: (topic, ...args) => this.logDebug(topic, ...args),
       error: (...args) => this.error(...args),
     });
@@ -948,6 +949,7 @@ class PelsApp extends Homey.App {
       capacitySettings: this.capacitySettings,
       operatingMode: this.operatingMode,
       capacityDryRun: this.capacityDryRun,
+      starvedDeviceCount: this.deviceDiagnosticsService?.getCurrentStarvedDeviceCount?.() ?? 0,
     };
     this.getStructuredLogger('status')?.info(buildPeriodicStatusLogFields(periodicStatusParams));
     if (options.includeDeviceHealth === true) {

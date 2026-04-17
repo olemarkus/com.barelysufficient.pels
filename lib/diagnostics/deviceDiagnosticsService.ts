@@ -23,6 +23,7 @@ import {
   type PersistedDayAggregate,
   type PersistedDiagnosticsState,
 } from './deviceDiagnosticsModel';
+import type { Logger as PinoLogger } from '../logging/logger';
 
 export const DEVICE_DIAGNOSTICS_STATE_KEY = 'device_diagnostics_v1';
 export const DEVICE_DIAGNOSTICS_WINDOW_DAYS = 21;
@@ -66,6 +67,7 @@ export type DeviceDiagnosticsStarvationPauseReason =
   | 'sample_gap'
   | 'unknown_suppression_reason';
 
+type DeviceDiagnosticsStarvationResetReasonCode = 'device_no_longer_eligible';
 export type DeviceDiagnosticsPlanObservation = {
   deviceId: string;
   name: string;
@@ -189,7 +191,7 @@ type StarvationEvaluation = {
   entryQualified: boolean;
   belowExitThreshold: boolean;
   clearQualified: boolean;
-  pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
+  pauseReason: DeviceDiagnosticsStarvationPauseReason;
 };
 
 type LiveStarvationState = {
@@ -206,6 +208,7 @@ type LiveStarvationState = {
 type LiveDeviceDiagnostics = {
   name: string;
   lastObservedTs?: number;
+  lastObservationBatchId?: number;
   lastObservation?: LiveDemandObservation;
   lastStarvationObservation?: LiveStarvationObservation;
   openShedTs?: number;
@@ -218,6 +221,7 @@ type DeviceDiagnosticsServiceDeps = {
   homey: Homey.App['homey'];
   getTimeZone: () => string;
   isDebugEnabled?: () => boolean;
+  structuredLog?: Pick<PinoLogger, 'info'>;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
 };
@@ -362,6 +366,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
   private lastFlushMs = 0;
   private lastSkippedFlushLogMs = 0;
   private lastSeenDateKey: string | null = null;
+  private latestObservationBatchId = 0;
 
   constructor(private deps: DeviceDiagnosticsServiceDeps) {
     this.loadFromSettings();
@@ -372,9 +377,11 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     nowTs?: number;
   }): void {
     const nowTs = params.nowTs ?? Date.now();
+    this.latestObservationBatchId += 1;
+    const observationBatchId = this.latestObservationBatchId;
     this.ensureDayRollover(nowTs);
     for (const observation of params.observations) {
-      this.observeDeviceSample(observation, nowTs);
+      this.observeDeviceSample(observation, nowTs, observationBatchId);
     }
     this.scheduleFlush(nowTs);
   }
@@ -515,6 +522,13 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     };
   }
 
+  getCurrentStarvedDeviceCount(): number {
+    return Object.values(this.liveByDeviceId)
+      .filter((live) => live.lastObservationBatchId === this.latestObservationBatchId)
+      .filter((live) => live.starvation.isStarved)
+      .length;
+  }
+
   destroy(): void {
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
@@ -559,9 +573,14 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     }
   }
 
-  private observeDeviceSample(observation: DeviceDiagnosticsPlanObservation, nowTs: number): void {
+  private observeDeviceSample(
+    observation: DeviceDiagnosticsPlanObservation,
+    nowTs: number,
+    observationBatchId: number,
+  ): void {
     const live = this.getLiveDeviceState(observation.deviceId);
     live.name = observation.name;
+    live.lastObservationBatchId = observationBatchId;
     const nextObservation: LiveDemandObservation = {
       includeDemandMetrics: observation.includeDemandMetrics,
       unmetDemand: observation.unmetDemand,
@@ -618,7 +637,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     endTs: number,
   ): void {
     if (!observation.eligibleForStarvation) {
-      this.hardResetStarvation(deviceId, 'device no longer eligible', startTs);
+      this.hardResetStarvation(deviceId, 'device_no_longer_eligible', startTs);
       return;
     }
     const evaluation = evaluateStarvationObservation(observation);
@@ -721,6 +740,14 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       starvationCause: observation.countingCause,
       starvationPauseReason: null,
     };
+    this.deps.structuredLog?.info({
+      event: 'device_starvation_started',
+      deviceId,
+      deviceName: live.name,
+      cause: observation.countingCause,
+      starvationEpisodeStartedAtMs: entryAt,
+      starvedDurationMs: accumulatedMs,
+    });
     this.deps.logDebug(
       `Diagnostics: starvation started ${formatDeviceRef(deviceId, live.name)} `
       + `cause=${observation.countingCause ?? 'unknown'} at=${new Date(entryAt).toISOString()}`,
@@ -747,6 +774,13 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       starvationPauseReason: evaluation.counting ? null : evaluation.pauseReason,
     };
     if (endTs < clearAt) return;
+    this.deps.structuredLog?.info({
+      event: 'device_starvation_cleared',
+      deviceId,
+      deviceName: live.name,
+      transitionAtMs: clearAt,
+      starvedDurationMs: live.starvation.starvedAccumulatedMs,
+    });
     this.deps.logDebug(
       `Diagnostics: starvation cleared ${formatDeviceRef(deviceId, live.name)} `
       + `at=${new Date(clearAt).toISOString()}`,
@@ -762,6 +796,14 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
   ): void {
     const live = this.getLiveDeviceState(deviceId);
     if (!isFiniteNumber(live.starvation.starvationLastResumedAt)) {
+      this.deps.structuredLog?.info({
+        event: 'device_starvation_resumed',
+        deviceId,
+        deviceName: live.name,
+        cause: observation.countingCause,
+        transitionAtMs: startTs,
+        starvedDurationMs: live.starvation.starvedAccumulatedMs,
+      });
       this.deps.logDebug(
         `Diagnostics: starvation resumed ${formatDeviceRef(deviceId, live.name)} `
         + `cause=${observation.countingCause ?? 'unknown'} at=${new Date(startTs).toISOString()}`,
@@ -781,14 +823,22 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
 
   private pauseStarvation(
     deviceId: string,
-    pauseReason: DeviceDiagnosticsStarvationPauseReason | null,
+    pauseReason: DeviceDiagnosticsStarvationPauseReason,
     nowTs: number,
   ): void {
     const live = this.getLiveDeviceState(deviceId);
     if (isFiniteNumber(live.starvation.starvationLastResumedAt)) {
+      this.deps.structuredLog?.info({
+        event: 'device_starvation_paused',
+        deviceId,
+        deviceName: live.name,
+        pauseReason,
+        transitionAtMs: nowTs,
+        starvedDurationMs: live.starvation.starvedAccumulatedMs,
+      });
       this.deps.logDebug(
         `Diagnostics: starvation paused ${formatDeviceRef(deviceId, live.name)} `
-        + `reason=${pauseReason ?? 'temperature_recovered'} at=${new Date(nowTs).toISOString()}`,
+        + `reason=${pauseReason} at=${new Date(nowTs).toISOString()}`,
       );
     }
     live.starvation = {
@@ -802,7 +852,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
 
   private hardResetStarvation(
     deviceId: string,
-    reason: string,
+    reasonCode: DeviceDiagnosticsStarvationResetReasonCode,
     nowTs: number,
   ): void {
     const live = this.getLiveDeviceState(deviceId);
@@ -814,9 +864,18 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     ) {
       return;
     }
+    this.deps.structuredLog?.info({
+      event: 'device_starvation_hard_reset',
+      deviceId,
+      deviceName: live.name,
+      reasonCode,
+      transitionAtMs: nowTs,
+      starvedDurationMs: starvation.starvedAccumulatedMs,
+      wasStarved: starvation.isStarved,
+    });
     this.deps.logDebug(
       `Diagnostics: starvation hard-reset ${formatDeviceRef(deviceId, live.name)} `
-      + `reason=${reason} at=${new Date(nowTs).toISOString()}`,
+      + `reason=${reasonCode} at=${new Date(nowTs).toISOString()}`,
     );
     this.resetStarvationState(deviceId);
   }

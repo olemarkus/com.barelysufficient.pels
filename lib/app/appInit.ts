@@ -29,12 +29,14 @@ export const createDeviceDiagnosticsService = (app: {
   homey: Homey.App['homey'];
   getTimeZone: () => string;
   isDebugEnabled?: () => boolean;
+  structuredLog?: PinoLogger;
   logDebug: (topic: DebugLoggingTopic, ...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
 }): DeviceDiagnosticsService => new DeviceDiagnosticsService({
   homey: app.homey,
   getTimeZone: () => app.getTimeZone(),
   isDebugEnabled: app.isDebugEnabled,
+  structuredLog: app.structuredLog?.child({ component: 'diagnostics' }),
   logDebug: (...args: unknown[]) => app.logDebug('diagnostics', ...args),
   error: (...args: unknown[]) => app.error(...args),
 });

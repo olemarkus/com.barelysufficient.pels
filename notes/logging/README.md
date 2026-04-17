@@ -70,6 +70,11 @@ This note is for contributors changing runtime logging.
 - `realtime_reconcile_circuit_opened`
 - `realtime_reconcile_failed`
 - `device_overview_changed`
+- `device_starvation_started`
+- `device_starvation_paused`
+- `device_starvation_resumed`
+- `device_starvation_cleared`
+- `device_starvation_hard_reset`
 
 ## Gaps Still Open
 
