@@ -217,12 +217,13 @@ const maybeStartTrackedActivationAttempt = (params: {
         context: reconciliationContext,
       });
       diagnostics?.recordControlEvent({
-        kind: 'tracked_transition',
-        direction: 'up',
-        reconciliation,
+        kind: 'tracked_usage_rise',
         deviceId,
         name,
         nowTs,
+        fromKw: previousTrackedKw,
+        toKw: trackedKw,
+        reconciliation,
       });
     }
   }
@@ -276,12 +277,13 @@ const maybeRecordTrackedStepDown = (params: {
       context: reconciliationContext,
     });
     diagnostics?.recordControlEvent({
-      kind: 'tracked_transition',
-      direction: 'down',
-      reconciliation,
+      kind: 'tracked_usage_drop',
       deviceId,
       name,
       nowTs,
+      fromKw: previousTrackedKw,
+      toKw: trackedKw,
+      reconciliation,
     });
   }
   const setbackResult = recordActivationSetback({
