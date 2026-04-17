@@ -1,5 +1,9 @@
 import { emitRestoreDebugEventOnChange } from '../lib/plan/planDebugDedupe';
 import { createPlanEngineState } from '../lib/plan/planState';
+import {
+  buildComparableDeviceReason,
+  PLAN_REASON_CODES,
+} from '../packages/shared-domain/src/planReasonSemantics';
 
 describe('planDebugDedupe', () => {
   it('suppresses repeated cooldown/backoff chatter while the block reason is unchanged', () => {
@@ -15,6 +19,14 @@ describe('planDebugDedupe', () => {
         reason: 'activation backoff (10s remaining)',
         remainingMs: 10_000,
       },
+      signaturePayload: {
+        event: 'restore_blocked_setback',
+        deviceId: 'dev-1',
+        reason: buildComparableDeviceReason({
+          code: PLAN_REASON_CODES.activationBackoff,
+          remainingSec: 10,
+        }),
+      },
       debugStructured,
     });
     emitRestoreDebugEventOnChange({
@@ -25,6 +37,14 @@ describe('planDebugDedupe', () => {
         deviceId: 'dev-1',
         reason: 'activation backoff (9s remaining)',
         remainingMs: 9_000,
+      },
+      signaturePayload: {
+        event: 'restore_blocked_setback',
+        deviceId: 'dev-1',
+        reason: buildComparableDeviceReason({
+          code: PLAN_REASON_CODES.activationBackoff,
+          remainingSec: 9,
+        }),
       },
       debugStructured,
     });

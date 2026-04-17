@@ -1,6 +1,8 @@
 import { buildPelsStatus } from '../lib/core/pelsStatus';
 import { NEUTRAL_STARTUP_HOLD_REASON } from '../lib/plan/planRestoreDevices';
 import type { DevicePlan } from '../lib/plan/planTypes';
+import type { DeviceReason } from '../packages/shared-domain/src/planReasonSemantics';
+import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
 
 describe('pels status limit reason', () => {
   const baseDevice = {
@@ -17,7 +19,7 @@ describe('pels status limit reason', () => {
 
   const buildPlan = (params: {
     softLimitSource: 'capacity' | 'daily' | 'both';
-    reason: string;
+    reason: string | DeviceReason;
     headroomKw?: number;
   }): DevicePlan => ({
     meta: {
@@ -29,7 +31,7 @@ describe('pels status limit reason', () => {
     devices: [
       {
         ...baseDevice,
-        reason: params.reason,
+        reason: typeof params.reason === 'string' ? legacyDeviceReason(params.reason) : params.reason,
       },
     ],
   });
@@ -97,7 +99,7 @@ describe('pels status limit reason', () => {
           currentTarget: 21,
           plannedTarget: 21,
           controllable: true,
-          reason: 'keep',
+          reason: legacyDeviceReason('keep'),
           headroomCardBlocked: true,
           headroomCardCooldownSec: 45,
           headroomCardCooldownSource: 'step_down',
@@ -135,7 +137,7 @@ describe('pels status limit reason', () => {
           currentTarget: null,
           plannedTarget: null,
           controllable: true,
-          reason: 'inactive (charger is unplugged)',
+          reason: legacyDeviceReason('inactive (charger is unplugged)'),
         },
       ],
     };

@@ -1,4 +1,9 @@
-import { buildComparablePlanReason } from './planReasonSemantics.js';
+import {
+  buildComparableDeviceReason,
+  formatDeviceReason,
+  PLAN_REASON_CODES,
+  type DeviceReason,
+} from './planReasonSemantics.js';
 
 export type DeviceOverviewSnapshot = {
   currentState?: string;
@@ -7,7 +12,7 @@ export type DeviceOverviewSnapshot = {
   measuredPowerKw?: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;
-  reason?: string;
+  reason?: DeviceReason;
   controllable?: boolean;
   available?: boolean;
   shedAction?: 'turn_off' | 'set_temperature' | 'set_step';
@@ -149,28 +154,23 @@ const resolveStateMsg = (device: DeviceOverviewSnapshot): string => {
   return 'Unknown';
 };
 
-const formatActivePlanStatusReason = (reason: string): string => {
-  const meterSettlingMatch = reason.match(/^meter settling \((.+)\)$/);
-  if (meterSettlingMatch) {
-    return `waiting for meter to settle (${meterSettlingMatch[1]})`;
+export const formatOverviewStatus = (reason: DeviceReason): string => {
+  switch (reason.code) {
+    case PLAN_REASON_CODES.meterSettling:
+      return `waiting for meter to settle (${reason.remainingSec}s remaining)`;
+    case PLAN_REASON_CODES.cooldownRestore:
+      return `waiting for meter to settle (${reason.remainingSec}s remaining)`;
+    case PLAN_REASON_CODES.headroomCooldown:
+      if (reason.kind === 'recent_pels_restore') {
+        return `stabilizing after recent PELS restore (${reason.remainingSec}s remaining)`;
+      }
+      if (reason.kind === 'recent_pels_shed') {
+        return `stabilizing after recent PELS shed (${reason.remainingSec}s remaining)`;
+      }
+      return `stabilizing after recent usage step-down (${reason.remainingSec}s remaining)`;
+    default:
+      return formatDeviceReason(reason);
   }
-
-  const legacyRestoreCooldownMatch = reason.match(/^cooldown \(restore, (.+)\)$/);
-  if (legacyRestoreCooldownMatch) {
-    return `waiting for meter to settle (${legacyRestoreCooldownMatch[1]})`;
-  }
-
-  const headroomRestoreMatch = reason.match(/^headroom cooldown \((.+); recent PELS restore\)$/);
-  if (headroomRestoreMatch) {
-    return `stabilizing after recent PELS restore (${headroomRestoreMatch[1]})`;
-  }
-
-  const headroomShedMatch = reason.match(/^headroom cooldown \((.+); recent PELS shed\)$/);
-  if (headroomShedMatch) {
-    return `stabilizing after recent PELS shed (${headroomShedMatch[1]})`;
-  }
-
-  return reason;
 };
 
 const formatUsageText = (params: {
@@ -213,8 +213,8 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
   let statusMsg = 'Waiting for headroom';
   if (device.reason) {
     statusMsg = device.plannedState === 'keep'
-      ? formatActivePlanStatusReason(device.reason)
-      : device.reason;
+      ? formatOverviewStatus(device.reason)
+      : formatDeviceReason(device.reason);
   }
 
   return {
@@ -227,7 +227,7 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
 
 export const buildDeviceOverviewTransitionSignature = (
   overview: Pick<DeviceOverviewStrings, 'powerMsg' | 'stateMsg'> & {
-    reason?: string;
+    reason?: DeviceReason;
     reportedStepId?: string;
     targetStepId?: string;
   },
@@ -235,7 +235,7 @@ export const buildDeviceOverviewTransitionSignature = (
   JSON.stringify({
     powerMsg: overview.powerMsg,
     stateMsg: overview.stateMsg,
-    reason: buildComparablePlanReason(overview.reason),
+    reason: buildComparableDeviceReason(overview.reason),
     reportedStepId: overview.reportedStepId ?? null,
     targetStepId: overview.targetStepId ?? null,
   })

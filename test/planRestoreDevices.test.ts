@@ -10,16 +10,23 @@ import {
   markOffDevicesStayOff,
 } from '../lib/plan/planRestoreDevices';
 import type { DevicePlanDevice } from '../lib/plan/planTypes';
+import { legacyDeviceReason, reasonText } from './utils/deviceReasonTestUtils';
 
-const makeDevice = (overrides: Partial<DevicePlanDevice>): DevicePlanDevice => ({
-  id: overrides.id ?? 'dev',
-  name: overrides.name ?? 'Device',
-  currentState: overrides.currentState ?? 'off',
-  plannedState: overrides.plannedState ?? 'keep',
-  currentTarget: overrides.currentTarget ?? null,
-  plannedTarget: overrides.plannedTarget ?? null,
-  ...overrides,
-});
+const makeDevice = (
+  overrides: Partial<DevicePlanDevice> & { reason?: DevicePlanDevice['reason'] | string },
+): DevicePlanDevice => {
+  const reason = typeof overrides.reason === 'string' ? legacyDeviceReason(overrides.reason) : overrides.reason;
+  return {
+    id: overrides.id ?? 'dev',
+    name: overrides.name ?? 'Device',
+    currentState: overrides.currentState ?? 'off',
+    plannedState: overrides.plannedState ?? 'keep',
+    currentTarget: overrides.currentTarget ?? null,
+    plannedTarget: overrides.plannedTarget ?? null,
+    ...overrides,
+    reason,
+  };
+};
 
 describe('plan restore device helpers', () => {
   it('filters restore candidates and swap-out devices by priority and shed behavior', () => {
@@ -159,15 +166,15 @@ describe('plan restore device helpers', () => {
       controlCapabilityId: 'onoff',
       expectedPowerSource: 'default',
     }))).toBeNull();
-    expect(getInactiveReason(makeDevice({
+    expect(reasonText(getInactiveReason(makeDevice({
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_out',
-    }))).toBe('inactive (charger is unplugged)');
-    expect(getInactiveReason(makeDevice({
+    })))).toBe('inactive (charger is unplugged)');
+    expect(reasonText(getInactiveReason(makeDevice({
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_paused',
       expectedPowerSource: 'default',
-    }))).toBe('inactive (charger power unknown; configure expected power or let PELS observe a charging peak)');
+    })))).toBe('inactive (charger power unknown; configure expected power or let PELS observe a charging peak)');
 
     const deviceMap = new Map<string, DevicePlanDevice>([
       ['dev1', makeDevice({ id: 'dev1', name: 'Device 1', powerKw: 1.1 })],
@@ -194,10 +201,13 @@ describe('plan restore device helpers', () => {
       },
       setDevice,
     });
-    expect(setDevice).toHaveBeenCalledWith('dev1', expect.objectContaining({ reason: 'cooldown (shedding, 7s remaining)' }));
+    expect(setDevice).toHaveBeenCalledWith(
+      'dev1',
+      expect.objectContaining({ reason: legacyDeviceReason('cooldown (shedding, 7s remaining)') }),
+    );
     expect(setDevice).toHaveBeenCalledWith('ev1', expect.objectContaining({
       plannedState: 'inactive',
-      reason: 'inactive (charger is unplugged)',
+      reason: legacyDeviceReason('inactive (charger is unplugged)'),
     }));
     setDevice.mockClear();
     deviceMap.set('dev2', makeDevice({ id: 'dev2', name: 'Device 2', reason: 'shed due to capacity', powerKw: 2.2 }));
@@ -211,9 +221,12 @@ describe('plan restore device helpers', () => {
         shedCooldownRemainingSec: null,
       },
       setDevice,
-      reasonOverride: (device) => `blocked ${device.id}`,
+      reasonOverride: (device) => ({ code: 'other', text: `blocked ${device.id}` }),
     });
-    expect(setDevice).toHaveBeenCalledWith('dev2', expect.objectContaining({ reason: 'blocked dev2' }));
+    expect(setDevice).toHaveBeenCalledWith(
+      'dev2',
+      expect.objectContaining({ reason: { code: 'other', text: 'blocked dev2' } }),
+    );
   });
 
   it('shares the same live eligibility gate across restore candidate paths', () => {

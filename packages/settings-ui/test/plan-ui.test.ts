@@ -1,3 +1,5 @@
+import { buildComparablePlanReason } from '../../shared-domain/src/planReasonSemantics.ts';
+
 const setupPlanDom = () => {
   document.body.innerHTML = `
     <div id="plan-list"></div>
@@ -6,11 +8,27 @@ const setupPlanDom = () => {
   `;
 };
 
+const normalizePlanSnapshot = (plan: unknown): unknown => {
+  if (!plan || typeof plan !== 'object') return plan;
+  const snapshot = plan as { devices?: Array<Record<string, unknown>> };
+  if (!Array.isArray(snapshot.devices)) return plan;
+  return {
+    ...snapshot,
+    devices: snapshot.devices.map((device) => {
+      if (typeof device.reason !== 'string') return device;
+      return {
+        ...device,
+        reason: buildComparablePlanReason(device.reason),
+      };
+    }),
+  };
+};
+
 const renderPlanSnapshot = async (plan: unknown) => {
   vi.resetModules();
   setupPlanDom();
   const { renderPlan } = await import('../src/ui/plan.ts');
-  renderPlan(plan as Parameters<typeof renderPlan>[0]);
+  renderPlan(normalizePlanSnapshot(plan) as Parameters<typeof renderPlan>[0]);
 };
 
 const getUsageText = () => {

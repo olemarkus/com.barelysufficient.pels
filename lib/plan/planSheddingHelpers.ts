@@ -112,14 +112,16 @@ export function resolveRecentRestoreState(params: {
   return false;
 }
 
+import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
+
 export function selectShedDevices(params: {
   candidates: ShedCandidate[];
   needed: number;
-  reason: string;
+  reason: DeviceReason;
   logDebug: (...args: unknown[]) => void;
 }): {
   shedSet: Set<string>;
-  shedReasons: Map<string, string>;
+  shedReasons: Map<string, DeviceReason>;
   steppedDesiredStepByDeviceId: Map<string, string>;
   temperatureShedTargets: Map<string, { temperature: number; capabilityId: string }>;
 } {
@@ -130,7 +132,7 @@ export function selectShedDevices(params: {
     logDebug,
   } = params;
   const shedSet = new Set<string>();
-  const shedReasons = new Map<string, string>();
+  const shedReasons = new Map<string, DeviceReason>();
   const steppedDesiredStepByDeviceId = new Map<string, string>();
   const temperatureShedTargets = new Map<string, { temperature: number; capabilityId: string }>();
   let remaining = needed;
@@ -163,9 +165,9 @@ export function selectShedDevices(params: {
   return { shedSet, shedReasons, steppedDesiredStepByDeviceId, temperatureShedTargets };
 }
 
-export function resolveShedReason(limitSource: PlanContext['softLimitSource']): string {
-  if (limitSource === 'daily') return 'shed due to daily budget';
-  return 'shed due to capacity';
+export function resolveShedReason(limitSource: PlanContext['softLimitSource']): DeviceReason {
+  if (limitSource === 'daily') return { code: PLAN_REASON_CODES.dailyBudget, detail: null };
+  return { code: PLAN_REASON_CODES.capacity, detail: null };
 }
 
 function shouldEscalateOvershoot(state: PlanEngineState, nowTs: number): boolean {

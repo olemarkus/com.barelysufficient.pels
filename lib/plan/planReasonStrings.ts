@@ -1,33 +1,18 @@
-export type PlanReasonCode =
-  | 'none'
-  | 'keep'
-  | 'restore_need'
-  | 'set_target'
-  | 'swap_pending'
-  | 'swapped_out'
-  | 'hourly_budget'
-  | 'daily_budget'
-  | 'shortfall'
-  | 'cooldown_shedding'
-  | 'meter_settling'
-  | 'activation_backoff'
-  | 'restore_pending'
-  | 'headroom_cooldown'
-  | 'restore_throttled'
-  | 'waiting_for_other_devices'
-  | 'insufficient_headroom'
-  | 'shedding_active'
-  | 'inactive'
-  | 'capacity'
-  | 'other';
+import {
+  formatDeviceReason,
+  PLAN_REASON_CODES,
+  type DeviceReason,
+  type PlanReasonCode,
+} from '../../packages/shared-domain/src/planReasonSemantics';
 
 export type ClassifiedPlanReason = {
   code: PlanReasonCode;
+  reason: DeviceReason | undefined;
   text: string | undefined;
 };
 
 export type PlanReasonDecision =
-  | { code: 'existing'; text: string }
+  | { code: 'existing'; reason: DeviceReason }
   | { code: 'activation_backoff'; remainingMs: number }
   | { code: 'cooldown_shedding'; remainingSec: number | null }
   | { code: 'meter_settling'; remainingSec: number | null }
@@ -44,160 +29,45 @@ export type PlanReasonDecision =
   | { code: 'restore_pending'; remainingSec: number }
   | { code: 'shortfall'; neededKw: number; headroomKw: number | null };
 
-type ReasonMatcher = {
-  code: PlanReasonCode;
-  matches: (reason: string) => boolean;
-};
-
 function assertNever(value: never): never {
   throw new Error(`Unhandled plan reason decision: ${String((value as { code?: string }).code)}`);
 }
 
-function formatKw(value: number, digits: number): string {
-  const scale = 10 ** digits;
-  const roundedMagnitude = Math.round((Math.abs(value) + Number.EPSILON) * scale) / scale;
-  return (Math.sign(value) * roundedMagnitude).toFixed(digits);
+export function classifyPlanReason(reason: DeviceReason | undefined): ClassifiedPlanReason {
+  const text = reason ? formatDeviceReason(reason) : undefined;
+  return {
+    code: reason?.code ?? PLAN_REASON_CODES.none,
+    reason,
+    text: text || undefined,
+  };
 }
 
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
+export function buildActivationBackoffReason(remainingMs: number): DeviceReason {
+  return {
+    code: PLAN_REASON_CODES.activationBackoff,
+    remainingSec: Math.max(1, Math.ceil(remainingMs / 1000)),
+  };
 }
 
-function buildRestoreNeedSummary(neededKw: number, penaltyExtraKw: number): string {
-  return penaltyExtraKw > 0
-    ? `effective need ${formatKw(neededKw, 2)}kW (base ${formatKw(neededKw - penaltyExtraKw, 2)}kW`
-      + ` + penalty ${formatKw(penaltyExtraKw, 2)}kW)`
-    : `need ${formatKw(neededKw, 2)}kW`;
+export function buildCooldownReason(kind: 'shedding' | 'restore', remainingSec: number | null): DeviceReason {
+  const normalizedRemainingSec = remainingSec ?? 0;
+  return kind === 'shedding'
+    ? { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: normalizedRemainingSec }
+    : { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: normalizedRemainingSec };
 }
 
-function buildRestorePrefix(swapTargetName: string | undefined): string {
-  return swapTargetName
-    ? `insufficient headroom to swap for ${swapTargetName}`
-    : 'insufficient headroom to restore';
+export function buildMeterSettlingReason(remainingSec: number | null): DeviceReason {
+  return { code: PLAN_REASON_CODES.meterSettling, remainingSec: remainingSec ?? 0 };
 }
 
-function buildAvailableSummary(availableKw: number | null): string {
-  return availableKw === null ? 'available unknown' : `available ${formatKw(availableKw, 2)}kW`;
-}
-
-function buildEffectiveSummary(
-  effectiveAvailableKw: number | undefined,
-  swapReserveKw: number | undefined,
-): string | null {
-  if (!isFiniteNumber(effectiveAvailableKw) || !isFiniteNumber(swapReserveKw)) return null;
-  return `effective ${formatKw(effectiveAvailableKw, 2)}kW after ${formatKw(swapReserveKw, 2)}kW swap reserve`;
-}
-
-function buildPostReserveMarginSummary(
-  postReserveMarginKw: number,
-  minimumRequiredPostReserveMarginKw: number,
-): string {
-  return `post-reserve margin ${formatKw(postReserveMarginKw, 3)}kW < `
-    + `${formatKw(minimumRequiredPostReserveMarginKw, 3)}kW`;
-}
-
-const reasonMatchers: readonly ReasonMatcher[] = [
-  {
-    code: 'keep',
-    matches: reason => reason === 'keep' || reason.startsWith('keep ('),
-  },
-  {
-    code: 'restore_need',
-    matches: reason => reason.startsWith('restore (need'),
-  },
-  {
-    code: 'set_target',
-    matches: reason => reason.startsWith('set to '),
-  },
-  {
-    code: 'swap_pending',
-    matches: reason => reason === 'swap pending' || reason.startsWith('swap pending ('),
-  },
-  {
-    code: 'swapped_out',
-    matches: reason => reason.startsWith('swapped out for '),
-  },
-  {
-    code: 'hourly_budget',
-    matches: reason => reason.startsWith('shed due to hourly budget'),
-  },
-  {
-    code: 'daily_budget',
-    matches: reason => reason.startsWith('shed due to daily budget'),
-  },
-  {
-    code: 'shortfall',
-    matches: reason => reason === 'shortfall' || reason.startsWith('shortfall ('),
-  },
-  {
-    code: 'cooldown_shedding',
-    matches: reason => /^cooldown \(shedding, \d+s remaining\)$/.test(reason),
-  },
-  {
-    code: 'meter_settling',
-    matches: reason => /^meter settling \(\d+s remaining\)$/.test(reason),
-  },
-  {
-    code: 'activation_backoff',
-    matches: reason => reason.startsWith('activation backoff ('),
-  },
-  {
-    code: 'restore_pending',
-    matches: reason => reason.startsWith('restore pending ('),
-  },
-  {
-    code: 'headroom_cooldown',
-    matches: reason => reason.startsWith('headroom cooldown ('),
-  },
-  {
-    code: 'restore_throttled',
-    matches: reason => reason === 'restore throttled',
-  },
-  {
-    code: 'waiting_for_other_devices',
-    matches: reason => reason === 'waiting for other devices to recover',
-  },
-  {
-    code: 'insufficient_headroom',
-    matches: reason => reason.startsWith('insufficient headroom'),
-  },
-  {
-    code: 'shedding_active',
-    matches: reason => reason === 'shedding active' || reason.startsWith('shedding active '),
-  },
-  {
-    code: 'inactive',
-    matches: reason => reason === 'inactive' || reason.startsWith('inactive ('),
-  },
-  {
-    code: 'capacity',
-    matches: reason => reason.startsWith('shed due to capacity'),
-  },
-] as const;
-
-export function classifyPlanReason(reason: string | undefined): ClassifiedPlanReason {
-  if (!reason) return { code: 'none', text: reason };
-  const trimmed = reason.trim();
-  const match = reasonMatchers.find(candidate => candidate.matches(trimmed));
-  if (match) return { code: match.code, text: trimmed };
-  return { code: 'other', text: trimmed };
-}
-
-export function buildActivationBackoffReason(remainingMs: number): string {
-  return `activation backoff (${Math.max(1, Math.ceil(remainingMs / 1000))}s remaining)`;
-}
-
-export function buildCooldownReason(kind: 'shedding' | 'restore', remainingSec: number | null): string {
-  return `cooldown (${kind}, ${remainingSec ?? 0}s remaining)`;
-}
-
-export function buildMeterSettlingReason(remainingSec: number | null): string {
-  return `meter settling (${remainingSec ?? 0}s remaining)`;
-}
-
-export function buildRestoreNeedReason(neededKw: number, headroomKw: number | null): string {
-  return `restore (need ${neededKw.toFixed(2)}kW, headroom `
-    + `${headroomKw === null ? 'unknown' : headroomKw.toFixed(2)}kW)`;
+export function buildRestoreNeedReason(neededKw: number, headroomKw: number | null): DeviceReason {
+  return {
+    code: PLAN_REASON_CODES.restoreNeed,
+    fromTarget: null,
+    toTarget: null,
+    needKw: neededKw,
+    headroomKw,
+  };
 }
 
 export function buildRestoreHeadroomReason(params: {
@@ -209,52 +79,32 @@ export function buildRestoreHeadroomReason(params: {
   swapReserveKw?: number;
   effectiveAvailableKw?: number;
   swapTargetName?: string;
-}): string {
-  const {
-    neededKw,
-    availableKw,
-    postReserveMarginKw,
-    minimumRequiredPostReserveMarginKw,
-    penaltyExtraKw = 0,
-    swapReserveKw,
-    effectiveAvailableKw,
-    swapTargetName,
-  } = params;
-  const prefix = buildRestorePrefix(swapTargetName);
-  const needSummary = buildRestoreNeedSummary(neededKw, penaltyExtraKw);
-  const availableSummary = buildAvailableSummary(availableKw);
-  const effectiveSummary = buildEffectiveSummary(effectiveAvailableKw, swapReserveKw);
-  const postReserveMarginSummary = buildPostReserveMarginSummary(
-    postReserveMarginKw,
-    minimumRequiredPostReserveMarginKw,
-  );
-
-  if (availableKw === null) return `${prefix} (${needSummary}, ${availableSummary})`;
-
-  if (effectiveSummary && isFiniteNumber(effectiveAvailableKw) && effectiveAvailableKw < neededKw) {
-    return `${prefix} (${needSummary}, ${availableSummary}, ${effectiveSummary})`;
-  }
-
-  if (availableKw < neededKw) return `${prefix} (${needSummary}, ${availableSummary})`;
-
-  const reserveDetails = effectiveSummary ? `${effectiveSummary}, ` : '';
-  return `${prefix} after reserves (${needSummary}, ${availableSummary}, `
-    + `${reserveDetails}${postReserveMarginSummary})`;
+}): DeviceReason {
+  return {
+    code: PLAN_REASON_CODES.insufficientHeadroom,
+    needKw: params.neededKw,
+    availableKw: params.availableKw,
+    postReserveMarginKw: params.postReserveMarginKw,
+    minimumRequiredPostReserveMarginKw: params.minimumRequiredPostReserveMarginKw,
+    penaltyExtraKw: params.penaltyExtraKw ?? null,
+    swapReserveKw: params.swapReserveKw ?? null,
+    effectiveAvailableKw: params.effectiveAvailableKw ?? null,
+    swapTargetName: params.swapTargetName ?? null,
+  };
 }
 
-export function buildRestorePendingReason(remainingSec: number): string {
-  return `restore pending (${remainingSec}s remaining)`;
+export function buildRestorePendingReason(remainingSec: number): DeviceReason {
+  return { code: PLAN_REASON_CODES.restorePending, remainingSec };
 }
 
-export function buildShortfallReason(neededKw: number, headroomKw: number | null): string {
-  return `shortfall (need ${neededKw.toFixed(2)}kW, headroom `
-    + `${headroomKw === null ? 'unknown' : headroomKw.toFixed(2)}kW)`;
+export function buildShortfallReason(neededKw: number, headroomKw: number | null): DeviceReason {
+  return { code: PLAN_REASON_CODES.shortfall, needKw: neededKw, headroomKw };
 }
 
-export function renderPlanReasonDecision(reason: PlanReasonDecision): string {
+export function renderPlanReasonDecision(reason: PlanReasonDecision): DeviceReason {
   switch (reason.code) {
     case 'existing':
-      return reason.text;
+      return reason.reason;
     case 'activation_backoff':
       return buildActivationBackoffReason(reason.remainingMs);
     case 'cooldown_shedding':
@@ -267,6 +117,7 @@ export function renderPlanReasonDecision(reason: PlanReasonDecision): string {
       return buildRestorePendingReason(reason.remainingSec);
     case 'shortfall':
       return buildShortfallReason(reason.neededKw, reason.headroomKw);
+    default:
+      return assertNever(reason);
   }
-  return assertNever(reason);
 }

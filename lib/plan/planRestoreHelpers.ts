@@ -3,31 +3,37 @@ import type { RestoreTiming } from './planRestoreTiming';
 import type { SwapState } from './planSwapState';
 import type { PlanEngineState } from './planState';
 import type { StructuredDebugEmitter } from '../logging/logger';
+import {
+  buildComparableDeviceReason,
+  formatDeviceReason,
+  PLAN_REASON_CODES,
+} from '../../packages/shared-domain/src/planReasonSemantics';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import {
-  getInactiveReason,
   getSteppedRestoreCandidates,
-  isRestoreLiveEligibleDevice,
   NEUTRAL_STARTUP_HOLD_REASON,
 } from './planRestoreDevices';
 import { resolveCapacityRestoreBlockReason, resolveMeterSettlingRemainingSec } from './planRestoreTiming';
 import {
   getSteppedLoadNextRestoreStep,
-  isSteppedLoadDevice,
   resolveSteppedLoadRestoreDeltaKw,
 } from './planSteppedLoad';
-import { getSteppedLoadLowestActiveStep, getSteppedLoadStep } from '../utils/deviceControlProfiles';
+import { getSteppedLoadLowestActiveStep } from '../utils/deviceControlProfiles';
 import { getActivationPenaltyLevel, getActivationRestoreBlockRemainingMs } from './planActivationBackoff';
 import { computeRestoreBufferKw } from './planRestoreSwap';
 import { RESTORE_ADMISSION_FLOOR_KW } from './planConstants';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from './planDebugDedupe';
+import {
+  countShedDevices,
+  hasOtherDevicesBlockingSteppedRestore,
+} from './planRestoreCoordination';
 import {
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
   type RestoreAdmissionMetrics,
 } from './planRestoreAdmission';
-import { buildRestoreHeadroomReason } from './planReasonStrings';
+import { buildActivationBackoffReason, buildRestoreHeadroomReason } from './planReasonStrings';
 
 export function setRestorePlanDevice(
   deviceMap: Map<string, DevicePlanDevice>,
@@ -86,33 +92,6 @@ export function markSteppedDevicesStayAtCurrentLevel(params: {
   }
 }
 
-export function hasOtherDevicesWithUnconfirmedRecovery(
-  deviceMap: Map<string, DevicePlanDevice>,
-  deviceId: string,
-): boolean {
-  for (const device of deviceMap.values()) {
-    if (device.id === deviceId) continue;
-    if (!isRestoreLiveEligibleDevice(device)) continue;
-    if (getInactiveReason(device)) continue;
-    if (isDeviceUnconfirmedRecoveryInFlight(device)) return true;
-  }
-  return false;
-}
-
-export function hasOtherDevicesBlockingSteppedRestore(
-  deviceMap: Map<string, DevicePlanDevice>,
-  steppedDeviceId: string,
-  lastDeviceShedMs: Record<string, number>,
-): boolean {
-  for (const device of deviceMap.values()) {
-    if (device.id === steppedDeviceId) continue;
-    if (!isRestoreLiveEligibleDevice(device)) continue;
-    if (getInactiveReason(device)) continue;
-    if (isDeviceBlockingSteppedRestore(device, lastDeviceShedMs)) return true;
-  }
-  return false;
-}
-
 /**
  * Returns true if this device should be held back from restoring because a swap is still
  * in progress. Checks both whether this device was explicitly swapped out for a specific
@@ -139,7 +118,7 @@ function isBlockedByDirectSwap(
   if (higherPriDev && higherPriDev.currentState === 'off') {
     setRestorePlanDevice(deviceMap, dev.id, {
       plannedState: 'shed',
-      reason: `swap pending (${higherPriDev.name})`,
+      reason: { code: PLAN_REASON_CODES.swapPending, targetName: higherPriDev.name },
     });
     return true;
   }
@@ -168,7 +147,7 @@ function isBlockedByPendingSwapTarget(
     if (swapTargetPriority <= devPriority && swapTargetDev.currentState === 'off') {
       setRestorePlanDevice(deviceMap, dev.id, {
         plannedState: 'shed',
-        reason: `swap pending (${swapTargetDev.name})`,
+        reason: { code: PLAN_REASON_CODES.swapPending, targetName: swapTargetDev.name },
       });
       return true;
     }
@@ -198,8 +177,7 @@ export function blockRestoreForRecentActivationSetback(params: {
   } = params;
   const remainingMs = getActivationRestoreBlockRemainingMs({ state, deviceId });
   if (remainingMs === null) return false;
-  const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
-  const reason = `activation backoff (${remainingSeconds}s remaining)`;
+  const reason = buildActivationBackoffReason(remainingMs);
   if (stepped) {
     setRestorePlanDevice(deviceMap, deviceId, { reason });
   } else {
@@ -218,52 +196,19 @@ export function blockRestoreForRecentActivationSetback(params: {
       penaltyLevel: getActivationPenaltyLevel(state, deviceId),
       remainingMs,
       stepped,
-      reason,
+      reason: formatDeviceReason(reason),
+    },
+    signaturePayload: {
+      event: 'restore_blocked_setback',
+      deviceId,
+      deviceName,
+      penaltyLevel: getActivationPenaltyLevel(state, deviceId),
+      stepped,
+      reason: buildComparableDeviceReason(reason),
     },
     debugStructured,
   });
   return true;
-}
-
-function isTargetRestorePending(device: DevicePlanDevice): boolean {
-  return device.shedAction === 'set_temperature'
-    && typeof device.plannedTarget === 'number'
-    && device.currentTarget !== device.plannedTarget
-    && device.pendingTargetCommand?.status === 'waiting_confirmation'
-    && device.pendingTargetCommand?.desired === device.plannedTarget;
-}
-
-function isSteppedRestorePending(device: DevicePlanDevice): boolean {
-  if (!isSteppedLoadDevice(device) || !device.steppedLoadProfile) return false;
-  if (device.stepCommandPending !== true) return false;
-  if (!device.selectedStepId || !device.desiredStepId || device.desiredStepId === device.selectedStepId) {
-    return false;
-  }
-  const selectedStep = getSteppedLoadStep(device.steppedLoadProfile, device.selectedStepId);
-  const desiredStep = getSteppedLoadStep(device.steppedLoadProfile, device.desiredStepId);
-  if (!selectedStep || !desiredStep) return false;
-  return desiredStep.planningPowerW > selectedStep.planningPowerW;
-}
-
-function isDeviceBlockingSteppedRestore(
-  device: DevicePlanDevice,
-  lastDeviceShedMs: Record<string, number>,
-): boolean {
-  if (device.observationStale === true) return false;
-  if (!lastDeviceShedMs[device.id] || device.plannedState !== 'keep') return false;
-  return device.currentState === 'off'
-    || device.currentState === 'unknown'
-    || isTargetRestorePending(device)
-    || isSteppedRestorePending(device)
-    || device.binaryCommandPending === true;
-}
-
-function isDeviceUnconfirmedRecoveryInFlight(device: DevicePlanDevice): boolean {
-  if (device.observationStale === true) return false;
-  if (device.plannedState !== 'keep') return false;
-  return device.binaryCommandPending === true
-    || isTargetRestorePending(device)
-    || isSteppedRestorePending(device);
 }
 
 /* eslint-disable-next-line max-statements -- stepped restore gating mirrors binary restore precedence */
@@ -385,7 +330,13 @@ function admitSteppedRestore(params: {
   setRestorePlanDevice(deviceMap, dev.id, {
     desiredStepId: nextStep.id,
     expectedPowerKw: nextStep.planningPowerW / 1000,
-    reason: `restore ${dev.selectedStepId ?? 'unknown'} -> ${nextStep.id} (need ${needed.toFixed(2)}kW)`,
+    reason: {
+      code: PLAN_REASON_CODES.restoreNeed,
+      fromTarget: dev.selectedStepId ?? 'unknown',
+      toTarget: nextStep.id,
+      needKw: needed,
+      headroomKw: null,
+    },
   });
   emitRestoreDebugEventOnChange({
     state,
@@ -412,16 +363,6 @@ function admitSteppedRestore(params: {
   return { availableHeadroom: availableHeadroom - needed, restoredOneThisCycle: true };
 }
 
-function countShedDevices(deviceMap: Map<string, DevicePlanDevice>, excludeId: string): number {
-  let count = 0;
-  for (const device of deviceMap.values()) {
-    if (device.id === excludeId) continue;
-    if (device.controllable === false) continue;
-    if (device.plannedState === 'shed') count += 1;
-  }
-  return count;
-}
-
 function blockSteppedRestoreForShedInvariant(params: {
   dev: DevicePlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
@@ -436,8 +377,13 @@ function blockSteppedRestoreForShedInvariant(params: {
   if (!lowestNonZeroStep || nextStep.planningPowerW <= lowestNonZeroStep.planningPowerW) return false;
   const shedDeviceCount = countShedDevices(deviceMap, dev.id);
   if (shedDeviceCount === 0) return false;
-  const reason = `shed invariant: ${dev.selectedStepId ?? 'unknown'} -> ${nextStep.id} blocked `
-    + `(${shedDeviceCount} device(s) shed, max step: ${lowestNonZeroStep.id})`;
+  const reason = {
+    code: PLAN_REASON_CODES.shedInvariant,
+    fromStep: dev.selectedStepId ?? 'unknown',
+    toStep: nextStep.id,
+    shedDeviceCount,
+    maxStep: lowestNonZeroStep.id,
+  } as const;
   setRestorePlanDevice(deviceMap, dev.id, { reason });
 
   const prev = state.steppedRestoreRejectedByDevice[dev.id];
@@ -462,7 +408,22 @@ function blockSteppedRestoreForShedInvariant(params: {
         shedDeviceCount,
         decision: 'rejected',
         rejectionReason: 'shed_invariant',
-        reason,
+        reason: formatDeviceReason(reason),
+      },
+      signaturePayload: {
+        event: 'restore_stepped_rejected',
+        deviceId: dev.id,
+        deviceName: dev.name,
+        phase,
+        currentStepId: dev.selectedStepId ?? 'unknown',
+        requestedStepId: nextStep.id,
+        lowestNonZeroStepId: lowestNonZeroStep.id,
+        allowedMaxStepId: lowestNonZeroStep.id,
+        blockedByShedInvariant: true,
+        shedDeviceCount,
+        decision: 'rejected',
+        rejectionReason: 'shed_invariant',
+        reason: buildComparableDeviceReason(reason),
       },
       debugStructured,
     });

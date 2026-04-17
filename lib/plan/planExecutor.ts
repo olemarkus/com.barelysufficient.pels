@@ -1,6 +1,11 @@
 import Homey from 'homey';
 import CapacityGuard from '../core/capacityGuard';
 import { DeviceManager } from '../core/deviceManager';
+import {
+  formatDeviceReason,
+  PLAN_REASON_CODES,
+  type DeviceReason,
+} from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlan, ShedAction } from './planTypes';
 import type { PendingTargetObservationSource } from './planTypes';
 import type { TargetDeviceSnapshot } from '../utils/types';
@@ -340,10 +345,14 @@ export class PlanExecutor {
     const currentOn = snapshot?.currentOn ?? resolveEffectiveCurrentOn(dev);
     if (currentOn === false) return { handled: true, wrote: false };
     const reason = dev.reason;
-    const isSwap = reason ? reason.includes('swapped out for') : false;
+    const isSwap = reason?.code === PLAN_REASON_CODES.swappedOut;
     return {
       handled: true,
-      wrote: await this.applySheddingToDevice(dev.id, dev.name, isSwap ? reason : undefined),
+      wrote: await this.applySheddingToDevice(
+        dev.id,
+        dev.name,
+        isSwap && reason ? formatDeviceReason(reason) : undefined,
+      ),
     };
   }
 
@@ -829,8 +838,8 @@ export class PlanExecutor {
   }
 }
 
-function isRestoreHoldReason(reason: string | undefined): boolean {
+function isRestoreHoldReason(reason: DeviceReason | undefined): boolean {
   if (!reason) return false;
-  return /^meter settling \(\d+s remaining\)$/.test(reason)
-    || /^cooldown \(restore, \d+s remaining\)$/.test(reason);
+  return reason.code === PLAN_REASON_CODES.meterSettling
+    || reason.code === PLAN_REASON_CODES.cooldownRestore;
 }

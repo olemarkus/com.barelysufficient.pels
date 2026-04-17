@@ -1,16 +1,16 @@
 import { roundLogValue } from '../logging/logDedupe';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type { PlanEngineState } from './planState';
-import { normalizePlanReason } from './planLogging';
 
 export function emitRestoreDebugEventOnChange(params: {
   state: PlanEngineState;
   key: string;
   payload: Record<string, unknown>;
+  signaturePayload?: Record<string, unknown>;
   debugStructured?: StructuredDebugEmitter;
 }): void {
-  const { state, key, payload, debugStructured } = params;
-  const signature = JSON.stringify(normalizeSignatureValue(payload));
+  const { state, key, payload, signaturePayload, debugStructured } = params;
+  const signature = JSON.stringify(normalizeSignatureValue(signaturePayload ?? payload));
   if (state.restoreDecisionLogByKey[key] === signature) return;
   if (!debugStructured) return;
   const restoreDecisionLogByKey = state.restoreDecisionLogByKey;
@@ -23,14 +23,9 @@ export function clearRestoreDebugEvent(state: PlanEngineState, key: string): voi
   delete restoreDecisionLogByKey[key];
 }
 
-function normalizeSignatureValue(value: unknown, fieldName?: string): unknown {
+function normalizeSignatureValue(value: unknown): unknown {
   if (typeof value === 'number') return roundLogValue(value, 2);
-  if (typeof value === 'string') {
-    if (fieldName === 'reason' || fieldName === 'decisionReason') {
-      return normalizePlanReason(value);
-    }
-    return value;
-  }
+  if (typeof value === 'string') return value;
   if (Array.isArray(value)) {
     return value.map((entry) => normalizeSignatureValue(entry));
   }
@@ -39,6 +34,6 @@ function normalizeSignatureValue(value: unknown, fieldName?: string): unknown {
   const entries = Object.entries(value as Record<string, unknown>)
     .filter(([key]) => key !== 'remainingMs');
   return Object.fromEntries(
-    entries.map(([key, entryValue]) => [key, normalizeSignatureValue(entryValue, key)]),
+    entries.map(([key, entryValue]) => [key, normalizeSignatureValue(entryValue)]),
   );
 }

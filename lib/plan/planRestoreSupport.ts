@@ -11,7 +11,9 @@ import {
   applyActivationPenalty,
   syncActivationPenaltyState,
 } from './planActivationBackoff';
+import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { computeBaseRestoreNeed, computePendingRestorePowerKw } from './planRestoreSwap';
+import { buildRestoreHeadroomReason } from './planReasonStrings';
 
 export function reserveHeadroomForPendingRestores(
   rawHeadroom: number,
@@ -83,7 +85,12 @@ export function getRestoreNeed(
   };
 }
 
-export function formatUnknownHeadroomReason(dev: DevicePlanDevice): string {
+export function formatUnknownHeadroomReason(dev: DevicePlanDevice): DeviceReason {
   const { needed } = computeBaseRestoreNeed(dev);
-  return `insufficient headroom (need ${needed.toFixed(2)}kW, headroom unknown)`;
+  return buildRestoreHeadroomReason({
+    neededKw: needed,
+    availableKw: null,
+    postReserveMarginKw: 0,
+    minimumRequiredPostReserveMarginKw: 0,
+  });
 }

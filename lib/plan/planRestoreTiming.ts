@@ -177,6 +177,8 @@ export function getShedCooldownState(params: {
   return { cooldownRemainingMs, inCooldown: cooldownRemainingMs > 0 };
 }
 
+import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
+
 export type CapacityRestoreGateTiming = {
   activeOvershoot: boolean;
   inCooldown: boolean;
@@ -194,7 +196,7 @@ export function resolveCapacityRestoreBlockReason(params: {
   waitingForOtherRecovery?: boolean;
   useThrottleLabel?: boolean;
   showStartupStabilization?: boolean;
-}): string | null {
+}): DeviceReason | null {
   const {
     timing,
     restoredOneThisCycle = false,
@@ -211,11 +213,11 @@ export function resolveCapacityRestoreBlockReason(params: {
 
   if (restoredOneThisCycle) {
     return useThrottleLabel
-      ? 'restore throttled'
-      : `cooldown (restore, ${timing.restoreCooldownSeconds}s remaining)`;
+      ? { code: PLAN_REASON_CODES.restoreThrottled }
+      : { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: timing.restoreCooldownSeconds };
   }
   if (waitingForOtherRecovery) {
-    return 'waiting for other devices to recover';
+    return { code: PLAN_REASON_CODES.waitingForOtherDevices };
   }
   return null;
 }
@@ -223,18 +225,18 @@ export function resolveCapacityRestoreBlockReason(params: {
 function resolveStartupStabilizationReason(
   timing: CapacityRestoreGateTiming,
   showStartupStabilization: boolean,
-): string | null {
+): DeviceReason | null {
   if (!timing.inStartupStabilization) return null;
-  return showStartupStabilization ? 'startup stabilization' : null;
+  return showStartupStabilization ? { code: PLAN_REASON_CODES.startupStabilization } : null;
 }
 
-function resolveCapacityRestoreCooldownReason(timing: CapacityRestoreGateTiming): string | null {
+function resolveCapacityRestoreCooldownReason(timing: CapacityRestoreGateTiming): DeviceReason | null {
   if (timing.activeOvershoot) return null;
   if (timing.inCooldown) {
-    return `cooldown (shedding, ${timing.shedCooldownRemainingSec ?? 0}s remaining)`;
+    return { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: timing.shedCooldownRemainingSec ?? 0 };
   }
   if (timing.inRestoreCooldown) {
-    return `cooldown (restore, ${timing.restoreCooldownRemainingSec ?? 0}s remaining)`;
+    return { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: timing.restoreCooldownRemainingSec ?? 0 };
   }
   return null;
 }

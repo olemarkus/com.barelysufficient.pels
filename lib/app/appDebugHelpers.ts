@@ -6,6 +6,7 @@ import type {
   DeviceDebugObservedSources,
   DeviceManager,
 } from '../core/deviceManager';
+import { formatDeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { DEVICES_API_PATH, getRawDevices } from '../core/deviceManagerHomeyApi';
 import type { DevicePlan } from '../plan/planTypes';
 import type { HomeyDeviceLike } from '../utils/types';
@@ -439,7 +440,7 @@ const compactPelsPlanDevice = (
     plannedState: device.plannedState,
     currentTarget: device.currentTarget,
     plannedTarget: device.plannedTarget,
-    reason: device.reason,
+    reason: device.reason ? formatDeviceReason(device.reason) : undefined,
     controllable: device.controllable,
     pendingTargetCommand: device.pendingTargetCommand,
   };

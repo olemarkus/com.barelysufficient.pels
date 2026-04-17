@@ -17,6 +17,7 @@ import { createPlanEngineState } from '../lib/plan/planState';
 import { applyRestorePlan } from '../lib/plan/planRestore';
 import { resolveMeterSettlingRemainingSec } from '../lib/plan/planRestoreTiming';
 import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
+import { reasonText } from './utils/deviceReasonTestUtils';
 
 const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices: [],
@@ -155,7 +156,7 @@ describe('restore cooldown backoff', () => {
     const onDevice = result.planDevices.find((device) => device.id === 'dev-on');
     expect(offDevice?.plannedState).toBe('keep');
     expect(onDevice?.plannedState).toBe('shed');
-    expect(onDevice?.reason).toBe('swapped out for Off');
+    expect(reasonText(onDevice?.reason)).toBe('swapped out for Off');
     expect(result.stateUpdates.swapByDevice['stale-target']?.pendingTarget).toBeFalsy();
     expect(result.stateUpdates.swapByDevice['dev-on']?.swappedOutFor).toBe('dev-off');
   });
@@ -200,7 +201,7 @@ describe('restore cooldown backoff', () => {
 
     expect(binaryDevice?.plannedState).toBe('shed');
     expect(steppedDevice?.desiredStepId).toBe('low');
-    expect(steppedDevice?.reason).toMatch(/shed invariant/);
+    expect(reasonText(steppedDevice?.reason)).toMatch(/shed invariant/);
   });
 
   it('blocks stepped-load step-up while another previously shed device is still restoring', () => {
@@ -246,7 +247,7 @@ describe('restore cooldown backoff', () => {
 
     expect(binaryDevice?.plannedState).toBe('keep');
     expect(steppedDevice?.desiredStepId).toBe('low');
-    expect(steppedDevice?.reason).toBe('waiting for other devices to recover');
+    expect(reasonText(steppedDevice?.reason)).toBe('waiting for other devices to recover');
   });
 
   it('blocks stepped-load step-up while another ordinary device is swapped out', () => {
@@ -306,7 +307,7 @@ describe('restore cooldown backoff', () => {
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
     expect(steppedDevice?.desiredStepId).toBe('low');
-    expect(steppedDevice?.reason).toMatch(/shed invariant/);
+    expect(reasonText(steppedDevice?.reason)).toMatch(/shed invariant/);
   });
 
   it('blocks stepped-load step-up while an ordinary device is still swap pending', () => {
@@ -355,7 +356,7 @@ describe('restore cooldown backoff', () => {
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
     expect(steppedDevice?.desiredStepId).toBe('low');
-    expect(steppedDevice?.reason).toMatch(/shed invariant/);
+    expect(reasonText(steppedDevice?.reason)).toMatch(/shed invariant/);
   });
 
   it('does not let a stale recently shed device block an unrelated stepped restore', () => {
@@ -400,7 +401,7 @@ describe('restore cooldown backoff', () => {
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
     expect(steppedDevice?.desiredStepId).toBe('medium');
-    expect(steppedDevice?.reason).toBe('restore low -> medium (need 0.95kW)');
+    expect(reasonText(steppedDevice?.reason)).toBe('restore low -> medium (need 0.95kW)');
   });
 
   it('blocks stepped-load step-up while a shed-temperature device is still awaiting restore confirmation', () => {
@@ -455,7 +456,7 @@ describe('restore cooldown backoff', () => {
 
     expect(tempDevice?.plannedState).toBe('keep');
     expect(steppedDevice?.desiredStepId).toBe('low');
-    expect(steppedDevice?.reason).toBe('waiting for other devices to recover');
+    expect(reasonText(steppedDevice?.reason)).toBe('waiting for other devices to recover');
   });
 
   it('blocks ordinary restore while another stepped-load restore is still awaiting confirmation', () => {
@@ -505,7 +506,7 @@ describe('restore cooldown backoff', () => {
 
     expect(steppedDevice?.plannedState).toBe('keep');
     expect(offDevice?.plannedState).toBe('shed');
-    expect(offDevice?.reason).toBe('waiting for other devices to recover');
+    expect(reasonText(offDevice?.reason)).toBe('waiting for other devices to recover');
   });
 
   it('does not block ordinary restore when another shed-temperature device is temporarily unavailable rather than recovering', () => {
@@ -594,7 +595,7 @@ describe('restore cooldown backoff', () => {
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
     expect(steppedDevice?.desiredStepId).toBe('low');
-    expect(steppedDevice?.reason).toBe('restore medium -> low (need 1.48kW)');
+    expect(reasonText(steppedDevice?.reason)).toBe('restore medium -> low (need 1.48kW)');
   });
 
   it('normalizes an unknown-step off restore to the lowest non-zero step and can step up later', () => {
@@ -630,7 +631,7 @@ describe('restore cooldown backoff', () => {
     const restored = firstRestore.planDevices.find((device) => device.id === 'dev-step');
     expect(restored?.desiredStepId).toBe('low');
     expect(restored?.expectedPowerKw).toBeCloseTo(1.25);
-    expect(restored?.reason).toBe('restore unknown -> low (need 1.48kW)');
+    expect(reasonText(restored?.reason)).toBe('restore unknown -> low (need 1.48kW)');
 
     const secondRestore = applyRestorePlan({
       planDevices: [
@@ -704,8 +705,8 @@ describe('restore cooldown backoff', () => {
     const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
-    expect(binaryDevice?.reason).toBe('cooldown (shedding, 55s remaining)');
-    expect(steppedDevice?.reason).toBe('cooldown (shedding, 55s remaining)');
+    expect(reasonText(binaryDevice?.reason)).toBe('cooldown (shedding, 55s remaining)');
+    expect(reasonText(steppedDevice?.reason)).toBe('cooldown (shedding, 55s remaining)');
     expect(steppedDevice?.desiredStepId).toBe('low');
   });
 
@@ -743,7 +744,7 @@ describe('restore cooldown backoff', () => {
     });
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
-    expect(steppedDevice?.reason).toBe('cooldown (shedding, 55s remaining)');
+    expect(reasonText(steppedDevice?.reason)).toBe('cooldown (shedding, 55s remaining)');
   });
 
   it('applies meter settling only to off keep devices during recent restore cooldown', () => {
@@ -789,8 +790,8 @@ describe('restore cooldown backoff', () => {
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
     expect(binaryDevice?.plannedState).toBe('keep');
-    expect(binaryDevice?.reason).toBe('meter settling (55s remaining)');
-    expect(steppedDevice?.reason).not.toBe('meter settling (55s remaining)');
+    expect(reasonText(binaryDevice?.reason)).toBe('meter settling (55s remaining)');
+    expect(reasonText(steppedDevice?.reason)).not.toBe('meter settling (55s remaining)');
     expect(steppedDevice?.desiredStepId).toBe('low');
   });
 
@@ -829,7 +830,7 @@ describe('restore cooldown backoff', () => {
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
     expect(steppedDevice?.plannedState).toBe('keep');
-    expect(steppedDevice?.reason).toBe('meter settling (55s remaining)');
+    expect(reasonText(steppedDevice?.reason)).toBe('meter settling (55s remaining)');
     expect(steppedDevice?.desiredStepId).toBe('low');
   });
 
@@ -877,7 +878,7 @@ describe('restore cooldown backoff', () => {
     expect(restoredDevice?.plannedState).toBe('keep');
     expect(restoredDevice?.reason).not.toBe('meter settling (60s remaining)');
     expect(waitingDevice?.plannedState).toBe('keep');
-    expect(waitingDevice?.reason).toBe('meter settling (60s remaining)');
+    expect(reasonText(waitingDevice?.reason)).toBe('meter settling (60s remaining)');
   });
 
   it('falls back to restoreCooldownSeconds when meter settling remaining seconds are unavailable', () => {
@@ -924,7 +925,7 @@ describe('restore cooldown backoff', () => {
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-off');
     expect(device?.plannedState).toBe('shed');
-    expect(device?.reason).toBe(NEUTRAL_STARTUP_HOLD_REASON);
+    expect(device?.reason).toEqual(NEUTRAL_STARTUP_HOLD_REASON);
   });
 
   it('shows startup stabilization for off devices PELS controlled before restart', () => {
@@ -961,7 +962,7 @@ describe('restore cooldown backoff', () => {
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-off');
     expect(device?.plannedState).toBe('shed');
-    expect(device?.reason).toBe('startup stabilization');
+    expect(reasonText(device?.reason)).toBe('startup stabilization');
   });
 
   it('keeps startup-stabilization reason neutral for never-controlled stepped restores', () => {
@@ -1034,7 +1035,7 @@ describe('restore cooldown backoff', () => {
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-step');
     expect(device?.desiredStepId).toBe('low');
-    expect(device?.reason).toBe('startup stabilization');
+    expect(reasonText(device?.reason)).toBe('startup stabilization');
   });
 
   it('keeps off stepped devices shed with a neutral startup-hold reason when never controlled', () => {
@@ -1071,7 +1072,7 @@ describe('restore cooldown backoff', () => {
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-step-off');
     expect(device?.plannedState).toBe('shed');
-    expect(device?.reason).toBe(NEUTRAL_STARTUP_HOLD_REASON);
+    expect(device?.reason).toEqual(NEUTRAL_STARTUP_HOLD_REASON);
   });
 
   it('keeps off stepped devices shed with startup stabilization when previously controlled', () => {
@@ -1109,7 +1110,7 @@ describe('restore cooldown backoff', () => {
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-step-off');
     expect(device?.plannedState).toBe('shed');
-    expect(device?.reason).toBe('startup stabilization');
+    expect(reasonText(device?.reason)).toBe('startup stabilization');
   });
 
   it('prefers neutral startup hold over cooldown for never-controlled off stepped devices', () => {
@@ -1147,7 +1148,7 @@ describe('restore cooldown backoff', () => {
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-step-off');
     expect(device?.plannedState).toBe('shed');
-    expect(device?.reason).toBe(NEUTRAL_STARTUP_HOLD_REASON);
+    expect(device?.reason).toEqual(NEUTRAL_STARTUP_HOLD_REASON);
   });
 
   it('does not block non-capacity restores during startup stabilization', () => {
@@ -1287,7 +1288,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
 
     const dev = result.planDevices.find((d) => d.id === deviceId);
     expect(dev?.plannedState).toBe('shed');
-    expect(dev?.reason).toMatch(/activation backoff/);
+    expect(reasonText(dev?.reason)).toMatch(/activation backoff/);
   });
 
   it('post-stick shed refreshes lastSetbackMs so the time block stays active', () => {
@@ -1365,7 +1366,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
     });
     const devInsufficient = resultInsufficient.planDevices.find((d) => d.id === deviceId);
     expect(devInsufficient?.plannedState).toBe('shed');
-    expect(devInsufficient?.reason).toMatch(/insufficient headroom/);
+    expect(reasonText(devInsufficient?.reason)).toMatch(/insufficient headroom/);
 
     // With headroom=3.5kW (above penalty threshold + 0.50kW floor) → admitted
     const resultAdmitted = applyRestorePlan({
@@ -1433,7 +1434,7 @@ describe('restore admission — headroom and penalty gates', () => {
     });
     const dev = result.planDevices.find((d) => d.id === 'dev');
     expect(dev?.plannedState).toBe('shed');
-    expect(dev?.reason).toMatch(/insufficient headroom/);
+    expect(reasonText(dev?.reason)).toMatch(/insufficient headroom/);
   });
 
   it('requires postReserveMarginKw >= 0.25kW floor in addition to the 0.25kW admission reserve', () => {
@@ -1473,7 +1474,7 @@ describe('restore admission — headroom and penalty gates', () => {
     });
 
     expect(rejected.planDevices.find((d) => d.id === 'dev')?.plannedState).toBe('shed');
-    expect(rejected.planDevices.find((d) => d.id === 'dev')?.reason).toBe(
+    expect(reasonText(rejected.planDevices.find((d) => d.id === 'dev')?.reason)).toBe(
       'insufficient headroom to restore after reserves (need 0.72kW, available 1.10kW, '
       + 'post-reserve margin 0.128kW < 0.250kW)',
     );
@@ -1503,7 +1504,7 @@ describe('restore admission — headroom and penalty gates', () => {
     });
     const dev = result.planDevices.find((d) => d.id === 'dev');
     expect(dev?.plannedState).toBe('shed');
-    expect(dev?.reason).toMatch(/insufficient headroom/);
+    expect(reasonText(dev?.reason)).toMatch(/insufficient headroom/);
   });
 
   it('recently shed device needs extra headroom via recent-shed multiplier', () => {
@@ -1533,7 +1534,7 @@ describe('restore admission — headroom and penalty gates', () => {
     });
     const dev = result.planDevices.find((d) => d.id === 'dev');
     expect(dev?.plannedState).toBe('shed');
-    expect(dev?.reason).toMatch(/insufficient headroom/);
+    expect(reasonText(dev?.reason)).toMatch(/insufficient headroom/);
   });
 
   it('penalty L4 requires approximately double the base needed headroom', () => {
@@ -1568,7 +1569,7 @@ describe('restore admission — headroom and penalty gates', () => {
       deps: makeDeps(),
     });
     expect(resultBlocked.planDevices.find((d) => d.id === deviceId)?.plannedState).toBe('shed');
-    expect(resultBlocked.planDevices.find((d) => d.id === deviceId)?.reason).toContain(
+    expect(reasonText(resultBlocked.planDevices.find((d) => d.id === deviceId)?.reason)).toContain(
       'effective need 4.60kW (base 2.30kW + penalty 2.30kW)',
     );
 
@@ -1639,7 +1640,7 @@ describe('restore admission — headroom and penalty gates', () => {
     const onDev = result.planDevices.find((d) => d.id === 'dev-on');
     // Blocked by setback — swap should NOT have been attempted
     expect(dev?.plannedState).toBe('shed');
-    expect(dev?.reason).toMatch(/activation backoff/);
+    expect(reasonText(dev?.reason)).toMatch(/activation backoff/);
     // On device should remain on (swap was not triggered)
     expect(onDev?.plannedState).toBe('keep');
   });
@@ -1681,7 +1682,7 @@ describe('restore admission — headroom and penalty gates', () => {
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-temp');
     expect(device?.plannedTarget).toBe(18);
-    expect(device?.reason).toContain('insufficient headroom');
+    expect(reasonText(device?.reason)).toContain('insufficient headroom');
     expect(result.restoredOneThisCycle).toBe(false);
   });
 
@@ -1730,7 +1731,7 @@ describe('restore admission — headroom and penalty gates', () => {
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-temp');
     expect(device?.plannedTarget).toBe(18);
-    expect(device?.reason).toMatch(/activation backoff/);
+    expect(reasonText(device?.reason)).toMatch(/activation backoff/);
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_rejected',
       restoreType: 'target',
@@ -1814,7 +1815,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     });
     const device = result.planDevices.find((d) => d.id === 'dev-temp');
     expect(device?.plannedTarget).toBe(16);
-    expect(device?.reason).toBe(
+    expect(reasonText(device?.reason)).toBe(
       'insufficient headroom to restore after reserves (need 1.20kW, available 1.70kW, '
       + 'post-reserve margin 0.249kW < 0.250kW)',
     );
@@ -1843,7 +1844,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     });
 
     const device = result.planDevices.find((entry) => entry.id === 'dev');
-    expect(device?.reason).toBe(
+    expect(reasonText(device?.reason)).toBe(
       'insufficient headroom to restore after reserves (need 0.65kW, available 1.00kW, '
       + 'post-reserve margin 0.095kW < 0.250kW)',
     );
@@ -1891,7 +1892,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
 
     const dev = deviceMap.get('dev-step')!;
     expect(dev.desiredStepId).toBeUndefined();
-    expect(dev.reason).toContain('insufficient headroom');
+    expect(reasonText(dev.reason)).toContain('insufficient headroom');
   });
 
   it('admits stepped restore when postReserveMarginKw is exactly at the floor', () => {
@@ -1972,7 +1973,7 @@ describe('stepped-load shed invariant', () => {
     const dev = deviceMap.get('dev-step')!;
     // desiredStepId must NOT be changed to 'max' — shed invariant blocks the upgrade
     expect(dev.desiredStepId).toBe('medium');
-    expect(dev.reason).toMatch(/shed invariant/);
+    expect(reasonText(dev.reason)).toMatch(/shed invariant/);
   });
 
   it('allows restore from off to low (lowest non-zero step) while another device is shed', () => {
@@ -2334,6 +2335,6 @@ describe('stepped-load shed invariant', () => {
     const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
     // desiredStepId must not have been upgraded to 'max' — binary-shed device is still shed
     expect(steppedDev?.desiredStepId).toBe('medium');
-    expect(steppedDev?.reason).toMatch(/shed invariant/);
+    expect(reasonText(steppedDev?.reason)).toMatch(/shed invariant/);
   });
 });

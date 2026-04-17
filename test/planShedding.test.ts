@@ -6,6 +6,7 @@ import { createPlanEngineState } from '../lib/plan/planState';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
 import { buildSheddingPlan } from '../lib/plan/planShedding';
 import { resolveSoftOvershootDecision } from '../lib/plan/planOvershoot';
+import { reasonText } from './utils/deviceReasonTestUtils';
 
 const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
   id: 'dev',
@@ -265,7 +266,7 @@ describe('buildSheddingPlan', () => {
       },
     );
 
-    expect(result.shedReasons.get('dev-nonrecent')).toBe('shed due to daily budget');
+    expect(reasonText(result.shedReasons.get('dev-nonrecent'))).toBe('shed due to daily budget');
     expect(result.shedSet.has('dev-recent')).toBe(false);
     expect(result.shedSet.has('dev-at-temp')).toBe(false);
     expect(capacityGuard.checkShortfall).toHaveBeenCalledTimes(1);
@@ -379,7 +380,7 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.has('dev-restore')).toBe(true);
-    expect(result.shedReasons.get('dev-restore')).toBe('shed due to capacity');
+    expect(reasonText(result.shedReasons.get('dev-restore'))).toBe('shed due to capacity');
     expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(true, 2, expect.objectContaining({
       controlledDevices: 2,
       plannedShedDevices: 1,
@@ -427,7 +428,7 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.has('dev-stale')).toBe(true);
-    expect(result.shedReasons.get('dev-stale')).toBe('shed due to capacity');
+    expect(reasonText(result.shedReasons.get('dev-stale'))).toBe('shed due to capacity');
   });
 
   it('treats stepped loads with temperature shedding like target-based shed devices instead of stepping them down', async () => {
@@ -2284,7 +2285,7 @@ describe('buildSheddingPlan', () => {
 
     expect(result.shedSet.has('exempt')).toBe(false);
     expect(result.shedSet.has('regular')).toBe(true);
-    expect(result.shedReasons.get('regular')).toBe('shed due to daily budget');
+    expect(reasonText(result.shedReasons.get('regular'))).toBe('shed due to daily budget');
   });
 
   it('still allows budget-exempt devices to be shed for capacity protection', async () => {
@@ -2336,7 +2337,7 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.has('exempt')).toBe(true);
-    expect(result.shedReasons.get('exempt')).toBe('shed due to capacity');
+    expect(reasonText(result.shedReasons.get('exempt'))).toBe('shed due to capacity');
   });
 
   it('still considers budget-exempt devices when daily shedding also exceeds the capacity soft limit', async () => {

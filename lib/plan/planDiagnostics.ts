@@ -5,6 +5,11 @@ import type {
   DeviceDiagnosticsStarvationPauseReason,
   DeviceDiagnosticsStarvationSuppressionState,
 } from '../diagnostics/deviceDiagnosticsService';
+import {
+  PLAN_REASON_CODES,
+  type DeviceReason,
+  type PlanReasonCode,
+} from '../../packages/shared-domain/src/planReasonSemantics';
 import type { PlanContext } from './planContext';
 import type { RestorePlanResult } from './planRestore';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
@@ -21,95 +26,6 @@ const STARVATION_SUPPORTED_DEVICE_CLASSES = new Set([
   'airtreatment',
 ]);
 
-const starvationReasonMatchers: readonly StarvationReasonMatcher[] = [
-  {
-    matches: reason => reason.startsWith('headroom cooldown ('),
-    suppressionState: 'paused',
-    countingCause: null,
-    pauseReason: 'headroom_cooldown',
-  },
-  {
-    matches: reason => reason.startsWith('cooldown (') || reason.startsWith('meter settling ('),
-    suppressionState: 'paused',
-    countingCause: null,
-    pauseReason: 'cooldown',
-  },
-  {
-    matches: reason => reason === 'restore throttled',
-    suppressionState: 'paused',
-    countingCause: null,
-    pauseReason: 'restore_throttled',
-  },
-  {
-    matches: reason => reason.startsWith('restore pending (')
-      || reason === 'waiting for other devices to recover'
-      || reason.startsWith('restore '),
-    suppressionState: 'paused',
-    countingCause: null,
-    pauseReason: 'restore',
-  },
-  {
-    matches: reason => reason === 'keep' || reason.startsWith('keep ('),
-    suppressionState: 'paused',
-    countingCause: null,
-    pauseReason: 'keep',
-  },
-  {
-    matches: reason => reason.startsWith('inactive (') || reason === 'inactive',
-    suppressionState: 'paused',
-    countingCause: null,
-    pauseReason: 'inactive',
-  },
-  {
-    matches: reason => reason.startsWith('shed due to capacity'),
-    suppressionState: 'counting',
-    countingCause: 'capacity',
-    pauseReason: null,
-  },
-  {
-    matches: reason => reason.startsWith('shed due to daily budget'),
-    suppressionState: 'counting',
-    countingCause: 'daily_budget',
-    pauseReason: null,
-  },
-  {
-    matches: reason => reason.startsWith('shed due to hourly budget'),
-    suppressionState: 'counting',
-    countingCause: 'hourly_budget',
-    pauseReason: null,
-  },
-  {
-    matches: reason => reason === 'shortfall' || reason.startsWith('shortfall ('),
-    suppressionState: 'counting',
-    countingCause: 'shortfall',
-    pauseReason: null,
-  },
-  {
-    matches: reason => reason === 'swap pending' || reason.startsWith('swap pending ('),
-    suppressionState: 'counting',
-    countingCause: 'swap_pending',
-    pauseReason: null,
-  },
-  {
-    matches: reason => reason.startsWith('swapped out for '),
-    suppressionState: 'counting',
-    countingCause: 'swapped_out',
-    pauseReason: null,
-  },
-  {
-    matches: reason => reason.startsWith('insufficient headroom'),
-    suppressionState: 'counting',
-    countingCause: 'insufficient_headroom',
-    pauseReason: null,
-  },
-  {
-    matches: reason => reason === 'shedding active' || reason.startsWith('shedding active '),
-    suppressionState: 'counting',
-    countingCause: 'shedding_active',
-    pauseReason: null,
-  },
-] as const;
-
 const noStarvationSuppression = (): StarvationSuppressionNormalization => ({
   suppressionState: 'none',
   countingCause: null,
@@ -121,21 +37,6 @@ type StarvationSuppressionNormalization = {
   countingCause: DeviceDiagnosticsStarvationCountingCause | null;
   pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
 };
-
-type StarvationReasonMatcher = {
-  matches: (reason: string) => boolean;
-} & (
-  | {
-    suppressionState: 'counting';
-    countingCause: DeviceDiagnosticsStarvationCountingCause;
-    pauseReason: null;
-  }
-  | {
-    suppressionState: 'paused';
-    countingCause: null;
-    pauseReason: DeviceDiagnosticsStarvationPauseReason;
-  }
-);
 
 type BuildDeviceDiagnosticsObservationsParams = {
   context: PlanContext;
@@ -235,15 +136,53 @@ const resolveEligibleForStarvation = (params: {
     && device.available !== false;
 };
 
-const resolveSuppressionFromReason = (
-  reason: string,
-): StarvationSuppressionNormalization => {
-  const match = starvationReasonMatchers.find(candidate => candidate.matches(reason));
-  return match ? {
-    suppressionState: match.suppressionState,
-    countingCause: match.countingCause,
-    pauseReason: match.pauseReason,
-  } : noStarvationSuppression();
+const PAUSED_COOLDOWN_CODES = new Set<PlanReasonCode>([
+  PLAN_REASON_CODES.cooldownShedding,
+  PLAN_REASON_CODES.cooldownRestore,
+  PLAN_REASON_CODES.meterSettling,
+]);
+
+const PAUSED_RESTORE_CODES = new Set<PlanReasonCode>([
+  PLAN_REASON_CODES.restorePending,
+  PLAN_REASON_CODES.waitingForOtherDevices,
+  PLAN_REASON_CODES.restoreNeed,
+]);
+
+const COUNTING_SUPPRESSION_CAUSES: Partial<Record<PlanReasonCode, DeviceDiagnosticsStarvationCountingCause>> = {
+  [PLAN_REASON_CODES.capacity]: 'capacity',
+  [PLAN_REASON_CODES.dailyBudget]: 'daily_budget',
+  [PLAN_REASON_CODES.hourlyBudget]: 'hourly_budget',
+  [PLAN_REASON_CODES.shortfall]: 'shortfall',
+  [PLAN_REASON_CODES.swapPending]: 'swap_pending',
+  [PLAN_REASON_CODES.swappedOut]: 'swapped_out',
+  [PLAN_REASON_CODES.insufficientHeadroom]: 'insufficient_headroom',
+  [PLAN_REASON_CODES.sheddingActive]: 'shedding_active',
+};
+
+const resolveSuppressionFromReason = (reason: DeviceReason): StarvationSuppressionNormalization => {
+  if (reason.code === PLAN_REASON_CODES.headroomCooldown) {
+    return { suppressionState: 'paused', countingCause: null, pauseReason: 'headroom_cooldown' };
+  }
+  if (PAUSED_COOLDOWN_CODES.has(reason.code)) {
+    return { suppressionState: 'paused', countingCause: null, pauseReason: 'cooldown' };
+  }
+  if (reason.code === PLAN_REASON_CODES.restoreThrottled) {
+    return { suppressionState: 'paused', countingCause: null, pauseReason: 'restore_throttled' };
+  }
+  if (PAUSED_RESTORE_CODES.has(reason.code)) {
+    return { suppressionState: 'paused', countingCause: null, pauseReason: 'restore' };
+  }
+  if (reason.code === PLAN_REASON_CODES.keep) {
+    return { suppressionState: 'paused', countingCause: null, pauseReason: 'keep' };
+  }
+  if (reason.code === PLAN_REASON_CODES.inactive) {
+    return { suppressionState: 'paused', countingCause: null, pauseReason: 'inactive' };
+  }
+  const countingCause = COUNTING_SUPPRESSION_CAUSES[reason.code];
+  if (countingCause) {
+    return { suppressionState: 'counting', countingCause, pauseReason: null };
+  }
+  return noStarvationSuppression();
 };
 
 const resolveSuppressionFromHeadroomCooldown = (
@@ -269,7 +208,7 @@ const resolveStarvationSuppression = (params: {
   if (isEv || !inputDevice || device.controllable === false || inputDevice.controllable !== true) {
     return noStarvationSuppression();
   }
-  const reason = (device.reason || '').trim();
+  const reason = device.reason;
   const headroomCooldown = resolveSuppressionFromHeadroomCooldown(device);
   if (!reason) {
     if (headroomCooldown.suppressionState !== 'none') {

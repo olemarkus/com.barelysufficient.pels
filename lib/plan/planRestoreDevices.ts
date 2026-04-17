@@ -1,10 +1,11 @@
 import { getSteppedLoadHighestStep } from '../utils/deviceControlProfiles';
+import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlanDevice } from './planTypes';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { sortByPriorityAsc, sortByPriorityDesc } from './planSort';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 
-export const NEUTRAL_STARTUP_HOLD_REASON = 'left off';
+export const NEUTRAL_STARTUP_HOLD_REASON: DeviceReason = { code: PLAN_REASON_CODES.neutralStartupHold };
 
 export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): boolean {
   return device.controllable !== false
@@ -100,12 +101,12 @@ export function getEvUnknownPowerBlockReason(dev: DevicePlanDevice): string | nu
   return 'charger power unknown; configure expected power or let PELS observe a charging peak';
 }
 
-export function getInactiveReason(dev: DevicePlanDevice): string | null {
+export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {
   const evStateBlock = getEvRestoreStateBlockReason(dev);
-  if (evStateBlock) return `inactive (${evStateBlock})`;
+  if (evStateBlock) return { code: PLAN_REASON_CODES.inactive, detail: evStateBlock };
 
   const evPowerBlock = getEvUnknownPowerBlockReason(dev);
-  if (evPowerBlock) return `inactive (${evPowerBlock})`;
+  if (evPowerBlock) return { code: PLAN_REASON_CODES.inactive, detail: evPowerBlock };
 
   return null;
 }
@@ -121,7 +122,7 @@ export function markOffDevicesStayOff(params: {
     startupStabilizationRemainingSec: number | null;
   };
   setDevice: (id: string, updates: Partial<DevicePlanDevice>) => void;
-  reasonOverride?: (dev: DevicePlanDevice) => string;
+  reasonOverride?: (dev: DevicePlanDevice) => DeviceReason;
   getLastControlledMs?: (deviceId: string) => number | undefined;
 }): void {
   const {
@@ -139,7 +140,7 @@ export function markOffDevicesStayOff(params: {
       setDevice(dev.id, { plannedState: 'inactive', reason: inactiveReason });
       continue;
     }
-    const defaultReason = dev.reason || 'shed due to capacity';
+    const defaultReason = dev.reason ?? { code: PLAN_REASON_CODES.capacity, detail: null };
     const nextReason = reasonOverride
       ? reasonOverride(dev)
       : resolveOffDeviceReason(timing, defaultReason, getLastControlledMs?.(dev.id));
@@ -175,16 +176,16 @@ function resolveOffDeviceReason(
     shedCooldownRemainingSec: number | null;
     startupStabilizationRemainingSec: number | null;
   },
-  defaultReason: string,
+  defaultReason: DeviceReason,
   lastControlledMs?: number,
-): string | null {
+): DeviceReason | null {
   if (timing.inStartupStabilization) {
-    return lastControlledMs === undefined ? null : 'startup stabilization';
+    return lastControlledMs === undefined ? null : { code: PLAN_REASON_CODES.startupStabilization };
   }
   if (timing.activeOvershoot) return defaultReason;
   if (timing.inCooldown) {
     const seconds = timing.shedCooldownRemainingSec ?? 0;
-    return `cooldown (shedding, ${seconds}s remaining)`;
+    return { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: seconds };
   }
-  return `cooldown (restore, ${timing.restoreCooldownSeconds}s remaining)`;
+  return { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: timing.restoreCooldownSeconds };
 }
