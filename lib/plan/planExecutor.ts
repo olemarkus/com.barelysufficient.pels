@@ -773,12 +773,13 @@ export class PlanExecutor {
             if (await this.applyUncontrolledRestore(dev, snapshot)) deviceWriteCount += 1;
             if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
             continue;
-          }
-          if (isSteppedLoadDevice(dev) && dev.plannedState === 'keep' && resolveEffectiveCurrentOn(dev) === false) {
-            const onoffViolated = snapshot?.currentOn === false;
-            const preRestoreStepIssued = onoffViolated
-              ? await this.applySteppedLoadCommand(dev, mode, { recordPlanActuation: false })
-              : false;
+        }
+        if (isSteppedLoadDevice(dev) && dev.plannedState === 'keep' && resolveEffectiveCurrentOn(dev) === false) {
+          if (isRestoreHoldReason(dev.reason)) continue;
+          const onoffViolated = snapshot?.currentOn === false;
+          const preRestoreStepIssued = onoffViolated
+            ? await this.applySteppedLoadCommand(dev, mode, { recordPlanActuation: false })
+            : false;
             const stepRestoreReady = await this.applySteppedLoadRestore(
               dev,
               snapshot,

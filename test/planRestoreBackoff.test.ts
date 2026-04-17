@@ -793,6 +793,45 @@ describe('restore cooldown backoff', () => {
     expect(steppedDevice?.desiredStepId).toBe('low');
   });
 
+  it('applies meter settling to off-like stepped keep devices during recent restore cooldown', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 5_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'off',
+          selectedStepId: 'off',
+          desiredStepId: 'low',
+          targetStepId: 'low',
+          measuredPowerKw: 0,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+    expect(steppedDevice?.plannedState).toBe('keep');
+    expect(steppedDevice?.reason).toBe('meter settling (55s remaining)');
+    expect(steppedDevice?.desiredStepId).toBe('low');
+  });
+
   it('keeps the device that restored this cycle on its own reason while later peers get meter settling', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);

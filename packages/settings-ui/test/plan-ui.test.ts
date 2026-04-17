@@ -529,7 +529,7 @@ describe('plan device state', () => {
     expect(getPowerText()).toBeUndefined();
     expect(getStateText()).toBe('Active (low → max)');
     expect(getUsageText()).toBe('Measured: 0.60 kW / Expected: 3.00 kW (reported: low / target: max)');
-    expect(getStatusText()).toBe('cooldown (restore, 40s remaining)');
+    expect(getStatusText()).toBe('waiting for meter to settle (40s remaining)');
     expect(getBadgeClassList('dev-step-mode-transition')?.contains('cheap')).toBe(true);
   });
 
@@ -657,6 +657,25 @@ describe('plan device state', () => {
 
     expect(getStatusText()).not.toMatch(/stabilizing after/);
     expect(getBadgeClassList('dev-restore-on')?.contains('cheap')).toBe(false);
+  });
+
+  it('renders legacy restore cooldown copy on keep devices', async () => {
+    await renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-restore-legacy',
+          name: 'Recently restored heater',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          reason: 'cooldown (restore, 40s remaining)',
+        },
+      ],
+    });
+
+    expect(getStateText()).toBe('Active');
+    expect(getStatusText()).toBe('waiting for meter to settle (40s remaining)');
+    expect(getBadgeClassList('dev-restore-legacy')?.contains('cheap')).toBe(true);
   });
 
   it('shows restore requested when binary command is pending and device is off', async () => {

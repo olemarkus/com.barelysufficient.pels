@@ -78,6 +78,11 @@ describe('device overview formatter', () => {
       plannedState: 'keep',
       reason: 'meter settling (10s remaining)',
     }).statusMsg).toBe('waiting for meter to settle (10s remaining)');
+    expect(formatDeviceOverview({
+      currentState: 'on',
+      plannedState: 'keep',
+      reason: 'cooldown (restore, 10s remaining)',
+    }).statusMsg).toBe('waiting for meter to settle (10s remaining)');
   });
 
   it('formats stepped-load devices with desired step labels', () => {
@@ -125,7 +130,7 @@ describe('device overview formatter', () => {
       powerMsg: null,
       stateMsg: 'Active (low → max)',
       usageMsg: 'Measured: 0.60 kW / Expected: 3.00 kW (reported: low / target: max)',
-      statusMsg: 'cooldown (restore, 10s remaining)',
+      statusMsg: 'waiting for meter to settle (10s remaining)',
     });
   });
 
@@ -177,7 +182,7 @@ describe('device overview formatter', () => {
       powerMsg: null,
       stateMsg: 'State unknown',
       usageMsg: 'Measured: 0.60 kW / Expected: 3.00 kW (reported: low / target: max)',
-      statusMsg: 'stabilizing after restore (10s remaining)',
+      statusMsg: 'waiting for meter to settle (10s remaining)',
     });
   });
 
@@ -199,7 +204,7 @@ describe('device overview formatter', () => {
       powerMsg: null,
       stateMsg: 'Unavailable',
       usageMsg: 'Measured: 0.60 kW / Expected: 3.00 kW (reported: low / target: max)',
-      statusMsg: 'stabilizing after restore (10s remaining)',
+      statusMsg: 'waiting for meter to settle (10s remaining)',
     });
   });
 

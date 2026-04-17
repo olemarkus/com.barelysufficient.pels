@@ -155,6 +155,11 @@ const formatActivePlanStatusReason = (reason: string): string => {
     return `waiting for meter to settle (${meterSettlingMatch[1]})`;
   }
 
+  const legacyRestoreCooldownMatch = reason.match(/^cooldown \(restore, (.+)\)$/);
+  if (legacyRestoreCooldownMatch) {
+    return `waiting for meter to settle (${legacyRestoreCooldownMatch[1]})`;
+  }
+
   const headroomRestoreMatch = reason.match(/^headroom cooldown \((.+); recent PELS restore\)$/);
   if (headroomRestoreMatch) {
     return `stabilizing after recent PELS restore (${headroomRestoreMatch[1]})`;
@@ -212,7 +217,7 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
 
   let statusMsg = 'Waiting for headroom';
   if (device.reason) {
-    statusMsg = device.plannedState === 'keep' && !isKeepStateSteppedModeTransition(device)
+    statusMsg = device.plannedState === 'keep'
       ? formatActivePlanStatusReason(device.reason)
       : device.reason;
   }

@@ -948,6 +948,31 @@ describe('PlanExecutor stepped loads', () => {
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
   });
 
+  it('does not actuate stepped restore work while meter settling holds an off keep device', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      selectedStepId: 'off',
+      desiredStepId: 'low',
+      targetStepId: 'low',
+      reason: 'meter settling (30s remaining)',
+    }));
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
   it('distinguishes turn_off skip reasons when no control path exists', async () => {
     const noTargetsSnapshot = [
       {
