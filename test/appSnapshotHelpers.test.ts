@@ -47,4 +47,47 @@ describe('appSnapshotHelpers', () => {
     helper.stop();
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('tags headroom syncs from snapshot refresh with snapshot_refresh reconciliation context', async () => {
+    const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
+    const syncLivePlanState = vi.fn().mockResolvedValue(undefined);
+    const syncHeadroomCardState = vi.fn();
+    const snapshot = [{
+      id: 'dev-1',
+      name: 'Heater',
+      currentOn: true,
+      powerKw: 1.2,
+      expectedPowerKw: 1.2,
+      measuredPowerKw: 1.2,
+    }];
+    const helper = new AppSnapshotHelpers({
+      homey: mockHomeyInstance as any,
+      timers: new TimerRegistry(),
+      getDeviceManager: () => ({ refreshSnapshot } as any),
+      getPlanEngine: () => undefined,
+      getPlanService: () => ({
+        syncLivePlanState,
+        syncHeadroomCardState,
+        getLatestPlanSnapshot: vi.fn(),
+      } as any),
+      getLatestTargetSnapshot: () => snapshot as any,
+      resolveManagedState: () => true,
+      isCapacityControlEnabled: () => false,
+      getStructuredLogger: () => undefined,
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      getNow: () => new Date('2026-03-21T10:00:00Z'),
+      logPeriodicStatus: vi.fn(),
+      disableUnsupportedDevices: vi.fn(),
+      recordPowerSample: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await (helper as any).runSnapshotRefreshCycle({ refreshSnapshot } as any, { targeted: true });
+
+    expect(syncHeadroomCardState).toHaveBeenCalledWith({
+      devices: snapshot,
+      cleanupMissingDevices: true,
+      reconciliationContext: 'snapshot_refresh',
+    });
+  });
 });

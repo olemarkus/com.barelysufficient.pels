@@ -261,6 +261,7 @@ export class AppSnapshotHelpers {
     this.deps.getPlanService()?.syncHeadroomCardState({
       devices: snapshot,
       cleanupMissingDevices: true,
+      reconciliationContext: 'snapshot_refresh',
     });
     this.persistTargetSnapshot(snapshot, options);
     this.deps.disableUnsupportedDevices(snapshot);

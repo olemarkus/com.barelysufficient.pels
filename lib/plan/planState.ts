@@ -69,6 +69,7 @@ export type OvershootTrackedPlanDevice = Pick<
 };
 
 export type PlanEngineState = {
+  appStartedAtMs: number;
   lastDeviceControlledMs: Record<string, number>;
   lastDeviceShedMs: Record<string, number>;
   lastDeviceRestoreMs: Record<string, number>;
@@ -120,8 +121,9 @@ export type PlanEngineState = {
   restoreDecisionLogByKey: Record<string, string>;
 };
 
-export function createPlanEngineState(): PlanEngineState {
+export function createPlanEngineState(nowTs = Date.now()): PlanEngineState {
   return {
+    appStartedAtMs: nowTs,
     lastDeviceControlledMs: {},
     lastDeviceShedMs: {},
     lastDeviceRestoreMs: {},

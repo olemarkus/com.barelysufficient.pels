@@ -789,6 +789,7 @@ describe('MyApp initialization', () => {
 
     await (app as any).recordPowerSample(2100, baseTs + 1000);
     expect(clearSpy).toHaveBeenCalledTimes(1);
+    expect(clearSpy).toHaveBeenCalledWith(baseTs + 1000);
   });
 
   it('hydrates persisted last-controlled state before the startup-gated plan rebuild', async () => {

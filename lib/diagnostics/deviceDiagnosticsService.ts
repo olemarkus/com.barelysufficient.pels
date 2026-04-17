@@ -92,6 +92,11 @@ type DeviceDiagnosticsControlEventBase = {
   nowTs?: number;
 };
 
+export type DeviceDiagnosticsTrackedTransitionReconciliation =
+  | 'startup'
+  | 'snapshot_refresh'
+  | 'post_actuation';
+
 export type DeviceDiagnosticsControlEvent =
   | (DeviceDiagnosticsControlEventBase & {
     kind: 'shed' | 'restore';
@@ -99,6 +104,7 @@ export type DeviceDiagnosticsControlEvent =
   | (DeviceDiagnosticsControlEventBase & {
     kind: 'tracked_transition';
     direction: 'up' | 'down';
+    reconciliation?: DeviceDiagnosticsTrackedTransitionReconciliation;
   });
 
 export type DeviceDiagnosticsBackoffTransition =
@@ -431,7 +437,8 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       case 'tracked_transition':
         this.deps.logDebug(
           `Diagnostics: tracked transition recorded ${formatDeviceRef(event.deviceId, live.name)} `
-          + `direction=${event.direction}`,
+          + `direction=${event.direction}`
+          + (event.reconciliation ? ` reconciliation=${event.reconciliation}` : ''),
         );
         break;
       default: {

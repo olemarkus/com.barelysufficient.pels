@@ -12,12 +12,14 @@ import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnostics
 import {
   ensureHeadroomEntry,
   isFiniteNumber,
+  resolveTrackedTransitionReconciliation,
   resolveHeadroomDeviceName,
   resolveTrackedHeadroomDeviceKw,
   updateHeadroomCardLastObserved,
   type HeadroomCardDeviceLike,
   type HeadroomCooldownCandidate,
   type HeadroomDeviceKwSource,
+  type HeadroomTrackedTransitionContext,
 } from './planHeadroomSupport';
 
 const HEADROOM_STEP_DOWN_THRESHOLD_KW = 0.15;
@@ -172,6 +174,7 @@ const maybeStartTrackedActivationAttempt = (params: {
   device?: HeadroomCardDeviceLike;
   deviceName?: string;
   attemptOpen: boolean;
+  reconciliationContext?: HeadroomTrackedTransitionContext;
   diagnostics?: DeviceDiagnosticsRecorder;
 }): boolean => {
   const {
@@ -183,6 +186,7 @@ const maybeStartTrackedActivationAttempt = (params: {
     device,
     deviceName,
     attemptOpen,
+    reconciliationContext,
     diagnostics,
   } = params;
   if (!shouldStartTrackedActivationAttempt({
@@ -206,9 +210,16 @@ const maybeStartTrackedActivationAttempt = (params: {
   const name = resolveHeadroomDeviceName({ state, deviceId, device, deviceName });
   if (startResult.started) {
     if (name) {
+      const reconciliation = resolveTrackedTransitionReconciliation({
+        state,
+        deviceId,
+        nowTs,
+        context: reconciliationContext,
+      });
       diagnostics?.recordControlEvent({
         kind: 'tracked_transition',
         direction: 'up',
+        reconciliation,
         deviceId,
         name,
         nowTs,
@@ -229,6 +240,7 @@ const maybeRecordTrackedStepDown = (params: {
   nowTs: number;
   device?: HeadroomCardDeviceLike;
   deviceName?: string;
+  reconciliationContext?: HeadroomTrackedTransitionContext;
   diagnostics?: DeviceDiagnosticsRecorder;
 }): boolean => {
   const {
@@ -239,6 +251,7 @@ const maybeRecordTrackedStepDown = (params: {
     nowTs,
     device,
     deviceName,
+    reconciliationContext,
     diagnostics,
   } = params;
   const stepDownResult = maybeStartStepDownCooldown({
@@ -256,9 +269,16 @@ const maybeRecordTrackedStepDown = (params: {
   entry.lastStepDownMs = nowTs;
   const name = resolveHeadroomDeviceName({ state, deviceId, device, deviceName });
   if (name) {
+    const reconciliation = resolveTrackedTransitionReconciliation({
+      state,
+      deviceId,
+      nowTs,
+      context: reconciliationContext,
+    });
     diagnostics?.recordControlEvent({
       kind: 'tracked_transition',
       direction: 'down',
+      reconciliation,
       deviceId,
       name,
       nowTs,
@@ -283,6 +303,7 @@ const syncHeadroomCardTrackedKw = (params: {
   nowTs: number;
   device?: HeadroomCardDeviceLike;
   deviceName?: string;
+  reconciliationContext?: HeadroomTrackedTransitionContext;
   diagnostics?: DeviceDiagnosticsRecorder;
 }): boolean => {
   const {
@@ -293,6 +314,7 @@ const syncHeadroomCardTrackedKw = (params: {
     nowTs,
     device,
     deviceName,
+    reconciliationContext,
     diagnostics,
   } = params;
   const penaltyInfo = syncActivationPenaltyState({
@@ -321,6 +343,7 @@ const syncHeadroomCardTrackedKw = (params: {
     device,
     deviceName: name,
     attemptOpen: penaltyInfo.attemptOpen,
+    reconciliationContext,
     diagnostics,
   }) || stateChanged;
 
@@ -332,6 +355,7 @@ const syncHeadroomCardTrackedKw = (params: {
     nowTs,
     device,
     deviceName: name,
+    reconciliationContext,
     diagnostics,
   }) || stateChanged;
 
@@ -343,6 +367,7 @@ const syncHeadroomCardDevice = (params: {
   state: PlanEngineState;
   device: HeadroomCardDeviceLike;
   nowTs: number;
+  reconciliationContext?: HeadroomTrackedTransitionContext;
   diagnostics?: DeviceDiagnosticsRecorder;
 }): boolean => {
   const { kw: trackedKw, source: trackedKwSource } = resolveTrackedHeadroomDeviceKw(params.device);
@@ -354,6 +379,7 @@ const syncHeadroomCardDevice = (params: {
     nowTs: params.nowTs,
     device: params.device,
     deviceName: params.device.name,
+    reconciliationContext: params.reconciliationContext,
     diagnostics: params.diagnostics,
   });
 };
@@ -426,12 +452,14 @@ export const syncHeadroomCardState = (params: {
   devices: HeadroomCardDeviceLike[];
   nowTs?: number;
   cleanupMissingDevices?: boolean;
+  reconciliationContext?: HeadroomTrackedTransitionContext;
   diagnostics?: DeviceDiagnosticsRecorder;
 }): boolean => {
   const {
     state,
     devices,
     cleanupMissingDevices = false,
+    reconciliationContext,
     diagnostics,
   } = params;
   const nowTs = params.nowTs ?? Date.now();
@@ -442,7 +470,13 @@ export const syncHeadroomCardState = (params: {
   }
 
   for (const device of devices) {
-    if (!syncHeadroomCardDevice({ state, device, nowTs, diagnostics })) continue;
+    if (!syncHeadroomCardDevice({
+      state,
+      device,
+      nowTs,
+      reconciliationContext,
+      diagnostics,
+    })) continue;
     stateChanged = true;
   }
 
@@ -455,6 +489,7 @@ export const syncHeadroomCardTrackedUsage = (params: {
   trackedKw: number;
   trackedKwSource?: HeadroomDeviceKwSource;
   nowTs?: number;
+  reconciliationContext?: HeadroomTrackedTransitionContext;
   diagnostics?: DeviceDiagnosticsRecorder;
 }): boolean => syncHeadroomCardTrackedKw({
   state: params.state,
@@ -462,6 +497,7 @@ export const syncHeadroomCardTrackedUsage = (params: {
   trackedKw: params.trackedKw,
   trackedKwSource: params.trackedKwSource ?? 'powerKw',
   nowTs: params.nowTs ?? Date.now(),
+  reconciliationContext: params.reconciliationContext,
   diagnostics: params.diagnostics,
 });
 
