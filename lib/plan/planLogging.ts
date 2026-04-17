@@ -138,6 +138,7 @@ function matchesAnyReason(reason: string | undefined, patterns: RegExp[]): boole
 
 const COOLDOWN_REASON_PATTERNS = [
   /^cooldown \(shedding, \d+s remaining\)$/,
+  /^cooldown \(restore, \d+s remaining\)$/,
   /^meter settling \(\d+s remaining\)$/,
   new RegExp(
     '^headroom cooldown \\(\\d+s remaining; '
@@ -340,6 +341,7 @@ export function normalizePlanReason(reason: string | undefined): string {
   const inactiveMatch = /^inactive \((.+)\)$/.exec(trimmed);
   if (inactiveMatch) return inactiveMatch[1];
   if (/^cooldown \(shedding, \d+s remaining\)$/.test(trimmed)) return 'cooldown (shedding)';
+  if (/^cooldown \(restore, \d+s remaining\)$/.test(trimmed)) return 'cooldown (restore)';
   if (/^meter settling \(\d+s remaining\)$/.test(trimmed)) return 'meter settling';
   if (/^restore pending \(\d+s remaining\)$/.test(trimmed)) return 'restore pending';
   if (/^activation backoff \(\d+s remaining\)$/.test(trimmed)) return 'activation backoff';

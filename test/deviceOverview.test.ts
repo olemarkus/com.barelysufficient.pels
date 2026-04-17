@@ -307,6 +307,29 @@ describe('device overview transition signatures', () => {
     }));
   });
 
+  it('ignores countdown-only legacy restore cooldown changes', () => {
+    const restoreCooldown = formatDeviceOverview({
+      currentState: 'on',
+      plannedState: 'shed',
+      shedAction: 'turn_off',
+      reason: 'cooldown (restore, 30s remaining)',
+    });
+    const restoreCooldownTick = formatDeviceOverview({
+      currentState: 'on',
+      plannedState: 'shed',
+      shedAction: 'turn_off',
+      reason: 'cooldown (restore, 24s remaining)',
+    });
+
+    expect(buildDeviceOverviewTransitionSignature({
+      ...restoreCooldown,
+      reason: 'cooldown (restore, 30s remaining)',
+    })).toBe(buildDeviceOverviewTransitionSignature({
+      ...restoreCooldownTick,
+      reason: 'cooldown (restore, 24s remaining)',
+    }));
+  });
+
   it('preserves semantic headroom-cooldown changes while ignoring countdown decay', () => {
     const base = formatDeviceOverview({
       currentState: 'on',
