@@ -1,4 +1,5 @@
 import { RESTORE_COOLDOWN_MS } from './planConstants';
+import type { HeadroomDeviceKwSource } from './planHeadroomSupport';
 import type {
   DevicePlanDevice,
   PendingTargetCommandStatus,
@@ -30,7 +31,7 @@ export type ActivationAttemptState = {
 
 export type HeadroomCardState = {
   lastObservedKw?: number;
-  lastObservedKwSource?: 'expectedPowerKw' | 'powerKw' | 'measuredPowerKw' | 'fallback_zero';
+  lastObservedKwSource?: HeadroomDeviceKwSource;
   deviceName?: string;
   lastStepDownMs?: number;
   cooldownUntilMs?: number;

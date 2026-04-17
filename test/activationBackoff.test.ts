@@ -610,6 +610,23 @@ describe('activation backoff', () => {
       { name: 'Heater' },
     );
   });
+
+  it('stores expected-power source when tracked usage sync comes from an override', () => {
+    const state = createPlanEngineState();
+
+    syncHeadroomCardTrackedUsage({
+      state,
+      deviceId: 'dev-1',
+      trackedKw: 2.4,
+      trackedKwSource: 'expectedPowerKw',
+      nowTs: Date.now(),
+    });
+
+    expect(state.headroomCardByDevice['dev-1']).toMatchObject({
+      lastObservedKw: 2.4,
+      lastObservedKwSource: 'expectedPowerKw',
+    });
+  });
 });
 
 // Mirrors attributeOvershootToRecentRestores: finds the single most-recently-restored
