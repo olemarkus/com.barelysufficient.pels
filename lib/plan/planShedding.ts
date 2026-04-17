@@ -3,6 +3,7 @@
 */
 import type CapacityGuard from '../core/capacityGuard';
 import type { PowerTrackerState } from '../core/powerTracker';
+import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
@@ -33,7 +34,7 @@ import {
 
 export type SheddingPlan = {
   shedSet: Set<string>;
-  shedReasons: Map<string, string>;
+  shedReasons: Map<string, DeviceReason>;
   steppedDesiredStepByDeviceId: Map<string, string>;
   temperatureShedTargets: Map<string, { temperature: number; capabilityId: string }>;
   sheddingActive: boolean;
@@ -127,7 +128,7 @@ function shouldPlanShedding(headroom: number | null): boolean {
 
 type PlanSheddingResult = {
   shedSet: Set<string>;
-  shedReasons: Map<string, string>;
+  shedReasons: Map<string, DeviceReason>;
   steppedDesiredStepByDeviceId: Map<string, string>;
   temperatureShedTargets: Map<string, { temperature: number; capabilityId: string }>;
   updates: {
@@ -146,7 +147,7 @@ function emptySheddingResult(
 ): PlanSheddingResult {
   return {
     shedSet: new Set<string>(),
-    shedReasons: new Map<string, string>(),
+    shedReasons: new Map<string, DeviceReason>(),
     steppedDesiredStepByDeviceId: new Map<string, string>(),
     temperatureShedTargets: new Map<string, { temperature: number; capabilityId: string }>(),
     updates,

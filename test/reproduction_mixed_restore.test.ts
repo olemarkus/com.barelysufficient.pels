@@ -1,6 +1,7 @@
 
 import { mockHomeyInstance, setMockDrivers, MockDriver, MockDevice } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
+import { reasonText } from './utils/deviceReasonTestUtils';
 
 // Mock Date.now to control time
 const originalDateNow = Date.now;
@@ -160,10 +161,10 @@ describe('Mixed Type Restoration Throttling', () => {
         // not pick up the other device's global restore-cooldown label.
         if (d1Restored) {
             expect(d2RestoredC2).toBe(false);
-            expect(d2Cycles2.reason).toBe('shed due to capacity');
+            expect(reasonText(d2Cycles2.reason)).toBe('shed due to capacity');
         } else {
             expect(d1RestoredC2).toBe(false);
-            expect(d1Cycles2.reason).toBe('shed due to capacity');
+            expect(reasonText(d1Cycles2.reason)).toBe('shed due to capacity');
         }
 
         // 4. After Cooldown (60s)
@@ -177,10 +178,10 @@ describe('Mixed Type Restoration Throttling', () => {
 
         if (d1Restored) {
             expect(d2Cycles3.plannedState).toBe('shed');
-            expect(d2Cycles3.reason).toBe('shed due to capacity');
+            expect(reasonText(d2Cycles3.reason)).toBe('shed due to capacity');
         } else {
             expect(d1Cycles3.plannedState).toBe('shed');
-            expect(d1Cycles3.reason).toBe('shed due to capacity');
+            expect(reasonText(d1Cycles3.reason)).toBe('shed due to capacity');
         }
 
         // 5. After restore cooldown window

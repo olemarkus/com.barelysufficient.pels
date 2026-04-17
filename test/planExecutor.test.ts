@@ -9,6 +9,7 @@ import type {
   PlanInputDevice,
 } from '../lib/plan/planTypes';
 import { buildLiveStatePlan, hasPlanExecutionDrift } from '../lib/plan/planReconcileState';
+import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
 
 const buildPlan = (): DevicePlan => ({
   meta: {
@@ -121,7 +122,7 @@ describe('PlanExecutor restore logging', () => {
           currentTarget: 21,
           plannedTarget: 21,
           controllable: true,
-          reason: 'meter settling (30s remaining)',
+          reason: legacyDeviceReason('meter settling (30s remaining)'),
         },
       ],
     });
@@ -966,7 +967,7 @@ describe('PlanExecutor stepped loads', () => {
       selectedStepId: 'off',
       desiredStepId: 'low',
       targetStepId: 'low',
-      reason: 'meter settling (30s remaining)',
+      reason: legacyDeviceReason('meter settling (30s remaining)'),
     }));
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();

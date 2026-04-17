@@ -23,6 +23,7 @@ import {
   syncHeadroomCardTrackedUsage,
 } from '../lib/plan/planHeadroomDevice';
 import { emitActivationTransitions } from '../lib/plan/planHeadroomState';
+import { reasonText } from './utils/deviceReasonTestUtils';
 
 const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices: [],
@@ -238,7 +239,7 @@ describe('activation backoff', () => {
 
     expect(result.restoredOneThisCycle).toBe(false);
     expect(result.planDevices[0]?.plannedState).toBe('shed');
-    expect(result.planDevices[0]?.reason).toContain('insufficient headroom');
+    expect(reasonText(result.planDevices[0]?.reason)).toContain('insufficient headroom');
   });
 
   it('blocks restore for a cooldown window after a fresh activation setback', () => {
@@ -284,7 +285,7 @@ describe('activation backoff', () => {
 
     expect(result.restoredOneThisCycle).toBe(false);
     expect(result.planDevices[0]?.plannedState).toBe('shed');
-    expect(result.planDevices[0]?.reason).toContain('activation backoff');
+    expect(reasonText(result.planDevices[0]?.reason)).toContain('activation backoff');
   });
 
   it('refreshes the restore block even when a setback happens after stick is reached', () => {

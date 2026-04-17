@@ -1,6 +1,11 @@
 /* eslint-disable max-lines -- binary restore gating and swap flow stay together for readability */
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import type { DevicePlanDevice } from './planTypes';
+import {
+  buildComparableDeviceReason,
+  formatDeviceReason,
+  PLAN_REASON_CODES,
+} from '../../packages/shared-domain/src/planReasonSemantics';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
 import type { PowerTrackerState } from '../core/powerTracker';
@@ -23,12 +28,12 @@ import {
 } from './planRestoreDevices';
 import {
   blockRestoreForRecentActivationSetback,
-  hasOtherDevicesWithUnconfirmedRecovery,
   isBlockedBySwapState,
   markSteppedDevicesStayAtCurrentLevel,
   planRestoreForSteppedDevice,
   setRestorePlanDevice as setDevice,
 } from './planRestoreHelpers';
+import { hasOtherDevicesWithUnconfirmedRecovery } from './planRestoreCoordination';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import {
   buildRestoreTiming,
@@ -262,10 +267,21 @@ function planRestoreForDevice(params: {
         deviceId: dev.id,
         deviceName: dev.name,
         phase,
-        reason,
+        reason: formatDeviceReason(reason),
         availableKw: availableHeadroom,
         decision: 'rejected',
-        decisionReason: reason,
+        decisionReason: formatDeviceReason(reason),
+      },
+      signaturePayload: {
+        event: 'restore_rejected',
+        restoreType: 'binary',
+        deviceId: dev.id,
+        deviceName: dev.name,
+        phase,
+        reason: buildComparableDeviceReason(reason),
+        availableKw: availableHeadroom,
+        decision: 'rejected',
+        decisionReason: buildComparableDeviceReason(reason),
       },
       debugStructured: deps.debugStructured,
     });
@@ -285,10 +301,21 @@ function planRestoreForDevice(params: {
         deviceId: dev.id,
         deviceName: dev.name,
         phase,
-        reason: gateReason,
+        reason: formatDeviceReason(gateReason),
         availableKw: availableHeadroom,
         decision: 'rejected',
-        decisionReason: gateReason,
+        decisionReason: formatDeviceReason(gateReason),
+      },
+      signaturePayload: {
+        event: 'restore_rejected',
+        restoreType: 'binary',
+        deviceId: dev.id,
+        deviceName: dev.name,
+        phase,
+        reason: buildComparableDeviceReason(gateReason),
+        availableKw: availableHeadroom,
+        decision: 'rejected',
+        decisionReason: buildComparableDeviceReason(gateReason),
       },
       debugStructured: deps.debugStructured,
     });
@@ -318,10 +345,21 @@ function planRestoreForDevice(params: {
         deviceId: dev.id,
         deviceName: dev.name,
         phase,
-        reason: waitingReason,
+        reason: formatDeviceReason(waitingReason),
         availableKw: availableHeadroom,
         decision: 'rejected',
-        decisionReason: waitingReason,
+        decisionReason: formatDeviceReason(waitingReason),
+      },
+      signaturePayload: {
+        event: 'restore_rejected',
+        restoreType: 'binary',
+        deviceId: dev.id,
+        deviceName: dev.name,
+        phase,
+        reason: buildComparableDeviceReason(waitingReason),
+        availableKw: availableHeadroom,
+        decision: 'rejected',
+        decisionReason: buildComparableDeviceReason(waitingReason),
       },
       debugStructured: deps.debugStructured,
     });
@@ -429,12 +467,18 @@ function attemptSwapRestore(params: {
   } = params;
 
   if (measurementTs !== null && swapState.lastSwapPlanMeasurementTs.get(dev.id) === measurementTs) {
-    setDevice(deviceMap, dev.id, { plannedState: 'shed', reason: 'swap pending' });
+    setDevice(deviceMap, dev.id, {
+      plannedState: 'shed',
+      reason: { code: PLAN_REASON_CODES.swapPending, targetName: null },
+    });
     return { availableHeadroom, restoredOneThisCycle: false };
   }
 
   if (swapState.pendingSwapTargets.has(dev.id)) {
-    setDevice(deviceMap, dev.id, { plannedState: 'shed', reason: 'swap pending' });
+    setDevice(deviceMap, dev.id, {
+      plannedState: 'shed',
+      reason: { code: PLAN_REASON_CODES.swapPending, targetName: null },
+    });
     return { availableHeadroom, restoredOneThisCycle: false };
   }
 
@@ -458,7 +502,7 @@ function attemptSwapRestore(params: {
       deviceId: dev.id,
       deviceName: dev.name,
       phase,
-      reason: swap.reason,
+      reason: formatDeviceReason(swap.reason),
       estimatedPowerKw: restoreNeed.devPower,
       powerSource: resolveRestorePowerSource(dev),
       neededKw: restoreNeed.needed,
@@ -469,7 +513,7 @@ function attemptSwapRestore(params: {
       swapReserveKw: swap.reserveKw,
       decision: 'rejected',
       rejectionReason: 'insufficient_headroom',
-      decisionReason: swap.reason,
+      decisionReason: formatDeviceReason(swap.reason),
       penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
       penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
     });
@@ -503,7 +547,7 @@ function attemptSwapRestore(params: {
   for (const shedDev of swap.toShed) {
     setDevice(deviceMap, shedDev.id, {
       plannedState: 'shed',
-      reason: `swapped out for ${dev.name}`,
+      reason: { code: PLAN_REASON_CODES.swappedOut, targetName: dev.name },
     });
     deps.debugStructured?.({
       event: 'restore_swap_shed',

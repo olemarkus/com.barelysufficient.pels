@@ -10,6 +10,11 @@ import {
 import { buildRestoreAdmissionMetrics, type RestoreAdmissionMetrics } from './planRestoreAdmission';
 import { buildRestoreHeadroomReason } from './planReasonStrings';
 import {
+  formatDeviceReason,
+  PLAN_REASON_CODES,
+  type DeviceReason,
+} from '../../packages/shared-domain/src/planReasonSemantics';
+import {
   resolveRestorePower as resolveSharedRestorePower,
   type RestorePowerSource as SharedRestorePowerSource,
 } from './planPowerResolution';
@@ -45,7 +50,7 @@ export function buildSwapCandidates(params: {
   effectiveHeadroom: number;
   admission: RestoreAdmissionMetrics;
   reserveKw: number;
-  reason: string;
+  reason: DeviceReason;
 } {
   const {
     dev,
@@ -76,17 +81,15 @@ export function buildSwapCandidates(params: {
 
   const ready = admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW;
   const names = toShed.map((d) => d.name).join(', ');
-  const reason = ready
-    ? `swapped out for ${dev.name}`
-    : buildRestoreHeadroomReason({
-      neededKw: needed,
-      availableKw: currentPotential,
-      effectiveAvailableKw: effectiveHeadroom,
-      swapReserveKw: SWAP_RESTORE_RESERVE_KW,
-      postReserveMarginKw: admission.postReserveMarginKw,
-      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
-      swapTargetName: dev.name,
-    }) + ` from ${names || 'none'}`;
+  const reason = buildSwapCandidateReason({
+    ready,
+    targetName: dev.name,
+    neededKw: needed,
+    availableKw: currentPotential,
+    effectiveAvailableKw: effectiveHeadroom,
+    postReserveMarginKw: admission.postReserveMarginKw,
+    shedNames: names,
+  });
 
   return {
     ready,
@@ -98,6 +101,45 @@ export function buildSwapCandidates(params: {
     admission,
     reserveKw: SWAP_RESTORE_RESERVE_KW,
     reason,
+  };
+}
+
+function buildSwapCandidateReason(params: {
+  ready: boolean;
+  targetName: string;
+  neededKw: number;
+  availableKw: number;
+  effectiveAvailableKw: number;
+  postReserveMarginKw: number;
+  shedNames: string;
+}): DeviceReason {
+  const {
+    ready,
+    targetName,
+    neededKw,
+    availableKw,
+    effectiveAvailableKw,
+    postReserveMarginKw,
+    shedNames,
+  } = params;
+
+  if (ready) return { code: PLAN_REASON_CODES.swappedOut, targetName };
+
+  const baseReason = buildRestoreHeadroomReason({
+    neededKw,
+    availableKw,
+    effectiveAvailableKw,
+    swapReserveKw: SWAP_RESTORE_RESERVE_KW,
+    postReserveMarginKw,
+    minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+    swapTargetName: targetName,
+  });
+
+  if (!shedNames) return baseReason;
+
+  return {
+    code: PLAN_REASON_CODES.other,
+    text: `${formatDeviceReason(baseReason)} from ${shedNames}`,
   };
 }
 

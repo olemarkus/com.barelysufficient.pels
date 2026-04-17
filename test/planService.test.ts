@@ -5,35 +5,40 @@ import { getRecentPlanRebuildTraces } from '../lib/utils/planRebuildTrace';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';
 import { DETAIL_SNAPSHOT_WRITE_THROTTLE_MS } from '../lib/utils/timingConstants';
 import { formatDeviceOverview } from '../packages/shared-domain/src/deviceOverview';
+import type { DeviceReason } from '../packages/shared-domain/src/planReasonSemantics';
+import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
 
 const buildPlan = (
   currentTarget: number,
-  reason: string,
+  reason: string | DeviceReason,
   metaOverrides: Partial<DevicePlan['meta']> = {},
   deviceOverrides: Partial<DevicePlan['devices'][number]> = {},
-): DevicePlan => ({
-  meta: {
-    totalKw: 1,
-    softLimitKw: 5,
-    headroomKw: 4,
-    ...metaOverrides,
-  },
-  devices: [
-    {
-      id: 'dev-1',
-      name: 'Heater',
-      currentOn: true,
-      currentState: 'on',
-      plannedState: 'keep',
-      currentTarget,
-      plannedTarget: 20,
-      reason,
-      controllable: true,
-      controlCapabilityId: 'onoff',
-      ...deviceOverrides,
+): DevicePlan => {
+  const normalizedReason = typeof reason === 'string' ? legacyDeviceReason(reason) : reason;
+  return {
+    meta: {
+      totalKw: 1,
+      softLimitKw: 5,
+      headroomKw: 4,
+      ...metaOverrides,
     },
-  ],
-});
+    devices: [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        currentOn: true,
+        currentState: 'on',
+        plannedState: 'keep',
+        currentTarget,
+        plannedTarget: 20,
+        reason: normalizedReason,
+        controllable: true,
+        controlCapabilityId: 'onoff',
+        ...deviceOverrides,
+      },
+    ],
+  };
+};
 
 const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanService>[0]> = {}) => {
   const deps = {
@@ -469,7 +474,7 @@ describe('PlanService', () => {
           currentTarget: null,
           plannedTarget: null,
           controllable: true,
-          reason: 'insufficient headroom (need 0.98kW, headroom -0.97kW)',
+          reason: legacyDeviceReason('insufficient headroom to restore (need 0.98kW, available -0.97kW)'),
         },
         {
           id: 'dev-2',
@@ -480,7 +485,7 @@ describe('PlanService', () => {
           currentTarget: null,
           plannedTarget: null,
           controllable: true,
-          reason: 'insufficient headroom (need 1.10kW, headroom -0.97kW)',
+          reason: legacyDeviceReason('insufficient headroom to restore (need 1.10kW, available -0.97kW)'),
         },
         {
           id: 'ev-1',
@@ -491,7 +496,7 @@ describe('PlanService', () => {
           currentTarget: null,
           plannedTarget: null,
           controllable: true,
-          reason: 'inactive (charger is unplugged)',
+          reason: legacyDeviceReason('inactive (charger is unplugged)'),
         },
       ],
     };
@@ -556,7 +561,7 @@ describe('PlanService', () => {
     const overview = formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
-      reason: 'keep',
+      reason: legacyDeviceReason('keep'),
       measuredPowerKw: 0,
       expectedPowerKw: 3,
       controllable: true,
@@ -569,7 +574,8 @@ describe('PlanService', () => {
       ...overview,
       currentState: 'on',
       plannedState: 'keep',
-      reason: 'keep',
+      reasonCode: 'keep',
+      reasonText: 'keep',
       measuredPowerKw: 0,
       expectedPowerKw: 3,
       reportedStepId: null,

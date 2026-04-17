@@ -2,12 +2,13 @@
 import Homey from 'homey';
 import CapacityGuard from '../core/capacityGuard';
 import type { PowerTrackerState } from '../core/powerTracker';
+import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
 import type { OvershootTrackedPlanDevice, PlanEngineState } from './planState';
 import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
 import { buildPlanContext, type PlanContext, type SoftLimitSource } from './planContext';
 import { buildSheddingPlan, type SheddingPlan } from './planShedding';
-import { buildPlanCapacityStateSummary, normalizePlanReason } from './planLogging';
+import { buildPlanCapacityStateSummary } from './planLogging';
 import { buildInitialPlanDevices } from './planDevices';
 import { applyRestorePlan, type RestorePlanResult } from './planRestore';
 import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from './planUsage';
@@ -857,14 +858,13 @@ function isCooldownBlocked(
   return device.headroomCardBlocked === true || isCooldownReason(device.reason);
 }
 
-function isCooldownReason(reason: string | undefined): boolean {
+function isCooldownReason(reason: DeviceReason | undefined): boolean {
   if (!reason) return false;
-  const normalizedReason = normalizePlanReason(reason);
-  return normalizedReason === 'cooldown (shedding)'
-    || normalizedReason === 'cooldown (restore)'
-    || normalizedReason === 'meter settling'
-    || normalizedReason === 'headroom cooldown'
-    || normalizedReason === 'restore pending';
+  return reason.code === PLAN_REASON_CODES.cooldownShedding
+    || reason.code === PLAN_REASON_CODES.cooldownRestore
+    || reason.code === PLAN_REASON_CODES.meterSettling
+    || reason.code === PLAN_REASON_CODES.headroomCooldown
+    || reason.code === PLAN_REASON_CODES.restorePending;
 }
 
 function resolveFiniteNumber(value: unknown): number | null {

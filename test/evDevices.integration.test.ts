@@ -9,6 +9,7 @@ import {
 } from '../lib/utils/settingsKeys';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from './mocks/homey';
 import { cleanupApps, createApp } from './utils/appTestUtils';
+import { reasonText } from './utils/deviceReasonTestUtils';
 
 type EaseeChargingState =
   | 'plugged_in_charging'
@@ -279,7 +280,7 @@ describe('EV charger integration', () => {
       const evPlan = getPlanEntry(plan, charger.idValue);
 
       expect(evPlan.plannedState).toBe('inactive');
-      expect(evPlan.reason).toBe(`inactive (${reason})`);
+      expect(reasonText(evPlan.reason)).toBe(`inactive (${reason})`);
       expect(charger.commandLog).toHaveLength(0);
 
       const snapshot = await refreshSnapshot(app);
@@ -303,7 +304,7 @@ describe('EV charger integration', () => {
     const evPlan = getPlanEntry(plan, charger.idValue);
 
     expect(evPlan.plannedState).toBe('inactive');
-    expect(evPlan.reason).toContain('charger power unknown');
+    expect(reasonText(evPlan.reason)).toContain('charger power unknown');
     expect(charger.commandLog).toHaveLength(0);
   });
 
@@ -324,7 +325,7 @@ describe('EV charger integration', () => {
     const evPlan = getPlanEntry(plan, charger.idValue);
 
     expect(evPlan.plannedState).toBe('inactive');
-    expect(evPlan.reason).toBe('inactive (charger is unplugged)');
+    expect(reasonText(evPlan.reason)).toBe('inactive (charger is unplugged)');
     expect(charger.getCommandSequence()).toEqual(['evcharger_charging:false']);
   });
 
@@ -357,7 +358,7 @@ describe('EV charger integration', () => {
     const evPlan = getPlanEntry(plan, charger.idValue);
 
     expect(heaterPlan.plannedState).toBe('shed');
-    expect(heaterPlan.reason).toContain(`swapped out for ${charger.getName()}`);
+    expect(reasonText(heaterPlan.reason)).toContain(`swapped out for ${charger.getName()}`);
     expect(evPlan.plannedState).not.toBe('shed');
     expect(charger.getCommandSequence()).toEqual(['evcharger_charging:true']);
     expect(heater.getSetCapabilityValue('onoff')).toBe(false);

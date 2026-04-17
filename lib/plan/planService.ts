@@ -10,6 +10,7 @@ import {
   getDeviceOverviewReportedStepId,
   getDeviceOverviewExpectedPowerKw,
 } from '../../packages/shared-domain/src/deviceOverview';
+import { formatDeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
   buildPlanChangeLines,
   buildPlanCapacityStateSummary,
@@ -89,7 +90,8 @@ function buildOverviewEventForDevice(
     statusMsg: overview.statusMsg,
     currentState: device.currentState,
     plannedState: device.plannedState,
-    reason: device.reason ?? null,
+    reasonCode: device.reason?.code ?? null,
+    reasonText: device.reason ? formatDeviceReason(device.reason) : null,
     measuredPowerKw: device.measuredPowerKw ?? null,
     expectedPowerKw: getDeviceOverviewExpectedPowerKw(device) ?? null,
     reportedStepId: getDeviceOverviewReportedStepId(device) ?? null,

@@ -4,7 +4,13 @@ import {
   type CapacityStateSummarySource,
   type PlanCapacityStateSummary,
 } from '../core/capacityStateSummary';
-import { buildComparablePlanReason } from '../../packages/shared-domain/src/planReasonSemantics';
+import {
+  buildComparableDeviceReason,
+  formatDeviceReason,
+  getPlanReasonLabel,
+  PLAN_REASON_CODES,
+  type DeviceReason,
+} from '../../packages/shared-domain/src/planReasonSemantics';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { resolveCandidatePower } from './planCandidatePower';
@@ -131,27 +137,6 @@ function roundPowerW(powerKw: number | null | undefined): number | null {
   return Math.round(Math.max(0, powerKw * 1000));
 }
 
-function matchesAnyReason(reason: string | undefined, patterns: RegExp[]): boolean {
-  if (!reason) return false;
-  return patterns.some((pattern) => pattern.test(reason));
-}
-
-const COOLDOWN_REASON_PATTERNS = [
-  /^cooldown \(shedding, \d+s remaining\)$/,
-  /^cooldown \(restore, \d+s remaining\)$/,
-  /^meter settling \(\d+s remaining\)$/,
-  /^headroom cooldown \(\d+s remaining; recent PELS (shed|restore)\)$/,
-  /^restore pending \(\d+s remaining\)$/,
-];
-
-const PENALTY_REASON_PATTERNS = [
-  /^activation backoff \(\d+s remaining\)$/,
-];
-
-const INVARIANT_REASON_PATTERNS = [
-  /^shed invariant: .+ -> .+ blocked \(\d+ device\(s\) shed, max step: .+\)$/,
-];
-
 function buildPlanSignatureDevice(device: DevicePlanDevice): Record<string, unknown> {
   return {
     id: device.id,
@@ -206,15 +191,19 @@ function hasPendingInputCommand(device: PlanInputDevice): boolean {
 
 function isBlockedByCooldown(device: DevicePlanDevice): boolean {
   return device.headroomCardBlocked === true
-    || matchesAnyReason(device.reason, COOLDOWN_REASON_PATTERNS);
+    || device.reason?.code === PLAN_REASON_CODES.cooldownShedding
+    || device.reason?.code === PLAN_REASON_CODES.cooldownRestore
+    || device.reason?.code === PLAN_REASON_CODES.meterSettling
+    || device.reason?.code === PLAN_REASON_CODES.headroomCooldown
+    || device.reason?.code === PLAN_REASON_CODES.restorePending;
 }
 
 function isBlockedByPenalty(device: DevicePlanDevice): boolean {
-  return matchesAnyReason(device.reason, PENALTY_REASON_PATTERNS);
+  return device.reason?.code === PLAN_REASON_CODES.activationBackoff;
 }
 
 function isBlockedByInvariant(device: DevicePlanDevice): boolean {
-  return matchesAnyReason(device.reason, INVARIANT_REASON_PATTERNS);
+  return device.reason?.code === PLAN_REASON_CODES.shedInvariant;
 }
 
 export function buildPlanDetailSignature(plan: DevicePlan): string {
@@ -230,7 +219,7 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
       lastDesiredStepId: d.lastDesiredStepId,
       currentState: d.currentState,
       currentTarget: d.currentTarget,
-      reason: buildComparablePlanReason(d.reason),
+      reason: buildComparableDeviceReason(d.reason),
       planningPowerKw: d.planningPowerKw,
       shedAction: d.shedAction,
       controllable: d.controllable,
@@ -335,19 +324,11 @@ function buildPlanReasonGroups(devices: DevicePlanDevice[]): PlanReasonGroup[] {
     .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
 }
 
-export function normalizePlanReason(reason: string | undefined): string {
+export function normalizePlanReason(reason: DeviceReason | undefined): string {
   if (!reason) return 'unknown';
-  const trimmed = reason.trim();
-  const inactiveMatch = /^inactive \((.+)\)$/.exec(trimmed);
-  if (inactiveMatch) return inactiveMatch[1];
-  if (/^cooldown \(shedding, \d+s remaining\)$/.test(trimmed)) return 'cooldown (shedding)';
-  if (/^cooldown \(restore, \d+s remaining\)$/.test(trimmed)) return 'cooldown (restore)';
-  if (/^meter settling \(\d+s remaining\)$/.test(trimmed)) return 'meter settling';
-  if (/^restore pending \(\d+s remaining\)$/.test(trimmed)) return 'restore pending';
-  if (/^activation backoff \(\d+s remaining\)$/.test(trimmed)) return 'activation backoff';
-  if (/^headroom cooldown \(\d+s remaining; .+\)$/.test(trimmed)) return 'headroom cooldown';
-  if (trimmed.startsWith('insufficient headroom')) return 'insufficient headroom';
-  return trimmed;
+  if (reason.code === PLAN_REASON_CODES.inactive && reason.detail) return reason.detail;
+  if (reason.code === PLAN_REASON_CODES.insufficientHeadroom) return 'insufficient headroom';
+  return getPlanReasonLabel(reason.code);
 }
 
 function categorizePlanDebugDevices(devices: DevicePlanDevice[]): {
@@ -386,7 +367,7 @@ function formatPlanChange(device: DevicePlanDevice, headroom: number | null): st
     const planningInfo = typeof device.planningPowerKw === 'number'
       ? `, planning ${device.planningPowerKw.toFixed(2)}kW`
       : '';
-    const reason = device.reason ?? 'n/a';
+    const reason = device.reason ? formatDeviceReason(device.reason) : 'n/a';
     return `${device.name}: step ${device.selectedStepId ?? 'unknown'} -> ${device.desiredStepId ?? 'unknown'}`
       + `${planningInfo}${headroomInfo}, reason: ${reason}`;
   }
@@ -400,7 +381,7 @@ function formatPlanChange(device: DevicePlanDevice, headroom: number | null): st
     ? `, headroom ${headroom.toFixed(2)}kW`
     : '';
   const restoringHint = buildRestoreHint(device, nextPower, headroom);
-  const reason = device.reason ?? 'n/a';
+  const reason = device.reason ? formatDeviceReason(device.reason) : 'n/a';
   return `${device.name}: temp ${temp}, power ${power}${powerInfo}${headroomInfo}, reason: ${reason}${restoringHint}`;
 }
 

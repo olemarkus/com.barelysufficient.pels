@@ -1,4 +1,5 @@
 import { PriceLevel } from '../price/priceLevels';
+import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlan } from '../plan/planTypes';
 import type { DevicePlanDevice } from '../plan/planTypes';
 import { NEUTRAL_STARTUP_HOLD_REASON } from '../plan/planRestoreDevices';
@@ -109,13 +110,13 @@ function isCapacitySourceActive(limitSource: LimitSource): boolean {
   return limitSource === 'capacity' || limitSource === 'both';
 }
 
-function isRestoreHoldShedReason(reason: string | undefined): boolean {
+function isRestoreHoldShedReason(reason: DeviceReason | undefined): boolean {
   if (!reason) return false;
-  return reason.startsWith('meter settling')
-    || reason.startsWith('cooldown (restore')
-    || reason === 'restore throttled'
-    || reason === NEUTRAL_STARTUP_HOLD_REASON
-    || reason.startsWith('restore pending');
+  return reason.code === PLAN_REASON_CODES.meterSettling
+    || reason.code === PLAN_REASON_CODES.cooldownRestore
+    || reason.code === PLAN_REASON_CODES.restoreThrottled
+    || reason.code === NEUTRAL_STARTUP_HOLD_REASON.code
+    || reason.code === PLAN_REASON_CODES.restorePending;
 }
 
 function isLimitDrivenShedDevice(device: DevicePlanDevice): boolean {
@@ -123,19 +124,25 @@ function isLimitDrivenShedDevice(device: DevicePlanDevice): boolean {
   return !isRestoreHoldShedReason(device.reason);
 }
 
-function resolveReasonFlags(reason: string | undefined): {
+function resolveReasonFlags(reason: DeviceReason | undefined): {
   hasHourlyReason: boolean;
   hasDailyReason: boolean;
 } {
-  if (typeof reason !== 'string') {
+  if (!reason) {
+    return {
+      hasHourlyReason: false,
+      hasDailyReason: false,
+    };
+  }
+  if (reason.code === NEUTRAL_STARTUP_HOLD_REASON.code) {
     return {
       hasHourlyReason: false,
       hasDailyReason: false,
     };
   }
   return {
-    hasHourlyReason: reason.includes('hourly budget') || reason.includes('capacity'),
-    hasDailyReason: reason.includes('daily budget'),
+    hasHourlyReason: reason.code === PLAN_REASON_CODES.hourlyBudget || reason.code === PLAN_REASON_CODES.capacity,
+    hasDailyReason: reason.code === PLAN_REASON_CODES.dailyBudget,
   };
 }
 

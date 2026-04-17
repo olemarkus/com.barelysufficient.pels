@@ -9,7 +9,9 @@ import {
 import { buildRestoreHeadroomReason } from '../lib/plan/planReasonStrings';
 import { resolveCandidatePower } from '../lib/plan/planCandidatePower';
 import { PENDING_RESTORE_WINDOW_MS } from '../lib/plan/planConstants';
+import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
+import { reasonText } from './utils/deviceReasonTestUtils';
 
 describe('buildSwapCandidates', () => {
   it('excludes devices with equal or higher restore priority', () => {
@@ -84,7 +86,8 @@ describe('buildSwapCandidates', () => {
 
     expect(result.ready).toBe(false);
     expect(result.toShed).toHaveLength(1);
-    expect(result.reason).toContain('insufficient headroom');
+    expect(result.reason.code).toBe(PLAN_REASON_CODES.other);
+    expect(reasonText(result.reason)).toContain('insufficient headroom');
   });
 
   it('explains swap failures caused by post-reserve margin after swap reserve', () => {
@@ -105,9 +108,10 @@ describe('buildSwapCandidates', () => {
     });
 
     expect(result.ready).toBe(false);
-    expect(result.reason).toContain('insufficient headroom to swap for Off Heater after reserves');
-    expect(result.reason).toContain('effective 1.30kW after 0.30kW swap reserve');
-    expect(result.reason).toContain('post-reserve margin 0.050kW < 0.250kW');
+    expect(result.reason.code).toBe(PLAN_REASON_CODES.other);
+    expect(reasonText(result.reason)).toContain('insufficient headroom to swap for Off Heater after reserves');
+    expect(reasonText(result.reason)).toContain('effective 1.30kW after 0.30kW swap reserve');
+    expect(reasonText(result.reason)).toContain('post-reserve margin 0.050kW < 0.250kW');
   });
 
   it('keeps swap restores blocked until the swap and admission reserves are both satisfied', () => {
@@ -155,6 +159,7 @@ describe('buildSwapCandidates', () => {
     expect(result.potentialHeadroom).toBeCloseTo(1.6, 6);
     expect(result.effectiveHeadroom).toBeCloseTo(1.3, 6);
     expect(result.ready).toBe(true);
+    expect(result.reason.code).toBe(PLAN_REASON_CODES.swappedOut);
   });
 
   it('treats explicit zero expected or configured power as zero instead of falling back to 1kW', () => {
@@ -189,7 +194,7 @@ describe('restore swap helpers', () => {
       minimumRequiredPostReserveMarginKw: 0.25,
     });
     expect(update.plannedState).toBe('shed');
-    expect(update.reason).toContain('need 2.00kW');
+    expect(reasonText(update.reason)).toContain('need 2.00kW');
   });
 
   it('mentions effective need when activation penalties increase the restore requirement', () => {
@@ -201,9 +206,9 @@ describe('restore swap helpers', () => {
       penaltyExtraKw: 2.3,
     });
 
-    expect(update.reason).toContain('effective need 4.60kW');
-    expect(update.reason).toContain('base 2.30kW + penalty 2.30kW');
-    expect(update.reason).toContain('available 3.00kW');
+    expect(reasonText(update.reason)).toContain('effective need 4.60kW');
+    expect(reasonText(update.reason)).toContain('base 2.30kW + penalty 2.30kW');
+    expect(reasonText(update.reason)).toContain('available 3.00kW');
   });
 
   it('preserves negative half-step rounding when formatting reserve deficits', () => {
@@ -214,7 +219,7 @@ describe('restore swap helpers', () => {
       minimumRequiredPostReserveMarginKw: 0.25,
     });
 
-    expect(reason).toContain('post-reserve margin -0.001kW < 0.250kW');
+    expect(reasonText(reason)).toContain('post-reserve margin -0.001kW < 0.250kW');
   });
 
   it('uses potential swap headroom in reserve-limited swap rejection summaries', () => {
@@ -227,9 +232,9 @@ describe('restore swap helpers', () => {
       effectiveAvailableKw: 1.3,
     });
 
-    expect(update.reason).toContain('available 1.60kW');
-    expect(update.reason).toContain('effective 1.30kW after 0.30kW swap reserve');
-    expect(update.reason).toContain('post-reserve margin 0.050kW < 0.250kW');
+    expect(reasonText(update.reason)).toContain('available 1.60kW');
+    expect(reasonText(update.reason)).toContain('effective 1.30kW after 0.30kW swap reserve');
+    expect(reasonText(update.reason)).toContain('post-reserve margin 0.050kW < 0.250kW');
   });
 
   it('estimates restore power from expected, measured, or fallback values', () => {

@@ -2,6 +2,7 @@ import { applyShedTemperatureHold, finalizePlanDevices, normalizeShedReasons } f
 import { NEUTRAL_STARTUP_HOLD_REASON } from '../lib/plan/planRestoreDevices';
 import { createPlanEngineState } from '../lib/plan/planState';
 import { buildPlanDevice } from './utils/planTestUtils';
+import { legacyDeviceReason, reasonText } from './utils/deviceReasonTestUtils';
 
 describe('normalizeShedReasons', () => {
   it('normalizes placeholder reasons to the mapped shed reason', () => {
@@ -11,7 +12,7 @@ describe('normalizeShedReasons', () => {
         plannedState: 'shed',
         reason: 'restore (need 1.20kW)',
       })],
-      shedReasons: new Map([['dev-1', 'shed due to hourly budget']]),
+      shedReasons: new Map([['dev-1', legacyDeviceReason('shed due to hourly budget')!]]),
       guardInShortfall: false,
       headroomRaw: null,
       inCooldown: false,
@@ -19,7 +20,7 @@ describe('normalizeShedReasons', () => {
       shedCooldownRemainingSec: null,
     });
 
-    expect(device?.reason).toBe('shed due to hourly budget');
+    expect(reasonText(device?.reason)).toBe('shed due to hourly budget');
   });
 
   it('preserves swap reasons instead of replacing them with cooldown text', () => {
@@ -36,7 +37,7 @@ describe('normalizeShedReasons', () => {
       shedCooldownRemainingSec: 25,
     });
 
-    expect(device?.reason).toBe('swapped out for Water Heater');
+    expect(reasonText(device?.reason)).toBe('swapped out for Water Heater');
   });
 
   it('applies a shortfall reason only when the current reason is generic', () => {
@@ -54,7 +55,7 @@ describe('normalizeShedReasons', () => {
       shedCooldownRemainingSec: null,
     });
 
-    expect(device?.reason).toBe('shortfall (need 1.20kW, headroom 0.15kW)');
+    expect(reasonText(device?.reason)).toBe('shortfall (need 1.20kW, headroom 0.15kW)');
   });
 
   it('does not replace budget reasons with shortfall text', () => {
@@ -72,7 +73,7 @@ describe('normalizeShedReasons', () => {
       shedCooldownRemainingSec: null,
     });
 
-    expect(device?.reason).toBe('shed due to daily budget');
+    expect(reasonText(device?.reason)).toBe('shed due to daily budget');
   });
 
   it('does not rewrite capacity shed reasons during restore cooldown for another device', () => {
@@ -82,7 +83,7 @@ describe('normalizeShedReasons', () => {
         plannedState: 'shed',
         reason: 'shed due to capacity',
       })],
-      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      shedReasons: new Map([['dev-1', legacyDeviceReason('shed due to capacity')!]]),
       guardInShortfall: false,
       headroomRaw: 1.5,
       inCooldown: false,
@@ -90,7 +91,7 @@ describe('normalizeShedReasons', () => {
       shedCooldownRemainingSec: null,
     });
 
-    expect(device?.reason).toBe('shed due to capacity');
+    expect(reasonText(device?.reason)).toBe('shed due to capacity');
   });
 
   it('preserves neutral startup holds during shed cooldown normalization', () => {
@@ -108,7 +109,7 @@ describe('normalizeShedReasons', () => {
       shedCooldownRemainingSec: 25,
     });
 
-    expect(device?.reason).toBe(NEUTRAL_STARTUP_HOLD_REASON);
+    expect(device?.reason).toEqual(NEUTRAL_STARTUP_HOLD_REASON);
   });
 
   it('preserves neutral startup holds during shortfall normalization', () => {
@@ -127,7 +128,7 @@ describe('normalizeShedReasons', () => {
       shedCooldownRemainingSec: null,
     });
 
-    expect(device?.reason).toBe(NEUTRAL_STARTUP_HOLD_REASON);
+    expect(device?.reason).toEqual(NEUTRAL_STARTUP_HOLD_REASON);
   });
 });
 
@@ -205,7 +206,7 @@ describe('applyShedTemperatureHold', () => {
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
     });
 
-    expect(result.planDevices[0]?.reason).toBe('swap pending');
+    expect(reasonText(result.planDevices[0]?.reason)).toBe('swap pending');
     expect(result.planDevices[0]?.plannedTarget).toBe(16);
   });
 
@@ -240,7 +241,7 @@ describe('applyShedTemperatureHold', () => {
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
     });
 
-    expect(result.planDevices[0]?.reason).toBe(NEUTRAL_STARTUP_HOLD_REASON);
+    expect(result.planDevices[0]?.reason).toEqual(NEUTRAL_STARTUP_HOLD_REASON);
     expect(result.planDevices[0]?.plannedTarget).toBe(21);
   });
 });

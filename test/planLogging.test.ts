@@ -6,6 +6,9 @@ import {
   buildPlanSignature,
 } from '../lib/plan/planLogging';
 import type { DevicePlan } from '../lib/plan/planTypes';
+import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
+
+const r = legacyDeviceReason;
 
 describe('plan logging helpers', () => {
   it('formats restore hints with power and headroom context', () => {
@@ -20,7 +23,7 @@ describe('plan logging helpers', () => {
           currentState: 'off',
           currentTarget: 20,
           powerKw: 1.5,
-          reason: 'restore',
+          reason: r('restore (need 1.50kW, headroom unknownkW)'),
         },
       ],
     } as unknown as DevicePlan;
@@ -52,7 +55,7 @@ describe('plan logging helpers', () => {
           currentState: 'on',
           currentTarget: null,
           controllable: false,
-          reason: 'manual',
+          reason: r('manual'),
         },
       ],
     } as unknown as DevicePlan;
@@ -168,7 +171,7 @@ describe('plan logging helpers', () => {
           currentTarget: 16,
           shedAction: 'set_temperature',
           shedTemperature: 16,
-          reason: 'keep',
+          reason: r('keep'),
         },
       ],
     } as unknown as DevicePlan;
@@ -190,7 +193,7 @@ describe('plan logging helpers', () => {
           plannedTarget: null,
           currentState: 'off',
           currentTarget: null,
-          reason: 'inactive (charger is unplugged)',
+          reason: r('inactive (charger is unplugged)'),
         },
       ],
     } as unknown as DevicePlan;
@@ -228,7 +231,7 @@ describe('plan logging helpers', () => {
           plannedState: 'keep',
           currentOn: true,
           currentState: 'on',
-          reason: 'meter settling (10s remaining)',
+          reason: r('meter settling (10s remaining)'),
           controllable: true,
         },
         {
@@ -237,7 +240,7 @@ describe('plan logging helpers', () => {
           plannedState: 'keep',
           currentOn: true,
           currentState: 'on',
-          reason: 'activation backoff (30s remaining)',
+          reason: r('activation backoff (30s remaining)'),
           controllable: true,
         },
         {
@@ -246,7 +249,7 @@ describe('plan logging helpers', () => {
           plannedState: 'keep',
           currentOn: true,
           currentState: 'on',
-          reason: 'shed invariant: low -> max blocked (1 device(s) shed, max step: low)',
+          reason: r('shed invariant: low -> max blocked (1 device(s) shed, max step: low)'),
           controllable: true,
         },
         {
@@ -325,7 +328,7 @@ describe('plan logging helpers', () => {
           currentTarget: null,
           plannedTarget: null,
           controllable: true,
-          reason: 'insufficient headroom (need 0.98kW, headroom -0.97kW)',
+          reason: r('insufficient headroom to restore (need 0.98kW, available -0.97kW)'),
         },
         {
           id: 'dev-2',
@@ -336,7 +339,7 @@ describe('plan logging helpers', () => {
           currentTarget: null,
           plannedTarget: null,
           controllable: true,
-          reason: 'insufficient headroom (need 1.10kW, headroom -0.97kW)',
+          reason: r('insufficient headroom to restore (need 1.10kW, available -0.97kW)'),
         },
         {
           id: 'ev-1',
@@ -347,7 +350,7 @@ describe('plan logging helpers', () => {
           currentTarget: null,
           plannedTarget: null,
           controllable: true,
-          reason: 'inactive (charger is unplugged)',
+          reason: r('inactive (charger is unplugged)'),
         },
       ],
     } as unknown as DevicePlan;
@@ -389,7 +392,7 @@ describe('plan logging helpers', () => {
           currentTarget: null,
           plannedTarget: null,
           controllable: true,
-          reason: 'cooldown (restore, 45s remaining)',
+          reason: r('cooldown (restore, 45s remaining)'),
         },
         {
           id: 'dev-2',
@@ -400,7 +403,7 @@ describe('plan logging helpers', () => {
           currentTarget: null,
           plannedTarget: null,
           controllable: true,
-          reason: 'cooldown (restore, 12s remaining)',
+          reason: r('cooldown (restore, 12s remaining)'),
         },
       ],
     } as unknown as DevicePlan;

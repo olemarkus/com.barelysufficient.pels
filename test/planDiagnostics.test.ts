@@ -2,6 +2,9 @@ import { buildDeviceDiagnosticsObservations } from '../lib/plan/planDiagnostics'
 import type { PlanContext } from '../lib/plan/planContext';
 import type { RestorePlanResult } from '../lib/plan/planRestore';
 import type { DevicePlanDevice, PlanInputDevice } from '../lib/plan/planTypes';
+import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
+
+const r = legacyDeviceReason;
 
 const buildContext = (device: PlanInputDevice, desiredForMode: Record<string, number> = {}): PlanContext => ({
   devices: [device],
@@ -253,7 +256,7 @@ describe('plan diagnostics observations', () => {
         plannedState: 'shed',
         currentTarget: 18,
         plannedTarget: 18,
-        reason: 'shed due to capacity',
+        reason: r('shed due to capacity'),
         controllable: true,
         available: true,
         currentTemperature: 18,
@@ -295,7 +298,7 @@ describe('plan diagnostics observations', () => {
         plannedState: 'shed',
         currentTarget: 18,
         plannedTarget: 24,
-        reason: 'shed due to capacity',
+        reason: r('shed due to capacity'),
         controllable: true,
         available: true,
         currentTemperature: 18,
@@ -334,7 +337,7 @@ describe('plan diagnostics observations', () => {
         plannedState: 'shed',
         currentTarget: 18,
         plannedTarget: 18,
-        reason: 'shed due to capacity',
+        reason: r('shed due to capacity'),
         controllable: true,
         available: true,
         observationStale: true,
@@ -370,7 +373,7 @@ describe('plan diagnostics observations', () => {
         plannedState: 'shed',
         currentTarget: 18,
         plannedTarget: 18,
-        reason: 'waiting for moon phase alignment',
+        reason: r('waiting for moon phase alignment'),
         controllable: true,
         available: true,
         currentTemperature: 18,
@@ -407,7 +410,7 @@ describe('plan diagnostics observations', () => {
         plannedState: 'keep',
         currentTarget: 21,
         plannedTarget: 21,
-        reason: 'keep (recently restored)',
+        reason: r('keep (recently restored)'),
         controllable: true,
         available: true,
         currentTemperature: 18,
@@ -435,7 +438,7 @@ describe('plan diagnostics observations', () => {
         plannedState: 'shed',
         currentTarget: 18,
         plannedTarget: 21,
-        reason: 'restore pending (45s remaining)',
+        reason: r('restore pending (45s remaining)'),
         controllable: true,
         available: true,
         currentTemperature: 18,
@@ -471,7 +474,7 @@ describe('plan diagnostics observations', () => {
         plannedState: 'keep',
         currentTarget: 18,
         plannedTarget: 21,
-        reason: 'keep',
+        reason: r('keep'),
         controllable: true,
         available: true,
         currentTemperature: 18,
@@ -507,7 +510,7 @@ describe('plan diagnostics observations', () => {
         plannedState: 'keep',
         currentTarget: 18,
         plannedTarget: 21,
-        reason: 'meter settling (30s remaining)',
+        reason: r('meter settling (30s remaining)'),
         controllable: true,
         available: true,
         currentTemperature: 18,

@@ -2,6 +2,13 @@
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { StructuredDebugEmitter } from '../logging/logger';
+import {
+  buildComparableDeviceReason,
+  formatDeviceReason,
+  PLAN_REASON_CODES,
+  type DeviceReason,
+  type PlanReasonCode,
+} from '../../packages/shared-domain/src/planReasonSemantics';
 import { getActivationPenaltyLevel, getActivationRestoreBlockRemainingMs } from './planActivationBackoff';
 import { computeBaseRestoreNeed, resolveRestorePowerSource } from './planRestoreSwap';
 import { getRestoreNeed } from './planRestoreSupport';
@@ -21,10 +28,6 @@ import { RESTORE_ADMISSION_FLOOR_KW, RESTORE_CONFIRM_RETRY_MS } from './planCons
 import { resolveCapacityRestoreBlockReason } from './planRestoreTiming';
 import { emitRestoreDebugEventOnChange } from './planDebugDedupe';
 import { NEUTRAL_STARTUP_HOLD_REASON } from './planRestoreDevices';
-
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 function shouldNormalizeReason(reason: ClassifiedPlanReason): boolean {
   return reason.code === 'none'
@@ -47,31 +50,27 @@ function isShortfallReason(reason: ClassifiedPlanReason): boolean {
 
 function getBaseShedReason(params: {
   dev: DevicePlanDevice;
-  shedReasons: Map<string, string>;
+  shedReasons: Map<string, DeviceReason>;
 }): PlanReasonDecision {
   const { dev, shedReasons } = params;
   const explicitReason = shedReasons.get(dev.id);
-  if (explicitReason) return { code: 'existing', text: explicitReason };
+  if (explicitReason) return { code: 'existing', reason: explicitReason };
 
   const classifiedReason = classifyPlanReason(dev.reason);
   if (
-    classifiedReason.text
-    && (
-      isShortfallReason(classifiedReason)
-      || isSwapReason(classifiedReason)
-      || isBudgetReason(classifiedReason)
-    )
+    classifiedReason.reason
+    && (isShortfallReason(classifiedReason) || isSwapReason(classifiedReason) || isBudgetReason(classifiedReason))
   ) {
-    return { code: 'existing', text: classifiedReason.text };
+    return { code: 'existing', reason: classifiedReason.reason };
   }
 
-  return { code: 'existing', text: 'shed due to capacity' };
+  return { code: 'existing', reason: { code: PLAN_REASON_CODES.capacity, detail: null } };
 }
 
-function buildBaseReason(dev: DevicePlanDevice, shedReasons: Map<string, string>): string {
+function buildBaseReason(dev: DevicePlanDevice, shedReasons: Map<string, DeviceReason>): DeviceReason {
   const classifiedReason = classifyPlanReason(dev.reason);
-  const keepReason = shouldNormalizeReason(classifiedReason) ? null : classifiedReason.text;
-  return shedReasons.get(dev.id) || keepReason || 'shed due to capacity';
+  const keepReason = shouldNormalizeReason(classifiedReason) ? null : classifiedReason.reason;
+  return shedReasons.get(dev.id) ?? keepReason ?? { code: PLAN_REASON_CODES.capacity, detail: null };
 }
 
 function maybeApplyShortfallReason(params: {
@@ -82,7 +81,7 @@ function maybeApplyShortfallReason(params: {
 }): PlanReasonDecision | null {
   const { dev, guardInShortfall, currentReason, headroomRaw } = params;
   if (!guardInShortfall || isSwapReason(currentReason) || isBudgetReason(currentReason)) return null;
-  if (currentReason.text === NEUTRAL_STARTUP_HOLD_REASON) return null;
+  if (currentReason.code === PLAN_REASON_CODES.neutralStartupHold) return null;
   if (isShortfallReason(currentReason)) return null;
   const { needed: estimatedNeed } = computeBaseRestoreNeed(dev);
   return { code: 'shortfall', neededKw: estimatedNeed, headroomKw: headroomRaw };
@@ -99,7 +98,7 @@ function maybeApplyCooldownReason(params: {
     inCooldown
     && !activeOvershoot
     && !isSwapReason(currentReason)
-    && currentReason.text !== NEUTRAL_STARTUP_HOLD_REASON
+    && currentReason.code !== PLAN_REASON_CODES.neutralStartupHold
   ) {
     return { code: 'cooldown_shedding', remainingSec: shedCooldownRemainingSec };
   }
@@ -114,49 +113,49 @@ export type PlanReasonPairValidationIssue = {
   allowedReasonKinds: string[];
 };
 
-type ReasonPatternRule = {
-  pattern: RegExp;
+type ReasonCodeRule = {
+  code: PlanReasonCode;
   label: string;
 };
 
-const KEEP_REASON_RULES: readonly ReasonPatternRule[] = [
-  { pattern: /^keep(?: \(.+\))?$/, label: 'keep' },
-  { pattern: /^restore .+ -> .+ \(need .+\)$/, label: 'stepped restore admission' },
-  { pattern: /^cooldown \(shedding, \d+s remaining\)$/, label: 'shedding cooldown' },
-  { pattern: /^cooldown \(restore, \d+s remaining\)$/, label: 'restore cooldown' },
-  { pattern: /^meter settling \(\d+s remaining\)$/, label: 'meter settling' },
-  { pattern: /^restore throttled$/, label: 'restore throttle' },
-  { pattern: /^waiting for other devices to recover$/, label: 'recovery gate' },
-  { pattern: /^activation backoff \(\d+s remaining\)$/, label: 'activation backoff' },
-  { pattern: /^insufficient headroom/, label: 'insufficient headroom' },
-  { pattern: /^swap pending(?: \(.+\))?$/, label: 'swap pending' },
-  { pattern: /^shed invariant: .+ -> .+ blocked \(\d+ device\(s\) shed, max step: .+\)$/, label: 'shed invariant' },
-  { pattern: /^startup stabilization$/, label: 'startup stabilization' },
-  { pattern: /^headroom cooldown \(.+\)$/, label: 'headroom cooldown' },
-  { pattern: /^capacity control off$/, label: 'capacity control off' },
+const KEEP_REASON_RULES: readonly ReasonCodeRule[] = [
+  { code: PLAN_REASON_CODES.keep, label: 'keep' },
+  { code: PLAN_REASON_CODES.restoreNeed, label: 'stepped restore admission' },
+  { code: PLAN_REASON_CODES.cooldownShedding, label: 'shedding cooldown' },
+  { code: PLAN_REASON_CODES.cooldownRestore, label: 'restore cooldown' },
+  { code: PLAN_REASON_CODES.meterSettling, label: 'meter settling' },
+  { code: PLAN_REASON_CODES.restoreThrottled, label: 'restore throttle' },
+  { code: PLAN_REASON_CODES.waitingForOtherDevices, label: 'recovery gate' },
+  { code: PLAN_REASON_CODES.activationBackoff, label: 'activation backoff' },
+  { code: PLAN_REASON_CODES.insufficientHeadroom, label: 'insufficient headroom' },
+  { code: PLAN_REASON_CODES.swapPending, label: 'swap pending' },
+  { code: PLAN_REASON_CODES.shedInvariant, label: 'shed invariant' },
+  { code: PLAN_REASON_CODES.startupStabilization, label: 'startup stabilization' },
+  { code: PLAN_REASON_CODES.headroomCooldown, label: 'headroom cooldown' },
+  { code: PLAN_REASON_CODES.capacityControlOff, label: 'capacity control off' },
 ] as const;
 
-const SHED_REASON_RULES: readonly ReasonPatternRule[] = [
-  { pattern: /^shed due to capacity(?: .+)?$/, label: 'capacity shed' },
-  { pattern: /^shed due to hourly budget(?: .+)?$/, label: 'hourly budget shed' },
-  { pattern: /^shed due to daily budget(?: .+)?$/, label: 'daily budget shed' },
-  { pattern: new RegExp(`^${escapeRegex(NEUTRAL_STARTUP_HOLD_REASON)}$`), label: 'neutral hold' },
-  { pattern: /^shortfall(?: \(.+\))?$/, label: 'shortfall shed' },
-  { pattern: /^cooldown \(shedding, \d+s remaining\)$/, label: 'shedding cooldown' },
-  { pattern: /^cooldown \(restore, \d+s remaining\)$/, label: 'restore cooldown' },
-  { pattern: /^restore throttled$/, label: 'restore throttle' },
-  { pattern: /^restore pending \(\d+s remaining\)$/, label: 'restore pending' },
-  { pattern: /^waiting for other devices to recover$/, label: 'recovery gate' },
-  { pattern: /^activation backoff \(\d+s remaining\)$/, label: 'activation backoff' },
-  { pattern: /^insufficient headroom/, label: 'insufficient headroom' },
-  { pattern: /^swap pending(?: \(.+\))?$/, label: 'swap pending' },
-  { pattern: /^swapped out for .+$/, label: 'swapped out' },
-  { pattern: /^shedding active(?: .+)?$/, label: 'shedding active' },
-  { pattern: /^startup stabilization$/, label: 'startup stabilization' },
+const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
+  { code: PLAN_REASON_CODES.capacity, label: 'capacity shed' },
+  { code: PLAN_REASON_CODES.hourlyBudget, label: 'hourly budget shed' },
+  { code: PLAN_REASON_CODES.dailyBudget, label: 'daily budget shed' },
+  { code: PLAN_REASON_CODES.neutralStartupHold, label: 'neutral hold' },
+  { code: PLAN_REASON_CODES.shortfall, label: 'shortfall shed' },
+  { code: PLAN_REASON_CODES.cooldownShedding, label: 'shedding cooldown' },
+  { code: PLAN_REASON_CODES.cooldownRestore, label: 'restore cooldown' },
+  { code: PLAN_REASON_CODES.restoreThrottled, label: 'restore throttle' },
+  { code: PLAN_REASON_CODES.restorePending, label: 'restore pending' },
+  { code: PLAN_REASON_CODES.waitingForOtherDevices, label: 'recovery gate' },
+  { code: PLAN_REASON_CODES.activationBackoff, label: 'activation backoff' },
+  { code: PLAN_REASON_CODES.insufficientHeadroom, label: 'insufficient headroom' },
+  { code: PLAN_REASON_CODES.swapPending, label: 'swap pending' },
+  { code: PLAN_REASON_CODES.swappedOut, label: 'swapped out' },
+  { code: PLAN_REASON_CODES.sheddingActive, label: 'shedding active' },
+  { code: PLAN_REASON_CODES.startupStabilization, label: 'startup stabilization' },
 ] as const;
 
-const INACTIVE_REASON_RULES: readonly ReasonPatternRule[] = [
-  { pattern: /^inactive(?: \(.+\))?$/, label: 'inactive' },
+const INACTIVE_REASON_RULES: readonly ReasonCodeRule[] = [
+  { code: PLAN_REASON_CODES.inactive, label: 'inactive' },
 ] as const;
 
 function stripCandidateReasons(dev: DevicePlanDevice): DevicePlanDevice {
@@ -164,7 +163,7 @@ function stripCandidateReasons(dev: DevicePlanDevice): DevicePlanDevice {
   return snapshotDevice;
 }
 
-function getAllowedReasonRules(plannedState: string): readonly ReasonPatternRule[] {
+function getAllowedReasonRules(plannedState: string): readonly ReasonCodeRule[] {
   switch (plannedState) {
     case 'keep':
       return KEEP_REASON_RULES;
@@ -179,7 +178,8 @@ function getAllowedReasonRules(plannedState: string): readonly ReasonPatternRule
 
 function validatePlanReasonPair(dev: DevicePlanDevice): PlanReasonPairValidationIssue | null {
   const plannedState = typeof dev.plannedState === 'string' ? dev.plannedState.trim() : '';
-  const reason = typeof dev.reason === 'string' ? dev.reason.trim() : '';
+  const reason = dev.reason ? formatDeviceReason(dev.reason).trim() : '';
+  const reasonCode = dev.reason?.code ?? null;
   const allowedReasonRules = getAllowedReasonRules(plannedState);
   const allowedReasonKinds = allowedReasonRules.map((rule) => rule.label);
 
@@ -204,7 +204,7 @@ function validatePlanReasonPair(dev: DevicePlanDevice): PlanReasonPairValidation
     };
   }
 
-  if (allowedReasonRules.some((rule) => rule.pattern.test(reason))) {
+  if (reasonCode !== null && allowedReasonRules.some((rule) => rule.code === reasonCode)) {
     return null;
   }
 
@@ -226,7 +226,7 @@ function formatPlanReasonPairIssue(issue: PlanReasonPairValidationIssue): string
 export type ShedHoldParams = {
   planDevices: DevicePlanDevice[];
   state: PlanEngineState;
-  shedReasons: Map<string, string>;
+  shedReasons: Map<string, DeviceReason>;
   inShedWindow: boolean;
   inCooldown: boolean;
   activeOvershoot: boolean;
@@ -307,7 +307,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
 
 export function normalizeShedReasons(params: {
   planDevices: DevicePlanDevice[];
-  shedReasons: Map<string, string>;
+  shedReasons: Map<string, DeviceReason>;
   guardInShortfall: boolean;
   headroomRaw: number | null;
   inCooldown: boolean;
@@ -373,8 +373,217 @@ function hasTemperatureTarget(dev: DevicePlanDevice): boolean {
     || (typeof dev.plannedTarget === 'number' && Number.isFinite(dev.plannedTarget));
 }
 
-/* eslint-disable-next-line max-lines-per-function --
-target restore admission mirrors binary restore checks and keeps decision/logging together */
+function emitRestoreRejectedDebug(params: {
+  state: PlanEngineState;
+  restoreDebugKey: string;
+  dev: DevicePlanDevice;
+  phase: 'startup' | 'runtime';
+  payload: Record<string, unknown>;
+  signaturePayload: Record<string, unknown>;
+  debugStructured?: StructuredDebugEmitter;
+}): void {
+  const { state, restoreDebugKey, dev, phase, payload, signaturePayload, debugStructured } = params;
+  emitRestoreDebugEventOnChange({
+    state,
+    key: restoreDebugKey,
+    payload: {
+      event: 'restore_rejected',
+      restoreType: 'target',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      ...payload,
+    },
+    signaturePayload: {
+      event: 'restore_rejected',
+      restoreType: 'target',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      ...signaturePayload,
+    },
+    debugStructured,
+  });
+}
+
+function resolveActivationBackoffHold(params: {
+  dev: DevicePlanDevice;
+  state: PlanEngineState;
+  availableHeadroom: number;
+  phase: 'startup' | 'runtime';
+  restoreDebugKey: string;
+  debugStructured?: StructuredDebugEmitter;
+}): HoldDecision | null {
+  const { dev, state, availableHeadroom, phase, restoreDebugKey, debugStructured } = params;
+  const setbackRemainingMs = getActivationRestoreBlockRemainingMs({ state, deviceId: dev.id });
+  if (setbackRemainingMs === null) return null;
+
+  const reason: PlanReasonDecision = { code: 'activation_backoff', remainingMs: setbackRemainingMs };
+  const renderedReason = renderPlanReasonDecision(reason);
+  const reasonText = formatDeviceReason(renderedReason);
+  emitRestoreRejectedDebug({
+    state,
+    restoreDebugKey,
+    dev,
+    phase,
+    payload: {
+      reason: reasonText,
+      availableKw: availableHeadroom,
+      decision: 'rejected',
+      decisionReason: reasonText,
+      penaltyLevel: getActivationPenaltyLevel(state, dev.id),
+    },
+    signaturePayload: {
+      reason: buildComparableDeviceReason(renderedReason),
+      availableKw: availableHeadroom,
+      decision: 'rejected',
+      decisionReason: buildComparableDeviceReason(renderedReason),
+      penaltyLevel: getActivationPenaltyLevel(state, dev.id),
+    },
+    debugStructured,
+  });
+  return { type: 'hold', reason };
+}
+
+function resolveInsufficientHeadroomHold(params: {
+  dev: DevicePlanDevice;
+  state: PlanEngineState;
+  availableHeadroom: number;
+  phase: 'startup' | 'runtime';
+  restoreDebugKey: string;
+  restoreNeed: ReturnType<typeof getRestoreNeed>;
+  admission: ReturnType<typeof buildRestoreAdmissionMetrics>;
+  debugStructured?: StructuredDebugEmitter;
+}): HoldDecision | null {
+  const { dev, state, availableHeadroom, phase, restoreDebugKey, restoreNeed, admission, debugStructured } = params;
+  if (admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) return null;
+
+  const reason: PlanReasonDecision = {
+    code: 'restore_headroom',
+    params: {
+      neededKw: restoreNeed.needed,
+      availableKw: availableHeadroom,
+      postReserveMarginKw: admission.postReserveMarginKw,
+      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+      penaltyExtraKw: restoreNeed.penaltyExtraKw,
+    },
+  };
+  const renderedReason = renderPlanReasonDecision(reason);
+  const reasonText = formatDeviceReason(renderedReason);
+  emitRestoreRejectedDebug({
+    state,
+    restoreDebugKey,
+    dev,
+    phase,
+    payload: {
+      reason: reasonText,
+      estimatedPowerKw: restoreNeed.devPower,
+      powerSource: resolveRestorePowerSource(dev),
+      neededKw: restoreNeed.needed,
+      availableKw: availableHeadroom,
+      ...buildRestoreAdmissionLogFields(admission),
+      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+      decision: 'rejected',
+      decisionReason: reasonText,
+      penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+      penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+    },
+    signaturePayload: {
+      reason: buildComparableDeviceReason(renderedReason),
+      estimatedPowerKw: restoreNeed.devPower,
+      powerSource: resolveRestorePowerSource(dev),
+      neededKw: restoreNeed.needed,
+      availableKw: availableHeadroom,
+      ...buildRestoreAdmissionLogFields(admission),
+      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+      decision: 'rejected',
+      decisionReason: buildComparableDeviceReason(renderedReason),
+      penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+      penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+    },
+    debugStructured,
+  });
+  return { type: 'hold', reason };
+}
+
+function resolveRestoreGateHold(params: {
+  dev: DevicePlanDevice;
+  state: PlanEngineState;
+  restoredOneThisCycle: boolean;
+  availableHeadroom: number;
+  restoreCooldownSeconds: number;
+  restoreCooldownRemainingSec: number | null;
+  phase: 'startup' | 'runtime';
+  restoreDebugKey: string;
+  restoreNeed: ReturnType<typeof getRestoreNeed>;
+  admission: ReturnType<typeof buildRestoreAdmissionMetrics>;
+  debugStructured?: StructuredDebugEmitter;
+}): HoldDecision | null {
+  const {
+    dev,
+    state,
+    restoredOneThisCycle,
+    availableHeadroom,
+    restoreCooldownSeconds,
+    restoreCooldownRemainingSec,
+    phase,
+    restoreDebugKey,
+    restoreNeed,
+    admission,
+    debugStructured,
+  } = params;
+
+  const gateReason = resolveCapacityRestoreBlockReason({
+    timing: {
+      activeOvershoot: false,
+      inCooldown: false,
+      inRestoreCooldown: false,
+      inStartupStabilization: false,
+      restoreCooldownSeconds,
+      shedCooldownRemainingSec: null,
+      restoreCooldownRemainingSec,
+      startupStabilizationRemainingSec: null,
+    },
+    restoredOneThisCycle,
+    useThrottleLabel: true,
+  });
+  if (!gateReason) return null;
+
+  const reason: PlanReasonDecision = { code: 'existing', reason: gateReason };
+  emitRestoreRejectedDebug({
+    state,
+    restoreDebugKey,
+    dev,
+    phase,
+    payload: {
+      reason: formatDeviceReason(gateReason),
+      estimatedPowerKw: restoreNeed.devPower,
+      powerSource: resolveRestorePowerSource(dev),
+      neededKw: restoreNeed.needed,
+      availableKw: availableHeadroom,
+      penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+      penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+      ...buildRestoreAdmissionLogFields(admission),
+      decision: 'rejected',
+      decisionReason: formatDeviceReason(gateReason),
+    },
+    signaturePayload: {
+      reason: buildComparableDeviceReason(gateReason),
+      estimatedPowerKw: restoreNeed.devPower,
+      powerSource: resolveRestorePowerSource(dev),
+      neededKw: restoreNeed.needed,
+      availableKw: availableHeadroom,
+      penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+      penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+      ...buildRestoreAdmissionLogFields(admission),
+      decision: 'rejected',
+      decisionReason: buildComparableDeviceReason(gateReason),
+    },
+    debugStructured,
+  });
+  return { type: 'hold', reason };
+}
+
 function resolveRestoreDecision(params: {
   dev: DevicePlanDevice;
   state: PlanEngineState;
@@ -396,111 +605,33 @@ function resolveRestoreDecision(params: {
     debugStructured,
   } = params;
 
-  const setbackRemainingMs = getActivationRestoreBlockRemainingMs({ state, deviceId: dev.id });
   const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
   const restoreDebugKey = `target:${dev.id}`;
-  if (setbackRemainingMs !== null) {
-    const reason: PlanReasonDecision = { code: 'activation_backoff', remainingMs: setbackRemainingMs };
-    const reasonText = renderPlanReasonDecision(reason);
-    emitRestoreDebugEventOnChange({
-      state,
-      key: restoreDebugKey,
-      payload: {
-        event: 'restore_rejected',
-        restoreType: 'target',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        phase,
-        reason: reasonText,
-        availableKw: availableHeadroom,
-        decision: 'rejected',
-        decisionReason: reasonText,
-        penaltyLevel: getActivationPenaltyLevel(state, dev.id),
-      },
-      debugStructured,
-    });
-    return { type: 'hold', reason };
-  }
+  const setbackHold = resolveActivationBackoffHold({
+    dev, state, availableHeadroom, phase, restoreDebugKey, debugStructured,
+  });
+  if (setbackHold) return setbackHold;
 
   const restoreNeed = getRestoreNeed(dev, state);
   const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
-  if (admission.postReserveMarginKw < RESTORE_ADMISSION_FLOOR_KW) {
-    const reason: PlanReasonDecision = {
-      code: 'restore_headroom',
-      params: {
-        neededKw: restoreNeed.needed,
-        availableKw: availableHeadroom,
-        postReserveMarginKw: admission.postReserveMarginKw,
-        minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
-        penaltyExtraKw: restoreNeed.penaltyExtraKw,
-      },
-    };
-    const reasonText = renderPlanReasonDecision(reason);
-    emitRestoreDebugEventOnChange({
-      state,
-      key: restoreDebugKey,
-      payload: {
-        event: 'restore_rejected',
-        restoreType: 'target',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        phase,
-        reason: reasonText,
-        estimatedPowerKw: restoreNeed.devPower,
-        powerSource: resolveRestorePowerSource(dev),
-        neededKw: restoreNeed.needed,
-        availableKw: availableHeadroom,
-        ...buildRestoreAdmissionLogFields(admission),
-        minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
-        decision: 'rejected',
-        decisionReason: reasonText,
-        penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
-        penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
-      },
-      debugStructured,
-    });
-    return { type: 'hold', reason };
-  }
-  const gateReason = resolveCapacityRestoreBlockReason({
-    timing: {
-      activeOvershoot: false,
-      inCooldown: false,
-      inRestoreCooldown: false,
-      inStartupStabilization: false,
-      restoreCooldownSeconds,
-      shedCooldownRemainingSec: null,
-      restoreCooldownRemainingSec,
-      startupStabilizationRemainingSec: null,
-    },
-    restoredOneThisCycle,
-    useThrottleLabel: true,
+  const headroomHold = resolveInsufficientHeadroomHold({
+    dev, state, availableHeadroom, phase, restoreDebugKey, restoreNeed, admission, debugStructured,
   });
-  if (gateReason) {
-    const reason: PlanReasonDecision = { code: 'existing', text: gateReason };
-    emitRestoreDebugEventOnChange({
-      state,
-      key: restoreDebugKey,
-      payload: {
-        event: 'restore_rejected',
-        restoreType: 'target',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        phase,
-        reason: gateReason,
-        estimatedPowerKw: restoreNeed.devPower,
-        powerSource: resolveRestorePowerSource(dev),
-        neededKw: restoreNeed.needed,
-        availableKw: availableHeadroom,
-        penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
-        penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
-        ...buildRestoreAdmissionLogFields(admission),
-        decision: 'rejected',
-        decisionReason: gateReason,
-      },
-      debugStructured,
-    });
-    return { type: 'hold', reason };
-  }
+  if (headroomHold) return headroomHold;
+  const gateHold = resolveRestoreGateHold({
+    dev,
+    state,
+    restoredOneThisCycle,
+    availableHeadroom,
+    restoreCooldownSeconds,
+    restoreCooldownRemainingSec,
+    phase,
+    restoreDebugKey,
+    restoreNeed,
+    admission,
+    debugStructured,
+  });
+  if (gateHold) return gateHold;
   restoredThisCycle.add(dev.id);
   const powerSource = resolveRestorePowerSource(dev);
   emitRestoreDebugEventOnChange({
@@ -534,7 +665,7 @@ function resolveHoldDecision(params: {
   dev: DevicePlanDevice;
   behavior: { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null };
   state: PlanEngineState;
-  shedReasons: Map<string, string>;
+  shedReasons: Map<string, DeviceReason>;
   inShedWindow: boolean;
   inCooldown: boolean;
   activeOvershoot: boolean;
@@ -648,7 +779,7 @@ function applyHoldToDevice(params: {
   dev: DevicePlanDevice;
   behavior: { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null };
   state: PlanEngineState;
-  shedReasons: Map<string, string>;
+  shedReasons: Map<string, DeviceReason>;
   inShedWindow: boolean;
   inCooldown: boolean;
   activeOvershoot: boolean;
@@ -681,7 +812,7 @@ function applyHoldToDevice(params: {
     debugStructured,
   } = params;
 
-  if (dev.plannedState === 'shed' && dev.reason === NEUTRAL_STARTUP_HOLD_REASON) {
+  if (dev.plannedState === 'shed' && dev.reason?.code === NEUTRAL_STARTUP_HOLD_REASON.code) {
     return { device: dev, availableHeadroom, restoredOneThisCycle };
   }
 
@@ -755,7 +886,7 @@ function getPendingRestoreDelaySeconds(
 
 function normalizeDeviceReason(params: {
   dev: DevicePlanDevice;
-  shedReasons: Map<string, string>;
+  shedReasons: Map<string, DeviceReason>;
   guardInShortfall: boolean;
   headroomRaw: number | null;
   inCooldown: boolean;
@@ -802,7 +933,7 @@ function normalizeDeviceReason(params: {
 function applyHoldUpdate(
   dev: DevicePlanDevice,
   behavior: { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null },
-  reason: string,
+  reason: DeviceReason,
   availableHeadroom: number,
   restoredOneThisCycle: boolean,
 ): { device: DevicePlanDevice; availableHeadroom: number; restoredOneThisCycle: boolean } {

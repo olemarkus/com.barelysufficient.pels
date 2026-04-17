@@ -9,6 +9,7 @@ import {
   setAutoEnableMockDevices,
 } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
+import { reasonText } from './utils/deviceReasonTestUtils';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
@@ -219,7 +220,7 @@ describe('Device plan snapshot', () => {
     expect(devPlan?.shedAction).toBe('set_temperature');
     expect(devPlan?.plannedTarget).toBe(15);
     expect(devPlan?.plannedState).toBe('shed');
-    expect(devPlan?.reason).toContain('shed');
+    expect(reasonText(devPlan?.reason)).toContain('shed');
   });
 
   it('tracks plan overshoot state transitions', async () => {
@@ -724,7 +725,7 @@ describe('Device plan snapshot', () => {
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
-    expect(devPlan?.reason).toContain('shed');
+    expect(reasonText(devPlan?.reason)).toContain('shed');
   });
 
   it('keeps a device marked as shed when it is already at its shed temperature', async () => {
@@ -754,7 +755,7 @@ describe('Device plan snapshot', () => {
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
-    expect(devPlan?.reason).toContain('shed due to capacity');
+    expect(reasonText(devPlan?.reason)).toContain('shed due to capacity');
   });
 
   it('uses the same shed reason for minimum-temperature shedding and turn-off shedding', async () => {
@@ -792,11 +793,11 @@ describe('Device plan snapshot', () => {
     expect(minPlan?.plannedState).toBe('shed');
     expect(minPlan?.shedAction).toBe('set_temperature');
     expect(minPlan?.plannedTarget).toBe(16);
-    expect(minPlan?.reason).toContain('shed due to capacity');
+    expect(reasonText(minPlan?.reason)).toContain('shed due to capacity');
 
     expect(offPlan?.plannedState).toBe('shed');
     expect(offPlan?.shedAction).toBe('turn_off');
-    expect(offPlan?.reason).toContain('shed due to capacity');
+    expect(reasonText(offPlan?.reason)).toContain('shed due to capacity');
   });
 
   it('uses shortfall reason for minimum-temperature shedding when in shortfall', async () => {
@@ -828,7 +829,7 @@ describe('Device plan snapshot', () => {
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(devPlan?.shedAction).toBe('set_temperature');
-    expect(devPlan?.reason).toContain('shortfall (need');
+    expect(reasonText(devPlan?.reason)).toContain('shortfall (need');
   });
 
   it('keeps a min-temperature shed device marked as shed during cooldown even if its target was overwritten', async () => {
@@ -872,7 +873,7 @@ describe('Device plan snapshot', () => {
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(devPlan?.plannedTarget).toBe(16);
-    expect(devPlan?.reason).toContain('cooldown');
+    expect(reasonText(devPlan?.reason)).toContain('cooldown');
   });
 
   it('does not overwrite a shed device target when applying mode targets', async () => {
@@ -955,7 +956,7 @@ describe('Device plan snapshot', () => {
     expect(devPlan?.plannedState).toBe('shed');
     expect(devPlan?.shedAction).toBe('set_temperature');
     expect(devPlan?.plannedTarget).toBe(16);
-    expect(devPlan?.reason).toContain('cooldown (shedding');
+    expect(reasonText(devPlan?.reason)).toContain('cooldown (shedding');
   });
 
   it('does not hold minimum-temperature shedding when capacity control is disabled', async () => {
@@ -997,7 +998,7 @@ describe('Device plan snapshot', () => {
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('keep');
     expect(devPlan?.plannedTarget).toBe(20);
-    expect(devPlan?.reason).toBe('capacity control off');
+    expect(reasonText(devPlan?.reason)).toBe('capacity control off');
   });
 
   it('restores on/off devices when capacity control is disabled', async () => {
@@ -1153,8 +1154,8 @@ describe('Device plan snapshot', () => {
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('keep');
     expect(devPlan?.plannedTarget).toBe(21);
-    expect(devPlan?.reason).toContain('keep');
-    expect(devPlan?.reason).not.toContain('cooldown');
+    expect(reasonText(devPlan?.reason)).toContain('keep');
+    expect(reasonText(devPlan?.reason)).not.toContain('cooldown');
   });
 
   it('keeps the selected keep reason on active devices after a meaningful tracked step-down', async () => {
@@ -1193,7 +1194,7 @@ describe('Device plan snapshot', () => {
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('keep');
-    expect(devPlan?.reason).toBe('keep');
+    expect(reasonText(devPlan?.reason)).toBe('keep');
     expect(devPlan?.headroomCardBlocked).toBe(true);
     expect(devPlan?.headroomCardCooldownSec).toBeGreaterThanOrEqual(55);
     expect(devPlan?.headroomCardCooldownSec).toBeLessThanOrEqual(60);
@@ -1228,7 +1229,7 @@ describe('Device plan snapshot', () => {
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
-    expect(devPlan?.reason).toContain('cooldown (shedding');
+    expect(reasonText(devPlan?.reason)).toContain('cooldown (shedding');
     expect(devPlan?.headroomCardBlocked).toBe(true);
     expect(devPlan?.headroomCardCooldownSource).toBe('pels_shed');
   });
@@ -1345,7 +1346,7 @@ describe('Device plan snapshot', () => {
     const minPlan = plan.devices.find((d: any) => d.id === 'dev-min');
 
     expect(highPlan?.plannedState).toBe('shed');
-    expect(highPlan?.reason).toContain('insufficient headroom');
+    expect(reasonText(highPlan?.reason)).toContain('insufficient headroom');
     expect(minPlan?.plannedState).not.toBe('shed'); // not swapped out because min-temp devices are non-swappable
   });
 
@@ -1601,7 +1602,7 @@ describe('Device plan snapshot', () => {
     ]);
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
-    expect(devPlan?.reason).toContain('headroom unknown');
+    expect(reasonText(devPlan?.reason)).toContain('headroom unknown');
   });
 
   it('sheds a controllable device when overshooting with real power sample (non-dry-run)', async () => {
@@ -1900,7 +1901,7 @@ describe('Device plan snapshot', () => {
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.currentState).toBe('not_applicable');
-    expect(devPlan?.reason).not.toContain('restore');
+    expect(reasonText(devPlan?.reason)).not.toContain('restore');
   });
 
   it('does not repeatedly shed the same device across consecutive samples (flap guard)', async () => {
@@ -2454,7 +2455,7 @@ describe('Device plan snapshot', () => {
     // High priority device should be planned for restoration (keep)
     // Low priority device should be planned for shedding (swap)
     expect(lowPriPlan?.plannedState).toBe('shed');
-    expect(lowPriPlan?.reason).toContain('swapped out');
+    expect(reasonText(lowPriPlan?.reason)).toContain('swapped out');
     expect(highPriPlan?.plannedState).toBe('keep');
   });
 
@@ -2543,7 +2544,7 @@ describe('Device plan snapshot', () => {
 
     // High priority should stay off - not enough headroom even with swap
     expect(highPriPlan?.plannedState).toBe('shed');
-    expect(highPriPlan?.reason).toContain('insufficient headroom');
+    expect(reasonText(highPriPlan?.reason)).toContain('insufficient headroom');
 
     // Low priority should stay ON - it wasn't swapped out because swap wouldn't help
     expect(lowPriPlan?.plannedState).toBe('keep');
@@ -2601,9 +2602,9 @@ describe('Device plan snapshot', () => {
 
     // Both low priority devices should be shed for the swap
     expect(low1Plan?.plannedState).toBe('shed');
-    expect(low1Plan?.reason).toContain('swapped out');
+    expect(reasonText(low1Plan?.reason)).toContain('swapped out');
     expect(low2Plan?.plannedState).toBe('shed');
-    expect(low2Plan?.reason).toContain('swapped out');
+    expect(reasonText(low2Plan?.reason)).toContain('swapped out');
   });
 
   it('blocks lower-priority devices from restoring before pending swap targets', async () => {
@@ -2668,7 +2669,7 @@ describe('Device plan snapshot', () => {
     // Lower priority device COULD restore (has enough headroom)
     // But should be blocked because swap target is pending
     expect(lowerPriPlan?.plannedState).toBe('shed');
-    expect(lowerPriPlan?.reason).toContain('swap pending');
+    expect(reasonText(lowerPriPlan?.reason)).toContain('swap pending');
   });
 
   it('does not block a higher-priority device behind a lower-priority pending swap target', async () => {
@@ -2711,9 +2712,9 @@ describe('Device plan snapshot', () => {
     const higherPriorityPlan = plan.devices.find((d: any) => d.id === 'dev-high');
 
     expect(pendingLowPlan?.plannedState).toBe('keep');
-    expect(pendingLowPlan?.reason).toMatch(/^meter settling \(\d+s remaining\)$/);
+    expect(reasonText(pendingLowPlan?.reason)).toMatch(/^meter settling \(\d+s remaining\)$/);
     expect(higherPriorityPlan?.plannedState).not.toBe('shed');
-    expect(higherPriorityPlan?.reason).not.toContain('swap pending');
+    expect(reasonText(higherPriorityPlan?.reason)).not.toContain('swap pending');
   });
 
   it('clears stale swap tracking after timeout (60 seconds)', async () => {
@@ -3627,7 +3628,7 @@ describe('Dry run mode', () => {
     expect(dev1Plan).toBeTruthy();
     expect(dev1Plan.currentState).toBe('off');
     expect(dev1Plan.plannedState).toBe('shed');
-    expect(dev1Plan.reason).toContain('shortfall');
+    expect(reasonText(dev1Plan.reason)).toContain('shortfall');
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
@@ -3682,7 +3683,7 @@ describe('Dry run mode', () => {
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(dev1Plan).toBeTruthy();
     expect(dev1Plan.currentState).toBe('off');
-    expect(dev1Plan.reason).toBe('keep');
+    expect(reasonText(dev1Plan.reason)).toBe('keep');
 
     // Now try to apply the plan
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
@@ -4275,7 +4276,7 @@ describe('Dry run mode', () => {
 
     expect(spotterPlan?.plannedState).toBe('keep');
     expect(lowTempPlan?.plannedState).toBe('shed');
-    expect(lowTempPlan?.reason).toContain('swapped out for');
+    expect(reasonText(lowTempPlan?.reason)).toContain('swapped out for');
   });
 
   it('restores a higher-priority onoff device by swapping out a lower-priority temperature-only active device', async () => {
@@ -4344,6 +4345,6 @@ describe('Dry run mode', () => {
 
     expect(spotterPlan?.plannedState).toBe('keep');
     expect(lowTempPlan?.plannedState).toBe('shed');
-    expect(lowTempPlan?.reason).toContain('swapped out for');
+    expect(reasonText(lowTempPlan?.reason)).toContain('swapped out for');
   });
 });

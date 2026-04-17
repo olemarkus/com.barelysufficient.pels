@@ -1,4 +1,5 @@
 import type { HeadroomCardCooldownSource } from './planHeadroomDevice';
+import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type {
   DeviceControlModel,
   SteppedLoadActualStepSource,
@@ -71,7 +72,7 @@ export type DevicePlanDevice = {
   planningPowerKw?: number;
   expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
   measuredPowerKw?: number;
-  reason?: string;
+  reason?: DeviceReason;
   // Planner-only debug metadata. This must be stripped before the final plan snapshot is written.
   candidateReasons?: PlanCandidateReasons;
   zone?: string;

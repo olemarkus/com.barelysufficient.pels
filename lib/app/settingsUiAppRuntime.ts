@@ -2,6 +2,7 @@ import type Homey from 'homey';
 import type { PowerTrackerState } from '../core/powerTracker';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import type { TargetDeviceSnapshot } from '../utils/types';
+import { buildComparablePlanReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { getHourBucketKey } from '../utils/dateUtils';
 
 type SettingsUiRuntimeApp = Homey.App & {
@@ -36,7 +37,28 @@ export const getPlanSnapshotForUiFromHomey = (homey: Homey.App['homey']): Settin
     return appPlan;
   }
   const plan = homey.settings.get('device_plan_snapshot') as unknown;
-  return plan && typeof plan === 'object' ? plan as SettingsUiPlanSnapshot : null;
+  if (!plan || typeof plan !== 'object') return null;
+
+  // Old persisted snapshots stored reason as a string. This is the storage-read
+  // compatibility bridge; runtime producers now emit typed DeviceReason objects.
+  return normalizeLegacyPlanSnapshot(plan as SettingsUiPlanSnapshot);
+};
+
+const normalizeLegacyPlanSnapshot = (plan: SettingsUiPlanSnapshot): SettingsUiPlanSnapshot => {
+  if (!Array.isArray(plan.devices)) return plan;
+
+  return {
+    ...plan,
+    devices: plan.devices.map((device) => {
+      if (!device || typeof device !== 'object') return device;
+      const reason = (device as Record<string, unknown>).reason;
+      if (typeof reason !== 'string') return device;
+      return {
+        ...device,
+        reason: buildComparablePlanReason(reason),
+      };
+    }),
+  };
 };
 
 export const getPowerTrackerForUiFromApp = (homey: Homey.App['homey']): PowerTrackerState | null => {

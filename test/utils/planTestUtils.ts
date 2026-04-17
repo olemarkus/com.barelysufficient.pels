@@ -3,6 +3,7 @@ import type {
   PlanInputDevice,
 } from '../../lib/plan/planTypes';
 import type { SteppedLoadProfile } from '../../lib/utils/types';
+import { legacyDeviceReason } from './deviceReasonTestUtils.ts';
 
 export const steppedProfile: SteppedLoadProfile = {
   model: 'stepped_load',
@@ -14,15 +15,20 @@ export const steppedProfile: SteppedLoadProfile = {
   ],
 };
 
-export const buildPlanDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanDevice => ({
-  id: 'dev',
-  name: 'Device',
-  currentState: 'on',
-  plannedState: 'keep',
-  currentTarget: null,
-  plannedTarget: null,
-  ...overrides,
-});
+export const buildPlanDevice = (overrides: Partial<DevicePlanDevice> & { reason?: DevicePlanDevice['reason'] | string } = {}):
+DevicePlanDevice => {
+  const { reason, ...rest } = overrides;
+  return {
+    id: 'dev',
+    name: 'Device',
+    currentState: 'on',
+    plannedState: 'keep',
+    currentTarget: null,
+    plannedTarget: null,
+    ...rest,
+    ...(typeof reason === 'string' ? { reason: legacyDeviceReason(reason) } : { reason }),
+  };
+};
 
 export const buildPlanInputDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
   id: 'dev',

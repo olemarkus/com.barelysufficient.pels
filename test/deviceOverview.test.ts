@@ -4,13 +4,16 @@ import {
   getDeviceOverviewReportedStepId,
   isDeviceOverviewSteppedModeTransition,
 } from '../packages/shared-domain/src/deviceOverview';
+import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
+
+const r = legacyDeviceReason;
 
 describe('device overview formatter', () => {
   it('formats active devices with measured and expected power', () => {
     expect(formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
-      reason: 'keep',
+      reason: r('keep'),
       measuredPowerKw: 0,
       expectedPowerKw: 3,
     })).toEqual({
@@ -25,7 +28,7 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview({
       currentState: 'off',
       plannedState: 'inactive',
-      reason: 'inactive',
+      reason: r('inactive'),
     })).toEqual({
       powerMsg: 'off',
       stateMsg: 'Inactive',
@@ -38,7 +41,7 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview({
       currentState: 'off',
       plannedState: 'inactive',
-      reason: 'inactive (charger is unplugged)',
+      reason: r('inactive (charger is unplugged)'),
     })).toEqual({
       powerMsg: 'off',
       stateMsg: 'Inactive',
@@ -51,7 +54,7 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview({
       currentState: 'off',
       plannedState: 'keep',
-      reason: 'meter settling (10s remaining)',
+      reason: r('meter settling (10s remaining)'),
     })).toEqual({
       powerMsg: 'off',
       stateMsg: 'Restoring',
@@ -62,7 +65,7 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview({
       currentState: 'on',
       plannedState: 'shed',
-      reason: 'cooldown (restore, 10s remaining)',
+      reason: r('cooldown (restore, 10s remaining)'),
       shedAction: 'turn_off',
     })).toEqual({
       powerMsg: 'on → off',
@@ -76,12 +79,12 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
-      reason: 'meter settling (10s remaining)',
+      reason: r('meter settling (10s remaining)'),
     }).statusMsg).toBe('waiting for meter to settle (10s remaining)');
     expect(formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
-      reason: 'cooldown (restore, 10s remaining)',
+      reason: r('cooldown (restore, 10s remaining)'),
     }).statusMsg).toBe('waiting for meter to settle (10s remaining)');
   });
 
@@ -94,7 +97,7 @@ describe('device overview formatter', () => {
       targetStepId: 'max',
       planningPowerKw: 3,
       measuredPowerKw: 0,
-      reason: 'shed due to capacity',
+      reason: r('shed due to capacity'),
     })).toEqual({
       powerMsg: null,
       stateMsg: 'Shed to max',
@@ -112,7 +115,7 @@ describe('device overview formatter', () => {
       targetStepId: 'max',
       planningPowerKw: 3,
       measuredPowerKw: 0,
-      reason: 'keep',
+      reason: r('keep'),
     }).usageMsg).toBe('Measured: 0.00 kW / Expected: 3.00 kW (reported: low / target: max)');
   });
 
@@ -125,7 +128,7 @@ describe('device overview formatter', () => {
       targetStepId: 'max',
       planningPowerKw: 3,
       measuredPowerKw: 0.6,
-      reason: 'cooldown (restore, 10s remaining)',
+      reason: r('cooldown (restore, 10s remaining)'),
     })).toEqual({
       powerMsg: null,
       stateMsg: 'Active (low → max)',
@@ -143,7 +146,7 @@ describe('device overview formatter', () => {
       desiredStepId: 'low',
       targetStepId: 'low',
       planningPowerKw: 1.25,
-      reason: 'restore off -> low (need 1.25kW)',
+      reason: r('restore off -> low (need 1.25kW)'),
     }).stateMsg).toBe('Restoring');
   });
 
@@ -156,7 +159,7 @@ describe('device overview formatter', () => {
       targetStepId: 'low',
       planningPowerKw: 1.25,
       measuredPowerKw: 0.4,
-      reason: 'keep',
+      reason: r('keep'),
     })).toEqual({
       powerMsg: null,
       stateMsg: 'Active',
@@ -174,7 +177,7 @@ describe('device overview formatter', () => {
       targetStepId: 'max',
       planningPowerKw: 3,
       measuredPowerKw: 0.6,
-      reason: 'cooldown (restore, 10s remaining)',
+      reason: r('cooldown (restore, 10s remaining)'),
     };
 
     expect(isDeviceOverviewSteppedModeTransition(device)).toBe(false);
@@ -196,7 +199,7 @@ describe('device overview formatter', () => {
       targetStepId: 'max',
       planningPowerKw: 3,
       measuredPowerKw: 0.6,
-      reason: 'cooldown (restore, 10s remaining)',
+      reason: r('cooldown (restore, 10s remaining)'),
     };
 
     expect(isDeviceOverviewSteppedModeTransition(device)).toBe(false);
@@ -218,6 +221,7 @@ describe('device overview formatter', () => {
       targetStepId: 'max',
     })).toBe(false);
   });
+
   it('prefers the latest confirmed reported step when stale reportedStepId lags actualStepId', () => {
     const device = {
       controlModel: 'stepped_load' as const,
@@ -229,7 +233,7 @@ describe('device overview formatter', () => {
       targetStepId: 'max',
       planningPowerKw: 3,
       measuredPowerKw: 0,
-      reason: 'keep',
+      reason: r('keep'),
     };
 
     expect(getDeviceOverviewReportedStepId(device)).toBe('max');
@@ -255,60 +259,60 @@ describe('device overview transition signatures', () => {
     const base = formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
-      reason: 'keep',
+      reason: r('keep'),
       measuredPowerKw: 0,
       expectedPowerKw: 1,
     });
     const usageOnly = formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
-      reason: 'keep',
+      reason: r('keep'),
       measuredPowerKw: 0.25,
       expectedPowerKw: 1,
     });
 
     expect(base.usageMsg).not.toBe(usageOnly.usageMsg);
-    expect(buildDeviceOverviewTransitionSignature({ ...base, reason: 'keep' }))
-      .toBe(buildDeviceOverviewTransitionSignature({ ...usageOnly, reason: 'keep' }));
+    expect(buildDeviceOverviewTransitionSignature({ ...base, reason: r('keep') }))
+      .toBe(buildDeviceOverviewTransitionSignature({ ...usageOnly, reason: r('keep') }));
   });
 
   it('ignores countdown-only cooldown and backoff changes', () => {
     const restoreCooldown = formatDeviceOverview({
       currentState: 'off',
       plannedState: 'keep',
-      reason: 'meter settling (30s remaining)',
+      reason: r('meter settling (30s remaining)'),
     });
     const restoreCooldownTick = formatDeviceOverview({
       currentState: 'off',
       plannedState: 'keep',
-      reason: 'meter settling (24s remaining)',
+      reason: r('meter settling (24s remaining)'),
     });
     const activationBackoff = formatDeviceOverview({
       currentState: 'off',
       plannedState: 'shed',
-      reason: 'activation backoff (1535s remaining)',
+      reason: r('activation backoff (1535s remaining)'),
       shedAction: 'turn_off',
     });
     const activationBackoffTick = formatDeviceOverview({
       currentState: 'off',
       plannedState: 'shed',
-      reason: 'activation backoff (1503s remaining)',
+      reason: r('activation backoff (1503s remaining)'),
       shedAction: 'turn_off',
     });
 
     expect(buildDeviceOverviewTransitionSignature({
       ...restoreCooldown,
-      reason: 'meter settling (30s remaining)',
+      reason: r('meter settling (30s remaining)'),
     })).toBe(buildDeviceOverviewTransitionSignature({
       ...restoreCooldownTick,
-      reason: 'meter settling (24s remaining)',
+      reason: r('meter settling (24s remaining)'),
     }));
     expect(buildDeviceOverviewTransitionSignature({
       ...activationBackoff,
-      reason: 'activation backoff (1535s remaining)',
+      reason: r('activation backoff (1535s remaining)'),
     })).toBe(buildDeviceOverviewTransitionSignature({
       ...activationBackoffTick,
-      reason: 'activation backoff (1503s remaining)',
+      reason: r('activation backoff (1503s remaining)'),
     }));
   });
 
@@ -317,21 +321,21 @@ describe('device overview transition signatures', () => {
       currentState: 'on',
       plannedState: 'shed',
       shedAction: 'turn_off',
-      reason: 'cooldown (restore, 30s remaining)',
+      reason: r('cooldown (restore, 30s remaining)'),
     });
     const restoreCooldownTick = formatDeviceOverview({
       currentState: 'on',
       plannedState: 'shed',
       shedAction: 'turn_off',
-      reason: 'cooldown (restore, 24s remaining)',
+      reason: r('cooldown (restore, 24s remaining)'),
     });
 
     expect(buildDeviceOverviewTransitionSignature({
       ...restoreCooldown,
-      reason: 'cooldown (restore, 30s remaining)',
+      reason: r('cooldown (restore, 30s remaining)'),
     })).toBe(buildDeviceOverviewTransitionSignature({
       ...restoreCooldownTick,
-      reason: 'cooldown (restore, 24s remaining)',
+      reason: r('cooldown (restore, 24s remaining)'),
     }));
   });
 
@@ -339,32 +343,32 @@ describe('device overview transition signatures', () => {
     const base = formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
-      reason: 'headroom cooldown (45s remaining; recent PELS shed)',
+      reason: r('headroom cooldown (45s remaining; recent PELS shed)'),
     });
     const countdownOnly = formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
-      reason: 'headroom cooldown (30s remaining; recent PELS shed)',
+      reason: r('headroom cooldown (30s remaining; recent PELS shed)'),
     });
     const sourceChanged = formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
-      reason: 'headroom cooldown (30s remaining; recent PELS restore)',
+      reason: r('headroom cooldown (30s remaining; recent PELS restore)'),
     });
 
     expect(buildDeviceOverviewTransitionSignature({
       ...base,
-      reason: 'headroom cooldown (45s remaining; recent PELS shed)',
+      reason: r('headroom cooldown (45s remaining; recent PELS shed)'),
     })).toBe(buildDeviceOverviewTransitionSignature({
       ...countdownOnly,
-      reason: 'headroom cooldown (30s remaining; recent PELS shed)',
+      reason: r('headroom cooldown (30s remaining; recent PELS shed)'),
     }));
     expect(buildDeviceOverviewTransitionSignature({
       ...base,
-      reason: 'headroom cooldown (45s remaining; recent PELS shed)',
+      reason: r('headroom cooldown (45s remaining; recent PELS shed)'),
     })).not.toBe(buildDeviceOverviewTransitionSignature({
       ...sourceChanged,
-      reason: 'headroom cooldown (30s remaining; recent PELS restore)',
+      reason: r('headroom cooldown (30s remaining; recent PELS restore)'),
     }));
   });
 
@@ -372,46 +376,46 @@ describe('device overview transition signatures', () => {
     const base = formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
-      reason: 'keep',
+      reason: r('keep'),
       measuredPowerKw: 0,
       expectedPowerKw: 1,
     });
 
-    expect(buildDeviceOverviewTransitionSignature({ ...base, reason: 'keep' })).not.toBe(
+    expect(buildDeviceOverviewTransitionSignature({ ...base, reason: r('keep') })).not.toBe(
       buildDeviceOverviewTransitionSignature({
         ...formatDeviceOverview({
           currentState: 'off',
           plannedState: 'keep',
-          reason: 'keep',
+          reason: r('keep'),
           measuredPowerKw: 0,
           expectedPowerKw: 1,
         }),
-        reason: 'keep',
+        reason: r('keep'),
       }),
     );
-    expect(buildDeviceOverviewTransitionSignature({ ...base, reason: 'keep' })).not.toBe(
+    expect(buildDeviceOverviewTransitionSignature({ ...base, reason: r('keep') })).not.toBe(
       buildDeviceOverviewTransitionSignature({
         ...formatDeviceOverview({
           currentState: 'on',
           plannedState: 'shed',
           shedAction: 'turn_off',
-          reason: 'keep',
+          reason: r('keep'),
           measuredPowerKw: 0,
           expectedPowerKw: 1,
         }),
-        reason: 'keep',
+        reason: r('keep'),
       }),
     );
-    expect(buildDeviceOverviewTransitionSignature({ ...base, reason: 'keep' })).not.toBe(
+    expect(buildDeviceOverviewTransitionSignature({ ...base, reason: r('keep') })).not.toBe(
       buildDeviceOverviewTransitionSignature({
         ...formatDeviceOverview({
           currentState: 'on',
           plannedState: 'keep',
-          reason: 'restore throttled',
+          reason: r('restore throttled'),
           measuredPowerKw: 0,
           expectedPowerKw: 1,
         }),
-        reason: 'restore throttled',
+        reason: r('restore throttled'),
       }),
     );
   });
@@ -423,12 +427,12 @@ describe('device overview transition signatures', () => {
       plannedState: 'keep',
       reportedStepId: 'low',
       targetStepId: 'low',
-      reason: 'keep',
+      reason: r('keep'),
     });
 
     expect(buildDeviceOverviewTransitionSignature({
       ...base,
-      reason: 'keep',
+      reason: r('keep'),
       reportedStepId: 'low',
       targetStepId: 'low',
     })).not.toBe(buildDeviceOverviewTransitionSignature({
@@ -438,9 +442,9 @@ describe('device overview transition signatures', () => {
         plannedState: 'keep',
         reportedStepId: 'low',
         targetStepId: 'max',
-        reason: 'keep',
+        reason: r('keep'),
       }),
-      reason: 'keep',
+      reason: r('keep'),
       reportedStepId: 'low',
       targetStepId: 'max',
     }));

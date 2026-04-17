@@ -3,6 +3,7 @@ import { createPlanEngineState } from '../lib/plan/planState';
 import type { PlanContext } from '../lib/plan/planContext';
 import type { PlanDevicesDeps } from '../lib/plan/planDevices';
 import { buildPlanInputDevice, steppedInputDevice } from './utils/planTestUtils';
+import { reasonText } from './utils/deviceReasonTestUtils';
 
 const buildContext = (devices: PlanContext['devices']): PlanContext => ({
   devices,
@@ -289,10 +290,10 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.currentState).toBe('off');
     expect(planDevice.plannedState).toBe('shed'); // Should be shed because of shortfall
     expect(planDevice.desiredStepId).toBe('off'); // Should be driven to off-step!
-    expect(planDevice.reason).toContain('shortfall');
+    expect(reasonText(planDevice.reason)).toContain('shortfall');
     // Restore need in reason should be based on low step (1.25kW + 0.23kW buffer = 1.48kW), not max (3kW),
     // and shortfall must not retain the non-off set_step target.
-    expect(planDevice.reason).toContain('need 1.48kW');
+    expect(reasonText(planDevice.reason)).toContain('need 1.48kW');
   });
 
   it('keeps off-state restore analysis out of the public reason field', () => {
@@ -324,7 +325,7 @@ describe('buildInitialPlanDevices', () => {
     });
 
     expect(planDevice.plannedState).toBe('keep');
-    expect(planDevice.reason).toBe('keep');
+    expect(reasonText(planDevice.reason)).toBe('keep');
     expect(planDevice.candidateReasons?.offStateAnalysis).toBe('restore (need 1.20kW, headroom -1.00kW)');
   });
 
@@ -358,7 +359,7 @@ describe('buildInitialPlanDevices', () => {
     });
 
     expect(planDevice.plannedState).toBe('shed');
-    expect(planDevice.reason).toBe('shed due to capacity');
+    expect(reasonText(planDevice.reason)).toBe('shed due to capacity');
     expect(planDevice.desiredStepId).toBe('off');
   });
 
@@ -433,7 +434,7 @@ describe('buildInitialPlanDevices', () => {
     });
 
     expect(planDevice.plannedState).toBe('inactive');
-    expect(planDevice.reason).toBe('inactive (charger is unplugged)');
+    expect(reasonText(planDevice.reason)).toBe('inactive (charger is unplugged)');
   });
 
   it('does not mark an actively-charging EV as inactive due to unknown expected power', () => {

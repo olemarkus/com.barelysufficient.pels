@@ -1,6 +1,11 @@
 import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
+import {
+  formatDeviceReason,
+  PLAN_REASON_CODES,
+  type DeviceReason,
+} from '../../packages/shared-domain/src/planReasonSemantics';
 import { resolveCandidatePower } from './planCandidatePower';
 import { computeBaseRestoreNeed } from './planRestoreSwap';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
@@ -47,7 +52,7 @@ export function buildInitialPlanDevices(params: {
   context: PlanContext;
   state: PlanEngineState;
   shedSet: Set<string>;
-  shedReasons: Map<string, string>;
+  shedReasons: Map<string, DeviceReason>;
   steppedDesiredStepByDeviceId: Map<string, string>;
   temperatureShedTargets: Map<string, { temperature: number; capabilityId: string }>;
   guardInShortfall: boolean;
@@ -229,7 +234,7 @@ function buildBasePlanDevice(params: {
   controllable: boolean;
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
   shedSet: Set<string>;
-  shedReasons: Map<string, string>;
+  shedReasons: Map<string, DeviceReason>;
   steppedDesiredStepByDeviceId: Map<string, string>;
   temperatureShedTargets: Map<string, { temperature: number; capabilityId: string }>;
 }): DevicePlanDevice {
@@ -269,9 +274,9 @@ function buildBasePlanDevice(params: {
     plannedState,
     desiredStepId,
   });
-  const baseReason = controllable
-    ? shedReasons.get(dev.id) || (recentlyRestored ? 'keep (recently restored)' : 'keep')
-    : 'capacity control off';
+  const baseReason: DeviceReason = controllable
+    ? shedReasons.get(dev.id) ?? { code: PLAN_REASON_CODES.keep, detail: recentlyRestored ? 'recently restored' : null }
+    : { code: PLAN_REASON_CODES.capacityControlOff };
   const { shedAction, shedTemperature, shedStepId } = resolveShedAction({
     dev,
     controllable,
@@ -427,7 +432,7 @@ function resolveEvPhysicalBlockInactiveReason(planDevice: DevicePlanDevice): str
   const { evChargingState } = planDevice;
   if (evChargingState !== 'plugged_out' && evChargingState !== 'plugged_in_discharging') return null;
   const reason = getEvRestoreStateBlockReason(planDevice);
-  return reason ? `inactive (${reason})` : null;
+  return reason ?? null;
 }
 
 function applyOffStateReason(params: {
@@ -438,7 +443,13 @@ function applyOffStateReason(params: {
   const { planDevice, headroomRaw, guardInShortfall } = params;
   if (!planDevice.controllable) return planDevice;
   const physicalBlockReason = resolveEvPhysicalBlockInactiveReason(planDevice);
-  if (physicalBlockReason) return { ...planDevice, plannedState: 'inactive', reason: physicalBlockReason };
+  if (physicalBlockReason) {
+    return {
+      ...planDevice,
+      plannedState: 'inactive',
+      reason: { code: PLAN_REASON_CODES.inactive, detail: physicalBlockReason },
+    };
+  }
   if (planDevice.currentState !== 'off') return planDevice;
   // Full inactive check (including power-unknown) is safe once the device is confirmed off.
   const inactiveReason = getInactiveReason(planDevice);
@@ -471,10 +482,10 @@ function applyOffStateReason(params: {
   }
   return {
     ...planDevice,
-    reason: 'keep',
+    reason: { code: PLAN_REASON_CODES.keep, detail: null },
     candidateReasons: {
       ...planDevice.candidateReasons,
-      offStateAnalysis: buildRestoreNeedReason(need, headroomRaw),
+      offStateAnalysis: formatDeviceReason(buildRestoreNeedReason(need, headroomRaw)),
     },
   };
 }
@@ -502,6 +513,6 @@ function applyHourlyBudgetShed(params: {
     ...planDevice,
     plannedState: 'shed',
     desiredStepId,
-    reason: 'shed due to hourly budget',
+    reason: { code: PLAN_REASON_CODES.hourlyBudget, detail: null },
   };
 }
