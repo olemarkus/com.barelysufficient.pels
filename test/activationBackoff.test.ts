@@ -596,8 +596,8 @@ describe('activation backoff', () => {
     })).toBe(true);
 
     expect(diagnostics.recordControlEvent).toHaveBeenCalledWith({
-      kind: 'shed',
-      origin: 'tracked',
+      kind: 'tracked_transition',
+      direction: 'down',
       deviceId: 'dev-1',
       name: 'Heater',
       nowTs: start + 120_000,
