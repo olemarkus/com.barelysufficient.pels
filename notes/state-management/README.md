@@ -31,10 +31,6 @@ Use these meanings consistently:
 
 - `reportedStepId`: confirmed device feedback only. This is the observed step.
 - `targetStepId`: the step PELS currently wants. This is planner/runtime intent.
-- `inferredStepId`: fallback step chosen from telemetry heuristics or profile default when there is
-  no confirmed report.
-- `stepSource`: why the current effective step value exists. Supported values are `reported`,
-  `power_heuristic`, and `profile_default`.
 
 Legacy compatibility fields still exist in some snapshots and plans:
 
@@ -46,13 +42,11 @@ Legacy compatibility fields still exist in some snapshots and plans:
 
 Contributor rules:
 
-- planner logic may use the effective step (`reportedStepId ?? inferredStepId`) as a conservative
-  operating assumption
 - overview/UI wording must use `reportedStepId` for confirmed observed step
-- if there is no `reportedStepId`, wording must say the step is inferred or assumed rather than
-  presenting it as confirmed
+- if there is no `reportedStepId`, do not infer a step from `measure_power` for human-facing state
+- planner logic should reason from actual measured power directly when it needs live load
 - do not use `selectedStepId` or `actualStepId` as human-facing observed truth without first
-  resolving whether they are actually reported or merely inferred
+  resolving whether they are actually reported
 
 ## Generic Device-State Assumptions
 

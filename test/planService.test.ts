@@ -574,8 +574,6 @@ describe('PlanService', () => {
       expectedPowerKw: 3,
       reportedStepId: null,
       targetStepId: null,
-      inferredStepId: null,
-      stepSource: null,
       desiredStepId: null,
     }));
   });

@@ -297,8 +297,6 @@ function buildBasePlanDevice(params: {
     steppedLoadProfile: dev.steppedLoadProfile,
     reportedStepId: dev.reportedStepId,
     targetStepId: effectiveDesiredStepId,
-    inferredStepId: dev.inferredStepId,
-    stepSource: dev.stepSource,
     selectedStepId: dev.selectedStepId,
     desiredStepId: effectiveDesiredStepId,
     lastDesiredStepId: dev.desiredStepId,
