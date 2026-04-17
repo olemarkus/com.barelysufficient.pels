@@ -1,4 +1,7 @@
 import type { HeadroomCardState, PlanEngineState } from './planState';
+import { isFiniteNumber } from '../utils/appTypeGuards';
+
+export { isFiniteNumber };
 
 export type HeadroomCardCooldownSource = 'step_down' | 'pels_shed' | 'pels_restore';
 export type HeadroomDeviceKwSource = 'expectedPowerKw' | 'powerKw' | 'measuredPowerKw' | 'fallback_zero';
@@ -23,10 +26,6 @@ export type HeadroomCooldownCandidate = {
   dropFromKw: number | null;
   dropToKw: number | null;
 };
-
-export const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
 
 export const ensureHeadroomEntry = (
   state: PlanEngineState,

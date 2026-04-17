@@ -51,9 +51,7 @@ type ComparableSwappedOutReason = ComparablePlanReasonBase & {
 
 type ComparableHeadroomCooldownReason = ComparablePlanReasonBase & {
   code: typeof PLAN_REASON_CODES.headroomCooldown;
-  kind: 'recent_pels_shed' | 'recent_pels_restore' | 'usage_step_down';
-  fromKw: number | null;
-  toKw: number | null;
+  kind: 'recent_pels_shed' | 'recent_pels_restore';
 };
 
 type ComparableTextReason = ComparablePlanReasonBase & {
@@ -74,22 +72,12 @@ const COOLDOWN_RESTORE_REASON = /^cooldown \(restore, \d+s remaining\)$/;
 const METER_SETTLING_REASON = /^meter settling \(\d+s remaining\)$/;
 const ACTIVATION_BACKOFF_REASON = /^activation backoff \(\d+s remaining\)$/;
 const RESTORE_PENDING_REASON = /^restore pending \(\d+s remaining\)$/;
-const HEADROOM_COOLDOWN_USAGE_REASON = new RegExp(
-  '^headroom cooldown \\(\\d+s remaining; '
-  + 'usage (unknown|-?\\d+(?:\\.\\d+)?) -> (unknown|-?\\d+(?:\\.\\d+)?)kW\\)$',
-);
 const HEADROOM_COOLDOWN_RECENT_REASON = /^headroom cooldown \(\d+s remaining; recent PELS (shed|restore)\)$/;
 
 function normalizeReasonText(reason: string | undefined): string | null {
   if (typeof reason !== 'string') return null;
   const trimmed = reason.trim();
   return trimmed.length > 0 ? trimmed : null;
-}
-
-function parseComparableKw(value: string): number | null {
-  if (value === 'unknown') return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function matchKeepReason(trimmed: string): ComparablePlanReason | null {
@@ -125,23 +113,11 @@ function matchCountdownReason(trimmed: string): ComparablePlanReason | null {
 }
 
 function matchHeadroomCooldownReason(trimmed: string): ComparablePlanReason | null {
-  const headroomUsageMatch = HEADROOM_COOLDOWN_USAGE_REASON.exec(trimmed);
-  if (headroomUsageMatch) {
-    return {
-      code: PLAN_REASON_CODES.headroomCooldown,
-      kind: 'usage_step_down',
-      fromKw: parseComparableKw(headroomUsageMatch[1]),
-      toKw: parseComparableKw(headroomUsageMatch[2]),
-    };
-  }
-
   const headroomRecentMatch = HEADROOM_COOLDOWN_RECENT_REASON.exec(trimmed);
   if (headroomRecentMatch) {
     return {
       code: PLAN_REASON_CODES.headroomCooldown,
       kind: headroomRecentMatch[1] === 'shed' ? 'recent_pels_shed' : 'recent_pels_restore',
-      fromKw: null,
-      toKw: null,
     };
   }
   return null;
