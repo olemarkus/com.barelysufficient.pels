@@ -12,7 +12,7 @@ export const LOCAL_BINARY_SETTLE_WINDOW_MS = 5 * 1000;
 type PendingBinarySettleWindow = {
     deviceId: string;
     capabilityId: string;
-    name: string;
+    deviceName?: string;
     desired: boolean;
     timer: ReturnType<typeof setTimeout>;
 };
@@ -89,21 +89,20 @@ export function startPendingBinarySettleWindow(params: {
 
     clearPendingBinarySettleWindow(state, deviceId, capabilityId);
     const key = buildPendingBinarySettleKey(deviceId, capabilityId);
-    const name = deviceName || deviceId;
     const timer = setTimeout(() => {
         finalizePendingBinarySettleWindow(state, key, deps);
     }, LOCAL_BINARY_SETTLE_WINDOW_MS);
     state.pendingBinarySettleWindows.set(key, {
         deviceId,
         capabilityId,
-        name,
+        deviceName,
         desired: value,
         timer,
     });
     deps.logger.structuredLog?.info?.({
         event: 'binary_write_started',
         deviceId,
-        deviceName: name,
+        ...buildBinarySettleDeviceNameFields(deviceName),
         capabilityId,
         desired: value,
         settleWindowMs: LOCAL_BINARY_SETTLE_WINDOW_MS,
@@ -137,7 +136,7 @@ export function notePendingBinarySettleObservation(params: {
     deps.logger.structuredLog?.info?.({
         event: 'binary_write_observed',
         deviceId,
-        deviceName: pending.name,
+        ...buildBinarySettleDeviceNameFields(pending.deviceName),
         capabilityId,
         desired: pending.desired,
         observed: value,
@@ -154,7 +153,7 @@ export function notePendingBinarySettleObservation(params: {
     if (outcome === 'drift') {
         deps.emitPlanReconcile({
             deviceId,
-            name: pending.name,
+            name: pending.deviceName,
             capabilityId,
             changes: [{
                 capabilityId,
@@ -188,7 +187,7 @@ function finalizePendingBinarySettleWindow(
     deps.logger.structuredLog?.info?.({
         event: 'binary_write_timeout',
         deviceId: pending.deviceId,
-        deviceName: pending.name,
+        ...buildBinarySettleDeviceNameFields(pending.deviceName),
         capabilityId: pending.capabilityId,
         desired: pending.desired,
     });
@@ -213,4 +212,10 @@ function finalizePendingBinarySettleWindow(
 
 function buildPendingBinarySettleKey(deviceId: string, capabilityId: string): string {
     return `${deviceId}:${capabilityId}`;
+}
+
+function buildBinarySettleDeviceNameFields(deviceName?: string): { deviceName?: string } {
+    return typeof deviceName === 'string' && deviceName.length > 0
+        ? { deviceName }
+        : {};
 }

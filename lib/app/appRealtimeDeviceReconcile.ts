@@ -8,7 +8,7 @@ const REALTIME_DEVICE_RECONCILE_SUPPRESS_MS = 60 * 1000;
 
 export type RealtimeDeviceReconcileEvent = {
   deviceId: string;
-  name: string;
+  name?: string;
   capabilityId?: string;
   changes?: RealtimeDeviceReconcileChange[];
   planExpectation?: string;
@@ -187,7 +187,7 @@ function getRealtimeDeviceReconcileCircuitState(
 export function toRealtimeReconcileEventPayload(event: RealtimeDeviceReconcileEvent): Record<string, unknown> {
   return {
     deviceId: event.deviceId,
-    deviceName: event.name,
+    ...(typeof event.name === 'string' && event.name.length > 0 ? { deviceName: event.name } : {}),
     capabilityId: event.capabilityId,
     planExpectation: event.planExpectation,
     changes: event.changes,
@@ -197,7 +197,7 @@ export function toRealtimeReconcileEventPayload(event: RealtimeDeviceReconcileEv
 function toRealtimeReconcileEventSummary(event: RealtimeDeviceReconcileEvent): Record<string, unknown> {
   return {
     deviceId: event.deviceId,
-    deviceName: event.name,
+    ...(typeof event.name === 'string' && event.name.length > 0 ? { deviceName: event.name } : {}),
     capabilityId: event.capabilityId,
   };
 }

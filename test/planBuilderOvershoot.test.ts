@@ -1,4 +1,5 @@
 import CapacityGuard from '../lib/core/capacityGuard';
+import { recordActivationAttemptStart } from '../lib/plan/planActivationBackoff';
 import { PlanBuilder } from '../lib/plan/planBuilder';
 import { createPlanEngineState } from '../lib/plan/planState';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
@@ -220,5 +221,62 @@ describe('PlanBuilder overshoot diagnostics', () => {
       event: 'overshoot_cleared',
       durationMs: 0,
     }));
+  });
+
+  it('keeps overshoot attribution keyed on deviceId when the label is unavailable', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createPlanEngineState();
+      const now = new Date('2026-04-15T11:04:01.000Z').getTime();
+      vi.setSystemTime(now);
+      state.lastDeviceRestoreMs['missing-device'] = now - 1_000;
+      recordActivationAttemptStart({
+        state,
+        deviceId: 'missing-device',
+        source: 'pels_restore',
+        nowTs: now - 1_000,
+      });
+
+      const structuredLog = { info: vi.fn() };
+      const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
+      capacityGuard.reportTotalPower(4.8);
+
+      const builder = new PlanBuilder({
+        homey: { settings: { set: vi.fn() } } as never,
+        getCapacityGuard: () => capacityGuard,
+        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getDailyBudgetSnapshot: () => null,
+        getPriorityForDevice: () => 100,
+        getDynamicSoftLimitOverride: () => 4,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        structuredLog: structuredLog as any,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      }, state);
+
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'present-device',
+          name: 'Present Device',
+          measuredPowerKw: 0.8,
+        }),
+      ]);
+
+      expect(structuredLog.info).toHaveBeenCalledWith({
+        event: 'overshoot_attributed',
+        deviceId: 'missing-device',
+        restoreAgeMs: 1_000,
+        penaltyLevel: 1,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

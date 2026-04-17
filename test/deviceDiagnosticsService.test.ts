@@ -826,4 +826,38 @@ describe('DeviceDiagnosticsService', () => {
       stringifySpy.mockRestore();
     }
   });
+
+  it('records activation transitions by deviceId even when no fresh name is provided', () => {
+    const { service } = createDeps();
+    const nowTs = Date.now();
+
+    service.recordActivationTransition({
+      kind: 'attempt_started',
+      deviceId: 'heater-1',
+      source: 'pels_restore',
+      penaltyLevel: 1,
+      nowTs,
+    }, {});
+    service.recordActivationTransition({
+      kind: 'setback_failed',
+      deviceId: 'heater-1',
+      source: 'pels_restore',
+      previousPenaltyLevel: 1,
+      penaltyLevel: 2,
+      elapsedMs: 60_000,
+      nowTs: nowTs + 60_000,
+    }, {});
+
+    const payload = service.getUiPayload(nowTs + 60_000);
+    expect(payload.diagnosticsByDeviceId['heater-1']).toMatchObject({
+      currentPenaltyLevel: 2,
+      windows: {
+        '1d': expect.objectContaining({
+          failedActivationCount: 1,
+          penaltyBumpCount: 1,
+          maxPenaltyLevelSeen: 2,
+        }),
+      },
+    });
+  });
 });

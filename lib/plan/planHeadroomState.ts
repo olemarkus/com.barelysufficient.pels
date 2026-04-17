@@ -170,7 +170,7 @@ export const emitActivationTransitions = (
   deviceName: string | undefined,
   transitions: Array<Parameters<DeviceDiagnosticsRecorder['recordActivationTransition']>[0]>,
 ): void => {
-  if (!diagnostics || !deviceName || transitions.length === 0) return;
+  if (!diagnostics || transitions.length === 0) return;
   for (const transition of transitions) {
     diagnostics.recordActivationTransition(transition, { name: deviceName });
   }
@@ -263,7 +263,7 @@ const maybeStartTrackedActivationAttempt = (params: {
     }
   }
   if (startResult.transition) {
-    if (name) diagnostics?.recordActivationTransition(startResult.transition, { name });
+    diagnostics?.recordActivationTransition(startResult.transition, { name });
   }
   return startResult.stateChanged;
 };

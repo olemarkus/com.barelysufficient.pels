@@ -7,7 +7,7 @@ import {
 
 export type PlanRealtimeUpdateEvent = {
   deviceId: string;
-  name: string;
+  name?: string;
   capabilityId?: string;
   changes?: RealtimeDeviceReconcileChange[];
 };
