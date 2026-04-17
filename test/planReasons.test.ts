@@ -106,6 +106,13 @@ describe('finalizePlanDevices', () => {
     expect(finalized.planDevices[0]).not.toHaveProperty('candidateReasons');
   });
 
+  it('allows finalized keep devices to omit a reason', () => {
+    expect(() => finalizePlanDevices([buildPlanDevice({
+      plannedState: 'keep',
+      reason: undefined,
+    })])).not.toThrow();
+  });
+
   it('throws in tests when a final reason/state pair is not allowed', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'shed',

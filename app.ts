@@ -30,9 +30,10 @@ import {
   resolveModeName as resolveModeNameHelper,
 } from './lib/utils/capacityHelpers';
 import {
+  DEVICE_LAST_CONTROLLED_MS,
   OPERATING_MODE_SETTING,
 } from './lib/utils/settingsKeys';
-import { isPowerTrackerState } from './lib/utils/appTypeGuards';
+import { isNumberMap, isPowerTrackerState } from './lib/utils/appTypeGuards';
 import {
   cancelPendingPowerRebuild,
   executePendingPowerRebuild,
@@ -462,7 +463,13 @@ class PelsApp extends Homey.App {
   }
   private initPlanEngine(): void {
     this.planEngine = createPlanEngine(this.ctx);
+    this.hydratePlanEngineControlState();
     this.planEngine.beginStartupRestoreStabilization(STARTUP_RESTORE_STABILIZATION_MS);
+  }
+  private hydratePlanEngineControlState(): void {
+    if (!this.planEngine) return;
+    const stored = this.homey.settings.get(DEVICE_LAST_CONTROLLED_MS) as unknown;
+    this.planEngine.state.lastDeviceControlledMs = isNumberMap(stored) ? { ...stored } : {};
   }
   private initDeviceDiagnosticsService(): void {
     this.deviceDiagnosticsService = createDeviceDiagnosticsService(this.ctx);

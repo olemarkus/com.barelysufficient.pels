@@ -67,6 +67,7 @@ export type OvershootTrackedPlanDevice = Pick<
 };
 
 export type PlanEngineState = {
+  lastDeviceControlledMs: Record<string, number>;
   lastDeviceShedMs: Record<string, number>;
   lastDeviceRestoreMs: Record<string, number>;
   activationAttemptByDevice: Record<string, ActivationAttemptState>;
@@ -119,6 +120,7 @@ export type PlanEngineState = {
 
 export function createPlanEngineState(): PlanEngineState {
   return {
+    lastDeviceControlledMs: {},
     lastDeviceShedMs: {},
     lastDeviceRestoreMs: {},
     activationAttemptByDevice: {},
