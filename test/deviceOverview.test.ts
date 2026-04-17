@@ -71,17 +71,30 @@ describe('device overview formatter', () => {
       currentState: 'on',
       plannedState: 'shed',
       shedAction: 'set_step',
-      selectedStepId: 'low',
-      desiredStepId: 'max',
+      inferredStepId: 'low',
+      targetStepId: 'max',
       planningPowerKw: 3,
       measuredPowerKw: 0,
       reason: 'shed due to capacity',
     })).toEqual({
       powerMsg: null,
       stateMsg: 'Shed to max',
-      usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW (low → max)',
+      usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW (inferred: low / target: max)',
       statusMsg: 'shed due to capacity',
     });
+  });
+
+  it('formats reported stepped-load feedback as confirmed observed state', () => {
+    expect(formatDeviceOverview({
+      controlModel: 'stepped_load',
+      currentState: 'on',
+      plannedState: 'keep',
+      reportedStepId: 'low',
+      targetStepId: 'max',
+      planningPowerKw: 3,
+      measuredPowerKw: 0,
+      reason: 'keep',
+    }).usageMsg).toBe('Measured: 0.00 kW / Expected: 3.00 kW (reported: low / target: max)');
   });
 
   it('handles missing optional values consistently', () => {
@@ -240,5 +253,35 @@ describe('device overview transition signatures', () => {
         reason: 'restore throttled',
       }),
     );
+  });
+
+  it('changes when stepped observed-vs-target semantics change', () => {
+    const base = formatDeviceOverview({
+      controlModel: 'stepped_load',
+      currentState: 'on',
+      plannedState: 'keep',
+      reportedStepId: 'low',
+      targetStepId: 'low',
+      reason: 'keep',
+    });
+
+    expect(buildDeviceOverviewTransitionSignature({
+      ...base,
+      reason: 'keep',
+      reportedStepId: 'low',
+      targetStepId: 'low',
+    })).not.toBe(buildDeviceOverviewTransitionSignature({
+      ...formatDeviceOverview({
+        controlModel: 'stepped_load',
+        currentState: 'on',
+        plannedState: 'keep',
+        reportedStepId: 'low',
+        targetStepId: 'max',
+        reason: 'keep',
+      }),
+      reason: 'keep',
+      reportedStepId: 'low',
+      targetStepId: 'max',
+    }));
   });
 });
