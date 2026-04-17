@@ -176,6 +176,25 @@ describe('appDeviceControlHelpers', () => {
     expect(decorated.planningPowerKw).toBe(3);
   });
 
+  it('ignores an invalid persisted selected step when resolving stepped loads', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+    const decorated = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({
+        currentOn: true,
+        selectedStepId: 'legacy-mid',
+      }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 1000,
+    });
+
+    expect(decorated.selectedStepId).toBe('max');
+    expect(decorated.reportedStepId).toBeUndefined();
+    expect(decorated.actualStepId).toBeUndefined();
+    expect(decorated.actualStepSource).toBeUndefined();
+    expect(decorated.planningPowerKw).toBe(3);
+  });
+
   it('tracks desired stepped commands, reports success, and can prune stale pending commands', () => {
     const runtimeState = createDeviceControlRuntimeState();
 

@@ -11,7 +11,7 @@ export type DeviceControlModel = 'temperature_target' | 'binary_power' | 'steppe
 
 export type SteppedLoadCommandStatus = 'idle' | 'pending' | 'success' | 'stale';
 
-export type SteppedLoadActualStepSource = 'reported' | 'assumed' | 'power_heuristic' | 'profile_default';
+export type SteppedLoadActualStepSource = 'reported' | 'assumed' | 'profile_default';
 
 export type SteppedLoadStep = {
   id: string;

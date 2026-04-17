@@ -19,7 +19,7 @@ export type DeviceOverviewSnapshot = {
   desiredStepId?: string;
   actualStepId?: string;
   assumedStepId?: string;
-  actualStepSource?: 'reported' | 'assumed' | 'power_heuristic' | 'profile_default';
+  actualStepSource?: 'reported' | 'assumed' | 'profile_default';
   binaryCommandPending?: boolean;
   observationStale?: boolean;
 };

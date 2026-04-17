@@ -65,7 +65,7 @@ export const resolveDefaultControlModel = (device: TargetDeviceSnapshot): Device
 
 const resolveSteppedLoadActualStepSource = (
   reportedStepId: string | undefined,
-): 'reported' | 'power_heuristic' | undefined => {
+): 'reported' | undefined => {
   if (reportedStepId) return 'reported';
   return undefined;
 };
@@ -106,7 +106,8 @@ export const decorateSnapshotWithDeviceControl = (params: {
   const reportedStepId = getSteppedLoadStep(profile, reported?.stepId)?.id;
   const desiredStepId = getSteppedLoadStep(profile, desired?.stepId)?.id;
   const defaultStepId = getSteppedLoadHighestStep(profile)?.id;
-  const selectedStepId = reportedStepId ?? snapshot.selectedStepId ?? defaultStepId;
+  const persistedSelectedStepId = getSteppedLoadStep(profile, snapshot.selectedStepId)?.id;
+  const selectedStepId = reportedStepId ?? persistedSelectedStepId ?? defaultStepId;
   const actualStepId = reportedStepId;
   const actualStepSource = resolveSteppedLoadActualStepSource(reportedStepId);
   const assumedStepId = undefined;
