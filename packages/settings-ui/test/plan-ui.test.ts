@@ -574,7 +574,7 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-ev-inactive')?.contains('neutral')).toBe(true);
   });
 
-  it('renders restore cooldown as restoring when the device is currently off', async () => {
+  it('keeps restore cooldown shed when the device is currently off', async () => {
     await renderPlanSnapshot({
       devices: [
         {
@@ -588,12 +588,12 @@ describe('plan device state', () => {
       ],
     });
 
-    expect(getStateText()).toBe('Shed (restore cooldown)');
+    expect(getStateText()).toBe('Shed (powered off)');
     expect(getStatusText()).toBe('cooldown (restore, 40s remaining)');
-    expect(getBadgeClassList('dev-restore-off')?.contains('neutral')).toBe(true);
+    expect(getBadgeClassList('dev-restore-off')?.contains('expensive')).toBe(true);
   });
 
-  it('renders restore cooldown as active when the device is already back on', async () => {
+  it('keeps shed devices shed even when the device is already back on', async () => {
     await renderPlanSnapshot({
       devices: [
         {
@@ -607,9 +607,27 @@ describe('plan device state', () => {
       ],
     });
 
-    expect(getStateText()).toBe('Active');
-    expect(getStatusText()).toBe('stabilizing after restore (40s remaining)');
-    expect(getBadgeClassList('dev-restore-on')?.contains('cheap')).toBe(true);
+    expect(getStateText()).toBe('Shed (powered off)');
+    expect(getStatusText()).toBe('cooldown (restore, 40s remaining)');
+    expect(getBadgeClassList('dev-restore-on')?.contains('expensive')).toBe(true);
+  });
+
+  it('does not pair an active badge with stabilizing status text for shed devices', async () => {
+    await renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-restore-on',
+          name: 'Recently restored heater',
+          currentState: 'on',
+          plannedState: 'shed',
+          controllable: true,
+          reason: 'cooldown (restore, 40s remaining)',
+        },
+      ],
+    });
+
+    expect(getStatusText()).not.toMatch(/stabilizing after/);
+    expect(getBadgeClassList('dev-restore-on')?.contains('cheap')).toBe(false);
   });
 
   it('shows restore requested when binary command is pending and device is off', async () => {

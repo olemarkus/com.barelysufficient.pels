@@ -48,7 +48,7 @@ file.
 - [ ] Treat stepped-load upward transitions for already-on devices as mode transitions, not
       restore UI.
       Files: `packages/settings-ui/src/ui/plan.ts`.
-- [ ] Align restore-cooldown badge/state text in the plan UI and make true shed states visually
+- [x] Align restore-cooldown badge/state text in the plan UI and make true shed states visually
       unambiguous.
       Files: `packages/settings-ui/src/ui/plan.ts`.
 - [x] Add gray badge/state handling for unknown or disappeared devices in the overview/device list.
