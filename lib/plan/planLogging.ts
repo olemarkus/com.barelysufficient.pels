@@ -4,6 +4,7 @@ import {
   type CapacityStateSummarySource,
   type PlanCapacityStateSummary,
 } from '../core/capacityStateSummary';
+import { buildComparablePlanReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { resolveCandidatePower } from './planCandidatePower';
@@ -232,7 +233,7 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
       lastDesiredStepId: d.lastDesiredStepId,
       currentState: d.currentState,
       currentTarget: d.currentTarget,
-      reason: d.reason,
+      reason: buildComparablePlanReason(d.reason),
       planningPowerKw: d.planningPowerKw,
       shedAction: d.shedAction,
       controllable: d.controllable,
