@@ -66,7 +66,6 @@ function buildOverviewSignatureForDevice(
     reason: device.reason,
     reportedStepId: device.reportedStepId,
     targetStepId: resolveOverviewTargetStepId(device) ?? undefined,
-    inferredStepId: device.inferredStepId,
   });
 }
 
@@ -90,8 +89,6 @@ function buildOverviewEventForDevice(
     expectedPowerKw: getDeviceOverviewExpectedPowerKw(device) ?? null,
     reportedStepId: device.reportedStepId ?? null,
     targetStepId: resolveOverviewTargetStepId(device),
-    inferredStepId: device.inferredStepId ?? null,
-    stepSource: device.stepSource ?? null,
     desiredStepId: device.desiredStepId ?? null,
   };
 }

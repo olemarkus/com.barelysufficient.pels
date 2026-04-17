@@ -15,8 +15,6 @@ export type DeviceOverviewSnapshot = {
   currentTarget?: unknown;
   reportedStepId?: string;
   targetStepId?: string;
-  inferredStepId?: string;
-  stepSource?: 'reported' | 'power_heuristic' | 'profile_default';
   selectedStepId?: string;
   desiredStepId?: string;
   actualStepId?: string;
@@ -63,24 +61,13 @@ const getTargetStepId = (device: DeviceOverviewSnapshot): string | undefined => 
   device.targetStepId ?? device.desiredStepId
 );
 
-const getInferredStepId = (device: DeviceOverviewSnapshot): string | undefined => {
-  if (device.inferredStepId) return device.inferredStepId;
-  if (device.assumedStepId) return device.assumedStepId;
-  if (!getReportedStepId(device) && device.actualStepSource === 'power_heuristic') {
-    return device.actualStepId;
-  }
-  if (!getReportedStepId(device)) return device.selectedStepId;
-  return undefined;
-};
-
-const getEffectiveSteppedStepId = (device: DeviceOverviewSnapshot): string | undefined => (
-  getReportedStepId(device) ?? getInferredStepId(device)
+const getPlannerStepId = (device: DeviceOverviewSnapshot): string | undefined => (
+  device.selectedStepId ?? device.assumedStepId
 );
 
 const getSteppedUsageStepText = (device: DeviceOverviewSnapshot): string | null => {
   const reportedStepId = getReportedStepId(device);
   const targetStepId = getTargetStepId(device);
-  const inferredStepId = getInferredStepId(device);
 
   if (reportedStepId) {
     if (targetStepId && targetStepId !== reportedStepId) {
@@ -89,22 +76,15 @@ const getSteppedUsageStepText = (device: DeviceOverviewSnapshot): string | null 
     return `reported: ${reportedStepId}`;
   }
 
-  if (inferredStepId) {
-    if (targetStepId && targetStepId !== inferredStepId) {
-      return `inferred: ${inferredStepId} / target: ${targetStepId}`;
-    }
-    return `inferred: ${inferredStepId}`;
-  }
-
   return targetStepId ? `target: ${targetStepId}` : null;
 };
 
 const getSteppedRestorePending = (device: DeviceOverviewSnapshot): boolean => (
   isSteppedLoadDevice(device)
   && Boolean(
-    getEffectiveSteppedStepId(device)
+    getPlannerStepId(device)
     && getTargetStepId(device)
-    && getEffectiveSteppedStepId(device) !== getTargetStepId(device),
+    && getPlannerStepId(device) !== getTargetStepId(device),
   )
 );
 
@@ -252,7 +232,6 @@ export const buildDeviceOverviewTransitionSignature = (
     reason?: string;
     reportedStepId?: string;
     targetStepId?: string;
-    inferredStepId?: string;
   },
 ): string => (
   JSON.stringify({
@@ -261,6 +240,5 @@ export const buildDeviceOverviewTransitionSignature = (
     reason: buildComparablePlanReason(overview.reason),
     reportedStepId: overview.reportedStepId ?? null,
     targetStepId: overview.targetStepId ?? null,
-    inferredStepId: overview.inferredStepId ?? null,
   })
 );

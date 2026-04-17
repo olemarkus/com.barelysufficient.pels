@@ -4,7 +4,6 @@ import type {
   SteppedLoadActualStepSource,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
-  SteppedLoadStepSource,
   TargetCapabilitySnapshot,
 } from '../utils/types';
 
@@ -51,8 +50,6 @@ export type DevicePlanDevice = {
   steppedLoadProfile?: SteppedLoadProfile;
   reportedStepId?: string;
   targetStepId?: string;
-  inferredStepId?: string;
-  stepSource?: SteppedLoadStepSource;
   selectedStepId?: string;
   desiredStepId?: string;
   lastDesiredStepId?: string;
@@ -167,8 +164,6 @@ export type PlanInputDevice = {
   steppedLoadProfile?: SteppedLoadProfile;
   reportedStepId?: string;
   targetStepId?: string;
-  inferredStepId?: string;
-  stepSource?: SteppedLoadStepSource;
   selectedStepId?: string;
   desiredStepId?: string;
   lastStepCommandIssuedAt?: number;

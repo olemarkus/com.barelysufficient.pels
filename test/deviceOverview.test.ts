@@ -71,7 +71,6 @@ describe('device overview formatter', () => {
       currentState: 'on',
       plannedState: 'shed',
       shedAction: 'set_step',
-      inferredStepId: 'low',
       targetStepId: 'max',
       planningPowerKw: 3,
       measuredPowerKw: 0,
@@ -79,7 +78,7 @@ describe('device overview formatter', () => {
     })).toEqual({
       powerMsg: null,
       stateMsg: 'Shed to max',
-      usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW (inferred: low / target: max)',
+      usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW (target: max)',
       statusMsg: 'shed due to capacity',
     });
   });

@@ -13,8 +13,6 @@ export type SteppedLoadCommandStatus = 'idle' | 'pending' | 'success' | 'stale';
 
 export type SteppedLoadActualStepSource = 'reported' | 'assumed' | 'power_heuristic' | 'profile_default';
 
-export type SteppedLoadStepSource = 'reported' | 'power_heuristic' | 'profile_default';
-
 export type SteppedLoadStep = {
   id: string;
   planningPowerW: number;
@@ -53,8 +51,6 @@ export type TargetDeviceSnapshot = {
     measuredPowerKw?: number;
     reportedStepId?: string;
     targetStepId?: string;
-    inferredStepId?: string;
-    stepSource?: SteppedLoadStepSource;
     desiredStepId?: string;
     actualStepId?: string;
     assumedStepId?: string;

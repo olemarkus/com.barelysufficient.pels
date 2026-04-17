@@ -4,7 +4,6 @@ import {
   isSteppedLoadOffStep,
   normalizeDeviceControlProfiles,
   resolveSteppedLoadPlanningPowerKw,
-  resolveSteppedLoadPowerHeuristicStepId,
 } from '../utils/deviceControlProfiles';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type {
@@ -66,22 +65,8 @@ export const resolveDefaultControlModel = (device: TargetDeviceSnapshot): Device
 
 const resolveSteppedLoadActualStepSource = (
   reportedStepId: string | undefined,
-  heuristicStepId: string | undefined,
 ): 'reported' | 'power_heuristic' | undefined => {
   if (reportedStepId) return 'reported';
-  if (heuristicStepId) return 'power_heuristic';
-  return undefined;
-};
-
-const resolveSteppedLoadStepSource = (params: {
-  reportedStepId: string | undefined;
-  heuristicStepId: string | undefined;
-  defaultStepId: string | undefined;
-}): 'reported' | 'power_heuristic' | 'profile_default' | undefined => {
-  const { reportedStepId, heuristicStepId, defaultStepId } = params;
-  if (reportedStepId) return 'reported';
-  if (heuristicStepId) return 'power_heuristic';
-  if (defaultStepId) return 'profile_default';
   return undefined;
 };
 
@@ -97,7 +82,7 @@ const resolveSteppedLoadCurrentOn = (params: {
 };
 
 /* eslint-disable complexity --
- * Decoration resolves reported, heuristic, and fallback step state in one place.
+ * Decoration resolves reported step state plus legacy planner fallback in one place.
  */
 export const decorateSnapshotWithDeviceControl = (params: {
   snapshot: TargetDeviceSnapshot;
@@ -120,18 +105,11 @@ export const decorateSnapshotWithDeviceControl = (params: {
   const reported = runtimeState.steppedLoadReportedByDeviceId[snapshot.id];
   const reportedStepId = getSteppedLoadStep(profile, reported?.stepId)?.id;
   const desiredStepId = getSteppedLoadStep(profile, desired?.stepId)?.id;
-  const heuristicStepId = resolveSteppedLoadPowerHeuristicStepId(profile, snapshot.measuredPowerKw);
   const defaultStepId = getSteppedLoadHighestStep(profile)?.id;
-  const inferredStepId = reportedStepId ? undefined : heuristicStepId ?? defaultStepId;
-  const stepSource = resolveSteppedLoadStepSource({
-    reportedStepId,
-    heuristicStepId,
-    defaultStepId,
-  });
-  const selectedStepId = reportedStepId ?? inferredStepId;
-  const actualStepId = reportedStepId ?? heuristicStepId;
-  const actualStepSource = resolveSteppedLoadActualStepSource(reportedStepId, heuristicStepId);
-  const assumedStepId = inferredStepId;
+  const selectedStepId = reportedStepId ?? snapshot.selectedStepId ?? defaultStepId;
+  const actualStepId = reportedStepId;
+  const actualStepSource = resolveSteppedLoadActualStepSource(reportedStepId);
+  const assumedStepId = undefined;
   const planningPowerKw = resolveSteppedLoadPlanningPowerKw(profile, selectedStepId);
 
   return {
@@ -140,8 +118,6 @@ export const decorateSnapshotWithDeviceControl = (params: {
     steppedLoadProfile: profile,
     reportedStepId,
     targetStepId: desiredStepId,
-    inferredStepId,
-    stepSource,
     selectedStepId,
     desiredStepId,
     actualStepId,
