@@ -80,7 +80,7 @@ describe('pels status limit reason', () => {
     expect(status.limitReason).toBe('none');
   });
 
-  it('reports none for active devices showing headroom cooldown status', () => {
+  it('reports none for active devices with headroom cooldown metadata', () => {
     const plan: DevicePlan = {
       meta: {
         totalKw: 4.2,
@@ -97,7 +97,12 @@ describe('pels status limit reason', () => {
           currentTarget: 21,
           plannedTarget: 21,
           controllable: true,
-          reason: 'headroom cooldown (45s remaining; usage 6.00 -> 3.50kW)',
+          reason: 'keep',
+          headroomCardBlocked: true,
+          headroomCardCooldownSec: 45,
+          headroomCardCooldownSource: 'step_down',
+          headroomCardCooldownFromKw: 6,
+          headroomCardCooldownToKw: 3.5,
         },
       ],
     };

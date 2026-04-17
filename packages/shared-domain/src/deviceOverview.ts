@@ -170,11 +170,6 @@ const formatActivePlanStatusReason = (reason: string): string => {
     return `stabilizing after recent PELS shed (${headroomShedMatch[1]})`;
   }
 
-  const stepDownMatch = reason.match(/^headroom cooldown \((.+); usage (.+)\)$/);
-  if (stepDownMatch) {
-    return `stabilizing after recent step-down (${stepDownMatch[1]}; usage ${stepDownMatch[2]})`;
-  }
-
   return reason;
 };
 

@@ -140,11 +140,7 @@ const COOLDOWN_REASON_PATTERNS = [
   /^cooldown \(shedding, \d+s remaining\)$/,
   /^cooldown \(restore, \d+s remaining\)$/,
   /^meter settling \(\d+s remaining\)$/,
-  new RegExp(
-    '^headroom cooldown \\(\\d+s remaining; '
-    + '(?:usage (?:unknown|-?\\d+(?:\\.\\d+)?) -> (?:unknown|-?\\d+(?:\\.\\d+)?)kW'
-    + '|recent PELS shed|recent PELS restore)\\)$',
-  ),
+  /^headroom cooldown \(\d+s remaining; recent PELS (shed|restore)\)$/,
   /^restore pending \(\d+s remaining\)$/,
 ];
 
