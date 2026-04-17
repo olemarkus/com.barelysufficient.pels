@@ -43,7 +43,6 @@ const STARVATION_ENTRY_ANCHORS = [
 ] as const;
 
 export type DeviceDiagnosticsBlockCause = 'not_blocked' | 'headroom' | 'cooldown_backoff';
-export type DeviceDiagnosticsControlEventOrigin = 'pels' | 'tracked';
 export type DeviceDiagnosticsStarvationSuppressionState = 'counting' | 'paused' | 'none';
 export type DeviceDiagnosticsStarvationCountingCause =
   | 'capacity'
@@ -87,13 +86,20 @@ export type DeviceDiagnosticsPlanObservation = {
   observationFresh: boolean;
 };
 
-export type DeviceDiagnosticsControlEvent = {
-  kind: 'shed' | 'restore';
-  origin: DeviceDiagnosticsControlEventOrigin;
+type DeviceDiagnosticsControlEventBase = {
   deviceId: string;
   name?: string;
   nowTs?: number;
 };
+
+export type DeviceDiagnosticsControlEvent =
+  | (DeviceDiagnosticsControlEventBase & {
+    kind: 'shed' | 'restore';
+  })
+  | (DeviceDiagnosticsControlEventBase & {
+    kind: 'tracked_transition';
+    direction: 'up' | 'down';
+  });
 
 export type DeviceDiagnosticsBackoffTransition =
   | {
@@ -393,36 +399,43 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     if (typeof event.name === 'string' && event.name.length > 0) {
       live.name = event.name;
     }
-    if (event.kind === 'shed') {
-      this.addCount(event.deviceId, nowTs, 'shedCount', 1);
-      if (isFiniteNumber(live.openRestoreTs)) {
-        const durationMs = Math.max(0, nowTs - live.openRestoreTs);
-        this.addRestoreToSetback(event.deviceId, nowTs, durationMs);
-        live.openRestoreTs = undefined;
+    switch (event.kind) {
+      case 'shed':
+        this.addCount(event.deviceId, nowTs, 'shedCount', 1);
+        if (isFiniteNumber(live.openRestoreTs)) {
+          const durationMs = Math.max(0, nowTs - live.openRestoreTs);
+          this.addRestoreToSetback(event.deviceId, nowTs, durationMs);
+          live.openRestoreTs = undefined;
+          this.deps.logDebug(
+            `Diagnostics: restore-to-setback completed ${formatDeviceRef(event.deviceId, live.name)} `
+            + `duration=${formatDurationSeconds(durationMs)}`,
+          );
+        }
+        live.openShedTs = nowTs;
+        this.deps.logDebug(`Diagnostics: shed recorded ${formatDeviceRef(event.deviceId, live.name)}`);
+        break;
+      case 'restore':
+        this.addCount(event.deviceId, nowTs, 'restoreCount', 1);
+        if (isFiniteNumber(live.openShedTs)) {
+          const durationMs = Math.max(0, nowTs - live.openShedTs);
+          this.addShedToRestore(event.deviceId, nowTs, durationMs);
+          live.openShedTs = undefined;
+          this.deps.logDebug(
+            `Diagnostics: shed-to-restore completed ${formatDeviceRef(event.deviceId, live.name)} `
+            + `duration=${formatDurationSeconds(durationMs)}`,
+          );
+        }
+        live.openRestoreTs = nowTs;
+        this.deps.logDebug(`Diagnostics: restore recorded ${formatDeviceRef(event.deviceId, live.name)}`);
+        break;
+      case 'tracked_transition':
         this.deps.logDebug(
-          `Diagnostics: restore-to-setback completed ${formatDeviceRef(event.deviceId, live.name)} `
-          + `origin=${event.origin} duration=${formatDurationSeconds(durationMs)}`,
+          `Diagnostics: tracked transition recorded ${formatDeviceRef(event.deviceId, live.name)} `
+          + `direction=${event.direction}`,
         );
-      }
-      live.openShedTs = nowTs;
-      this.deps.logDebug(
-        `Diagnostics: shed recorded ${formatDeviceRef(event.deviceId, live.name)} origin=${event.origin}`,
-      );
-    } else {
-      this.addCount(event.deviceId, nowTs, 'restoreCount', 1);
-      if (isFiniteNumber(live.openShedTs)) {
-        const durationMs = Math.max(0, nowTs - live.openShedTs);
-        this.addShedToRestore(event.deviceId, nowTs, durationMs);
-        live.openShedTs = undefined;
-        this.deps.logDebug(
-          `Diagnostics: shed-to-restore completed ${formatDeviceRef(event.deviceId, live.name)} `
-          + `origin=${event.origin} duration=${formatDurationSeconds(durationMs)}`,
-        );
-      }
-      live.openRestoreTs = nowTs;
-      this.deps.logDebug(
-        `Diagnostics: restore recorded ${formatDeviceRef(event.deviceId, live.name)} origin=${event.origin}`,
-      );
+        break;
+      default:
+        return;
     }
     this.scheduleFlush(nowTs);
   }

@@ -129,14 +129,12 @@ describe('DeviceDiagnosticsService', () => {
 
     service.recordControlEvent({
       kind: 'shed',
-      origin: 'pels',
       deviceId: 'heater-1',
       name: 'Hall Heater',
       nowTs: shedTs,
     });
     service.recordControlEvent({
       kind: 'restore',
-      origin: 'pels',
       deviceId: 'heater-1',
       name: 'Hall Heater',
       nowTs: restoreTs,
@@ -159,7 +157,6 @@ describe('DeviceDiagnosticsService', () => {
     }, { name: 'Hall Heater' });
     service.recordControlEvent({
       kind: 'shed',
-      origin: 'pels',
       deviceId: 'heater-1',
       name: 'Hall Heater',
       nowTs: setbackTs,
@@ -184,6 +181,38 @@ describe('DeviceDiagnosticsService', () => {
     });
     expect(summary.windows['1d'].avgShedToRestoreMs).toBe(20 * 60 * 1000);
     expect(summary.windows['1d'].avgRestoreToSetbackMs).toBe(5 * 60 * 1000);
+  });
+
+  it('accepts tracked transitions without counting them as shed or restore actions', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    service.recordControlEvent({
+      kind: 'tracked_transition',
+      direction: 'down',
+      deviceId: 'heater-1',
+      name: 'Hall Heater',
+      nowTs: start,
+    });
+    service.recordControlEvent({
+      kind: 'tracked_transition',
+      direction: 'up',
+      deviceId: 'heater-1',
+      name: 'Hall Heater',
+      nowTs: start + (2 * 60 * 1000),
+    });
+
+    const summary = service.getUiPayload(start + (2 * 60 * 1000)).diagnosticsByDeviceId['heater-1'];
+    expect(summary).toMatchObject({
+      windows: {
+        '1d': expect.objectContaining({
+          shedCount: 0,
+          restoreCount: 0,
+          avgShedToRestoreMs: null,
+          avgRestoreToSetbackMs: null,
+        }),
+      },
+    });
   });
 
   it('does not backfill observation gaps larger than ten minutes', () => {
@@ -754,7 +783,6 @@ describe('DeviceDiagnosticsService', () => {
     service.recordControlEvent({
       nowTs: start,
       kind: 'shed',
-      origin: 'pels',
       deviceId: 'heater-1',
     });
     vi.runOnlyPendingTimers();
@@ -765,7 +793,6 @@ describe('DeviceDiagnosticsService', () => {
     service.recordControlEvent({
       nowTs: secondTs,
       kind: 'restore',
-      origin: 'pels',
       deviceId: 'heater-1',
     });
 
@@ -790,7 +817,6 @@ describe('DeviceDiagnosticsService', () => {
       service.recordControlEvent({
         nowTs: Date.UTC(2026, 2, 9, 10, 0, 0),
         kind: 'shed',
-        origin: 'pels',
         deviceId: 'heater-1',
       });
 
@@ -810,7 +836,6 @@ describe('DeviceDiagnosticsService', () => {
       service.recordControlEvent({
         nowTs: Date.UTC(2026, 2, 9, 10, 0, 0),
         kind: 'shed',
-        origin: 'pels',
         deviceId: 'heater-1',
       });
 
