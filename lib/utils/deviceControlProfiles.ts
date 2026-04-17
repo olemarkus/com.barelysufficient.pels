@@ -1,8 +1,5 @@
 import type { DeviceControlProfile, DeviceControlProfiles, SteppedLoadProfile, SteppedLoadStep } from './types';
 
-export const POWER_HEURISTIC_ABSOLUTE_TOLERANCE_W = 350;
-export const POWER_HEURISTIC_RATIO_TOLERANCE = 0.35;
-
 // Keep these step-selection helpers mirrored with
 // packages/contracts/src/deviceControlProfiles.ts. The runtime/Jest/Homey
 // path cannot safely import that ESM contracts module directly.
@@ -102,33 +99,6 @@ export const getSteppedLoadNextLowerStep = (params: {
     return sortedSteps[index] ?? null;
   }
   return null;
-};
-
-export const resolveSteppedLoadPowerHeuristicStepId = (
-  profile: SteppedLoadProfile,
-  measuredPowerKw?: number,
-): string | undefined => {
-  if (typeof measuredPowerKw !== 'number' || !Number.isFinite(measuredPowerKw) || measuredPowerKw <= 0) {
-    return undefined;
-  }
-  const measuredPowerW = measuredPowerKw * 1000;
-  const sortedSteps = sortSteppedLoadSteps(profile.steps);
-  let bestStep: SteppedLoadStep | null = null;
-  let bestDeltaW = Number.POSITIVE_INFINITY;
-  for (const step of sortedSteps) {
-    if (step.planningPowerW <= 0) continue;
-    const deltaW = Math.abs(step.planningPowerW - measuredPowerW);
-    if (deltaW < bestDeltaW) {
-      bestDeltaW = deltaW;
-      bestStep = step;
-    }
-  }
-  if (!bestStep) return undefined;
-  const toleranceW = Math.max(
-    POWER_HEURISTIC_ABSOLUTE_TOLERANCE_W,
-    bestStep.planningPowerW * POWER_HEURISTIC_RATIO_TOLERANCE,
-  );
-  return bestDeltaW <= toleranceW ? bestStep.id : undefined;
 };
 
 export const normalizeSteppedLoadProfile = (

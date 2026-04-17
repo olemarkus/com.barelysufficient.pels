@@ -7,9 +7,6 @@ import type {
   SteppedLoadStep,
 } from './types.js';
 
-const POWER_HEURISTIC_ABSOLUTE_TOLERANCE_W = 350;
-const POWER_HEURISTIC_RATIO_TOLERANCE = 0.35;
-
 export const DEFAULT_DEVICE_CONTROL_MODEL: DeviceControlModel = 'temperature_target';
 
 export const sortSteppedLoadSteps = (steps: SteppedLoadStep[]): SteppedLoadStep[] => (
@@ -104,32 +101,6 @@ export const getSteppedLoadNextHigherStep = (params: {
     return sortedSteps[index] ?? null;
   }
   return null;
-};
-
-export const resolveSteppedLoadPowerHeuristicStepId = (
-  profile: SteppedLoadProfile,
-  measuredPowerKw?: number,
-): string | undefined => {
-  if (typeof measuredPowerKw !== 'number' || !Number.isFinite(measuredPowerKw) || measuredPowerKw <= 0) {
-    return undefined;
-  }
-  const measuredPowerW = measuredPowerKw * 1000;
-  let bestStep: SteppedLoadStep | null = null;
-  let bestDeltaW = Number.POSITIVE_INFINITY;
-  for (const step of profile.steps) {
-    if (step.planningPowerW <= 0) continue;
-    const deltaW = Math.abs(step.planningPowerW - measuredPowerW);
-    if (deltaW < bestDeltaW) {
-      bestStep = step;
-      bestDeltaW = deltaW;
-    }
-  }
-  if (!bestStep) return undefined;
-  const toleranceW = Math.max(
-    POWER_HEURISTIC_ABSOLUTE_TOLERANCE_W,
-    bestStep.planningPowerW * POWER_HEURISTIC_RATIO_TOLERANCE,
-  );
-  return bestDeltaW <= toleranceW ? bestStep.id : undefined;
 };
 
 export const normalizeSteppedLoadProfile = (
