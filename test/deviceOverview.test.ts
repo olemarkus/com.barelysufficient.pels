@@ -182,6 +182,38 @@ describe('device overview formatter', () => {
     });
   });
 
+  it('does not treat unavailable stepped devices as active mode transitions', () => {
+    const device = {
+      controlModel: 'stepped_load' as const,
+      currentState: 'on',
+      plannedState: 'keep',
+      available: false,
+      reportedStepId: 'low',
+      targetStepId: 'max',
+      planningPowerKw: 3,
+      measuredPowerKw: 0.6,
+      reason: 'cooldown (restore, 10s remaining)',
+    };
+
+    expect(isDeviceOverviewSteppedModeTransition(device)).toBe(false);
+    expect(formatDeviceOverview(device)).toEqual({
+      powerMsg: null,
+      stateMsg: 'Unavailable',
+      usageMsg: 'Measured: 0.60 kW / Expected: 3.00 kW (reported: low / target: max)',
+      statusMsg: 'stabilizing after restore (10s remaining)',
+    });
+  });
+
+  it('does not treat stale stepped devices as active mode transitions', () => {
+    expect(isDeviceOverviewSteppedModeTransition({
+      controlModel: 'stepped_load',
+      currentState: 'on',
+      plannedState: 'keep',
+      observationStale: true,
+      reportedStepId: 'low',
+      targetStepId: 'max',
+    })).toBe(false);
+  });
   it('prefers the latest confirmed reported step when stale reportedStepId lags actualStepId', () => {
     const device = {
       controlModel: 'stepped_load' as const,

@@ -5,7 +5,6 @@ import { createMetaLine } from './components.ts';
 import { getPriceIndicatorIcon, type PriceIndicatorTone } from './priceIndicator.ts';
 import {
   formatDeviceOverview,
-  isDeviceOverviewSteppedModeTransition,
   type DeviceOverviewStrings,
   type DeviceOverviewSnapshot,
 } from '../../../shared-domain/src/deviceOverview.ts';
@@ -308,8 +307,7 @@ const hasSteppedRestorePending = (dev: PlanDeviceSnapshot): boolean => (
 );
 
 const isPlanBadgeActiveState = (dev: PlanDeviceSnapshot): boolean => (
-  isDeviceOverviewSteppedModeTransition(dev)
-  || dev.currentState === 'not_applicable'
+  dev.currentState === 'not_applicable'
   || isOnLikeState(dev.currentState)
 );
 
