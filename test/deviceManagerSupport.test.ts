@@ -60,6 +60,7 @@ describe('device manager support helpers', () => {
   });
 
   it('resolves EV control capability and charging state helpers', () => {
+    const logDebug = vi.fn();
     const capabilityObj = {
       evcharger_charging: { value: false, setable: true },
       evcharger_charging_state: { value: 'plugged_in_paused' },
@@ -85,7 +86,12 @@ describe('device manager support helpers', () => {
     expect(getCanSetControl('onoff', capabilityObj)).toBe(false);
     expect(getEvChargingState(capabilityObj)).toBe('plugged_in_paused');
     expect(getCurrentTemperature(capabilityObj)).toBe(21);
-    expect(buildTargets(['target_temperature'], capabilityObj)).toEqual([{
+    expect(buildTargets({
+      targetCaps: ['target_temperature'],
+      capabilityObj,
+      deviceLabel: 'Device',
+      logDebug,
+    })).toEqual([{
       id: 'target_temperature',
       value: 22,
       unit: 'C',
@@ -93,6 +99,24 @@ describe('device manager support helpers', () => {
       max: 75,
       step: 5,
     }]);
+
+    expect(buildTargets({
+      targetCaps: ['target_temperature'],
+      capabilityObj: {
+        target_temperature: { value: 'invalid', units: 'C', min: 35, max: 75, step: 5 },
+      },
+      deviceLabel: 'Broken Device',
+      logDebug,
+    })).toEqual([{
+      id: 'target_temperature',
+      unit: 'C',
+      min: 35,
+      max: 75,
+      step: 5,
+    }]);
+    expect(logDebug).toHaveBeenCalledWith(
+      expect.stringContaining('Skipping malformed target_temperature value for Broken Device'),
+    );
   });
 
   it('logs EV command and snapshot changes', () => {

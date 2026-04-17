@@ -662,7 +662,7 @@ class PelsApp extends Homey.App {
     });
   }
   private notifyOperatingModeChanged(mode: string): void {
-    const trimmed = (mode || '').trim();
+    const trimmed = mode.trim();
     if (!trimmed || this.lastNotifiedOperatingMode === trimmed) return;
     const card = this.homey.flow?.getTriggerCard?.('operating_mode_changed');
     if (card && typeof card.trigger === 'function') {

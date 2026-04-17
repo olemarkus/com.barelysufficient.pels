@@ -13,6 +13,7 @@ import {
   computeDefaultAirtreatmentShedTemperature,
   normalizeShedTemperature,
 } from '../utils/airtreatmentShedTemperature';
+import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
 
 type BooleanMap = Record<string, boolean>;
 type PriceSettings = Record<string, { enabled?: boolean }>;
@@ -142,7 +143,7 @@ function resolveTemperatureWithoutOnOffOvershootUpdate(params: {
   } else {
     normalizedTemp = computeDefaultAirtreatmentShedTemperature({
       modeTarget: readModeTarget({ settings, deviceId: device.id }),
-      currentTarget: typeof device.targets?.[0]?.value === 'number' ? device.targets[0].value : null,
+      currentTarget: getPrimaryTargetCapability(device.targets)?.value ?? null,
       minFloorC,
     });
   }

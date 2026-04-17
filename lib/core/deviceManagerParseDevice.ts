@@ -137,8 +137,13 @@ export function parseDevice(params: {
             deviceLabel: label,
         }),
     });
-    const { targetCaps } = capsStatus;
-    const targets = buildTargets(targetCaps, capabilityObj);
+    const targetCaps = capsStatus.targetCaps;
+    const targets = buildTargets({
+        targetCaps,
+        capabilityObj,
+        deviceLabel,
+        logDebug: (...args: unknown[]) => logger.debug(...args),
+    });
     const controlCapabilityId = getControlCapabilityId({ deviceClassKey, capabilities });
     const evChargingState = getEvChargingState(capabilityObj);
     const currentOn = resolveSnapshotCurrentOn({
@@ -189,7 +194,7 @@ export function parseDevice(params: {
     };
 }
 
-function resolveTargetDeviceType(targetCaps: readonly unknown[]): TargetDeviceSnapshot['deviceType'] {
+function resolveTargetDeviceType(targetCaps: readonly string[]): TargetDeviceSnapshot['deviceType'] {
     return targetCaps.length > 0 ? 'temperature' : 'onoff';
 }
 

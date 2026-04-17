@@ -66,7 +66,7 @@ type PelsTargetSnapshotSummary = {
   controlCapabilityId?: string;
   currentOn: boolean;
   currentTemperature?: number;
-  targets: Array<{ id: string; value: unknown; unit: string }>;
+  targets: Array<{ id: string; value?: unknown; unit: string }>;
   powerKw?: number;
   expectedPowerKw?: number;
   measuredPowerKw?: number;

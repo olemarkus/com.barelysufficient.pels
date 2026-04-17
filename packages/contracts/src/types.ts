@@ -1,6 +1,6 @@
 export type TargetCapabilitySnapshot = {
   id: string;
-  value: unknown;
+  value?: number;
   unit: string;
   min?: number;
   max?: number;

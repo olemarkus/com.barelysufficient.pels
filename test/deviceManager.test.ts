@@ -232,6 +232,34 @@ describe('DeviceManager', () => {
             );
         });
 
+        it('keeps temperature devices when target capability values are malformed and preserves an unknown current target', () => {
+            const [parsed] = deviceManager.parseDeviceListForTests([{
+                id: 'thermo-invalid-target',
+                name: 'Broken Thermostat',
+                class: 'thermostat',
+                capabilities: ['measure_temperature', 'target_temperature', 'onoff'],
+                capabilitiesObj: {
+                    onoff: { value: true, id: 'onoff' },
+                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
+                    target_temperature: { value: '21', id: 'target_temperature', units: '°C', min: 5, max: 35, step: 0.5 },
+                },
+            }]);
+
+            expect(parsed).toEqual(expect.objectContaining({
+                id: 'thermo-invalid-target',
+                deviceType: 'temperature',
+                targets: [expect.objectContaining({
+                    id: 'target_temperature',
+                    min: 5,
+                    max: 35,
+                    step: 0.5,
+                })],
+            }));
+            expect(loggerMock.debug).toHaveBeenCalledWith(
+                expect.stringContaining('Skipping malformed target_temperature value for Broken Thermostat (thermo-invalid-target)'),
+            );
+        });
+
         it('skips partial temperature devices that are missing measure_temperature', () => {
             const parsed = deviceManager.parseDeviceListForTests([{
                 id: 'bad-thermo',
@@ -3184,6 +3212,70 @@ describe('DeviceManager', () => {
                     expect(deviceManager.getSnapshot()[0].lastFreshDataMs).not.toBe(
                         new Date('2026-04-01T12:10:00.000Z').getTime(),
                     );
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
+
+            it('snapshot refresh preserves a fresher unknown target reading from device_update', async () => {
+                vi.useFakeTimers();
+                try {
+                    await deviceManager.init();
+                    vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+                    mockApiGet.mockResolvedValue(buildThermostatDevice());
+                    await deviceManager.refreshSnapshot();
+
+                    expect(deviceManager.getSnapshot()[0].targets.find((t) => t.id === 'target_temperature')?.value).toBe(20);
+
+                    vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
+                    deviceManager.injectDeviceUpdateForTest({
+                        id: 'dev1',
+                        name: 'Thermostat',
+                        class: 'thermostat',
+                        capabilities: ['onoff', 'target_temperature', 'measure_temperature', 'measure_power'],
+                        capabilitiesObj: {
+                            onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T12:01:00.000Z' },
+                            target_temperature: {
+                                value: 'unknown',
+                                id: 'target_temperature',
+                                units: '°C',
+                                min: 5,
+                                max: 40,
+                                step: 0.5,
+                            },
+                            measure_temperature: { value: 19, id: 'measure_temperature', units: '°C', lastUpdated: '2026-04-01T12:01:00.000Z' },
+                            measure_power: { value: 360, id: 'measure_power', lastUpdated: '2026-04-01T12:01:00.000Z' },
+                        },
+                    });
+
+                    expect(deviceManager.getSnapshot()[0].targets.find((t) => t.id === 'target_temperature')?.value).toBeUndefined();
+
+                    vi.setSystemTime(new Date('2026-04-01T12:10:00.000Z'));
+                    mockApiGet.mockResolvedValue({
+                        dev1: {
+                            id: 'dev1',
+                            name: 'Thermostat',
+                            capabilities: ['onoff', 'target_temperature', 'measure_temperature', 'measure_power'],
+                            class: 'thermostat',
+                            capabilitiesObj: {
+                                onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T11:59:30.000Z' },
+                                target_temperature: {
+                                    value: 20,
+                                    id: 'target_temperature',
+                                    units: '°C',
+                                    min: 5,
+                                    max: 40,
+                                    step: 0.5,
+                                    lastUpdated: '2026-04-01T11:59:30.000Z',
+                                },
+                                measure_temperature: { value: 19, id: 'measure_temperature', units: '°C', lastUpdated: '2026-04-01T11:59:30.000Z' },
+                                measure_power: { value: 360, id: 'measure_power', lastUpdated: '2026-04-01T11:59:30.000Z' },
+                            },
+                        },
+                    });
+                    await deviceManager.refreshSnapshot();
+
+                    expect(deviceManager.getSnapshot()[0].targets.find((t) => t.id === 'target_temperature')?.value).toBeUndefined();
                 } finally {
                     vi.useRealTimers();
                 }

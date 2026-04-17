@@ -63,24 +63,61 @@ export function getCapabilityValueByPrefix(
 
 export function getCurrentTemperature(capabilityObj: DeviceCapabilityMap): number | undefined {
   const temp = capabilityObj.measure_temperature?.value;
-  return typeof temp === 'number' ? temp : undefined;
+  return typeof temp === 'number' && Number.isFinite(temp) ? temp : undefined;
 }
 
 export function buildTargets(
-  targetCaps: string[],
-  capabilityObj: DeviceCapabilityMap,
+  params: {
+    targetCaps: string[];
+    capabilityObj: DeviceCapabilityMap;
+    deviceLabel: string;
+    logDebug: (...args: unknown[]) => void;
+  },
 ): TargetDeviceSnapshot['targets'] {
+  const {
+    targetCaps,
+    capabilityObj,
+    deviceLabel,
+    logDebug,
+  } = params;
   return targetCaps.map((capId) => {
     const capability = capabilityObj[capId];
+    const value = capability?.value;
+    const resolvedValue = resolveTargetCapabilityValue({
+      value,
+      capId,
+      deviceLabel,
+      logDebug,
+    });
     return {
       id: capId,
-      value: capability?.value ?? null,
+      ...(resolvedValue !== undefined ? { value: resolvedValue } : {}),
       unit: capability?.units || '°C',
       ...(typeof capability?.min === 'number' && Number.isFinite(capability.min) ? { min: capability.min } : {}),
       ...(typeof capability?.max === 'number' && Number.isFinite(capability.max) ? { max: capability.max } : {}),
       ...(typeof capability?.step === 'number' && Number.isFinite(capability.step) ? { step: capability.step } : {}),
     };
   });
+}
+
+function resolveTargetCapabilityValue(params: {
+  value: unknown;
+  capId: string;
+  deviceLabel: string;
+  logDebug: (...args: unknown[]) => void;
+}): number | undefined {
+  const {
+    value,
+    capId,
+    deviceLabel,
+    logDebug,
+  } = params;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  logDebug(
+    `Skipping malformed ${capId} value for ${deviceLabel}; expected finite number but got ${String(value)}. `
+    + 'Keeping capability metadata without a current target value instead.',
+  );
+  return undefined;
 }
 
 function hasPowerCapability(capabilities: string[]): boolean {
