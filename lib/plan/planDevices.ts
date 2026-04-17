@@ -10,6 +10,7 @@ import {
   normalizeTargetCapabilityValue,
 } from '../utils/targetCapabilities';
 import { getInactiveReason, getEvRestoreStateBlockReason } from './planRestoreDevices';
+import { buildRestoreNeedReason, buildShortfallReason } from './planReasonStrings';
 import {
   isSteppedLoadDevice,
   resolveSteppedKeepDesiredStepId,
@@ -465,14 +466,16 @@ function applyOffStateReason(params: {
       ...planDevice,
       plannedState: 'shed',
       desiredStepId,
-      reason: `shortfall (need ${need.toFixed(2)}kW, headroom `
-        + `${headroomRaw === null ? 'unknown' : headroomRaw.toFixed(2)}kW)`,
+      reason: buildShortfallReason(need, headroomRaw),
     };
   }
   return {
     ...planDevice,
-    reason: `restore (need ${need.toFixed(2)}kW, headroom `
-      + `${headroomRaw === null ? 'unknown' : headroomRaw.toFixed(2)}kW)`,
+    reason: 'keep',
+    candidateReasons: {
+      ...planDevice.candidateReasons,
+      offStateAnalysis: buildRestoreNeedReason(need, headroomRaw),
+    },
   };
 }
 

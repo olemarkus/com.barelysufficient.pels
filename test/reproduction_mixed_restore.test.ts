@@ -156,15 +156,14 @@ describe('Mixed Type Restoration Throttling', () => {
         const d1RestoredC2 = d1Cycles2.plannedState !== 'shed';
         const d2RestoredC2 = d2Cycles2.plannedState !== 'shed';
 
-        // The one that WAS shed should STAY shed (Cooldown)
+        // The one that WAS shed should stay shed due to its own capacity decision,
+        // not pick up the other device's global restore-cooldown label.
         if (d1Restored) {
             expect(d2RestoredC2).toBe(false);
-            expect(d2Cycles2.reason).toMatch(/(?:cooldown \(restore|restore throttled)/);
-            // Ensure it's blocked by COOLDOWN, not throttling
-            // (Though throttling resets every cycle, cooldown is persistent)
+            expect(d2Cycles2.reason).toBe('shed due to capacity');
         } else {
             expect(d1RestoredC2).toBe(false);
-            expect(d1Cycles2.reason).toMatch(/(?:cooldown \(restore|restore throttled)/);
+            expect(d1Cycles2.reason).toBe('shed due to capacity');
         }
 
         // 4. After Cooldown (60s)
@@ -172,16 +171,16 @@ describe('Mixed Type Restoration Throttling', () => {
         await (app as any).recordPowerSample(5000);
         plan = mockHomeyInstance.settings.get('device_plan_snapshot');
 
-        // Still in restore cooldown (base 60s)
+        // Still in restore cooldown globally, but the still-shed peer keeps its own capacity reason.
         const d1Cycles3 = plan.devices.find((d: any) => d.id === 'dev-1');
         const d2Cycles3 = plan.devices.find((d: any) => d.id === 'dev-2');
 
         if (d1Restored) {
             expect(d2Cycles3.plannedState).toBe('shed');
-            expect(d2Cycles3.reason).toMatch(/(?:cooldown \(restore|restore throttled)/);
+            expect(d2Cycles3.reason).toBe('shed due to capacity');
         } else {
             expect(d1Cycles3.plannedState).toBe('shed');
-            expect(d1Cycles3.reason).toMatch(/(?:cooldown \(restore|restore throttled)/);
+            expect(d1Cycles3.reason).toBe('shed due to capacity');
         }
 
         // 5. After restore cooldown window

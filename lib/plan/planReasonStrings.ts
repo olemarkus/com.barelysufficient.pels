@@ -191,6 +191,11 @@ export function buildCooldownReason(kind: 'shedding' | 'restore', remainingSec: 
   return `cooldown (${kind}, ${remainingSec ?? 0}s remaining)`;
 }
 
+export function buildRestoreNeedReason(neededKw: number, headroomKw: number | null): string {
+  return `restore (need ${neededKw.toFixed(2)}kW, headroom `
+    + `${headroomKw === null ? 'unknown' : headroomKw.toFixed(2)}kW)`;
+}
+
 export function buildRestoreHeadroomReason(params: {
   neededKw: number;
   availableKw: number | null;

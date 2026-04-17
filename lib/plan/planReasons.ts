@@ -87,26 +87,126 @@ function maybeApplyCooldownReason(params: {
   inCooldown: boolean;
   activeOvershoot: boolean;
   shedCooldownRemainingSec: number | null;
-  inRestoreCooldown: boolean;
-  restoreCooldownRemainingSec: number | null;
 }): PlanReasonDecision | null {
-  const {
-    currentReason, inCooldown, activeOvershoot, shedCooldownRemainingSec,
-    inRestoreCooldown, restoreCooldownRemainingSec,
-  } = params;
+  const { currentReason, inCooldown, activeOvershoot, shedCooldownRemainingSec } = params;
   if (inCooldown && !activeOvershoot && !isSwapReason(currentReason)) {
     return { code: 'cooldown_shedding', remainingSec: shedCooldownRemainingSec };
   }
-  if (
-    inRestoreCooldown
-    && !activeOvershoot
-    && !isSwapReason(currentReason)
-    && !isBudgetReason(currentReason)
-    && !isShortfallReason(currentReason)
-  ) {
-    return { code: 'cooldown_restore', remainingSec: restoreCooldownRemainingSec };
-  }
   return null;
+}
+
+export type PlanReasonPairValidationIssue = {
+  deviceId: string;
+  deviceName: string;
+  plannedState: string;
+  reason: string;
+  allowedReasonKinds: string[];
+};
+
+type ReasonPatternRule = {
+  pattern: RegExp;
+  label: string;
+};
+
+const KEEP_REASON_RULES: readonly ReasonPatternRule[] = [
+  { pattern: /^keep(?: \(.+\))?$/, label: 'keep' },
+  { pattern: /^restore .+ -> .+ \(need .+\)$/, label: 'stepped restore admission' },
+  { pattern: /^cooldown \(shedding, \d+s remaining\)$/, label: 'shedding cooldown' },
+  { pattern: /^cooldown \(restore, \d+s remaining\)$/, label: 'restore cooldown' },
+  { pattern: /^restore throttled$/, label: 'restore throttle' },
+  { pattern: /^waiting for other devices to recover$/, label: 'recovery gate' },
+  { pattern: /^activation backoff \(\d+s remaining\)$/, label: 'activation backoff' },
+  { pattern: /^insufficient headroom/, label: 'insufficient headroom' },
+  { pattern: /^swap pending(?: \(.+\))?$/, label: 'swap pending' },
+  { pattern: /^shed invariant: .+ -> .+ blocked \(\d+ device\(s\) shed, max step: .+\)$/, label: 'shed invariant' },
+  { pattern: /^startup stabilization$/, label: 'startup stabilization' },
+  { pattern: /^headroom cooldown \(.+\)$/, label: 'headroom cooldown' },
+  { pattern: /^capacity control off$/, label: 'capacity control off' },
+] as const;
+
+const SHED_REASON_RULES: readonly ReasonPatternRule[] = [
+  { pattern: /^shed due to capacity(?: .+)?$/, label: 'capacity shed' },
+  { pattern: /^shed due to hourly budget(?: .+)?$/, label: 'hourly budget shed' },
+  { pattern: /^shed due to daily budget(?: .+)?$/, label: 'daily budget shed' },
+  { pattern: /^shortfall(?: \(.+\))?$/, label: 'shortfall shed' },
+  { pattern: /^cooldown \(shedding, \d+s remaining\)$/, label: 'shedding cooldown' },
+  { pattern: /^cooldown \(restore, \d+s remaining\)$/, label: 'restore cooldown' },
+  { pattern: /^restore throttled$/, label: 'restore throttle' },
+  { pattern: /^restore pending \(\d+s remaining\)$/, label: 'restore pending' },
+  { pattern: /^waiting for other devices to recover$/, label: 'recovery gate' },
+  { pattern: /^activation backoff \(\d+s remaining\)$/, label: 'activation backoff' },
+  { pattern: /^insufficient headroom/, label: 'insufficient headroom' },
+  { pattern: /^swap pending(?: \(.+\))?$/, label: 'swap pending' },
+  { pattern: /^swapped out for .+$/, label: 'swapped out' },
+  { pattern: /^shedding active(?: .+)?$/, label: 'shedding active' },
+  { pattern: /^startup stabilization$/, label: 'startup stabilization' },
+] as const;
+
+const INACTIVE_REASON_RULES: readonly ReasonPatternRule[] = [
+  { pattern: /^inactive(?: \(.+\))?$/, label: 'inactive' },
+] as const;
+
+function stripCandidateReasons(dev: DevicePlanDevice): DevicePlanDevice {
+  const { candidateReasons: _candidateReasons, ...snapshotDevice } = dev;
+  return snapshotDevice;
+}
+
+function getAllowedReasonRules(plannedState: string): readonly ReasonPatternRule[] {
+  switch (plannedState) {
+    case 'keep':
+      return KEEP_REASON_RULES;
+    case 'shed':
+      return SHED_REASON_RULES;
+    case 'inactive':
+      return INACTIVE_REASON_RULES;
+    default:
+      return [];
+  }
+}
+
+function validatePlanReasonPair(dev: DevicePlanDevice): PlanReasonPairValidationIssue | null {
+  const plannedState = typeof dev.plannedState === 'string' ? dev.plannedState.trim() : '';
+  const reason = typeof dev.reason === 'string' ? dev.reason.trim() : '';
+  const allowedReasonRules = getAllowedReasonRules(plannedState);
+  const allowedReasonKinds = allowedReasonRules.map((rule) => rule.label);
+
+  if (!plannedState || allowedReasonRules.length === 0) {
+    return {
+      deviceId: dev.id,
+      deviceName: dev.name,
+      plannedState: plannedState || '<empty>',
+      reason: reason || '<empty>',
+      allowedReasonKinds,
+    };
+  }
+
+  if (!reason) {
+    return {
+      deviceId: dev.id,
+      deviceName: dev.name,
+      plannedState,
+      reason: '<empty>',
+      allowedReasonKinds,
+    };
+  }
+
+  if (allowedReasonRules.some((rule) => rule.pattern.test(reason))) {
+    return null;
+  }
+
+  return {
+    deviceId: dev.id,
+    deviceName: dev.name,
+    plannedState,
+    reason,
+    allowedReasonKinds,
+  };
+}
+
+function formatPlanReasonPairIssue(issue: PlanReasonPairValidationIssue): string {
+  const allowedKinds = issue.allowedReasonKinds.join(', ') || '<none>';
+  return `Invalid plan reason pair for ${issue.deviceName} (${issue.deviceId}): `
+    + `plannedState=${issue.plannedState}, reason=${issue.reason}, allowed=${allowedKinds}`;
 }
 
 export type ShedHoldParams = {
@@ -198,9 +298,7 @@ export function normalizeShedReasons(params: {
   headroomRaw: number | null;
   inCooldown: boolean;
   activeOvershoot: boolean;
-  inRestoreCooldown: boolean;
   shedCooldownRemainingSec: number | null;
-  restoreCooldownRemainingSec: number | null;
 }): DevicePlanDevice[] {
   const {
     planDevices,
@@ -209,9 +307,7 @@ export function normalizeShedReasons(params: {
     headroomRaw,
     inCooldown,
     activeOvershoot,
-    inRestoreCooldown,
     shedCooldownRemainingSec,
-    restoreCooldownRemainingSec,
   } = params;
 
   return planDevices.map((dev) => normalizeDeviceReason({
@@ -221,17 +317,34 @@ export function normalizeShedReasons(params: {
     headroomRaw,
     inCooldown,
     activeOvershoot,
-    inRestoreCooldown,
     shedCooldownRemainingSec,
-    restoreCooldownRemainingSec,
   }));
 }
 
-export function finalizePlanDevices(planDevices: DevicePlanDevice[]): {
+export function finalizePlanDevices(
+  planDevices: DevicePlanDevice[],
+  options?: {
+    onInvalidReasonPair?: (issue: PlanReasonPairValidationIssue) => void;
+    throwOnInvalid?: boolean;
+  },
+): {
   planDevices: DevicePlanDevice[];
   lastPlannedShedIds: Set<string>;
 } {
-  const sorted = sortByPriorityAsc(planDevices);
+  const sorted = sortByPriorityAsc(planDevices).map(stripCandidateReasons);
+  const issues = sorted
+    .map(validatePlanReasonPair)
+    .filter((issue): issue is PlanReasonPairValidationIssue => issue !== null);
+
+  if (issues.length > 0) {
+    for (const issue of issues) {
+      options?.onInvalidReasonPair?.(issue);
+    }
+    if (options?.throwOnInvalid ?? process.env.NODE_ENV === 'test') {
+      throw new Error(issues.map(formatPlanReasonPairIssue).join('\n'));
+    }
+  }
+
   const lastPlannedShedIds = new Set(sorted.filter((d) => d.plannedState === 'shed').map((d) => d.id));
   return { planDevices: sorted, lastPlannedShedIds };
 }
@@ -629,9 +742,7 @@ function normalizeDeviceReason(params: {
   headroomRaw: number | null;
   inCooldown: boolean;
   activeOvershoot: boolean;
-  inRestoreCooldown: boolean;
   shedCooldownRemainingSec: number | null;
-  restoreCooldownRemainingSec: number | null;
 }): DevicePlanDevice {
   const {
     dev,
@@ -640,9 +751,7 @@ function normalizeDeviceReason(params: {
     headroomRaw,
     inCooldown,
     activeOvershoot,
-    inRestoreCooldown,
     shedCooldownRemainingSec,
-    restoreCooldownRemainingSec,
   } = params;
 
   if (dev.plannedState !== 'shed') return dev;
@@ -663,8 +772,6 @@ function normalizeDeviceReason(params: {
     inCooldown,
     activeOvershoot,
     shedCooldownRemainingSec,
-    inRestoreCooldown,
-    restoreCooldownRemainingSec,
   });
   if (cooldownReason) return { ...dev, reason: renderPlanReasonDecision(cooldownReason) };
 

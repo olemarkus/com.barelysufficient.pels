@@ -3681,7 +3681,7 @@ describe('Dry run mode', () => {
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(dev1Plan).toBeTruthy();
     expect(dev1Plan.currentState).toBe('off');
-    expect(dev1Plan.reason).toContain('restore'); // Plan says "restore"
+    expect(dev1Plan.reason).toBe('keep');
 
     // Now try to apply the plan
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');

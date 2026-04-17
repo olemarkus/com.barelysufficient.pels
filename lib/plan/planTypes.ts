@@ -28,6 +28,10 @@ export type PendingTargetCommandSummary = {
   lastObservedSource?: PendingTargetObservationSource;
 };
 
+export type PlanCandidateReasons = {
+  offStateAnalysis?: string;
+};
+
 export type ShedBehavior = {
   action: ShedAction;
   temperature?: number;
@@ -68,6 +72,8 @@ export type DevicePlanDevice = {
   expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
   measuredPowerKw?: number;
   reason?: string;
+  // Planner-only debug metadata. This must be stripped before the final plan snapshot is written.
+  candidateReasons?: PlanCandidateReasons;
   zone?: string;
   controllable?: boolean;
   budgetExempt?: boolean;
