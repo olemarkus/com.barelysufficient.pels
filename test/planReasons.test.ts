@@ -119,6 +119,13 @@ describe('finalizePlanDevices', () => {
       reason: 'restore (need 1.20kW, headroom 0.30kW)',
     })])).toThrow(/Invalid plan reason pair/);
   });
+
+  it('allows legacy restore cooldown shed reasons that are still emitted by stay-off paths', () => {
+    expect(() => finalizePlanDevices([buildPlanDevice({
+      plannedState: 'shed',
+      reason: 'cooldown (restore, 30s remaining)',
+    })])).not.toThrow();
+  });
 });
 
 describe('applyShedTemperatureHold', () => {

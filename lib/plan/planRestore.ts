@@ -544,10 +544,14 @@ function buildRejectedSwapUpdate(params: {
 
 function markOffDevicesMeterSettling(params: {
   deviceMap: Map<string, DevicePlanDevice>;
-  timing: Pick<RestoreTiming, 'restoreCooldownSeconds' | 'restoreCooldownRemainingSec'>;
+  timing: Pick<
+    RestoreTiming,
+    'inRestoreCooldown' | 'activeOvershoot' | 'restoreCooldownSeconds' | 'restoreCooldownRemainingSec'
+  >;
 }): void {
   const { deviceMap, timing } = params;
-  const remainingSec = timing.restoreCooldownRemainingSec ?? timing.restoreCooldownSeconds;
+  const remainingSec = resolveMeterSettlingRemainingSec({ timing });
+  if (remainingSec === null) return;
   const reason = buildMeterSettlingReason(remainingSec);
   const snapshot: DevicePlanDevice[] = [];
   for (const dev of deviceMap.values()) snapshot.push(dev);

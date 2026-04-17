@@ -130,6 +130,7 @@ const SHED_REASON_RULES: readonly ReasonPatternRule[] = [
   { pattern: /^shed due to daily budget(?: .+)?$/, label: 'daily budget shed' },
   { pattern: /^shortfall(?: \(.+\))?$/, label: 'shortfall shed' },
   { pattern: /^cooldown \(shedding, \d+s remaining\)$/, label: 'shedding cooldown' },
+  { pattern: /^cooldown \(restore, \d+s remaining\)$/, label: 'restore cooldown' },
   { pattern: /^restore throttled$/, label: 'restore throttle' },
   { pattern: /^restore pending \(\d+s remaining\)$/, label: 'restore pending' },
   { pattern: /^waiting for other devices to recover$/, label: 'recovery gate' },
