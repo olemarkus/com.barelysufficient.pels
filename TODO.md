@@ -45,9 +45,6 @@ file.
 - [x] Clean up stepped-load retry/backoff behavior so delayed feedback does not trigger clumsy
       re-requests while a previous desired step is still plausibly in flight.
       Files: stepped-load planning/executor feedback logic and tests.
-- [ ] Treat stepped-load upward transitions for already-on devices as mode transitions, not
-      restore UI.
-      Files: `packages/settings-ui/src/ui/plan.ts`.
 - [x] Align restore-cooldown badge/state text in the plan UI and make true shed states visually
       unambiguous.
       Files: `packages/settings-ui/src/ui/plan.ts`.

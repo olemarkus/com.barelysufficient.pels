@@ -505,19 +505,48 @@ describe('plan device state', () => {
     expect(getTemperatureText()).toBe('21.0° / target 18° → 23° (temporarily unavailable)');
   });
 
-  it('shows stepped-load restore state and step transition in the overview row', async () => {
+  it('shows on-like stepped mode transitions as active rather than restoring', async () => {
+    await renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-step-mode-transition',
+          name: 'Water heater',
+          controlModel: 'stepped_load',
+          currentState: 'on',
+          plannedState: 'keep',
+          reportedStepId: 'low',
+          targetStepId: 'max',
+          selectedStepId: 'low',
+          desiredStepId: 'max',
+          planningPowerKw: 3,
+          measuredPowerKw: 0.6,
+          controllable: true,
+          reason: 'cooldown (restore, 40s remaining)',
+        },
+      ],
+    });
+
+    expect(getPowerText()).toBeUndefined();
+    expect(getStateText()).toBe('Active (low → max)');
+    expect(getUsageText()).toBe('Measured: 0.60 kW / Expected: 3.00 kW (reported: low / target: max)');
+    expect(getStatusText()).toBe('cooldown (restore, 40s remaining)');
+    expect(getBadgeClassList('dev-step-mode-transition')?.contains('cheap')).toBe(true);
+  });
+
+  it('keeps stepped restores from off in restoring state', async () => {
     await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-step-restore',
           name: 'Water heater',
           controlModel: 'stepped_load',
-          currentState: 'on',
+          currentState: 'off',
           plannedState: 'keep',
-          selectedStepId: 'low',
-          desiredStepId: 'max',
-          planningPowerKw: 3,
-          measuredPowerKw: 0.6,
+          selectedStepId: 'off',
+          desiredStepId: 'low',
+          targetStepId: 'low',
+          planningPowerKw: 1.25,
+          measuredPowerKw: 0,
           controllable: true,
         },
       ],
@@ -525,7 +554,7 @@ describe('plan device state', () => {
 
     expect(getPowerText()).toBeUndefined();
     expect(getStateText()).toBe('Restoring');
-    expect(getUsageText()).toBe('Measured: 0.60 kW / Expected: 3.00 kW (target: max)');
+    expect(getUsageText()).toBe('Measured: 0.00 kW / Expected: 1.25 kW (target: low)');
     expect(getBadgeClassList('dev-step-restore')?.contains('neutral')).toBe(true);
   });
 

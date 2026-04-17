@@ -2,6 +2,7 @@ import {
   buildDeviceOverviewTransitionSignature,
   formatDeviceOverview,
   getDeviceOverviewReportedStepId,
+  isDeviceOverviewSteppedModeTransition,
 } from '../packages/shared-domain/src/deviceOverview';
 
 describe('device overview formatter', () => {
@@ -109,6 +110,76 @@ describe('device overview formatter', () => {
       measuredPowerKw: 0,
       reason: 'keep',
     }).usageMsg).toBe('Measured: 0.00 kW / Expected: 3.00 kW (reported: low / target: max)');
+  });
+
+  it('treats on-like stepped step changes as active mode transitions', () => {
+    expect(formatDeviceOverview({
+      controlModel: 'stepped_load',
+      currentState: 'on',
+      plannedState: 'keep',
+      reportedStepId: 'low',
+      targetStepId: 'max',
+      planningPowerKw: 3,
+      measuredPowerKw: 0.6,
+      reason: 'cooldown (restore, 10s remaining)',
+    })).toEqual({
+      powerMsg: null,
+      stateMsg: 'Active (low → max)',
+      usageMsg: 'Measured: 0.60 kW / Expected: 3.00 kW (reported: low / target: max)',
+      statusMsg: 'cooldown (restore, 10s remaining)',
+    });
+  });
+
+  it('keeps off-like stepped restores in restoring state', () => {
+    expect(formatDeviceOverview({
+      controlModel: 'stepped_load',
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'low',
+      targetStepId: 'low',
+      planningPowerKw: 1.25,
+      reason: 'restore off -> low (need 1.25kW)',
+    }).stateMsg).toBe('Restoring');
+  });
+
+  it('keeps steady on-like stepped devices active without a transition arrow', () => {
+    expect(formatDeviceOverview({
+      controlModel: 'stepped_load',
+      currentState: 'on',
+      plannedState: 'keep',
+      reportedStepId: 'low',
+      targetStepId: 'low',
+      planningPowerKw: 1.25,
+      measuredPowerKw: 0.4,
+      reason: 'keep',
+    })).toEqual({
+      powerMsg: null,
+      stateMsg: 'Active',
+      usageMsg: 'Measured: 0.40 kW / Expected: 1.25 kW (reported: low)',
+      statusMsg: 'keep',
+    });
+  });
+
+  it('does not treat disappeared stepped devices as active mode transitions', () => {
+    const device = {
+      controlModel: 'stepped_load' as const,
+      currentState: 'disappeared',
+      plannedState: 'keep',
+      reportedStepId: 'low',
+      targetStepId: 'max',
+      planningPowerKw: 3,
+      measuredPowerKw: 0.6,
+      reason: 'cooldown (restore, 10s remaining)',
+    };
+
+    expect(isDeviceOverviewSteppedModeTransition(device)).toBe(false);
+    expect(formatDeviceOverview(device)).toEqual({
+      powerMsg: null,
+      stateMsg: 'State unknown',
+      usageMsg: 'Measured: 0.60 kW / Expected: 3.00 kW (reported: low / target: max)',
+      statusMsg: 'stabilizing after restore (10s remaining)',
+    });
   });
 
   it('prefers the latest confirmed reported step when stale reportedStepId lags actualStepId', () => {

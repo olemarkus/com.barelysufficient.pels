@@ -42,6 +42,15 @@ const isGrayStateDevice = (device: DeviceOverviewSnapshot): boolean => {
   return currentState === 'unknown' || currentState === 'disappeared';
 };
 
+const isOnLikeState = (value: string | undefined): boolean => {
+  const normalized = normalizeState(value);
+  if (!normalized) return false;
+  return normalized !== 'off'
+    && normalized !== 'unknown'
+    && normalized !== 'not_applicable'
+    && normalized !== 'disappeared';
+};
+
 const isOffLikeState = (state?: string): boolean => {
   const normalized = normalizeState(state);
   return normalized === 'off' || normalized === 'unknown';
@@ -55,8 +64,22 @@ const getTargetStepId = (device: DeviceOverviewSnapshot): string | undefined => 
   device.targetStepId ?? device.desiredStepId
 );
 
-const getPlannerStepId = (device: DeviceOverviewSnapshot): string | undefined => (
-  device.selectedStepId ?? device.assumedStepId
+const getSteppedModeTransitionText = (device: DeviceOverviewSnapshot): string | null => {
+  const reportedStepId = getDeviceOverviewReportedStepId(device);
+  const targetStepId = getTargetStepId(device);
+
+  if (!reportedStepId || !targetStepId || reportedStepId === targetStepId) return null;
+  return `${reportedStepId} → ${targetStepId}`;
+};
+
+export const isDeviceOverviewSteppedModeTransition = (device: DeviceOverviewSnapshot): boolean => (
+  isSteppedLoadDevice(device)
+  && isOnLikeState(device.currentState)
+  && getSteppedModeTransitionText(device) !== null
+);
+
+const isKeepStateSteppedModeTransition = (device: DeviceOverviewSnapshot): boolean => (
+  device.plannedState === 'keep' && isDeviceOverviewSteppedModeTransition(device)
 );
 
 const getSteppedUsageStepText = (device: DeviceOverviewSnapshot): string | null => {
@@ -72,15 +95,6 @@ const getSteppedUsageStepText = (device: DeviceOverviewSnapshot): string | null 
 
   return targetStepId ? `target: ${targetStepId}` : null;
 };
-
-const getSteppedRestorePending = (device: DeviceOverviewSnapshot): boolean => (
-  isSteppedLoadDevice(device)
-  && Boolean(
-    getPlannerStepId(device)
-    && getTargetStepId(device)
-    && getPlannerStepId(device) !== getTargetStepId(device),
-  )
-);
 
 const resolvePlannedPowerState = (
   device: DeviceOverviewSnapshot,
@@ -115,7 +129,7 @@ const resolveShedStateMsg = (device: DeviceOverviewSnapshot): string => {
 
 const resolveKeepStateMsg = (device: DeviceOverviewSnapshot): string => {
   if (device.binaryCommandPending && isOffLikeState(device.currentState)) return 'Restore requested';
-  if (getSteppedRestorePending(device) || isOffLikeState(device.currentState)) return 'Restoring';
+  if (isOffLikeState(device.currentState)) return 'Restoring';
   if (normalizeState(device.currentState) === 'not_applicable') return 'Active (temperature-managed)';
   return 'Active';
 };
@@ -124,6 +138,9 @@ const resolveStateMsg = (device: DeviceOverviewSnapshot): string => {
   if (device.controllable === false) return 'Capacity control off';
   if (isGrayStateDevice(device)) {
     return device.available === false ? 'Unavailable' : 'State unknown';
+  }
+  if (isKeepStateSteppedModeTransition(device)) {
+    return `Active (${getSteppedModeTransitionText(device)})`;
   }
   if (device.plannedState === 'shed') return resolveShedStateMsg(device);
   if (device.plannedState === 'inactive') return 'Inactive';
@@ -194,7 +211,7 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
 
   let statusMsg = 'Waiting for headroom';
   if (device.reason) {
-    statusMsg = device.plannedState === 'keep'
+    statusMsg = device.plannedState === 'keep' && !isKeepStateSteppedModeTransition(device)
       ? formatActivePlanStatusReason(device.reason)
       : device.reason;
   }
