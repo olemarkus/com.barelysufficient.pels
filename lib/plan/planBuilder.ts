@@ -438,9 +438,7 @@ export class PlanBuilder {
       headroomRaw: context.headroomRaw,
       inCooldown: restoreResult.inCooldown,
       activeOvershoot: restoreResult.activeOvershoot,
-      inRestoreCooldown: restoreResult.inRestoreCooldown,
       shedCooldownRemainingSec: restoreResult.shedCooldownRemainingSec,
-      restoreCooldownRemainingSec: restoreResult.restoreCooldownRemainingSec,
     }));
   }
 
@@ -448,7 +446,18 @@ export class PlanBuilder {
     planDevices: DevicePlanDevice[];
     lastPlannedShedIds: Set<string>;
   } {
-    return this.trackDuration('plan_finalize_ms', () => finalizePlanDevices(planDevices));
+    return this.trackDuration('plan_finalize_ms', () => finalizePlanDevices(planDevices, {
+      onInvalidReasonPair: (issue) => {
+        this.deps.structuredLog?.warn({
+          event: 'plan_reason_pair_invalid',
+          deviceId: issue.deviceId,
+          deviceName: issue.deviceName,
+          plannedState: issue.plannedState,
+          reason: issue.reason,
+          allowedReasonKinds: issue.allowedReasonKinds,
+        });
+      },
+    }));
   }
 
   private applyHeadroomCooldownOverlayWithTiming(planDevices: DevicePlanDevice[]): DevicePlanDevice[] {

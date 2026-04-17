@@ -295,6 +295,39 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.reason).toContain('need 1.48kW');
   });
 
+  it('keeps off-state restore analysis out of the public reason field', () => {
+    const device = buildPlanInputDevice({
+      id: 'dev-1',
+      name: 'Hall Heater',
+      currentOn: false,
+      controllable: true,
+      expectedPowerKw: 1,
+      measuredPowerKw: 0,
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([device]),
+      state: createPlanEngineState(),
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: {
+        getPriorityForDevice: () => 100,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+      },
+    });
+
+    expect(planDevice.plannedState).toBe('keep');
+    expect(planDevice.reason).toBe('keep');
+    expect(planDevice.candidateReasons?.offStateAnalysis).toBe('restore (need 1.20kW, headroom -1.00kW)');
+  });
+
   it('forces already-shed off stepped devices to keep the off-step during shortfall', () => {
     const steppedDevice = steppedInputDevice({
       id: 'dev-1',

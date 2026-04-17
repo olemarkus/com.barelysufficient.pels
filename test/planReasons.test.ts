@@ -1,4 +1,4 @@
-import { applyShedTemperatureHold, normalizeShedReasons } from '../lib/plan/planReasons';
+import { applyShedTemperatureHold, finalizePlanDevices, normalizeShedReasons } from '../lib/plan/planReasons';
 import { createPlanEngineState } from '../lib/plan/planState';
 import { buildPlanDevice } from './utils/planTestUtils';
 
@@ -15,9 +15,7 @@ describe('normalizeShedReasons', () => {
       headroomRaw: null,
       inCooldown: false,
       activeOvershoot: false,
-      inRestoreCooldown: false,
       shedCooldownRemainingSec: null,
-      restoreCooldownRemainingSec: null,
     });
 
     expect(device?.reason).toBe('shed due to hourly budget');
@@ -34,9 +32,7 @@ describe('normalizeShedReasons', () => {
       headroomRaw: null,
       inCooldown: true,
       activeOvershoot: false,
-      inRestoreCooldown: true,
       shedCooldownRemainingSec: 25,
-      restoreCooldownRemainingSec: 60,
     });
 
     expect(device?.reason).toBe('swapped out for Water Heater');
@@ -54,9 +50,7 @@ describe('normalizeShedReasons', () => {
       headroomRaw: 0.15,
       inCooldown: false,
       activeOvershoot: false,
-      inRestoreCooldown: false,
       shedCooldownRemainingSec: null,
-      restoreCooldownRemainingSec: null,
     });
 
     expect(device?.reason).toBe('shortfall (need 1.20kW, headroom 0.15kW)');
@@ -74,12 +68,49 @@ describe('normalizeShedReasons', () => {
       headroomRaw: 0.15,
       inCooldown: false,
       activeOvershoot: false,
-      inRestoreCooldown: false,
       shedCooldownRemainingSec: null,
-      restoreCooldownRemainingSec: null,
     });
 
     expect(device?.reason).toBe('shed due to daily budget');
+  });
+
+  it('does not rewrite capacity shed reasons during restore cooldown for another device', () => {
+    const [device] = normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'dev-1',
+        plannedState: 'shed',
+        reason: 'shed due to capacity',
+      })],
+      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      guardInShortfall: false,
+      headroomRaw: 1.5,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+    });
+
+    expect(device?.reason).toBe('shed due to capacity');
+  });
+});
+
+describe('finalizePlanDevices', () => {
+  it('strips candidate reasons before returning finalized plan devices', () => {
+    const finalized = finalizePlanDevices([buildPlanDevice({
+      plannedState: 'keep',
+      reason: 'keep',
+      candidateReasons: {
+        offStateAnalysis: 'restore (need 1.20kW, headroom 0.30kW)',
+      },
+    })]);
+
+    expect(finalized.planDevices[0]).not.toHaveProperty('candidateReasons');
+  });
+
+  it('throws in tests when a final reason/state pair is not allowed', () => {
+    expect(() => finalizePlanDevices([buildPlanDevice({
+      plannedState: 'shed',
+      reason: 'restore (need 1.20kW, headroom 0.30kW)',
+    })])).toThrow(/Invalid plan reason pair/);
   });
 });
 
