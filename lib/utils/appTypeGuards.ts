@@ -16,6 +16,11 @@ export function isBooleanMap(value: unknown): value is Record<string, boolean> {
   return Object.entries(value).every(([key, entry]) => typeof key === 'string' && typeof entry === 'boolean');
 }
 
+export function isNumberMap(value: unknown): value is Record<string, number> {
+  if (!value || typeof value !== 'object') return false;
+  return Object.entries(value).every(([key, entry]) => typeof key === 'string' && isFiniteNumber(entry));
+}
+
 export function isCommunicationModelMap(value: unknown): value is Record<string, 'local' | 'cloud'> {
   if (!value || typeof value !== 'object') return false;
   return Object.entries(value).every(([key, entry]) => (

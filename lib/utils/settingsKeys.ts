@@ -8,6 +8,7 @@ export const CONTROLLABLE_DEVICES = 'controllable_devices';
 export const BUDGET_EXEMPT_DEVICES = 'budget_exempt_devices';
 export const DEVICE_CONTROL_PROFILES = 'device_control_profiles';
 export const DEVICE_COMMUNICATION_MODELS = 'device_communication_models';
+export const DEVICE_LAST_CONTROLLED_MS = 'device_last_controlled_ms';
 export const EXPERIMENTAL_EV_SUPPORT_ENABLED = 'experimental_ev_support_enabled';
 export const OVERSHOOT_BEHAVIORS = 'overshoot_behaviors';
 export const PRICE_OPTIMIZATION_SETTINGS = 'price_optimization_settings';

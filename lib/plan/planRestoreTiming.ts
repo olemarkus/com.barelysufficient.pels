@@ -193,23 +193,22 @@ export function resolveCapacityRestoreBlockReason(params: {
   restoredOneThisCycle?: boolean;
   waitingForOtherRecovery?: boolean;
   useThrottleLabel?: boolean;
+  showStartupStabilization?: boolean;
 }): string | null {
   const {
     timing,
     restoredOneThisCycle = false,
     waitingForOtherRecovery = false,
     useThrottleLabel = false,
+    showStartupStabilization = true,
   } = params;
 
-  if (timing.inStartupStabilization) {
-    return 'startup stabilization';
-  }
-  if (timing.inCooldown && !timing.activeOvershoot) {
-    return `cooldown (shedding, ${timing.shedCooldownRemainingSec ?? 0}s remaining)`;
-  }
-  if (timing.inRestoreCooldown && !timing.activeOvershoot) {
-    return `cooldown (restore, ${timing.restoreCooldownRemainingSec ?? 0}s remaining)`;
-  }
+  const startupReason = resolveStartupStabilizationReason(timing, showStartupStabilization);
+  if (startupReason !== null) return startupReason;
+
+  const cooldownReason = resolveCapacityRestoreCooldownReason(timing);
+  if (cooldownReason !== null) return cooldownReason;
+
   if (restoredOneThisCycle) {
     return useThrottleLabel
       ? 'restore throttled'
@@ -217,6 +216,25 @@ export function resolveCapacityRestoreBlockReason(params: {
   }
   if (waitingForOtherRecovery) {
     return 'waiting for other devices to recover';
+  }
+  return null;
+}
+
+function resolveStartupStabilizationReason(
+  timing: CapacityRestoreGateTiming,
+  showStartupStabilization: boolean,
+): string | null {
+  if (!timing.inStartupStabilization) return null;
+  return showStartupStabilization ? 'startup stabilization' : null;
+}
+
+function resolveCapacityRestoreCooldownReason(timing: CapacityRestoreGateTiming): string | null {
+  if (timing.activeOvershoot) return null;
+  if (timing.inCooldown) {
+    return `cooldown (shedding, ${timing.shedCooldownRemainingSec ?? 0}s remaining)`;
+  }
+  if (timing.inRestoreCooldown) {
+    return `cooldown (restore, ${timing.restoreCooldownRemainingSec ?? 0}s remaining)`;
   }
   return null;
 }

@@ -120,12 +120,14 @@ export function markOffDevicesStayOff(params: {
   };
   setDevice: (id: string, updates: Partial<DevicePlanDevice>) => void;
   reasonOverride?: (dev: DevicePlanDevice) => string;
+  getLastControlledMs?: (deviceId: string) => number | undefined;
 }): void {
   const {
     deviceMap,
     timing,
     setDevice,
     reasonOverride,
+    getLastControlledMs,
   } = params;
   const offDevices = Array.from(deviceMap.values())
     .filter((device) => isBinaryRestoreCandidate(device));
@@ -136,7 +138,13 @@ export function markOffDevicesStayOff(params: {
       continue;
     }
     const defaultReason = dev.reason || 'shed due to capacity';
-    const nextReason = reasonOverride ? reasonOverride(dev) : resolveOffDeviceReason(timing, defaultReason);
+    const nextReason = reasonOverride
+      ? reasonOverride(dev)
+      : resolveOffDeviceReason(timing, defaultReason, getLastControlledMs?.(dev.id));
+    if (nextReason === null) {
+      setDevice(dev.id, { plannedState: 'keep', reason: undefined });
+      continue;
+    }
     setDevice(dev.id, { plannedState: 'shed', reason: nextReason });
   }
 }
@@ -166,8 +174,11 @@ function resolveOffDeviceReason(
     startupStabilizationRemainingSec: number | null;
   },
   defaultReason: string,
-): string {
-  if (timing.inStartupStabilization) return 'startup stabilization';
+  lastControlledMs?: number,
+): string | null {
+  if (timing.inStartupStabilization) {
+    return lastControlledMs === undefined ? null : 'startup stabilization';
+  }
   if (timing.activeOvershoot) return defaultReason;
   if (timing.inCooldown) {
     const seconds = timing.shedCooldownRemainingSec ?? 0;

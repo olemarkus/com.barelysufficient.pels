@@ -2,6 +2,7 @@ import type Homey from 'homey';
 import { PlanExecutor, type PlanExecutorDeps } from '../lib/plan/planExecutor';
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../lib/plan/planConstants';
 import { createPlanEngineState } from '../lib/plan/planState';
+import { DEVICE_LAST_CONTROLLED_MS } from '../lib/utils/settingsKeys';
 import type {
   DevicePlan,
   DevicePlanDevice,
@@ -1178,6 +1179,11 @@ describe('PlanExecutor stepped loads', () => {
       transitionPhase: 'binary_transition',
     }));
     expect(state.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
+    expect((deps.homey.settings.set as any)).toHaveBeenCalledWith(
+      DEVICE_LAST_CONTROLLED_MS,
+      expect.objectContaining({ 'dev-1': expect.any(Number) }),
+    );
   });
 
   it('records restore actuation when a plan-mode restore starts by moving from off-step to low', async () => {
@@ -1192,7 +1198,7 @@ describe('PlanExecutor stepped loads', () => {
         currentOn: true,
       },
     ];
-    const { executor } = buildExecutor(state, snapshot);
+    const { executor, deps } = buildExecutor(state, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
@@ -1202,9 +1208,73 @@ describe('PlanExecutor stepped loads', () => {
     }));
 
     expect(state.lastDeviceRestoreMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
+    expect((deps.homey.settings.set as any)).toHaveBeenCalledWith(
+      DEVICE_LAST_CONTROLLED_MS,
+      expect.objectContaining({ 'dev-1': expect.any(Number) }),
+    );
     expect(state.activationAttemptByDevice['dev-1']).toEqual(expect.objectContaining({
       source: 'tracked_step_up',
       startedMs: expect.any(Number),
+    }));
+  });
+
+  it('batches last-controlled persistence to one settings write per plan application', async () => {
+    const state = createPlanEngineState();
+    const snapshot = [
+      {
+        id: 'dev-restore',
+        name: 'Restore Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+      {
+        id: 'dev-shed',
+        name: 'Shed Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, deps } = buildExecutor(state, snapshot);
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 2,
+        softLimitKw: 5,
+        headroomKw: 3,
+      },
+      devices: [
+        {
+          id: 'dev-restore',
+          name: 'Restore Heater',
+          currentState: 'off',
+          plannedState: 'keep',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: true,
+        },
+        {
+          id: 'dev-shed',
+          name: 'Shed Heater',
+          currentState: 'on',
+          plannedState: 'shed',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: true,
+        },
+      ],
+    });
+
+    const settingsCalls = (deps.homey.settings.set as any).mock.calls
+      .filter(([key]: [string]) => key === DEVICE_LAST_CONTROLLED_MS);
+    expect(settingsCalls).toHaveLength(1);
+    expect(settingsCalls[0][1]).toEqual(expect.objectContaining({
+      'dev-restore': expect.any(Number),
+      'dev-shed': expect.any(Number),
     }));
   });
 

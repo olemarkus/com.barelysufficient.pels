@@ -36,6 +36,7 @@ import {
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DEVICE_CONTROL_PROFILES,
+  DEVICE_LAST_CONTROLLED_MS,
   OPERATING_MODE_SETTING,
 } from '../lib/utils/settingsKeys';
 import {
@@ -788,6 +789,26 @@ describe('MyApp initialization', () => {
 
     await (app as any).recordPowerSample(2100, baseTs + 1000);
     expect(clearSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('hydrates persisted last-controlled state before the startup-gated plan rebuild', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    heater.setActualCapabilityValue('onoff', false, {
+      emitCapabilityEvent: false,
+      emitDeviceUpdate: false,
+    });
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const controlledAt = new Date('2026-03-03T10:10:00.000Z').getTime();
+    mockHomeyInstance.settings.set(DEVICE_LAST_CONTROLLED_MS, { 'dev-1': controlledAt });
+
+    const app = createApp({ preserveStartupRestoreStabilization: true });
+    await initApp(app);
+    await waitForSnapshot();
+
+    expect((app as any).planEngine.state.lastDeviceControlledMs).toEqual({ 'dev-1': controlledAt });
   });
 
   it('coalesces multiple power sample triggers into a single rerun', async () => {

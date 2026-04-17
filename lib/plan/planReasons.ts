@@ -181,6 +181,7 @@ function validatePlanReasonPair(dev: DevicePlanDevice): PlanReasonPairValidation
   }
 
   if (!reason) {
+    if (plannedState === 'keep') return null;
     return {
       deviceId: dev.id,
       deviceName: dev.name,

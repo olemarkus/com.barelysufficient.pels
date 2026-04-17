@@ -5,6 +5,7 @@ import type { DevicePlan, ShedAction } from './planTypes';
 import type { PendingTargetObservationSource } from './planTypes';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import type { PlanEngineState } from './planState';
+import { DEVICE_LAST_CONTROLLED_MS } from '../utils/settingsKeys';
 import { incPerfCounter } from '../utils/perfCounters';
 import {
   formatEvSnapshot,
@@ -83,6 +84,9 @@ type PlanActionHandleResult = {
 };
 
 export class PlanExecutor {
+  private lastControlledPersistenceDirty = false;
+  private controlPersistenceBatchDepth = 0;
+
   constructor(private deps: PlanExecutorDeps, private state: PlanEngineState) {
   }
 
@@ -177,6 +181,7 @@ export class PlanExecutor {
 
   private recordShedActuation(deviceId: string, name: string, now: number): void {
     this.state.lastInstabilityMs = now;
+    this.recordControlTimestamp(deviceId, now);
     this.state.lastDeviceShedMs[deviceId] = now;
     recordDiagnosticsShed({
       diagnostics: this.deps.deviceDiagnostics,
@@ -195,6 +200,7 @@ export class PlanExecutor {
 
   private recordRestoreActuation(deviceId: string, name: string, now: number): void {
     this.state.lastRestoreMs = now;
+    this.recordControlTimestamp(deviceId, now);
     this.state.lastDeviceRestoreMs[deviceId] = now;
     recordDiagnosticsRestore({
       diagnostics: this.deps.deviceDiagnostics,
@@ -216,6 +222,22 @@ export class PlanExecutor {
 
   private getShedBehavior(deviceId: string): { action: ShedAction; temperature: number | null; stepId: string | null } {
     return this.deps.getShedBehavior(deviceId);
+  }
+
+  private recordControlTimestamp(deviceId: string, now: number): void {
+    this.state.lastDeviceControlledMs[deviceId] = now;
+    this.lastControlledPersistenceDirty = true;
+  }
+
+  private flushLastControlledPersistence(): void {
+    if (this.controlPersistenceBatchDepth > 0) return;
+    if (!this.lastControlledPersistenceDirty) return;
+    try {
+      this.deps.homey.settings.set(DEVICE_LAST_CONTROLLED_MS, this.state.lastDeviceControlledMs);
+      this.lastControlledPersistenceDirty = false;
+    } catch (error) {
+      this.error('Failed to persist device last-controlled timestamps', error as Error);
+    }
   }
 
   private get latestTargetSnapshot(): TargetDeviceSnapshot[] {
@@ -548,40 +570,44 @@ export class PlanExecutor {
   }
 
   public async applySheddingToDevice(deviceId: string, deviceName: string, reason?: string): Promise<boolean> {
-    if (this.capacityDryRun) return false;
-    const snapshotState = this.latestTargetSnapshot.find((d) => d.id === deviceId);
-    if (shouldSkipShedding({
-      state: this.state,
-      deviceId,
-      deviceName,
-      snapshotState,
-      logDebug: (...args: unknown[]) => this.logDebug(...args),
-    })) {
-      return false;
-    }
-    const name = deviceName;
-    const shedBehavior = this.getShedBehavior(deviceId);
-    const targetCap = snapshotState?.targets?.[0]?.id;
-    const shedTemp = shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null
-      ? shedBehavior.temperature
-      : null;
-    const canSetShedTemp = Boolean(targetCap && shedTemp !== null);
-    // Mark as pending before async operation
-    this.state.pendingSheds.add(deviceId);
     try {
-      const shedTemperatureResult = await this.trySetShedTemperature({
+      if (this.capacityDryRun) return false;
+      const snapshotState = this.latestTargetSnapshot.find((d) => d.id === deviceId);
+      if (shouldSkipShedding({
+        state: this.state,
         deviceId,
-        name,
-        targetCap,
-        shedTemp,
-        canSetShedTemp,
-      });
-      if (!shedTemperatureResult.handled) {
-        return this.turnOffDevice(deviceId, name, reason);
+        deviceName,
+        snapshotState,
+        logDebug: (...args: unknown[]) => this.logDebug(...args),
+      })) {
+        return false;
       }
-      return shedTemperatureResult.wrote;
+      const name = deviceName;
+      const shedBehavior = this.getShedBehavior(deviceId);
+      const targetCap = snapshotState?.targets?.[0]?.id;
+      const shedTemp = shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null
+        ? shedBehavior.temperature
+        : null;
+      const canSetShedTemp = Boolean(targetCap && shedTemp !== null);
+      // Mark as pending before async operation
+      this.state.pendingSheds.add(deviceId);
+      try {
+        const shedTemperatureResult = await this.trySetShedTemperature({
+          deviceId,
+          name,
+          targetCap,
+          shedTemp,
+          canSetShedTemp,
+        });
+        if (!shedTemperatureResult.handled) {
+          return this.turnOffDevice(deviceId, name, reason);
+        }
+        return shedTemperatureResult.wrote;
+      } finally {
+        this.state.pendingSheds.delete(deviceId);
+      }
     } finally {
-      this.state.pendingSheds.delete(deviceId);
+      this.flushLastControlledPersistence();
     }
   }
 
@@ -716,75 +742,81 @@ export class PlanExecutor {
     incPerfCounter('settings_set.capacity_in_shortfall');
   }
 
-  /* eslint-disable complexity, sonarjs/cognitive-complexity, max-statements --
+  /* eslint-disable complexity, sonarjs/cognitive-complexity, max-statements, max-depth --
    * Plan execution still dispatches across all control models in one traceable
    * loop.
    */
   public async applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<PlanActuationResult> {
     if (!plan || !Array.isArray(plan.devices)) return { deviceWriteCount: 0 };
 
-    const snapshotMap = new Map(this.latestTargetSnapshot.map((entry) => [entry.id, entry]));
-    const logCapacityDebug = (...args: unknown[]) => this.logDebug(...args);
-    const anyShedDevices = plan.devices.some((d) => d.plannedState === 'shed');
-    let deviceWriteCount = 0;
-    for (const dev of plan.devices) {
-      const snapshot = snapshotMap.get(dev.id);
-      try {
-        if (shouldSkipUnavailable({
-          snapshot,
-          name: dev.name,
-          operation: 'actuation',
-          logDebug: logCapacityDebug,
-        })) {
-          continue;
-        }
-        if (dev.controllable === false) {
-          await this.applySteppedLoadCommand(dev, mode);
-          if (await this.applyUncontrolledRestore(dev, snapshot)) deviceWriteCount += 1;
-          if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
-          continue;
-        }
-        if (isSteppedLoadDevice(dev) && dev.plannedState === 'keep' && resolveEffectiveCurrentOn(dev) === false) {
-          const onoffViolated = snapshot?.currentOn === false;
-          const preRestoreStepIssued = onoffViolated
-            ? await this.applySteppedLoadCommand(dev, mode, { recordPlanActuation: false })
-            : false;
-          const stepRestoreReady = await this.applySteppedLoadRestore(
-            dev,
+    this.controlPersistenceBatchDepth += 1;
+    try {
+      const snapshotMap = new Map(this.latestTargetSnapshot.map((entry) => [entry.id, entry]));
+      const logCapacityDebug = (...args: unknown[]) => this.logDebug(...args);
+      const anyShedDevices = plan.devices.some((d) => d.plannedState === 'shed');
+      let deviceWriteCount = 0;
+      for (const dev of plan.devices) {
+        const snapshot = snapshotMap.get(dev.id);
+        try {
+          if (shouldSkipUnavailable({
             snapshot,
-            mode,
-            anyShedDevices,
-            { preRestoreStepIssued },
+            name: dev.name,
+            operation: 'actuation',
+            logDebug: logCapacityDebug,
+          })) {
+            continue;
+          }
+          if (dev.controllable === false) {
+            await this.applySteppedLoadCommand(dev, mode);
+            if (await this.applyUncontrolledRestore(dev, snapshot)) deviceWriteCount += 1;
+            if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
+            continue;
+          }
+          if (isSteppedLoadDevice(dev) && dev.plannedState === 'keep' && resolveEffectiveCurrentOn(dev) === false) {
+            const onoffViolated = snapshot?.currentOn === false;
+            const preRestoreStepIssued = onoffViolated
+              ? await this.applySteppedLoadCommand(dev, mode, { recordPlanActuation: false })
+              : false;
+            const stepRestoreReady = await this.applySteppedLoadRestore(
+              dev,
+              snapshot,
+              mode,
+              anyShedDevices,
+              { preRestoreStepIssued },
+            );
+            if (stepRestoreReady && !onoffViolated) await this.applySteppedLoadCommand(dev, mode);
+            if (stepRestoreReady && onoffViolated) deviceWriteCount += 1;
+            if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
+            continue;
+          }
+          if (isSteppedLoadDevice(dev)) {
+            await this.applySteppedLoadCommand(dev, mode);
+            if (await this.applySteppedLoadShedOff(dev, snapshot, mode)) deviceWriteCount += 1;
+            await this.applySteppedLoadRestore(dev, snapshot, mode, anyShedDevices);
+            if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
+            continue;
+          }
+          const shedResult = await this.applyShedAction(dev, snapshot);
+          if (shedResult.handled) {
+            if (shedResult.wrote) deviceWriteCount += 1;
+            continue;
+          }
+          if (await this.applyRestorePower(dev, mode)) deviceWriteCount += 1;
+          if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
+        } catch (error) {
+          this.error(
+            `Failed to apply action for ${dev.name}; continuing with remaining devices`,
+            error,
           );
-          if (stepRestoreReady && !onoffViolated) await this.applySteppedLoadCommand(dev, mode);
-          if (stepRestoreReady && onoffViolated) deviceWriteCount += 1;
-          if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
-          continue;
         }
-        if (isSteppedLoadDevice(dev)) {
-          await this.applySteppedLoadCommand(dev, mode);
-          if (await this.applySteppedLoadShedOff(dev, snapshot, mode)) deviceWriteCount += 1;
-          await this.applySteppedLoadRestore(dev, snapshot, mode, anyShedDevices);
-          if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
-          continue;
-        }
-        const shedResult = await this.applyShedAction(dev, snapshot);
-        if (shedResult.handled) {
-          if (shedResult.wrote) deviceWriteCount += 1;
-          continue;
-        }
-        if (await this.applyRestorePower(dev, mode)) deviceWriteCount += 1;
-        if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
-      } catch (error) {
-        this.error(
-          `Failed to apply action for ${dev.name}; continuing with remaining devices`,
-          error,
-        );
       }
+      return { deviceWriteCount };
+    } finally {
+      this.controlPersistenceBatchDepth = Math.max(0, this.controlPersistenceBatchDepth - 1);
+      this.flushLastControlledPersistence();
     }
-    return { deviceWriteCount };
   }
-  /* eslint-enable complexity, sonarjs/cognitive-complexity, max-statements */
+  /* eslint-enable complexity, sonarjs/cognitive-complexity, max-statements, max-depth */
 
   private getRestoreLogSource(deviceId: string): 'shed_state' | 'current_plan' {
     const lastShedMs = this.state.lastDeviceShedMs[deviceId];
