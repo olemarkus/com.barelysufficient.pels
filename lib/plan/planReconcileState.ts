@@ -3,6 +3,7 @@ import { getSteppedLoadStep, isSteppedLoadOffStep } from '../utils/deviceControl
 import type { SteppedLoadProfile } from '../utils/types';
 import { resolveEffectiveCurrentOn, resolveObservedCurrentState } from './planCurrentState';
 import { resolveSteppedLoadTransition } from './planSteppedLoad';
+import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
 
 export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevice[]): DevicePlan {
   const liveById = new Map(liveDevices.map((device) => [device.id, device]));
@@ -16,7 +17,7 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
       return {
         ...device,
         currentState: resolveCurrentStateFromPlanInput(device, live),
-        currentTarget: Array.isArray(live.targets) && live.targets.length > 0 ? live.targets[0].value ?? null : null,
+        currentTarget: getPrimaryTargetCapability(live.targets)?.value ?? null,
         observationStale: live.observationStale ?? device.observationStale,
         controlModel: live.controlModel ?? device.controlModel,
         steppedLoadProfile: live.steppedLoadProfile ?? device.steppedLoadProfile,
@@ -115,9 +116,7 @@ export function hasPlanExecutionDriftForDevice(
   if (live.observationStale === true) return false;
 
   const liveCurrentState = resolveCurrentStateFromPlanInput(previous, live);
-  const liveCurrentTarget = Array.isArray(live.targets) && live.targets.length > 0
-    ? live.targets[0].value ?? null
-    : null;
+  const liveCurrentTarget = getPrimaryTargetCapability(live.targets)?.value ?? null;
 
   return hasRealtimeBinaryExecutionDrift(previous, {
     ...previous,
@@ -161,9 +160,7 @@ function hasRealtimeExecutionDriftForLiveDevice(
   })) {
     return true;
   }
-  const liveCurrentTarget = Array.isArray(liveDevice.targets) && liveDevice.targets.length > 0
-    ? liveDevice.targets[0].value ?? null
-    : null;
+  const liveCurrentTarget = getPrimaryTargetCapability(liveDevice.targets)?.value ?? null;
   return hasRelevantTargetExecutionDrift(previousDevice, { currentTarget: liveCurrentTarget });
 }
 

@@ -213,7 +213,7 @@ export const renderPriorities = (devices: TargetDeviceSnapshot[]) => {
 };
 
 export const setActiveMode = async (mode: string) => {
-  const next = (mode || '').trim() || 'Home';
+  const next = mode.trim() || 'Home';
   state.activeMode = next;
   renderModeOptions();
   try {
@@ -226,15 +226,15 @@ export const setActiveMode = async (mode: string) => {
 };
 
 export const setEditingMode = (mode: string) => {
-  const next = (mode || '').trim() || 'Home';
+  const next = mode.trim() || 'Home';
   state.editingMode = next;
   renderModeOptions();
   renderPriorities(state.latestDevices);
 };
 
 export const renameMode = async (oldName: string, newName: string) => {
-  const oldKey = (oldName || '').trim();
-  const newKey = (newName || '').trim();
+  const oldKey = oldName.trim();
+  const newKey = newName.trim();
   if (!oldKey || !newKey || oldKey === newKey) return;
   if (state.capacityPriorities[newKey] || state.modeTargets[newKey]) {
     await showToast('Mode name already exists.', 'warn');

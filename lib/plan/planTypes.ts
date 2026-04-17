@@ -42,7 +42,7 @@ export type DevicePlanDevice = {
   currentOn: boolean;
   currentState: string;
   plannedState: string;
-  currentTarget: unknown;
+  currentTarget: number | null;
   plannedTarget: number | null;
   observationStale?: boolean;
   communicationModel?: 'local' | 'cloud';

@@ -440,5 +440,5 @@ function compareDevices(a: DevicePlanDevice, b: DevicePlanDevice): number {
   const pa = a.priority ?? 999;
   const pb = b.priority ?? 999;
   if (pa !== pb) return pa - pb;
-  return (a.name || '').localeCompare(b.name || '');
+  return a.name.localeCompare(b.name);
 }

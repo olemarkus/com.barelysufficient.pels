@@ -1,7 +1,7 @@
 import type { ShedAction, ShedBehavior } from '../plan/planTypes';
 
 export function resolveModeName(name: string, modeAliases: Record<string, string>): string {
-  const current = (name || '').trim();
+  const current = name.trim();
   const mapped = modeAliases[current.toLowerCase()];
   if (typeof mapped === 'string' && mapped.trim()) return mapped;
   return current;

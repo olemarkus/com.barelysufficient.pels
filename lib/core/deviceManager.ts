@@ -185,7 +185,12 @@ export class DeviceManager extends EventEmitter {
         }
 
         for (const target of snapshot.targets) {
-            if (target.id === capabilityId && target.value !== value) {
+            if (
+                target.id === capabilityId
+                && typeof value === 'number'
+                && Number.isFinite(value)
+                && target.value !== value
+            ) {
                 const previousValue = target.value;
                 target.value = value;
                 changes.push({

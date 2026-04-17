@@ -71,7 +71,7 @@ export function buildInitialPlanDevices(params: {
       supportsTemperature,
       deps,
     });
-    const currentTarget = Array.isArray(dev.targets) && dev.targets.length ? dev.targets[0].value ?? null : null;
+    const currentTarget = getPrimaryTargetCapability(dev.targets)?.value ?? null;
     const currentState = resolveCurrentState(dev);
     const controllable = dev.controllable !== false;
     const shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null } = (
@@ -223,7 +223,7 @@ function buildBasePlanDevice(params: {
   recentlyRestored: boolean;
   binaryCommandPending: boolean;
   currentState: string;
-  currentTarget: unknown;
+  currentTarget: number | null;
   plannedTarget: number | null;
   controllable: boolean;
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };

@@ -528,7 +528,11 @@ function applyMeasuredPowerObservation(
     observation: CapabilityObservation,
 ): boolean {
     const snapshot = nextSnapshot;
-    if (typeof observation.value !== 'number' || Object.is(snapshot.measuredPowerKw, observation.value)) {
+    if (
+        typeof observation.value !== 'number'
+        || !Number.isFinite(observation.value)
+        || Object.is(snapshot.measuredPowerKw, observation.value)
+    ) {
         return false;
     }
     snapshot.measuredPowerKw = observation.value;
@@ -542,7 +546,11 @@ function applyMeasuredTemperatureObservation(
     observation: CapabilityObservation,
 ): boolean {
     const snapshot = nextSnapshot;
-    if (typeof observation.value !== 'number' || Object.is(snapshot.currentTemperature, observation.value)) {
+    if (
+        typeof observation.value !== 'number'
+        || !Number.isFinite(observation.value)
+        || Object.is(snapshot.currentTemperature, observation.value)
+    ) {
         return false;
     }
     snapshot.currentTemperature = observation.value;
@@ -558,8 +566,22 @@ function applyTargetCapabilityObservation(
 ): boolean {
     const snapshot = nextSnapshot;
     const target = snapshot.targets.find((entry) => entry.id === capabilityId);
-    if (!target || Object.is(target.value, observation.value)) return false;
-    target.value = observation.value;
+    if (!target) {
+        return false;
+    }
+    let nextValue: number | undefined | null;
+    if (typeof observation.value === 'number' && Number.isFinite(observation.value)) {
+        nextValue = observation.value;
+    } else if (observation.value === undefined) {
+        nextValue = undefined;
+    } else {
+        nextValue = null;
+    }
+    if (nextValue === null || Object.is(target.value, nextValue)) {
+        return false;
+    }
+    if (nextValue === undefined) delete target.value;
+    else target.value = nextValue;
     if (observation.source === 'local_write') {
         snapshot.lastLocalWriteMs = Math.max(snapshot.lastLocalWriteMs ?? 0, observation.observedAt);
         return true;

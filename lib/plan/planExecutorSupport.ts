@@ -12,6 +12,7 @@ import {
   recordActivationSetback,
 } from './planActivationBackoff';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
+import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
 
 type PlanDevice = DevicePlan['devices'][number];
 
@@ -19,10 +20,7 @@ const getCurrentShedTemperature = (
   dev: PlanDevice,
   snapshot: TargetDeviceSnapshot | undefined,
 ): number | null => {
-  if (typeof snapshot?.targets?.[0]?.value === 'number') {
-    return snapshot.targets[0].value;
-  }
-  return typeof dev.currentTarget === 'number' ? dev.currentTarget : null;
+  return getPrimaryTargetCapability(snapshot?.targets)?.value ?? dev.currentTarget;
 };
 
 const isShedThrottled = (params: {
