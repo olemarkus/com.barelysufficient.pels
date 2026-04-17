@@ -126,6 +126,13 @@ describe('finalizePlanDevices', () => {
       reason: 'cooldown (restore, 30s remaining)',
     })])).not.toThrow();
   });
+
+  it('allows legacy restore cooldown keep reasons that still surface during restore holds', () => {
+    expect(() => finalizePlanDevices([buildPlanDevice({
+      plannedState: 'keep',
+      reason: 'cooldown (restore, 30s remaining)',
+    })])).not.toThrow();
+  });
 });
 
 describe('applyShedTemperatureHold', () => {

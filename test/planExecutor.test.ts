@@ -103,6 +103,32 @@ describe('PlanExecutor restore logging', () => {
     expect(deps.log).toHaveBeenCalledWith('Capacity: turning on Heater (restored from shed state)');
   });
 
+  it('does not actuate a binary restore while meter settling keeps an off device in keep state', async () => {
+    const { executor, deviceManager } = buildExecutor();
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 1,
+        softLimitKw: 5,
+        headroomKw: 4,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater',
+          currentState: 'off',
+          plannedState: 'keep',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: true,
+          reason: 'meter settling (30s remaining)',
+        },
+      ],
+    });
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
   it('logs neutral restore text when matching the current plan after a later external off', async () => {
     const state = createPlanEngineState();
     state.lastDeviceShedMs['dev-1'] = Date.now() - 20_000;
