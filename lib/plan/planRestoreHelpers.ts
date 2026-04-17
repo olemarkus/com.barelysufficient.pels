@@ -4,7 +4,7 @@ import type { SwapState } from './planSwapState';
 import type { PlanEngineState } from './planState';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { getInactiveReason, getSteppedRestoreCandidates, isRestoreLiveEligibleDevice } from './planRestoreDevices';
-import { resolveCapacityRestoreBlockReason } from './planRestoreTiming';
+import { resolveCapacityRestoreBlockReason, resolveMeterSettlingRemainingSec } from './planRestoreTiming';
 import {
   getSteppedLoadNextRestoreStep,
   isSteppedLoadDevice,
@@ -242,6 +242,7 @@ function isDeviceUnconfirmedRecoveryInFlight(device: DevicePlanDevice): boolean 
     || isSteppedRestorePending(device);
 }
 
+/* eslint-disable-next-line max-statements -- stepped restore gating mirrors binary restore precedence */
 export function planRestoreForSteppedDevice(params: {
   dev: DevicePlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
@@ -267,6 +268,10 @@ export function planRestoreForSteppedDevice(params: {
   }
 
   const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
+  if (resolveMeterSettlingRemainingSec({ timing, restoredOneThisCycle }) !== null) {
+    clearRestoreDebugEvent(state, restoreDebugKey);
+    return { availableHeadroom, restoredOneThisCycle };
+  }
   const gateReason = resolveCapacityRestoreBlockReason({ timing, restoredOneThisCycle });
   if (gateReason) {
     setRestorePlanDevice(deviceMap, dev.id, { reason: gateReason });

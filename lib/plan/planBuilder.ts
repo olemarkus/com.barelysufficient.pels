@@ -882,7 +882,7 @@ function isCooldownReason(reason: string | undefined): boolean {
   if (!reason) return false;
   const normalizedReason = normalizePlanReason(reason);
   return normalizedReason === 'cooldown (shedding)'
-    || normalizedReason === 'cooldown (restore)'
+    || normalizedReason === 'meter settling'
     || normalizedReason === 'headroom cooldown'
     || normalizedReason === 'restore pending';
 }

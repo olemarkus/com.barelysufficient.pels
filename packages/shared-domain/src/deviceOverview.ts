@@ -150,9 +150,9 @@ const resolveStateMsg = (device: DeviceOverviewSnapshot): string => {
 };
 
 const formatActivePlanStatusReason = (reason: string): string => {
-  const restoreMatch = reason.match(/^cooldown \(restore, (.+)\)$/);
-  if (restoreMatch) {
-    return `stabilizing after restore (${restoreMatch[1]})`;
+  const meterSettlingMatch = reason.match(/^meter settling \((.+)\)$/);
+  if (meterSettlingMatch) {
+    return `waiting for meter to settle (${meterSettlingMatch[1]})`;
   }
 
   const headroomRestoreMatch = reason.match(/^headroom cooldown \((.+); recent PELS restore\)$/);

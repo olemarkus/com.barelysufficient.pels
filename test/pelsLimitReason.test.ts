@@ -54,9 +54,9 @@ describe('pels status limit reason', () => {
   });
 
   it.each([
-    ['capacity', 'cooldown (restore, 45s remaining)'],
+    ['capacity', 'meter settling (45s remaining)'],
     ['capacity', 'restore throttled'],
-    ['daily', 'cooldown (restore, 45s remaining)'],
+    ['daily', 'meter settling (45s remaining)'],
     ['daily', 'restore throttled'],
   ] as const)('reports none for %s source when shed reason is "%s"', (softLimitSource, reason) => {
     const plan = buildPlan({

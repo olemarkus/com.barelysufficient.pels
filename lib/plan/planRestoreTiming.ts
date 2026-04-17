@@ -238,3 +238,21 @@ function resolveCapacityRestoreCooldownReason(timing: CapacityRestoreGateTiming)
   }
   return null;
 }
+
+export function resolveMeterSettlingRemainingSec(params: {
+  timing: Pick<
+    CapacityRestoreGateTiming,
+    'activeOvershoot' | 'inRestoreCooldown' | 'restoreCooldownSeconds' | 'restoreCooldownRemainingSec'
+  >;
+  restoredOneThisCycle?: boolean;
+}): number | null {
+  const { timing, restoredOneThisCycle = false } = params;
+  if (timing.activeOvershoot) return null;
+  if (timing.inRestoreCooldown) {
+    return timing.restoreCooldownRemainingSec ?? timing.restoreCooldownSeconds;
+  }
+  if (restoredOneThisCycle) {
+    return timing.restoreCooldownSeconds;
+  }
+  return null;
+}

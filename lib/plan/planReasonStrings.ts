@@ -9,7 +9,7 @@ export type PlanReasonCode =
   | 'daily_budget'
   | 'shortfall'
   | 'cooldown_shedding'
-  | 'cooldown_restore'
+  | 'meter_settling'
   | 'activation_backoff'
   | 'restore_pending'
   | 'headroom_cooldown'
@@ -30,7 +30,7 @@ export type PlanReasonDecision =
   | { code: 'existing'; text: string }
   | { code: 'activation_backoff'; remainingMs: number }
   | { code: 'cooldown_shedding'; remainingSec: number | null }
-  | { code: 'cooldown_restore'; remainingSec: number | null }
+  | { code: 'meter_settling'; remainingSec: number | null }
   | { code: 'restore_headroom'; params: {
     neededKw: number;
     availableKw: number | null;
@@ -134,8 +134,8 @@ const reasonMatchers: readonly ReasonMatcher[] = [
     matches: reason => /^cooldown \(shedding, \d+s remaining\)$/.test(reason),
   },
   {
-    code: 'cooldown_restore',
-    matches: reason => /^cooldown \(restore, \d+s remaining\)$/.test(reason),
+    code: 'meter_settling',
+    matches: reason => /^meter settling \(\d+s remaining\)$/.test(reason),
   },
   {
     code: 'activation_backoff',
@@ -189,6 +189,10 @@ export function buildActivationBackoffReason(remainingMs: number): string {
 
 export function buildCooldownReason(kind: 'shedding' | 'restore', remainingSec: number | null): string {
   return `cooldown (${kind}, ${remainingSec ?? 0}s remaining)`;
+}
+
+export function buildMeterSettlingReason(remainingSec: number | null): string {
+  return `meter settling (${remainingSec ?? 0}s remaining)`;
 }
 
 export function buildRestoreNeedReason(neededKw: number, headroomKw: number | null): string {
@@ -255,8 +259,8 @@ export function renderPlanReasonDecision(reason: PlanReasonDecision): string {
       return buildActivationBackoffReason(reason.remainingMs);
     case 'cooldown_shedding':
       return buildCooldownReason('shedding', reason.remainingSec);
-    case 'cooldown_restore':
-      return buildCooldownReason('restore', reason.remainingSec);
+    case 'meter_settling':
+      return buildMeterSettlingReason(reason.remainingSec);
     case 'restore_headroom':
       return buildRestoreHeadroomReason(reason.params);
     case 'restore_pending':

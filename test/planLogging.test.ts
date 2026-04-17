@@ -228,7 +228,7 @@ describe('plan logging helpers', () => {
           plannedState: 'keep',
           currentOn: true,
           currentState: 'on',
-          reason: 'cooldown (restore, 10s remaining)',
+          reason: 'meter settling (10s remaining)',
           controllable: true,
         },
         {

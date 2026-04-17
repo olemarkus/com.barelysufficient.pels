@@ -29,7 +29,7 @@ const starvationReasonMatchers: readonly StarvationReasonMatcher[] = [
     pauseReason: 'headroom_cooldown',
   },
   {
-    matches: reason => reason.startsWith('cooldown ('),
+    matches: reason => reason.startsWith('cooldown (') || reason.startsWith('meter settling ('),
     suppressionState: 'paused',
     countingCause: null,
     pauseReason: 'cooldown',
