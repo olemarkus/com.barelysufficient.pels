@@ -240,11 +240,13 @@ export class PlanEngine {
   public syncHeadroomCardState(params: {
     devices: HeadroomCardDeviceLike[];
     cleanupMissingDevices?: boolean;
+    reconciliationContext?: 'snapshot_refresh';
   }): boolean {
     return syncHeadroomCardState({
       state: this.state,
       devices: params.devices,
       cleanupMissingDevices: params.cleanupMissingDevices,
+      reconciliationContext: params.reconciliationContext,
       diagnostics: this.deviceDiagnostics,
     });
   }
@@ -253,12 +255,14 @@ export class PlanEngine {
     deviceId: string;
     trackedKw: number;
     trackedKwSource?: HeadroomDeviceKwSource;
+    reconciliationContext?: 'snapshot_refresh';
   }): boolean {
     return syncHeadroomCardTrackedUsage({
       state: this.state,
       deviceId: params.deviceId,
       trackedKw: params.trackedKw,
       trackedKwSource: params.trackedKwSource,
+      reconciliationContext: params.reconciliationContext,
       diagnostics: this.deviceDiagnostics,
     });
   }
@@ -271,9 +275,9 @@ export class PlanEngine {
     this.state.startupRestoreBlockedUntilMs = nowTs + Math.max(0, durationMs);
   }
 
-  public clearStartupRestoreStabilization(): boolean {
+  public clearStartupRestoreStabilization(nowTs = Date.now()): boolean {
     if (this.state.startupRestoreBlockedUntilMs === null) return false;
-    this.state.startupRestoreBlockedUntilMs = null;
+    this.state.startupRestoreBlockedUntilMs = nowTs - 1;
     return true;
   }
 }

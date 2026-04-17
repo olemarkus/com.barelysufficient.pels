@@ -852,7 +852,7 @@ class PelsApp extends Homey.App {
         saveState: (state) => this.savePowerTracker(state),
       });
       if (previousSampleTs === undefined || nowMs > previousSampleTs) {
-        this.planEngine.clearStartupRestoreStabilization();
+        this.planEngine.clearStartupRestoreStabilization(nowMs);
       }
     } finally {
       addPerfDuration('power_sample_ms', Date.now() - sampleStart);
