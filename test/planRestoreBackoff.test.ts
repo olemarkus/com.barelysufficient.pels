@@ -14,6 +14,7 @@ import { planRestoreForSteppedDevice } from '../lib/plan/planRestoreHelpers';
 import { applyShedTemperatureHold, finalizePlanDevices } from '../lib/plan/planReasons';
 import { createPlanEngineState } from '../lib/plan/planState';
 import { applyRestorePlan } from '../lib/plan/planRestore';
+import { resolveMeterSettlingRemainingSec } from '../lib/plan/planRestoreTiming';
 import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
 
 const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
@@ -707,6 +708,43 @@ describe('restore cooldown backoff', () => {
     expect(steppedDevice?.desiredStepId).toBe('low');
   });
 
+  it('keeps stepped restore candidates on shed cooldown when shed and restore windows overlap', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRecoveryMs = now - 5_000;
+    state.lastRestoreMs = now - 5_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          selectedStepId: 'low',
+          desiredStepId: 'low',
+          currentState: 'on',
+          measuredPowerKw: 1.25,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+    expect(steppedDevice?.reason).toBe('cooldown (shedding, 55s remaining)');
+  });
+
   it('applies meter settling only to off keep devices during recent restore cooldown', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
@@ -800,6 +838,17 @@ describe('restore cooldown backoff', () => {
     expect(restoredDevice?.reason).not.toBe('meter settling (60s remaining)');
     expect(waitingDevice?.plannedState).toBe('keep');
     expect(waitingDevice?.reason).toBe('meter settling (60s remaining)');
+  });
+
+  it('falls back to restoreCooldownSeconds when meter settling remaining seconds are unavailable', () => {
+    expect(resolveMeterSettlingRemainingSec({
+      timing: {
+        activeOvershoot: false,
+        inRestoreCooldown: true,
+        restoreCooldownSeconds: 60,
+        restoreCooldownRemainingSec: null,
+      },
+    })).toBe(60);
   });
 
   it('keeps never-controlled off devices neutral in the finalized startup plan', () => {
