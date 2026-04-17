@@ -110,7 +110,8 @@ function isCapacitySourceActive(limitSource: LimitSource): boolean {
 
 function isRestoreHoldShedReason(reason: string | undefined): boolean {
   if (!reason) return false;
-  return reason.startsWith('cooldown (restore')
+  return reason.startsWith('meter settling')
+    || reason.startsWith('cooldown (restore')
     || reason === 'restore throttled'
     || reason.startsWith('restore pending');
 }

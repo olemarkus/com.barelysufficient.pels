@@ -603,42 +603,42 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-ev-inactive')?.contains('neutral')).toBe(true);
   });
 
-  it('keeps restore cooldown shed when the device is currently off', async () => {
+  it('renders meter settling as restoring when an off keep device is waiting to restore', async () => {
     await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-restore-off',
           name: 'Recently restored heater',
           currentState: 'off',
-          plannedState: 'shed',
+          plannedState: 'keep',
           controllable: true,
-          reason: 'cooldown (restore, 40s remaining)',
+          reason: 'meter settling (40s remaining)',
         },
       ],
     });
 
-    expect(getStateText()).toBe('Shed (powered off)');
-    expect(getStatusText()).toBe('cooldown (restore, 40s remaining)');
-    expect(getBadgeClassList('dev-restore-off')?.contains('expensive')).toBe(true);
+    expect(getStateText()).toBe('Restoring');
+    expect(getStatusText()).toBe('waiting for meter to settle (40s remaining)');
+    expect(getBadgeClassList('dev-restore-off')?.contains('neutral')).toBe(true);
   });
 
-  it('keeps shed devices shed even when the device is already back on', async () => {
+  it('renders meter settling copy on keep devices without forcing a shed badge', async () => {
     await renderPlanSnapshot({
       devices: [
         {
           id: 'dev-restore-on',
           name: 'Recently restored heater',
           currentState: 'on',
-          plannedState: 'shed',
+          plannedState: 'keep',
           controllable: true,
-          reason: 'cooldown (restore, 40s remaining)',
+          reason: 'meter settling (40s remaining)',
         },
       ],
     });
 
-    expect(getStateText()).toBe('Shed (powered off)');
-    expect(getStatusText()).toBe('cooldown (restore, 40s remaining)');
-    expect(getBadgeClassList('dev-restore-on')?.contains('expensive')).toBe(true);
+    expect(getStateText()).toBe('Active');
+    expect(getStatusText()).toBe('waiting for meter to settle (40s remaining)');
+    expect(getBadgeClassList('dev-restore-on')?.contains('cheap')).toBe(true);
   });
 
   it('does not pair an active badge with stabilizing status text for shed devices', async () => {

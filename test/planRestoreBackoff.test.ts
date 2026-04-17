@@ -707,7 +707,7 @@ describe('restore cooldown backoff', () => {
     expect(steppedDevice?.desiredStepId).toBe('low');
   });
 
-  it('applies restore cooldown reason to stepped restore candidates during recent restore cooldown', () => {
+  it('applies meter settling only to off keep devices during recent restore cooldown', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
@@ -715,6 +715,13 @@ describe('restore cooldown backoff', () => {
 
     const result = applyRestorePlan({
       planDevices: [
+        buildPlanDevice({
+          id: 'dev-off',
+          name: 'Heater',
+          currentState: 'off',
+          powerKw: 2,
+          expectedPowerKw: 2,
+        }),
         steppedPlanDevice({
           id: 'dev-step',
           name: 'Tank',
@@ -739,10 +746,60 @@ describe('restore cooldown backoff', () => {
       },
     });
 
+    const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
-    expect(steppedDevice?.reason).toBe('cooldown (restore, 55s remaining)');
+    expect(binaryDevice?.plannedState).toBe('keep');
+    expect(binaryDevice?.reason).toBe('meter settling (55s remaining)');
+    expect(steppedDevice?.reason).not.toBe('meter settling (55s remaining)');
     expect(steppedDevice?.desiredStepId).toBe('low');
+  });
+
+  it('keeps the device that restored this cycle on its own reason while later peers get meter settling', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-restored',
+          name: 'Priority Heater',
+          priority: 1,
+          currentState: 'off',
+          powerKw: 2,
+          expectedPowerKw: 2,
+        }),
+        buildPlanDevice({
+          id: 'dev-waiting',
+          name: 'Waiting Heater',
+          priority: 2,
+          currentState: 'off',
+          powerKw: 2,
+          expectedPowerKw: 2,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const restoredDevice = result.planDevices.find((device) => device.id === 'dev-restored');
+    const waitingDevice = result.planDevices.find((device) => device.id === 'dev-waiting');
+
+    expect(restoredDevice?.plannedState).toBe('keep');
+    expect(restoredDevice?.reason).not.toBe('meter settling (60s remaining)');
+    expect(waitingDevice?.plannedState).toBe('keep');
+    expect(waitingDevice?.reason).toBe('meter settling (60s remaining)');
   });
 
   it('keeps never-controlled off devices neutral in the finalized startup plan', () => {

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- binary restore gating and swap flow stay together for readability */
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
@@ -32,6 +33,7 @@ import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnostics
 import {
   buildRestoreTiming,
   resolveCapacityRestoreBlockReason,
+  resolveMeterSettlingRemainingSec,
   shouldPlanRestores,
   type RestoreTiming,
 } from './planRestoreTiming';
@@ -45,6 +47,7 @@ import {
   getRestoreNeed,
   reserveHeadroomForPendingRestores,
 } from './planRestoreSupport';
+import { buildMeterSettlingReason } from './planReasonStrings';
 
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;
@@ -141,7 +144,7 @@ export function applyRestorePlan(params: {
         timing: effectiveTiming,
         availableHeadroom,
         restoredOneThisCycle,
-            debugStructured: deps.debugStructured,
+        debugStructured: deps.debugStructured,
       });
       availableHeadroom = result.availableHeadroom;
       restoredOneThisCycle = result.restoredOneThisCycle;
@@ -157,7 +160,6 @@ export function applyRestorePlan(params: {
   } else if (
     sheddingActive
     || timing.inCooldown
-    || timing.inRestoreCooldown
     || effectiveTiming.inStartupStabilization
   ) {
     markOffDevicesStayOff({
@@ -170,6 +172,11 @@ export function applyRestorePlan(params: {
       deviceMap,
       timing: effectiveTiming,
       getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
+    });
+  } else if (effectiveTiming.inRestoreCooldown) {
+    markOffDevicesMeterSettling({
+      deviceMap,
+      timing: effectiveTiming,
     });
   }
 
@@ -235,6 +242,34 @@ function planRestoreForDevice(params: {
     timing,
     restoredOneThisCycle,
   });
+  const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
+    timing,
+    restoredOneThisCycle,
+  });
+  if (meterSettlingRemainingSec !== null) {
+    const reason = buildMeterSettlingReason(meterSettlingRemainingSec);
+    setDevice(deviceMap, dev.id, {
+      plannedState: 'keep',
+      reason,
+    });
+    emitRestoreDebugEventOnChange({
+      state,
+      key: restoreDebugKey,
+      payload: {
+        event: 'restore_rejected',
+        restoreType: 'binary',
+        deviceId: dev.id,
+        deviceName: dev.name,
+        phase,
+        reason,
+        availableKw: availableHeadroom,
+        decision: 'rejected',
+        decisionReason: reason,
+      },
+      debugStructured: deps.debugStructured,
+    });
+    return { availableHeadroom, restoredOneThisCycle };
+  }
   if (gateReason) {
     setDevice(deviceMap, dev.id, {
       plannedState: 'shed',
@@ -505,4 +540,31 @@ function buildRejectedSwapUpdate(params: {
     swapReserveKw: shouldDescribeSwapReserve ? swap.reserveKw : undefined,
     effectiveAvailableKw: shouldDescribeSwapReserve ? swap.effectiveHeadroom : undefined,
   });
+}
+
+function markOffDevicesMeterSettling(params: {
+  deviceMap: Map<string, DevicePlanDevice>;
+  timing: Pick<RestoreTiming, 'restoreCooldownSeconds' | 'restoreCooldownRemainingSec'>;
+}): void {
+  const { deviceMap, timing } = params;
+  const remainingSec = timing.restoreCooldownRemainingSec ?? timing.restoreCooldownSeconds;
+  const reason = buildMeterSettlingReason(remainingSec);
+  const snapshot: DevicePlanDevice[] = [];
+  for (const dev of deviceMap.values()) snapshot.push(dev);
+
+  for (const dev of getOffDevices(snapshot)) {
+    const inactiveReason = getInactiveReason(dev);
+    if (inactiveReason) {
+      setDevice(deviceMap, dev.id, {
+        plannedState: 'inactive',
+        reason: inactiveReason,
+      });
+      continue;
+    }
+
+    setDevice(deviceMap, dev.id, {
+      plannedState: 'keep',
+      reason,
+    });
+  }
 }

@@ -47,17 +47,16 @@ describe('device overview formatter', () => {
     });
   });
 
-  it('formats shed and cooldown style statuses', () => {
+  it('formats keep devices blocked by meter settling without inventing shed state', () => {
     expect(formatDeviceOverview({
       currentState: 'off',
-      plannedState: 'shed',
-      reason: 'cooldown (restore, 10s remaining)',
-      shedAction: 'turn_off',
+      plannedState: 'keep',
+      reason: 'meter settling (10s remaining)',
     })).toEqual({
       powerMsg: 'off',
-      stateMsg: 'Shed (powered off)',
+      stateMsg: 'Restoring',
       usageMsg: 'Unknown',
-      statusMsg: 'cooldown (restore, 10s remaining)',
+      statusMsg: 'waiting for meter to settle (10s remaining)',
     });
 
     expect(formatDeviceOverview({
@@ -77,8 +76,8 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
-      reason: 'cooldown (restore, 10s remaining)',
-    }).statusMsg).toBe('stabilizing after restore (10s remaining)');
+      reason: 'meter settling (10s remaining)',
+    }).statusMsg).toBe('waiting for meter to settle (10s remaining)');
   });
 
   it('formats stepped-load devices with desired step labels', () => {
@@ -271,15 +270,13 @@ describe('device overview transition signatures', () => {
   it('ignores countdown-only cooldown and backoff changes', () => {
     const restoreCooldown = formatDeviceOverview({
       currentState: 'off',
-      plannedState: 'shed',
-      reason: 'cooldown (restore, 30s remaining)',
-      shedAction: 'turn_off',
+      plannedState: 'keep',
+      reason: 'meter settling (30s remaining)',
     });
     const restoreCooldownTick = formatDeviceOverview({
       currentState: 'off',
-      plannedState: 'shed',
-      reason: 'cooldown (restore, 24s remaining)',
-      shedAction: 'turn_off',
+      plannedState: 'keep',
+      reason: 'meter settling (24s remaining)',
     });
     const activationBackoff = formatDeviceOverview({
       currentState: 'off',
@@ -296,10 +293,10 @@ describe('device overview transition signatures', () => {
 
     expect(buildDeviceOverviewTransitionSignature({
       ...restoreCooldown,
-      reason: 'cooldown (restore, 30s remaining)',
+      reason: 'meter settling (30s remaining)',
     })).toBe(buildDeviceOverviewTransitionSignature({
       ...restoreCooldownTick,
-      reason: 'cooldown (restore, 24s remaining)',
+      reason: 'meter settling (24s remaining)',
     }));
     expect(buildDeviceOverviewTransitionSignature({
       ...activationBackoff,

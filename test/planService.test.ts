@@ -678,15 +678,13 @@ describe('PlanService', () => {
     const overviewDebugStructured = vi.fn();
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
-    const cooldownPlan = buildPlan(20, 'cooldown (restore, 30s remaining)', {}, {
+    const cooldownPlan = buildPlan(20, 'meter settling (30s remaining)', {}, {
       currentState: 'off',
-      plannedState: 'shed',
-      shedAction: 'turn_off',
+      plannedState: 'keep',
     });
-    const cooldownTickPlan = buildPlan(20, 'cooldown (restore, 24s remaining)', {}, {
+    const cooldownTickPlan = buildPlan(20, 'meter settling (24s remaining)', {}, {
       currentState: 'off',
-      plannedState: 'shed',
-      shedAction: 'turn_off',
+      plannedState: 'keep',
     });
     const { service } = createPlanService({
       homey: {
