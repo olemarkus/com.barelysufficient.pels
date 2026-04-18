@@ -21,12 +21,14 @@ describe('pels status limit reason', () => {
     softLimitSource: 'capacity' | 'daily' | 'both';
     reason: string | DeviceReason;
     headroomKw?: number;
+    powerKnown?: boolean;
   }): DevicePlan => ({
     meta: {
       totalKw: 4.2,
       softLimitKw: 6,
       softLimitSource: params.softLimitSource,
       headroomKw: params.headroomKw ?? 1.8,
+      powerKnown: params.powerKnown ?? true,
     },
     devices: [
       {
@@ -69,6 +71,25 @@ describe('pels status limit reason', () => {
     const plan = buildPlan({
       softLimitSource,
       reason,
+    });
+
+    const { status } = buildPelsStatus({
+      plan,
+      isCheap: false,
+      isExpensive: false,
+      combinedPrices: { prices: [{ total: 1.2 }] },
+      lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
+    });
+
+    expect(status.limitReason).toBe('none');
+  });
+
+  it('reports none for synthetic fail-closed headroom without known power', () => {
+    const plan = buildPlan({
+      softLimitSource: 'capacity',
+      reason: 'keep',
+      headroomKw: -1,
+      powerKnown: false,
     });
 
     const { status } = buildPelsStatus({
