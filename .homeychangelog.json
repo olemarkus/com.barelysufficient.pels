@@ -307,5 +307,8 @@
   },
   "2.1.27": {
     "en": "Implements various stability fixes."
+  },
+  "2.1.28": {
+    "en": "Fixes live countdowns in the UI. Also implements various stability fixes."
   }
 }
