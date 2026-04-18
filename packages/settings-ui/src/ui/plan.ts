@@ -10,6 +10,13 @@ import {
 } from '../../../shared-domain/src/deviceOverview.ts';
 import { isGrayStateDevice } from './deviceUtils.ts';
 import { setTooltip } from './tooltips.ts';
+import { createLivePlanController } from './planLive.ts';
+import {
+  getDisplayReason,
+  getEarliestCountdownExpiryMs,
+  planNeedsLiveUpdates,
+} from './planLiveData.ts';
+import { renderPlanMeta, type PlanMetaBinding, type PlanMetaSnapshot, updatePlanMetaBinding } from './planMeta.ts';
 
 type PlanDeviceSnapshot = DeviceOverviewSnapshot & {
   id: string;
@@ -33,27 +40,7 @@ type PlanDeviceSnapshot = DeviceOverviewSnapshot & {
 };
 
 type PlanSnapshot = {
-  meta?: {
-    totalKw?: number;
-    softLimitKw?: number;
-    capacitySoftLimitKw?: number;
-    dailySoftLimitKw?: number | null;
-    softLimitSource?: 'capacity' | 'daily' | 'both';
-    headroomKw?: number;
-    capacityShortfall?: boolean;
-    shortfallBudgetThresholdKw?: number;
-    shortfallBudgetHeadroomKw?: number | null;
-    hardCapHeadroomKw?: number | null;
-    usedKWh?: number;
-    budgetKWh?: number;
-    minutesRemaining?: number;
-    controlledKw?: number;
-    uncontrolledKw?: number;
-    hourControlledKWh?: number;
-    hourUncontrolledKWh?: number;
-    dailyBudgetHourKWh?: number;
-    lastPowerUpdateMs?: number;
-  };
+  meta?: PlanMetaSnapshot;
   devices?: PlanDeviceSnapshot[];
 };
 
@@ -64,184 +51,19 @@ const getPlanSnapshot = async (): Promise<PlanSnapshot | null> => {
   return plan as PlanSnapshot;
 };
 
-type PlanMetaLines = {
-  now: string[];
-  hour: string[];
+type PlanStatusBinding = {
+  device: PlanDeviceSnapshot;
+  valueEl: HTMLSpanElement;
 };
 
-type PlanMeta = NonNullable<PlanSnapshot['meta']>;
+let liveStatusBindings: PlanStatusBinding[] = [];
+let liveMetaBinding: PlanMetaBinding | null = null;
+let cachedOverviewPanel: Element | null = null;
+let hasCachedOverviewPanel = false;
 
-const getSoftLimitSourceText = (source?: PlanMeta['softLimitSource']) => {
-  if (source === 'daily') return 'Limited by daily budget';
-  if (source === 'both') return 'Limited by daily + capacity caps';
-  return 'Limited by capacity cap';
-};
-
-const getDisplayBudgetKWh = (meta: NonNullable<PlanSnapshot['meta']>): number | null => {
-  if (typeof meta.usedKWh !== 'number' || typeof meta.budgetKWh !== 'number') return null;
-  return meta.softLimitSource === 'daily' && typeof meta.dailyBudgetHourKWh === 'number'
-    ? meta.dailyBudgetHourKWh
-    : meta.budgetKWh;
-};
-
-type ValidatedMeta = {
-  totalKw: number;
-  softLimitKw: number;
-  headroomKw: number;
-  capacityShortfall?: boolean;
-  shortfallBudgetThresholdKw?: number;
-  shortfallBudgetHeadroomKw?: number | null;
-  hardCapHeadroomKw?: number | null;
-  controlledKw?: number;
-  uncontrolledKw?: number;
-  lastPowerUpdateMs?: number;
-};
-
-type HardCapDisplay = {
-  breached: boolean;
-  breachText: string | null;
-  remainingText: string | null;
-};
-
-const formatRelativeTime = (timestampMs: number): string => {
-  const seconds = Math.round((Date.now() - timestampMs) / 1000);
-  if (seconds < 5) return 'just now';
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  return `${Math.round(minutes / 60)}h ago`;
-};
-
-const buildHardCapDisplay = (meta: ValidatedMeta): HardCapDisplay => {
-  const { hardCapHeadroomKw } = meta;
-  if (typeof hardCapHeadroomKw !== 'number') {
-    return { breached: false, breachText: null, remainingText: null };
-  }
-  if (hardCapHeadroomKw < 0) {
-    const breachKw = Math.abs(Math.min(0, hardCapHeadroomKw));
-    return {
-      breached: true,
-      breachText: `Hard cap breached by ${breachKw.toFixed(1)}kW`,
-      remainingText: null,
-    };
-  }
-  return {
-    breached: false,
-    breachText: null,
-    remainingText: `${hardCapHeadroomKw.toFixed(1)}kW before hard cap`,
-  };
-};
-
-const buildNowLines = (meta: ValidatedMeta): string[] => {
-  const {
-    totalKw,
-    softLimitKw,
-    headroomKw,
-    capacityShortfall,
-    shortfallBudgetThresholdKw,
-    shortfallBudgetHeadroomKw,
-    hardCapHeadroomKw,
-    controlledKw,
-    uncontrolledKw,
-    lastPowerUpdateMs,
-  } = meta;
-  const headroomAbs = Math.abs(headroomKw).toFixed(1);
-  const hardCap = buildHardCapDisplay(meta);
-  const headroomText = hardCap.breachText
-    ?? (headroomKw >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over soft limit`);
-  const ageText = typeof lastPowerUpdateMs === 'number' ? ` (${formatRelativeTime(lastPowerUpdateMs)})` : '';
-  const powerText = `Now ${totalKw.toFixed(1)}kW${ageText} (soft limit ${softLimitKw.toFixed(1)}kW)`;
-  const lines = [powerText, headroomText];
-  if ((capacityShortfall || hardCap.breached) && typeof shortfallBudgetThresholdKw === 'number') {
-    lines.push(`Shortfall threshold ${shortfallBudgetThresholdKw.toFixed(1)}kW (hourly budget-derived)`);
-  } else if (headroomKw < 0 && hardCap.remainingText) {
-    lines.push(hardCap.remainingText);
-  }
-  if (typeof shortfallBudgetHeadroomKw === 'number' && shortfallBudgetHeadroomKw !== hardCapHeadroomKw) {
-    lines.push(`Shortfall-threshold headroom ${shortfallBudgetHeadroomKw.toFixed(1)}kW`);
-  }
-  if (typeof controlledKw === 'number' && typeof uncontrolledKw === 'number') {
-    lines.push(`Capacity-controlled ${controlledKw.toFixed(2)}kW / Other load ${uncontrolledKw.toFixed(2)}kW`);
-  }
-  return lines;
-};
-
-const buildHourLines = (meta: NonNullable<PlanSnapshot['meta']>): string[] => {
-  const lines: string[] = [];
-  if (meta.softLimitSource) {
-    lines.push(getSoftLimitSourceText(meta.softLimitSource));
-  }
-  const displayBudget = getDisplayBudgetKWh(meta);
-  if (displayBudget !== null && typeof meta.usedKWh === 'number') {
-    lines.push(`Used ${meta.usedKWh.toFixed(2)} of ${displayBudget.toFixed(1)} kWh`);
-  }
-  if (typeof meta.hourControlledKWh === 'number' && typeof meta.hourUncontrolledKWh === 'number') {
-    lines.push(
-      `Capacity-controlled ${meta.hourControlledKWh.toFixed(2)} `
-      + `/ Other load ${meta.hourUncontrolledKWh.toFixed(2)} kWh`,
-    );
-  }
-  if (typeof meta.minutesRemaining === 'number' && meta.minutesRemaining <= 10) {
-    lines.push('End of hour');
-  }
-  return lines;
-};
-
-const buildPlanMetaLines = (meta?: PlanSnapshot['meta']): PlanMetaLines | null => {
-  if (!meta) return null;
-  const { totalKw, softLimitKw, headroomKw } = meta;
-  if (typeof totalKw !== 'number' || typeof softLimitKw !== 'number' || typeof headroomKw !== 'number') {
-    return null;
-  }
-  const validated: ValidatedMeta = {
-    totalKw,
-    softLimitKw,
-    headroomKw,
-    capacityShortfall: meta.capacityShortfall,
-    shortfallBudgetThresholdKw: meta.shortfallBudgetThresholdKw,
-    shortfallBudgetHeadroomKw: meta.shortfallBudgetHeadroomKw,
-    hardCapHeadroomKw: meta.hardCapHeadroomKw,
-    controlledKw: meta.controlledKw,
-    uncontrolledKw: meta.uncontrolledKw,
-    lastPowerUpdateMs: meta.lastPowerUpdateMs as number | undefined,
-  };
-  return { now: buildNowLines(validated), hour: buildHourLines(meta) };
-};
-
-const renderPlanMeta = (meta?: PlanSnapshot['meta']) => {
-  const metaLines = buildPlanMetaLines(meta);
-  if (!metaLines) {
-    planMeta.textContent = 'Awaiting data';
-    return;
-  }
-
-  const { now: nowLines, hour: hourLines } = metaLines;
-
-  planMeta.innerHTML = '';
-  const addSection = (title: string, sectionLines: string[]) => {
-    if (sectionLines.length === 0) return;
-    const section = document.createElement('div');
-    section.className = 'plan-meta-section';
-    const heading = document.createElement('div');
-    heading.className = 'plan-meta-title';
-    heading.textContent = title;
-    section.appendChild(heading);
-    sectionLines.forEach((line) => {
-      const div = document.createElement('div');
-      div.className = 'plan-meta-line-text';
-      div.textContent = line;
-      section.appendChild(div);
-    });
-    planMeta.appendChild(section);
-  };
-
-  addSection('Now', nowLines);
-  if (nowLines.length && hourLines.length) {
-    const divider = document.createElement('div');
-    divider.className = 'plan-meta-divider';
-    planMeta.appendChild(divider);
-  }
-  addSection('This hour', hourLines);
+const resetLiveBindings = () => {
+  liveStatusBindings = [];
+  liveMetaBinding = null;
 };
 
 const hasPlanTempData = (dev: PlanDeviceSnapshot) => dev.plannedTarget !== null && dev.plannedTarget !== undefined
@@ -287,8 +109,23 @@ const buildPlanUsageLine = (overview: DeviceOverviewStrings) => {
   return createMetaLine('Usage', overview.usageMsg);
 };
 
-const buildPlanStatusLine = (overview: DeviceOverviewStrings) => {
-  return createMetaLine('Status', overview.statusMsg);
+const buildPlanStatusLine = (dev: PlanDeviceSnapshot, overview: DeviceOverviewStrings) => {
+  const line = createMetaLine('Status', overview.statusMsg);
+  const valueEl = line.querySelector('span:last-child');
+  if (valueEl instanceof HTMLSpanElement) {
+    liveStatusBindings.push({ device: dev, valueEl });
+  }
+  return line;
+};
+
+const getDisplayPlanDeviceSnapshot = (
+  dev: PlanDeviceSnapshot,
+  renderedAtMs: number,
+  nowMs: number,
+): PlanDeviceSnapshot => {
+  const displayReason = getDisplayReason(dev.reason, renderedAtMs, nowMs);
+  if (displayReason === dev.reason) return dev;
+  return { ...dev, reason: displayReason };
 };
 
 const isOnLikeState = (value: string | undefined): boolean => {
@@ -369,8 +206,9 @@ const buildBudgetExemptChip = () => {
   return chip;
 };
 
-const buildPlanRow = (dev: PlanDeviceSnapshot) => {
-  const overview = formatDeviceOverview(dev);
+const buildPlanRow = (dev: PlanDeviceSnapshot, renderedAtMs: number, nowMs: number) => {
+  const displayDev = getDisplayPlanDeviceSnapshot(dev, renderedAtMs, nowMs);
+  const overview = formatDeviceOverview(displayDev);
   const row = document.createElement('li');
   row.className = 'device-row plan-row clickable';
   row.dataset.deviceId = dev.id;
@@ -396,7 +234,7 @@ const buildPlanRow = (dev: PlanDeviceSnapshot) => {
   metaWrap.append(
     buildPlanStateLine(overview),
     buildPlanUsageLine(overview),
-    buildPlanStatusLine(overview),
+    buildPlanStatusLine(dev, overview),
   );
 
   row.addEventListener('click', () => {
@@ -420,7 +258,29 @@ const buildPlanRow = (dev: PlanDeviceSnapshot) => {
   return row;
 };
 
-export const renderPlan = (plan: PlanSnapshot | null) => {
+const isOverviewVisible = (): boolean => {
+  if (typeof document === 'undefined') return true;
+  if (typeof document.hidden === 'boolean' && document.hidden) return false;
+  if (!hasCachedOverviewPanel || cachedOverviewPanel === null) {
+    cachedOverviewPanel = document.querySelector('#overview-panel');
+    hasCachedOverviewPanel = cachedOverviewPanel !== null;
+  }
+  const overviewPanel = cachedOverviewPanel;
+  if (!overviewPanel) return true;
+  return !overviewPanel.classList.contains('hidden');
+};
+
+const updateLivePlanAt = (_plan: PlanSnapshot | null, renderedAtMs: number, nowMs: number) => {
+  updatePlanMetaBinding(liveMetaBinding, nowMs);
+  liveStatusBindings.forEach((binding) => {
+    const displayDev = getDisplayPlanDeviceSnapshot(binding.device, renderedAtMs, nowMs);
+    const target = binding.valueEl;
+    target.textContent = formatDeviceOverview(displayDev).statusMsg;
+  });
+};
+
+const renderPlanAt = (plan: PlanSnapshot | null, renderedAtMs: number, nowMs: number) => {
+  resetLiveBindings();
   planList.innerHTML = '';
   if (!plan) {
     planEmpty.hidden = false;
@@ -428,7 +288,7 @@ export const renderPlan = (plan: PlanSnapshot | null) => {
     planMeta.textContent = 'Awaiting data…';
     return;
   }
-  renderPlanMeta(plan.meta);
+  liveMetaBinding = renderPlanMeta(planMeta, plan.meta, nowMs);
 
   const devices = Array.isArray(plan.devices) ? plan.devices : [];
   if (devices.length === 0) {
@@ -443,8 +303,29 @@ export const renderPlan = (plan: PlanSnapshot | null) => {
   const sortedDevices = [...devices].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
 
   sortedDevices.forEach((dev) => {
-    planList.appendChild(buildPlanRow(dev));
+    planList.appendChild(buildPlanRow(dev, renderedAtMs, nowMs));
   });
+};
+
+const livePlanController = createLivePlanController<PlanSnapshot>({
+  refreshDebounceMs: 2000,
+  hasLiveUpdates: (plan, renderedAtMs) => planNeedsLiveUpdates(plan, renderedAtMs),
+  getEarliestCountdownExpiryMs: (plan, renderedAtMs) => getEarliestCountdownExpiryMs(plan, renderedAtMs),
+  isVisible: isOverviewVisible,
+  render: (plan, renderedAtMs, nowMs) => {
+    renderPlanAt(plan, renderedAtMs, nowMs);
+  },
+  update: (plan, renderedAtMs, nowMs) => {
+    updateLivePlanAt(plan, renderedAtMs, nowMs);
+  },
+});
+
+export const setPlanLiveRefreshCallback = (callback: (() => void | Promise<void>) | null) => {
+  livePlanController.setRefreshCallback(callback);
+};
+
+export const renderPlan = (plan: PlanSnapshot | null) => {
+  livePlanController.renderPlan(plan);
 };
 
 export const refreshPlan = async () => {

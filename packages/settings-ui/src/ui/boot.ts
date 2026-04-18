@@ -38,6 +38,7 @@ import {
 import {
   applySettingsPatch,
   callApi,
+  invalidateApiCache,
   primeApiCache,
   setSetting,
   waitForHomey,
@@ -105,6 +106,7 @@ import {
   showTab,
   startStaleDataRefreshInterval,
 } from './realtime.ts';
+import { refreshPlan, setPlanLiveRefreshCallback } from './plan.ts';
 
 const initTabHandlers = () => {
   tabs.forEach((tab) => {
@@ -336,6 +338,14 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
 const initializeBootHandlers = () => {
   initTooltips();
   initDebouncedSaveFlush();
+  setPlanLiveRefreshCallback(async () => {
+    invalidateApiCache(SETTINGS_UI_PLAN_PATH);
+    try {
+      await refreshPlan();
+    } catch (error) {
+      await logSettingsError('Failed to refresh plan', error, 'planLiveCountdownExpiry');
+    }
+  });
   initRealtimeListeners();
   showTab('overview');
   initTabHandlers();
