@@ -459,7 +459,7 @@ const executeSteppedLoadCommand = async (
       deviceId: dev.id,
       name: dev.name,
       nowTs: now,
-      source: 'tracked_step_up',
+      source: 'pels_restore',
     });
     return true;
   } catch (error) {

@@ -4,7 +4,6 @@ import {
   ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
   closeActivationAttemptForDevice,
   isActivationObservationActiveNow,
-  recordActivationAttemptStart,
   recordActivationSetback,
   syncActivationPenaltyState,
 } from './planActivationBackoff';
@@ -201,36 +200,27 @@ const maybeStartTrackedActivationAttempt = (params: {
     return false;
   }
 
-  const startResult = recordActivationAttemptStart({
-    state,
-    deviceId,
-    source: 'tracked_step_up',
-    nowTs,
-  });
   const name = resolveHeadroomDeviceName({ state, deviceId, device, deviceName });
-  if (startResult.started) {
-    if (name) {
-      const reconciliation = resolveTrackedTransitionReconciliation({
-        state,
-        deviceId,
-        nowTs,
-        context: reconciliationContext,
-      });
-      diagnostics?.recordControlEvent({
-        kind: 'tracked_usage_rise',
-        deviceId,
-        name,
-        nowTs,
-        fromKw: previousTrackedKw,
-        toKw: trackedKw,
-        reconciliation,
-      });
-    }
+  if (name) {
+    // Reconciliation and tracked usage changes are useful diagnostics, but they are not proof
+    // that PELS restored the device and should not create restore-blocking penalty state.
+    const reconciliation = resolveTrackedTransitionReconciliation({
+      state,
+      deviceId,
+      nowTs,
+      context: reconciliationContext,
+    });
+    diagnostics?.recordControlEvent({
+      kind: 'tracked_usage_rise',
+      deviceId,
+      name,
+      nowTs,
+      fromKw: previousTrackedKw,
+      toKw: trackedKw,
+      reconciliation,
+    });
   }
-  if (startResult.transition) {
-    diagnostics?.recordActivationTransition(startResult.transition, { name });
-  }
-  return startResult.stateChanged;
+  return false;
 };
 
 const maybeRecordTrackedStepDown = (params: {
