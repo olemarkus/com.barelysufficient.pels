@@ -68,6 +68,8 @@ export type TargetDeviceSnapshot = {
     managed?: boolean;
     budgetExempt?: boolean;
     capabilities?: string[];
+    flowBacked?: boolean;
+    flowBackedCapabilityIds?: string[];
     canSetControl?: boolean;
     available?: boolean;
     lastFreshDataMs?: number;

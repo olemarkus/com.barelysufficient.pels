@@ -48,7 +48,7 @@ describe('Unsupported device handling', () => {
         vi.clearAllTimers();
     });
 
-    it('forces devices without power capability to remain unmanaged', async () => {
+    it('keeps binary devices without required power state out of the snapshot', async () => {
         setMockDrivers({});
         mockHomeyInstance.settings.set('managed_devices', { 'vent-1': true });
         mockHomeyInstance.settings.set('controllable_devices', { 'vent-1': true });
@@ -67,16 +67,15 @@ describe('Unsupported device handling', () => {
 
         const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as TargetDeviceSnapshot[];
         const entry = snapshot.find((device) => device.id === 'vent-1');
-        expect(entry).toBeDefined();
-        expect(entry?.powerCapable).toBe(false);
+        expect(entry).toBeUndefined();
 
         const managed = mockHomeyInstance.settings.get('managed_devices') as Record<string, boolean>;
         const controllable = mockHomeyInstance.settings.get('controllable_devices') as Record<string, boolean>;
         const priceSettings = mockHomeyInstance.settings.get('price_optimization_settings') as Record<string, { enabled?: boolean }>;
 
-        expect(managed['vent-1']).toBe(false);
-        expect(controllable['vent-1']).toBe(false);
-        expect(priceSettings['vent-1']?.enabled).toBe(false);
+        expect(managed['vent-1']).toBe(true);
+        expect(controllable['vent-1']).toBe(true);
+        expect(priceSettings['vent-1']?.enabled).toBe(true);
     });
 
     it('keeps devices manageable when Homey energy estimate exists', async () => {

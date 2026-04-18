@@ -4,11 +4,17 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
   const actionListeners: Record<string, (args: unknown) => Promise<unknown>> = {};
   const structuredInfo = vi.fn();
   const structuredWarn = vi.fn();
+  const actionAutocompleteListeners: Record<string, Record<string, (query: string, args?: Record<string, unknown>) => Promise<unknown>>> = {};
   const createCard = (cardId: string) => ({
     registerRunListener: (listener: (args: unknown, state?: unknown) => Promise<unknown>) => {
       actionListeners[cardId] = (args) => listener(args);
     },
-    registerArgumentAutocompleteListener: vi.fn(),
+    registerArgumentAutocompleteListener: (arg: string, listener: (query: string, args?: Record<string, unknown>) => Promise<unknown>) => {
+      actionAutocompleteListeners[cardId] = {
+        ...(actionAutocompleteListeners[cardId] ?? {}),
+        [arg]: listener,
+      };
+    },
     trigger: vi.fn(),
   });
   const deps: FlowCardDeps = {
@@ -31,6 +37,8 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     setCapacityLimit: vi.fn(),
     getSnapshot: vi.fn().mockResolvedValue([]),
     refreshSnapshot: vi.fn().mockResolvedValue(undefined),
+    getHomeyDevicesForFlow: vi.fn().mockResolvedValue([]),
+    reportFlowBackedCapability: vi.fn(() => 'changed'),
     reportSteppedLoadActualStep: vi.fn(() => 'changed'),
     getDeviceLoadSetting: vi.fn().mockResolvedValue(null),
     setExpectedOverride: vi.fn(() => false),
@@ -48,7 +56,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     error: vi.fn(),
     ...overrides,
   };
-  return { deps, actionListeners, structuredInfo, structuredWarn };
+  return { deps, actionListeners, actionAutocompleteListeners, structuredInfo, structuredWarn };
 };
 
 describe('registerFlowCards', () => {
@@ -381,5 +389,59 @@ describe('registerFlowCards', () => {
       reasonCode: 'no_matching_step',
       errorMessage: 'No configured stepped-load step matches 3000 W.',
     }));
+  });
+
+  it('stores flow-backed power reports, refreshes snapshot without re-triggering flow refresh, and rebuilds on change', async () => {
+    const { deps, actionListeners } = buildDeps();
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_flow_backed_device_power({
+      device: 'dev-1',
+      power_w: '1750 W',
+    })).resolves.toBe(true);
+
+    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      capabilityId: 'measure_power',
+      value: 1750,
+    });
+    expect(deps.refreshSnapshot).toHaveBeenCalledWith({ emitFlowBackedRefresh: false });
+    expect(deps.rebuildPlan).toHaveBeenCalledWith('report_flow_backed_device_power');
+  });
+
+  it('refreshes snapshot but skips rebuild when a flow-backed report only updates freshness', async () => {
+    const { deps, actionListeners } = buildDeps({
+      reportFlowBackedCapability: vi.fn(() => 'unchanged'),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_flow_backed_device_onoff({
+      device: 'dev-1',
+      state: 'on',
+    })).resolves.toBe(true);
+
+    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      capabilityId: 'onoff',
+      value: true,
+    });
+    expect(deps.refreshSnapshot).toHaveBeenCalledWith({ emitFlowBackedRefresh: false });
+    expect(deps.rebuildPlan).not.toHaveBeenCalled();
+  });
+
+  it('uses raw Homey devices for flow-backed device autocomplete', async () => {
+    const { deps, actionAutocompleteListeners } = buildDeps({
+      getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
+        { id: 'dev-2', name: 'Garage Charger' },
+        { id: 'dev-1', name: 'Attic Relay' },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    const options = await actionAutocompleteListeners.report_flow_backed_device_power.device('garage');
+    expect(options).toEqual([{ id: 'dev-2', name: 'Garage Charger' }]);
   });
 });
