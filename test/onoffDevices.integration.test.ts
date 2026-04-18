@@ -125,7 +125,7 @@ describe('On/off device integration', () => {
     expect(setCapSpy).not.toHaveBeenCalled();
   });
 
-  it('includes on/off devices without power capability but marks them unsupported', async () => {
+  it('keeps on/off devices out of the snapshot until flow-backed required state exists', async () => {
     setMockDrivers({});
     const app = createApp();
     await app.onInit();
@@ -140,8 +140,7 @@ describe('On/off device integration', () => {
 
     const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{ id: string; powerCapable?: boolean }>;
     const entry = snapshot.find((device) => device.id === 'device-a');
-    expect(entry).toBeDefined();
-    expect(entry?.powerCapable).toBe(false);
+    expect(entry).toBeUndefined();
   });
 
   it('supports on/off devices with Homey energy approximation delta', async () => {
@@ -324,7 +323,7 @@ describe('On/off device integration', () => {
     expect(entry?.powerKw).toBe(1);
   });
 
-  it('does not treat usageConstant-only approximation as power-capable', async () => {
+  it('keeps usageConstant-only on/off devices out of the snapshot when no flow-backed power exists', async () => {
     setMockDrivers({});
     const app = createApp();
     await app.onInit();
@@ -350,10 +349,7 @@ describe('On/off device integration', () => {
       expectedPowerSource?: string;
     }>;
     const entry = snapshot.find((device) => device.id === 'device-a');
-    expect(entry).toBeDefined();
-    expect(entry?.powerCapable).toBe(false);
-    expect(entry?.expectedPowerSource).toBe('default');
-    expect(entry?.powerKw).toBe(1);
+    expect(entry).toBeUndefined();
   });
 
   it('keeps off sockets manageable when Homey energy W metadata is present (including 0W)', async () => {

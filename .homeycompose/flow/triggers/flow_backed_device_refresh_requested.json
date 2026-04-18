@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "PELS requests state refresh for"
+  },
+  "titleFormatted": {
+    "en": "PELS requests state refresh for [[device]]"
+  },
+  "hint": {
+    "en": "Triggers when PELS wants fresh flow-backed state for an existing Homey device. This trigger never mutates device state by itself."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select Homey device"
+      }
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "title": {
+    "en": "Set flow-backed power usage for device"
+  },
+  "titleFormatted": {
+    "en": "Set power usage for [[device]] to [[power_w]] W"
+  },
+  "hint": {
+    "en": "Reports instantaneous power usage for an existing Homey device so PELS can use it as flow-backed observed state."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select Homey device"
+      }
+    },
+    {
+      "name": "power_w",
+      "type": "text",
+      "title": {
+        "en": "Power"
+      },
+      "placeholder": {
+        "en": "1750 or 1750 W"
+      }
+    }
+  ]
+}

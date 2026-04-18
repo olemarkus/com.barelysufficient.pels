@@ -34,6 +34,8 @@ describe('appSnapshotHelpers', () => {
       getNow: () => new Date('2026-03-21T10:00:00Z'),
       logPeriodicStatus: vi.fn(),
       disableUnsupportedDevices: vi.fn(),
+      getFlowReportedDeviceIds: vi.fn(() => []),
+      emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
     });
 
@@ -79,6 +81,8 @@ describe('appSnapshotHelpers', () => {
       getNow: () => new Date('2026-03-21T10:00:00Z'),
       logPeriodicStatus: vi.fn(),
       disableUnsupportedDevices: vi.fn(),
+      getFlowReportedDeviceIds: vi.fn(() => []),
+      emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
     });
 
