@@ -34,6 +34,7 @@ type StepTransitionCapableDevice = {
   steppedLoadProfile?: StepCapableDevice['steppedLoadProfile'];
   selectedStepId?: StepCapableDevice['selectedStepId'];
   desiredStepId?: StepCapableDevice['desiredStepId'];
+  assumedStepId?: string;
   currentState?: string;
   currentOn?: boolean;
   controlCapabilityId?: DevicePlanDevice['controlCapabilityId'];
@@ -106,7 +107,9 @@ export const resolveSteppedLoadTransition = (
 
   if (device.plannedState === 'keep' && currentOn === false) {
     const commandStepId = lowestActiveStep?.id ?? desiredStep?.id;
-    const stepPrepared = commandStepId !== undefined && selectedStep?.id === commandStepId;
+    const stepPrepared = commandStepId !== undefined
+      && selectedStep?.id === commandStepId
+      && device.assumedStepId !== commandStepId;
     return {
       effectiveTransition: 'restore_from_off_at_low',
       stepPreparationPurpose: commandStepId ? 'prepare_for_on' : null,

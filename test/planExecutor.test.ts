@@ -1625,6 +1625,34 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     );
   });
 
+  it('re-issues the low-step command and defers binary restore when low is only assumed', async () => {
+    const snapshot = buildSnapshot({ currentOn: false });
+    const { executor, deviceManager, desiredSteppedTrigger, debugStructured } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      assumedStepId: 'low',
+      actualStepSource: 'assumed',
+      desiredStepId: 'low',
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'pre_restore_step_required',
+      deviceId: 'dev-1',
+      actuationMode: 'reconcile',
+    }));
+  });
+
   it('detects step drift and re-issues shed step when external actor raises step', async () => {
     const appliedPlan = steppedPlan({
       currentState: 'off',

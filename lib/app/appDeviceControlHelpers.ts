@@ -1,5 +1,5 @@
 import {
-  getSteppedLoadHighestStep,
+  getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
   isSteppedLoadOffStep,
   normalizeDeviceControlProfiles,
@@ -63,10 +63,13 @@ export const resolveDefaultControlModel = (device: TargetDeviceSnapshot): Device
   return 'binary_power';
 };
 
-const resolveSteppedLoadActualStepSource = (
-  reportedStepId: string | undefined,
-): 'reported' | undefined => {
+const resolveSteppedLoadActualStepSource = (params: {
+  reportedStepId?: string;
+  assumedStepId?: string;
+}): 'reported' | 'assumed' | undefined => {
+  const { reportedStepId, assumedStepId } = params;
   if (reportedStepId) return 'reported';
+  if (assumedStepId) return 'assumed';
   return undefined;
 };
 
@@ -105,12 +108,11 @@ export const decorateSnapshotWithDeviceControl = (params: {
   const reported = runtimeState.steppedLoadReportedByDeviceId[snapshot.id];
   const reportedStepId = getSteppedLoadStep(profile, reported?.stepId)?.id;
   const desiredStepId = getSteppedLoadStep(profile, desired?.stepId)?.id;
-  const defaultStepId = getSteppedLoadHighestStep(profile)?.id;
-  const persistedSelectedStepId = getSteppedLoadStep(profile, snapshot.selectedStepId)?.id;
-  const selectedStepId = reportedStepId ?? persistedSelectedStepId ?? defaultStepId;
+  const fallbackStepId = getSteppedLoadLowestActiveStep(profile)?.id;
+  const assumedStepId = reportedStepId ? undefined : fallbackStepId;
+  const selectedStepId = reportedStepId ?? assumedStepId;
   const actualStepId = reportedStepId;
-  const actualStepSource = resolveSteppedLoadActualStepSource(reportedStepId);
-  const assumedStepId = undefined;
+  const actualStepSource = resolveSteppedLoadActualStepSource({ reportedStepId, assumedStepId });
   const planningPowerKw = resolveSteppedLoadPlanningPowerKw(profile, selectedStepId);
 
   return {

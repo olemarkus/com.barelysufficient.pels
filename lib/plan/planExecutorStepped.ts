@@ -81,7 +81,10 @@ export const applySteppedLoadCommand = async (
   const plannedDesiredStepId = resolveSteppedKeepDesiredStepId(dev);
   const transition = resolveSteppedLoadTransition(dev, plannedDesiredStepId);
   const commandStepId = transition?.commandStepId ?? plannedDesiredStepId;
-  if (!commandStepId || commandStepId === dev.selectedStepId) return false;
+  const needsStepPreparation = transition?.transitionPhase === 'step_preparation'
+    && transition.commandStepId === commandStepId;
+  if (!commandStepId) return false;
+  if (commandStepId === dev.selectedStepId && !needsStepPreparation) return false;
   const desiredStep = getSteppedLoadStep(profile, commandStepId);
   if (!desiredStep) {
     return logSteppedLoadCommandSkip(ctx, {
@@ -152,6 +155,7 @@ type SteppedLoadRestoreState = {
   desiredStepId?: string;
   hasPendingMatchingRestoreStep: boolean;
   stepNeedsAdjustment: boolean;
+  stepNeedsConfirmation: boolean;
 };
 
 const evaluateSteppedLoadRestoreState = (
@@ -170,6 +174,7 @@ const evaluateSteppedLoadRestoreState = (
     desiredStepId,
     hasPendingMatchingRestoreStep,
     stepNeedsAdjustment: Boolean(desiredIsNonOff && desiredStepId !== dev.selectedStepId),
+    stepNeedsConfirmation: Boolean(desiredIsNonOff && desiredStepId === dev.assumedStepId),
   };
 };
 
@@ -184,6 +189,21 @@ const logSteppedLoadStepViolation = (
     ? `${dev.selectedStepId} (off-step)`
     : `${dev.selectedStepId ?? 'unknown'} -> ${desiredStepId ?? 'unknown'}`;
   ctx.logDebug(`Capacity: ${name} violates keep invariant: step=${stepDetail}`);
+};
+
+const logSteppedLoadRestoreViolations = (
+  ctx: PlanExecutorSteppedContext,
+  dev: PlanDevice,
+  name: string,
+  params: {
+    desiredStepId?: string;
+    stepNeedsAdjustment: boolean;
+  },
+): void => {
+  const { desiredStepId, stepNeedsAdjustment } = params;
+  if (stepNeedsAdjustment) {
+    logSteppedLoadStepViolation(ctx, dev, name, desiredStepId);
+  }
 };
 
 /* eslint-disable max-params, complexity, sonarjs/cognitive-complexity --
@@ -213,10 +233,12 @@ export const applySteppedLoadRestore = async (
     desiredStepId,
     hasPendingMatchingRestoreStep,
     stepNeedsAdjustment,
+    stepNeedsConfirmation,
   } = evaluateSteppedLoadRestoreState(dev);
-  if (stepNeedsAdjustment) {
-    logSteppedLoadStepViolation(ctx, dev, name, desiredStepId);
-  }
+  logSteppedLoadRestoreViolations(ctx, dev, name, {
+    desiredStepId,
+    stepNeedsAdjustment,
+  });
 
   if (effectiveCurrentOn === true) {
     if (stepNeedsAdjustment) return false;
@@ -268,6 +290,16 @@ export const applySteppedLoadRestore = async (
       mode,
       reasonCode: 'already_in_progress',
       logMessage: `Capacity: skip stepped-load restore for ${name}, already in progress`,
+    });
+  }
+  if (onoffViolated && stepNeedsConfirmation) {
+    return logSteppedLoadRestoreSkip(ctx, {
+      dev,
+      mode,
+      reasonCode: 'pre_restore_step_required',
+      logMessage:
+        `Capacity: skip stepped-load restore for ${name}, `
+        + `assumed step ${dev.assumedStepId ?? 'unknown'} must be confirmed before binary restore`,
     });
   }
   if (onoffViolated && stepViolated && options.preRestoreStepIssued !== true && !hasPendingMatchingRestoreStep) {
