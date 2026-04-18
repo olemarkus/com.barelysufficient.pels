@@ -125,6 +125,16 @@ Keep the distinction explicit:
 Even with laggy or contradictory telemetry, fresher trusted observations must eventually replace
 older local-write assumptions, older snapshot assumptions, and older fallback estimates.
 
+### Reconciliation-only tracked transitions are not restore proof
+
+Tracked power transitions seen during startup, snapshot refresh, or other reconciliation are useful
+diagnostics, but they are not by themselves proof that PELS restored a device.
+
+Contributor rule:
+
+- do not let reconciliation-only or inferred tracked rises open penalty-bearing activation attempts
+- restore-blocking backoff must start from trusted restore actuation, not from snapshot churn
+
 ## Data Sources
 
 ### 1. Local command/write path

@@ -1266,7 +1266,7 @@ describe('PlanExecutor stepped loads', () => {
       expect.objectContaining({ 'dev-1': expect.any(Number) }),
     );
     expect(state.activationAttemptByDevice['dev-1']).toEqual(expect.objectContaining({
-      source: 'tracked_step_up',
+      source: 'pels_restore',
       startedMs: expect.any(Number),
     }));
   });

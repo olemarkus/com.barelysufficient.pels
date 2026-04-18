@@ -466,7 +466,7 @@ describe('activation backoff', () => {
     expect(result.planDevices[0]?.plannedState).toBe('keep');
   });
 
-  it('applies penalty level to the headroom flow decision after a failed tracked reactivation', () => {
+  it('does not apply penalty level after a tracked-only rise and drop without a trusted restore', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
@@ -524,7 +524,7 @@ describe('activation backoff', () => {
     });
     expect(setbackDecision?.cooldownSource).toBe('step_down');
     expect(setbackDecision?.observedKwSource).toBe('measuredPowerKw');
-    expect(state.activationAttemptByDevice['dev-1']?.penaltyLevel).toBe(1);
+    expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
 
     const recoveredDevice = {
       ...steppedUpDevice,
@@ -542,9 +542,9 @@ describe('activation backoff', () => {
       nowTs: start + 3 * 60 * 1000 + 1,
     });
 
-    expect(recoveredDecision?.penaltyLevel).toBe(1);
-    expect(recoveredDecision?.requiredKwWithPenalty).toBeGreaterThan(3.2);
-    expect(recoveredDecision?.allowed).toBe(false);
+    expect(recoveredDecision?.penaltyLevel).toBe(0);
+    expect(recoveredDecision?.requiredKwWithPenalty).toBe(3.2);
+    expect(recoveredDecision?.allowed).toBe(true);
   });
 
   it('emits activation transitions when only the stored device name is available', () => {
@@ -693,6 +693,78 @@ describe('activation backoff', () => {
     }));
   });
 
+  it('does not open an activation attempt from a snapshot-refresh tracked rise on a still-shed device', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+    const diagnostics = {
+      recordControlEvent: vi.fn(),
+      recordActivationTransition: vi.fn(),
+    };
+
+    syncHeadroomCardState({
+      state,
+      devices: [{
+        id: 'dev-1',
+        name: 'Nordic S4 REL',
+        currentOn: true,
+        currentState: 'not_applicable',
+        available: true,
+        expectedPowerKw: 0,
+        measuredPowerKw: 0,
+        powerKw: 0,
+      }],
+      nowTs: start,
+    });
+
+    expect(syncHeadroomCardState({
+      state,
+      devices: [{
+        id: 'dev-1',
+        name: 'Nordic S4 REL',
+        currentOn: true,
+        currentState: 'not_applicable',
+        available: true,
+        expectedPowerKw: 1.0,
+        measuredPowerKw: 0,
+        powerKw: 0,
+      }],
+      nowTs: start + 5_000,
+      reconciliationContext: 'snapshot_refresh',
+      diagnostics: diagnostics as any,
+    })).toBe(false);
+
+    expect(diagnostics.recordControlEvent).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'tracked_usage_rise',
+      deviceId: 'dev-1',
+      reconciliation: 'snapshot_refresh',
+    }));
+    expect(diagnostics.recordActivationTransition).not.toHaveBeenCalled();
+    expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
+
+    expect(syncHeadroomCardState({
+      state,
+      devices: [{
+        id: 'dev-1',
+        name: 'Nordic S4 REL',
+        currentOn: true,
+        currentState: 'not_applicable',
+        available: true,
+        expectedPowerKw: 0,
+        measuredPowerKw: 0,
+        powerKw: 0,
+      }],
+      nowTs: start + 24_000,
+      diagnostics: diagnostics as any,
+    })).toBe(true);
+
+    expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
+    expect(getActivationRestoreBlockRemainingMs({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + 24_000,
+    })).toBeNull();
+  });
+
   it('tags tracked step-ups after a recent restore as post_actuation reconciliation', () => {
     const state = createPlanEngineState();
     const start = Date.now();
@@ -715,7 +787,7 @@ describe('activation backoff', () => {
       devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, measuredPowerKw: 1.0 })] as any,
       nowTs: start + 5_000,
       diagnostics: diagnostics as any,
-    })).toBe(true);
+    })).toBe(false);
 
     expect(diagnostics.recordControlEvent).toHaveBeenCalledWith(expect.objectContaining({
       kind: 'tracked_usage_rise',
@@ -745,7 +817,7 @@ describe('activation backoff', () => {
       devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, measuredPowerKw: 1.0 })] as any,
       nowTs: start + (2 * 60 * 1000),
       diagnostics: diagnostics as any,
-    })).toBe(true);
+    })).toBe(false);
 
     const [event] = diagnostics.recordControlEvent.mock.calls[0];
     expect(event).toMatchObject({
@@ -774,7 +846,7 @@ describe('activation backoff', () => {
       devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, measuredPowerKw: 1.0 })] as any,
       nowTs: start + Math.max(SHED_COOLDOWN_MS, RESTORE_COOLDOWN_MS),
       diagnostics: diagnostics as any,
-    })).toBe(true);
+    })).toBe(false);
 
     expect(diagnostics.recordControlEvent).toHaveBeenCalledWith(expect.objectContaining({
       kind: 'tracked_usage_rise',
@@ -804,7 +876,7 @@ describe('activation backoff', () => {
       devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, measuredPowerKw: 1.0 })] as any,
       nowTs: start + 45_000,
       diagnostics: diagnostics as any,
-    })).toBe(true);
+    })).toBe(false);
 
     const [event] = diagnostics.recordControlEvent.mock.calls[0];
     expect(event).toMatchObject({
@@ -837,7 +909,7 @@ describe('activation backoff', () => {
       devices: [buildTrackedDevice({ expectedPowerKw: 1.0, powerKw: 1.0, measuredPowerKw: 1.0 })] as any,
       nowTs: start + 5_000,
       diagnostics: diagnostics as any,
-    })).toBe(true);
+    })).toBe(false);
 
     const [event] = diagnostics.recordControlEvent.mock.calls[0];
     expect(event).toMatchObject({
