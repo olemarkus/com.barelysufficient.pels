@@ -168,7 +168,7 @@ file.
 - [ ] Keep investigating long-running `planRebuildApply` stalls now that the stepped-load flow
       wait bug is fixed.
       Files: apply-path instrumentation, perf logging, executor/plan-service timing.
-- [ ] Add stale-measurement failsafe handling so planning does not silently continue on old power
+- [x] Add stale-measurement failsafe handling so planning does not silently continue on old power
       data for minutes at a time.
       Files: power sample pipeline, capacity guard, plan engine, settings/config.
 - [ ] Add per-phase ampere limit support once there is a trustworthy phase-level telemetry source.

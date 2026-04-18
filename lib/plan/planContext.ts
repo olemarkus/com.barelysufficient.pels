@@ -2,6 +2,7 @@ import CapacityGuard from '../core/capacityGuard';
 import { resolveUsableCapacityKw } from '../core/capacityModel';
 import type { PowerTrackerState } from '../core/powerTracker';
 import { getCurrentHourContext } from './planHourContext';
+import { resolvePowerSampleFreshness, type PowerFreshnessState } from './planPowerFreshness';
 import type { PlanInputDevice } from './planTypes';
 
 export type DailyBudgetContext = {
@@ -19,6 +20,10 @@ export type PlanContext = {
   devices: PlanInputDevice[];
   desiredForMode: Record<string, number>;
   total: number | null;
+  powerKnown: boolean;
+  hasLivePowerSample: boolean;
+  powerSampleAgeMs: number | null;
+  powerFreshnessState: PowerFreshnessState;
   softLimit: number;
   capacitySoftLimit: number;
   dailySoftLimit: number | null;
@@ -26,8 +31,8 @@ export type PlanContext = {
   budgetKWh: number;
   usedKWh: number;
   minutesRemaining: number;
-  headroomRaw: number | null;
-  headroom: number | null;
+  headroomRaw: number;
+  headroom: number;
   restoreMarginPlanning: number;
   dailyBudget?: DailyBudgetContext;
 };
@@ -59,18 +64,25 @@ export function buildPlanContext(params: {
     dailyBudget,
   } = params;
 
+  const now = Date.now();
   const total = capacityGuard ? capacityGuard.getLastTotalPower() : null;
+  const freshness = resolvePowerSampleFreshness(powerTracker, now);
+  const powerKnown = total !== null;
 
   // Compute used/budget kWh for this hour
   const budgetKWh = resolveUsableCapacityKw(capacitySettings);
-  const now = Date.now();
   const hourContext = getCurrentHourContext(powerTracker, now);
   const usedKWh = hourContext.usedKWh;
   const minutesRemaining = hourContext.minutesRemaining;
 
-  const headroomRaw = total === null ? null : softLimit - total;
+  let headroomRaw = 0;
+  if (total !== null) {
+    headroomRaw = softLimit - total;
+  } else if (freshness.powerFreshnessState === 'stale_fail_closed') {
+    headroomRaw = -1;
+  }
   // headroom is the ACTUAL available capacity. Use this for shedding.
-  let headroom = headroomRaw === null && softLimit <= 0 ? -1 : headroomRaw;
+  let headroom = headroomRaw;
 
   // If the hourly energy budget is exhausted and soft limit is zero while instantaneous power reads ~0,
   // force a minimal negative headroom to proactively shed controllable devices.
@@ -82,6 +94,10 @@ export function buildPlanContext(params: {
     devices,
     desiredForMode,
     total,
+    powerKnown,
+    hasLivePowerSample: freshness.hasLivePowerSample,
+    powerSampleAgeMs: freshness.powerSampleAgeMs,
+    powerFreshnessState: freshness.powerFreshnessState,
     softLimit,
     capacitySoftLimit,
     dailySoftLimit,

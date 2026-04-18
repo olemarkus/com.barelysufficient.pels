@@ -1,5 +1,6 @@
 import { RESTORE_COOLDOWN_MS } from './planConstants';
 import type { HeadroomDeviceKwSource } from './planHeadroomSupport';
+import type { PowerFreshnessState } from './planPowerFreshness';
 import type {
   DevicePlanDevice,
   PendingTargetCommandStatus,
@@ -98,6 +99,7 @@ export type PlanEngineState = {
   lastRestoreCooldownBumpMs: number | null;
   startupRestoreBlockedUntilMs: number | null;
   currentRebuildReason: string | null;
+  lastPowerFreshnessState: PowerFreshnessState | null;
   hourlyBudgetExhausted: boolean;
   wasOvershoot: boolean;
   overshootLogged: boolean;
@@ -144,6 +146,7 @@ export function createPlanEngineState(nowTs = Date.now()): PlanEngineState {
     lastRestoreCooldownBumpMs: null,
     startupRestoreBlockedUntilMs: null,
     currentRebuildReason: null,
+    lastPowerFreshnessState: null,
     hourlyBudgetExhausted: false,
     wasOvershoot: false,
     overshootLogged: false,

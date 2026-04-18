@@ -34,13 +34,18 @@ const normalizeMinutesRemaining = (value: number | undefined): number | undefine
   return Math.max(0, Math.round(value));
 };
 
+const roundRequired = (value: number, step: number): number => {
+  if (!Number.isFinite(value)) return value;
+  return Math.round(value / step) * step;
+};
+
 export const normalizePlanMeta = (meta: DevicePlan['meta']): DevicePlan['meta'] => ({
   ...meta,
   totalKw: roundNullable(meta.totalKw, PLAN_META_KW_STEP),
   softLimitKw: roundOptional(meta.softLimitKw, PLAN_META_KW_STEP) ?? meta.softLimitKw,
   capacitySoftLimitKw: roundOptional(meta.capacitySoftLimitKw, PLAN_META_KW_STEP),
   dailySoftLimitKw: roundOptionalNullable(meta.dailySoftLimitKw, PLAN_META_KW_STEP),
-  headroomKw: roundNullable(meta.headroomKw, PLAN_META_KW_STEP),
+  headroomKw: roundRequired(meta.headroomKw, PLAN_META_KW_STEP),
   shortfallBudgetThresholdKw: roundOptional(meta.shortfallBudgetThresholdKw, PLAN_META_KW_STEP),
   shortfallBudgetHeadroomKw: roundOptionalNullable(meta.shortfallBudgetHeadroomKw, PLAN_META_KW_STEP),
   hardCapHeadroomKw: roundOptionalNullable(meta.hardCapHeadroomKw, PLAN_META_KW_STEP),
@@ -66,7 +71,7 @@ export const normalizePelsStatus = (
 
   return {
     ...status,
-    headroomKw: roundNullable(status.headroomKw, PLAN_META_KW_STEP),
+    headroomKw: roundRequired(status.headroomKw, PLAN_META_KW_STEP),
     hourlyLimitKw: roundOptional(status.hourlyLimitKw, PLAN_META_KW_STEP),
     hourlyUsageKwh: roundOptional(status.hourlyUsageKwh, PLAN_META_KWH_STEP) ?? status.hourlyUsageKwh,
     dailyBudgetRemainingKwh: roundOptional(status.dailyBudgetRemainingKwh, PLAN_META_KWH_STEP),
@@ -112,12 +117,24 @@ export const buildPelsStatusInputKey = (params: {
   isExpensive: boolean;
   combinedPrices: unknown;
   lastPowerUpdate: number | null;
+  powerFreshnessState?: DevicePlan['meta']['powerFreshnessState'];
+  powerKnown?: boolean;
 }): string => {
-  const { changes, isCheap, isExpensive, combinedPrices, lastPowerUpdate } = params;
+  const { changes, isCheap, isExpensive, combinedPrices, lastPowerUpdate, powerFreshnessState, powerKnown } = params;
   const actionSignature = changes?.actionSignature ?? '';
   const detailSignature = changes?.detailSignature ?? '';
   const metaSignature = changes?.metaSignature ?? '';
   const priceKey = resolveStatusPriceKey({ isCheap, isExpensive, combinedPrices });
   const lastPowerUpdateKey = lastPowerUpdate === null ? 'null' : String(lastPowerUpdate);
-  return `${actionSignature}|${detailSignature}|${metaSignature}|${priceKey}|${lastPowerUpdateKey}`;
+  const freshnessKey = powerFreshnessState ?? 'none';
+  const powerKnownKey = powerKnown === true ? 'known' : 'unknown';
+  return [
+    actionSignature,
+    detailSignature,
+    metaSignature,
+    priceKey,
+    lastPowerUpdateKey,
+    freshnessKey,
+    powerKnownKey,
+  ].join('|');
 };

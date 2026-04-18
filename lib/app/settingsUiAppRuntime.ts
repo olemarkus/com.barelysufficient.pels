@@ -18,7 +18,14 @@ type SettingsUiRuntimeApp = Homey.App & {
   ) => Promise<void>;
   replacePowerTrackerForUi?: (nextState: PowerTrackerState) => void;
 };
-type PelsStatus = { lastPowerUpdate?: number | null; priceLevel?: string | null };
+type PelsStatus = {
+  headroomKw?: number;
+  lastPowerUpdate?: number | null;
+  priceLevel?: string | null;
+  powerKnown?: boolean;
+  hasLivePowerSample?: boolean;
+  powerFreshnessState?: 'fresh' | 'stale_hold' | 'stale_fail_closed';
+};
 
 const getRuntimeApp = (homey: Homey.App['homey']): SettingsUiRuntimeApp | null => {
   if (!homey || typeof homey !== 'object') return null;

@@ -42,8 +42,12 @@ export type SettingsUiDevicesPayload = {
 };
 
 export type SettingsUiPowerStatus = {
+  headroomKw?: number;
   lastPowerUpdate?: number | null;
   priceLevel?: string | null;
+  powerKnown?: boolean;
+  hasLivePowerSample?: boolean;
+  powerFreshnessState?: 'fresh' | 'stale_hold' | 'stale_fail_closed';
   capacityShortfall?: boolean;
   shortfallBudgetThresholdKw?: number;
   shortfallBudgetHeadroomKw?: number | null;

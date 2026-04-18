@@ -40,7 +40,10 @@ import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './plan
 
 type ShortfallMeta = Pick<
   DevicePlan['meta'],
-  'capacityShortfall' | 'shortfallBudgetThresholdKw' | 'shortfallBudgetHeadroomKw' | 'hardCapHeadroomKw'
+  | 'capacityShortfall'
+  | 'shortfallBudgetThresholdKw'
+  | 'shortfallBudgetHeadroomKw'
+  | 'hardCapHeadroomKw'
 >;
 
 export type PlanBuilderDeps = {
@@ -213,6 +216,7 @@ export class PlanBuilder {
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
       dailyBudget: buildPlanDailyBudgetContext(dailyBudgetSnapshot),
     }));
+    this.logPowerFreshness(context);
     const overshootDecision = resolveSoftOvershootDecision({
       headroomKw: context.headroom,
       state: this.state,
@@ -602,6 +606,10 @@ export class PlanBuilder {
       dailySoftLimitKw: context.dailySoftLimit,
       softLimitSource: context.softLimitSource,
       headroomKw: context.headroom,
+      powerKnown: context.powerKnown,
+      hasLivePowerSample: context.hasLivePowerSample,
+      powerSampleAgeMs: context.powerSampleAgeMs,
+      powerFreshnessState: context.powerFreshnessState,
       ...shortfallMeta,
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
       usedKWh: context.usedKWh,
@@ -615,8 +623,78 @@ export class PlanBuilder {
       dailyBudgetExceeded: today?.state.exceeded ?? false,
       dailyBudgetHourKWh: extractPlanDailyBudgetHourKWh(dailyBudgetSnapshot),
       lastPowerUpdateMs: typeof this.powerTracker.lastTimestamp === 'number'
-        ? this.powerTracker.lastTimestamp : undefined,
+        ? this.powerTracker.lastTimestamp
+        : undefined,
     };
+  }
+
+  private logPowerFreshness(context: PlanContext): void {
+    const previousState = this.state.lastPowerFreshnessState;
+    const currentState = context.powerFreshnessState;
+    const structuredLog = this.deps.structuredLog;
+    if (currentState !== 'fresh' || !context.powerKnown) {
+      structuredLog?.warn?.({
+        event: 'power_sample_unavailable_for_planning',
+        powerKnown: context.powerKnown,
+        powerFreshnessState: currentState,
+        powerSampleAgeMs: context.powerSampleAgeMs,
+        syntheticHeadroomKw: context.headroomRaw,
+      });
+    }
+
+    emitPowerFreshnessTransitionLogs(structuredLog, previousState, currentState, context);
+
+    this.state.lastPowerFreshnessState = currentState;
+  }
+}
+
+function emitPowerFreshnessTransitionLogs(
+  structuredLog: PinoLogger | undefined,
+  previousState: PlanContext['powerFreshnessState'] | null,
+  currentState: PlanContext['powerFreshnessState'],
+  context: PlanContext,
+): void {
+  emitStaleHoldTransitionLogs(structuredLog, previousState, currentState, context);
+  emitFailClosedTransitionLogs(structuredLog, previousState, currentState, context);
+}
+
+function emitStaleHoldTransitionLogs(
+  structuredLog: PinoLogger | undefined,
+  previousState: PlanContext['powerFreshnessState'] | null,
+  currentState: PlanContext['powerFreshnessState'],
+  context: PlanContext,
+): void {
+  if (previousState !== 'stale_hold' && currentState === 'stale_hold') {
+    structuredLog?.warn?.({
+      event: 'power_sample_stale_hold_entered',
+      powerSampleAgeMs: context.powerSampleAgeMs,
+      syntheticHeadroomKw: context.headroomRaw,
+    });
+  } else if (previousState === 'stale_hold' && currentState !== 'stale_hold') {
+    structuredLog?.info?.({
+      event: 'power_sample_stale_hold_cleared',
+      powerSampleAgeMs: context.powerSampleAgeMs,
+    });
+  }
+}
+
+function emitFailClosedTransitionLogs(
+  structuredLog: PinoLogger | undefined,
+  previousState: PlanContext['powerFreshnessState'] | null,
+  currentState: PlanContext['powerFreshnessState'],
+  context: PlanContext,
+): void {
+  if (previousState !== 'stale_fail_closed' && currentState === 'stale_fail_closed') {
+    structuredLog?.warn?.({
+      event: 'power_sample_stale_fail_closed_entered',
+      powerSampleAgeMs: context.powerSampleAgeMs,
+      syntheticHeadroomKw: -1,
+    });
+  } else if (previousState === 'stale_fail_closed' && currentState !== 'stale_fail_closed') {
+    structuredLog?.info?.({
+      event: 'power_sample_stale_fail_closed_cleared',
+      powerSampleAgeMs: context.powerSampleAgeMs,
+    });
   }
 }
 
@@ -645,7 +723,7 @@ function buildPlanContextHeadroomLogFields(
   context: PlanContext,
   capacityGuard: CapacityGuard | undefined,
   hardCapLimitKw: number,
-): Record<string, number | boolean | null> {
+): Record<string, number | boolean | string | null> {
   const shortfallBudgetThresholdKw = capacityGuard?.getShortfallThreshold();
   const shortfallBudgetHeadroomKw
     = typeof context.total === 'number' && typeof shortfallBudgetThresholdKw === 'number'
@@ -658,6 +736,10 @@ function buildPlanContextHeadroomLogFields(
     totalKw: context.total,
     softLimitKw: context.softLimit,
     softHeadroomKw: context.headroom,
+    powerKnown: context.powerKnown,
+    hasLivePowerSample: context.hasLivePowerSample,
+    powerSampleAgeMs: context.powerSampleAgeMs,
+    powerFreshnessState: context.powerFreshnessState,
     shortfallBudgetThresholdKw: shortfallBudgetThresholdKw ?? null,
     shortfallBudgetHeadroomKw,
     hardCapHeadroomKw,

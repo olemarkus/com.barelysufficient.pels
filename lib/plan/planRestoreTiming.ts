@@ -31,7 +31,7 @@ type RestoreCooldownState = {
 
 export const buildRestoreTiming = (
   state: PlanEngineState,
-  headroomRaw: number | null,
+  headroomRaw: number,
   powerTracker: PowerTrackerState,
 ): RestoreTiming => {
   const nowTs = Date.now();
@@ -51,7 +51,7 @@ export const buildRestoreTiming = (
     ? Math.max(0, state.startupRestoreBlockedUntilMs - nowTs)
     : null;
   const inStartupStabilization = startupBlockRemainingMs !== null && startupBlockRemainingMs > 0;
-  const activeOvershoot = headroomRaw !== null && headroomRaw < 0;
+  const activeOvershoot = headroomRaw < 0;
   const restoreCooldownSeconds = sinceRestore !== null
     ? Math.max(0, Math.ceil((cooldownState.restoreCooldownMs - sinceRestore) / 1000))
     : Math.ceil(cooldownState.restoreCooldownMs / 1000);
@@ -84,12 +84,11 @@ export const buildRestoreTiming = (
 };
 
 export const shouldPlanRestores = (
-  headroomRaw: number | null,
+  headroomRaw: number,
   sheddingActive: boolean,
   timing: Pick<RestoreTiming, 'inCooldown' | 'inRestoreCooldown' | 'inStartupStabilization'>,
 ): boolean => (
-  headroomRaw !== null
-  && !sheddingActive
+  !sheddingActive
   && !timing.inCooldown
   && !timing.inRestoreCooldown
   && !timing.inStartupStabilization

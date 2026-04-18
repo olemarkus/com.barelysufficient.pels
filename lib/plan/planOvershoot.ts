@@ -10,12 +10,12 @@ export type SoftOvershootDecision = {
 };
 
 export function resolveSoftOvershootDecision(params: {
-  headroomKw: number | null;
+  headroomKw: number;
   state: PlanEngineState;
   nowTs: number;
 }): SoftOvershootDecision {
   const { headroomKw, state, nowTs } = params;
-  if (headroomKw === null || headroomKw >= 0) {
+  if (headroomKw >= 0) {
     return { actionable: false, pendingSinceMs: null };
   }
 
