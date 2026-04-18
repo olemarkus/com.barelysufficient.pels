@@ -147,6 +147,45 @@ export const applySteppedLoadCommand = async (
 };
 /* eslint-enable complexity */
 
+type SteppedLoadRestoreState = {
+  effectiveCurrentOn: boolean | null;
+  desiredStepId?: string;
+  hasPendingMatchingRestoreStep: boolean;
+  stepNeedsAdjustment: boolean;
+};
+
+const evaluateSteppedLoadRestoreState = (
+  dev: PlanDevice,
+): SteppedLoadRestoreState => {
+  const effectiveCurrentOn = resolveEffectiveCurrentOn(dev);
+  const desiredStepId = resolveSteppedKeepDesiredStepId(dev);
+  const hasPendingMatchingRestoreStep = desiredStepId !== undefined
+    && dev.stepCommandPending === true
+    && dev.lastDesiredStepId === desiredStepId;
+  const desiredIsNonOff = desiredStepId
+    && dev.steppedLoadProfile
+    && !isSteppedLoadOffStep(dev.steppedLoadProfile, desiredStepId);
+  return {
+    effectiveCurrentOn,
+    desiredStepId,
+    hasPendingMatchingRestoreStep,
+    stepNeedsAdjustment: Boolean(desiredIsNonOff && desiredStepId !== dev.selectedStepId),
+  };
+};
+
+const logSteppedLoadStepViolation = (
+  ctx: PlanExecutorSteppedContext,
+  dev: PlanDevice,
+  name: string,
+  desiredStepId?: string,
+): void => {
+  const stepDetail = dev.steppedLoadProfile && dev.selectedStepId
+    && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId)
+    ? `${dev.selectedStepId} (off-step)`
+    : `${dev.selectedStepId ?? 'unknown'} -> ${desiredStepId ?? 'unknown'}`;
+  ctx.logDebug(`Capacity: ${name} violates keep invariant: step=${stepDetail}`);
+};
+
 /* eslint-disable max-params, complexity, sonarjs/cognitive-complexity --
  * Restore evaluation still needs the full invariant context after the
  * executor split.
@@ -168,39 +207,33 @@ export const applySteppedLoadRestore = async (
       logMessage: `Capacity: skip stepped-load restore for ${name}, plannedState is ${dev.plannedState}`,
     });
   }
-  const effectiveCurrentOn = resolveEffectiveCurrentOn(dev);
-  if (effectiveCurrentOn !== false) {
+  const onoffViolated = snapshot?.currentOn === false;
+  const {
+    effectiveCurrentOn,
+    desiredStepId,
+    hasPendingMatchingRestoreStep,
+    stepNeedsAdjustment,
+  } = evaluateSteppedLoadRestoreState(dev);
+  if (stepNeedsAdjustment) {
+    logSteppedLoadStepViolation(ctx, dev, name, desiredStepId);
+  }
+
+  if (effectiveCurrentOn === true) {
+    if (stepNeedsAdjustment) return false;
     return logSteppedLoadRestoreSkip(ctx, {
       dev,
       mode,
-      reasonCode: 'current_state',
-      logMessage: `Capacity: skip stepped-load restore for ${name}, currentState is ${dev.currentState}`,
+      reasonCode: 'no_keep_violation',
+      logMessage:
+        `Capacity: skip stepped-load restore for ${name}, `
+        + 'no keep violations detected',
     });
   }
-  const onoffViolated = snapshot?.currentOn === false;
-  const desiredStepId = resolveSteppedKeepDesiredStepId(dev);
-  const hasPendingMatchingRestoreStep = desiredStepId !== undefined
-    && dev.stepCommandPending === true
-    && dev.lastDesiredStepId === desiredStepId;
-  const desiredIsNonOff = desiredStepId
-    && dev.steppedLoadProfile
-    && !isSteppedLoadOffStep(dev.steppedLoadProfile, desiredStepId);
-  const stepViolated = Boolean(
-    effectiveCurrentOn === false
-    && desiredIsNonOff
-    && desiredStepId !== dev.selectedStepId,
-  );
+  const stepViolated = effectiveCurrentOn === false && stepNeedsAdjustment;
   if (onoffViolated) {
     ctx.logDebug(`Capacity: ${name} violates keep invariant: onoff=${snapshot?.currentOn}`);
   }
-  if (stepViolated) {
-    const stepDetail = dev.steppedLoadProfile && dev.selectedStepId
-      && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId)
-      ? `${dev.selectedStepId} (off-step)`
-      : `${dev.selectedStepId ?? 'unknown'} -> ${desiredStepId ?? 'unknown'}`;
-    ctx.logDebug(`Capacity: ${name} violates keep invariant: step=${stepDetail}`);
-  }
-  if (!onoffViolated && !stepViolated) {
+  if (!onoffViolated && !stepNeedsAdjustment) {
     return logSteppedLoadRestoreSkip(ctx, {
       dev,
       mode,
@@ -485,7 +518,6 @@ const logSteppedLoadRestoreSkip = (
     mode: PlanActuationMode;
     reasonCode:
       | 'planned_state'
-      | 'current_state'
       | 'no_keep_violation'
       | 'missing_snapshot'
       | 'not_setable'

@@ -1547,6 +1547,53 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
   });
 
+  it('does not log current_state restore skip when a keep device is already on but needs a higher step', async () => {
+    const snapshot = buildSnapshot({ currentOn: true });
+    const { executor, deviceManager, desiredSteppedTrigger, debugStructured } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'max', previous_step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'current_state',
+      deviceId: 'dev-1',
+    }));
+  });
+
+  it('keeps snapshot gating before re-issuing a step restore for an off-step keep device', async () => {
+    const { executor, desiredSteppedTrigger, deviceManager, debugStructured } = buildExecutor(undefined, []);
+
+    const plan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'low',
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'missing_snapshot',
+      deviceId: 'dev-1',
+      actuationMode: 'reconcile',
+    }));
+  });
+
   it('fixes both onoff=false and step=off when keep intent is violated on both axes', async () => {
     // Both violations: raw snapshot has currentOn=false AND selectedStepId='off'
     // while desiredStepId='low'. Both onoffViolated and stepViolated should be true.
