@@ -23,11 +23,10 @@ import {
   normalizeDebugLoggingTopics,
   type DebugLoggingTopic,
 } from '../../../shared-domain/src/utils/debugLogging.ts';
+import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../../shared-domain/src/powerFreshness.ts';
 import type { SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
 import { showToast } from './toast.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
-
-const STALE_DATA_THRESHOLD_MS = 60 * 1000;
 const HEARTBEAT_THRESHOLD_MS = 90 * 1000;
 
 type PowerSource = 'flow' | 'homey_energy';
@@ -71,7 +70,7 @@ const updateStaleDataBanner = (lastPowerUpdate: number | null, lastHeartbeat: nu
     }
     return;
   }
-  const isStale = (now - lastPowerUpdate) > STALE_DATA_THRESHOLD_MS;
+  const isStale = (now - lastPowerUpdate) > POWER_SAMPLE_STALE_THRESHOLD_MS;
   staleDataBanner.hidden = !isStale;
   if (staleDataBannerText && isStale) {
     staleDataBannerText.textContent = `No power data received in the last minute. ${getStaleDataHint()}`;
