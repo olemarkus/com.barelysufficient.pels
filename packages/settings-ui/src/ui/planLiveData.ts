@@ -5,6 +5,7 @@ export type TimedPlanDevice = {
 };
 
 export type TimedPlanSnapshot = {
+  generatedAtMs?: number;
   meta?: {
     lastPowerUpdateMs?: number;
   };
@@ -19,27 +20,33 @@ export const hasTimedReason = (reason: DeviceReason | undefined): reason is Time
 
 export const getDisplayReason = (
   reason: DeviceReason | undefined,
-  renderedAtMs: number,
+  snapshotGeneratedAtMs: number,
   nowMs: number,
 ): DeviceReason | undefined => {
   if (!hasTimedReason(reason)) return reason;
   return {
     ...reason,
-    remainingSec: Math.max(0, reason.remainingSec - Math.floor((nowMs - renderedAtMs) / 1000)),
+    remainingSec: Math.max(0, reason.remainingSec - Math.floor((nowMs - snapshotGeneratedAtMs) / 1000)),
   };
 };
 
-export const getEarliestCountdownExpiryMs = (plan: TimedPlanSnapshot | null, renderedAtMs: number): number | null => {
-  if (!plan || !Array.isArray(plan.devices)) return null;
-  let earliestExpiryMs: number | null = null;
-  plan.devices.forEach((device) => {
-    if (!hasTimedReason(device.reason) || device.reason.remainingSec <= 0) return;
-    const expiryMs = renderedAtMs + (device.reason.remainingSec * 1000);
-    earliestExpiryMs = earliestExpiryMs === null ? expiryMs : Math.min(earliestExpiryMs, expiryMs);
+export const resolveSnapshotGeneratedAtMs = (plan: TimedPlanSnapshot | null, renderedAtMs: number): number => {
+  if (typeof plan?.generatedAtMs === 'number' && Number.isFinite(plan.generatedAtMs)) {
+    return plan.generatedAtMs;
+  }
+  return renderedAtMs;
+};
+
+const hasLiveCountdowns = (plan: TimedPlanSnapshot | null, renderedAtMs: number): boolean => {
+  if (!plan || !Array.isArray(plan.devices)) return false;
+  const snapshotGeneratedAtMs = resolveSnapshotGeneratedAtMs(plan, renderedAtMs);
+  return plan.devices.some((device) => {
+    if (!hasTimedReason(device.reason)) return false;
+    const displayReason = getDisplayReason(device.reason, snapshotGeneratedAtMs, Date.now());
+    return hasTimedReason(displayReason) && displayReason.remainingSec > 0;
   });
-  return earliestExpiryMs;
 };
 
 export const planNeedsLiveUpdates = (plan: TimedPlanSnapshot | null, renderedAtMs: number): boolean => (
-  typeof plan?.meta?.lastPowerUpdateMs === 'number' || getEarliestCountdownExpiryMs(plan, renderedAtMs) !== null
+  typeof plan?.meta?.lastPowerUpdateMs === 'number' || hasLiveCountdowns(plan, renderedAtMs)
 );

@@ -13,8 +13,8 @@ import { setTooltip } from './tooltips.ts';
 import { createLivePlanController } from './planLive.ts';
 import {
   getDisplayReason,
-  getEarliestCountdownExpiryMs,
   planNeedsLiveUpdates,
+  resolveSnapshotGeneratedAtMs,
 } from './planLiveData.ts';
 import { renderPlanMeta, type PlanMetaBinding, type PlanMetaSnapshot, updatePlanMetaBinding } from './planMeta.ts';
 
@@ -40,16 +40,20 @@ type PlanDeviceSnapshot = DeviceOverviewSnapshot & {
 };
 
 type PlanSnapshot = {
+  generatedAtMs?: number;
   meta?: PlanMetaSnapshot;
   devices?: PlanDeviceSnapshot[];
 };
 
-const getPlanSnapshot = async (): Promise<PlanSnapshot | null> => {
-  const payload = await getApiReadModel<SettingsUiPlanPayload>(SETTINGS_UI_PLAN_PATH);
+const getPlanSnapshotFromPayload = (payload: SettingsUiPlanPayload | null | undefined): PlanSnapshot | null => {
   const plan = payload?.plan;
   if (!plan || typeof plan !== 'object') return null;
   return plan as PlanSnapshot;
 };
+
+const getPlanSnapshot = async (): Promise<PlanSnapshot | null> => (
+  getPlanSnapshotFromPayload(await getApiReadModel<SettingsUiPlanPayload>(SETTINGS_UI_PLAN_PATH))
+);
 
 type PlanStatusBinding = {
   device: PlanDeviceSnapshot;
@@ -119,11 +123,12 @@ const buildPlanStatusLine = (dev: PlanDeviceSnapshot, overview: DeviceOverviewSt
 };
 
 const getDisplayPlanDeviceSnapshot = (
+  plan: PlanSnapshot | null,
   dev: PlanDeviceSnapshot,
   renderedAtMs: number,
   nowMs: number,
 ): PlanDeviceSnapshot => {
-  const displayReason = getDisplayReason(dev.reason, renderedAtMs, nowMs);
+  const displayReason = getDisplayReason(dev.reason, resolveSnapshotGeneratedAtMs(plan, renderedAtMs), nowMs);
   if (displayReason === dev.reason) return dev;
   return { ...dev, reason: displayReason };
 };
@@ -206,8 +211,8 @@ const buildBudgetExemptChip = () => {
   return chip;
 };
 
-const buildPlanRow = (dev: PlanDeviceSnapshot, renderedAtMs: number, nowMs: number) => {
-  const displayDev = getDisplayPlanDeviceSnapshot(dev, renderedAtMs, nowMs);
+const buildPlanRow = (plan: PlanSnapshot | null, dev: PlanDeviceSnapshot, renderedAtMs: number, nowMs: number) => {
+  const displayDev = getDisplayPlanDeviceSnapshot(plan, dev, renderedAtMs, nowMs);
   const overview = formatDeviceOverview(displayDev);
   const row = document.createElement('li');
   row.className = 'device-row plan-row clickable';
@@ -273,7 +278,7 @@ const isOverviewVisible = (): boolean => {
 const updateLivePlanAt = (_plan: PlanSnapshot | null, renderedAtMs: number, nowMs: number) => {
   updatePlanMetaBinding(liveMetaBinding, nowMs);
   liveStatusBindings.forEach((binding) => {
-    const displayDev = getDisplayPlanDeviceSnapshot(binding.device, renderedAtMs, nowMs);
+    const displayDev = getDisplayPlanDeviceSnapshot(_plan, binding.device, renderedAtMs, nowMs);
     const target = binding.valueEl;
     target.textContent = formatDeviceOverview(displayDev).statusMsg;
   });
@@ -303,14 +308,12 @@ const renderPlanAt = (plan: PlanSnapshot | null, renderedAtMs: number, nowMs: nu
   const sortedDevices = [...devices].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
 
   sortedDevices.forEach((dev) => {
-    planList.appendChild(buildPlanRow(dev, renderedAtMs, nowMs));
+    planList.appendChild(buildPlanRow(plan, dev, renderedAtMs, nowMs));
   });
 };
 
 const livePlanController = createLivePlanController<PlanSnapshot>({
-  refreshDebounceMs: 2000,
   hasLiveUpdates: (plan, renderedAtMs) => planNeedsLiveUpdates(plan, renderedAtMs),
-  getEarliestCountdownExpiryMs: (plan, renderedAtMs) => getEarliestCountdownExpiryMs(plan, renderedAtMs),
   isVisible: isOverviewVisible,
   render: (plan, renderedAtMs, nowMs) => {
     renderPlanAt(plan, renderedAtMs, nowMs);
@@ -319,10 +322,6 @@ const livePlanController = createLivePlanController<PlanSnapshot>({
     updateLivePlanAt(plan, renderedAtMs, nowMs);
   },
 });
-
-export const setPlanLiveRefreshCallback = (callback: (() => void | Promise<void>) | null) => {
-  livePlanController.setRefreshCallback(callback);
-};
 
 export const renderPlan = (plan: PlanSnapshot | null) => {
   livePlanController.renderPlan(plan);

@@ -322,6 +322,20 @@ export class PlanService {
     return this.latestReconcilePlanSnapshot ?? this.latestPlanSnapshot;
   }
 
+  private stampPlanGeneratedAt(plan: DevicePlan, nowMs = Date.now()): DevicePlan {
+    return {
+      ...plan,
+      generatedAtMs: nowMs,
+    };
+  }
+
+  private preservePlanGeneratedAt(plan: DevicePlan, basePlan: DevicePlan): DevicePlan {
+    return {
+      ...plan,
+      generatedAtMs: basePlan.generatedAtMs,
+    };
+  }
+
   async syncLivePlanState(source: PendingTargetObservationSource): Promise<boolean> {
     return this.enqueuePlanOperation(
       () => Promise.resolve(this.syncLivePlanStateInline(source)),
@@ -354,10 +368,12 @@ export class PlanService {
       buildLiveStatePlan(this.latestPlanSnapshot, liveDevices),
     );
     if (canRefreshPlanSnapshotFromLiveState(this.latestPlanSnapshot, livePlan)) {
-      this.latestPlanSnapshot = livePlan;
-      this.latestPlanSnapshotUpdatedAtMs = Date.now();
-      this.latestReconcilePlanSnapshot = livePlan;
-      this.emitPlanUpdated(livePlan);
+      const refreshedPlan = this.preservePlanGeneratedAt(livePlan, this.latestPlanSnapshot);
+      const nowMs = Date.now();
+      this.latestPlanSnapshot = refreshedPlan;
+      this.latestPlanSnapshotUpdatedAtMs = nowMs;
+      this.latestReconcilePlanSnapshot = refreshedPlan;
+      this.emitPlanUpdated(refreshedPlan);
       return true;
     }
 
@@ -369,9 +385,11 @@ export class PlanService {
     if (buildPlanDetailSignature(nextPlan) === buildPlanDetailSignature(this.latestPlanSnapshot)) {
       return false;
     }
-    this.latestPlanSnapshot = nextPlan;
-    this.latestPlanSnapshotUpdatedAtMs = Date.now();
-    this.emitPlanUpdated(nextPlan);
+    const refreshedPlan = this.preservePlanGeneratedAt(nextPlan, this.latestPlanSnapshot);
+    const nowMs = Date.now();
+    this.latestPlanSnapshot = refreshedPlan;
+    this.latestPlanSnapshotUpdatedAtMs = nowMs;
+    this.emitPlanUpdated(refreshedPlan);
     return true;
   }
 
@@ -685,20 +703,26 @@ export class PlanService {
     outcome: PlanRebuildOutcome,
   ): Promise<void> {
     const { plan, buildMs } = await this.buildPlanForRebuild(reason);
-    this.latestPlanSnapshot = plan;
-    this.latestPlanSnapshotUpdatedAtMs = Date.now();
-    const { changes, changeMs } = this.measurePlanChanges(plan);
-    const { snapshotMs, snapshotWriteMs } = this.measureSnapshotUpdate(plan, changes);
-    const { statusMs, statusWriteMs } = this.measureStatusUpdate(plan, changes);
-    const hadShedding = hasShedding(plan);
+    const nowMs = Date.now();
+    const stampedPlan = this.stampPlanGeneratedAt(plan, nowMs);
+    this.latestPlanSnapshot = stampedPlan;
+    this.latestPlanSnapshotUpdatedAtMs = nowMs;
+    const { changes, changeMs } = this.measurePlanChanges(stampedPlan);
+    const { snapshotMs, snapshotWriteMs } = this.measureSnapshotUpdate(stampedPlan, changes);
+    const { statusMs, statusWriteMs } = this.measureStatusUpdate(stampedPlan, changes);
+    const hadShedding = hasShedding(stampedPlan);
 
     if (isDryRun && hadShedding) {
       this.deps.log('Dry run: shedding planned but not executed');
     }
 
-    const { applyMs, appliedActions, deviceWriteCount } = await this.maybeApplyPlanChanges(plan, changes, isDryRun);
+    const { applyMs, appliedActions, deviceWriteCount } = await this.maybeApplyPlanChanges(
+      stampedPlan,
+      changes,
+      isDryRun,
+    );
     if (changes.actionChanged || !this.latestReconcilePlanSnapshot) {
-      this.latestReconcilePlanSnapshot = this.latestPlanSnapshot ?? plan;
+      this.latestReconcilePlanSnapshot = this.latestPlanSnapshot ?? stampedPlan;
     }
     Object.assign(outcome, {
       buildMs,
@@ -872,10 +896,12 @@ export class PlanService {
       buildLiveStatePlan(basePlan, this.deps.getPlanDevices()),
     );
     if (!canRefreshPlanSnapshotFromLiveState(basePlan, livePlan)) return false;
-    this.latestPlanSnapshot = livePlan;
-    this.latestPlanSnapshotUpdatedAtMs = Date.now();
-    this.latestReconcilePlanSnapshot = livePlan;
-    this.emitPlanUpdated(livePlan);
+    const refreshedPlan = this.preservePlanGeneratedAt(livePlan, basePlan);
+    const nowMs = Date.now();
+    this.latestPlanSnapshot = refreshedPlan;
+    this.latestPlanSnapshotUpdatedAtMs = nowMs;
+    this.latestReconcilePlanSnapshot = refreshedPlan;
+    this.emitPlanUpdated(refreshedPlan);
     return true;
   }
 
@@ -885,9 +911,11 @@ export class PlanService {
     if (buildPlanDetailSignature(nextPlan) === buildPlanDetailSignature(this.latestPlanSnapshot)) {
       return false;
     }
-    this.latestPlanSnapshot = nextPlan;
-    this.latestPlanSnapshotUpdatedAtMs = Date.now();
-    this.emitPlanUpdated(nextPlan);
+    const refreshedPlan = this.preservePlanGeneratedAt(nextPlan, this.latestPlanSnapshot);
+    const nowMs = Date.now();
+    this.latestPlanSnapshot = refreshedPlan;
+    this.latestPlanSnapshotUpdatedAtMs = nowMs;
+    this.emitPlanUpdated(refreshedPlan);
     return true;
   }
 

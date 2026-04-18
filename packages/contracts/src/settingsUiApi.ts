@@ -29,6 +29,7 @@ export type SettingsUiBootstrap = SettingsUiSettingsPatch & {
 export type SettingsUiLogRequest = SettingsUiLogEntry;
 
 export type SettingsUiPlanSnapshot = {
+  generatedAtMs?: number;
   meta?: Record<string, unknown>;
   devices?: Array<Record<string, unknown>>;
 };

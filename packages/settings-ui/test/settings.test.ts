@@ -2346,7 +2346,7 @@ describe('Plan sorting', () => {
     }
   });
 
-  it('invalidates /ui_plan cache when reopening overview and when using Refresh plan', async () => {
+  it('invalidates /ui_plan cache when reopening overview', async () => {
     await loadSettingsScript();
 
     (global.Homey.api as ReturnType<typeof vi.fn>).mockClear();
@@ -2364,7 +2364,7 @@ describe('Plan sorting', () => {
 
     const planGetCalls = (global.Homey.api as ReturnType<typeof vi.fn>).mock.calls
       .filter((call) => call[0] === 'GET' && call[1] === '/ui_plan');
-    expect(planGetCalls).toHaveLength(2);
+    expect(planGetCalls).toHaveLength(1);
   });
 
   it('returns a Homey-style 404 for API paths not declared in app.json', async () => {

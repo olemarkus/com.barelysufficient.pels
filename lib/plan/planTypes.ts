@@ -98,6 +98,7 @@ export type DevicePlanDevice = {
 };
 
 export type DevicePlan = {
+  generatedAtMs?: number;
   meta: {
     totalKw: number | null;
     softLimitKw: number;

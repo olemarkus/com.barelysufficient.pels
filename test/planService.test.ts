@@ -1368,6 +1368,71 @@ describe('PlanService', () => {
     }));
   });
 
+  it('preserves generatedAtMs when syncLivePlanState refreshes live state', async () => {
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    const service = new PlanService({
+      homey: {
+        settings: { set: vi.fn() },
+        api: { realtime },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+        hasPendingBinaryCommands: vi.fn(() => true),
+        syncPendingBinaryCommands: vi.fn(() => false),
+      } as any,
+      getPlanDevices: () => [{
+        id: 'dev-1',
+        name: 'Heater',
+        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+        deviceType: 'temperature',
+        hasBinaryControl: true,
+        currentOn: false,
+        currentTemperature: 21,
+      }],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+    });
+
+    (service as any).latestPlanSnapshot = {
+      ...buildPlan(20, 'meter settling (30s remaining)', {}, {
+        currentState: 'on',
+        plannedState: 'shed',
+      }),
+      generatedAtMs: Date.parse('2026-02-06T23:59:30.000Z'),
+    };
+
+    vi.setSystemTime(new Date('2026-02-07T00:00:10.000Z'));
+
+    await expect(service.syncLivePlanState('snapshot_refresh')).resolves.toBe(true);
+
+    expect(service.getLatestPlanSnapshot()).toEqual(expect.objectContaining({
+      generatedAtMs: Date.parse('2026-02-06T23:59:30.000Z'),
+      devices: [
+        expect.objectContaining({
+          id: 'dev-1',
+          currentState: 'off',
+          plannedState: 'shed',
+        }),
+      ],
+    }));
+    expect(realtime).toHaveBeenCalledWith('plan_updated', expect.objectContaining({
+      generatedAtMs: Date.parse('2026-02-06T23:59:30.000Z'),
+    }));
+  });
+
   it('skips plan reconcile for power-only drift', async () => {
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
@@ -3295,7 +3360,7 @@ describe('PlanService', () => {
 
     await service.rebuildPlanFromCache();
 
-    expect(applyPlanActions).toHaveBeenCalledWith(steppedPlan, 'plan');
+    expect(applyPlanActions).toHaveBeenCalledWith(expect.objectContaining(steppedPlan), 'plan');
     expect(schedulePostActuationRefresh).not.toHaveBeenCalled();
   });
 
