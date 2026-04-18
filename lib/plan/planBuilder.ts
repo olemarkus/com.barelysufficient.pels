@@ -632,15 +632,6 @@ export class PlanBuilder {
     const previousState = this.state.lastPowerFreshnessState;
     const currentState = context.powerFreshnessState;
     const structuredLog = this.deps.structuredLog;
-    if (currentState !== 'fresh' || !context.powerKnown) {
-      structuredLog?.warn?.({
-        event: 'power_sample_unavailable_for_planning',
-        powerKnown: context.powerKnown,
-        powerFreshnessState: currentState,
-        powerSampleAgeMs: context.powerSampleAgeMs,
-        syntheticHeadroomKw: context.headroomRaw,
-      });
-    }
 
     emitPowerFreshnessTransitionLogs(structuredLog, previousState, currentState, context);
 

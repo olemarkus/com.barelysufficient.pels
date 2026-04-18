@@ -56,6 +56,7 @@ describe('Shed vs Restore Logic', () => {
 
         const app = createApp() as unknown as InternalApp;
         await (app as any).onInit();
+        (app as any).powerTracker.lastTimestamp = Date.now();
         // Force soft limit to 10 for controllable shedding test
         (app as any).computeDynamicSoftLimit = () => 10;
 
@@ -110,6 +111,7 @@ describe('Shed vs Restore Logic', () => {
     test('Shedding ignores devices with 0 measured power even if high expected power', async () => {
         const app = createApp() as unknown as InternalApp;
         await (app as any).onInit();
+        (app as any).powerTracker.lastTimestamp = Date.now();
         (app as any).computeDynamicSoftLimit = () => 10;
 
         // Device C: Expected 5kW, Measured 0kW (Maybe checking in but idle?)
@@ -147,6 +149,7 @@ describe('Shed vs Restore Logic', () => {
     test('Restore uses expected power (cost), denying restore if headroom insufficient', async () => {
         const app = createApp() as unknown as InternalApp;
         await (app as any).onInit();
+        (app as any).powerTracker.lastTimestamp = Date.now();
         (app as any).computeDynamicSoftLimit = () => 10;
 
         // Device E: Expected 3.0kW, Measured 0.0kW (Currently OFF)

@@ -53,9 +53,11 @@ describe('power sample freshness policy', () => {
   });
 
   it('uses stale-hold fallback headroom 0 for short gaps and startup with no sample', () => {
+    const staleCapacityGuard = new CapacityGuard({ limitKw: 6, softMarginKw: 0 });
+    staleCapacityGuard.reportTotalPower(4.4);
     const staleHoldContext = buildPlanContext({
       devices: [],
-      capacityGuard: undefined,
+      capacityGuard: staleCapacityGuard,
       capacitySettings: { limitKw: 6, marginKw: 0.2 },
       powerTracker: { lastTimestamp: Date.now() - (2 * 60 * 1000) },
       softLimit: 5,
@@ -69,6 +71,7 @@ describe('power sample freshness policy', () => {
     expect(staleHoldContext.powerKnown).toBe(false);
     expect(staleHoldContext.hasLivePowerSample).toBe(false);
     expect(staleHoldContext.powerFreshnessState).toBe('stale_hold');
+    expect(staleHoldContext.total).toBe(4.4);
     expect(staleHoldContext.powerSampleAgeMs).toBe(2 * 60 * 1000);
     expect(staleHoldContext.headroomRaw).toBe(0);
     expect(staleHoldContext.headroom).toBe(0);
@@ -148,20 +151,48 @@ describe('planner behavior under stale power freshness states', () => {
   }
 
   it('does not proactively shed solely because power data is in stale-hold', async () => {
+    const capacityGuard = new CapacityGuard({ limitKw: 6, softMarginKw: 0.2 });
+    capacityGuard.reportTotalPower(5.8);
     const builder = buildBuilder({
       tracker: { lastTimestamp: Date.now() - (2 * 60 * 1000) },
+      capacityGuard,
     });
 
     const plan = await builder.buildDevicePlanSnapshot([buildDevice()]);
 
     expect(plan.meta.powerFreshnessState).toBe('stale_hold');
+    expect(plan.meta.powerKnown).toBe(false);
     expect(plan.meta.headroomKw).toBe(0);
     expect(plan.devices[0]?.plannedState).toBe('keep');
+  });
+
+  it('logs stale-hold only on transition, not on every rebuild', async () => {
+    const capacityGuard = new CapacityGuard({ limitKw: 6, softMarginKw: 0.2 });
+    capacityGuard.reportTotalPower(5.8);
+    const structuredLog = {
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
+    const builder = buildBuilder({
+      tracker: { lastTimestamp: Date.now() - (2 * 60 * 1000) },
+      capacityGuard,
+      structuredLog,
+    });
+
+    await builder.buildDevicePlanSnapshot([buildDevice()]);
+    await builder.buildDevicePlanSnapshot([buildDevice()]);
+
+    expect(structuredLog.warn).toHaveBeenCalledTimes(1);
+    expect(structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'power_sample_stale_hold_entered',
+      syntheticHeadroomKw: 0,
+    }));
   });
 
   it('allows fail-closed shedding and clears once a fresh sample returns', async () => {
     const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS };
     const capacityGuard = new CapacityGuard({ limitKw: 6, softMarginKw: 0.2 });
+    capacityGuard.reportTotalPower(4.9);
     const structuredLog = {
       info: vi.fn(),
       warn: vi.fn(),

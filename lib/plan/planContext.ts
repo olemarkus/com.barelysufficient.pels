@@ -67,7 +67,7 @@ export function buildPlanContext(params: {
   const now = Date.now();
   const total = capacityGuard ? capacityGuard.getLastTotalPower() : null;
   const freshness = resolvePowerSampleFreshness(powerTracker, now);
-  const powerKnown = total !== null;
+  const powerKnown = freshness.powerFreshnessState === 'fresh' && total !== null;
 
   // Compute used/budget kWh for this hour
   const budgetKWh = resolveUsableCapacityKw(capacitySettings);
@@ -76,7 +76,7 @@ export function buildPlanContext(params: {
   const minutesRemaining = hourContext.minutesRemaining;
 
   let headroomRaw = 0;
-  if (total !== null) {
+  if (powerKnown && total !== null) {
     headroomRaw = softLimit - total;
   } else if (freshness.powerFreshnessState === 'stale_fail_closed') {
     headroomRaw = -1;
