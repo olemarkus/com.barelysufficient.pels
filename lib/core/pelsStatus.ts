@@ -208,8 +208,8 @@ function resolveDailyLimited(params: DailyLimitParams): boolean {
 }
 
 function resolveLimitReason(plan: DevicePlan, summary: PlanStatusSummary): 'none' | 'hourly' | 'daily' | 'both' {
-  const hasShedDevices = summary.hasLimitDrivenShedDevices;
-  const headroomNegative = plan.meta.headroomKw < 0;
+  const hasShedDevices = plan.meta.powerKnown === true && summary.hasLimitDrivenShedDevices;
+  const headroomNegative = plan.meta.powerKnown === true && plan.meta.headroomKw < 0;
   const limitSource = plan.meta.softLimitSource;
   const dailySourceActive = isDailySourceActive(limitSource);
   const capacitySourceActive = isCapacitySourceActive(limitSource);
