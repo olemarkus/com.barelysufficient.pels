@@ -178,6 +178,30 @@
       },
       {
         "title": {
+          "en": "PELS requests state refresh for"
+        },
+        "titleFormatted": {
+          "en": "PELS requests state refresh for [[device]]"
+        },
+        "hint": {
+          "en": "Triggers when PELS wants fresh flow-backed state for an existing Homey device. This trigger never mutates device state by itself."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select Homey device"
+            }
+          }
+        ],
+        "id": "flow_backed_device_refresh_requested"
+      },
+      {
+        "title": {
           "en": "Operating mode changed to"
         },
         "titleFormatted": {
@@ -673,6 +697,142 @@
           }
         ],
         "id": "remove_budget_exemption"
+      },
+      {
+        "title": {
+          "en": "Set flow-backed EV charging for device"
+        },
+        "titleFormatted": {
+          "en": "Set EV charging for [[device]] to [[state]]"
+        },
+        "hint": {
+          "en": "Reports the observed EV charging boolean state for an existing Homey EV charger so PELS can use it as flow-backed observed state."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select Homey EV charger"
+            }
+          },
+          {
+            "name": "state",
+            "type": "autocomplete",
+            "title": {
+              "en": "Charging"
+            },
+            "placeholder": {
+              "en": "On or off"
+            }
+          }
+        ],
+        "id": "report_flow_backed_device_evcharger_charging"
+      },
+      {
+        "title": {
+          "en": "Set flow-backed EV charging state for device"
+        },
+        "titleFormatted": {
+          "en": "Set EV charging state for [[device]] to [[state]]"
+        },
+        "hint": {
+          "en": "Reports the observed EV charging state for an existing Homey EV charger so PELS can use it as flow-backed observed state."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select Homey EV charger"
+            }
+          },
+          {
+            "name": "state",
+            "type": "autocomplete",
+            "title": {
+              "en": "State"
+            },
+            "placeholder": {
+              "en": "Select EV charging state"
+            }
+          }
+        ],
+        "id": "report_flow_backed_device_evcharger_state"
+      },
+      {
+        "title": {
+          "en": "Set flow-backed on/off state for device"
+        },
+        "titleFormatted": {
+          "en": "Set on/off state for [[device]] to [[state]]"
+        },
+        "hint": {
+          "en": "Reports the observed on/off state for an existing Homey device so PELS can use it as flow-backed observed state."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select Homey device"
+            }
+          },
+          {
+            "name": "state",
+            "type": "autocomplete",
+            "title": {
+              "en": "State"
+            },
+            "placeholder": {
+              "en": "On or off"
+            }
+          }
+        ],
+        "id": "report_flow_backed_device_onoff"
+      },
+      {
+        "title": {
+          "en": "Set flow-backed power usage for device"
+        },
+        "titleFormatted": {
+          "en": "Set power usage for [[device]] to [[power_w]] W"
+        },
+        "hint": {
+          "en": "Reports instantaneous power usage for an existing Homey device so PELS can use it as flow-backed observed state."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select Homey device"
+            }
+          },
+          {
+            "name": "power_w",
+            "type": "text",
+            "title": {
+              "en": "Power"
+            },
+            "placeholder": {
+              "en": "1750 or 1750 W"
+            }
+          }
+        ],
+        "id": "report_flow_backed_device_power"
       },
       {
         "title": {

@@ -108,6 +108,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getNow: () => new Date('2026-04-16T00:00:00.000Z'),
     logPeriodicStatus: vi.fn(),
     disableUnsupportedDevices: vi.fn(),
+    getFlowReportedDeviceIds: vi.fn(() => []),
+    emitFlowBackedRefreshRequests: vi.fn(async () => undefined),
     recordPowerSample: vi.fn(async () => undefined),
   });
   const homeyEnergyHelpers = homeyEnergyHelpersOverride ?? new AppHomeyEnergyHelpers({
@@ -158,6 +160,11 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     updateDailyBudgetState: vi.fn(),
     disableManagedEvDevices: vi.fn(),
     requestFlowPlanRebuild: vi.fn(),
+    getFlowReportedCapabilitiesForDevice: vi.fn(() => ({})),
+    getFlowReportedDeviceIds: vi.fn(() => []),
+    reportFlowBackedCapability: vi.fn(() => 'changed'),
+    getHomeyDevicesForFlow: vi.fn(async () => []),
+    emitFlowBackedRefreshRequests: vi.fn(async () => undefined),
     getPriorityForDevice: vi.fn(() => 0),
     resolveModeName: vi.fn((name: string) => name),
     getAllModes: vi.fn(() => new Set<string>()),

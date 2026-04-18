@@ -236,6 +236,14 @@ const buildBudgetExemptChip = (device: TargetDeviceSnapshot): HTMLElement | null
   return buildStateChip('Budget exempt', 'This device is excluded from daily budget limits.');
 };
 
+const buildFlowBackedChip = (device: TargetDeviceSnapshot): HTMLElement | null => {
+  if (device.flowBacked !== true) return null;
+  return buildStateChip(
+    'Flow-backed',
+    'PELS is using flow-reported state to support this existing Homey device.',
+  );
+};
+
 const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
   const supportsTemperature = supportsTemperatureDevice(device);
   const supportsPower = supportsPowerDevice(device);
@@ -288,6 +296,8 @@ const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
   nameWrap.replaceChildren(nameText);
   const stateChip = buildDeviceAvailabilityChip(device);
   if (stateChip) nameWrap.appendChild(stateChip);
+  const flowBackedChip = buildFlowBackedChip(device);
+  if (flowBackedChip) nameWrap.appendChild(flowBackedChip);
   const budgetExemptChip = buildBudgetExemptChip(device);
   if (budgetExemptChip) nameWrap.appendChild(budgetExemptChip);
   return row;

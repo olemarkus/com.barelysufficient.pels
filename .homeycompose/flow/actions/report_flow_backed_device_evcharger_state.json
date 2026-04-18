@@ -1,0 +1,33 @@
+{
+  "title": {
+    "en": "Set flow-backed EV charging state for device"
+  },
+  "titleFormatted": {
+    "en": "Set EV charging state for [[device]] to [[state]]"
+  },
+  "hint": {
+    "en": "Reports the observed EV charging state for an existing Homey EV charger so PELS can use it as flow-backed observed state."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select Homey EV charger"
+      }
+    },
+    {
+      "name": "state",
+      "type": "autocomplete",
+      "title": {
+        "en": "State"
+      },
+      "placeholder": {
+        "en": "Select EV charging state"
+      }
+    }
+  ]
+}
