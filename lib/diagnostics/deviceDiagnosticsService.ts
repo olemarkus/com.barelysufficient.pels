@@ -99,11 +99,12 @@ export type DeviceDiagnosticsTrackedTransitionReconciliation =
 
 export type DeviceDiagnosticsControlEvent =
   | (DeviceDiagnosticsControlEventBase & {
-    kind: 'shed' | 'restore';
+    kind: 'pels_shed' | 'pels_restore';
   })
   | (DeviceDiagnosticsControlEventBase & {
-    kind: 'tracked_transition';
-    direction: 'up' | 'down';
+    kind: 'tracked_usage_rise' | 'tracked_usage_drop';
+    fromKw: number;
+    toKw: number;
     reconciliation?: DeviceDiagnosticsTrackedTransitionReconciliation;
   });
 
@@ -406,47 +407,25 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       live.name = event.name;
     }
     switch (event.kind) {
-      case 'shed':
-        this.addCount(event.deviceId, nowTs, 'shedCount', 1);
-        if (isFiniteNumber(live.openRestoreTs)) {
-          const durationMs = Math.max(0, nowTs - live.openRestoreTs);
-          this.addRestoreToSetback(event.deviceId, nowTs, durationMs);
-          live.openRestoreTs = undefined;
-          this.deps.logDebug(
-            `Diagnostics: restore-to-setback completed ${formatDeviceRef(event.deviceId, live.name)} `
-            + `duration=${formatDurationSeconds(durationMs)}`,
-          );
-        }
-        live.openShedTs = nowTs;
-        this.deps.logDebug(`Diagnostics: shed recorded ${formatDeviceRef(event.deviceId, live.name)}`);
+      case 'pels_shed':
+        this.recordPelsShedEvent(event.deviceId, nowTs);
+        this.scheduleFlush(nowTs);
         break;
-      case 'restore':
-        this.addCount(event.deviceId, nowTs, 'restoreCount', 1);
-        if (isFiniteNumber(live.openShedTs)) {
-          const durationMs = Math.max(0, nowTs - live.openShedTs);
-          this.addShedToRestore(event.deviceId, nowTs, durationMs);
-          live.openShedTs = undefined;
-          this.deps.logDebug(
-            `Diagnostics: shed-to-restore completed ${formatDeviceRef(event.deviceId, live.name)} `
-            + `duration=${formatDurationSeconds(durationMs)}`,
-          );
-        }
-        live.openRestoreTs = nowTs;
-        this.deps.logDebug(`Diagnostics: restore recorded ${formatDeviceRef(event.deviceId, live.name)}`);
+      case 'pels_restore':
+        this.recordPelsRestoreEvent(event.deviceId, nowTs);
+        this.scheduleFlush(nowTs);
         break;
-      case 'tracked_transition':
-        this.deps.logDebug(
-          `Diagnostics: tracked transition recorded ${formatDeviceRef(event.deviceId, live.name)} `
-          + `direction=${event.direction}`
-          + (event.reconciliation ? ` reconciliation=${event.reconciliation}` : ''),
-        );
+      case 'tracked_usage_rise':
+        this.logTrackedUsageEvent('rise', event, live.name);
+        break;
+      case 'tracked_usage_drop':
+        this.logTrackedUsageEvent('drop', event, live.name);
         break;
       default: {
         const exhaustiveCheck: never = event;
         void exhaustiveCheck;
       }
     }
-    this.scheduleFlush(nowTs);
   }
 
   recordActivationTransition(
@@ -999,6 +978,50 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       `Diagnostics: block cause changed ${formatDeviceRef(deviceId, name)} `
       + `desired="${next.desiredStateSummary}" applied="${next.appliedStateSummary}" `
       + `cause=${previousCause ?? 'not_blocked'}->${nextCause}`,
+    );
+  }
+
+  private recordPelsShedEvent(deviceId: string, nowTs: number): void {
+    const live = this.getLiveDeviceState(deviceId);
+    this.addCount(deviceId, nowTs, 'shedCount', 1);
+    if (isFiniteNumber(live.openRestoreTs)) {
+      const durationMs = Math.max(0, nowTs - live.openRestoreTs);
+      this.addRestoreToSetback(deviceId, nowTs, durationMs);
+      live.openRestoreTs = undefined;
+      this.deps.logDebug(
+        `Diagnostics: restore-to-setback completed ${formatDeviceRef(deviceId, live.name)} `
+        + `duration=${formatDurationSeconds(durationMs)}`,
+      );
+    }
+    live.openShedTs = nowTs;
+    this.deps.logDebug(`Diagnostics: shed recorded ${formatDeviceRef(deviceId, live.name)}`);
+  }
+
+  private recordPelsRestoreEvent(deviceId: string, nowTs: number): void {
+    const live = this.getLiveDeviceState(deviceId);
+    this.addCount(deviceId, nowTs, 'restoreCount', 1);
+    if (isFiniteNumber(live.openShedTs)) {
+      const durationMs = Math.max(0, nowTs - live.openShedTs);
+      this.addShedToRestore(deviceId, nowTs, durationMs);
+      live.openShedTs = undefined;
+      this.deps.logDebug(
+        `Diagnostics: shed-to-restore completed ${formatDeviceRef(deviceId, live.name)} `
+        + `duration=${formatDurationSeconds(durationMs)}`,
+      );
+    }
+    live.openRestoreTs = nowTs;
+    this.deps.logDebug(`Diagnostics: restore recorded ${formatDeviceRef(deviceId, live.name)}`);
+  }
+
+  private logTrackedUsageEvent(
+    direction: 'rise' | 'drop',
+    event: Extract<DeviceDiagnosticsControlEvent, { kind: 'tracked_usage_rise' | 'tracked_usage_drop' }>,
+    deviceName: string,
+  ): void {
+    this.deps.logDebug(
+      `Diagnostics: tracked usage ${direction} observed ${formatDeviceRef(event.deviceId, deviceName)} `
+      + `fromKw=${event.fromKw.toFixed(3)} toKw=${event.toKw.toFixed(3)}`
+      + (event.reconciliation ? ` reconciliation=${event.reconciliation}` : ''),
     );
   }
 
