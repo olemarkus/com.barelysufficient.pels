@@ -74,8 +74,12 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
   const tracker = getPowerTrackerForUiFromApp(homey)
     ?? (homey.settings.get('power_tracker_state') as PowerTrackerState | null);
   const status = homey.settings.get('pels_status') as {
+    headroomKw?: number;
     lastPowerUpdate?: number | null;
     priceLevel?: string | null;
+    powerKnown?: boolean;
+    hasLivePowerSample?: boolean;
+    powerFreshnessState?: 'fresh' | 'stale_hold' | 'stale_fail_closed';
   } | null;
   const heartbeat = homey.settings.get('app_heartbeat') as unknown;
   return {

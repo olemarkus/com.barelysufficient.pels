@@ -437,7 +437,7 @@ function resolveEvPhysicalBlockInactiveReason(planDevice: DevicePlanDevice): str
 
 function applyOffStateReason(params: {
   planDevice: DevicePlanDevice;
-  headroomRaw: number | null;
+  headroomRaw: number;
   guardInShortfall: boolean;
 }): DevicePlanDevice {
   const { planDevice, headroomRaw, guardInShortfall } = params;

@@ -27,7 +27,7 @@ export type PlanReasonDecision =
     swapTargetName?: string;
   } }
   | { code: 'restore_pending'; remainingSec: number }
-  | { code: 'shortfall'; neededKw: number; headroomKw: number | null };
+  | { code: 'shortfall'; neededKw: number; headroomKw: number };
 
 function assertNever(value: never): never {
   throw new Error(`Unhandled plan reason decision: ${String((value as { code?: string }).code)}`);
@@ -60,7 +60,7 @@ export function buildMeterSettlingReason(remainingSec: number | null): DeviceRea
   return { code: PLAN_REASON_CODES.meterSettling, remainingSec: remainingSec ?? 0 };
 }
 
-export function buildRestoreNeedReason(neededKw: number, headroomKw: number | null): DeviceReason {
+export function buildRestoreNeedReason(neededKw: number, headroomKw: number): DeviceReason {
   return {
     code: PLAN_REASON_CODES.restoreNeed,
     fromTarget: null,
@@ -97,7 +97,7 @@ export function buildRestorePendingReason(remainingSec: number): DeviceReason {
   return { code: PLAN_REASON_CODES.restorePending, remainingSec };
 }
 
-export function buildShortfallReason(neededKw: number, headroomKw: number | null): DeviceReason {
+export function buildShortfallReason(neededKw: number, headroomKw: number): DeviceReason {
   return { code: PLAN_REASON_CODES.shortfall, needKw: neededKw, headroomKw };
 }
 

@@ -1,5 +1,6 @@
 import type { HeadroomCardCooldownSource } from './planHeadroomDevice';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
+import type { PowerFreshnessState } from './planPowerFreshness';
 import type {
   DeviceControlModel,
   SteppedLoadActualStepSource,
@@ -103,7 +104,11 @@ export type DevicePlan = {
     capacitySoftLimitKw?: number;
     dailySoftLimitKw?: number | null;
     softLimitSource?: 'capacity' | 'daily' | 'both';
-    headroomKw: number | null;
+    headroomKw: number;
+    powerKnown?: boolean;
+    hasLivePowerSample?: boolean;
+    powerSampleAgeMs?: number | null;
+    powerFreshnessState?: PowerFreshnessState;
     capacityShortfall?: boolean;
     shortfallBudgetThresholdKw?: number;
     shortfallBudgetHeadroomKw?: number | null;

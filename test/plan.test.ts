@@ -1575,7 +1575,7 @@ describe('Device plan snapshot', () => {
     expect(nextState?.plannedState).toBe('shed');
   });
 
-  it('marks off devices as shed when headroom is unknown', async () => {
+  it('marks off devices as shed with stale-hold fallback headroom when no power sample is available', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
     await dev1.setCapabilityValue('measure_power', 0);
     await dev1.setCapabilityValue('onoff', false);
@@ -1602,7 +1602,7 @@ describe('Device plan snapshot', () => {
     ]);
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
-    expect(reasonText(devPlan?.reason)).toContain('headroom unknown');
+    expect(reasonText(devPlan?.reason)).toContain('available 0.00kW');
   });
 
   it('sheds a controllable device when overshooting with real power sample (non-dry-run)', async () => {

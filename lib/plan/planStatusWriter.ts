@@ -72,6 +72,8 @@ export class PlanStatusWriter {
       isExpensive,
       combinedPrices,
       lastPowerUpdate,
+      powerFreshnessState: plan.meta.powerFreshnessState,
+      powerKnown: plan.meta.powerKnown,
     });
     const result = this.resolveStatusResult({
       inputKey,

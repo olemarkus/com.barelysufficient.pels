@@ -83,7 +83,7 @@ export async function buildSheddingPlan(
   context: PlanContext,
   state: PlanEngineState,
   deps: SheddingDeps,
-  overshootActionable = context.headroom !== null && context.headroom < 0,
+  overshootActionable = context.headroom < 0,
 ): Promise<SheddingPlan> {
   const {
     shedSet,
@@ -122,8 +122,8 @@ export async function buildSheddingPlan(
   };
 }
 
-function shouldPlanShedding(headroom: number | null): boolean {
-  return headroom !== null && headroom < 0;
+function shouldPlanShedding(headroom: number): boolean {
+  return headroom < 0;
 }
 
 type PlanSheddingResult = {
@@ -172,8 +172,6 @@ function planShedding(
     allowEscalation: isCapacityBreached(context.total, context.capacitySoftLimit),
   });
 
-  // Type narrowing: headroom is guaranteed to be non-null here due to shouldPlanShedding check
-  if (context.headroom === null) return emptySheddingResult();
   const needed = -context.headroom;
   if (measurementDecision.skip) {
     const summary = summarizeSheddingCandidates({

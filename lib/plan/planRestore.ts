@@ -48,7 +48,6 @@ import {
   resolveRestoreDecisionPhase,
 } from './planRestoreAdmission';
 import {
-  formatUnknownHeadroomReason,
   getRestoreNeed,
   reserveHeadroomForPendingRestores,
 } from './planRestoreSupport';
@@ -112,7 +111,7 @@ export function applyRestorePlan(params: {
 
   const restoredThisCycle = new Set<string>();
   let availableHeadroom = reserveHeadroomForPendingRestores(
-    context.headroomRaw !== null ? context.headroomRaw : 0,
+    context.headroomRaw,
     planDevices,
     state.lastDeviceRestoreMs,
     deps.debugStructured,
@@ -155,14 +154,6 @@ export function applyRestorePlan(params: {
       availableHeadroom = result.availableHeadroom;
       restoredOneThisCycle = result.restoredOneThisCycle;
     }
-  } else if (context.headroomRaw === null) {
-    markOffDevicesStayOff({
-      deviceMap,
-      timing,
-      setDevice: (id, updates) => setDevice(deviceMap, id, updates),
-      reasonOverride: (dev) => formatUnknownHeadroomReason(dev),
-      getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
-    });
   } else if (
     sheddingActive
     || timing.inCooldown

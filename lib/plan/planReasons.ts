@@ -77,7 +77,7 @@ function maybeApplyShortfallReason(params: {
   dev: DevicePlanDevice;
   guardInShortfall: boolean;
   currentReason: ClassifiedPlanReason;
-  headroomRaw: number | null;
+  headroomRaw: number;
 }): PlanReasonDecision | null {
   const { dev, guardInShortfall, currentReason, headroomRaw } = params;
   if (!guardInShortfall || isSwapReason(currentReason) || isBudgetReason(currentReason)) return null;
@@ -309,7 +309,7 @@ export function normalizeShedReasons(params: {
   planDevices: DevicePlanDevice[];
   shedReasons: Map<string, DeviceReason>;
   guardInShortfall: boolean;
-  headroomRaw: number | null;
+  headroomRaw: number;
   inCooldown: boolean;
   activeOvershoot: boolean;
   shedCooldownRemainingSec: number | null;
@@ -888,7 +888,7 @@ function normalizeDeviceReason(params: {
   dev: DevicePlanDevice;
   shedReasons: Map<string, DeviceReason>;
   guardInShortfall: boolean;
-  headroomRaw: number | null;
+  headroomRaw: number;
   inCooldown: boolean;
   activeOvershoot: boolean;
   shedCooldownRemainingSec: number | null;

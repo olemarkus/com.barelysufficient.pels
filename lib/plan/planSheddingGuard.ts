@@ -158,22 +158,22 @@ function roundPowerW(powerKw: number | null | undefined): number | null {
   return Math.round(Math.max(0, powerKw * 1000));
 }
 
-export function shouldActivateShedding(headroom: number | null, shedSet: Set<string>): boolean {
+export function shouldActivateShedding(headroom: number, shedSet: Set<string>): boolean {
   if (shedSet.size > 0) return true;
-  return headroom !== null && headroom < 0;
+  return headroom < 0;
 }
 
 export function countRemainingCandidates(params: {
   devices: PlanInputDevice[];
   shedSet: Set<string>;
-  headroom: number | null;
+  headroom: number;
   limitSource: PlanContext['softLimitSource'];
   total: number | null;
   capacitySoftLimit: number;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
 }): number {
   const { devices, shedSet, headroom, limitSource, total, capacitySoftLimit, getShedBehavior } = params;
-  if (headroom === null || headroom >= 0) return 0;
+  if (headroom >= 0) return 0;
   const capacityBreached = isCapacityBreached(total, capacitySoftLimit);
   return devices
     .filter((d) => {
@@ -203,7 +203,7 @@ export function isCapacityBreached(total: number | null, capacitySoftLimit: numb
 }
 
 export async function updateGuardState(params: {
-  headroom: number | null;
+  headroom: number;
   overshootActionable: boolean;
   capacitySoftLimit: number;
   total: number | null;
@@ -256,7 +256,7 @@ export async function updateGuardState(params: {
   }
 
   const restoreMargin = capacityGuard?.getRestoreMargin() ?? 0.2;
-  const canDisable = headroom !== null && headroom >= getSheddingClearThresholdKw(restoreMargin);
+  const canDisable = headroom >= getSheddingClearThresholdKw(restoreMargin);
   const current = capacityGuard?.isSheddingActive() ?? false;
   if (canDisable) {
     await capacityGuard?.setSheddingActive(false, headroom);

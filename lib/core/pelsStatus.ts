@@ -12,7 +12,7 @@ export function buildPelsStatus(params: {
   lastPowerUpdate: number | null;
 }): {
   status: {
-    headroomKw: number | null;
+    headroomKw: number;
     hourlyLimitKw?: number;
     hourlyUsageKwh: number;
     dailyBudgetRemainingKwh?: number;
@@ -24,6 +24,9 @@ export function buildPelsStatus(params: {
     hardCapHeadroomKw?: number | null;
     controlledKw?: number;
     uncontrolledKw?: number;
+    powerKnown?: boolean;
+    hasLivePowerSample?: boolean;
+    powerFreshnessState?: DevicePlan['meta']['powerFreshnessState'];
     priceLevel: PriceLevel;
     devicesOn: number;
     devicesOff: number;
@@ -49,6 +52,9 @@ export function buildPelsStatus(params: {
       hardCapHeadroomKw: plan.meta.hardCapHeadroomKw,
       controlledKw: plan.meta.controlledKw,
       uncontrolledKw: plan.meta.uncontrolledKw,
+      powerKnown: plan.meta.powerKnown,
+      hasLivePowerSample: plan.meta.hasLivePowerSample,
+      powerFreshnessState: plan.meta.powerFreshnessState,
       priceLevel,
       devicesOn: summary.devicesOn,
       devicesOff: summary.devicesOff,
@@ -203,7 +209,7 @@ function resolveDailyLimited(params: DailyLimitParams): boolean {
 
 function resolveLimitReason(plan: DevicePlan, summary: PlanStatusSummary): 'none' | 'hourly' | 'daily' | 'both' {
   const hasShedDevices = summary.hasLimitDrivenShedDevices;
-  const headroomNegative = plan.meta.headroomKw !== null && plan.meta.headroomKw < 0;
+  const headroomNegative = plan.meta.headroomKw < 0;
   const limitSource = plan.meta.softLimitSource;
   const dailySourceActive = isDailySourceActive(limitSource);
   const capacitySourceActive = isCapacitySourceActive(limitSource);
