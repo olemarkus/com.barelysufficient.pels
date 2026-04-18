@@ -82,6 +82,12 @@ const getPlanMetaText = () => {
   return Array.from(meta.children).map((el) => el.textContent?.trim());
 };
 
+afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
+  delete (document as Document & { hidden?: boolean }).hidden;
+});
+
 describe('plan usage line', () => {
   it('shows Measured and Expected when measured matches Expected', async () => {
     await renderPlanSnapshot({
@@ -304,6 +310,211 @@ describe('plan meta usage summary', () => {
     expect(metaLines.some((line) => line === 'Hard cap breached by 2.6kW')).toBe(true);
     expect(metaLines.some((line) => line === 'Shortfall threshold 4.8kW (hourly budget-derived)')).toBe(true);
     expect(metaLines.some((line) => line === '2.6kW over soft limit')).toBe(false);
+  });
+
+  it('updates the plan age text live', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-18T12:00:10Z'));
+
+    await renderPlanSnapshot({
+      meta: {
+        totalKw: 3.5,
+        softLimitKw: 5,
+        headroomKw: 1.5,
+        lastPowerUpdateMs: Date.now() - 10_000,
+      },
+      devices: [],
+    });
+
+    expect(getPlanMetaText().some((line) => line === 'Now 3.5kW (10s ago) (soft limit 5.0kW)')).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(getPlanMetaText().some((line) => line === 'Now 3.5kW (11s ago) (soft limit 5.0kW)')).toBe(true);
+  });
+});
+
+describe('plan live timing', () => {
+  it('updates timed status text live', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-18T12:00:00Z'));
+
+    await renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-live-status',
+          name: 'Live status device',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          reason: 'meter settling (3s remaining)',
+        },
+      ],
+    });
+
+    expect(getStatusText()).toBe('waiting for meter to settle (3s remaining)');
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(getStatusText()).toBe('waiting for meter to settle (2s remaining)');
+
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(getStatusText()).toBe('waiting for meter to settle (0s remaining)');
+  });
+
+  it('keeps the same plan row node while ticking', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-18T12:00:00Z'));
+
+    await renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-stable-row',
+          name: 'Stable row device',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          reason: 'meter settling (3s remaining)',
+        },
+      ],
+    });
+
+    const initialRow = document.querySelector('[data-device-id="dev-stable-row"]');
+    expect(initialRow).toBeTruthy();
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(document.querySelector('[data-device-id="dev-stable-row"]')).toBe(initialRow);
+    expect(getStatusText()).toBe('waiting for meter to settle (2s remaining)');
+  });
+
+  it('coalesces a single refresh when nearby countdowns expire', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-18T12:00:00Z'));
+    vi.resetModules();
+    setupPlanDom();
+
+    const { renderPlan, setPlanLiveRefreshCallback } = await import('../src/ui/plan.ts');
+    const refreshSpy = vi.fn(async () => {
+      renderPlan(normalizePlanSnapshot({
+        devices: [
+          {
+            id: 'dev-refresh-1',
+            name: 'Refresh one',
+            currentState: 'on',
+            plannedState: 'keep',
+            controllable: true,
+          },
+          {
+            id: 'dev-refresh-2',
+            name: 'Refresh two',
+            currentState: 'on',
+            plannedState: 'keep',
+            controllable: true,
+          },
+        ],
+      }) as Parameters<typeof renderPlan>[0]);
+    });
+    setPlanLiveRefreshCallback(refreshSpy);
+
+    renderPlan(normalizePlanSnapshot({
+      devices: [
+        {
+          id: 'dev-refresh-1',
+          name: 'Refresh one',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          reason: 'meter settling (1s remaining)',
+        },
+        {
+          id: 'dev-refresh-2',
+          name: 'Refresh two',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          reason: 'cooldown (restore, 2s remaining)',
+        },
+      ],
+    }) as Parameters<typeof renderPlan>[0]);
+
+    await vi.advanceTimersByTimeAsync(2999);
+    expect(refreshSpy).toHaveBeenCalledTimes(0);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries a later refresh after an earlier refresh callback failure', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-18T12:00:00Z'));
+    vi.resetModules();
+    setupPlanDom();
+
+    const { renderPlan, setPlanLiveRefreshCallback } = await import('../src/ui/plan.ts');
+    const refreshSpy = vi.fn()
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue(undefined);
+    setPlanLiveRefreshCallback(refreshSpy);
+
+    renderPlan(normalizePlanSnapshot({
+      devices: [
+        {
+          id: 'dev-refresh-retry',
+          name: 'Refresh retry',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          reason: 'meter settling (1s remaining)',
+        },
+      ],
+    }) as Parameters<typeof renderPlan>[0]);
+
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(refreshSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('restarts live ticking when the document becomes visible again', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-18T12:00:00Z'));
+    vi.resetModules();
+    setupPlanDom();
+
+    let hidden = false;
+    Object.defineProperty(document, 'hidden', {
+      configurable: true,
+      get: () => hidden,
+    });
+
+    const { renderPlan } = await import('../src/ui/plan.ts');
+    renderPlan(normalizePlanSnapshot({
+      devices: [
+        {
+          id: 'dev-visibility',
+          name: 'Visibility device',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          reason: 'meter settling (3s remaining)',
+        },
+      ],
+    }) as Parameters<typeof renderPlan>[0]);
+
+    hidden = true;
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(getStatusText()).toBe('waiting for meter to settle (3s remaining)');
+
+    hidden = false;
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(getStatusText()).toBe('waiting for meter to settle (1s remaining)');
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(getStatusText()).toBe('waiting for meter to settle (0s remaining)');
   });
 });
 
