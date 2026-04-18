@@ -19,7 +19,7 @@ import {
 import { getSteppedLoadLowestActiveStep } from '../utils/deviceControlProfiles';
 
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
-import { updateGuardState, isCapacityBreached } from './planSheddingGuard';
+import { updateGuardState, isCapacityBreached, resolvePlanningTotalPower } from './planSheddingGuard';
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import {
   type BinaryShedCandidate,
@@ -85,6 +85,7 @@ export async function buildSheddingPlan(
   deps: SheddingDeps,
   overshootActionable = context.headroom < 0,
 ): Promise<SheddingPlan> {
+  const planningTotal = resolvePlanningTotalPower(context.total, context.powerKnown);
   const {
     shedSet,
     shedReasons,
@@ -96,9 +97,10 @@ export async function buildSheddingPlan(
   const wasSheddingActive = deps.capacityGuard?.isSheddingActive() ?? false;
   const guardResult = await updateGuardState({
     headroom: context.headroom,
+    powerKnown: context.powerKnown,
     overshootActionable,
     capacitySoftLimit: context.capacitySoftLimit,
-    total: context.total,
+    total: planningTotal,
     devices: context.devices,
     shedSet,
     softLimitSource: context.softLimitSource,
@@ -165,11 +167,12 @@ function planShedding(
 
   const nowTs = Date.now();
   const measurementTs = deps.powerTracker.lastTimestamp ?? null;
+  const planningTotal = resolvePlanningTotalPower(context.total, context.powerKnown);
   const measurementDecision = resolveSameMeasurementSheddingDecision({
     state,
     measurementTs,
     nowTs,
-    allowEscalation: isCapacityBreached(context.total, context.capacitySoftLimit),
+    allowEscalation: isCapacityBreached(planningTotal, context.capacitySoftLimit),
   });
 
   const needed = -context.headroom;
@@ -178,7 +181,7 @@ function planShedding(
       devices: context.devices,
       needed,
       limitSource: context.softLimitSource,
-      total: context.total,
+      total: planningTotal,
       capacitySoftLimit: context.capacitySoftLimit,
       state,
       deps,
@@ -199,7 +202,7 @@ function planShedding(
     devices: context.devices,
     needed,
     limitSource: context.softLimitSource,
-    total: context.total,
+    total: planningTotal,
     capacitySoftLimit: context.capacitySoftLimit,
     state,
     deps,

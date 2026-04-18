@@ -95,6 +95,7 @@ describe('P1 bug proofs', () => {
 
     await updateGuardState({
       headroom: -0.05,
+      powerKnown: true,
       overshootActionable: true,
       capacitySoftLimit: 5,
       total: 5.05,
@@ -106,6 +107,7 @@ describe('P1 bug proofs', () => {
     });
     await updateGuardState({
       headroom: 0.21,
+      powerKnown: true,
       overshootActionable: false,
       capacitySoftLimit: 5,
       total: 4.79,
@@ -117,6 +119,7 @@ describe('P1 bug proofs', () => {
     });
     await updateGuardState({
       headroom: -0.05,
+      powerKnown: true,
       overshootActionable: true,
       capacitySoftLimit: 5,
       total: 5.05,
@@ -143,6 +146,7 @@ describe('P1 bug proofs', () => {
 
     await updateGuardState({
       headroom: -1,
+      powerKnown: true,
       overshootActionable: true,
       capacitySoftLimit: 5,
       total: 6,
