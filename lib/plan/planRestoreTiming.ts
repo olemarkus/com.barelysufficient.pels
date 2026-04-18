@@ -84,7 +84,7 @@ export const buildRestoreTiming = (
 };
 
 export const shouldPlanRestores = (
-  headroomRaw: number,
+  _headroomRaw: number,
   sheddingActive: boolean,
   timing: Pick<RestoreTiming, 'inCooldown' | 'inRestoreCooldown' | 'inStartupStabilization'>,
 ): boolean => (
