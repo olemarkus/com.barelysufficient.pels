@@ -84,7 +84,7 @@ describe('appDeviceControlHelpers', () => {
     expect(decorated.selectedStepId).toBeUndefined();
   });
 
-  it('uses the highest configured step as the default selected step for stepped loads', () => {
+  it('uses the lowest active configured step as the default selected step for stepped loads', () => {
     const runtimeState = createDeviceControlRuntimeState();
     const decorated = decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({ currentOn: true }),
@@ -96,11 +96,11 @@ describe('appDeviceControlHelpers', () => {
     expect(decorated.controlModel).toBe('stepped_load');
     expect(decorated.reportedStepId).toBeUndefined();
     expect(decorated.targetStepId).toBeUndefined();
-    expect(decorated.selectedStepId).toBe('max');
+    expect(decorated.selectedStepId).toBe('low');
     expect(decorated.actualStepId).toBeUndefined();
-    expect(decorated.assumedStepId).toBeUndefined();
-    expect(decorated.actualStepSource).toBeUndefined();
-    expect(decorated.planningPowerKw).toBe(3);
+    expect(decorated.assumedStepId).toBe('low');
+    expect(decorated.actualStepSource).toBe('assumed');
+    expect(decorated.planningPowerKw).toBe(1.25);
     // expectedPowerKw is NOT overwritten — it retains the original snapshot value
     // (undefined here). Step-derived power is available via planningPowerKw.
     expect(decorated.expectedPowerKw).toBeUndefined();
@@ -120,7 +120,7 @@ describe('appDeviceControlHelpers', () => {
       nowMs: 1000,
     });
 
-    expect(decorated.planningPowerKw).toBe(3);
+    expect(decorated.planningPowerKw).toBe(1.25);
     expect(decorated.expectedPowerKw).toBe(2.5);
     expect(decorated.expectedPowerSource).toBe('measured-peak');
   });
@@ -135,7 +135,9 @@ describe('appDeviceControlHelpers', () => {
     });
 
     expect(decorated.controlModel).toBe('stepped_load');
-    expect(decorated.selectedStepId).toBe('max');
+    expect(decorated.selectedStepId).toBe('low');
+    expect(decorated.assumedStepId).toBe('low');
+    expect(decorated.actualStepSource).toBe('assumed');
     expect(decorated.currentOn).toBe(false);
   });
 
@@ -167,32 +169,33 @@ describe('appDeviceControlHelpers', () => {
       nowMs: 1000,
     });
 
-    expect(decorated.selectedStepId).toBe('max');
+    expect(decorated.selectedStepId).toBe('low');
     expect(decorated.reportedStepId).toBeUndefined();
     expect(decorated.targetStepId).toBeUndefined();
     expect(decorated.actualStepId).toBeUndefined();
-    expect(decorated.assumedStepId).toBeUndefined();
-    expect(decorated.actualStepSource).toBeUndefined();
-    expect(decorated.planningPowerKw).toBe(3);
+    expect(decorated.assumedStepId).toBe('low');
+    expect(decorated.actualStepSource).toBe('assumed');
+    expect(decorated.planningPowerKw).toBe(1.25);
   });
 
-  it('ignores an invalid persisted selected step when resolving stepped loads', () => {
+  it('ignores persisted selected step when resolving stepped loads without confirmed feedback', () => {
     const runtimeState = createDeviceControlRuntimeState();
     const decorated = decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({
         currentOn: true,
-        selectedStepId: 'legacy-mid',
+        selectedStepId: 'max',
       }),
       profiles: steppedProfiles,
       runtimeState,
       nowMs: 1000,
     });
 
-    expect(decorated.selectedStepId).toBe('max');
+    expect(decorated.selectedStepId).toBe('low');
     expect(decorated.reportedStepId).toBeUndefined();
     expect(decorated.actualStepId).toBeUndefined();
-    expect(decorated.actualStepSource).toBeUndefined();
-    expect(decorated.planningPowerKw).toBe(3);
+    expect(decorated.assumedStepId).toBe('low');
+    expect(decorated.actualStepSource).toBe('assumed');
+    expect(decorated.planningPowerKw).toBe(1.25);
   });
 
   it('tracks desired stepped commands, reports success, and can prune stale pending commands', () => {
@@ -215,8 +218,9 @@ describe('appDeviceControlHelpers', () => {
     expect(pendingDecorated.desiredStepId).toBe('low');
     expect(pendingDecorated.targetStepId).toBe('low');
     expect(pendingDecorated.reportedStepId).toBeUndefined();
-    expect(pendingDecorated.selectedStepId).toBe('max');
-    expect(pendingDecorated.assumedStepId).toBeUndefined();
+    expect(pendingDecorated.selectedStepId).toBe('low');
+    expect(pendingDecorated.assumedStepId).toBe('low');
+    expect(pendingDecorated.actualStepSource).toBe('assumed');
     expect(pendingDecorated.stepCommandPending).toBe(true);
     expect(pendingDecorated.stepCommandStatus).toBe('pending');
 
