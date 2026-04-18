@@ -202,8 +202,13 @@ export function isCapacityBreached(total: number | null, capacitySoftLimit: numb
   return typeof total === 'number' && Number.isFinite(total) && total > capacitySoftLimit;
 }
 
+export function resolvePlanningTotalPower(total: number | null, powerKnown: boolean): number | null {
+  return powerKnown ? total : null;
+}
+
 export async function updateGuardState(params: {
   headroom: number;
+  powerKnown: boolean;
   overshootActionable: boolean;
   capacitySoftLimit: number;
   total: number | null;
@@ -215,6 +220,7 @@ export async function updateGuardState(params: {
 }): Promise<{ sheddingActive: boolean }> {
   const {
     headroom,
+    powerKnown,
     overshootActionable,
     capacitySoftLimit,
     total,
@@ -224,17 +230,18 @@ export async function updateGuardState(params: {
     getShedBehavior,
     capacityGuard,
   } = params;
+  const planningTotal = resolvePlanningTotalPower(total, powerKnown);
   const remainingCandidates = countRemainingCandidates({
     devices,
     shedSet,
     headroom,
     limitSource: softLimitSource,
-    total,
+    total: planningTotal,
     capacitySoftLimit,
     getShedBehavior,
   });
   const shortfallThreshold = capacityGuard?.getShortfallThreshold() ?? capacitySoftLimit;
-  const deficitKw = computeShortfallDeficitKw(total, shortfallThreshold);
+  const deficitKw = computeShortfallDeficitKw(planningTotal, shortfallThreshold);
 
   if (overshootActionable && shouldActivateShedding(headroom, shedSet)) {
     await capacityGuard?.setSheddingActive(true);
@@ -246,7 +253,7 @@ export async function updateGuardState(params: {
         deficitKw,
         devices,
         shedSet,
-        total,
+        total: planningTotal,
         limitSource: softLimitSource,
         capacitySoftLimit,
         getShedBehavior,
@@ -269,7 +276,7 @@ export async function updateGuardState(params: {
       deficitKw,
       devices,
       shedSet,
-      total,
+      total: planningTotal,
       limitSource: softLimitSource,
       capacitySoftLimit,
       getShedBehavior,
