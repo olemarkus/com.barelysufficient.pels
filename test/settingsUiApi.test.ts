@@ -294,14 +294,21 @@ describe('settingsUiApi', () => {
 
   it('prefers the live in-memory plan snapshot over the persisted settings snapshot', () => {
     const homey = createHomey({
-      latestPlanSnapshot: { devices: [{ id: 'dev-2', name: 'Pump', priority: 2 }] },
+      latestPlanSnapshot: {
+        generatedAtMs: 123456789,
+        devices: [{ id: 'dev-2', name: 'Pump', priority: 2 }],
+      },
     });
 
     expect(buildSettingsUiBootstrap({ homey: homey as never }).plan).toEqual({
+      generatedAtMs: 123456789,
       devices: [{ id: 'dev-2', name: 'Pump', priority: 2 }],
     });
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
-      plan: { devices: [{ id: 'dev-2', name: 'Pump', priority: 2 }] },
+      plan: {
+        generatedAtMs: 123456789,
+        devices: [{ id: 'dev-2', name: 'Pump', priority: 2 }],
+      },
     });
   });
 

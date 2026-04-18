@@ -38,7 +38,6 @@ import {
 import {
   applySettingsPatch,
   callApi,
-  invalidateApiCache,
   primeApiCache,
   setSetting,
   waitForHomey,
@@ -102,11 +101,10 @@ import { handleResetStats } from './resetStats.ts';
 import { createCheckboxField } from './components.ts';
 import {
   initRealtimeListeners,
-  refreshPlanForUi,
   showTab,
   startStaleDataRefreshInterval,
 } from './realtime.ts';
-import { refreshPlan, setPlanLiveRefreshCallback } from './plan.ts';
+import { refreshPlan } from './plan.ts';
 
 const initTabHandlers = () => {
   tabs.forEach((tab) => {
@@ -135,7 +133,9 @@ const initCapacityHandlers = () => {
     void refreshDevices();
   });
   planRefreshButton?.addEventListener('click', () => {
-    refreshPlanForUi('planRefreshButton');
+    void refreshPlan().catch((error) => {
+      void logSettingsError('Failed to refresh plan', error, 'planRefreshButton');
+    });
   });
   /* 2-step confirmation logic */
   const resetStatsBtn = document.getElementById('reset-stats-button') as HTMLButtonElement;
@@ -338,14 +338,6 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
 const initializeBootHandlers = () => {
   initTooltips();
   initDebouncedSaveFlush();
-  setPlanLiveRefreshCallback(async () => {
-    invalidateApiCache(SETTINGS_UI_PLAN_PATH);
-    try {
-      await refreshPlan();
-    } catch (error) {
-      await logSettingsError('Failed to refresh plan', error, 'planLiveCountdownExpiry');
-    }
-  });
   initRealtimeListeners();
   showTab('overview');
   initTabHandlers();

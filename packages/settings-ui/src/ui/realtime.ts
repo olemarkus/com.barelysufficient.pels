@@ -300,6 +300,7 @@ export const showTab = (tabId: string) => {
     panel.classList.toggle('hidden', panel.dataset.panel !== tabId);
   });
   if (tabId === 'overview') {
+    document.dispatchEvent(new Event('overview-tab-activated'));
     refreshPlanForUi('showTab');
   }
   if (tabId === 'price') {
