@@ -8,7 +8,7 @@ import { resolveCandidatePower } from './planCandidatePower';
 import {
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
-  resolveSteppedLoadCurrentStepIdForShedding,
+  resolveSteppedUnknownCurrentMeasuredShedding,
 } from './planSteppedLoad';
 import { buildPlanInputCapacityStateSummary } from './planLogging';
 import { sumControlledUsageKw } from './planUsage';
@@ -91,12 +91,18 @@ function canStillReduceSteppedLoad(
   if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
     return true;
   }
+  if (!device.selectedStepId) {
+    return Boolean(resolveSteppedUnknownCurrentMeasuredShedding({
+      device,
+      shedAction: shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',
+    }));
+  }
   const targetStep = getSteppedLoadShedTargetStep({
     device,
     shedAction: shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',
-    currentDesiredStepId: resolveSteppedLoadCurrentStepIdForShedding(device),
+    currentDesiredStepId: device.selectedStepId,
   });
-  return Boolean(targetStep && targetStep.id !== resolveSteppedLoadCurrentStepIdForShedding(device));
+  return Boolean(targetStep && targetStep.id !== device.selectedStepId);
 }
 
 function buildShortfallCapacityStateSummary(params: {
@@ -190,12 +196,18 @@ export function countRemainingCandidates(params: {
       if (isSteppedLoadDevice(d)) {
         const shedBehavior = getShedBehavior(d.id);
         if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) return true;
+        if (!d.selectedStepId) {
+          return Boolean(resolveSteppedUnknownCurrentMeasuredShedding({
+            device: d,
+            shedAction: shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',
+          }));
+        }
         const targetStep = getSteppedLoadShedTargetStep({
           device: d,
           shedAction: shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',
-          currentDesiredStepId: resolveSteppedLoadCurrentStepIdForShedding(d),
+          currentDesiredStepId: d.selectedStepId,
         });
-        return Boolean(targetStep && targetStep.id !== resolveSteppedLoadCurrentStepIdForShedding(d));
+        return Boolean(targetStep && targetStep.id !== d.selectedStepId);
       }
       return true;
     })
