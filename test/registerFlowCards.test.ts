@@ -248,6 +248,23 @@ describe('registerFlowCards', () => {
     expect(deps.rebuildPlan).not.toHaveBeenCalled();
   });
 
+  it('parses EV charging state autocomplete values by option id', async () => {
+    const { deps, actionListeners } = buildDeps();
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_flow_backed_device_evcharger_state({
+      device: 'dev-1',
+      state: { id: 'plugged_in_charging', name: 'Plugged in charging' },
+    })).resolves.toBe(true);
+
+    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      capabilityId: 'evcharger_charging_state',
+      value: 'plugged_in_charging',
+    });
+  });
+
   it('uses raw Homey devices for flow-backed device autocomplete', async () => {
     const { deps, actionAutocompleteListeners } = buildDeps({
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([

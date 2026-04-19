@@ -102,6 +102,7 @@ const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0
 const POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 15000;
 const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 100 : 30 * 1000;
 const FLOW_REBUILD_COOLDOWN_MS = 1000;
+const FLOW_DEVICE_AUTOCOMPLETE_CACHE_MS = 15 * 1000;
 const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
 const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000; const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const POWER_TRACKER_PERSIST_DELAY_MS = VOLATILE_WRITE_THROTTLE_MS;
@@ -127,6 +128,8 @@ class PelsApp extends Homey.App {
   private managedDevices: Record<string, boolean> = {};
   private budgetExemptDevices: Record<string, boolean> = {};
   private flowReportedCapabilities: FlowReportedCapabilitiesByDevice = {};
+  private flowDeviceAutocompleteCache?: { devices: HomeyDeviceLike[]; fetchedAtMs: number };
+  private flowDeviceAutocompleteRequest?: Promise<HomeyDeviceLike[]>;
   private deviceControlProfiles: DeviceControlProfiles = {};
   private deviceCommunicationModels: Record<string, 'local' | 'cloud'> = {};
   private experimentalEvSupportEnabled = false;
@@ -252,7 +255,25 @@ class PelsApp extends Homey.App {
   }
 
   private async getHomeyDevicesForFlow(): Promise<HomeyDeviceLike[]> {
-    return this.deviceManager?.getDevicesForDebug() ?? [];
+    const nowMs = Date.now();
+    const cached = this.flowDeviceAutocompleteCache;
+    if (cached && nowMs - cached.fetchedAtMs < FLOW_DEVICE_AUTOCOMPLETE_CACHE_MS) {
+      return cached.devices;
+    }
+    if (this.flowDeviceAutocompleteRequest) {
+      return this.flowDeviceAutocompleteRequest;
+    }
+    this.flowDeviceAutocompleteRequest = (async () => {
+      const devices = await (this.deviceManager?.getDevicesForDebug() ?? []);
+      this.flowDeviceAutocompleteCache = {
+        devices: [...devices],
+        fetchedAtMs: Date.now(),
+      };
+      return this.flowDeviceAutocompleteCache.devices;
+    })().finally(() => {
+      this.flowDeviceAutocompleteRequest = undefined;
+    });
+    return this.flowDeviceAutocompleteRequest;
   }
 
   private async emitFlowBackedRefreshRequests(deviceIds: string[]): Promise<void> {
@@ -261,15 +282,26 @@ class PelsApp extends Homey.App {
     if (!card?.trigger) return;
 
     const seen = new Set<string>();
-    const triggers: Array<Promise<unknown>> = [];
+    const triggers: Array<{ deviceId: string; trigger: Promise<unknown> }> = [];
     for (const rawDeviceId of deviceIds) {
       const deviceId = rawDeviceId.trim();
       if (!deviceId || seen.has(deviceId)) continue;
       seen.add(deviceId);
-      triggers.push(card.trigger({}, { deviceId }));
+      triggers.push({
+        deviceId,
+        trigger: card.trigger({}, { deviceId }),
+      });
     }
     if (triggers.length > 0) {
-      await Promise.all(triggers);
+      const results = await Promise.allSettled(triggers.map(({ trigger }) => trigger));
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') return;
+        this.getStructuredLogger('devices')?.warn({
+          event: 'flow_backed_refresh_request_failed',
+          deviceId: triggers[index]?.deviceId,
+          err: normalizeError(result.reason),
+        });
+      });
     }
   }
 

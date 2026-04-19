@@ -106,14 +106,6 @@ export function getFlowRequiredCapabilitiesForType(
   return [];
 }
 
-export function hasAllFlowReportedCapabilities(params: {
-  reportedCapabilities: Partial<Record<FlowReportedCapabilityId, FlowReportedCapabilityEntry>>;
-  requiredCapabilityIds: readonly FlowReportedCapabilityId[];
-}): boolean {
-  const { reportedCapabilities, requiredCapabilityIds } = params;
-  return requiredCapabilityIds.every((capabilityId) => reportedCapabilities[capabilityId] !== undefined);
-}
-
 export function augmentCapabilitiesWithFlowReports(params: {
   deviceType: FlowAugmentedDeviceType;
   capabilities: readonly string[];
@@ -179,6 +171,12 @@ function buildFlowBackedCapabilityValue(params: {
     rawCapabilityPresent,
   } = params;
 
+  const rawCapabilityLastUpdatedMs = resolveCapabilityLastUpdatedMs(rawCapability);
+  if (rawCapabilityPresent && rawCapability && rawCapabilityLastUpdatedMs !== undefined
+    && rawCapabilityLastUpdatedMs >= reportedEntry.reportedAt) {
+    return { ...rawCapability };
+  }
+
   const nextValue: DeviceCapabilityValue = {
     ...(rawCapability ?? {}),
     value: reportedEntry.value,
@@ -190,6 +188,24 @@ function buildFlowBackedCapabilityValue(params: {
   }
 
   return nextValue;
+}
+
+function resolveCapabilityLastUpdatedMs(value: DeviceCapabilityValue | undefined): number | undefined {
+  const rawValue = value?.lastUpdated;
+  if (typeof rawValue === 'number') {
+    return Number.isFinite(rawValue) && rawValue > 0 ? rawValue : undefined;
+  }
+  if (rawValue instanceof Date) {
+    const parsed = rawValue.getTime();
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  }
+  if (typeof rawValue === 'string') {
+    const numeric = Number(rawValue);
+    if (Number.isFinite(numeric) && numeric > 0) return numeric;
+    const parsed = Date.parse(rawValue);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  }
+  return undefined;
 }
 
 function parseFlowReportedDeviceEntry(
