@@ -128,64 +128,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     }));
   });
 
-  it('does not let startup stabilization protect live stepped load from corrective shedding during capacity overshoot', async () => {
-    const now = new Date('2026-04-15T11:04:01.000Z').getTime();
-    vi.setSystemTime(now);
-    const state = createPlanEngineState();
-    state.startupRestoreBlockedUntilMs = now + 60_000;
-    state.lastDeviceControlledMs['step-live'] = now - (10 * 60_000);
-    state.lastPlannedShedIds = new Set(['carryover-off']);
-
-    const capacityGuard = new CapacityGuard({ limitKw: 5, softMarginKw: 0 });
-    capacityGuard.reportTotalPower(4.461);
-
-    const builder = new PlanBuilder({
-      homey: { settings: { set: vi.fn() } } as never,
-      getCapacityGuard: () => capacityGuard,
-      getCapacitySettings: () => ({ limitKw: 5, marginKw: 0 }),
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => false,
-      getPriceOptimizationSettings: () => ({}),
-      isCurrentHourCheap: () => false,
-      isCurrentHourExpensive: () => false,
-      getPowerTracker: () => ({ lastTimestamp: now }),
-      getDailyBudgetSnapshot: () => null,
-      getPriorityForDevice: (deviceId: string) => (deviceId === 'step-live' ? 100 : 10),
-      getDynamicSoftLimitOverride: () => 2.0,
-      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-      structuredLog: { info: vi.fn() } as any,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-    }, state);
-
-    const plan = await builder.buildDevicePlanSnapshot([
-      steppedInputDevice({
-        id: 'step-live',
-        name: 'Connected 300',
-        currentOn: true,
-        currentState: 'on',
-        selectedStepId: 'low',
-        desiredStepId: 'low',
-        measuredPowerKw: 1.671,
-        expectedPowerKw: 1.25,
-      }),
-      buildDevice({
-        id: 'carryover-off',
-        name: 'Carryover Off',
-        currentOn: false,
-        currentState: 'off',
-        measuredPowerKw: 0,
-        expectedPowerKw: 0,
-      }),
-    ]);
-
-    const liveStepped = plan.devices.find((device) => device.id === 'step-live');
-    expect(liveStepped?.plannedState).toBe('shed');
-    expect(liveStepped?.reason?.code).toBe('capacity');
-  });
-
-  it('uses an assumed stepped current level for corrective shedding when startup lacks confirmed step feedback', async () => {
+  it('sheds live measured stepped load during startup overshoot even when the current step is unknown', async () => {
     const now = new Date('2026-04-15T11:04:01.000Z').getTime();
     vi.setSystemTime(now);
     const state = createPlanEngineState();
@@ -223,13 +166,11 @@ describe('PlanBuilder overshoot diagnostics', () => {
           name: 'Connected 300',
           currentOn: true,
           currentState: 'on',
-          desiredStepId: 'low',
-          targetStepId: 'low',
           measuredPowerKw: 1.671,
           expectedPowerKw: 1.25,
         }),
         selectedStepId: undefined,
-        assumedStepId: 'low',
+        desiredStepId: undefined,
       },
       buildDevice({
         id: 'carryover-off',
