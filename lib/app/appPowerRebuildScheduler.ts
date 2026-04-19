@@ -2,6 +2,16 @@ import type CapacityGuard from '../core/capacityGuard';
 import { addPerfDuration, incPerfCounter, incPerfCounters } from '../utils/perfCounters';
 import { PlanRebuildScheduler, type RebuildIntent } from './planRebuildScheduler';
 import {
+  clearShortfallSuppressionInvalidation,
+  resetShortfallSuppressionInvalidationWhenRecovered,
+  shouldSkipUnrecoverableShortfallRebuild,
+} from './appPowerRebuildShortfallSuppression';
+import {
+  resolvePendingOrInFlight,
+  resolvePendingPowerW,
+  resolvePendingSoftLimitKw,
+} from './appPowerRebuildStateHelpers';
+import {
   isFutureMs,
   isTightNoopOutcome,
   isTightReason,
@@ -24,6 +34,7 @@ export type PowerSampleRebuildState = {
   legacyScheduler?: PlanRebuildScheduler;
   lastRebuildPowerW?: number;
   lastSoftLimitKw?: number;
+  shortfallSuppressionInvalidated?: boolean;
   tightNoopStreak?: number;
   backoffUntilMs?: number;
   mitigationHoldoffUntilMs?: number;
@@ -140,20 +151,6 @@ const incReasonCounter = (base: string, reason: string): void => {
   incPerfCounter(`${base}.${reason}_total`);
 };
 
-const resolvePendingPowerW = (
-  snapshot: PowerSampleRebuildState,
-): number | undefined => {
-  if (typeof snapshot.pendingPowerW === 'number') return snapshot.pendingPowerW;
-  return snapshot.lastRebuildPowerW;
-};
-
-const resolvePendingSoftLimitKw = (
-  snapshot: PowerSampleRebuildState,
-): number | undefined => {
-  if (typeof snapshot.pendingSoftLimitKw === 'number') return snapshot.pendingSoftLimitKw;
-  return snapshot.lastSoftLimitKw;
-};
-
 const clearPendingState = (snapshot: PowerSampleRebuildState): PowerSampleRebuildState => ({
   ...snapshot,
   pending: undefined,
@@ -190,12 +187,6 @@ const createPendingPromiseState = (
     pendingReject,
   };
 };
-
-const resolvePendingOrInFlight = (
-  snapshot: PowerSampleRebuildState,
-): Promise<void | string> => (
-  snapshot.pending ?? snapshot.inFlight ?? Promise.resolve()
-);
 
 const stagePendingRebuildRequest = (params: {
   state: PowerSampleRebuildState;
@@ -417,7 +408,9 @@ export function executePendingPowerRebuild(params: {
       ) {
         await onTightNoopHardCapBreach?.(hardCapBreach.deficitKw);
       }
-      setState(clearInFlightState(updateTightRebuildSuppression(getState(), reason, outcome, getNowMs())));
+      setState(clearInFlightState(clearShortfallSuppressionInvalidation(
+        updateTightRebuildSuppression(getState(), reason, outcome, getNowMs()),
+      )));
       pendingResolve?.();
     })
     .catch((error: unknown) => {
@@ -601,13 +594,23 @@ export function schedulePlanRebuildFromSignal(params: {
   const fallbackHeadroomKw = typeof currentPowerW === 'number' ? softLimitKw - currentPowerW / 1000 : null;
   const headroomKw = guardPower !== null ? softLimitKw - guardPower : fallbackHeadroomKw;
   const isInShortfall = capacityGuard?.isInShortfall() ?? false;
+  const currentState = resetShortfallSuppressionInvalidationWhenRecovered({
+    state: getState(),
+    isInShortfall,
+    setState,
+  });
   const hardCapBreach = resolveHardCapBreachFromSignal({
     capacityGuard,
     capacitySettings,
     currentPowerW,
     guardPower,
   });
-  if (skipWhileShortfallUnrecoverable && isInShortfall && planConvergenceActive !== true) {
+  if (shouldSkipUnrecoverableShortfallRebuild({
+    skipWhileShortfallUnrecoverable,
+    state: currentState,
+    isInShortfall,
+    planConvergenceActive,
+  })) {
     incPerfCounter('plan_rebuild_skipped_shortfall_unrecoverable_total');
     return Promise.resolve(capacityGuard?.checkShortfall(false, hardCapBreach.deficitKw)).finally(() => {
       addPerfDuration('power_sample_rebuild_ms', Date.now() - rebuildStart);
