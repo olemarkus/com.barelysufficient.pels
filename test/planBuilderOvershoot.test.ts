@@ -283,16 +283,16 @@ describe('PlanBuilder overshoot diagnostics', () => {
     }));
   });
 
-  it('keeps overshoot attribution keyed on deviceId when the label is unavailable', async () => {
+  it('does not attribute overshoot when the total rise stays within the deadband', async () => {
     vi.useFakeTimers();
     try {
       const state = createPlanEngineState();
       const now = new Date('2026-04-15T11:04:01.000Z').getTime();
       vi.setSystemTime(now);
-      state.lastDeviceRestoreMs['missing-device'] = now - 1_000;
+      state.lastDeviceRestoreMs['deadband-device'] = now - 1_000;
       recordActivationAttemptStart({
         state,
-        deviceId: 'missing-device',
+        deviceId: 'deadband-device',
         source: 'pels_restore',
         nowTs: now - 1_000,
       });
@@ -314,27 +314,179 @@ describe('PlanBuilder overshoot diagnostics', () => {
         getPowerTracker: () => ({ lastTimestamp: Date.now() }),
         getDailyBudgetSnapshot: () => null,
         getPriorityForDevice: () => 100,
-        getDynamicSoftLimitOverride: () => 4,
+        getDynamicSoftLimitOverride: vi.fn()
+          .mockReturnValueOnce(1.3)
+          .mockReturnValueOnce(0.9),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         structuredLog: structuredLog as any,
         log: vi.fn(),
         logDebug: vi.fn(),
       }, state);
 
+      const devices = [
+        buildDevice({
+          id: 'deadband-device',
+          name: 'Deadband Device',
+          measuredPowerKw: 1.03,
+        }),
+      ];
+
+      capacityGuard.reportTotalPower(1.01);
+      await builder.buildDevicePlanSnapshot(devices);
+
+      structuredLog.info.mockClear();
+      capacityGuard.reportTotalPower(1.03);
+      await builder.buildDevicePlanSnapshot(devices);
+
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_entered',
+        overshootTotalDeltaKw: 0.02,
+      }));
+      expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_attributed',
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not attribute overshoot when the restored device is not a contributor', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createPlanEngineState();
+      const now = new Date('2026-04-15T11:04:01.000Z').getTime();
+      vi.setSystemTime(now);
+      state.lastDeviceRestoreMs['restored-device'] = now - 1_000;
+      recordActivationAttemptStart({
+        state,
+        deviceId: 'restored-device',
+        source: 'pels_restore',
+        nowTs: now - 1_000,
+      });
+
+      const structuredLog = { info: vi.fn() };
+      const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
+
+      const builder = new PlanBuilder({
+        homey: { settings: { set: vi.fn() } } as never,
+        getCapacityGuard: () => capacityGuard,
+        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getDailyBudgetSnapshot: () => null,
+        getPriorityForDevice: () => 100,
+        getDynamicSoftLimitOverride: () => 0.7,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        structuredLog: structuredLog as any,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      }, state);
+
+      const devices = [
+        buildDevice({
+          id: 'restored-device',
+          name: 'Restored Device',
+          measuredPowerKw: 0.5,
+        }),
+      ];
+
+      capacityGuard.reportTotalPower(0.5);
+      await builder.buildDevicePlanSnapshot(devices);
+
+      structuredLog.info.mockClear();
+      capacityGuard.reportTotalPower(0.8);
+      await builder.buildDevicePlanSnapshot(devices);
+
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_entered',
+        overshootTotalDeltaKw: 0.3,
+        overshootTopControlledContributors: [],
+      }));
+      expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_attributed',
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('attributes overshoot when the restored device is a positive contributor', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createPlanEngineState();
+      const now = new Date('2026-04-15T11:04:01.000Z').getTime();
+      vi.setSystemTime(now);
+      state.lastDeviceRestoreMs['restored-device'] = now - 1_000;
+      recordActivationAttemptStart({
+        state,
+        deviceId: 'restored-device',
+        source: 'pels_restore',
+        nowTs: now - 1_000,
+      });
+
+      const structuredLog = { info: vi.fn() };
+      const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
+
+      const builder = new PlanBuilder({
+        homey: { settings: { set: vi.fn() } } as never,
+        getCapacityGuard: () => capacityGuard,
+        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getDailyBudgetSnapshot: () => null,
+        getPriorityForDevice: () => 100,
+        getDynamicSoftLimitOverride: () => 1.0,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        structuredLog: structuredLog as any,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      }, state);
+
+      capacityGuard.reportTotalPower(0.6);
       await builder.buildDevicePlanSnapshot([
         buildDevice({
-          id: 'present-device',
-          name: 'Present Device',
-          measuredPowerKw: 0.8,
+          id: 'restored-device',
+          name: 'Restored Device',
+          measuredPowerKw: 0.1,
         }),
       ]);
 
-      expect(structuredLog.info).toHaveBeenCalledWith({
+      structuredLog.info.mockClear();
+      capacityGuard.reportTotalPower(1.3);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'restored-device',
+          name: 'Restored Device',
+          measuredPowerKw: 0.7,
+        }),
+      ]);
+
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_entered',
+        overshootTotalDeltaKw: 0.7,
+        overshootTopControlledContributors: [
+          expect.objectContaining({
+            deviceId: 'restored-device',
+            deltaKw: 0.6,
+          }),
+        ],
+      }));
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
         event: 'overshoot_attributed',
-        deviceId: 'missing-device',
+        deviceId: 'restored-device',
         restoreAgeMs: 1_000,
         penaltyLevel: 1,
-      });
+      }));
     } finally {
       vi.useRealTimers();
     }
