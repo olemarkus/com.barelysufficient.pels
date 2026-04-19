@@ -8,6 +8,7 @@ import {
 } from './planBinaryControl';
 import {
   type ActivationAttemptSource,
+  closeActivationAttemptForShed,
   recordActivationAttemptStart,
   recordActivationSetback,
 } from './planActivationBackoff';
@@ -226,6 +227,23 @@ export const recordActivationSetbackForDevice = (params: {
   nowTs: number;
 }): void => {
   const result = recordActivationSetback({
+    state: params.state,
+    deviceId: params.deviceId,
+    nowTs: params.nowTs,
+  });
+  if (result.transition) {
+    params.diagnostics?.recordActivationTransition(result.transition, { name: params.name });
+  }
+};
+
+export const closeActivationAttemptForShedActuation = (params: {
+  state: PlanEngineState;
+  diagnostics: DeviceDiagnosticsRecorder | undefined;
+  deviceId: string;
+  name: string;
+  nowTs: number;
+}): void => {
+  const result = closeActivationAttemptForShed({
     state: params.state,
     deviceId: params.deviceId,
     nowTs: params.nowTs,

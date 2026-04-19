@@ -340,38 +340,42 @@ export class PlanBuilder {
     ) {
       return;
     }
-    let latestDeviceId: string | null = null;
-    let latestRestoreMs = 0;
-    for (const [deviceId, restoreMs] of Object.entries(this.state.lastDeviceRestoreMs)) {
-      if (nowTs - restoreMs > OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS) continue;
-      if (restoreMs > latestRestoreMs) {
-        latestRestoreMs = restoreMs;
-        latestDeviceId = deviceId;
-      }
-    }
-    if (latestDeviceId === null) return;
-    const contributingRestore = overshootDiagnostics.contributors.find((contributor) => (
-      contributor.deviceId === latestDeviceId
-      && contributor.controllable
-      && contributor.deltaKw > 0
-    ));
-    if (!contributingRestore) return;
-    const deviceName = deviceNameById.get(latestDeviceId);
-    const result = recordActivationSetback({ state: this.state, deviceId: latestDeviceId, nowTs });
-    if (result.bumped) {
-      this.deps.structuredLog?.info({
+    const recentRestores = Object.entries(this.state.lastDeviceRestoreMs)
+      .filter(([, restoreMs]) => nowTs - restoreMs <= OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS)
+      .sort((left, right) => right[1] - left[1]);
+    for (const [deviceId, restoreMs] of recentRestores) {
+      const contributingRestore = overshootDiagnostics.contributors.find((contributor) => (
+        contributor.deviceId === deviceId
+        && contributor.controllable
+        && contributor.deltaKw > 0
+      ));
+      if (!contributingRestore) continue;
+      const deviceName = deviceNameById.get(deviceId);
+      const result = recordActivationSetback({ state: this.state, deviceId, nowTs });
+      if (!result.transition) continue;
+
+      const logEntry: {
+        event: string;
+        deviceId: string;
+        deviceName?: string;
+        restoreAgeMs: number;
+        penaltyLevel: number;
+      } = {
         event: 'overshoot_attributed',
-        deviceId: latestDeviceId,
-        ...(typeof deviceName === 'string' && deviceName.length > 0 ? { deviceName } : {}),
-        restoreAgeMs: nowTs - latestRestoreMs,
+        deviceId,
+        restoreAgeMs: nowTs - restoreMs,
         penaltyLevel: result.penaltyLevel,
-      });
-      if (result.transition && this.deps.deviceDiagnostics) {
+      };
+      if (typeof deviceName === 'string' && deviceName.length > 0) {
+        logEntry.deviceName = deviceName;
+      }
+      this.deps.structuredLog?.info(logEntry);
+      if (this.deps.deviceDiagnostics) {
         this.deps.deviceDiagnostics.recordActivationTransition(result.transition, { name: deviceName });
       }
+      return;
     }
   }
-
   private buildOvershootTimingFields(
     nowTs: number,
     lastPowerUpdateMs: number | null,

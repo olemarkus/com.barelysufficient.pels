@@ -1,8 +1,9 @@
 import { createPlanEngineState } from '../lib/plan/planState';
 import {
+  ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
   ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
   ACTIVATION_SETBACK_RESTORE_BLOCK_MS,
-  ACTIVATION_BACKOFF_STICK_WINDOW_MS,
+  closeActivationAttemptForShed,
   getActivationRestoreBlockRemainingMs,
   recordActivationAttemptStart,
   recordActivationSetback,
@@ -101,7 +102,7 @@ describe('activation backoff', () => {
     expect(second.penaltyLevel).toBe(1);
   });
 
-  it('resets penalty after sustained active success at the stick boundary', () => {
+  it('closes attempts quietly once the attribution window expires without clearing penalty', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
@@ -128,23 +129,20 @@ describe('activation backoff', () => {
     const stuckInfo = syncActivationPenaltyState({
       state,
       deviceId: 'dev-1',
-      nowTs: secondAttemptStart + ACTIVATION_BACKOFF_STICK_WINDOW_MS,
+      nowTs: secondAttemptStart + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
       observation: { currentOn: true, available: true, measuredPowerKw: 2 },
     });
-    expect(stuckInfo.penaltyLevel).toBe(0);
+    expect(stuckInfo.penaltyLevel).toBe(1);
     expect(stuckInfo.attemptOpen).toBe(false);
-    expect(stuckInfo.transitions).toMatchObject([
-      { kind: 'stick_reached', deviceId: 'dev-1' },
-      { kind: 'penalty_cleared', deviceId: 'dev-1', previousPenaltyLevel: 1 },
-    ]);
+    expect(stuckInfo.transitions).toEqual([]);
     expect(getActivationRestoreBlockRemainingMs({
       state,
       deviceId: 'dev-1',
-      nowTs: secondAttemptStart + ACTIVATION_BACKOFF_STICK_WINDOW_MS,
-    })).toBeNull();
+      nowTs: secondAttemptStart + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
+    })).not.toBeNull();
   });
 
-  it('emits stick-reached only once per attempt and closes on explicit inactive observation before recovery', () => {
+  it('keeps attempts open inside the attribution window and closes on explicit inactive observation', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
@@ -158,30 +156,32 @@ describe('activation backoff', () => {
     const firstSync = syncActivationPenaltyState({
       state,
       deviceId: 'dev-1',
-      nowTs: start + ACTIVATION_BACKOFF_STICK_WINDOW_MS,
+      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS - 1,
       observation: { currentOn: true, available: true, measuredPowerKw: 1.2 },
     });
-    expect(firstSync.transitions).toMatchObject([{ kind: 'stick_reached', deviceId: 'dev-1' }]);
+    expect(firstSync.attemptOpen).toBe(true);
+    expect(firstSync.transitions).toEqual([]);
 
     const secondSync = syncActivationPenaltyState({
       state,
       deviceId: 'dev-1',
-      nowTs: start + ACTIVATION_BACKOFF_STICK_WINDOW_MS + 60_000,
+      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
       observation: { currentOn: true, available: true, measuredPowerKw: 1.2 },
     });
+    expect(secondSync.attemptOpen).toBe(false);
     expect(secondSync.transitions).toEqual([]);
 
     recordActivationAttemptStart({
       state,
       deviceId: 'dev-1',
       source: 'pels_restore',
-      nowTs: start + ACTIVATION_BACKOFF_STICK_WINDOW_MS + 2 * 60_000,
+      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 2 * 60_000,
     });
 
     const inactiveSync = syncActivationPenaltyState({
       state,
       deviceId: 'dev-1',
-      nowTs: start + ACTIVATION_BACKOFF_STICK_WINDOW_MS + 2 * 60_000 + 5_000,
+      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 2 * 60_000 + 5_000,
       observation: { currentOn: false, available: true },
     });
     expect(inactiveSync.attemptOpen).toBe(false);
@@ -288,7 +288,7 @@ describe('activation backoff', () => {
     expect(reasonText(result.planDevices[0]?.reason)).toContain('activation backoff');
   });
 
-  it('refreshes the restore block even when a setback happens after stick is reached', () => {
+  it('does not record a setback once the attribution window has expired', () => {
     const state = createPlanEngineState();
     const now = Date.now();
     state.activationAttemptByDevice['dev-1'] = { penaltyLevel: 1 };
@@ -297,7 +297,14 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       source: 'pels_restore',
-      nowTs: now - ACTIVATION_BACKOFF_STICK_WINDOW_MS - 30_000,
+      nowTs: now - ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS - 30_000,
+    });
+
+    syncActivationPenaltyState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: now - 10_000,
+      observation: { currentOn: true, available: true },
     });
 
     const setback = recordActivationSetback({
@@ -307,9 +314,9 @@ describe('activation backoff', () => {
     });
 
     expect(setback.bumped).toBe(false);
-    expect(setback.transition).toMatchObject({ kind: 'setback_after_stick', deviceId: 'dev-1' });
+    expect(setback.transition).toBeUndefined();
     expect(getActivationRestoreBlockRemainingMs({ state, deviceId: 'dev-1', nowTs: now }))
-      .toBe(ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 5_000);
+      .toBeNull();
   });
 
   it('has no cooldown before any failure, then doubles repeated failures and caps at 30 minutes', () => {
@@ -631,7 +638,7 @@ describe('activation backoff', () => {
     );
   });
 
-  it('preserves diagnostics names for tracked step-downs without a live device object', () => {
+  it('preserves diagnostics names for tracked step-downs without treating them as failed activations', () => {
     const state = createPlanEngineState();
     const start = Date.now();
     const diagnostics = {
@@ -670,6 +677,7 @@ describe('activation backoff', () => {
       toKw: 1,
     });
     expect(diagnostics.recordActivationTransition).not.toHaveBeenCalled();
+    expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
   });
 
   it('stores expected-power source when tracked usage sync comes from an override', () => {
@@ -962,22 +970,42 @@ describe('activation backoff', () => {
     });
     expect(event.reconciliation).toBeUndefined();
   });
+
+  it('closes an open attempt on shed without changing the existing penalty level', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+    state.activationAttemptByDevice['dev-1'] = {
+      penaltyLevel: 2,
+      startedMs: start - 30_000,
+      source: 'pels_restore',
+    };
+
+    const result = closeActivationAttemptForShed({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start,
+    });
+
+    expect(result.stateChanged).toBe(true);
+    expect(result.transition).toMatchObject({
+      kind: 'attempt_closed_by_shed',
+      deviceId: 'dev-1',
+      penaltyLevel: 2,
+      source: 'pels_restore',
+    });
+    expect(state.activationAttemptByDevice['dev-1']).toEqual({ penaltyLevel: 2 });
+  });
 });
 
-// Mirrors attributeOvershootToRecentRestores: finds the single most-recently-restored
-// device within the attribution window and records a setback for it.
+// Mirrors attributeOvershootToRecentRestores: walks recent restores newest-first and
+// attributes overshoot to the first one that still has an open attempt.
 const attributeOvershoot = (state: ReturnType<typeof createPlanEngineState>, nowTs: number): void => {
-  let latestDeviceId: string | null = null;
-  let latestRestoreMs = 0;
-  for (const [deviceId, restoreMs] of Object.entries(state.lastDeviceRestoreMs)) {
-    if (nowTs - restoreMs > OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS) continue;
-    if (restoreMs > latestRestoreMs) {
-      latestRestoreMs = restoreMs;
-      latestDeviceId = deviceId;
-    }
-  }
-  if (latestDeviceId !== null) {
-    recordActivationSetback({ state, deviceId: latestDeviceId, nowTs });
+  const recentRestores = Object.entries(state.lastDeviceRestoreMs)
+    .filter(([, restoreMs]) => nowTs - restoreMs <= OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS)
+    .sort((left, right) => right[1] - left[1]);
+  for (const [deviceId] of recentRestores) {
+    const result = recordActivationSetback({ state, deviceId, nowTs });
+    if (result.transition) return;
   }
 };
 
@@ -1042,5 +1070,22 @@ describe('overshoot-after-restore attribution', () => {
     expect(state.activationAttemptByDevice['dev-latest']?.penaltyLevel).toBe(1);
     expect(state.activationAttemptByDevice['dev-earlier']?.penaltyLevel).toBeUndefined();
     expect(getActivationRestoreBlockRemainingMs({ state, deviceId: 'dev-earlier', nowTs })).toBeNull();
+  });
+
+  it('falls back to an earlier open restore when the latest restore was already closed by shed', () => {
+    const state = createPlanEngineState();
+    const nowTs = Date.UTC(2024, 0, 1, 12, 0, 0);
+
+    state.lastDeviceRestoreMs['dev-earlier'] = nowTs - 90_000;
+    recordActivationAttemptStart({ state, deviceId: 'dev-earlier', source: 'pels_restore', nowTs: nowTs - 90_000 });
+
+    state.lastDeviceRestoreMs['dev-latest'] = nowTs - 14_000;
+    recordActivationAttemptStart({ state, deviceId: 'dev-latest', source: 'pels_restore', nowTs: nowTs - 14_000 });
+    closeActivationAttemptForShed({ state, deviceId: 'dev-latest', nowTs: nowTs - 5_000 });
+
+    attributeOvershoot(state, nowTs);
+
+    expect(state.activationAttemptByDevice['dev-latest']).toBeUndefined();
+    expect(state.activationAttemptByDevice['dev-earlier']?.penaltyLevel).toBe(1);
   });
 });

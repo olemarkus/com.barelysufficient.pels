@@ -116,6 +116,13 @@ Treat a local write as:
 - provisional transition
 - awaiting observed confirmation
 
+Activation-backoff rule:
+
+- do not treat tracked power shape by itself as proof that a restore succeeded or failed
+- do not treat planner-driven sheds as failed activations
+- only explicit device-state contradiction or tight recent-restore overshoot attribution should
+  create restore-blocking setback state
+
 ### Observation paths can disagree temporarily
 
 Different observation paths may briefly disagree:

@@ -117,14 +117,6 @@ export type DeviceDiagnosticsBackoffTransition =
     nowTs: number;
   }
   | {
-    kind: 'stick_reached';
-    deviceId: string;
-    source: ActivationAttemptSource | null;
-    penaltyLevel: number;
-    elapsedMs: number;
-    nowTs: number;
-  }
-  | {
     kind: 'setback_failed';
     deviceId: string;
     source: ActivationAttemptSource | null;
@@ -134,7 +126,7 @@ export type DeviceDiagnosticsBackoffTransition =
     nowTs: number;
   }
   | {
-    kind: 'setback_after_stick';
+    kind: 'attempt_closed_inactive';
     deviceId: string;
     source: ActivationAttemptSource | null;
     penaltyLevel: number;
@@ -142,15 +134,7 @@ export type DeviceDiagnosticsBackoffTransition =
     nowTs: number;
   }
   | {
-    kind: 'penalty_cleared';
-    deviceId: string;
-    source: ActivationAttemptSource | null;
-    previousPenaltyLevel: number;
-    elapsedMs: number;
-    nowTs: number;
-  }
-  | {
-    kind: 'attempt_closed_inactive';
+    kind: 'attempt_closed_by_shed';
     deviceId: string;
     source: ActivationAttemptSource | null;
     penaltyLevel: number;
@@ -446,15 +430,6 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
           + `source=${transition.source} penalty=${live.currentPenaltyLevel}`,
         );
         break;
-      case 'stick_reached':
-        this.addCount(transition.deviceId, transition.nowTs, 'stableActivationCount', 1);
-        live.currentPenaltyLevel = clampPenaltyLevel(transition.penaltyLevel);
-        this.deps.logDebug(
-          `Diagnostics: activation stick reached ${formatDeviceRef(transition.deviceId, live.name)} `
-          + `source=${transition.source ?? 'unknown'} penalty=${live.currentPenaltyLevel} `
-          + `elapsed=${formatDurationSeconds(transition.elapsedMs)}`,
-        );
-        break;
       case 'setback_failed':
         this.addCount(transition.deviceId, transition.nowTs, 'failedActivationCount', 1);
         this.addCount(transition.deviceId, transition.nowTs, 'penaltyBumpCount', 1);
@@ -467,26 +442,18 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
           + `elapsed=${formatDurationSeconds(transition.elapsedMs)}`,
         );
         break;
-      case 'setback_after_stick':
-        live.currentPenaltyLevel = clampPenaltyLevel(transition.penaltyLevel);
-        this.deps.logDebug(
-          `Diagnostics: setback after stick ${formatDeviceRef(transition.deviceId, live.name)} `
-          + `source=${transition.source ?? 'unknown'} penalty=${transition.penaltyLevel} `
-          + `elapsed=${formatDurationSeconds(transition.elapsedMs)}`,
-        );
-        break;
-      case 'penalty_cleared':
-        live.currentPenaltyLevel = 0;
-        this.deps.logDebug(
-          `Diagnostics: penalty cleared ${formatDeviceRef(transition.deviceId, live.name)} `
-          + `source=${transition.source ?? 'unknown'} previousPenalty=${transition.previousPenaltyLevel} `
-          + `elapsed=${formatDurationSeconds(transition.elapsedMs)}`,
-        );
-        break;
       case 'attempt_closed_inactive':
         live.currentPenaltyLevel = clampPenaltyLevel(transition.penaltyLevel);
         this.deps.logDebug(
           `Diagnostics: activation attempt closed inactive ${formatDeviceRef(transition.deviceId, live.name)} `
+          + `source=${transition.source ?? 'unknown'} penalty=${transition.penaltyLevel} `
+          + `elapsed=${formatDurationSeconds(transition.elapsedMs)}`,
+        );
+        break;
+      case 'attempt_closed_by_shed':
+        live.currentPenaltyLevel = clampPenaltyLevel(transition.penaltyLevel);
+        this.deps.logDebug(
+          `Diagnostics: activation attempt closed by shed ${formatDeviceRef(transition.deviceId, live.name)} `
           + `source=${transition.source ?? 'unknown'} penalty=${transition.penaltyLevel} `
           + `elapsed=${formatDurationSeconds(transition.elapsedMs)}`,
         );

@@ -1,8 +1,8 @@
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 import type { PlanContext } from '../lib/plan/planContext';
 import {
+  ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
   ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
-  ACTIVATION_BACKOFF_STICK_WINDOW_MS,
   ACTIVATION_SETBACK_RESTORE_BLOCK_MS,
   getActivationPenaltyLevel,
   getActivationRestoreBlockRemainingMs,
@@ -1291,10 +1291,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
     expect(reasonText(dev?.reason)).toMatch(/activation backoff/);
   });
 
-  it('post-stick shed refreshes lastSetbackMs so the time block stays active', () => {
-    // §3.1 / H3 fix: after the stick window, shedding should still update lastSetbackMs
-    // so the 10-minute restore block restarts. Without the fix, lastSetbackMs is not updated
-    // and getActivationRestoreBlockRemainingMs returns null.
+  it('does not refresh lastSetbackMs once the attribution window has expired', () => {
     const state = createPlanEngineState();
     const deviceId = 'dev-heater';
     const T0 = Date.UTC(2024, 0, 1, 10, 0, 0);
@@ -1303,23 +1300,24 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
     recordActivationAttemptStart({ state, deviceId, source: 'pels_restore', nowTs: T0 });
     recordActivationSetback({ state, deviceId, nowTs: T0 + 5_000 });
 
-    // New attempt started; shed happens after stick window
+    // New attempt started; the attribution window expires before any explicit failure occurs.
     recordActivationAttemptStart({ state, deviceId, source: 'pels_restore', nowTs: T0 + 65_000 });
-    const TPostStick = T0 + 65_000 + ACTIVATION_BACKOFF_STICK_WINDOW_MS + 60_000;
+    const TPostStick = T0 + 65_000 + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 60_000;
     const setback = recordActivationSetback({ state, deviceId, nowTs: TPostStick });
 
-    expect(setback.bumped).toBe(false); // stickReached → no level bump, still expected
+    expect(setback.bumped).toBe(false);
+    expect(setback.transition).toBeUndefined();
 
-    // lastSetbackMs should be updated to TPostStick so the block restarts
-    expect(state.activationAttemptByDevice[deviceId]?.lastSetbackMs).toBe(TPostStick);
+    // lastSetbackMs should remain unchanged, so the previous block is not extended.
+    expect(state.activationAttemptByDevice[deviceId]?.lastSetbackMs).toBe(T0 + 5_000);
 
-    // Block should be active immediately after the post-stick shed
+    // The original block should still be running, but it must not be extended.
     const blockRemaining = getActivationRestoreBlockRemainingMs({
       state,
       deviceId,
       nowTs: TPostStick + 1_000,
     });
-    expect(blockRemaining).toBeGreaterThan(0);
+    expect(blockRemaining).toBe(ACTIVATION_SETBACK_RESTORE_BLOCK_MS - ((TPostStick + 1_000) - (T0 + 5_000)));
   });
 
   it('block expires after stick window and device is admitted with elevated headroom', () => {

@@ -5,13 +5,14 @@ import type {
 } from './planState';
 import type { DeviceDiagnosticsBackoffTransition } from '../diagnostics/deviceDiagnosticsService';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
+import { OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS } from './planConstants';
 
 export type { ActivationAttemptSource } from './planState';
 
-export const ACTIVATION_BACKOFF_STICK_WINDOW_MS = 10 * 60 * 1000;
+export const ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS = OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS;
 export const ACTIVATION_BACKOFF_CLEAR_WINDOW_MS = 30 * 60 * 1000;
 export const ACTIVATION_BACKOFF_MAX_LEVEL = 4;
-export const ACTIVATION_SETBACK_RESTORE_BLOCK_MS = ACTIVATION_BACKOFF_STICK_WINDOW_MS;
+export const ACTIVATION_SETBACK_RESTORE_BLOCK_MS = 10 * 60 * 1000;
 
 export type ActivationBackoffObservation = {
   available?: boolean;
@@ -23,8 +24,6 @@ export type ActivationBackoffObservation = {
 export type ActivationPenaltyInfo = {
   penaltyLevel: number;
   attemptOpen: boolean;
-  stickReached: boolean;
-  stickRemainingSec: number | null;
   clearRemainingSec: number | null;
   stateChanged: boolean;
   source: ActivationAttemptSource | null;
@@ -131,8 +130,8 @@ const updateLastSetbackMs = (state: PlanEngineState, deviceId: string, nowTs: nu
 
 const elapsedMs = (startedMs: number, nowTs: number): number => Math.max(0, nowTs - startedMs);
 
-const hasStickReached = (attemptStartedMs: number, nowTs: number): boolean => (
-  elapsedMs(attemptStartedMs, nowTs) >= ACTIVATION_BACKOFF_STICK_WINDOW_MS
+const hasAttributionWindowExpired = (attemptStartedMs: number, nowTs: number): boolean => (
+  elapsedMs(attemptStartedMs, nowTs) >= ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS
 );
 
 const remainingSeconds = (remainingMs: number): number => Math.max(0, Math.ceil(remainingMs / 1000));
@@ -184,11 +183,75 @@ export function isActivationObservationActiveNow(
   return isFiniteNumber(observation.measuredPowerKw) && observation.measuredPowerKw > MIN_ACTIVE_MEASURED_POWER_KW;
 }
 
+type CloseActivationAttemptKind = 'inactive' | 'shed' | 'quiet';
+
+const closeActivationAttempt = (params: {
+  state: PlanEngineState;
+  deviceId: string;
+  nowTs?: number;
+  kind: CloseActivationAttemptKind;
+}): {
+  stateChanged: boolean;
+  transition?: DeviceDiagnosticsBackoffTransition;
+} => {
+  const { state, deviceId, kind } = params;
+  const attemptStartedMs = getAttemptStartedMs(state, deviceId);
+  if (attemptStartedMs === null) {
+    return { stateChanged: false };
+  }
+
+  const nowTs = params.nowTs ?? Date.now();
+  const source = getAttemptSource(state, deviceId);
+  const penaltyLevel = getPenaltyLevel(state, deviceId);
+  const elapsed = elapsedMs(attemptStartedMs, nowTs);
+  const stateChanged = closeAttempt(state, deviceId);
+  if (!stateChanged || kind === 'quiet') {
+    return { stateChanged };
+  }
+
+  return {
+    stateChanged,
+    transition: kind === 'inactive'
+      ? {
+        kind: 'attempt_closed_inactive',
+        deviceId,
+        source,
+        penaltyLevel,
+        elapsedMs: elapsed,
+        nowTs,
+      }
+      : {
+        kind: 'attempt_closed_by_shed',
+        deviceId,
+        source,
+        penaltyLevel,
+        elapsedMs: elapsed,
+        nowTs,
+      },
+  };
+};
+
 export function closeActivationAttemptForDevice(
   state: PlanEngineState,
   deviceId: string,
 ): boolean {
-  return closeAttempt(state, deviceId);
+  return closeActivationAttempt({ state, deviceId, kind: 'quiet' }).stateChanged;
+}
+
+export function closeActivationAttemptForShed(params: {
+  state: PlanEngineState;
+  deviceId: string;
+  nowTs?: number;
+}): {
+  stateChanged: boolean;
+  transition?: DeviceDiagnosticsBackoffTransition;
+} {
+  return closeActivationAttempt({
+    state: params.state,
+    deviceId: params.deviceId,
+    nowTs: params.nowTs,
+    kind: 'shed',
+  });
 }
 
 export function syncActivationPenaltyState(params: {
@@ -206,8 +269,6 @@ export function syncActivationPenaltyState(params: {
     return {
       penaltyLevel,
       attemptOpen: false,
-      stickReached: false,
-      stickRemainingSec: null,
       clearRemainingSec: getClearRemainingSec(state, deviceId, nowTs),
       stateChanged: false,
       source: null,
@@ -216,69 +277,44 @@ export function syncActivationPenaltyState(params: {
   }
 
   const source = getAttemptSource(state, deviceId);
-  const elapsed = elapsedMs(attemptStartedMs, nowTs);
 
   if (isActivationObservationExplicitlyInactive(observation)) {
+    const closeResult = closeActivationAttempt({
+      state,
+      deviceId,
+      nowTs,
+      kind: 'inactive',
+    });
     return {
       penaltyLevel,
       attemptOpen: false,
-      stickReached: false,
-      stickRemainingSec: null,
       clearRemainingSec: getClearRemainingSec(state, deviceId, nowTs),
-      stateChanged: closeAttempt(state, deviceId),
+      stateChanged: closeResult.stateChanged,
       source,
-      transitions: [{
-        kind: 'attempt_closed_inactive',
-        deviceId,
-        source,
-        penaltyLevel,
-        elapsedMs: elapsed,
-        nowTs,
-      }],
+      transitions: closeResult.transition ? [closeResult.transition] : [],
     };
   }
 
-  const stickReached = hasStickReached(attemptStartedMs, nowTs);
-  if (stickReached && isActivationObservationActiveNow(observation)) {
-    const transitions: DeviceDiagnosticsBackoffTransition[] = [{
-      kind: 'stick_reached',
+  if (hasAttributionWindowExpired(attemptStartedMs, nowTs)) {
+    const closeResult = closeActivationAttempt({
+      state,
       deviceId,
-      source,
-      penaltyLevel,
-      elapsedMs: elapsed,
       nowTs,
-    }];
-
-    let stateChanged = closeAttempt(state, deviceId);
-    if (penaltyLevel > 0) {
-      stateChanged = setPenaltyLevel(state, deviceId, 0) || stateChanged;
-      transitions.push({
-        kind: 'penalty_cleared',
-        deviceId,
-        source,
-        previousPenaltyLevel: penaltyLevel,
-        elapsedMs: elapsed,
-        nowTs,
-      });
-    }
-
+      kind: 'quiet',
+    });
     return {
-      penaltyLevel: 0,
+      penaltyLevel,
       attemptOpen: false,
-      stickReached: false,
-      stickRemainingSec: null,
-      clearRemainingSec: null,
-      stateChanged,
+      clearRemainingSec: getClearRemainingSec(state, deviceId, nowTs),
+      stateChanged: closeResult.stateChanged,
       source,
-      transitions,
+      transitions: [],
     };
   }
 
   return {
     penaltyLevel,
     attemptOpen: true,
-    stickReached,
-    stickRemainingSec: stickReached ? 0 : remainingSeconds(ACTIVATION_BACKOFF_STICK_WINDOW_MS - elapsed),
     clearRemainingSec: getClearRemainingSec(state, deviceId, nowTs),
     stateChanged: false,
     source,
@@ -341,10 +377,14 @@ export function recordActivationSetback(params: {
 
   const source = getAttemptSource(state, deviceId);
   const elapsed = elapsedMs(attemptStartedMs, nowTs);
-  const failedBeforeStick = !hasStickReached(attemptStartedMs, nowTs);
-  const nextPenaltyLevel = failedBeforeStick
-    ? clampPenaltyLevel(penaltyLevel + 1)
-    : Math.max(1, penaltyLevel);
+  if (hasAttributionWindowExpired(attemptStartedMs, nowTs)) {
+    return {
+      stateChanged: closeAttempt(state, deviceId),
+      bumped: false,
+      penaltyLevel,
+    };
+  }
+  const nextPenaltyLevel = clampPenaltyLevel(penaltyLevel + 1);
 
   let stateChanged = closeAttempt(state, deviceId);
   stateChanged = setPenaltyLevel(state, deviceId, nextPenaltyLevel) || stateChanged;
@@ -354,24 +394,15 @@ export function recordActivationSetback(params: {
     stateChanged,
     bumped: nextPenaltyLevel > penaltyLevel,
     penaltyLevel: nextPenaltyLevel,
-    transition: failedBeforeStick
-      ? {
-        kind: 'setback_failed',
-        deviceId,
-        source,
-        previousPenaltyLevel: penaltyLevel,
-        penaltyLevel: nextPenaltyLevel,
-        elapsedMs: elapsed,
-        nowTs,
-      }
-      : {
-        kind: 'setback_after_stick',
-        deviceId,
-        source,
-        penaltyLevel: nextPenaltyLevel,
-        elapsedMs: elapsed,
-        nowTs,
-      },
+    transition: {
+      kind: 'setback_failed',
+      deviceId,
+      source,
+      previousPenaltyLevel: penaltyLevel,
+      penaltyLevel: nextPenaltyLevel,
+      elapsedMs: elapsed,
+      nowTs,
+    },
   };
 }
 
