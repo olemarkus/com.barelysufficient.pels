@@ -547,6 +547,63 @@ describe('activation backoff', () => {
     expect(recoveredDecision?.allowed).toBe(true);
   });
 
+  it('does not record an activation setback when a restore attempt later sees a tracked drop', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+    const diagnostics = {
+      recordControlEvent: vi.fn(),
+      recordActivationTransition: vi.fn(),
+    };
+
+    syncHeadroomCardState({
+      state,
+      devices: [{
+        id: 'dev-1',
+        name: 'Heater',
+        currentOn: true,
+        available: true,
+        expectedPowerKw: 3.2,
+        measuredPowerKw: 3.2,
+        powerKw: 3.2,
+      }],
+      nowTs: start,
+    });
+
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'dev-1',
+      source: 'pels_restore',
+      nowTs: start + 60_000,
+    });
+
+    expect(syncHeadroomCardTrackedUsage({
+      state,
+      deviceId: 'dev-1',
+      trackedKw: 1.0,
+      nowTs: start + 120_000,
+      diagnostics: diagnostics as any,
+    })).toBe(true);
+
+    expect(diagnostics.recordControlEvent).toHaveBeenCalledWith({
+      kind: 'tracked_usage_drop',
+      deviceId: 'dev-1',
+      name: 'Heater',
+      nowTs: start + 120_000,
+      fromKw: 3.2,
+      toKw: 1,
+    });
+    expect(diagnostics.recordActivationTransition).not.toHaveBeenCalled();
+    expect(state.activationAttemptByDevice['dev-1']).toEqual({
+      startedMs: start + 60_000,
+      source: 'pels_restore',
+    });
+    expect(getActivationRestoreBlockRemainingMs({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + 120_000,
+    })).toBeNull();
+  });
+
   it('emits activation transitions when only the stored device name is available', () => {
     const diagnostics = {
       recordActivationTransition: vi.fn(),
@@ -596,13 +653,6 @@ describe('activation backoff', () => {
       nowTs: start,
     });
 
-    recordActivationAttemptStart({
-      state,
-      deviceId: 'dev-1',
-      source: 'tracked_step_up',
-      nowTs: start + 60_000,
-    });
-
     expect(syncHeadroomCardTrackedUsage({
       state,
       deviceId: 'dev-1',
@@ -619,13 +669,7 @@ describe('activation backoff', () => {
       fromKw: 3.2,
       toKw: 1,
     });
-    expect(diagnostics.recordActivationTransition).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: 'setback_failed',
-        deviceId: 'dev-1',
-      }),
-      { name: 'Heater' },
-    );
+    expect(diagnostics.recordActivationTransition).not.toHaveBeenCalled();
   });
 
   it('stores expected-power source when tracked usage sync comes from an override', () => {

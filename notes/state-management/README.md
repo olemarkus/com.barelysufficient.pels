@@ -83,6 +83,22 @@ Keep these separate:
 
 Do not assume binary confirmation means full convergence.
 
+### Restore success is not defined by power shape
+
+PELS restore intent is established by the write path:
+
+- `onoff=true` for binary restores
+- a higher target/step for target-based restores
+
+Power telemetry is still useful after that, but only as advisory evidence for headroom and
+diagnostics.
+
+Contributor rules:
+
+- do not treat a later tracked power drop by itself as proof that a restore failed
+- use reconcile / observed device-state disagreement for "PELS wanted on, device is not on"
+- keep normal device duty cycling out of penalty-bearing restore-failure paths
+
 ### Measured power may lag state transitions
 
 A device may expose a new binary state quickly while measured power or final behavior still lags.

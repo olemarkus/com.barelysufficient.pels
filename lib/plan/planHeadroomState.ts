@@ -4,7 +4,6 @@ import {
   ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
   closeActivationAttemptForDevice,
   isActivationObservationActiveNow,
-  recordActivationSetback,
   syncActivationPenaltyState,
 } from './planActivationBackoff';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
@@ -276,15 +275,10 @@ const maybeRecordTrackedStepDown = (params: {
       reconciliation,
     });
   }
-  const setbackResult = recordActivationSetback({
-    state,
-    deviceId,
-    nowTs,
-  });
-  if (setbackResult.transition && name) {
-    diagnostics?.recordActivationTransition(setbackResult.transition, { name });
-  }
-  return stepDownResult.stateChanged || setbackResult.stateChanged;
+  // Tracked power changes are useful for diagnostics and headroom cooldowns, but restore
+  // failure/backoff belongs to explicit planner signals such as reconcile re-apply or
+  // overshoot attribution. A normal device duty cycle must not become setback_failed here.
+  return stepDownResult.stateChanged;
 };
 
 const syncHeadroomCardTrackedKw = (params: {
