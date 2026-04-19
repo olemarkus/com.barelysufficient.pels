@@ -575,6 +575,7 @@ export function schedulePlanRebuildFromSignal(params: {
   capacitySettings: { limitKw: number; marginKw: number };
   capacityGuard?: CapacityGuard;
   planConvergenceActive?: boolean;
+  skipWhileShortfallUnrecoverable?: boolean;
 }): Promise<void | string> {
   const rebuildStart = Date.now();
   const {
@@ -592,6 +593,7 @@ export function schedulePlanRebuildFromSignal(params: {
     capacitySettings,
     capacityGuard,
     planConvergenceActive,
+    skipWhileShortfallUnrecoverable = false,
   } = params;
   const softLimitKw = capacityGuard?.getSoftLimit()
     ?? Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
@@ -605,6 +607,12 @@ export function schedulePlanRebuildFromSignal(params: {
     currentPowerW,
     guardPower,
   });
+  if (skipWhileShortfallUnrecoverable && isInShortfall && planConvergenceActive !== true) {
+    incPerfCounter('plan_rebuild_skipped_shortfall_unrecoverable_total');
+    return Promise.resolve(capacityGuard?.checkShortfall(false, hardCapBreach.deficitKw)).finally(() => {
+      addPerfDuration('power_sample_rebuild_ms', Date.now() - rebuildStart);
+    });
+  }
   const headroomTight = resolveHeadroomTight(headroomKw);
   const effectiveMinIntervalMs = resolveEffectiveSignalMinIntervalMs({
     minIntervalMs,
