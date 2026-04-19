@@ -37,6 +37,7 @@ import {
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { createDeviceLiveFeed, type DeviceLiveFeed, type LiveFeedHealth } from './deviceLiveFeed';
 import {
+    didMeasurePowerBecomeSignificantlyPositive,
     handleRealtimeDeviceUpdate,
     type ObservedDeviceStateEvent,
     type PlanRealtimeUpdateEvent,
@@ -146,6 +147,9 @@ export class DeviceManager extends EventEmitter {
         capabilityId: string,
         value: unknown,
     ): void {
+        const previousPowerKw = capabilityId === 'measure_power'
+            ? this.latestSnapshot[snapshotIndex]?.measuredPowerKw
+            : undefined;
         const result = this.applyFreshnessOnlyCapabilityUpdate(snapshotIndex, capabilityId, value);
         if (!result.changed) return;
         recordCapabilityObservation({
@@ -160,6 +164,12 @@ export class DeviceManager extends EventEmitter {
             source: 'realtime_capability',
             deviceId,
             capabilityId,
+            measurePowerBecameSignificantlyPositive: capabilityId === 'measure_power'
+                && didMeasurePowerBecomeSignificantlyPositive(
+                    previousPowerKw,
+                    this.latestSnapshot[snapshotIndex]?.measuredPowerKw,
+                    MIN_SIGNIFICANT_POWER_W,
+                ),
         } satisfies ObservedDeviceStateEvent);
     }
 
@@ -367,6 +377,7 @@ export class DeviceManager extends EventEmitter {
             recentLocalCapabilityWrites: this.recentLocalCapabilityWrites,
             shouldTrackRealtimeDevice: (deviceId) => this.shouldTrackRealtimeDevice(deviceId),
             parseDevice: (nextDevice, nowTs) => this.parseDevice(nextDevice, nowTs, {}),
+            minSignificantPowerW: MIN_SIGNIFICANT_POWER_W,
             recordObservedCapabilities: (nextDeviceId, capabilityIds) => {
                 recordSnapshotCapabilityObservations({
                     state: this.observationState,

@@ -3036,6 +3036,42 @@ describe('DeviceManager', () => {
                 }
             });
 
+            it('flags when measure_power wakes from insignificant to significant', async () => {
+                vi.useFakeTimers();
+                try {
+                    await deviceManager.init();
+                    vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+                    mockApiGet.mockResolvedValue({
+                        dev1: {
+                            id: 'dev1',
+                            name: 'Heater',
+                            capabilities: ['onoff', 'measure_power'],
+                            class: 'heater',
+                            capabilitiesObj: {
+                                onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T11:59:00.000Z' },
+                                measure_power: { value: 0, id: 'measure_power', lastUpdated: '2026-04-01T11:59:00.000Z' },
+                            },
+                        },
+                    });
+                    await deviceManager.refreshSnapshot();
+
+                    const liveStateListener = vi.fn();
+                    deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
+
+                    deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_power', 2000);
+
+                    expect(liveStateListener).toHaveBeenCalledOnce();
+                    expect(liveStateListener).toHaveBeenCalledWith(expect.objectContaining({
+                        source: 'realtime_capability',
+                        deviceId: 'dev1',
+                        capabilityId: 'measure_power',
+                        measurePowerBecameSignificantlyPositive: true,
+                    }));
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
+
             it('realtime measure_temperature update advances freshness and does not trigger reconcile', async () => {
                 vi.useFakeTimers();
                 try {

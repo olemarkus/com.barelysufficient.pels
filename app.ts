@@ -445,6 +445,15 @@ class PelsApp extends Homey.App {
     this.deviceManager.on(
       PLAN_LIVE_STATE_OBSERVED_EVENT,
       (event: ObservedDeviceStateEvent) => {
+        if (
+          event.measurePowerBecameSignificantlyPositive === true
+          && this.isCapacityControlEnabled(event.deviceId)
+        ) {
+          this.powerSampleRebuildState = {
+            ...this.powerSampleRebuildState,
+            shortfallSuppressionInvalidated: true,
+          };
+        }
         void this.planService?.syncLivePlanState(event.source);
       },
     );
@@ -832,7 +841,8 @@ class PelsApp extends Homey.App {
         },
       );
       const skipWhileShortfallUnrecoverable = latestPlanSummary.remainingReducibleControlledLoad === false
-        && latestPlanSummary.actuationInFlight === false;
+        && latestPlanSummary.actuationInFlight === false
+        && this.powerSampleRebuildState.shortfallSuppressionInvalidated !== true;
       await recordPowerSampleForApp({
         currentPowerW,
         nowMs,

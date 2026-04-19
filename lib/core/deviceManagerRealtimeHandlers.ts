@@ -16,6 +16,7 @@ export type ObservedDeviceStateEvent = {
   source: 'realtime_capability' | 'device_update';
   deviceId: string;
   capabilityId?: string;
+  measurePowerBecameSignificantlyPositive?: boolean;
 };
 
 export type HandleRealtimeDeviceUpdateResult = {
@@ -41,6 +42,7 @@ export function handleRealtimeDeviceUpdate(params: {
   recentLocalCapabilityWrites: RecentLocalCapabilityWrites;
   shouldTrackRealtimeDevice: (deviceId: string) => boolean;
   parseDevice: (device: HomeyDeviceLike, nowTs: number) => TargetDeviceSnapshot | null;
+  minSignificantPowerW?: number;
   recordObservedCapabilities?: (deviceId: string, capabilityIds: string[]) => void;
   notePendingBinarySettleObservation?: PendingBinarySettleObservationRecorder;
   hasPendingBinarySettleWindow?: (deviceId: string, capabilityId: string) => boolean;
@@ -54,6 +56,7 @@ export function handleRealtimeDeviceUpdate(params: {
     recentLocalCapabilityWrites,
     shouldTrackRealtimeDevice,
     parseDevice,
+    minSignificantPowerW = 0,
     recordObservedCapabilities,
     notePendingBinarySettleObservation,
     hasPendingBinarySettleWindow,
@@ -107,6 +110,11 @@ export function handleRealtimeDeviceUpdate(params: {
     emitObservedState({
       source: 'device_update',
       deviceId,
+      measurePowerBecameSignificantlyPositive: didMeasurePowerBecomeSignificantlyPositive(
+        priorSnapshot?.measuredPowerKw,
+        result.currentSnapshot?.measuredPowerKw,
+        minSignificantPowerW,
+      ),
     });
   }
   if (!shouldReconcilePlan) {
@@ -130,6 +138,17 @@ export function handleRealtimeDeviceUpdate(params: {
     observedCapabilityIds: result.observedCapabilityIds,
     currentSnapshot: result.currentSnapshot,
   };
+}
+
+export function didMeasurePowerBecomeSignificantlyPositive(
+  previousPowerKw: number | null | undefined,
+  nextPowerKw: number | null | undefined,
+  minSignificantPowerW: number,
+): boolean {
+  const thresholdKw = minSignificantPowerW / 1000;
+  const previousKw = typeof previousPowerKw === 'number' ? previousPowerKw : 0;
+  const nextKw = typeof nextPowerKw === 'number' ? nextPowerKw : 0;
+  return previousKw <= thresholdKw && nextKw > thresholdKw;
 }
 
 function applyPendingBinarySettleToDeviceUpdate(params: {
