@@ -37,7 +37,6 @@ export type HeadroomForDeviceDecision = {
   calculatedHeadroomForDeviceKw: number;
   penaltyLevel: number;
   requiredKwWithPenalty: number;
-  stickRemainingSec: number | null;
   clearRemainingSec: number | null;
   dropFromKw: number | null;
   dropToKw: number | null;
@@ -103,7 +102,6 @@ export const evaluateHeadroomForDevice = (params: {
     calculatedHeadroomForDeviceKw,
     penaltyLevel: penaltyInfo.penaltyLevel,
     requiredKwWithPenalty: penalty.requiredKwWithPenalty,
-    stickRemainingSec: penaltyInfo.stickRemainingSec,
     clearRemainingSec: penaltyInfo.clearRemainingSec,
     dropFromKw: cooldown?.dropFromKw ?? null,
     dropToKw: cooldown?.dropToKw ?? null,

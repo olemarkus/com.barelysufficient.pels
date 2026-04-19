@@ -179,6 +179,64 @@ describe('PlanExecutor restore logging', () => {
     });
   });
 
+  it('closes a plan-mode shed attempt without bumping penalty and emits shed diagnostics', async () => {
+    const state = createPlanEngineState();
+    const now = Date.now();
+    state.activationAttemptByDevice['dev-1'] = {
+      penaltyLevel: 2,
+      startedMs: now - 5_000,
+      source: 'pels_restore',
+    };
+    const deviceDiagnostics = {
+      recordControlEvent: vi.fn(),
+      recordActivationTransition: vi.fn(),
+    };
+    const { executor, deviceManager, state: nextState } = buildExecutor(state, [{
+      id: 'dev-1',
+      name: 'Heater',
+      controlCapabilityId: 'onoff',
+      canSetControl: true,
+      available: true,
+      currentOn: true,
+    }], {
+      deviceDiagnostics: deviceDiagnostics as any,
+    });
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 6,
+        softLimitKw: 5,
+        headroomKw: -1,
+      },
+      devices: [{
+        id: 'dev-1',
+        name: 'Heater',
+        currentState: 'on',
+        plannedState: 'shed',
+        currentTarget: 21,
+        plannedTarget: 21,
+        controllable: true,
+      }],
+    });
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+    expect(nextState.activationAttemptByDevice['dev-1']).toEqual({ penaltyLevel: 2 });
+    expect(deviceDiagnostics.recordControlEvent).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'pels_shed',
+      deviceId: 'dev-1',
+      name: 'Heater',
+    }));
+    expect(deviceDiagnostics.recordActivationTransition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'attempt_closed_by_shed',
+        deviceId: 'dev-1',
+        penaltyLevel: 2,
+        source: 'pels_restore',
+      }),
+      { name: 'Heater' },
+    );
+  });
+
   it('logs restore from shed temperature as explicit capacity work', async () => {
     const state = createPlanEngineState();
     const { executor, deps, deviceManager } = buildExecutor(state, [

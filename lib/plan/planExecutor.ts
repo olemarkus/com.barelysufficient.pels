@@ -21,6 +21,7 @@ import {
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import {
   canTurnOnDevice,
+  closeActivationAttemptForShedActuation,
   recordActivationAttemptStarted,
   recordActivationSetbackForDevice,
   recordDiagnosticsRestore,
@@ -194,7 +195,7 @@ export class PlanExecutor {
       name,
       nowTs: now,
     });
-    recordActivationSetbackForDevice({
+    closeActivationAttemptForShedActuation({
       state: this.state,
       diagnostics: this.deps.deviceDiagnostics,
       deviceId,

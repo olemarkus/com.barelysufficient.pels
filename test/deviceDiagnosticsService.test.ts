@@ -226,6 +226,35 @@ describe('DeviceDiagnosticsService', () => {
     });
   });
 
+  it('records shed-closed activation attempts without counting them as failed activations', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    service.recordActivationTransition({
+      kind: 'attempt_started',
+      deviceId: 'heater-1',
+      source: 'pels_restore',
+      penaltyLevel: 2,
+      nowTs: start,
+    }, { name: 'Hall Heater' });
+    service.recordActivationTransition({
+      kind: 'attempt_closed_by_shed',
+      deviceId: 'heater-1',
+      source: 'pels_restore',
+      penaltyLevel: 2,
+      elapsedMs: 30_000,
+      nowTs: start + 30_000,
+    }, { name: 'Hall Heater' });
+
+    const summary = service.getUiPayload(start + 30_000).diagnosticsByDeviceId['heater-1'];
+    expect(summary.currentPenaltyLevel).toBe(2);
+    expect(summary.windows['1d']).toMatchObject({
+      failedActivationCount: 0,
+      penaltyBumpCount: 0,
+      maxPenaltyLevelSeen: 0,
+    });
+  });
+
   it('logs tracked-usage reconciliation tags when present', () => {
     const { service, logDebug } = createDeps();
     const start = Date.now();

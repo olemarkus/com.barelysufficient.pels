@@ -588,7 +588,7 @@ function logHeadroomCheck(params: {
     : '';
   const penaltyStr = decision.penaltyLevel > 0
     ? `, activation penalty=L${decision.penaltyLevel} `
-      + `(stick=${decision.stickRemainingSec ?? 0}s, clear=${decision.clearRemainingSec ?? 0}s)`
+      + `(clear=${decision.clearRemainingSec ?? 0}s)`
     : '';
 
   deps.logDebug(
