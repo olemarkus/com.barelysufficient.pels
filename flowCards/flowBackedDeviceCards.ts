@@ -51,7 +51,7 @@ export function registerFlowBackedDeviceCards(deps: FlowCardDeps): void {
     cardId: 'report_flow_backed_device_evcharger_state',
     capabilityId: 'evcharger_charging_state',
     parseValue: (rawValue) => {
-      const normalized = String(rawValue ?? '').trim();
+      const normalized = parseAutocompleteStringValue(rawValue);
       if (!normalized) throw new Error('EV charging state must be provided.');
       return normalized;
     },
@@ -143,14 +143,19 @@ function getDeviceIdFromArg(arg: DeviceArg): string {
 
 function parseBooleanFlowValue(rawValue: unknown, errorMessage: string): boolean {
   if (typeof rawValue === 'boolean') return rawValue;
-  const normalized = String(
-    typeof rawValue === 'object' && rawValue !== null && 'id' in rawValue
-      ? (rawValue as { id?: unknown }).id
-      : rawValue ?? '',
-  ).trim().toLowerCase();
+  const normalized = parseAutocompleteStringValue(rawValue).toLowerCase();
   if (normalized === 'true' || normalized === 'on') return true;
   if (normalized === 'false' || normalized === 'off') return false;
   throw new Error(errorMessage);
+}
+
+function parseAutocompleteStringValue(rawValue: unknown): string {
+  if (typeof rawValue === 'string') return rawValue.trim();
+  if (typeof rawValue === 'object' && rawValue !== null && 'id' in rawValue) {
+    const rawId = (rawValue as { id?: unknown }).id;
+    return typeof rawId === 'string' ? rawId.trim() : '';
+  }
+  return String(rawValue ?? '').trim();
 }
 
 function getBooleanAutocompleteOptions(query: string): Array<{ id: string; name: string }> {

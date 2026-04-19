@@ -11,6 +11,9 @@ const buildBinaryApiDevice = (overrides?: Partial<{
   id: string;
   name: string;
   onoff: boolean;
+  onoffLastUpdated: string;
+  measurePower: number;
+  measurePowerLastUpdated: string;
   capabilities: string[];
 }>) => ({
   id: overrides?.id ?? 'binary-1',
@@ -19,7 +22,20 @@ const buildBinaryApiDevice = (overrides?: Partial<{
   virtualClass: null,
   capabilities: overrides?.capabilities ?? ['onoff'],
   capabilitiesObj: {
-    onoff: { id: 'onoff', value: overrides?.onoff ?? true },
+    onoff: {
+      id: 'onoff',
+      value: overrides?.onoff ?? true,
+      ...(typeof overrides?.onoffLastUpdated === 'string' ? { lastUpdated: overrides.onoffLastUpdated } : {}),
+    },
+    ...(typeof overrides?.measurePower === 'number' ? {
+      measure_power: {
+        id: 'measure_power',
+        value: overrides.measurePower,
+        ...(typeof overrides?.measurePowerLastUpdated === 'string'
+          ? { lastUpdated: overrides.measurePowerLastUpdated }
+          : {}),
+      },
+    } : {}),
   },
   settings: {},
 });
@@ -102,6 +118,34 @@ describe('Flow-backed device support', () => {
     }));
   });
 
+  it('keeps devices admitted when native capability coverage already satisfies the remaining requirements', async () => {
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'binary-1': buildBinaryApiDevice({
+        capabilities: ['onoff', 'measure_power'],
+        measurePower: 850,
+      }),
+    });
+    const app = createApp();
+    await app.onInit();
+    await (app as any).refreshTargetDevicesSnapshot();
+
+    const initialEntry = getSnapshot().find((device) => device.id === 'binary-1');
+    expect(initialEntry).toEqual(expect.objectContaining({
+      id: 'binary-1',
+      measuredPowerKw: 0.85,
+    }));
+    expect(initialEntry?.flowBacked).toBeUndefined();
+
+    await runAction('report_flow_backed_device_onoff', { device: 'binary-1', state: 'on' });
+
+    expect(getSnapshot().find((device) => device.id === 'binary-1')).toEqual(expect.objectContaining({
+      id: 'binary-1',
+      flowBacked: true,
+      currentOn: true,
+      measuredPowerKw: 0.85,
+    }));
+  });
+
   it('admits EV chargers only after reported charging, charging state, and measure_power', async () => {
     mockHomeyInstance.settings.set(EXPERIMENTAL_EV_SUPPORT_ENABLED, true);
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
@@ -161,6 +205,34 @@ describe('Flow-backed device support', () => {
     expect(entry).toEqual(expect.objectContaining({
       currentOn: false,
       measuredPowerKw: 0,
+    }));
+  });
+
+  it('preserves newer native capability values when an older flow report exists', async () => {
+    mockHomeyInstance.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, {
+      'binary-1': {
+        onoff: { value: true, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
+        measure_power: { value: 1500, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
+      },
+    });
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'binary-1': buildBinaryApiDevice({
+        capabilities: ['onoff', 'measure_power'],
+        onoff: false,
+        onoffLastUpdated: '2026-03-20T10:00:00Z',
+        measurePower: 200,
+        measurePowerLastUpdated: '2026-03-20T10:00:00Z',
+      }),
+    });
+    const app = createApp();
+    await app.onInit();
+    await (app as any).refreshTargetDevicesSnapshot();
+
+    expect(getSnapshot().find((device) => device.id === 'binary-1')).toEqual(expect.objectContaining({
+      id: 'binary-1',
+      currentOn: false,
+      measuredPowerKw: 0.2,
+      flowBacked: true,
     }));
   });
 

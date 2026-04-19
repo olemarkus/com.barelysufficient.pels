@@ -94,4 +94,43 @@ describe('appSnapshotHelpers', () => {
       reconciliationContext: 'snapshot_refresh',
     });
   });
+
+  it('emits flow-backed refresh requests only once across queued snapshot cycles', async () => {
+    const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
+    const helperRef: { current?: AppSnapshotHelpers } = {};
+    const emitFlowBackedRefreshRequests = vi.fn(async () => {
+      await helperRef.current?.refreshTargetDevicesSnapshot({ emitFlowBackedRefresh: false });
+    });
+
+    const helper = new AppSnapshotHelpers({
+      homey: mockHomeyInstance as any,
+      timers: new TimerRegistry(),
+      getDeviceManager: () => ({ refreshSnapshot } as any),
+      getPlanEngine: () => undefined,
+      getPlanService: () => ({
+        syncLivePlanState: vi.fn().mockResolvedValue(undefined),
+        syncHeadroomCardState: vi.fn(),
+        getLatestPlanSnapshot: vi.fn(),
+      } as any),
+      getLatestTargetSnapshot: () => [],
+      resolveManagedState: () => false,
+      isCapacityControlEnabled: () => false,
+      getStructuredLogger: () => undefined,
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      getNow: () => new Date('2026-03-21T10:00:00Z'),
+      logPeriodicStatus: vi.fn(),
+      disableUnsupportedDevices: vi.fn(),
+      getFlowReportedDeviceIds: vi.fn(() => ['dev-1']),
+      emitFlowBackedRefreshRequests,
+      recordPowerSample: vi.fn().mockResolvedValue(undefined),
+    });
+    helperRef.current = helper;
+    (helper as any).staleObservationRefreshStopped = false;
+
+    await helper.refreshTargetDevicesSnapshot();
+
+    expect(emitFlowBackedRefreshRequests).toHaveBeenCalledTimes(1);
+    expect(refreshSnapshot).toHaveBeenCalledTimes(2);
+  });
 });

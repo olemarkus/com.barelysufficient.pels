@@ -2478,6 +2478,46 @@ describe('periodic snapshot refresh scheduling', () => {
     expect((app as any).homeyEnergyHelpers.pollInterval).toBeUndefined();
   });
 
+  it('reuses a short-lived cache for flow-backed device autocomplete', async () => {
+    const app = createApp();
+    const getDevicesForDebug = vi.fn().mockResolvedValue([
+      { id: 'dev-1', name: 'Heater' },
+      { id: 'dev-2', name: 'Garage Charger' },
+    ]);
+    (app as any).deviceManager = { getDevicesForDebug };
+
+    const first = await (app as any).getHomeyDevicesForFlow();
+    const second = await (app as any).getHomeyDevicesForFlow();
+
+    expect(first).toEqual(second);
+    expect(getDevicesForDebug).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps snapshot refresh trigger fanout best-effort when one flow-backed trigger fails', async () => {
+    const app = createApp();
+    const warn = vi.fn();
+    (app as any).structuredLogger = {
+      child: vi.fn(() => ({ warn })),
+    };
+    vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation(() => ({
+      trigger: (_tokens?: unknown, state?: { deviceId?: string }) => (
+        state?.deviceId === 'dev-1'
+          ? Promise.reject(new Error('boom'))
+          : Promise.resolve(true)
+      ),
+      registerRunListener: vi.fn(),
+      registerArgumentAutocompleteListener: vi.fn(),
+    }));
+
+    await expect((app as any).emitFlowBackedRefreshRequests(['dev-1', 'dev-2'])).resolves.toBeUndefined();
+
+    expect(warn).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'flow_backed_refresh_request_failed',
+      deviceId: 'dev-1',
+      err: expect.objectContaining({ message: 'boom' }),
+    }));
+  });
+
   it('clears registered timers and flushes pending power tracker persistence on uninit', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
