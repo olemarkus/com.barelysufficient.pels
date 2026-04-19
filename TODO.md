@@ -19,6 +19,11 @@ file.
 
 ## P1 Observability and runtime diagnostics
 
+- [ ] Align `remainingReducibleControlledLoadW` / overshoot summary reporting with the actual
+      stepped-load shed candidate set so logs do not claim live reducible load when stepped
+      shedding has no actionable candidate.
+      Files: `lib/plan/planLogging.ts`, `lib/plan/planSheddingGuard.ts`,
+      overshoot/diagnostic tests.
 - [x] Keep default structured event payloads bounded. Normal diagnostics now avoid large
       per-device arrays and full change objects outside explicit incident/debug paths.
       Files: reconcile, incident, and rebuild logging paths.
@@ -68,6 +73,14 @@ file.
       plan snapshot/contracts/UI wiring.
 
 ## P1 Simplification follow-ups
+
+- [ ] Revisit startup/snapshot reconciliation in the headroom tracker so reconciliation-only
+      tracked drops do not create real headroom step-down cooldown state unless there is trusted
+      actuation evidence behind them.
+      Why P1: startup snapshot churn can currently inflate cooldown diagnostics and may still mask
+      the true cause of overshoot inaction incidents.
+      Files: `lib/plan/planHeadroomState.ts`, `lib/plan/planHeadroomSupport.ts`,
+      startup/headroom diagnostics tests.
 
 - [x] Keep simplifying `planReasons.ts` so decision flow now uses bounded internal reason codes
       before rendering display strings, instead of keying planner control flow directly off prose
