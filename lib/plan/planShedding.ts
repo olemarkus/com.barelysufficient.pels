@@ -15,6 +15,7 @@ import {
   resolveSteppedCandidatePower,
   resolveSteppedLoadPlanningKw,
   resolveSteppedLoadSheddingTarget,
+  resolveSteppedUnknownCurrentMeasuredShedding,
 } from './planSteppedLoad';
 import { getSteppedLoadLowestActiveStep } from '../utils/deviceControlProfiles';
 
@@ -550,15 +551,7 @@ function buildSteppedCandidate(params: {
       pendingTargetCommands: state.pendingTargetCommands,
     });
   }
-  // Advance past a pending step-down rather than re-issuing the same command.
-  // Only use the pending step when it is lower (a shed, not a restore).
-  const pendingIsLower = device.stepCommandPending
-    && device.desiredStepId
-    && device.desiredStepId !== device.selectedStepId
-    && resolveSteppedLoadPlanningKw(device, device.desiredStepId)
-      < resolveSteppedLoadPlanningKw(device, device.selectedStepId);
-  const effectiveCurrentStepId = pendingIsLower
-    ? device.desiredStepId : device.selectedStepId;
+  const effectiveCurrentStepId = resolveEffectiveCurrentStepIdForSteppedShedding(device);
   const steppedShedAction = shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off';
   const targetStep = resolveSteppedShedTargetStep({
     device,
@@ -568,7 +561,14 @@ function buildSteppedCandidate(params: {
     effectiveCurrentStepId,
   });
   const steppedTarget = resolveSteppedLoadSheddingTarget({ device, targetStep });
-  if (!steppedTarget) return null;
+  if (!steppedTarget) {
+    return buildUnknownCurrentMeasuredSteppedCandidate({
+      device,
+      priority,
+      recentlyRestored,
+      shedAction: steppedShedAction,
+    });
+  }
   const { steppedProfile, selectedStep, clampedTargetStep, hasUnconfirmedLowerDesiredStep } = steppedTarget;
   const lowestActiveStep = getSteppedLoadLowestActiveStep(steppedProfile);
   // Preemptive when the confirmed position is above the lowest active step,
@@ -590,6 +590,43 @@ function buildSteppedCandidate(params: {
     fromStepId: selectedStep.id,
     toStepId: clampedTargetStep.id,
     preemptiveStepDown,
+  };
+}
+
+function resolveEffectiveCurrentStepIdForSteppedShedding(device: PlanInputDevice): string | undefined {
+  // Advance past a pending step-down rather than re-issuing the same command.
+  // Only use the pending step when it is lower (a shed, not a restore).
+  const pendingIsLower = device.stepCommandPending
+    && device.desiredStepId
+    && device.selectedStepId
+    && device.desiredStepId !== device.selectedStepId
+    && resolveSteppedLoadPlanningKw(device, device.desiredStepId)
+      < resolveSteppedLoadPlanningKw(device, device.selectedStepId);
+  return pendingIsLower ? device.desiredStepId : device.selectedStepId;
+}
+
+function buildUnknownCurrentMeasuredSteppedCandidate(params: {
+  device: PlanInputDevice;
+  priority: number;
+  recentlyRestored: boolean;
+  shedAction: 'turn_off' | 'set_step';
+}): ShedCandidate | null {
+  const { device, priority, recentlyRestored, shedAction } = params;
+  const measuredFallback = resolveSteppedUnknownCurrentMeasuredShedding({
+    device,
+    shedAction,
+  });
+  if (!measuredFallback) return null;
+  return {
+    ...device,
+    kind: 'stepped',
+    priority,
+    recentlyRestored,
+    unconfirmedRelief: false,
+    effectivePower: measuredFallback.effectivePowerKw,
+    fromStepId: 'unknown',
+    toStepId: measuredFallback.targetStep.id,
+    preemptiveStepDown: shedAction === 'set_step',
   };
 }
 

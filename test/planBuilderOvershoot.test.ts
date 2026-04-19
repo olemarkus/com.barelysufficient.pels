@@ -3,6 +3,7 @@ import { recordActivationAttemptStart } from '../lib/plan/planActivationBackoff'
 import { PlanBuilder } from '../lib/plan/planBuilder';
 import { createPlanEngineState } from '../lib/plan/planState';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
+import { steppedInputDevice } from './utils/planTestUtils';
 
 const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
   id: 'dev',
@@ -125,6 +126,65 @@ describe('PlanBuilder overshoot diagnostics', () => {
       activeControlledDevices: 1,
       activePlannedShedDevices: 1,
     }));
+  });
+
+  it('sheds live measured stepped load during startup overshoot even when the current step is unknown', async () => {
+    const now = new Date('2026-04-15T11:04:01.000Z').getTime();
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.startupRestoreBlockedUntilMs = now + 60_000;
+    state.lastDeviceControlledMs['step-live'] = now - (10 * 60_000);
+    state.lastPlannedShedIds = new Set(['carryover-off']);
+
+    const capacityGuard = new CapacityGuard({ limitKw: 5, softMarginKw: 0 });
+    capacityGuard.reportTotalPower(4.461);
+
+    const builder = new PlanBuilder({
+      homey: { settings: { set: vi.fn() } } as never,
+      getCapacityGuard: () => capacityGuard,
+      getCapacitySettings: () => ({ limitKw: 5, marginKw: 0 }),
+      getOperatingMode: () => 'Home',
+      getModeDeviceTargets: () => ({}),
+      getPriceOptimizationEnabled: () => false,
+      getPriceOptimizationSettings: () => ({}),
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getPowerTracker: () => ({ lastTimestamp: now }),
+      getDailyBudgetSnapshot: () => null,
+      getPriorityForDevice: (deviceId: string) => (deviceId === 'step-live' ? 100 : 10),
+      getDynamicSoftLimitOverride: () => 2.0,
+      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+      structuredLog: { info: vi.fn() } as any,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+    }, state);
+
+    const plan = await builder.buildDevicePlanSnapshot([
+      {
+        ...steppedInputDevice({
+          id: 'step-live',
+          name: 'Connected 300',
+          currentOn: true,
+          currentState: 'on',
+          measuredPowerKw: 1.671,
+          expectedPowerKw: 1.25,
+        }),
+        selectedStepId: undefined,
+        desiredStepId: undefined,
+      },
+      buildDevice({
+        id: 'carryover-off',
+        name: 'Carryover Off',
+        currentOn: false,
+        currentState: 'off',
+        measuredPowerKw: 0,
+        expectedPowerKw: 0,
+      }),
+    ]);
+
+    const liveStepped = plan.devices.find((device) => device.id === 'step-live');
+    expect(liveStepped?.plannedState).toBe('shed');
+    expect(liveStepped?.reason?.code).toBe('capacity');
   });
 
   it('does not emit a changed overshoot summary when same-sample skip keeps authority unchanged', async () => {

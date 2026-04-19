@@ -333,3 +333,36 @@ export function resolveSteppedCandidatePower(
   }
   return measured;
 }
+
+export const resolveSteppedUnknownCurrentMeasuredShedding = (params: {
+  device: Pick<PlanInputDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId' | 'measuredPowerKw'>;
+  shedAction: 'turn_off' | 'set_step';
+}): {
+  targetStep: SteppedLoadStep;
+  effectivePowerKw: number;
+} | null => {
+  const { device, shedAction } = params;
+  if (!isSteppedLoadDevice(device) || device.selectedStepId) return null;
+  const steppedProfile = getSteppedLoadProfileForDevice(device);
+  if (!steppedProfile) return null;
+  const measuredPowerKw = typeof device.measuredPowerKw === 'number' && Number.isFinite(device.measuredPowerKw)
+    ? Math.max(0, device.measuredPowerKw)
+    : 0;
+  if (measuredPowerKw <= 0) return null;
+
+  const targetStep = shedAction === 'set_step'
+    ? getSteppedLoadLowestActiveStep(steppedProfile)
+    : (getSteppedLoadOffStep(steppedProfile) ?? getSteppedLoadLowestStep(steppedProfile));
+  if (!targetStep) return null;
+
+  const targetPlanningKw = targetStep.planningPowerW / 1000;
+  const effectivePowerKw = shedAction === 'set_step'
+    ? Math.max(0, measuredPowerKw - targetPlanningKw)
+    : measuredPowerKw;
+  if (effectivePowerKw <= 0) return null;
+
+  return {
+    targetStep,
+    effectivePowerKw,
+  };
+};

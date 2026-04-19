@@ -5,7 +5,11 @@ import type { PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanContext } from './planContext';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { resolveCandidatePower } from './planCandidatePower';
-import { getSteppedLoadShedTargetStep, isSteppedLoadDevice } from './planSteppedLoad';
+import {
+  getSteppedLoadShedTargetStep,
+  isSteppedLoadDevice,
+  resolveSteppedUnknownCurrentMeasuredShedding,
+} from './planSteppedLoad';
 import { buildPlanInputCapacityStateSummary } from './planLogging';
 import { sumControlledUsageKw } from './planUsage';
 
@@ -86,6 +90,12 @@ function canStillReduceSteppedLoad(
   const shedBehavior = getShedBehavior(device.id);
   if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
     return true;
+  }
+  if (!device.selectedStepId) {
+    return Boolean(resolveSteppedUnknownCurrentMeasuredShedding({
+      device,
+      shedAction: shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',
+    }));
   }
   const targetStep = getSteppedLoadShedTargetStep({
     device,
@@ -186,6 +196,12 @@ export function countRemainingCandidates(params: {
       if (isSteppedLoadDevice(d)) {
         const shedBehavior = getShedBehavior(d.id);
         if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) return true;
+        if (!d.selectedStepId) {
+          return Boolean(resolveSteppedUnknownCurrentMeasuredShedding({
+            device: d,
+            shedAction: shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',
+          }));
+        }
         const targetStep = getSteppedLoadShedTargetStep({
           device: d,
           shedAction: shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',
