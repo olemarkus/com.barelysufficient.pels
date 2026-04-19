@@ -33,7 +33,10 @@ import {
   resolveDailySoftLimitBucket,
 } from './planDailyBudgetWindow';
 import { recordActivationSetback } from './planActivationBackoff';
-import { OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS } from './planConstants';
+import {
+  OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS,
+  SOFT_OVERSHOOT_DEADBAND_KW,
+} from './planConstants';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './planOvershoot';
@@ -288,9 +291,9 @@ export class PlanBuilder {
           },
           devices: planDevices,
         }),
-        ...overshootDiagnostics,
+        ...overshootDiagnostics.logFields,
       });
-      this.attributeOvershootToRecentRestores(deviceNameById, nowTs);
+      this.attributeOvershootToRecentRestores(deviceNameById, nowTs, overshootDiagnostics);
     } else if (!overshootActive && prevOvershoot && this.state.overshootLogged) {
       this.state.overshootLogged = false;
       const durationMs = this.state.overshootStartedMs !== null
@@ -326,10 +329,17 @@ export class PlanBuilder {
   private attributeOvershootToRecentRestores(
     deviceNameById: ReadonlyMap<string, string>,
     nowTs: number,
+    overshootDiagnostics: OvershootEntryDiagnostics,
   ): void {
     // Only attribute to the single most recently restored device — it was the marginal addition
     // that tipped headroom negative. Devices restored earlier were already absorbed without
     // triggering overshoot, so penalizing them would be a false attribution.
+    if (
+      overshootDiagnostics.totalDeltaKw === null
+      || overshootDiagnostics.totalDeltaKw <= SOFT_OVERSHOOT_DEADBAND_KW
+    ) {
+      return;
+    }
     let latestDeviceId: string | null = null;
     let latestRestoreMs = 0;
     for (const [deviceId, restoreMs] of Object.entries(this.state.lastDeviceRestoreMs)) {
@@ -340,6 +350,12 @@ export class PlanBuilder {
       }
     }
     if (latestDeviceId === null) return;
+    const contributingRestore = overshootDiagnostics.contributors.find((contributor) => (
+      contributor.deviceId === latestDeviceId
+      && contributor.controllable
+      && contributor.deltaKw > 0
+    ));
+    if (!contributingRestore) return;
     const deviceName = deviceNameById.get(latestDeviceId);
     const result = recordActivationSetback({ state: this.state, deviceId: latestDeviceId, nowTs });
     if (result.bumped) {
@@ -753,6 +769,20 @@ type OvershootEntryContributor = {
 
 type ResolvedPowerSource = 'measured' | 'expected' | 'planning' | 'off' | 'unknown';
 
+type OvershootEntryDiagnostics = {
+  totalDeltaKw: number | null;
+  contributors: OvershootEntryContributor[];
+  logFields: {
+    overshootPlanAgeMs: number | null;
+    overshootPowerSampleAgeMs: number | null;
+    overshootTotalDeltaKw: number | null;
+    overshootAttributionDeltaKw: number;
+    overshootUnattributedDeltaKw: number | null;
+    overshootTopControlledContributors: OvershootEntryContributor[];
+    overshootTopUncontrolledContributors: OvershootEntryContributor[];
+  };
+};
+
 function buildOvershootEntryDiagnostics(params: {
   context: PlanContext;
   nowTs: number;
@@ -761,7 +791,7 @@ function buildOvershootEntryDiagnostics(params: {
   previousBuiltAtMs: number | null;
   previousDevicesById: Record<string, OvershootTrackedPlanDevice>;
   currentDevicesById: Record<string, OvershootTrackedPlanDevice>;
-}): Record<string, unknown> {
+}): OvershootEntryDiagnostics {
   const {
     context,
     nowTs,
@@ -793,15 +823,19 @@ function buildOvershootEntryDiagnostics(params: {
   const unattributedDeltaKw = totalDeltaKw === null ? null : roundOvershootKw(totalDeltaKw - attributedDeltaKw);
 
   return {
-    overshootPlanAgeMs: (
-      typeof previousBuiltAtMs === 'number' ? Math.max(0, nowTs - previousBuiltAtMs) : null
-    ),
-    overshootPowerSampleAgeMs: lastPowerUpdateMs !== null ? Math.max(0, nowTs - lastPowerUpdateMs) : null,
-    overshootTotalDeltaKw: totalDeltaKw,
-    overshootAttributionDeltaKw: attributedDeltaKw,
-    overshootUnattributedDeltaKw: unattributedDeltaKw,
-    overshootTopControlledContributors: controlled,
-    overshootTopUncontrolledContributors: uncontrolled,
+    totalDeltaKw,
+    contributors,
+    logFields: {
+      overshootPlanAgeMs: (
+        typeof previousBuiltAtMs === 'number' ? Math.max(0, nowTs - previousBuiltAtMs) : null
+      ),
+      overshootPowerSampleAgeMs: lastPowerUpdateMs !== null ? Math.max(0, nowTs - lastPowerUpdateMs) : null,
+      overshootTotalDeltaKw: totalDeltaKw,
+      overshootAttributionDeltaKw: attributedDeltaKw,
+      overshootUnattributedDeltaKw: unattributedDeltaKw,
+      overshootTopControlledContributors: controlled,
+      overshootTopUncontrolledContributors: uncontrolled,
+    },
   };
 }
 
