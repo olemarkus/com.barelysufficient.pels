@@ -824,6 +824,15 @@ class PelsApp extends Homey.App {
     try {
       const planState = this.planEngine?.state;
       const planConvergenceActive = isPlanConverging(planState, nowMs);
+      const latestPlanSummary = buildPlanCapacityStateSummary(
+        this.planService?.getLatestPlanSnapshot(),
+        {
+          summarySource: 'plan_snapshot',
+          summarySourceAtMs: this.planService?.getLatestPlanSnapshotUpdatedAtMs() ?? null,
+        },
+      );
+      const skipWhileShortfallUnrecoverable = latestPlanSummary.remainingReducibleControlledLoad === false
+        && latestPlanSummary.actuationInFlight === false;
       await recordPowerSampleForApp({
         currentPowerW,
         nowMs,
@@ -847,6 +856,7 @@ class PelsApp extends Homey.App {
             capacitySettings: this.capacitySettings,
             capacityGuard: this.capacityGuard,
             planConvergenceActive,
+            skipWhileShortfallUnrecoverable,
           });
         },
         saveState: (state) => this.savePowerTracker(state),

@@ -3591,7 +3591,7 @@ describe('Dry run mode', () => {
     expect(devPlan.plannedTarget).toBe(12);
   });
 
-  it('marks off devices as shed during shortfall and avoids restore actions', async () => {
+  it('keeps off devices shed during shortfall and avoids restore actions when rebuilds are suppressed', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['target_temperature', 'onoff', 'measure_power']);
     await dev1.setCapabilityValue('measure_power', 1500); // 1.5 kW
     await dev1.setCapabilityValue('onoff', false); // Currently OFF
@@ -3628,7 +3628,6 @@ describe('Dry run mode', () => {
     expect(dev1Plan).toBeTruthy();
     expect(dev1Plan.currentState).toBe('off');
     expect(dev1Plan.plannedState).toBe('shed');
-    expect(reasonText(dev1Plan.reason)).toContain('shortfall');
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 

@@ -1346,6 +1346,106 @@ describe('schedulePlanRebuildFromSignal', () => {
     expect(capacityGuard.isInShortfall()).toBe(false);
   });
 
+  it('skips full rebuilds while shortfall is active and no actionable reduction remains', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 5267, lastSoftLimitKw: 3.9 };
+    const capacityGuard = new CapacityGuard({
+      limitKw: 10,
+      softMarginKw: 0.5,
+      onShortfall: vi.fn(),
+    });
+    capacityGuard.setSoftLimitProvider(() => 3.9);
+    capacityGuard.setShortfallThresholdProvider(() => 4.961);
+    capacityGuard.reportTotalPower(5.267);
+    await capacityGuard.checkShortfall(false, 0.306);
+    const checkShortfallSpy = vi.spyOn(capacityGuard, 'checkShortfall');
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue({
+      actionChanged: false,
+      appliedActions: false,
+      failed: false,
+    });
+
+    await schedulePlanRebuildFromSignal({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 2000,
+      stableMinIntervalMs: 15000,
+      maxIntervalMs: 30000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 5300,
+      capacitySettings: { limitKw: 10, marginKw: 0.5 },
+      capacityGuard,
+      skipWhileShortfallUnrecoverable: true,
+    });
+
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+    expect(checkShortfallSpy).toHaveBeenLastCalledWith(false, expect.closeTo(0.306, 3));
+  });
+
+  it('keeps shortfall recovery checks alive while full rebuilds are suppressed', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 5267, lastSoftLimitKw: 3.9 };
+    const onShortfallCleared = vi.fn();
+    const capacityGuard = new CapacityGuard({
+      limitKw: 10,
+      softMarginKw: 0.5,
+      onShortfall: vi.fn(),
+      onShortfallCleared,
+    });
+    capacityGuard.setSoftLimitProvider(() => 3.9);
+    capacityGuard.setShortfallThresholdProvider(() => 4.961);
+    capacityGuard.reportTotalPower(5.267);
+    await capacityGuard.checkShortfall(false, 0.306);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue({
+      actionChanged: false,
+      appliedActions: false,
+      failed: false,
+    });
+
+    capacityGuard.reportTotalPower(4.6);
+    await schedulePlanRebuildFromSignal({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 2000,
+      stableMinIntervalMs: 15000,
+      maxIntervalMs: 30000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 4600,
+      capacitySettings: { limitKw: 10, marginKw: 0.5 },
+      capacityGuard,
+      skipWhileShortfallUnrecoverable: true,
+    });
+
+    expect(capacityGuard.isInShortfall()).toBe(true);
+    expect(onShortfallCleared).not.toHaveBeenCalled();
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(60_000);
+    await schedulePlanRebuildFromSignal({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 2000,
+      stableMinIntervalMs: 15000,
+      maxIntervalMs: 30000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 4600,
+      capacitySettings: { limitKw: 10, marginKw: 0.5 },
+      capacityGuard,
+      skipWhileShortfallUnrecoverable: true,
+    });
+
+    expect(capacityGuard.isInShortfall()).toBe(false);
+    expect(onShortfallCleared).toHaveBeenCalledTimes(1);
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+  });
+
   it('records rebuild timing after the async rebuild settles', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 9300, lastSoftLimitKw: 9.5 };
     let resolveRebuild: (() => void) | undefined;
