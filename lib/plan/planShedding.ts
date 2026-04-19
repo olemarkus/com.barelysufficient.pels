@@ -13,6 +13,7 @@ import {
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
   resolveSteppedCandidatePower,
+  resolveSteppedLoadCurrentStepIdForShedding,
   resolveSteppedLoadPlanningKw,
   resolveSteppedLoadSheddingTarget,
 } from './planSteppedLoad';
@@ -554,11 +555,11 @@ function buildSteppedCandidate(params: {
   // Only use the pending step when it is lower (a shed, not a restore).
   const pendingIsLower = device.stepCommandPending
     && device.desiredStepId
-    && device.desiredStepId !== device.selectedStepId
+    && device.desiredStepId !== resolveSteppedLoadCurrentStepIdForShedding(device)
     && resolveSteppedLoadPlanningKw(device, device.desiredStepId)
-      < resolveSteppedLoadPlanningKw(device, device.selectedStepId);
+      < resolveSteppedLoadPlanningKw(device, resolveSteppedLoadCurrentStepIdForShedding(device));
   const effectiveCurrentStepId = pendingIsLower
-    ? device.desiredStepId : device.selectedStepId;
+    ? device.desiredStepId : resolveSteppedLoadCurrentStepIdForShedding(device);
   const steppedShedAction = shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off';
   const targetStep = resolveSteppedShedTargetStep({
     device,

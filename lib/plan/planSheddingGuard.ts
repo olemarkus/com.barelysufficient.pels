@@ -5,7 +5,11 @@ import type { PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanContext } from './planContext';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { resolveCandidatePower } from './planCandidatePower';
-import { getSteppedLoadShedTargetStep, isSteppedLoadDevice } from './planSteppedLoad';
+import {
+  getSteppedLoadShedTargetStep,
+  isSteppedLoadDevice,
+  resolveSteppedLoadCurrentStepIdForShedding,
+} from './planSteppedLoad';
 import { buildPlanInputCapacityStateSummary } from './planLogging';
 import { sumControlledUsageKw } from './planUsage';
 
@@ -90,9 +94,9 @@ function canStillReduceSteppedLoad(
   const targetStep = getSteppedLoadShedTargetStep({
     device,
     shedAction: shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',
-    currentDesiredStepId: device.selectedStepId,
+    currentDesiredStepId: resolveSteppedLoadCurrentStepIdForShedding(device),
   });
-  return Boolean(targetStep && targetStep.id !== device.selectedStepId);
+  return Boolean(targetStep && targetStep.id !== resolveSteppedLoadCurrentStepIdForShedding(device));
 }
 
 function buildShortfallCapacityStateSummary(params: {
@@ -189,9 +193,9 @@ export function countRemainingCandidates(params: {
         const targetStep = getSteppedLoadShedTargetStep({
           device: d,
           shedAction: shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',
-          currentDesiredStepId: d.selectedStepId,
+          currentDesiredStepId: resolveSteppedLoadCurrentStepIdForShedding(d),
         });
-        return Boolean(targetStep && targetStep.id !== d.selectedStepId);
+        return Boolean(targetStep && targetStep.id !== resolveSteppedLoadCurrentStepIdForShedding(d));
       }
       return true;
     })
