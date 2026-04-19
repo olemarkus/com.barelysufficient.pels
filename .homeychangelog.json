@@ -312,6 +312,6 @@
     "en": "Fixes live countdowns in the UI. Also implements various stability fixes."
   },
   "2.1.29": {
-    "en": "Performance improvement when in capacity shortfall."
+    "en": "Tweaked penalty rules for device restores resulting in overshoots."
   }
 }
