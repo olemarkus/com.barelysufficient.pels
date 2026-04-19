@@ -124,10 +124,15 @@ export class AppSnapshotHelpers {
     }
 
     this.isSnapshotRefreshing = true;
+    let shouldEmitFlowBackedRefresh = options.emitFlowBackedRefresh !== false;
     try {
       do {
         this.snapshotRefreshPending = false;
-        await this.runSnapshotRefreshCycle(deviceManager, options);
+        await this.runSnapshotRefreshCycle(deviceManager, {
+          ...options,
+          emitFlowBackedRefresh: shouldEmitFlowBackedRefresh,
+        });
+        shouldEmitFlowBackedRefresh = false;
       } while (this.snapshotRefreshPending && !this.staleObservationRefreshStopped);
     } finally {
       this.isSnapshotRefreshing = false;

@@ -12,7 +12,6 @@ import {
     augmentCapabilitiesWithFlowReports,
     type FlowReportedCapabilityId,
     getFlowRequiredCapabilitiesForType,
-    hasAllFlowReportedCapabilities,
     resolveFlowAugmentedDeviceType,
     type FlowReportedCapabilitiesForDevice,
 } from './flowReportedCapabilities';
@@ -113,7 +112,6 @@ export function parseDevice(params: {
         capabilityObj,
         flowAugmentedDeviceType,
         flowBackedCapabilityIds,
-        reportedCapabilities,
         requiredFlowCapabilityIds,
     } = resolveFlowCapabilityOverlay({
         deviceClassKey,
@@ -183,7 +181,8 @@ export function parseDevice(params: {
     if (shouldSkipFlowBackedCandidate({
         flowAugmentedDeviceType,
         flowBackedCapabilityIds,
-        reportedCapabilities,
+        capabilities,
+        capabilityObj,
         requiredFlowCapabilityIds,
         powerCapable,
     })) {
@@ -305,7 +304,6 @@ function resolveFlowCapabilityOverlay(params: {
     capabilityObj: DeviceCapabilityMap;
     flowAugmentedDeviceType: ReturnType<typeof resolveFlowAugmentedDeviceType>;
     flowBackedCapabilityIds: FlowReportedCapabilityId[];
-    reportedCapabilities: FlowReportedCapabilitiesForDevice;
     requiredFlowCapabilityIds: readonly FlowReportedCapabilityId[];
 } {
     const {
@@ -338,7 +336,6 @@ function resolveFlowCapabilityOverlay(params: {
         capabilityObj,
         flowAugmentedDeviceType,
         flowBackedCapabilityIds,
-        reportedCapabilities,
         requiredFlowCapabilityIds,
     };
 }
@@ -346,26 +343,41 @@ function resolveFlowCapabilityOverlay(params: {
 function shouldSkipFlowBackedCandidate(params: {
     flowAugmentedDeviceType: ReturnType<typeof resolveFlowAugmentedDeviceType>;
     flowBackedCapabilityIds: FlowReportedCapabilityId[];
-    reportedCapabilities: FlowReportedCapabilitiesForDevice;
+    capabilities: readonly string[];
+    capabilityObj: DeviceCapabilityMap;
     requiredFlowCapabilityIds: readonly FlowReportedCapabilityId[];
     powerCapable: boolean;
 }): boolean {
     const {
         flowAugmentedDeviceType,
         flowBackedCapabilityIds,
-        reportedCapabilities,
+        capabilities,
+        capabilityObj,
         requiredFlowCapabilityIds,
         powerCapable,
     } = params;
     if (flowAugmentedDeviceType === 'unsupported') return false;
 
     const hasIncompleteFlowSupport = flowBackedCapabilityIds.length > 0
-        && !hasAllFlowReportedCapabilities({
-            reportedCapabilities,
+        && !hasAllRequiredFlowCapabilitiesInEffectiveView({
+            capabilities,
+            capabilityObj,
             requiredCapabilityIds: requiredFlowCapabilityIds,
         });
     const isMissingDirectPowerSupport = flowBackedCapabilityIds.length === 0 && powerCapable === false;
     return hasIncompleteFlowSupport || isMissingDirectPowerSupport;
+}
+
+function hasAllRequiredFlowCapabilitiesInEffectiveView(params: {
+    capabilities: readonly string[];
+    capabilityObj: DeviceCapabilityMap;
+    requiredCapabilityIds: readonly FlowReportedCapabilityId[];
+}): boolean {
+    const { capabilities, capabilityObj, requiredCapabilityIds } = params;
+    const capabilitySet = new Set(capabilities);
+    return requiredCapabilityIds.every((capabilityId) => (
+        capabilitySet.has(capabilityId) && capabilityObj[capabilityId] !== undefined
+    ));
 }
 
 function resolveParsedDeviceSettings(
