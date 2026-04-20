@@ -40,20 +40,6 @@ export function registerFlowBackedDeviceCards(deps: FlowCardDeps): void {
     requiredMissingCapabilityId: 'evcharger_charging',
   });
 
-  registerFlowBackedCapabilityCard({
-    deps,
-    cardId: 'report_flow_backed_device_power',
-    capabilityId: 'measure_power',
-    target: 'binary_or_evcharger',
-    parseValue: (rawValue) => {
-      const power = parseFlowPowerInput(rawValue);
-      if (power === null || power < 0) {
-        throw new Error('Power must be provided as a non-negative number or text like "1750 W".');
-      }
-      return power;
-    },
-  });
-
   registerBooleanCapabilityCard({
     deps,
     cardId: 'report_flow_backed_device_onoff',
@@ -157,13 +143,12 @@ function registerFlowBackedCapabilityCard(params: {
   } = params;
   const card = deps.homey.flow.getActionCard(cardId);
   card.registerRunListener(async (args: unknown) => {
-    const payload = args as { device?: DeviceArg; state?: unknown; power_w?: unknown } | null;
+    const payload = args as { device?: DeviceArg; state?: unknown } | null;
     const deviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
     if (!deviceId) throw new Error('Device must be provided.');
     const device = await requireSupportedFlowBackedDevice(deps, deviceId, target);
 
-    const rawValue = capabilityId === 'measure_power' ? payload?.power_w : payload?.state;
-    const value = parseValue(rawValue);
+    const value = parseValue(payload?.state);
     const nativeCapabilityPresent = isCapabilityProvidedNatively({
       device,
       capabilityId,
@@ -385,14 +370,6 @@ function isCapabilityProvidedNatively(params: {
 }): boolean {
   const { device, capabilityId } = params;
   const capabilities = getCapabilities(device);
-  if (capabilityId === 'measure_power') {
-    return capabilities.some((nativeCapabilityId) => (
-      nativeCapabilityId === 'measure_power'
-      || nativeCapabilityId === 'meter_power'
-      || nativeCapabilityId.startsWith('measure_power.')
-      || nativeCapabilityId.startsWith('meter_power.')
-    ));
-  }
   return capabilities.includes(capabilityId);
 }
 
