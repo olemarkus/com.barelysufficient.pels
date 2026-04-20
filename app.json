@@ -178,13 +178,13 @@
       },
       {
         "title": {
-          "en": "PELS requests state refresh for"
+          "en": "PELS requests updated state for"
         },
         "titleFormatted": {
-          "en": "PELS requests state refresh for [[device]]"
+          "en": "PELS requests updated state for [[device]]"
         },
         "hint": {
-          "en": "Triggers when PELS wants fresh flow-backed state for an existing Homey device. This trigger never mutates device state by itself."
+          "en": "Triggers when PELS wants updated state for an existing Homey device. This card only requests data and does not change device state."
         },
         "args": [
           {
@@ -194,7 +194,7 @@
               "en": "Device"
             },
             "placeholder": {
-              "en": "Select Homey device"
+              "en": "Select device"
             }
           }
         ],
@@ -700,13 +700,13 @@
       },
       {
         "title": {
-          "en": "Set flow-backed EV charging for device"
+          "en": "Set EV charging for device"
         },
         "titleFormatted": {
           "en": "Set EV charging for [[device]] to [[state]]"
         },
         "hint": {
-          "en": "Reports the observed EV charging boolean state for an existing Homey EV charger so PELS can use it as flow-backed observed state."
+          "en": "Reports whether an existing Homey EV charger is charging."
         },
         "args": [
           {
@@ -716,7 +716,7 @@
               "en": "Device"
             },
             "placeholder": {
-              "en": "Select Homey EV charger"
+              "en": "Select EV charger"
             }
           },
           {
@@ -734,13 +734,13 @@
       },
       {
         "title": {
-          "en": "Set flow-backed EV charging state for device"
+          "en": "Set EV charging state for device"
         },
         "titleFormatted": {
           "en": "Set EV charging state for [[device]] to [[state]]"
         },
         "hint": {
-          "en": "Reports the observed EV charging state for an existing Homey EV charger so PELS can use it as flow-backed observed state."
+          "en": "Reports the current charging state for an existing Homey EV charger."
         },
         "args": [
           {
@@ -750,7 +750,7 @@
               "en": "Device"
             },
             "placeholder": {
-              "en": "Select Homey EV charger"
+              "en": "Select EV charger"
             }
           },
           {
@@ -760,7 +760,7 @@
               "en": "State"
             },
             "placeholder": {
-              "en": "Select EV charging state"
+              "en": "Select charging state"
             }
           }
         ],
@@ -768,13 +768,13 @@
       },
       {
         "title": {
-          "en": "Set flow-backed on/off state for device"
+          "en": "Set on/off state for device"
         },
         "titleFormatted": {
           "en": "Set on/off state for [[device]] to [[state]]"
         },
         "hint": {
-          "en": "Reports the observed on/off state for an existing Homey device so PELS can use it as flow-backed observed state."
+          "en": "Reports the current on/off state for an existing Homey device."
         },
         "args": [
           {
@@ -784,7 +784,7 @@
               "en": "Device"
             },
             "placeholder": {
-              "en": "Select Homey device"
+              "en": "Select device"
             }
           },
           {
@@ -802,13 +802,13 @@
       },
       {
         "title": {
-          "en": "Set flow-backed power usage for device"
+          "en": "Set power usage for device"
         },
         "titleFormatted": {
           "en": "Set power usage for [[device]] to [[power_w]] W"
         },
         "hint": {
-          "en": "Reports instantaneous power usage for an existing Homey device so PELS can use it as flow-backed observed state."
+          "en": "Reports current power usage for an existing Homey device."
         },
         "args": [
           {
@@ -818,7 +818,7 @@
               "en": "Device"
             },
             "placeholder": {
-              "en": "Select Homey device"
+              "en": "Select device"
             }
           },
           {

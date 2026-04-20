@@ -91,6 +91,7 @@ import {
 import { TimerRegistry } from './lib/app/timerRegistry';
 import {
   getFlowReportedDeviceIds,
+  getFlowRefreshRequestedDeviceIds,
   parseFlowReportedCapabilities,
   upsertFlowReportedCapability,
   type FlowReportedCapabilityId,
@@ -280,10 +281,17 @@ class PelsApp extends Homey.App {
     if (deviceIds.length === 0) return;
     const card = this.homey.flow?.getTriggerCard?.('flow_backed_device_refresh_requested');
     if (!card?.trigger) return;
+    const eligibleDeviceIds = getFlowRefreshRequestedDeviceIds({
+      state: this.flowReportedCapabilities,
+      devices: await this.getHomeyDevicesForFlow(),
+      experimentalEvSupportEnabled: this.experimentalEvSupportEnabled,
+      candidateDeviceIds: deviceIds,
+    });
+    if (eligibleDeviceIds.length === 0) return;
 
     const seen = new Set<string>();
     const triggers: Array<{ deviceId: string; trigger: Promise<unknown> }> = [];
-    for (const rawDeviceId of deviceIds) {
+    for (const rawDeviceId of eligibleDeviceIds) {
       const deviceId = rawDeviceId.trim();
       if (!deviceId || seen.has(deviceId)) continue;
       seen.add(deviceId);

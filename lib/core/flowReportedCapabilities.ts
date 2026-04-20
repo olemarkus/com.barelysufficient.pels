@@ -1,4 +1,6 @@
+import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceCapabilityMap, DeviceCapabilityValue } from './deviceManagerControl';
+import { getCapabilities, resolveDeviceClassKey } from './deviceManagerHelpers';
 
 export const FLOW_REPORTED_CAPABILITY_IDS = [
   'onoff',
@@ -88,6 +90,50 @@ export function getFlowReportedDeviceIds(state: FlowReportedCapabilitiesByDevice
   return Object.keys(state ?? {});
 }
 
+export function getFlowRefreshRequestedDeviceIds(params: {
+  state: FlowReportedCapabilitiesByDevice | undefined;
+  devices: HomeyDeviceLike[];
+  experimentalEvSupportEnabled: boolean;
+  candidateDeviceIds?: readonly string[];
+}): string[] {
+  const {
+    state,
+    devices,
+    experimentalEvSupportEnabled,
+    candidateDeviceIds,
+  } = params;
+  if (!state) return [];
+
+  const deviceById = new Map(devices.map((device) => [device.id, device]));
+  const deviceIds = candidateDeviceIds ?? Object.keys(state);
+
+  return deviceIds.filter((deviceId) => {
+    const reportedCapabilities = state[deviceId];
+    if (!reportedCapabilities) return false;
+
+    const device = deviceById.get(deviceId);
+    if (!device) return false;
+
+    const deviceClassKey = resolveDeviceClassKey({
+      device,
+      experimentalEvSupportEnabled,
+    });
+    if (!deviceClassKey) return false;
+
+    const capabilities = getCapabilities(device);
+    const targetCapabilityIds = capabilities.filter((capabilityId) => capabilityId.startsWith('target_temperature'));
+    const deviceType = resolveFlowAugmentedDeviceType({
+      deviceClassKey,
+      targetCapabilityIds,
+    });
+    if (deviceType === 'unsupported') return false;
+
+    return getFlowRequiredCapabilitiesForType(deviceType).some((capabilityId) => (
+      reportedCapabilities[capabilityId] && !isCapabilityProvidedNatively(capabilityId, capabilities)
+    ));
+  });
+}
+
 export function resolveFlowAugmentedDeviceType(params: {
   deviceClassKey: string;
   targetCapabilityIds: readonly string[];
@@ -138,6 +184,7 @@ export function augmentCapabilitiesWithFlowReports(params: {
   for (const capabilityId of allowedCapabilityIds) {
     const reportedEntry = reportedCapabilities[capabilityId];
     if (!reportedEntry) continue;
+    if (capabilities.includes(capabilityId)) continue;
 
     nextCapabilities.add(capabilityId);
     flowBackedCapabilityIds.push(capabilityId);
@@ -171,9 +218,7 @@ function buildFlowBackedCapabilityValue(params: {
     rawCapabilityPresent,
   } = params;
 
-  const rawCapabilityLastUpdatedMs = resolveCapabilityLastUpdatedMs(rawCapability);
-  if (rawCapabilityPresent && rawCapability && rawCapabilityLastUpdatedMs !== undefined
-    && rawCapabilityLastUpdatedMs >= reportedEntry.reportedAt) {
+  if (rawCapabilityPresent && rawCapability) {
     return { ...rawCapability };
   }
 
@@ -190,24 +235,6 @@ function buildFlowBackedCapabilityValue(params: {
   return nextValue;
 }
 
-function resolveCapabilityLastUpdatedMs(value: DeviceCapabilityValue | undefined): number | undefined {
-  const rawValue = value?.lastUpdated;
-  if (typeof rawValue === 'number') {
-    return Number.isFinite(rawValue) && rawValue > 0 ? rawValue : undefined;
-  }
-  if (rawValue instanceof Date) {
-    const parsed = rawValue.getTime();
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-  }
-  if (typeof rawValue === 'string') {
-    const numeric = Number(rawValue);
-    if (Number.isFinite(numeric) && numeric > 0) return numeric;
-    const parsed = Date.parse(rawValue);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-  }
-  return undefined;
-}
-
 function parseFlowReportedDeviceEntry(
   deviceEntry: Record<string, unknown>,
 ): Partial<Record<FlowReportedCapabilityId, FlowReportedCapabilityEntry>> {
@@ -222,6 +249,21 @@ function parseFlowReportedDeviceEntry(
   }
 
   return nextDeviceEntry;
+}
+
+function isCapabilityProvidedNatively(
+  capabilityId: FlowReportedCapabilityId,
+  capabilities: readonly string[],
+): boolean {
+  if (capabilityId === 'measure_power') {
+    return capabilities.some((nativeCapabilityId) => (
+      nativeCapabilityId === 'measure_power'
+      || nativeCapabilityId.startsWith('measure_power.')
+      || nativeCapabilityId === 'meter_power'
+      || nativeCapabilityId.startsWith('meter_power.')
+    ));
+  }
+  return capabilities.includes(capabilityId);
 }
 
 function parseFlowReportedEntry(
