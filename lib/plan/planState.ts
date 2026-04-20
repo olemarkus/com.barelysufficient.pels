@@ -36,9 +36,6 @@ export type HeadroomCardState = {
   lastObservedKwSource?: HeadroomDeviceKwSource;
   deviceName?: string;
   lastStepDownMs?: number;
-  cooldownUntilMs?: number;
-  cooldownFromKw?: number;
-  cooldownToKw?: number;
 };
 
 export type SwapEntry = {

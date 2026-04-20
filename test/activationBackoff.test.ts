@@ -716,9 +716,10 @@ describe('activation backoff', () => {
       requiredKw: 1.1,
       nowTs: start + 2 * 60 * 1000,
     });
-    expect(setbackDecision?.cooldownSource).toBe('step_down');
+    expect(setbackDecision?.cooldownSource).toBeNull();
     expect(setbackDecision?.observedKwSource).toBe('measuredPowerKw');
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
+    expect(setbackDecision?.allowed).toBe(true);
 
     const recoveredDevice = {
       ...steppedUpDevice,

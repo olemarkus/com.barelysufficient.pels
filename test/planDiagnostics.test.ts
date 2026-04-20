@@ -452,7 +452,7 @@ describe('plan diagnostics observations', () => {
     expect(restoreObservation.suppressionState).toBe('paused');
   });
 
-  it('treats keep devices with headroom cooldown metadata as paused by headroom cooldown', () => {
+  it('treats keep devices with explicit PELS cooldown metadata as paused by headroom cooldown', () => {
     const observation = buildObservation({
       inputDevice: {
         id: 'heater-1',
@@ -479,7 +479,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         currentTemperature: 18,
         headroomCardBlocked: true,
-        headroomCardCooldownSource: 'step_down',
+        headroomCardCooldownSource: 'pels_shed',
       },
       desiredForMode: { 'heater-1': 21 },
     });
@@ -515,7 +515,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         currentTemperature: 18,
         headroomCardBlocked: true,
-        headroomCardCooldownSource: 'step_down',
+        headroomCardCooldownSource: 'pels_shed',
       },
       desiredForMode: { 'heater-1': 21 },
     });

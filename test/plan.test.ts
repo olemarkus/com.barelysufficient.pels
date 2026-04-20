@@ -1158,7 +1158,7 @@ describe('Device plan snapshot', () => {
     expect(reasonText(devPlan?.reason)).not.toContain('cooldown');
   });
 
-  it('keeps the selected keep reason on active devices after a meaningful tracked step-down', async () => {
+  it('does not invent cooldown metadata after a meaningful tracked step-down', async () => {
     const dev1 = new MockDevice('dev-1', 'EV Charger', ['measure_power', 'onoff']);
     await dev1.setCapabilityValue('measure_power', 1190);
     await dev1.setCapabilityValue('onoff', true);
@@ -1195,12 +1195,11 @@ describe('Device plan snapshot', () => {
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('keep');
     expect(reasonText(devPlan?.reason)).toBe('keep');
-    expect(devPlan?.headroomCardBlocked).toBe(true);
-    expect(devPlan?.headroomCardCooldownSec).toBeGreaterThanOrEqual(55);
-    expect(devPlan?.headroomCardCooldownSec).toBeLessThanOrEqual(60);
-    expect(devPlan?.headroomCardCooldownSource).toBe('step_down');
-    expect(devPlan?.headroomCardCooldownFromKw).toBe(3.5);
-    expect(devPlan?.headroomCardCooldownToKw).toBeCloseTo(1.19, 2);
+    expect(devPlan?.headroomCardBlocked).toBeUndefined();
+    expect(devPlan?.headroomCardCooldownSec).toBeUndefined();
+    expect(devPlan?.headroomCardCooldownSource).toBeUndefined();
+    expect(devPlan?.headroomCardCooldownFromKw).toBeUndefined();
+    expect(devPlan?.headroomCardCooldownToKw).toBeUndefined();
   });
 
   it('marks off devices as staying off during cooldown with a short reason', async () => {

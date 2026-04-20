@@ -123,7 +123,7 @@ describe('pels status limit reason', () => {
           reason: legacyDeviceReason('keep'),
           headroomCardBlocked: true,
           headroomCardCooldownSec: 45,
-          headroomCardCooldownSource: 'step_down',
+          headroomCardCooldownSource: 'pels_shed',
           headroomCardCooldownFromKw: 6,
           headroomCardCooldownToKw: 3.5,
         },

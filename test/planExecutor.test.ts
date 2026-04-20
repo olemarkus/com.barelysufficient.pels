@@ -1296,6 +1296,44 @@ describe('PlanExecutor stepped loads', () => {
     );
   });
 
+  it('records shed actuation when a stepped device sheds by stepping down while remaining on', async () => {
+    const state = createPlanEngineState();
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(state, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'shed',
+      shedAction: 'set_step',
+      selectedStepId: 'max',
+      desiredStepId: 'low',
+    }));
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect(state.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.lastDeviceRestoreMs['dev-1']).toBeUndefined();
+    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_command_requested',
+      effectiveTransition: 'step_down_while_on',
+      desiredStepId: 'low',
+      previousStepId: 'max',
+      mode: 'plan',
+    }));
+  });
+
   it('records restore actuation when a plan-mode restore starts by moving from off-step to low', async () => {
     const state = createPlanEngineState();
     const snapshot = [
