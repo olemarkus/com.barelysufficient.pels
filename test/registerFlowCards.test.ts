@@ -186,7 +186,7 @@ describe('registerFlowCards', () => {
     expect(deps.rebuildPlan).not.toHaveBeenCalled();
   });
 
-  it('preserves a specific rejection reason when the service rejects the reported step', async () => {
+  it('logs one terminal rejection event when the service rejects the reported step', async () => {
     const { deps, actionListeners, structuredInfo, structuredWarn } = buildDeps({
       reportSteppedLoadActualStep: vi.fn(() => 'invalid'),
       getSnapshot: vi.fn().mockResolvedValue([
@@ -212,15 +212,10 @@ describe('registerFlowCards', () => {
       step: 'max',
     })).rejects.toThrow('Device is not configured as a stepped load, or the reported step is invalid.');
 
-    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'stepped_load_report_resolved',
-      sourceCardId: 'report_stepped_load_actual_step',
-      deviceId: 'dev-1',
-      deviceName: 'Tank',
-      resolvedStepId: 'max',
-      outcome: 'rejected',
-      reasonCode: 'invalid_step_report',
-    }));
+    const resolvedEvents = structuredInfo.mock.calls.filter(([payload]) => (
+      payload && typeof payload === 'object' && (payload as { event?: string }).event === 'stepped_load_report_resolved'
+    ));
+    expect(resolvedEvents).toHaveLength(0);
     expect(structuredWarn).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_load_report_rejected',
       sourceCardId: 'report_stepped_load_actual_step',

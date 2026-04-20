@@ -307,16 +307,6 @@ async function handleSteppedLoadReportResult(params: {
     parsedPowerW,
   } = params;
   if (result === 'invalid') {
-    emitSteppedLoadReportResolvedLog({
-      deps,
-      sourceCardId: source,
-      deviceId,
-      deviceName,
-      resolvedStepId,
-      parsedPowerW,
-      outcome: 'rejected',
-      reasonCode: 'invalid_step_report',
-    });
     throw createSteppedLoadReportError(
       'invalid_step',
       'Device is not configured as a stepped load, or the reported step is invalid.',
