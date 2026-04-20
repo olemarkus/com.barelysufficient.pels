@@ -509,6 +509,122 @@ describe('restore cooldown backoff', () => {
     expect(reasonText(offDevice?.reason)).toBe('waiting for other devices to recover');
   });
 
+  it('does not re-admit the same stepped restore while that step is still awaiting confirmation', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'on',
+          selectedStepId: 'low',
+          desiredStepId: 'medium',
+          lastDesiredStepId: 'medium',
+          lastStepCommandIssuedAt: now - 10_000,
+          stepCommandPending: true,
+          stepCommandStatus: 'pending',
+          measuredPowerKw: 1.25,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+
+    expect(steppedDevice?.desiredStepId).toBe('medium');
+    expect(reasonText(steppedDevice?.reason)).toBe('restore pending (80s remaining)');
+    expect(result.availableHeadroom).toBe(5);
+    expect(result.restoredOneThisCycle).toBe(false);
+  });
+
+  it('holds a timed-out stepped restore in retry backoff instead of re-admitting immediately', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'on',
+          selectedStepId: 'low',
+          desiredStepId: 'medium',
+          lastDesiredStepId: 'medium',
+          lastStepCommandIssuedAt: now - 95_000,
+          stepCommandPending: false,
+          stepCommandStatus: 'stale',
+          nextStepCommandRetryAtMs: now + 30_000,
+          measuredPowerKw: 1.25,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+
+    expect(steppedDevice?.desiredStepId).toBe('medium');
+    expect(reasonText(steppedDevice?.reason)).toBe('restore pending (30s remaining)');
+    expect(result.availableHeadroom).toBe(5);
+    expect(result.restoredOneThisCycle).toBe(false);
+  });
+
+  it('re-admits a timed-out stepped restore once retry backoff has expired', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'on',
+          selectedStepId: 'low',
+          desiredStepId: 'medium',
+          lastDesiredStepId: 'medium',
+          lastStepCommandIssuedAt: now - 95_000,
+          stepCommandPending: false,
+          stepCommandStatus: 'stale',
+          nextStepCommandRetryAtMs: now - 1_000,
+          measuredPowerKw: 1.25,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+
+    expect(steppedDevice?.desiredStepId).toBe('medium');
+    expect(reasonText(steppedDevice?.reason)).toBe('restore low -> medium (need 0.95kW)');
+    expect(result.availableHeadroom).toBeCloseTo(4.05);
+    expect(result.restoredOneThisCycle).toBe(true);
+  });
+
   it('does not block ordinary restore when another shed-temperature device is temporarily unavailable rather than recovering', () => {
     const state = createPlanEngineState();
     state.lastDeviceShedMs['dev-temp'] = Date.now() - 30_000;
