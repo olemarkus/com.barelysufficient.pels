@@ -491,4 +491,414 @@ describe('PlanBuilder overshoot diagnostics', () => {
       vi.useRealTimers();
     }
   });
+
+  it('does not attribute a later overshoot after a thermostat restore has shown load and survived the next power sample', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createPlanEngineState();
+      const start = new Date('2026-04-15T11:04:01.000Z').getTime();
+      vi.setSystemTime(start);
+      state.lastDeviceRestoreMs['restored-thermostat'] = start - 1_000;
+      recordActivationAttemptStart({
+        state,
+        deviceId: 'restored-thermostat',
+        source: 'pels_restore',
+        nowTs: start - 1_000,
+      });
+
+      const structuredLog = { info: vi.fn() };
+      const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
+
+      const builder = new PlanBuilder({
+        homey: { settings: { set: vi.fn() } } as never,
+        getCapacityGuard: () => capacityGuard,
+        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getDailyBudgetSnapshot: () => null,
+        getPriorityForDevice: () => 100,
+        getDynamicSoftLimitOverride: () => 1.0,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        structuredLog: structuredLog as any,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      }, state);
+
+      capacityGuard.reportTotalPower(0.4);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'restored-thermostat',
+          name: 'Restored Thermostat',
+          deviceClass: 'thermostat',
+          currentOn: true,
+          measuredPowerKw: 0,
+        }),
+      ]);
+
+      vi.setSystemTime(start + 10_000);
+      capacityGuard.reportTotalPower(0.7);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'restored-thermostat',
+          name: 'Restored Thermostat',
+          deviceClass: 'thermostat',
+          currentOn: true,
+          measuredPowerKw: 0.2,
+          lastFreshDataMs: start + 10_000,
+        }),
+      ]);
+
+      vi.setSystemTime(start + 20_000);
+      capacityGuard.reportTotalPower(0.75);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'restored-thermostat',
+          name: 'Restored Thermostat',
+          deviceClass: 'thermostat',
+          currentOn: true,
+          measuredPowerKw: 0.2,
+          lastFreshDataMs: start + 20_000,
+        }),
+      ]);
+
+      structuredLog.info.mockClear();
+
+      vi.setSystemTime(start + 30_000);
+      capacityGuard.reportTotalPower(1.3);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'restored-thermostat',
+          name: 'Restored Thermostat',
+          deviceClass: 'thermostat',
+          currentOn: true,
+          measuredPowerKw: 0.8,
+          lastFreshDataMs: start + 30_000,
+        }),
+      ]);
+
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_entered',
+        overshootTotalDeltaKw: 0.55,
+      }));
+      expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_attributed',
+        deviceId: 'restored-thermostat',
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps attribution open through a pending soft overshoot until a truly clean sample arrives', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createPlanEngineState();
+      const start = new Date('2026-04-15T11:04:01.000Z').getTime();
+      vi.setSystemTime(start);
+      state.lastDeviceRestoreMs['restored-thermostat'] = start - 1_000;
+      recordActivationAttemptStart({
+        state,
+        deviceId: 'restored-thermostat',
+        source: 'pels_restore',
+        nowTs: start - 1_000,
+      });
+
+      const structuredLog = { info: vi.fn() };
+      const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
+
+      const builder = new PlanBuilder({
+        homey: { settings: { set: vi.fn() } } as never,
+        getCapacityGuard: () => capacityGuard,
+        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getDailyBudgetSnapshot: () => null,
+        getPriorityForDevice: () => 100,
+        getDynamicSoftLimitOverride: () => 1.0,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        structuredLog: structuredLog as any,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      }, state);
+
+      capacityGuard.reportTotalPower(0.4);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'restored-thermostat',
+          name: 'Restored Thermostat',
+          deviceClass: 'thermostat',
+          currentState: 'on',
+          currentOn: true,
+          measuredPowerKw: 0,
+        }),
+      ]);
+
+      vi.setSystemTime(start + 10_000);
+      capacityGuard.reportTotalPower(0.7);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'restored-thermostat',
+          name: 'Restored Thermostat',
+          deviceClass: 'thermostat',
+          currentState: 'on',
+          currentOn: true,
+          measuredPowerKw: 0.2,
+          lastFreshDataMs: start + 10_000,
+        }),
+      ]);
+
+      vi.setSystemTime(start + 20_000);
+      capacityGuard.reportTotalPower(1.03);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'restored-thermostat',
+          name: 'Restored Thermostat',
+          deviceClass: 'thermostat',
+          currentState: 'on',
+          currentOn: true,
+          measuredPowerKw: 0.25,
+          lastFreshDataMs: start + 20_000,
+        }),
+      ]);
+
+      expect(state.activationAttemptByDevice['restored-thermostat']).toMatchObject({
+        startedMs: start - 1_000,
+        observedActivePowerAtMs: start + 10_000,
+      });
+
+      structuredLog.info.mockClear();
+
+      vi.setSystemTime(start + 30_000);
+      capacityGuard.reportTotalPower(1.3);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'restored-thermostat',
+          name: 'Restored Thermostat',
+          deviceClass: 'thermostat',
+          currentState: 'on',
+          currentOn: true,
+          measuredPowerKw: 0.8,
+          lastFreshDataMs: start + 30_000,
+        }),
+      ]);
+
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_entered',
+      }));
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_attributed',
+        deviceId: 'restored-thermostat',
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not close restore attribution on a stale-hold rebuild with non-negative synthetic headroom', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createPlanEngineState();
+      const start = new Date('2026-04-15T11:04:01.000Z').getTime();
+      let lastTimestamp = start;
+      vi.setSystemTime(start);
+      state.lastDeviceRestoreMs['restored-thermostat'] = start - 1_000;
+      recordActivationAttemptStart({
+        state,
+        deviceId: 'restored-thermostat',
+        source: 'pels_restore',
+        nowTs: start - 1_000,
+      });
+
+      const structuredLog = { info: vi.fn() };
+      const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
+
+      const builder = new PlanBuilder({
+        homey: { settings: { set: vi.fn() } } as never,
+        getCapacityGuard: () => capacityGuard,
+        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPowerTracker: () => ({ lastTimestamp }),
+        getDailyBudgetSnapshot: () => null,
+        getPriorityForDevice: () => 100,
+        getDynamicSoftLimitOverride: () => 1.0,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        structuredLog: structuredLog as any,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      }, state);
+
+      capacityGuard.reportTotalPower(0.4);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'restored-thermostat',
+          name: 'Restored Thermostat',
+          deviceClass: 'thermostat',
+          currentState: 'on',
+          currentOn: true,
+          measuredPowerKw: 0,
+        }),
+      ]);
+
+      vi.setSystemTime(start + 10_000);
+      lastTimestamp = start + 10_000;
+      capacityGuard.reportTotalPower(0.7);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'restored-thermostat',
+          name: 'Restored Thermostat',
+          deviceClass: 'thermostat',
+          currentState: 'on',
+          currentOn: true,
+          measuredPowerKw: 0.2,
+          lastFreshDataMs: start + 10_000,
+        }),
+      ]);
+
+      lastTimestamp = start + 20_000;
+      vi.setSystemTime(start + 90_000);
+      capacityGuard.reportTotalPower(0.75);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'restored-thermostat',
+          name: 'Restored Thermostat',
+          deviceClass: 'thermostat',
+          currentState: 'on',
+          currentOn: true,
+          measuredPowerKw: 0.2,
+          lastFreshDataMs: start + 10_000,
+        }),
+      ]);
+
+      expect(state.activationAttemptByDevice['restored-thermostat']).toMatchObject({
+        startedMs: start - 1_000,
+        observedActivePowerAtMs: start + 10_000,
+      });
+
+      structuredLog.info.mockClear();
+
+      vi.setSystemTime(start + 100_000);
+      lastTimestamp = start + 100_000;
+      capacityGuard.reportTotalPower(1.3);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'restored-thermostat',
+          name: 'Restored Thermostat',
+          deviceClass: 'thermostat',
+          currentState: 'on',
+          currentOn: true,
+          measuredPowerKw: 0.8,
+          lastFreshDataMs: start + 100_000,
+        }),
+      ]);
+
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_attributed',
+        deviceId: 'restored-thermostat',
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps attribution open when the only non-zero thermostat load is stale', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createPlanEngineState();
+      const start = new Date('2026-04-15T11:04:01.000Z').getTime();
+      vi.setSystemTime(start);
+      state.lastDeviceRestoreMs['restored-thermostat'] = start - 1_000;
+      recordActivationAttemptStart({
+        state,
+        deviceId: 'restored-thermostat',
+        source: 'pels_restore',
+        nowTs: start - 1_000,
+      });
+
+      const structuredLog = { info: vi.fn() };
+      const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
+
+      const builder = new PlanBuilder({
+        homey: { settings: { set: vi.fn() } } as never,
+        getCapacityGuard: () => capacityGuard,
+        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getDailyBudgetSnapshot: () => null,
+        getPriorityForDevice: () => 100,
+        getDynamicSoftLimitOverride: () => 1.0,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        structuredLog: structuredLog as any,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      }, state);
+
+      capacityGuard.reportTotalPower(0.4);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'restored-thermostat',
+          name: 'Restored Thermostat',
+          deviceClass: 'thermostat',
+          currentOn: true,
+          measuredPowerKw: 0,
+        }),
+      ]);
+
+      vi.setSystemTime(start + 10_000);
+      capacityGuard.reportTotalPower(0.7);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'restored-thermostat',
+          name: 'Restored Thermostat',
+          deviceClass: 'thermostat',
+          currentOn: true,
+          measuredPowerKw: 0.2,
+          observationStale: true,
+          lastFreshDataMs: start - 5_000,
+        }),
+      ]);
+
+      structuredLog.info.mockClear();
+
+      vi.setSystemTime(start + 20_000);
+      capacityGuard.reportTotalPower(1.3);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'restored-thermostat',
+          name: 'Restored Thermostat',
+          deviceClass: 'thermostat',
+          currentOn: true,
+          measuredPowerKw: 0.8,
+          observationStale: true,
+          lastFreshDataMs: start - 5_000,
+        }),
+      ]);
+
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_attributed',
+        deviceId: 'restored-thermostat',
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

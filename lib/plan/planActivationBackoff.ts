@@ -19,6 +19,9 @@ export type ActivationBackoffObservation = {
   currentOn: boolean;
   currentState?: string;
   measuredPowerKw?: number;
+  deviceClass?: string;
+  observationStale?: boolean;
+  lastFreshDataMs?: number;
 };
 
 export type ActivationPenaltyInfo = {
@@ -31,6 +34,13 @@ export type ActivationPenaltyInfo = {
 };
 
 const MIN_ACTIVE_MEASURED_POWER_KW = 0.05;
+const RESTORE_ATTRIBUTION_DEVICE_CLASSES = new Set([
+  'thermostat',
+  'heater',
+  'heatpump',
+  'airconditioning',
+  'airtreatment',
+]);
 
 const isFiniteNumber = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value)
@@ -76,6 +86,11 @@ const getAttemptSource = (state: PlanEngineState, deviceId: string): ActivationA
   return source === 'pels_restore' || source === 'tracked_step_up' ? source : null;
 };
 
+const getObservedActivePowerAtMs = (state: PlanEngineState, deviceId: string): number | null => {
+  const observedActivePowerAtMs = getAttempt(state, deviceId)?.observedActivePowerAtMs;
+  return isFiniteNumber(observedActivePowerAtMs) ? observedActivePowerAtMs : null;
+};
+
 const getLastSetbackMs = (state: PlanEngineState, deviceId: string): number | null => {
   const lastSetbackMs = getAttempt(state, deviceId)?.lastSetbackMs;
   return isFiniteNumber(lastSetbackMs) ? lastSetbackMs : null;
@@ -92,6 +107,10 @@ const closeAttempt = (state: PlanEngineState, deviceId: string): boolean => {
   }
   if ('source' in entry) {
     delete entry.source;
+    changed = true;
+  }
+  if ('observedActivePowerAtMs' in entry) {
+    delete entry.observedActivePowerAtMs;
     changed = true;
   }
 
@@ -320,6 +339,98 @@ export function syncActivationPenaltyState(params: {
     source,
     transitions: [],
   };
+}
+
+const isRestoreAttributionDeviceClass = (deviceClass: unknown): boolean => (
+  typeof deviceClass === 'string' && RESTORE_ATTRIBUTION_DEVICE_CLASSES.has(deviceClass.trim().toLowerCase())
+);
+
+const updateObservedActivePowerAtMs = (
+  state: PlanEngineState,
+  deviceId: string,
+  observedAtMs: number,
+): boolean => {
+  const entry = ensureAttempt(state, deviceId);
+  if (entry.observedActivePowerAtMs === observedAtMs) return false;
+  entry.observedActivePowerAtMs = observedAtMs;
+  return true;
+};
+
+const shouldTrackObservedActivePower = (
+  observation: ActivationBackoffObservation | undefined,
+  attemptStartedMs: number,
+  nowTs: number,
+): observation is ActivationBackoffObservation & { measuredPowerKw: number; lastFreshDataMs: number } => (
+  observation !== undefined
+  && observation.observationStale !== true
+  && isFiniteNumber(observation.lastFreshDataMs)
+  && observation.lastFreshDataMs > attemptStartedMs
+  && observation.lastFreshDataMs <= nowTs
+  && resolveEffectiveCurrentOn(observation) === true
+  && isFiniteNumber(observation.measuredPowerKw)
+  && observation.measuredPowerKw > MIN_ACTIVE_MEASURED_POWER_KW
+);
+
+const shouldCloseConfirmedRestoreAttribution = (params: {
+  state: PlanEngineState;
+  deviceId: string;
+  observation?: ActivationBackoffObservation;
+  wholeHomePowerSampleAtMs?: number | null;
+  cleanWholeHomeSample: boolean;
+}): boolean => {
+  const observedActivePowerAtMs = getObservedActivePowerAtMs(params.state, params.deviceId);
+  if (params.observation === undefined) return false;
+  if (isActivationObservationExplicitlyInactive(params.observation)) return false;
+  if (resolveEffectiveCurrentOn(params.observation) !== true) return false;
+  return observedActivePowerAtMs !== null
+    && params.cleanWholeHomeSample
+    && isFiniteNumber(params.wholeHomePowerSampleAtMs)
+    && params.wholeHomePowerSampleAtMs > observedActivePowerAtMs;
+};
+
+export function syncConfirmedRestoreAttributionState(params: {
+  state: PlanEngineState;
+  deviceId: string;
+  nowTs?: number;
+  observation?: ActivationBackoffObservation;
+  wholeHomePowerSampleAtMs?: number | null;
+  cleanWholeHomeSample: boolean;
+}): {
+  stateChanged: boolean;
+  attemptOpen: boolean;
+} {
+  const { state, deviceId, observation } = params;
+  const attemptStartedMs = getAttemptStartedMs(state, deviceId);
+  if (attemptStartedMs === null) return { stateChanged: false, attemptOpen: false };
+
+  const source = getAttemptSource(state, deviceId);
+  if (source !== 'pels_restore') return { stateChanged: false, attemptOpen: true };
+  if (!isRestoreAttributionDeviceClass(observation?.deviceClass)) {
+    return { stateChanged: false, attemptOpen: true };
+  }
+
+  const nowTs = params.nowTs ?? Date.now();
+  let stateChanged = false;
+
+  if (
+    shouldTrackObservedActivePower(observation, attemptStartedMs, nowTs)
+    && getObservedActivePowerAtMs(state, deviceId) === null
+  ) {
+    stateChanged = updateObservedActivePowerAtMs(state, deviceId, observation.lastFreshDataMs) || stateChanged;
+  }
+
+  if (shouldCloseConfirmedRestoreAttribution({
+    state,
+    deviceId,
+    observation,
+    wholeHomePowerSampleAtMs: params.wholeHomePowerSampleAtMs,
+    cleanWholeHomeSample: params.cleanWholeHomeSample,
+  })) {
+    stateChanged = closeAttempt(state, deviceId) || stateChanged;
+    return { stateChanged, attemptOpen: false };
+  }
+
+  return { stateChanged, attemptOpen: true };
 }
 
 export function recordActivationAttemptStart(params: {
