@@ -559,7 +559,7 @@ describe('registerFlowCards', () => {
 
     registerFlowCards(deps);
 
-    const options = await triggerAutocompleteListeners.flow_backed_device_onoff_requested.device('relay');
+    const options = await triggerAutocompleteListeners.flow_backed_device_turn_on_requested.device('relay');
     expect(options).toEqual([{ id: 'dev-1', name: 'Relay' }]);
   });
 
@@ -574,7 +574,7 @@ describe('registerFlowCards', () => {
 
     registerFlowCards(deps);
 
-    const options = await triggerAutocompleteListeners.flow_backed_device_evcharger_charging_requested.device('wallbox');
+    const options = await triggerAutocompleteListeners.flow_backed_device_start_charging_requested.device('wallbox');
     expect(options).toEqual([{ id: 'ev-1', name: 'Wallbox' }]);
   });
 
@@ -583,15 +583,19 @@ describe('registerFlowCards', () => {
 
     registerFlowCards(deps);
 
-    await expect(triggerListeners.flow_backed_device_onoff_requested(
+    await expect(triggerListeners.flow_backed_device_turn_on_requested(
       { device: 'dev-1' },
       { deviceId: 'dev-1' },
     )).resolves.toBe(true);
-    await expect(triggerListeners.flow_backed_device_onoff_requested(
+    await expect(triggerListeners.flow_backed_device_turn_off_requested(
       { device: 'dev-1' },
       { deviceId: 'dev-2' },
     )).resolves.toBe(false);
-    await expect(triggerListeners.flow_backed_device_evcharger_charging_requested(
+    await expect(triggerListeners.flow_backed_device_start_charging_requested(
+      { device: 'ev-1' },
+      { deviceId: 'ev-1' },
+    )).resolves.toBe(true);
+    await expect(triggerListeners.flow_backed_device_stop_charging_requested(
       { device: 'ev-1' },
       { deviceId: 'ev-1' },
     )).resolves.toBe(true);

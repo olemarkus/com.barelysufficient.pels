@@ -17,13 +17,25 @@ export function registerFlowBackedDeviceCards(deps: FlowCardDeps): void {
   });
   registerFlowBackedRequestTrigger({
     deps,
-    cardId: 'flow_backed_device_onoff_requested',
+    cardId: 'flow_backed_device_turn_on_requested',
     target: 'binary',
     requiredMissingCapabilityId: 'onoff',
   });
   registerFlowBackedRequestTrigger({
     deps,
-    cardId: 'flow_backed_device_evcharger_charging_requested',
+    cardId: 'flow_backed_device_turn_off_requested',
+    target: 'binary',
+    requiredMissingCapabilityId: 'onoff',
+  });
+  registerFlowBackedRequestTrigger({
+    deps,
+    cardId: 'flow_backed_device_start_charging_requested',
+    target: 'evcharger',
+    requiredMissingCapabilityId: 'evcharger_charging',
+  });
+  registerFlowBackedRequestTrigger({
+    deps,
+    cardId: 'flow_backed_device_stop_charging_requested',
     target: 'evcharger',
     requiredMissingCapabilityId: 'evcharger_charging',
   });

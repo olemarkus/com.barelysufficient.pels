@@ -389,19 +389,6 @@ async function getBestEffortSteppedLoadDeviceName(
   }
 }
 
-function parseFlowPowerInput(rawPower: unknown): number | null {
-  if (typeof rawPower === 'number' && Number.isFinite(rawPower)) {
-    return Math.round(rawPower);
-  }
-  const normalized = String(rawPower ?? '').trim();
-  if (!normalized) return null;
-  const match = normalized.match(/^(-?\d+(?:[.,]\d+)?)\s*[Ww]?$/);
-  if (!match) return null;
-  const parsed = Number.parseFloat(match[1].replace(',', '.'));
-  if (!Number.isFinite(parsed)) return null;
-  return Math.round(parsed);
-}
-
 type SteppedLoadReportErrorCode =
   | 'device_missing'
   | 'device_not_found'

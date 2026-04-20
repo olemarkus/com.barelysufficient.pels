@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Plan actuation stays centralized in this module. */
 import Homey from 'homey';
 import CapacityGuard from '../core/capacityGuard';
 import { DeviceManager } from '../core/deviceManager';
@@ -190,16 +191,12 @@ export class PlanExecutor {
     actuationMode: PlanActuationMode;
   }): Promise<void> {
     const { deviceId, capabilityId, desired } = params;
-    const triggerCardId = capabilityId === 'evcharger_charging'
-      ? 'flow_backed_device_evcharger_charging_requested'
-      : 'flow_backed_device_onoff_requested';
+    const triggerCardId = resolveFlowBackedBinaryTriggerCardId(capabilityId, desired);
     const triggerCard = this.deps.homey.flow?.getTriggerCard?.(triggerCardId);
     if (!triggerCard?.trigger) {
       throw new Error(`Flow trigger ${triggerCardId} is unavailable`);
     }
-    await triggerCard.trigger({
-      state: desired ? 'on' : 'off',
-    }, {
+    await triggerCard.trigger({}, {
       deviceId,
     });
   }
@@ -868,6 +865,20 @@ export class PlanExecutor {
     const lastRestoreMs = this.state.lastDeviceRestoreMs[deviceId];
     return !lastRestoreMs || lastRestoreMs < lastShedMs ? 'shed_state' : 'current_plan';
   }
+}
+
+function resolveFlowBackedBinaryTriggerCardId(
+  capabilityId: 'onoff' | 'evcharger_charging',
+  desired: boolean,
+): string {
+  if (capabilityId === 'evcharger_charging') {
+    return desired
+      ? 'flow_backed_device_start_charging_requested'
+      : 'flow_backed_device_stop_charging_requested';
+  }
+  return desired
+    ? 'flow_backed_device_turn_on_requested'
+    : 'flow_backed_device_turn_off_requested';
 }
 
 function isRestoreHoldReason(reason: DeviceReason | undefined): boolean {

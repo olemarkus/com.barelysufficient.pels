@@ -65,8 +65,10 @@ const buildExecutor = (
 ) => {
   const triggerCards = {
     desired_stepped_load_changed: { trigger: vi.fn().mockResolvedValue(true) },
-    flow_backed_device_onoff_requested: { trigger: vi.fn().mockResolvedValue(true) },
-    flow_backed_device_evcharger_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
+    flow_backed_device_turn_on_requested: { trigger: vi.fn().mockResolvedValue(true) },
+    flow_backed_device_turn_off_requested: { trigger: vi.fn().mockResolvedValue(true) },
+    flow_backed_device_start_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
+    flow_backed_device_stop_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
   } as const;
   const debugStructured = vi.fn();
   const deviceManager = {
@@ -101,8 +103,10 @@ const buildExecutor = (
     deviceManager,
     state,
     desiredSteppedTrigger: triggerCards.desired_stepped_load_changed,
-    flowBackedOnOffTrigger: triggerCards.flow_backed_device_onoff_requested,
-    flowBackedEvTrigger: triggerCards.flow_backed_device_evcharger_charging_requested,
+    flowBackedTurnOnTrigger: triggerCards.flow_backed_device_turn_on_requested,
+    flowBackedTurnOffTrigger: triggerCards.flow_backed_device_turn_off_requested,
+    flowBackedStartChargingTrigger: triggerCards.flow_backed_device_start_charging_requested,
+    flowBackedStopChargingTrigger: triggerCards.flow_backed_device_stop_charging_requested,
     debugStructured,
   };
 };
@@ -146,7 +150,7 @@ describe('PlanExecutor restore logging', () => {
   });
 
   it('requests flow-backed on/off control through the Homey trigger instead of writing the device capability', async () => {
-    const { executor, deps, deviceManager, flowBackedOnOffTrigger } = buildExecutor(
+    const { executor, deps, deviceManager, flowBackedTurnOffTrigger } = buildExecutor(
       createPlanEngineState(),
       [{
         id: 'dev-1',
@@ -177,8 +181,8 @@ describe('PlanExecutor restore logging', () => {
       }],
     });
 
-    expect(flowBackedOnOffTrigger.trigger).toHaveBeenCalledWith(
-      { state: 'off' },
+    expect(flowBackedTurnOffTrigger.trigger).toHaveBeenCalledWith(
+      {},
       { deviceId: 'dev-1' },
     );
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
