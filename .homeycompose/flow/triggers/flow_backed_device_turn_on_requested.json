@@ -1,12 +1,12 @@
 {
   "title": {
-    "en": "Desired device on for"
+    "en": "Device should turn on"
   },
   "titleFormatted": {
-    "en": "Desired device on for [[device]]"
+    "en": "Device [[device]] should turn on"
   },
   "hint": {
-    "en": "Triggers when the desired state changes to on for an existing Homey device."
+    "en": "Triggers when an existing Homey device should turn on."
   },
   "args": [
     {
