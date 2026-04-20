@@ -190,6 +190,7 @@ export type PlanInputDevice = {
   priority?: number;
   // Raw observed binary snapshot input. Planner decisions should resolve through currentState helpers.
   currentOn: boolean;
+  currentState?: string;
   evChargingState?: string;
   powerKw?: number;
   expectedPowerKw?: number;

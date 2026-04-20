@@ -32,7 +32,10 @@ import {
   getCurrentHourKWh,
   resolveDailySoftLimitBucket,
 } from './planDailyBudgetWindow';
-import { recordActivationSetback } from './planActivationBackoff';
+import {
+  recordActivationSetback,
+  syncConfirmedRestoreAttributionState as syncConfirmedRestoreAttributionAttempt,
+} from './planActivationBackoff';
 import {
   OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS,
   SOFT_OVERSHOOT_DEADBAND_KW,
@@ -226,6 +229,12 @@ export class PlanBuilder {
       nowTs,
     });
     this.state.softOvershootPendingSinceMs = overshootDecision.pendingSinceMs;
+    this.syncConfirmedRestoreAttributionAttempts(
+      devices,
+      this.powerTracker.lastTimestamp ?? null,
+      context.headroom >= 0,
+      nowTs,
+    );
 
     const sheddingPlan = await this.trackDurationAsync(
       'plan_shedding_ms',
@@ -242,6 +251,32 @@ export class PlanBuilder {
     this.applySheddingUpdates(sheddingPlan);
 
     return { context, dailyBudgetSnapshot, sheddingPlan, overshootDecision };
+  }
+
+  private syncConfirmedRestoreAttributionAttempts(
+    devices: PlanInputDevice[],
+    wholeHomePowerSampleAtMs: number | null,
+    cleanWholeHomeSample: boolean,
+    nowTs: number,
+  ): void {
+    for (const device of devices) {
+      syncConfirmedRestoreAttributionAttempt({
+        state: this.state,
+        deviceId: device.id,
+        nowTs,
+        observation: {
+          available: device.available,
+          currentState: device.currentState,
+          currentOn: device.currentOn,
+          measuredPowerKw: device.measuredPowerKw,
+          deviceClass: device.deviceClass,
+          observationStale: device.observationStale,
+          lastFreshDataMs: device.lastFreshDataMs,
+        },
+        wholeHomePowerSampleAtMs,
+        cleanWholeHomeSample,
+      });
+    }
   }
 
   private updateOvershootState(params: {
