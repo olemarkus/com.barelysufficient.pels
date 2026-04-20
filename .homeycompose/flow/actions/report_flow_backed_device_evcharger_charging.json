@@ -1,9 +1,9 @@
 {
   "title": {
-    "en": "Set EV charging for device"
+    "en": "Set charging for device"
   },
   "titleFormatted": {
-    "en": "Set EV charging for [[device]] to [[state]]"
+    "en": "Set charging for [[device]] to [[state]]"
   },
   "hint": {
     "en": "Reports whether an existing Homey EV charger is charging."

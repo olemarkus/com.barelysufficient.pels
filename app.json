@@ -178,13 +178,13 @@
       },
       {
         "title": {
-          "en": "PELS requests updated state for"
+          "en": "Updated state requested for"
         },
         "titleFormatted": {
-          "en": "PELS requests updated state for [[device]]"
+          "en": "Updated state requested for [[device]]"
         },
         "hint": {
-          "en": "Triggers when PELS wants updated state for an existing Homey device. This card only requests data and does not change device state."
+          "en": "Triggers when updated state is requested for an existing Homey device. This card only requests data and does not change device state."
         },
         "args": [
           {
@@ -202,13 +202,13 @@
       },
       {
         "title": {
-          "en": "Desired charging start for"
+          "en": "Charging should start"
         },
         "titleFormatted": {
-          "en": "Desired charging start for [[device]]"
+          "en": "Charging should start for [[device]]"
         },
         "hint": {
-          "en": "Triggers when the desired charging state changes to start for an existing Homey EV charger."
+          "en": "Triggers when charging should start for an existing Homey EV charger."
         },
         "args": [
           {
@@ -226,13 +226,13 @@
       },
       {
         "title": {
-          "en": "Desired charging stop for"
+          "en": "Charging should stop"
         },
         "titleFormatted": {
-          "en": "Desired charging stop for [[device]]"
+          "en": "Charging should stop for [[device]]"
         },
         "hint": {
-          "en": "Triggers when the desired charging state changes to stop for an existing Homey EV charger."
+          "en": "Triggers when charging should stop for an existing Homey EV charger."
         },
         "args": [
           {
@@ -250,13 +250,13 @@
       },
       {
         "title": {
-          "en": "Desired device off for"
+          "en": "Device should turn off"
         },
         "titleFormatted": {
-          "en": "Desired device off for [[device]]"
+          "en": "Device [[device]] should turn off"
         },
         "hint": {
-          "en": "Triggers when the desired state changes to off for an existing Homey device."
+          "en": "Triggers when an existing Homey device should turn off."
         },
         "args": [
           {
@@ -274,13 +274,13 @@
       },
       {
         "title": {
-          "en": "Desired device on for"
+          "en": "Device should turn on"
         },
         "titleFormatted": {
-          "en": "Desired device on for [[device]]"
+          "en": "Device [[device]] should turn on"
         },
         "hint": {
-          "en": "Triggers when the desired state changes to on for an existing Homey device."
+          "en": "Triggers when an existing Homey device should turn on."
         },
         "args": [
           {
@@ -796,10 +796,10 @@
       },
       {
         "title": {
-          "en": "Set EV car connection for device"
+          "en": "Set car connected for device"
         },
         "titleFormatted": {
-          "en": "Set EV car connection for [[device]] to [[state]]"
+          "en": "Set car connected for [[device]] to [[state]]"
         },
         "hint": {
           "en": "Reports whether a car is connected to an existing Homey EV charger."
@@ -830,10 +830,10 @@
       },
       {
         "title": {
-          "en": "Set EV charging for device"
+          "en": "Set charging for device"
         },
         "titleFormatted": {
-          "en": "Set EV charging for [[device]] to [[state]]"
+          "en": "Set charging for [[device]] to [[state]]"
         },
         "hint": {
           "en": "Reports whether an existing Homey EV charger is charging."
@@ -864,10 +864,10 @@
       },
       {
         "title": {
-          "en": "Set on/off state for device"
+          "en": "Set on/off for device"
         },
         "titleFormatted": {
-          "en": "Set on/off state for [[device]] to [[state]]"
+          "en": "Set on/off for [[device]] to [[state]]"
         },
         "hint": {
           "en": "Reports the current on/off state for an existing Homey device."

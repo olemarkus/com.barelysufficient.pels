@@ -1,9 +1,9 @@
 {
   "title": {
-    "en": "Set EV car connection for device"
+    "en": "Set car connected for device"
   },
   "titleFormatted": {
-    "en": "Set EV car connection for [[device]] to [[state]]"
+    "en": "Set car connected for [[device]] to [[state]]"
   },
   "hint": {
     "en": "Reports whether a car is connected to an existing Homey EV charger."

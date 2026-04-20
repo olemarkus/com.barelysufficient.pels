@@ -1,9 +1,9 @@
 {
   "title": {
-    "en": "Set on/off state for device"
+    "en": "Set on/off for device"
   },
   "titleFormatted": {
-    "en": "Set on/off state for [[device]] to [[state]]"
+    "en": "Set on/off for [[device]] to [[state]]"
   },
   "hint": {
     "en": "Reports the current on/off state for an existing Homey device."
