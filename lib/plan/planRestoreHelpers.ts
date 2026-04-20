@@ -274,11 +274,20 @@ export function planRestoreForSteppedDevice(params: {
   const lowestNonZeroStep = dev.steppedLoadProfile
     ? getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)
     : null;
+  const deltaKw = resolveSteppedLoadRestoreDeltaKw({
+    device: dev, fromStepId: dev.selectedStepId, toStepId: nextStep.id,
+  });
+  if (deltaKw <= 0) {
+    clearRestoreDebugEvent(state, restoreDebugKey);
+    return { availableHeadroom, restoredOneThisCycle };
+  }
   const pendingRestoreHold = resolvePendingSteppedRestoreHold(dev, nextStep.id);
   if (pendingRestoreHold) {
     delete state.steppedRestoreRejectedByDevice[dev.id];
+    const needed = deltaKw + computeRestoreBufferKw(deltaKw);
     setRestorePlanDevice(deviceMap, dev.id, {
       desiredStepId: nextStep.id,
+      expectedPowerKw: nextStep.planningPowerW / 1000,
       reason: pendingRestoreHold.reason,
     });
     emitRestoreDebugEventOnChange({
@@ -307,7 +316,7 @@ export function planRestoreForSteppedDevice(params: {
       },
       debugStructured,
     });
-    return { availableHeadroom, restoredOneThisCycle };
+    return { availableHeadroom: availableHeadroom - needed, restoredOneThisCycle: true };
   }
 
   if (blockSteppedRestoreForShedInvariant({
@@ -316,14 +325,6 @@ export function planRestoreForSteppedDevice(params: {
     return { availableHeadroom, restoredOneThisCycle };
   }
   delete state.steppedRestoreRejectedByDevice[dev.id];
-
-  const deltaKw = resolveSteppedLoadRestoreDeltaKw({
-    device: dev, fromStepId: dev.selectedStepId, toStepId: nextStep.id,
-  });
-  if (deltaKw <= 0) {
-    clearRestoreDebugEvent(state, restoreDebugKey);
-    return { availableHeadroom, restoredOneThisCycle };
-  }
 
   return admitSteppedRestore({
     dev,

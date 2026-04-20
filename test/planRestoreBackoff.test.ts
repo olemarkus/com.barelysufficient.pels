@@ -542,9 +542,10 @@ describe('restore cooldown backoff', () => {
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
     expect(steppedDevice?.desiredStepId).toBe('medium');
+    expect(steppedDevice?.expectedPowerKw).toBe(2);
     expect(reasonText(steppedDevice?.reason)).toBe('restore pending (80s remaining)');
-    expect(result.availableHeadroom).toBe(5);
-    expect(result.restoredOneThisCycle).toBe(false);
+    expect(result.availableHeadroom).toBeCloseTo(4.05);
+    expect(result.restoredOneThisCycle).toBe(true);
   });
 
   it('holds a timed-out stepped restore in retry backoff instead of re-admitting immediately', () => {
@@ -581,9 +582,62 @@ describe('restore cooldown backoff', () => {
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
     expect(steppedDevice?.desiredStepId).toBe('medium');
+    expect(steppedDevice?.expectedPowerKw).toBe(2);
     expect(reasonText(steppedDevice?.reason)).toBe('restore pending (30s remaining)');
-    expect(result.availableHeadroom).toBe(5);
-    expect(result.restoredOneThisCycle).toBe(false);
+    expect(result.availableHeadroom).toBeCloseTo(4.05);
+    expect(result.restoredOneThisCycle).toBe(true);
+  });
+
+  it('reserves headroom for a deferred stepped restore and blocks a second stepped restore in the same cycle', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step-a',
+          name: 'Tank A',
+          priority: 10,
+          currentState: 'on',
+          selectedStepId: 'low',
+          desiredStepId: 'medium',
+          lastDesiredStepId: 'medium',
+          lastStepCommandIssuedAt: now - 10_000,
+          stepCommandPending: true,
+          stepCommandStatus: 'pending',
+          measuredPowerKw: 1.25,
+          planningPowerKw: 1.25,
+        }),
+        steppedPlanDevice({
+          id: 'dev-step-b',
+          name: 'Tank B',
+          priority: 20,
+          currentState: 'on',
+          selectedStepId: 'low',
+          desiredStepId: 'low',
+          measuredPowerKw: 1.25,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+
+    const firstSteppedDevice = result.planDevices.find((device) => device.id === 'dev-step-a');
+    const secondSteppedDevice = result.planDevices.find((device) => device.id === 'dev-step-b');
+
+    expect(firstSteppedDevice?.desiredStepId).toBe('medium');
+    expect(firstSteppedDevice?.expectedPowerKw).toBe(2);
+    expect(reasonText(firstSteppedDevice?.reason)).toBe('restore pending (80s remaining)');
+    expect(secondSteppedDevice?.desiredStepId).toBe('low');
+    expect(result.availableHeadroom).toBeCloseTo(4.05);
+    expect(result.restoredOneThisCycle).toBe(true);
   });
 
   it('re-admits a timed-out stepped restore once retry backoff has expired', () => {
