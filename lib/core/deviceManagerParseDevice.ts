@@ -11,7 +11,7 @@ import { estimatePower, type PowerEstimateState } from './powerEstimate';
 import {
     augmentCapabilitiesWithFlowReports,
     type FlowReportedCapabilityId,
-    getFlowRequiredCapabilitiesForType,
+    getFlowEffectiveRequiredCapabilitiesForType,
     resolveFlowAugmentedDeviceType,
     type FlowReportedCapabilitiesForDevice,
 } from './flowReportedCapabilities';
@@ -39,6 +39,12 @@ type ParsedDeviceSettings = Pick<
     TargetDeviceSnapshot,
     'communicationModel' | 'priority' | 'controllable' | 'managed' | 'budgetExempt'
 >;
+
+type FlowEffectiveRequiredCapabilityId =
+    'onoff'
+    | 'measure_power'
+    | 'evcharger_charging'
+    | 'evcharger_charging_state';
 
 export type DeviceManagerParseProviders = {
     getPriority?: (deviceId: string) => number;
@@ -320,7 +326,7 @@ function resolveFlowCapabilityOverlay(params: {
     capabilityObj: DeviceCapabilityMap;
     flowAugmentedDeviceType: ReturnType<typeof resolveFlowAugmentedDeviceType>;
     flowBackedCapabilityIds: FlowReportedCapabilityId[];
-    requiredFlowCapabilityIds: readonly FlowReportedCapabilityId[];
+    requiredFlowCapabilityIds: readonly FlowEffectiveRequiredCapabilityId[];
 } {
     const {
         deviceClassKey,
@@ -334,7 +340,7 @@ function resolveFlowCapabilityOverlay(params: {
         deviceClassKey,
         targetCapabilityIds,
     });
-    const requiredFlowCapabilityIds = getFlowRequiredCapabilitiesForType(flowAugmentedDeviceType);
+    const requiredFlowCapabilityIds = getFlowEffectiveRequiredCapabilitiesForType(flowAugmentedDeviceType);
     const reportedCapabilities = providers.getFlowReportedCapabilities?.(deviceId) ?? {};
     const {
         capabilities,
@@ -361,7 +367,7 @@ function shouldSkipFlowBackedCandidate(params: {
     flowBackedCapabilityIds: FlowReportedCapabilityId[];
     capabilities: readonly string[];
     capabilityObj: DeviceCapabilityMap;
-    requiredFlowCapabilityIds: readonly FlowReportedCapabilityId[];
+    requiredFlowCapabilityIds: readonly FlowEffectiveRequiredCapabilityId[];
     powerCapable: boolean;
 }): boolean {
     const {
@@ -387,7 +393,7 @@ function shouldSkipFlowBackedCandidate(params: {
 function hasAllRequiredFlowCapabilitiesInEffectiveView(params: {
     capabilities: readonly string[];
     capabilityObj: DeviceCapabilityMap;
-    requiredCapabilityIds: readonly FlowReportedCapabilityId[];
+    requiredCapabilityIds: readonly FlowEffectiveRequiredCapabilityId[];
 }): boolean {
     const { capabilities, capabilityObj, requiredCapabilityIds } = params;
     const capabilitySet = new Set(capabilities);

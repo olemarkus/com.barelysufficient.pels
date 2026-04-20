@@ -78,6 +78,14 @@ describe('device manager support helpers', () => {
       controlCapabilityId: 'evcharger_charging',
     })).toBe(true);
     expect(getCurrentOn({
+      deviceClassKey: 'evcharger',
+      capabilityObj: {
+        evcharger_charging: { value: true },
+        evcharger_charging_state: { value: 'plugged_in_paused' },
+      },
+      controlCapabilityId: 'evcharger_charging',
+    })).toBe(false);
+    expect(getCurrentOn({
       deviceClassKey: 'socket',
       capabilityObj: { onoff: { value: true } },
       controlCapabilityId: 'onoff',

@@ -9,6 +9,8 @@ export type DeviceOverviewSnapshot = {
   currentState?: string;
   plannedState?: string;
   controlModel?: 'temperature_target' | 'binary_power' | 'stepped_load';
+  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  evChargingState?: string;
   measuredPowerKw?: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;
@@ -38,7 +40,12 @@ export type DeviceOverviewStrings = {
 
 const normalizeState = (value: string | undefined): string => (value || '').trim().toLowerCase();
 
-const isSteppedLoadDevice = (device: DeviceOverviewSnapshot): boolean => device.controlModel === 'stepped_load';
+const isSteppedLoadDevice = (device: DeviceOverviewSnapshot): boolean => (
+  device.controlModel === 'stepped_load'
+);
+const isEvChargerDevice = (device: DeviceOverviewSnapshot): boolean => (
+  device.controlCapabilityId === 'evcharger_charging'
+);
 
 const isGrayStateDevice = (device: DeviceOverviewSnapshot): boolean => {
   if (device.available === false) return true;
@@ -126,6 +133,7 @@ const resolvePlannedPowerState = (
 };
 
 const resolveShedStateMsg = (device: DeviceOverviewSnapshot): string => {
+  if (isEvChargerDevice(device)) return 'Shed (charging paused)';
   if (device.shedAction === 'set_temperature') return 'Shed (lowered temperature)';
   if (device.shedAction === 'set_step') {
     return getTargetStepId(device) ? `Shed to ${getTargetStepId(device)}` : 'Shed (reduced step)';
@@ -133,7 +141,50 @@ const resolveShedStateMsg = (device: DeviceOverviewSnapshot): string => {
   return 'Shed (powered off)';
 };
 
+const resolveEvInactiveStateMsg = (evState: string): string => {
+  switch (evState) {
+    case 'plugged_out':
+      return 'Inactive (car unplugged)';
+    case 'plugged_in':
+    case 'plugged_in_paused':
+      return 'Inactive (car not charging)';
+    case 'plugged_in_discharging':
+      return 'Inactive (discharging)';
+    default:
+      return 'Inactive';
+  }
+};
+
+const resolveEvKeepStateMsg = (device: DeviceOverviewSnapshot, evState: string): string | null => {
+  if (device.binaryCommandPending && isOffLikeState(device.currentState)) return 'Charging requested';
+  switch (evState) {
+    case 'plugged_in_charging':
+      return 'Active (charging)';
+    case 'plugged_out':
+      return 'Inactive (car unplugged)';
+    case 'plugged_in':
+    case 'plugged_in_paused':
+      return 'Inactive (car not charging)';
+    case 'plugged_in_discharging':
+      return 'Inactive (discharging)';
+    default:
+      return null;
+  }
+};
+
+const resolveEvStateMsg = (device: DeviceOverviewSnapshot): string | null => {
+  if (!isEvChargerDevice(device)) return null;
+  const evState = normalizeState(device.evChargingState);
+
+  if (device.plannedState === 'shed') return 'Shed (charging paused)';
+  if (device.plannedState === 'inactive') return resolveEvInactiveStateMsg(evState);
+  if (device.plannedState === 'keep') return resolveEvKeepStateMsg(device, evState);
+  return null;
+};
+
 const resolveKeepStateMsg = (device: DeviceOverviewSnapshot): string => {
+  const evStateMsg = resolveEvStateMsg(device);
+  if (evStateMsg) return evStateMsg;
   if (device.binaryCommandPending && isOffLikeState(device.currentState)) return 'Restore requested';
   if (isOffLikeState(device.currentState)) return 'Restoring';
   if (normalizeState(device.currentState) === 'not_applicable') return 'Active (temperature-managed)';
@@ -145,6 +196,8 @@ const resolveStateMsg = (device: DeviceOverviewSnapshot): string => {
   if (isGrayStateDevice(device)) {
     return device.available === false ? 'Unavailable' : 'State unknown';
   }
+  const evStateMsg = resolveEvStateMsg(device);
+  if (evStateMsg) return evStateMsg;
   if (isKeepStateSteppedModeTransition(device)) {
     return `Active (${getSteppedModeTransitionText(device)})`;
   }

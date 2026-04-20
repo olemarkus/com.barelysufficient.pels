@@ -1,12 +1,12 @@
 {
   "title": {
-    "en": "Set EV charging state for device"
+    "en": "Set EV car connection for device"
   },
   "titleFormatted": {
-    "en": "Set EV charging state for [[device]] to [[state]]"
+    "en": "Set EV car connection for [[device]] to [[state]]"
   },
   "hint": {
-    "en": "Reports the current charging state for an existing Homey EV charger."
+    "en": "Reports whether a car is connected to an existing Homey EV charger."
   },
   "args": [
     {
@@ -23,10 +23,10 @@
       "name": "state",
       "type": "autocomplete",
       "title": {
-        "en": "State"
+        "en": "Connection"
       },
       "placeholder": {
-        "en": "Select charging state"
+        "en": "Connected or disconnected"
       }
     }
   ]

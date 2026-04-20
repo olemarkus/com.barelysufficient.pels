@@ -6,7 +6,7 @@ export const FLOW_REPORTED_CAPABILITY_IDS = [
   'onoff',
   'measure_power',
   'evcharger_charging',
-  'evcharger_charging_state',
+  'alarm_generic.car_connected',
 ] as const;
 
 export type FlowReportedCapabilityId = (typeof FLOW_REPORTED_CAPABILITY_IDS)[number];
@@ -26,12 +26,21 @@ type FlowAugmentedDeviceType = 'binary' | 'evcharger' | 'unsupported';
 
 const FLOW_REPORTED_CAPABILITY_SET = new Set<string>(FLOW_REPORTED_CAPABILITY_IDS);
 
-const BINARY_REQUIRED_CAPABILITIES: readonly FlowReportedCapabilityId[] = ['onoff', 'measure_power'];
-const EV_REQUIRED_CAPABILITIES: readonly FlowReportedCapabilityId[] = [
+const BINARY_INPUT_CAPABILITIES: readonly FlowReportedCapabilityId[] = ['onoff', 'measure_power'];
+const EV_INPUT_CAPABILITIES: readonly FlowReportedCapabilityId[] = [
+  'evcharger_charging',
+  'alarm_generic.car_connected',
+  'measure_power',
+];
+const BINARY_EFFECTIVE_REQUIRED_CAPABILITIES = ['onoff', 'measure_power'] as const;
+const EV_EFFECTIVE_REQUIRED_CAPABILITIES = [
   'evcharger_charging',
   'evcharger_charging_state',
   'measure_power',
-];
+] as const;
+type FlowEffectiveRequiredCapabilityId =
+  | (typeof BINARY_EFFECTIVE_REQUIRED_CAPABILITIES)[number]
+  | (typeof EV_EFFECTIVE_REQUIRED_CAPABILITIES)[number];
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -128,7 +137,7 @@ export function getFlowRefreshRequestedDeviceIds(params: {
     });
     if (deviceType === 'unsupported') return false;
 
-    return getFlowRequiredCapabilitiesForType(deviceType).some((capabilityId) => (
+    return getFlowInputCapabilitiesForType(deviceType).some((capabilityId) => (
       reportedCapabilities[capabilityId] && !isCapabilityProvidedNatively(capabilityId, capabilities)
     ));
   });
@@ -144,11 +153,19 @@ export function resolveFlowAugmentedDeviceType(params: {
   return 'binary';
 }
 
-export function getFlowRequiredCapabilitiesForType(
+export function getFlowInputCapabilitiesForType(
   deviceType: FlowAugmentedDeviceType,
 ): readonly FlowReportedCapabilityId[] {
-  if (deviceType === 'binary') return BINARY_REQUIRED_CAPABILITIES;
-  if (deviceType === 'evcharger') return EV_REQUIRED_CAPABILITIES;
+  if (deviceType === 'binary') return BINARY_INPUT_CAPABILITIES;
+  if (deviceType === 'evcharger') return EV_INPUT_CAPABILITIES;
+  return [];
+}
+
+export function getFlowEffectiveRequiredCapabilitiesForType(
+  deviceType: FlowAugmentedDeviceType,
+): readonly FlowEffectiveRequiredCapabilityId[] {
+  if (deviceType === 'binary') return BINARY_EFFECTIVE_REQUIRED_CAPABILITIES;
+  if (deviceType === 'evcharger') return EV_EFFECTIVE_REQUIRED_CAPABILITIES;
   return [];
 }
 
@@ -176,7 +193,7 @@ export function augmentCapabilitiesWithFlowReports(params: {
     };
   }
 
-  const allowedCapabilityIds = getFlowRequiredCapabilitiesForType(deviceType);
+  const allowedCapabilityIds = getFlowInputCapabilitiesForType(deviceType);
   const nextCapabilities = new Set(capabilities);
   const nextCapabilityObj: DeviceCapabilityMap = { ...capabilityObj };
   const flowBackedCapabilityIds: FlowReportedCapabilityId[] = [];
@@ -196,6 +213,21 @@ export function augmentCapabilitiesWithFlowReports(params: {
       rawCapability,
       rawCapabilityPresent: capabilities.includes(capabilityId),
     });
+  }
+
+  if (deviceType === 'evcharger' && !capabilities.includes('evcharger_charging_state')) {
+    const derivedStateEntry = buildDerivedEvChargingStateEntry({
+      capabilityObj: nextCapabilityObj,
+      reportedCapabilities,
+    });
+    if (derivedStateEntry) {
+      nextCapabilities.add('evcharger_charging_state');
+      nextCapabilityObj.evcharger_charging_state = {
+        ...(nextCapabilityObj.evcharger_charging_state ?? {}),
+        value: derivedStateEntry.value,
+        lastUpdated: derivedStateEntry.reportedAt,
+      };
+    }
   }
 
   return {
@@ -233,6 +265,59 @@ function buildFlowBackedCapabilityValue(params: {
   }
 
   return nextValue;
+}
+
+function buildDerivedEvChargingStateEntry(params: {
+  capabilityObj: DeviceCapabilityMap;
+  reportedCapabilities: Partial<Record<FlowReportedCapabilityId, FlowReportedCapabilityEntry>>;
+}): FlowReportedCapabilityEntry | null {
+  const { capabilityObj, reportedCapabilities } = params;
+  const connectedValue = capabilityObj['alarm_generic.car_connected']?.value;
+  const chargingValue = capabilityObj.evcharger_charging?.value;
+  if (typeof connectedValue !== 'boolean' || typeof chargingValue !== 'boolean') {
+    return null;
+  }
+
+  const connectedReportedAt = resolveCapabilityLastUpdatedMs(
+    capabilityObj['alarm_generic.car_connected']?.lastUpdated,
+    reportedCapabilities['alarm_generic.car_connected']?.reportedAt,
+  );
+  const chargingReportedAt = resolveCapabilityLastUpdatedMs(
+    capabilityObj.evcharger_charging?.lastUpdated,
+    reportedCapabilities.evcharger_charging?.reportedAt,
+  );
+  const reportedAt = Math.max(connectedReportedAt ?? 0, chargingReportedAt ?? 0);
+  if (reportedAt <= 0) return null;
+
+  let value: string;
+  if (!connectedValue) {
+    value = 'plugged_out';
+  } else if (chargingValue) {
+    value = 'plugged_in_charging';
+  } else {
+    value = 'plugged_in_paused';
+  }
+
+  return {
+    value,
+    reportedAt,
+    source: 'flow',
+  };
+}
+
+function resolveCapabilityLastUpdatedMs(
+  rawLastUpdated: DeviceCapabilityValue['lastUpdated'],
+  fallbackReportedAt?: number,
+): number | undefined {
+  if (rawLastUpdated instanceof Date) return rawLastUpdated.getTime();
+  if (typeof rawLastUpdated === 'number' && Number.isFinite(rawLastUpdated)) return rawLastUpdated;
+  if (typeof rawLastUpdated === 'string') {
+    const parsed = Date.parse(rawLastUpdated);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return typeof fallbackReportedAt === 'number' && Number.isFinite(fallbackReportedAt)
+    ? fallbackReportedAt
+    : undefined;
 }
 
 function parseFlowReportedDeviceEntry(
@@ -296,9 +381,6 @@ function isValidFlowReportedValue(
 ): value is boolean | number | string {
   if (capabilityId === 'measure_power') {
     return typeof value === 'number' && Number.isFinite(value);
-  }
-  if (capabilityId === 'evcharger_charging_state') {
-    return typeof value === 'string';
   }
   return typeof value === 'boolean';
 }

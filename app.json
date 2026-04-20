@@ -796,6 +796,40 @@
       },
       {
         "title": {
+          "en": "Set EV car connection for device"
+        },
+        "titleFormatted": {
+          "en": "Set EV car connection for [[device]] to [[state]]"
+        },
+        "hint": {
+          "en": "Reports whether a car is connected to an existing Homey EV charger."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select EV charger"
+            }
+          },
+          {
+            "name": "state",
+            "type": "autocomplete",
+            "title": {
+              "en": "Connection"
+            },
+            "placeholder": {
+              "en": "Connected or disconnected"
+            }
+          }
+        ],
+        "id": "report_flow_backed_device_evcharger_car_connected"
+      },
+      {
+        "title": {
           "en": "Set EV charging for device"
         },
         "titleFormatted": {
@@ -827,40 +861,6 @@
           }
         ],
         "id": "report_flow_backed_device_evcharger_charging"
-      },
-      {
-        "title": {
-          "en": "Set EV charging state for device"
-        },
-        "titleFormatted": {
-          "en": "Set EV charging state for [[device]] to [[state]]"
-        },
-        "hint": {
-          "en": "Reports the current charging state for an existing Homey EV charger."
-        },
-        "args": [
-          {
-            "name": "device",
-            "type": "autocomplete",
-            "title": {
-              "en": "Device"
-            },
-            "placeholder": {
-              "en": "Select EV charger"
-            }
-          },
-          {
-            "name": "state",
-            "type": "autocomplete",
-            "title": {
-              "en": "State"
-            },
-            "placeholder": {
-              "en": "Select charging state"
-            }
-          }
-        ],
-        "id": "report_flow_backed_device_evcharger_state"
       },
       {
         "title": {
