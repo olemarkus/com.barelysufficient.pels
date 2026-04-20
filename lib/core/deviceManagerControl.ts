@@ -35,12 +35,14 @@ export function getCurrentOn(params: {
 }): boolean {
   const { deviceClassKey, capabilityObj, controlCapabilityId } = params;
   if (controlCapabilityId === 'evcharger_charging' || deviceClassKey === 'evcharger') {
+    const evChargingState = getEvChargingState(capabilityObj);
+    if (evChargingState !== undefined) {
+      return evChargingState === 'plugged_in_charging';
+    }
     if (typeof capabilityObj.evcharger_charging?.value === 'boolean') {
       return capabilityObj.evcharger_charging.value;
     }
-    const evChargingState = getEvChargingState(capabilityObj);
-    if (evChargingState === undefined) return true;
-    return evChargingState === 'plugged_in_charging';
+    return true;
   }
   if (typeof capabilityObj.onoff?.value === 'boolean') {
     return capabilityObj.onoff.value;

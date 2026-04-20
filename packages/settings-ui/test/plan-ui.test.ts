@@ -884,6 +884,8 @@ describe('plan device state', () => {
         {
           id: 'dev-ev-inactive',
           name: 'EV Charger',
+          controlCapabilityId: 'evcharger_charging',
+          evChargingState: 'plugged_out',
           currentState: 'off',
           plannedState: 'inactive',
           controllable: true,
@@ -892,10 +894,82 @@ describe('plan device state', () => {
       ],
     });
 
-    expect(getStateText()).toBe('Inactive');
+    expect(getStateText()).toBe('Inactive (car unplugged)');
     expect(getPowerText()).toBe('off');
     expect(getStatusText()).toBe('inactive (charger is unplugged)');
     expect(getBadgeClassList('dev-ev-inactive')?.contains('neutral')).toBe(true);
+  });
+
+  it('renders a paused keep-state EV charger as inactive rather than active', async () => {
+    await renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-ev-paused',
+          name: 'EV Charger',
+          controlCapabilityId: 'evcharger_charging',
+          evChargingState: 'plugged_in_paused',
+          currentState: 'off',
+          plannedState: 'keep',
+          measuredPowerKw: 0,
+          expectedPowerKw: 0,
+          controllable: true,
+          reason: 'keep',
+        },
+      ],
+    });
+
+    expect(getStateText()).toBe('Inactive (car not charging)');
+    expect(getPowerText()).toBe('off');
+    expect(getStatusText()).toBe('keep');
+    expect(getBadgeClassList('dev-ev-paused')?.contains('neutral')).toBe(true);
+  });
+
+  it('renders a shed EV charger as charging paused', async () => {
+    await renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-ev-shed',
+          name: 'EV Charger',
+          controlCapabilityId: 'evcharger_charging',
+          evChargingState: 'plugged_in_paused',
+          currentState: 'off',
+          plannedState: 'shed',
+          measuredPowerKw: 0,
+          expectedPowerKw: 1.38,
+          controllable: true,
+          reason: 'shed due to capacity',
+        },
+      ],
+    });
+
+    expect(getStateText()).toBe('Shed (charging paused)');
+    expect(getPowerText()).toBe('off');
+    expect(getStatusText()).toBe('shed due to capacity');
+    expect(getBadgeClassList('dev-ev-shed')?.contains('expensive')).toBe(true);
+  });
+
+  it('renders a charging keep-state EV charger as active charging', async () => {
+    await renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-ev-charging',
+          name: 'EV Charger',
+          controlCapabilityId: 'evcharger_charging',
+          evChargingState: 'plugged_in_charging',
+          currentState: 'on',
+          plannedState: 'keep',
+          measuredPowerKw: 7.2,
+          expectedPowerKw: 7.2,
+          controllable: true,
+          reason: 'keep',
+        },
+      ],
+    });
+
+    expect(getStateText()).toBe('Active (charging)');
+    expect(getPowerText()).toBe('on');
+    expect(getStatusText()).toBe('keep');
+    expect(getBadgeClassList('dev-ev-charging')?.contains('cheap')).toBe(true);
   });
 
   it('renders meter settling as restoring when an off keep device is waiting to restore', async () => {

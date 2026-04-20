@@ -472,7 +472,7 @@ describe('registerFlowCards', () => {
     }));
   });
 
-  it('parses EV charging state autocomplete values by option id', async () => {
+  it('parses EV car connection autocomplete values as boolean flow reports', async () => {
     const { deps, actionListeners } = buildDeps({
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
         { id: 'dev-1', name: 'Wallbox', class: 'evcharger', capabilities: ['evcharger_charging'] },
@@ -481,15 +481,15 @@ describe('registerFlowCards', () => {
 
     registerFlowCards(deps);
 
-    await expect(actionListeners.report_flow_backed_device_evcharger_state({
+    await expect(actionListeners.report_flow_backed_device_evcharger_car_connected({
       device: 'dev-1',
-      state: { id: 'plugged_in_charging', name: 'Plugged in charging' },
+      state: { id: 'connected', name: 'Connected' },
     })).resolves.toBe(true);
 
     expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith({
       deviceId: 'dev-1',
-      capabilityId: 'evcharger_charging_state',
-      value: 'plugged_in_charging',
+      capabilityId: 'alarm_generic.car_connected',
+      value: true,
     });
   });
 
@@ -524,14 +524,14 @@ describe('registerFlowCards', () => {
     ]);
   });
 
-  it('uses human-friendly EV charging state autocomplete labels with canonical ids', async () => {
+  it('uses human-friendly EV car connection autocomplete labels', async () => {
     const { deps, actionAutocompleteListeners } = buildDeps();
 
     registerFlowCards(deps);
 
-    const options = await actionAutocompleteListeners.report_flow_backed_device_evcharger_state.state('paused');
+    const options = await actionAutocompleteListeners.report_flow_backed_device_evcharger_car_connected.state('dis');
     expect(options).toEqual([
-      { id: 'plugged_in_paused', name: 'Plugged in, paused' },
+      { id: 'disconnected', name: 'Disconnected' },
     ]);
   });
 
@@ -545,7 +545,7 @@ describe('registerFlowCards', () => {
 
     registerFlowCards(deps);
 
-    const options = await actionAutocompleteListeners.report_flow_backed_device_evcharger_state.device('wallbox');
+    const options = await actionAutocompleteListeners.report_flow_backed_device_evcharger_car_connected.device('wallbox');
     expect(options).toEqual([{ id: 'ev-1', name: 'Wallbox' }]);
   });
 

@@ -70,18 +70,14 @@ export function registerFlowBackedDeviceCards(deps: FlowCardDeps): void {
     errorMessage: 'Charging state must be on, off, true, or false.',
   });
 
-  registerFlowBackedCapabilityCard({
+  registerBooleanCapabilityCard({
     deps,
-    cardId: 'report_flow_backed_device_evcharger_state',
-    capabilityId: 'evcharger_charging_state',
+    cardId: 'report_flow_backed_device_evcharger_car_connected',
+    capabilityId: 'alarm_generic.car_connected',
     target: 'evcharger',
-    parseValue: (rawValue) => {
-      const normalized = parseAutocompleteStringValue(rawValue);
-      if (!normalized) throw new Error('EV charging state must be provided.');
-      return normalized;
-    },
+    errorMessage: 'Car connection state must be connected, disconnected, true, or false.',
     autocompleteArg: 'state',
-    getAutocompleteOptions: getEvChargingStateOptions,
+    getAutocompleteOptions: getConnectionAutocompleteOptions,
   });
 }
 
@@ -115,19 +111,29 @@ function registerFlowBackedRequestTrigger(params: {
 function registerBooleanCapabilityCard(params: {
   deps: FlowCardDeps;
   cardId: string;
-  capabilityId: Extract<FlowReportedCapabilityId, 'onoff' | 'evcharger_charging'>;
+  capabilityId: Extract<FlowReportedCapabilityId, 'onoff' | 'evcharger_charging' | 'alarm_generic.car_connected'>;
   target: FlowBackedCardTarget;
   errorMessage: string;
+  autocompleteArg?: string;
+  getAutocompleteOptions?: (query: string) => Array<{ id: string; name: string }>;
 }): void {
-  const { deps, cardId, capabilityId, target, errorMessage } = params;
+  const {
+    deps,
+    cardId,
+    capabilityId,
+    target,
+    errorMessage,
+    autocompleteArg = 'state',
+    getAutocompleteOptions = getBooleanAutocompleteOptions,
+  } = params;
   registerFlowBackedCapabilityCard({
     deps,
     cardId,
     capabilityId,
     target,
     parseValue: (rawValue) => parseBooleanFlowValue(rawValue, errorMessage),
-    autocompleteArg: 'state',
-    getAutocompleteOptions: getBooleanAutocompleteOptions,
+    autocompleteArg,
+    getAutocompleteOptions,
   });
 }
 
@@ -210,6 +216,8 @@ function parseBooleanFlowValue(rawValue: unknown, errorMessage: string): boolean
   const normalized = parseAutocompleteStringValue(rawValue).toLowerCase();
   if (normalized === 'true' || normalized === 'on') return true;
   if (normalized === 'false' || normalized === 'off') return false;
+  if (normalized === 'connected') return true;
+  if (normalized === 'disconnected') return false;
   throw new Error(errorMessage);
 }
 
@@ -262,6 +270,17 @@ function getBooleanAutocompleteOptions(query: string): Array<{ id: string; name:
   const options = [
     { id: 'on', name: 'On' },
     { id: 'off', name: 'Off' },
+  ];
+  const normalizedQuery = (query || '').trim().toLowerCase();
+  return options.filter((option) => (
+    !normalizedQuery || option.id.includes(normalizedQuery) || option.name.toLowerCase().includes(normalizedQuery)
+  ));
+}
+
+function getConnectionAutocompleteOptions(query: string): Array<{ id: string; name: string }> {
+  const options = [
+    { id: 'connected', name: 'Connected' },
+    { id: 'disconnected', name: 'Disconnected' },
   ];
   const normalizedQuery = (query || '').trim().toLowerCase();
   return options.filter((option) => (
@@ -375,22 +394,6 @@ function isCapabilityProvidedNatively(params: {
     ));
   }
   return capabilities.includes(capabilityId);
-}
-
-function getEvChargingStateOptions(query: string): Array<{ id: string; name: string }> {
-  const options = [
-    { id: 'plugged_in_charging', name: 'Plugged in, charging' },
-    { id: 'plugged_in_paused', name: 'Plugged in, paused' },
-    { id: 'plugged_in', name: 'Plugged in' },
-    { id: 'plugged_out', name: 'Plugged out' },
-    { id: 'plugged_in_discharging', name: 'Plugged in, discharging' },
-  ];
-  const normalizedQuery = (query || '').trim().toLowerCase();
-  return options.filter((option) => (
-    !normalizedQuery
-    || option.id.toLowerCase().includes(normalizedQuery)
-    || option.name.toLowerCase().includes(normalizedQuery)
-  ));
 }
 
 export function parseFlowPowerInput(rawPower: unknown): number | null {

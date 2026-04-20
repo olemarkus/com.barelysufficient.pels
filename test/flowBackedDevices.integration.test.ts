@@ -173,7 +173,7 @@ describe('Flow-backed device support', () => {
     }));
   });
 
-  it('admits EV chargers only after reported charging, charging state, and measure_power', async () => {
+  it('admits EV chargers only after reported charging, car connected, and measure_power', async () => {
     mockHomeyInstance.settings.set(EXPERIMENTAL_EV_SUPPORT_ENABLED, true);
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'ev-1': buildEvApiDevice({ capabilities: [] }),
@@ -190,9 +190,9 @@ describe('Flow-backed device support', () => {
     await runAction('report_flow_backed_device_power', { device: 'ev-1', power_w: 7200 });
     expect(getSnapshot().find((device) => device.id === 'ev-1')).toBeUndefined();
 
-    await runAction('report_flow_backed_device_evcharger_state', {
+    await runAction('report_flow_backed_device_evcharger_car_connected', {
       device: 'ev-1',
-      state: 'plugged_in_charging',
+      state: 'connected',
     });
     const entry = getSnapshot().find((device) => device.id === 'ev-1');
     expect(entry).toEqual(expect.objectContaining({
@@ -203,6 +203,26 @@ describe('Flow-backed device support', () => {
       measuredPowerKw: 7.2,
       controlCapabilityId: 'evcharger_charging',
       canSetControl: true,
+    }));
+  });
+
+  it('synthesizes a paused EV charging state from car connected plus charging off', async () => {
+    mockHomeyInstance.settings.set(EXPERIMENTAL_EV_SUPPORT_ENABLED, true);
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'ev-1': buildEvApiDevice({ capabilities: [] }),
+    });
+    const app = createApp();
+    await app.onInit();
+
+    await runAction('report_flow_backed_device_evcharger_charging', { device: 'ev-1', state: 'off' });
+    await runAction('report_flow_backed_device_evcharger_car_connected', { device: 'ev-1', state: 'connected' });
+    await runAction('report_flow_backed_device_power', { device: 'ev-1', power_w: 0 });
+
+    expect(getSnapshot().find((device) => device.id === 'ev-1')).toEqual(expect.objectContaining({
+      id: 'ev-1',
+      currentOn: false,
+      evChargingState: 'plugged_in_paused',
+      measuredPowerKw: 0,
     }));
   });
 
