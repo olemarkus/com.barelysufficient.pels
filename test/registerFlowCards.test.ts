@@ -155,6 +155,31 @@ describe('registerFlowCards', () => {
     }));
   });
 
+  it('accepts a stepped-load actual step report when snapshot lookup fails', async () => {
+    const { deps, actionListeners, structuredInfo } = buildDeps({
+      getSnapshot: vi.fn().mockRejectedValue(new Error('snapshot unavailable')),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_actual_step({
+      device: 'dev-1',
+      step: 'max',
+    })).resolves.toBe(true);
+
+    expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('dev-1', 'max');
+    expect(deps.refreshSnapshot).toHaveBeenCalled();
+    expect(deps.rebuildPlan).toHaveBeenCalledWith('report_stepped_load_actual_step');
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_resolved',
+      sourceCardId: 'report_stepped_load_actual_step',
+      deviceId: 'dev-1',
+      deviceName: 'dev-1',
+      resolvedStepId: 'max',
+      outcome: 'accepted',
+    }));
+  });
+
   it('treats an echoed stepped-load step report as a successful no-op', async () => {
     const { deps, actionListeners } = buildDeps({
       reportSteppedLoadActualStep: vi.fn(() => 'unchanged'),
