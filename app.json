@@ -898,40 +898,6 @@
       },
       {
         "title": {
-          "en": "Set power usage for device"
-        },
-        "titleFormatted": {
-          "en": "Set power usage for [[device]] to [[power_w]] W"
-        },
-        "hint": {
-          "en": "Reports current power usage for an existing Homey device."
-        },
-        "args": [
-          {
-            "name": "device",
-            "type": "autocomplete",
-            "title": {
-              "en": "Device"
-            },
-            "placeholder": {
-              "en": "Select device"
-            }
-          },
-          {
-            "name": "power_w",
-            "type": "text",
-            "title": {
-              "en": "Power"
-            },
-            "placeholder": {
-              "en": "1750 or 1750 W"
-            }
-          }
-        ],
-        "id": "report_flow_backed_device_power"
-      },
-      {
-        "title": {
           "en": "Report power usage"
         },
         "titleFormatted": {

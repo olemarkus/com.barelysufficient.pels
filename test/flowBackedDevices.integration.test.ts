@@ -95,9 +95,12 @@ describe('Flow-backed device support', () => {
     vi.clearAllTimers();
   });
 
-  it('admits binary devices only after reported onoff plus measure_power', async () => {
+  it('admits binary devices only after reported onoff when native power exists', async () => {
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
-      'binary-1': buildBinaryApiDevice(),
+      'binary-1': buildBinaryApiDevice({
+        capabilities: ['measure_power'],
+        measurePower: 1200,
+      }),
     });
     const app = createApp();
     await app.onInit();
@@ -106,9 +109,6 @@ describe('Flow-backed device support', () => {
     expect(getSnapshot().find((device) => device.id === 'binary-1')).toBeUndefined();
 
     await runAction('report_flow_backed_device_onoff', { device: 'binary-1', state: 'on' });
-    expect(getSnapshot().find((device) => device.id === 'binary-1')).toBeUndefined();
-
-    await runAction('report_flow_backed_device_power', { device: 'binary-1', power_w: 1200 });
     const entry = getSnapshot().find((device) => device.id === 'binary-1');
     expect(entry).toEqual(expect.objectContaining({
       id: 'binary-1',
@@ -173,10 +173,16 @@ describe('Flow-backed device support', () => {
     }));
   });
 
-  it('admits EV chargers only after reported charging, car connected, and measure_power', async () => {
+  it('admits EV chargers only after reported charging and car connected when native power exists', async () => {
     mockHomeyInstance.settings.set(EXPERIMENTAL_EV_SUPPORT_ENABLED, true);
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
-      'ev-1': buildEvApiDevice({ capabilities: [] }),
+      'ev-1': {
+        ...buildEvApiDevice({ capabilities: ['measure_power'] }),
+        capabilitiesObj: {
+          ...buildEvApiDevice({ capabilities: ['measure_power'] }).capabilitiesObj,
+          measure_power: { id: 'measure_power', value: 7200 },
+        },
+      },
     });
     const app = createApp();
     await app.onInit();
@@ -185,9 +191,6 @@ describe('Flow-backed device support', () => {
     expect(getSnapshot().find((device) => device.id === 'ev-1')).toBeUndefined();
 
     await runAction('report_flow_backed_device_evcharger_charging', { device: 'ev-1', state: 'on' });
-    expect(getSnapshot().find((device) => device.id === 'ev-1')).toBeUndefined();
-
-    await runAction('report_flow_backed_device_power', { device: 'ev-1', power_w: 7200 });
     expect(getSnapshot().find((device) => device.id === 'ev-1')).toBeUndefined();
 
     await runAction('report_flow_backed_device_evcharger_car_connected', {
@@ -209,14 +212,19 @@ describe('Flow-backed device support', () => {
   it('synthesizes a paused EV charging state from car connected plus charging off', async () => {
     mockHomeyInstance.settings.set(EXPERIMENTAL_EV_SUPPORT_ENABLED, true);
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
-      'ev-1': buildEvApiDevice({ capabilities: [] }),
+      'ev-1': {
+        ...buildEvApiDevice({ capabilities: ['measure_power'] }),
+        capabilitiesObj: {
+          ...buildEvApiDevice({ capabilities: ['measure_power'] }).capabilitiesObj,
+          measure_power: { id: 'measure_power', value: 0 },
+        },
+      },
     });
     const app = createApp();
     await app.onInit();
 
     await runAction('report_flow_backed_device_evcharger_charging', { device: 'ev-1', state: 'off' });
     await runAction('report_flow_backed_device_evcharger_car_connected', { device: 'ev-1', state: 'connected' });
-    await runAction('report_flow_backed_device_power', { device: 'ev-1', power_w: 0 });
 
     expect(getSnapshot().find((device) => device.id === 'ev-1')).toEqual(expect.objectContaining({
       id: 'ev-1',
@@ -226,25 +234,25 @@ describe('Flow-backed device support', () => {
     }));
   });
 
-  it('updates stored flow-backed state over time without inferring binary state from power alone', async () => {
+  it('updates stored flow-backed state over time while power remains native', async () => {
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
-      'binary-1': buildBinaryApiDevice({ capabilities: [] }),
+      'binary-1': buildBinaryApiDevice({
+        capabilities: ['measure_power'],
+        measurePower: 1200,
+      }),
     });
     const app = createApp();
     await app.onInit();
 
     await runAction('report_flow_backed_device_onoff', { device: 'binary-1', state: 'on' });
-    await runAction('report_flow_backed_device_power', { device: 'binary-1', power_w: 1200 });
-
-    await runAction('report_flow_backed_device_power', { device: 'binary-1', power_w: 0 });
 
     const reportedState = mockHomeyInstance.settings.get(FLOW_REPORTED_DEVICE_CAPABILITIES) as Record<string, Record<string, { value: unknown }>>;
-    expect(reportedState['binary-1']?.measure_power?.value).toBe(0);
+    expect(reportedState['binary-1']?.onoff?.value).toBe(true);
 
     let entry = getSnapshot().find((device) => device.id === 'binary-1');
     expect(entry).toEqual(expect.objectContaining({
       currentOn: true,
-      measuredPowerKw: 0,
+      measuredPowerKw: 1.2,
     }));
 
     await runAction('report_flow_backed_device_onoff', { device: 'binary-1', state: 'off' });
@@ -252,7 +260,7 @@ describe('Flow-backed device support', () => {
     entry = getSnapshot().find((device) => device.id === 'binary-1');
     expect(entry).toEqual(expect.objectContaining({
       currentOn: false,
-      measuredPowerKw: 0,
+      measuredPowerKw: 1.2,
     }));
   });
 
@@ -260,7 +268,6 @@ describe('Flow-backed device support', () => {
     mockHomeyInstance.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, {
       'binary-1': {
         onoff: { value: false, reportedAt: Date.parse('2026-03-20T11:00:00Z'), source: 'flow' },
-        measure_power: { value: 1500, reportedAt: Date.parse('2026-03-20T11:00:00Z'), source: 'flow' },
       },
     });
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
@@ -282,7 +289,7 @@ describe('Flow-backed device support', () => {
     expect(getSnapshot().find((device) => device.id === 'binary-1')?.flowBacked).toBeUndefined();
   });
 
-  it('does not infer EV charging state from power alone before admission', async () => {
+  it('does not admit EV charging reports without native power support', async () => {
     mockHomeyInstance.settings.set(EXPERIMENTAL_EV_SUPPORT_ENABLED, true);
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'ev-1': buildEvApiDevice(),
@@ -290,20 +297,23 @@ describe('Flow-backed device support', () => {
     const app = createApp();
     await app.onInit();
 
-    await runAction('report_flow_backed_device_power', { device: 'ev-1', power_w: 7200 });
+    await runAction('report_flow_backed_device_evcharger_charging', { device: 'ev-1', state: 'on' });
+    await runAction('report_flow_backed_device_evcharger_car_connected', { device: 'ev-1', state: 'connected' });
 
     expect(getSnapshot().find((device) => device.id === 'ev-1')).toBeUndefined();
   });
 
   it('emits refresh requests without mutating reported flow-backed state', async () => {
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
-      'binary-1': buildBinaryApiDevice(),
+      'binary-1': buildBinaryApiDevice({
+        capabilities: ['measure_power'],
+        measurePower: 1200,
+      }),
     });
     const app = createApp();
     await app.onInit();
 
     await runAction('report_flow_backed_device_onoff', { device: 'binary-1', state: 'on' });
-    await runAction('report_flow_backed_device_power', { device: 'binary-1', power_w: 1200 });
 
     const beforeStore = structuredClone(
       mockHomeyInstance.settings.get(FLOW_REPORTED_DEVICE_CAPABILITIES) as Record<string, unknown>,
@@ -323,7 +333,6 @@ describe('Flow-backed device support', () => {
     mockHomeyInstance.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, {
       'binary-1': {
         onoff: { value: true, reportedAt: Date.parse('2026-03-20T11:00:00Z'), source: 'flow' },
-        measure_power: { value: 1200, reportedAt: Date.parse('2026-03-20T11:00:00Z'), source: 'flow' },
       },
     });
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({

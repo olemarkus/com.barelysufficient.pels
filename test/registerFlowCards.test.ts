@@ -407,38 +407,6 @@ describe('registerFlowCards', () => {
     }));
   });
 
-  it('stores flow-backed power reports, refreshes snapshot without re-triggering flow refresh, and rebuilds on change', async () => {
-    const { deps, actionListeners } = buildDeps({
-      getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
-        { id: 'dev-1', name: 'Relay', class: 'socket', capabilities: ['onoff'] },
-      ]),
-    });
-
-    registerFlowCards(deps);
-
-    await expect(actionListeners.report_flow_backed_device_power({
-      device: 'dev-1',
-      power_w: '1750 W',
-    })).resolves.toBe(true);
-
-    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith({
-      deviceId: 'dev-1',
-      capabilityId: 'measure_power',
-      value: 1750,
-    });
-    expect(deps.refreshSnapshot).toHaveBeenCalledWith({ emitFlowBackedRefresh: false });
-    expect(deps.rebuildPlan).toHaveBeenCalledWith('report_flow_backed_device_power');
-    expect(deps.structuredLog?.info).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'flow_backed_capability_reported',
-      sourceCardId: 'report_flow_backed_device_power',
-      deviceId: 'dev-1',
-      deviceName: 'Relay',
-      capabilityId: 'measure_power',
-      value: 1750,
-      nativeCapabilityPresent: false,
-    }));
-  });
-
   it('refreshes snapshot but skips rebuild when a flow-backed report only updates freshness', async () => {
     const { deps, actionListeners } = buildDeps({
       reportFlowBackedCapability: vi.fn(() => 'unchanged'),
@@ -503,7 +471,7 @@ describe('registerFlowCards', () => {
 
     registerFlowCards(deps);
 
-    const options = await actionAutocompleteListeners.report_flow_backed_device_power.device('garage');
+    const options = await actionAutocompleteListeners.report_flow_backed_device_evcharger_charging.device('garage');
     expect(options).toEqual([{ id: 'dev-2', name: 'Garage Charger' }]);
   });
 
@@ -517,7 +485,7 @@ describe('registerFlowCards', () => {
 
     registerFlowCards(deps);
 
-    const options = await actionAutocompleteListeners.report_flow_backed_device_power.device('wallbox');
+    const options = await actionAutocompleteListeners.report_flow_backed_device_onoff.device('wallbox');
     expect(options).toEqual([
       { id: 'dev-2', name: 'Wallbox (Driveway)' },
       { id: 'dev-1', name: 'Wallbox (Garage)' },

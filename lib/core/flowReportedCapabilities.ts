@@ -4,7 +4,6 @@ import { getCapabilities, resolveDeviceClassKey } from './deviceManagerHelpers';
 
 export const FLOW_REPORTED_CAPABILITY_IDS = [
   'onoff',
-  'measure_power',
   'evcharger_charging',
   'alarm_generic.car_connected',
 ] as const;
@@ -26,11 +25,10 @@ type FlowAugmentedDeviceType = 'binary' | 'evcharger' | 'unsupported';
 
 const FLOW_REPORTED_CAPABILITY_SET = new Set<string>(FLOW_REPORTED_CAPABILITY_IDS);
 
-const BINARY_INPUT_CAPABILITIES: readonly FlowReportedCapabilityId[] = ['onoff', 'measure_power'];
+const BINARY_INPUT_CAPABILITIES: readonly FlowReportedCapabilityId[] = ['onoff'];
 const EV_INPUT_CAPABILITIES: readonly FlowReportedCapabilityId[] = [
   'evcharger_charging',
   'alarm_generic.car_connected',
-  'measure_power',
 ];
 const BINARY_EFFECTIVE_REQUIRED_CAPABILITIES = ['onoff', 'measure_power'] as const;
 const EV_EFFECTIVE_REQUIRED_CAPABILITIES = [
@@ -340,14 +338,6 @@ function isCapabilityProvidedNatively(
   capabilityId: FlowReportedCapabilityId,
   capabilities: readonly string[],
 ): boolean {
-  if (capabilityId === 'measure_power') {
-    return capabilities.some((nativeCapabilityId) => (
-      nativeCapabilityId === 'measure_power'
-      || nativeCapabilityId.startsWith('measure_power.')
-      || nativeCapabilityId === 'meter_power'
-      || nativeCapabilityId.startsWith('meter_power.')
-    ));
-  }
   return capabilities.includes(capabilityId);
 }
 
@@ -379,8 +369,6 @@ function isValidFlowReportedValue(
   capabilityId: FlowReportedCapabilityId,
   value: unknown,
 ): value is boolean | number | string {
-  if (capabilityId === 'measure_power') {
-    return typeof value === 'number' && Number.isFinite(value);
-  }
+  void capabilityId;
   return typeof value === 'boolean';
 }
