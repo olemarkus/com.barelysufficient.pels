@@ -192,21 +192,14 @@ function registerReportActualStepCard(deps: FlowCardDeps): void {
       if (!stepId) {
         throw createSteppedLoadReportError('step_missing', 'Step must be provided.');
       }
-      const device = await getSteppedLoadDeviceSnapshot(deps, deviceId);
-      const matchingStep = device.steppedLoadProfile?.steps.find((step) => step.id === stepId);
-      if (!matchingStep) {
-        throw createSteppedLoadReportError(
-          'invalid_step',
-          `No configured stepped-load step matches '${stepId}'.`,
-        );
-      }
       const result = await deps.reportSteppedLoadActualStep(deviceId, stepId);
+      const deviceName = await getBestEffortSteppedLoadDeviceName(deps, deviceId);
       await handleSteppedLoadReportResult({
         deps,
         result,
         source: sourceCardId,
         deviceId,
-        deviceName: device.name.trim(),
+        deviceName,
         resolvedStepId: stepId,
       });
       return true;
@@ -370,6 +363,18 @@ async function resolveSteppedLoadStepIdFromPowerInput(params: {
     deviceName: device.name.trim(),
     parsedPowerW: powerW,
   };
+}
+
+async function getBestEffortSteppedLoadDeviceName(
+  deps: FlowCardDeps,
+  deviceId: string,
+): Promise<string> {
+  try {
+    const snapshot = await deps.getSnapshot();
+    return snapshot.find((entry) => entry.id === deviceId)?.name.trim() || deviceId;
+  } catch {
+    return deviceId;
+  }
 }
 
 function parseFlowPowerInput(rawPower: unknown): number | null {
