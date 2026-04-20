@@ -1,5 +1,5 @@
 import { RESTORE_COOLDOWN_MS, SHED_COOLDOWN_MS } from './planConstants';
-import type { HeadroomCardState, PlanEngineState } from './planState';
+import type { PlanEngineState } from './planState';
 import {
   ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
   closeActivationAttemptForDevice,
@@ -22,14 +22,6 @@ import {
 
 const HEADROOM_STEP_DOWN_THRESHOLD_KW = 0.15;
 
-const removeStepDownCooldown = (cards: Record<string, HeadroomCardState>, deviceId: string): void => {
-  const entry = cards[deviceId];
-  if (!entry) return;
-  delete entry.cooldownUntilMs;
-  delete entry.cooldownFromKw;
-  delete entry.cooldownToKw;
-};
-
 const removeHeadroomCardStateForDevice = (
   state: PlanEngineState,
   deviceId: string,
@@ -43,7 +35,6 @@ const removeHeadroomCardStateForDevice = (
     delete entry.lastObservedKwSource;
   }
   delete entry.lastStepDownMs;
-  removeStepDownCooldown(cards, deviceId);
   if (Object.keys(entry).length === 0) {
     delete cards[deviceId];
   }
@@ -67,20 +58,6 @@ const cleanupMissingHeadroomDevices = (
     stateChanged = closeActivationAttemptForDevice(state, deviceId) || true;
   }
   return stateChanged;
-};
-
-const clearExpiredStepDownCooldown = (
-  state: PlanEngineState,
-  deviceId: string,
-  nowTs: number,
-): boolean => {
-  const cards = state.headroomCardByDevice;
-  const entry = cards[deviceId];
-  if (!entry) return false;
-  const expiresAtMs = entry.cooldownUntilMs;
-  if (!isFiniteNumber(expiresAtMs) || expiresAtMs > nowTs) return false;
-  removeStepDownCooldown(cards, deviceId);
-  return true;
 };
 
 const wasRecentlySteppedDown = (
@@ -127,40 +104,6 @@ export const emitActivationTransitions = (
   for (const transition of transitions) {
     diagnostics.recordActivationTransition(transition, { name: deviceName });
   }
-};
-
-const maybeStartStepDownCooldown = (params: {
-  state: PlanEngineState;
-  deviceId: string;
-  previousTrackedKw: number;
-  trackedKw: number;
-  nowTs: number;
-}): { stateChanged: boolean; started: boolean } => {
-  const {
-    state,
-    deviceId,
-    previousTrackedKw,
-    trackedKw,
-    nowTs,
-  } = params;
-  if (previousTrackedKw - trackedKw < HEADROOM_STEP_DOWN_THRESHOLD_KW) {
-    return { stateChanged: false, started: false };
-  }
-
-  const entry = ensureHeadroomEntry(state, deviceId);
-  const nextUntilMs = nowTs + SHED_COOLDOWN_MS;
-  if (
-    entry.cooldownUntilMs === nextUntilMs
-    && entry.cooldownFromKw === previousTrackedKw
-    && entry.cooldownToKw === trackedKw
-  ) {
-    return { stateChanged: false, started: false };
-  }
-
-  entry.cooldownUntilMs = nextUntilMs;
-  entry.cooldownFromKw = previousTrackedKw;
-  entry.cooldownToKw = trackedKw;
-  return { stateChanged: true, started: true };
 };
 
 const maybeStartTrackedActivationAttempt = (params: {
@@ -244,15 +187,8 @@ const maybeRecordTrackedStepDown = (params: {
     reconciliationContext,
     diagnostics,
   } = params;
-  const stepDownResult = maybeStartStepDownCooldown({
-    state,
-    deviceId,
-    previousTrackedKw,
-    trackedKw,
-    nowTs,
-  });
-  if (!stepDownResult.started) {
-    return stepDownResult.stateChanged;
+  if (previousTrackedKw - trackedKw < HEADROOM_STEP_DOWN_THRESHOLD_KW) {
+    return false;
   }
 
   const entry = ensureHeadroomEntry(state, deviceId);
@@ -275,10 +211,10 @@ const maybeRecordTrackedStepDown = (params: {
       reconciliation,
     });
   }
-  // Tracked power changes are useful for diagnostics and headroom cooldowns, but restore
+  // Tracked power changes are useful for diagnostics, but restore
   // failure/backoff belongs to explicit planner signals such as reconcile re-apply or
   // overshoot attribution. A normal device duty cycle must not become setback_failed here.
-  return stepDownResult.stateChanged;
+  return true;
 };
 
 const syncHeadroomCardTrackedKw = (params: {
@@ -312,8 +248,7 @@ const syncHeadroomCardTrackedKw = (params: {
   const name = resolveHeadroomDeviceName({ state, deviceId, device, deviceName });
   emitActivationTransitions(diagnostics, name, penaltyInfo.transitions);
   const previousTrackedKw = state.headroomCardByDevice[deviceId]?.lastObservedKw;
-  const expiredChanged = clearExpiredStepDownCooldown(state, deviceId, nowTs);
-  let stateChanged = expiredChanged || penaltyInfo.stateChanged;
+  let stateChanged = penaltyInfo.stateChanged;
 
   if (!isFiniteNumber(previousTrackedKw)) {
     updateHeadroomCardLastObserved(state, deviceId, trackedKw, trackedKwSource, name);
@@ -368,25 +303,6 @@ const syncHeadroomCardDevice = (params: {
     reconciliationContext: params.reconciliationContext,
     diagnostics: params.diagnostics,
   });
-};
-
-const getStepDownCooldown = (
-  state: PlanEngineState,
-  deviceId: string,
-  nowTs: number,
-): HeadroomCooldownCandidate | null => {
-  const entry = state.headroomCardByDevice[deviceId];
-  if (!entry) return null;
-  const expiresAtMs = entry.cooldownUntilMs;
-  if (!isFiniteNumber(expiresAtMs) || expiresAtMs <= nowTs) return null;
-  return {
-    source: 'step_down',
-    remainingSec: Math.max(0, Math.ceil((expiresAtMs - nowTs) / 1000)),
-    expiresAtMs,
-    startMs: expiresAtMs - SHED_COOLDOWN_MS,
-    dropFromKw: entry.cooldownFromKw ?? null,
-    dropToKw: entry.cooldownToKw ?? null,
-  };
 };
 
 const getPelsCooldown = (
@@ -494,14 +410,5 @@ export const resolveHeadroomCardCooldown = (params: {
 }): HeadroomCooldownCandidate | null => {
   const { state, deviceId } = params;
   const nowTs = params.nowTs ?? Date.now();
-  const pelsCooldown = getPelsCooldown(state, deviceId, nowTs);
-  const stepDownCooldown = getStepDownCooldown(state, deviceId, nowTs);
-  if (!pelsCooldown) return stepDownCooldown;
-  if (!stepDownCooldown) return pelsCooldown;
-  if (pelsCooldown.expiresAtMs === stepDownCooldown.expiresAtMs) {
-    return pelsCooldown;
-  }
-  return pelsCooldown.expiresAtMs > stepDownCooldown.expiresAtMs
-    ? pelsCooldown
-    : stepDownCooldown;
+  return getPelsCooldown(state, deviceId, nowTs);
 };

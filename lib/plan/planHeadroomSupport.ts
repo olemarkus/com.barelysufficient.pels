@@ -5,7 +5,7 @@ import { isFiniteNumber } from '../utils/appTypeGuards';
 
 export { isFiniteNumber };
 
-export type HeadroomCardCooldownSource = 'step_down' | 'pels_shed' | 'pels_restore';
+export type HeadroomCardCooldownSource = 'pels_shed' | 'pels_restore';
 export type HeadroomDeviceKwSource = 'expectedPowerKw' | 'powerKw' | 'measuredPowerKw' | 'fallback_zero';
 export type ResolvedHeadroomDeviceKw = { kw: number; source: HeadroomDeviceKwSource };
 export type HeadroomTrackedTransitionContext = Extract<

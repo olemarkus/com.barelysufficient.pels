@@ -95,7 +95,7 @@ describe('Headroom for device condition', () => {
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 0.8 })).resolves.toBe(true);
   });
 
-  it('keeps headroom blocked for 60 seconds after expected power is lowered, even if measured draw rises again', async () => {
+  it('does not keep headroom blocked after expected power is lowered if measured draw rises again', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-03T14:07:20.000Z'));
 
@@ -146,13 +146,13 @@ describe('Headroom for device condition', () => {
     expect(raisedMeasurementSnapshot?.expectedPowerSource).toBe('measured-peak');
     expect(raisedMeasurementSnapshot?.measuredPowerKw).toBeCloseTo(2.87);
 
-    await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(false);
+    await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(true);
 
     vi.advanceTimersByTime(60 * 1000);
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(true);
   });
 
-  it('blocks even when the first headroom check happens only after expected power was lowered and measurement rose again', async () => {
+  it('allows when the first headroom check happens only after expected power was lowered and measurement rose again', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-03T14:36:40.000Z'));
 
@@ -189,10 +189,10 @@ describe('Headroom for device condition', () => {
     expect(snapshot?.expectedPowerSource).toBe('measured-peak');
     expect(snapshot?.measuredPowerKw).toBeCloseTo(2.87);
 
-    await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(false);
+    await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(true);
   });
 
-  it('blocks after lowering expected power late in the session, even if a later measured-peak check would otherwise pass', async () => {
+  it('allows after lowering expected power late in the session when a later measured-peak check passes', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-03T14:51:45.274Z'));
 
@@ -237,7 +237,7 @@ describe('Headroom for device condition', () => {
     currentPowerKw = 4.23;
 
     vi.advanceTimersByTime(2721);
-    await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(false);
+    await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 3.0 })).resolves.toBe(true);
   });
 
   it('blocks only the same device during recent PELS shed or restore cooldowns', async () => {
