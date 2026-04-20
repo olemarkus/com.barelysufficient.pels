@@ -2499,6 +2499,20 @@ describe('periodic snapshot refresh scheduling', () => {
     (app as any).structuredLogger = {
       child: vi.fn(() => ({ warn })),
     };
+    (app as any).flowReportedCapabilities = {
+      'dev-1': {
+        onoff: { value: true, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
+      },
+      'dev-2': {
+        onoff: { value: false, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
+      },
+    };
+    (app as any).deviceManager = {
+      getDevicesForDebug: vi.fn().mockResolvedValue([
+        { id: 'dev-1', name: 'Relay 1', class: 'socket', capabilities: [] },
+        { id: 'dev-2', name: 'Relay 2', class: 'socket', capabilities: [] },
+      ]),
+    };
     vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation(() => ({
       trigger: (_tokens?: unknown, state?: { deviceId?: string }) => (
         state?.deviceId === 'dev-1'

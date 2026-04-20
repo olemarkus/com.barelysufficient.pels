@@ -1,12 +1,12 @@
 {
   "title": {
-    "en": "PELS requests state refresh for"
+    "en": "PELS requests updated state for"
   },
   "titleFormatted": {
-    "en": "PELS requests state refresh for [[device]]"
+    "en": "PELS requests updated state for [[device]]"
   },
   "hint": {
-    "en": "Triggers when PELS wants fresh flow-backed state for an existing Homey device. This trigger never mutates device state by itself."
+    "en": "Triggers when PELS wants updated state for an existing Homey device. This card only requests data and does not change device state."
   },
   "args": [
     {
@@ -16,7 +16,7 @@
         "en": "Device"
       },
       "placeholder": {
-        "en": "Select Homey device"
+        "en": "Select device"
       }
     }
   ]

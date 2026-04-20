@@ -376,7 +376,12 @@ function hasAllRequiredFlowCapabilitiesInEffectiveView(params: {
     const { capabilities, capabilityObj, requiredCapabilityIds } = params;
     const capabilitySet = new Set(capabilities);
     return requiredCapabilityIds.every((capabilityId) => (
-        capabilitySet.has(capabilityId) && capabilityObj[capabilityId] !== undefined
+        capabilityId === 'measure_power'
+            ? (
+                getCapabilityValueByPrefix([...capabilities], capabilityObj, 'measure_power') !== undefined
+                || getCapabilityValueByPrefix([...capabilities], capabilityObj, 'meter_power') !== undefined
+            )
+            : capabilitySet.has(capabilityId) && capabilityObj[capabilityId] !== undefined
     ));
 }
 
