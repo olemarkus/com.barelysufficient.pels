@@ -186,6 +186,51 @@ describe('registerFlowCards', () => {
     expect(deps.rebuildPlan).not.toHaveBeenCalled();
   });
 
+  it('preserves a specific rejection reason when the service rejects the reported step', async () => {
+    const { deps, actionListeners, structuredInfo, structuredWarn } = buildDeps({
+      reportSteppedLoadActualStep: vi.fn(() => 'invalid'),
+      getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_actual_step({
+      device: 'dev-1',
+      step: 'max',
+    })).rejects.toThrow('Device is not configured as a stepped load, or the reported step is invalid.');
+
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_resolved',
+      sourceCardId: 'report_stepped_load_actual_step',
+      deviceId: 'dev-1',
+      deviceName: 'Tank',
+      resolvedStepId: 'max',
+      outcome: 'rejected',
+      reasonCode: 'invalid_step_report',
+    }));
+    expect(structuredWarn).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_rejected',
+      sourceCardId: 'report_stepped_load_actual_step',
+      deviceId: 'dev-1',
+      reportedStepId: 'max',
+      reasonCode: 'invalid_step',
+      errorMessage: 'Device is not configured as a stepped load, or the reported step is invalid.',
+    }));
+  });
+
   it('maps stepped-load power text to a configured step and strips a trailing W', async () => {
     const { deps, actionListeners, structuredInfo } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([
