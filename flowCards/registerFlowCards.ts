@@ -317,6 +317,8 @@ async function handleSteppedLoadReportResult(params: {
     });
     return;
   }
+  await deps.refreshSnapshot();
+  requestPlanRebuildFromFlow(deps, source);
   emitSteppedLoadReportResolvedLog({
     deps,
     sourceCardId: source,
@@ -326,8 +328,6 @@ async function handleSteppedLoadReportResult(params: {
     parsedPowerW,
     outcome: 'accepted',
   });
-  await deps.refreshSnapshot();
-  requestPlanRebuildFromFlow(deps, source);
 }
 
 async function resolveSteppedLoadStepIdFromPowerInput(params: {

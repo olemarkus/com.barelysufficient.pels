@@ -180,6 +180,50 @@ describe('registerFlowCards', () => {
     }));
   });
 
+  it('does not log accepted when the post-report snapshot refresh fails', async () => {
+    const { deps, actionListeners, structuredInfo, structuredWarn } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
+      refreshSnapshot: vi.fn().mockRejectedValue(new Error('refresh failed')),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_actual_step({
+      device: 'dev-1',
+      step: 'max',
+    })).rejects.toThrow('refresh failed');
+
+    const acceptedEvents = structuredInfo.mock.calls.filter(([payload]) => (
+      payload
+      && typeof payload === 'object'
+      && (payload as { event?: string; outcome?: string }).event === 'stepped_load_report_resolved'
+      && (payload as { outcome?: string }).outcome === 'accepted'
+    ));
+    expect(acceptedEvents).toHaveLength(0);
+    expect(structuredWarn).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_rejected',
+      sourceCardId: 'report_stepped_load_actual_step',
+      deviceId: 'dev-1',
+      reportedStepId: 'max',
+      reasonCode: 'unexpected_error',
+      errorMessage: 'refresh failed',
+    }));
+    expect(deps.rebuildPlan).not.toHaveBeenCalled();
+  });
+
   it('treats an echoed stepped-load step report as a successful no-op', async () => {
     const { deps, actionListeners } = buildDeps({
       reportSteppedLoadActualStep: vi.fn(() => 'unchanged'),
