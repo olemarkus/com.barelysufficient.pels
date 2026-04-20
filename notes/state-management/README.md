@@ -395,6 +395,20 @@ When merging snapshot refreshes with local/runtime state:
 3. Treat "no confirmation yet" as pending/unknown, not success.
 4. Keep `measure_power`-derived observations separate from estimated/planning power.
 
+## Flow-Reported Observations
+
+Flow-backed reports are observed state, not commanded state.
+
+Rules:
+
+1. Store flow-backed values under the real canonical capability ids such as `onoff`,
+   `measure_power`, `evcharger_charging`, and `evcharger_charging_state`.
+2. Apply flow-backed values as an overlay during parse/snapshot building; do not introduce a
+   parallel device model.
+3. Treat flow-backed values as freshness-bearing observed state for snapshot admission and live
+   status, but not as proof that PELS issued a command.
+4. Do not infer binary or EV charging state from flow-reported power alone.
+
 ## Open Problem Areas
 
 This note does not solve the implementation by itself. The active backlog still includes:

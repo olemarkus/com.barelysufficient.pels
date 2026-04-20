@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "PELS requests updated state for"
+  },
+  "titleFormatted": {
+    "en": "PELS requests updated state for [[device]]"
+  },
+  "hint": {
+    "en": "Triggers when PELS wants updated state for an existing Homey device. This card only requests data and does not change device state."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select device"
+      }
+    }
+  ]
+}

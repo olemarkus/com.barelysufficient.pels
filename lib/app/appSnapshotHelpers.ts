@@ -18,6 +18,7 @@ export type RefreshTargetDevicesSnapshotOptions = {
   fast?: boolean;
   targeted?: boolean;
   recordHomeyEnergySample?: boolean;
+  emitFlowBackedRefresh?: boolean;
 };
 
 function toPersistedTargetSnapshotFingerprint(value: unknown): string {
@@ -59,6 +60,8 @@ export class AppSnapshotHelpers {
     getNow: () => Date;
     logPeriodicStatus: (options?: { includeDeviceHealth?: boolean }) => void;
     disableUnsupportedDevices: (snapshot: TargetDeviceSnapshot[]) => void;
+    getFlowReportedDeviceIds: () => string[];
+    emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
     recordPowerSample: (powerW: number) => Promise<void>;
   }) {}
 
@@ -121,10 +124,15 @@ export class AppSnapshotHelpers {
     }
 
     this.isSnapshotRefreshing = true;
+    let shouldEmitFlowBackedRefresh = options.emitFlowBackedRefresh !== false;
     try {
       do {
         this.snapshotRefreshPending = false;
-        await this.runSnapshotRefreshCycle(deviceManager, options);
+        await this.runSnapshotRefreshCycle(deviceManager, {
+          ...options,
+          emitFlowBackedRefresh: shouldEmitFlowBackedRefresh,
+        });
+        shouldEmitFlowBackedRefresh = false;
       } while (this.snapshotRefreshPending && !this.staleObservationRefreshStopped);
     } finally {
       this.isSnapshotRefreshing = false;
@@ -246,6 +254,9 @@ export class AppSnapshotHelpers {
     deviceManager: DeviceManager,
     options: RefreshTargetDevicesSnapshotOptions,
   ): Promise<void> {
+    if (options.emitFlowBackedRefresh !== false) {
+      await this.deps.emitFlowBackedRefreshRequests(this.deps.getFlowReportedDeviceIds());
+    }
     this.deps.logDebug('devices', 'Refreshing target devices snapshot');
     await deviceManager.refreshSnapshot({
       includeLivePower: options.fast !== true,

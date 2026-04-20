@@ -178,6 +178,96 @@
       },
       {
         "title": {
+          "en": "PELS requests EV charging change for"
+        },
+        "titleFormatted": {
+          "en": "PELS requests EV charging change for [[device]]"
+        },
+        "hint": {
+          "en": "Triggers when PELS wants an existing Homey EV charger to start or stop charging."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select EV charger"
+            }
+          }
+        ],
+        "tokens": [
+          {
+            "name": "state",
+            "type": "string",
+            "title": {
+              "en": "Charging"
+            }
+          }
+        ],
+        "id": "flow_backed_device_evcharger_charging_requested"
+      },
+      {
+        "title": {
+          "en": "PELS requests on/off change for"
+        },
+        "titleFormatted": {
+          "en": "PELS requests on/off change for [[device]]"
+        },
+        "hint": {
+          "en": "Triggers when PELS wants an existing Homey device to turn on or off."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          }
+        ],
+        "tokens": [
+          {
+            "name": "state",
+            "type": "string",
+            "title": {
+              "en": "State"
+            }
+          }
+        ],
+        "id": "flow_backed_device_onoff_requested"
+      },
+      {
+        "title": {
+          "en": "PELS requests updated state for"
+        },
+        "titleFormatted": {
+          "en": "PELS requests updated state for [[device]]"
+        },
+        "hint": {
+          "en": "Triggers when PELS wants updated state for an existing Homey device. This card only requests data and does not change device state."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          }
+        ],
+        "id": "flow_backed_device_refresh_requested"
+      },
+      {
+        "title": {
           "en": "Operating mode changed to"
         },
         "titleFormatted": {
@@ -673,6 +763,142 @@
           }
         ],
         "id": "remove_budget_exemption"
+      },
+      {
+        "title": {
+          "en": "Set EV charging for device"
+        },
+        "titleFormatted": {
+          "en": "Set EV charging for [[device]] to [[state]]"
+        },
+        "hint": {
+          "en": "Reports whether an existing Homey EV charger is charging."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select EV charger"
+            }
+          },
+          {
+            "name": "state",
+            "type": "autocomplete",
+            "title": {
+              "en": "Charging"
+            },
+            "placeholder": {
+              "en": "On or off"
+            }
+          }
+        ],
+        "id": "report_flow_backed_device_evcharger_charging"
+      },
+      {
+        "title": {
+          "en": "Set EV charging state for device"
+        },
+        "titleFormatted": {
+          "en": "Set EV charging state for [[device]] to [[state]]"
+        },
+        "hint": {
+          "en": "Reports the current charging state for an existing Homey EV charger."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select EV charger"
+            }
+          },
+          {
+            "name": "state",
+            "type": "autocomplete",
+            "title": {
+              "en": "State"
+            },
+            "placeholder": {
+              "en": "Select charging state"
+            }
+          }
+        ],
+        "id": "report_flow_backed_device_evcharger_state"
+      },
+      {
+        "title": {
+          "en": "Set on/off state for device"
+        },
+        "titleFormatted": {
+          "en": "Set on/off state for [[device]] to [[state]]"
+        },
+        "hint": {
+          "en": "Reports the current on/off state for an existing Homey device."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          },
+          {
+            "name": "state",
+            "type": "autocomplete",
+            "title": {
+              "en": "State"
+            },
+            "placeholder": {
+              "en": "On or off"
+            }
+          }
+        ],
+        "id": "report_flow_backed_device_onoff"
+      },
+      {
+        "title": {
+          "en": "Set power usage for device"
+        },
+        "titleFormatted": {
+          "en": "Set power usage for [[device]] to [[power_w]] W"
+        },
+        "hint": {
+          "en": "Reports current power usage for an existing Homey device."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          },
+          {
+            "name": "power_w",
+            "type": "text",
+            "title": {
+              "en": "Power"
+            },
+            "placeholder": {
+              "en": "1750 or 1750 W"
+            }
+          }
+        ],
+        "id": "report_flow_backed_device_power"
       },
       {
         "title": {

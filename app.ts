@@ -31,6 +31,7 @@ import {
 } from './lib/utils/capacityHelpers';
 import {
   DEVICE_LAST_CONTROLLED_MS,
+  FLOW_REPORTED_DEVICE_CAPABILITIES,
   OPERATING_MODE_SETTING,
 } from './lib/utils/settingsKeys';
 import { isNumberMap, isPowerTrackerState } from './lib/utils/appTypeGuards';
@@ -88,11 +89,21 @@ import {
   type RefreshTargetDevicesSnapshotOptions,
 } from './lib/app/appSnapshotHelpers';
 import { TimerRegistry } from './lib/app/timerRegistry';
+import {
+  getFlowReportedDeviceIds,
+  getFlowRefreshRequestedDeviceIds,
+  parseFlowReportedCapabilities,
+  upsertFlowReportedCapability,
+  type FlowReportedCapabilityId,
+  type FlowReportedCapabilitiesByDevice,
+  type FlowReportedCapabilitiesForDevice,
+} from './lib/core/flowReportedCapabilities';
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 // Let non-urgent power deltas settle before rebuilding the full plan again.
 const POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 15000;
 const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 100 : 30 * 1000;
 const FLOW_REBUILD_COOLDOWN_MS = 1000;
+const FLOW_DEVICE_AUTOCOMPLETE_CACHE_MS = 15 * 1000;
 const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
 const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000; const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const POWER_TRACKER_PERSIST_DELAY_MS = VOLATILE_WRITE_THROTTLE_MS;
@@ -117,6 +128,9 @@ class PelsApp extends Homey.App {
   private controllableDevices: Record<string, boolean> = {};
   private managedDevices: Record<string, boolean> = {};
   private budgetExemptDevices: Record<string, boolean> = {};
+  private flowReportedCapabilities: FlowReportedCapabilitiesByDevice = {};
+  private flowDeviceAutocompleteCache?: { devices: HomeyDeviceLike[]; fetchedAtMs: number };
+  private flowDeviceAutocompleteRequest?: Promise<HomeyDeviceLike[]>;
   private deviceControlProfiles: DeviceControlProfiles = {};
   private deviceCommunicationModels: Record<string, 'local' | 'cloud'> = {};
   private experimentalEvSupportEnabled = false;
@@ -174,6 +188,8 @@ class PelsApp extends Homey.App {
       settings: this.homey.settings,
       logDebug: (...args: unknown[]) => this.logDebug('devices', ...args),
     }),
+    getFlowReportedDeviceIds: () => this.getFlowReportedDeviceIds(),
+    emitFlowBackedRefreshRequests: async (deviceIds) => this.emitFlowBackedRefreshRequests(deviceIds),
     recordPowerSample: async (powerW) => this.recordPowerSample(powerW),
   });
   private readonly homeyEnergyHelpers = new AppHomeyEnergyHelpers({
@@ -210,6 +226,99 @@ class PelsApp extends Homey.App {
       trackedKwSource: 'expectedPowerKw',
     });
     return true;
+  }
+
+  private loadFlowReportedCapabilities(): void {
+    this.flowReportedCapabilities = parseFlowReportedCapabilities(
+      this.homey.settings.get(FLOW_REPORTED_DEVICE_CAPABILITIES) as unknown,
+    );
+  }
+
+  private getFlowReportedCapabilitiesForDevice = (deviceId: string): FlowReportedCapabilitiesForDevice => (
+    this.flowReportedCapabilities[deviceId] ?? {}
+  );
+
+  private getFlowReportedDeviceIds = (): string[] => getFlowReportedDeviceIds(this.flowReportedCapabilities);
+
+  private reportFlowBackedCapability(params: {
+    deviceId: string;
+    capabilityId: FlowReportedCapabilityId;
+    value: boolean | number | string;
+  }): 'changed' | 'unchanged' {
+    const result = upsertFlowReportedCapability({
+      state: this.flowReportedCapabilities,
+      deviceId: params.deviceId,
+      capabilityId: params.capabilityId,
+      value: params.value,
+    });
+    this.homey.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, this.flowReportedCapabilities);
+    return result;
+  }
+
+  private async getHomeyDevicesForFlow(): Promise<HomeyDeviceLike[]> {
+    const nowMs = Date.now();
+    const cached = this.flowDeviceAutocompleteCache;
+    if (cached && nowMs - cached.fetchedAtMs < FLOW_DEVICE_AUTOCOMPLETE_CACHE_MS) {
+      return cached.devices;
+    }
+    if (this.flowDeviceAutocompleteRequest) {
+      return this.flowDeviceAutocompleteRequest;
+    }
+    this.flowDeviceAutocompleteRequest = (async () => {
+      const devices = await (this.deviceManager?.getDevicesForDebug() ?? []);
+      this.flowDeviceAutocompleteCache = {
+        devices: [...devices],
+        fetchedAtMs: Date.now(),
+      };
+      return this.flowDeviceAutocompleteCache.devices;
+    })().finally(() => {
+      this.flowDeviceAutocompleteRequest = undefined;
+    });
+    return this.flowDeviceAutocompleteRequest;
+  }
+
+  private async emitFlowBackedRefreshRequests(deviceIds: string[]): Promise<void> {
+    if (deviceIds.length === 0) return;
+    const card = this.homey.flow?.getTriggerCard?.('flow_backed_device_refresh_requested');
+    if (!card?.trigger) return;
+    const devices = await this.getHomeyDevicesForFlow();
+    const eligibleDeviceIds = getFlowRefreshRequestedDeviceIds({
+      state: this.flowReportedCapabilities,
+      devices,
+      experimentalEvSupportEnabled: this.experimentalEvSupportEnabled,
+      candidateDeviceIds: deviceIds,
+    });
+    if (eligibleDeviceIds.length === 0) return;
+
+    const deviceById = new Map(devices.map((device) => [device.id, device]));
+    const seen = new Set<string>();
+    const triggers: Array<{ deviceId: string; trigger: Promise<unknown> }> = [];
+    for (const rawDeviceId of eligibleDeviceIds) {
+      const deviceId = rawDeviceId.trim();
+      if (!deviceId || seen.has(deviceId)) continue;
+      seen.add(deviceId);
+      const device = deviceById.get(deviceId);
+      this.getStructuredLogger('devices')?.info({
+        event: 'flow_backed_refresh_requested',
+        deviceId,
+        deviceName: device?.name,
+      });
+      triggers.push({
+        deviceId,
+        trigger: card.trigger({}, { deviceId }),
+      });
+    }
+    if (triggers.length > 0) {
+      const results = await Promise.allSettled(triggers.map(({ trigger }) => trigger));
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') return;
+        this.getStructuredLogger('devices')?.warn({
+          event: 'flow_backed_refresh_request_failed',
+          deviceId: triggers[index]?.deviceId,
+          err: normalizeError(result.reason),
+        });
+      });
+    }
   }
 
   // eslint-disable-next-line max-lines-per-function -- Context assembly is intentionally centralized here.
@@ -251,6 +360,11 @@ class PelsApp extends Homey.App {
         kind: 'flow',
         reason: `flow_card:${source}`,
       }),
+      getFlowReportedCapabilitiesForDevice: (deviceId) => app.getFlowReportedCapabilitiesForDevice(deviceId),
+      getFlowReportedDeviceIds: () => app.getFlowReportedDeviceIds(),
+      reportFlowBackedCapability: (params) => app.reportFlowBackedCapability(params),
+      getHomeyDevicesForFlow: () => app.getHomeyDevicesForFlow(),
+      emitFlowBackedRefreshRequests: async (deviceIds) => app.emitFlowBackedRefreshRequests(deviceIds),
       getPriorityForDevice: (deviceId) => app.getPriorityForDevice(deviceId),
       resolveModeName: (name) => app.resolveModeName(name),
       getAllModes: () => app.getAllModes(),
@@ -362,6 +476,11 @@ class PelsApp extends Homey.App {
     await runStartupStep('loadCapacitySettings', () => this.loadCapacitySettings(), logStartupStepFailure);
     await runStartupStep('initDailyBudgetService', () => this.initDailyBudgetService(), logStartupStepFailure);
     await runStartupStep(
+      'loadFlowReportedCapabilities',
+      () => this.loadFlowReportedCapabilities(),
+      logStartupStepFailure,
+    );
+    await runStartupStep(
       'initDeviceDiagnosticsService',
       () => this.initDeviceDiagnosticsService(),
       logStartupStepFailure,
@@ -428,6 +547,7 @@ class PelsApp extends Homey.App {
       getBudgetExempt: (id) => this.isBudgetExempt(id),
       getCommunicationModel: (id) => this.getCommunicationModel(id),
       getExperimentalEvSupportEnabled: () => this.experimentalEvSupportEnabled,
+      getFlowReportedCapabilities: (deviceId) => this.getFlowReportedCapabilitiesForDevice(deviceId),
     }, {
       expectedPowerKwOverrides: this.expectedPowerKwOverrides,
       lastKnownPowerKw: this.lastKnownPowerKw,

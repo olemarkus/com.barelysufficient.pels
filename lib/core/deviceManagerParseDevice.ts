@@ -9,6 +9,13 @@ import {
 } from './deviceManagerHelpers';
 import { estimatePower, type PowerEstimateState } from './powerEstimate';
 import {
+    augmentCapabilitiesWithFlowReports,
+    type FlowReportedCapabilityId,
+    getFlowRequiredCapabilitiesForType,
+    resolveFlowAugmentedDeviceType,
+    type FlowReportedCapabilitiesForDevice,
+} from './flowReportedCapabilities';
+import {
     getCanSetControl,
     getControlCapabilityId,
     getCurrentOn,
@@ -40,6 +47,7 @@ export type DeviceManagerParseProviders = {
     getBudgetExempt?: (deviceId: string) => boolean;
     getCommunicationModel?: (deviceId: string) => 'local' | 'cloud';
     getExperimentalEvSupportEnabled?: () => boolean;
+    getFlowReportedCapabilities?: (deviceId: string) => FlowReportedCapabilitiesForDevice;
 };
 
 export type DeviceManagerParseDeps = {
@@ -97,7 +105,21 @@ export function parseDevice(params: {
     });
     if (!deviceClassKey) return null;
     const deviceLabel = resolveDeviceLabel(device, deviceId);
-    const capabilities = getCapabilities(device);
+    const rawCapabilities = getCapabilities(device);
+    const rawCapabilityObj = getCapabilityObj(device);
+    const {
+        capabilities,
+        capabilityObj,
+        flowAugmentedDeviceType,
+        flowBackedCapabilityIds,
+        requiredFlowCapabilityIds,
+    } = resolveFlowCapabilityOverlay({
+        deviceClassKey,
+        deviceId,
+        rawCapabilities,
+        rawCapabilityObj,
+        providers,
+    });
     const capsStatus = resolveDeviceCapabilities({
         deviceClassKey,
         deviceId,
@@ -106,7 +128,6 @@ export function parseDevice(params: {
         logDebug: (...args: unknown[]) => logger.debug(...args),
     });
     if (!capsStatus) return null;
-    const capabilityObj = getCapabilityObj(device);
     const currentTemperature = getCurrentTemperature(capabilityObj);
     const powerRaw = getCapabilityValueByPrefix(capabilities, capabilityObj, 'measure_power');
     const meterPowerRaw = getCapabilityValueByPrefix(capabilities, capabilityObj, 'meter_power');
@@ -154,10 +175,23 @@ export function parseDevice(params: {
         evChargingState,
         currentOn: getCurrentOn({ deviceClassKey, capabilityObj, controlCapabilityId }),
     });
-    const canSetControl = getCanSetControl(controlCapabilityId, capabilityObj);
+    const canSetControl = resolveCanSetControl({
+        controlCapabilityId,
+        capabilityObj,
+        flowBackedCapabilityIds,
+    });
     const available = getIsAvailable(device);
-    const deviceType = resolveTargetDeviceType(targetCaps);
     const powerCapable = isPowerCapable(device, capsStatus, powerEstimate);
+    if (shouldSkipFlowBackedCandidate({
+        flowAugmentedDeviceType,
+        flowBackedCapabilityIds,
+        capabilities,
+        capabilityObj,
+        requiredFlowCapabilityIds,
+        powerCapable,
+    })) {
+        return null;
+    }
     const lastFreshDataMs = getTrackedCapabilityLastUpdatedMs(capabilityObj, [
         ...(controlCapabilityId ? [controlCapabilityId] : []),
         ...targetCaps,
@@ -165,15 +199,92 @@ export function parseDevice(params: {
         'measure_temperature',
         'evcharger_charging_state',
     ]);
-    const deviceSettings = resolveParsedDeviceSettings(deviceId, providers);
+    return buildParsedDeviceSnapshot({
+        device,
+        deviceId,
+        deviceClassKey,
+        providers,
+        targets,
+        targetCaps,
+        controlCapabilityId,
+        powerEstimate,
+        powerCapable,
+        currentOn,
+        evChargingState,
+        currentTemperature,
+        capabilities,
+        flowBackedCapabilityIds,
+        canSetControl,
+        available,
+        lastFreshDataMs,
+        lastLocalWriteMs: resolveLatestLocalWriteMs(deviceId),
+    });
+}
+
+function resolveCanSetControl(params: {
+    controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+    capabilityObj: DeviceCapabilityMap;
+    flowBackedCapabilityIds: FlowReportedCapabilityId[];
+}): boolean | undefined {
+    const { controlCapabilityId, capabilityObj, flowBackedCapabilityIds } = params;
+    if (controlCapabilityId && flowBackedCapabilityIds.includes(controlCapabilityId)) {
+        return true;
+    }
+    return getCanSetControl(controlCapabilityId, capabilityObj);
+}
+
+function resolveTargetDeviceType(targetCaps: readonly string[]): TargetDeviceSnapshot['deviceType'] {
+    return targetCaps.length > 0 ? 'temperature' : 'onoff';
+}
+
+function buildParsedDeviceSnapshot(params: {
+    device: HomeyDeviceLike;
+    deviceId: string;
+    deviceClassKey: string;
+    providers: DeviceManagerParseProviders;
+    targets: TargetDeviceSnapshot['targets'];
+    targetCaps: readonly string[];
+    controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+    powerEstimate: ReturnType<typeof estimatePower>;
+    powerCapable: boolean;
+    currentOn: boolean;
+    evChargingState: TargetDeviceSnapshot['evChargingState'];
+    currentTemperature: TargetDeviceSnapshot['currentTemperature'];
+    capabilities: string[];
+    flowBackedCapabilityIds: FlowReportedCapabilityId[];
+    canSetControl: boolean | undefined;
+    available: boolean;
+    lastFreshDataMs?: number;
+    lastLocalWriteMs?: number;
+}): TargetDeviceSnapshot {
+    const {
+        device,
+        deviceId,
+        deviceClassKey,
+        providers,
+        targets,
+        targetCaps,
+        controlCapabilityId,
+        powerEstimate,
+        powerCapable,
+        currentOn,
+        evChargingState,
+        currentTemperature,
+        capabilities,
+        flowBackedCapabilityIds,
+        canSetControl,
+        available,
+        lastFreshDataMs,
+        lastLocalWriteMs,
+    } = params;
 
     return {
         id: deviceId,
         name: device.name,
         targets,
         deviceClass: deviceClassKey,
-        deviceType,
-        ...deviceSettings,
+        deviceType: resolveTargetDeviceType(targetCaps),
+        ...resolveParsedDeviceSettings(deviceId, providers),
         controlCapabilityId,
         powerKw: powerEstimate.powerKw,
         expectedPowerKw: powerEstimate.expectedPowerKw,
@@ -186,16 +297,108 @@ export function parseDevice(params: {
         measuredPowerKw: powerEstimate.measuredPowerKw,
         zone: resolveZoneLabel(device),
         capabilities,
+        ...(flowBackedCapabilityIds.length > 0 ? {
+            flowBacked: true,
+            flowBackedCapabilityIds,
+        } : {}),
         canSetControl,
         available,
         lastFreshDataMs,
-        lastLocalWriteMs: resolveLatestLocalWriteMs(deviceId),
+        lastLocalWriteMs,
         lastUpdated: lastFreshDataMs,
     };
 }
 
-function resolveTargetDeviceType(targetCaps: readonly string[]): TargetDeviceSnapshot['deviceType'] {
-    return targetCaps.length > 0 ? 'temperature' : 'onoff';
+function resolveFlowCapabilityOverlay(params: {
+    deviceClassKey: string;
+    deviceId: string;
+    rawCapabilities: string[];
+    rawCapabilityObj: DeviceCapabilityMap;
+    providers: DeviceManagerParseProviders;
+}): {
+    capabilities: string[];
+    capabilityObj: DeviceCapabilityMap;
+    flowAugmentedDeviceType: ReturnType<typeof resolveFlowAugmentedDeviceType>;
+    flowBackedCapabilityIds: FlowReportedCapabilityId[];
+    requiredFlowCapabilityIds: readonly FlowReportedCapabilityId[];
+} {
+    const {
+        deviceClassKey,
+        deviceId,
+        rawCapabilities,
+        rawCapabilityObj,
+        providers,
+    } = params;
+    const targetCapabilityIds = rawCapabilities.filter((capabilityId) => capabilityId.startsWith('target_temperature'));
+    const flowAugmentedDeviceType = resolveFlowAugmentedDeviceType({
+        deviceClassKey,
+        targetCapabilityIds,
+    });
+    const requiredFlowCapabilityIds = getFlowRequiredCapabilitiesForType(flowAugmentedDeviceType);
+    const reportedCapabilities = providers.getFlowReportedCapabilities?.(deviceId) ?? {};
+    const {
+        capabilities,
+        capabilityObj,
+        flowBackedCapabilityIds,
+    } = augmentCapabilitiesWithFlowReports({
+        deviceType: flowAugmentedDeviceType,
+        capabilities: rawCapabilities,
+        capabilityObj: rawCapabilityObj,
+        reportedCapabilities,
+    });
+
+    return {
+        capabilities,
+        capabilityObj,
+        flowAugmentedDeviceType,
+        flowBackedCapabilityIds,
+        requiredFlowCapabilityIds,
+    };
+}
+
+function shouldSkipFlowBackedCandidate(params: {
+    flowAugmentedDeviceType: ReturnType<typeof resolveFlowAugmentedDeviceType>;
+    flowBackedCapabilityIds: FlowReportedCapabilityId[];
+    capabilities: readonly string[];
+    capabilityObj: DeviceCapabilityMap;
+    requiredFlowCapabilityIds: readonly FlowReportedCapabilityId[];
+    powerCapable: boolean;
+}): boolean {
+    const {
+        flowAugmentedDeviceType,
+        flowBackedCapabilityIds,
+        capabilities,
+        capabilityObj,
+        requiredFlowCapabilityIds,
+        powerCapable,
+    } = params;
+    if (flowAugmentedDeviceType === 'unsupported') return false;
+
+    const hasIncompleteFlowSupport = flowBackedCapabilityIds.length > 0
+        && !hasAllRequiredFlowCapabilitiesInEffectiveView({
+            capabilities,
+            capabilityObj,
+            requiredCapabilityIds: requiredFlowCapabilityIds,
+        });
+    const isMissingDirectPowerSupport = flowBackedCapabilityIds.length === 0 && powerCapable === false;
+    return hasIncompleteFlowSupport || isMissingDirectPowerSupport;
+}
+
+function hasAllRequiredFlowCapabilitiesInEffectiveView(params: {
+    capabilities: readonly string[];
+    capabilityObj: DeviceCapabilityMap;
+    requiredCapabilityIds: readonly FlowReportedCapabilityId[];
+}): boolean {
+    const { capabilities, capabilityObj, requiredCapabilityIds } = params;
+    const capabilitySet = new Set(capabilities);
+    return requiredCapabilityIds.every((capabilityId) => (
+        capabilityId === 'measure_power'
+            ? (
+                getCapabilityValueByPrefix([...capabilities], capabilityObj, 'measure_power') !== undefined
+                || getCapabilityValueByPrefix([...capabilities], capabilityObj, 'meter_power') !== undefined
+            )
+            : capabilitySet.has(capabilityId) && capabilityObj[capabilityId] !== undefined
+    ));
 }
 
 function resolveParsedDeviceSettings(

@@ -27,6 +27,7 @@ export const PRICE_SCHEME = 'price_scheme';
 export const NORWAY_PRICE_MODEL = 'norway_price_model';
 export const FLOW_PRICES_TODAY = 'flow_prices_today';
 export const FLOW_PRICES_TOMORROW = 'flow_prices_tomorrow';
+export const FLOW_REPORTED_DEVICE_CAPABILITIES = 'flow_reported_device_capabilities';
 export const HOMEY_PRICES_TODAY = 'homey_prices_today';
 export const HOMEY_PRICES_TOMORROW = 'homey_prices_tomorrow';
 export const HOMEY_PRICES_CURRENCY = 'homey_prices_currency';

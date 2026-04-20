@@ -779,6 +779,27 @@ describe('plan device state', () => {
     expect(getTemperatureText()).toBe('21.0° / target 18° → 23° (temporarily unavailable)');
   });
 
+  it('does not show a temperature line for non-temperature devices that only expose a temperature reading', async () => {
+    await renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-ev-temp-sensor',
+          name: 'EV Charger',
+          deviceType: 'onoff',
+          deviceClass: 'evcharger',
+          controlCapabilityId: 'evcharger_charging',
+          currentState: 'on',
+          plannedState: 'keep',
+          currentTemperature: 24,
+          currentTarget: null,
+          plannedTarget: null,
+        },
+      ],
+    });
+
+    expect(getTemperatureText()).toBeUndefined();
+  });
+
   it('shows on-like stepped mode transitions as active rather than restoring', async () => {
     await renderPlanSnapshot({
       devices: [

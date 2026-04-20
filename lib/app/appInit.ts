@@ -120,6 +120,7 @@ export function createPlanService(ctx: AppContext): PlanService {
 export function registerAppFlowCards(ctx: AppContext): void {
   registerFlowCards({
     homey: requireFlowHomey(ctx),
+    structuredLog: ctx.getStructuredLogger('devices'),
     resolveModeName: (mode) => ctx.resolveModeName(mode),
     getAllModes: () => ctx.getAllModes(),
     getCurrentOperatingMode: () => ctx.operatingMode,
@@ -133,7 +134,9 @@ export function registerAppFlowCards(ctx: AppContext): void {
     getHeadroom: () => ctx.capacityGuard?.getHeadroom() ?? null,
     setCapacityLimit: (kw) => ctx.capacityGuard?.setLimit(kw),
     getSnapshot: () => ctx.getFlowSnapshot(),
-    refreshSnapshot: () => ctx.refreshTargetDevicesSnapshot(),
+    refreshSnapshot: (options) => ctx.refreshTargetDevicesSnapshot(options),
+    getHomeyDevicesForFlow: () => ctx.getHomeyDevicesForFlow(),
+    reportFlowBackedCapability: (params) => ctx.reportFlowBackedCapability(params),
     reportSteppedLoadActualStep: (deviceId, stepId) => (
       ctx.deviceControlHelpers.reportSteppedLoadActualStep(deviceId, stepId)
     ),

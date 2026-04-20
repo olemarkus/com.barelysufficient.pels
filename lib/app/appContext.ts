@@ -15,12 +15,14 @@ import type { PriceCoordinator } from '../price/priceCoordinator';
 import type { PriceOptimizationSettings } from '../price/priceOptimizer';
 import type { DebugLoggingTopic } from '../utils/debugLogging';
 import type { DeviceControlProfiles, TargetDeviceSnapshot } from '../utils/types';
+import type { HomeyDeviceLike } from '../utils/types';
 import type { AppDeviceControlHelpers } from './appDeviceControlHelpers';
 import type { AppHomeyEnergyHelpers } from './appHomeyEnergyHelpers';
 import type { PowerSampleRebuildState } from './appPowerHelpers';
 import type { PlanRebuildScheduler } from './planRebuildScheduler';
 import type { RefreshTargetDevicesSnapshotOptions, AppSnapshotHelpers } from './appSnapshotHelpers';
 import type { TimerRegistry } from './timerRegistry';
+import type { FlowReportedCapabilitiesForDevice, FlowReportedCapabilityId } from '../core/flowReportedCapabilities';
 
 export type StartupBootstrapConfig = {
   snapshotPlanBootstrapDelayMs?: number;
@@ -67,6 +69,15 @@ export type AppContext = {
   updateDailyBudgetState: (options?: { nowMs?: number; forcePlanRebuild?: boolean }) => void;
   disableManagedEvDevices: () => void;
   requestFlowPlanRebuild: (source: string) => void;
+  getFlowReportedCapabilitiesForDevice: (deviceId: string) => FlowReportedCapabilitiesForDevice;
+  getFlowReportedDeviceIds: () => string[];
+  reportFlowBackedCapability: (params: {
+    deviceId: string;
+    capabilityId: FlowReportedCapabilityId;
+    value: boolean | number | string;
+  }) => 'changed' | 'unchanged';
+  getHomeyDevicesForFlow: () => Promise<HomeyDeviceLike[]>;
+  emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
   getPriorityForDevice: (deviceId: string) => number;
   resolveModeName: (name: string) => string;
   getAllModes: () => Set<string>;

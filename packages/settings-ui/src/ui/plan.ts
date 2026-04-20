@@ -70,9 +70,10 @@ const resetLiveBindings = () => {
   liveMetaBinding = null;
 };
 
-const hasPlanTempData = (dev: PlanDeviceSnapshot) => dev.plannedTarget !== null && dev.plannedTarget !== undefined
+const hasPlanTempData = (dev: PlanDeviceSnapshot) => (
+  dev.plannedTarget !== null && dev.plannedTarget !== undefined
   || dev.currentTarget !== null && dev.currentTarget !== undefined
-  || dev.currentTemperature !== null && dev.currentTemperature !== undefined;
+);
 
 const formatPlanTemp = (value: number | null | undefined): string => (
   typeof value === 'number' ? `${value.toFixed(1)}°` : '–'

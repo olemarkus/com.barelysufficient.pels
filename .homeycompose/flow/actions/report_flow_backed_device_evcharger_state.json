@@ -1,0 +1,33 @@
+{
+  "title": {
+    "en": "Set EV charging state for device"
+  },
+  "titleFormatted": {
+    "en": "Set EV charging state for [[device]] to [[state]]"
+  },
+  "hint": {
+    "en": "Reports the current charging state for an existing Homey EV charger."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select EV charger"
+      }
+    },
+    {
+      "name": "state",
+      "type": "autocomplete",
+      "title": {
+        "en": "State"
+      },
+      "placeholder": {
+        "en": "Select charging state"
+      }
+    }
+  ]
+}
