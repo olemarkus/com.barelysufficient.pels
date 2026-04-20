@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "Desired charging stop for"
+  },
+  "titleFormatted": {
+    "en": "Desired charging stop for [[device]]"
+  },
+  "hint": {
+    "en": "Triggers when the desired charging state changes to stop for an existing Homey EV charger."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select EV charger"
+      }
+    }
+  ]
+}

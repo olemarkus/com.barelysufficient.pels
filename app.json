@@ -178,72 +178,6 @@
       },
       {
         "title": {
-          "en": "PELS requests EV charging change for"
-        },
-        "titleFormatted": {
-          "en": "PELS requests EV charging change for [[device]]"
-        },
-        "hint": {
-          "en": "Triggers when PELS wants an existing Homey EV charger to start or stop charging."
-        },
-        "args": [
-          {
-            "name": "device",
-            "type": "autocomplete",
-            "title": {
-              "en": "Device"
-            },
-            "placeholder": {
-              "en": "Select EV charger"
-            }
-          }
-        ],
-        "tokens": [
-          {
-            "name": "state",
-            "type": "string",
-            "title": {
-              "en": "Charging"
-            }
-          }
-        ],
-        "id": "flow_backed_device_evcharger_charging_requested"
-      },
-      {
-        "title": {
-          "en": "PELS requests on/off change for"
-        },
-        "titleFormatted": {
-          "en": "PELS requests on/off change for [[device]]"
-        },
-        "hint": {
-          "en": "Triggers when PELS wants an existing Homey device to turn on or off."
-        },
-        "args": [
-          {
-            "name": "device",
-            "type": "autocomplete",
-            "title": {
-              "en": "Device"
-            },
-            "placeholder": {
-              "en": "Select device"
-            }
-          }
-        ],
-        "tokens": [
-          {
-            "name": "state",
-            "type": "string",
-            "title": {
-              "en": "State"
-            }
-          }
-        ],
-        "id": "flow_backed_device_onoff_requested"
-      },
-      {
-        "title": {
           "en": "PELS requests updated state for"
         },
         "titleFormatted": {
@@ -265,6 +199,102 @@
           }
         ],
         "id": "flow_backed_device_refresh_requested"
+      },
+      {
+        "title": {
+          "en": "Desired charging start for"
+        },
+        "titleFormatted": {
+          "en": "Desired charging start for [[device]]"
+        },
+        "hint": {
+          "en": "Triggers when the desired charging state changes to start for an existing Homey EV charger."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select EV charger"
+            }
+          }
+        ],
+        "id": "flow_backed_device_start_charging_requested"
+      },
+      {
+        "title": {
+          "en": "Desired charging stop for"
+        },
+        "titleFormatted": {
+          "en": "Desired charging stop for [[device]]"
+        },
+        "hint": {
+          "en": "Triggers when the desired charging state changes to stop for an existing Homey EV charger."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select EV charger"
+            }
+          }
+        ],
+        "id": "flow_backed_device_stop_charging_requested"
+      },
+      {
+        "title": {
+          "en": "Desired device off for"
+        },
+        "titleFormatted": {
+          "en": "Desired device off for [[device]]"
+        },
+        "hint": {
+          "en": "Triggers when the desired state changes to off for an existing Homey device."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          }
+        ],
+        "id": "flow_backed_device_turn_off_requested"
+      },
+      {
+        "title": {
+          "en": "Desired device on for"
+        },
+        "titleFormatted": {
+          "en": "Desired device on for [[device]]"
+        },
+        "hint": {
+          "en": "Triggers when the desired state changes to on for an existing Homey device."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          }
+        ],
+        "id": "flow_backed_device_turn_on_requested"
       },
       {
         "title": {

@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "Desired device on for"
+  },
+  "titleFormatted": {
+    "en": "Desired device on for [[device]]"
+  },
+  "hint": {
+    "en": "Triggers when the desired state changes to on for an existing Homey device."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select device"
+      }
+    }
+  ]
+}
