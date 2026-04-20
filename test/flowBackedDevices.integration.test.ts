@@ -116,6 +116,7 @@ describe('Flow-backed device support', () => {
       currentOn: true,
       measuredPowerKw: 1.2,
       controlCapabilityId: 'onoff',
+      canSetControl: true,
     }));
   });
 
@@ -168,6 +169,7 @@ describe('Flow-backed device support', () => {
       flowBacked: true,
       currentOn: true,
       measuredPowerKw: 0.4,
+      canSetControl: true,
     }));
   });
 
@@ -200,6 +202,7 @@ describe('Flow-backed device support', () => {
       evChargingState: 'plugged_in_charging',
       measuredPowerKw: 7.2,
       controlCapabilityId: 'evcharger_charging',
+      canSetControl: true,
     }));
   });
 

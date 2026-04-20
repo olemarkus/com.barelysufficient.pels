@@ -20,6 +20,14 @@ import {
 type BinaryControlDeps = {
   state: PlanEngineState;
   deviceManager: DeviceManager;
+  triggerFlowBackedBinaryControlRequest?: (params: {
+    deviceId: string;
+    name: string;
+    capabilityId: 'onoff' | 'evcharger_charging';
+    desired: boolean;
+    logContext: BinaryControlLogContext;
+    actuationMode: BinaryControlActuationMode;
+  }) => Promise<void>;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
@@ -81,7 +89,7 @@ export async function setBinaryControl(params: BinaryControlDeps & {
   actuationMode?: BinaryControlActuationMode;
 }): Promise<boolean> {
   const {
-    state, deviceManager, log, logDebug, error, structuredLog, debugStructured,
+    state, deviceManager, triggerFlowBackedBinaryControlRequest, log, logDebug, error, structuredLog, debugStructured,
     deviceId, name, desired, snapshot, logContext, restoreSource, reason,
     actuationMode = 'plan',
   } = params;
@@ -111,12 +119,13 @@ export async function setBinaryControl(params: BinaryControlDeps & {
   }
 
   return executeBinaryCommand({
-    state, deviceManager, log, logDebug, error, structuredLog,
+    state, deviceManager, triggerFlowBackedBinaryControlRequest, log, logDebug, error, structuredLog,
     controlPlan,
     pendingMs: resolveBinaryCommandPendingMs(snapshot?.communicationModel),
     deviceId,
     name,
     desired,
+    snapshot,
     logContext,
     reason,
     restoreSource,
@@ -145,6 +154,7 @@ function resolveCanSetBinaryControl(
 async function executeBinaryCommand(params: {
   state: PlanEngineState;
   deviceManager: DeviceManager;
+  triggerFlowBackedBinaryControlRequest?: BinaryControlDeps['triggerFlowBackedBinaryControlRequest'];
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
@@ -154,15 +164,17 @@ async function executeBinaryCommand(params: {
   deviceId: string;
   name: string;
   desired: boolean;
+  snapshot?: TargetDeviceSnapshot;
   logContext: BinaryControlLogContext;
   reason?: string;
   restoreSource?: BinaryControlRestoreSource;
   actuationMode: BinaryControlActuationMode;
 }): Promise<boolean> {
   const {
-    state, deviceManager, log, logDebug, error, structuredLog,
-    controlPlan, pendingMs, deviceId, name, desired, logContext, reason, restoreSource, actuationMode,
+    state, deviceManager, triggerFlowBackedBinaryControlRequest, log, logDebug, error, structuredLog,
+    controlPlan, pendingMs, deviceId, name, desired, snapshot, logContext, reason, restoreSource, actuationMode,
   } = params;
+  const flowBackedControl = shouldUseFlowBackedBinaryControl(snapshot, controlPlan.capabilityId);
 
   state.pendingBinaryCommands[deviceId] = {
     capabilityId: controlPlan.capabilityId,
@@ -172,11 +184,29 @@ async function executeBinaryCommand(params: {
   };
 
   try {
-    await deviceManager.setCapability(deviceId, controlPlan.capabilityId, desired);
-    const logMessage = controlPlan.isEv
-      ? buildEvBinaryControlLogMessage(logContext, desired, name, reason, actuationMode)
-      : buildBinaryControlLogMessage({ logContext, desired, name, reason, restoreSource, actuationMode });
-    log(logMessage);
+    if (flowBackedControl) {
+      await requestFlowBackedBinaryControl({
+        triggerFlowBackedBinaryControlRequest,
+        structuredLog,
+        deviceId,
+        name,
+        capabilityId: controlPlan.capabilityId,
+        desired,
+        logContext,
+        actuationMode,
+      });
+    } else {
+      await deviceManager.setCapability(deviceId, controlPlan.capabilityId, desired);
+    }
+    log(buildBinaryControlSuccessLogMessage({
+      controlPlan,
+      logContext,
+      desired,
+      name,
+      reason,
+      restoreSource,
+      actuationMode,
+    }));
     if (controlPlan.isEv) {
       logDebug(
         `Capacity: EV action completed for ${name}: ${controlPlan.capabilityId}=${desired} `
@@ -186,12 +216,9 @@ async function executeBinaryCommand(params: {
     return true;
   } catch (caughtError) {
     delete state.pendingBinaryCommands[deviceId];
-    const verb = controlPlan.isEv
-      ? `${desired ? 'resume' : 'pause'} EV charging for`
-      : `${desired ? 'turn on' : 'turn off'}`;
     structuredLog?.error({
-      event: 'binary_command_failed',
-      reasonCode: 'device_manager_write_failed',
+      event: flowBackedControl ? 'flow_backed_binary_command_failed' : 'binary_command_failed',
+      reasonCode: flowBackedControl ? 'flow_trigger_failed' : 'device_manager_write_failed',
       deviceId,
       deviceName: name,
       desired,
@@ -201,9 +228,94 @@ async function executeBinaryCommand(params: {
       ...(restoreSource ? { restoreSource } : {}),
       ...(reason ? { reason } : {}),
     });
-    error(`Failed to ${verb} ${name} via DeviceManager`, caughtError);
+    error(buildBinaryControlFailureLogMessage({
+      controlPlan,
+      desired,
+      name,
+      flowBackedControl,
+    }), caughtError);
     return false;
   }
+}
+
+async function requestFlowBackedBinaryControl(params: {
+  triggerFlowBackedBinaryControlRequest?: BinaryControlDeps['triggerFlowBackedBinaryControlRequest'];
+  structuredLog?: PinoLogger;
+  deviceId: string;
+  name: string;
+  capabilityId: 'onoff' | 'evcharger_charging';
+  desired: boolean;
+  logContext: BinaryControlLogContext;
+  actuationMode: BinaryControlActuationMode;
+}): Promise<void> {
+  const {
+    triggerFlowBackedBinaryControlRequest,
+    structuredLog,
+    deviceId,
+    name,
+    capabilityId,
+    desired,
+    logContext,
+    actuationMode,
+  } = params;
+  if (!triggerFlowBackedBinaryControlRequest) {
+    throw new Error(`Flow-backed control trigger is unavailable for ${capabilityId}`);
+  }
+  await triggerFlowBackedBinaryControlRequest({
+    deviceId,
+    name,
+    capabilityId,
+    desired,
+    logContext,
+    actuationMode,
+  });
+  structuredLog?.info({
+    event: 'flow_backed_binary_command_requested',
+    deviceId,
+    deviceName: name,
+    capabilityId,
+    desired,
+    logContext,
+    actuationMode,
+  });
+}
+
+function buildBinaryControlSuccessLogMessage(params: {
+  controlPlan: BinaryControlPlan;
+  logContext: BinaryControlLogContext;
+  desired: boolean;
+  name: string;
+  reason?: string;
+  restoreSource?: BinaryControlRestoreSource;
+  actuationMode: BinaryControlActuationMode;
+}): string {
+  const { controlPlan, logContext, desired, name, reason, restoreSource, actuationMode } = params;
+  return controlPlan.isEv
+    ? buildEvBinaryControlLogMessage(logContext, desired, name, reason, actuationMode)
+    : buildBinaryControlLogMessage({ logContext, desired, name, reason, restoreSource, actuationMode });
+}
+
+function buildBinaryControlFailureLogMessage(params: {
+  controlPlan: BinaryControlPlan;
+  desired: boolean;
+  name: string;
+  flowBackedControl: boolean;
+}): string {
+  const { controlPlan, desired, name, flowBackedControl } = params;
+  const verb = controlPlan.isEv
+    ? `${desired ? 'resume' : 'pause'} EV charging for`
+    : `${desired ? 'turn on' : 'turn off'}`;
+  return flowBackedControl
+    ? `Failed to request ${verb} ${name} via flow`
+    : `Failed to ${verb} ${name} via DeviceManager`;
+}
+
+function shouldUseFlowBackedBinaryControl(
+  snapshot: TargetDeviceSnapshot | undefined,
+  capabilityId: 'onoff' | 'evcharger_charging',
+): boolean {
+  return Array.isArray(snapshot?.flowBackedCapabilityIds)
+    && snapshot.flowBackedCapabilityIds.includes(capabilityId);
 }
 
 function buildBinaryControlLogMessage(params: {

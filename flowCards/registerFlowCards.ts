@@ -29,6 +29,9 @@ type DeviceArg = RawFlowDeviceArg;
 
 export type FlowCardDeps = {
   homey: FlowHomeyLike;
+  structuredLog?: {
+    info: (payload: Record<string, unknown>) => void;
+  };
   resolveModeName: (mode: string) => string;
   getAllModes: () => Set<string>;
   getCurrentOperatingMode: () => string;
