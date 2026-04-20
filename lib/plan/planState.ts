@@ -28,6 +28,7 @@ export type ActivationAttemptState = {
   lastSetbackMs?: number;
   startedMs?: number;
   source?: ActivationAttemptSource;
+  observedActivePowerAtMs?: number;
 };
 
 export type HeadroomCardState = {

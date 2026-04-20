@@ -7,6 +7,7 @@ import {
   getActivationRestoreBlockRemainingMs,
   recordActivationAttemptStart,
   recordActivationSetback,
+  syncConfirmedRestoreAttributionState,
   syncActivationPenaltyState,
 } from '../lib/plan/planActivationBackoff';
 import {
@@ -186,6 +187,192 @@ describe('activation backoff', () => {
     });
     expect(inactiveSync.attemptOpen).toBe(false);
     expect(inactiveSync.transitions).toMatchObject([{ kind: 'attempt_closed_inactive', deviceId: 'dev-1' }]);
+  });
+
+  it('closes a thermostat restore attempt after non-zero load is seen and the next power sample stays clean', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'dev-1',
+      source: 'pels_restore',
+      nowTs: start,
+    });
+
+    const firstSync = syncConfirmedRestoreAttributionState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + 10_000,
+      observation: {
+        currentOn: true,
+        measuredPowerKw: 0.2,
+        deviceClass: 'thermostat',
+        lastFreshDataMs: start + 10_000,
+      },
+      wholeHomePowerSampleAtMs: start + 10_000,
+      cleanWholeHomeSample: false,
+    });
+    expect(firstSync.attemptOpen).toBe(true);
+    expect(state.activationAttemptByDevice['dev-1']).toMatchObject({
+      observedActivePowerAtMs: start + 10_000,
+    });
+
+    const secondSync = syncConfirmedRestoreAttributionState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + 20_000,
+      observation: {
+        currentOn: true,
+        measuredPowerKw: 0.25,
+        deviceClass: 'thermostat',
+        lastFreshDataMs: start + 20_000,
+      },
+      wholeHomePowerSampleAtMs: start + 20_000,
+      cleanWholeHomeSample: true,
+    });
+    expect(secondSync.attemptOpen).toBe(false);
+    expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
+  });
+
+  it('does not quietly close attribution when the device is already off on the next power sample', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'dev-1',
+      source: 'pels_restore',
+      nowTs: start,
+    });
+
+    syncConfirmedRestoreAttributionState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + 10_000,
+      observation: {
+        currentOn: true,
+        measuredPowerKw: 0.2,
+        deviceClass: 'thermostat',
+        lastFreshDataMs: start + 10_000,
+      },
+      wholeHomePowerSampleAtMs: start + 10_000,
+      cleanWholeHomeSample: false,
+    });
+
+    const closeAttemptSync = syncConfirmedRestoreAttributionState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + 20_000,
+      observation: {
+        currentOn: false,
+        deviceClass: 'thermostat',
+        lastFreshDataMs: start + 20_000,
+      },
+      wholeHomePowerSampleAtMs: start + 20_000,
+      cleanWholeHomeSample: false,
+    });
+    expect(closeAttemptSync.attemptOpen).toBe(true);
+
+    const inactiveSync = syncActivationPenaltyState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + 20_000,
+      observation: { currentOn: false, available: true },
+    });
+    expect(inactiveSync.attemptOpen).toBe(false);
+    expect(inactiveSync.transitions).toMatchObject([{ kind: 'attempt_closed_inactive', deviceId: 'dev-1' }]);
+  });
+
+  it('ignores stale non-zero measured power when deciding whether attribution can close', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'dev-1',
+      source: 'pels_restore',
+      nowTs: start,
+    });
+
+    const stalePowerSync = syncConfirmedRestoreAttributionState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + 10_000,
+      observation: {
+        currentOn: true,
+        measuredPowerKw: 0.2,
+        deviceClass: 'thermostat',
+        observationStale: true,
+        lastFreshDataMs: start - 5_000,
+      },
+      wholeHomePowerSampleAtMs: start + 10_000,
+      cleanWholeHomeSample: false,
+    });
+    expect(stalePowerSync.attemptOpen).toBe(true);
+    expect(state.activationAttemptByDevice['dev-1']).not.toHaveProperty('observedActivePowerAtMs');
+
+    const nextSampleSync = syncConfirmedRestoreAttributionState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + 20_000,
+      observation: {
+        currentOn: true,
+        measuredPowerKw: 0.2,
+        deviceClass: 'thermostat',
+        observationStale: true,
+        lastFreshDataMs: start - 5_000,
+      },
+      wholeHomePowerSampleAtMs: start + 20_000,
+      cleanWholeHomeSample: false,
+    });
+    expect(nextSampleSync.attemptOpen).toBe(true);
+  });
+
+  it('records observed load time from fresh telemetry so delayed rebuilds can still close attribution', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'dev-1',
+      source: 'pels_restore',
+      nowTs: start,
+    });
+
+    const delayedObservationSync = syncConfirmedRestoreAttributionState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + 30_000,
+      observation: {
+        currentOn: true,
+        measuredPowerKw: 0.2,
+        deviceClass: 'thermostat',
+        lastFreshDataMs: start + 10_000,
+      },
+      wholeHomePowerSampleAtMs: start + 10_000,
+      cleanWholeHomeSample: false,
+    });
+    expect(delayedObservationSync.attemptOpen).toBe(true);
+    expect(state.activationAttemptByDevice['dev-1']).toMatchObject({
+      observedActivePowerAtMs: start + 10_000,
+    });
+
+    const cleanSampleSync = syncConfirmedRestoreAttributionState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + 30_000,
+      observation: {
+        currentOn: true,
+        measuredPowerKw: 0.2,
+        deviceClass: 'thermostat',
+        lastFreshDataMs: start + 10_000,
+      },
+      wholeHomePowerSampleAtMs: start + 20_000,
+      cleanWholeHomeSample: true,
+    });
+    expect(cleanSampleSync.attemptOpen).toBe(false);
+    expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
   });
 
   it('preserves penalty when a tracked device disappears from snapshot cleanup', () => {
