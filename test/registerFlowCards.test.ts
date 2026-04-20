@@ -2,6 +2,8 @@ import { registerFlowCards, type FlowCardDeps } from '../flowCards/registerFlowC
 
 const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
   const actionListeners: Record<string, (args: unknown) => Promise<unknown>> = {};
+  const structuredInfo = vi.fn();
+  const structuredWarn = vi.fn();
   const createCard = (cardId: string) => ({
     registerRunListener: (listener: (args: unknown, state?: unknown) => Promise<unknown>) => {
       actionListeners[cardId] = (args) => listener(args);
@@ -40,12 +42,13 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     getCombinedHourlyPrices: vi.fn(() => []),
     getTimeZone: vi.fn(() => 'Europe/Oslo'),
     getNow: vi.fn(() => new Date('2026-03-11T10:00:00Z')),
+    getStructuredLogger: vi.fn(() => ({ info: structuredInfo, warn: structuredWarn })),
     log: vi.fn(),
     logDebug: vi.fn(),
     error: vi.fn(),
     ...overrides,
   };
-  return { deps, actionListeners };
+  return { deps, actionListeners, structuredInfo, structuredWarn };
 };
 
 describe('registerFlowCards', () => {
@@ -109,7 +112,7 @@ describe('registerFlowCards', () => {
   });
 
   it('reports stepped-load actual step and requests a snapshot refresh plus plan rebuild', async () => {
-    const { deps, actionListeners } = buildDeps({
+    const { deps, actionListeners, structuredInfo } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([
         {
           id: 'dev-1',
@@ -136,6 +139,20 @@ describe('registerFlowCards', () => {
     expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('dev-1', 'max');
     expect(deps.refreshSnapshot).toHaveBeenCalled();
     expect(deps.rebuildPlan).toHaveBeenCalledWith('report_stepped_load_actual_step');
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_received',
+      sourceCardId: 'report_stepped_load_actual_step',
+      deviceId: 'dev-1',
+      reportedStepId: 'max',
+    }));
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_resolved',
+      sourceCardId: 'report_stepped_load_actual_step',
+      deviceId: 'dev-1',
+      deviceName: 'Tank',
+      resolvedStepId: 'max',
+      outcome: 'accepted',
+    }));
   });
 
   it('treats an echoed stepped-load step report as a successful no-op', async () => {
@@ -170,7 +187,7 @@ describe('registerFlowCards', () => {
   });
 
   it('maps stepped-load power text to a configured step and strips a trailing W', async () => {
-    const { deps, actionListeners } = buildDeps({
+    const { deps, actionListeners, structuredInfo } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([
         {
           id: 'dev-1',
@@ -198,5 +215,62 @@ describe('registerFlowCards', () => {
     expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('dev-1', 'low');
     expect(deps.refreshSnapshot).toHaveBeenCalled();
     expect(deps.rebuildPlan).toHaveBeenCalledWith('report_stepped_load_power');
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_received',
+      sourceCardId: 'report_stepped_load_power',
+      deviceId: 'dev-1',
+      rawPowerInput: '1750 W',
+    }));
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_resolved',
+      sourceCardId: 'report_stepped_load_power',
+      deviceId: 'dev-1',
+      deviceName: 'Tank',
+      resolvedStepId: 'low',
+      parsedPowerW: 1750,
+      outcome: 'accepted',
+    }));
+  });
+
+  it('logs an explicit rejection when no configured step matches the reported power', async () => {
+    const { deps, actionListeners, structuredInfo, structuredWarn } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1750 },
+            ],
+          },
+        },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_power({
+      device: 'dev-1',
+      power_w: '3000 W',
+    })).rejects.toThrow('No configured stepped-load step matches 3000 W.');
+
+    expect(deps.reportSteppedLoadActualStep).not.toHaveBeenCalled();
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_received',
+      sourceCardId: 'report_stepped_load_power',
+      deviceId: 'dev-1',
+      rawPowerInput: '3000 W',
+    }));
+    expect(structuredWarn).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_rejected',
+      sourceCardId: 'report_stepped_load_power',
+      deviceId: 'dev-1',
+      rawPowerInput: '3000 W',
+      reasonCode: 'no_matching_step',
+      errorMessage: 'No configured stepped-load step matches 3000 W.',
+    }));
   });
 });
