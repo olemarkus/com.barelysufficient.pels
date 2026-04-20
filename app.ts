@@ -281,20 +281,28 @@ class PelsApp extends Homey.App {
     if (deviceIds.length === 0) return;
     const card = this.homey.flow?.getTriggerCard?.('flow_backed_device_refresh_requested');
     if (!card?.trigger) return;
+    const devices = await this.getHomeyDevicesForFlow();
     const eligibleDeviceIds = getFlowRefreshRequestedDeviceIds({
       state: this.flowReportedCapabilities,
-      devices: await this.getHomeyDevicesForFlow(),
+      devices,
       experimentalEvSupportEnabled: this.experimentalEvSupportEnabled,
       candidateDeviceIds: deviceIds,
     });
     if (eligibleDeviceIds.length === 0) return;
 
+    const deviceById = new Map(devices.map((device) => [device.id, device]));
     const seen = new Set<string>();
     const triggers: Array<{ deviceId: string; trigger: Promise<unknown> }> = [];
     for (const rawDeviceId of eligibleDeviceIds) {
       const deviceId = rawDeviceId.trim();
       if (!deviceId || seen.has(deviceId)) continue;
       seen.add(deviceId);
+      const device = deviceById.get(deviceId);
+      this.getStructuredLogger('devices')?.info({
+        event: 'flow_backed_refresh_requested',
+        deviceId,
+        deviceName: device?.name,
+      });
       triggers.push({
         deviceId,
         trigger: card.trigger({}, { deviceId }),

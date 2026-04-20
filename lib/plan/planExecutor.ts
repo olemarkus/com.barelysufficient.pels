@@ -165,12 +165,43 @@ export class PlanExecutor {
     return {
       state: this.state,
       deviceManager: this.deviceManager,
+      triggerFlowBackedBinaryControlRequest: (params: {
+        deviceId: string;
+        name: string;
+        capabilityId: 'onoff' | 'evcharger_charging';
+        desired: boolean;
+        logContext: 'capacity' | 'capacity_control_off';
+        actuationMode: PlanActuationMode;
+      }) => this.triggerFlowBackedBinaryControlRequest(params),
       log: this.log.bind(this),
       logDebug: this.logDebug.bind(this),
       error: this.error.bind(this),
       structuredLog: this.deps.structuredLog,
       debugStructured: this.deps.debugStructured,
     };
+  }
+
+  private async triggerFlowBackedBinaryControlRequest(params: {
+    deviceId: string;
+    name: string;
+    capabilityId: 'onoff' | 'evcharger_charging';
+    desired: boolean;
+    logContext: 'capacity' | 'capacity_control_off';
+    actuationMode: PlanActuationMode;
+  }): Promise<void> {
+    const { deviceId, capabilityId, desired } = params;
+    const triggerCardId = capabilityId === 'evcharger_charging'
+      ? 'flow_backed_device_evcharger_charging_requested'
+      : 'flow_backed_device_onoff_requested';
+    const triggerCard = this.deps.homey.flow?.getTriggerCard?.(triggerCardId);
+    if (!triggerCard?.trigger) {
+      throw new Error(`Flow trigger ${triggerCardId} is unavailable`);
+    }
+    await triggerCard.trigger({
+      state: desired ? 'on' : 'off',
+    }, {
+      deviceId,
+    });
   }
 
   private log(...args: unknown[]): void {

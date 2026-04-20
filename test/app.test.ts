@@ -2495,9 +2495,10 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('keeps snapshot refresh trigger fanout best-effort when one flow-backed trigger fails', async () => {
     const app = createApp();
+    const info = vi.fn();
     const warn = vi.fn();
     (app as any).structuredLogger = {
-      child: vi.fn(() => ({ warn })),
+      child: vi.fn(() => ({ info, warn })),
     };
     (app as any).flowReportedCapabilities = {
       'dev-1': {
@@ -2529,6 +2530,16 @@ describe('periodic snapshot refresh scheduling', () => {
       event: 'flow_backed_refresh_request_failed',
       deviceId: 'dev-1',
       err: expect.objectContaining({ message: 'boom' }),
+    }));
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'flow_backed_refresh_requested',
+      deviceId: 'dev-1',
+      deviceName: 'Relay 1',
+    }));
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'flow_backed_refresh_requested',
+      deviceId: 'dev-2',
+      deviceName: 'Relay 2',
     }));
   });
 

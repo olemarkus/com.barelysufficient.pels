@@ -175,7 +175,11 @@ export function parseDevice(params: {
         evChargingState,
         currentOn: getCurrentOn({ deviceClassKey, capabilityObj, controlCapabilityId }),
     });
-    const canSetControl = getCanSetControl(controlCapabilityId, capabilityObj);
+    const canSetControl = resolveCanSetControl({
+        controlCapabilityId,
+        capabilityObj,
+        flowBackedCapabilityIds,
+    });
     const available = getIsAvailable(device);
     const powerCapable = isPowerCapable(device, capsStatus, powerEstimate);
     if (shouldSkipFlowBackedCandidate({
@@ -215,6 +219,18 @@ export function parseDevice(params: {
         lastFreshDataMs,
         lastLocalWriteMs: resolveLatestLocalWriteMs(deviceId),
     });
+}
+
+function resolveCanSetControl(params: {
+    controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+    capabilityObj: DeviceCapabilityMap;
+    flowBackedCapabilityIds: FlowReportedCapabilityId[];
+}): boolean | undefined {
+    const { controlCapabilityId, capabilityObj, flowBackedCapabilityIds } = params;
+    if (controlCapabilityId && flowBackedCapabilityIds.includes(controlCapabilityId)) {
+        return true;
+    }
+    return getCanSetControl(controlCapabilityId, capabilityObj);
 }
 
 function resolveTargetDeviceType(targetCaps: readonly string[]): TargetDeviceSnapshot['deviceType'] {

@@ -63,7 +63,11 @@ const buildExecutor = (
   ],
   overrides: Partial<PlanExecutorDeps> = {},
 ) => {
-  const desiredSteppedTrigger = { trigger: vi.fn().mockResolvedValue(true) };
+  const triggerCards = {
+    desired_stepped_load_changed: { trigger: vi.fn().mockResolvedValue(true) },
+    flow_backed_device_onoff_requested: { trigger: vi.fn().mockResolvedValue(true) },
+    flow_backed_device_evcharger_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
+  } as const;
   const debugStructured = vi.fn();
   const deviceManager = {
     getSnapshot: vi.fn().mockReturnValue(snapshot),
@@ -72,7 +76,9 @@ const buildExecutor = (
   const deps: PlanExecutorDeps = {
     homey: {
       settings: { set: vi.fn() },
-      flow: { getTriggerCard: vi.fn(() => desiredSteppedTrigger) },
+      flow: {
+        getTriggerCard: vi.fn((cardId: keyof typeof triggerCards) => triggerCards[cardId]),
+      },
     } as unknown as Homey.App['homey'],
     deviceManager: deviceManager as never,
     getCapacityGuard: () => undefined,
@@ -89,7 +95,16 @@ const buildExecutor = (
     error: vi.fn(),
     ...overrides,
   };
-  return { executor: new PlanExecutor(deps, state), deps, deviceManager, state, desiredSteppedTrigger, debugStructured };
+  return {
+    executor: new PlanExecutor(deps, state),
+    deps,
+    deviceManager,
+    state,
+    desiredSteppedTrigger: triggerCards.desired_stepped_load_changed,
+    flowBackedOnOffTrigger: triggerCards.flow_backed_device_onoff_requested,
+    flowBackedEvTrigger: triggerCards.flow_backed_device_evcharger_charging_requested,
+    debugStructured,
+  };
 };
 
 describe('PlanExecutor restore logging', () => {
@@ -128,6 +143,61 @@ describe('PlanExecutor restore logging', () => {
     });
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it('requests flow-backed on/off control through the Homey trigger instead of writing the device capability', async () => {
+    const { executor, deps, deviceManager, flowBackedOnOffTrigger } = buildExecutor(
+      createPlanEngineState(),
+      [{
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        flowBacked: true,
+        flowBackedCapabilityIds: ['onoff'],
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      }],
+    );
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 6,
+        softLimitKw: 5,
+        headroomKw: -1,
+      },
+      devices: [{
+        id: 'dev-1',
+        name: 'Heater',
+        currentState: 'on',
+        plannedState: 'shed',
+        currentTarget: 21,
+        plannedTarget: 21,
+        controllable: true,
+      }],
+    });
+
+    expect(flowBackedOnOffTrigger.trigger).toHaveBeenCalledWith(
+      { state: 'off' },
+      { deviceId: 'dev-1' },
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
+    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'flow_backed_binary_command_requested',
+      deviceId: 'dev-1',
+      deviceName: 'Heater',
+      capabilityId: 'onoff',
+      desired: false,
+      logContext: 'capacity',
+      actuationMode: 'plan',
+    }));
+    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'binary_command_applied',
+      deviceId: 'dev-1',
+      deviceName: 'Heater',
+      capabilityId: 'onoff',
+      desired: false,
+    }));
   });
 
   it('logs neutral restore text when matching the current plan after a later external off', async () => {

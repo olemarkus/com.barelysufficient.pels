@@ -10,17 +10,23 @@ type DeviceArg = RawFlowDeviceArg;
 type FlowBackedCardTarget = 'binary' | 'evcharger' | 'binary_or_evcharger';
 
 export function registerFlowBackedDeviceCards(deps: FlowCardDeps): void {
-  const refreshTrigger = deps.homey.flow.getTriggerCard('flow_backed_device_refresh_requested');
-  refreshTrigger.registerRunListener(async (args: unknown, state?: unknown) => {
-    const payload = args as { device?: DeviceArg } | null;
-    const statePayload = state as { deviceId?: string } | null;
-    const chosenDeviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
-    if (!chosenDeviceId || !statePayload?.deviceId) return false;
-    return chosenDeviceId === statePayload.deviceId;
+  registerFlowBackedRequestTrigger({
+    deps,
+    cardId: 'flow_backed_device_refresh_requested',
+    target: 'binary_or_evcharger',
   });
-  refreshTrigger.registerArgumentAutocompleteListener('device', async (query: string) => (
-    getFlowBackedDeviceOptions(deps, query, 'binary_or_evcharger')
-  ));
+  registerFlowBackedRequestTrigger({
+    deps,
+    cardId: 'flow_backed_device_onoff_requested',
+    target: 'binary',
+    requiredMissingCapabilityId: 'onoff',
+  });
+  registerFlowBackedRequestTrigger({
+    deps,
+    cardId: 'flow_backed_device_evcharger_charging_requested',
+    target: 'evcharger',
+    requiredMissingCapabilityId: 'evcharger_charging',
+  });
 
   registerFlowBackedCapabilityCard({
     deps,
@@ -67,6 +73,33 @@ export function registerFlowBackedDeviceCards(deps: FlowCardDeps): void {
   });
 }
 
+function registerFlowBackedRequestTrigger(params: {
+  deps: FlowCardDeps;
+  cardId: string;
+  target: FlowBackedCardTarget;
+  requiredMissingCapabilityId?: Extract<FlowReportedCapabilityId, 'onoff' | 'evcharger_charging'>;
+}): void {
+  const {
+    deps,
+    cardId,
+    target,
+    requiredMissingCapabilityId,
+  } = params;
+  const trigger = deps.homey.flow.getTriggerCard(cardId);
+  trigger.registerRunListener(async (args: unknown, state?: unknown) => {
+    const payload = args as { device?: DeviceArg } | null;
+    const statePayload = state as { deviceId?: string } | null;
+    const chosenDeviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
+    if (!chosenDeviceId || !statePayload?.deviceId) return false;
+    return chosenDeviceId === statePayload.deviceId;
+  });
+  trigger.registerArgumentAutocompleteListener('device', async (query: string) => (
+    getFlowBackedDeviceOptions(deps, query, target, {
+      requiredMissingCapabilityId,
+    })
+  ));
+}
+
 function registerBooleanCapabilityCard(params: {
   deps: FlowCardDeps;
   cardId: string;
@@ -109,11 +142,24 @@ function registerFlowBackedCapabilityCard(params: {
     const payload = args as { device?: DeviceArg; state?: unknown; power_w?: unknown } | null;
     const deviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
     if (!deviceId) throw new Error('Device must be provided.');
-    await requireSupportedFlowBackedDevice(deps, deviceId, target);
+    const device = await requireSupportedFlowBackedDevice(deps, deviceId, target);
 
     const rawValue = capabilityId === 'measure_power' ? payload?.power_w : payload?.state;
     const value = parseValue(rawValue);
+    const nativeCapabilityPresent = isCapabilityProvidedNatively({
+      device,
+      capabilityId,
+    });
     const result = deps.reportFlowBackedCapability({ deviceId, capabilityId, value });
+    emitFlowBackedCapabilityReportLog({
+      deps,
+      cardId,
+      device,
+      capabilityId,
+      value,
+      result,
+      nativeCapabilityPresent,
+    });
 
     await deps.refreshSnapshot({ emitFlowBackedRefresh: false });
     if (result === 'changed') {
@@ -135,9 +181,12 @@ async function getFlowBackedDeviceOptions(
   deps: FlowCardDeps,
   query: string,
   target: FlowBackedCardTarget,
+  options: {
+    requiredMissingCapabilityId?: Extract<FlowReportedCapabilityId, 'onoff' | 'evcharger_charging'>;
+  } = {},
 ): Promise<Array<{ id: string; name: string }>> {
   const devices = await deps.getHomeyDevicesForFlow();
-  return buildFlowBackedDeviceAutocompleteOptions(devices, query, target);
+  return buildFlowBackedDeviceAutocompleteOptions(devices, query, target, options);
 }
 
 function getDeviceIdFromArg(arg: DeviceArg): string {
@@ -161,6 +210,42 @@ function parseAutocompleteStringValue(rawValue: unknown): string {
   return String(rawValue ?? '').trim();
 }
 
+function emitFlowBackedCapabilityReportLog(params: {
+  deps: FlowCardDeps;
+  cardId: string;
+  device: HomeyDeviceLike;
+  capabilityId: FlowReportedCapabilityId;
+  value: boolean | number | string;
+  result: 'changed' | 'unchanged';
+  nativeCapabilityPresent: boolean;
+}): void {
+  const {
+    deps,
+    cardId,
+    device,
+    capabilityId,
+    value,
+    result,
+    nativeCapabilityPresent,
+  } = params;
+  let event = 'flow_backed_capability_report_unchanged';
+  if (nativeCapabilityPresent) {
+    event = 'flow_backed_capability_report_native_overlap';
+  } else if (result === 'changed') {
+    event = 'flow_backed_capability_reported';
+  }
+  deps.structuredLog?.info({
+    event,
+    sourceCardId: cardId,
+    deviceId: device.id,
+    deviceName: device.name,
+    capabilityId,
+    value,
+    nativeCapabilityPresent,
+    zone: resolveZoneLabel(device) || undefined,
+  });
+}
+
 function getBooleanAutocompleteOptions(query: string): Array<{ id: string; name: string }> {
   const options = [
     { id: 'on', name: 'On' },
@@ -176,14 +261,22 @@ function buildFlowBackedDeviceAutocompleteOptions(
   devices: HomeyDeviceLike[],
   query: string,
   target: FlowBackedCardTarget,
+  options: {
+    requiredMissingCapabilityId?: Extract<FlowReportedCapabilityId, 'onoff' | 'evcharger_charging'>;
+  } = {},
 ): Array<{ id: string; name: string }> {
   const normalizedQuery = (query || '').trim().toLowerCase();
+  const { requiredMissingCapabilityId } = options;
   const filteredDevices = devices.filter((
     device,
   ): device is Pick<HomeyDeviceLike, 'id' | 'name' | 'zone' | 'zoneName' | 'class' | 'capabilities'> => (
     typeof device.id === 'string'
     && typeof device.name === 'string'
     && isSupportedFlowBackedDevice(device, target)
+    && (!requiredMissingCapabilityId || !isCapabilityProvidedNatively({
+      device,
+      capabilityId: requiredMissingCapabilityId,
+    }))
   ));
   const nameCounts = new Map<string, number>();
   for (const device of filteredDevices) {
@@ -253,6 +346,23 @@ function resolveZoneLabel(device: Pick<HomeyDeviceLike, 'zone' | 'zoneName'>): s
   if (typeof zone === 'string') return zone.trim();
   if (typeof device.zoneName === 'string') return device.zoneName.trim();
   return '';
+}
+
+function isCapabilityProvidedNatively(params: {
+  device: HomeyDeviceLike;
+  capabilityId: FlowReportedCapabilityId;
+}): boolean {
+  const { device, capabilityId } = params;
+  const capabilities = getCapabilities(device);
+  if (capabilityId === 'measure_power') {
+    return capabilities.some((nativeCapabilityId) => (
+      nativeCapabilityId === 'measure_power'
+      || nativeCapabilityId === 'meter_power'
+      || nativeCapabilityId.startsWith('measure_power.')
+      || nativeCapabilityId.startsWith('meter_power.')
+    ));
+  }
+  return capabilities.includes(capabilityId);
 }
 
 function getEvChargingStateOptions(query: string): Array<{ id: string; name: string }> {

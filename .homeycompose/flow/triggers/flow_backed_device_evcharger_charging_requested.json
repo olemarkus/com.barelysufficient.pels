@@ -1,0 +1,32 @@
+{
+  "title": {
+    "en": "PELS requests EV charging change for"
+  },
+  "titleFormatted": {
+    "en": "PELS requests EV charging change for [[device]]"
+  },
+  "hint": {
+    "en": "Triggers when PELS wants an existing Homey EV charger to start or stop charging."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select EV charger"
+      }
+    }
+  ],
+  "tokens": [
+    {
+      "name": "state",
+      "type": "string",
+      "title": {
+        "en": "Charging"
+      }
+    }
+  ]
+}

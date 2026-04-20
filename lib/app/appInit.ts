@@ -120,6 +120,7 @@ export function createPlanService(ctx: AppContext): PlanService {
 export function registerAppFlowCards(ctx: AppContext): void {
   registerFlowCards({
     homey: requireFlowHomey(ctx),
+    structuredLog: ctx.getStructuredLogger('devices'),
     resolveModeName: (mode) => ctx.resolveModeName(mode),
     getAllModes: () => ctx.getAllModes(),
     getCurrentOperatingMode: () => ctx.operatingMode,

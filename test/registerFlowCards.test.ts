@@ -5,13 +5,20 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
   const structuredInfo = vi.fn();
   const structuredWarn = vi.fn();
   const actionAutocompleteListeners: Record<string, Record<string, (query: string, args?: Record<string, unknown>) => Promise<unknown>>> = {};
-  const createCard = (cardId: string) => ({
+  const triggerListeners: Record<string, (args: unknown, state?: unknown) => Promise<unknown>> = {};
+  const triggerAutocompleteListeners: Record<string, Record<string, (query: string, args?: Record<string, unknown>) => Promise<unknown>>> = {};
+  const createCard = (cardId: string, kind: 'action' | 'condition' | 'trigger' = 'action') => ({
     registerRunListener: (listener: (args: unknown, state?: unknown) => Promise<unknown>) => {
+      if (kind === 'trigger') {
+        triggerListeners[cardId] = (args, state) => listener(args, state);
+        return;
+      }
       actionListeners[cardId] = (args) => listener(args);
     },
     registerArgumentAutocompleteListener: (arg: string, listener: (query: string, args?: Record<string, unknown>) => Promise<unknown>) => {
-      actionAutocompleteListeners[cardId] = {
-        ...(actionAutocompleteListeners[cardId] ?? {}),
+      const container = kind === 'trigger' ? triggerAutocompleteListeners : actionAutocompleteListeners;
+      container[cardId] = {
+        ...(container[cardId] ?? {}),
         [arg]: listener,
       };
     },
@@ -20,12 +27,13 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
   const deps: FlowCardDeps = {
     homey: {
       flow: {
-        getActionCard: (cardId: string) => createCard(cardId),
-        getConditionCard: (_cardId: string) => createCard('condition'),
-        getTriggerCard: (_cardId: string) => createCard('trigger'),
+        getActionCard: (cardId: string) => createCard(cardId, 'action'),
+        getConditionCard: (cardId: string) => createCard(cardId, 'condition'),
+        getTriggerCard: (cardId: string) => createCard(cardId, 'trigger'),
       },
       settings: { get: vi.fn(), set: vi.fn() },
     },
+    structuredLog: { info: vi.fn() },
     resolveModeName: (mode) => mode,
     getAllModes: () => new Set(['Home']),
     getCurrentOperatingMode: () => 'Home',
@@ -56,7 +64,15 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     error: vi.fn(),
     ...overrides,
   };
-  return { deps, actionListeners, actionAutocompleteListeners, structuredInfo, structuredWarn };
+  return {
+    deps,
+    actionListeners,
+    actionAutocompleteListeners,
+    triggerListeners,
+    triggerAutocompleteListeners,
+    structuredInfo,
+    structuredWarn,
+  };
 };
 
 describe('registerFlowCards', () => {
@@ -412,6 +428,15 @@ describe('registerFlowCards', () => {
     });
     expect(deps.refreshSnapshot).toHaveBeenCalledWith({ emitFlowBackedRefresh: false });
     expect(deps.rebuildPlan).toHaveBeenCalledWith('report_flow_backed_device_power');
+    expect(deps.structuredLog?.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'flow_backed_capability_reported',
+      sourceCardId: 'report_flow_backed_device_power',
+      deviceId: 'dev-1',
+      deviceName: 'Relay',
+      capabilityId: 'measure_power',
+      value: 1750,
+      nativeCapabilityPresent: false,
+    }));
   });
 
   it('refreshes snapshot but skips rebuild when a flow-backed report only updates freshness', async () => {
@@ -436,6 +461,15 @@ describe('registerFlowCards', () => {
     });
     expect(deps.refreshSnapshot).toHaveBeenCalledWith({ emitFlowBackedRefresh: false });
     expect(deps.rebuildPlan).not.toHaveBeenCalled();
+    expect(deps.structuredLog?.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'flow_backed_capability_report_native_overlap',
+      sourceCardId: 'report_flow_backed_device_onoff',
+      deviceId: 'dev-1',
+      deviceName: 'Relay',
+      capabilityId: 'onoff',
+      value: true,
+      nativeCapabilityPresent: true,
+    }));
   });
 
   it('parses EV charging state autocomplete values by option id', async () => {
@@ -513,6 +547,54 @@ describe('registerFlowCards', () => {
 
     const options = await actionAutocompleteListeners.report_flow_backed_device_evcharger_state.device('wallbox');
     expect(options).toEqual([{ id: 'ev-1', name: 'Wallbox' }]);
+  });
+
+  it('limits flow-backed on/off request autocomplete to devices still missing native onoff', async () => {
+    const { deps, triggerAutocompleteListeners } = buildDeps({
+      getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
+        { id: 'dev-1', name: 'Relay', class: 'socket', capabilities: [] },
+        { id: 'dev-2', name: 'Native Relay', class: 'socket', capabilities: ['onoff'] },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    const options = await triggerAutocompleteListeners.flow_backed_device_onoff_requested.device('relay');
+    expect(options).toEqual([{ id: 'dev-1', name: 'Relay' }]);
+  });
+
+  it('limits EV charging request autocomplete to EV chargers still missing native evcharger_charging', async () => {
+    const { deps, triggerAutocompleteListeners } = buildDeps({
+      getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
+        { id: 'ev-1', name: 'Wallbox', class: 'evcharger', capabilities: [] },
+        { id: 'ev-2', name: 'Native Wallbox', class: 'evcharger', capabilities: ['evcharger_charging'] },
+        { id: 'socket-1', name: 'Socket', class: 'socket', capabilities: [] },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    const options = await triggerAutocompleteListeners.flow_backed_device_evcharger_charging_requested.device('wallbox');
+    expect(options).toEqual([{ id: 'ev-1', name: 'Wallbox' }]);
+  });
+
+  it('matches flow-backed request triggers by device id only', async () => {
+    const { deps, triggerListeners } = buildDeps();
+
+    registerFlowCards(deps);
+
+    await expect(triggerListeners.flow_backed_device_onoff_requested(
+      { device: 'dev-1' },
+      { deviceId: 'dev-1' },
+    )).resolves.toBe(true);
+    await expect(triggerListeners.flow_backed_device_onoff_requested(
+      { device: 'dev-1' },
+      { deviceId: 'dev-2' },
+    )).resolves.toBe(false);
+    await expect(triggerListeners.flow_backed_device_evcharger_charging_requested(
+      { device: 'ev-1' },
+      { deviceId: 'ev-1' },
+    )).resolves.toBe(true);
   });
 
   it('excludes temperature and unknown-class devices from binary flow-backed autocomplete', async () => {
