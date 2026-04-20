@@ -34,6 +34,7 @@ import {
   type RestoreAdmissionMetrics,
 } from './planRestoreAdmission';
 import { buildActivationBackoffReason, buildRestoreHeadroomReason } from './planReasonStrings';
+import { resolvePendingSteppedRestoreHold } from './planSteppedRestorePending';
 
 export function setRestorePlanDevice(
   deviceMap: Map<string, DevicePlanDevice>,
@@ -273,6 +274,41 @@ export function planRestoreForSteppedDevice(params: {
   const lowestNonZeroStep = dev.steppedLoadProfile
     ? getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)
     : null;
+  const pendingRestoreHold = resolvePendingSteppedRestoreHold(dev, nextStep.id);
+  if (pendingRestoreHold) {
+    delete state.steppedRestoreRejectedByDevice[dev.id];
+    setRestorePlanDevice(deviceMap, dev.id, {
+      desiredStepId: nextStep.id,
+      reason: pendingRestoreHold.reason,
+    });
+    emitRestoreDebugEventOnChange({
+      state,
+      key: restoreDebugKey,
+      payload: {
+        event: 'restore_stepped_deferred',
+        deviceId: dev.id,
+        deviceName: dev.name,
+        phase,
+        currentStepId: dev.selectedStepId ?? 'unknown',
+        requestedStepId: nextStep.id,
+        decision: 'deferred',
+        reasonCode: pendingRestoreHold.reasonCode,
+        remainingSec: pendingRestoreHold.remainingSec,
+      },
+      signaturePayload: {
+        event: 'restore_stepped_deferred',
+        deviceId: dev.id,
+        deviceName: dev.name,
+        phase,
+        currentStepId: dev.selectedStepId ?? 'unknown',
+        requestedStepId: nextStep.id,
+        decision: 'deferred',
+        reasonCode: pendingRestoreHold.reasonCode,
+      },
+      debugStructured,
+    });
+    return { availableHeadroom, restoredOneThisCycle };
+  }
 
   if (blockSteppedRestoreForShedInvariant({
     dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, debugStructured, restoreDebugKey,
