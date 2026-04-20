@@ -178,6 +178,72 @@
       },
       {
         "title": {
+          "en": "PELS requests EV charging change for"
+        },
+        "titleFormatted": {
+          "en": "PELS requests EV charging change for [[device]]"
+        },
+        "hint": {
+          "en": "Triggers when PELS wants an existing Homey EV charger to start or stop charging."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select EV charger"
+            }
+          }
+        ],
+        "tokens": [
+          {
+            "name": "state",
+            "type": "string",
+            "title": {
+              "en": "Charging"
+            }
+          }
+        ],
+        "id": "flow_backed_device_evcharger_charging_requested"
+      },
+      {
+        "title": {
+          "en": "PELS requests on/off change for"
+        },
+        "titleFormatted": {
+          "en": "PELS requests on/off change for [[device]]"
+        },
+        "hint": {
+          "en": "Triggers when PELS wants an existing Homey device to turn on or off."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          }
+        ],
+        "tokens": [
+          {
+            "name": "state",
+            "type": "string",
+            "title": {
+              "en": "State"
+            }
+          }
+        ],
+        "id": "flow_backed_device_onoff_requested"
+      },
+      {
+        "title": {
           "en": "PELS requests updated state for"
         },
         "titleFormatted": {

@@ -215,6 +215,62 @@ describe('plan binary control helpers', () => {
     expect(log).toHaveBeenCalledWith('Capacity: turned off Socket (shedding)');
   });
 
+  it('requests flow-backed binary control through a trigger instead of writing the native capability', async () => {
+    const state = createPlanEngineState();
+    const triggerFlowBackedBinaryControlRequest = vi.fn().mockResolvedValue(undefined);
+    const log = vi.fn();
+    const structuredLog = { info: vi.fn(), debug: vi.fn(), error: vi.fn() };
+    const deviceManager = {
+      setCapability: vi.fn().mockResolvedValue(undefined),
+      getSnapshot: vi.fn().mockReturnValue([]),
+    };
+
+    await expect(setBinaryControl({
+      state,
+      deviceManager: deviceManager as never,
+      triggerFlowBackedBinaryControlRequest,
+      log,
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      structuredLog,
+      debugStructured: vi.fn(),
+      deviceId: 'socket1',
+      name: 'Socket',
+      desired: false,
+      snapshot: {
+        id: 'socket1',
+        name: 'Socket',
+        controlCapabilityId: 'onoff',
+        flowBacked: true,
+        flowBackedCapabilityIds: ['onoff'],
+        canSetControl: true,
+        currentOn: true,
+      },
+      logContext: 'capacity',
+      reason: 'shedding',
+    })).resolves.toBe(true);
+
+    expect(triggerFlowBackedBinaryControlRequest).toHaveBeenCalledWith({
+      deviceId: 'socket1',
+      name: 'Socket',
+      capabilityId: 'onoff',
+      desired: false,
+      logContext: 'capacity',
+      actuationMode: 'plan',
+    });
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith('Capacity: turned off Socket (shedding)');
+    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'flow_backed_binary_command_requested',
+      deviceId: 'socket1',
+      deviceName: 'Socket',
+      capabilityId: 'onoff',
+      desired: false,
+      logContext: 'capacity',
+      actuationMode: 'plan',
+    }));
+  });
+
   it('emits binary_command_failed when the device manager write fails', async () => {
     const state = createPlanEngineState();
     const failure = new Error('device unavailable');
