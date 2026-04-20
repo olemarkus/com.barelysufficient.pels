@@ -317,7 +317,10 @@ async function handleSteppedLoadReportResult(params: {
       outcome: 'rejected',
       reasonCode: 'invalid_step_report',
     });
-    throw new Error('Device is not configured as a stepped load, or the reported step is invalid.');
+    throw createSteppedLoadReportError(
+      'invalid_step',
+      'Device is not configured as a stepped load, or the reported step is invalid.',
+    );
   }
   if (result === 'unchanged') {
     emitSteppedLoadReportResolvedLog({
