@@ -313,5 +313,8 @@
   },
   "2.1.29": {
     "en": "Tweaked penalty rules for device restores resulting in overshoots."
+  },
+  "2.1.30": {
+    "en": "Fix observability around stepped load devices. Includes a few minor stability improvements as well."
   }
 }
