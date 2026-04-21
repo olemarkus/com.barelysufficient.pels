@@ -20,11 +20,12 @@ export type {
   HeadroomCardCooldownSource,
   HeadroomCardDeviceLike,
   HeadroomDeviceKwSource,
+  HeadroomUsageObservation,
 } from './planHeadroomSupport';
 export {
   resolveHeadroomCardCooldown,
   syncHeadroomCardState,
-  syncHeadroomCardTrackedUsage,
+  syncHeadroomUsageObservation,
 } from './planHeadroomState';
 export { resolveObservedHeadroomDeviceKw } from './planHeadroomSupport';
 

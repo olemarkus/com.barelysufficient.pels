@@ -51,8 +51,8 @@ import type {
 } from './planTypes';
 import type {
   HeadroomCardDeviceLike,
-  HeadroomDeviceKwSource,
   HeadroomForDeviceDecision,
+  HeadroomUsageObservation,
 } from './planHeadroomDevice';
 import type { PlanActuationMode, PlanActuationResult } from './planExecutor';
 
@@ -430,13 +430,12 @@ export class PlanService {
     return this.deps.planEngine.syncHeadroomCardState(params);
   }
 
-  syncHeadroomCardTrackedUsage(params: {
+  syncHeadroomUsageObservation(params: {
     deviceId: string;
-    trackedKw: number;
-    trackedKwSource?: HeadroomDeviceKwSource;
+    usageObservation: HeadroomUsageObservation;
     reconciliationContext?: 'snapshot_refresh';
   }): boolean {
-    return this.deps.planEngine.syncHeadroomCardTrackedUsage(params);
+    return this.deps.planEngine.syncHeadroomUsageObservation(params);
   }
 
   async rebuildPlanFromCache(reason = 'unspecified'): Promise<PlanRebuildOutcome> {
