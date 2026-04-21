@@ -255,16 +255,18 @@ function buildBasePlanDevice(params: {
   } = params;
 
   const initialDesiredStepId = resolveSteppedLoadInitialDesiredStepId(dev);
+  const runtimeDesiredStepId = dev.desiredStepId ?? initialDesiredStepId;
   const directShedStepId = resolveSteppedLoadDirectShedStepId({
     dev,
     shedBehavior,
     shouldShed: shedSet.has(dev.id),
-    currentDesiredStepId: steppedDesiredStepByDeviceId.get(dev.id) ?? initialDesiredStepId,
+    currentDesiredStepId: steppedDesiredStepByDeviceId.get(dev.id) ?? dev.selectedStepId,
   });
-  const desiredStepId = directShedStepId ?? steppedDesiredStepByDeviceId.get(dev.id) ?? initialDesiredStepId;
+  const shedDesiredStepId = directShedStepId ?? steppedDesiredStepByDeviceId.get(dev.id);
+  const desiredStepId = shedDesiredStepId ?? runtimeDesiredStepId;
   const isSteppedShed = isSteppedLoadDevice(dev)
-    && desiredStepId !== undefined
-    && desiredStepId !== dev.selectedStepId;
+    && shedDesiredStepId !== undefined
+    && shedDesiredStepId !== dev.selectedStepId;
   const plannedState = resolvePlannedState(controllable, shedSet.has(dev.id) || isSteppedShed);
   // For keep/restore devices at off-step, normalize desired step to lowest non-zero.
   // Computed after plannedState to avoid a circular effect on isSteppedShed.

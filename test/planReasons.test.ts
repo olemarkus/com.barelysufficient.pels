@@ -172,6 +172,13 @@ describe('finalizePlanDevices', () => {
       reason: 'cooldown (restore, 30s remaining)',
     })])).not.toThrow();
   });
+
+  it('allows restore pending reasons for keep devices that are waiting on stepped confirmation', () => {
+    expect(() => finalizePlanDevices([buildPlanDevice({
+      plannedState: 'keep',
+      reason: 'restore pending (30s remaining)',
+    })])).not.toThrow();
+  });
 });
 
 describe('applyShedTemperatureHold', () => {

@@ -2,17 +2,22 @@ import type { DevicePlanDevice } from './planTypes';
 import { buildRestorePendingReason } from './planReasonStrings';
 import { resolveSteppedLoadCommandPendingMs } from './planObservationPolicy';
 
+export type SteppedRestoreAttemptState = {
+  status: 'awaiting_confirmation' | 'retry_backoff';
+  remainingSec: number;
+};
+
 export type PendingSteppedRestoreHold = {
   reason: ReturnType<typeof buildRestorePendingReason>;
   remainingSec: number;
   reasonCode: 'waiting_confirmation' | 'retry_backoff';
 };
 
-export function resolvePendingSteppedRestoreHold(
+export function resolveSteppedRestoreAttemptState(
   dev: DevicePlanDevice,
   requestedStepId: string,
   nowMs: number = Date.now(),
-): PendingSteppedRestoreHold | null {
+): SteppedRestoreAttemptState | null {
   if (dev.lastDesiredStepId !== requestedStepId) return null;
 
   if (dev.stepCommandPending === true) {
@@ -22,9 +27,8 @@ export function resolvePendingSteppedRestoreHold(
       : nowMs;
     const remainingSec = Math.max(1, Math.ceil((issuedAtMs + pendingWindowMs - nowMs) / 1000));
     return {
-      reason: buildRestorePendingReason(remainingSec),
+      status: 'awaiting_confirmation',
       remainingSec,
-      reasonCode: 'waiting_confirmation',
     };
   }
 
@@ -35,11 +39,24 @@ export function resolvePendingSteppedRestoreHold(
   ) {
     const remainingSec = Math.max(1, Math.ceil((dev.nextStepCommandRetryAtMs - nowMs) / 1000));
     return {
-      reason: buildRestorePendingReason(remainingSec),
+      status: 'retry_backoff',
       remainingSec,
-      reasonCode: 'retry_backoff',
     };
   }
 
   return null;
+}
+
+export function resolvePendingSteppedRestoreHold(
+  dev: DevicePlanDevice,
+  requestedStepId: string,
+  nowMs: number = Date.now(),
+): PendingSteppedRestoreHold | null {
+  const attempt = resolveSteppedRestoreAttemptState(dev, requestedStepId, nowMs);
+  if (!attempt) return null;
+  return {
+    reason: buildRestorePendingReason(attempt.remainingSec),
+    remainingSec: attempt.remainingSec,
+    reasonCode: attempt.status === 'awaiting_confirmation' ? 'waiting_confirmation' : 'retry_backoff',
+  };
 }

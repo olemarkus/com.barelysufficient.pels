@@ -128,6 +128,7 @@ const KEEP_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.waitingForOtherDevices, label: 'recovery gate' },
   { code: PLAN_REASON_CODES.activationBackoff, label: 'activation backoff' },
   { code: PLAN_REASON_CODES.insufficientHeadroom, label: 'insufficient headroom' },
+  { code: PLAN_REASON_CODES.restorePending, label: 'restore pending' },
   { code: PLAN_REASON_CODES.swapPending, label: 'swap pending' },
   { code: PLAN_REASON_CODES.shedInvariant, label: 'shed invariant' },
   { code: PLAN_REASON_CODES.startupStabilization, label: 'startup stabilization' },

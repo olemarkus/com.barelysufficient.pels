@@ -1668,6 +1668,87 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     }));
   });
 
+  it('treats a matching in-flight stepped restore as pending instead of no keep violation', async () => {
+    const snapshot = buildSnapshot({ currentOn: true });
+    const { executor, desiredSteppedTrigger, debugStructured, deps } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+      lastDesiredStepId: 'max',
+      lastStepCommandIssuedAt: Date.now() - 1_000,
+      stepCommandPending: true,
+      stepCommandStatus: 'pending',
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_command_skipped',
+      reasonCode: 'waiting_for_confirmation',
+      deviceId: 'dev-1',
+      actuationMode: 'reconcile',
+    }));
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'waiting_for_confirmation',
+      deviceId: 'dev-1',
+      actuationMode: 'reconcile',
+    }));
+    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'no_keep_violation',
+      deviceId: 'dev-1',
+    }));
+    expect(deps.logDebug).not.toHaveBeenCalledWith(
+      expect.stringContaining('violates keep invariant: step='),
+    );
+  });
+
+  it('treats a stepped restore retry window as backoff instead of no keep violation', async () => {
+    const snapshot = buildSnapshot({ currentOn: true });
+    const now = Date.now();
+    const { executor, desiredSteppedTrigger, debugStructured, deps } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+      lastDesiredStepId: 'max',
+      stepCommandPending: false,
+      stepCommandStatus: 'stale',
+      nextStepCommandRetryAtMs: now + 30_000,
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_command_skipped',
+      reasonCode: 'retry_backoff',
+      deviceId: 'dev-1',
+      actuationMode: 'reconcile',
+    }));
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'retry_backoff',
+      deviceId: 'dev-1',
+      actuationMode: 'reconcile',
+    }));
+    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'no_keep_violation',
+      deviceId: 'dev-1',
+    }));
+    expect(deps.logDebug).not.toHaveBeenCalledWith(
+      expect.stringContaining('violates keep invariant: step='),
+    );
+  });
+
   it('keeps snapshot gating before re-issuing a step restore for an off-step keep device', async () => {
     const { executor, desiredSteppedTrigger, deviceManager, debugStructured } = buildExecutor(undefined, []);
 
