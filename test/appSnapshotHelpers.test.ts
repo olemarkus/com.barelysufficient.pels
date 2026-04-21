@@ -133,4 +133,50 @@ describe('appSnapshotHelpers', () => {
     expect(emitFlowBackedRefreshRequests).toHaveBeenCalledTimes(1);
     expect(refreshSnapshot).toHaveBeenCalledTimes(2);
   });
+
+  it('counts queued snapshot refresh requests as coalesced rebuild triggers', async () => {
+    const deferred = (() => {
+      let resolve!: () => void;
+      const promise = new Promise<void>((nextResolve) => {
+        resolve = nextResolve;
+      });
+      return { promise, resolve };
+    })();
+    const refreshSnapshot = vi.fn()
+      .mockImplementationOnce(() => deferred.promise)
+      .mockResolvedValue(undefined);
+
+    const helper = new AppSnapshotHelpers({
+      homey: mockHomeyInstance as any,
+      timers: new TimerRegistry(),
+      getDeviceManager: () => ({ refreshSnapshot } as any),
+      getPlanEngine: () => undefined,
+      getPlanService: () => ({
+        syncLivePlanState: vi.fn().mockResolvedValue(undefined),
+        syncHeadroomCardState: vi.fn(),
+        getLatestPlanSnapshot: vi.fn(),
+      } as any),
+      getLatestTargetSnapshot: () => [],
+      resolveManagedState: () => false,
+      isCapacityControlEnabled: () => false,
+      getStructuredLogger: () => undefined,
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      getNow: () => new Date('2026-03-21T10:00:00Z'),
+      logPeriodicStatus: vi.fn(),
+      disableUnsupportedDevices: vi.fn(),
+      getFlowReportedDeviceIds: vi.fn(() => []),
+      emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
+      recordPowerSample: vi.fn().mockResolvedValue(undefined),
+    });
+    (helper as any).staleObservationRefreshStopped = false;
+
+    const firstRefresh = helper.refreshTargetDevicesSnapshot();
+    await Promise.resolve();
+    await helper.refreshTargetDevicesSnapshot();
+    deferred.resolve();
+    await firstRefresh;
+
+    expect(refreshSnapshot).toHaveBeenCalledTimes(2);
+  });
 });

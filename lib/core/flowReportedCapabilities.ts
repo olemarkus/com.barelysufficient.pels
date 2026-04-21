@@ -8,6 +8,7 @@ export const FLOW_REPORTED_CAPABILITY_IDS = [
   'alarm_generic.car_connected',
   'pels_evcharger_resumable',
 ] as const;
+export const FLOW_REPORTED_OBSERVATION_CAPABILITY_IDS = FLOW_REPORTED_CAPABILITY_IDS;
 
 export type FlowReportedCapabilityId = (typeof FLOW_REPORTED_CAPABILITY_IDS)[number];
 
@@ -21,10 +22,17 @@ export type FlowReportedCapabilitiesByDevice = Partial<
   Record<string, Partial<Record<FlowReportedCapabilityId, FlowReportedCapabilityEntry>>>
 >;
 export type FlowReportedCapabilitiesForDevice = Partial<Record<FlowReportedCapabilityId, FlowReportedCapabilityEntry>>;
+export type FlowReportedCapabilityUpdateResult = {
+  valueChanged: boolean;
+  freshnessAdvanced: boolean;
+  stateChanged: boolean;
+  entry: FlowReportedCapabilityEntry;
+};
 
 type FlowAugmentedDeviceType = 'binary' | 'evcharger' | 'unsupported';
 
 const FLOW_REPORTED_CAPABILITY_SET = new Set<string>(FLOW_REPORTED_CAPABILITY_IDS);
+const FLOW_REPORTED_OBSERVATION_CAPABILITY_SET = new Set<string>(FLOW_REPORTED_OBSERVATION_CAPABILITY_IDS);
 
 const BINARY_INPUT_CAPABILITIES: readonly FlowReportedCapabilityId[] = ['onoff'];
 const EV_INPUT_CAPABILITIES: readonly FlowReportedCapabilityId[] = [
@@ -52,6 +60,10 @@ function isSupportedReportedCapabilityId(value: string): value is FlowReportedCa
   return FLOW_REPORTED_CAPABILITY_SET.has(value);
 }
 
+export function isFlowReportedObservationCapabilityId(value: string): value is FlowReportedCapabilityId {
+  return FLOW_REPORTED_OBSERVATION_CAPABILITY_SET.has(value);
+}
+
 export function parseFlowReportedCapabilities(value: unknown): FlowReportedCapabilitiesByDevice {
   if (!isRecord(value)) return {};
 
@@ -74,7 +86,7 @@ export function upsertFlowReportedCapability(params: {
   capabilityId: FlowReportedCapabilityId;
   value: boolean | number | string;
   reportedAt?: number;
-}): 'changed' | 'unchanged' {
+}): FlowReportedCapabilityUpdateResult {
   const {
     state,
     deviceId,
@@ -83,18 +95,53 @@ export function upsertFlowReportedCapability(params: {
     reportedAt = Date.now(),
   } = params;
   const current = state[deviceId]?.[capabilityId];
-  const nextEntry: FlowReportedCapabilityEntry = {
+  if (!current) {
+    const entry: FlowReportedCapabilityEntry = {
+      value,
+      reportedAt,
+      source: 'flow',
+    };
+    state[deviceId] = {
+      ...(state[deviceId] ?? {}),
+      [capabilityId]: entry,
+    };
+    return {
+      valueChanged: true,
+      freshnessAdvanced: true,
+      stateChanged: true,
+      entry,
+    };
+  }
+
+  const valueChanged = !Object.is(current.value, value);
+  const nextReportedAt = Math.max(current.reportedAt, reportedAt);
+  const freshnessAdvanced = nextReportedAt > current.reportedAt;
+
+  if (!valueChanged && !freshnessAdvanced) {
+    return {
+      valueChanged: false,
+      freshnessAdvanced: false,
+      stateChanged: false,
+      entry: current,
+    };
+  }
+
+  const entry: FlowReportedCapabilityEntry = {
     value,
-    reportedAt,
+    reportedAt: nextReportedAt,
     source: 'flow',
   };
-
   state[deviceId] = {
     ...(state[deviceId] ?? {}),
-    [capabilityId]: nextEntry,
+    [capabilityId]: entry,
   };
 
-  return current && Object.is(current.value, value) ? 'unchanged' : 'changed';
+  return {
+    valueChanged,
+    freshnessAdvanced,
+    stateChanged: true,
+    entry,
+  };
 }
 
 export function getFlowReportedDeviceIds(state: FlowReportedCapabilitiesByDevice | undefined): string[] {

@@ -6,6 +6,7 @@ import type { ReportSteppedLoadActualStepResult } from '../lib/app/appDeviceCont
 import { registerExpectedPowerCard } from './expectedPower';
 import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from '../lib/plan/planHeadroomDevice';
 import type { FlowReportedCapabilityId } from '../lib/core/flowReportedCapabilities';
+import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import {
   CAPACITY_LIMIT_KW,
   DAILY_BUDGET_ENABLED,
@@ -50,7 +51,7 @@ export type FlowCardDeps = {
     deviceId: string;
     capabilityId: FlowReportedCapabilityId;
     value: boolean | number | string;
-  }) => 'changed' | 'unchanged';
+  }) => FlowBackedCapabilityReportOutcome;
   reportSteppedLoadActualStep: (
     deviceId: string,
     stepId: string,

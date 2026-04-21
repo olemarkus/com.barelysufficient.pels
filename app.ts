@@ -92,12 +92,14 @@ import { TimerRegistry } from './lib/app/timerRegistry';
 import {
   getFlowReportedDeviceIds,
   getFlowRefreshRequestedDeviceIds,
+  isFlowReportedObservationCapabilityId,
   parseFlowReportedCapabilities,
   upsertFlowReportedCapability,
   type FlowReportedCapabilityId,
   type FlowReportedCapabilitiesByDevice,
   type FlowReportedCapabilitiesForDevice,
 } from './lib/core/flowReportedCapabilities';
+import type { FlowBackedCapabilityReportOutcome } from './lib/app/appContext';
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 // Let non-urgent power deltas settle before rebuilding the full plan again.
 const POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 15000;
@@ -115,6 +117,37 @@ const getAppPlanRebuildNowMs = (): number => (
     ? Date.now()
     : performance.now()
 );
+
+function resolveFlowBackedCapabilityReportOutcome(update: {
+  valueChanged: boolean;
+  freshnessAdvanced: boolean;
+}): FlowBackedCapabilityReportOutcome {
+  if (update.valueChanged) {
+    return {
+      kind: 'state_changed',
+      valueChanged: true,
+      freshnessAdvanced: update.freshnessAdvanced,
+      refreshSnapshot: true,
+      rebuildPlan: true,
+    };
+  }
+  if (update.freshnessAdvanced) {
+    return {
+      kind: 'freshness_only',
+      valueChanged: false,
+      freshnessAdvanced: true,
+      refreshSnapshot: false,
+      rebuildPlan: false,
+    };
+  }
+  return {
+    kind: 'noop',
+    valueChanged: false,
+    freshnessAdvanced: false,
+    refreshSnapshot: false,
+    rebuildPlan: false,
+  };
+}
 
 class PelsApp extends Homey.App {
   private powerTracker: PowerTrackerState = {};
@@ -244,15 +277,44 @@ class PelsApp extends Homey.App {
     deviceId: string;
     capabilityId: FlowReportedCapabilityId;
     value: boolean | number | string;
-  }): 'changed' | 'unchanged' {
-    const result = upsertFlowReportedCapability({
+    reportedAt?: number;
+  }): FlowBackedCapabilityReportOutcome {
+    const update = upsertFlowReportedCapability({
       state: this.flowReportedCapabilities,
       deviceId: params.deviceId,
       capabilityId: params.capabilityId,
       value: params.value,
+      reportedAt: params.reportedAt,
     });
-    this.homey.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, this.flowReportedCapabilities);
-    return result;
+    if (update.valueChanged) {
+      this.homey.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, this.flowReportedCapabilities);
+    }
+    if (!update.valueChanged && update.freshnessAdvanced) {
+      this.syncFlowBackedObservationFreshness({
+        deviceId: params.deviceId,
+        capabilityId: params.capabilityId,
+        reportedAt: update.entry.reportedAt,
+      });
+    }
+    return resolveFlowBackedCapabilityReportOutcome(update);
+  }
+
+  private syncFlowBackedObservationFreshness(params: {
+    deviceId: string;
+    capabilityId: FlowReportedCapabilityId;
+    reportedAt: number;
+  }): void {
+    const snapshot = this.deviceManager?.getSnapshot();
+    if (!snapshot) return;
+    const device = snapshot.find((entry) => entry.id === params.deviceId);
+    if (!device || device.flowBacked !== true) return;
+    if (!isFlowReportedObservationCapabilityId(params.capabilityId)) {
+      return;
+    }
+    const nextFreshDataMs = Math.max(device.lastFreshDataMs ?? 0, params.reportedAt);
+    if (nextFreshDataMs <= (device.lastFreshDataMs ?? 0)) return;
+    device.lastFreshDataMs = nextFreshDataMs;
+    device.lastUpdated = nextFreshDataMs;
   }
 
   private async getHomeyDevicesForFlow(): Promise<HomeyDeviceLike[]> {

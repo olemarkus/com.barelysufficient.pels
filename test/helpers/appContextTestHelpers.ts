@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import type { AppContext } from '../../lib/app/appContext';
+import type { AppContext, FlowBackedCapabilityReportOutcome } from '../../lib/app/appContext';
 import { AppDeviceControlHelpers } from '../../lib/app/appDeviceControlHelpers';
 import { AppHomeyEnergyHelpers } from '../../lib/app/appHomeyEnergyHelpers';
 import { AppSnapshotHelpers } from '../../lib/app/appSnapshotHelpers';
@@ -162,7 +162,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     requestFlowPlanRebuild: vi.fn(),
     getFlowReportedCapabilitiesForDevice: vi.fn(() => ({})),
     getFlowReportedDeviceIds: vi.fn(() => []),
-    reportFlowBackedCapability: vi.fn(() => 'changed'),
+    reportFlowBackedCapability: vi.fn(() => defaultFlowBackedCapabilityReportOutcome),
     getHomeyDevicesForFlow: vi.fn(async () => []),
     emitFlowBackedRefreshRequests: vi.fn(async () => undefined),
     getPriorityForDevice: vi.fn(() => 0),
@@ -255,3 +255,10 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   Object.assign(context, overrides);
   return context;
 }
+  const defaultFlowBackedCapabilityReportOutcome: FlowBackedCapabilityReportOutcome = {
+    kind: 'state_changed',
+    valueChanged: true,
+    freshnessAdvanced: true,
+    refreshSnapshot: true,
+    rebuildPlan: true,
+  };
