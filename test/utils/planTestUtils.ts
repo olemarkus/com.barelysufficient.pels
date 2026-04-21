@@ -25,8 +25,11 @@ DevicePlanDevice => {
     plannedState: 'keep',
     currentTarget: null,
     plannedTarget: null,
+    reason: legacyDeviceReason('keep')!,
     ...rest,
-    ...(typeof reason === 'string' ? { reason: legacyDeviceReason(reason) } : { reason }),
+    ...(reason !== undefined
+      ? { reason: typeof reason === 'string' ? legacyDeviceReason(reason)! : reason }
+      : {}),
   };
 };
 

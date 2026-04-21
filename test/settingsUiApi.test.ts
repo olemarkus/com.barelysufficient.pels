@@ -165,7 +165,7 @@ describe('settingsUiApi', () => {
     expect(result.settings.combined_prices).toBeUndefined();
     expect(result.dailyBudget).toEqual({ days: {}, todayKey: '2026-03-03' });
     expect((result as unknown as Record<string, unknown>).devices).toBeUndefined();
-    expect(result.plan).toEqual({ devices: [{ id: 'dev-1', name: 'Heater', priority: 1 }] });
+    expect(result.plan).toEqual({ devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: { code: 'none' } }] });
     expect(result.power).toEqual({
       tracker: { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
       status: { lastPowerUpdate: 123, priceLevel: 'cheap' },
@@ -240,7 +240,7 @@ describe('settingsUiApi', () => {
       devices: [{ id: 'dev-1', name: 'Heater' }],
     });
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
-      plan: { devices: [{ id: 'dev-1', name: 'Heater', priority: 1 }] },
+      plan: { devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: { code: 'none' } }] },
     });
     expect(getSettingsUiPowerPayload({ homey: homey as never })).toEqual({
       tracker: { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },

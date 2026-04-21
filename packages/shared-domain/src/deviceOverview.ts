@@ -247,6 +247,7 @@ export const getDeviceOverviewExpectedPowerKw = (device: DeviceOverviewSnapshot)
 
 export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOverviewStrings => {
   const currentPowerRaw = normalizeState(device.currentState) || 'unknown';
+  const reason = device.reason ?? { code: PLAN_REASON_CODES.none };
   let powerMsg: string | null = null;
   if (!isSteppedLoadDevice(device) && currentPowerRaw !== 'not_applicable') {
     const currentPower = currentPowerRaw;
@@ -264,10 +265,10 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
   }
 
   let statusMsg = 'Waiting for headroom';
-  if (device.reason) {
+  if (reason.code !== PLAN_REASON_CODES.none) {
     statusMsg = device.plannedState === 'keep'
-      ? formatOverviewStatus(device.reason)
-      : formatDeviceReason(device.reason);
+      ? formatOverviewStatus(reason)
+      : formatDeviceReason(reason);
   }
 
   return {

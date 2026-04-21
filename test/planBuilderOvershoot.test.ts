@@ -184,7 +184,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
 
     const liveStepped = plan.devices.find((device) => device.id === 'step-live');
     expect(liveStepped?.plannedState).toBe('shed');
-    expect(liveStepped?.reason?.code).toBe('capacity');
+    expect(liveStepped?.reason.code).toBe('capacity');
   });
 
   it('does not emit a changed overshoot summary when same-sample skip keeps authority unchanged', async () => {

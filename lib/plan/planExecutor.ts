@@ -424,13 +424,13 @@ export class PlanExecutor {
     const currentOn = snapshot?.currentOn ?? resolveEffectiveCurrentOn(dev);
     if (currentOn === false) return { handled: true, wrote: false };
     const reason = dev.reason;
-    const isSwap = reason?.code === PLAN_REASON_CODES.swappedOut;
+    const isSwap = reason.code === PLAN_REASON_CODES.swappedOut;
     return {
       handled: true,
       wrote: await this.applySheddingToDevice(
         dev.id,
         dev.name,
-        isSwap && reason ? formatDeviceReason(reason) : undefined,
+        isSwap ? formatDeviceReason(reason) : undefined,
       ),
     };
   }
@@ -966,8 +966,7 @@ function resolveFlowBackedBinaryTriggerCardId(
     : 'flow_backed_device_turn_off_requested';
 }
 
-function isRestoreHoldReason(reason: DeviceReason | undefined): boolean {
-  if (!reason) return false;
+function isRestoreHoldReason(reason: DeviceReason): boolean {
   return reason.code === PLAN_REASON_CODES.meterSettling
     || reason.code === PLAN_REASON_CODES.cooldownRestore;
 }

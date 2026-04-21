@@ -59,10 +59,12 @@ const normalizeLegacyPlanSnapshot = (plan: SettingsUiPlanSnapshot): SettingsUiPl
     devices: plan.devices.map((device) => {
       if (!device || typeof device !== 'object') return device;
       const reason = (device as Record<string, unknown>).reason;
-      if (typeof reason !== 'string') return device;
+      if (reason && typeof reason === 'object' && typeof (reason as { code?: unknown }).code === 'string') {
+        return device;
+      }
       return {
         ...device,
-        reason: buildComparablePlanReason(reason),
+        reason: buildComparablePlanReason(typeof reason === 'string' ? reason : undefined),
       };
     }),
   };

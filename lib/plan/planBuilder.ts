@@ -1004,8 +1004,7 @@ function isCooldownBlocked(
   return device.headroomCardBlocked === true || isCooldownReason(device.reason);
 }
 
-function isCooldownReason(reason: DeviceReason | undefined): boolean {
-  if (!reason) return false;
+function isCooldownReason(reason: DeviceReason): boolean {
   return reason.code === PLAN_REASON_CODES.cooldownShedding
     || reason.code === PLAN_REASON_CODES.cooldownRestore
     || reason.code === PLAN_REASON_CODES.meterSettling

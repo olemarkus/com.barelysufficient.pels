@@ -23,6 +23,14 @@ PELS must keep these concepts separate:
 
 Most bugs in this area come from collapsing two of those into one.
 
+Planner/device snapshot contributor rule:
+
+- `reason` on a finalized plan device is a structured planner contract, not display prose
+- planner/runtime logic may branch on `reason.code`
+- UI/log wording must be rendered from that structured reason, not stored as planner state
+- finalized plan devices should always carry a `reason.code`; missing reason is a contract bug,
+  and legacy snapshot reads should normalize older payloads at the boundary
+
 ## Stepped-Load Step Semantics
 
 Stepped loads need the same separation, but for step identity rather than only binary on/off state.

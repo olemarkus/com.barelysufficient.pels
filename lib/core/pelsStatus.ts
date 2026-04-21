@@ -116,8 +116,7 @@ function isCapacitySourceActive(limitSource: LimitSource): boolean {
   return limitSource === 'capacity' || limitSource === 'both';
 }
 
-function isRestoreHoldShedReason(reason: DeviceReason | undefined): boolean {
-  if (!reason) return false;
+function isRestoreHoldShedReason(reason: DeviceReason): boolean {
   return reason.code === PLAN_REASON_CODES.meterSettling
     || reason.code === PLAN_REASON_CODES.cooldownRestore
     || reason.code === PLAN_REASON_CODES.restoreThrottled
@@ -130,16 +129,10 @@ function isLimitDrivenShedDevice(device: DevicePlanDevice): boolean {
   return !isRestoreHoldShedReason(device.reason);
 }
 
-function resolveReasonFlags(reason: DeviceReason | undefined): {
+function resolveReasonFlags(reason: DeviceReason): {
   hasHourlyReason: boolean;
   hasDailyReason: boolean;
 } {
-  if (!reason) {
-    return {
-      hasHourlyReason: false,
-      hasDailyReason: false,
-    };
-  }
   if (reason.code === NEUTRAL_STARTUP_HOLD_REASON.code) {
     return {
       hasHourlyReason: false,

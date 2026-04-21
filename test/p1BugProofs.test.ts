@@ -293,6 +293,7 @@ describe('P1 bug proofs', () => {
         currentTarget: 21,
         plannedTarget: 21,
         controllable: true,
+        reason: buildPlanDevice({ reason: 'shed due to capacity' }).reason,
       }],
     });
 

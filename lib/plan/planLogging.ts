@@ -191,19 +191,19 @@ function hasPendingInputCommand(device: PlanInputDevice): boolean {
 
 function isBlockedByCooldown(device: DevicePlanDevice): boolean {
   return device.headroomCardBlocked === true
-    || device.reason?.code === PLAN_REASON_CODES.cooldownShedding
-    || device.reason?.code === PLAN_REASON_CODES.cooldownRestore
-    || device.reason?.code === PLAN_REASON_CODES.meterSettling
-    || device.reason?.code === PLAN_REASON_CODES.headroomCooldown
-    || device.reason?.code === PLAN_REASON_CODES.restorePending;
+    || device.reason.code === PLAN_REASON_CODES.cooldownShedding
+    || device.reason.code === PLAN_REASON_CODES.cooldownRestore
+    || device.reason.code === PLAN_REASON_CODES.meterSettling
+    || device.reason.code === PLAN_REASON_CODES.headroomCooldown
+    || device.reason.code === PLAN_REASON_CODES.restorePending;
 }
 
 function isBlockedByPenalty(device: DevicePlanDevice): boolean {
-  return device.reason?.code === PLAN_REASON_CODES.activationBackoff;
+  return device.reason.code === PLAN_REASON_CODES.activationBackoff;
 }
 
 function isBlockedByInvariant(device: DevicePlanDevice): boolean {
-  return device.reason?.code === PLAN_REASON_CODES.shedInvariant;
+  return device.reason.code === PLAN_REASON_CODES.shedInvariant;
 }
 
 export function buildPlanDetailSignature(plan: DevicePlan): string {
@@ -324,8 +324,7 @@ function buildPlanReasonGroups(devices: DevicePlanDevice[]): PlanReasonGroup[] {
     .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
 }
 
-export function normalizePlanReason(reason: DeviceReason | undefined): string {
-  if (!reason) return 'unknown';
+export function normalizePlanReason(reason: DeviceReason): string {
   if (reason.code === PLAN_REASON_CODES.inactive && reason.detail) return reason.detail;
   if (reason.code === PLAN_REASON_CODES.insufficientHeadroom) return 'insufficient headroom';
   return getPlanReasonLabel(reason.code);
@@ -367,7 +366,7 @@ function formatPlanChange(device: DevicePlanDevice, headroom: number | null): st
     const planningInfo = typeof device.planningPowerKw === 'number'
       ? `, planning ${device.planningPowerKw.toFixed(2)}kW`
       : '';
-    const reason = device.reason ? formatDeviceReason(device.reason) : 'n/a';
+    const reason = formatDeviceReason(device.reason);
     return `${device.name}: step ${device.selectedStepId ?? 'unknown'} -> ${device.desiredStepId ?? 'unknown'}`
       + `${planningInfo}${headroomInfo}, reason: ${reason}`;
   }
@@ -381,7 +380,7 @@ function formatPlanChange(device: DevicePlanDevice, headroom: number | null): st
     ? `, headroom ${headroom.toFixed(2)}kW`
     : '';
   const restoringHint = buildRestoreHint(device, nextPower, headroom);
-  const reason = device.reason ? formatDeviceReason(device.reason) : 'n/a';
+  const reason = formatDeviceReason(device.reason);
   return `${device.name}: temp ${temp}, power ${power}${powerInfo}${headroomInfo}, reason: ${reason}${restoringHint}`;
 }
 

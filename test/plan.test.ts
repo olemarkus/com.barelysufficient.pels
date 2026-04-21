@@ -9,7 +9,7 @@ import {
   setAutoEnableMockDevices,
 } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
-import { reasonText } from './utils/deviceReasonTestUtils';
+import { legacyDeviceReason, reasonText } from './utils/deviceReasonTestUtils';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
@@ -1284,6 +1284,7 @@ describe('Device plan snapshot', () => {
           plannedTarget: null,
           currentTarget: null,
           controllable: true,
+          reason: legacyDeviceReason('shed due to capacity'),
         },
       ],
     };
@@ -1526,6 +1527,7 @@ describe('Device plan snapshot', () => {
           currentTarget: null,
           powerKw: 2, // needs at least 2 + margin headroom
           controllable: true,
+          reason: legacyDeviceReason('keep'),
         },
       ],
     };
@@ -2216,6 +2218,7 @@ describe('Device plan snapshot', () => {
           currentTarget: null,
           controllable: true,
           powerKw: 0.5,
+          reason: legacyDeviceReason('keep'),
         },
       ],
     };
@@ -2264,6 +2267,7 @@ describe('Device plan snapshot', () => {
           currentTarget: null,
           controllable: true,
           powerKw: 0.5,
+          reason: legacyDeviceReason('keep'),
         },
       ],
     };
@@ -4186,6 +4190,7 @@ describe('Dry run mode', () => {
           currentTarget: null,
           shedAction: 'turn_off',
           controllable: true,
+          reason: legacyDeviceReason('shed due to capacity'),
         },
         {
           id: 'dev-2',
@@ -4196,6 +4201,7 @@ describe('Dry run mode', () => {
           currentTarget: null,
           shedAction: 'turn_off',
           controllable: true,
+          reason: legacyDeviceReason('shed due to capacity'),
         },
       ],
     };
