@@ -16,7 +16,6 @@ import {
 } from '../lib/core/deviceManagerParse';
 import { getBinaryControlPlan } from '../lib/plan/planBinaryControl';
 import {
-  applyMeasurementUpdates,
   reconcileRealtimeDeviceUpdate,
   updateLastKnownPower,
 } from '../lib/core/deviceManagerRuntime';
@@ -204,26 +203,10 @@ describe('device manager support helpers', () => {
     const logger = createLogger();
     const state = {
       lastKnownPowerKw: { dev1: 0.5 },
-      lastMeasuredPowerKw: {} as Record<string, { kw: number; ts: number }>,
-      lastMeterEnergyKwh: {} as Record<string, { kwh: number; ts: number }>,
       lastPeakPowerLogByDevice: new Map(),
     };
     updateLastKnownPower({ state, logger, deviceId: 'dev1', measuredKw: 1.2, deviceLabel: 'Device 1' });
     expect(state.lastKnownPowerKw.dev1).toBe(1.2);
-
-    applyMeasurementUpdates({
-      state,
-      logger,
-      deviceId: 'dev1',
-      updates: {
-        lastMeterEnergyKwh: { kwh: 10, ts: 1 },
-        lastMeasuredPowerKw: { kw: 1.4, ts: 2 },
-      },
-      deviceLabel: 'Device 1',
-    });
-    expect(state.lastMeterEnergyKwh.dev1).toEqual({ kwh: 10, ts: 1 });
-    expect(state.lastMeasuredPowerKw.dev1).toEqual({ kw: 1.4, ts: 2 });
-    expect(state.lastKnownPowerKw.dev1).toBe(1.4);
 
     const mockGet = vi.fn().mockResolvedValue([{ id: 'direct' }]);
     setRestClient({ get: mockGet, put: vi.fn() });
@@ -252,8 +235,6 @@ describe('device manager support helpers', () => {
     const logger = createLogger();
     const state = {
       lastKnownPowerKw: { dev1: 1.231 },
-      lastMeasuredPowerKw: {} as Record<string, { kw: number; ts: number }>,
-      lastMeterEnergyKwh: {} as Record<string, { kwh: number; ts: number }>,
       lastPeakPowerLogByDevice: new Map(),
     };
 

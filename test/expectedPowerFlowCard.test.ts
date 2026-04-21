@@ -174,7 +174,7 @@ describe('Expected power flow card', () => {
 
     // Clear overrides and measurements -> fallback to 1kW
     Object.keys((app as any).expectedPowerKwOverrides).forEach((k) => delete (app as any).expectedPowerKwOverrides[k]);
-    Object.keys((app as any).lastMeasuredPowerKw).forEach((k) => delete (app as any).lastMeasuredPowerKw[k]);
+    Object.keys((app as any).lastPositiveMeasuredPowerKw).forEach((k) => delete (app as any).lastPositiveMeasuredPowerKw[k]);
     Object.keys((app as any).lastKnownPowerKw).forEach((k) => delete (app as any).lastKnownPowerKw[k]);
     const snapshotFallback = (app as any).deviceManager.parseDeviceListForTests([
       {

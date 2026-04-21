@@ -187,8 +187,8 @@ describe('DeviceManager', () => {
                 expectedPowerKw: 0.9,
                 expectedPowerSource: 'load-setting',
                 loadKw: 0.9,
-                lastFreshDataMs: new Date('2026-04-01T11:52:00.000Z').getTime(),
-                lastUpdated: new Date('2026-04-01T11:52:00.000Z').getTime(),
+                lastFreshDataMs: new Date('2026-04-01T11:53:00.000Z').getTime(),
+                lastUpdated: new Date('2026-04-01T11:53:00.000Z').getTime(),
                 lastLocalWriteMs: undefined,
             }));
             expect(parsed.targets).toEqual([{
@@ -636,38 +636,45 @@ describe('DeviceManager', () => {
         });
 
         it('uses Homey energy live report as measured fallback when direct power capabilities are absent', async () => {
+            vi.useFakeTimers();
             await deviceManager.init();
-            mockApiGet.mockResolvedValue({
-                dev1: {
-                    id: 'dev1',
-                    name: 'Virtual Light',
-                    class: 'socket',
-                    capabilities: ['onoff'],
-                    capabilitiesObj: {
-                        onoff: { value: true, id: 'onoff' },
-                    },
-                },
-            });
-            mockGetLiveReport.mockResolvedValue({
-                items: [
-                    {
-                        type: 'device',
+            try {
+                vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+                mockApiGet.mockResolvedValue({
+                    dev1: {
                         id: 'dev1',
-                        values: { W: 125 },
+                        name: 'Virtual Light',
+                        class: 'socket',
+                        capabilities: ['onoff'],
+                        capabilitiesObj: {
+                            onoff: { value: true, id: 'onoff' },
+                        },
                     },
-                ],
-            });
+                });
+                mockGetLiveReport.mockResolvedValue({
+                    items: [
+                        {
+                            type: 'device',
+                            id: 'dev1',
+                            values: { W: 125 },
+                        },
+                    ],
+                });
 
-            await deviceManager.refreshSnapshot();
+                await deviceManager.refreshSnapshot();
 
-            const snapshot = deviceManager.getSnapshot();
-            expect(snapshot).toHaveLength(1);
-            expect(snapshot[0].measuredPowerKw).toBeCloseTo(0.125, 6);
-            expect(snapshot[0].expectedPowerSource).toBe('measured-peak');
-            expect(snapshot[0].expectedPowerKw).toBeCloseTo(0.125, 6);
-            expect(snapshot[0].powerKw).toBeCloseTo(0.125, 6);
-            expect(snapshot[0].powerCapable).toBe(true);
-            expect(mockGetLiveReport).toHaveBeenCalled();
+                const snapshot = deviceManager.getSnapshot();
+                expect(snapshot).toHaveLength(1);
+                expect(snapshot[0].measuredPowerKw).toBeCloseTo(0.125, 6);
+                expect(snapshot[0].expectedPowerSource).toBe('measured-peak');
+                expect(snapshot[0].expectedPowerKw).toBeCloseTo(0.125, 6);
+                expect(snapshot[0].powerKw).toBeCloseTo(0.125, 6);
+                expect(snapshot[0].powerCapable).toBe(true);
+                expect(snapshot[0].lastFreshDataMs).toBe(new Date('2026-04-01T12:00:00.000Z').getTime());
+                expect(mockGetLiveReport).toHaveBeenCalled();
+            } finally {
+                vi.useRealTimers();
+            }
         });
 
         it('keeps off on/off devices power-capable when Homey energy W metadata exists', async () => {
@@ -738,7 +745,7 @@ describe('DeviceManager', () => {
                     class: 'airconditioning',
                     capabilities: ['meter_power.in_tank', 'target_temperature', 'measure_temperature'],
                     capabilitiesObj: {
-                        'meter_power.in_tank': { value: 100, id: 'meter_power.in_tank' },
+                        'meter_power.in_tank': { value: 100, id: 'meter_power.in_tank', lastUpdated: '2026-01-01T00:00:30.000Z' },
                         target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
                         measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
                     },
@@ -755,7 +762,7 @@ describe('DeviceManager', () => {
                     class: 'airconditioning',
                     capabilities: ['meter_power.in_tank', 'target_temperature', 'measure_temperature'],
                     capabilitiesObj: {
-                        'meter_power.in_tank': { value: 101, id: 'meter_power.in_tank' },
+                        'meter_power.in_tank': { value: 101, id: 'meter_power.in_tank', lastUpdated: '2026-01-01T01:00:30.000Z' },
                         target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
                         measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
                     },
@@ -767,6 +774,7 @@ describe('DeviceManager', () => {
 
             expect(snapshot[0].measuredPowerKw).toBeCloseTo(1, 3);
             expect(snapshot[0].powerCapable).toBe(true);
+            expect(snapshot[0].lastFreshDataMs).toBe(new Date('2026-01-01T01:00:30.000Z').getTime());
 
             vi.useRealTimers();
         });

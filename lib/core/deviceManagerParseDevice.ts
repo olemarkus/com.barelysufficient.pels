@@ -30,10 +30,11 @@ import {
 } from './deviceManagerParse';
 import {
     hasPotentialHomeyEnergyEstimate,
-    resolvePreferredPowerRaw,
     type LiveDevicePowerWatts,
 } from './deviceManagerEnergy';
-import { applyMeasurementUpdates, updateLastKnownPower } from './deviceManagerRuntime';
+import { updateLastKnownPower } from './deviceManagerRuntime';
+import type { DeviceMeasuredPowerResolver } from './deviceMeasuredPowerResolver';
+import { resolveMeasuredPowerKw } from './deviceManagerMeasuredPower';
 
 type ParsedDeviceSettings = Pick<
     TargetDeviceSnapshot,
@@ -62,7 +63,7 @@ export type DeviceManagerParseDeps = {
     logger: Logger;
     providers: DeviceManagerParseProviders;
     powerState: Required<PowerEstimateState>;
-    minSignificantPowerW: number;
+    measuredPowerResolver: DeviceMeasuredPowerResolver;
     getCapabilityObj: (device: HomeyDeviceLike) => DeviceCapabilityMap;
     isPowerCapable: (
         device: HomeyDeviceLike,
@@ -100,7 +101,7 @@ export function parseDevice(params: {
         logger,
         providers,
         powerState,
-        minSignificantPowerW,
+        measuredPowerResolver,
         getCapabilityObj,
         isPowerCapable,
         resolveLatestLocalWriteMs,
@@ -138,32 +139,30 @@ export function parseDevice(params: {
     });
     if (!capsStatus) return null;
     const currentTemperature = getCurrentTemperature(capabilityObj);
-    const powerRaw = getCapabilityValueByPrefix(capabilities, capabilityObj, 'measure_power');
-    const meterPowerRaw = getCapabilityValueByPrefix(capabilities, capabilityObj, 'meter_power');
-    const livePowerRaw = livePowerWByDeviceId[deviceId];
-    const preferredPowerRaw = resolvePreferredPowerRaw({ powerRaw, meterPowerRaw, livePowerRaw });
+    const measuredPower = resolveMeasuredPowerKw({
+        deviceId,
+        deviceLabel,
+        capabilities,
+        capabilityObj,
+        livePowerWByDeviceId,
+        now,
+        measuredPowerResolver,
+        powerState,
+        logger,
+    });
     const powerEstimate = estimatePower({
         device,
         deviceId,
         deviceLabel,
-        powerRaw: preferredPowerRaw,
-        meterPowerRaw,
+        measuredPowerKw: measuredPower.measuredPowerKw,
         now,
         state: powerState,
         logger,
-        minSignificantPowerW,
         updateLastKnownPower: (id, kw, label) => updateLastKnownPower({
             state: powerState,
             logger,
             deviceId: id,
             measuredKw: kw,
-            deviceLabel: label,
-        }),
-        applyMeasurementUpdates: (id, updates, label) => applyMeasurementUpdates({
-            state: powerState,
-            logger,
-            deviceId: id,
-            updates,
             deviceLabel: label,
         }),
     });
@@ -202,13 +201,15 @@ export function parseDevice(params: {
     })) {
         return null;
     }
-    const lastFreshDataMs = getTrackedCapabilityLastUpdatedMs(capabilityObj, [
+    const lastFreshDataMs = Math.max(
+        getTrackedCapabilityLastUpdatedMs(capabilityObj, [
         ...(controlCapabilityId ? [controlCapabilityId] : []),
         ...targetCaps,
-        'measure_power',
         'measure_temperature',
         'evcharger_charging_state',
-    ]);
+        ]) ?? 0,
+        measuredPower.observedAtMs ?? 0,
+    ) || undefined;
     return buildParsedDeviceSnapshot({
         device,
         deviceId,

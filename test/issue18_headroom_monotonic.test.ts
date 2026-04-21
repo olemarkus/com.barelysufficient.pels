@@ -11,7 +11,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
     // Shared state objects
     let expectedPowerKwOverrides: Record<string, { kw: number; ts: number }>;
     let lastKnownPowerKw: Record<string, number>;
-    let lastMeasuredPowerKw: Record<string, { kw: number; ts: number }>;
+    let lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }>;
     let apiGetSpy: MockInstance;
 
     beforeEach(() => {
@@ -27,12 +27,12 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         // Initialize state objects
         expectedPowerKwOverrides = {};
         lastKnownPowerKw = {};
-        lastMeasuredPowerKw = {};
+        lastPositiveMeasuredPowerKw = {};
 
         deviceManager = new DeviceManager(homeyMock, loggerMock, undefined, {
             expectedPowerKwOverrides,
             lastKnownPowerKw,
-            lastMeasuredPowerKw,
+            lastPositiveMeasuredPowerKw,
         });
 
         apiGetSpy = vi.spyOn(mockHomeyInstance.api, 'get');

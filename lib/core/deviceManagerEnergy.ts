@@ -42,18 +42,6 @@ export const extractLivePowerWattsByDeviceId = (liveReport: unknown): LiveDevice
   );
 };
 
-export const resolvePreferredPowerRaw = (params: {
-  powerRaw: unknown;
-  meterPowerRaw: unknown;
-  livePowerRaw: number | undefined;
-}): unknown => {
-  const { powerRaw, meterPowerRaw, livePowerRaw } = params;
-  const hasPowerCapabilityReading = typeof powerRaw === 'number' && Number.isFinite(powerRaw);
-  const hasMeterCapabilityReading = typeof meterPowerRaw === 'number' && Number.isFinite(meterPowerRaw);
-  if (hasPowerCapabilityReading || hasMeterCapabilityReading) return powerRaw;
-  return typeof livePowerRaw === 'number' && Number.isFinite(livePowerRaw) ? livePowerRaw : powerRaw;
-};
-
 export const hasPotentialHomeyEnergyEstimate = (device: HomeyDeviceLike): boolean => {
   const energy = asRecord(device.energyObj) || asRecord(device.energy);
   if (!energy) return false;

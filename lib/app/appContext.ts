@@ -143,7 +143,7 @@ export type AppContext = {
   set defaultComputeDynamicSoftLimit(value: (() => number) | undefined);
   get lastKnownPowerKw(): Record<string, number>;
   get expectedPowerKwOverrides(): Record<string, { kw: number; ts: number }>;
-  get lastMeasuredPowerKw(): Record<string, { kw: number; ts: number }>;
+  get lastPositiveMeasuredPowerKw(): Record<string, { kw: number; ts: number }>;
   get lastNotifiedOperatingMode(): string;
   set lastNotifiedOperatingMode(value: string);
   get powerSampleRebuildState(): PowerSampleRebuildState;
