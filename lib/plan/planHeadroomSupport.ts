@@ -24,6 +24,7 @@ export type HeadroomCardDeviceLike = {
   powerKw?: number;
   expectedPowerKw?: number;
   measuredPowerKw?: number;
+  lastFreshDataMs?: number;
   currentOn: boolean;
   currentState?: string;
   available?: boolean;
@@ -65,19 +66,84 @@ export const ensureHeadroomEntry = (
   return cards[deviceId];
 };
 
-export const updateHeadroomCardLastObserved = (
-  state: PlanEngineState,
-  deviceId: string,
-  trackedKw: number,
-  trackedKwSource: HeadroomDeviceKwSource,
-  deviceName?: string,
-): void => {
+export const updateHeadroomCardLastObserved = (params: {
+  state: PlanEngineState;
+  deviceId: string;
+  trackedKw: number;
+  trackedKwSource: HeadroomDeviceKwSource;
+  trackedFreshnessMs?: number;
+  deviceName?: string;
+}): void => {
+  const {
+    state,
+    deviceId,
+    trackedKw,
+    trackedKwSource,
+    trackedFreshnessMs,
+    deviceName,
+  } = params;
   const entry = ensureHeadroomEntry(state, deviceId);
   entry.lastObservedKw = trackedKw;
   entry.lastObservedKwSource = trackedKwSource;
+  if (isFiniteNumber(trackedFreshnessMs)) {
+    entry.lastObservedFreshnessMs = trackedFreshnessMs;
+  } else {
+    delete entry.lastObservedFreshnessMs;
+  }
   if (deviceName) {
     entry.deviceName = deviceName;
   }
+};
+
+export type TrackedUsageMergeDecision = {
+  skipUpdate: boolean;
+  advanceFreshnessOnly: boolean;
+};
+
+export const resolveTrackedUsageMergeDecision = (params: {
+  entry?: Pick<HeadroomCardState, 'lastObservedKw' | 'lastObservedKwSource' | 'lastObservedFreshnessMs'>;
+  trackedKw: number;
+  trackedKwSource: HeadroomDeviceKwSource;
+  trackedFreshnessMs?: number;
+}): TrackedUsageMergeDecision => {
+  const {
+    entry,
+    trackedKw,
+    trackedKwSource,
+    trackedFreshnessMs,
+  } = params;
+  const previousTrackedKw = entry?.lastObservedKw;
+  const previousTrackedKwSource = entry?.lastObservedKwSource;
+  const previousTrackedFreshnessMs = entry?.lastObservedFreshnessMs;
+  const hasPreviousFreshness = isFiniteNumber(previousTrackedFreshnessMs);
+  const hasIncomingFreshness = isFiniteNumber(trackedFreshnessMs);
+
+  if (
+    hasPreviousFreshness
+    && hasIncomingFreshness
+    && trackedFreshnessMs < previousTrackedFreshnessMs
+  ) {
+    return {
+      skipUpdate: true,
+      advanceFreshnessOnly: false,
+    };
+  }
+
+  const semanticNoop = previousTrackedKw === trackedKw && previousTrackedKwSource === trackedKwSource;
+  if (!semanticNoop) {
+    return {
+      skipUpdate: false,
+      advanceFreshnessOnly: false,
+    };
+  }
+
+  return {
+    skipUpdate: true,
+    advanceFreshnessOnly: Boolean(
+      hasIncomingFreshness
+      && (!hasPreviousFreshness || trackedFreshnessMs > previousTrackedFreshnessMs),
+    ),
+  };
 };
 
 export const resolveHeadroomDeviceName = (params: {

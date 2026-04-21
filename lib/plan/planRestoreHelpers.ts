@@ -34,7 +34,8 @@ import {
   type RestoreAdmissionMetrics,
 } from './planRestoreAdmission';
 import { buildActivationBackoffReason, buildRestoreHeadroomReason } from './planReasonStrings';
-import { resolvePendingSteppedRestoreHold } from './planSteppedRestorePending';
+import { resolvePendingSteppedRestoreReservation } from './planSteppedRestorePending';
+import { incPerfCounter } from '../utils/perfCounters';
 
 export function setRestorePlanDevice(
   deviceMap: Map<string, DevicePlanDevice>,
@@ -281,14 +282,16 @@ export function planRestoreForSteppedDevice(params: {
     clearRestoreDebugEvent(state, restoreDebugKey);
     return { availableHeadroom, restoredOneThisCycle };
   }
-  const pendingRestoreHold = resolvePendingSteppedRestoreHold(dev, nextStep.id);
-  if (pendingRestoreHold) {
+  const pendingRestoreReservation = resolvePendingSteppedRestoreReservation(dev, nextStep.id);
+  if (pendingRestoreReservation) {
     delete state.steppedRestoreRejectedByDevice[dev.id];
-    const needed = deltaKw + computeRestoreBufferKw(deltaKw);
+    incPerfCounter('restore_planning_skipped_inflight');
+    const reservationKw = pendingRestoreReservation.reservationKw;
+    const needed = reservationKw > 0 ? reservationKw + computeRestoreBufferKw(reservationKw) : 0;
     setRestorePlanDevice(deviceMap, dev.id, {
       desiredStepId: nextStep.id,
       expectedPowerKw: nextStep.planningPowerW / 1000,
-      reason: pendingRestoreHold.reason,
+      reason: pendingRestoreReservation.reason,
     });
     emitRestoreDebugEventOnChange({
       state,
@@ -301,8 +304,8 @@ export function planRestoreForSteppedDevice(params: {
         currentStepId: dev.selectedStepId ?? 'unknown',
         requestedStepId: nextStep.id,
         decision: 'deferred',
-        reasonCode: pendingRestoreHold.reasonCode,
-        remainingSec: pendingRestoreHold.remainingSec,
+        reasonCode: pendingRestoreReservation.reasonCode,
+        remainingSec: pendingRestoreReservation.remainingSec,
       },
       signaturePayload: {
         event: 'restore_stepped_deferred',
@@ -312,7 +315,7 @@ export function planRestoreForSteppedDevice(params: {
         currentStepId: dev.selectedStepId ?? 'unknown',
         requestedStepId: nextStep.id,
         decision: 'deferred',
-        reasonCode: pendingRestoreHold.reasonCode,
+        reasonCode: pendingRestoreReservation.reasonCode,
       },
       debugStructured,
     });

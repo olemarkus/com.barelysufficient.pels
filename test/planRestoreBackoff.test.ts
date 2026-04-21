@@ -16,6 +16,7 @@ import { applyShedTemperatureHold } from '../lib/plan/planReasons';
 import { createPlanEngineState } from '../lib/plan/planState';
 import { applyRestorePlan } from '../lib/plan/planRestore';
 import { resolveMeterSettlingRemainingSec } from '../lib/plan/planRestoreTiming';
+import { getPerfSnapshot } from '../lib/utils/perfCounters';
 import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
 import { legacyDeviceReason, reasonText } from './utils/deviceReasonTestUtils';
 
@@ -586,6 +587,49 @@ describe('restore cooldown backoff', () => {
     expect(reasonText(steppedDevice?.reason)).toBe('restore pending (30s remaining)');
     expect(result.availableHeadroom).toBeCloseTo(4.05);
     expect(result.restoredOneThisCycle).toBe(true);
+  });
+
+  it('uses current effective draw for an in-flight stepped reservation instead of a stale selected-step baseline', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    const before = getPerfSnapshot();
+
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'connected-300',
+          name: 'Connected 300',
+          currentState: 'on',
+          selectedStepId: 'low',
+          desiredStepId: 'medium',
+          lastDesiredStepId: 'medium',
+          lastStepCommandIssuedAt: now - 10_000,
+          stepCommandPending: true,
+          stepCommandStatus: 'pending',
+          measuredPowerKw: 2.0,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+
+    const steppedDevice = result.planDevices.find((device) => device.id === 'connected-300');
+    const after = getPerfSnapshot();
+
+    expect(steppedDevice?.desiredStepId).toBe('medium');
+    expect(reasonText(steppedDevice?.reason)).toBe('restore pending (80s remaining)');
+    expect(result.availableHeadroom).toBeCloseTo(5);
+    expect(result.restoredOneThisCycle).toBe(true);
+    expect(
+      (after.counts.restore_planning_skipped_inflight || 0) - (before.counts.restore_planning_skipped_inflight || 0),
+    ).toBe(1);
   });
 
   it('reserves headroom for a deferred stepped restore and blocks a second stepped restore in the same cycle', () => {
