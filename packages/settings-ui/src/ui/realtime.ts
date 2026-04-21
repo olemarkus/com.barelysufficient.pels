@@ -45,7 +45,7 @@ import {
   refreshDailyBudgetPlan,
 } from './dailyBudget.ts';
 import { loadDailyBudgetTuningSettings } from './dailyBudgetTuning.ts';
-import { refreshPlan, renderPlan, type PlanSnapshot } from './plan.ts';
+import { parsePlanSnapshot, refreshPlan, renderPlan, type PlanSnapshot } from './plan.ts';
 import { refreshAdvancedDeviceCleanup } from './advanced.ts';
 import { loadShedBehaviors } from './deviceDetail/index.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
@@ -272,11 +272,12 @@ const createSettingsSetHandler = () => (key: string) => {
 };
 
 const handlePlanUpdated = (plan: unknown) => {
-  primeApiCache(SETTINGS_UI_PLAN_PATH, { plan });
+  const parsedPlan = parsePlanSnapshot(plan);
+  primeApiCache(SETTINGS_UI_PLAN_PATH, { plan: parsedPlan });
   invalidateApiCache(SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH);
-  document.dispatchEvent(new CustomEvent('plan-updated', { detail: { plan } }));
+  document.dispatchEvent(new CustomEvent('plan-updated', { detail: { plan: parsedPlan } }));
   if (!isPanelVisible('#overview-panel')) return;
-  renderPlan(plan as PlanSnapshot | null);
+  renderPlan(parsedPlan as PlanSnapshot | null);
 };
 
 const handlePricesUpdated = () => {
