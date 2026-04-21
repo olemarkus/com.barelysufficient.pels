@@ -59,11 +59,23 @@ export type PlanExecutorSteppedContext = {
   }) => void;
   recordShedActuation: (deviceId: string, name: string, now: number) => void;
   recordRestoreActuation: (deviceId: string, name: string, now: number) => void;
+  setPendingOffRestoreHold: (deviceId: string, stepId: string, now: number) => void;
+  clearPendingOffRestoreHold: (deviceId: string) => void;
   getRestoreLogSource: (deviceId: string) => 'shed_state' | 'current_plan';
   getDesiredSteppedLoadTrigger: () => {
     trigger: (tokens?: object, state?: object) => Promise<unknown>;
   } | undefined;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
+};
+
+const shouldKeepPendingOffRestoreHoldForBinaryWait = (
+  state: PlanEngineState,
+  deviceId: string,
+  snapshot: TargetDeviceSnapshot,
+): boolean => {
+  const pending = state.pendingBinaryCommands[deviceId];
+  if (!pending) return false;
+  return pending.capabilityId === (snapshot.controlCapabilityId ?? 'onoff') && pending.desired === true;
 };
 
 /* eslint-disable complexity --
@@ -269,6 +281,7 @@ const maybeSkipSteppedLoadRestoreBinary = (
       dev,
       mode,
       reasonCode: 'missing_snapshot',
+      clearPendingOffRestoreHold: true,
       logMessage: `Capacity: skip stepped-load restore for ${deviceName}, no snapshot available`,
     });
   }
@@ -277,6 +290,7 @@ const maybeSkipSteppedLoadRestoreBinary = (
       dev,
       mode,
       reasonCode: 'not_setable',
+      clearPendingOffRestoreHold: true,
       logMessage: `Capacity: skip stepped-load restore for ${deviceName}, cannot turn on from current snapshot`,
     });
   }
@@ -293,6 +307,7 @@ const maybeSkipSteppedLoadRestoreBinary = (
       dev,
       mode,
       reasonCode: 'pre_restore_step_required',
+      clearPendingOffRestoreHold: true,
       logMessage:
         `Capacity: skip stepped-load restore for ${deviceName}, `
         + `assumed step ${dev.assumedStepId ?? 'unknown'} must be confirmed before binary restore`,
@@ -308,6 +323,7 @@ const maybeSkipSteppedLoadRestoreBinary = (
       dev,
       mode,
       reasonCode: 'pre_restore_step_required',
+      clearPendingOffRestoreHold: true,
       logMessage:
         `Capacity: skip stepped-load restore for ${deviceName}, `
         + 'required pre-restore step command was not issued',
@@ -318,6 +334,7 @@ const maybeSkipSteppedLoadRestoreBinary = (
       dev,
       mode,
       reasonCode: 'no_keep_violation',
+      clearPendingOffRestoreHold: true,
       logMessage:
         `Capacity: skip stepped-load restore for ${deviceName}, `
         + 'no keep violations detected',
@@ -344,6 +361,7 @@ export const applySteppedLoadRestore = async (
       dev,
       mode,
       reasonCode: 'planned_state',
+      clearPendingOffRestoreHold: true,
       logMessage: `Capacity: skip stepped-load restore for ${name}, plannedState is ${dev.plannedState}`,
     });
   }
@@ -357,6 +375,9 @@ export const applySteppedLoadRestore = async (
   const shouldDeferRestoreForAttempt = stepNeedsAdjustment && matchingRestoreAttempt
     && (effectiveCurrentOn === true || matchingRestoreAttempt.status === 'retry_backoff');
   if (shouldDeferRestoreForAttempt) {
+    if (mode === 'plan' && effectiveCurrentOn === false && matchingRestoreAttempt.status === 'retry_backoff') {
+      ctx.clearPendingOffRestoreHold(dev.id);
+    }
     return logSteppedLoadRestoreAttemptSkip(ctx, {
       dev,
       mode,
@@ -376,6 +397,7 @@ export const applySteppedLoadRestore = async (
       dev,
       mode,
       reasonCode: 'no_keep_violation',
+      clearPendingOffRestoreHold: true,
       logMessage:
         `Capacity: skip stepped-load restore for ${name}, `
         + 'no keep violations detected',
@@ -567,6 +589,9 @@ const executeSteppedLoadCommand = async (
       transitionPhase: transition?.transitionPhase ?? 'settled',
       mode,
     });
+    if (mode === 'plan' && transition?.effectiveTransition === 'restore_from_off_at_low') {
+      ctx.setPendingOffRestoreHold(dev.id, desiredStep.id, now);
+    }
     void Promise.resolve(triggerPromise).catch((error) => {
       ctx.structuredLog?.error({
         event: 'stepped_load_command_failed',
@@ -629,10 +654,14 @@ const logSteppedLoadRestoreSkip = (
       | 'not_setable'
       | 'already_in_progress'
       | 'pre_restore_step_required';
+    clearPendingOffRestoreHold?: boolean;
     logMessage: string;
   },
 ): false => {
-  const { dev, mode, reasonCode, logMessage } = params;
+  const { dev, mode, reasonCode, clearPendingOffRestoreHold, logMessage } = params;
+  if (mode === 'plan' && clearPendingOffRestoreHold) {
+    ctx.clearPendingOffRestoreHold(dev.id);
+  }
   ctx.debugStructured?.({
     event: 'restore_command_skipped',
     reasonCode,
@@ -664,6 +693,10 @@ const executeSteppedLoadRestoreBinary = async (
     onoffViolated,
     stepViolated,
   } = params;
+  const holdStepId = resolveSteppedKeepDesiredStepId(dev);
+  if (mode === 'plan' && holdStepId) {
+    ctx.setPendingOffRestoreHold(dev.id, holdStepId, Date.now());
+  }
   ctx.state.pendingRestores.add(dev.id);
   try {
     const applied = await setBinaryControl({
@@ -676,7 +709,12 @@ const executeSteppedLoadRestoreBinary = async (
       restoreSource: ctx.getRestoreLogSource(dev.id),
       actuationMode: mode,
     });
-    if (!applied) return false;
+    if (!applied) {
+      if (mode === 'plan' && !shouldKeepPendingOffRestoreHoldForBinaryWait(ctx.state, dev.id, snapshot)) {
+        ctx.clearPendingOffRestoreHold(dev.id);
+      }
+      return false;
+    }
     ctx.structuredLog?.info({
       event: 'stepped_load_binary_transition_applied',
       deviceId: dev.id,
@@ -711,6 +749,9 @@ const executeSteppedLoadRestoreBinary = async (
     }
     return true;
   } catch (error) {
+    if (mode === 'plan') {
+      ctx.clearPendingOffRestoreHold(dev.id);
+    }
     ctx.error(`Failed to restore stepped-load device ${name} via binary control`, error);
     return false;
   } finally {

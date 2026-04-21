@@ -1247,6 +1247,39 @@ describe('PlanExecutor stepped loads', () => {
     }));
   });
 
+  it('clears explicit off-restore hold when the required pre-restore step is in retry backoff', async () => {
+    const state = createPlanEngineState();
+    state.pendingOffRestoreStepByDevice['dev-1'] = {
+      stepId: 'low',
+      startedMs: Date.now() - 5_000,
+    };
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const now = Date.now();
+    const { executor } = buildExecutor(state, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'max',
+      desiredStepId: 'max',
+      lastDesiredStepId: 'low',
+      stepCommandPending: false,
+      stepCommandStatus: 'stale',
+      nextStepCommandRetryAtMs: now + 30_000,
+    }));
+
+    expect(state.pendingOffRestoreStepByDevice['dev-1']).toBeUndefined();
+  });
+
   it('sets onoff=false for a shed stepped device at its off-step', async () => {
     // The plan sees currentState='off' (from decorated snapshot), but the raw
     // snapshot still has currentOn=true (the onoff capability hasn't been set
@@ -1400,6 +1433,62 @@ describe('PlanExecutor stepped loads', () => {
       source: 'pels_restore',
       startedMs: expect.any(Number),
     }));
+  });
+
+  it('keeps explicit off-restore hold through off -> low -> on and clears it after settlement', async () => {
+    const state = createPlanEngineState();
+    const initialSnapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(state, initialSnapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'max',
+    }));
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(state.pendingOffRestoreStepByDevice['dev-1']).toEqual(expect.objectContaining({
+      stepId: 'low',
+      startedMs: expect.any(Number),
+    }));
+
+    deviceManager.getSnapshot.mockReturnValue([
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ]);
+    desiredSteppedTrigger.trigger.mockClear();
+    deviceManager.setCapability.mockClear();
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+    }));
+
+    expect(state.pendingOffRestoreStepByDevice['dev-1']).toBeUndefined();
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
 
   it('batches last-controlled persistence to one settings write per plan application', async () => {
@@ -2291,7 +2380,8 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           currentOn: false,
         },
       ];
-      const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+      const state = createPlanEngineState();
+      const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(state, snapshot);
       deviceManager.setCapability.mockRejectedValueOnce(new Error('boom'));
 
       await executor.applyPlanActions(steppedPlan({
@@ -2306,6 +2396,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         expect.objectContaining({ deviceId: 'dev-1' }),
       );
       expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+      expect(state.pendingOffRestoreStepByDevice['dev-1']).toBeUndefined();
     });
 
     // Test 3.4 / Regression 5.2 (executor layer): when both desiredStepId and selectedStepId
