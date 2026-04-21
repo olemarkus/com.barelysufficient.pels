@@ -4,6 +4,7 @@ import {
   getDeviceOverviewReportedStepId,
   isDeviceOverviewSteppedModeTransition,
 } from '../packages/shared-domain/src/deviceOverview';
+import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
 import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
 
 const r = legacyDeviceReason;
@@ -245,6 +246,7 @@ describe('device overview formatter', () => {
     expect(formatDeviceOverview({
       currentState: 'unknown',
       plannedState: 'keep',
+      reason: { code: PLAN_REASON_CODES.none },
     })).toEqual({
       powerMsg: 'unknown',
       stateMsg: 'State unknown',

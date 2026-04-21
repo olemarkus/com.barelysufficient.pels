@@ -1,4 +1,5 @@
 import type { Mock } from 'vitest';
+import { buildComparablePlanReason } from '../../../shared-domain/src/planReasonSemantics.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
@@ -129,10 +130,49 @@ const buildEmptyDiagnosticsPayload = () => ({
   diagnosticsByDeviceId: {},
 });
 
+const resolveFixtureReasonText = (plannedState: unknown): string => {
+  switch (plannedState) {
+    case 'shed':
+      return 'shed due to capacity';
+    case 'inactive':
+      return 'inactive';
+    case 'keep':
+    default:
+      return 'keep';
+  }
+};
+
+export const normalizeUiTestPlanSnapshot = (plan: unknown): unknown => {
+  if (!plan || typeof plan !== 'object') return plan;
+  const snapshot = plan as { devices?: Array<Record<string, unknown>> };
+  if (!Array.isArray(snapshot.devices)) return plan;
+  return {
+    ...snapshot,
+    devices: snapshot.devices.map((device) => {
+      if (!device || typeof device !== 'object') return device;
+      const reason = device.reason;
+      if (
+        reason
+        && typeof reason === 'object'
+        && typeof (reason as { code?: unknown }).code === 'string'
+      ) {
+        return device;
+      }
+      const reasonText = typeof reason === 'string'
+        ? reason
+        : resolveFixtureReasonText(device.plannedState);
+      return {
+        ...device,
+        reason: buildComparablePlanReason(reasonText),
+      };
+    }),
+  };
+};
+
 const buildUiPlan = async (homey: MockHomeyClient) => {
   const override = getUiOverride(homey, 'plan');
-  if (override !== undefined) return override;
-  return await getHomeySetting(homey, 'device_plan_snapshot') || null;
+  if (override !== undefined) return normalizeUiTestPlanSnapshot(override);
+  return normalizeUiTestPlanSnapshot(await getHomeySetting(homey, 'device_plan_snapshot')) || null;
 };
 
 const buildUiPower = async (homey: MockHomeyClient) => {

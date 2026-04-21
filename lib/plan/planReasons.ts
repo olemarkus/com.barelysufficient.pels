@@ -179,8 +179,8 @@ function getAllowedReasonRules(plannedState: string): readonly ReasonCodeRule[] 
 
 function validatePlanReasonPair(dev: DevicePlanDevice): PlanReasonPairValidationIssue | null {
   const plannedState = typeof dev.plannedState === 'string' ? dev.plannedState.trim() : '';
-  const reason = dev.reason ? formatDeviceReason(dev.reason).trim() : '';
-  const reasonCode = dev.reason?.code ?? null;
+  const reason = formatDeviceReason(dev.reason).trim();
+  const reasonCode = dev.reason.code;
   const allowedReasonRules = getAllowedReasonRules(plannedState);
   const allowedReasonKinds = allowedReasonRules.map((rule) => rule.label);
 
@@ -194,18 +194,7 @@ function validatePlanReasonPair(dev: DevicePlanDevice): PlanReasonPairValidation
     };
   }
 
-  if (!reason) {
-    if (plannedState === 'keep') return null;
-    return {
-      deviceId: dev.id,
-      deviceName: dev.name,
-      plannedState,
-      reason: '<empty>',
-      allowedReasonKinds,
-    };
-  }
-
-  if (reasonCode !== null && allowedReasonRules.some((rule) => rule.code === reasonCode)) {
+  if (allowedReasonRules.some((rule) => rule.code === reasonCode)) {
     return null;
   }
 
@@ -813,7 +802,7 @@ function applyHoldToDevice(params: {
     debugStructured,
   } = params;
 
-  if (dev.plannedState === 'shed' && dev.reason?.code === NEUTRAL_STARTUP_HOLD_REASON.code) {
+  if (dev.plannedState === 'shed' && dev.reason.code === NEUTRAL_STARTUP_HOLD_REASON.code) {
     return { device: dev, availableHeadroom, restoredOneThisCycle };
   }
 

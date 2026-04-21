@@ -17,7 +17,7 @@ import { createPlanEngineState } from '../lib/plan/planState';
 import { applyRestorePlan } from '../lib/plan/planRestore';
 import { resolveMeterSettlingRemainingSec } from '../lib/plan/planRestoreTiming';
 import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
-import { reasonText } from './utils/deviceReasonTestUtils';
+import { legacyDeviceReason, reasonText } from './utils/deviceReasonTestUtils';
 
 const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices: [],
@@ -730,7 +730,7 @@ describe('restore cooldown backoff', () => {
     const offDevice = result.planDevices.find((device) => device.id === 'dev-off');
 
     expect(offDevice?.plannedState).toBe('keep');
-    expect(offDevice?.reason).toBeUndefined();
+    expect(offDevice?.reason).toEqual(legacyDeviceReason('keep'));
   });
 
   it('normalizes an off stepped device back to the lowest non-zero restore step', () => {
@@ -1168,7 +1168,7 @@ describe('restore cooldown backoff', () => {
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-step');
     expect(device?.desiredStepId).toBe('low');
-    expect(device?.reason).toBeUndefined();
+    expect(device?.reason).toEqual(legacyDeviceReason('keep'));
   });
 
   it('shows startup stabilization for stepped restores PELS controlled before restart', () => {

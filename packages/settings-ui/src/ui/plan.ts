@@ -1,13 +1,14 @@
 import { planList, planEmpty, planMeta } from './dom.ts';
-import { SETTINGS_UI_PLAN_PATH, type SettingsUiPlanPayload } from '../../../contracts/src/settingsUiApi.ts';
+import {
+  SETTINGS_UI_PLAN_PATH,
+  type SettingsUiPlanDevice,
+  type SettingsUiPlanPayload,
+  type SettingsUiPlanSnapshot,
+} from '../../../contracts/src/settingsUiApi.ts';
 import { getApiReadModel } from './homey.ts';
 import { createMetaLine } from './components.ts';
 import { getPriceIndicatorIcon, type PriceIndicatorTone } from './priceIndicator.ts';
-import {
-  formatDeviceOverview,
-  type DeviceOverviewStrings,
-  type DeviceOverviewSnapshot,
-} from '../../../shared-domain/src/deviceOverview.ts';
+import { formatDeviceOverview, type DeviceOverviewStrings } from '../../../shared-domain/src/deviceOverview.ts';
 import { isGrayStateDevice } from './deviceUtils.ts';
 import { setTooltip } from './tooltips.ts';
 import { createLivePlanController } from './planLive.ts';
@@ -18,37 +19,38 @@ import {
 } from './planLiveData.ts';
 import { renderPlanMeta, type PlanMetaBinding, type PlanMetaSnapshot, updatePlanMetaBinding } from './planMeta.ts';
 
-type PlanDeviceSnapshot = DeviceOverviewSnapshot & {
-  id: string;
-  name: string;
-  plannedTarget?: number | null;
-  priority?: number;
-  zone?: string;
-  budgetExempt?: boolean;
-  currentTemperature?: number;
-  headroomCardBlocked?: boolean;
-  headroomCardCooldownSec?: number | null;
-  headroomCardCooldownSource?: 'step_down' | 'pels_shed' | 'pels_restore';
-  headroomCardCooldownFromKw?: number | null;
-  headroomCardCooldownToKw?: number | null;
-  pendingTargetCommand?: {
-    desired: number;
-    retryCount: number;
-    nextRetryAtMs: number;
-    status: 'waiting_confirmation' | 'temporary_unavailable';
-  };
-};
+type PlanDeviceSnapshot = SettingsUiPlanDevice;
 
-type PlanSnapshot = {
+type PlanSnapshot = Omit<SettingsUiPlanSnapshot, 'meta'> & {
   generatedAtMs?: number;
   meta?: PlanMetaSnapshot;
-  devices?: PlanDeviceSnapshot[];
+};
+
+const hasStructuredReason = (value: unknown): boolean => (
+  Boolean(value)
+  && typeof value === 'object'
+  && typeof (value as { code?: unknown }).code === 'string'
+);
+
+const isPlanDeviceSnapshot = (value: unknown): value is PlanDeviceSnapshot => (
+  Boolean(value)
+  && typeof value === 'object'
+  && typeof (value as { id?: unknown }).id === 'string'
+  && typeof (value as { name?: unknown }).name === 'string'
+  && hasStructuredReason((value as { reason?: unknown }).reason)
+);
+
+export const parsePlanSnapshot = (value: unknown): PlanSnapshot | null => {
+  if (!value || typeof value !== 'object') return null;
+  const devices = (value as { devices?: unknown }).devices;
+  if (devices !== undefined && (!Array.isArray(devices) || !devices.every(isPlanDeviceSnapshot))) {
+    return null;
+  }
+  return value as PlanSnapshot;
 };
 
 const getPlanSnapshotFromPayload = (payload: SettingsUiPlanPayload | null | undefined): PlanSnapshot | null => {
-  const plan = payload?.plan;
-  if (!plan || typeof plan !== 'object') return null;
-  return plan as PlanSnapshot;
+  return parsePlanSnapshot(payload?.plan);
 };
 
 const getPlanSnapshot = async (): Promise<PlanSnapshot | null> => (

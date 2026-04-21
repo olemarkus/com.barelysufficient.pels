@@ -14,7 +14,7 @@ export type DeviceOverviewSnapshot = {
   measuredPowerKw?: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;
-  reason?: DeviceReason;
+  reason: DeviceReason;
   controllable?: boolean;
   available?: boolean;
   shedAction?: 'turn_off' | 'set_temperature' | 'set_step';
@@ -264,7 +264,7 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
   }
 
   let statusMsg = 'Waiting for headroom';
-  if (device.reason) {
+  if (device.reason.code !== PLAN_REASON_CODES.none) {
     statusMsg = device.plannedState === 'keep'
       ? formatOverviewStatus(device.reason)
       : formatDeviceReason(device.reason);

@@ -11,6 +11,9 @@ import type {
 import { buildLiveStatePlan, hasPlanExecutionDrift } from '../lib/plan/planReconcileState';
 import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
 
+const KEEP_REASON = legacyDeviceReason('keep')!;
+const CAPACITY_REASON = legacyDeviceReason('shed due to capacity')!;
+
 const buildPlan = (): DevicePlan => ({
   meta: {
     totalKw: 1,
@@ -26,6 +29,7 @@ const buildPlan = (): DevicePlan => ({
       currentTarget: 21,
       plannedTarget: 21,
       controllable: true,
+      reason: KEEP_REASON,
     },
   ],
 });
@@ -45,6 +49,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
       currentTarget,
       plannedTarget,
       controllable: true,
+      reason: KEEP_REASON,
     },
   ],
 });
@@ -178,6 +183,7 @@ describe('PlanExecutor restore logging', () => {
         currentTarget: 21,
         plannedTarget: 21,
         controllable: true,
+        reason: CAPACITY_REASON,
       }],
     });
 
@@ -289,6 +295,7 @@ describe('PlanExecutor restore logging', () => {
         currentTarget: 21,
         plannedTarget: 21,
         controllable: true,
+        reason: CAPACITY_REASON,
       }],
     });
 
@@ -397,6 +404,7 @@ describe('PlanExecutor restore logging', () => {
         currentTarget: 21,
         plannedTarget: 21,
         controllable: true,
+        reason: CAPACITY_REASON,
       }],
     });
 
@@ -924,6 +932,7 @@ describe('PlanExecutor stepped loads', () => {
         currentTarget: 68,
         plannedTarget: 68,
         controllable: true,
+        reason: KEEP_REASON,
         controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfile,
         selectedStepId: 'low',
@@ -1737,6 +1746,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       currentTarget: null,
       plannedTarget: null,
       controllable: true,
+      reason: KEEP_REASON,
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'low',
@@ -2103,6 +2113,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           currentTarget: null,
           plannedTarget: null,
           controllable: true,
+          reason: CAPACITY_REASON,
         },
         {
           id: 'dev-1',
@@ -2112,6 +2123,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           currentTarget: null,
           plannedTarget: null,
           controllable: true,
+          reason: KEEP_REASON,
           controlModel: 'stepped_load' as const,
           steppedLoadProfile: steppedProfile,
           selectedStepId: 'max',
@@ -2150,6 +2162,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           currentTarget: null,
           plannedTarget: null,
           controllable: true,
+          reason: CAPACITY_REASON,
         },
         {
           id: 'dev-1',
@@ -2159,6 +2172,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           currentTarget: null,
           plannedTarget: null,
           controllable: true,
+          reason: KEEP_REASON,
           controlModel: 'stepped_load' as const,
           steppedLoadProfile: steppedProfile,
           selectedStepId: 'off',
@@ -2199,11 +2213,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       devices: [
         {
           id: 'shed-1', name: 'Heater', currentState: 'off', plannedState: 'shed',
-          currentTarget: null, plannedTarget: null, controllable: true,
+          currentTarget: null, plannedTarget: null, controllable: true, reason: CAPACITY_REASON,
         },
         {
           id: 'dev-1', name: 'Tank', currentState: 'off', plannedState: 'keep',
-          currentTarget: null, plannedTarget: null, controllable: true,
+          currentTarget: null, plannedTarget: null, controllable: true, reason: KEEP_REASON,
           controlModel: 'stepped_load' as const,
           steppedLoadProfile: steppedProfile,
           selectedStepId: 'off',
@@ -2243,11 +2257,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     const shedDevice = {
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
-      currentTarget: null, plannedTarget: null, controllable: true,
+      currentTarget: null, plannedTarget: null, controllable: true, reason: CAPACITY_REASON,
     };
     const steppedDevice = (desiredStepId: string) => ({
       id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep' as const,
-      currentTarget: null, plannedTarget: null, controllable: true,
+      currentTarget: null, plannedTarget: null, controllable: true, reason: KEEP_REASON,
       controlModel: 'stepped_load' as const,
       steppedLoadProfile: multiStepProfile,
       selectedStepId: 'off',
@@ -2295,11 +2309,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       devices: [
         {
           id: 'shed-1', name: 'Heater', currentState: 'off', plannedState: 'shed',
-          currentTarget: null, plannedTarget: null, controllable: true,
+          currentTarget: null, plannedTarget: null, controllable: true, reason: CAPACITY_REASON,
         },
         {
           id: 'dev-1', name: 'Tank', currentState: 'off', plannedState: 'keep',
-          currentTarget: null, plannedTarget: null, controllable: true,
+          currentTarget: null, plannedTarget: null, controllable: true, reason: KEEP_REASON,
           controlModel: 'stepped_load' as const,
           steppedLoadProfile: steppedProfile,
           selectedStepId: 'max',
@@ -2312,7 +2326,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       devices: [
         {
           id: 'dev-1', name: 'Tank', currentState: 'off', plannedState: 'keep',
-          currentTarget: null, plannedTarget: null, controllable: true,
+          currentTarget: null, plannedTarget: null, controllable: true, reason: KEEP_REASON,
           controlModel: 'stepped_load' as const,
           steppedLoadProfile: steppedProfile,
           selectedStepId: 'off',
@@ -2561,6 +2575,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
             currentTarget: 21,
             plannedTarget: 21,
             controllable: true,
+            reason: CAPACITY_REASON,
           },
         ],
       });

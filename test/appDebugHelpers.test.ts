@@ -348,6 +348,7 @@ describe('appDebugHelpers', () => {
               currentTarget: 18,
               plannedTarget: 21,
               controllable: true,
+              reason: { code: 'keep', detail: null },
             },
           ],
         }),
@@ -378,6 +379,7 @@ describe('appDebugHelpers', () => {
         plannedState: 'keep',
         currentTarget: 18,
         plannedTarget: 21,
+        reason: 'keep',
       }),
       observedSources: {
         snapshotRefresh: {
@@ -485,6 +487,7 @@ describe('appDebugHelpers', () => {
             currentTarget: 20.5,
             plannedTarget: 23,
             controllable: true,
+            reason: { code: 'keep', detail: null },
           }],
         }),
       },

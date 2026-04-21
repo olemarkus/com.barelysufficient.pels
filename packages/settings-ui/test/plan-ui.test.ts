@@ -1,4 +1,4 @@
-import { buildComparablePlanReason } from '../../shared-domain/src/planReasonSemantics.ts';
+import { normalizeUiTestPlanSnapshot } from './helpers/homeyApiMock.ts';
 
 const setupPlanDom = () => {
   document.body.innerHTML = `
@@ -10,27 +10,11 @@ const setupPlanDom = () => {
   `;
 };
 
-const normalizePlanSnapshot = (plan: unknown): unknown => {
-  if (!plan || typeof plan !== 'object') return plan;
-  const snapshot = plan as { devices?: Array<Record<string, unknown>> };
-  if (!Array.isArray(snapshot.devices)) return plan;
-  return {
-    ...snapshot,
-    devices: snapshot.devices.map((device) => {
-      if (typeof device.reason !== 'string') return device;
-      return {
-        ...device,
-        reason: buildComparablePlanReason(device.reason),
-      };
-    }),
-  };
-};
-
 const renderPlanSnapshot = async (plan: unknown) => {
   vi.resetModules();
   setupPlanDom();
   const { renderPlan } = await import('../src/ui/plan.ts');
-  renderPlan(normalizePlanSnapshot(plan) as Parameters<typeof renderPlan>[0]);
+  renderPlan(normalizeUiTestPlanSnapshot(plan) as Parameters<typeof renderPlan>[0]);
 };
 
 const getUsageText = () => {
@@ -444,7 +428,7 @@ describe('plan live timing', () => {
     setupPlanDom();
 
     const { renderPlan } = await import('../src/ui/plan.ts');
-    const staleSnapshot = normalizePlanSnapshot({
+    const staleSnapshot = normalizeUiTestPlanSnapshot({
       generatedAtMs: Date.parse('2026-04-18T11:59:58Z'),
       devices: [
         {
@@ -504,7 +488,7 @@ describe('plan live timing', () => {
     });
 
     const { renderPlan } = await import('../src/ui/plan.ts');
-    renderPlan(normalizePlanSnapshot({
+    renderPlan(normalizeUiTestPlanSnapshot({
       devices: [
         {
           id: 'dev-visibility',
@@ -537,7 +521,7 @@ describe('plan live timing', () => {
 
     const overviewPanel = document.querySelector('#overview-panel') as HTMLElement;
     const { renderPlan } = await import('../src/ui/plan.ts');
-    renderPlan(normalizePlanSnapshot({
+    renderPlan(normalizeUiTestPlanSnapshot({
       devices: [
         {
           id: 'dev-overview-reactivation',

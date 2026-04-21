@@ -9,6 +9,8 @@ import type { DevicePlan } from '../lib/plan/planTypes';
 import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
 
 const r = legacyDeviceReason;
+const KEEP_REASON = r('keep')!;
+const CAPACITY_REASON = r('shed due to capacity')!;
 
 describe('plan logging helpers', () => {
   it('formats restore hints with power and headroom context', () => {
@@ -46,6 +48,7 @@ describe('plan logging helpers', () => {
           currentState: 'on',
           currentTarget: 'eco',
           controllable: false,
+          reason: KEEP_REASON,
         },
         {
           id: 'diff',
@@ -79,6 +82,7 @@ describe('plan logging helpers', () => {
           currentTarget: 18,
           shedAction: 'set_temperature',
           priority: 2,
+          reason: CAPACITY_REASON,
         },
         {
           id: 'off',
@@ -89,6 +93,7 @@ describe('plan logging helpers', () => {
           currentTarget: null,
           shedAction: 'turn_off',
           priority: 1,
+          reason: CAPACITY_REASON,
         },
         {
           id: 'temp',
@@ -99,6 +104,7 @@ describe('plan logging helpers', () => {
           currentTarget: { mode: 'eco' },
           shedAction: 'set_temperature',
           priority: 1,
+          reason: CAPACITY_REASON,
         },
       ],
     } as unknown as DevicePlan;
@@ -122,6 +128,7 @@ describe('plan logging helpers', () => {
           plannedTarget: null,
           currentState: 'on',
           currentTarget: null,
+          reason: KEEP_REASON,
         },
       ],
     } as unknown as DevicePlan;
@@ -142,6 +149,7 @@ describe('plan logging helpers', () => {
           plannedTarget: null,
           currentState: 'off',
           currentTarget: null,
+          reason: KEEP_REASON,
         },
         {
           id: 'other',
@@ -150,6 +158,7 @@ describe('plan logging helpers', () => {
           plannedTarget: null,
           currentState: 'off',
           currentTarget: null,
+          reason: KEEP_REASON,
         },
       ],
     } as unknown as DevicePlan;
@@ -215,6 +224,7 @@ describe('plan logging helpers', () => {
           measuredPowerKw: 0,
           binaryCommandPending: true,
           controllable: true,
+          reason: CAPACITY_REASON,
         },
         {
           id: 'stale',
@@ -224,6 +234,7 @@ describe('plan logging helpers', () => {
           currentState: 'unknown',
           observationStale: true,
           controllable: true,
+          reason: KEEP_REASON,
         },
         {
           id: 'cooldown',
@@ -259,6 +270,7 @@ describe('plan logging helpers', () => {
           currentOn: true,
           currentState: 'on',
           controllable: false,
+          reason: KEEP_REASON,
         },
       ],
     } as unknown as DevicePlan;

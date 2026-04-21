@@ -12,12 +12,15 @@ import {
   resetSettingsUiPowerStats,
 } from '../lib/app/settingsUiApi';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
+import { buildComparablePlanReason } from '../packages/shared-domain/src/planReasonSemantics';
 
 describe('settingsUiApi', () => {
   const createHomey = (options: { latestPlanSnapshot?: Record<string, unknown> | null } = {}) => {
     const store = new Map<string, unknown>([
       ['target_devices_snapshot', [{ id: 'dev-1', name: 'Heater' }]],
-      ['device_plan_snapshot', { devices: [{ id: 'dev-1', name: 'Heater', priority: 1 }] }],
+      ['device_plan_snapshot', {
+        devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
+      }],
       ['combined_prices', { prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] }],
       ['power_tracker_state', { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } }],
       ['pels_status', { lastPowerUpdate: 123, priceLevel: 'cheap' }],
@@ -165,7 +168,9 @@ describe('settingsUiApi', () => {
     expect(result.settings.combined_prices).toBeUndefined();
     expect(result.dailyBudget).toEqual({ days: {}, todayKey: '2026-03-03' });
     expect((result as unknown as Record<string, unknown>).devices).toBeUndefined();
-    expect(result.plan).toEqual({ devices: [{ id: 'dev-1', name: 'Heater', priority: 1 }] });
+    expect(result.plan).toEqual({
+      devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
+    });
     expect(result.power).toEqual({
       tracker: { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
       status: { lastPowerUpdate: 123, priceLevel: 'cheap' },
@@ -240,7 +245,9 @@ describe('settingsUiApi', () => {
       devices: [{ id: 'dev-1', name: 'Heater' }],
     });
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
-      plan: { devices: [{ id: 'dev-1', name: 'Heater', priority: 1 }] },
+      plan: {
+        devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
+      },
     });
     expect(getSettingsUiPowerPayload({ homey: homey as never })).toEqual({
       tracker: { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
@@ -296,20 +303,56 @@ describe('settingsUiApi', () => {
     const homey = createHomey({
       latestPlanSnapshot: {
         generatedAtMs: 123456789,
-        devices: [{ id: 'dev-2', name: 'Pump', priority: 2 }],
+        devices: [{ id: 'dev-2', name: 'Pump', priority: 2, reason: buildComparablePlanReason('keep') }],
       },
     });
 
     expect(buildSettingsUiBootstrap({ homey: homey as never }).plan).toEqual({
       generatedAtMs: 123456789,
-      devices: [{ id: 'dev-2', name: 'Pump', priority: 2 }],
+      devices: [{ id: 'dev-2', name: 'Pump', priority: 2, reason: buildComparablePlanReason('keep') }],
     });
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
       plan: {
         generatedAtMs: 123456789,
+        devices: [{ id: 'dev-2', name: 'Pump', priority: 2, reason: buildComparablePlanReason('keep') }],
+      },
+    });
+  });
+
+  it('falls back to the persisted plan snapshot when the in-memory app snapshot is invalid', () => {
+    const homey = createHomey({
+      latestPlanSnapshot: {
+        generatedAtMs: 123456789,
         devices: [{ id: 'dev-2', name: 'Pump', priority: 2 }],
       },
     });
+
+    expect(buildSettingsUiBootstrap({ homey: homey as never }).plan).toEqual({
+      devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
+    });
+    expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
+      plan: {
+        devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
+      },
+    });
+    expect(homey.error).toHaveBeenCalledWith(
+      'Ignoring invalid settings UI app plan snapshot: finalized devices must include structured reason',
+    );
+  });
+
+  it('drops invalid persisted plan snapshots instead of normalizing missing reasons', () => {
+    const homey = createHomey();
+    const settingsGet = homey.settings.get;
+    homey.settings.get = ((key: string) => {
+      if (key === 'device_plan_snapshot') return { devices: [{ id: 'dev-1', name: 'Heater', priority: 1 }] };
+      return settingsGet(key);
+    }) as typeof homey.settings.get;
+
+    expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({ plan: null });
+    expect(buildSettingsUiBootstrap({ homey: homey as never }).plan).toBeNull();
+    expect(homey.error).toHaveBeenCalledWith(
+      'Ignoring invalid persisted settings UI plan snapshot: finalized devices must include structured reason',
+    );
   });
 
   it('throws when refresh or reset functionality is unavailable', async () => {

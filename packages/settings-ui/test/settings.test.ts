@@ -1,4 +1,5 @@
-import { buildHomeyApiMock, installHomeyMock } from './helpers/homeyApiMock';
+import { buildComparablePlanReason } from '../../shared-domain/src/planReasonSemantics.ts';
+import { buildHomeyApiMock, emitHomeyEvent, installHomeyMock } from './helpers/homeyApiMock';
 import { getDateKeyInTimeZone } from '../src/ui/timezone.ts';
 
 vi.mock('../src/ui/toast.ts', () => ({
@@ -2188,6 +2189,59 @@ describe('Plan sorting', () => {
       .map((line) => line.querySelector('span:last-child')?.textContent || '');
 
     expect(usageLines[0]).toBe('Measured: 0.00 kW / Expected: 0.12 kW');
+  });
+
+  it('keeps the last rendered plan when a realtime plan update is malformed', async () => {
+    const homey = installSettingsHomeyMock({
+      device_plan_snapshot: {
+        meta: {
+          totalKw: 2.0,
+          softLimitKw: 9.0,
+          headroomKw: 7.0,
+        },
+        devices: [
+          {
+            id: 'device-1',
+            name: 'Heater',
+            priority: 1,
+            currentState: 'on',
+            plannedState: 'keep',
+            reason: buildComparablePlanReason('keep'),
+          },
+        ],
+      },
+      target_devices_snapshot: [],
+    });
+
+    await loadSettingsScript();
+
+    const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
+    overviewTab?.click();
+    await flushPromises();
+
+    expect(document.querySelectorAll('#plan-list .device-row')).toHaveLength(1);
+    expect(document.querySelector('#plan-list .device-row__name')?.textContent).toContain('Heater');
+
+    emitHomeyEvent(homey, 'plan_updated', {
+      meta: {
+        totalKw: 2.1,
+        softLimitKw: 9.0,
+        headroomKw: 6.9,
+      },
+      devices: [
+        {
+          id: 'device-1',
+          name: 'Heater',
+          priority: 1,
+          currentState: 'on',
+          plannedState: 'keep',
+        },
+      ],
+    });
+    await flushPromises();
+
+    expect(document.querySelectorAll('#plan-list .device-row')).toHaveLength(1);
+    expect(document.querySelector('#plan-list .device-row__name')?.textContent).toContain('Heater');
   });
 
   it('refreshes plan when capacity priorities change via settings event', async () => {

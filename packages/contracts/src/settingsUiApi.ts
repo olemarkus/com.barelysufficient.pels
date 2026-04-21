@@ -2,6 +2,7 @@ import type { DailyBudgetUiPayload } from './dailyBudgetTypes.js';
 import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsTypes.js';
 import type { PowerTrackerState } from './powerTrackerTypes.js';
 import type { SettingsUiLogEntry, TargetDeviceSnapshot } from './types.js';
+import type { DeviceOverviewSnapshot } from '../../shared-domain/src/deviceOverview.js';
 
 export const SETTINGS_UI_BOOTSTRAP_PATH = '/ui_bootstrap';
 export const SETTINGS_UI_DEVICES_PATH = '/ui_devices';
@@ -28,10 +29,33 @@ export type SettingsUiBootstrap = SettingsUiSettingsPatch & {
 
 export type SettingsUiLogRequest = SettingsUiLogEntry;
 
+export type SettingsUiPlanPendingTargetCommand = {
+  desired: number;
+  retryCount: number;
+  nextRetryAtMs: number;
+  status: 'waiting_confirmation' | 'temporary_unavailable';
+};
+
+export type SettingsUiPlanDevice = DeviceOverviewSnapshot & {
+  id: string;
+  name: string;
+  plannedTarget?: number | null;
+  priority?: number;
+  zone?: string;
+  budgetExempt?: boolean;
+  currentTemperature?: number;
+  headroomCardBlocked?: boolean;
+  headroomCardCooldownSec?: number | null;
+  headroomCardCooldownSource?: 'step_down' | 'pels_shed' | 'pels_restore';
+  headroomCardCooldownFromKw?: number | null;
+  headroomCardCooldownToKw?: number | null;
+  pendingTargetCommand?: SettingsUiPlanPendingTargetCommand;
+};
+
 export type SettingsUiPlanSnapshot = {
   generatedAtMs?: number;
   meta?: Record<string, unknown>;
-  devices?: Array<Record<string, unknown>>;
+  devices?: SettingsUiPlanDevice[];
 };
 
 export type SettingsUiPlanPayload = {
