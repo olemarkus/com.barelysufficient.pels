@@ -245,9 +245,9 @@ const syncHeadroomUsageObservationEntry = (params: {
     entry: previousEntry,
     usageObservation,
   });
-  if (mergeDecision.skipUpdate) {
+  if (mergeDecision.outcome !== 'win') {
     incPerfCounter('tracked_usage_update_skipped_noop');
-    if (mergeDecision.advanceFreshnessOnly) {
+    if (mergeDecision.outcome === 'tie_refresh') {
       updateHeadroomCardUsageObservation({
         state,
         deviceId,
