@@ -443,7 +443,7 @@ describe('registerFlowCards', () => {
   it('parses EV car connection autocomplete values as boolean flow reports', async () => {
     const { deps, actionListeners } = buildDeps({
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
-        { id: 'dev-1', name: 'Wallbox', class: 'evcharger', capabilities: ['evcharger_charging'] },
+        { id: 'dev-1', name: 'Wallbox', class: 'evcharger', capabilities: ['evcharger_charging', 'alarm_generic.car_connected'] },
       ]),
     });
 
@@ -459,6 +459,45 @@ describe('registerFlowCards', () => {
       capabilityId: 'alarm_generic.car_connected',
       value: true,
     });
+    expect(deps.structuredLog?.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'flow_backed_capability_reported',
+      sourceCardId: 'report_flow_backed_device_evcharger_car_connected',
+      deviceId: 'dev-1',
+      deviceName: 'Wallbox',
+      capabilityId: 'alarm_generic.car_connected',
+      value: true,
+      nativeCapabilityPresent: false,
+    }));
+  });
+
+  it('parses EV resumable autocomplete values as boolean flow reports', async () => {
+    const { deps, actionListeners } = buildDeps({
+      getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
+        { id: 'dev-1', name: 'Wallbox', class: 'evcharger', capabilities: ['evcharger_charging'] },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_flow_backed_device_evcharger_resumable({
+      device: 'dev-1',
+      state: { id: 'yes', name: 'Yes' },
+    })).resolves.toBe(true);
+
+    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      capabilityId: 'pels_evcharger_resumable',
+      value: true,
+    });
+    expect(deps.structuredLog?.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'flow_backed_capability_reported',
+      sourceCardId: 'report_flow_backed_device_evcharger_resumable',
+      deviceId: 'dev-1',
+      deviceName: 'Wallbox',
+      capabilityId: 'pels_evcharger_resumable',
+      value: true,
+      nativeCapabilityPresent: false,
+    }));
   });
 
   it('uses raw Homey devices for flow-backed device autocomplete', async () => {
@@ -503,6 +542,17 @@ describe('registerFlowCards', () => {
     ]);
   });
 
+  it('uses yes/no EV resumable autocomplete labels', async () => {
+    const { deps, actionAutocompleteListeners } = buildDeps();
+
+    registerFlowCards(deps);
+
+    const options = await actionAutocompleteListeners.report_flow_backed_device_evcharger_resumable.state('n');
+    expect(options).toEqual([
+      { id: 'no', name: 'No' },
+    ]);
+  });
+
   it('limits EV flow-backed device autocomplete to evcharger devices only', async () => {
     const { deps, actionAutocompleteListeners } = buildDeps({
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
@@ -514,6 +564,20 @@ describe('registerFlowCards', () => {
     registerFlowCards(deps);
 
     const options = await actionAutocompleteListeners.report_flow_backed_device_evcharger_car_connected.device('wallbox');
+    expect(options).toEqual([{ id: 'ev-1', name: 'Wallbox' }]);
+  });
+
+  it('limits EV resumable autocomplete to evcharger devices only', async () => {
+    const { deps, actionAutocompleteListeners } = buildDeps({
+      getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
+        { id: 'ev-1', name: 'Wallbox', class: 'evcharger', capabilities: ['evcharger_charging'] },
+        { id: 'socket-1', name: 'Wallbox', class: 'socket', capabilities: ['onoff'] },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    const options = await actionAutocompleteListeners.report_flow_backed_device_evcharger_resumable.device('wallbox');
     expect(options).toEqual([{ id: 'ev-1', name: 'Wallbox' }]);
   });
 

@@ -8,6 +8,9 @@ import type {
 } from './planTypes';
 
 export type ActivationAttemptSource = 'pels_restore' | 'tracked_step_up';
+export type PendingBinaryLogContext = 'capacity' | 'capacity_control_off';
+export type PendingBinaryRestoreSource = 'shed_state' | 'current_plan';
+export type PendingBinaryActuationMode = 'plan' | 'reconcile';
 
 export type PendingTargetCommandState = {
   capabilityId: string;
@@ -81,6 +84,11 @@ export type PlanEngineState = {
     desired: boolean;
     startedMs: number;
     pendingMs?: number;
+    flowBackedControl?: boolean;
+    logContext?: PendingBinaryLogContext;
+    restoreSource?: PendingBinaryRestoreSource;
+    actuationMode?: PendingBinaryActuationMode;
+    reason?: string;
     lastObservedValue?: boolean | string;
     lastObservedSource?: PendingTargetObservationSource;
     lastObservedAtMs?: number;

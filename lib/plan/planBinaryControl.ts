@@ -9,13 +9,20 @@ import {
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import {
   buildPendingBinaryTimeoutLogMessage,
+  buildFlowBackedBinaryControlRequestLogMessage,
+  buildFlowBackedEvBinaryControlRequestLogMessage,
+  resolveBinaryRestoreSuffix,
   type BinaryControlActuationMode,
   type BinaryControlLogContext,
   type BinaryControlPlan,
   type BinaryControlRestoreSource,
+  formatEvSnapshot,
+  isFlowBackedBinaryControl,
   shouldSkipBinaryControl,
   formatPendingBinaryObservedValue,
 } from './planBinaryControlHelpers';
+
+export { formatEvSnapshot, isFlowBackedBinaryControl } from './planBinaryControlHelpers';
 
 type BinaryControlDeps = {
   state: PlanEngineState;
@@ -47,16 +54,14 @@ export function getBinaryControlPlan(snapshot?: TargetDeviceSnapshot): BinaryCon
 
 export function getEvRestoreBlockReason(snapshot?: TargetDeviceSnapshot): string | null {
   if (!snapshot || snapshot.controlCapabilityId !== 'evcharger_charging') return null;
-  if (snapshot.expectedPowerSource === 'default') {
-    return 'charger power unknown';
-  }
   if (snapshot.evChargingState === undefined) return 'charger state unknown';
 
   switch (snapshot.evChargingState) {
-    case 'plugged_in':
     case 'plugged_in_paused':
     case 'plugged_in_charging':
       return null;
+    case 'plugged_in':
+      return 'charger is not resumable';
     case 'plugged_out':
       return 'charger is unplugged';
     case 'plugged_in_discharging':
@@ -64,18 +69,6 @@ export function getEvRestoreBlockReason(snapshot?: TargetDeviceSnapshot): string
     default:
       return `unknown charging state '${snapshot.evChargingState}'`;
   }
-}
-
-export function formatEvSnapshot(snapshot?: TargetDeviceSnapshot): string {
-  if (!snapshot) return 'snapshot=missing';
-  return [
-    `currentOn=${String(snapshot.currentOn)}`,
-    `evState=${snapshot.evChargingState ?? 'unknown'}`,
-    `available=${snapshot.available !== false}`,
-    `canSet=${snapshot.canSetControl !== false}`,
-    `powerKw=${snapshot.powerKw ?? snapshot.measuredPowerKw ?? snapshot.expectedPowerKw ?? 'unknown'}`,
-    `expectedPowerKw=${snapshot.expectedPowerKw ?? 'unknown'}`,
-  ].join(', ');
 }
 
 export async function setBinaryControl(params: BinaryControlDeps & {
@@ -174,13 +167,18 @@ async function executeBinaryCommand(params: {
     state, deviceManager, triggerFlowBackedBinaryControlRequest, log, logDebug, error, structuredLog,
     controlPlan, pendingMs, deviceId, name, desired, snapshot, logContext, reason, restoreSource, actuationMode,
   } = params;
-  const flowBackedControl = shouldUseFlowBackedBinaryControl(snapshot, controlPlan.capabilityId);
+  const flowBackedControl = isFlowBackedBinaryControl(snapshot, controlPlan.capabilityId);
 
   state.pendingBinaryCommands[deviceId] = {
     capabilityId: controlPlan.capabilityId,
     desired,
     startedMs: Date.now(),
     pendingMs,
+    flowBackedControl,
+    logContext,
+    restoreSource,
+    actuationMode,
+    ...(reason ? { reason } : {}),
   };
 
   try {
@@ -206,10 +204,12 @@ async function executeBinaryCommand(params: {
       reason,
       restoreSource,
       actuationMode,
+      flowBackedControl,
     }));
     if (controlPlan.isEv) {
       logDebug(
-        `Capacity: EV action completed for ${name}: ${controlPlan.capabilityId}=${desired} `
+        `Capacity: EV action ${flowBackedControl ? 'requested' : 'completed'} for ${name}: `
+        + `${controlPlan.capabilityId}=${desired} `
         + `(${formatEvSnapshot(deviceManager.getSnapshot().find((entry) => entry.id === deviceId))})`,
       );
     }
@@ -288,8 +288,30 @@ function buildBinaryControlSuccessLogMessage(params: {
   reason?: string;
   restoreSource?: BinaryControlRestoreSource;
   actuationMode: BinaryControlActuationMode;
+  flowBackedControl: boolean;
 }): string {
-  const { controlPlan, logContext, desired, name, reason, restoreSource, actuationMode } = params;
+  const {
+    controlPlan,
+    logContext,
+    desired,
+    name,
+    reason,
+    restoreSource,
+    actuationMode,
+    flowBackedControl,
+  } = params;
+  if (flowBackedControl) {
+    return controlPlan.isEv
+      ? buildFlowBackedEvBinaryControlRequestLogMessage(logContext, desired, name, reason, actuationMode)
+      : buildFlowBackedBinaryControlRequestLogMessage({
+        logContext,
+        desired,
+        name,
+        reason,
+        restoreSource,
+        actuationMode,
+      });
+  }
   return controlPlan.isEv
     ? buildEvBinaryControlLogMessage(logContext, desired, name, reason, actuationMode)
     : buildBinaryControlLogMessage({ logContext, desired, name, reason, restoreSource, actuationMode });
@@ -308,14 +330,6 @@ function buildBinaryControlFailureLogMessage(params: {
   return flowBackedControl
     ? `Failed to request ${verb} ${name} via flow`
     : `Failed to ${verb} ${name} via DeviceManager`;
-}
-
-function shouldUseFlowBackedBinaryControl(
-  snapshot: TargetDeviceSnapshot | undefined,
-  capabilityId: 'onoff' | 'evcharger_charging',
-): boolean {
-  return Array.isArray(snapshot?.flowBackedCapabilityIds)
-    && snapshot.flowBackedCapabilityIds.includes(capabilityId);
 }
 
 function buildBinaryControlLogMessage(params: {
@@ -351,19 +365,6 @@ function buildBinaryControlLogMessage(params: {
   return `Capacity control off: turned off ${name}`;
 }
 
-function resolveBinaryRestoreSuffix(params: {
-  logContext: BinaryControlLogContext;
-  restoreSource: BinaryControlRestoreSource;
-  actuationMode: BinaryControlActuationMode;
-}): string {
-  const { logContext, restoreSource, actuationMode } = params;
-  if (logContext !== 'capacity') return '';
-  if (actuationMode === 'reconcile') return ' (reconcile after drift)';
-  return restoreSource === 'shed_state'
-    ? ' (restored from shed state)'
-    : ' (to match current plan)';
-}
-
 function buildEvBinaryControlLogMessage(
   logContext: BinaryControlLogContext,
   desired: boolean,
@@ -386,12 +387,20 @@ export function syncPendingBinaryCommands(params: {
   liveDevices: PlanInputDevice[];
   source: PendingTargetObservationSource;
   logDebug: (message: string) => void;
+  onConfirmed?: (params: {
+    deviceId: string;
+    liveDevice: PlanInputDevice;
+    pending: PlanEngineState['pendingBinaryCommands'][string];
+    source: PendingTargetObservationSource;
+    confirmedAtMs: number;
+  }) => void;
 }): boolean {
   const {
     state,
     liveDevices,
     source,
     logDebug,
+    onConfirmed,
   } = params;
   const liveById = new Map(liveDevices.map((device) => [device.id, device]));
   const nowMs = Date.now();
@@ -418,6 +427,13 @@ export function syncPendingBinaryCommands(params: {
 
     const observedValue = getObservedBinaryValue(liveDevice, pending.capabilityId);
     if (observedValue === pending.desired) {
+      onConfirmed?.({
+        deviceId,
+        liveDevice,
+        pending,
+        source,
+        confirmedAtMs: nowMs,
+      });
       delete state.pendingBinaryCommands[deviceId];
       changed = true;
       logDebug(
@@ -447,7 +463,6 @@ export function syncPendingBinaryCommands(params: {
 
   return changed;
 }
-
 function getObservedBinaryValue(
   liveDevice: PlanInputDevice,
   capabilityId: 'onoff' | 'evcharger_charging',

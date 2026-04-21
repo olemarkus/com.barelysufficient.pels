@@ -7,6 +7,8 @@ type PowerSource = 'measured' | 'expected' | 'planning' | 'configured' | 'steppe
 
 export type RestorePowerSource = Exclude<PowerSource, 'off'>;
 
+const EV_MIN_START_FALLBACK_KW = 1.38;
+
 type PowerCandidate = {
   measuredPowerKw?: number;
   expectedPowerKw?: number;
@@ -26,6 +28,7 @@ type LiveUsageCandidate = PowerCandidate & {
 
 type RestorePowerCandidate = PowerCandidate & {
   currentState?: string;
+  controlCapabilityId?: 'onoff' | 'evcharger_charging';
   controlModel?: DeviceControlModel;
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
@@ -131,6 +134,10 @@ export function resolveRestorePower(device: RestorePowerCandidate): { powerKw: n
   const preferred = resolveHighestPowerSource(device);
   if (preferred) {
     return { powerKw: preferred.value, source: preferred.source };
+  }
+
+  if (device.controlCapabilityId === 'evcharger_charging') {
+    return { powerKw: EV_MIN_START_FALLBACK_KW, source: 'fallback' };
   }
 
   return { powerKw: 1, source: 'fallback' };

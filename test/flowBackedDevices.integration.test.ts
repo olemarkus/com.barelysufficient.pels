@@ -47,6 +47,7 @@ const buildEvApiDevice = (overrides?: Partial<{
   capabilities: string[];
   evchargerCharging: boolean;
   evchargerChargingState: string;
+  carConnected: boolean;
 }>) => ({
   id: overrides?.id ?? 'ev-1',
   name: overrides?.name ?? 'Garage Charger',
@@ -59,6 +60,12 @@ const buildEvApiDevice = (overrides?: Partial<{
       evcharger_charging_state: {
         id: 'evcharger_charging_state',
         value: overrides.evchargerChargingState,
+      },
+    } : {}),
+    ...(typeof overrides?.carConnected === 'boolean' ? {
+      'alarm_generic.car_connected': {
+        id: 'alarm_generic.car_connected',
+        value: overrides.carConnected,
       },
     } : {}),
   },
@@ -173,7 +180,7 @@ describe('Flow-backed device support', () => {
     }));
   });
 
-  it('admits EV chargers only after reported charging and car connected when native power exists', async () => {
+  it('admits EV chargers only after reported charging, car connected, and resumable when native power exists', async () => {
     mockHomeyInstance.settings.set(EXPERIMENTAL_EV_SUPPORT_ENABLED, true);
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'ev-1': {
@@ -197,6 +204,12 @@ describe('Flow-backed device support', () => {
       device: 'ev-1',
       state: 'connected',
     });
+    expect(getSnapshot().find((device) => device.id === 'ev-1')).toBeUndefined();
+
+    await runAction('report_flow_backed_device_evcharger_resumable', {
+      device: 'ev-1',
+      state: 'yes',
+    });
     const entry = getSnapshot().find((device) => device.id === 'ev-1');
     expect(entry).toEqual(expect.objectContaining({
       id: 'ev-1',
@@ -209,7 +222,7 @@ describe('Flow-backed device support', () => {
     }));
   });
 
-  it('synthesizes a paused EV charging state from car connected plus charging off', async () => {
+  it('synthesizes a paused EV charging state from car connected plus charging off plus resumable yes', async () => {
     mockHomeyInstance.settings.set(EXPERIMENTAL_EV_SUPPORT_ENABLED, true);
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'ev-1': {
@@ -225,12 +238,79 @@ describe('Flow-backed device support', () => {
 
     await runAction('report_flow_backed_device_evcharger_charging', { device: 'ev-1', state: 'off' });
     await runAction('report_flow_backed_device_evcharger_car_connected', { device: 'ev-1', state: 'connected' });
+    await runAction('report_flow_backed_device_evcharger_resumable', { device: 'ev-1', state: 'yes' });
 
     expect(getSnapshot().find((device) => device.id === 'ev-1')).toEqual(expect.objectContaining({
       id: 'ev-1',
       currentOn: false,
       evChargingState: 'plugged_in_paused',
       measuredPowerKw: 0,
+    }));
+  });
+
+  it('synthesizes a connected EV charging state from car connected plus charging off plus resumable no', async () => {
+    mockHomeyInstance.settings.set(EXPERIMENTAL_EV_SUPPORT_ENABLED, true);
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'ev-1': {
+        ...buildEvApiDevice({ capabilities: ['measure_power'] }),
+        capabilitiesObj: {
+          ...buildEvApiDevice({ capabilities: ['measure_power'] }).capabilitiesObj,
+          measure_power: { id: 'measure_power', value: 0 },
+        },
+      },
+    });
+    const app = createApp();
+    await app.onInit();
+
+    await runAction('report_flow_backed_device_evcharger_charging', { device: 'ev-1', state: 'off' });
+    await runAction('report_flow_backed_device_evcharger_car_connected', { device: 'ev-1', state: 'connected' });
+    await runAction('report_flow_backed_device_evcharger_resumable', { device: 'ev-1', state: 'no' });
+
+    expect(getSnapshot().find((device) => device.id === 'ev-1')).toEqual(expect.objectContaining({
+      id: 'ev-1',
+      currentOn: false,
+      evChargingState: 'plugged_in',
+      measuredPowerKw: 0,
+    }));
+  });
+
+  it('does not acknowledge native car-connected support unless flow reports it', async () => {
+    mockHomeyInstance.settings.set(EXPERIMENTAL_EV_SUPPORT_ENABLED, true);
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'ev-1': {
+        ...buildEvApiDevice({
+          capabilities: ['measure_power', 'alarm_generic.car_connected'],
+          carConnected: true,
+        }),
+        capabilitiesObj: {
+          ...buildEvApiDevice({
+            capabilities: ['measure_power', 'alarm_generic.car_connected'],
+            carConnected: true,
+          }).capabilitiesObj,
+          measure_power: { id: 'measure_power', value: 7200 },
+        },
+      },
+    });
+    const app = createApp();
+    await app.onInit();
+    await (app as any).refreshTargetDevicesSnapshot();
+
+    expect(getSnapshot().find((device) => device.id === 'ev-1')).toBeUndefined();
+
+    await runAction('report_flow_backed_device_evcharger_charging', { device: 'ev-1', state: 'on' });
+    expect(getSnapshot().find((device) => device.id === 'ev-1')).toBeUndefined();
+
+    await runAction('report_flow_backed_device_evcharger_car_connected', { device: 'ev-1', state: 'connected' });
+    expect(getSnapshot().find((device) => device.id === 'ev-1')).toBeUndefined();
+
+    await runAction('report_flow_backed_device_evcharger_resumable', { device: 'ev-1', state: 'yes' });
+
+    expect(getSnapshot().find((device) => device.id === 'ev-1')).toEqual(expect.objectContaining({
+      id: 'ev-1',
+      flowBacked: true,
+      currentOn: true,
+      evChargingState: 'plugged_in_charging',
+      measuredPowerKw: 7.2,
     }));
   });
 
@@ -299,6 +379,7 @@ describe('Flow-backed device support', () => {
 
     await runAction('report_flow_backed_device_evcharger_charging', { device: 'ev-1', state: 'on' });
     await runAction('report_flow_backed_device_evcharger_car_connected', { device: 'ev-1', state: 'connected' });
+    await runAction('report_flow_backed_device_evcharger_resumable', { device: 'ev-1', state: 'yes' });
 
     expect(getSnapshot().find((device) => device.id === 'ev-1')).toBeUndefined();
   });

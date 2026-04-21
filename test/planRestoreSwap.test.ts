@@ -242,6 +242,7 @@ describe('restore swap helpers', () => {
     expect(estimateRestorePower(buildPlanDevice({ measuredPowerKw: 3, powerKw: 1 }))).toBe(3);
     expect(estimateRestorePower(buildPlanDevice({ powerKw: 2 }))).toBe(2);
     expect(estimateRestorePower(buildPlanDevice())).toBe(1);
+    expect(estimateRestorePower(buildPlanDevice({ controlCapabilityId: 'evcharger_charging' }))).toBe(1.38);
   });
 
   it('uses lowest non-zero step for stepped devices at off-step', () => {
@@ -351,6 +352,7 @@ describe('resolveRestorePowerSource', () => {
 
   it('returns fallback when no power fields are set', () => {
     expect(resolveRestorePowerSource(buildPlanDevice({}))).toBe('fallback');
+    expect(resolveRestorePowerSource(buildPlanDevice({ controlCapabilityId: 'evcharger_charging' }))).toBe('fallback');
   });
 
   it('keeps stepped restore power aligned with the stepped restore helper', () => {

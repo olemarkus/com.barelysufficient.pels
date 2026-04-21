@@ -452,6 +452,13 @@ function mergeCapabilityObservation(params: {
     } = params;
     const observation = state.capabilityObservations.get(buildCapabilityObservationKey(deviceId, capabilityId));
     if (!observation) return;
+    if (
+        capabilityId === 'evcharger_charging_state'
+        && observation.source === 'device_update'
+        && !deviceSupportsCapability(sourceDevice, capabilityId)
+    ) {
+        return;
+    }
     const fetchedLastUpdatedMs = getCapabilityLastUpdatedMs(sourceDevice, capabilityId);
     const fetchedHasKnownFreshness = typeof fetchedLastUpdatedMs === 'number'
         && Number.isFinite(fetchedLastUpdatedMs);
@@ -473,6 +480,11 @@ function mergeCapabilityObservation(params: {
             ? `, fetched lastUpdated=${new Date(fetchedLastUpdatedMs).toISOString()}`
             : ', fetched lastUpdated=unknown'),
     );
+}
+
+function deviceSupportsCapability(device: HomeyDeviceLike, capabilityId: string): boolean {
+    return device.capabilities?.includes(capabilityId) === true
+        || Boolean(device.capabilitiesObj?.[capabilityId]);
 }
 
 function applyCapabilityObservation(

@@ -186,6 +186,14 @@ export class PlanEngine {
       liveDevices: devices,
       source,
       logDebug: (message) => this.logDebugFn(message),
+      onConfirmed: ({ deviceId, liveDevice, pending, confirmedAtMs }) => {
+        this.executor.handleConfirmedBinaryCommand({
+          deviceId,
+          liveDevice,
+          pending,
+          confirmedAtMs,
+        });
+      },
     });
   }
 
