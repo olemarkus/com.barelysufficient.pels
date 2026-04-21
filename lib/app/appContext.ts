@@ -24,6 +24,14 @@ import type { RefreshTargetDevicesSnapshotOptions, AppSnapshotHelpers } from './
 import type { TimerRegistry } from './timerRegistry';
 import type { FlowReportedCapabilitiesForDevice, FlowReportedCapabilityId } from '../core/flowReportedCapabilities';
 
+export type FlowBackedCapabilityReportOutcome = {
+  kind: 'state_changed' | 'freshness_only' | 'noop';
+  valueChanged: boolean;
+  freshnessAdvanced: boolean;
+  refreshSnapshot: boolean;
+  rebuildPlan: boolean;
+};
+
 export type StartupBootstrapConfig = {
   snapshotPlanBootstrapDelayMs?: number;
   overheadTokenDelayMs?: number;
@@ -75,7 +83,7 @@ export type AppContext = {
     deviceId: string;
     capabilityId: FlowReportedCapabilityId;
     value: boolean | number | string;
-  }) => 'changed' | 'unchanged';
+  }) => FlowBackedCapabilityReportOutcome;
   getHomeyDevicesForFlow: () => Promise<HomeyDeviceLike[]>;
   emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
   getPriorityForDevice: (deviceId: string) => number;

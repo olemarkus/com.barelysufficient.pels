@@ -1,8 +1,9 @@
 import type { HomeyDeviceLike } from '../lib/utils/types';
 import type { FlowReportedCapabilityId } from '../lib/core/flowReportedCapabilities';
+import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import { resolveFlowAugmentedDeviceType } from '../lib/core/flowReportedCapabilities';
 import { getCapabilities, resolveDeviceClassKey } from '../lib/core/deviceManagerHelpers';
-import { incPerfCounters } from '../lib/utils/perfCounters';
+import { incPerfCounter, incPerfCounters } from '../lib/utils/perfCounters';
 import { getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 import type { FlowCardDeps } from './registerFlowCards';
 
@@ -166,19 +167,24 @@ function registerFlowBackedCapabilityCard(params: {
       device,
       capabilityId,
     });
-    const result = deps.reportFlowBackedCapability({ deviceId, capabilityId, value });
+    const reportOutcome = deps.reportFlowBackedCapability({ deviceId, capabilityId, value });
     emitFlowBackedCapabilityReportLog({
       deps,
       cardId,
       device,
       capabilityId,
       value,
-      result,
+      reportOutcome,
       nativeCapabilityPresent,
     });
 
+    if (!reportOutcome.refreshSnapshot) {
+      incPerfCounter('refresh_skipped_noop');
+      return true;
+    }
+
     await deps.refreshSnapshot({ emitFlowBackedRefresh: false });
-    if (result === 'changed') {
+    if (reportOutcome.rebuildPlan) {
       requestPlanRebuildFromFlow(deps, cardId);
     }
     return true;
@@ -236,7 +242,7 @@ function emitFlowBackedCapabilityReportLog(params: {
   device: HomeyDeviceLike;
   capabilityId: FlowReportedCapabilityId;
   value: boolean | number | string;
-  result: 'changed' | 'unchanged';
+  reportOutcome: FlowBackedCapabilityReportOutcome;
   nativeCapabilityPresent: boolean;
 }): void {
   const {
@@ -245,14 +251,16 @@ function emitFlowBackedCapabilityReportLog(params: {
     device,
     capabilityId,
     value,
-    result,
+    reportOutcome,
     nativeCapabilityPresent,
   } = params;
   let event = 'flow_backed_capability_report_unchanged';
   if (nativeCapabilityPresent) {
     event = 'flow_backed_capability_report_native_overlap';
-  } else if (result === 'changed') {
+  } else if (reportOutcome.kind === 'state_changed') {
     event = 'flow_backed_capability_reported';
+  } else if (reportOutcome.kind === 'freshness_only') {
+    event = 'flow_backed_capability_report_freshness_updated';
   }
   deps.structuredLog?.info({
     event,
@@ -261,6 +269,9 @@ function emitFlowBackedCapabilityReportLog(params: {
     deviceName: device.name,
     capabilityId,
     value,
+    reportKind: reportOutcome.kind,
+    valueChanged: reportOutcome.valueChanged,
+    freshnessAdvanced: reportOutcome.freshnessAdvanced,
     nativeCapabilityPresent,
     zone: resolveZoneLabel(device) || undefined,
   });

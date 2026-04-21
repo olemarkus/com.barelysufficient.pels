@@ -1,4 +1,16 @@
 import { registerFlowCards, type FlowCardDeps } from '../flowCards/registerFlowCards';
+import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
+
+const stateChangedOutcome = (
+  overrides: Partial<FlowBackedCapabilityReportOutcome> = {},
+): FlowBackedCapabilityReportOutcome => ({
+  kind: 'state_changed',
+  valueChanged: true,
+  freshnessAdvanced: true,
+  refreshSnapshot: true,
+  rebuildPlan: true,
+  ...overrides,
+});
 
 const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
   const actionListeners: Record<string, (args: unknown) => Promise<unknown>> = {};
@@ -46,7 +58,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     getSnapshot: vi.fn().mockResolvedValue([]),
     refreshSnapshot: vi.fn().mockResolvedValue(undefined),
     getHomeyDevicesForFlow: vi.fn().mockResolvedValue([]),
-    reportFlowBackedCapability: vi.fn(() => 'changed'),
+    reportFlowBackedCapability: vi.fn(() => stateChangedOutcome()),
     reportSteppedLoadActualStep: vi.fn(() => 'changed'),
     getDeviceLoadSetting: vi.fn().mockResolvedValue(null),
     setExpectedOverride: vi.fn(() => false),
@@ -407,9 +419,15 @@ describe('registerFlowCards', () => {
     }));
   });
 
-  it('refreshes snapshot but skips rebuild when a flow-backed report only updates freshness', async () => {
+  it('does not refresh snapshot or rebuild when a flow-backed report is unchanged', async () => {
     const { deps, actionListeners } = buildDeps({
-      reportFlowBackedCapability: vi.fn(() => 'unchanged'),
+      reportFlowBackedCapability: vi.fn(() => stateChangedOutcome({
+        kind: 'noop',
+        valueChanged: false,
+        freshnessAdvanced: false,
+        refreshSnapshot: false,
+        rebuildPlan: false,
+      })),
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
         { id: 'dev-1', name: 'Relay', class: 'socket', capabilities: ['onoff'] },
       ]),
@@ -427,7 +445,7 @@ describe('registerFlowCards', () => {
       capabilityId: 'onoff',
       value: true,
     });
-    expect(deps.refreshSnapshot).toHaveBeenCalledWith({ emitFlowBackedRefresh: false });
+    expect(deps.refreshSnapshot).not.toHaveBeenCalled();
     expect(deps.rebuildPlan).not.toHaveBeenCalled();
     expect(deps.structuredLog?.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'flow_backed_capability_report_native_overlap',
@@ -436,6 +454,9 @@ describe('registerFlowCards', () => {
       deviceName: 'Relay',
       capabilityId: 'onoff',
       value: true,
+      reportKind: 'noop',
+      valueChanged: false,
+      freshnessAdvanced: false,
       nativeCapabilityPresent: true,
     }));
   });

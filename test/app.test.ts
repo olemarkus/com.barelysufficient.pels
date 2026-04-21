@@ -2543,6 +2543,135 @@ describe('periodic snapshot refresh scheduling', () => {
     }));
   });
 
+  it('does not rewrite stored flow-backed capability state when the reported value is unchanged', async () => {
+    const app = createApp();
+    const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+    const reportedAt = Date.parse('2026-03-20T09:00:00Z');
+    (app as any).flowReportedCapabilities = {
+      'dev-1': {
+        onoff: { value: true, reportedAt, source: 'flow' },
+      },
+    };
+
+    const result = (app as any).reportFlowBackedCapability({
+      deviceId: 'dev-1',
+      capabilityId: 'onoff',
+      value: true,
+      reportedAt,
+    });
+
+    expect(result).toEqual({
+      kind: 'noop',
+      valueChanged: false,
+      freshnessAdvanced: false,
+      refreshSnapshot: false,
+      rebuildPlan: false,
+    });
+    expect(settingsSetSpy).not.toHaveBeenCalled();
+    expect((app as any).flowReportedCapabilities).toEqual({
+      'dev-1': {
+        onoff: { value: true, reportedAt, source: 'flow' },
+      },
+    });
+  });
+
+  it('advances runtime freshness for same-value flow-backed reports without rewriting settings', async () => {
+    const app = createApp();
+    const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+    const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
+    const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
+    const snapshot = [{
+      id: 'dev-1',
+      name: 'Relay',
+      flowBacked: true,
+      flowBackedCapabilityIds: ['onoff'],
+      lastFreshDataMs: initialReportedAt,
+      lastUpdated: initialReportedAt,
+    }];
+    (app as any).deviceManager = {
+      getSnapshot: () => snapshot,
+    };
+    (app as any).flowReportedCapabilities = {
+      'dev-1': {
+        onoff: { value: true, reportedAt: initialReportedAt, source: 'flow' },
+      },
+    };
+
+    const result = (app as any).reportFlowBackedCapability({
+      deviceId: 'dev-1',
+      capabilityId: 'onoff',
+      value: true,
+      reportedAt: nextReportedAt,
+    });
+
+    expect(result).toEqual({
+      kind: 'freshness_only',
+      valueChanged: false,
+      freshnessAdvanced: true,
+      refreshSnapshot: false,
+      rebuildPlan: false,
+    });
+    expect(settingsSetSpy).not.toHaveBeenCalled();
+    expect((app as any).flowReportedCapabilities).toEqual({
+      'dev-1': {
+        onoff: { value: true, reportedAt: nextReportedAt, source: 'flow' },
+      },
+    });
+    expect(snapshot[0]).toEqual(expect.objectContaining({
+      lastFreshDataMs: nextReportedAt,
+      lastUpdated: nextReportedAt,
+    }));
+  });
+
+  it('treats resumable-only flow heartbeats as freshness updates', async () => {
+    const app = createApp();
+    const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+    const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
+    const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
+    const snapshot = [{
+      id: 'ev-1',
+      name: 'Garage Charger',
+      deviceClass: 'evcharger',
+      flowBacked: true,
+      flowBackedCapabilityIds: ['evcharger_charging', 'alarm_generic.car_connected'],
+      lastFreshDataMs: initialReportedAt,
+      lastUpdated: initialReportedAt,
+    }];
+    (app as any).deviceManager = {
+      getSnapshot: () => snapshot,
+    };
+    (app as any).flowReportedCapabilities = {
+      'ev-1': {
+        pels_evcharger_resumable: { value: true, reportedAt: initialReportedAt, source: 'flow' },
+      },
+    };
+
+    const result = (app as any).reportFlowBackedCapability({
+      deviceId: 'ev-1',
+      capabilityId: 'pels_evcharger_resumable',
+      value: true,
+      reportedAt: nextReportedAt,
+    });
+
+    expect(result).toEqual({
+      kind: 'freshness_only',
+      valueChanged: false,
+      freshnessAdvanced: true,
+      refreshSnapshot: false,
+      rebuildPlan: false,
+    });
+    expect(settingsSetSpy).not.toHaveBeenCalled();
+    expect((app as any).flowReportedCapabilities).toEqual({
+      'ev-1': {
+        pels_evcharger_resumable: { value: true, reportedAt: nextReportedAt, source: 'flow' },
+      },
+    });
+    expect(snapshot[0]).toEqual(expect.objectContaining({
+      lastFreshDataMs: nextReportedAt,
+      lastUpdated: nextReportedAt,
+    }));
+  });
+
   it('clears registered timers and flushes pending power tracker persistence on uninit', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
