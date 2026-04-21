@@ -1,6 +1,7 @@
 import type { DevicePlanDevice } from './planTypes';
 import { resolveCandidatePower } from './planCandidatePower';
 import { isSteppedLoadDevice } from './planSteppedLoad';
+import { resolveEffectiveCurrentOn } from './planCurrentState';
 import {
   PENDING_RESTORE_CONFIRMED_FRACTION,
   PENDING_RESTORE_WINDOW_MS,
@@ -175,6 +176,41 @@ export function estimateRestorePower(dev: DevicePlanDevice): number {
   return resolveSharedRestorePower(dev).powerKw;
 }
 
+function resolvePendingOffRestoreHold(
+  dev: DevicePlanDevice,
+  pendingOffRestoreStepByDevice: Record<string, { stepId: string }>,
+): { stepId: string } | undefined {
+  if (!isSteppedLoadDevice(dev)) return undefined;
+  if (resolveEffectiveCurrentOn(dev) !== false) return undefined;
+  return pendingOffRestoreStepByDevice[dev.id];
+}
+
+function hasRecentPendingRestoreTimestamp(
+  lastDeviceRestoreMs: Record<string, number>,
+  deviceId: string,
+  nowTs: number,
+): boolean {
+  const restoreMs = lastDeviceRestoreMs[deviceId];
+  return Boolean(restoreMs && nowTs - restoreMs <= PENDING_RESTORE_WINDOW_MS);
+}
+
+function shouldReservePendingRestoreForDevice(params: {
+  dev: DevicePlanDevice;
+  steppedOffRestoreHold: { stepId: string } | undefined;
+  lastDeviceRestoreMs: Record<string, number>;
+  nowTs: number;
+}): boolean {
+  const { dev, steppedOffRestoreHold, lastDeviceRestoreMs, nowTs } = params;
+  if (isSteppedLoadDevice(dev) && resolveEffectiveCurrentOn(dev) === false && !steppedOffRestoreHold) {
+    return false;
+  }
+  if (!steppedOffRestoreHold && !hasRecentPendingRestoreTimestamp(lastDeviceRestoreMs, dev.id, nowTs)) {
+    return false;
+  }
+  if (!dev.currentOn && !steppedOffRestoreHold) return false;
+  return true;
+}
+
 /**
  * Returns the total power (kW) to reserve for recently restored devices whose elements
  * have not yet fired. Subtracting this from available headroom prevents back-to-back
@@ -183,18 +219,20 @@ export function estimateRestorePower(dev: DevicePlanDevice): number {
 export function computePendingRestorePowerKw(
   planDevices: DevicePlanDevice[],
   lastDeviceRestoreMs: Record<string, number>,
+  pendingOffRestoreStepByDevice: Record<string, { stepId: string }>,
   nowTs: number,
 ): { pendingKw: number; deviceIds: string[] } {
   let pendingKw = 0;
   const deviceIds: string[] = [];
   for (const dev of planDevices) {
     if (dev.plannedState === 'shed') continue;
-    const restoreMs = lastDeviceRestoreMs[dev.id];
-    if (!restoreMs || nowTs - restoreMs > PENDING_RESTORE_WINDOW_MS) continue;
-    // Non-stepped devices that are off are genuinely off — no latent load to reserve for.
-    // Stepped loads are the exception: they remain currentOn=false during their confirmation
-    // window even when a step-up command has already been issued.
-    if (!dev.currentOn && !isSteppedLoadDevice(dev)) continue;
+    const steppedOffRestoreHold = resolvePendingOffRestoreHold(dev, pendingOffRestoreStepByDevice);
+    if (!shouldReservePendingRestoreForDevice({
+      dev,
+      steppedOffRestoreHold,
+      lastDeviceRestoreMs,
+      nowTs,
+    })) continue;
     const expectedKw = estimateRestorePower(dev);
     // Fall back to powerKw when measuredPowerKw is absent — some installations only
     // populate powerKw — so we don't treat a drawing device as drawing 0.

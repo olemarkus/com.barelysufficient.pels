@@ -48,6 +48,11 @@ export type SwapEntry = {
   lastPlanMeasurementTs?: number;
 };
 
+export type PendingOffRestoreHold = {
+  stepId: string;
+  startedMs: number;
+};
+
 export type OvershootTrackedPlanDevice = Pick<
   DevicePlanDevice,
   | 'id'
@@ -75,6 +80,7 @@ export type PlanEngineState = {
   lastDeviceControlledMs: Record<string, number>;
   lastDeviceShedMs: Record<string, number>;
   lastDeviceRestoreMs: Record<string, number>;
+  pendingOffRestoreStepByDevice: Record<string, PendingOffRestoreHold>;
   activationAttemptByDevice: Record<string, ActivationAttemptState>;
   headroomCardByDevice: Record<string, HeadroomCardState>;
   pendingSheds: Set<string>;
@@ -135,6 +141,7 @@ export function createPlanEngineState(nowTs = Date.now()): PlanEngineState {
     lastDeviceControlledMs: {},
     lastDeviceShedMs: {},
     lastDeviceRestoreMs: {},
+    pendingOffRestoreStepByDevice: {},
     activationAttemptByDevice: {},
     headroomCardByDevice: {},
     pendingSheds: new Set<string>(),
