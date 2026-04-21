@@ -13,8 +13,6 @@ const logger = {
 const buildState = () => ({
   expectedPowerKwOverrides: {},
   lastKnownPowerKw: {},
-  lastMeasuredPowerKw: {},
-  lastMeterEnergyKwh: {},
   lastEstimateDecisionLogByDevice: new Map(),
   lastPeakPowerLogByDevice: new Map(),
 });
@@ -59,28 +57,20 @@ describe('estimatePower', () => {
       device: buildDevice(650),
       deviceId: 'dev-1',
       deviceLabel: 'Device 1',
-      powerRaw: undefined,
-      meterPowerRaw: undefined,
       now: Date.now(),
       state,
       logger,
-      minSignificantPowerW: 5,
       updateLastKnownPower: vi.fn(),
-      applyMeasurementUpdates: vi.fn(),
     });
 
     estimatePower({
       device: buildDevice(650),
       deviceId: 'dev-1',
       deviceLabel: 'Device 1',
-      powerRaw: undefined,
-      meterPowerRaw: undefined,
       now: Date.now() + 1000,
       state,
       logger,
-      minSignificantPowerW: 5,
       updateLastKnownPower: vi.fn(),
-      applyMeasurementUpdates: vi.fn(),
     });
 
     expect(logger.structuredLog.debug).toHaveBeenCalledTimes(1);
@@ -98,28 +88,20 @@ describe('estimatePower', () => {
       device: buildDevice(),
       deviceId: 'dev-1',
       deviceLabel: 'Device 1',
-      powerRaw: undefined,
-      meterPowerRaw: undefined,
       now: Date.now(),
       state,
       logger,
-      minSignificantPowerW: 5,
       updateLastKnownPower: vi.fn(),
-      applyMeasurementUpdates: vi.fn(),
     });
 
     estimatePower({
       device: buildDevice(650),
       deviceId: 'dev-1',
       deviceLabel: 'Device 1',
-      powerRaw: undefined,
-      meterPowerRaw: undefined,
       now: Date.now() + 1000,
       state,
       logger,
-      minSignificantPowerW: 5,
       updateLastKnownPower: vi.fn(),
-      applyMeasurementUpdates: vi.fn(),
     });
 
     expect(logger.structuredLog.debug).toHaveBeenCalledTimes(2);
@@ -140,14 +122,10 @@ describe('estimatePower', () => {
       device: buildDevice(0),
       deviceId: 'dev-1',
       deviceLabel: 'Device 1',
-      powerRaw: undefined,
-      meterPowerRaw: undefined,
       now: Date.now(),
       state: buildState(),
       logger,
-      minSignificantPowerW: 5,
       updateLastKnownPower: vi.fn(),
-      applyMeasurementUpdates: vi.fn(),
     });
 
     expect(result.loadKw).toBeUndefined();
@@ -161,14 +139,10 @@ describe('estimatePower', () => {
       device: buildDevice(650),
       deviceId: 'dev-1',
       deviceLabel: 'Device 1',
-      powerRaw: undefined,
-      meterPowerRaw: undefined,
       now: Date.now(),
       state: buildState(),
       logger,
-      minSignificantPowerW: 5,
       updateLastKnownPower,
-      applyMeasurementUpdates: vi.fn(),
     });
 
     expect(result.loadKw).toBeCloseTo(0.65, 3);
@@ -176,6 +150,23 @@ describe('estimatePower', () => {
     expect(result.powerKw).toBeCloseTo(0.65, 3);
     expect(result.measuredPowerKw).toBeUndefined();
     expect(updateLastKnownPower).toHaveBeenCalledWith('dev-1', 0.65, 'Device 1');
+  });
+
+  it('passes measuredPowerKw through while using a load-setting estimate', () => {
+    const result = estimatePower({
+      device: buildDevice(650),
+      deviceId: 'dev-1',
+      deviceLabel: 'Device 1',
+      measuredPowerKw: 0.125,
+      now: Date.now(),
+      state: buildState(),
+      logger,
+      updateLastKnownPower: vi.fn(),
+    });
+
+    expect(result.expectedPowerSource).toBe('load-setting');
+    expect(result.powerKw).toBeCloseTo(0.65, 3);
+    expect(result.measuredPowerKw).toBeCloseTo(0.125, 6);
   });
 
   it('uses Homey energy approximation delta (usageOn - usageOff) when available', () => {
@@ -191,14 +182,10 @@ describe('estimatePower', () => {
       }),
       deviceId: 'dev-socket-1',
       deviceLabel: 'Socket 1',
-      powerRaw: undefined,
-      meterPowerRaw: undefined,
       now: Date.now(),
       state: buildState(),
       logger,
-      minSignificantPowerW: 5,
       updateLastKnownPower: vi.fn(),
-      applyMeasurementUpdates: vi.fn(),
     });
 
     expect(result.expectedPowerSource).toBe('homey-energy');
@@ -225,14 +212,10 @@ describe('estimatePower', () => {
       }),
       deviceId: 'dev-socket-1',
       deviceLabel: 'Socket 1',
-      powerRaw: undefined,
-      meterPowerRaw: undefined,
       now: Date.now(),
       state: buildState(),
       logger,
-      minSignificantPowerW: 5,
       updateLastKnownPower: vi.fn(),
-      applyMeasurementUpdates: vi.fn(),
     });
 
     expect(result.expectedPowerSource).toBe('homey-energy');
@@ -254,14 +237,10 @@ describe('estimatePower', () => {
       }),
       deviceId: 'dev-socket-1',
       deviceLabel: 'Socket 1',
-      powerRaw: undefined,
-      meterPowerRaw: undefined,
       now: Date.now(),
       state: buildState(),
       logger,
-      minSignificantPowerW: 5,
       updateLastKnownPower: vi.fn(),
-      applyMeasurementUpdates: vi.fn(),
     });
 
     expect(result.expectedPowerSource).toBe('default');
@@ -278,14 +257,10 @@ describe('estimatePower', () => {
       }),
       deviceId: 'dev-socket-1',
       deviceLabel: 'Socket 1',
-      powerRaw: undefined,
-      meterPowerRaw: undefined,
       now: Date.now(),
       state: buildState(),
       logger,
-      minSignificantPowerW: 5,
       updateLastKnownPower: vi.fn(),
-      applyMeasurementUpdates: vi.fn(),
     });
 
     expect(result.expectedPowerSource).toBe('homey-energy');
@@ -302,14 +277,10 @@ describe('estimatePower', () => {
       }),
       deviceId: 'dev-socket-1',
       deviceLabel: 'Socket 1',
-      powerRaw: undefined,
-      meterPowerRaw: undefined,
       now: Date.now(),
       state: buildState(),
       logger,
-      minSignificantPowerW: 5,
       updateLastKnownPower: vi.fn(),
-      applyMeasurementUpdates: vi.fn(),
     });
 
     expect(result.expectedPowerSource).toBe('default');

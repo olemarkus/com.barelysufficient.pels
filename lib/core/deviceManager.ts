@@ -13,6 +13,7 @@ import {
 } from './deviceManagerControl';
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { type LiveDevicePowerWatts } from './deviceManagerEnergy';
+import { DeviceMeasuredPowerResolver } from './deviceMeasuredPowerResolver';
 import {
     fetchDevicesByIds,
     fetchDevicesWithFallback,
@@ -84,6 +85,10 @@ const createEstimateDecisionLogState = (): Map<string, { signature: string; emit
 const createPeakPowerLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
 const buildEmptyLivePowerReport = (): LivePowerReport => ({ byDeviceId: {}, homePowerW: null });
 
+type DeviceManagerPowerState = PowerEstimateState & {
+    lastPositiveMeasuredPowerKw?: Record<string, { kw: number; ts: number }>;
+};
+
 export type SnapshotRefreshMetrics = {
     availableDevices: number;
     temperatureKnownDevices: number;
@@ -100,6 +105,7 @@ export class DeviceManager extends EventEmitter {
     private latestSnapshotById: Map<string, TargetDeviceSnapshot> = new Map();
     private latestHomePowerW: number | null = null;
     private powerState: Required<PowerEstimateState>;
+    private measuredPowerResolver: DeviceMeasuredPowerResolver;
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
     private binarySettleState: DeviceManagerBinarySettleState = createBinarySettleState();
     private observationState: DeviceManagerObservationState = createObservationState();
@@ -424,7 +430,7 @@ export class DeviceManager extends EventEmitter {
         homey: Homey.App,
         logger: Logger,
         providers?: DeviceManagerParseProviders,
-        powerState?: PowerEstimateState,
+        powerState?: DeviceManagerPowerState,
         options?: { debugStructured?: StructuredDebugEmitter },
     ) {
         super();
@@ -435,12 +441,15 @@ export class DeviceManager extends EventEmitter {
         this.powerState = {
             expectedPowerKwOverrides: powerState?.expectedPowerKwOverrides ?? {},
             lastKnownPowerKw: powerState?.lastKnownPowerKw ?? {},
-            lastMeasuredPowerKw: powerState?.lastMeasuredPowerKw ?? {},
-            lastMeterEnergyKwh: powerState?.lastMeterEnergyKwh ?? {},
             lastEstimateDecisionLogByDevice:
                 powerState?.lastEstimateDecisionLogByDevice ?? createEstimateDecisionLogState(),
             lastPeakPowerLogByDevice: powerState?.lastPeakPowerLogByDevice ?? createPeakPowerLogState(),
         };
+        this.measuredPowerResolver = new DeviceMeasuredPowerResolver({
+            logger: this.logger,
+            lastPositiveMeasuredPowerKw: powerState?.lastPositiveMeasuredPowerKw ?? {},
+            minSignificantPowerW: MIN_SIGNIFICANT_POWER_W,
+        });
     }
 
     getSnapshot(): TargetDeviceSnapshot[] { return this.latestSnapshot; }
@@ -837,7 +846,7 @@ export class DeviceManager extends EventEmitter {
             logger: this.logger,
             providers: this.providers,
             powerState: this.powerState,
-            minSignificantPowerW: MIN_SIGNIFICANT_POWER_W,
+            measuredPowerResolver: this.measuredPowerResolver,
             getCapabilityObj: (device: HomeyDeviceLike) => this.getCapabilityObj(device),
             isPowerCapable: (
                 device: HomeyDeviceLike,

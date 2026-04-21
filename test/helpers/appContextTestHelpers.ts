@@ -213,7 +213,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     set defaultComputeDynamicSoftLimit(value) { defaultComputeDynamicSoftLimit = value; },
     get lastKnownPowerKw() { return {}; },
     get expectedPowerKwOverrides() { return {}; },
-    get lastMeasuredPowerKw() { return {}; },
+    get lastPositiveMeasuredPowerKw() { return {}; },
     get lastNotifiedOperatingMode() { return lastNotifiedOperatingMode; },
     set lastNotifiedOperatingMode(value) { lastNotifiedOperatingMode = value; },
     get powerSampleRebuildState() { return powerSampleRebuildState; },

@@ -1,12 +1,9 @@
 import { roundLogValue, shouldEmitOnChange } from '../logging/logDedupe';
 import type { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
-import { getMeasuredPowerKw, type PowerMeasurementUpdates } from './powerMeasurement';
 
 export type PowerEstimateState = {
   expectedPowerKwOverrides?: Record<string, { kw: number; ts: number }>;
   lastKnownPowerKw?: Record<string, number>;
-  lastMeasuredPowerKw?: Record<string, { kw: number; ts: number }>;
-  lastMeterEnergyKwh?: Record<string, { kwh: number; ts: number }>;
   lastEstimateDecisionLogByDevice?: Map<string, { signature: string; emittedAt: number }>;
   lastPeakPowerLogByDevice?: Map<string, { signature: string; emittedAt: number }>;
 };
@@ -24,52 +21,29 @@ export function estimatePower(params: {
   device: HomeyDeviceLike;
   deviceId: string;
   deviceLabel: string;
-  powerRaw: unknown;
-  meterPowerRaw: unknown;
+  measuredPowerKw?: number;
   now: number;
   state: Required<PowerEstimateState>;
   logger: Logger;
-  minSignificantPowerW: number;
   updateLastKnownPower: (deviceId: string, measuredKw: number, deviceLabel: string) => void;
-  applyMeasurementUpdates: (deviceId: string, updates: PowerMeasurementUpdates, deviceLabel: string) => void;
 }): PowerEstimateResult {
   const {
     device,
     deviceId,
     deviceLabel,
-    powerRaw,
-    meterPowerRaw,
+    measuredPowerKw,
     now,
     state,
     logger,
-    minSignificantPowerW,
     updateLastKnownPower,
-    applyMeasurementUpdates,
   } = params;
 
   const loadW = getLoadSettingWatts(device);
   const expectedOverride = state.expectedPowerKwOverrides[deviceId];
   const energyEstimateW = getHomeyEnergyEstimateWatts(device);
-  const resolveMeasuredPower = () => {
-    const measured = getMeasuredPowerKw({
-      deviceId,
-      deviceLabel,
-      powerRaw,
-      meterPowerRaw,
-      now,
-      minSignificantPowerW,
-      state,
-      logger,
-    });
-    if (measured.updates.lastMeterEnergyKwh || measured.updates.lastMeasuredPowerKw) {
-      applyMeasurementUpdates(deviceId, measured.updates, deviceLabel);
-    }
-    return measured;
-  };
 
   const result = loadW !== null
     ? (() => {
-      const measured = resolveMeasuredPower();
       return {
         ...getPowerFromLoad({
           deviceId,
@@ -78,7 +52,7 @@ export function estimatePower(params: {
           expectedOverride,
           updateLastKnownPower,
         }),
-        measuredPowerKw: measured.measuredPowerKw,
+        measuredPowerKw,
       };
     })()
     : getPowerFromMeasurement({
@@ -86,7 +60,7 @@ export function estimatePower(params: {
       expectedOverride,
       energyEstimateW,
       state,
-      resolveMeasuredPower,
+      measuredPowerKw,
     });
 
   emitEstimateDecisionLog({
@@ -211,22 +185,21 @@ function getPowerFromMeasurement(params: {
   expectedOverride?: { kw: number; ts: number };
   energyEstimateW: number | null;
   state: Required<PowerEstimateState>;
-  resolveMeasuredPower: () => { measuredKw?: number; measuredPowerKw?: number };
+  measuredPowerKw?: number;
 }): PowerEstimateResult {
   const {
     deviceId,
     expectedOverride,
     energyEstimateW,
     state,
-    resolveMeasuredPower,
+    measuredPowerKw,
   } = params;
-  const measured = resolveMeasuredPower();
   const peak = state.lastKnownPowerKw[deviceId];
 
   if (expectedOverride) {
     return resolveOverrideEstimate({
       expectedOverride,
-      measuredKw: measured.measuredKw,
+      measuredKw: measuredPowerKw,
     });
   }
   if (peak) {
@@ -234,7 +207,7 @@ function getPowerFromMeasurement(params: {
       powerKw: peak,
       expectedPowerKw: peak,
       expectedPowerSource: 'measured-peak',
-      measuredPowerKw: measured.measuredPowerKw,
+      measuredPowerKw,
     };
   }
   if (energyEstimateW !== null) {
@@ -243,7 +216,7 @@ function getPowerFromMeasurement(params: {
       powerKw: energyEstimateKw,
       expectedPowerKw: energyEstimateKw,
       expectedPowerSource: 'homey-energy',
-      measuredPowerKw: measured.measuredPowerKw,
+      measuredPowerKw,
       hasEnergyEstimate: true,
     };
   }
@@ -251,7 +224,7 @@ function getPowerFromMeasurement(params: {
     powerKw: 1,
     expectedPowerKw: undefined,
     expectedPowerSource: 'default',
-    measuredPowerKw: measured.measuredPowerKw,
+    measuredPowerKw,
   };
 }
 

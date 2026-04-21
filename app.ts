@@ -146,7 +146,7 @@ class PelsApp extends Homey.App {
   private lastKnownPowerKw: Record<string, number> = {};
   private expectedPowerKwOverrides: Record<string, { kw: number; ts: number }> = {};
   private overheadToken?: Homey.FlowToken;
-  private lastMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
+  private lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
   private lastNotifiedOperatingMode = 'Home';
   private powerSampleRebuildState: PowerSampleRebuildState = { lastMs: 0 };
   private readonly planRebuildScheduler = new PlanRebuildScheduler({
@@ -424,7 +424,7 @@ class PelsApp extends Homey.App {
       set defaultComputeDynamicSoftLimit(value) { appRef.defaultComputeDynamicSoftLimit = value; },
       get lastKnownPowerKw() { return app.lastKnownPowerKw; },
       get expectedPowerKwOverrides() { return app.expectedPowerKwOverrides; },
-      get lastMeasuredPowerKw() { return app.lastMeasuredPowerKw; },
+      get lastPositiveMeasuredPowerKw() { return app.lastPositiveMeasuredPowerKw; },
       get lastNotifiedOperatingMode() { return app.lastNotifiedOperatingMode; },
       set lastNotifiedOperatingMode(value) { appRef.lastNotifiedOperatingMode = value; },
       get powerSampleRebuildState() { return app.powerSampleRebuildState; },
@@ -551,7 +551,7 @@ class PelsApp extends Homey.App {
     }, {
       expectedPowerKwOverrides: this.expectedPowerKwOverrides,
       lastKnownPowerKw: this.lastKnownPowerKw,
-      lastMeasuredPowerKw: this.lastMeasuredPowerKw,
+      lastPositiveMeasuredPowerKw: this.lastPositiveMeasuredPowerKw,
     }, {
       debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
     });

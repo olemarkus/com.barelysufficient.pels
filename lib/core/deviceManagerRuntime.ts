@@ -1,6 +1,5 @@
 import { roundLogValue, shouldEmitOnChange } from '../logging/logDedupe';
 import type { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
-import type { PowerMeasurementUpdates } from './powerMeasurement';
 import {
   formatBinaryState,
   formatTargetValue,
@@ -63,34 +62,6 @@ export function updateLastKnownPower(params: {
     previousPeakKw,
     peakKw,
   });
-}
-
-export function applyMeasurementUpdates(params: {
-  state: {
-    lastKnownPowerKw: Record<string, number>;
-    lastMeterEnergyKwh: Record<string, { kwh: number; ts: number }>;
-    lastMeasuredPowerKw: Record<string, { kw: number; ts: number }>;
-    lastPeakPowerLogByDevice?: Map<string, { signature: string; emittedAt: number }>;
-  };
-  logger: Logger;
-  deviceId: string;
-  updates: PowerMeasurementUpdates;
-  deviceLabel: string;
-}): void {
-  const {
-    state,
-    logger,
-    deviceId,
-    updates,
-    deviceLabel,
-  } = params;
-  if (updates.lastMeterEnergyKwh) {
-    state.lastMeterEnergyKwh[deviceId] = updates.lastMeterEnergyKwh;
-  }
-  if (updates.lastMeasuredPowerKw) {
-    state.lastMeasuredPowerKw[deviceId] = updates.lastMeasuredPowerKw;
-    updateLastKnownPower({ state, logger, deviceId, measuredKw: updates.lastMeasuredPowerKw.kw, deviceLabel });
-  }
 }
 
 export function reconcileRealtimeDeviceUpdate(params: {
