@@ -207,7 +207,126 @@ const logSteppedLoadRestoreViolations = (
   }
 };
 
-/* eslint-disable max-params, complexity, sonarjs/cognitive-complexity --
+const logSteppedLoadRestoreAttemptSkip = (
+  ctx: PlanExecutorSteppedContext,
+  params: {
+    dev: PlanDevice;
+    mode: PlanActuationMode;
+    deviceName: string;
+    desiredStepId?: string;
+    matchingRestoreAttempt: NonNullable<ReturnType<typeof resolveSteppedRestoreAttemptState>>;
+  },
+): false => {
+  const {
+    dev,
+    mode,
+    deviceName,
+    desiredStepId,
+    matchingRestoreAttempt,
+  } = params;
+  return logSteppedLoadRestoreSkip(ctx, {
+    dev,
+    mode,
+    reasonCode: matchingRestoreAttempt.status === 'awaiting_confirmation'
+      ? 'waiting_for_confirmation'
+      : 'retry_backoff',
+    logMessage:
+      matchingRestoreAttempt.status === 'awaiting_confirmation'
+        ? `Capacity: skip stepped-load restore for ${deviceName}, `
+          + `awaiting confirmation of ${desiredStepId ?? 'unknown'}`
+        : `Capacity: skip stepped-load restore for ${deviceName}, `
+          + `retry backoff for ${desiredStepId ?? 'unknown'} remains active`,
+  });
+};
+
+const maybeSkipSteppedLoadRestoreBinary = (
+  ctx: PlanExecutorSteppedContext,
+  params: {
+    dev: PlanDevice;
+    snapshot: TargetDeviceSnapshot | undefined;
+    mode: PlanActuationMode;
+    deviceName: string;
+    matchingRestoreAttempt: ReturnType<typeof resolveSteppedRestoreAttemptState>;
+    stepNeedsAdjustment: boolean;
+    stepNeedsConfirmation: boolean;
+    stepViolated: boolean;
+    preRestoreStepIssued?: boolean;
+  },
+): false | null => {
+  const {
+    dev,
+    snapshot,
+    mode,
+    deviceName,
+    matchingRestoreAttempt,
+    stepNeedsAdjustment,
+    stepNeedsConfirmation,
+    stepViolated,
+    preRestoreStepIssued,
+  } = params;
+  if (!snapshot) {
+    return logSteppedLoadRestoreSkip(ctx, {
+      dev,
+      mode,
+      reasonCode: 'missing_snapshot',
+      logMessage: `Capacity: skip stepped-load restore for ${deviceName}, no snapshot available`,
+    });
+  }
+  if (!canTurnOnDevice(snapshot)) {
+    return logSteppedLoadRestoreSkip(ctx, {
+      dev,
+      mode,
+      reasonCode: 'not_setable',
+      logMessage: `Capacity: skip stepped-load restore for ${deviceName}, cannot turn on from current snapshot`,
+    });
+  }
+  if (ctx.state.pendingRestores.has(dev.id)) {
+    return logSteppedLoadRestoreSkip(ctx, {
+      dev,
+      mode,
+      reasonCode: 'already_in_progress',
+      logMessage: `Capacity: skip stepped-load restore for ${deviceName}, already in progress`,
+    });
+  }
+  if (snapshot.currentOn === false && stepNeedsConfirmation) {
+    return logSteppedLoadRestoreSkip(ctx, {
+      dev,
+      mode,
+      reasonCode: 'pre_restore_step_required',
+      logMessage:
+        `Capacity: skip stepped-load restore for ${deviceName}, `
+        + `assumed step ${dev.assumedStepId ?? 'unknown'} must be confirmed before binary restore`,
+    });
+  }
+  if (
+    snapshot.currentOn === false
+    && stepViolated
+    && preRestoreStepIssued !== true
+    && !matchingRestoreAttempt
+  ) {
+    return logSteppedLoadRestoreSkip(ctx, {
+      dev,
+      mode,
+      reasonCode: 'pre_restore_step_required',
+      logMessage:
+        `Capacity: skip stepped-load restore for ${deviceName}, `
+        + 'required pre-restore step command was not issued',
+    });
+  }
+  if (snapshot.currentOn !== false && !stepNeedsAdjustment) {
+    return logSteppedLoadRestoreSkip(ctx, {
+      dev,
+      mode,
+      reasonCode: 'no_keep_violation',
+      logMessage:
+        `Capacity: skip stepped-load restore for ${deviceName}, `
+        + 'no keep violations detected',
+    });
+  }
+  return null;
+};
+
+/* eslint-disable max-params, complexity --
  * Restore evaluation still needs the full invariant context after the
  * executor split.
  */
@@ -228,7 +347,6 @@ export const applySteppedLoadRestore = async (
       logMessage: `Capacity: skip stepped-load restore for ${name}, plannedState is ${dev.plannedState}`,
     });
   }
-  const onoffViolated = snapshot?.currentOn === false;
   const {
     effectiveCurrentOn,
     desiredStepId,
@@ -236,19 +354,15 @@ export const applySteppedLoadRestore = async (
     stepNeedsAdjustment,
     stepNeedsConfirmation,
   } = evaluateSteppedLoadRestoreState(dev);
-  if (effectiveCurrentOn === true && matchingRestoreAttempt && stepNeedsAdjustment) {
-    return logSteppedLoadRestoreSkip(ctx, {
+  const shouldDeferRestoreForAttempt = stepNeedsAdjustment && matchingRestoreAttempt
+    && (effectiveCurrentOn === true || matchingRestoreAttempt.status === 'retry_backoff');
+  if (shouldDeferRestoreForAttempt) {
+    return logSteppedLoadRestoreAttemptSkip(ctx, {
       dev,
       mode,
-      reasonCode: matchingRestoreAttempt.status === 'awaiting_confirmation'
-        ? 'waiting_for_confirmation'
-        : 'retry_backoff',
-      logMessage:
-        matchingRestoreAttempt.status === 'awaiting_confirmation'
-          ? `Capacity: skip stepped-load restore for ${name}, `
-            + `awaiting confirmation of ${desiredStepId ?? 'unknown'}`
-          : `Capacity: skip stepped-load restore for ${name}, `
-            + `retry backoff for ${desiredStepId ?? 'unknown'} remains active`,
+      deviceName: name,
+      desiredStepId,
+      matchingRestoreAttempt,
     });
   }
   logSteppedLoadRestoreViolations(ctx, dev, name, {
@@ -268,70 +382,35 @@ export const applySteppedLoadRestore = async (
     });
   }
   const stepViolated = effectiveCurrentOn === false && stepNeedsAdjustment;
-  if (onoffViolated) {
+  if (snapshot?.currentOn === false) {
     ctx.logDebug(`Capacity: ${name} violates keep invariant: onoff=${snapshot?.currentOn}`);
-  }
-  if (!onoffViolated && !stepNeedsAdjustment) {
-    return logSteppedLoadRestoreSkip(ctx, {
-      dev,
-      mode,
-      reasonCode: 'no_keep_violation',
-      logMessage:
-        `Capacity: skip stepped-load restore for ${name}, `
-        + 'no keep violations detected',
-    });
   }
   if (applyKeepInvariantShedBlock(ctx, dev, name, anyShedDevices, desiredStepId)) return false;
   // eslint-disable-next-line no-param-reassign -- Shared executor state update.
   delete ctx.state.keepInvariantShedBlockedByDevice[dev.id];
-  if (!snapshot) {
-    return logSteppedLoadRestoreSkip(ctx, {
-      dev,
-      mode,
-      reasonCode: 'missing_snapshot',
-      logMessage: `Capacity: skip stepped-load restore for ${name}, no snapshot available`,
-    });
-  }
-  if (!canTurnOnDevice(snapshot)) {
-    return logSteppedLoadRestoreSkip(ctx, {
-      dev,
-      mode,
-      reasonCode: 'not_setable',
-      logMessage: `Capacity: skip stepped-load restore for ${name}, cannot turn on from current snapshot`,
-    });
-  }
-  if (ctx.state.pendingRestores.has(dev.id)) {
-    return logSteppedLoadRestoreSkip(ctx, {
-      dev,
-      mode,
-      reasonCode: 'already_in_progress',
-      logMessage: `Capacity: skip stepped-load restore for ${name}, already in progress`,
-    });
-  }
-  if (onoffViolated && stepNeedsConfirmation) {
-    return logSteppedLoadRestoreSkip(ctx, {
-      dev,
-      mode,
-      reasonCode: 'pre_restore_step_required',
-      logMessage:
-        `Capacity: skip stepped-load restore for ${name}, `
-        + `assumed step ${dev.assumedStepId ?? 'unknown'} must be confirmed before binary restore`,
-    });
-  }
-  if (onoffViolated && stepViolated && options.preRestoreStepIssued !== true && !matchingRestoreAttempt) {
-    return logSteppedLoadRestoreSkip(ctx, {
-      dev,
-      mode,
-      reasonCode: 'pre_restore_step_required',
-      logMessage:
-        `Capacity: skip stepped-load restore for ${name}, `
-        + 'required pre-restore step command was not issued',
-    });
-  }
-  if (!onoffViolated) return true;
-  return executeSteppedLoadRestoreBinary(ctx, { dev, snapshot, mode, name, onoffViolated, stepViolated });
+  const binaryRestoreSkip = maybeSkipSteppedLoadRestoreBinary(ctx, {
+    dev,
+    snapshot,
+    mode,
+    deviceName: name,
+    matchingRestoreAttempt,
+    stepNeedsAdjustment,
+    stepNeedsConfirmation,
+    stepViolated,
+    preRestoreStepIssued: options.preRestoreStepIssued,
+  });
+  if (binaryRestoreSkip === false) return false;
+  if (snapshot?.currentOn !== false) return true;
+  return executeSteppedLoadRestoreBinary(ctx, {
+    dev,
+    snapshot,
+    mode,
+    name,
+    onoffViolated: snapshot?.currentOn === false,
+    stepViolated,
+  });
 };
-/* eslint-enable max-params, complexity, sonarjs/cognitive-complexity */
+/* eslint-enable max-params, complexity */
 
 /* eslint-disable complexity --
  * Stepped-load shed-off still combines off-step validation with binary
