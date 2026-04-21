@@ -397,20 +397,20 @@ describe('computePendingRestorePowerKw', () => {
 
   it('reserves gap for recently restored device whose element has not fired', () => {
     const dev = buildPlanDevice({ id: 'therm', currentOn: true, expectedPowerKw: 2, measuredPowerKw: 0 });
-    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, {}, now);
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.deviceIds).toEqual(['therm']);
     expect(result.pendingKw).toBeCloseTo(2, 5); // full gap: expected 2, actual 0
   });
 
   it('reserves only the gap, not full expected power, when device is partially drawing', () => {
     const dev = buildPlanDevice({ id: 'therm', currentOn: true, expectedPowerKw: 3, measuredPowerKw: 0.5 });
-    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, {}, now);
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBeCloseTo(2.5, 5); // gap: 3 - 0.5
   });
 
   it('skips device that has confirmed its draw (>=50% of expected)', () => {
     const dev = buildPlanDevice({ id: 'therm', currentOn: true, expectedPowerKw: 2, measuredPowerKw: 1.5 });
-    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, {}, now);
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBe(0);
     expect(result.deviceIds).toHaveLength(0);
   });
@@ -418,21 +418,8 @@ describe('computePendingRestorePowerKw', () => {
   it('skips device restored outside the pending window', () => {
     const oldMs = now - PENDING_RESTORE_WINDOW_MS - 1000;
     const dev = buildPlanDevice({ id: 'therm', currentOn: true, expectedPowerKw: 2, measuredPowerKw: 0 });
-    const result = computePendingRestorePowerKw([dev], { therm: oldMs }, {}, now);
+    const result = computePendingRestorePowerKw([dev], { therm: oldMs }, now);
     expect(result.pendingKw).toBe(0);
-  });
-
-  it('reserves headroom for explicit off-path stepped restore hold even without restore timestamps', () => {
-    const dev = steppedPlanDevice({
-      id: 'therm',
-      currentOn: false,
-      currentState: 'off',
-      planningPowerKw: 2,
-      measuredPowerKw: 0,
-    });
-    const result = computePendingRestorePowerKw([dev], {}, { therm: { stepId: 'low' } }, now);
-    expect(result.deviceIds).toEqual(['therm']);
-    expect(result.pendingKw).toBeCloseTo(estimateRestorePower(dev), 5);
   });
 
   it('does not reserve headroom for off-path stepped restore from lastDeviceRestoreMs alone', () => {
@@ -443,7 +430,7 @@ describe('computePendingRestorePowerKw', () => {
       planningPowerKw: 2,
       measuredPowerKw: 0,
     });
-    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, {}, now);
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBe(0);
     expect(result.deviceIds).toHaveLength(0);
   });
@@ -451,7 +438,7 @@ describe('computePendingRestorePowerKw', () => {
   it('skips ordinary (non-stepped) device that is off within the window', () => {
     // Restore command may not have taken effect, or device was turned back off — no latent load.
     const dev = buildPlanDevice({ id: 'therm', currentOn: false, expectedPowerKw: 2, measuredPowerKw: 0 });
-    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, {}, now);
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBe(0);
     expect(result.deviceIds).toHaveLength(0);
   });
@@ -460,7 +447,7 @@ describe('computePendingRestorePowerKw', () => {
     // Installations without live power only populate powerKw. Treat it as actual draw so
     // a device already drawing via powerKw is not double-reserved for the full expected load.
     const dev = buildPlanDevice({ id: 'therm', currentOn: true, expectedPowerKw: 3, powerKw: 1 });
-    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, {}, now);
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBeCloseTo(2, 5); // gap: 3 - 1 (1 < 3*0.5 — not yet confirmed)
   });
 
@@ -474,7 +461,7 @@ describe('computePendingRestorePowerKw', () => {
       planningPowerKw: 1.5,
       measuredPowerKw: 3,
     });
-    const result = computePendingRestorePowerKw([dev], { stepper: recentMs }, {}, now);
+    const result = computePendingRestorePowerKw([dev], { stepper: recentMs }, now);
     expect(estimateRestorePower(dev)).toBe(3);
     expect(result.pendingKw).toBeCloseTo(0, 5); // already confirmed against the conservative estimate
   });
@@ -482,7 +469,7 @@ describe('computePendingRestorePowerKw', () => {
   it('considers powerKw-only device confirmed when powerKw meets threshold', () => {
     // powerKw=1.2 meets the 50% threshold of expectedPowerKw=2 — device is confirmed, no reservation.
     const dev = buildPlanDevice({ id: 'therm', currentOn: true, expectedPowerKw: 2, powerKw: 1.2 });
-    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, {}, now);
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBe(0);
     expect(result.deviceIds).toHaveLength(0);
   });
@@ -490,14 +477,14 @@ describe('computePendingRestorePowerKw', () => {
   it('skips device already planned to be shed this cycle', () => {
     // Re-shed device keeps its recent restore timestamp but must not block unrelated restores.
     const dev = buildPlanDevice({ id: 'therm', currentOn: true, plannedState: 'shed', expectedPowerKw: 2, measuredPowerKw: 0 });
-    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, {}, now);
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBe(0);
     expect(result.deviceIds).toHaveLength(0);
   });
 
   it('skips device with no restore timestamp in state', () => {
     const dev = buildPlanDevice({ id: 'therm', currentOn: true, expectedPowerKw: 2, measuredPowerKw: 0 });
-    const result = computePendingRestorePowerKw([dev], {}, {}, now);
+    const result = computePendingRestorePowerKw([dev], {}, now);
     expect(result.pendingKw).toBe(0);
   });
 
@@ -507,7 +494,6 @@ describe('computePendingRestorePowerKw', () => {
     const result = computePendingRestorePowerKw(
       [dev1, dev2],
       { d1: recentMs, d2: recentMs },
-      {},
       now,
     );
     expect(result.pendingKw).toBeCloseTo(5, 5);

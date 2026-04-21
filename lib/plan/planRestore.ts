@@ -110,14 +110,13 @@ export function applyRestorePlan(params: {
   cleanupStaleSwaps(swapState, deps.structuredLog);
 
   const restoredThisCycle = new Set<string>();
-  let availableHeadroom = reserveHeadroomForPendingRestores({
-    rawHeadroom: context.headroomRaw,
+  let availableHeadroom = reserveHeadroomForPendingRestores(
+    context.headroomRaw,
     planDevices,
-    lastDeviceRestoreMs: state.lastDeviceRestoreMs,
-    pendingOffRestoreStepByDevice: state.pendingOffRestoreStepByDevice,
-    debugStructured: deps.debugStructured,
-    deviceNameById: deps.deviceNameById,
-  });
+    state.lastDeviceRestoreMs,
+    deps.debugStructured,
+    deps.deviceNameById,
+  );
   let restoredOneThisCycle = false;
 
   if (shouldPlanRestores(context.headroomRaw, sheddingActive, effectiveTiming)) {

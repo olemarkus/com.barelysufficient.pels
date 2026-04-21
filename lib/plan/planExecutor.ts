@@ -45,7 +45,6 @@ import {
   type PlanExecutorSteppedContext,
 } from './planExecutorStepped';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
-import { resolveSteppedKeepDesiredStepId, resolveSteppedLoadTransition } from './planSteppedLoad';
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
@@ -119,14 +118,6 @@ export class PlanExecutor {
     name: string,
     now: number,
   ): void => this.recordRestoreActuation(deviceId, name, now);
-  private readonly boundSetPendingOffRestoreHold = (
-    deviceId: string,
-    stepId: string,
-    now: number,
-  ): void => this.setPendingOffRestoreHold(deviceId, stepId, now);
-  private readonly boundClearPendingOffRestoreHold = (
-    deviceId: string,
-  ): void => this.clearPendingOffRestoreHold(deviceId);
   private readonly boundRecordActivationAttemptStarted = (
     deviceId: string,
     name: string,
@@ -225,23 +216,6 @@ export class PlanExecutor {
     });
   }
 
-  private setPendingOffRestoreHold(deviceId: string, stepId: string, now: number): void {
-    this.state.pendingOffRestoreStepByDevice[deviceId] = { stepId, startedMs: now };
-  }
-
-  private clearPendingOffRestoreHold(deviceId: string): void {
-    delete this.state.pendingOffRestoreStepByDevice[deviceId];
-  }
-
-  private syncPendingOffRestoreHold(dev: DevicePlan['devices'][number]): void {
-    if (!isSteppedLoadDevice(dev)) return;
-    const transition = resolveSteppedLoadTransition(dev, resolveSteppedKeepDesiredStepId(dev));
-    if (dev.plannedState === 'keep' && transition?.effectiveTransition === 'restore_from_off_at_low') {
-      return;
-    }
-    this.clearPendingOffRestoreHold(dev.id);
-  }
-
   private markSteppedLoadDesiredStepIssued(params: {
     deviceId: string;
     desiredStepId: string;
@@ -319,8 +293,6 @@ export class PlanExecutor {
         markSteppedLoadDesiredStepIssued: this.boundMarkSteppedLoadDesiredStepIssued,
         recordShedActuation: this.boundRecordShedActuation,
         recordRestoreActuation: this.boundRecordRestoreActuation,
-        setPendingOffRestoreHold: this.boundSetPendingOffRestoreHold,
-        clearPendingOffRestoreHold: this.boundClearPendingOffRestoreHold,
         getRestoreLogSource: this.boundGetRestoreLogSource,
         getDesiredSteppedLoadTrigger: this.boundGetDesiredSteppedLoadTrigger,
         deviceDiagnostics: this.deps.deviceDiagnostics,
@@ -798,7 +770,6 @@ export class PlanExecutor {
       for (const dev of plan.devices) {
         const snapshot = snapshotMap.get(dev.id);
         try {
-          this.syncPendingOffRestoreHold(dev);
           if (shouldSkipUnavailable({
             snapshot,
             name: dev.name,
