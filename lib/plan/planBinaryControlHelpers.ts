@@ -215,6 +215,77 @@ export function formatEvSnapshot(snapshot?: TargetDeviceSnapshot): string {
   ].join(', ');
 }
 
+export function isFlowBackedBinaryControl(
+  snapshot: TargetDeviceSnapshot | undefined,
+  capabilityId: 'onoff' | 'evcharger_charging',
+): boolean {
+  return Array.isArray(snapshot?.flowBackedCapabilityIds)
+    && snapshot.flowBackedCapabilityIds.includes(capabilityId);
+}
+
+export function buildFlowBackedBinaryControlRequestLogMessage(params: {
+  logContext: BinaryControlLogContext;
+  desired: boolean;
+  name: string;
+  reason?: string;
+  restoreSource?: BinaryControlRestoreSource;
+  actuationMode?: BinaryControlActuationMode;
+}): string {
+  const {
+    logContext,
+    desired,
+    name,
+    reason,
+    restoreSource = 'current_plan',
+    actuationMode = 'plan',
+  } = params;
+  if (desired) {
+    const prefix = logContext === 'capacity_control_off' ? 'Capacity control off' : 'Capacity';
+    const suffix = resolveBinaryRestoreSuffix({ logContext, restoreSource, actuationMode });
+    return `${prefix}: requested turn on for ${name}${suffix}`;
+  }
+  if (actuationMode === 'reconcile') {
+    return `Capacity: requested turn off for ${name} (reconcile after drift)`;
+  }
+  if (reason && logContext === 'capacity') {
+    return `Capacity: requested turn off for ${name} (${reason})`;
+  }
+  if (logContext === 'capacity') {
+    return `Capacity: requested turn off for ${name} (shedding)`;
+  }
+  return `Capacity control off: requested turn off for ${name}`;
+}
+
+export function resolveBinaryRestoreSuffix(params: {
+  logContext: BinaryControlLogContext;
+  restoreSource: BinaryControlRestoreSource;
+  actuationMode: BinaryControlActuationMode;
+}): string {
+  const { logContext, restoreSource, actuationMode } = params;
+  if (logContext !== 'capacity') return '';
+  if (actuationMode === 'reconcile') return ' (reconcile after drift)';
+  return restoreSource === 'shed_state'
+    ? ' (restored from shed state)'
+    : ' (to match current plan)';
+}
+
+export function buildFlowBackedEvBinaryControlRequestLogMessage(
+  logContext: BinaryControlLogContext,
+  desired: boolean,
+  name: string,
+  reason?: string,
+  actuationMode: BinaryControlActuationMode = 'plan',
+): string {
+  const prefix = logContext === 'capacity_control_off' ? 'Capacity control off' : 'Capacity';
+  if (actuationMode === 'reconcile') {
+    const actionText = desired ? 'requested charging resume for' : 'requested charging pause for';
+    return `${prefix}: ${actionText} ${name} (reconcile after drift)`;
+  }
+  const actionText = desired ? 'requested charging resume for' : 'requested charging pause for';
+  const suffix = !desired && reason ? ` (${reason})` : '';
+  return `${prefix}: ${actionText} ${name}${suffix}`;
+}
+
 export function formatPendingBinaryObservedValue(
   capabilityId: 'onoff' | 'evcharger_charging',
   value: boolean | string | undefined,

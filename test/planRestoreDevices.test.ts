@@ -157,11 +157,11 @@ describe('plan restore device helpers', () => {
     expect(getEvRestoreStateBlockReason(makeDevice({
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in',
-    }))).toBeNull();
+    }))).toBe('charger is not resumable');
     expect(getEvUnknownPowerBlockReason(makeDevice({
       controlCapabilityId: 'evcharger_charging',
       expectedPowerSource: 'default',
-    }))).toBe('charger power unknown; configure expected power or let PELS observe a charging peak');
+    }))).toBeNull();
     expect(getEvUnknownPowerBlockReason(makeDevice({
       controlCapabilityId: 'onoff',
       expectedPowerSource: 'default',
@@ -170,11 +170,11 @@ describe('plan restore device helpers', () => {
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_out',
     })))).toBe('inactive (charger is unplugged)');
-    expect(reasonText(getInactiveReason(makeDevice({
+    expect(getInactiveReason(makeDevice({
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_paused',
       expectedPowerSource: 'default',
-    })))).toBe('inactive (charger power unknown; configure expected power or let PELS observe a charging peak)');
+    }))).toBeNull();
 
     const deviceMap = new Map<string, DevicePlanDevice>([
       ['dev1', makeDevice({ id: 'dev1', name: 'Device 1', powerKw: 1.1 })],

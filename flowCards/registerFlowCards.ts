@@ -1,10 +1,11 @@
 /* eslint-disable max-lines -- Flow card registration stays centralized in this module. */
 import { PriceLevel, PRICE_LEVEL_OPTIONS, PriceLevelOption } from '../lib/price/priceLevels';
 import CapacityGuard from '../lib/core/capacityGuard';
-import { FlowHomeyLike, TargetDeviceSnapshot } from '../lib/utils/types';
+import { FlowHomeyLike, HomeyDeviceLike, TargetDeviceSnapshot } from '../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../lib/app/appDeviceControlHelpers';
 import { registerExpectedPowerCard } from './expectedPower';
 import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from '../lib/plan/planHeadroomDevice';
+import type { FlowReportedCapabilityId } from '../lib/core/flowReportedCapabilities';
 import {
   CAPACITY_LIMIT_KW,
   DAILY_BUDGET_ENABLED,
@@ -24,11 +25,15 @@ import {
   registerManagedDeviceCondition,
 } from './deviceSettingsCards';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
+import { parseFlowPowerInput, registerFlowBackedDeviceCards } from './flowBackedDeviceCards';
 
 type DeviceArg = RawFlowDeviceArg;
 
 export type FlowCardDeps = {
   homey: FlowHomeyLike;
+  structuredLog?: {
+    info: (payload: Record<string, unknown>) => void;
+  };
   resolveModeName: (mode: string) => string;
   getAllModes: () => Set<string>;
   getCurrentOperatingMode: () => string;
@@ -39,7 +44,13 @@ export type FlowCardDeps = {
   getHeadroom: () => number | null;
   setCapacityLimit: (kw: number) => void;
   getSnapshot: () => Promise<TargetDeviceSnapshot[]>;
-  refreshSnapshot: () => Promise<void>;
+  refreshSnapshot: (options?: { emitFlowBackedRefresh?: boolean }) => Promise<void>;
+  getHomeyDevicesForFlow: () => Promise<HomeyDeviceLike[]>;
+  reportFlowBackedCapability: (params: {
+    deviceId: string;
+    capabilityId: FlowReportedCapabilityId;
+    value: boolean | number | string;
+  }) => 'changed' | 'unchanged';
   reportSteppedLoadActualStep: (
     deviceId: string,
     stepId: string,
@@ -139,6 +150,7 @@ export function registerFlowCards(deps: FlowCardDeps): void {
 
     registerHeadroomForDeviceCard(deps);
     registerCapacityAndModeCards(deps);
+    registerFlowBackedDeviceCards(deps);
     registerSteppedLoadCards(deps);
     registerDeviceCapacityControlCards(deps);
     registerBudgetExemptionCards(deps);
@@ -377,19 +389,6 @@ async function getBestEffortSteppedLoadDeviceName(
   }
 }
 
-function parseFlowPowerInput(rawPower: unknown): number | null {
-  if (typeof rawPower === 'number' && Number.isFinite(rawPower)) {
-    return Math.round(rawPower);
-  }
-  const normalized = String(rawPower ?? '').trim();
-  if (!normalized) return null;
-  const match = normalized.match(/^(-?\d+(?:[.,]\d+)?)\s*[Ww]?$/);
-  if (!match) return null;
-  const parsed = Number.parseFloat(match[1].replace(',', '.'));
-  if (!Number.isFinite(parsed)) return null;
-  return Math.round(parsed);
-}
-
 type SteppedLoadReportErrorCode =
   | 'device_missing'
   | 'device_not_found'
@@ -498,7 +497,6 @@ function formatFlowValueForLog(value: unknown): string | number | null {
   if (value === null || value === undefined) return null;
   return String(value);
 }
-
 function registerFlowPriceCards(deps: FlowCardDeps): void {
   const setTodayCard = deps.homey.flow.getActionCard('set_external_prices_today');
   setTodayCard.registerRunListener(createPriceCardRunListener('today', deps));

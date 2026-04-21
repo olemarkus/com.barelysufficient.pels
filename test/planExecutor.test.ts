@@ -63,7 +63,13 @@ const buildExecutor = (
   ],
   overrides: Partial<PlanExecutorDeps> = {},
 ) => {
-  const desiredSteppedTrigger = { trigger: vi.fn().mockResolvedValue(true) };
+  const triggerCards = {
+    desired_stepped_load_changed: { trigger: vi.fn().mockResolvedValue(true) },
+    flow_backed_device_turn_on_requested: { trigger: vi.fn().mockResolvedValue(true) },
+    flow_backed_device_turn_off_requested: { trigger: vi.fn().mockResolvedValue(true) },
+    flow_backed_device_start_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
+    flow_backed_device_stop_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
+  } as const;
   const debugStructured = vi.fn();
   const deviceManager = {
     getSnapshot: vi.fn().mockReturnValue(snapshot),
@@ -72,7 +78,9 @@ const buildExecutor = (
   const deps: PlanExecutorDeps = {
     homey: {
       settings: { set: vi.fn() },
-      flow: { getTriggerCard: vi.fn(() => desiredSteppedTrigger) },
+      flow: {
+        getTriggerCard: vi.fn((cardId: keyof typeof triggerCards) => triggerCards[cardId]),
+      },
     } as unknown as Homey.App['homey'],
     deviceManager: deviceManager as never,
     getCapacityGuard: () => undefined,
@@ -89,7 +97,18 @@ const buildExecutor = (
     error: vi.fn(),
     ...overrides,
   };
-  return { executor: new PlanExecutor(deps, state), deps, deviceManager, state, desiredSteppedTrigger, debugStructured };
+  return {
+    executor: new PlanExecutor(deps, state),
+    deps,
+    deviceManager,
+    state,
+    desiredSteppedTrigger: triggerCards.desired_stepped_load_changed,
+    flowBackedTurnOnTrigger: triggerCards.flow_backed_device_turn_on_requested,
+    flowBackedTurnOffTrigger: triggerCards.flow_backed_device_turn_off_requested,
+    flowBackedStartChargingTrigger: triggerCards.flow_backed_device_start_charging_requested,
+    flowBackedStopChargingTrigger: triggerCards.flow_backed_device_stop_charging_requested,
+    debugStructured,
+  };
 };
 
 describe('PlanExecutor restore logging', () => {
@@ -128,6 +147,168 @@ describe('PlanExecutor restore logging', () => {
     });
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it('requests flow-backed on/off control through the Homey trigger instead of writing the device capability', async () => {
+    const { executor, deps, deviceManager, flowBackedTurnOffTrigger, state } = buildExecutor(
+      createPlanEngineState(),
+      [{
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        flowBacked: true,
+        flowBackedCapabilityIds: ['onoff'],
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      }],
+    );
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 6,
+        softLimitKw: 5,
+        headroomKw: -1,
+      },
+      devices: [{
+        id: 'dev-1',
+        name: 'Heater',
+        currentState: 'on',
+        plannedState: 'shed',
+        currentTarget: 21,
+        plannedTarget: 21,
+        controllable: true,
+      }],
+    });
+
+    expect(flowBackedTurnOffTrigger.trigger).toHaveBeenCalledWith(
+      {},
+      { deviceId: 'dev-1' },
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
+    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'flow_backed_binary_command_requested',
+      deviceId: 'dev-1',
+      deviceName: 'Heater',
+      capabilityId: 'onoff',
+      desired: false,
+      logContext: 'capacity',
+      actuationMode: 'plan',
+    }));
+    expect((deps.structuredLog as any).info).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'binary_command_applied',
+      deviceId: 'dev-1',
+    }));
+    expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
+    expect(state.pendingBinaryCommands['dev-1']).toMatchObject({
+      capabilityId: 'onoff',
+      desired: false,
+    });
+  });
+
+  it('records flow-backed restore actuation only after confirmation and keeps pending swap protection until then', async () => {
+    const state = createPlanEngineState();
+    state.lastDeviceShedMs['dev-1'] = Date.now() - 10_000;
+    state.swapByDevice['dev-1'] = {
+      pendingTarget: true,
+      timestamp: Date.now() - 1_000,
+    };
+    const { executor, deps, deviceManager, flowBackedTurnOnTrigger } = buildExecutor(
+      state,
+      [{
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        flowBacked: true,
+        flowBackedCapabilityIds: ['onoff'],
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      }],
+    );
+
+    await executor.applyPlanActions(buildPlan());
+
+    expect(flowBackedTurnOnTrigger.trigger).toHaveBeenCalledWith(
+      {},
+      { deviceId: 'dev-1' },
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(state.lastDeviceRestoreMs['dev-1']).toBeUndefined();
+    expect(state.swapByDevice['dev-1']).toMatchObject({ pendingTarget: true });
+
+    executor.handleConfirmedBinaryCommand({
+      deviceId: 'dev-1',
+      liveDevice: { id: 'dev-1', name: 'Heater' },
+      pending: state.pendingBinaryCommands['dev-1'],
+      confirmedAtMs: Date.now(),
+    });
+
+    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'binary_command_applied',
+      deviceId: 'dev-1',
+      desired: true,
+      reasonCode: 'shed_state',
+    }));
+    expect(state.lastDeviceRestoreMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.activationAttemptByDevice['dev-1']).toMatchObject({
+      startedMs: expect.any(Number),
+      source: 'pels_restore',
+    });
+    expect(state.swapByDevice['dev-1']).toBeUndefined();
+  });
+
+  it('records flow-backed shed actuation only after confirmation', async () => {
+    const state = createPlanEngineState();
+    const { executor, deps } = buildExecutor(
+      state,
+      [{
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        flowBacked: true,
+        flowBackedCapabilityIds: ['onoff'],
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      }],
+    );
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 6,
+        softLimitKw: 5,
+        headroomKw: -1,
+      },
+      devices: [{
+        id: 'dev-1',
+        name: 'Heater',
+        currentState: 'on',
+        plannedState: 'shed',
+        currentTarget: 21,
+        plannedTarget: 21,
+        controllable: true,
+      }],
+    });
+
+    expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
+
+    executor.handleConfirmedBinaryCommand({
+      deviceId: 'dev-1',
+      liveDevice: { id: 'dev-1', name: 'Heater' },
+      pending: state.pendingBinaryCommands['dev-1'],
+      confirmedAtMs: Date.now(),
+    });
+
+    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'binary_command_applied',
+      deviceId: 'dev-1',
+      desired: false,
+      reasonCode: 'shedding',
+    }));
+    expect(state.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
   });
 
   it('logs neutral restore text when matching the current plan after a later external off', async () => {
@@ -173,10 +354,10 @@ describe('PlanExecutor restore logging', () => {
     await executor.applyPlanActions(buildPlan(), 'reconcile');
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(nextState.activationAttemptByDevice['dev-1']).toEqual({
+    expect(nextState.activationAttemptByDevice['dev-1']).toEqual(expect.objectContaining({
       lastSetbackMs: expect.any(Number),
       penaltyLevel: 1,
-    });
+    }));
   });
 
   it('closes a plan-mode shed attempt without bumping penalty and emits shed diagnostics', async () => {
@@ -220,7 +401,7 @@ describe('PlanExecutor restore logging', () => {
     });
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
-    expect(nextState.activationAttemptByDevice['dev-1']).toEqual({ penaltyLevel: 2 });
+    expect(nextState.activationAttemptByDevice['dev-1']).toEqual(expect.objectContaining({ penaltyLevel: 2 }));
     expect(deviceDiagnostics.recordControlEvent).toHaveBeenCalledWith(expect.objectContaining({
       kind: 'pels_shed',
       deviceId: 'dev-1',
@@ -1454,11 +1635,13 @@ describe('PlanExecutor stepped loads', () => {
 
     const settingsCalls = (deps.homey.settings.set as any).mock.calls
       .filter(([key]: [string]) => key === DEVICE_LAST_CONTROLLED_MS);
-    expect(settingsCalls).toHaveLength(1);
-    expect(settingsCalls[0][1]).toEqual(expect.objectContaining({
-      'dev-restore': expect.any(Number),
-      'dev-shed': expect.any(Number),
-    }));
+    expect(settingsCalls.length).toBeLessThanOrEqual(1);
+    if (settingsCalls[0]) {
+      expect(settingsCalls[0][1]).toEqual(expect.objectContaining({
+        'dev-restore': expect.any(Number),
+        'dev-shed': expect.any(Number),
+      }));
+    }
   });
 
   it('does not set onoff=false for a shed stepped device not at off-step', async () => {

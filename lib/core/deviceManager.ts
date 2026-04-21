@@ -420,14 +420,13 @@ export class DeviceManager extends EventEmitter {
 
     private debugStructured: StructuredDebugEmitter | undefined;
 
-    constructor(homey: Homey.App, logger: Logger, providers?: {
-        getPriority?: (deviceId: string) => number;
-        getControllable?: (deviceId: string) => boolean;
-        getManaged?: (deviceId: string) => boolean;
-        getBudgetExempt?: (deviceId: string) => boolean;
-        getCommunicationModel?: (deviceId: string) => 'local' | 'cloud';
-        getExperimentalEvSupportEnabled?: () => boolean;
-    }, powerState?: PowerEstimateState, options?: { debugStructured?: StructuredDebugEmitter }) {
+    constructor(
+        homey: Homey.App,
+        logger: Logger,
+        providers?: DeviceManagerParseProviders,
+        powerState?: PowerEstimateState,
+        options?: { debugStructured?: StructuredDebugEmitter },
+    ) {
         super();
         this.homey = homey;
         this.logger = logger;

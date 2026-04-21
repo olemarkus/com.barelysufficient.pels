@@ -1,0 +1,33 @@
+{
+  "title": {
+    "en": "Set car connected for device"
+  },
+  "titleFormatted": {
+    "en": "Set car connected for [[device]] to [[state]]"
+  },
+  "hint": {
+    "en": "Reports whether a car is connected to an existing Homey EV charger."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select EV charger"
+      }
+    },
+    {
+      "name": "state",
+      "type": "autocomplete",
+      "title": {
+        "en": "Connection"
+      },
+      "placeholder": {
+        "en": "Connected or disconnected"
+      }
+    }
+  ]
+}

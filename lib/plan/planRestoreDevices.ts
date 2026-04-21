@@ -82,10 +82,11 @@ export function getEvRestoreStateBlockReason(dev: DevicePlanDevice): string | nu
   if (dev.evChargingState === undefined) return 'charger state unknown';
 
   switch (dev.evChargingState) {
-    case 'plugged_in':
     case 'plugged_in_paused':
     case 'plugged_in_charging':
       return null;
+    case 'plugged_in':
+      return 'charger is not resumable';
     case 'plugged_out':
       return 'charger is unplugged';
     case 'plugged_in_discharging':
@@ -98,7 +99,7 @@ export function getEvRestoreStateBlockReason(dev: DevicePlanDevice): string | nu
 export function getEvUnknownPowerBlockReason(dev: DevicePlanDevice): string | null {
   if (dev.controlCapabilityId !== 'evcharger_charging') return null;
   if (dev.expectedPowerSource !== 'default') return null;
-  return 'charger power unknown; configure expected power or let PELS observe a charging peak';
+  return null;
 }
 
 export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {
