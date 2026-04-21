@@ -25,6 +25,7 @@ import {
   syncHeadroomCardTrackedUsage,
 } from '../lib/plan/planHeadroomDevice';
 import { emitActivationTransitions } from '../lib/plan/planHeadroomState';
+import { getPerfSnapshot } from '../lib/utils/perfCounters';
 import { reasonText } from './utils/deviceReasonTestUtils';
 
 const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
@@ -883,6 +884,92 @@ describe('activation backoff', () => {
       lastObservedKw: 2.4,
       lastObservedKwSource: 'expectedPowerKw',
     });
+  });
+
+  it('skips unchanged snapshot-refresh tracked usage and increments the noop counter instead of replaying churn', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+    const diagnostics = {
+      recordControlEvent: vi.fn(),
+      recordActivationTransition: vi.fn(),
+    };
+
+    syncHeadroomCardState({
+      state,
+      devices: [
+        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', expectedPowerKw: 3.2, powerKw: 3.2, lastFreshDataMs: start + 1_000 }),
+        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', expectedPowerKw: 2.4, powerKw: 2.4, lastFreshDataMs: start + 1_500 }),
+        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', expectedPowerKw: 1.8, powerKw: 1.8, lastFreshDataMs: start + 2_000 }),
+      ] as any,
+      nowTs: start,
+    });
+    const before = getPerfSnapshot();
+
+    expect(syncHeadroomCardState({
+      state,
+      devices: [
+        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', expectedPowerKw: 3.2, powerKw: 3.2, lastFreshDataMs: start + 4_000 }),
+        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', expectedPowerKw: 2.4, powerKw: 2.4, lastFreshDataMs: start + 4_500 }),
+        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', expectedPowerKw: 1.8, powerKw: 1.8, lastFreshDataMs: start + 5_000 }),
+      ] as any,
+      nowTs: start + 5_000,
+      reconciliationContext: 'snapshot_refresh',
+      diagnostics: diagnostics as any,
+    })).toBe(false);
+
+    const after = getPerfSnapshot();
+    expect(diagnostics.recordControlEvent).not.toHaveBeenCalled();
+    expect(state.headroomCardByDevice['dev-1']?.lastObservedFreshnessMs).toBe(start + 4_000);
+    expect(state.headroomCardByDevice['dev-2']?.lastObservedFreshnessMs).toBe(start + 4_500);
+    expect(state.headroomCardByDevice['dev-3']?.lastObservedFreshnessMs).toBe(start + 5_000);
+    expect((after.counts.tracked_usage_update_skipped_noop || 0) - (before.counts.tracked_usage_update_skipped_noop || 0))
+      .toBe(3);
+  });
+
+  it('ignores older tracked usage inputs when a trusted merged freshness is newer', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+    const diagnostics = {
+      recordControlEvent: vi.fn(),
+      recordActivationTransition: vi.fn(),
+    };
+
+    syncHeadroomCardState({
+      state,
+      devices: [buildTrackedDevice({
+        id: 'dev-1',
+        name: 'Heater',
+        expectedPowerKw: 1.2,
+        powerKw: 1.2,
+        lastFreshDataMs: start + 5_000,
+      })] as any,
+      nowTs: start,
+    });
+    const before = getPerfSnapshot();
+
+    expect(syncHeadroomCardState({
+      state,
+      devices: [buildTrackedDevice({
+        id: 'dev-1',
+        name: 'Heater',
+        expectedPowerKw: 0.2,
+        powerKw: 0.2,
+        lastFreshDataMs: start + 1_000,
+      })] as any,
+      nowTs: start + 6_000,
+      reconciliationContext: 'snapshot_refresh',
+      diagnostics: diagnostics as any,
+    })).toBe(false);
+
+    const after = getPerfSnapshot();
+    expect(diagnostics.recordControlEvent).not.toHaveBeenCalled();
+    expect(state.headroomCardByDevice['dev-1']).toMatchObject({
+      lastObservedKw: 1.2,
+      lastObservedKwSource: 'expectedPowerKw',
+      lastObservedFreshnessMs: start + 5_000,
+    });
+    expect((after.counts.tracked_usage_update_skipped_noop || 0) - (before.counts.tracked_usage_update_skipped_noop || 0))
+      .toBe(1);
   });
 
   it('tags snapshot-refresh tracked transitions during startup with snapshot_refresh reconciliation', () => {

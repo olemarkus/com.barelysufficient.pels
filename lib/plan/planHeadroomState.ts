@@ -1,5 +1,6 @@
 import { RESTORE_COOLDOWN_MS, SHED_COOLDOWN_MS } from './planConstants';
 import type { PlanEngineState } from './planState';
+import { incPerfCounter } from '../utils/perfCounters';
 import {
   ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
   closeActivationAttemptForDevice,
@@ -10,6 +11,7 @@ import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnostics
 import {
   ensureHeadroomEntry,
   isFiniteNumber,
+  resolveTrackedUsageMergeDecision,
   resolveTrackedTransitionReconciliation,
   resolveHeadroomDeviceName,
   resolveTrackedHeadroomDeviceKw,
@@ -222,6 +224,7 @@ const syncHeadroomCardTrackedKw = (params: {
   deviceId: string;
   trackedKw: number;
   trackedKwSource: HeadroomDeviceKwSource;
+  trackedFreshnessMs?: number;
   nowTs: number;
   device?: HeadroomCardDeviceLike;
   deviceName?: string;
@@ -233,6 +236,7 @@ const syncHeadroomCardTrackedKw = (params: {
     deviceId,
     trackedKw,
     trackedKwSource,
+    trackedFreshnessMs,
     nowTs,
     device,
     deviceName,
@@ -247,11 +251,40 @@ const syncHeadroomCardTrackedKw = (params: {
   });
   const name = resolveHeadroomDeviceName({ state, deviceId, device, deviceName });
   emitActivationTransitions(diagnostics, name, penaltyInfo.transitions);
-  const previousTrackedKw = state.headroomCardByDevice[deviceId]?.lastObservedKw;
+  const previousEntry = state.headroomCardByDevice[deviceId];
+  const previousTrackedKw = previousEntry?.lastObservedKw;
   let stateChanged = penaltyInfo.stateChanged;
 
   if (!isFiniteNumber(previousTrackedKw)) {
-    updateHeadroomCardLastObserved(state, deviceId, trackedKw, trackedKwSource, name);
+    updateHeadroomCardLastObserved({
+      state,
+      deviceId,
+      trackedKw,
+      trackedKwSource,
+      trackedFreshnessMs,
+      deviceName: name,
+    });
+    return stateChanged;
+  }
+
+  const mergeDecision = resolveTrackedUsageMergeDecision({
+    entry: previousEntry,
+    trackedKw,
+    trackedKwSource,
+    trackedFreshnessMs,
+  });
+  if (mergeDecision.skipUpdate) {
+    incPerfCounter('tracked_usage_update_skipped_noop');
+    if (mergeDecision.advanceFreshnessOnly) {
+      updateHeadroomCardLastObserved({
+        state,
+        deviceId,
+        trackedKw,
+        trackedKwSource,
+        trackedFreshnessMs,
+        deviceName: name,
+      });
+    }
     return stateChanged;
   }
 
@@ -280,7 +313,14 @@ const syncHeadroomCardTrackedKw = (params: {
     diagnostics,
   }) || stateChanged;
 
-  updateHeadroomCardLastObserved(state, deviceId, trackedKw, trackedKwSource, name);
+  updateHeadroomCardLastObserved({
+    state,
+    deviceId,
+    trackedKw,
+    trackedKwSource,
+    trackedFreshnessMs,
+    deviceName: name,
+  });
   return stateChanged;
 };
 
@@ -297,6 +337,7 @@ const syncHeadroomCardDevice = (params: {
     deviceId: params.device.id,
     trackedKw,
     trackedKwSource,
+    trackedFreshnessMs: params.device.lastFreshDataMs,
     nowTs: params.nowTs,
     device: params.device,
     deviceName: params.device.name,
@@ -390,6 +431,7 @@ export const syncHeadroomCardTrackedUsage = (params: {
   deviceId: string;
   trackedKw: number;
   trackedKwSource?: HeadroomDeviceKwSource;
+  trackedFreshnessMs?: number;
   nowTs?: number;
   reconciliationContext?: HeadroomTrackedTransitionContext;
   diagnostics?: DeviceDiagnosticsRecorder;
@@ -398,6 +440,7 @@ export const syncHeadroomCardTrackedUsage = (params: {
   deviceId: params.deviceId,
   trackedKw: params.trackedKw,
   trackedKwSource: params.trackedKwSource ?? 'powerKw',
+  trackedFreshnessMs: params.trackedFreshnessMs,
   nowTs: params.nowTs ?? Date.now(),
   reconciliationContext: params.reconciliationContext,
   diagnostics: params.diagnostics,

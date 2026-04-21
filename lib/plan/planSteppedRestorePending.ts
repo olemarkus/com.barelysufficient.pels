@@ -1,6 +1,8 @@
 import type { DevicePlanDevice } from './planTypes';
 import { buildRestorePendingReason } from './planReasonStrings';
+import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { resolveSteppedLoadCommandPendingMs } from './planObservationPolicy';
+import { resolveSteppedLoadPlanningKw } from './planSteppedLoad';
 
 export type SteppedRestoreAttemptState = {
   status: 'awaiting_confirmation' | 'retry_backoff';
@@ -11,6 +13,10 @@ export type PendingSteppedRestoreHold = {
   reason: ReturnType<typeof buildRestorePendingReason>;
   remainingSec: number;
   reasonCode: 'waiting_confirmation' | 'retry_backoff';
+};
+
+export type PendingSteppedRestoreReservation = PendingSteppedRestoreHold & {
+  reservationKw: number;
 };
 
 export function resolveSteppedRestoreAttemptState(
@@ -58,5 +64,28 @@ export function resolvePendingSteppedRestoreHold(
     reason: buildRestorePendingReason(attempt.remainingSec),
     remainingSec: attempt.remainingSec,
     reasonCode: attempt.status === 'awaiting_confirmation' ? 'waiting_confirmation' : 'retry_backoff',
+  };
+}
+
+export function resolvePendingSteppedRestoreReservation(
+  dev: DevicePlanDevice,
+  requestedStepId: string,
+  nowMs: number = Date.now(),
+): PendingSteppedRestoreReservation | null {
+  const hold = resolvePendingSteppedRestoreHold(dev, requestedStepId, nowMs);
+  if (!hold) return null;
+
+  const targetKw = resolveSteppedLoadPlanningKw(dev, requestedStepId);
+  const currentPlanningKw = resolveEffectiveCurrentOn(dev) === false
+    ? 0
+    : resolveSteppedLoadPlanningKw(dev, dev.selectedStepId);
+  const measuredKw = typeof dev.measuredPowerKw === 'number' && Number.isFinite(dev.measuredPowerKw)
+    ? Math.max(0, dev.measuredPowerKw)
+    : 0;
+  const effectiveCurrentKw = Math.min(targetKw, Math.max(currentPlanningKw, measuredKw));
+
+  return {
+    ...hold,
+    reservationKw: Math.max(0, targetKw - effectiveCurrentKw),
   };
 }

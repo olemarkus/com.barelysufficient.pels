@@ -37,6 +37,7 @@ export type ActivationAttemptState = {
 export type HeadroomCardState = {
   lastObservedKw?: number;
   lastObservedKwSource?: HeadroomDeviceKwSource;
+  lastObservedFreshnessMs?: number;
   deviceName?: string;
   lastStepDownMs?: number;
 };
