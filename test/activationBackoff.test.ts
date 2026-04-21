@@ -22,7 +22,7 @@ import { applyRestorePlan } from '../lib/plan/planRestore';
 import {
   evaluateHeadroomForDevice,
   syncHeadroomCardState,
-  syncHeadroomCardTrackedUsage,
+  syncHeadroomUsageObservation,
 } from '../lib/plan/planHeadroomDevice';
 import { emitActivationTransitions } from '../lib/plan/planHeadroomState';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';
@@ -384,7 +384,7 @@ describe('activation backoff', () => {
       startedMs: now,
       source: 'tracked_step_up',
     };
-    state.headroomCardByDevice['dev-1'] = { lastObservedKw: 1.8 };
+    state.headroomCardByDevice['dev-1'] = { lastUsageKw: 1.8 };
 
     expect(syncHeadroomCardState({
       state,
@@ -772,10 +772,10 @@ describe('activation backoff', () => {
       nowTs: start + 60_000,
     });
 
-    expect(syncHeadroomCardTrackedUsage({
+    expect(syncHeadroomUsageObservation({
       state,
       deviceId: 'dev-1',
-      trackedKw: 1.0,
+      usageObservation: { kw: 1.0 },
       nowTs: start + 120_000,
       diagnostics: diagnostics as any,
     })).toBe(true);
@@ -849,10 +849,10 @@ describe('activation backoff', () => {
       nowTs: start,
     });
 
-    expect(syncHeadroomCardTrackedUsage({
+    expect(syncHeadroomUsageObservation({
       state,
       deviceId: 'dev-1',
-      trackedKw: 1.0,
+      usageObservation: { kw: 1.0 },
       nowTs: start + 120_000,
       diagnostics: diagnostics as any,
     })).toBe(true);
@@ -869,20 +869,18 @@ describe('activation backoff', () => {
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
   });
 
-  it('stores expected-power source when tracked usage sync comes from an override', () => {
+  it('stores override usage when a direct usage observation sync runs', () => {
     const state = createPlanEngineState();
 
-    syncHeadroomCardTrackedUsage({
+    syncHeadroomUsageObservation({
       state,
       deviceId: 'dev-1',
-      trackedKw: 2.4,
-      trackedKwSource: 'expectedPowerKw',
+      usageObservation: { kw: 2.4 },
       nowTs: Date.now(),
     });
 
     expect(state.headroomCardByDevice['dev-1']).toMatchObject({
-      lastObservedKw: 2.4,
-      lastObservedKwSource: 'expectedPowerKw',
+      lastUsageKw: 2.4,
     });
   });
 
@@ -919,9 +917,9 @@ describe('activation backoff', () => {
 
     const after = getPerfSnapshot();
     expect(diagnostics.recordControlEvent).not.toHaveBeenCalled();
-    expect(state.headroomCardByDevice['dev-1']?.lastObservedFreshnessMs).toBe(start + 4_000);
-    expect(state.headroomCardByDevice['dev-2']?.lastObservedFreshnessMs).toBe(start + 4_500);
-    expect(state.headroomCardByDevice['dev-3']?.lastObservedFreshnessMs).toBe(start + 5_000);
+    expect(state.headroomCardByDevice['dev-1']?.lastUsageFreshnessMs).toBe(start + 4_000);
+    expect(state.headroomCardByDevice['dev-2']?.lastUsageFreshnessMs).toBe(start + 4_500);
+    expect(state.headroomCardByDevice['dev-3']?.lastUsageFreshnessMs).toBe(start + 5_000);
     expect((after.counts.tracked_usage_update_skipped_noop || 0) - (before.counts.tracked_usage_update_skipped_noop || 0))
       .toBe(3);
   });
@@ -964,12 +962,64 @@ describe('activation backoff', () => {
     const after = getPerfSnapshot();
     expect(diagnostics.recordControlEvent).not.toHaveBeenCalled();
     expect(state.headroomCardByDevice['dev-1']).toMatchObject({
-      lastObservedKw: 1.2,
-      lastObservedKwSource: 'expectedPowerKw',
-      lastObservedFreshnessMs: start + 5_000,
+      lastUsageKw: 1.2,
+      lastUsageFreshnessMs: start + 5_000,
     });
     expect((after.counts.tracked_usage_update_skipped_noop || 0) - (before.counts.tracked_usage_update_skipped_noop || 0))
       .toBe(1);
+  });
+
+  it('ignores stale snapshot-refresh observations before they can close an open activation attempt', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+    const diagnostics = {
+      recordControlEvent: vi.fn(),
+      recordActivationTransition: vi.fn(),
+    };
+
+    syncHeadroomCardState({
+      state,
+      devices: [buildTrackedDevice({
+        id: 'dev-1',
+        name: 'Heater',
+        currentOn: true,
+        currentState: 'on',
+        expectedPowerKw: 1.2,
+        powerKw: 1.2,
+        lastFreshDataMs: start + 5_000,
+      })] as any,
+      nowTs: start,
+    });
+
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'dev-1',
+      source: 'pels_restore',
+      nowTs: start + 6_000,
+    });
+
+    expect(syncHeadroomCardState({
+      state,
+      devices: [buildTrackedDevice({
+        id: 'dev-1',
+        name: 'Heater',
+        currentOn: false,
+        currentState: 'off',
+        expectedPowerKw: 0,
+        powerKw: 0,
+        lastFreshDataMs: start + 1_000,
+      })] as any,
+      nowTs: start + 7_000,
+      reconciliationContext: 'snapshot_refresh',
+      diagnostics: diagnostics as any,
+    })).toBe(false);
+
+    expect(state.activationAttemptByDevice['dev-1']).toEqual({
+      startedMs: start + 6_000,
+      source: 'pels_restore',
+    });
+    expect(diagnostics.recordControlEvent).not.toHaveBeenCalled();
+    expect(diagnostics.recordActivationTransition).not.toHaveBeenCalled();
   });
 
   it('tags snapshot-refresh tracked transitions during startup with snapshot_refresh reconciliation', () => {

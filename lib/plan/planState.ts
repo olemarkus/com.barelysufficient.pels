@@ -1,5 +1,4 @@
 import { RESTORE_COOLDOWN_MS } from './planConstants';
-import type { HeadroomDeviceKwSource } from './planHeadroomSupport';
 import type { PowerFreshnessState } from './planPowerFreshness';
 import type {
   DevicePlanDevice,
@@ -35,9 +34,8 @@ export type ActivationAttemptState = {
 };
 
 export type HeadroomCardState = {
-  lastObservedKw?: number;
-  lastObservedKwSource?: HeadroomDeviceKwSource;
-  lastObservedFreshnessMs?: number;
+  lastUsageKw?: number;
+  lastUsageFreshnessMs?: number;
   deviceName?: string;
   lastStepDownMs?: number;
 };

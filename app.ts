@@ -253,10 +253,9 @@ class PelsApp extends Homey.App {
       return false;
     }
     this.expectedPowerKwOverrides[deviceId] = { kw, ts: Date.now() };
-    this.planService?.syncHeadroomCardTrackedUsage({
+    this.planService?.syncHeadroomUsageObservation({
       deviceId,
-      trackedKw: kw,
-      trackedKwSource: 'expectedPowerKw',
+      usageObservation: { kw },
     });
     return true;
   }

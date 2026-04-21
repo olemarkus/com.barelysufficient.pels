@@ -8,6 +8,7 @@ export { isFiniteNumber };
 export type HeadroomCardCooldownSource = 'pels_shed' | 'pels_restore';
 export type HeadroomDeviceKwSource = 'expectedPowerKw' | 'powerKw' | 'measuredPowerKw' | 'fallback_zero';
 export type ResolvedHeadroomDeviceKw = { kw: number; source: HeadroomDeviceKwSource };
+export type HeadroomUsageObservation = { kw: number; freshnessMs?: number };
 export type HeadroomTrackedTransitionContext = Extract<
   DeviceDiagnosticsTrackedTransitionReconciliation,
   'snapshot_refresh'
@@ -66,29 +67,24 @@ export const ensureHeadroomEntry = (
   return cards[deviceId];
 };
 
-export const updateHeadroomCardLastObserved = (params: {
+export const updateHeadroomCardUsageObservation = (params: {
   state: PlanEngineState;
   deviceId: string;
-  trackedKw: number;
-  trackedKwSource: HeadroomDeviceKwSource;
-  trackedFreshnessMs?: number;
+  usageObservation: HeadroomUsageObservation;
   deviceName?: string;
 }): void => {
   const {
     state,
     deviceId,
-    trackedKw,
-    trackedKwSource,
-    trackedFreshnessMs,
+    usageObservation,
     deviceName,
   } = params;
   const entry = ensureHeadroomEntry(state, deviceId);
-  entry.lastObservedKw = trackedKw;
-  entry.lastObservedKwSource = trackedKwSource;
-  if (isFiniteNumber(trackedFreshnessMs)) {
-    entry.lastObservedFreshnessMs = trackedFreshnessMs;
+  entry.lastUsageKw = usageObservation.kw;
+  if (isFiniteNumber(usageObservation.freshnessMs)) {
+    entry.lastUsageFreshnessMs = usageObservation.freshnessMs;
   } else {
-    delete entry.lastObservedFreshnessMs;
+    delete entry.lastUsageFreshnessMs;
   }
   if (deviceName) {
     entry.deviceName = deviceName;
@@ -100,28 +96,24 @@ export type TrackedUsageMergeDecision = {
   advanceFreshnessOnly: boolean;
 };
 
-export const resolveTrackedUsageMergeDecision = (params: {
-  entry?: Pick<HeadroomCardState, 'lastObservedKw' | 'lastObservedKwSource' | 'lastObservedFreshnessMs'>;
-  trackedKw: number;
-  trackedKwSource: HeadroomDeviceKwSource;
-  trackedFreshnessMs?: number;
+export const resolveUsageObservationMergeDecision = (params: {
+  entry?: Pick<HeadroomCardState, 'lastUsageKw' | 'lastUsageFreshnessMs'>;
+  usageObservation: HeadroomUsageObservation;
 }): TrackedUsageMergeDecision => {
   const {
     entry,
-    trackedKw,
-    trackedKwSource,
-    trackedFreshnessMs,
+    usageObservation,
   } = params;
-  const previousTrackedKw = entry?.lastObservedKw;
-  const previousTrackedKwSource = entry?.lastObservedKwSource;
-  const previousTrackedFreshnessMs = entry?.lastObservedFreshnessMs;
-  const hasPreviousFreshness = isFiniteNumber(previousTrackedFreshnessMs);
-  const hasIncomingFreshness = isFiniteNumber(trackedFreshnessMs);
+  const previousUsageKw = entry?.lastUsageKw;
+  const previousUsageFreshnessMs = entry?.lastUsageFreshnessMs;
+  const incomingUsageFreshnessMs = usageObservation.freshnessMs;
+  const hasPreviousFreshness = isFiniteNumber(previousUsageFreshnessMs);
+  const hasIncomingFreshness = isFiniteNumber(incomingUsageFreshnessMs);
 
   if (
     hasPreviousFreshness
     && hasIncomingFreshness
-    && trackedFreshnessMs < previousTrackedFreshnessMs
+    && incomingUsageFreshnessMs < previousUsageFreshnessMs
   ) {
     return {
       skipUpdate: true,
@@ -129,7 +121,7 @@ export const resolveTrackedUsageMergeDecision = (params: {
     };
   }
 
-  const semanticNoop = previousTrackedKw === trackedKw && previousTrackedKwSource === trackedKwSource;
+  const semanticNoop = previousUsageKw === usageObservation.kw;
   if (!semanticNoop) {
     return {
       skipUpdate: false,
@@ -141,7 +133,7 @@ export const resolveTrackedUsageMergeDecision = (params: {
     skipUpdate: true,
     advanceFreshnessOnly: Boolean(
       hasIncomingFreshness
-      && (!hasPreviousFreshness || trackedFreshnessMs > previousTrackedFreshnessMs),
+      && (!hasPreviousFreshness || incomingUsageFreshnessMs > previousUsageFreshnessMs),
     ),
   };
 };
@@ -189,12 +181,12 @@ export const resolveTrackedTransitionReconciliation = (params: {
   return undefined;
 };
 
-export const resolveTrackedHeadroomDeviceKw = (
+export const resolveHeadroomUsageKw = (
   device: Pick<HeadroomCardDeviceLike, 'expectedPowerKw' | 'powerKw'>,
-): ResolvedHeadroomDeviceKw => {
-  if (isFiniteNumber(device.expectedPowerKw)) return { kw: device.expectedPowerKw, source: 'expectedPowerKw' };
-  if (isFiniteNumber(device.powerKw)) return { kw: device.powerKw, source: 'powerKw' };
-  return { kw: 0, source: 'fallback_zero' };
+): number => {
+  if (isFiniteNumber(device.expectedPowerKw)) return device.expectedPowerKw;
+  if (isFiniteNumber(device.powerKw)) return device.powerKw;
+  return 0;
 };
 
 export const resolveObservedHeadroomDeviceKw = (

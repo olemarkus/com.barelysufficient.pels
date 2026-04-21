@@ -9,10 +9,10 @@ import { createPlanEngineState, PlanEngineState } from './planState';
 import {
   evaluateHeadroomForDevice,
   syncHeadroomCardState,
-  syncHeadroomCardTrackedUsage,
+  syncHeadroomUsageObservation,
   type HeadroomCardDeviceLike,
-  type HeadroomDeviceKwSource,
   type HeadroomForDeviceDecision,
+  type HeadroomUsageObservation,
 } from './planHeadroomDevice';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
@@ -259,17 +259,15 @@ export class PlanEngine {
     });
   }
 
-  public syncHeadroomCardTrackedUsage(params: {
+  public syncHeadroomUsageObservation(params: {
     deviceId: string;
-    trackedKw: number;
-    trackedKwSource?: HeadroomDeviceKwSource;
+    usageObservation: HeadroomUsageObservation;
     reconciliationContext?: 'snapshot_refresh';
   }): boolean {
-    return syncHeadroomCardTrackedUsage({
+    return syncHeadroomUsageObservation({
       state: this.state,
       deviceId: params.deviceId,
-      trackedKw: params.trackedKw,
-      trackedKwSource: params.trackedKwSource,
+      usageObservation: params.usageObservation,
       reconciliationContext: params.reconciliationContext,
       diagnostics: this.deviceDiagnostics,
     });

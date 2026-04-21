@@ -11,14 +11,14 @@ import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnostics
 import {
   ensureHeadroomEntry,
   isFiniteNumber,
-  resolveTrackedUsageMergeDecision,
+  resolveUsageObservationMergeDecision,
   resolveTrackedTransitionReconciliation,
   resolveHeadroomDeviceName,
-  resolveTrackedHeadroomDeviceKw,
-  updateHeadroomCardLastObserved,
+  resolveHeadroomUsageKw,
+  updateHeadroomCardUsageObservation,
   type HeadroomCardDeviceLike,
   type HeadroomCooldownCandidate,
-  type HeadroomDeviceKwSource,
+  type HeadroomUsageObservation,
   type HeadroomTrackedTransitionContext,
 } from './planHeadroomSupport';
 
@@ -33,8 +33,8 @@ const removeHeadroomCardStateForDevice = (
   const entry = cards[deviceId];
   if (!entry) return;
   if (!options.keepLastObserved) {
-    delete entry.lastObservedKw;
-    delete entry.lastObservedKwSource;
+    delete entry.lastUsageKw;
+    delete entry.lastUsageFreshnessMs;
   }
   delete entry.lastStepDownMs;
   if (Object.keys(entry).length === 0) {
@@ -75,8 +75,8 @@ const wasRecentlySteppedDown = (
 const shouldStartTrackedActivationAttempt = (params: {
   state: PlanEngineState;
   deviceId: string;
-  previousTrackedKw: number;
-  trackedKw: number;
+  previousUsageKw: number;
+  usageKw: number;
   nowTs: number;
   device?: HeadroomCardDeviceLike;
   attemptOpen: boolean;
@@ -84,16 +84,16 @@ const shouldStartTrackedActivationAttempt = (params: {
   const {
     state,
     deviceId,
-    previousTrackedKw,
-    trackedKw,
+    previousUsageKw,
+    usageKw,
     nowTs,
     device,
     attemptOpen,
   } = params;
-  if (trackedKw - previousTrackedKw < HEADROOM_STEP_DOWN_THRESHOLD_KW) return false;
+  if (usageKw - previousUsageKw < HEADROOM_STEP_DOWN_THRESHOLD_KW) return false;
   if (attemptOpen) return false;
   if (!isActivationObservationActiveNow(device)) return false;
-  if (previousTrackedKw <= HEADROOM_STEP_DOWN_THRESHOLD_KW) return true;
+  if (previousUsageKw <= HEADROOM_STEP_DOWN_THRESHOLD_KW) return true;
   return wasRecentlySteppedDown(state, deviceId, nowTs);
 };
 
@@ -111,8 +111,8 @@ export const emitActivationTransitions = (
 const maybeStartTrackedActivationAttempt = (params: {
   state: PlanEngineState;
   deviceId: string;
-  previousTrackedKw: number;
-  trackedKw: number;
+  previousUsageKw: number;
+  usageKw: number;
   nowTs: number;
   device?: HeadroomCardDeviceLike;
   deviceName?: string;
@@ -123,8 +123,8 @@ const maybeStartTrackedActivationAttempt = (params: {
   const {
     state,
     deviceId,
-    previousTrackedKw,
-    trackedKw,
+    previousUsageKw,
+    usageKw,
     nowTs,
     device,
     deviceName,
@@ -135,8 +135,8 @@ const maybeStartTrackedActivationAttempt = (params: {
   if (!shouldStartTrackedActivationAttempt({
     state,
     deviceId,
-    previousTrackedKw,
-    trackedKw,
+    previousUsageKw,
+    usageKw,
     nowTs,
     device,
     attemptOpen,
@@ -159,8 +159,8 @@ const maybeStartTrackedActivationAttempt = (params: {
       deviceId,
       name,
       nowTs,
-      fromKw: previousTrackedKw,
-      toKw: trackedKw,
+      fromKw: previousUsageKw,
+      toKw: usageKw,
       reconciliation,
     });
   }
@@ -170,8 +170,8 @@ const maybeStartTrackedActivationAttempt = (params: {
 const maybeRecordTrackedStepDown = (params: {
   state: PlanEngineState;
   deviceId: string;
-  previousTrackedKw: number;
-  trackedKw: number;
+  previousUsageKw: number;
+  usageKw: number;
   nowTs: number;
   device?: HeadroomCardDeviceLike;
   deviceName?: string;
@@ -181,15 +181,15 @@ const maybeRecordTrackedStepDown = (params: {
   const {
     state,
     deviceId,
-    previousTrackedKw,
-    trackedKw,
+    previousUsageKw,
+    usageKw,
     nowTs,
     device,
     deviceName,
     reconciliationContext,
     diagnostics,
   } = params;
-  if (previousTrackedKw - trackedKw < HEADROOM_STEP_DOWN_THRESHOLD_KW) {
+  if (previousUsageKw - usageKw < HEADROOM_STEP_DOWN_THRESHOLD_KW) {
     return false;
   }
 
@@ -208,8 +208,8 @@ const maybeRecordTrackedStepDown = (params: {
       deviceId,
       name,
       nowTs,
-      fromKw: previousTrackedKw,
-      toKw: trackedKw,
+      fromKw: previousUsageKw,
+      toKw: usageKw,
       reconciliation,
     });
   }
@@ -219,12 +219,10 @@ const maybeRecordTrackedStepDown = (params: {
   return true;
 };
 
-const syncHeadroomCardTrackedKw = (params: {
+const syncHeadroomUsageObservationEntry = (params: {
   state: PlanEngineState;
   deviceId: string;
-  trackedKw: number;
-  trackedKwSource: HeadroomDeviceKwSource;
-  trackedFreshnessMs?: number;
+  usageObservation: HeadroomUsageObservation;
   nowTs: number;
   device?: HeadroomCardDeviceLike;
   deviceName?: string;
@@ -234,15 +232,32 @@ const syncHeadroomCardTrackedKw = (params: {
   const {
     state,
     deviceId,
-    trackedKw,
-    trackedKwSource,
-    trackedFreshnessMs,
+    usageObservation,
     nowTs,
     device,
     deviceName,
     reconciliationContext,
     diagnostics,
   } = params;
+  const previousEntry = state.headroomCardByDevice[deviceId];
+  const previousUsageKw = previousEntry?.lastUsageKw;
+  const mergeDecision = resolveUsageObservationMergeDecision({
+    entry: previousEntry,
+    usageObservation,
+  });
+  if (mergeDecision.skipUpdate) {
+    incPerfCounter('tracked_usage_update_skipped_noop');
+    if (mergeDecision.advanceFreshnessOnly) {
+      updateHeadroomCardUsageObservation({
+        state,
+        deviceId,
+        usageObservation,
+        deviceName: resolveHeadroomDeviceName({ state, deviceId, device, deviceName }),
+      });
+    }
+    return false;
+  }
+
   const penaltyInfo = syncActivationPenaltyState({
     state,
     deviceId,
@@ -251,48 +266,23 @@ const syncHeadroomCardTrackedKw = (params: {
   });
   const name = resolveHeadroomDeviceName({ state, deviceId, device, deviceName });
   emitActivationTransitions(diagnostics, name, penaltyInfo.transitions);
-  const previousEntry = state.headroomCardByDevice[deviceId];
-  const previousTrackedKw = previousEntry?.lastObservedKw;
   let stateChanged = penaltyInfo.stateChanged;
 
-  if (!isFiniteNumber(previousTrackedKw)) {
-    updateHeadroomCardLastObserved({
+  if (!isFiniteNumber(previousUsageKw)) {
+    updateHeadroomCardUsageObservation({
       state,
       deviceId,
-      trackedKw,
-      trackedKwSource,
-      trackedFreshnessMs,
+      usageObservation,
       deviceName: name,
     });
-    return stateChanged;
-  }
-
-  const mergeDecision = resolveTrackedUsageMergeDecision({
-    entry: previousEntry,
-    trackedKw,
-    trackedKwSource,
-    trackedFreshnessMs,
-  });
-  if (mergeDecision.skipUpdate) {
-    incPerfCounter('tracked_usage_update_skipped_noop');
-    if (mergeDecision.advanceFreshnessOnly) {
-      updateHeadroomCardLastObserved({
-        state,
-        deviceId,
-        trackedKw,
-        trackedKwSource,
-        trackedFreshnessMs,
-        deviceName: name,
-      });
-    }
     return stateChanged;
   }
 
   stateChanged = maybeStartTrackedActivationAttempt({
     state,
     deviceId,
-    previousTrackedKw,
-    trackedKw,
+    previousUsageKw,
+    usageKw: usageObservation.kw,
     nowTs,
     device,
     deviceName: name,
@@ -304,8 +294,8 @@ const syncHeadroomCardTrackedKw = (params: {
   stateChanged = maybeRecordTrackedStepDown({
     state,
     deviceId,
-    previousTrackedKw,
-    trackedKw,
+    previousUsageKw,
+    usageKw: usageObservation.kw,
     nowTs,
     device,
     deviceName: name,
@@ -313,12 +303,10 @@ const syncHeadroomCardTrackedKw = (params: {
     diagnostics,
   }) || stateChanged;
 
-  updateHeadroomCardLastObserved({
+  updateHeadroomCardUsageObservation({
     state,
     deviceId,
-    trackedKw,
-    trackedKwSource,
-    trackedFreshnessMs,
+    usageObservation,
     deviceName: name,
   });
   return stateChanged;
@@ -331,13 +319,13 @@ const syncHeadroomCardDevice = (params: {
   reconciliationContext?: HeadroomTrackedTransitionContext;
   diagnostics?: DeviceDiagnosticsRecorder;
 }): boolean => {
-  const { kw: trackedKw, source: trackedKwSource } = resolveTrackedHeadroomDeviceKw(params.device);
-  return syncHeadroomCardTrackedKw({
+  return syncHeadroomUsageObservationEntry({
     state: params.state,
     deviceId: params.device.id,
-    trackedKw,
-    trackedKwSource,
-    trackedFreshnessMs: params.device.lastFreshDataMs,
+    usageObservation: {
+      kw: resolveHeadroomUsageKw(params.device),
+      freshnessMs: params.device.lastFreshDataMs,
+    },
     nowTs: params.nowTs,
     device: params.device,
     deviceName: params.device.name,
@@ -426,21 +414,17 @@ export const syncHeadroomCardState = (params: {
   return stateChanged;
 };
 
-export const syncHeadroomCardTrackedUsage = (params: {
+export const syncHeadroomUsageObservation = (params: {
   state: PlanEngineState;
   deviceId: string;
-  trackedKw: number;
-  trackedKwSource?: HeadroomDeviceKwSource;
-  trackedFreshnessMs?: number;
+  usageObservation: HeadroomUsageObservation;
   nowTs?: number;
   reconciliationContext?: HeadroomTrackedTransitionContext;
   diagnostics?: DeviceDiagnosticsRecorder;
-}): boolean => syncHeadroomCardTrackedKw({
+}): boolean => syncHeadroomUsageObservationEntry({
   state: params.state,
   deviceId: params.deviceId,
-  trackedKw: params.trackedKw,
-  trackedKwSource: params.trackedKwSource ?? 'powerKw',
-  trackedFreshnessMs: params.trackedFreshnessMs,
+  usageObservation: params.usageObservation,
   nowTs: params.nowTs ?? Date.now(),
   reconciliationContext: params.reconciliationContext,
   diagnostics: params.diagnostics,
