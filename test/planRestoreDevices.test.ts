@@ -15,7 +15,12 @@ import { legacyDeviceReason, reasonText } from './utils/deviceReasonTestUtils';
 const makeDevice = (
   overrides: Partial<DevicePlanDevice> & { reason?: DevicePlanDevice['reason'] | string },
 ): DevicePlanDevice => {
-  const reason = typeof overrides.reason === 'string' ? legacyDeviceReason(overrides.reason) : overrides.reason;
+  let reason = legacyDeviceReason('keep')!;
+  if (typeof overrides.reason === 'string') {
+    reason = legacyDeviceReason(overrides.reason)!;
+  } else if (overrides.reason !== undefined) {
+    reason = overrides.reason;
+  }
   return {
     id: overrides.id ?? 'dev',
     name: overrides.name ?? 'Device',

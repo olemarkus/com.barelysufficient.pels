@@ -210,17 +210,6 @@ const resolveStarvationSuppression = (params: {
   }
   const reason = device.reason;
   const headroomCooldown = resolveSuppressionFromHeadroomCooldown(device);
-  if (!reason) {
-    if (headroomCooldown.suppressionState !== 'none') {
-      return headroomCooldown;
-    }
-    return {
-      suppressionState: device.plannedState === 'shed' ? 'paused' : 'none',
-      countingCause: null,
-      pauseReason: device.plannedState === 'shed' ? 'unknown_suppression_reason' : null,
-    };
-  }
-
   const normalized = resolveSuppressionFromReason(reason);
   if (
     headroomCooldown.suppressionState !== 'none'

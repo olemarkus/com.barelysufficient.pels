@@ -440,7 +440,7 @@ const compactPelsPlanDevice = (
     plannedState: device.plannedState,
     currentTarget: device.currentTarget,
     plannedTarget: device.plannedTarget,
-    reason: device.reason ? formatDeviceReason(device.reason) : undefined,
+    reason: formatDeviceReason(device.reason),
     controllable: device.controllable,
     pendingTargetCommand: device.pendingTargetCommand,
   };
