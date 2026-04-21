@@ -405,6 +405,89 @@ describe('PlanService', () => {
     expect(error).toHaveBeenCalledWith('Failed to rebuild plan', expect.any(Error));
   });
 
+  it('emits a changed overview after retrying a failed immediate detail snapshot write', async () => {
+    let snapshotWriteCount = 0;
+    const settingsSet = vi.fn((key: string) => {
+      if (key !== 'device_plan_snapshot') return undefined;
+      snapshotWriteCount += 1;
+      if (snapshotWriteCount === 2) {
+        throw new Error('detail snapshot exploded');
+      }
+      return undefined;
+    });
+    const overviewDebugStructured = vi.fn();
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    const error = vi.fn();
+    const basePlan = buildPlan(20, 'keep', {}, {
+      currentState: 'on',
+      plannedState: 'keep',
+      measuredPowerKw: 0,
+      expectedPowerKw: 3,
+    });
+    const changedPlan = buildPlan(21, 'sensor_update', {}, {
+      currentState: 'on',
+      plannedState: 'keep',
+      measuredPowerKw: 0.25,
+      expectedPowerKw: 3,
+    });
+    const planEngine = {
+      buildDevicePlanSnapshot: vi
+        .fn()
+        .mockResolvedValueOnce(basePlan)
+        .mockResolvedValueOnce(changedPlan)
+        .mockResolvedValueOnce(changedPlan),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new PlanService({
+      homey: {
+        settings: { set: settingsSet },
+        api: { realtime },
+        flow: {},
+      } as any,
+      planEngine: planEngine as any,
+      getPlanDevices: () => [],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error,
+      overviewDebugStructured,
+      isOverviewDebugEnabled: () => true,
+    });
+
+    const firstOutcome = await service.rebuildPlanFromCache();
+    overviewDebugStructured.mockClear();
+    realtime.mockClear();
+
+    const failedOutcome = await service.rebuildPlanFromCache();
+    expect(firstOutcome.failed).toBe(false);
+    expect(failedOutcome.failed).toBe(true);
+    expect(overviewDebugStructured).not.toHaveBeenCalled();
+    expect(realtime).not.toHaveBeenCalledWith('plan_updated', expect.anything());
+
+    const retryOutcome = await service.rebuildPlanFromCache();
+
+    expect(retryOutcome.failed).toBe(false);
+    expect(overviewDebugStructured).toHaveBeenCalledTimes(1);
+    expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'device_overview_changed',
+      usageMsg: 'Measured: 0.25 kW / Expected: 3.00 kW',
+      measuredPowerKw: 0.25,
+      expectedPowerKw: 3,
+    }));
+    expect(realtime).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith('Failed to rebuild plan', expect.any(Error));
+  });
+
   it('reports deferred snapshot write failures through error when structured logging is unavailable', async () => {
     let snapshotWriteCount = 0;
     const settingsSet = vi.fn((key: string) => {
@@ -646,9 +729,16 @@ describe('PlanService', () => {
     expect(overviewDebugStructured).toHaveBeenCalledTimes(1);
   });
 
-  it('does not log on usage-only overview changes during rebuilds', async () => {
+  it('logs on usage-only overview changes during rebuilds', async () => {
     const overviewDebugStructured = vi.fn();
+    const settingsSet = vi.fn();
+    const realtime = vi.fn().mockResolvedValue(undefined);
     const { service } = createPlanService({
+      homey: {
+        settings: { set: settingsSet },
+        api: { realtime },
+        flow: {},
+      } as any,
       planEngine: {
         buildDevicePlanSnapshot: vi.fn()
           .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
@@ -675,9 +765,19 @@ describe('PlanService', () => {
 
     await service.rebuildPlanFromCache();
     overviewDebugStructured.mockClear();
+    settingsSet.mockClear();
+    realtime.mockClear();
 
     await service.rebuildPlanFromCache();
-    expect(overviewDebugStructured).not.toHaveBeenCalled();
+    expect(overviewDebugStructured).toHaveBeenCalledTimes(1);
+    expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'device_overview_changed',
+      usageMsg: 'Measured: 0.25 kW / Expected: 3.00 kW',
+      measuredPowerKw: 0.25,
+      expectedPowerKw: 3,
+    }));
+    expect(settingsSet.mock.calls.filter((call: unknown[]) => call[0] === 'device_plan_snapshot')).toHaveLength(0);
+    expect(realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated')).toHaveLength(0);
   });
 
   it('suppresses countdown-only cooldown changes for overview logs, snapshots, and plan updates', async () => {

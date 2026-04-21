@@ -225,18 +225,33 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
   };
 };
 
+const normalizeSignatureNumber = (value: number | undefined): number | null => (
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+);
+
+const isMinTemperatureRestoreActive = (device: DeviceOverviewSnapshot): boolean => (
+  device.shedAction === 'set_temperature'
+  && typeof device.shedTemperature === 'number'
+  && device.currentTarget === device.shedTemperature
+);
+
 export const buildDeviceOverviewTransitionSignature = (
-  overview: Pick<DeviceOverviewStrings, 'powerMsg' | 'stateMsg'> & {
-    reason?: DeviceReason;
-    reportedStepId?: string;
-    targetStepId?: string;
-  },
+  device: DeviceOverviewSnapshot,
 ): string => (
   JSON.stringify({
-    powerMsg: overview.powerMsg,
-    stateMsg: overview.stateMsg,
-    reason: buildComparableDeviceReason(overview.reason),
-    reportedStepId: overview.reportedStepId ?? null,
-    targetStepId: overview.targetStepId ?? null,
+    currentState: normalizeState(device.currentState) || 'unknown',
+    plannedState: device.plannedState ?? null,
+    controlModel: device.controlModel ?? null,
+    controllable: device.controllable === false,
+    available: device.available === false,
+    observationStale: device.observationStale === true,
+    binaryCommandPending: device.binaryCommandPending === true,
+    shedAction: device.shedAction ?? null,
+    minTemperatureRestoreActive: isMinTemperatureRestoreActive(device),
+    measuredPowerKw: normalizeSignatureNumber(device.measuredPowerKw),
+    expectedPowerKw: normalizeSignatureNumber(getDeviceOverviewExpectedPowerKw(device)),
+    reason: buildComparableDeviceReason(device.reason),
+    reportedStepId: getDeviceOverviewReportedStepId(device) ?? null,
+    targetStepId: getTargetStepId(device) ?? null,
   })
 );
