@@ -72,6 +72,21 @@ const wasRecentlySteppedDown = (
   return nowTs - lastStepDownMs < ACTIVATION_BACKOFF_CLEAR_WINDOW_MS;
 };
 
+const shouldSyncActivationPenaltyForDevice = (params: {
+  state: PlanEngineState;
+  deviceId: string;
+  device: Pick<HeadroomCardDeviceLike, 'lastFreshDataMs'>;
+}): boolean => {
+  const previousFreshnessMs = params.state.headroomCardByDevice[params.deviceId]?.lastUsageFreshnessMs;
+  const incomingFreshnessMs = params.device.lastFreshDataMs;
+  const hasPreviousFreshness = isFiniteNumber(previousFreshnessMs);
+  const hasIncomingFreshness = isFiniteNumber(incomingFreshnessMs);
+
+  if (hasPreviousFreshness && !hasIncomingFreshness) return false;
+  if (hasPreviousFreshness && hasIncomingFreshness && incomingFreshnessMs < previousFreshnessMs) return false;
+  return true;
+};
+
 const shouldStartTrackedActivationAttempt = (params: {
   state: PlanEngineState;
   deviceId: string;
@@ -226,6 +241,7 @@ const syncHeadroomUsageObservationEntry = (params: {
   nowTs: number;
   device?: HeadroomCardDeviceLike;
   deviceName?: string;
+  attemptOpen?: boolean;
   reconciliationContext?: HeadroomTrackedTransitionContext;
   diagnostics?: DeviceDiagnosticsRecorder;
 }): boolean => {
@@ -236,6 +252,7 @@ const syncHeadroomUsageObservationEntry = (params: {
     nowTs,
     device,
     deviceName,
+    attemptOpen = false,
     reconciliationContext,
     diagnostics,
   } = params;
@@ -258,15 +275,8 @@ const syncHeadroomUsageObservationEntry = (params: {
     return false;
   }
 
-  const penaltyInfo = syncActivationPenaltyState({
-    state,
-    deviceId,
-    nowTs,
-    observation: device,
-  });
   const name = resolveHeadroomDeviceName({ state, deviceId, device, deviceName });
-  emitActivationTransitions(diagnostics, name, penaltyInfo.transitions);
-  let stateChanged = penaltyInfo.stateChanged;
+  let stateChanged = false;
 
   if (!isFiniteNumber(previousUsageKw)) {
     updateHeadroomCardUsageObservation({
@@ -286,7 +296,7 @@ const syncHeadroomUsageObservationEntry = (params: {
     nowTs,
     device,
     deviceName: name,
-    attemptOpen: penaltyInfo.attemptOpen,
+    attemptOpen,
     reconciliationContext,
     diagnostics,
   }) || stateChanged;
@@ -319,7 +329,26 @@ const syncHeadroomCardDevice = (params: {
   reconciliationContext?: HeadroomTrackedTransitionContext;
   diagnostics?: DeviceDiagnosticsRecorder;
 }): boolean => {
-  return syncHeadroomUsageObservationEntry({
+  const shouldSyncPenalty = shouldSyncActivationPenaltyForDevice({
+    state: params.state,
+    deviceId: params.device.id,
+    device: params.device,
+  });
+  let penaltyStateChanged = false;
+  let attemptOpen = false;
+  if (shouldSyncPenalty) {
+    const penaltyInfo = syncActivationPenaltyState({
+      state: params.state,
+      deviceId: params.device.id,
+      nowTs: params.nowTs,
+      observation: params.device,
+    });
+    emitActivationTransitions(params.diagnostics, params.device.name, penaltyInfo.transitions);
+    penaltyStateChanged = penaltyInfo.stateChanged;
+    attemptOpen = penaltyInfo.attemptOpen;
+  }
+
+  const usageStateChanged = syncHeadroomUsageObservationEntry({
     state: params.state,
     deviceId: params.device.id,
     usageObservation: {
@@ -329,9 +358,11 @@ const syncHeadroomCardDevice = (params: {
     nowTs: params.nowTs,
     device: params.device,
     deviceName: params.device.name,
+    attemptOpen,
     reconciliationContext: params.reconciliationContext,
     diagnostics: params.diagnostics,
   });
+  return penaltyStateChanged || usageStateChanged;
 };
 
 const getPelsCooldown = (

@@ -1022,6 +1022,62 @@ describe('activation backoff', () => {
     expect(diagnostics.recordActivationTransition).not.toHaveBeenCalled();
   });
 
+  it('closes an open activation attempt on a fresh explicit inactive observation even when usage is unchanged', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+    const diagnostics = {
+      recordControlEvent: vi.fn(),
+      recordActivationTransition: vi.fn(),
+    };
+
+    syncHeadroomCardState({
+      state,
+      devices: [buildTrackedDevice({
+        id: 'dev-1',
+        name: 'Heater',
+        currentOn: true,
+        currentState: 'on',
+        expectedPowerKw: 0,
+        powerKw: 0,
+        lastFreshDataMs: start + 5_000,
+      })] as any,
+      nowTs: start,
+    });
+
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'dev-1',
+      source: 'pels_restore',
+      nowTs: start + 6_000,
+    });
+
+    expect(syncHeadroomCardState({
+      state,
+      devices: [buildTrackedDevice({
+        id: 'dev-1',
+        name: 'Heater',
+        currentOn: false,
+        currentState: 'off',
+        expectedPowerKw: 0,
+        powerKw: 0,
+        lastFreshDataMs: start + 7_000,
+      })] as any,
+      nowTs: start + 7_000,
+      reconciliationContext: 'snapshot_refresh',
+      diagnostics: diagnostics as any,
+    })).toBe(true);
+
+    expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
+    expect(diagnostics.recordActivationTransition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'attempt_closed_inactive',
+        deviceId: 'dev-1',
+      }),
+      { name: 'Heater' },
+    );
+    expect(diagnostics.recordControlEvent).not.toHaveBeenCalled();
+  });
+
   it('does not let an untrusted usage observation override a trusted merged observation', () => {
     const state = createPlanEngineState();
     const start = Date.now();
