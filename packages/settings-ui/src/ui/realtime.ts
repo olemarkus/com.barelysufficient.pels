@@ -51,7 +51,7 @@ import { loadShedBehaviors } from './deviceDetail/index.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
 import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
 import { state } from './state.ts';
-import { logSettingsError } from './logging.ts';
+import { logSettingsError, logSettingsWarn } from './logging.ts';
 
 const DAILY_BUDGET_REFRESH_KEYS = new Set([
   'daily_budget_enabled',
@@ -273,6 +273,14 @@ const createSettingsSetHandler = () => (key: string) => {
 
 const handlePlanUpdated = (plan: unknown) => {
   const parsedPlan = parsePlanSnapshot(plan);
+  if (parsedPlan === null && plan !== null && plan !== undefined) {
+    void logSettingsWarn(
+      'Ignoring malformed realtime plan update',
+      undefined,
+      'plan_updated',
+    );
+    return;
+  }
   primeApiCache(SETTINGS_UI_PLAN_PATH, { plan: parsedPlan });
   invalidateApiCache(SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH);
   document.dispatchEvent(new CustomEvent('plan-updated', { detail: { plan: parsedPlan } }));

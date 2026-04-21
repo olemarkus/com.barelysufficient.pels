@@ -1,6 +1,9 @@
 import type Homey from 'homey';
 import type { PowerTrackerState } from '../core/powerTracker';
-import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
+import type {
+  SettingsUiPlanDevice,
+  SettingsUiPlanSnapshot,
+} from '../../packages/contracts/src/settingsUiApi';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import { getHourBucketKey } from '../utils/dateUtils';
 
@@ -45,7 +48,6 @@ export const getPlanSnapshotForUiFromHomey = (homey: Homey.App['homey']): Settin
     app?.error?.(
       'Ignoring invalid settings UI app plan snapshot: finalized devices must include structured reason',
     );
-    return null;
   }
   const plan = homey.settings.get('device_plan_snapshot') as unknown;
   if (!isValidPlanSnapshot(plan)) {
@@ -65,9 +67,11 @@ const hasStructuredReason = (value: unknown): boolean => (
   && typeof (value as { code?: unknown }).code === 'string'
 );
 
-const isValidPlanDevice = (value: unknown): boolean => (
+const isValidPlanDevice = (value: unknown): value is SettingsUiPlanDevice => (
   Boolean(value)
   && typeof value === 'object'
+  && typeof (value as { id?: unknown }).id === 'string'
+  && typeof (value as { name?: unknown }).name === 'string'
   && hasStructuredReason((value as { reason?: unknown }).reason)
 );
 

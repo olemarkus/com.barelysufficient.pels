@@ -319,6 +319,27 @@ describe('settingsUiApi', () => {
     });
   });
 
+  it('falls back to the persisted plan snapshot when the in-memory app snapshot is invalid', () => {
+    const homey = createHomey({
+      latestPlanSnapshot: {
+        generatedAtMs: 123456789,
+        devices: [{ id: 'dev-2', name: 'Pump', priority: 2 }],
+      },
+    });
+
+    expect(buildSettingsUiBootstrap({ homey: homey as never }).plan).toEqual({
+      devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
+    });
+    expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
+      plan: {
+        devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
+      },
+    });
+    expect(homey.error).toHaveBeenCalledWith(
+      'Ignoring invalid settings UI app plan snapshot: finalized devices must include structured reason',
+    );
+  });
+
   it('drops invalid persisted plan snapshots instead of normalizing missing reasons', () => {
     const homey = createHomey();
     const settingsGet = homey.settings.get;
