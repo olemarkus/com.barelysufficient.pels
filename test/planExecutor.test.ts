@@ -1212,6 +1212,41 @@ describe('PlanExecutor stepped loads', () => {
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
 
+  it('does not retry binary restore while the required pre-restore step is in retry backoff', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const now = Date.now();
+    const { executor, deviceManager, desiredSteppedTrigger, debugStructured } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'max',
+      desiredStepId: 'max',
+      lastDesiredStepId: 'low',
+      stepCommandPending: false,
+      stepCommandStatus: 'stale',
+      nextStepCommandRetryAtMs: now + 30_000,
+    }));
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'retry_backoff',
+      deviceId: 'dev-1',
+      actuationMode: 'plan',
+    }));
+  });
+
   it('sets onoff=false for a shed stepped device at its off-step', async () => {
     // The plan sees currentState='off' (from decorated snapshot), but the raw
     // snapshot still has currentOn=true (the onoff capability hasn't been set
