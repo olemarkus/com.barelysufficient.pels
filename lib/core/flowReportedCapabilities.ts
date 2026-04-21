@@ -6,6 +6,7 @@ export const FLOW_REPORTED_CAPABILITY_IDS = [
   'onoff',
   'evcharger_charging',
   'alarm_generic.car_connected',
+  'pels_evcharger_resumable',
 ] as const;
 
 export type FlowReportedCapabilityId = (typeof FLOW_REPORTED_CAPABILITY_IDS)[number];
@@ -29,10 +30,13 @@ const BINARY_INPUT_CAPABILITIES: readonly FlowReportedCapabilityId[] = ['onoff']
 const EV_INPUT_CAPABILITIES: readonly FlowReportedCapabilityId[] = [
   'evcharger_charging',
   'alarm_generic.car_connected',
+  'pels_evcharger_resumable',
 ];
 const BINARY_EFFECTIVE_REQUIRED_CAPABILITIES = ['onoff', 'measure_power'] as const;
 const EV_EFFECTIVE_REQUIRED_CAPABILITIES = [
   'evcharger_charging',
+  'alarm_generic.car_connected',
+  'pels_evcharger_resumable',
   'evcharger_charging_state',
   'measure_power',
 ] as const;
@@ -199,7 +203,10 @@ export function augmentCapabilitiesWithFlowReports(params: {
   for (const capabilityId of allowedCapabilityIds) {
     const reportedEntry = reportedCapabilities[capabilityId];
     if (!reportedEntry) continue;
-    if (capabilities.includes(capabilityId)) continue;
+
+    const rawCapabilityPresent = isCapabilityProvidedNatively(capabilityId, capabilities);
+    if (capabilityId === 'pels_evcharger_resumable') continue;
+    if (rawCapabilityPresent && capabilityId !== 'alarm_generic.car_connected') continue;
 
     nextCapabilities.add(capabilityId);
     flowBackedCapabilityIds.push(capabilityId);
@@ -209,7 +216,7 @@ export function augmentCapabilitiesWithFlowReports(params: {
       capabilityId,
       reportedEntry,
       rawCapability,
-      rawCapabilityPresent: capabilities.includes(capabilityId),
+      rawCapabilityPresent,
     });
   }
 
@@ -270,37 +277,69 @@ function buildDerivedEvChargingStateEntry(params: {
   reportedCapabilities: Partial<Record<FlowReportedCapabilityId, FlowReportedCapabilityEntry>>;
 }): FlowReportedCapabilityEntry | null {
   const { capabilityObj, reportedCapabilities } = params;
-  const connectedValue = capabilityObj['alarm_generic.car_connected']?.value;
+  const connectedValue = reportedCapabilities['alarm_generic.car_connected']?.value;
   const chargingValue = capabilityObj.evcharger_charging?.value;
   if (typeof connectedValue !== 'boolean' || typeof chargingValue !== 'boolean') {
     return null;
   }
 
-  const connectedReportedAt = resolveCapabilityLastUpdatedMs(
-    capabilityObj['alarm_generic.car_connected']?.lastUpdated,
-    reportedCapabilities['alarm_generic.car_connected']?.reportedAt,
-  );
+  const resumableValue = reportedCapabilities.pels_evcharger_resumable?.value;
+  const value = resolveDerivedEvChargingStateValue({
+    connected: connectedValue,
+    charging: chargingValue,
+    resumable: resumableValue,
+  });
+
+  const connectedReportedAt = reportedCapabilities['alarm_generic.car_connected']?.reportedAt;
   const chargingReportedAt = resolveCapabilityLastUpdatedMs(
     capabilityObj.evcharger_charging?.lastUpdated,
     reportedCapabilities.evcharger_charging?.reportedAt,
   );
-  const reportedAt = Math.max(connectedReportedAt ?? 0, chargingReportedAt ?? 0);
+  const resumableReportedAt = reportedCapabilities.pels_evcharger_resumable?.reportedAt;
+  const reportedAt = resolveDerivedEvChargingStateReportedAt({
+    value,
+    connectedReportedAt,
+    chargingReportedAt,
+    resumableReportedAt,
+  });
   if (reportedAt <= 0) return null;
-
-  let value: string;
-  if (!connectedValue) {
-    value = 'plugged_out';
-  } else if (chargingValue) {
-    value = 'plugged_in_charging';
-  } else {
-    value = 'plugged_in_paused';
-  }
 
   return {
     value,
     reportedAt,
     source: 'flow',
   };
+}
+
+function resolveDerivedEvChargingStateValue(params: {
+  connected: boolean;
+  charging: boolean;
+  resumable: unknown;
+}): string {
+  const { connected, charging, resumable } = params;
+  if (!connected) return 'plugged_out';
+  if (charging) return 'plugged_in_charging';
+  return typeof resumable === 'boolean' && resumable ? 'plugged_in_paused' : 'plugged_in';
+}
+
+function resolveDerivedEvChargingStateReportedAt(params: {
+  value: string;
+  connectedReportedAt?: number;
+  chargingReportedAt?: number;
+  resumableReportedAt?: number;
+}): number {
+  const {
+    value,
+    connectedReportedAt,
+    chargingReportedAt,
+    resumableReportedAt,
+  } = params;
+  const resumableRelevant = value === 'plugged_in_paused' || value === 'plugged_in';
+  return Math.max(
+    connectedReportedAt ?? 0,
+    chargingReportedAt ?? 0,
+    resumableRelevant ? (resumableReportedAt ?? 0) : 0,
+  );
 }
 
 function resolveCapabilityLastUpdatedMs(
@@ -338,6 +377,7 @@ function isCapabilityProvidedNatively(
   capabilityId: FlowReportedCapabilityId,
   capabilities: readonly string[],
 ): boolean {
+  if (capabilityId === 'alarm_generic.car_connected' || capabilityId === 'pels_evcharger_resumable') return false;
   return capabilities.includes(capabilityId);
 }
 

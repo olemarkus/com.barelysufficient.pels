@@ -864,6 +864,40 @@
       },
       {
         "title": {
+          "en": "Set charging resumable for device"
+        },
+        "titleFormatted": {
+          "en": "Set charging resumable for [[device]] to [[state]]"
+        },
+        "hint": {
+          "en": "Reports whether charging can resume for an existing Homey EV charger."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select EV charger"
+            }
+          },
+          {
+            "name": "state",
+            "type": "autocomplete",
+            "title": {
+              "en": "Can resume"
+            },
+            "placeholder": {
+              "en": "Yes or no"
+            }
+          }
+        ],
+        "id": "report_flow_backed_device_evcharger_resumable"
+      },
+      {
+        "title": {
           "en": "Set on/off for device"
         },
         "titleFormatted": {

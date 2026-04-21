@@ -7,7 +7,7 @@ import {
   PLAN_REASON_CODES,
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-import type { DevicePlan, ShedAction } from './planTypes';
+import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
 import type { PendingTargetObservationSource } from './planTypes';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import type { PlanEngineState } from './planState';
@@ -17,6 +17,7 @@ import {
   formatEvSnapshot,
   getBinaryControlPlan,
   getEvRestoreBlockReason,
+  isFlowBackedBinaryControl,
   setBinaryControl,
 } from './planBinaryControl';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
@@ -263,6 +264,55 @@ export class PlanExecutor {
     this.lastControlledPersistenceDirty = true;
   }
 
+  public handleConfirmedBinaryCommand(params: {
+    deviceId: string;
+    liveDevice: Pick<PlanInputDevice, 'id' | 'name'>;
+    pending: PlanEngineState['pendingBinaryCommands'][string];
+    confirmedAtMs?: number;
+  }): void {
+    const { deviceId, liveDevice, pending } = params;
+    if (!pending.flowBackedControl) return;
+
+    const now = params.confirmedAtMs ?? Date.now();
+    this.deps.structuredLog?.info({
+      event: 'binary_command_applied',
+      deviceId,
+      deviceName: liveDevice.name,
+      capabilityId: pending.capabilityId,
+      desired: pending.desired,
+      mode: pending.actuationMode ?? 'plan',
+      reasonCode: resolveConfirmedBinaryCommandReasonCode(pending),
+    });
+
+    if (pending.desired) {
+      if (pending.logContext === 'capacity_control_off') {
+        delete this.state.lastDeviceShedMs[deviceId];
+      } else if (pending.actuationMode !== 'reconcile') {
+        this.recordRestoreActuation(deviceId, liveDevice.name, now);
+        recordActivationAttemptStarted({
+          state: this.state,
+          diagnostics: this.deps.deviceDiagnostics,
+          deviceId,
+          name: liveDevice.name,
+          nowTs: now,
+        });
+      }
+
+      const swapEntry = this.state.swapByDevice[deviceId];
+      if (swapEntry) {
+        delete swapEntry.pendingTarget;
+        delete swapEntry.timestamp;
+        if (!swapEntry.swappedOutFor && swapEntry.lastPlanMeasurementTs === undefined) {
+          delete this.state.swapByDevice[deviceId];
+        }
+      }
+    } else {
+      this.recordShedActuation(deviceId, liveDevice.name, now);
+    }
+
+    this.flushLastControlledPersistence();
+  }
+
   private flushLastControlledPersistence(): void {
     if (this.controlPersistenceBatchDepth > 0) return;
     if (!this.lastControlledPersistenceDirty) return;
@@ -455,41 +505,49 @@ export class PlanExecutor {
           actuationMode: mode,
         });
         if (!applied) return false;
-        this.deps.structuredLog?.info({
-          event: 'binary_command_applied',
-          deviceId: dev.id,
-          deviceName: name,
-          capabilityId: snapshot?.controlCapabilityId ?? 'onoff',
-          desired: true,
-          mode,
-          reasonCode: mode === 'reconcile' ? 'reconcile_restore' : this.getRestoreLogSource(dev.id),
-        });
-        if (mode === 'plan') {
-          const now = Date.now();
-          this.recordRestoreActuation(dev.id, name, now);
-          recordActivationAttemptStarted({
-            state: this.state,
-            diagnostics: this.deps.deviceDiagnostics,
+        const flowBackedControl = isFlowBackedBinaryControl(
+          snapshot,
+          snapshot?.controlCapabilityId ?? 'onoff',
+        );
+        if (!flowBackedControl) {
+          this.deps.structuredLog?.info({
+            event: 'binary_command_applied',
             deviceId: dev.id,
-            name,
-            nowTs: now,
+            deviceName: name,
+            capabilityId: snapshot?.controlCapabilityId ?? 'onoff',
+            desired: true,
+            mode,
+            reasonCode: mode === 'reconcile' ? 'reconcile_restore' : this.getRestoreLogSource(dev.id),
           });
-        } else if (mode === 'reconcile') {
-          recordActivationSetbackForDevice({
-            state: this.state,
-            diagnostics: this.deps.deviceDiagnostics,
-            deviceId: dev.id,
-            name,
-            nowTs: Date.now(),
-          });
+          if (mode === 'plan') {
+            const now = Date.now();
+            this.recordRestoreActuation(dev.id, name, now);
+            recordActivationAttemptStarted({
+              state: this.state,
+              diagnostics: this.deps.deviceDiagnostics,
+              deviceId: dev.id,
+              name,
+              nowTs: now,
+            });
+          } else if (mode === 'reconcile') {
+            recordActivationSetbackForDevice({
+              state: this.state,
+              diagnostics: this.deps.deviceDiagnostics,
+              deviceId: dev.id,
+              name,
+              nowTs: Date.now(),
+            });
+          }
         }
-        // Clear this device from pending swap targets if it was one
-        const swapEntry = this.state.swapByDevice[dev.id];
-        if (swapEntry) {
-          delete swapEntry.pendingTarget;
-          delete swapEntry.timestamp;
-          if (!swapEntry.swappedOutFor && swapEntry.lastPlanMeasurementTs === undefined) {
-            delete this.state.swapByDevice[dev.id];
+        if (!flowBackedControl) {
+          // Clear this device from pending swap targets if it was one.
+          const swapEntry = this.state.swapByDevice[dev.id];
+          if (swapEntry) {
+            delete swapEntry.pendingTarget;
+            delete swapEntry.timestamp;
+            if (!swapEntry.swappedOutFor && swapEntry.lastPlanMeasurementTs === undefined) {
+              delete this.state.swapByDevice[dev.id];
+            }
           }
         }
         return true;
@@ -565,16 +623,22 @@ export class PlanExecutor {
         actuationMode: 'plan',
       });
       if (!applied) return false;
-      this.deps.structuredLog?.info({
-        event: 'binary_command_applied',
-        deviceId: dev.id,
-        deviceName: name,
-        capabilityId: entry?.controlCapabilityId ?? 'onoff',
-        desired: true,
-        mode: 'plan',
-        reasonCode: 'capacity_control_off_restore',
-      });
-      delete this.state.lastDeviceShedMs[dev.id];
+      const flowBackedControl = isFlowBackedBinaryControl(
+        entry,
+        entry?.controlCapabilityId ?? 'onoff',
+      );
+      if (!flowBackedControl) {
+        this.deps.structuredLog?.info({
+          event: 'binary_command_applied',
+          deviceId: dev.id,
+          deviceName: name,
+          capabilityId: entry?.controlCapabilityId ?? 'onoff',
+          desired: true,
+          mode: 'plan',
+          reasonCode: 'capacity_control_off_restore',
+        });
+        delete this.state.lastDeviceShedMs[dev.id];
+      }
       return true;
     } catch (error) {
       this.error(`Failed to restore ${name} via DeviceManager`, error);
@@ -726,16 +790,22 @@ export class PlanExecutor {
         actuationMode: 'plan',
       });
       if (!applied) return false;
-      this.deps.structuredLog?.info({
-        event: 'binary_command_applied',
-        deviceId,
-        deviceName: name,
-        capabilityId: snapshotEntry?.controlCapabilityId ?? controlPlan.capabilityId,
-        desired: false,
-        mode: 'plan',
-        reasonCode: reason ? 'shed_with_reason' : 'shedding',
-      });
-      this.recordShedActuation(deviceId, name, now);
+      const flowBackedControl = isFlowBackedBinaryControl(
+        snapshotEntry,
+        snapshotEntry?.controlCapabilityId ?? controlPlan.capabilityId,
+      );
+      if (!flowBackedControl) {
+        this.deps.structuredLog?.info({
+          event: 'binary_command_applied',
+          deviceId,
+          deviceName: name,
+          capabilityId: snapshotEntry?.controlCapabilityId ?? controlPlan.capabilityId,
+          desired: false,
+          mode: 'plan',
+          reasonCode: reason ? 'shed_with_reason' : 'shedding',
+        });
+        this.recordShedActuation(deviceId, name, now);
+      }
       return true;
     } catch (error) {
       this.error(`Failed to turn off ${name} via DeviceManager`, error);
@@ -865,6 +935,21 @@ export class PlanExecutor {
     const lastRestoreMs = this.state.lastDeviceRestoreMs[deviceId];
     return !lastRestoreMs || lastRestoreMs < lastShedMs ? 'shed_state' : 'current_plan';
   }
+}
+
+function resolveConfirmedBinaryCommandReasonCode(
+  pending: PlanEngineState['pendingBinaryCommands'][string],
+): string {
+  if (!pending.desired) {
+    return pending.reason ? 'shed_with_reason' : 'shedding';
+  }
+  if (pending.logContext === 'capacity_control_off') {
+    return 'capacity_control_off_restore';
+  }
+  if (pending.actuationMode === 'reconcile') {
+    return 'reconcile_restore';
+  }
+  return pending.restoreSource ?? 'current_plan';
 }
 
 function resolveFlowBackedBinaryTriggerCardId(

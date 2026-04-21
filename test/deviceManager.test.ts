@@ -2491,6 +2491,85 @@ describe('DeviceManager', () => {
             }
         });
 
+        it('does not preserve synthesized ev state from device.update across snapshot refreshes', async () => {
+            vi.useFakeTimers();
+            try {
+                const disconnectedReportedAt = new Date('2026-03-20T05:59:00.000Z').getTime();
+                const connectedReportedAt = new Date('2026-03-20T06:00:02.000Z').getTime();
+                const flowReportedCapabilities = {
+                    evcharger_charging: { value: false, reportedAt: disconnectedReportedAt, source: 'flow' as const },
+                    'alarm_generic.car_connected': {
+                        value: false,
+                        reportedAt: disconnectedReportedAt,
+                        source: 'flow' as const,
+                    },
+                    pels_evcharger_resumable: {
+                        value: false,
+                        reportedAt: disconnectedReportedAt,
+                        source: 'flow' as const,
+                    },
+                };
+                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                    getExperimentalEvSupportEnabled: () => true,
+                    getFlowReportedCapabilities: () => flowReportedCapabilities,
+                });
+                await evDeviceManager.init();
+
+                vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Zaptec',
+                        class: 'evcharger',
+                        capabilities: ['measure_power'],
+                        capabilitiesObj: {
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+
+                await evDeviceManager.refreshSnapshot();
+                expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                    evChargingState: 'plugged_out',
+                }));
+
+                vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
+                evDeviceManager.injectDeviceUpdateForTest({
+                    id: 'ev1',
+                    name: 'Zaptec',
+                    class: 'evcharger',
+                    capabilities: ['measure_power'],
+                    capabilitiesObj: {
+                        measure_power: { value: 0, id: 'measure_power' },
+                    },
+                });
+
+                flowReportedCapabilities['alarm_generic.car_connected'] = {
+                    value: true,
+                    reportedAt: connectedReportedAt,
+                    source: 'flow',
+                };
+                flowReportedCapabilities.pels_evcharger_resumable = {
+                    value: true,
+                    reportedAt: connectedReportedAt,
+                    source: 'flow',
+                };
+
+                await evDeviceManager.refreshSnapshot();
+
+                expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                    evChargingState: 'plugged_in_paused',
+                }));
+                expect(loggerMock.debug).not.toHaveBeenCalledWith(expect.stringContaining(
+                    'preserved newer device_update evcharger_charging_state for Zaptec (ev1)',
+                ));
+
+                evDeviceManager.destroy();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
         it('emits drift when a contradictory device.update arrives during the binary settle window', async () => {
             mockApiGet.mockResolvedValue({
                 dev1: {

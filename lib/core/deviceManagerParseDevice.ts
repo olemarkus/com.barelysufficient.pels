@@ -44,6 +44,8 @@ type FlowEffectiveRequiredCapabilityId =
     'onoff'
     | 'measure_power'
     | 'evcharger_charging'
+    | 'alarm_generic.car_connected'
+    | 'pels_evcharger_resumable'
     | 'evcharger_charging_state';
 
 export type DeviceManagerParseProviders = {
@@ -119,6 +121,7 @@ export function parseDevice(params: {
         flowAugmentedDeviceType,
         flowBackedCapabilityIds,
         requiredFlowCapabilityIds,
+        reportedCapabilities,
     } = resolveFlowCapabilityOverlay({
         deviceClassKey,
         deviceId,
@@ -194,6 +197,7 @@ export function parseDevice(params: {
         capabilities,
         capabilityObj,
         requiredFlowCapabilityIds,
+        reportedCapabilities,
         powerCapable,
     })) {
         return null;
@@ -327,6 +331,7 @@ function resolveFlowCapabilityOverlay(params: {
     flowAugmentedDeviceType: ReturnType<typeof resolveFlowAugmentedDeviceType>;
     flowBackedCapabilityIds: FlowReportedCapabilityId[];
     requiredFlowCapabilityIds: readonly FlowEffectiveRequiredCapabilityId[];
+    reportedCapabilities: FlowReportedCapabilitiesForDevice;
 } {
     const {
         deviceClassKey,
@@ -359,6 +364,7 @@ function resolveFlowCapabilityOverlay(params: {
         flowAugmentedDeviceType,
         flowBackedCapabilityIds,
         requiredFlowCapabilityIds,
+        reportedCapabilities,
     };
 }
 
@@ -368,6 +374,7 @@ function shouldSkipFlowBackedCandidate(params: {
     capabilities: readonly string[];
     capabilityObj: DeviceCapabilityMap;
     requiredFlowCapabilityIds: readonly FlowEffectiveRequiredCapabilityId[];
+    reportedCapabilities: FlowReportedCapabilitiesForDevice;
     powerCapable: boolean;
 }): boolean {
     const {
@@ -376,6 +383,7 @@ function shouldSkipFlowBackedCandidate(params: {
         capabilities,
         capabilityObj,
         requiredFlowCapabilityIds,
+        reportedCapabilities,
         powerCapable,
     } = params;
     if (flowAugmentedDeviceType === 'unsupported') return false;
@@ -385,6 +393,7 @@ function shouldSkipFlowBackedCandidate(params: {
             capabilities,
             capabilityObj,
             requiredCapabilityIds: requiredFlowCapabilityIds,
+            reportedCapabilities,
         });
     const isMissingDirectPowerSupport = flowBackedCapabilityIds.length === 0 && powerCapable === false;
     return hasIncompleteFlowSupport || isMissingDirectPowerSupport;
@@ -394,17 +403,46 @@ function hasAllRequiredFlowCapabilitiesInEffectiveView(params: {
     capabilities: readonly string[];
     capabilityObj: DeviceCapabilityMap;
     requiredCapabilityIds: readonly FlowEffectiveRequiredCapabilityId[];
+    reportedCapabilities: FlowReportedCapabilitiesForDevice;
 }): boolean {
-    const { capabilities, capabilityObj, requiredCapabilityIds } = params;
+    const { capabilities, capabilityObj, requiredCapabilityIds, reportedCapabilities } = params;
     const capabilitySet = new Set(capabilities);
     return requiredCapabilityIds.every((capabilityId) => (
-        capabilityId === 'measure_power'
-            ? (
-                getCapabilityValueByPrefix([...capabilities], capabilityObj, 'measure_power') !== undefined
-                || getCapabilityValueByPrefix([...capabilities], capabilityObj, 'meter_power') !== undefined
-            )
-            : capabilitySet.has(capabilityId) && capabilityObj[capabilityId] !== undefined
+        hasRequiredFlowCapability({
+            capabilityId,
+            capabilities,
+            capabilityObj,
+            capabilitySet,
+            reportedCapabilities,
+        })
     ));
+}
+
+function hasRequiredFlowCapability(params: {
+    capabilityId: FlowEffectiveRequiredCapabilityId;
+    capabilities: readonly string[];
+    capabilityObj: DeviceCapabilityMap;
+    capabilitySet: Set<string>;
+    reportedCapabilities: FlowReportedCapabilitiesForDevice;
+}): boolean {
+    const {
+        capabilityId,
+        capabilities,
+        capabilityObj,
+        capabilitySet,
+        reportedCapabilities,
+    } = params;
+
+    if (capabilityId === 'measure_power') {
+        return getCapabilityValueByPrefix([...capabilities], capabilityObj, 'measure_power') !== undefined
+            || getCapabilityValueByPrefix([...capabilities], capabilityObj, 'meter_power') !== undefined;
+    }
+
+    if (capabilityId === 'alarm_generic.car_connected' || capabilityId === 'pels_evcharger_resumable') {
+        return typeof reportedCapabilities[capabilityId]?.value === 'boolean';
+    }
+
+    return capabilitySet.has(capabilityId) && capabilityObj[capabilityId] !== undefined;
 }
 
 function resolveParsedDeviceSettings(

@@ -65,6 +65,16 @@ export function registerFlowBackedDeviceCards(deps: FlowCardDeps): void {
     autocompleteArg: 'state',
     getAutocompleteOptions: getConnectionAutocompleteOptions,
   });
+
+  registerBooleanCapabilityCard({
+    deps,
+    cardId: 'report_flow_backed_device_evcharger_resumable',
+    capabilityId: 'pels_evcharger_resumable',
+    target: 'evcharger',
+    errorMessage: 'Resumable state must be yes, no, true, or false.',
+    autocompleteArg: 'state',
+    getAutocompleteOptions: getYesNoAutocompleteOptions,
+  });
 }
 
 function registerFlowBackedRequestTrigger(params: {
@@ -97,7 +107,10 @@ function registerFlowBackedRequestTrigger(params: {
 function registerBooleanCapabilityCard(params: {
   deps: FlowCardDeps;
   cardId: string;
-  capabilityId: Extract<FlowReportedCapabilityId, 'onoff' | 'evcharger_charging' | 'alarm_generic.car_connected'>;
+  capabilityId: Extract<
+    FlowReportedCapabilityId,
+    'onoff' | 'evcharger_charging' | 'alarm_generic.car_connected' | 'pels_evcharger_resumable'
+  >;
   target: FlowBackedCardTarget;
   errorMessage: string;
   autocompleteArg?: string;
@@ -201,6 +214,8 @@ function parseBooleanFlowValue(rawValue: unknown, errorMessage: string): boolean
   const normalized = parseAutocompleteStringValue(rawValue).toLowerCase();
   if (normalized === 'true' || normalized === 'on') return true;
   if (normalized === 'false' || normalized === 'off') return false;
+  if (normalized === 'yes') return true;
+  if (normalized === 'no') return false;
   if (normalized === 'connected') return true;
   if (normalized === 'disconnected') return false;
   throw new Error(errorMessage);
@@ -266,6 +281,17 @@ function getConnectionAutocompleteOptions(query: string): Array<{ id: string; na
   const options = [
     { id: 'connected', name: 'Connected' },
     { id: 'disconnected', name: 'Disconnected' },
+  ];
+  const normalizedQuery = (query || '').trim().toLowerCase();
+  return options.filter((option) => (
+    !normalizedQuery || option.id.includes(normalizedQuery) || option.name.toLowerCase().includes(normalizedQuery)
+  ));
+}
+
+function getYesNoAutocompleteOptions(query: string): Array<{ id: string; name: string }> {
+  const options = [
+    { id: 'yes', name: 'Yes' },
+    { id: 'no', name: 'No' },
   ];
   const normalizedQuery = (query || '').trim().toLowerCase();
   return options.filter((option) => (
@@ -369,6 +395,7 @@ function isCapabilityProvidedNatively(params: {
   capabilityId: FlowReportedCapabilityId;
 }): boolean {
   const { device, capabilityId } = params;
+  if (capabilityId === 'alarm_generic.car_connected') return false;
   const capabilities = getCapabilities(device);
   return capabilities.includes(capabilityId);
 }

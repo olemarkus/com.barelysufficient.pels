@@ -108,10 +108,10 @@ describe('plan binary control helpers', () => {
       canSetControl: false,
     })).toEqual({ capabilityId: 'evcharger_charging', isEv: true, canSet: false });
 
-    expect(getEvRestoreBlockReason({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', expectedPowerSource: 'default' })).toBe('charger power unknown');
+    expect(getEvRestoreBlockReason({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', expectedPowerSource: 'default' })).toBe('charger state unknown');
     expect(getEvRestoreBlockReason({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging' })).toBe('charger state unknown');
     expect(getEvRestoreBlockReason({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_out' })).toBe('charger is unplugged');
-    expect(getEvRestoreBlockReason({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_in' })).toBeNull();
+    expect(getEvRestoreBlockReason({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_in' })).toBe('charger is not resumable');
     expect(getEvRestoreBlockReason({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'mystery' })).toBe("unknown charging state 'mystery'");
     expect(formatEvSnapshot()).toBe('snapshot=missing');
   });
@@ -259,7 +259,7 @@ describe('plan binary control helpers', () => {
       actuationMode: 'plan',
     });
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
-    expect(log).toHaveBeenCalledWith('Capacity: turned off Socket (shedding)');
+    expect(log).toHaveBeenCalledWith('Capacity: requested turn off for Socket (shedding)');
     expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'flow_backed_binary_command_requested',
       deviceId: 'socket1',
@@ -269,6 +269,10 @@ describe('plan binary control helpers', () => {
       logContext: 'capacity',
       actuationMode: 'plan',
     }));
+    expect(state.pendingBinaryCommands.socket1).toMatchObject({
+      capabilityId: 'onoff',
+      desired: false,
+    });
   });
 
   it('emits binary_command_failed when the device manager write fails', async () => {
@@ -612,6 +616,54 @@ describe('plan binary control helpers', () => {
     expect(logDebug).toHaveBeenCalledWith(
       'Capacity: confirmed evcharger_charging for EV at paused via device_update',
     );
+  });
+
+  it('runs confirmation callbacks before clearing pending flow-backed binary commands', () => {
+    const state = createPlanEngineState();
+    const startedMs = Date.now();
+    state.pendingBinaryCommands.ev1 = {
+      capabilityId: 'evcharger_charging',
+      desired: false,
+      startedMs,
+      flowBackedControl: true,
+      logContext: 'capacity',
+      actuationMode: 'plan',
+    };
+    const logDebug = vi.fn();
+    const onConfirmed = vi.fn();
+
+    const changed = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'ev1',
+        name: 'EV',
+        currentOn: true,
+        evChargingState: 'plugged_in_paused',
+        hasBinaryControl: true,
+        controlCapabilityId: 'evcharger_charging',
+        targets: [],
+      }],
+      source: 'device_update',
+      logDebug,
+      onConfirmed,
+    });
+
+    expect(changed).toBe(true);
+    expect(onConfirmed).toHaveBeenCalledWith(expect.objectContaining({
+      deviceId: 'ev1',
+      source: 'device_update',
+      pending: expect.objectContaining({
+        capabilityId: 'evcharger_charging',
+        desired: false,
+        flowBackedControl: true,
+      }),
+      liveDevice: expect.objectContaining({
+        id: 'ev1',
+        name: 'EV',
+      }),
+      confirmedAtMs: expect.any(Number),
+    }));
+    expect(state.pendingBinaryCommands.ev1).toBeUndefined();
   });
 
   it('handles missing, blocked, and failing binary control requests', async () => {
