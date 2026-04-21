@@ -2,7 +2,6 @@ import type Homey from 'homey';
 import type { PowerTrackerState } from '../core/powerTracker';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import type { TargetDeviceSnapshot } from '../utils/types';
-import { buildComparablePlanReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { getHourBucketKey } from '../utils/dateUtils';
 
 type SettingsUiRuntimeApp = Homey.App & {
@@ -39,35 +38,43 @@ export const getLatestDevicesForUiFromApp = (homey: Homey.App['homey']): TargetD
 };
 
 export const getPlanSnapshotForUiFromHomey = (homey: Homey.App['homey']): SettingsUiPlanSnapshot | null => {
-  const appPlan = getRuntimeApp(homey)?.getLatestPlanSnapshotForUi?.();
-  if (appPlan && typeof appPlan === 'object') {
-    return appPlan;
+  const app = getRuntimeApp(homey);
+  const appPlan = app?.getLatestPlanSnapshotForUi?.();
+  if (isValidPlanSnapshot(appPlan)) return appPlan;
+  if (appPlan !== null && appPlan !== undefined) {
+    app?.error?.(
+      'Ignoring invalid settings UI app plan snapshot: finalized devices must include structured reason',
+    );
+    return null;
   }
   const plan = homey.settings.get('device_plan_snapshot') as unknown;
-  if (!plan || typeof plan !== 'object') return null;
-
-  // Old persisted snapshots stored reason as a string. This is the storage-read
-  // compatibility bridge; runtime producers now emit typed DeviceReason objects.
-  return normalizeLegacyPlanSnapshot(plan as SettingsUiPlanSnapshot);
+  if (!isValidPlanSnapshot(plan)) {
+    if (plan !== null && plan !== undefined) {
+      app?.error?.(
+        'Ignoring invalid persisted settings UI plan snapshot: finalized devices must include structured reason',
+      );
+    }
+    return null;
+  }
+  return plan;
 };
 
-const normalizeLegacyPlanSnapshot = (plan: SettingsUiPlanSnapshot): SettingsUiPlanSnapshot => {
-  if (!Array.isArray(plan.devices)) return plan;
+const hasStructuredReason = (value: unknown): boolean => (
+  Boolean(value)
+  && typeof value === 'object'
+  && typeof (value as { code?: unknown }).code === 'string'
+);
 
-  return {
-    ...plan,
-    devices: plan.devices.map((device) => {
-      if (!device || typeof device !== 'object') return device;
-      const reason = (device as Record<string, unknown>).reason;
-      if (reason && typeof reason === 'object' && typeof (reason as { code?: unknown }).code === 'string') {
-        return device;
-      }
-      return {
-        ...device,
-        reason: buildComparablePlanReason(typeof reason === 'string' ? reason : undefined),
-      };
-    }),
-  };
+const isValidPlanDevice = (value: unknown): boolean => (
+  Boolean(value)
+  && typeof value === 'object'
+  && hasStructuredReason((value as { reason?: unknown }).reason)
+);
+
+const isValidPlanSnapshot = (value: unknown): value is SettingsUiPlanSnapshot => {
+  if (!value || typeof value !== 'object') return false;
+  const devices = (value as { devices?: unknown }).devices;
+  return devices === undefined || (Array.isArray(devices) && devices.every(isValidPlanDevice));
 };
 
 export const getPowerTrackerForUiFromApp = (homey: Homey.App['homey']): PowerTrackerState | null => {

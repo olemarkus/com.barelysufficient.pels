@@ -45,10 +45,31 @@ type PlanSnapshot = {
   devices?: PlanDeviceSnapshot[];
 };
 
+const hasStructuredReason = (value: unknown): boolean => (
+  Boolean(value)
+  && typeof value === 'object'
+  && typeof (value as { code?: unknown }).code === 'string'
+);
+
+const isPlanDeviceSnapshot = (value: unknown): value is PlanDeviceSnapshot => (
+  Boolean(value)
+  && typeof value === 'object'
+  && typeof (value as { id?: unknown }).id === 'string'
+  && typeof (value as { name?: unknown }).name === 'string'
+  && hasStructuredReason((value as { reason?: unknown }).reason)
+);
+
+export const parsePlanSnapshot = (value: unknown): PlanSnapshot | null => {
+  if (!value || typeof value !== 'object') return null;
+  const devices = (value as { devices?: unknown }).devices;
+  if (devices !== undefined && (!Array.isArray(devices) || !devices.every(isPlanDeviceSnapshot))) {
+    return null;
+  }
+  return value as PlanSnapshot;
+};
+
 const getPlanSnapshotFromPayload = (payload: SettingsUiPlanPayload | null | undefined): PlanSnapshot | null => {
-  const plan = payload?.plan;
-  if (!plan || typeof plan !== 'object') return null;
-  return plan as PlanSnapshot;
+  return parsePlanSnapshot(payload?.plan);
 };
 
 const getPlanSnapshot = async (): Promise<PlanSnapshot | null> => (

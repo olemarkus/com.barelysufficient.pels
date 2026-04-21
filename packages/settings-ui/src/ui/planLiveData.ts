@@ -1,7 +1,7 @@
 import type { DeviceReason } from '../../../shared-domain/src/planReasonSemantics.ts';
 
 export type TimedPlanDevice = {
-  reason?: DeviceReason;
+  reason: DeviceReason;
 };
 
 export type TimedPlanSnapshot = {
@@ -14,15 +14,15 @@ export type TimedPlanSnapshot = {
 
 type TimedDeviceReason = Extract<DeviceReason, { remainingSec: number }>;
 
-export const hasTimedReason = (reason: DeviceReason | undefined): reason is TimedDeviceReason => (
-  Boolean(reason && typeof (reason as { remainingSec?: unknown }).remainingSec === 'number')
+export const hasTimedReason = (reason: DeviceReason): reason is TimedDeviceReason => (
+  typeof (reason as { remainingSec?: unknown }).remainingSec === 'number'
 );
 
 export const getDisplayReason = (
-  reason: DeviceReason | undefined,
+  reason: DeviceReason,
   snapshotGeneratedAtMs: number,
   nowMs: number,
-): DeviceReason | undefined => {
+): DeviceReason => {
   if (!hasTimedReason(reason)) return reason;
   return {
     ...reason,
