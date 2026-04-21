@@ -22,6 +22,7 @@ import {
   resolveSteppedLoadTransition,
   type SteppedLoadTransition,
 } from './planSteppedLoad';
+import { resolveSteppedRestoreAttemptState } from './planSteppedRestorePending';
 import type { PlanActuationMode } from './planExecutor';
 import type { DevicePlan } from './planTypes';
 import type { PlanEngineState } from './planState';
@@ -113,8 +114,8 @@ export const applySteppedLoadCommand = async (
   }
   const now = Date.now();
   const previousStepId = dev.selectedStepId ?? dev.lastDesiredStepId;
-  const sameDesiredStepPendingState = getSameDesiredStepPendingState(dev, commandStepId, now);
-  if (sameDesiredStepPendingState === 'pending') {
+  const sameDesiredStepPendingState = resolveSteppedRestoreAttemptState(dev, commandStepId, now);
+  if (sameDesiredStepPendingState?.status === 'awaiting_confirmation') {
     return logSteppedLoadCommandSkip(ctx, {
       dev,
       mode,
@@ -124,7 +125,7 @@ export const applySteppedLoadCommand = async (
       fields: { desiredStepId: commandStepId, plannedDesiredStepId: plannedDesiredStepId ?? null },
     });
   }
-  if (sameDesiredStepPendingState === 'backoff') {
+  if (sameDesiredStepPendingState?.status === 'retry_backoff') {
     return logSteppedLoadCommandSkip(ctx, {
       dev,
       mode,
@@ -153,7 +154,7 @@ export const applySteppedLoadCommand = async (
 type SteppedLoadRestoreState = {
   effectiveCurrentOn: boolean | null;
   desiredStepId?: string;
-  hasPendingMatchingRestoreStep: boolean;
+  matchingRestoreAttempt: ReturnType<typeof resolveSteppedRestoreAttemptState>;
   stepNeedsAdjustment: boolean;
   stepNeedsConfirmation: boolean;
 };
@@ -163,16 +164,16 @@ const evaluateSteppedLoadRestoreState = (
 ): SteppedLoadRestoreState => {
   const effectiveCurrentOn = resolveEffectiveCurrentOn(dev);
   const desiredStepId = resolveSteppedKeepDesiredStepId(dev);
-  const hasPendingMatchingRestoreStep = desiredStepId !== undefined
-    && dev.stepCommandPending === true
-    && dev.lastDesiredStepId === desiredStepId;
+  const matchingRestoreAttempt = desiredStepId !== undefined
+    ? resolveSteppedRestoreAttemptState(dev, desiredStepId)
+    : null;
   const desiredIsNonOff = desiredStepId
     && dev.steppedLoadProfile
     && !isSteppedLoadOffStep(dev.steppedLoadProfile, desiredStepId);
   return {
     effectiveCurrentOn,
     desiredStepId,
-    hasPendingMatchingRestoreStep,
+    matchingRestoreAttempt,
     stepNeedsAdjustment: Boolean(desiredIsNonOff && desiredStepId !== dev.selectedStepId),
     stepNeedsConfirmation: Boolean(desiredIsNonOff && desiredStepId === dev.assumedStepId),
   };
@@ -231,10 +232,25 @@ export const applySteppedLoadRestore = async (
   const {
     effectiveCurrentOn,
     desiredStepId,
-    hasPendingMatchingRestoreStep,
+    matchingRestoreAttempt,
     stepNeedsAdjustment,
     stepNeedsConfirmation,
   } = evaluateSteppedLoadRestoreState(dev);
+  if (effectiveCurrentOn === true && matchingRestoreAttempt && stepNeedsAdjustment) {
+    return logSteppedLoadRestoreSkip(ctx, {
+      dev,
+      mode,
+      reasonCode: matchingRestoreAttempt.status === 'awaiting_confirmation'
+        ? 'waiting_for_confirmation'
+        : 'retry_backoff',
+      logMessage:
+        matchingRestoreAttempt.status === 'awaiting_confirmation'
+          ? `Capacity: skip stepped-load restore for ${name}, `
+            + `awaiting confirmation of ${desiredStepId ?? 'unknown'}`
+          : `Capacity: skip stepped-load restore for ${name}, `
+            + `retry backoff for ${desiredStepId ?? 'unknown'} remains active`,
+    });
+  }
   logSteppedLoadRestoreViolations(ctx, dev, name, {
     desiredStepId,
     stepNeedsAdjustment,
@@ -302,7 +318,7 @@ export const applySteppedLoadRestore = async (
         + `assumed step ${dev.assumedStepId ?? 'unknown'} must be confirmed before binary restore`,
     });
   }
-  if (onoffViolated && stepViolated && options.preRestoreStepIssued !== true && !hasPendingMatchingRestoreStep) {
+  if (onoffViolated && stepViolated && options.preRestoreStepIssued !== true && !matchingRestoreAttempt) {
     return logSteppedLoadRestoreSkip(ctx, {
       dev,
       mode,
@@ -405,29 +421,6 @@ const logSteppedLoadCommandSkip = (
   ctx.logDebug(logMessage);
   return false;
 };
-
-function getSameDesiredStepPendingState(
-  dev: Pick<
-    PlanDevice,
-    | 'lastDesiredStepId'
-    | 'stepCommandPending'
-    | 'stepCommandStatus'
-    | 'nextStepCommandRetryAtMs'
-  >,
-  desiredStepId: string,
-  nowMs: number = Date.now(),
-): 'pending' | 'backoff' | null {
-  if (dev.lastDesiredStepId !== desiredStepId) return null;
-  if (dev.stepCommandPending) return 'pending';
-  if (
-    dev.stepCommandStatus === 'stale'
-    && typeof dev.nextStepCommandRetryAtMs === 'number'
-    && nowMs < dev.nextStepCommandRetryAtMs
-  ) {
-    return 'backoff';
-  }
-  return null;
-}
 
 /* eslint-disable complexity --
  * Stepped-load command execution couples trigger dispatch with state tracking
@@ -551,6 +544,8 @@ const logSteppedLoadRestoreSkip = (
     reasonCode:
       | 'planned_state'
       | 'no_keep_violation'
+      | 'waiting_for_confirmation'
+      | 'retry_backoff'
       | 'missing_snapshot'
       | 'not_setable'
       | 'already_in_progress'

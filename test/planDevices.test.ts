@@ -109,6 +109,42 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.desiredStepId).toBe('low');
   });
 
+  it('does not let stale restore intent raise the shed target for set_step shedding', () => {
+    const steppedDevice = steppedInputDevice({
+      id: 'dev-1',
+      name: 'Water Heater',
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+      currentOn: true,
+      controllable: true,
+      expectedPowerKw: 1.25,
+      measuredPowerKw: 1.19,
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([steppedDevice]),
+      state: createPlanEngineState(),
+      shedSet: new Set(['dev-1']),
+      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: {
+        getPriorityForDevice: () => 100,
+        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+      },
+    });
+
+    expect(planDevice.plannedState).toBe('shed');
+    expect(planDevice.shedAction).toBe('set_step');
+    expect(planDevice.selectedStepId).toBe('low');
+    expect(planDevice.desiredStepId).toBe('low');
+  });
+
   it('exposes binaryCommandPending when a pending binary command exists for the device', () => {
     const device = buildPlanInputDevice({ id: 'dev-1', name: 'Heater', currentOn: false });
 
@@ -678,6 +714,35 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     expect(planDevice.plannedState).toBe('keep');
     // Off-step desiredStepId must be normalized to the lowest non-zero step ('low').
     expect(planDevice.desiredStepId).toBe('low');
+  });
+
+  it('preserves runtime stepped restore intent for keep devices while confirmation is still pending', () => {
+    const device = steppedInputDevice({
+      id: 'dev-1',
+      hasBinaryControl: true,
+      currentOn: true,
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+      stepCommandPending: true,
+      stepCommandStatus: 'pending',
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([device]),
+      state: createPlanEngineState(),
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: buildTurnOffDeps(),
+    });
+
+    expect(planDevice.plannedState).toBe('keep');
+    expect(planDevice.selectedStepId).toBe('low');
+    expect(planDevice.desiredStepId).toBe('max');
+    expect(planDevice.targetStepId).toBe('max');
+    expect(planDevice.lastDesiredStepId).toBe('max');
   });
 
   it('restore (keep) normalizes unknown-step off devices to lowest non-zero step and expected load', () => {
