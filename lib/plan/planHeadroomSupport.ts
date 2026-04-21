@@ -91,9 +91,10 @@ export const updateHeadroomCardUsageObservation = (params: {
   }
 };
 
+export type UsageObservationMergeOutcome = 'lose' | 'tie' | 'tie_refresh' | 'win';
+
 export type TrackedUsageMergeDecision = {
-  skipUpdate: boolean;
-  advanceFreshnessOnly: boolean;
+  outcome: UsageObservationMergeOutcome;
 };
 
 export const resolveUsageObservationMergeDecision = (params: {
@@ -110,32 +111,30 @@ export const resolveUsageObservationMergeDecision = (params: {
   const hasPreviousFreshness = isFiniteNumber(previousUsageFreshnessMs);
   const hasIncomingFreshness = isFiniteNumber(incomingUsageFreshnessMs);
 
+  if (hasPreviousFreshness && !hasIncomingFreshness) {
+    return { outcome: 'lose' };
+  }
+
   if (
     hasPreviousFreshness
     && hasIncomingFreshness
     && incomingUsageFreshnessMs < previousUsageFreshnessMs
   ) {
-    return {
-      skipUpdate: true,
-      advanceFreshnessOnly: false,
-    };
+    return { outcome: 'lose' };
   }
 
   const semanticNoop = previousUsageKw === usageObservation.kw;
-  if (!semanticNoop) {
-    return {
-      skipUpdate: false,
-      advanceFreshnessOnly: false,
-    };
+  if (semanticNoop) {
+    if (
+      hasIncomingFreshness
+      && (!hasPreviousFreshness || incomingUsageFreshnessMs > previousUsageFreshnessMs)
+    ) {
+      return { outcome: 'tie_refresh' };
+    }
+    return { outcome: 'tie' };
   }
 
-  return {
-    skipUpdate: true,
-    advanceFreshnessOnly: Boolean(
-      hasIncomingFreshness
-      && (!hasPreviousFreshness || incomingUsageFreshnessMs > previousUsageFreshnessMs),
-    ),
-  };
+  return { outcome: 'win' };
 };
 
 export const resolveHeadroomDeviceName = (params: {

@@ -1022,6 +1022,48 @@ describe('activation backoff', () => {
     expect(diagnostics.recordActivationTransition).not.toHaveBeenCalled();
   });
 
+  it('does not let an untrusted usage observation override a trusted merged observation', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+    const diagnostics = {
+      recordControlEvent: vi.fn(),
+      recordActivationTransition: vi.fn(),
+    };
+
+    syncHeadroomCardState({
+      state,
+      devices: [buildTrackedDevice({
+        id: 'dev-1',
+        name: 'Heater',
+        currentOn: true,
+        currentState: 'on',
+        expectedPowerKw: 1.2,
+        powerKw: 1.2,
+        lastFreshDataMs: start + 5_000,
+      })] as any,
+      nowTs: start,
+    });
+    const before = getPerfSnapshot();
+
+    expect(syncHeadroomUsageObservation({
+      state,
+      deviceId: 'dev-1',
+      usageObservation: { kw: 2.4 },
+      nowTs: start + 6_000,
+      diagnostics: diagnostics as any,
+    })).toBe(false);
+
+    const after = getPerfSnapshot();
+    expect(state.headroomCardByDevice['dev-1']).toMatchObject({
+      lastUsageKw: 1.2,
+      lastUsageFreshnessMs: start + 5_000,
+    });
+    expect(diagnostics.recordControlEvent).not.toHaveBeenCalled();
+    expect(diagnostics.recordActivationTransition).not.toHaveBeenCalled();
+    expect((after.counts.tracked_usage_update_skipped_noop || 0) - (before.counts.tracked_usage_update_skipped_noop || 0))
+      .toBe(1);
+  });
+
   it('tags snapshot-refresh tracked transitions during startup with snapshot_refresh reconciliation', () => {
     const state = createPlanEngineState();
     const start = Date.now();
