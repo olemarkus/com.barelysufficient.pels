@@ -64,15 +64,8 @@ function resolveOverviewTargetStepId(device: DevicePlan['devices'][number]): str
 
 function buildOverviewSignatureForDevice(
   device: DevicePlan['devices'][number],
-  overview: ReturnType<typeof formatDeviceOverview>,
 ): string {
-  return buildDeviceOverviewTransitionSignature({
-    powerMsg: overview.powerMsg,
-    stateMsg: overview.stateMsg,
-    reason: device.reason,
-    reportedStepId: getDeviceOverviewReportedStepId(device),
-    targetStepId: resolveOverviewTargetStepId(device) ?? undefined,
-  });
+  return buildDeviceOverviewTransitionSignature(device);
 }
 
 function buildOverviewEventForDevice(
@@ -607,6 +600,8 @@ export class PlanService {
     const writeMs = this.planSnapshotWriter.update(plan, changes);
     if (changed) {
       this.emitPlanUpdated(plan);
+    } else {
+      this.emitOverviewTransitions(plan);
     }
     return writeMs;
   }
@@ -629,7 +624,7 @@ export class PlanService {
     for (const device of plan.devices) {
       nextDeviceIds.add(device.id);
       const overview = formatDeviceOverview(device);
-      const signature = buildOverviewSignatureForDevice(device, overview);
+      const signature = buildOverviewSignatureForDevice(device);
       const previousSignature = this.lastOverviewSignatureByDeviceId.get(device.id);
       this.lastOverviewSignatureByDeviceId.set(device.id, signature);
       if (signature === previousSignature) continue;

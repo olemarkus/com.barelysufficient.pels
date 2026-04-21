@@ -255,198 +255,154 @@ describe('device overview formatter', () => {
 });
 
 describe('device overview transition signatures', () => {
-  it('ignores usage-only changes', () => {
-    const base = formatDeviceOverview({
+  it('changes on usage-only changes', () => {
+    const base = {
       currentState: 'on',
       plannedState: 'keep',
       reason: r('keep'),
       measuredPowerKw: 0,
       expectedPowerKw: 1,
-    });
-    const usageOnly = formatDeviceOverview({
+    };
+    const usageOnly = {
       currentState: 'on',
       plannedState: 'keep',
       reason: r('keep'),
       measuredPowerKw: 0.25,
       expectedPowerKw: 1,
-    });
+    };
 
-    expect(base.usageMsg).not.toBe(usageOnly.usageMsg);
-    expect(buildDeviceOverviewTransitionSignature({ ...base, reason: r('keep') }))
-      .toBe(buildDeviceOverviewTransitionSignature({ ...usageOnly, reason: r('keep') }));
+    expect(formatDeviceOverview(base).usageMsg).not.toBe(formatDeviceOverview(usageOnly).usageMsg);
+    expect(buildDeviceOverviewTransitionSignature(base))
+      .not.toBe(buildDeviceOverviewTransitionSignature(usageOnly));
   });
 
   it('ignores countdown-only cooldown and backoff changes', () => {
-    const restoreCooldown = formatDeviceOverview({
+    const restoreCooldown = {
       currentState: 'off',
       plannedState: 'keep',
       reason: r('meter settling (30s remaining)'),
-    });
-    const restoreCooldownTick = formatDeviceOverview({
+    };
+    const restoreCooldownTick = {
       currentState: 'off',
       plannedState: 'keep',
       reason: r('meter settling (24s remaining)'),
-    });
-    const activationBackoff = formatDeviceOverview({
+    };
+    const activationBackoff = {
       currentState: 'off',
       plannedState: 'shed',
       reason: r('activation backoff (1535s remaining)'),
       shedAction: 'turn_off',
-    });
-    const activationBackoffTick = formatDeviceOverview({
+    };
+    const activationBackoffTick = {
       currentState: 'off',
       plannedState: 'shed',
       reason: r('activation backoff (1503s remaining)'),
       shedAction: 'turn_off',
-    });
+    };
 
-    expect(buildDeviceOverviewTransitionSignature({
-      ...restoreCooldown,
-      reason: r('meter settling (30s remaining)'),
-    })).toBe(buildDeviceOverviewTransitionSignature({
-      ...restoreCooldownTick,
-      reason: r('meter settling (24s remaining)'),
-    }));
-    expect(buildDeviceOverviewTransitionSignature({
-      ...activationBackoff,
-      reason: r('activation backoff (1535s remaining)'),
-    })).toBe(buildDeviceOverviewTransitionSignature({
-      ...activationBackoffTick,
-      reason: r('activation backoff (1503s remaining)'),
-    }));
+    expect(buildDeviceOverviewTransitionSignature(restoreCooldown))
+      .toBe(buildDeviceOverviewTransitionSignature(restoreCooldownTick));
+    expect(buildDeviceOverviewTransitionSignature(activationBackoff))
+      .toBe(buildDeviceOverviewTransitionSignature(activationBackoffTick));
   });
 
   it('ignores countdown-only legacy restore cooldown changes', () => {
-    const restoreCooldown = formatDeviceOverview({
+    const restoreCooldown = {
       currentState: 'on',
       plannedState: 'shed',
       shedAction: 'turn_off',
       reason: r('cooldown (restore, 30s remaining)'),
-    });
-    const restoreCooldownTick = formatDeviceOverview({
+    };
+    const restoreCooldownTick = {
       currentState: 'on',
       plannedState: 'shed',
       shedAction: 'turn_off',
       reason: r('cooldown (restore, 24s remaining)'),
-    });
+    };
 
-    expect(buildDeviceOverviewTransitionSignature({
-      ...restoreCooldown,
-      reason: r('cooldown (restore, 30s remaining)'),
-    })).toBe(buildDeviceOverviewTransitionSignature({
-      ...restoreCooldownTick,
-      reason: r('cooldown (restore, 24s remaining)'),
-    }));
+    expect(buildDeviceOverviewTransitionSignature(restoreCooldown))
+      .toBe(buildDeviceOverviewTransitionSignature(restoreCooldownTick));
   });
 
   it('preserves semantic recent-PELS headroom-cooldown changes while ignoring countdown decay', () => {
-    const base = formatDeviceOverview({
+    const base = {
       currentState: 'on',
       plannedState: 'keep',
       reason: r('headroom cooldown (45s remaining; recent PELS shed)'),
-    });
-    const countdownOnly = formatDeviceOverview({
+    };
+    const countdownOnly = {
       currentState: 'on',
       plannedState: 'keep',
       reason: r('headroom cooldown (30s remaining; recent PELS shed)'),
-    });
-    const sourceChanged = formatDeviceOverview({
+    };
+    const sourceChanged = {
       currentState: 'on',
       plannedState: 'keep',
       reason: r('headroom cooldown (30s remaining; recent PELS restore)'),
-    });
+    };
 
-    expect(buildDeviceOverviewTransitionSignature({
-      ...base,
-      reason: r('headroom cooldown (45s remaining; recent PELS shed)'),
-    })).toBe(buildDeviceOverviewTransitionSignature({
-      ...countdownOnly,
-      reason: r('headroom cooldown (30s remaining; recent PELS shed)'),
-    }));
-    expect(buildDeviceOverviewTransitionSignature({
-      ...base,
-      reason: r('headroom cooldown (45s remaining; recent PELS shed)'),
-    })).not.toBe(buildDeviceOverviewTransitionSignature({
-      ...sourceChanged,
-      reason: r('headroom cooldown (30s remaining; recent PELS restore)'),
-    }));
+    expect(buildDeviceOverviewTransitionSignature(base))
+      .toBe(buildDeviceOverviewTransitionSignature(countdownOnly));
+    expect(buildDeviceOverviewTransitionSignature(base))
+      .not.toBe(buildDeviceOverviewTransitionSignature(sourceChanged));
   });
 
   it('changes when power, state, or status changes', () => {
-    const base = formatDeviceOverview({
+    const base = {
       currentState: 'on',
       plannedState: 'keep',
       reason: r('keep'),
       measuredPowerKw: 0,
       expectedPowerKw: 1,
-    });
+    };
 
-    expect(buildDeviceOverviewTransitionSignature({ ...base, reason: r('keep') })).not.toBe(
+    expect(buildDeviceOverviewTransitionSignature(base)).not.toBe(
       buildDeviceOverviewTransitionSignature({
-        ...formatDeviceOverview({
-          currentState: 'off',
-          plannedState: 'keep',
-          reason: r('keep'),
-          measuredPowerKw: 0,
-          expectedPowerKw: 1,
-        }),
+        currentState: 'off',
+        plannedState: 'keep',
         reason: r('keep'),
+        measuredPowerKw: 0,
+        expectedPowerKw: 1,
       }),
     );
-    expect(buildDeviceOverviewTransitionSignature({ ...base, reason: r('keep') })).not.toBe(
+    expect(buildDeviceOverviewTransitionSignature(base)).not.toBe(
       buildDeviceOverviewTransitionSignature({
-        ...formatDeviceOverview({
-          currentState: 'on',
-          plannedState: 'shed',
-          shedAction: 'turn_off',
-          reason: r('keep'),
-          measuredPowerKw: 0,
-          expectedPowerKw: 1,
-        }),
+        currentState: 'on',
+        plannedState: 'shed',
+        shedAction: 'turn_off',
         reason: r('keep'),
+        measuredPowerKw: 0,
+        expectedPowerKw: 1,
       }),
     );
-    expect(buildDeviceOverviewTransitionSignature({ ...base, reason: r('keep') })).not.toBe(
+    expect(buildDeviceOverviewTransitionSignature(base)).not.toBe(
       buildDeviceOverviewTransitionSignature({
-        ...formatDeviceOverview({
-          currentState: 'on',
-          plannedState: 'keep',
-          reason: r('restore throttled'),
-          measuredPowerKw: 0,
-          expectedPowerKw: 1,
-        }),
+        currentState: 'on',
+        plannedState: 'keep',
         reason: r('restore throttled'),
+        measuredPowerKw: 0,
+        expectedPowerKw: 1,
       }),
     );
   });
 
   it('changes when stepped observed-vs-target semantics change', () => {
-    const base = formatDeviceOverview({
+    const base = {
       controlModel: 'stepped_load',
       currentState: 'on',
       plannedState: 'keep',
       reportedStepId: 'low',
       targetStepId: 'low',
       reason: r('keep'),
-    });
+    };
 
-    expect(buildDeviceOverviewTransitionSignature({
-      ...base,
-      reason: r('keep'),
-      reportedStepId: 'low',
-      targetStepId: 'low',
-    })).not.toBe(buildDeviceOverviewTransitionSignature({
-      ...formatDeviceOverview({
+    expect(buildDeviceOverviewTransitionSignature(base)).not.toBe(buildDeviceOverviewTransitionSignature({
         controlModel: 'stepped_load',
         currentState: 'on',
         plannedState: 'keep',
         reportedStepId: 'low',
         targetStepId: 'max',
         reason: r('keep'),
-      }),
-      reason: r('keep'),
-      reportedStepId: 'low',
-      targetStepId: 'max',
     }));
   });
 });
