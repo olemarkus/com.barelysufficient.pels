@@ -4,7 +4,7 @@ import { PlanExecutor, type PlanExecutorDeps } from '../lib/plan/planExecutor';
 import { buildInitialPlanDevices } from '../lib/plan/planDevices';
 import { resolveLiveUsagePowerKw } from '../lib/plan/planPowerResolution';
 import { getOffDevices, getSteppedRestoreCandidates } from '../lib/plan/planRestoreDevices';
-import { estimateRestorePower } from '../lib/plan/planRestoreSwap';
+import { estimateRestorePower } from '../lib/plan/planRestoreAccounting';
 import { createPlanEngineState } from '../lib/plan/planState';
 import { updateGuardState } from '../lib/plan/planSheddingGuard';
 import { sumControlledUsageKw } from '../lib/plan/planUsage';

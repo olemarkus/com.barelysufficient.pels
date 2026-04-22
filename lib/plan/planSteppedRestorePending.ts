@@ -1,31 +1,149 @@
 import type { DevicePlanDevice } from './planTypes';
-import { buildRestorePendingReason } from './planReasonStrings';
-import { resolveEffectiveCurrentOn } from './planCurrentState';
+import { buildMeterSettlingReason, buildRestorePendingReason } from './planReasonStrings';
 import { resolveSteppedLoadCommandPendingMs } from './planObservationPolicy';
-import { resolveSteppedLoadPlanningKw } from './planSteppedLoad';
+import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
+import { isSteppedLoadDevice } from './planSteppedLoad';
+import { resolveEffectiveCurrentOn } from './planCurrentState';
+import { PENDING_RESTORE_WINDOW_MS } from './planConstants';
 
 export type SteppedRestoreAttemptState = {
-  status: 'awaiting_confirmation' | 'retry_backoff';
+  status: 'awaiting_confirmation' | 'awaiting_power_settle' | 'retry_backoff';
+  requestedStepId: string;
+  requestedPowerKw: number;
+  baselinePowerKw: number;
+  deltaKw: number;
   remainingSec: number;
 };
 
 export type PendingSteppedRestoreHold = {
-  reason: ReturnType<typeof buildRestorePendingReason>;
+  reason: ReturnType<typeof buildRestorePendingReason> | ReturnType<typeof buildMeterSettlingReason>;
   remainingSec: number;
-  reasonCode: 'waiting_confirmation' | 'retry_backoff';
-};
-
-export type PendingSteppedRestoreReservation = PendingSteppedRestoreHold & {
-  reservationKw: number;
+  reasonCode: 'waiting_confirmation' | 'meter_settling';
 };
 
 export function resolveSteppedRestoreAttemptState(
   dev: DevicePlanDevice,
   requestedStepId: string,
   nowMs: number = Date.now(),
+  lastRestoreMs?: number,
+  measurementTs: number | null = null,
 ): SteppedRestoreAttemptState | null {
+  const baseAttempt = resolveSteppedRestoreBaseAttempt(dev, requestedStepId);
+  if (!baseAttempt) return null;
+  const pendingAttempt = resolvePendingOrBackoffAttempt(dev, baseAttempt, nowMs);
+  if (pendingAttempt) return pendingAttempt;
+
+  if (!baseAttempt.reservation) return null;
+
+  const powerSettleRemainingSec = resolveSteppedRestorePowerSettleRemainingSec({
+    dev,
+    lastRestoreMs,
+    measurementTs,
+    nowMs,
+  });
+  if (powerSettleRemainingSec !== null) {
+    return {
+      status: 'awaiting_power_settle',
+      requestedStepId: baseAttempt.requestedStepId,
+      requestedPowerKw: baseAttempt.reservation.requestedPowerKw,
+      baselinePowerKw: baseAttempt.reservation.baselinePowerKw,
+      deltaKw: baseAttempt.reservation.deltaKw,
+      remainingSec: powerSettleRemainingSec,
+    };
+  }
+
+  return null;
+}
+
+export function resolveActiveSteppedRestoreReservation(
+  dev: DevicePlanDevice,
+  requestedStepId: string,
+  nowMs: number = Date.now(),
+  lastRestoreMs?: number,
+  measurementTs: number | null = null,
+): SteppedRestoreAttemptState | null {
+  const attempt = resolveSteppedRestoreAttemptState(dev, requestedStepId, nowMs, lastRestoreMs, measurementTs);
+  return attempt && attempt.status !== 'retry_backoff' && attempt.deltaKw > 0 ? attempt : null;
+}
+
+export function buildPendingSteppedRestoreHold(
+  attempt: SteppedRestoreAttemptState | null,
+): PendingSteppedRestoreHold | null {
+  if (!attempt || attempt.status === 'retry_backoff') return null;
+  return {
+    reason: attempt.status === 'awaiting_confirmation'
+      ? buildRestorePendingReason(attempt.remainingSec)
+      : buildMeterSettlingReason(attempt.remainingSec),
+    remainingSec: attempt.remainingSec,
+    reasonCode: attempt.status === 'awaiting_confirmation'
+      ? 'waiting_confirmation'
+      : 'meter_settling',
+  };
+}
+
+function resolveSteppedRestoreReservation(
+  dev: DevicePlanDevice,
+  requestedStepId: string,
+): { requestedPowerKw: number; baselinePowerKw: number; deltaKw: number } | null {
+  if (!isSteppedLoadDevice(dev) || !dev.steppedLoadProfile) return null;
   if (dev.lastDesiredStepId !== requestedStepId) return null;
 
+  const requestedStep = getSteppedLoadStep(dev.steppedLoadProfile, requestedStepId);
+  if (!requestedStep || requestedStep.planningPowerW <= 0) return null;
+
+  const effectiveCurrentOn = resolveEffectiveCurrentOn(dev);
+  const baselineStepId = effectiveCurrentOn === false
+    ? undefined
+    : (dev.previousStepId ?? dev.selectedStepId);
+  const baselineStep = baselineStepId
+    ? getSteppedLoadStep(dev.steppedLoadProfile, baselineStepId)
+    : null;
+  const baselinePowerKw = effectiveCurrentOn === false
+    ? 0
+    : Math.max(0, (baselineStep?.planningPowerW ?? 0) / 1000);
+  const requestedPowerKw = requestedStep.planningPowerW / 1000;
+  const deltaKw = Math.max(0, requestedPowerKw - baselinePowerKw);
+  if (deltaKw <= 0) return null;
+
+  return { requestedPowerKw, baselinePowerKw, deltaKw };
+}
+
+function resolveSteppedRestoreBaseAttempt(
+  dev: DevicePlanDevice,
+  requestedStepId: string,
+): {
+  requestedStepId: string;
+  requestedPowerKw: number;
+  baselinePowerKw: number;
+  deltaKw: number;
+  reservation: { requestedPowerKw: number; baselinePowerKw: number; deltaKw: number } | null;
+} | null {
+  if (!isSteppedLoadDevice(dev) || !dev.steppedLoadProfile) return null;
+  if (dev.lastDesiredStepId !== requestedStepId) return null;
+
+  const requestedStep = getSteppedLoadStep(dev.steppedLoadProfile, requestedStepId);
+  if (!requestedStep) return null;
+  const reservation = resolveSteppedRestoreReservation(dev, requestedStepId);
+  const requestedPowerKw = requestedStep.planningPowerW / 1000;
+  return {
+    requestedStepId,
+    requestedPowerKw,
+    baselinePowerKw: reservation?.baselinePowerKw ?? requestedPowerKw,
+    deltaKw: reservation?.deltaKw ?? 0,
+    reservation,
+  };
+}
+
+function resolvePendingOrBackoffAttempt(
+  dev: DevicePlanDevice,
+  baseAttempt: {
+    requestedStepId: string;
+    requestedPowerKw: number;
+    baselinePowerKw: number;
+    deltaKw: number;
+  },
+  nowMs: number,
+): SteppedRestoreAttemptState | null {
   if (dev.stepCommandPending === true) {
     const pendingWindowMs = resolveSteppedLoadCommandPendingMs(dev.communicationModel);
     const issuedAtMs = typeof dev.lastStepCommandIssuedAt === 'number'
@@ -34,58 +152,45 @@ export function resolveSteppedRestoreAttemptState(
     const remainingSec = Math.max(1, Math.ceil((issuedAtMs + pendingWindowMs - nowMs) / 1000));
     return {
       status: 'awaiting_confirmation',
+      ...baseAttempt,
       remainingSec,
     };
   }
 
   if (
-    dev.stepCommandStatus === 'stale'
-    && typeof dev.nextStepCommandRetryAtMs === 'number'
-    && nowMs < dev.nextStepCommandRetryAtMs
+    dev.stepCommandStatus !== 'stale'
+    || typeof dev.nextStepCommandRetryAtMs !== 'number'
+    || nowMs >= dev.nextStepCommandRetryAtMs
   ) {
-    const remainingSec = Math.max(1, Math.ceil((dev.nextStepCommandRetryAtMs - nowMs) / 1000));
-    return {
-      status: 'retry_backoff',
-      remainingSec,
-    };
+    return null;
   }
 
-  return null;
-}
-
-export function resolvePendingSteppedRestoreHold(
-  dev: DevicePlanDevice,
-  requestedStepId: string,
-  nowMs: number = Date.now(),
-): PendingSteppedRestoreHold | null {
-  const attempt = resolveSteppedRestoreAttemptState(dev, requestedStepId, nowMs);
-  if (!attempt) return null;
   return {
-    reason: buildRestorePendingReason(attempt.remainingSec),
-    remainingSec: attempt.remainingSec,
-    reasonCode: attempt.status === 'awaiting_confirmation' ? 'waiting_confirmation' : 'retry_backoff',
+    status: 'retry_backoff',
+    ...baseAttempt,
+    remainingSec: Math.max(1, Math.ceil((dev.nextStepCommandRetryAtMs - nowMs) / 1000)),
   };
 }
 
-export function resolvePendingSteppedRestoreReservation(
+function resolveSteppedRestorePowerSettleRemainingSec(params: {
+  dev: DevicePlanDevice;
+  lastRestoreMs?: number;
+  measurementTs: number | null;
+  nowMs: number;
+}): number | null {
+  const { dev, lastRestoreMs, measurementTs, nowMs } = params;
+  if (dev.stepCommandStatus !== 'success') return null;
+  if (typeof lastRestoreMs !== 'number') return null;
+  if (nowMs - lastRestoreMs > PENDING_RESTORE_WINDOW_MS) return null;
+  if (measurementTs !== null && measurementTs > lastRestoreMs) return null;
+  return Math.max(1, Math.ceil((lastRestoreMs + PENDING_RESTORE_WINDOW_MS - nowMs) / 1000));
+}
+
+export function resolveSteppedRestoreObservedGapKw(
   dev: DevicePlanDevice,
-  requestedStepId: string,
-  nowMs: number = Date.now(),
-): PendingSteppedRestoreReservation | null {
-  const hold = resolvePendingSteppedRestoreHold(dev, requestedStepId, nowMs);
-  if (!hold) return null;
-
-  const targetKw = resolveSteppedLoadPlanningKw(dev, requestedStepId);
-  const currentPlanningKw = resolveEffectiveCurrentOn(dev) === false
-    ? 0
-    : resolveSteppedLoadPlanningKw(dev, dev.selectedStepId);
-  const measuredKw = typeof dev.measuredPowerKw === 'number' && Number.isFinite(dev.measuredPowerKw)
-    ? Math.max(0, dev.measuredPowerKw)
-    : 0;
-  const effectiveCurrentKw = Math.min(targetKw, Math.max(currentPlanningKw, measuredKw));
-
-  return {
-    ...hold,
-    reservationKw: Math.max(0, targetKw - effectiveCurrentKw),
-  };
+  reservation: Pick<SteppedRestoreAttemptState, 'baselinePowerKw' | 'deltaKw'>,
+): number {
+  const actualKw = Math.max(0, dev.measuredPowerKw ?? 0);
+  const observedIncrementKw = Math.max(0, actualKw - reservation.baselinePowerKw);
+  return Math.max(0, reservation.deltaKw - observedIncrementKw);
 }

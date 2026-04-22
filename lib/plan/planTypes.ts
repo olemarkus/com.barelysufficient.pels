@@ -58,6 +58,7 @@ export type DevicePlanDevice = {
   targetStepId?: string;
   selectedStepId?: string;
   desiredStepId?: string;
+  previousStepId?: string;
   lastDesiredStepId?: string;
   lastStepCommandIssuedAt?: number;
   stepCommandRetryCount?: number;
@@ -180,6 +181,7 @@ export type PlanInputDevice = {
   targetStepId?: string;
   selectedStepId?: string;
   desiredStepId?: string;
+  previousStepId?: string;
   lastStepCommandIssuedAt?: number;
   stepCommandRetryCount?: number;
   nextStepCommandRetryAtMs?: number;

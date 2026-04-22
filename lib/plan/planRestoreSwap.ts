@@ -1,8 +1,6 @@
 import type { DevicePlanDevice } from './planTypes';
 import { resolveCandidatePower } from './planCandidatePower';
 import {
-  PENDING_RESTORE_CONFIRMED_FRACTION,
-  PENDING_RESTORE_WINDOW_MS,
   RESTORE_ADMISSION_FLOOR_KW,
   SWAP_RESTORE_RESERVE_KW,
 } from './planConstants';
@@ -13,10 +11,6 @@ import {
   PLAN_REASON_CODES,
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-import {
-  resolveRestorePower as resolveSharedRestorePower,
-  type RestorePowerSource as SharedRestorePowerSource,
-} from './planPowerResolution';
 
 function isViableSwapCandidate(
   onDev: DevicePlanDevice,
@@ -140,73 +134,4 @@ function buildSwapCandidateReason(params: {
     code: PLAN_REASON_CODES.other,
     text: `${formatDeviceReason(baseReason)} from ${shedNames}`,
   };
-}
-
-export function buildInsufficientHeadroomUpdate(params: {
-  neededKw: number;
-  availableKw: number;
-  postReserveMarginKw: number;
-  minimumRequiredPostReserveMarginKw: number;
-  penaltyExtraKw?: number;
-  swapReserveKw?: number;
-  effectiveAvailableKw?: number;
-  swapTargetName?: string;
-}): Partial<DevicePlanDevice> {
-  return {
-    plannedState: 'shed',
-    reason: buildRestoreHeadroomReason(params),
-  };
-}
-
-export function computeRestoreBufferKw(devPower: number): number {
-  const boundedPower = Math.max(0, devPower);
-  const scaled = boundedPower * 0.1 + 0.1;
-  return Math.max(0.2, Math.min(0.6, scaled));
-}
-
-export type RestorePowerSource = SharedRestorePowerSource;
-
-export function resolveRestorePowerSource(dev: DevicePlanDevice): RestorePowerSource {
-  return resolveSharedRestorePower(dev).source;
-}
-
-export function estimateRestorePower(dev: DevicePlanDevice): number {
-  return resolveSharedRestorePower(dev).powerKw;
-}
-
-/**
- * Returns the total power (kW) to reserve for recently restored devices whose elements
- * have not yet fired. Subtracting this from available headroom prevents back-to-back
- * restores from committing headroom that is still pending from the previous cycle.
- */
-export function computePendingRestorePowerKw(
-  planDevices: DevicePlanDevice[],
-  lastDeviceRestoreMs: Record<string, number>,
-  nowTs: number,
-): { pendingKw: number; deviceIds: string[] } {
-  let pendingKw = 0;
-  const deviceIds: string[] = [];
-  for (const dev of planDevices) {
-    if (dev.plannedState === 'shed') continue;
-    const restoreMs = lastDeviceRestoreMs[dev.id];
-    if (!restoreMs || nowTs - restoreMs > PENDING_RESTORE_WINDOW_MS) continue;
-    if (!dev.currentOn) continue;
-    const expectedKw = estimateRestorePower(dev);
-    // Fall back to powerKw when measuredPowerKw is absent — some installations only
-    // populate powerKw — so we don't treat a drawing device as drawing 0.
-    const actualKw = Math.max(0, dev.measuredPowerKw ?? dev.powerKw ?? 0);
-    if (actualKw >= expectedKw * PENDING_RESTORE_CONFIRMED_FRACTION) continue;
-    const gap = expectedKw - actualKw;
-    if (gap > 0) {
-      pendingKw += gap;
-      deviceIds.push(dev.id);
-    }
-  }
-  return { pendingKw, deviceIds };
-}
-
-export function computeBaseRestoreNeed(dev: DevicePlanDevice): { power: number; buffer: number; needed: number } {
-  const power = estimateRestorePower(dev);
-  const buffer = computeRestoreBufferKw(power);
-  return { power, buffer, needed: power + buffer };
 }

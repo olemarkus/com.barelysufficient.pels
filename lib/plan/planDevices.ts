@@ -7,7 +7,7 @@ import {
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { resolveCandidatePower } from './planCandidatePower';
-import { computeBaseRestoreNeed } from './planRestoreSwap';
+import { computeBaseRestoreNeed } from './planRestoreAccounting';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import {
@@ -307,6 +307,7 @@ function buildBasePlanDevice(params: {
     targetStepId: effectiveDesiredStepId,
     selectedStepId: dev.selectedStepId,
     desiredStepId: effectiveDesiredStepId,
+    previousStepId: dev.previousStepId,
     lastDesiredStepId: dev.desiredStepId,
     lastStepCommandIssuedAt: dev.lastStepCommandIssuedAt,
     stepCommandRetryCount: dev.stepCommandRetryCount,

@@ -10,19 +10,20 @@ describe('reserveHeadroomForPendingRestores', () => {
     const debugStructured = vi.fn();
     const now = Date.now();
 
-    const adjusted = reserveHeadroomForPendingRestores(
-      5,
-      [buildPlanDevice({
+    const adjusted = reserveHeadroomForPendingRestores({
+      rawHeadroom: 5,
+      planDevices: [buildPlanDevice({
         id: 'dev-1',
         name: 'Heater',
         currentOn: true,
         powerKw: 2,
         measuredPowerKw: 0,
       })],
-      { 'dev-1': now - (PENDING_RESTORE_WINDOW_MS / 2) },
+      lastDeviceRestoreMs: { 'dev-1': now - (PENDING_RESTORE_WINDOW_MS / 2) },
+      measurementTs: null,
       debugStructured,
-      new Map(),
-    );
+      deviceNameById: new Map(),
+    });
 
     expect(adjusted).toBeCloseTo(3, 6);
     expect(debugStructured).toHaveBeenCalledWith({

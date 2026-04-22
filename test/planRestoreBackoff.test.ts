@@ -1,5 +1,6 @@
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 import type { PlanContext } from '../lib/plan/planContext';
+import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
 import {
   ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
   ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
@@ -549,7 +550,7 @@ describe('restore cooldown backoff', () => {
     expect(result.restoredOneThisCycle).toBe(true);
   });
 
-  it('holds a timed-out stepped restore in retry backoff instead of re-admitting immediately', () => {
+  it('holds a timed-out stepped restore in retry backoff without reserving headroom or surfacing restore pending', () => {
     const now = Date.UTC(2024, 0, 1, 10, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
@@ -584,9 +585,49 @@ describe('restore cooldown backoff', () => {
 
     expect(steppedDevice?.desiredStepId).toBe('medium');
     expect(steppedDevice?.expectedPowerKw).toBe(2);
-    expect(reasonText(steppedDevice?.reason)).toBe('restore pending (30s remaining)');
-    expect(result.availableHeadroom).toBeCloseTo(4.05);
-    expect(result.restoredOneThisCycle).toBe(true);
+    expect(reasonText(steppedDevice?.reason)).toBe('keep');
+    expect(result.availableHeadroom).toBeCloseTo(5);
+    expect(result.restoredOneThisCycle).toBe(false);
+  });
+
+  it('still reserves confirmed stepped restore headroom without forcing a cooldown reason onto the plan state', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 10_000;
+    state.lastDeviceRestoreMs['dev-step'] = now - 10_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'on',
+          currentOn: true,
+          selectedStepId: 'medium',
+          previousStepId: 'low',
+          desiredStepId: 'medium',
+          lastDesiredStepId: 'medium',
+          stepCommandPending: false,
+          stepCommandStatus: 'success',
+          measuredPowerKw: 1.25,
+          planningPowerKw: 2,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+
+    expect(reasonText(steppedDevice?.reason)).toBe('keep');
+    expect(result.availableHeadroom).toBeCloseTo(4.25);
+    expect(result.restoredOneThisCycle).toBe(false);
   });
 
   it('uses current effective draw for an in-flight stepped reservation instead of a stale selected-step baseline', () => {
@@ -1046,6 +1087,46 @@ describe('restore cooldown backoff', () => {
     expect(steppedDevice?.plannedState).toBe('keep');
     expect(reasonText(steppedDevice?.reason)).toBe('meter settling (55s remaining)');
     expect(steppedDevice?.desiredStepId).toBe('low');
+  });
+
+  it('does not let restore cooldown rewrite a shed stepped device back to keep', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 5_000;
+    state.lastDeviceRestoreMs['dev-step'] = now - 5_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'off',
+          currentOn: false,
+          plannedState: 'shed',
+          reason: { code: PLAN_REASON_CODES.hourlyBudget, detail: null },
+          selectedStepId: 'off',
+          desiredStepId: 'low',
+          lastDesiredStepId: 'low',
+          lastStepCommandIssuedAt: now - 10_000,
+          stepCommandPending: true,
+          stepCommandStatus: 'pending',
+          measuredPowerKw: 0,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+    expect(steppedDevice?.plannedState).toBe('shed');
+    expect(reasonText(steppedDevice?.reason)).toBe('shed due to hourly budget');
   });
 
   it('keeps the device that restored this cycle on its own reason while later peers get meter settling', () => {
@@ -2138,6 +2219,47 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     });
 
     expect(deviceMap.get('dev-step')!.desiredStepId).toBe('low');
+  });
+
+  it('admits binary-only stepped restore from off/low to on/low using the full low-step load', () => {
+    const state = createPlanEngineState();
+    const deviceMap = new Map([
+      ['dev-step', steppedPlanDevice({
+        id: 'dev-step',
+        name: 'Tank',
+        currentState: 'off',
+        currentOn: false,
+        plannedState: 'keep',
+        selectedStepId: 'low',
+        desiredStepId: 'low',
+        lastDesiredStepId: 'low',
+        measuredPowerKw: 0,
+        planningPowerKw: 0,
+      })],
+    ]);
+
+    const result = planRestoreForSteppedDevice({
+      dev: deviceMap.get('dev-step')!,
+      deviceMap,
+      state,
+      timing: {
+        activeOvershoot: false, inCooldown: false, inRestoreCooldown: false,
+        inStartupStabilization: false, measurementTs: null,
+        restoreCooldownSeconds: 60,
+        shedCooldownRemainingSec: null, restoreCooldownRemainingSec: null,
+        startupStabilizationRemainingSec: null,
+      },
+      availableHeadroom: 1.975,
+      restoredOneThisCycle: false,
+      logDebug: vi.fn(),
+    });
+
+    const dev = deviceMap.get('dev-step')!;
+    expect(dev.desiredStepId).toBe('low');
+    expect(dev.expectedPowerKw).toBe(1.25);
+    expect(reasonText(dev.reason)).toContain('restore');
+    expect(result.availableHeadroom).toBeCloseTo(0.5, 5);
+    expect(result.restoredOneThisCycle).toBe(true);
   });
 });
 

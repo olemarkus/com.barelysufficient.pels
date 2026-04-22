@@ -10,7 +10,7 @@ import {
   type PlanReasonCode,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { getActivationPenaltyLevel, getActivationRestoreBlockRemainingMs } from './planActivationBackoff';
-import { computeBaseRestoreNeed, resolveRestorePowerSource } from './planRestoreSwap';
+import { computeBaseRestoreNeed, resolveRestorePowerSource } from './planRestoreAccounting';
 import { getRestoreNeed } from './planRestoreSupport';
 import {
   classifyPlanReason,

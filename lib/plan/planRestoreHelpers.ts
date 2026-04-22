@@ -20,7 +20,7 @@ import {
 } from './planSteppedLoad';
 import { getSteppedLoadLowestActiveStep } from '../utils/deviceControlProfiles';
 import { getActivationPenaltyLevel, getActivationRestoreBlockRemainingMs } from './planActivationBackoff';
-import { computeRestoreBufferKw } from './planRestoreSwap';
+import { computeRestoreBufferKw } from './planRestoreAccounting';
 import { RESTORE_ADMISSION_FLOOR_KW } from './planConstants';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from './planDebugDedupe';
 import {
@@ -34,8 +34,7 @@ import {
   type RestoreAdmissionMetrics,
 } from './planRestoreAdmission';
 import { buildActivationBackoffReason, buildRestoreHeadroomReason } from './planReasonStrings';
-import { resolvePendingSteppedRestoreReservation } from './planSteppedRestorePending';
-import { incPerfCounter } from '../utils/perfCounters';
+import { applySteppedRestoreAttemptHold } from './planSteppedRestoreHold';
 
 export function setRestorePlanDevice(
   deviceMap: Map<string, DevicePlanDevice>,
@@ -54,6 +53,7 @@ export function markSteppedDevicesStayAtCurrentLevel(params: {
   | 'inCooldown'
   | 'inRestoreCooldown'
   | 'inStartupStabilization'
+  | 'measurementTs'
   | 'restoreCooldownSeconds'
   | 'shedCooldownRemainingSec'
   | 'restoreCooldownRemainingSec'
@@ -223,6 +223,7 @@ export function planRestoreForSteppedDevice(params: {
   | 'inCooldown'
   | 'inRestoreCooldown'
   | 'inStartupStabilization'
+  | 'measurementTs'
   | 'restoreCooldownSeconds'
   | 'shedCooldownRemainingSec'
   | 'restoreCooldownRemainingSec'
@@ -282,44 +283,25 @@ export function planRestoreForSteppedDevice(params: {
     clearRestoreDebugEvent(state, restoreDebugKey);
     return { availableHeadroom, restoredOneThisCycle };
   }
-  const pendingRestoreReservation = resolvePendingSteppedRestoreReservation(dev, nextStep.id);
-  if (pendingRestoreReservation) {
-    delete state.steppedRestoreRejectedByDevice[dev.id];
-    incPerfCounter('restore_planning_skipped_inflight');
-    const reservationKw = pendingRestoreReservation.reservationKw;
-    const needed = reservationKw > 0 ? reservationKw + computeRestoreBufferKw(reservationKw) : 0;
-    setRestorePlanDevice(deviceMap, dev.id, {
-      desiredStepId: nextStep.id,
-      expectedPowerKw: nextStep.planningPowerW / 1000,
-      reason: pendingRestoreReservation.reason,
-    });
-    emitRestoreDebugEventOnChange({
-      state,
-      key: restoreDebugKey,
-      payload: {
-        event: 'restore_stepped_deferred',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        phase,
-        currentStepId: dev.selectedStepId ?? 'unknown',
-        requestedStepId: nextStep.id,
-        decision: 'deferred',
-        reasonCode: pendingRestoreReservation.reasonCode,
-        remainingSec: pendingRestoreReservation.remainingSec,
-      },
-      signaturePayload: {
-        event: 'restore_stepped_deferred',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        phase,
-        currentStepId: dev.selectedStepId ?? 'unknown',
-        requestedStepId: nextStep.id,
-        decision: 'deferred',
-        reasonCode: pendingRestoreReservation.reasonCode,
-      },
-      debugStructured,
-    });
-    return { availableHeadroom: availableHeadroom - needed, restoredOneThisCycle: true };
+  const attemptHold = applySteppedRestoreAttemptHold({
+    dev,
+    nextStepId: nextStep.id,
+    nextStepPowerKw: nextStep.planningPowerW / 1000,
+    lastRestoreMs: state.lastDeviceRestoreMs[dev.id],
+    measurementTs: typeof timing.measurementTs === 'number' ? timing.measurementTs : null,
+    phase,
+    state,
+    restoreDebugKey,
+    debugStructured,
+    availableHeadroom,
+    restoredOneThisCycle,
+    setDevice: (updates) => setRestorePlanDevice(deviceMap, dev.id, updates),
+  });
+  if (attemptHold.handled) {
+    return {
+      availableHeadroom: attemptHold.availableHeadroom,
+      restoredOneThisCycle: attemptHold.restoredOneThisCycle,
+    };
   }
 
   if (blockSteppedRestoreForShedInvariant({

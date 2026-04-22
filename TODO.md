@@ -88,6 +88,13 @@ file.
       Why P1: this landed the local decision/presentation split in `planReasons.ts` while keeping
       emitted `reason` text stable for existing consumers.
       Files: `lib/plan/planReasons.ts`, `lib/plan/planReasonStrings.ts`.
+- [ ] Split planner state from render-only explanation data so keep/shed/inactive decisions no
+      longer depend on UI-facing `reason` objects. Start with stepped restore and cooldown holds,
+      where planner code still leaks presentation phrasing into internal plan devices.
+      Why P1: this is the next boundary cleanup after the local `planReasons.ts` split and would
+      remove a recurring source of state/reason coupling bugs.
+      Files: `lib/plan/planRestore.ts`, `lib/plan/planReasons.ts`, plan/executor/rendering
+      boundaries.
 - [ ] Move `planServiceInternals.ts` types into `lib/plan/planTypes.ts` and extract the
       snapshot-write path out of `planService.ts` so rebuild orchestration stops carrying
       persistence plumbing.
@@ -171,7 +178,13 @@ file.
       Files: `lib/plan/**`, `lib/app/appRealtimeDeviceReconcile*`.
 
 ## P3 Tooling, architecture, and future work
-
+- [ ] Consider allowing Homey Energy-backed `powerKw` as a fallback for stepped restore
+      post-confirmation settlement when `measure_power` is missing, but keep manual overrides and
+      other derived power sources non-authoritative for that release check.
+      Why P3: the stepped restore settlement path is now intentionally gated on `measure_power`
+      only; broadening it to a narrower Homey Energy fallback is optional follow-up work, not a
+      correctness blocker.
+      Files: `lib/plan/planSteppedRestorePending.ts`, stepped restore settlement tests.
 - [ ] Remove the remaining `lib/utils/** -> lib/{core,plan}` imports, then make the architecture
       check strict instead of advisory.
       Files: `lib/utils/**`, architecture checks.
