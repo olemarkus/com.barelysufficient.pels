@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "Updated state requested for"
+  },
+  "titleFormatted": {
+    "en": "Updated state requested for [[device]]"
+  },
+  "hint": {
+    "en": "Triggers when updated state is requested for an existing Homey device. This card only requests data and does not change device state."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select device"
+      }
+    }
+  ]
+}
