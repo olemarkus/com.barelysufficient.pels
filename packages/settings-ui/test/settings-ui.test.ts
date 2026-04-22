@@ -453,6 +453,16 @@ describe('Settings UI', () => {
       await page.click('[data-tab="budget"]');
       await sleep(50);
 
+      const guardrailsSummary = await page.$('#budget-panel details:nth-of-type(2) > summary');
+      const guardrailsOpen = await page.$eval(
+        '#budget-panel details:nth-of-type(2)',
+        (el) => (el as HTMLDetailsElement).open,
+      );
+      if (!guardrailsOpen) {
+        await guardrailsSummary?.click();
+        await sleep(50);
+      }
+
       const input = await page.$('#capacity-limit');
       expect(input).toBeTruthy();
 
