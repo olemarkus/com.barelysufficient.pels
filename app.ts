@@ -162,6 +162,7 @@ class PelsApp extends Homey.App {
   private managedDevices: Record<string, boolean> = {};
   private budgetExemptDevices: Record<string, boolean> = {};
   private flowReportedCapabilities: FlowReportedCapabilitiesByDevice = {};
+  private flowBackedCardsAvailable?: boolean;
   private flowDeviceAutocompleteCache?: { devices: HomeyDeviceLike[]; fetchedAtMs: number };
   private flowDeviceAutocompleteRequest?: Promise<HomeyDeviceLike[]>;
   private deviceControlProfiles: DeviceControlProfiles = {};
@@ -261,16 +262,34 @@ class PelsApp extends Homey.App {
   }
 
   private loadFlowReportedCapabilities(): void {
-    this.flowReportedCapabilities = parseFlowReportedCapabilities(
+    const parsed = parseFlowReportedCapabilities(
       this.homey.settings.get(FLOW_REPORTED_DEVICE_CAPABILITIES) as unknown,
     );
+    if (this.areFlowBackedCardsAvailable()) {
+      this.flowReportedCapabilities = parsed;
+      return;
+    }
+    this.flowReportedCapabilities = {};
+    if (Object.keys(parsed).length === 0) return;
+    this.homey.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, {});
+    this.getStructuredLogger('devices')?.info({
+      event: 'flow_backed_state_cleared',
+      reasonCode: 'cards_unavailable',
+      deviceCount: Object.keys(parsed).length,
+    });
   }
 
   private getFlowReportedCapabilitiesForDevice = (deviceId: string): FlowReportedCapabilitiesForDevice => (
-    this.flowReportedCapabilities[deviceId] ?? {}
+    this.areFlowBackedCardsAvailable()
+      ? (this.flowReportedCapabilities[deviceId] ?? {})
+      : {}
   );
 
-  private getFlowReportedDeviceIds = (): string[] => getFlowReportedDeviceIds(this.flowReportedCapabilities);
+  private getFlowReportedDeviceIds = (): string[] => (
+    this.areFlowBackedCardsAvailable()
+      ? getFlowReportedDeviceIds(this.flowReportedCapabilities)
+      : []
+  );
 
   private reportFlowBackedCapability(params: {
     deviceId: string;
@@ -278,6 +297,15 @@ class PelsApp extends Homey.App {
     value: boolean | number | string;
     reportedAt?: number;
   }): FlowBackedCapabilityReportOutcome {
+    if (!this.areFlowBackedCardsAvailable()) {
+      return {
+        kind: 'noop',
+        valueChanged: false,
+        freshnessAdvanced: false,
+        refreshSnapshot: false,
+        rebuildPlan: false,
+      };
+    }
     const update = upsertFlowReportedCapability({
       state: this.flowReportedCapabilities,
       deviceId: params.deviceId,
@@ -340,6 +368,7 @@ class PelsApp extends Homey.App {
 
   private async emitFlowBackedRefreshRequests(deviceIds: string[]): Promise<void> {
     if (deviceIds.length === 0) return;
+    if (!this.areFlowBackedCardsAvailable()) return;
     const card = this.homey.flow?.getTriggerCard?.('flow_backed_device_refresh_requested');
     if (!card?.trigger) return;
     const devices = await this.getHomeyDevicesForFlow();
@@ -411,6 +440,7 @@ class PelsApp extends Homey.App {
       getCurrentPriceLevel: () => app.getCurrentPriceLevel(),
       isCurrentHourCheap: () => app.isCurrentHourCheap(),
       isCurrentHourExpensive: () => app.isCurrentHourExpensive(),
+      areFlowBackedCardsAvailable: () => app.areFlowBackedCardsAvailable(),
       getDeviceLoadSetting: (deviceId) => app.getDeviceLoadSetting(deviceId),
       setExpectedOverride: (deviceId, kw) => app.setExpectedOverride(deviceId, kw),
       storeFlowPriceData: (kind, raw) => app.storeFlowPriceData(kind, raw),
@@ -551,7 +581,10 @@ class PelsApp extends Homey.App {
       homey: this.homey,
       deviceManager: this.deviceManager,
       logDebug: (...args: unknown[]) => this.logDebug('devices', ...args),
-      filterEntry: (entry) => this.experimentalEvSupportEnabled || entry.deviceClass !== 'evcharger',
+      filterEntry: (entry) => (
+        (this.experimentalEvSupportEnabled || entry.deviceClass !== 'evcharger')
+        && (this.areFlowBackedCardsAvailable() || entry.flowBacked !== true)
+      ),
     });
     let snapshotPlanBootstrapDelayMs = 0;
     if (deferStartupBootstrap) {
@@ -889,6 +922,24 @@ class PelsApp extends Homey.App {
   }
   private migrateManagedDevices(): void {
     migrateManagedDevicesHelper({ homey: this.homey, log: this.log.bind(this) });
+  }
+  private areFlowBackedCardsAvailable(): boolean {
+    if (typeof this.flowBackedCardsAvailable === 'boolean') {
+      return this.flowBackedCardsAvailable;
+    }
+    this.flowBackedCardsAvailable = this.canAccessFlowCard('action', 'report_flow_backed_device_onoff')
+      && this.canAccessFlowCard('trigger', 'flow_backed_device_refresh_requested');
+    return this.flowBackedCardsAvailable;
+  }
+  private canAccessFlowCard(kind: 'action' | 'trigger', cardId: string): boolean {
+    try {
+      if (kind === 'action') {
+        return Boolean(this.homey.flow?.getActionCard?.(cardId));
+      }
+      return Boolean(this.homey.flow?.getTriggerCard?.(cardId));
+    } catch {
+      return false;
+    }
   }
   private loadCapacitySettings(): void {
     const next = loadCapacitySettingsFromHomey({
