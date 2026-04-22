@@ -11,6 +11,7 @@ import {
   usageMonth,
   usageWeekdayAvg,
   usageWeekendAvg,
+  usageQualityList,
   hourlyPattern,
   hourlyPatternMeta,
 } from './dom.ts';
@@ -52,8 +53,14 @@ type PowerStatsSummary = {
   today: number;
   week: number;
   month: number;
+  rolling7Avg: number;
+  rolling30Avg: number;
   weekdayAvg: number;
   weekendAvg: number;
+  reliableCoveragePct: number;
+  staleHours: number;
+  lastCompleteDayLabel: string;
+  controlledSharePct: number;
   hourlyPatternAll: HourlyPatternPoint[];
   hourlyPatternWeekday: HourlyPatternPoint[];
   hourlyPatternWeekend: HourlyPatternPoint[];
@@ -66,8 +73,14 @@ const getEmptyPowerStats = (): PowerStatsSummary => ({
   today: 0,
   week: 0,
   month: 0,
+  rolling7Avg: 0,
+  rolling30Avg: 0,
   weekdayAvg: 0,
   weekendAvg: 0,
+  reliableCoveragePct: 0,
+  staleHours: 0,
+  lastCompleteDayLabel: '--',
+  controlledSharePct: 0,
   hourlyPatternAll: [],
   hourlyPatternWeekday: [],
   hourlyPatternWeekend: [],
@@ -199,6 +212,64 @@ const getWeekdayWeekendAverages = (dailyTotals: Record<string, number>, timeZone
   return { weekdayAvg, weekendAvg, hasPatternData };
 };
 
+const getRollingAverage = (dailyTotals: Record<string, number>, todayKey: string, days: number) => {
+  const points = Object.entries(dailyTotals)
+    .filter(([dateKey]) => dateKey !== todayKey)
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .slice(0, days)
+    .map(([, value]) => value);
+  if (!points.length) return 0;
+  return points.reduce((sum, value) => sum + value, 0) / points.length;
+};
+
+const getReliabilityStats = (tracker: PowerTracker) => {
+  const bucketEntries = Object.entries(tracker.buckets ?? {});
+  if (!bucketEntries.length) {
+    return { reliableCoveragePct: 0, staleHours: 0 };
+  }
+  const unreliablePeriods = tracker.unreliablePeriods ?? [];
+  let reliableCount = 0;
+  bucketEntries.forEach(([iso, value]) => {
+    const ts = new Date(iso).getTime();
+    const sampleCount = tracker.hourlySampleCounts?.[iso];
+    const hasRepeatedSamples = typeof sampleCount === 'number'
+      && Number.isFinite(sampleCount)
+      && sampleCount >= MIN_RELIABLE_SAMPLES_PER_HOUR
+      && Math.abs(Number(value) || 0) <= ZERO_KWH_EPSILON;
+    const overlapsUnreliablePeriod = unreliablePeriods.some(
+      (period) => period.start < ts + 3600000 && period.end > ts,
+    );
+    const unreliable = overlapsUnreliablePeriod && !hasRepeatedSamples;
+    if (!unreliable) reliableCount += 1;
+  });
+  const staleHours = unreliablePeriods.reduce((sum, period) => sum + ((period.end - period.start) / 3600000), 0);
+  return {
+    reliableCoveragePct: (reliableCount / bucketEntries.length) * 100,
+    staleHours,
+  };
+};
+
+const getLastCompleteDayLabel = (dailyTotals: Record<string, number>, todayKey: string, timeZone: string) => {
+  const latest = Object.keys(dailyTotals)
+    .filter((dateKey) => dateKey !== todayKey)
+    .sort((a, b) => b.localeCompare(a))[0];
+  if (!latest) return '--';
+  return formatDateInTimeZone(new Date(getDateKeyStartMs(latest, timeZone)), {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  }, timeZone);
+};
+
+const getControlledSharePct = (tracker: PowerTracker) => {
+  const total = Object.values(tracker.buckets ?? {})
+    .reduce((sum, value) => sum + (Number(value) || 0), 0);
+  const controlled = Object.values(tracker.controlledBuckets ?? {})
+    .reduce((sum, value) => sum + (Number(value) || 0), 0);
+  if (total <= 0) return 0;
+  return (controlled / total) * 100;
+};
+
 const buildHourlyPattern = (
   hourlyAverages: Record<string, { sum: number; count: number }>,
   includeWeekday?: (weekday: number) => boolean,
@@ -296,17 +367,16 @@ const updateSummaryLabel = (valueEl: HTMLElement | null, labelText: string) => {
 const renderPowerSummary = (stats: PowerStatsSummary, timeZone: string) => {
   const now = new Date();
   const todayText = formatDateInTimeZone(now, { weekday: 'short', month: 'short', day: 'numeric' }, timeZone);
-  const weekRange = getTimeZoneWeekRange(now, 0, timeZone);
-  const weekText = formatWeekLabel(weekRange.startMs, weekRange.endMs, timeZone);
-  const monthText = formatDateInTimeZone(now, { month: 'short', year: 'numeric' }, timeZone);
+  const weekText = 'recent complete days';
+  const monthText = 'completed days on hand';
 
   if (usageToday) usageToday.textContent = `${stats.today.toFixed(1)} kWh`;
-  if (usageWeek) usageWeek.textContent = `${stats.week.toFixed(1)} kWh`;
-  if (usageMonth) usageMonth.textContent = `${stats.month.toFixed(1)} kWh`;
+  if (usageWeek) usageWeek.textContent = `${stats.rolling7Avg.toFixed(1)} kWh/day`;
+  if (usageMonth) usageMonth.textContent = `${stats.rolling30Avg.toFixed(1)} kWh/day`;
 
   updateSummaryLabel(usageToday, `Today (${todayText})`);
-  updateSummaryLabel(usageWeek, `This week (${weekText})`);
-  updateSummaryLabel(usageMonth, `This month (${monthText})`);
+  updateSummaryLabel(usageWeek, `7-day avg (${weekText})`);
+  updateSummaryLabel(usageMonth, `30-day avg (${monthText})`);
 };
 
 const setSummaryValue = (element: HTMLElement, hasData: boolean, value: string) => {
@@ -322,11 +392,39 @@ const setSummaryValue = (element: HTMLElement, hasData: boolean, value: string) 
 
 const renderPowerAverages = (stats: PowerStatsSummary) => {
   if (usageWeekdayAvg) {
-    setSummaryValue(usageWeekdayAvg, stats.hasPatternData, `${stats.weekdayAvg.toFixed(1)} kWh/day`);
+    setSummaryValue(
+      usageWeekdayAvg,
+      stats.hasPatternData,
+      `${stats.weekdayAvg.toFixed(1)} kWh/day`,
+    );
   }
   if (usageWeekendAvg) {
-    setSummaryValue(usageWeekendAvg, stats.hasPatternData, `${stats.weekendAvg.toFixed(1)} kWh/day`);
+    setSummaryValue(
+      usageWeekendAvg,
+      stats.hasPatternData,
+      `${stats.weekendAvg.toFixed(1)} kWh/day`,
+    );
   }
+};
+
+const renderUsageQuality = (stats: PowerStatsSummary) => {
+  if (!usageQualityList) return;
+  usageQualityList.innerHTML = `
+    <div class="usage-context-list__item">
+      <strong>Reliable coverage</strong>
+      <p>${stats.reliableCoveragePct.toFixed(0)}% of tracked hours look reliable enough to learn from.</p>
+    </div>
+    <div class="usage-context-list__item">
+      <strong>Stale / unreliable hours</strong>
+      <p>${stats.staleHours.toFixed(1)} hours are currently flagged as stale or unreliable.</p>
+    </div>
+    <div class="usage-context-list__item">
+      <strong>Last complete day</strong>
+      <p>${stats.lastCompleteDayLabel} with about ${
+        stats.controlledSharePct.toFixed(0)
+      }% controllable-share signal in history.</p>
+    </div>
+  `;
 };
 
 const renderHourlyPattern = (stats: PowerStatsSummary) => {
@@ -460,14 +558,24 @@ export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZ
   const hourlyPatternWeekend = buildHourlyPattern(derivedHourlyAverages, (d) => d === 0 || d === 6);
   const hourlyPatternMeta = getHourlyPatternMeta(tracker.buckets, timeZone);
   const dailyHistory = buildDailyHistory(derivedDailyTotals, timeContext.todayKey);
+  const rolling7Avg = getRollingAverage(derivedDailyTotals, timeContext.todayKey, 7);
+  const rolling30Avg = getRollingAverage(derivedDailyTotals, timeContext.todayKey, 30);
+  const reliability = getReliabilityStats(tracker);
+  const controlledSharePct = getControlledSharePct(tracker);
 
   return {
     stats: {
       today,
       week: totals.week,
       month: totals.month,
+      rolling7Avg,
+      rolling30Avg,
       weekdayAvg: averages.weekdayAvg,
       weekendAvg: averages.weekendAvg,
+      reliableCoveragePct: reliability.reliableCoveragePct,
+      staleHours: reliability.staleHours,
+      lastCompleteDayLabel: getLastCompleteDayLabel(derivedDailyTotals, timeContext.todayKey, timeZone),
+      controlledSharePct,
       hourlyPatternAll,
       hourlyPatternWeekday,
       hourlyPatternWeekend,
@@ -521,6 +629,7 @@ export const renderPowerStats = async () => {
   latestPowerStatsTimeZone = timeZone;
   renderPowerSummary(stats, timeZone);
   renderPowerAverages(stats);
+  renderUsageQuality(stats);
   renderUsageHistorySections();
 };
 

@@ -15,7 +15,6 @@ import {
   dailyBudgetBars,
   dailyBudgetLabels,
   dailyBudgetEmpty,
-  dailyBudgetConfidence,
   dailyBudgetBreakdownInput,
 } from './dom.ts';
 import { createToggleGroup } from './components.ts';
@@ -23,9 +22,8 @@ import { callApi, getSetting } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import { logSettingsError } from './logging.ts';
-import { setTooltip } from './tooltips.ts';
-import { formatKWh, formatSignedKWh } from './dailyBudgetFormat.ts';
 import { renderDailyBudgetChart } from './dailyBudgetChart.ts';
+import { renderDailyBudgetStory, resetDailyBudgetStory } from './dailyBudgetStory.ts';
 import { getPricesReadModel } from './prices.ts';
 import {
   DAILY_BUDGET_ENABLED,
@@ -73,10 +71,17 @@ const applyDailyBudgetBounds = () => {
 const setPillState = (enabled: boolean, exceeded: boolean) => {
   if (!dailyBudgetStatusPill) return;
   if (enabled && exceeded) {
-    dailyBudgetStatusPill.textContent = 'Exceeded';
+    dailyBudgetStatusPill.textContent = 'Over plan';
+    dailyBudgetStatusPill.classList.remove('ok');
     dailyBudgetStatusPill.classList.add('warn');
     dailyBudgetStatusPill.hidden = false;
+  } else if (enabled) {
+    dailyBudgetStatusPill.textContent = 'Within plan';
+    dailyBudgetStatusPill.classList.remove('warn');
+    dailyBudgetStatusPill.classList.add('ok');
+    dailyBudgetStatusPill.hidden = false;
   } else {
+    dailyBudgetStatusPill.classList.remove('warn', 'ok');
     dailyBudgetStatusPill.hidden = true;
   }
 };
@@ -84,16 +89,6 @@ const setPillState = (enabled: boolean, exceeded: boolean) => {
 const setText = (element: HTMLElement | null, text: string) => {
   const target = element;
   if (target) target.textContent = text;
-};
-
-const setHidden = (element: HTMLElement | null, hidden: boolean) => {
-  const target = element;
-  if (target) target.hidden = hidden;
-};
-
-const setDeviationVisibility = (visible: boolean) => {
-  const card = dailyBudgetDeviation?.closest('.summary-card') as HTMLElement | null;
-  setHidden(card, !visible);
 };
 
 const resolveViewPayload = (
@@ -154,36 +149,17 @@ const computeEstimatedCost = (params: {
   return totalCost;
 };
 
-const setConfidence = (value: number | null) => {
-  if (!dailyBudgetConfidence) return;
-  if (value === null || !Number.isFinite(value)) {
-    dailyBudgetConfidence.hidden = true;
-    return;
-  }
-  dailyBudgetConfidence.textContent = `Confidence ${Math.round(value * 100)}%`;
-  setTooltip(
-    dailyBudgetConfidence,
-    'How well PELS can predict your energy use based on the regularity'
-    + ' of your usage patterns and how closely your home follows the budget plan.',
-  );
-  dailyBudgetConfidence.hidden = false;
-};
-
 const renderDailyBudgetEmptyState = (message = 'Daily budget data not available yet.') => {
   if (!dailyBudgetChart || !dailyBudgetEmpty) return;
   dailyBudgetEmpty.hidden = false;
   dailyBudgetEmpty.textContent = message;
   dailyBudgetChart.hidden = true;
-  setConfidence(null);
+  resetDailyBudgetStory();
   setPillState(false, false);
-  const isTomorrow = currentDailyBudgetView === 'tomorrow';
-  setDeviationVisibility(!isTomorrow);
-
   setText(dailyBudgetTitle, resolveDailyBudgetTitle(currentDailyBudgetView));
   setText(dailyBudgetDay, '--');
   setText(dailyBudgetRemaining, '-- kWh');
   setText(dailyBudgetDeviation, '-- kWh');
-
   setText(dailyBudgetCostLabel, resolveDailyBudgetCostLabel(currentDailyBudgetView));
   setText(dailyBudgetCost, formatCost(null, costDisplay));
 };
@@ -199,13 +175,7 @@ const renderDailyBudgetHeader = (payload: DailyBudgetDayPayload, view: DailyBudg
 };
 
 const renderDailyBudgetStats = (payload: DailyBudgetDayPayload, view: DailyBudgetView) => {
-  const isTomorrow = view === 'tomorrow';
-  if (dailyBudgetRemaining) dailyBudgetRemaining.textContent = formatKWh(payload.state.remainingKWh);
-  setConfidence(view === 'today' ? payload.state.confidence : null);
-  setDeviationVisibility(!isTomorrow);
-  if (dailyBudgetDeviation && !isTomorrow) {
-    dailyBudgetDeviation.textContent = formatSignedKWh(payload.state.deviationKWh);
-  }
+  renderDailyBudgetStory(payload);
   if (dailyBudgetCostLabel) dailyBudgetCostLabel.textContent = resolveDailyBudgetCostLabel(view);
   const plannedKWh = payload.buckets.plannedKWh || [];
   let costIndex: number | undefined;

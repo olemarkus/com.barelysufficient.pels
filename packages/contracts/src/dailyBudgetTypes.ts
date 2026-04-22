@@ -20,6 +20,7 @@ export type DailyBudgetDayPayload = {
     priceShapingActive: boolean;
     confidenceDebug?: ConfidenceDebug;
   };
+  explainability?: DailyBudgetExplainability;
   buckets: {
     startUtc: string[];
     startLocalLabels: string[];
@@ -44,8 +45,25 @@ export type ConfidenceDebug = {
   confidenceValidActualDays: number;
   confidenceValidPlannedDays: number;
   confidenceBootstrapLow: number;
-  confidenceBootstrapHigh: number;
-  profileBlendConfidence: number;
+    confidenceBootstrapHigh: number;
+    profileBlendConfidence: number;
+};
+
+export type DailyBudgetExplainability = {
+  headline?: string;
+  summary?: string;
+  currentLimiterLabel?: string;
+  currentLimiterDetail?: string;
+  effectiveSoftLimitKw?: number | null;
+  hourlySoftLimitKw?: number | null;
+  dailySoftLimitKw?: number | null;
+  hardCapKw?: number | null;
+  budgetExemptKWh?: number | null;
+  baseLoadKWh?: number | null;
+  flexibleLoadKWh?: number | null;
+  priceEffectLabel?: string;
+  priceEffectDetail?: string;
+  notes?: string[];
 };
 
 export type DailyBudgetUiPayload = {

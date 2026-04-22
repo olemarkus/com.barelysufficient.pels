@@ -199,9 +199,14 @@
       const startLocalLabels = [];
       const plannedWeight = [];
       const plannedKWh = [];
+      const plannedUncontrolledKWh = [];
+      const plannedControlledKWh = [];
       const actualKWh = [];
+      const actualControlledKWh = [];
+      const actualUncontrolledKWh = [];
       const allowedCumKWh = [];
       const price = [];
+      const priceFactor = [];
 
       let cum = 0;
 
@@ -216,10 +221,19 @@
 
         const kwh = 0.35 * w;
         plannedKWh.push(Number(kwh.toFixed(3)));
+        const controlledShare = i >= 1 && i <= 6 ? 0.42 : (i >= 17 && i <= 21 ? 0.3 : 0.22);
+        const plannedControlled = kwh * controlledShare;
+        const plannedUncontrolled = Math.max(0, kwh - plannedControlled);
+        plannedControlledKWh.push(Number(plannedControlled.toFixed(3)));
+        plannedUncontrolledKWh.push(Number(plannedUncontrolled.toFixed(3)));
 
         // Actual tracks planned, but with some bias.
         const actual = Math.max(0, kwh + (i % 5 === 0 ? 0.08 : -0.02));
         actualKWh.push(Number(actual.toFixed(3)));
+        const actualControlled = Math.max(0, actual * controlledShare + (i >= 17 && i <= 21 ? -0.03 : 0.01));
+        const actualUncontrolled = Math.max(0, actual - actualControlled);
+        actualControlledKWh.push(Number(actualControlled.toFixed(3)));
+        actualUncontrolledKWh.push(Number(actualUncontrolled.toFixed(3)));
 
         cum += kwh;
         allowedCumKWh.push(Number(cum.toFixed(3)));
@@ -227,6 +241,7 @@
         // Rough price shape in "kr" units for the budget view.
         const p = 0.8 + 0.35 * Math.sin((i / 24) * Math.PI * 2 - Math.PI / 2);
         price.push(Number(p.toFixed(3)));
+        priceFactor.push(Number((0.82 + 0.48 * Math.sin((i / 24) * Math.PI * 2 - Math.PI / 2)).toFixed(3)));
       }
 
       const dateKey = dateKeyUtc(dayStartMs);
@@ -235,6 +250,35 @@
       const allowedNowKWh = allowedCumKWh[currentBucketIndex] ?? 0;
       const remainingKWh = dailyBudgetKWh - usedNowKWh;
       const deviationKWh = usedNowKWh - allowedNowKWh;
+      const currentHourPlanned = plannedKWh[currentBucketIndex] ?? 0.45;
+      const currentHourControlled = plannedControlledKWh[currentBucketIndex] ?? 0.12;
+      const currentHourUncontrolled = plannedUncontrolledKWh[currentBucketIndex] ?? 0.33;
+      const explainability = {
+        headline: remainingKWh >= 0
+          ? `${remainingKWh.toFixed(1)} kWh left today`
+          : `${Math.abs(remainingKWh).toFixed(1)} kWh over today's target`,
+        summary: remainingKWh >= 0
+          ? 'PELS can still spread the remaining budget across cheaper hours while staying within hourly protection.'
+          : 'PELS needs to keep the rest of the day tighter because you are already ahead of the planned curve.',
+        currentLimiterLabel: deviationKWh > 0.15 ? 'Daily budget is tightening this hour' : 'Hourly capacity still leads',
+        currentLimiterDetail: deviationKWh > 0.15
+          ? 'The daily soft limit is currently lower than the hourly soft limit.'
+          : 'The daily budget is still within the hourly capacity envelope.',
+        effectiveSoftLimitKw: Number((currentHourPlanned * 2.35).toFixed(2)),
+        hourlySoftLimitKw: Number((currentHourPlanned * 2.8).toFixed(2)),
+        dailySoftLimitKw: Number((currentHourPlanned * 2.35).toFixed(2)),
+        hardCapKw: 8,
+        budgetExemptKWh: 1.3,
+        baseLoadKWh: Number(currentHourUncontrolled.toFixed(2)),
+        flexibleLoadKWh: Number(currentHourControlled.toFixed(2)),
+        priceEffectLabel: dailyBudgetPriceShapingEnabled ? 'Flexible load is being nudged toward cheaper hours' : 'Price shaping is off for this plan',
+        priceEffectDetail: dailyBudgetPriceShapingEnabled
+          ? 'Only the movable share of the plan shifts; the base load still follows learned history.'
+          : 'The plan stays closer to the home’s learned shape when price shaping is disabled.',
+        notes: deviationKWh > 0.15
+          ? ['Restores may wait longer until usage drops back under the allowed curve.']
+          : ['There is still room to rebalance the day if cheaper hours open up later.'],
+      };
 
       return {
         dateKey,
@@ -256,15 +300,32 @@
           frozen: false,
           confidence: 0.72,
           priceShapingActive: true,
+          confidenceDebug: {
+            confidenceRegularity: 0.78,
+            confidenceAdaptability: 0.61,
+            confidenceAdaptabilityInfluence: 0.42,
+            confidenceWeightedControlledShare: 0.35,
+            confidenceValidActualDays: 18,
+            confidenceValidPlannedDays: 9,
+            confidenceBootstrapLow: 0.62,
+            confidenceBootstrapHigh: 0.79,
+            profileBlendConfidence: 0.86,
+          },
         },
+        explainability,
         buckets: {
           startUtc,
           startLocalLabels,
           plannedWeight,
           plannedKWh,
+          plannedUncontrolledKWh,
+          plannedControlledKWh,
           actualKWh,
+          actualControlledKWh,
+          actualUncontrolledKWh,
           allowedCumKWh,
           price,
+          priceFactor,
         },
       };
     };
@@ -420,9 +481,9 @@
     daily_budget_enabled: true,
     daily_budget_kwh: 12,
     daily_budget_price_shaping_enabled: true,
-    daily_budget_controlled_weight: 1,
-    daily_budget_price_flex_share: 0.3,
-    daily_budget_breakdown_enabled: false,
+    daily_budget_controlled_weight: 0.3,
+    daily_budget_price_flex_share: 0.35,
+    daily_budget_breakdown_enabled: true,
 
     // Plan snapshot
     device_plan_snapshot: buildSamplePlanSnapshot(),
