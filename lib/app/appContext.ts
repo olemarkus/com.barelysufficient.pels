@@ -66,6 +66,7 @@ export type AppContext = {
   getCurrentPriceLevel: () => PriceLevel;
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
+  areFlowBackedCardsAvailable: () => boolean;
   getDeviceLoadSetting: (deviceId: string) => Promise<number | null>;
   setExpectedOverride: (deviceId: string, kw: number) => boolean;
   storeFlowPriceData: (kind: 'today' | 'tomorrow', raw: unknown) => {
