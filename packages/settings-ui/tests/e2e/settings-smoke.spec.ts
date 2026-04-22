@@ -1,6 +1,17 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator } from '@playwright/test';
 
 test.describe('Settings UI (smoke)', () => {
+  const openIfCollapsed = async (
+    details: Locator,
+  ) => {
+    const isOpen = await details.evaluate((element) => (
+      element instanceof HTMLDetailsElement ? element.open : false
+    ));
+    if (!isOpen) {
+      await details.locator('summary').click();
+    }
+  };
+
   test('loads control center', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading', { name: 'Control center' })).toBeVisible();
@@ -41,6 +52,8 @@ test.describe('Settings UI (smoke)', () => {
     await expect(page.locator('#device-list')).not.toContainText('EV Charger');
 
     await page.getByRole('tab', { name: 'Advanced' }).click();
+    const experimentalFeatures = page.locator('#advanced-panel details').filter({ hasText: 'Experimental features' });
+    await openIfCollapsed(experimentalFeatures);
     const evToggle = page.locator('#advanced-ev-support-enabled');
     await expect(evToggle).not.toBeChecked();
 
@@ -51,6 +64,7 @@ test.describe('Settings UI (smoke)', () => {
     await expect(page.locator('#device-list')).toContainText('EV Charger');
 
     await page.getByRole('tab', { name: 'Advanced' }).click();
+    await openIfCollapsed(experimentalFeatures);
     await evToggle.uncheck();
     await expect(page.locator('#toast')).toContainText('Managed EV chargers were set to unmanaged.');
 

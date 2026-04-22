@@ -87,6 +87,7 @@ test.describe('Settings UI chart layout', () => {
     await expect(page.locator('#hourly-pattern svg').first()).toBeVisible();
 
     await expect(page.locator('#daily-list svg').first()).toBeVisible();
+    await page.locator('#usage-panel details').filter({ hasText: 'Hourly detail' }).locator('summary').click();
     await expect(page.locator('#power-list svg').first()).toBeVisible();
 
     const usageIssues = await collectLayoutIssues(page, '#usage-panel', [
