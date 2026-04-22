@@ -11,16 +11,25 @@ import {
   applyActivationPenalty,
   syncActivationPenaltyState,
 } from './planActivationBackoff';
-import { computeBaseRestoreNeed, computePendingRestorePowerKw } from './planRestoreSwap';
+import { computeBaseRestoreNeed, computePendingRestorePowerKw } from './planRestoreAccounting';
 
-export function reserveHeadroomForPendingRestores(
-  rawHeadroom: number,
-  planDevices: DevicePlanDevice[],
-  lastDeviceRestoreMs: Record<string, number>,
-  debugStructured: StructuredDebugEmitter | undefined,
-  deviceNameById: ReadonlyMap<string, string> | undefined,
-): number {
-  const pending = computePendingRestorePowerKw(planDevices, lastDeviceRestoreMs, Date.now());
+export function reserveHeadroomForPendingRestores(params: {
+  rawHeadroom: number;
+  planDevices: DevicePlanDevice[];
+  lastDeviceRestoreMs: Record<string, number>;
+  measurementTs: number | null;
+  debugStructured: StructuredDebugEmitter | undefined;
+  deviceNameById: ReadonlyMap<string, string> | undefined;
+}): number {
+  const {
+    rawHeadroom,
+    planDevices,
+    lastDeviceRestoreMs,
+    measurementTs,
+    debugStructured,
+    deviceNameById,
+  } = params;
+  const pending = computePendingRestorePowerKw(planDevices, lastDeviceRestoreMs, Date.now(), measurementTs);
   if (pending.pendingKw <= 0) return rawHeadroom;
   const adjusted = rawHeadroom - pending.pendingKw;
   const devices: Array<{ deviceId: string; deviceName?: string }> = [];

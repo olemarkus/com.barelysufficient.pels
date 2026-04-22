@@ -123,6 +123,7 @@ export const decorateSnapshotWithDeviceControl = (params: {
     targetStepId: desiredStepId,
     selectedStepId,
     desiredStepId,
+    previousStepId: desired?.previousStepId,
     actualStepId,
     assumedStepId,
     actualStepSource,

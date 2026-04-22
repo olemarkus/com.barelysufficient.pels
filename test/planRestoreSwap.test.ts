@@ -1,11 +1,13 @@
 import {
-  buildInsufficientHeadroomUpdate,
   buildSwapCandidates,
+} from '../lib/plan/planRestoreSwap';
+import {
+  buildInsufficientHeadroomUpdate,
   computePendingRestorePowerKw,
   computeRestoreBufferKw,
   estimateRestorePower,
   resolveRestorePowerSource,
-} from '../lib/plan/planRestoreSwap';
+} from '../lib/plan/planRestoreAccounting';
 import { buildRestoreHeadroomReason } from '../lib/plan/planReasonStrings';
 import { resolveCandidatePower } from '../lib/plan/planCandidatePower';
 import { PENDING_RESTORE_WINDOW_MS } from '../lib/plan/planConstants';
@@ -424,13 +426,166 @@ describe('computePendingRestorePowerKw', () => {
     expect(result.pendingKw).toBe(0);
   });
 
-  it('does not reserve headroom for off-path stepped restore from lastDeviceRestoreMs alone', () => {
+  it('reserves full low-step headroom for an off-path stepped restore while awaiting confirmation', () => {
     const dev = steppedPlanDevice({
       id: 'therm',
       currentOn: false,
       currentState: 'off',
-      planningPowerKw: 2,
+      selectedStepId: 'off',
+      desiredStepId: 'low',
+      lastDesiredStepId: 'low',
+      stepCommandPending: true,
+      stepCommandStatus: 'pending',
+      lastStepCommandIssuedAt: recentMs,
       measuredPowerKw: 0,
+    });
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
+    expect(result.deviceIds).toEqual(['therm']);
+    expect(result.pendingKw).toBeCloseTo(1.25, 5);
+  });
+
+  it('keeps off-path low-step headroom reserved after confirmation until a fresh whole-home sample arrives', () => {
+    const dev = steppedPlanDevice({
+      id: 'therm',
+      currentOn: false,
+      currentState: 'off',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+      lastDesiredStepId: 'low',
+      stepCommandPending: false,
+      stepCommandStatus: 'success',
+      measuredPowerKw: 0,
+      planningPowerKw: 0,
+    });
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
+    expect(result.deviceIds).toEqual(['therm']);
+    expect(result.pendingKw).toBeCloseTo(1.25, 5);
+  });
+
+  it('releases off-path low-step headroom after a fresh whole-home sample arrives post-confirmation', () => {
+    const dev = steppedPlanDevice({
+      id: 'therm',
+      currentOn: false,
+      currentState: 'off',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+      lastDesiredStepId: 'low',
+      stepCommandPending: false,
+      stepCommandStatus: 'success',
+      measuredPowerKw: 0,
+      planningPowerKw: 0,
+    });
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now, recentMs + 1);
+    expect(result.pendingKw).toBe(0);
+    expect(result.deviceIds).toHaveLength(0);
+  });
+
+  it('releases off-path low-step reservation once the stepped restore has fallen into retry backoff', () => {
+    const dev = steppedPlanDevice({
+      id: 'therm',
+      currentOn: false,
+      currentState: 'off',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+      lastDesiredStepId: 'low',
+      stepCommandPending: false,
+      stepCommandStatus: 'stale',
+      nextStepCommandRetryAtMs: now + 30_000,
+      measuredPowerKw: 0,
+      planningPowerKw: 0,
+    });
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
+    expect(result.pendingKw).toBe(0);
+    expect(result.deviceIds).toHaveLength(0);
+  });
+
+  it('reserves only the incremental gap for stepped restore while awaiting step confirmation', () => {
+    const dev = steppedPlanDevice({
+      id: 'therm',
+      currentOn: true,
+      selectedStepId: 'low',
+      previousStepId: 'low',
+      desiredStepId: 'medium',
+      lastDesiredStepId: 'medium',
+      stepCommandPending: true,
+      stepCommandStatus: 'pending',
+      lastStepCommandIssuedAt: recentMs,
+      measuredPowerKw: 1.25,
+      planningPowerKw: 1.25,
+    });
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
+    expect(result.deviceIds).toEqual(['therm']);
+    expect(result.pendingKw).toBeCloseTo(0.75, 5);
+  });
+
+  it('keeps stepped pending restore headroom reserved after step confirmation until a fresh whole-home sample arrives', () => {
+    const dev = steppedPlanDevice({
+      id: 'therm',
+      currentOn: true,
+      selectedStepId: 'medium',
+      previousStepId: 'low',
+      desiredStepId: 'medium',
+      lastDesiredStepId: 'medium',
+      stepCommandPending: false,
+      stepCommandStatus: 'success',
+      measuredPowerKw: 1.25,
+      planningPowerKw: 2,
+    });
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
+    expect(result.deviceIds).toEqual(['therm']);
+    expect(result.pendingKw).toBeCloseTo(0.75, 5);
+  });
+
+  it('releases stepped pending restore headroom after a fresh whole-home sample arrives post-confirmation', () => {
+    const dev = steppedPlanDevice({
+      id: 'therm',
+      currentOn: true,
+      selectedStepId: 'medium',
+      previousStepId: 'low',
+      desiredStepId: 'medium',
+      lastDesiredStepId: 'medium',
+      stepCommandPending: false,
+      stepCommandStatus: 'success',
+      measuredPowerKw: 1.25,
+      planningPowerKw: 2,
+    });
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now, recentMs + 1);
+    expect(result.pendingKw).toBe(0);
+    expect(result.deviceIds).toHaveLength(0);
+  });
+
+  it('does not treat configured powerKw as settled stepped power without measure_power', () => {
+    const dev = steppedPlanDevice({
+      id: 'therm',
+      currentOn: true,
+      selectedStepId: 'medium',
+      previousStepId: 'low',
+      desiredStepId: 'medium',
+      lastDesiredStepId: 'medium',
+      stepCommandPending: false,
+      stepCommandStatus: 'success',
+      measuredPowerKw: undefined,
+      powerKw: 2,
+      planningPowerKw: 2,
+    });
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
+    expect(result.deviceIds).toEqual(['therm']);
+    expect(result.pendingKw).toBeCloseTo(0.75, 5);
+  });
+
+  it('releases stepped pending restore headroom once the attempt has fallen into retry backoff', () => {
+    const dev = steppedPlanDevice({
+      id: 'therm',
+      currentOn: true,
+      selectedStepId: 'low',
+      desiredStepId: 'medium',
+      lastDesiredStepId: 'medium',
+      stepCommandPending: false,
+      stepCommandStatus: 'stale',
+      lastStepCommandIssuedAt: recentMs,
+      nextStepCommandRetryAtMs: now + 30_000,
+      measuredPowerKw: 1.25,
+      planningPowerKw: 1.25,
     });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBe(0);

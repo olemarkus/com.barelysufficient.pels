@@ -15,10 +15,9 @@ import {
 import { SwapState, SwapStateSnapshot, buildSwapState, cleanupStaleSwaps, exportSwapState } from './planSwapState';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from './planDebugDedupe';
 import {
-  buildInsufficientHeadroomUpdate,
   buildSwapCandidates,
-  resolveRestorePowerSource,
 } from './planRestoreSwap';
+import { buildInsufficientHeadroomUpdate, resolveRestorePowerSource } from './planRestoreAccounting';
 import {
   getInactiveReason,
   getOffDevices,
@@ -110,13 +109,14 @@ export function applyRestorePlan(params: {
   cleanupStaleSwaps(swapState, deps.structuredLog);
 
   const restoredThisCycle = new Set<string>();
-  let availableHeadroom = reserveHeadroomForPendingRestores(
-    context.headroomRaw,
+  let availableHeadroom = reserveHeadroomForPendingRestores({
+    rawHeadroom: context.headroomRaw,
     planDevices,
-    state.lastDeviceRestoreMs,
-    deps.debugStructured,
-    deps.deviceNameById,
-  );
+    lastDeviceRestoreMs: state.lastDeviceRestoreMs,
+    measurementTs: deps.powerTracker.lastTimestamp ?? null,
+    debugStructured: deps.debugStructured,
+    deviceNameById: deps.deviceNameById,
+  });
   let restoredOneThisCycle = false;
 
   if (shouldPlanRestores(context.headroomRaw, sheddingActive, effectiveTiming)) {

@@ -52,6 +52,7 @@ export type TargetDeviceSnapshot = {
     reportedStepId?: string;
     targetStepId?: string;
     desiredStepId?: string;
+    previousStepId?: string;
     actualStepId?: string;
     assumedStepId?: string;
     selectedStepId?: string;
