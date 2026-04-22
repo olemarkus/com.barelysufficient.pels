@@ -382,11 +382,11 @@
         </div>
       </details>
 
-      <div class="settings-collapse">
-        <div class="settings-collapse-header">
+      <details class="settings-collapse" open>
+        <summary>
           <h3 class="section-title">Daily history</h3>
           <span class="section-hint" id="daily-history-range-hint">Last 14 days</span>
-        </div>
+        </summary>
         <div class="collapse-content">
           <div class="day-view-actions usage-history-actions">
             <div id="daily-history-range-mount"></div>
@@ -394,13 +394,13 @@
           <div id="daily-list" class="usage-history-chart usage-chart"></div>
           <p id="daily-empty" class="muted" hidden>No daily totals yet.</p>
         </div>
-      </div>
+      </details>
 
-      <div class="settings-collapse">
-        <div class="settings-collapse-header">
+      <details class="settings-collapse">
+        <summary>
           <h3 class="section-title">Hourly detail</h3>
           <span class="section-hint">Week view</span>
-        </div>
+        </summary>
         <div class="collapse-content">
           <div class="hourly-nav day-view-header">
             <p id="power-week-label" class="muted">This week</p>
@@ -418,7 +418,7 @@
           </div>
           <p id="power-empty" class="muted" hidden>No power samples received yet. Wire the "Report power usage" Flow action.</p>
         </div>
-      </div>
+      </details>
 
       <div class="list__footer">
         <button type="button" class="btn ghost" id="reset-stats-button">Reset all stats</button>
@@ -512,7 +512,7 @@
           </div>
         </div>
       </details>
-      <details class="settings-collapse" open>
+      <details class="settings-collapse">
         <summary>
           <h3 class="section-title">Experimental features</h3>
           <span class="section-hint">Opt-in support</span>
@@ -529,7 +529,7 @@
           </div>
         </div>
       </details>
-      <details class="settings-collapse" open>
+      <details class="settings-collapse">
         <summary>
           <h3 class="section-title">Debug logging</h3>
           <span class="section-hint">Targeted diagnostics</span>
