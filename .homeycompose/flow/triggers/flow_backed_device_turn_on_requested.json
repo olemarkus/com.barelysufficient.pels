@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "Device should turn on"
+  },
+  "titleFormatted": {
+    "en": "Device [[device]] should turn on"
+  },
+  "hint": {
+    "en": "Triggers when an existing Homey device should turn on."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select device"
+      }
+    }
+  ]
+}

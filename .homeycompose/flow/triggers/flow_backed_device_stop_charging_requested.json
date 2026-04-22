@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "Charging should stop"
+  },
+  "titleFormatted": {
+    "en": "Charging should stop for [[device]]"
+  },
+  "hint": {
+    "en": "Triggers when charging should stop for an existing Homey EV charger."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select EV charger"
+      }
+    }
+  ]
+}
