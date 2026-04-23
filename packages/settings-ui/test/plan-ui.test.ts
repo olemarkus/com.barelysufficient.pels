@@ -344,7 +344,7 @@ describe('plan live timing', () => {
     expect(getStatusText()).toBe('waiting for meter to settle (2s remaining)');
 
     await vi.advanceTimersByTimeAsync(2000);
-    expect(getStatusText()).toBe('waiting for meter to settle (0s remaining)');
+    expect(getStatusText()).toBe('keep');
   });
 
   it('stops the live ticker after the last countdown reaches zero', async () => {
@@ -368,7 +368,7 @@ describe('plan live timing', () => {
 
     await vi.advanceTimersByTimeAsync(1000);
 
-    expect(getStatusText()).toBe('waiting for meter to settle (0s remaining)');
+    expect(getStatusText()).toBe('keep');
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -510,7 +510,7 @@ describe('plan live timing', () => {
     expect(getStatusText()).toBe('waiting for meter to settle (1s remaining)');
 
     await vi.advanceTimersByTimeAsync(1000);
-    expect(getStatusText()).toBe('waiting for meter to settle (0s remaining)');
+    expect(getStatusText()).toBe('keep');
   });
 
   it('restarts live ticking when the overview tab becomes active again', async () => {
@@ -543,7 +543,7 @@ describe('plan live timing', () => {
     expect(getStatusText()).toBe('waiting for meter to settle (1s remaining)');
 
     await vi.advanceTimersByTimeAsync(1000);
-    expect(getStatusText()).toBe('waiting for meter to settle (0s remaining)');
+    expect(getStatusText()).toBe('keep');
   });
 });
 
@@ -808,7 +808,7 @@ describe('plan device state', () => {
     expect(getPowerText()).toBeUndefined();
     expect(getStateText()).toBe('Active (low → max)');
     expect(getUsageText()).toBe('Measured: 0.60 kW / Expected: 3.00 kW (reported: low / target: max)');
-    expect(getStatusText()).toBe('waiting for meter to settle (40s remaining)');
+    expect(getStatusText()).toBe('cooldown (restore, 40s remaining)');
     expect(getBadgeClassList('dev-step-mode-transition')?.contains('cheap')).toBe(true);
   });
 
@@ -1027,7 +1027,7 @@ describe('plan device state', () => {
     });
 
     expect(getStateText()).toBe('Active');
-    expect(getStatusText()).toBe('waiting for meter to settle (40s remaining)');
+    expect(getStatusText()).toBe('cooldown (restore, 40s remaining)');
     expect(getBadgeClassList('dev-restore-legacy')?.contains('cheap')).toBe(true);
   });
 

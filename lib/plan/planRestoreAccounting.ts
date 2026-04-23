@@ -105,8 +105,11 @@ function resolveSteppedPendingReservationGapKw(
     dev,
     requestedStepId,
     nowTs,
-    lastDeviceRestoreMs[dev.id],
-    measurementTs,
+    {
+      lastRestoreMs: lastDeviceRestoreMs[dev.id],
+      measurementTs,
+      powerSettleWindowMs: PENDING_RESTORE_WINDOW_MS,
+    },
   );
   if (!reservation) return null;
   if (reservation.status === 'awaiting_power_settle') return reservation.deltaKw > 0 ? reservation.deltaKw : null;

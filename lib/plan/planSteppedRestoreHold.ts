@@ -44,8 +44,10 @@ export function applySteppedRestoreAttemptHold(params: {
     dev,
     nextStepId,
     nowMs,
-    lastRestoreMs,
-    measurementTs,
+    {
+      lastRestoreMs,
+      measurementTs,
+    },
   );
   const pendingRestoreHold = buildPendingSteppedRestoreHold(steppedRestoreAttempt);
   if (pendingRestoreHold) {

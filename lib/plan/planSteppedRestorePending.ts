@@ -4,7 +4,7 @@ import { resolveSteppedLoadCommandPendingMs } from './planObservationPolicy';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
-import { PENDING_RESTORE_WINDOW_MS } from './planConstants';
+import { RESTORE_COOLDOWN_MS } from './planConstants';
 
 export type SteppedRestoreAttemptState = {
   status: 'awaiting_confirmation' | 'awaiting_power_settle' | 'retry_backoff';
@@ -21,13 +21,23 @@ export type PendingSteppedRestoreHold = {
   reasonCode: 'waiting_confirmation' | 'meter_settling';
 };
 
+type SteppedRestoreAttemptOptions = {
+  lastRestoreMs?: number;
+  measurementTs?: number | null;
+  powerSettleWindowMs?: number;
+};
+
 export function resolveSteppedRestoreAttemptState(
   dev: DevicePlanDevice,
   requestedStepId: string,
   nowMs: number = Date.now(),
-  lastRestoreMs?: number,
-  measurementTs: number | null = null,
+  options: SteppedRestoreAttemptOptions = {},
 ): SteppedRestoreAttemptState | null {
+  const {
+    lastRestoreMs,
+    measurementTs = null,
+    powerSettleWindowMs = RESTORE_COOLDOWN_MS,
+  } = options;
   const baseAttempt = resolveSteppedRestoreBaseAttempt(dev, requestedStepId);
   if (!baseAttempt) return null;
   const pendingAttempt = resolvePendingOrBackoffAttempt(dev, baseAttempt, nowMs);
@@ -40,6 +50,7 @@ export function resolveSteppedRestoreAttemptState(
     lastRestoreMs,
     measurementTs,
     nowMs,
+    powerSettleWindowMs,
   });
   if (powerSettleRemainingSec !== null) {
     return {
@@ -59,10 +70,14 @@ export function resolveActiveSteppedRestoreReservation(
   dev: DevicePlanDevice,
   requestedStepId: string,
   nowMs: number = Date.now(),
-  lastRestoreMs?: number,
-  measurementTs: number | null = null,
+  options: SteppedRestoreAttemptOptions = {},
 ): SteppedRestoreAttemptState | null {
-  const attempt = resolveSteppedRestoreAttemptState(dev, requestedStepId, nowMs, lastRestoreMs, measurementTs);
+  const attempt = resolveSteppedRestoreAttemptState(
+    dev,
+    requestedStepId,
+    nowMs,
+    options,
+  );
   return attempt && attempt.status !== 'retry_backoff' && attempt.deltaKw > 0 ? attempt : null;
 }
 
@@ -177,13 +192,21 @@ function resolveSteppedRestorePowerSettleRemainingSec(params: {
   lastRestoreMs?: number;
   measurementTs: number | null;
   nowMs: number;
+  powerSettleWindowMs: number;
 }): number | null {
-  const { dev, lastRestoreMs, measurementTs, nowMs } = params;
+  const {
+    dev,
+    lastRestoreMs,
+    measurementTs,
+    nowMs,
+    powerSettleWindowMs,
+  } = params;
   if (dev.stepCommandStatus !== 'success') return null;
   if (typeof lastRestoreMs !== 'number') return null;
-  if (nowMs - lastRestoreMs > PENDING_RESTORE_WINDOW_MS) return null;
   if (measurementTs !== null && measurementTs > lastRestoreMs) return null;
-  return Math.max(1, Math.ceil((lastRestoreMs + PENDING_RESTORE_WINDOW_MS - nowMs) / 1000));
+  const remainingMs = (lastRestoreMs + powerSettleWindowMs) - nowMs;
+  if (remainingMs <= 0) return null;
+  return Math.ceil(remainingMs / 1000);
 }
 
 export function resolveSteppedRestoreObservedGapKw(

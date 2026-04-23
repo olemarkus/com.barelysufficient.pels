@@ -536,6 +536,24 @@ describe('computePendingRestorePowerKw', () => {
     expect(result.pendingKw).toBeCloseTo(0.75, 5);
   });
 
+  it('keeps stepped pending restore headroom reserved after 60 seconds if no fresh whole-home sample has arrived', () => {
+    const dev = steppedPlanDevice({
+      id: 'therm',
+      currentOn: true,
+      selectedStepId: 'medium',
+      previousStepId: 'low',
+      desiredStepId: 'medium',
+      lastDesiredStepId: 'medium',
+      stepCommandPending: false,
+      stepCommandStatus: 'success',
+      measuredPowerKw: 1.25,
+      planningPowerKw: 2,
+    });
+    const result = computePendingRestorePowerKw([dev], { therm: recentMs }, recentMs + 61_000);
+    expect(result.deviceIds).toEqual(['therm']);
+    expect(result.pendingKw).toBeCloseTo(0.75, 5);
+  });
+
   it('releases stepped pending restore headroom after a fresh whole-home sample arrives post-confirmation', () => {
     const dev = steppedPlanDevice({
       id: 'therm',

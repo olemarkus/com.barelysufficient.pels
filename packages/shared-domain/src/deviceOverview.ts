@@ -211,8 +211,6 @@ export const formatOverviewStatus = (reason: DeviceReason): string => {
   switch (reason.code) {
     case PLAN_REASON_CODES.meterSettling:
       return `waiting for meter to settle (${reason.remainingSec}s remaining)`;
-    case PLAN_REASON_CODES.cooldownRestore:
-      return `waiting for meter to settle (${reason.remainingSec}s remaining)`;
     case PLAN_REASON_CODES.headroomCooldown:
       if (reason.kind === 'recent_pels_restore') {
         return `stabilizing after recent PELS restore (${reason.remainingSec}s remaining)`;

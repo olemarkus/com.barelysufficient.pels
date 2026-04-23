@@ -1089,6 +1089,125 @@ describe('restore cooldown backoff', () => {
     expect(steppedDevice?.desiredStepId).toBe('low');
   });
 
+  it('clears meter settling after a fresh whole-home sample and falls back to restore cooldown', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 5_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-off',
+          name: 'Heater',
+          currentState: 'off',
+          powerKw: 2,
+          expectedPowerKw: 2,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
+    expect(binaryDevice?.plannedState).toBe('keep');
+    expect(reasonText(binaryDevice?.reason)).toBe('cooldown (restore, 55s remaining)');
+  });
+
+  it('keeps stepped peers on restore cooldown instead of a shed invariant after a fresh sample', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 5_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-off',
+          name: 'Heater',
+          currentState: 'off',
+          powerKw: 2,
+          expectedPowerKw: 2,
+        }),
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'on',
+          selectedStepId: 'low',
+          desiredStepId: 'low',
+          measuredPowerKw: 1.25,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+
+    expect(binaryDevice?.plannedState).toBe('keep');
+    expect(reasonText(binaryDevice?.reason)).toBe('cooldown (restore, 55s remaining)');
+    expect(steppedDevice?.desiredStepId).toBe('low');
+    expect(reasonText(steppedDevice?.reason)).toBe('cooldown (restore, 55s remaining)');
+  });
+
+  it('keeps meter settling bounded to 60 seconds even when restore cooldown backs off longer', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 1, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 60_000;
+    state.restoreCooldownMs = 120_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-off',
+          name: 'Heater',
+          currentState: 'off',
+          powerKw: 2,
+          expectedPowerKw: 2,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: null } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
+    expect(binaryDevice?.plannedState).toBe('keep');
+    expect(reasonText(binaryDevice?.reason)).toBe('cooldown (restore, 60s remaining)');
+  });
+
   it('does not let restore cooldown rewrite a shed stepped device back to keep', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
@@ -1176,15 +1295,100 @@ describe('restore cooldown backoff', () => {
     expect(reasonText(waitingDevice?.reason)).toBe('meter settling (60s remaining)');
   });
 
-  it('falls back to restoreCooldownSeconds when meter settling remaining seconds are unavailable', () => {
+  it('starts a fresh meter-settling window for later peers after a same-cycle restore even if an older cooldown already expired', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 1, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 60_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-restored',
+          name: 'Priority Heater',
+          priority: 1,
+          currentState: 'off',
+          powerKw: 2,
+          expectedPowerKw: 2,
+        }),
+        buildPlanDevice({
+          id: 'dev-waiting',
+          name: 'Waiting Heater',
+          priority: 2,
+          currentState: 'off',
+          powerKw: 2,
+          expectedPowerKw: 2,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const restoredDevice = result.planDevices.find((device) => device.id === 'dev-restored');
+    const waitingDevice = result.planDevices.find((device) => device.id === 'dev-waiting');
+
+    expect(restoredDevice?.plannedState).toBe('keep');
+    expect(reasonText(restoredDevice?.reason)).toBe('keep');
+    expect(waitingDevice?.plannedState).toBe('keep');
+    expect(reasonText(waitingDevice?.reason)).toBe('meter settling (60s remaining)');
+  });
+
+  it('returns the full settle window for a same-cycle restore before any sample arrives', () => {
     expect(resolveMeterSettlingRemainingSec({
       timing: {
         activeOvershoot: false,
-        inRestoreCooldown: true,
-        restoreCooldownSeconds: 60,
-        restoreCooldownRemainingSec: null,
+        measurementTs: null,
+        nowTs: 0,
+        restoreCooldownMs: 60_000,
       },
+      lastRestoreTs: 0,
     })).toBe(60);
+  });
+
+  it('stops stepped meter settling once the shared 60-second settle window has elapsed', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 1, 1);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastDeviceRestoreMs['dev-step'] = now - 61_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'on',
+          currentOn: true,
+          selectedStepId: 'low',
+          previousStepId: 'low',
+          desiredStepId: 'medium',
+          lastDesiredStepId: 'medium',
+          stepCommandPending: false,
+          stepCommandStatus: 'success',
+          measuredPowerKw: 1.25,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+      }),
+      state,
+      sheddingActive: false,
+      deps: makeDeps(),
+    });
+
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+    expect(reasonText(steppedDevice?.reason)).not.toMatch(/^meter settling \(/);
   });
 
   it('keeps never-controlled off devices shed with a neutral startup-hold reason', () => {
