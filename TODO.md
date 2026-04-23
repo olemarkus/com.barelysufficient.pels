@@ -24,6 +24,14 @@ file.
       shedding has no actionable candidate.
       Files: `lib/plan/planLogging.ts`, `lib/plan/planSheddingGuard.ts`,
       overshoot/diagnostic tests.
+- [ ] Normalize comparable `restoreNeed` / `insufficientHeadroom` kW fields so small
+      admission-metric jitter does not churn detail signatures, overview transitions, or restore
+      debug dedupe while the device remains in the same restore-admission posture.
+      Why P1: unlike `shortfall`, these reasons still need coarse device-specific magnitude in the
+      comparable path, but raw float noise can still create repeated plan/detail churn when the
+      admission decision did not materially change.
+      Files: `packages/shared-domain/src/planReasonComparable.ts`, `test/planService.test.ts`,
+      `test/deviceOverview.test.ts`, restore debug dedupe tests.
 - [x] Keep default structured event payloads bounded. Normal diagnostics now avoid large
       per-device arrays and full change objects outside explicit incident/debug paths.
       Files: reconcile, incident, and rebuild logging paths.
