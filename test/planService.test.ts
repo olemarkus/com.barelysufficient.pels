@@ -130,6 +130,69 @@ describe('PlanService', () => {
     expect(planUpdatedCalls).toHaveLength(2);
   });
 
+  it('ignores shortfall reason jitter when computing comparable detail changes', async () => {
+    const settingsSet = vi.fn();
+    const realtime = vi.fn().mockResolvedValue(undefined);
+    const overviewDebugStructured = vi.fn();
+    const planEngine = {
+      buildDevicePlanSnapshot: vi
+        .fn()
+        .mockResolvedValueOnce(buildPlan(
+          20,
+          { code: 'shortfall', needKw: 1.21, headroomKw: -1.23 },
+          { totalKw: 3.2, softLimitKw: 2, headroomKw: -1.23 },
+          { currentState: 'off', currentOn: false, plannedState: 'shed' },
+        ))
+        .mockResolvedValueOnce(buildPlan(
+          20,
+          { code: 'shortfall', needKw: 1.24, headroomKw: -1.24 },
+          { totalKw: 3.2, softLimitKw: 2, headroomKw: -1.24 },
+          { currentState: 'off', currentOn: false, plannedState: 'shed' },
+        )),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+      applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new PlanService({
+      homey: {
+        settings: { set: settingsSet },
+        api: { realtime },
+        flow: {},
+      } as any,
+      planEngine: planEngine as any,
+      getPlanDevices: () => [],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      overviewDebugStructured,
+      isOverviewDebugEnabled: () => true,
+    });
+
+    await service.rebuildPlanFromCache();
+    settingsSet.mockClear();
+    realtime.mockClear();
+    overviewDebugStructured.mockClear();
+
+    await service.rebuildPlanFromCache();
+
+    const snapshotWrites = settingsSet.mock.calls
+      .filter((call: unknown[]) => call[0] === 'device_plan_snapshot');
+    expect(snapshotWrites).toHaveLength(0);
+
+    const planUpdatedCalls = realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated');
+    expect(planUpdatedCalls).toHaveLength(0);
+    expect(overviewDebugStructured).not.toHaveBeenCalled();
+  });
+
   it('emits bounded snapshot write logs and throttles meta-only rewrites', async () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
