@@ -271,10 +271,15 @@ const getLastCompleteDayLabel = (dailyTotals: Record<string, number>, todayKey: 
 };
 
 const getControlledSharePct = (tracker: PowerTracker) => {
-  const total = Object.values(tracker.buckets ?? {})
-    .reduce((sum, value) => sum + (Number(value) || 0), 0);
-  const controlled = Object.values(tracker.controlledBuckets ?? {})
-    .reduce((sum, value) => sum + (Number(value) || 0), 0);
+  let total = 0;
+  let controlled = 0;
+  for (const [iso, value] of Object.entries(tracker.buckets ?? {})) {
+    const totalValue = Number(value);
+    const controlledValue = Number(tracker.controlledBuckets?.[iso]);
+    if (!Number.isFinite(totalValue) || !Number.isFinite(controlledValue)) continue;
+    total += totalValue;
+    controlled += controlledValue;
+  }
   if (total <= 0) return 0;
   return (controlled / total) * 100;
 };

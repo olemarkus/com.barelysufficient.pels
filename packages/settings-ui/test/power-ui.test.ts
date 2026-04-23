@@ -251,6 +251,25 @@ describe('power page stats (buckets-only)', () => {
     expect(qualityList.textContent).toContain('0.5 hours are currently flagged as stale or unreliable.');
   });
 
+  it('limits controllable share to overlapping total and controlled buckets', async () => {
+    await installHomeyClient({
+      buckets: {
+        '2025-01-06T08:00:00.000Z': 2,
+        '2025-01-06T09:00:00.000Z': 2,
+      },
+      controlledBuckets: {
+        '2025-01-06T09:00:00.000Z': 1,
+        '2025-01-06T10:00:00.000Z': 100,
+      },
+    });
+
+    const { renderPowerStats } = await import('../src/ui/power.ts');
+    await renderPowerStats();
+
+    const qualityList = document.querySelector('#usage-quality-list') as HTMLElement;
+    expect(qualityList.textContent).toContain('50% controllable-share signal in history.');
+  });
+
   it('renders the usage day chart with echarts when split usage is available', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
