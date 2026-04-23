@@ -2235,6 +2235,79 @@ describe('restore admission — headroom and penalty gates', () => {
       deviceId: 'dev-temp',
     }));
   });
+
+  it('aborts binary restore cooldown and activation backoff reasons while shortfall is active', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 5_000;
+    state.activationAttemptByDevice['dev-off'] = {
+      penaltyLevel: 1,
+      lastSetbackMs: now - 1_000,
+    };
+
+    const result = applyRestorePlan({
+      planDevices: [buildPlanDevice({
+        id: 'dev-off',
+        name: 'Heater',
+        currentState: 'off',
+        currentOn: false,
+        plannedState: 'keep',
+        expectedPowerKw: 1,
+        measuredPowerKw: 0,
+      })],
+      context: buildContext({ headroomRaw: -0.5, headroom: -0.5 }),
+      state,
+      sheddingActive: false,
+      guardInShortfall: true,
+      deps: {
+        powerTracker: { lastTimestamp: now - 1_000 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const device = result.planDevices.find((entry) => entry.id === 'dev-off');
+    expect(device?.plannedState).toBe('shed');
+    expect(reasonText(device?.reason)).toBe('shortfall (need 1.20kW, headroom -0.50kW)');
+  });
+
+  it('holds current-on stepped restore candidates at their selected step during shortfall', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+
+    const result = applyRestorePlan({
+      planDevices: [steppedPlanDevice({
+        id: 'dev-step',
+        name: 'Tank',
+        currentState: 'on',
+        currentOn: true,
+        plannedState: 'keep',
+        selectedStepId: 'medium',
+        desiredStepId: 'max',
+        targetStepId: 'max',
+        measuredPowerKw: 2,
+      })],
+      context: buildContext({ headroomRaw: -0.5, headroom: -0.5 }),
+      state,
+      sheddingActive: false,
+      guardInShortfall: true,
+      deps: {
+        powerTracker: { lastTimestamp: now - 1_000 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'set_step' as const, temperature: null, stepId: null }),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const device = result.planDevices.find((entry) => entry.id === 'dev-step');
+    expect(device?.plannedState).toBe('shed');
+    expect(device?.desiredStepId).toBe('medium');
+    expect(device?.targetStepId).toBe('medium');
+    expect(device?.shedAction).toBe('set_step');
+    expect(device?.shedStepId).toBe('medium');
+    expect(reasonText(device?.reason)).toContain('shortfall');
+  });
 });
 
 describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () => {

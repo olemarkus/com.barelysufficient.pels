@@ -1,4 +1,3 @@
-import type { HeadroomCardCooldownSource } from './planHeadroomDevice';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { PowerFreshnessState } from './planPowerFreshness';
 import type {
@@ -91,11 +90,6 @@ export type DevicePlanDevice = {
   available?: boolean;
   lastFreshDataMs?: number;
   lastLocalWriteMs?: number;
-  headroomCardBlocked?: boolean;
-  headroomCardCooldownSec?: number | null;
-  headroomCardCooldownSource?: HeadroomCardCooldownSource;
-  headroomCardCooldownFromKw?: number | null;
-  headroomCardCooldownToKw?: number | null;
   pendingTargetCommand?: PendingTargetCommandSummary;
 };
 

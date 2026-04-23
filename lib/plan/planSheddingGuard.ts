@@ -139,6 +139,8 @@ function buildShortfallCapacityStateSummary(params: {
         : null,
     remainingReducibleControlledLoadW,
     remainingReducibleControlledLoad: (remainingReducibleControlledLoadW ?? 0) > 0,
+    remainingActionableControlledLoadW: remainingReducibleControlledLoadW,
+    remainingActionableControlledLoad: (remainingReducibleControlledLoadW ?? 0) > 0,
   };
 }
 

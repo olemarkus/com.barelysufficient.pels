@@ -9,6 +9,7 @@ vi.mock('../lib/utils/perfCounters', async (importOriginal) => {
 });
 
 import CapacityGuard from '../lib/core/capacityGuard';
+import { buildEmptyCapacityStateSummary } from '../lib/core/capacityStateSummary';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 import {
   recordDailyBudgetCap,
@@ -17,6 +18,7 @@ import {
   schedulePlanRebuildFromPowerSample,
   schedulePlanRebuildFromSignal,
 } from '../lib/app/appPowerHelpers';
+import { shouldSkipShortfallRebuildFromPlanSummary } from '../lib/app/appPowerRebuildShortfallSuppression';
 import { PlanRebuildScheduler } from '../lib/app/planRebuildScheduler';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';
 
@@ -926,6 +928,46 @@ describe('schedulePlanRebuildFromPowerSample', () => {
     });
 
     expect(rebuildPlanFromCache).toHaveBeenCalledWith('shortfall');
+  });
+});
+
+describe('shouldSkipShortfallRebuildFromPlanSummary', () => {
+  it('suppresses when unrelated restore cooldown blockers are counted', () => {
+    const summary = {
+      ...buildEmptyCapacityStateSummary(),
+      remainingActionableControlledLoad: false,
+      blockedByCooldownDevices: 1,
+    };
+
+    expect(shouldSkipShortfallRebuildFromPlanSummary({
+      summary,
+      state: { lastMs: 0 },
+    })).toBe(true);
+  });
+
+  it('suppresses when unrelated restore activation backoff blockers are counted', () => {
+    const summary = {
+      ...buildEmptyCapacityStateSummary(),
+      remainingActionableControlledLoad: false,
+      blockedByPenaltyDevices: 1,
+    };
+
+    expect(shouldSkipShortfallRebuildFromPlanSummary({
+      summary,
+      state: { lastMs: 0 },
+    })).toBe(true);
+  });
+
+  it('suppresses when no actionable shortfall load remains', () => {
+    const summary = {
+      ...buildEmptyCapacityStateSummary(),
+      remainingActionableControlledLoad: false,
+    };
+
+    expect(shouldSkipShortfallRebuildFromPlanSummary({
+      summary,
+      state: { lastMs: 0 },
+    })).toBe(true);
   });
 });
 

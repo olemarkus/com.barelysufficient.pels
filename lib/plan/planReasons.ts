@@ -227,6 +227,7 @@ export type ShedHoldParams = {
   holdDuringRestoreCooldown: boolean;
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
+  guardInShortfall?: boolean;
   debugStructured?: StructuredDebugEmitter;
   getShedBehavior: (deviceId: string) => {
     action: 'turn_off' | 'set_temperature' | 'set_step';
@@ -254,6 +255,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     holdDuringRestoreCooldown,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
+    guardInShortfall = false,
     debugStructured,
     getShedBehavior,
   } = params;
@@ -281,6 +283,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
       restoreCooldownSeconds,
       restoreCooldownRemainingSec,
       pendingRestoreDelaySec,
+      guardInShortfall,
       debugStructured,
     });
     headroom = result.availableHeadroom;
@@ -650,6 +653,7 @@ function resolveRestoreDecision(params: {
   };
 }
 
+/* eslint-disable-next-line complexity -- target restore gating combines mutually-exclusive hold causes. */
 function resolveHoldDecision(params: {
   dev: DevicePlanDevice;
   behavior: { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null };
@@ -666,6 +670,7 @@ function resolveHoldDecision(params: {
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
   pendingRestoreDelaySec: number | null;
+  guardInShortfall: boolean;
   debugStructured?: StructuredDebugEmitter;
 }): HoldDecision {
   const {
@@ -681,6 +686,7 @@ function resolveHoldDecision(params: {
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
     pendingRestoreDelaySec,
+    guardInShortfall,
     debugStructured,
   } = params;
 
@@ -699,10 +705,12 @@ function resolveHoldDecision(params: {
     || Number(dev.plannedTarget) === behavior.temperature;
   const alreadyMinTempShed = dev.shedAction === 'set_temperature' && dev.shedTemperature === behavior.temperature;
   const wasShedLastPlan = state.lastPlannedShedIds.has(dev.id);
+  const shouldAbortRestoreForShortfall = guardInShortfall
+    && (dev.plannedState === 'shed' || atMinTemp || alreadyMinTempShed || wasShedLastPlan);
   const shouldHold = (inShedWindow || holdDuringRestoreCooldown)
     && (dev.plannedState === 'shed' || atMinTemp || alreadyMinTempShed || wasShedLastPlan);
 
-  if (!shouldHold && wasShedLastPlan) {
+  if (!shouldAbortRestoreForShortfall && !shouldHold && wasShedLastPlan) {
     return resolvePostHoldRestoreDecision({
       dev,
       state,
@@ -716,7 +724,7 @@ function resolveHoldDecision(params: {
     });
   }
 
-  if (!shouldHold) {
+  if (!shouldAbortRestoreForShortfall && !shouldHold) {
     return { type: 'skip' };
   }
 
@@ -780,6 +788,7 @@ function applyHoldToDevice(params: {
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
   pendingRestoreDelaySec: number | null;
+  guardInShortfall: boolean;
   debugStructured?: StructuredDebugEmitter;
 }): { device: DevicePlanDevice; availableHeadroom: number; restoredOneThisCycle: boolean } {
   const {
@@ -798,6 +807,7 @@ function applyHoldToDevice(params: {
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
     pendingRestoreDelaySec,
+    guardInShortfall,
     debugStructured,
   } = params;
 
@@ -821,6 +831,7 @@ function applyHoldToDevice(params: {
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
     pendingRestoreDelaySec,
+    guardInShortfall,
     debugStructured,
   });
 

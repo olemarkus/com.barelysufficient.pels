@@ -290,6 +290,11 @@ describe('Airtreatment device integration', () => {
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 10);
     }
+    if ((app as any).capacityGuard?.setShortfallThresholdProvider) {
+      (app as any).capacityGuard.setShortfallThresholdProvider(() => 10);
+    }
+    (app as any).capacityGuard.isInShortfall = () => false;
+    (app as any).planEngine.state.inShortfall = false;
     await (app as any).capacityGuard?.setSheddingActive(false);
 
     await (app as any).refreshTargetDevicesSnapshot();

@@ -1195,11 +1195,6 @@ describe('Device plan snapshot', () => {
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('keep');
     expect(reasonText(devPlan?.reason)).toBe('keep');
-    expect(devPlan?.headroomCardBlocked).toBeUndefined();
-    expect(devPlan?.headroomCardCooldownSec).toBeUndefined();
-    expect(devPlan?.headroomCardCooldownSource).toBeUndefined();
-    expect(devPlan?.headroomCardCooldownFromKw).toBeUndefined();
-    expect(devPlan?.headroomCardCooldownToKw).toBeUndefined();
   });
 
   it('marks off devices as staying off during cooldown with a short reason', async () => {
@@ -1229,8 +1224,8 @@ describe('Device plan snapshot', () => {
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(reasonText(devPlan?.reason)).toContain('cooldown (shedding');
-    expect(devPlan?.headroomCardBlocked).toBe(true);
-    expect(devPlan?.headroomCardCooldownSource).toBe('pels_shed');
+    expect(devPlan).not.toHaveProperty('headroomCardBlocked');
+    expect(devPlan).not.toHaveProperty('headroomCardCooldownSource');
   });
 
   it('does not start shedding cooldown when no devices can be shed', async () => {

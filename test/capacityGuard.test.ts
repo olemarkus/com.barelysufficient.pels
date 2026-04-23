@@ -186,6 +186,7 @@ describe('CapacityGuard', () => {
         headroomW: -500,
         excessW: 500,
         remainingReducibleControlledLoad: null,
+        remainingActionableControlledLoad: null,
         actuationInFlight: null,
       });
       const firstIncidentId = logEvents[0].incidentId;
@@ -228,6 +229,8 @@ describe('CapacityGuard', () => {
         uncontrolledPowerW: 2505,
         remainingReducibleControlledLoadW: 0,
         remainingReducibleControlledLoad: false,
+        remainingActionableControlledLoadW: 0,
+        remainingActionableControlledLoad: false,
         actuationInFlight: true,
       });
 
@@ -241,6 +244,8 @@ describe('CapacityGuard', () => {
         uncontrolledPowerW: 2505,
         remainingReducibleControlledLoadW: 0,
         remainingReducibleControlledLoad: false,
+        remainingActionableControlledLoadW: 0,
+        remainingActionableControlledLoad: false,
         actuationInFlight: true,
       });
     });
