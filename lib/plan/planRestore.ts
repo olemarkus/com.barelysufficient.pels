@@ -86,6 +86,7 @@ export type RestorePlanResult = {
   lastRestoreCooldownBumpMs: number | null;
 };
 
+/* eslint-disable-next-line max-statements -- restore gating branches stay together at the top level. */
 export function applyRestorePlan(params: {
   planDevices: DevicePlanDevice[];
   context: PlanContext;
@@ -171,10 +172,31 @@ export function applyRestorePlan(params: {
       getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
     });
   } else if (effectiveTiming.inRestoreCooldown) {
-    markOffDevicesMeterSettling({
-      deviceMap,
+    const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
       timing: effectiveTiming,
+      lastRestoreTs: state.lastRestoreMs,
     });
+    if (meterSettlingRemainingSec !== null) {
+      markOffDevicesMeterSettling({
+        deviceMap,
+        timing: effectiveTiming,
+        lastRestoreTs: state.lastRestoreMs,
+      });
+    } else {
+      markOffDevicesStayOff({
+        deviceMap,
+        timing: effectiveTiming,
+        setDevice: (id, updates) => setDevice(deviceMap, id, updates),
+        blockedPlannedState: 'keep',
+        getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
+      });
+      markSteppedDevicesStayAtCurrentLevel({
+        deviceMap,
+        timing: effectiveTiming,
+        currentOffPlannedState: 'keep',
+        getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
+      });
+    }
   }
 
   return {
@@ -201,7 +223,9 @@ function planRestoreForDevice(params: {
   | 'inRestoreCooldown'
   | 'inStartupStabilization'
   | 'measurementTs'
+  | 'nowTs'
   | 'restoreCooldownSeconds'
+  | 'restoreCooldownMs'
   | 'shedCooldownRemainingSec'
   | 'restoreCooldownRemainingSec'
   | 'startupStabilizationRemainingSec'>;
@@ -241,6 +265,7 @@ function planRestoreForDevice(params: {
   });
   const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
     timing,
+    lastRestoreTs: state.lastRestoreMs,
     restoredOneThisCycle,
   });
   if (meterSettlingRemainingSec !== null) {
@@ -582,11 +607,12 @@ function markOffDevicesMeterSettling(params: {
   deviceMap: Map<string, DevicePlanDevice>;
   timing: Pick<
     RestoreTiming,
-    'inRestoreCooldown' | 'activeOvershoot' | 'restoreCooldownSeconds' | 'restoreCooldownRemainingSec'
+    'activeOvershoot' | 'measurementTs' | 'nowTs'
   >;
+  lastRestoreTs?: number | null;
 }): void {
-  const { deviceMap, timing } = params;
-  const remainingSec = resolveMeterSettlingRemainingSec({ timing });
+  const { deviceMap, timing, lastRestoreTs = null } = params;
+  const remainingSec = resolveMeterSettlingRemainingSec({ timing, lastRestoreTs });
   if (remainingSec === null) return;
   const reason = buildMeterSettlingReason(remainingSec);
   const snapshot: DevicePlanDevice[] = [];
