@@ -183,6 +183,14 @@ describe('finalizePlanDevices', () => {
 });
 
 describe('applyShedTemperatureHold', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('keeps existing special shed reasons while temperature hold is active', () => {
     const state = createPlanEngineState();
 
@@ -251,5 +259,60 @@ describe('applyShedTemperatureHold', () => {
 
     expect(result.planDevices[0]?.reason).toEqual(NEUTRAL_STARTUP_HOLD_REASON);
     expect(result.planDevices[0]?.plannedTarget).toBe(21);
+  });
+
+  it('aborts target restore backoff while shortfall is active', () => {
+    const now = Date.UTC(2024, 0, 1, 12, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastPlannedShedIds = new Set(['dev-temp']);
+    state.activationAttemptByDevice['dev-temp'] = {
+      penaltyLevel: 1,
+      lastSetbackMs: now - 1_000,
+    };
+
+    const held = applyShedTemperatureHold({
+      planDevices: [buildPlanDevice({
+        id: 'dev-temp',
+        name: 'Thermostat',
+        currentState: 'keep',
+        plannedState: 'keep',
+        currentTarget: 16,
+        plannedTarget: 21,
+        currentOn: true,
+        shedAction: 'set_temperature',
+        shedTemperature: 16,
+        expectedPowerKw: 1,
+        powerKw: 1,
+      })],
+      state,
+      shedReasons: new Map(),
+      inShedWindow: false,
+      inCooldown: false,
+      activeOvershoot: false,
+      availableHeadroom: 3,
+      restoredOneThisCycle: false,
+      restoredThisCycle: new Set(),
+      shedCooldownRemainingSec: null,
+      holdDuringRestoreCooldown: false,
+      restoreCooldownSeconds: 60,
+      restoreCooldownRemainingSec: null,
+      guardInShortfall: true,
+      getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16, stepId: null }),
+    });
+
+    const [device] = normalizeShedReasons({
+      planDevices: held.planDevices,
+      shedReasons: new Map(),
+      guardInShortfall: true,
+      headroomRaw: -0.5,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+    });
+
+    expect(device?.plannedState).toBe('shed');
+    expect(device?.plannedTarget).toBe(16);
+    expect(reasonText(device?.reason)).toBe('shortfall (need 1.20kW, headroom -0.50kW)');
   });
 });

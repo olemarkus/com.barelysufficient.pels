@@ -54,13 +54,17 @@ export function buildPlanCapacityStateSummary(
     plan.devices,
     (device) => device.plannedState === 'shed',
   );
+  const remainingActionableControlledLoadKw = sumActionableControlledLoadKw(plan.devices);
   const remainingReducibleControlledLoadW = roundPowerW(remainingReducibleControlledLoadKw);
+  const remainingActionableControlledLoadW = roundPowerW(remainingActionableControlledLoadKw);
   return {
     ...summary,
     controlledPowerW: roundPowerW(plan.meta.controlledKw),
     uncontrolledPowerW: roundPowerW(plan.meta.uncontrolledKw),
     remainingReducibleControlledLoadW,
     remainingReducibleControlledLoad: (remainingReducibleControlledLoadW ?? 0) > 0,
+    remainingActionableControlledLoadW,
+    remainingActionableControlledLoad: (remainingActionableControlledLoadW ?? 0) > 0,
     actuationInFlight: summary.pendingControlledDevices > 0,
     summarySource: metadata.summarySource ?? null,
     summarySourceAtMs: metadata.summarySourceAtMs ?? null,
@@ -93,6 +97,8 @@ export function buildPlanInputCapacityStateSummary(
   }
   return {
     ...summary,
+    remainingActionableControlledLoadW: 0,
+    remainingActionableControlledLoad: false,
     actuationInFlight: summary.pendingControlledDevices > 0,
     summarySource: metadata.summarySource ?? null,
     summarySourceAtMs: metadata.summarySourceAtMs ?? null,
@@ -124,6 +130,18 @@ function sumReducibleControlledLoadKw<T extends {
   let totalKw = 0;
   for (const device of devices) {
     if (device.controllable === false || resolveEffectiveCurrentOn(device) === false || isShed(device)) continue;
+    const power = resolveCandidatePower(device);
+    if (power !== null && power > 0) {
+      totalKw += power;
+    }
+  }
+  return totalKw;
+}
+
+function sumActionableControlledLoadKw(devices: DevicePlanDevice[]): number {
+  let totalKw = 0;
+  for (const device of devices) {
+    if (!isActionableShortfallCandidate(device)) continue;
     const power = resolveCandidatePower(device);
     if (power !== null && power > 0) {
       totalKw += power;
@@ -179,6 +197,16 @@ function isZeroDrawInputDevice(device: PlanInputDevice): boolean {
     && device.measuredPowerKw <= 0;
 }
 
+function isActionableShortfallCandidate(device: DevicePlanDevice): boolean {
+  if (device.controllable === false) return false;
+  if (resolveEffectiveCurrentOn(device) === false) return false;
+  if (device.plannedState === 'shed') return false;
+  if (isBlockedByCooldown(device) || isBlockedByPenalty(device)) {
+    return false;
+  }
+  return true;
+}
+
 function hasPendingCommand(device: DevicePlanDevice): boolean {
   return device.binaryCommandPending === true
     || device.stepCommandPending === true
@@ -190,8 +218,7 @@ function hasPendingInputCommand(device: PlanInputDevice): boolean {
 }
 
 function isBlockedByCooldown(device: DevicePlanDevice): boolean {
-  return device.headroomCardBlocked === true
-    || device.reason.code === PLAN_REASON_CODES.cooldownShedding
+  return device.reason.code === PLAN_REASON_CODES.cooldownShedding
     || device.reason.code === PLAN_REASON_CODES.cooldownRestore
     || device.reason.code === PLAN_REASON_CODES.meterSettling
     || device.reason.code === PLAN_REASON_CODES.headroomCooldown
@@ -223,10 +250,6 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
       planningPowerKw: d.planningPowerKw,
       shedAction: d.shedAction,
       controllable: d.controllable,
-      headroomCardBlocked: d.headroomCardBlocked === true,
-      headroomCardCooldownSource: d.headroomCardCooldownSource ?? null,
-      headroomCardCooldownFromKw: roundPlanDebugNumber(d.headroomCardCooldownFromKw),
-      headroomCardCooldownToKw: roundPlanDebugNumber(d.headroomCardCooldownToKw),
       stepCommandPending: d.stepCommandPending ?? null,
       stepCommandStatus: d.stepCommandStatus ?? null,
       pendingTargetDesired: d.pendingTargetCommand?.desired ?? null,

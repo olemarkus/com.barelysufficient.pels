@@ -61,7 +61,6 @@ export type OvershootTrackedPlanDevice = Pick<
   | 'observationStale'
   | 'binaryCommandPending'
   | 'stepCommandPending'
-  | 'headroomCardBlocked'
   | 'reason'
 > & {
   pendingBinaryOnCommand: boolean;

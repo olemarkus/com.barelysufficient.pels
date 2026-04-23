@@ -45,6 +45,7 @@ import {
   recordPowerSampleForApp,
   schedulePlanRebuildFromSignal,
 } from './lib/app/appPowerHelpers';
+import { shouldSkipShortfallRebuildFromPlanSummary } from './lib/app/appPowerRebuildShortfallSuppression';
 import { PlanRebuildScheduler, type RebuildIntent } from './lib/app/planRebuildScheduler';
 import {
   createDeviceDiagnosticsService,
@@ -1089,9 +1090,10 @@ class PelsApp extends Homey.App {
           summarySourceAtMs: this.planService?.getLatestPlanSnapshotUpdatedAtMs() ?? null,
         },
       );
-      const skipWhileShortfallUnrecoverable = latestPlanSummary.remainingReducibleControlledLoad === false
-        && latestPlanSummary.actuationInFlight === false
-        && this.powerSampleRebuildState.shortfallSuppressionInvalidated !== true;
+      const skipWhileShortfallUnrecoverable = shouldSkipShortfallRebuildFromPlanSummary({
+        summary: latestPlanSummary,
+        state: this.powerSampleRebuildState,
+      });
       await recordPowerSampleForApp({
         currentPowerW,
         nowMs,

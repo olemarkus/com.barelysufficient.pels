@@ -44,11 +44,6 @@ export type SettingsUiPlanDevice = DeviceOverviewSnapshot & {
   zone?: string;
   budgetExempt?: boolean;
   currentTemperature?: number;
-  headroomCardBlocked?: boolean;
-  headroomCardCooldownSec?: number | null;
-  headroomCardCooldownSource?: 'step_down' | 'pels_shed' | 'pels_restore';
-  headroomCardCooldownFromKw?: number | null;
-  headroomCardCooldownToKw?: number | null;
   pendingTargetCommand?: SettingsUiPlanPendingTargetCommand;
 };
 
