@@ -12,6 +12,7 @@ const buildPowerDom = () => {
     <div id="usage-month"></div>
     <div id="usage-weekday-avg"></div>
     <div id="usage-weekend-avg"></div>
+    <div id="usage-quality-list"></div>
     <div id="hourly-pattern"></div>
     <div id="hourly-pattern-meta"></div>
     <h4 id="usage-day-title"></h4>
@@ -223,6 +224,50 @@ describe('power page stats (buckets-only)', () => {
 
     expect(entries).toHaveLength(1);
     expect(entries[0].unreliable).toBe(true);
+  });
+
+  it('limits stale hour totals to the tracked bucket window', async () => {
+    await installHomeyClient({
+      buckets: {
+        '2025-01-06T08:00:00.000Z': 0.6,
+        '2025-01-06T09:00:00.000Z': 0.4,
+      },
+      unreliablePeriods: [
+        {
+          start: Date.parse('2025-01-05T02:00:00.000Z'),
+          end: Date.parse('2025-01-05T05:00:00.000Z'),
+        },
+        {
+          start: Date.parse('2025-01-06T08:15:00.000Z'),
+          end: Date.parse('2025-01-06T08:45:00.000Z'),
+        },
+      ],
+    });
+
+    const { renderPowerStats } = await import('../src/ui/power.ts');
+    await renderPowerStats();
+
+    const qualityList = document.querySelector('#usage-quality-list') as HTMLElement;
+    expect(qualityList.textContent).toContain('0.5 hours are currently flagged as stale or unreliable.');
+  });
+
+  it('limits controllable share to overlapping total and controlled buckets', async () => {
+    await installHomeyClient({
+      buckets: {
+        '2025-01-06T08:00:00.000Z': 2,
+        '2025-01-06T09:00:00.000Z': 2,
+      },
+      controlledBuckets: {
+        '2025-01-06T09:00:00.000Z': 1,
+        '2025-01-06T10:00:00.000Z': 100,
+      },
+    });
+
+    const { renderPowerStats } = await import('../src/ui/power.ts');
+    await renderPowerStats();
+
+    const qualityList = document.querySelector('#usage-quality-list') as HTMLElement;
+    expect(qualityList.textContent).toContain('50% controllable-share signal in history.');
   });
 
   it('renders the usage day chart with echarts when split usage is available', async () => {

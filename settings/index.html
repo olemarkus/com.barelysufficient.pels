@@ -107,12 +107,147 @@
       <div class="card__header">
         <div>
           <p class="eyebrow">Budget</p>
-          <h2>Capacity &amp; daily budget</h2>
+          <h2>Today&apos;s pacing plan</h2>
+          <p class="muted">See what PELS is pacing toward now, why it is shaping the day this way, and how much freedom is left.</p>
         </div>
       </div>
-      <details class="settings-collapse" open>
+      <section class="budget-hero" id="daily-budget-hero">
+        <div class="budget-hero__header">
+          <div>
+            <p class="eyebrow">Today</p>
+            <h3 id="daily-budget-headline">Daily plan is loading</h3>
+            <p id="daily-budget-summary-text" class="budget-hero__summary muted">PELS is checking how much energy is left, what limit is in charge, and where cheaper hours can still help.</p>
+          </div>
+          <div class="budget-hero__status">
+            <div class="pill" id="daily-budget-status-pill">No data</div>
+          </div>
+        </div>
+        <div class="budget-hero__chips">
+          <div class="chip chip--neutral" id="daily-budget-limiter-chip">Current limiter: --</div>
+          <div class="chip chip--neutral" id="daily-budget-shaping-chip">Price influence: --</div>
+          <div class="chip chip--neutral" id="daily-budget-exempt-chip">Budget-exempt load: --</div>
+        </div>
+        <div class="usage-summary budget-hero__metrics">
+          <div class="summary-card">
+            <span class="summary-label">Used so far</span>
+            <span class="summary-value" id="daily-budget-used">-- kWh</span>
+          </div>
+          <div class="summary-card">
+            <span class="summary-label">Allowed by now</span>
+            <span class="summary-value" id="daily-budget-allowed">-- kWh</span>
+          </div>
+          <div class="summary-card">
+            <span class="summary-label">Remaining today</span>
+            <span class="summary-value" id="daily-budget-remaining">-- kWh</span>
+          </div>
+          <div class="summary-card">
+            <span class="summary-label">Over or under plan</span>
+            <span class="summary-value" id="daily-budget-deviation">-- kWh</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="budget-story">
+        <div class="budget-story__main">
+          <div class="daily-budget-header day-view-header">
+            <div>
+              <h4 id="daily-budget-title">Today plan</h4>
+              <p class="muted" id="daily-budget-day">--</p>
+            </div>
+            <div class="daily-budget-actions day-view-actions">
+              <div id="daily-budget-toggle-mount"></div>
+            </div>
+          </div>
+
+          <div id="daily-budget-chart" class="daily-budget-chart day-view-chart">
+            <div class="daily-budget-bars-wrap day-view-bars-wrap">
+              <div id="daily-budget-bars" class="daily-budget-bars day-view-bars"></div>
+            </div>
+            <div id="daily-budget-labels" class="daily-budget-labels day-view-labels"></div>
+          </div>
+
+          <div class="day-view-legend budget-legend">
+            <div class="day-view-legend__item">
+              <span class="day-view-legend__swatch day-view-legend__swatch--planned" aria-hidden="true"></span>
+              <span>Planned pacing</span>
+            </div>
+            <div class="day-view-legend__item">
+              <span class="day-view-legend__swatch day-view-legend__swatch--actual" aria-hidden="true"></span>
+              <span>Actual use</span>
+            </div>
+            <div class="day-view-legend__item">
+              <span class="day-view-legend__swatch day-view-legend__swatch--uncontrolled" aria-hidden="true"></span>
+              <span>Typical base load</span>
+            </div>
+            <div class="day-view-legend__item">
+              <span class="day-view-legend__swatch day-view-legend__swatch--controlled" aria-hidden="true"></span>
+              <span>Flexible load</span>
+            </div>
+          </div>
+
+          <p id="daily-budget-empty" class="muted" hidden>Daily budget data not available yet.</p>
+
+          <div class="budget-model-notes">
+            <div class="budget-model-notes__row">
+              <span class="budget-model-notes__label" id="daily-budget-cost-label">Estimated cost today</span>
+              <strong id="daily-budget-cost">-- kr</strong>
+            </div>
+            <p class="muted">Budget is a daily pacing target. PELS still obeys hourly capacity protection first.</p>
+          </div>
+        </div>
+
+        <div class="budget-story__side">
+          <section class="budget-insight-card" id="daily-budget-explain-card">
+            <div class="budget-insight-card__header">
+              <h4>Why this plan</h4>
+              <p class="muted">What PELS is optimizing around right now.</p>
+            </div>
+            <div class="budget-insight-list" id="daily-budget-explain-list"></div>
+          </section>
+
+          <section class="budget-insight-card" id="daily-budget-meta">
+            <div class="budget-insight-card__header">
+              <h4>Forecast confidence</h4>
+              <p class="muted">How predictable your home looks from recent history.</p>
+            </div>
+            <div id="daily-budget-confidence" class="budget-confidence" hidden></div>
+          </section>
+        </div>
+      </section>
+
+      <details class="settings-collapse">
         <summary>
-          <h3 class="section-title">Capacity</h3>
+          <h3 class="section-title">Budget settings</h3>
+          <span class="section-hint">Daily pacing target</span>
+        </summary>
+        <div class="collapse-content">
+          <form id="daily-budget-form" class="form-grid">
+            <label class="field checkbox-field">
+              <input id="daily-budget-enabled" name="daily_budget_enabled" type="checkbox">
+              <span class="checkbox-field__content">
+                <span class="field__label">Enable daily energy budget</span>
+                <small class="field__hint">Adds whole-day pacing on top of hourly capacity control.</small>
+              </span>
+            </label>
+            <label class="field">
+              <span class="field__label">Daily budget (kWh)</span>
+              <input id="daily-budget-kwh" name="daily_budget_kwh" type="number" step="0.1" inputmode="decimal" autocomplete="off">
+              <small class="field__hint">The total energy target PELS tries to spread across the local day.</small>
+            </label>
+            <label class="field checkbox-field">
+              <input id="daily-budget-price-shaping" name="daily_budget_price_shaping_enabled" type="checkbox" checked>
+              <span class="checkbox-field__content">
+                <span class="field__label">Shift flexible use to cheaper hours</span>
+                <small class="field__hint">Only the movable part of the plan should chase cheaper hours.</small>
+              </span>
+            </label>
+          </form>
+        </div>
+      </details>
+
+      <details class="settings-collapse">
+        <summary>
+          <h3 class="section-title">Capacity guardrails</h3>
           <span class="section-hint">Hourly kW cap</span>
         </summary>
         <div class="collapse-content">
@@ -124,74 +259,9 @@
             <label class="field">
               <span class="field__label">Soft margin (kW)</span>
               <input id="capacity-margin" name="capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required>
-              <small class="field__hint">Soft limit = limit - margin.</small>
+              <small class="field__hint">Soft limit = hard limit - margin. PELS starts reacting before the hard cap.</small>
             </label>
           </form>
-        </div>
-      </details>
-
-      <details class="settings-collapse" open>
-        <summary>
-          <h3 class="section-title">Daily budget</h3>
-          <span class="section-hint">Soft kWh/day guide</span>
-        </summary>
-        <div class="collapse-content">
-          <form id="daily-budget-form" class="form-grid">
-            <label class="field checkbox-field">
-              <input id="daily-budget-enabled" name="daily_budget_enabled" type="checkbox">
-              <span class="field__label">Enable daily energy budget</span>
-            </label>
-            <label class="field">
-              <span class="field__label">Daily budget (kWh)</span>
-              <input id="daily-budget-kwh" name="daily_budget_kwh" type="number" step="0.1" inputmode="decimal" autocomplete="off">
-              <small class="field__hint">Daily energy target used to build the plan.</small>
-            </label>
-            <label class="field checkbox-field">
-              <input id="daily-budget-price-shaping" name="daily_budget_price_shaping_enabled" type="checkbox" checked>
-              <span class="field__label">Price-shape today plan</span>
-            </label>
-          </form>
-
-          <div class="daily-budget-header day-view-header">
-            <div>
-              <h4 id="daily-budget-title">Today plan</h4>
-              <p class="muted" id="daily-budget-day">--</p>
-            </div>
-            <div class="daily-budget-actions day-view-actions">
-              <div id="daily-budget-toggle-mount"></div>
-              <div class="pill" id="daily-budget-status-pill">No data</div>
-            </div>
-          </div>
-
-          <div class="usage-summary daily-budget-summary">
-            <div class="summary-card">
-              <span class="summary-label">Remaining</span>
-              <span class="summary-value" id="daily-budget-remaining">-- kWh</span>
-            </div>
-            <div class="summary-card">
-              <span class="summary-label">Deviation</span>
-              <span class="summary-value" id="daily-budget-deviation">-- kWh</span>
-            </div>
-            <div class="summary-card">
-              <span class="summary-label" id="daily-budget-cost-label">Estimated cost</span>
-              <span class="summary-value" id="daily-budget-cost">-- kr</span>
-            </div>
-          </div>
-
-          <div id="daily-budget-chart" class="daily-budget-chart day-view-chart">
-            <div class="daily-budget-bars-wrap day-view-bars-wrap">
-              <div id="daily-budget-bars" class="daily-budget-bars day-view-bars"></div>
-            </div>
-            <div id="daily-budget-labels" class="daily-budget-labels day-view-labels"></div>
-          </div>
-
-          <p id="daily-budget-empty" class="muted" hidden>Daily budget data not available yet.</p>
-
-          <div id="daily-budget-meta" class="daily-budget-meta">
-            <div id="daily-budget-confidence" class="chip" hidden>Confidence --</div>
-          </div>
-
-          <p class="muted">Refreshes every 60s. Uses local day boundaries.</p>
         </div>
       </details>
     </section>
@@ -200,29 +270,57 @@
       <div class="card__header">
         <div>
           <p class="eyebrow">Usage</p>
-          <h2>History &amp; patterns</h2>
+          <h2>History &amp; learning</h2>
+          <p class="muted">This tab shows what actually happened. Budget uses these patterns to build its pacing plan.</p>
         </div>
       </div>
 
       <details class="settings-collapse" open>
         <summary>
-          <h3 class="section-title">Usage summary</h3>
-          <span class="section-hint">Daily totals and patterns</span>
+          <h3 class="section-title">Actual usage</h3>
+          <span class="section-hint">What your home really did</span>
         </summary>
         <div class="collapse-content">
           <div id="usage-summary" class="usage-summary">
             <div class="summary-card">
-              <span class="summary-label">Today</span>
+              <span class="summary-label">Today used</span>
               <span class="summary-value" id="usage-today">-- kWh</span>
             </div>
             <div class="summary-card">
-              <span class="summary-label">This week</span>
+              <span class="summary-label">7-day avg</span>
               <span class="summary-value" id="usage-week">-- kWh</span>
             </div>
             <div class="summary-card">
-              <span class="summary-label">This month</span>
+              <span class="summary-label">30-day avg</span>
               <span class="summary-value" id="usage-month">-- kWh</span>
             </div>
+          </div>
+
+          <div class="usage-story-grid">
+            <section class="usage-context-card">
+              <h4>How Budget uses this</h4>
+              <p class="muted">PELS learns your steady base load, how often flexible load shifts, and whether your home follows changed plans.</p>
+              <div class="usage-context-list">
+                <div class="usage-context-list__item">
+                  <strong>Stable daily shape</strong>
+                  <p>Raises forecast confidence because the planner sees repeatable rhythms.</p>
+                </div>
+                <div class="usage-context-list__item">
+                  <strong>Controllable load history</strong>
+                  <p>Lets price shaping move the flexible part of the plan more confidently.</p>
+                </div>
+                <div class="usage-context-list__item">
+                  <strong>Missing or stale data</strong>
+                  <p>Makes the forecast more cautious and limits how much PELS should trust learned patterns.</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="usage-context-card" id="usage-quality-card">
+              <h4>Data quality</h4>
+              <p class="muted">Helps explain whether strange charts come from behavior or from missing telemetry.</p>
+              <div class="usage-context-list" id="usage-quality-list"></div>
+            </section>
           </div>
 
           <div class="day-view-header">
@@ -353,9 +451,67 @@
       <div class="card__header">
         <div>
           <p class="eyebrow">Advanced</p>
-          <h2>Device diagnostics</h2>
+          <h2>Tuning &amp; diagnostics</h2>
+          <p class="muted">Preview how stronger budget shaping would change the day, then drop into logging and cleanup when needed.</p>
         </div>
       </div>
+      <details class="settings-collapse" open>
+        <summary>
+          <h3 class="section-title">Budget tuning</h3>
+          <span class="section-hint">Preview-oriented controls</span>
+        </summary>
+        <div class="collapse-content">
+          <div class="advanced-budget-tuning">
+            <section class="advanced-tuning-card">
+              <div class="advanced-tuning-card__header">
+                <div>
+                  <h4>How much should controllable load shape the plan?</h4>
+                  <p class="muted">Lower values keep the plan closer to base load. Higher values let flexible devices steer the daily shape more.</p>
+                </div>
+                <span class="chip" id="daily-budget-controlled-weight-value">0.30</span>
+              </div>
+              <input id="daily-budget-controlled-weight" type="range" min="0" max="1" step="0.05">
+              <div class="advanced-tuning-scale">
+                <span>Ignore most controllable load</span>
+                <span>Current balance</span>
+                <span>Let flexible load lead</span>
+              </div>
+              <div class="advanced-preview-grid" id="daily-budget-controlled-preview"></div>
+            </section>
+
+            <section class="advanced-tuning-card">
+              <div class="advanced-tuning-card__header">
+                <div>
+                  <h4>How strongly should price move flexible use?</h4>
+                  <p class="muted">This changes how aggressively cheap hours pull flexible demand forward when price spread is meaningful.</p>
+                </div>
+                <span class="chip" id="daily-budget-price-flex-share-value">0.35</span>
+              </div>
+              <input id="daily-budget-price-flex-share" type="range" min="0" max="1" step="0.05">
+              <div class="advanced-tuning-scale">
+                <span>Mostly steady</span>
+                <span>Balanced</span>
+                <span>Chase cheap hours</span>
+              </div>
+              <div class="advanced-preview-grid" id="daily-budget-price-flex-preview"></div>
+            </section>
+
+            <form id="daily-budget-advanced-form" class="advanced-budget-tuning__form">
+              <label class="field checkbox-field">
+                <input id="daily-budget-breakdown" type="checkbox">
+                <span class="checkbox-field__content">
+                  <span class="field__label">Show base load vs flexible load on the Budget chart</span>
+                  <small class="field__hint">Helps explain how much of the plan is movable rather than locked in.</small>
+                </span>
+              </label>
+              <div class="inline-actions">
+                <button type="button" class="btn ghost" id="daily-budget-tuning-reset">Reset to defaults</button>
+              </div>
+              <p class="muted" id="daily-budget-tuning-summary">Defaults are usually safest. Use the previews to see how each knob changes the shape before saving.</p>
+            </form>
+          </div>
+        </div>
+      </details>
       <details class="settings-collapse" open>
         <summary>
           <h3 class="section-title">Experimental features</h3>
@@ -381,34 +537,6 @@
         <div class="collapse-content">
           <div id="debug-logging-checkboxes" class="form-grid"></div>
           <p class="muted">Select only what you need. Debug logging stays enabled across restarts.</p>
-        </div>
-      </details>
-      <details class="settings-collapse" open>
-        <summary>
-          <h3 class="section-title">Daily budget tuning</h3>
-          <span class="section-hint">Behavior shaping</span>
-        </summary>
-        <div class="collapse-content">
-          <form id="daily-budget-advanced-form" class="form-grid">
-            <label class="field">
-              <span class="field__label">Controlled usage weight</span>
-              <input id="daily-budget-controlled-weight" type="number" min="0" max="1" step="0.05">
-              <small class="field__hint">Scale controlled usage when learning the budget (0 = ignore, 1 = full).</small>
-            </label>
-            <label class="field">
-              <span class="field__label">Price flex share</span>
-              <input id="daily-budget-price-flex-share" type="number" min="0" max="1" step="0.05">
-              <small class="field__hint">Share of the plan shaped by price (0 = none, 1 = fully price-shaped).</small>
-            </label>
-            <label class="field checkbox-field">
-              <input id="daily-budget-breakdown" type="checkbox">
-              <span class="checkbox-field__content">
-                <span class="field__label">Show daily budget breakdown in the chart</span>
-                <small class="field__hint">Stack uncontrolled vs. controlled contributions.</small>
-              </span>
-            </label>
-            <p class="muted">These apply when the plan rebuilds. Defaults are best unless you are tuning behavior.</p>
-          </form>
         </div>
       </details>
       <details class="settings-collapse">
