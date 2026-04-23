@@ -126,6 +126,7 @@ export function registerAppFlowCards(ctx: AppContext): void {
     getCurrentOperatingMode: () => ctx.operatingMode,
     handleOperatingModeChange: (rawMode) => ctx.handleOperatingModeChange(rawMode),
     getCurrentPriceLevel: () => ctx.getCurrentPriceLevel(),
+    areFlowBackedCardsAvailable: () => ctx.areFlowBackedCardsAvailable(),
     recordPowerSample: (powerW) => {
       if (ctx.homey.settings.get('power_source') === 'homey_energy') return Promise.resolve();
       return ctx.recordPowerSample(powerW);
