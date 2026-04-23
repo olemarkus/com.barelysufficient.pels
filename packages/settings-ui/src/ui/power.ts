@@ -227,10 +227,14 @@ const getReliabilityStats = (tracker: PowerTracker) => {
   if (!bucketEntries.length) {
     return { reliableCoveragePct: 0, staleHours: 0 };
   }
+  let trackedStart = Number.POSITIVE_INFINITY;
+  let trackedEnd = Number.NEGATIVE_INFINITY;
   const unreliablePeriods = tracker.unreliablePeriods ?? [];
   let reliableCount = 0;
   bucketEntries.forEach(([iso, value]) => {
     const ts = new Date(iso).getTime();
+    trackedStart = Math.min(trackedStart, ts);
+    trackedEnd = Math.max(trackedEnd, ts + 3600000);
     const sampleCount = tracker.hourlySampleCounts?.[iso];
     const hasRepeatedSamples = typeof sampleCount === 'number'
       && Number.isFinite(sampleCount)
@@ -242,7 +246,12 @@ const getReliabilityStats = (tracker: PowerTracker) => {
     const unreliable = overlapsUnreliablePeriod && !hasRepeatedSamples;
     if (!unreliable) reliableCount += 1;
   });
-  const staleHours = unreliablePeriods.reduce((sum, period) => sum + ((period.end - period.start) / 3600000), 0);
+  const staleHours = unreliablePeriods.reduce((sum, period) => {
+    const overlapStart = Math.max(period.start, trackedStart);
+    const overlapEnd = Math.min(period.end, trackedEnd);
+    if (overlapEnd <= overlapStart) return sum;
+    return sum + ((overlapEnd - overlapStart) / 3600000);
+  }, 0);
   return {
     reliableCoveragePct: (reliableCount / bucketEntries.length) * 100,
     staleHours,
