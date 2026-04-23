@@ -25,7 +25,6 @@ export type ComparablePlanReason =
     needKw: number;
     headroomKw: number | null;
   })
-  | (ComparablePlanReasonBase & { needKw: number | null; headroomKw: number | null })
   | (ComparablePlanReasonBase & {
     needKw: number;
     availableKw: number | null;
