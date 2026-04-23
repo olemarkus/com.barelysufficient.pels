@@ -349,6 +349,24 @@ describe('device overview transition signatures', () => {
       .not.toBe(buildDeviceOverviewTransitionSignature(sourceChanged));
   });
 
+  it('ignores shortfall jitter in overview transition signatures', () => {
+    const base = {
+      currentState: 'off',
+      plannedState: 'shed',
+      shedAction: 'turn_off',
+      reason: r('shortfall (need 1.21kW, headroom -1.23kW)'),
+    };
+    const jitterOnly = {
+      currentState: 'off',
+      plannedState: 'shed',
+      shedAction: 'turn_off',
+      reason: r('shortfall (need 1.24kW, headroom -1.24kW)'),
+    };
+
+    expect(buildDeviceOverviewTransitionSignature(base))
+      .toBe(buildDeviceOverviewTransitionSignature(jitterOnly));
+  });
+
   it('changes when power, state, or status changes', () => {
     const base = {
       currentState: 'on',

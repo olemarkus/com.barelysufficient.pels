@@ -56,6 +56,7 @@ type DetailComparableReason = Extract<
 
 const CODE_ONLY_REASONS = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.none,
+  PLAN_REASON_CODES.shortfall,
   PLAN_REASON_CODES.restoreThrottled,
   PLAN_REASON_CODES.waitingForOtherDevices,
   PLAN_REASON_CODES.cooldownShedding,
@@ -71,6 +72,7 @@ const CODE_ONLY_REASONS = new Set<PlanReasonCode>([
 type CodeOnlyReason = Extract<
   DeviceReason,
   | { code: typeof PLAN_REASON_CODES.none }
+  | { code: typeof PLAN_REASON_CODES.shortfall }
   | { code: typeof PLAN_REASON_CODES.restoreThrottled }
   | { code: typeof PLAN_REASON_CODES.waitingForOtherDevices }
   | { code: typeof PLAN_REASON_CODES.cooldownShedding }
@@ -115,8 +117,6 @@ export function buildComparableDeviceReason(reason: DeviceReason | undefined): C
         needKw: reason.needKw,
         headroomKw: reason.headroomKw,
       };
-    case PLAN_REASON_CODES.shortfall:
-      return { code: reason.code, needKw: reason.needKw, headroomKw: reason.headroomKw };
     case PLAN_REASON_CODES.insufficientHeadroom:
       return {
         code: reason.code,
