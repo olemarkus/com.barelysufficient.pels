@@ -1,5 +1,5 @@
 import type Homey from 'homey';
-import type { DailyBudgetUiPayload } from './lib/dailyBudget/dailyBudgetTypes';
+import type { DailyBudgetModelPreviewResponse, DailyBudgetUiPayload } from './lib/dailyBudget/dailyBudgetTypes';
 import type { HomeyDeviceLike } from './lib/utils/types';
 import { getHomeyDevicesForDebugFromApp, logHomeyDeviceForDebugFromApp } from './lib/app/appDebugHelpers';
 import {
@@ -10,9 +10,12 @@ import {
   getSettingsUiPowerPayload,
   getSettingsUiPricesPayload,
   logSettingsUiMessage,
+  applySettingsUiDailyBudgetModel,
+  previewSettingsUiDailyBudgetModel,
   refreshSettingsUiDevices,
   refreshSettingsUiGridTariff,
   refreshSettingsUiPrices,
+  recomputeSettingsUiDailyBudget,
   resetSettingsUiPowerStats,
 } from './lib/app/settingsUiApi';
 
@@ -22,6 +25,7 @@ type ApiContext = {
 
 type DailyBudgetApp = Homey.App & {
   getDailyBudgetUiPayload?: () => DailyBudgetUiPayload | null;
+  recomputeDailyBudgetToday?: () => DailyBudgetUiPayload | null;
 };
 
 const hasDeviceId = (device: HomeyDeviceLike): device is HomeyDeviceLike & { id: string } => (
@@ -61,6 +65,19 @@ export = {
       app?.error?.('Daily budget API failed', error as Error);
       return null;
     }
+  },
+  async ui_recompute_daily_budget({ homey }: ApiContext): Promise<DailyBudgetUiPayload | null> {
+    return recomputeSettingsUiDailyBudget({ homey });
+  },
+  async ui_preview_daily_budget_model(
+    { homey, body }: ApiContext & { body?: unknown },
+  ): Promise<DailyBudgetModelPreviewResponse | null> {
+    return previewSettingsUiDailyBudgetModel({ homey, body });
+  },
+  async ui_apply_daily_budget_model(
+    { homey, body }: ApiContext & { body?: unknown },
+  ): Promise<DailyBudgetUiPayload | null> {
+    return applySettingsUiDailyBudgetModel({ homey, body });
   },
   async homey_devices({ homey }: ApiContext): Promise<Array<{ id: string; name: string; class?: string }>> {
     const app = getApp(homey);

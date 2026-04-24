@@ -1,5 +1,6 @@
 const setupDailyBudgetDom = () => {
   document.body.innerHTML = `
+    <div id="toast"></div>
     <div id="daily-budget-title"></div>
     <div id="daily-budget-day"></div>
     <div id="daily-budget-remaining"></div>
@@ -14,11 +15,21 @@ const setupDailyBudgetDom = () => {
     <div id="daily-budget-confidence" class="chip" hidden></div>
     <div id="daily-budget-status-pill"></div>
     <div id="daily-budget-toggle-mount"></div>
+    <form id="daily-budget-form">
+      <input id="daily-budget-enabled" type="checkbox">
+      <input id="daily-budget-kwh" type="number">
+      <input id="daily-budget-price-shaping" type="checkbox">
+    </form>
+    <input id="daily-budget-controlled-weight" type="number">
+    <input id="daily-budget-price-flex-share" type="number">
     <input id="daily-budget-breakdown" type="checkbox">
+    <button id="daily-budget-recompute" type="button">Preview changes</button>
+    <button id="daily-budget-apply" type="button" hidden>Apply changes</button>
+    <button id="daily-budget-discard" type="button" hidden>Discard preview</button>
   `;
 };
 
-const installHomeyClient = async (payload: unknown) => {
+const installHomeyClient = async (payload: unknown, previewPayload: unknown = payload) => {
   const { setHomeyClient } = await import('../src/ui/homey.ts');
   setHomeyClient({
     ready: async () => {},
@@ -43,6 +54,10 @@ const installHomeyClient = async (payload: unknown) => {
           homeyToday: null,
           homeyTomorrow: null,
         });
+        return;
+      }
+      if (method === 'POST' && uri === '/ui_preview_daily_budget_model') {
+        callback(null, { active: payload, candidate: previewPayload, settings: bodyOrCallback });
         return;
       }
       callback(null, null);
@@ -97,6 +112,14 @@ const buildDailyBudgetPayload = () => ({
   },
 });
 
+const flushPromises = () => new Promise<void>((resolve) => {
+  if (typeof setImmediate === 'function') {
+    setImmediate(() => resolve());
+    return;
+  }
+  setTimeout(() => resolve(), 0);
+});
+
 describe('daily budget chart render', () => {
   beforeEach(() => {
     vi.doUnmock('../src/ui/dailyBudgetChartEcharts.ts');
@@ -119,6 +142,75 @@ describe('daily budget chart render', () => {
     expect(chart?.hidden).toBe(false);
     expect(empty?.hidden).toBe(true);
     expect(legend).toBeNull();
+  });
+
+  it('keeps a candidate preview visible across background refreshes', async () => {
+    const activePayload = buildDailyBudgetPayload();
+    const candidatePayload = buildDailyBudgetPayload();
+    candidatePayload.days['2026-02-01'].state.remainingKWh = 14;
+    candidatePayload.days['2026-02-01'].buckets.plannedKWh = [2, 2.5, 3];
+
+    await installHomeyClient(activePayload, candidatePayload);
+
+    const { initDailyBudgetHandlers, refreshDailyBudgetPlan } = await import('../src/ui/dailyBudget.ts');
+    await refreshDailyBudgetPlan(activePayload);
+    initDailyBudgetHandlers();
+
+    const enabledInput = document.querySelector('#daily-budget-enabled') as HTMLInputElement;
+    const kwhInput = document.querySelector('#daily-budget-kwh') as HTMLInputElement;
+    const priceShapingInput = document.querySelector('#daily-budget-price-shaping') as HTMLInputElement;
+    const previewButton = document.querySelector('#daily-budget-recompute') as HTMLButtonElement;
+    const applyButton = document.querySelector('#daily-budget-apply') as HTMLButtonElement;
+    const discardButton = document.querySelector('#daily-budget-discard') as HTMLButtonElement;
+    enabledInput.checked = true;
+    kwhInput.value = '24';
+    priceShapingInput.checked = true;
+
+    previewButton.click();
+    await flushPromises();
+
+    expect(applyButton.hidden).toBe(false);
+    expect(discardButton.hidden).toBe(false);
+    expect(document.querySelector('#daily-budget-remaining')?.textContent).toBe('14.00 kWh');
+
+    await refreshDailyBudgetPlan();
+
+    expect(applyButton.hidden).toBe(false);
+    expect(discardButton.hidden).toBe(false);
+    expect(document.querySelector('#daily-budget-remaining')?.textContent).toBe('14.00 kWh');
+  });
+
+  it('discards a candidate preview and restores the active plan', async () => {
+    const activePayload = buildDailyBudgetPayload();
+    const candidatePayload = buildDailyBudgetPayload();
+    candidatePayload.days['2026-02-01'].state.remainingKWh = 14;
+
+    await installHomeyClient(activePayload, candidatePayload);
+
+    const { initDailyBudgetHandlers, refreshDailyBudgetPlan } = await import('../src/ui/dailyBudget.ts');
+    await refreshDailyBudgetPlan(activePayload);
+    initDailyBudgetHandlers();
+
+    const enabledInput = document.querySelector('#daily-budget-enabled') as HTMLInputElement;
+    const kwhInput = document.querySelector('#daily-budget-kwh') as HTMLInputElement;
+    const priceShapingInput = document.querySelector('#daily-budget-price-shaping') as HTMLInputElement;
+    const previewButton = document.querySelector('#daily-budget-recompute') as HTMLButtonElement;
+    const applyButton = document.querySelector('#daily-budget-apply') as HTMLButtonElement;
+    const discardButton = document.querySelector('#daily-budget-discard') as HTMLButtonElement;
+    enabledInput.checked = true;
+    kwhInput.value = '24';
+    priceShapingInput.checked = true;
+
+    previewButton.click();
+    await flushPromises();
+
+    expect(document.querySelector('#daily-budget-remaining')?.textContent).toBe('14.00 kWh');
+
+    discardButton.click();
+
+    expect(applyButton.hidden).toBe(true);
+    expect(discardButton.hidden).toBe(true);
+    expect(document.querySelector('#daily-budget-remaining')?.textContent).toBe('9.00 kWh');
   });
 
   it('uses fallback chart width when container width is initially zero', async () => {

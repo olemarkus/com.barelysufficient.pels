@@ -1,3 +1,11 @@
+export type DailyBudgetModelSettings = {
+  enabled: boolean;
+  dailyBudgetKWh: number;
+  priceShapingEnabled: boolean;
+  controlledUsageWeight: number;
+  priceShapingFlexShare: number;
+};
+
 export type DailyBudgetDayPayload = {
   dateKey: string;
   timeZone: string;
@@ -53,4 +61,10 @@ export type DailyBudgetUiPayload = {
   todayKey: string;
   tomorrowKey?: string | null;
   yesterdayKey?: string | null;
+};
+
+export type DailyBudgetModelPreviewResponse = {
+  active: DailyBudgetUiPayload | null;
+  candidate: DailyBudgetUiPayload | null;
+  settings: DailyBudgetModelSettings;
 };

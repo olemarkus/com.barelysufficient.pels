@@ -6,6 +6,8 @@ export type DailyBudgetSettings = {
   priceShapingFlexShare: number;
 };
 
+export type DailyBudgetSettingsInput = Partial<DailyBudgetSettings>;
+
 export type DailyBudgetProfile = {
   weights: number[];
   sampleCount: number;
@@ -88,6 +90,12 @@ export type DailyBudgetUiPayload = {
   todayKey: string;
   tomorrowKey?: string | null;
   yesterdayKey?: string | null;
+};
+
+export type DailyBudgetModelPreviewResponse = {
+  active: DailyBudgetUiPayload | null;
+  candidate: DailyBudgetUiPayload | null;
+  settings: DailyBudgetSettings;
 };
 
 export type DailyBudgetUpdate = {

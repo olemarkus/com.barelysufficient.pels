@@ -1,5 +1,9 @@
 import type Homey from 'homey';
-import type { DailyBudgetUiPayload } from '../../packages/contracts/src/dailyBudgetTypes';
+import type {
+  DailyBudgetModelPreviewResponse,
+  DailyBudgetModelSettings,
+  DailyBudgetUiPayload,
+} from '../../packages/contracts/src/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../utils/settingsUiBootstrapKeys';
 import type {
@@ -26,6 +30,9 @@ import {
 
 type SettingsUiApiApp = Homey.App & {
   getDailyBudgetUiPayload?: () => DailyBudgetUiPayload | null;
+  recomputeDailyBudgetToday?: () => DailyBudgetUiPayload | null;
+  previewDailyBudgetModel?: (settings: Partial<DailyBudgetModelSettings>) => DailyBudgetModelPreviewResponse;
+  applyDailyBudgetModel?: (settings: Partial<DailyBudgetModelSettings>) => DailyBudgetUiPayload | null;
   getDeviceDiagnosticsUiPayload?: () => SettingsUiDeviceDiagnosticsResponse;
 };
 
@@ -55,6 +62,24 @@ const isValidLogRequest = (value: unknown): value is SettingsUiLogRequest => {
   if (!value || typeof value !== 'object') return false;
   const entry = value as Partial<SettingsUiLogRequest>;
   return typeof entry.level === 'string' && typeof entry.message === 'string';
+};
+
+const asDailyBudgetModelSettings = (value: unknown): Partial<DailyBudgetModelSettings> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const body = value as Partial<DailyBudgetModelSettings>;
+  return {
+    enabled: typeof body.enabled === 'boolean' ? body.enabled : undefined,
+    dailyBudgetKWh: typeof body.dailyBudgetKWh === 'number' && Number.isFinite(body.dailyBudgetKWh)
+      ? body.dailyBudgetKWh
+      : undefined,
+    priceShapingEnabled: typeof body.priceShapingEnabled === 'boolean' ? body.priceShapingEnabled : undefined,
+    controlledUsageWeight: typeof body.controlledUsageWeight === 'number' && Number.isFinite(body.controlledUsageWeight)
+      ? body.controlledUsageWeight
+      : undefined,
+    priceShapingFlexShare: typeof body.priceShapingFlexShare === 'number' && Number.isFinite(body.priceShapingFlexShare)
+      ? body.priceShapingFlexShare
+      : undefined,
+  };
 };
 
 const getArraySetting = <T>(homey: Homey.App['homey'], key: string): T[] => {
@@ -173,6 +198,33 @@ export const resetSettingsUiPowerStats = async ({ homey }: ApiContext): Promise<
     power: getSettingsUiPower({ homey }),
     dailyBudget: app?.getDailyBudgetUiPayload?.() ?? null,
   };
+};
+
+export const recomputeSettingsUiDailyBudget = ({ homey }: ApiContext): DailyBudgetUiPayload | null => {
+  const app = getApp(homey);
+  if (!app?.recomputeDailyBudgetToday) return null;
+  try {
+    return app.recomputeDailyBudgetToday();
+  } catch (error) {
+    app?.error?.('Daily budget recompute API failed', error as Error);
+    throw error;
+  }
+};
+
+export const previewSettingsUiDailyBudgetModel = (
+  { homey, body }: ApiContext & { body?: unknown },
+): DailyBudgetModelPreviewResponse | null => {
+  const app = getApp(homey);
+  if (!app?.previewDailyBudgetModel) return null;
+  return app.previewDailyBudgetModel(asDailyBudgetModelSettings(body));
+};
+
+export const applySettingsUiDailyBudgetModel = (
+  { homey, body }: ApiContext & { body?: unknown },
+): DailyBudgetUiPayload | null => {
+  const app = getApp(homey);
+  if (!app?.applyDailyBudgetModel) return null;
+  return app.applyDailyBudgetModel(asDailyBudgetModelSettings(body));
 };
 
 export const logSettingsUiMessage = ({ homey, body }: ApiContext & { body?: unknown }): { ok: boolean } => {

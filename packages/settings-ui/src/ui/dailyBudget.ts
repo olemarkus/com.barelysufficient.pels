@@ -1,9 +1,16 @@
-import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../../contracts/src/dailyBudgetTypes.ts';
+import type {
+  DailyBudgetDayPayload,
+  DailyBudgetModelPreviewResponse,
+  DailyBudgetModelSettings,
+  DailyBudgetUiPayload,
+} from '../../../contracts/src/dailyBudgetTypes.ts';
 import {
   dailyBudgetForm,
   dailyBudgetEnabledInput,
   dailyBudgetKwhInput,
   dailyBudgetPriceShapingInput,
+  dailyBudgetControlledWeightInput,
+  dailyBudgetPriceFlexShareInput,
   dailyBudgetStatusPill,
   dailyBudgetTitle,
   dailyBudgetDay,
@@ -17,22 +24,35 @@ import {
   dailyBudgetEmpty,
   dailyBudgetConfidence,
   dailyBudgetBreakdownInput,
+  dailyBudgetRecomputeButton,
+  dailyBudgetApplyButton,
+  dailyBudgetDiscardButton,
 } from './dom.ts';
 import { createToggleGroup } from './components.ts';
 import { callApi, getSetting } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
-import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import { logSettingsError } from './logging.ts';
 import { setTooltip } from './tooltips.ts';
 import { formatKWh, formatSignedKWh } from './dailyBudgetFormat.ts';
 import { renderDailyBudgetChart } from './dailyBudgetChart.ts';
 import { getPricesReadModel } from './prices.ts';
 import {
+  DAILY_BUDGET_CONTROLLED_WEIGHT,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
+  DAILY_BUDGET_PRICE_FLEX_SHARE,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
 } from '../../../contracts/src/settingsKeys.ts';
-import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../../../contracts/src/dailyBudgetConstants.ts';
+import {
+  SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
+  SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
+} from '../../../contracts/src/settingsUiApi.ts';
+import {
+  CONTROLLED_USAGE_WEIGHT,
+  MAX_DAILY_BUDGET_KWH,
+  MIN_DAILY_BUDGET_KWH,
+  PRICE_SHAPING_FLEX_SHARE,
+} from '../../../contracts/src/dailyBudgetConstants.ts';
 const DEFAULT_COST_UNIT = 'kr';
 const DEFAULT_COST_DIVISOR = 100;
 
@@ -52,6 +72,8 @@ const formatCost = (value: number | null | undefined, display: CostDisplay) => {
 type DailyBudgetView = 'today' | 'tomorrow' | 'yesterday';
 let currentDailyBudgetView: DailyBudgetView = 'today';
 let latestDailyBudgetPayload: DailyBudgetUiPayload | null = null;
+let latestActiveDailyBudgetPayload: DailyBudgetUiPayload | null = null;
+let pendingPreview: DailyBudgetModelPreviewResponse | null = null;
 let costDisplay: CostDisplay = { unit: DEFAULT_COST_UNIT, divisor: DEFAULT_COST_DIVISOR };
 let setDailyBudgetToggleActive: (view: DailyBudgetView | null) => void = () => {};
 
@@ -267,15 +289,100 @@ const renderDailyBudget = (payload: DailyBudgetUiPayload | null) => {
   }
 };
 
+const setDailyBudgetModelDirty = (dirty: boolean) => {
+  if (dirty) pendingPreview = null;
+  if (dailyBudgetRecomputeButton) {
+    dailyBudgetRecomputeButton.textContent = dirty ? 'Preview changes' : 'Preview plan';
+  }
+  if (dailyBudgetApplyButton) {
+    dailyBudgetApplyButton.hidden = !pendingPreview;
+  }
+  if (dailyBudgetDiscardButton) {
+    dailyBudgetDiscardButton.hidden = !pendingPreview;
+  }
+};
+
+const showActiveDailyBudgetPlan = () => {
+  renderDailyBudget(latestActiveDailyBudgetPayload);
+};
+
+const showPendingPreview = () => {
+  if (!pendingPreview?.candidate) return false;
+  renderDailyBudget(pendingPreview.candidate);
+  if (dailyBudgetApplyButton) {
+    dailyBudgetApplyButton.hidden = false;
+    dailyBudgetApplyButton.disabled = false;
+  }
+  if (dailyBudgetDiscardButton) {
+    dailyBudgetDiscardButton.hidden = false;
+    dailyBudgetDiscardButton.disabled = false;
+  }
+  return true;
+};
+
+const discardDailyBudgetPreview = () => {
+  pendingPreview = null;
+  if (dailyBudgetApplyButton) {
+    dailyBudgetApplyButton.hidden = true;
+    dailyBudgetApplyButton.disabled = false;
+  }
+  if (dailyBudgetDiscardButton) {
+    dailyBudgetDiscardButton.hidden = true;
+    dailyBudgetDiscardButton.disabled = false;
+  }
+  showActiveDailyBudgetPlan();
+};
+
+export const markDailyBudgetModelDraftChanged = () => {
+  setDailyBudgetModelDirty(true);
+  showActiveDailyBudgetPlan();
+};
+
+const parseDailyBudgetRatio = (value: string, fallback: number): number => {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(1, Math.max(0, parsed));
+};
+
+const readDailyBudgetKWh = (enabled: boolean): number => {
+  const kwhValue = parseFloat(dailyBudgetKwhInput?.value || '0');
+  if (!Number.isFinite(kwhValue) || kwhValue < 0) {
+    throw new Error('Daily budget must be a non-negative number.');
+  }
+  if (enabled && (kwhValue < MIN_DAILY_BUDGET_KWH || kwhValue > MAX_DAILY_BUDGET_KWH)) {
+    throw new Error(`Daily budget must be between ${MIN_DAILY_BUDGET_KWH} and ${MAX_DAILY_BUDGET_KWH} kWh.`);
+  }
+  return Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, kwhValue));
+};
+
+const readDailyBudgetModelDraft = (): DailyBudgetModelSettings => {
+  const enabled = dailyBudgetEnabledInput?.checked ?? false;
+  return {
+    enabled,
+    dailyBudgetKWh: readDailyBudgetKWh(enabled),
+    priceShapingEnabled: dailyBudgetPriceShapingInput?.checked ?? true,
+    controlledUsageWeight: parseDailyBudgetRatio(
+      dailyBudgetControlledWeightInput?.value ?? '',
+      CONTROLLED_USAGE_WEIGHT,
+    ),
+    priceShapingFlexShare: parseDailyBudgetRatio(
+      dailyBudgetPriceFlexShareInput?.value ?? '',
+      PRICE_SHAPING_FLEX_SHARE,
+    ),
+  };
+};
+
 export const rerenderDailyBudget = () => {
   renderDailyBudget(latestDailyBudgetPayload);
 };
 
 export const loadDailyBudgetSettings = async () => {
-  const [enabled, dailyBudgetKWh, priceShapingEnabled] = await Promise.all([
+  const [enabled, dailyBudgetKWh, priceShapingEnabled, controlledWeightRaw, priceFlexShareRaw] = await Promise.all([
     getSetting(DAILY_BUDGET_ENABLED),
     getSetting(DAILY_BUDGET_KWH),
     getSetting(DAILY_BUDGET_PRICE_SHAPING_ENABLED),
+    getSetting(DAILY_BUDGET_CONTROLLED_WEIGHT),
+    getSetting(DAILY_BUDGET_PRICE_FLEX_SHARE),
   ]);
 
   applyDailyBudgetBounds();
@@ -291,53 +398,108 @@ export const loadDailyBudgetSettings = async () => {
   if (dailyBudgetPriceShapingInput) {
     dailyBudgetPriceShapingInput.checked = priceShapingEnabled !== false;
   }
-};
-
-export const saveDailyBudgetSettings = async () => {
-  const enabled = dailyBudgetEnabledInput?.checked ?? false;
-  const kwhValue = parseFloat(dailyBudgetKwhInput?.value || '0');
-  if (!Number.isFinite(kwhValue) || kwhValue < 0) {
-    throw new Error('Daily budget must be a non-negative number.');
+  if (dailyBudgetControlledWeightInput) {
+    dailyBudgetControlledWeightInput.value = parseDailyBudgetRatio(
+      typeof controlledWeightRaw === 'number' ? controlledWeightRaw.toString() : '',
+      CONTROLLED_USAGE_WEIGHT,
+    ).toString();
   }
-  if (enabled && (kwhValue < MIN_DAILY_BUDGET_KWH || kwhValue > MAX_DAILY_BUDGET_KWH)) {
-    throw new Error(`Daily budget must be between ${MIN_DAILY_BUDGET_KWH} and ${MAX_DAILY_BUDGET_KWH} kWh.`);
+  if (dailyBudgetPriceFlexShareInput) {
+    dailyBudgetPriceFlexShareInput.value = parseDailyBudgetRatio(
+      typeof priceFlexShareRaw === 'number' ? priceFlexShareRaw.toString() : '',
+      PRICE_SHAPING_FLEX_SHARE,
+    ).toString();
   }
-  const boundedKwh = Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, kwhValue));
-  const priceShapingEnabled = dailyBudgetPriceShapingInput?.checked ?? true;
-
-  const [currentEnabled, currentKwh, currentPriceShaping] = await Promise.all([
-    getSetting(DAILY_BUDGET_ENABLED),
-    getSetting(DAILY_BUDGET_KWH),
-    getSetting(DAILY_BUDGET_PRICE_SHAPING_ENABLED),
-  ]);
-  const writes: Array<Promise<void>> = [];
-  pushSettingWriteIfChanged(writes, DAILY_BUDGET_ENABLED, currentEnabled, enabled);
-  pushSettingWriteIfChanged(writes, DAILY_BUDGET_KWH, currentKwh, boundedKwh);
-  pushSettingWriteIfChanged(
-    writes,
-    DAILY_BUDGET_PRICE_SHAPING_ENABLED,
-    currentPriceShaping,
-    priceShapingEnabled,
-  );
-  if (writes.length > 0) {
-    await Promise.all(writes);
-  }
-  await showToast('Daily budget settings saved.', 'ok');
+  setDailyBudgetModelDirty(false);
 };
 
 export const refreshDailyBudgetPlan = async (payloadOverride?: DailyBudgetUiPayload | null) => {
   try {
+    const hasExplicitPayload = payloadOverride !== undefined;
     const [payload, combinedPrices] = await Promise.all([
-      payloadOverride !== undefined
+      hasExplicitPayload
         ? Promise.resolve(payloadOverride)
         : callApi<DailyBudgetUiPayload | null>('GET', '/daily_budget'),
       getPricesReadModel().then((prices) => prices.combinedPrices).catch(() => null),
     ]);
     costDisplay = resolveCostDisplay(combinedPrices);
+    latestActiveDailyBudgetPayload = payload;
+    if (!hasExplicitPayload && showPendingPreview()) return;
+    pendingPreview = null;
     renderDailyBudget(payload);
+    setDailyBudgetModelDirty(false);
   } catch (error) {
     await logSettingsError('Failed to load daily budget plan', error, 'refreshDailyBudgetPlan');
     renderDailyBudget(null);
+  }
+};
+
+const previewDailyBudgetModel = async () => {
+  const button = dailyBudgetRecomputeButton;
+  if (!button) return;
+  button.disabled = true;
+  if (dailyBudgetApplyButton) dailyBudgetApplyButton.disabled = true;
+  if (dailyBudgetDiscardButton) dailyBudgetDiscardButton.disabled = true;
+  const previousText = button.textContent || 'Preview changes';
+  button.textContent = 'Previewing...';
+  try {
+    const draft = readDailyBudgetModelDraft();
+    const response = await callApi<DailyBudgetModelPreviewResponse | null>(
+      'POST',
+      SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
+      draft,
+    );
+    if (!response?.candidate) throw new Error('Daily budget preview is not available.');
+    pendingPreview = response;
+    renderDailyBudget(response.candidate);
+    if (dailyBudgetApplyButton) {
+      dailyBudgetApplyButton.hidden = false;
+      dailyBudgetApplyButton.disabled = false;
+    }
+    if (dailyBudgetDiscardButton) {
+      dailyBudgetDiscardButton.hidden = false;
+      dailyBudgetDiscardButton.disabled = false;
+    }
+    await showToast('Previewing daily budget changes.', 'ok');
+  } catch (error) {
+    pendingPreview = null;
+    if (dailyBudgetApplyButton) dailyBudgetApplyButton.hidden = true;
+    if (dailyBudgetDiscardButton) dailyBudgetDiscardButton.hidden = true;
+    await logSettingsError('Failed to preview daily budget model', error, 'previewDailyBudgetModel');
+    await showToastError(error, 'Failed to preview daily budget changes.');
+  } finally {
+    button.disabled = false;
+    button.textContent = previousText;
+  }
+};
+
+const applyDailyBudgetModel = async () => {
+  const button = dailyBudgetApplyButton;
+  if (!button) return;
+  button.disabled = true;
+  if (dailyBudgetRecomputeButton) dailyBudgetRecomputeButton.disabled = true;
+  if (dailyBudgetDiscardButton) dailyBudgetDiscardButton.disabled = true;
+  const previousText = button.textContent || 'Apply changes';
+  button.textContent = 'Applying...';
+  try {
+    const draft = pendingPreview?.settings ?? readDailyBudgetModelDraft();
+    const payload = await callApi<DailyBudgetUiPayload | null>(
+      'POST',
+      SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
+      draft,
+    );
+    pendingPreview = null;
+    latestActiveDailyBudgetPayload = payload;
+    await refreshDailyBudgetPlan(payload);
+    await showToast('Daily budget model applied.', 'ok');
+  } catch (error) {
+    await logSettingsError('Failed to apply daily budget model', error, 'applyDailyBudgetModel');
+    await showToastError(error, 'Failed to apply daily budget changes.');
+  } finally {
+    button.disabled = false;
+    button.textContent = previousText;
+    if (dailyBudgetRecomputeButton) dailyBudgetRecomputeButton.disabled = false;
+    if (dailyBudgetDiscardButton) dailyBudgetDiscardButton.disabled = false;
   }
 };
 
@@ -348,18 +510,18 @@ const setDailyBudgetView = (view: DailyBudgetView) => {
 };
 
 export const initDailyBudgetHandlers = () => {
-  const autoSave = async () => {
-    try {
-      await saveDailyBudgetSettings();
-    } catch (error) {
-      await logSettingsError('Failed to save daily budget settings', error, 'autoSaveDailyBudget');
-      await showToastError(error, 'Failed to save daily budget settings.');
-    }
-  };
-
-  dailyBudgetEnabledInput?.addEventListener('change', autoSave);
-  dailyBudgetKwhInput?.addEventListener('change', autoSave);
-  dailyBudgetPriceShapingInput?.addEventListener('change', autoSave);
+  dailyBudgetEnabledInput?.addEventListener('change', markDailyBudgetModelDraftChanged);
+  dailyBudgetKwhInput?.addEventListener('change', markDailyBudgetModelDraftChanged);
+  dailyBudgetPriceShapingInput?.addEventListener('change', markDailyBudgetModelDraftChanged);
+  dailyBudgetRecomputeButton?.addEventListener('click', () => {
+    void previewDailyBudgetModel();
+  });
+  dailyBudgetApplyButton?.addEventListener('click', () => {
+    void applyDailyBudgetModel();
+  });
+  dailyBudgetDiscardButton?.addEventListener('click', () => {
+    discardDailyBudgetPreview();
+  });
   dailyBudgetForm?.addEventListener('submit', (event) => event.preventDefault());
   const toggleMount = document.getElementById('daily-budget-toggle-mount');
   if (toggleMount) {

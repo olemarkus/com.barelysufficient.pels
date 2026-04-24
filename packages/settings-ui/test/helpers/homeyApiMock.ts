@@ -8,9 +8,12 @@ import {
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
+  SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
+  SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
   SETTINGS_UI_REFRESH_DEVICES_PATH,
   SETTINGS_UI_REFRESH_GRID_TARIFF_PATH,
   SETTINGS_UI_REFRESH_PRICES_PATH,
+  SETTINGS_UI_RECOMPUTE_DAILY_BUDGET_PATH,
   SETTINGS_UI_RESET_POWER_STATS_PATH,
 } from '../../../contracts/src/settingsUiApi.ts';
 import type { HomeySettingsClient } from '../../src/ui/homey.ts';
@@ -234,6 +237,17 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_PRICES_PATH)]: (homey) => async () => buildUiPrices(homey),
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_GRID_TARIFF_PATH)]: (homey) => async () => buildUiPrices(homey),
   [buildRouteKey('POST', SETTINGS_UI_LOG_PATH)]: () => async () => ({ ok: true }),
+  [buildRouteKey('POST', SETTINGS_UI_RECOMPUTE_DAILY_BUDGET_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'dailyBudget') ?? null
+  ),
+  [buildRouteKey('POST', SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH)]: (homey) => async (_body) => ({
+    active: getUiOverride(homey, 'dailyBudget') ?? null,
+    candidate: getUiOverride(homey, 'dailyBudget') ?? null,
+    settings: _body,
+  }),
+  [buildRouteKey('POST', SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'dailyBudget') ?? null
+  ),
   [buildRouteKey('POST', SETTINGS_UI_RESET_POWER_STATS_PATH)]: (homey) => async () => ({
     power: await buildUiPower(homey),
     dailyBudget: getUiOverride(homey, 'dailyBudget') ?? null,
