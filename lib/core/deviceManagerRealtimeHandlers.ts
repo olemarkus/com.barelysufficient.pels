@@ -80,7 +80,10 @@ export function handleRealtimeDeviceUpdate(params: {
   // settle window receives the actual observed value rather than a preserved or
   // synthesized snapshot value.
   const priorSnapshot = latestSnapshot.find((s) => s.id === deviceId);
-  const rawBinaryValue = extractRawBinaryValue(device, priorSnapshot?.controlCapabilityId);
+  const rawBinaryValue = extractRawBinaryValue(
+    device,
+    priorSnapshot?.controlObservationCapabilityId ?? priorSnapshot?.controlCapabilityId,
+  );
 
   const result = reconcileRealtimeDeviceUpdate({
     latestSnapshot,

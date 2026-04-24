@@ -23,6 +23,7 @@ import {
   DEVICE_CONTROL_PROFILES,
   DEVICE_COMMUNICATION_MODELS,
   EXPERIMENTAL_EV_SUPPORT_ENABLED,
+  NATIVE_EV_WIRING_DEVICES,
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
@@ -42,6 +43,7 @@ export type CapacitySettingsSnapshot = {
   controllableDevices: Record<string, boolean>;
   managedDevices: Record<string, boolean>;
   budgetExemptDevices: Record<string, boolean>;
+  nativeEvWiringDevices: Record<string, boolean>;
   deviceControlProfiles: DeviceControlProfiles;
   deviceCommunicationModels: Record<string, 'local' | 'cloud'>;
   experimentalEvSupportEnabled: boolean;
@@ -60,11 +62,9 @@ export function buildCapacitySettingsSnapshot(params: {
   const priorities = settings.get('capacity_priorities') as unknown;
   const modeTargets = settings.get('mode_device_targets') as unknown;
   const dryRun = settings.get(CAPACITY_DRY_RUN) as unknown;
-  const controllables = settings.get(CONTROLLABLE_DEVICES) as unknown;
-  const managed = settings.get(MANAGED_DEVICES) as unknown;
-  const budgetExempt = settings.get(BUDGET_EXEMPT_DEVICES) as unknown;
-  const deviceControlProfiles = settings.get(DEVICE_CONTROL_PROFILES) as unknown;
-  const deviceCommunicationModels = settings.get(DEVICE_COMMUNICATION_MODELS) as unknown;
+  const deviceFlags = readDeviceFlagSettings({ settings, current });
+  const deviceSettings = readDeviceControlSettings({ settings, current });
+  const nativeEvSettings = readNativeEvSettings({ settings, current });
   const experimentalEvSupportEnabled = settings.get(EXPERIMENTAL_EV_SUPPORT_ENABLED) as unknown;
   const rawShedBehaviors = settings.get(OVERSHOOT_BEHAVIORS) as unknown;
 
@@ -86,15 +86,6 @@ export function buildCapacitySettingsSnapshot(params: {
   const nextPriorities = isPrioritySettings(priorities) ? priorities : current.capacityPriorities;
   const nextTargets = isModeDeviceTargets(modeTargets) ? modeTargets : current.modeDeviceTargets;
   const nextDryRun = typeof dryRun === 'boolean' ? dryRun : current.capacityDryRun;
-  const nextControllables = isBooleanMap(controllables) ? controllables : current.controllableDevices;
-  const nextManaged = isBooleanMap(managed) ? managed : current.managedDevices;
-  const nextBudgetExempt = isBooleanMap(budgetExempt) ? budgetExempt : current.budgetExemptDevices;
-  const nextDeviceControlProfiles = isDeviceControlProfiles(deviceControlProfiles)
-    ? deviceControlProfiles
-    : current.deviceControlProfiles;
-  const nextCommunicationModels = isCommunicationModelMap(deviceCommunicationModels)
-    ? deviceCommunicationModels
-    : current.deviceCommunicationModels;
   const nextExperimentalEvSupportEnabled = typeof experimentalEvSupportEnabled === 'boolean'
     ? experimentalEvSupportEnabled
     : current.experimentalEvSupportEnabled;
@@ -107,13 +98,68 @@ export function buildCapacitySettingsSnapshot(params: {
     capacityPriorities: nextPriorities,
     modeDeviceTargets: nextTargets,
     capacityDryRun: nextDryRun,
-    controllableDevices: nextControllables,
-    managedDevices: nextManaged,
-    budgetExemptDevices: nextBudgetExempt,
-    deviceControlProfiles: nextDeviceControlProfiles,
-    deviceCommunicationModels: nextCommunicationModels,
+    controllableDevices: deviceFlags.controllableDevices,
+    managedDevices: deviceFlags.managedDevices,
+    budgetExemptDevices: deviceFlags.budgetExemptDevices,
+    nativeEvWiringDevices: nativeEvSettings.nativeEvWiringDevices,
+    deviceControlProfiles: deviceSettings.deviceControlProfiles,
+    deviceCommunicationModels: deviceSettings.deviceCommunicationModels,
     experimentalEvSupportEnabled: nextExperimentalEvSupportEnabled,
     shedBehaviors: nextBehaviors,
+  };
+}
+
+function readDeviceFlagSettings(params: {
+  settings: Homey.App['homey']['settings'];
+  current: CapacitySettingsSnapshot;
+}): Pick<
+  CapacitySettingsSnapshot,
+  'controllableDevices' | 'managedDevices' | 'budgetExemptDevices'
+> {
+  const { settings, current } = params;
+  const controllables = settings.get(CONTROLLABLE_DEVICES) as unknown;
+  const managed = settings.get(MANAGED_DEVICES) as unknown;
+  const budgetExempt = settings.get(BUDGET_EXEMPT_DEVICES) as unknown;
+  return {
+    controllableDevices: isBooleanMap(controllables) ? controllables : current.controllableDevices,
+    managedDevices: isBooleanMap(managed) ? managed : current.managedDevices,
+    budgetExemptDevices: isBooleanMap(budgetExempt) ? budgetExempt : current.budgetExemptDevices,
+  };
+}
+
+function readNativeEvSettings(params: {
+  settings: Homey.App['homey']['settings'];
+  current: CapacitySettingsSnapshot;
+}): Pick<
+  CapacitySettingsSnapshot,
+  'nativeEvWiringDevices'
+> {
+  const { settings, current } = params;
+  const nativeEvWiring = settings.get(NATIVE_EV_WIRING_DEVICES) as unknown;
+  return {
+    nativeEvWiringDevices: isBooleanMap(nativeEvWiring)
+      ? nativeEvWiring
+      : current.nativeEvWiringDevices,
+  };
+}
+
+function readDeviceControlSettings(params: {
+  settings: Homey.App['homey']['settings'];
+  current: CapacitySettingsSnapshot;
+}): Pick<
+  CapacitySettingsSnapshot,
+  'deviceControlProfiles' | 'deviceCommunicationModels'
+> {
+  const { settings, current } = params;
+  const deviceControlProfiles = settings.get(DEVICE_CONTROL_PROFILES) as unknown;
+  const deviceCommunicationModels = settings.get(DEVICE_COMMUNICATION_MODELS) as unknown;
+  return {
+    deviceControlProfiles: isDeviceControlProfiles(deviceControlProfiles)
+      ? deviceControlProfiles
+      : current.deviceControlProfiles,
+    deviceCommunicationModels: isCommunicationModelMap(deviceCommunicationModels)
+      ? deviceCommunicationModels
+      : current.deviceCommunicationModels,
   };
 }
 

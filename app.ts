@@ -161,6 +161,7 @@ class PelsApp extends Homey.App {
   private controllableDevices: Record<string, boolean> = {};
   private managedDevices: Record<string, boolean> = {};
   private budgetExemptDevices: Record<string, boolean> = {};
+  private nativeEvWiringDevices: Record<string, boolean> = {};
   private flowReportedCapabilities: FlowReportedCapabilitiesByDevice = {};
   private flowDeviceAutocompleteCache?: { devices: HomeyDeviceLike[]; fetchedAtMs: number };
   private flowDeviceAutocompleteRequest?: Promise<HomeyDeviceLike[]>;
@@ -343,15 +344,28 @@ class PelsApp extends Homey.App {
     const card = this.homey.flow?.getTriggerCard?.('flow_backed_device_refresh_requested');
     if (!card?.trigger) return;
     const devices = await this.getHomeyDevicesForFlow();
+    const deviceById = new Map(devices.map((device) => [device.id, device]));
+    const ignoredNativeEvFlowIds = new Set(
+      this.latestTargetSnapshot
+        .filter((device) => (
+          device.controlAdapter?.kind === 'capability_adapter'
+          && (
+            device.controlAdapter.activationEnabled === true
+            || (
+            device.controlAdapter.activationRequired !== true
+            || this.resolveManagedState(device.id) !== true
+            )
+          )
+        ))
+        .map((device) => device.id),
+    );
     const eligibleDeviceIds = getFlowRefreshRequestedDeviceIds({
       state: this.flowReportedCapabilities,
       devices,
       experimentalEvSupportEnabled: this.experimentalEvSupportEnabled,
       candidateDeviceIds: deviceIds,
-    });
+    }).filter((deviceId) => !ignoredNativeEvFlowIds.has(deviceId));
     if (eligibleDeviceIds.length === 0) return;
-
-    const deviceById = new Map(devices.map((device) => [device.id, device]));
     const seen = new Set<string>();
     const triggers: Array<{ deviceId: string; trigger: Promise<unknown> }> = [];
     for (const rawDeviceId of eligibleDeviceIds) {
@@ -608,6 +622,7 @@ class PelsApp extends Homey.App {
       getBudgetExempt: (id) => this.isBudgetExempt(id),
       getCommunicationModel: (id) => this.getCommunicationModel(id),
       getExperimentalEvSupportEnabled: () => this.experimentalEvSupportEnabled,
+      getNativeEvWiringEnabled: (id) => this.nativeEvWiringDevices[id] === true,
       getFlowReportedCapabilities: (deviceId) => this.getFlowReportedCapabilitiesForDevice(deviceId),
     }, {
       expectedPowerKwOverrides: this.expectedPowerKwOverrides,
@@ -903,6 +918,7 @@ class PelsApp extends Homey.App {
         controllableDevices: this.controllableDevices,
         managedDevices: this.managedDevices,
         budgetExemptDevices: this.budgetExemptDevices,
+        nativeEvWiringDevices: this.nativeEvWiringDevices,
         deviceControlProfiles: this.deviceControlProfiles,
         deviceCommunicationModels: this.deviceCommunicationModels,
         experimentalEvSupportEnabled: this.experimentalEvSupportEnabled,
@@ -918,6 +934,7 @@ class PelsApp extends Homey.App {
     this.controllableDevices = next.controllableDevices;
     this.managedDevices = next.managedDevices;
     this.budgetExemptDevices = next.budgetExemptDevices;
+    this.nativeEvWiringDevices = next.nativeEvWiringDevices;
     this.deviceControlProfiles = normalizeStoredDeviceControlProfiles(next.deviceControlProfiles) ?? {};
     this.deviceCommunicationModels = next.deviceCommunicationModels;
     this.experimentalEvSupportEnabled = next.experimentalEvSupportEnabled;

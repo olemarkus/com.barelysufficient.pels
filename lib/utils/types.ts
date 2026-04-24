@@ -1,4 +1,5 @@
 import type {
+    DeviceControlAdapterSnapshot,
     DeviceControlModel,
     DeviceControlProfile,
     DeviceControlProfiles,
@@ -11,6 +12,7 @@ import type {
 } from '../../packages/contracts/src/types';
 
 export type {
+    DeviceControlAdapterSnapshot,
     DeviceControlModel,
     DeviceControlProfile,
     DeviceControlProfiles,
@@ -84,7 +86,13 @@ export type HomeyDeviceLike = {
     id: string;
     name: string;
     class?: string;
-    data?: { id?: string };
+    driverId?: string;
+    driverUri?: string;
+    ownerUri?: string;
+    data?: {
+        id?: string;
+        driverId?: string;
+    };
     virtualClass?: string;
     capabilities?: string[];
     capabilitiesObj?: Record<string, CapabilityValue<unknown> | undefined> & {

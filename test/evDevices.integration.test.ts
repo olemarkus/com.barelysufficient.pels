@@ -174,7 +174,7 @@ describe('EV charger integration', () => {
 
   it.each([
     ['plugged_in_charging', true],
-    ['plugged_in_paused', false],
+    ['plugged_in_paused', true],
     ['plugged_in', false],
     ['plugged_out', false],
     ['plugged_in_discharging', false],
@@ -213,7 +213,7 @@ describe('EV charger integration', () => {
     let snapshot = await refreshSnapshot(app);
     let entry = getSnapshotEntry(snapshot, charger.idValue);
     expect(entry).toEqual(expect.objectContaining({
-      currentOn: false,
+      currentOn: true,
       evChargingState: 'plugged_in_paused',
       powerKw: 7.2,
       controlCapabilityId: 'evcharger_charging',
@@ -229,10 +229,7 @@ describe('EV charger integration', () => {
     evPlan = getPlanEntry(plan, charger.idValue);
 
     expect(evPlan.plannedState).not.toBe('shed');
-    expect(charger.getCommandSequence()).toEqual([
-      'evcharger_charging:false',
-      'evcharger_charging:true',
-    ]);
+    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:false']);
     expect(charger.commandLog.some((entry) => entry.capabilityId === 'onoff')).toBe(false);
     expect(charger.commandLog.some((entry) => entry.capabilityId === 'target_charger_current')).toBe(false);
     expect(charger.commandLog.some((entry) => entry.capabilityId === 'target_circuit_current')).toBe(false);
@@ -241,7 +238,7 @@ describe('EV charger integration', () => {
     entry = getSnapshotEntry(snapshot, charger.idValue);
     expect(entry).toEqual(expect.objectContaining({
       currentOn: true,
-      evChargingState: 'plugged_in_charging',
+      evChargingState: 'plugged_in_paused',
       controlCapabilityId: 'evcharger_charging',
     }));
   });
@@ -293,7 +290,7 @@ describe('EV charger integration', () => {
     },
   );
 
-  it('restores a paused charger with the EV minimum-start fallback when power is unknown', async () => {
+  it('keeps a paused charger active without an EV restore command when power is unknown', async () => {
     const charger = new EaseeMockCharger();
     await charger.seedState('plugged_in_paused');
     const app = await createEvApp(charger);
@@ -305,13 +302,13 @@ describe('EV charger integration', () => {
     const evPlan = getPlanEntry(plan, charger.idValue);
 
     expect(evPlan.plannedState).not.toBe('inactive');
-    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:true']);
+    expect(charger.getCommandSequence()).toEqual([]);
 
     const snapshot = await refreshSnapshot(app);
     const entry = getSnapshotEntry(snapshot, charger.idValue);
     expect(entry).toEqual(expect.objectContaining({
       currentOn: true,
-      evChargingState: 'plugged_in_charging',
+      evChargingState: 'plugged_in_paused',
     }));
   });
 
@@ -336,7 +333,7 @@ describe('EV charger integration', () => {
     expect(charger.getCommandSequence()).toEqual(['evcharger_charging:false']);
   });
 
-  it('restores a paused charger by swapping out a lower-priority running load', async () => {
+  it('does not swap out lower-priority load for a paused charger that is already allowed on', async () => {
     const heater = new MockDevice(
       'heater-low',
       'Garage Heater',
@@ -357,18 +354,14 @@ describe('EV charger integration', () => {
       },
     });
 
-    // 1.3kW current headroom + 1.0kW heater shed power = 2.3kW potential.
-    // After the 0.3kW swap reserve, effective headroom is 2.0kW, which clears
-    // the charger's restore need (1.42kW) plus the 0.25kW reserve + 0.25kW floor.
     const plan = await rebuildPlan(app, { totalPowerKw: 1.0, softLimitKw: 2.3 });
     const heaterPlan = getPlanEntry(plan, heater.idValue);
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expect(heaterPlan.plannedState).toBe('shed');
-    expect(reasonText(heaterPlan.reason)).toContain(`swapped out for ${charger.getName()}`);
+    expect(heaterPlan.plannedState).toBe('keep');
     expect(evPlan.plannedState).not.toBe('shed');
-    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:true']);
-    expect(heater.getSetCapabilityValue('onoff')).toBe(false);
+    expect(charger.getCommandSequence()).toEqual([]);
+    expect(heater.getSetCapabilityValue('onoff')).toBe(true);
     expect(charger.commandLog.every((entry) => entry.capabilityId === 'evcharger_charging')).toBe(true);
 
     const snapshot = await refreshSnapshot(app);
@@ -376,11 +369,11 @@ describe('EV charger integration', () => {
     const chargerEntry = getSnapshotEntry(snapshot, charger.idValue);
 
     expect(heaterEntry).toEqual(expect.objectContaining({
-      currentOn: false,
+      currentOn: true,
     }));
     expect(chargerEntry).toEqual(expect.objectContaining({
       currentOn: true,
-      evChargingState: 'plugged_in_charging',
+      evChargingState: 'plugged_in_paused',
       expectedPowerSource: 'load-setting',
     }));
   });
