@@ -319,5 +319,8 @@
   },
   "2.1.31": {
     "en": "Fixes various minor stability issues around headroom calculations and restoration attempts."
+  },
+  "2.2.0": {
+    "en": "Add native support for zaptec go chargers."
   }
 }
