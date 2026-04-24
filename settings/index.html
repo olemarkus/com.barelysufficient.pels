@@ -668,6 +668,22 @@
             </summary>
             <div class="collapse-content">
               <div class="detail-control-list">
+                <div class="device-row device-detail-row device-detail-row--toggle" id="device-detail-native-wiring-row" hidden>
+                  <div class="device-row__name device-detail-row__name">
+                    <label class="device-row__title" for="device-detail-native-wiring">Use built-in charger control</label>
+                    <small class="device-detail-row__hint">Lets PELS use the charger app's own capabilities instead of Flow wiring.</small>
+                  </div>
+                  <input type="checkbox" id="device-detail-native-wiring">
+                </div>
+
+                <div class="device-row device-detail-row device-detail-row--toggle" id="device-detail-native-wiring-confirm-row" hidden>
+                  <div class="device-row__name device-detail-row__name">
+                    <label class="device-row__title" for="device-detail-native-wiring-confirm">I understand the risk</label>
+                    <small class="device-detail-row__hint">Native wiring can break if the Zaptec app makes changes in their app. Using flows may be safer.</small>
+                  </div>
+                  <input type="checkbox" id="device-detail-native-wiring-confirm">
+                </div>
+
                 <div class="device-row device-detail-row device-detail-row--toggle">
                   <div class="device-row__name device-detail-row__name">
                     <label class="device-row__title" for="device-detail-managed">Managed by PELS</label>

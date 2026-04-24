@@ -32,3 +32,15 @@ export const isGrayStateDevice = (device?: GrayStateDevice | null): boolean => {
   const currentState = typeof device.currentState === 'string' ? device.currentState.trim().toLowerCase() : '';
   return currentState === 'unknown' || currentState === 'disappeared';
 };
+
+export const requiresNativeWiringForActivation = (device?: TargetDeviceSnapshot | null): boolean => (
+  device?.controlAdapter?.kind === 'capability_adapter'
+  && device.controlAdapter.activationRequired === true
+  && device.controlAdapter.activationEnabled !== true
+  && device.controlCapabilityId !== 'evcharger_charging'
+);
+
+export const supportsNativeWiringActivation = (device?: TargetDeviceSnapshot | null): boolean => (
+  device?.controlAdapter?.kind === 'capability_adapter'
+  && device.controlAdapter.activationRequired === true
+);

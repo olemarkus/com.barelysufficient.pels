@@ -1,4 +1,7 @@
-import { disableManagedEvDevices, disableUnsupportedDevices } from '../lib/app/appDeviceSupport';
+import {
+  disableManagedEvDevices,
+  disableUnsupportedDevices,
+} from '../lib/app/appDeviceSupport';
 import {
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,

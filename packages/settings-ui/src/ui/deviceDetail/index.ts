@@ -23,6 +23,7 @@ import {
   getEffectiveControlModel,
 } from '../deviceControlProfiles.ts';
 import {
+  requiresNativeWiringForActivation,
   supportsManagedDevice,
   supportsPowerDevice,
   supportsTemperatureDevice,
@@ -62,6 +63,12 @@ import {
   updateSetStepOptionLabel,
 } from './steppedLoadDraft.ts';
 import { createSerializedAsyncRunner, readRecordSetting, writeFreshSetting } from './settingsWrite.ts';
+import {
+  clearPendingNativeWiringEnable,
+  initDeviceDetailNativeWiringHandler,
+  retainPendingNativeWiringEnable,
+  setDeviceDetailNativeWiringState,
+} from './nativeWiring.ts';
 
 let currentDetailDeviceId: string | null = null;
 let pendingOpenDeviceId: string | null = null;
@@ -116,32 +123,47 @@ const showDeviceDetailOverlay = () => {
 
 const setDeviceDetailControlStates = (deviceId: string) => {
   const device = getDeviceById(deviceId);
-  const supportsTemperature = supportsTemperatureDevice(device);
-  const supportsPower = supportsPowerDevice(device);
-  const supportsManage = supportsManagedDevice(supportsPower, supportsTemperature);
-  const isManaged = supportsManage && resolveManagedState(deviceId);
+  const controlState = resolveDeviceDetailControlState(device, deviceId);
+
+  setDeviceDetailNativeWiringState(device);
 
   if (deviceDetailManaged) {
-    deviceDetailManaged.checked = isManaged;
-    deviceDetailManaged.disabled = !supportsManage;
+    deviceDetailManaged.checked = controlState.isManaged;
+    deviceDetailManaged.disabled = !controlState.canManageDevice;
   }
   if (deviceDetailControllable) {
-    deviceDetailControllable.checked = supportsPower && state.controllableMap[deviceId] === true;
-    deviceDetailControllable.disabled = !supportsPower || !isManaged;
+    deviceDetailControllable.checked = controlState.supportsPower && state.controllableMap[deviceId] === true;
+    deviceDetailControllable.disabled = !controlState.supportsPower || !controlState.isManaged;
   }
   if (deviceDetailPriceOpt) {
     const priceConfig = state.priceOptimizationSettings[deviceId];
-    deviceDetailPriceOpt.checked = supportsTemperature && isManaged && priceConfig?.enabled === true;
-    deviceDetailPriceOpt.disabled = !supportsTemperature || !isManaged;
+    deviceDetailPriceOpt.checked = controlState.supportsTemperature
+      && controlState.isManaged
+      && priceConfig?.enabled === true;
+    deviceDetailPriceOpt.disabled = !controlState.supportsTemperature || !controlState.isManaged;
   }
 
   setDeviceDetailBudgetExemptState(device);
   if (deviceDetailControlModel && deviceDetailControlModelRow) {
     const effectiveControlModel = device ? getEffectiveControlModel(device) : 'temperature_target';
     deviceDetailControlModel.value = effectiveControlModel === 'stepped_load' ? 'stepped_load' : 'temperature_target';
-    deviceDetailControlModel.disabled = !supportsManage;
-    deviceDetailControlModelRow.hidden = !supportsManage;
+    deviceDetailControlModel.disabled = !controlState.canManageDevice;
+    deviceDetailControlModelRow.hidden = !controlState.canManageDevice;
   }
+};
+
+const resolveDeviceDetailControlState = (device: TargetDeviceSnapshot | null, deviceId: string) => {
+  const supportsTemperature = supportsTemperatureDevice(device);
+  const supportsPower = supportsPowerDevice(device);
+  const supportsManage = supportsManagedDevice(supportsPower, supportsTemperature);
+  const nativeWiringRequired = requiresNativeWiringForActivation(device);
+  const canManageDevice = supportsManage && !nativeWiringRequired;
+  return {
+    supportsTemperature,
+    supportsPower,
+    canManageDevice,
+    isManaged: canManageDevice && resolveManagedState(deviceId),
+  };
 };
 
 const persistDeviceControlProfile = async (deviceId: string, profile: SteppedLoadProfile | null): Promise<boolean> => (
@@ -217,6 +239,7 @@ export const openDeviceDetail = (deviceId: string) => {
 
   resetDeviceDetailDiagnosticsRequests();
   closeSteppedLoadDraft();
+  retainPendingNativeWiringEnable(deviceId);
   currentDetailDeviceId = deviceId;
 
   setDeviceDetailTitle(device.name);
@@ -248,6 +271,7 @@ export const closeDeviceDetail = () => {
   resetDeviceDetailDiagnosticsRequests();
   resetDeviceDetailDiagnosticsView();
   closeSteppedLoadDraft();
+  clearPendingNativeWiringEnable();
   currentDetailDeviceId = null;
   if (deviceDetailOverlay) {
     deviceDetailOverlay.hidden = true;
@@ -441,6 +465,13 @@ export { loadShedBehaviors };
 
 export const initDeviceDetailHandlers = () => {
   initDeviceDetailCloseHandlers();
+  initDeviceDetailNativeWiringHandler({
+    getCurrentDetailDeviceId,
+    getDeviceById,
+    refreshCurrentDeviceControlStates,
+    refreshOpenDeviceDetail,
+    refreshSharedDeviceViews,
+  });
   initDeviceDetailManagedHandler();
   initDeviceDetailControllableHandler();
   initDeviceDetailControlModelHandler();
