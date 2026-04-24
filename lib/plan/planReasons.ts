@@ -532,7 +532,6 @@ function resolveRestoreGateHold(params: {
       restoreCooldownSeconds,
       shedCooldownRemainingSec: null,
       restoreCooldownRemainingSec,
-      startupStabilizationRemainingSec: null,
     },
     restoredOneThisCycle,
     useThrottleLabel: true,

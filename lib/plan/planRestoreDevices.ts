@@ -124,6 +124,7 @@ export function markOffDevicesStayOff(params: {
   };
   setDevice: (id: string, updates: Partial<DevicePlanDevice>) => void;
   reasonOverride?: (dev: DevicePlanDevice) => DeviceReason;
+  blockedPlannedState?: 'shed' | 'keep';
   getLastControlledMs?: (deviceId: string) => number | undefined;
 }): void {
   const {
@@ -131,6 +132,7 @@ export function markOffDevicesStayOff(params: {
     timing,
     setDevice,
     reasonOverride,
+    blockedPlannedState = 'shed',
     getLastControlledMs,
   } = params;
   const offDevices = Array.from(deviceMap.values())
@@ -149,7 +151,7 @@ export function markOffDevicesStayOff(params: {
       setDevice(dev.id, { plannedState: 'shed', reason: NEUTRAL_STARTUP_HOLD_REASON });
       continue;
     }
-    setDevice(dev.id, { plannedState: 'shed', reason: nextReason });
+    setDevice(dev.id, { plannedState: blockedPlannedState, reason: nextReason });
   }
 }
 

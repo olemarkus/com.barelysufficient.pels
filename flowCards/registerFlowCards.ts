@@ -32,6 +32,7 @@ type DeviceArg = RawFlowDeviceArg;
 
 export type FlowCardDeps = {
   homey: FlowHomeyLike;
+  areFlowBackedCardsAvailable?: () => boolean;
   structuredLog?: {
     info: (payload: Record<string, unknown>) => void;
   };
@@ -151,7 +152,9 @@ export function registerFlowCards(deps: FlowCardDeps): void {
 
     registerHeadroomForDeviceCard(deps);
     registerCapacityAndModeCards(deps);
-    registerFlowBackedDeviceCards(deps);
+    if (deps.areFlowBackedCardsAvailable?.() !== false) {
+      registerFlowBackedDeviceCards(deps);
+    }
     registerSteppedLoadCards(deps);
     registerDeviceCapacityControlCards(deps);
     registerBudgetExemptionCards(deps);

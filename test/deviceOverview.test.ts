@@ -76,7 +76,7 @@ describe('device overview formatter', () => {
     });
   });
 
-  it('keeps stabilizing rewrites for keep devices only', () => {
+  it('keeps meter settling copy distinct from restore cooldown copy', () => {
     expect(formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
@@ -86,7 +86,7 @@ describe('device overview formatter', () => {
       currentState: 'on',
       plannedState: 'keep',
       reason: r('cooldown (restore, 10s remaining)'),
-    }).statusMsg).toBe('waiting for meter to settle (10s remaining)');
+    }).statusMsg).toBe('cooldown (restore, 10s remaining)');
   });
 
   it('formats stepped-load devices with desired step labels', () => {
@@ -134,7 +134,7 @@ describe('device overview formatter', () => {
       powerMsg: null,
       stateMsg: 'Active (low → max)',
       usageMsg: 'Measured: 0.60 kW / Expected: 3.00 kW (reported: low / target: max)',
-      statusMsg: 'waiting for meter to settle (10s remaining)',
+      statusMsg: 'cooldown (restore, 10s remaining)',
     });
   });
 
@@ -186,7 +186,7 @@ describe('device overview formatter', () => {
       powerMsg: null,
       stateMsg: 'State unknown',
       usageMsg: 'Measured: 0.60 kW / Expected: 3.00 kW (reported: low / target: max)',
-      statusMsg: 'waiting for meter to settle (10s remaining)',
+      statusMsg: 'cooldown (restore, 10s remaining)',
     });
   });
 
@@ -208,7 +208,7 @@ describe('device overview formatter', () => {
       powerMsg: null,
       stateMsg: 'Unavailable',
       usageMsg: 'Measured: 0.60 kW / Expected: 3.00 kW (reported: low / target: max)',
-      statusMsg: 'waiting for meter to settle (10s remaining)',
+      statusMsg: 'cooldown (restore, 10s remaining)',
     });
   });
 
@@ -347,6 +347,24 @@ describe('device overview transition signatures', () => {
       .toBe(buildDeviceOverviewTransitionSignature(countdownOnly));
     expect(buildDeviceOverviewTransitionSignature(base))
       .not.toBe(buildDeviceOverviewTransitionSignature(sourceChanged));
+  });
+
+  it('ignores shortfall jitter in overview transition signatures', () => {
+    const base = {
+      currentState: 'off',
+      plannedState: 'shed',
+      shedAction: 'turn_off',
+      reason: r('shortfall (need 1.21kW, headroom -1.23kW)'),
+    };
+    const jitterOnly = {
+      currentState: 'off',
+      plannedState: 'shed',
+      shedAction: 'turn_off',
+      reason: r('shortfall (need 1.24kW, headroom -1.24kW)'),
+    };
+
+    expect(buildDeviceOverviewTransitionSignature(base))
+      .toBe(buildDeviceOverviewTransitionSignature(jitterOnly));
   });
 
   it('changes when power, state, or status changes', () => {

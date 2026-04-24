@@ -54,15 +54,19 @@ export function markSteppedDevicesStayAtCurrentLevel(params: {
   | 'inRestoreCooldown'
   | 'inStartupStabilization'
   | 'measurementTs'
+  | 'nowTs'
   | 'restoreCooldownSeconds'
+  | 'restoreCooldownMs'
   | 'shedCooldownRemainingSec'
   | 'restoreCooldownRemainingSec'
   | 'startupStabilizationRemainingSec'>;
+  currentOffPlannedState?: 'shed' | 'keep';
   getLastControlledMs?: (deviceId: string) => number | undefined;
 }): void {
   const {
     deviceMap,
     timing,
+    currentOffPlannedState = 'shed',
     getLastControlledMs,
   } = params;
   const steppedDevices = getSteppedRestoreCandidates(Array.from(deviceMap.values()));
@@ -90,7 +94,11 @@ export function markSteppedDevicesStayAtCurrentLevel(params: {
       });
       continue;
     }
-    setRestorePlanDevice(deviceMap, dev.id, currentOff ? { plannedState: 'shed', reason } : { reason });
+    setRestorePlanDevice(
+      deviceMap,
+      dev.id,
+      currentOff ? { plannedState: currentOffPlannedState, reason } : { reason },
+    );
   }
 }
 
@@ -224,7 +232,9 @@ export function planRestoreForSteppedDevice(params: {
   | 'inRestoreCooldown'
   | 'inStartupStabilization'
   | 'measurementTs'
+  | 'nowTs'
   | 'restoreCooldownSeconds'
+  | 'restoreCooldownMs'
   | 'shedCooldownRemainingSec'
   | 'restoreCooldownRemainingSec'
   | 'startupStabilizationRemainingSec'>;
@@ -240,7 +250,11 @@ export function planRestoreForSteppedDevice(params: {
   }
 
   const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
-  if (resolveMeterSettlingRemainingSec({ timing, restoredOneThisCycle }) !== null) {
+  if (resolveMeterSettlingRemainingSec({
+    timing,
+    lastRestoreTs: state.lastRestoreMs,
+    restoredOneThisCycle,
+  }) !== null) {
     clearRestoreDebugEvent(state, restoreDebugKey);
     return { availableHeadroom, restoredOneThisCycle };
   }

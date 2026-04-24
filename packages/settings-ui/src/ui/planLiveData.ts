@@ -1,4 +1,4 @@
-import type { DeviceReason } from '../../../shared-domain/src/planReasonSemantics.ts';
+import { PLAN_REASON_CODES, type DeviceReason } from '../../../shared-domain/src/planReasonSemantics.ts';
 
 export type TimedPlanDevice = {
   reason: DeviceReason;
@@ -24,9 +24,13 @@ export const getDisplayReason = (
   nowMs: number,
 ): DeviceReason => {
   if (!hasTimedReason(reason)) return reason;
+  const remainingSec = reason.remainingSec - Math.floor((nowMs - snapshotGeneratedAtMs) / 1000);
+  if (reason.code === PLAN_REASON_CODES.meterSettling && remainingSec <= 0) {
+    return { code: PLAN_REASON_CODES.keep, detail: null };
+  }
   return {
     ...reason,
-    remainingSec: Math.max(0, reason.remainingSec - Math.floor((nowMs - snapshotGeneratedAtMs) / 1000)),
+    remainingSec: Math.max(0, remainingSec),
   };
 };
 

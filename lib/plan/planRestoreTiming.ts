@@ -183,14 +183,33 @@ export type CapacityRestoreGateTiming = {
   inCooldown: boolean;
   inRestoreCooldown: boolean;
   inStartupStabilization: boolean;
+  measurementTs: number | null;
+  nowTs: number;
   restoreCooldownSeconds: number;
+  restoreCooldownMs: number;
   shedCooldownRemainingSec: number | null;
   restoreCooldownRemainingSec: number | null;
   startupStabilizationRemainingSec: number | null;
 };
 
+export type CapacityRestoreBlockReasonTiming = Pick<
+  CapacityRestoreGateTiming,
+  | 'activeOvershoot'
+  | 'inCooldown'
+  | 'inRestoreCooldown'
+  | 'inStartupStabilization'
+  | 'restoreCooldownSeconds'
+  | 'shedCooldownRemainingSec'
+  | 'restoreCooldownRemainingSec'
+>;
+
+type MeterSettlingTiming = Pick<
+  CapacityRestoreGateTiming,
+  'activeOvershoot' | 'measurementTs' | 'nowTs'
+>;
+
 export function resolveCapacityRestoreBlockReason(params: {
-  timing: CapacityRestoreGateTiming;
+  timing: CapacityRestoreBlockReasonTiming;
   restoredOneThisCycle?: boolean;
   waitingForOtherRecovery?: boolean;
   useThrottleLabel?: boolean;
@@ -222,14 +241,14 @@ export function resolveCapacityRestoreBlockReason(params: {
 }
 
 function resolveStartupStabilizationReason(
-  timing: CapacityRestoreGateTiming,
+  timing: CapacityRestoreBlockReasonTiming,
   showStartupStabilization: boolean,
 ): DeviceReason | null {
   if (!timing.inStartupStabilization) return null;
   return showStartupStabilization ? { code: PLAN_REASON_CODES.startupStabilization } : null;
 }
 
-function resolveCapacityRestoreCooldownReason(timing: CapacityRestoreGateTiming): DeviceReason | null {
+function resolveCapacityRestoreCooldownReason(timing: CapacityRestoreBlockReasonTiming): DeviceReason | null {
   if (timing.activeOvershoot) return null;
   if (timing.inCooldown) {
     return { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: timing.shedCooldownRemainingSec ?? 0 };
@@ -241,19 +260,16 @@ function resolveCapacityRestoreCooldownReason(timing: CapacityRestoreGateTiming)
 }
 
 export function resolveMeterSettlingRemainingSec(params: {
-  timing: Pick<
-    CapacityRestoreGateTiming,
-    'activeOvershoot' | 'inRestoreCooldown' | 'restoreCooldownSeconds' | 'restoreCooldownRemainingSec'
-  >;
+  timing: MeterSettlingTiming;
+  lastRestoreTs?: number | null;
   restoredOneThisCycle?: boolean;
 }): number | null {
-  const { timing, restoredOneThisCycle = false } = params;
+  const { timing, lastRestoreTs = null, restoredOneThisCycle = false } = params;
   if (timing.activeOvershoot) return null;
-  if (timing.inRestoreCooldown) {
-    return timing.restoreCooldownRemainingSec ?? timing.restoreCooldownSeconds;
-  }
-  if (restoredOneThisCycle) {
-    return timing.restoreCooldownSeconds;
-  }
-  return null;
+  const referenceRestoreTs = restoredOneThisCycle ? timing.nowTs : lastRestoreTs;
+  if (typeof referenceRestoreTs !== 'number') return null;
+  if (timing.measurementTs !== null && timing.measurementTs > referenceRestoreTs) return null;
+  const remainingMs = (referenceRestoreTs + RESTORE_COOLDOWN_MS) - timing.nowTs;
+  if (remainingMs <= 0) return null;
+  return Math.ceil(remainingMs / 1000);
 }

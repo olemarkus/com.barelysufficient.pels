@@ -37,6 +37,7 @@ import {
   DAILY_BUDGET_KWH,
   DEVICE_CONTROL_PROFILES,
   DEVICE_LAST_CONTROLLED_MS,
+  FLOW_REPORTED_DEVICE_CAPABILITIES,
   OPERATING_MODE_SETTING,
 } from '../lib/utils/settingsKeys';
 import {
@@ -188,6 +189,44 @@ describe('MyApp initialization', () => {
 
     const snapshotWrites = setSpy.mock.calls.filter(([key]) => key === 'target_devices_snapshot');
     expect(snapshotWrites).toHaveLength(1);
+  });
+
+  it('clears persisted flow-backed state when flow-backed cards are unavailable', () => {
+    const originalGetActionCard = mockHomeyInstance.flow.getActionCard;
+    const originalGetTriggerCard = mockHomeyInstance.flow.getTriggerCard;
+    try {
+      mockHomeyInstance.flow.getActionCard = ((cardId: string) => {
+        if (cardId === 'report_flow_backed_device_onoff') {
+          throw new Error('missing action card');
+        }
+        return originalGetActionCard(cardId);
+      }) as typeof mockHomeyInstance.flow.getActionCard;
+      mockHomeyInstance.flow.getTriggerCard = ((cardId: string) => {
+        if (cardId === 'flow_backed_device_refresh_requested') {
+          throw new Error('missing trigger card');
+        }
+        return originalGetTriggerCard(cardId);
+      }) as typeof mockHomeyInstance.flow.getTriggerCard;
+      mockHomeyInstance.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, {
+        'flow-device-1': {
+          onoff: {
+            value: true,
+            reportedAt: 123,
+            source: 'flow',
+          },
+        },
+      });
+
+      const app = createApp();
+      (app as any).loadFlowReportedCapabilities();
+
+      expect((app as any).flowReportedCapabilities).toEqual({});
+      expect(mockHomeyInstance.settings.get(FLOW_REPORTED_DEVICE_CAPABILITIES)).toEqual({});
+      expect((app as any).getFlowReportedDeviceIds()).toEqual([]);
+    } finally {
+      mockHomeyInstance.flow.getActionCard = originalGetActionCard;
+      mockHomeyInstance.flow.getTriggerCard = originalGetTriggerCard;
+    }
   });
 
   it('emits structured logs for snapshot writes and unchanged snapshot skips', async () => {

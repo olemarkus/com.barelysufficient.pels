@@ -147,6 +147,20 @@ describe('registerFlowCards', () => {
     expect(deps.rebuildPlan).not.toHaveBeenCalled();
   });
 
+  it('skips flow-backed card registration when flow-backed cards are unavailable', () => {
+    const { deps, actionListeners, triggerListeners } = buildDeps({
+      areFlowBackedCardsAvailable: () => false,
+    });
+
+    registerFlowCards(deps);
+
+    expect(actionListeners.report_flow_backed_device_onoff).toBeUndefined();
+    expect(actionListeners.report_flow_backed_device_evcharger_charging).toBeUndefined();
+    expect(triggerListeners.flow_backed_device_turn_on_requested).toBeUndefined();
+    expect(triggerListeners.flow_backed_device_refresh_requested).toBeUndefined();
+    expect(actionListeners.report_stepped_load_actual_step).toEqual(expect.any(Function));
+  });
+
   it('reports stepped-load actual step and requests a snapshot refresh plus plan rebuild', async () => {
     const { deps, actionListeners, structuredInfo } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([
