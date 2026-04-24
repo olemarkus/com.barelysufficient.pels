@@ -6,6 +6,7 @@ import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { estimatePower, type PowerEstimateState } from './powerEstimate';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import {
+    resolveEvCurrentOn,
     logEvCapabilityAccepted,
     logEvCapabilityRequest,
     logEvSnapshotChanges,
@@ -74,6 +75,11 @@ import {
     parseDeviceList,
     type DeviceManagerParseProviders,
 } from './deviceManagerParseDevice';
+import {
+    buildNativeEvObservationDevice,
+    normalizeNativeEvCapabilityUpdate,
+} from './nativeEvWiring';
+import { applyFreshnessOnlyCapabilityUpdate } from './deviceManagerFreshness';
 
 const MIN_SIGNIFICANT_POWER_W = 5;
 const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
@@ -122,29 +128,54 @@ export class DeviceManager extends EventEmitter {
         if (snapshotIndex < 0) return;
 
         const snapshot = this.latestSnapshot[snapshotIndex];
-        if (!this.isTrackedCapability(snapshot, capabilityId)) return;
-
-        const normalizedValue = this.normalizeRealtimeCapabilityEventValue(capabilityId, value);
-        // Skip echo suppression when a binary settle window is active: the confirmation
-        // observation must reach the settle window to close it immediately.
-        const hasBinarySettleWindow = capabilityId === snapshot.controlCapabilityId
-            && hasPendingBinarySettleWindow(this.binarySettleState, deviceId, capabilityId);
-        if (!hasBinarySettleWindow && this.hasMatchingRecentLocalWrite(deviceId, capabilityId, normalizedValue)) {
-            return;
-        }
-
-        if (this.isFreshnessOnlyCapability(capabilityId)) {
-            this.handleFreshnessOnlyCapabilityUpdate(snapshotIndex, deviceId, capabilityId, value);
-            return;
-        }
-
-        this.handleReconcileCapabilityUpdate(
-            snapshotIndex,
-            deviceId,
+        const normalizedEvents = normalizeNativeEvCapabilityUpdate({
+            snapshot,
             capabilityId,
             value,
-            snapshot,
-        );
+        });
+        for (const normalizedEvent of normalizedEvents) {
+            const resolvedEvent = this.resolveRealtimeCapabilityEvent(
+                snapshot,
+                normalizedEvent.capabilityId,
+                normalizedEvent.value,
+            );
+            if (!resolvedEvent) continue;
+            const effectiveCapabilityId = resolvedEvent.capabilityId;
+            const effectiveValue = resolvedEvent.value;
+
+            const normalizedValue = this.normalizeRealtimeCapabilityEventValue(
+                effectiveCapabilityId,
+                effectiveValue,
+            );
+            // Skip echo suppression when a binary settle window is active so the
+            // confirmation observation can close it immediately.
+            const hasBinarySettleWindow = effectiveCapabilityId === snapshot.controlCapabilityId
+                && hasPendingBinarySettleWindow(this.binarySettleState, deviceId, effectiveCapabilityId);
+            if (
+                !hasBinarySettleWindow
+                && this.hasMatchingRecentLocalWrite(deviceId, effectiveCapabilityId, normalizedValue)
+            ) {
+                continue;
+            }
+
+            if (this.isFreshnessOnlyCapability(effectiveCapabilityId)) {
+                this.handleFreshnessOnlyCapabilityUpdate(
+                    snapshotIndex,
+                    deviceId,
+                    effectiveCapabilityId,
+                    effectiveValue,
+                );
+                continue;
+            }
+
+            this.handleReconcileCapabilityUpdate(
+                snapshotIndex,
+                deviceId,
+                effectiveCapabilityId,
+                effectiveValue,
+                snapshot,
+            );
+        }
     };
 
     private handleFreshnessOnlyCapabilityUpdate(
@@ -153,10 +184,16 @@ export class DeviceManager extends EventEmitter {
         capabilityId: string,
         value: unknown,
     ): void {
+        const snapshot = this.latestSnapshot[snapshotIndex];
         const previousPowerKw = capabilityId === 'measure_power'
-            ? this.latestSnapshot[snapshotIndex]?.measuredPowerKw
+            ? snapshot?.measuredPowerKw
             : undefined;
-        const result = this.applyFreshnessOnlyCapabilityUpdate(snapshotIndex, capabilityId, value);
+        const result = applyFreshnessOnlyCapabilityUpdate({
+            snapshot,
+            capabilityId,
+            value,
+        });
+        const reconcileChange = result.reconcileChange;
         if (!result.changed) return;
         recordCapabilityObservation({
             state: this.observationState,
@@ -173,10 +210,23 @@ export class DeviceManager extends EventEmitter {
             measurePowerBecameSignificantlyPositive: capabilityId === 'measure_power'
                 && didMeasurePowerBecomeSignificantlyPositive(
                     previousPowerKw,
-                    this.latestSnapshot[snapshotIndex]?.measuredPowerKw,
+                    snapshot?.measuredPowerKw,
                     MIN_SIGNIFICANT_POWER_W,
                 ),
         } satisfies ObservedDeviceStateEvent);
+        if (reconcileChange && snapshot) {
+            this.logger.structuredLog?.info({
+                event: 'realtime_capability_drift',
+                deviceId,
+                capabilityId: reconcileChange.capabilityId,
+                changes: [reconcileChange],
+            });
+            this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, {
+                deviceId,
+                name: snapshot.name,
+                changes: [reconcileChange],
+            } satisfies PlanRealtimeUpdateEvent);
+        }
     }
 
     private handleReconcileCapabilityUpdate(
@@ -254,33 +304,36 @@ export class DeviceManager extends EventEmitter {
         return this.isReconcileCapability(snapshot, capabilityId) || this.isFreshnessOnlyCapability(capabilityId);
     }
 
+    private resolveRealtimeCapabilityEvent(
+        snapshot: TargetDeviceSnapshot,
+        capabilityId: string,
+        value: unknown,
+    ): { capabilityId: string; value: unknown } | null {
+        if (this.isTrackedCapability(snapshot, capabilityId)) {
+            return { capabilityId, value };
+        }
+        if (
+            snapshot.controlObservationCapabilityId
+            && snapshot.controlCapabilityId
+            && capabilityId === snapshot.controlObservationCapabilityId
+        ) {
+            return {
+                capabilityId: snapshot.controlCapabilityId,
+                value,
+            };
+        }
+        return null;
+    }
+
     private isReconcileCapability(snapshot: TargetDeviceSnapshot, capabilityId: string): boolean {
         return capabilityId === snapshot.controlCapabilityId
             || snapshot.targets.some((t) => t.id === capabilityId);
     }
 
     private isFreshnessOnlyCapability(capabilityId: string): boolean {
-        return capabilityId === 'measure_power' || capabilityId === 'measure_temperature';
-    }
-
-    private applyFreshnessOnlyCapabilityUpdate(
-        snapshotIndex: number,
-        capabilityId: string,
-        value: unknown,
-    ): { readonly changed: boolean; readonly normalizedValue: unknown } {
-        const snapshot = this.latestSnapshot[snapshotIndex];
-        if (capabilityId === 'measure_power' && typeof value === 'number') {
-            const kw = value / 1000;
-            if (Object.is(snapshot.measuredPowerKw, kw)) return { changed: false, normalizedValue: kw };
-            snapshot.measuredPowerKw = kw;
-            return { changed: true, normalizedValue: kw };
-        }
-        if (capabilityId === 'measure_temperature' && typeof value === 'number') {
-            if (Object.is(snapshot.currentTemperature, value)) return { changed: false, normalizedValue: value };
-            snapshot.currentTemperature = value;
-            return { changed: true, normalizedValue: value };
-        }
-        return { changed: false, normalizedValue: undefined };
+        return capabilityId === 'measure_power'
+            || capabilityId === 'measure_temperature'
+            || capabilityId === 'evcharger_charging_state';
     }
 
     private hasMatchingRecentLocalWrite(deviceId: string, capabilityId: string, normalizedValue: unknown): boolean {
@@ -335,8 +388,8 @@ export class DeviceManager extends EventEmitter {
         value: boolean,
         changes: NonNullable<PlanRealtimeUpdateEvent['changes']>,
     ): boolean {
-        // Check the settle window before the snapshot equality check: a confirmation
-        // observation (value === currentOn) must still reach the window to settle it.
+        // Check the settle window before the equality check so a confirmation
+        // observation (value === currentOn) can still settle it.
         const settleOutcome = notePendingBinarySettleObservation({
             state: this.binarySettleState,
             deps: this.getBinarySettleDeps(),
@@ -347,7 +400,15 @@ export class DeviceManager extends EventEmitter {
         });
         if (settleOutcome !== 'none') {
             // Update snapshot to reflect the actual device state in both cases.
-            this.latestSnapshot[snapshotIndex].currentOn = value;
+            if (capabilityId === 'evcharger_charging') {
+                this.latestSnapshot[snapshotIndex].evCharging = value;
+                this.latestSnapshot[snapshotIndex].currentOn = resolveEvCurrentOn({
+                    evChargingState: this.latestSnapshot[snapshotIndex].evChargingState,
+                    evchargerCharging: value,
+                });
+            } else {
+                this.latestSnapshot[snapshotIndex].currentOn = value;
+            }
             // Record the observation so freshness tracking advances even for settle events.
             recordSnapshotCapabilityObservations({
                 state: this.observationState,
@@ -365,20 +426,34 @@ export class DeviceManager extends EventEmitter {
         }
 
         const snapshot = this.latestSnapshot[snapshotIndex];
-        if (snapshot.currentOn === value) return false;
-        this.latestSnapshot[snapshotIndex].currentOn = value;
+        const previousCurrentOn = snapshot.currentOn;
+        if (capabilityId === 'evcharger_charging') {
+            this.latestSnapshot[snapshotIndex].evCharging = value;
+            this.latestSnapshot[snapshotIndex].currentOn = resolveEvCurrentOn({
+                evChargingState: snapshot.evChargingState,
+                evchargerCharging: value,
+            });
+        } else {
+            this.latestSnapshot[snapshotIndex].currentOn = value;
+        }
+        if (snapshot.currentOn === previousCurrentOn) return false;
         changes.push({
             capabilityId,
-            previousValue: formatBinaryState(!value),
-            nextValue: formatBinaryState(value),
+            previousValue: formatBinaryState(previousCurrentOn),
+            nextValue: formatBinaryState(snapshot.currentOn),
         });
         return false;
     }
 
     private readonly handleRealtimeDeviceUpdate = (device: HomeyDeviceLike): void => {
         const deviceId = getDeviceId(device);
-        const result = handleRealtimeDeviceUpdate({
+        const previousSnapshot = this.latestSnapshotById.get(deviceId);
+        const observedDevice = buildNativeEvObservationDevice({
             device,
+            previousSnapshot,
+        });
+        const result = handleRealtimeDeviceUpdate({
+            device: observedDevice,
             latestSnapshot: this.latestSnapshot,
             recentLocalCapabilityWrites: this.recentLocalCapabilityWrites,
             shouldTrackRealtimeDevice: (deviceId) => this.shouldTrackRealtimeDevice(deviceId),
@@ -650,6 +725,11 @@ export class DeviceManager extends EventEmitter {
         if (!hasRestClient()) throw new Error('REST client not ready');
         const normalizedValue = this.normalizeCapabilityValue(deviceId, capabilityId, value);
         const snapshotBefore = this.latestSnapshot.find((device) => device.id === deviceId);
+        const writeCapabilityId = (
+            snapshotBefore?.controlCapabilityId === capabilityId
+              ? snapshotBefore.controlWriteCapabilityId ?? capabilityId
+              : capabilityId
+        );
         logEvCapabilityRequest({
             logger: this.logger,
             snapshotBefore,
@@ -675,7 +755,7 @@ export class DeviceManager extends EventEmitter {
             deviceName: snapshotBefore?.name,
         });
         try {
-            await setRawCapabilityValue(deviceId, capabilityId, normalizedValue);
+            await setRawCapabilityValue(deviceId, writeCapabilityId, normalizedValue);
         } catch (error) {
             clearLocalCapabilityWrite({
                 recentLocalCapabilityWrites: this.recentLocalCapabilityWrites,
@@ -720,14 +800,11 @@ export class DeviceManager extends EventEmitter {
             this.logger.debug('SDK API not available, cannot apply device targets');
             return;
         }
-
         for (const device of this.latestSnapshot) {
             const targetValue = targets[device.id];
             if (typeof targetValue !== 'number' || Number.isNaN(targetValue)) continue;
-
             const targetCap = device.targets?.[0]?.id;
             if (!targetCap) continue;
-
             try {
                 const appliedValue = await this.setCapability(device.id, targetCap, targetValue);
                 this.logger.log(`Set ${targetCap} for ${device.name} to ${String(appliedValue)} (${contextInfo})`);
@@ -735,7 +812,6 @@ export class DeviceManager extends EventEmitter {
                 this.logger.error(`Failed to set ${targetCap} for ${device.name}`, error);
             }
         }
-
         await this.refreshSnapshot();
     }
 
@@ -743,10 +819,8 @@ export class DeviceManager extends EventEmitter {
         for (const device of this.latestSnapshot) {
             const targetValue = targets[device.id];
             if (typeof targetValue !== 'number' || Number.isNaN(targetValue)) continue;
-
             const targetCap = device.targets?.[0]?.id;
             if (!targetCap) continue;
-
             const target = device.targets.find((entry) => entry.id === targetCap);
             const normalizedValue = typeof targetValue === 'number'
                 ? normalizeTargetCapabilityValue({ target, value: targetValue })
@@ -765,11 +839,7 @@ export class DeviceManager extends EventEmitter {
         if (!target) return value;
         return normalizeTargetCapabilityValue({ target, value });
     }
-
-    private async fetchDevices(): Promise<HomeyDeviceLike[]> {
-        const result = await this.fetchDevicesForSnapshot();
-        return result.devices;
-    }
+    private async fetchDevices(): Promise<HomeyDeviceLike[]> { return (await this.fetchDevicesForSnapshot()).devices; }
 
     private async fetchDevicesForSnapshot(): Promise<{
         devices: HomeyDeviceLike[];

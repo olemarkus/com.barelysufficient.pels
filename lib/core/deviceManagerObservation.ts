@@ -8,6 +8,7 @@ import type { HomeyDeviceLike, TargetDeviceSnapshot } from '../utils/types';
 import type { HandleRealtimeDeviceUpdateResult } from './deviceManagerRealtimeHandlers';
 import type { DeviceFetchSource } from './deviceManagerFetch';
 import { getDeviceId } from './deviceManagerHelpers';
+import { resolveEvCurrentOn } from './deviceManagerControl';
 
 export type CapabilityObservationSource = 'device_update' | 'realtime_capability' | 'local_write';
 
@@ -512,8 +513,31 @@ function applyControlCapabilityObservation(
     observation: CapabilityObservation,
 ): boolean {
     const snapshot = nextSnapshot;
-    if (typeof observation.value !== 'boolean' || snapshot.currentOn === observation.value) return false;
-    snapshot.currentOn = observation.value;
+    if (typeof observation.value !== 'boolean') return false;
+    const previousCurrentOn = snapshot.currentOn;
+    const previousEvCharging = snapshot.evCharging;
+    if (snapshot.controlCapabilityId === 'evcharger_charging') {
+        snapshot.evCharging = observation.value;
+        snapshot.currentOn = resolveEvCurrentOn({
+            evChargingState: snapshot.evChargingState,
+            evchargerCharging: snapshot.evCharging,
+        });
+    } else {
+        snapshot.currentOn = observation.value;
+    }
+    if (
+        previousCurrentOn === snapshot.currentOn
+        && snapshot.controlCapabilityId !== 'evcharger_charging'
+    ) {
+        return false;
+    }
+    if (
+        previousCurrentOn === snapshot.currentOn
+        && snapshot.controlCapabilityId === 'evcharger_charging'
+        && previousEvCharging === snapshot.evCharging
+    ) {
+        return false;
+    }
     if (observation.source === 'local_write') {
         snapshot.lastLocalWriteMs = Math.max(snapshot.lastLocalWriteMs ?? 0, observation.observedAt);
         return true;
@@ -530,6 +554,10 @@ function applyEvChargingStateObservation(
     const snapshot = nextSnapshot;
     if (typeof observation.value !== 'string' || snapshot.evChargingState === observation.value) return false;
     snapshot.evChargingState = observation.value;
+    snapshot.currentOn = resolveEvCurrentOn({
+        evChargingState: snapshot.evChargingState,
+        evchargerCharging: snapshot.evCharging,
+    });
     snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
     snapshot.lastUpdated = snapshot.lastFreshDataMs;
     return true;
@@ -613,7 +641,7 @@ function clearCapabilityObservationIfMatched(
     const observation = state.capabilityObservations.get(key);
     if (!observation) return;
     if (capabilityId === snapshot.controlCapabilityId) {
-        if (snapshot.currentOn === observation.value) {
+        if (matchesCurrentControlObservation(snapshot, observation.value)) {
             state.capabilityObservations.delete(key);
         }
         return;
@@ -642,6 +670,16 @@ function clearCapabilityObservationIfMatched(
     }
 }
 
+function matchesCurrentControlObservation(
+    snapshot: TargetDeviceSnapshot,
+    observationValue: unknown,
+): boolean {
+    const currentControlValue = snapshot.controlCapabilityId === 'evcharger_charging'
+        ? snapshot.evCharging
+        : snapshot.currentOn;
+    return currentControlValue === observationValue;
+}
+
 function recordSnapshotControlObservation(
     state: DeviceManagerObservationState,
     deviceId: string,
@@ -652,9 +690,14 @@ function recordSnapshotControlObservation(
 ): boolean {
     if (
         !snapshot.controlCapabilityId
-        || typeof snapshot.currentOn !== 'boolean'
         || (capabilityIdSet && !capabilityIdSet.has(snapshot.controlCapabilityId))
     ) {
+        return false;
+    }
+    const controlValue = snapshot.controlCapabilityId === 'evcharger_charging'
+        ? snapshot.evCharging
+        : snapshot.currentOn;
+    if (typeof controlValue !== 'boolean') {
         return false;
     }
     recordCapabilityObservation({
@@ -662,7 +705,7 @@ function recordSnapshotControlObservation(
         latestSnapshot: [],
         deviceId,
         capabilityId: snapshot.controlCapabilityId,
-        value: snapshot.currentOn,
+        value: controlValue,
         source,
         observedAt,
         snapshot,

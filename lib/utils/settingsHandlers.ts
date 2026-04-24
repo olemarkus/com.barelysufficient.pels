@@ -25,6 +25,7 @@ import {
   HOMEY_PRICES_TODAY,
   HOMEY_PRICES_TOMORROW,
   MANAGED_DEVICES,
+  NATIVE_EV_WIRING_DEVICES,
   OVERSHOOT_BEHAVIORS,
   OPERATING_MODE_SETTING,
   POWER_SOURCE,
@@ -75,6 +76,7 @@ const DEDUPED_CAPACITY_KEYS = [
   'capacity_priorities',
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
+  NATIVE_EV_WIRING_DEVICES,
   BUDGET_EXEMPT_DEVICES,
   DEVICE_CONTROL_PROFILES,
   DEVICE_COMMUNICATION_MODELS,
@@ -266,6 +268,11 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'Failed to refresh devices after managed change');
       await rebuildPlanFromSettings(deps, 'managed_devices');
+    },
+    [NATIVE_EV_WIRING_DEVICES]: async () => {
+      deps.loadCapacitySettings();
+      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after native wiring change');
+      await rebuildPlanFromSettings(deps, NATIVE_EV_WIRING_DEVICES);
     },
     [DEVICE_CONTROL_PROFILES]: async () => {
       deps.loadCapacitySettings();

@@ -29,6 +29,13 @@ export type SteppedLoadProfile = {
 export type DeviceControlProfile = SteppedLoadProfile;
 
 export type DeviceControlProfiles = Record<string, DeviceControlProfile>;
+
+export type DeviceControlAdapterSnapshot = {
+    kind: 'capability_adapter';
+    activationRequired: boolean;
+    activationEnabled: boolean;
+};
+
 export type TargetDeviceSnapshot = {
     id: string;
     name: string;
@@ -39,13 +46,20 @@ export type TargetDeviceSnapshot = {
     controlModel?: DeviceControlModel;
     steppedLoadProfile?: SteppedLoadProfile;
     controlCapabilityId?: 'onoff' | 'evcharger_charging';
+    controlAdapter?: DeviceControlAdapterSnapshot;
+    controlWriteCapabilityId?: string;
+    controlObservationCapabilityId?: string;
     powerKw?: number;
     expectedPowerKw?: number;
     planningPowerKw?: number;
     expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
     loadKw?: number;
     priority?: number;
+    // Unified binary observation for whether the device may draw power.
+    // This is not the same as "is actively drawing power right now" for devices
+    // with richer state, such as EV chargers or stepped loads.
     currentOn: boolean;
+    evCharging?: boolean;
     evChargingState?: string;
     currentTemperature?: number;
     measuredPowerKw?: number;

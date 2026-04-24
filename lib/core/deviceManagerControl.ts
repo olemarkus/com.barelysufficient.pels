@@ -35,14 +35,10 @@ export function getCurrentOn(params: {
 }): boolean {
   const { deviceClassKey, capabilityObj, controlCapabilityId } = params;
   if (controlCapabilityId === 'evcharger_charging' || deviceClassKey === 'evcharger') {
-    const evChargingState = getEvChargingState(capabilityObj);
-    if (evChargingState !== undefined) {
-      return evChargingState === 'plugged_in_charging';
-    }
-    if (typeof capabilityObj.evcharger_charging?.value === 'boolean') {
-      return capabilityObj.evcharger_charging.value;
-    }
-    return true;
+    return resolveEvCurrentOn({
+      evChargingState: getEvChargingState(capabilityObj),
+      evchargerCharging: getEvCharging(capabilityObj),
+    });
   }
   if (typeof capabilityObj.onoff?.value === 'boolean') {
     return capabilityObj.onoff.value;
@@ -50,12 +46,42 @@ export function getCurrentOn(params: {
   return true;
 }
 
+export function resolveEvCurrentOn(params: {
+  evChargingState: string | undefined;
+  evchargerCharging: unknown;
+}): boolean {
+  const { evChargingState, evchargerCharging } = params;
+  if (evchargerCharging === true) {
+    return true;
+  }
+  if (evChargingState !== undefined) {
+    return evChargingState === 'plugged_in_charging' || evChargingState === 'plugged_in_paused';
+  }
+  if (evchargerCharging === false) {
+    return false;
+  }
+  return true;
+}
+
 export function getCanSetControl(
   controlCapabilityId: TargetDeviceSnapshot['controlCapabilityId'],
-  capabilityObj: DeviceCapabilityMap,
+  controlWriteCapabilityIdOrCapabilityObj: string | DeviceCapabilityMap | undefined = undefined,
+  capabilityObj?: DeviceCapabilityMap,
 ): boolean | undefined {
   if (!controlCapabilityId) return undefined;
-  const capability = capabilityObj[controlCapabilityId];
+  const resolvedCapabilityObj = (
+    capabilityObj
+    ?? (
+      typeof controlWriteCapabilityIdOrCapabilityObj === 'object'
+      ? controlWriteCapabilityIdOrCapabilityObj
+      : undefined
+    )
+  );
+  if (!resolvedCapabilityObj) return undefined;
+  const resolvedControlWriteCapabilityId = typeof controlWriteCapabilityIdOrCapabilityObj === 'string'
+    ? controlWriteCapabilityIdOrCapabilityObj
+    : undefined;
+  const capability = resolvedCapabilityObj[resolvedControlWriteCapabilityId ?? controlCapabilityId];
   if (!capability) return undefined;
   if (typeof capability.setable === 'boolean') {
     return capability.setable;
@@ -66,6 +92,11 @@ export function getCanSetControl(
 export function getEvChargingState(capabilityObj: DeviceCapabilityMap): string | undefined {
   const value = capabilityObj.evcharger_charging_state?.value;
   return typeof value === 'string' ? value : undefined;
+}
+
+export function getEvCharging(capabilityObj: DeviceCapabilityMap): boolean | undefined {
+  const value = capabilityObj.evcharger_charging?.value;
+  return typeof value === 'boolean' ? value : undefined;
 }
 
 export function logEvCapabilityRequest(params: {

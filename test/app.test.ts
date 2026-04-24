@@ -2548,6 +2548,7 @@ describe('periodic snapshot refresh scheduling', () => {
       },
     };
     (app as any).deviceManager = {
+      getSnapshot: vi.fn().mockReturnValue([]),
       getDevicesForDebug: vi.fn().mockResolvedValue([
         { id: 'dev-1', name: 'Relay 1', class: 'socket', capabilities: [] },
         { id: 'dev-2', name: 'Relay 2', class: 'socket', capabilities: [] },
@@ -2580,6 +2581,212 @@ describe('periodic snapshot refresh scheduling', () => {
       deviceId: 'dev-2',
       deviceName: 'Relay 2',
     }));
+  });
+
+  it('does not emit flow-backed refresh requests for unmanaged Zaptec native-wiring candidates', async () => {
+    const app = createApp();
+    (app as any).experimentalEvSupportEnabled = true;
+    (app as any).managedDevices = {};
+    (app as any).flowReportedCapabilities = {
+      'zaptec-1': {
+        evcharger_charging: { value: true, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
+        'alarm_generic.car_connected': {
+          value: true,
+          reportedAt: Date.parse('2026-03-20T09:00:00Z'),
+          source: 'flow',
+        },
+        pels_evcharger_resumable: {
+          value: true,
+          reportedAt: Date.parse('2026-03-20T09:00:00Z'),
+          source: 'flow',
+        },
+      },
+    };
+    (app as any).deviceManager = {
+      getSnapshot: vi.fn().mockReturnValue([
+        {
+          id: 'zaptec-1',
+          name: 'Zaptec Go',
+          deviceClass: 'evcharger',
+          deviceType: 'onoff',
+          targets: [],
+          controlAdapter: {
+            kind: 'capability_adapter',
+            activationRequired: true,
+            activationEnabled: false,
+          },
+          managed: false,
+          currentOn: false,
+          powerCapable: true,
+          available: true,
+        },
+      ]),
+      getDevicesForDebug: vi.fn().mockResolvedValue([
+        {
+          id: 'zaptec-1',
+          name: 'Zaptec Go',
+          class: 'evcharger',
+          driverId: 'homey:app:com.zaptec:go',
+          ownerUri: 'homey:app:com.zaptec',
+          capabilities: [
+            'measure_power',
+            'charging_button',
+            'charge_mode',
+            'alarm_generic.car_connected',
+          ],
+        },
+      ]),
+    };
+    const trigger = vi.fn().mockResolvedValue(true);
+    vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation(() => ({
+      trigger,
+      registerRunListener: vi.fn(),
+      registerArgumentAutocompleteListener: vi.fn(),
+    }));
+
+    await expect((app as any).emitFlowBackedRefreshRequests(['zaptec-1'])).resolves.toBeUndefined();
+
+    expect(trigger).not.toHaveBeenCalled();
+  });
+
+  it('does not emit flow-backed refresh requests when Zaptec already has native evcharger support', async () => {
+    const app = createApp();
+    (app as any).experimentalEvSupportEnabled = true;
+    (app as any).managedDevices = {
+      'zaptec-native-1': true,
+    };
+    (app as any).flowReportedCapabilities = {
+      'zaptec-native-1': {
+        evcharger_charging: { value: false, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
+        'alarm_generic.car_connected': {
+          value: false,
+          reportedAt: Date.parse('2026-03-20T09:00:00Z'),
+          source: 'flow',
+        },
+        pels_evcharger_resumable: {
+          value: true,
+          reportedAt: Date.parse('2026-03-20T09:00:00Z'),
+          source: 'flow',
+        },
+      },
+    };
+    (app as any).deviceManager = {
+      getSnapshot: vi.fn().mockReturnValue([
+        {
+          id: 'zaptec-native-1',
+          name: 'Zaptec Go',
+          deviceClass: 'evcharger',
+          deviceType: 'onoff',
+          targets: [],
+          controlCapabilityId: 'evcharger_charging',
+          controlAdapter: {
+            kind: 'capability_adapter',
+            activationRequired: false,
+            activationEnabled: false,
+          },
+          managed: true,
+          currentOn: true,
+          powerCapable: true,
+          available: true,
+        },
+      ]),
+      getDevicesForDebug: vi.fn().mockResolvedValue([
+        {
+          id: 'zaptec-native-1',
+          name: 'Zaptec Go',
+          class: 'evcharger',
+          driverId: 'homey:app:com.zaptec:go',
+          ownerUri: 'homey:app:com.zaptec',
+          capabilities: [
+            'measure_power',
+            'charging_button',
+            'charge_mode',
+            'alarm_generic.car_connected',
+            'evcharger_charging',
+            'evcharger_charging_state',
+          ],
+        },
+      ]),
+    };
+    const trigger = vi.fn().mockResolvedValue(true);
+    vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation(() => ({
+      trigger,
+      registerRunListener: vi.fn(),
+      registerArgumentAutocompleteListener: vi.fn(),
+    }));
+
+    await expect((app as any).emitFlowBackedRefreshRequests(['zaptec-native-1'])).resolves.toBeUndefined();
+
+    expect(trigger).not.toHaveBeenCalled();
+  });
+
+  it('does not emit flow-backed refresh requests when Zaptec shim wiring is active', async () => {
+    const app = createApp();
+    (app as any).experimentalEvSupportEnabled = true;
+    (app as any).managedDevices = {
+      'zaptec-active-1': true,
+    };
+    (app as any).flowReportedCapabilities = {
+      'zaptec-active-1': {
+        evcharger_charging: { value: false, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
+        'alarm_generic.car_connected': {
+          value: false,
+          reportedAt: Date.parse('2026-03-20T09:00:00Z'),
+          source: 'flow',
+        },
+        pels_evcharger_resumable: {
+          value: true,
+          reportedAt: Date.parse('2026-03-20T09:00:00Z'),
+          source: 'flow',
+        },
+      },
+    };
+    (app as any).deviceManager = {
+      getSnapshot: vi.fn().mockReturnValue([
+        {
+          id: 'zaptec-active-1',
+          name: 'Zaptec Go',
+          deviceClass: 'evcharger',
+          deviceType: 'onoff',
+          targets: [],
+          controlCapabilityId: 'evcharger_charging',
+          controlAdapter: {
+            kind: 'capability_adapter',
+            activationRequired: true,
+            activationEnabled: true,
+          },
+          managed: true,
+          currentOn: false,
+          powerCapable: true,
+          available: true,
+        },
+      ]),
+      getDevicesForDebug: vi.fn().mockResolvedValue([
+        {
+          id: 'zaptec-active-1',
+          name: 'Zaptec Go',
+          class: 'evcharger',
+          driverId: 'homey:app:com.zaptec:go',
+          ownerUri: 'homey:app:com.zaptec',
+          capabilities: [
+            'measure_power',
+            'charging_button',
+            'charge_mode',
+            'alarm_generic.car_connected',
+          ],
+        },
+      ]),
+    };
+    const trigger = vi.fn().mockResolvedValue(true);
+    vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation(() => ({
+      trigger,
+      registerRunListener: vi.fn(),
+      registerArgumentAutocompleteListener: vi.fn(),
+    }));
+
+    await expect((app as any).emitFlowBackedRefreshRequests(['zaptec-active-1'])).resolves.toBeUndefined();
+
+    expect(trigger).not.toHaveBeenCalled();
   });
 
   it('does not rewrite stored flow-backed capability state when the reported value is unchanged', async () => {

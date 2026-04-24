@@ -1,4 +1,8 @@
-import type { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
+import type {
+    HomeyDeviceLike,
+    Logger,
+    TargetDeviceSnapshot,
+} from '../utils/types';
 import {
     getCapabilities,
     getDeviceId,
@@ -9,22 +13,18 @@ import {
 } from './deviceManagerHelpers';
 import { estimatePower, type PowerEstimateState } from './powerEstimate';
 import {
-    augmentCapabilitiesWithFlowReports,
     type FlowReportedCapabilityId,
-    getFlowEffectiveRequiredCapabilitiesForType,
-    resolveFlowAugmentedDeviceType,
     type FlowReportedCapabilitiesForDevice,
 } from './flowReportedCapabilities';
 import {
-    getCanSetControl,
-    getControlCapabilityId,
-    getCurrentOn,
-    getEvChargingState,
-    type DeviceCapabilityMap,
+  getControlCapabilityId,
+  getEvCharging,
+  getCurrentOn,
+  getEvChargingState,
+  type DeviceCapabilityMap,
 } from './deviceManagerControl';
 import {
     buildTargets,
-    getCapabilityValueByPrefix,
     getCurrentTemperature,
     resolveDeviceCapabilities,
 } from './deviceManagerParse';
@@ -35,19 +35,20 @@ import {
 import { updateLastKnownPower } from './deviceManagerRuntime';
 import type { DeviceMeasuredPowerResolver } from './deviceMeasuredPowerResolver';
 import { resolveMeasuredPowerKw } from './deviceManagerMeasuredPower';
+import {
+    resolveCandidateCapabilities,
+    resolveFlowCapabilityOverlay,
+} from './deviceManagerNativeEv';
+import { shouldSkipFlowBackedCandidate } from './deviceManagerFlowSupport';
+import {
+    resolveLastFreshDataMs,
+    resolveParsedControlState,
+} from './deviceManagerParseSnapshot';
 
 type ParsedDeviceSettings = Pick<
     TargetDeviceSnapshot,
     'communicationModel' | 'priority' | 'controllable' | 'managed' | 'budgetExempt'
 >;
-
-type FlowEffectiveRequiredCapabilityId =
-    'onoff'
-    | 'measure_power'
-    | 'evcharger_charging'
-    | 'alarm_generic.car_connected'
-    | 'pels_evcharger_resumable'
-    | 'evcharger_charging_state';
 
 export type DeviceManagerParseProviders = {
     getPriority?: (deviceId: string) => number;
@@ -56,6 +57,7 @@ export type DeviceManagerParseProviders = {
     getBudgetExempt?: (deviceId: string) => boolean;
     getCommunicationModel?: (deviceId: string) => 'local' | 'cloud';
     getExperimentalEvSupportEnabled?: () => boolean;
+    getNativeEvWiringEnabled?: (deviceId: string) => boolean;
     getFlowReportedCapabilities?: (deviceId: string) => FlowReportedCapabilitiesForDevice;
 };
 
@@ -119,25 +121,232 @@ export function parseDevice(params: {
     const {
         capabilities,
         capabilityObj,
+        controlAdapter,
+        controlWriteCapabilityId,
+        controlObservationCapabilityId,
         flowAugmentedDeviceType,
         flowBackedCapabilityIds,
         requiredFlowCapabilityIds,
         reportedCapabilities,
     } = resolveFlowCapabilityOverlay({
+        device,
         deviceClassKey,
         deviceId,
         rawCapabilities,
         rawCapabilityObj,
         providers,
+        logger,
     });
-    const capsStatus = resolveDeviceCapabilities({
+    const capsStatus = resolveCandidateCapabilities({
         deviceClassKey,
         deviceId,
         deviceLabel,
         capabilities,
+        controlAdapter,
         logDebug: (...args: unknown[]) => logger.debug(...args),
     });
     if (!capsStatus) return null;
+    const {
+        currentTemperature,
+        measuredPower,
+        powerEstimate,
+    } = resolveDevicePowerState({
+        device,
+        deviceId,
+        deviceLabel,
+        capabilities,
+        capabilityObj,
+        livePowerWByDeviceId,
+        now,
+        measuredPowerResolver,
+        powerState,
+        logger,
+    });
+    const targetCaps = capsStatus.targetCaps;
+    const targets = buildTargets({
+        targetCaps,
+        capabilityObj,
+        deviceLabel,
+        logDebug: (...args: unknown[]) => logger.debug(...args),
+    });
+    const controlCapabilityId = getControlCapabilityId({ deviceClassKey, capabilities });
+    const evCharging = getEvCharging(capabilityObj);
+    const evChargingState = getEvChargingState(capabilityObj);
+    const {
+        currentOn,
+        canSetControl,
+    } = resolveParsedControlState({
+        logger,
+        deviceLabel,
+        controlCapabilityId,
+        controlWriteCapabilityId,
+        capabilityObj,
+        evCharging,
+        evChargingState,
+        flowBackedCapabilityIds,
+        currentOn: getCurrentOn({ deviceClassKey, capabilityObj, controlCapabilityId }),
+    });
+    const available = getIsAvailable(device);
+    const powerCapable = isPowerCapable(device, capsStatus, powerEstimate);
+    if (shouldSkipFlowBackedCandidate({
+        flowAugmentedDeviceType,
+        flowBackedCapabilityIds,
+        capabilities,
+        capabilityObj,
+        requiredFlowCapabilityIds,
+        reportedCapabilities,
+        powerCapable,
+    })) {
+        return null;
+    }
+    const lastFreshDataMs = resolveLastFreshDataMs({
+        capabilityObj,
+        controlCapabilityId,
+        targetCaps,
+        measuredPowerObservedAtMs: measuredPower.observedAtMs,
+    });
+    return buildParsedDeviceSnapshot({
+        device,
+        deviceId,
+        deviceClassKey,
+        providers,
+        targets,
+        targetCaps,
+        controlCapabilityId,
+        powerEstimate,
+        powerCapable,
+        currentOn,
+        evCharging,
+        evChargingState,
+        currentTemperature,
+        capabilities,
+        flowBackedCapabilityIds,
+        controlAdapter,
+        controlWriteCapabilityId,
+        controlObservationCapabilityId,
+        canSetControl,
+        available,
+        lastFreshDataMs,
+        lastLocalWriteMs: resolveLatestLocalWriteMs(deviceId),
+    });
+}
+
+function resolveTargetDeviceType(targetCaps: readonly string[]): TargetDeviceSnapshot['deviceType'] {
+    return targetCaps.length > 0 ? 'temperature' : 'onoff';
+}
+
+function buildParsedDeviceSnapshot(params: {
+    device: HomeyDeviceLike;
+    deviceId: string;
+    deviceClassKey: string;
+    providers: DeviceManagerParseProviders;
+    targets: TargetDeviceSnapshot['targets'];
+    targetCaps: readonly string[];
+    controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+    powerEstimate: ReturnType<typeof estimatePower>;
+    powerCapable: boolean;
+    currentOn: boolean;
+    evCharging: TargetDeviceSnapshot['evCharging'];
+    evChargingState: TargetDeviceSnapshot['evChargingState'];
+    currentTemperature: TargetDeviceSnapshot['currentTemperature'];
+    capabilities: string[];
+    flowBackedCapabilityIds: FlowReportedCapabilityId[];
+    controlAdapter?: TargetDeviceSnapshot['controlAdapter'];
+    controlWriteCapabilityId?: string;
+    controlObservationCapabilityId?: string;
+    canSetControl: boolean | undefined;
+    available: boolean;
+    lastFreshDataMs?: number;
+    lastLocalWriteMs?: number;
+}): TargetDeviceSnapshot {
+    const {
+        device,
+        deviceId,
+        deviceClassKey,
+        providers,
+        targets,
+        targetCaps,
+        controlCapabilityId,
+        powerEstimate,
+        powerCapable,
+        currentOn,
+        evCharging,
+        evChargingState,
+        currentTemperature,
+        capabilities,
+        flowBackedCapabilityIds,
+        controlAdapter,
+        controlWriteCapabilityId,
+        controlObservationCapabilityId,
+        canSetControl,
+        available,
+        lastFreshDataMs,
+        lastLocalWriteMs,
+    } = params;
+
+    return {
+        id: deviceId,
+        name: device.name,
+        targets,
+        deviceClass: deviceClassKey,
+        deviceType: resolveTargetDeviceType(targetCaps),
+        ...resolveParsedDeviceSettings(deviceId, providers),
+        controlCapabilityId,
+        powerKw: powerEstimate.powerKw,
+        expectedPowerKw: powerEstimate.expectedPowerKw,
+        expectedPowerSource: powerEstimate.expectedPowerSource,
+        loadKw: powerEstimate.loadKw,
+        powerCapable,
+        currentOn,
+        evCharging,
+        evChargingState,
+        currentTemperature,
+        measuredPowerKw: powerEstimate.measuredPowerKw,
+        zone: resolveZoneLabel(device),
+        capabilities,
+        controlAdapter,
+        controlWriteCapabilityId,
+        controlObservationCapabilityId,
+        ...(flowBackedCapabilityIds.length > 0 ? {
+            flowBacked: true,
+            flowBackedCapabilityIds,
+        } : {}),
+        canSetControl,
+        available,
+        lastFreshDataMs,
+        lastLocalWriteMs,
+        lastUpdated: lastFreshDataMs,
+    };
+}
+
+function resolveDevicePowerState(params: {
+    device: HomeyDeviceLike;
+    deviceId: string;
+    deviceLabel: string;
+    capabilities: string[];
+    capabilityObj: DeviceCapabilityMap;
+    livePowerWByDeviceId: LiveDevicePowerWatts;
+    now: number;
+    measuredPowerResolver: DeviceMeasuredPowerResolver;
+    powerState: Required<PowerEstimateState>;
+    logger: Logger;
+}): {
+    currentTemperature: number | undefined;
+    measuredPower: ReturnType<typeof resolveMeasuredPowerKw>;
+    powerEstimate: ReturnType<typeof estimatePower>;
+} {
+    const {
+        device,
+        deviceId,
+        deviceLabel,
+        capabilities,
+        capabilityObj,
+        livePowerWByDeviceId,
+        now,
+        measuredPowerResolver,
+        powerState,
+        logger,
+    } = params;
     const currentTemperature = getCurrentTemperature(capabilityObj);
     const measuredPower = resolveMeasuredPowerKw({
         deviceId,
@@ -166,284 +375,11 @@ export function parseDevice(params: {
             deviceLabel: label,
         }),
     });
-    const targetCaps = capsStatus.targetCaps;
-    const targets = buildTargets({
-        targetCaps,
-        capabilityObj,
-        deviceLabel,
-        logDebug: (...args: unknown[]) => logger.debug(...args),
-    });
-    const controlCapabilityId = getControlCapabilityId({ deviceClassKey, capabilities });
-    const evChargingState = getEvChargingState(capabilityObj);
-    const currentOn = resolveSnapshotCurrentOn({
-        logger,
-        deviceLabel,
-        controlCapabilityId,
-        capabilityObj,
-        evChargingState,
-        currentOn: getCurrentOn({ deviceClassKey, capabilityObj, controlCapabilityId }),
-    });
-    const canSetControl = resolveCanSetControl({
-        controlCapabilityId,
-        capabilityObj,
-        flowBackedCapabilityIds,
-    });
-    const available = getIsAvailable(device);
-    const powerCapable = isPowerCapable(device, capsStatus, powerEstimate);
-    if (shouldSkipFlowBackedCandidate({
-        flowAugmentedDeviceType,
-        flowBackedCapabilityIds,
-        capabilities,
-        capabilityObj,
-        requiredFlowCapabilityIds,
-        reportedCapabilities,
-        powerCapable,
-    })) {
-        return null;
-    }
-    const lastFreshDataMs = Math.max(
-        getTrackedCapabilityLastUpdatedMs(capabilityObj, [
-        ...(controlCapabilityId ? [controlCapabilityId] : []),
-        ...targetCaps,
-        'measure_temperature',
-        'evcharger_charging_state',
-        ]) ?? 0,
-        measuredPower.observedAtMs ?? 0,
-    ) || undefined;
-    return buildParsedDeviceSnapshot({
-        device,
-        deviceId,
-        deviceClassKey,
-        providers,
-        targets,
-        targetCaps,
-        controlCapabilityId,
-        powerEstimate,
-        powerCapable,
-        currentOn,
-        evChargingState,
-        currentTemperature,
-        capabilities,
-        flowBackedCapabilityIds,
-        canSetControl,
-        available,
-        lastFreshDataMs,
-        lastLocalWriteMs: resolveLatestLocalWriteMs(deviceId),
-    });
-}
-
-function resolveCanSetControl(params: {
-    controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
-    capabilityObj: DeviceCapabilityMap;
-    flowBackedCapabilityIds: FlowReportedCapabilityId[];
-}): boolean | undefined {
-    const { controlCapabilityId, capabilityObj, flowBackedCapabilityIds } = params;
-    if (controlCapabilityId && flowBackedCapabilityIds.includes(controlCapabilityId)) {
-        return true;
-    }
-    return getCanSetControl(controlCapabilityId, capabilityObj);
-}
-
-function resolveTargetDeviceType(targetCaps: readonly string[]): TargetDeviceSnapshot['deviceType'] {
-    return targetCaps.length > 0 ? 'temperature' : 'onoff';
-}
-
-function buildParsedDeviceSnapshot(params: {
-    device: HomeyDeviceLike;
-    deviceId: string;
-    deviceClassKey: string;
-    providers: DeviceManagerParseProviders;
-    targets: TargetDeviceSnapshot['targets'];
-    targetCaps: readonly string[];
-    controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
-    powerEstimate: ReturnType<typeof estimatePower>;
-    powerCapable: boolean;
-    currentOn: boolean;
-    evChargingState: TargetDeviceSnapshot['evChargingState'];
-    currentTemperature: TargetDeviceSnapshot['currentTemperature'];
-    capabilities: string[];
-    flowBackedCapabilityIds: FlowReportedCapabilityId[];
-    canSetControl: boolean | undefined;
-    available: boolean;
-    lastFreshDataMs?: number;
-    lastLocalWriteMs?: number;
-}): TargetDeviceSnapshot {
-    const {
-        device,
-        deviceId,
-        deviceClassKey,
-        providers,
-        targets,
-        targetCaps,
-        controlCapabilityId,
-        powerEstimate,
-        powerCapable,
-        currentOn,
-        evChargingState,
-        currentTemperature,
-        capabilities,
-        flowBackedCapabilityIds,
-        canSetControl,
-        available,
-        lastFreshDataMs,
-        lastLocalWriteMs,
-    } = params;
-
     return {
-        id: deviceId,
-        name: device.name,
-        targets,
-        deviceClass: deviceClassKey,
-        deviceType: resolveTargetDeviceType(targetCaps),
-        ...resolveParsedDeviceSettings(deviceId, providers),
-        controlCapabilityId,
-        powerKw: powerEstimate.powerKw,
-        expectedPowerKw: powerEstimate.expectedPowerKw,
-        expectedPowerSource: powerEstimate.expectedPowerSource,
-        loadKw: powerEstimate.loadKw,
-        powerCapable,
-        currentOn,
-        evChargingState,
         currentTemperature,
-        measuredPowerKw: powerEstimate.measuredPowerKw,
-        zone: resolveZoneLabel(device),
-        capabilities,
-        ...(flowBackedCapabilityIds.length > 0 ? {
-            flowBacked: true,
-            flowBackedCapabilityIds,
-        } : {}),
-        canSetControl,
-        available,
-        lastFreshDataMs,
-        lastLocalWriteMs,
-        lastUpdated: lastFreshDataMs,
+        measuredPower,
+        powerEstimate,
     };
-}
-
-function resolveFlowCapabilityOverlay(params: {
-    deviceClassKey: string;
-    deviceId: string;
-    rawCapabilities: string[];
-    rawCapabilityObj: DeviceCapabilityMap;
-    providers: DeviceManagerParseProviders;
-}): {
-    capabilities: string[];
-    capabilityObj: DeviceCapabilityMap;
-    flowAugmentedDeviceType: ReturnType<typeof resolveFlowAugmentedDeviceType>;
-    flowBackedCapabilityIds: FlowReportedCapabilityId[];
-    requiredFlowCapabilityIds: readonly FlowEffectiveRequiredCapabilityId[];
-    reportedCapabilities: FlowReportedCapabilitiesForDevice;
-} {
-    const {
-        deviceClassKey,
-        deviceId,
-        rawCapabilities,
-        rawCapabilityObj,
-        providers,
-    } = params;
-    const targetCapabilityIds = rawCapabilities.filter((capabilityId) => capabilityId.startsWith('target_temperature'));
-    const flowAugmentedDeviceType = resolveFlowAugmentedDeviceType({
-        deviceClassKey,
-        targetCapabilityIds,
-    });
-    const requiredFlowCapabilityIds = getFlowEffectiveRequiredCapabilitiesForType(flowAugmentedDeviceType);
-    const reportedCapabilities = providers.getFlowReportedCapabilities?.(deviceId) ?? {};
-    const {
-        capabilities,
-        capabilityObj,
-        flowBackedCapabilityIds,
-    } = augmentCapabilitiesWithFlowReports({
-        deviceType: flowAugmentedDeviceType,
-        capabilities: rawCapabilities,
-        capabilityObj: rawCapabilityObj,
-        reportedCapabilities,
-    });
-
-    return {
-        capabilities,
-        capabilityObj,
-        flowAugmentedDeviceType,
-        flowBackedCapabilityIds,
-        requiredFlowCapabilityIds,
-        reportedCapabilities,
-    };
-}
-
-function shouldSkipFlowBackedCandidate(params: {
-    flowAugmentedDeviceType: ReturnType<typeof resolveFlowAugmentedDeviceType>;
-    flowBackedCapabilityIds: FlowReportedCapabilityId[];
-    capabilities: readonly string[];
-    capabilityObj: DeviceCapabilityMap;
-    requiredFlowCapabilityIds: readonly FlowEffectiveRequiredCapabilityId[];
-    reportedCapabilities: FlowReportedCapabilitiesForDevice;
-    powerCapable: boolean;
-}): boolean {
-    const {
-        flowAugmentedDeviceType,
-        flowBackedCapabilityIds,
-        capabilities,
-        capabilityObj,
-        requiredFlowCapabilityIds,
-        reportedCapabilities,
-        powerCapable,
-    } = params;
-    if (flowAugmentedDeviceType === 'unsupported') return false;
-
-    const hasIncompleteFlowSupport = flowBackedCapabilityIds.length > 0
-        && !hasAllRequiredFlowCapabilitiesInEffectiveView({
-            capabilities,
-            capabilityObj,
-            requiredCapabilityIds: requiredFlowCapabilityIds,
-            reportedCapabilities,
-        });
-    const isMissingDirectPowerSupport = flowBackedCapabilityIds.length === 0 && powerCapable === false;
-    return hasIncompleteFlowSupport || isMissingDirectPowerSupport;
-}
-
-function hasAllRequiredFlowCapabilitiesInEffectiveView(params: {
-    capabilities: readonly string[];
-    capabilityObj: DeviceCapabilityMap;
-    requiredCapabilityIds: readonly FlowEffectiveRequiredCapabilityId[];
-    reportedCapabilities: FlowReportedCapabilitiesForDevice;
-}): boolean {
-    const { capabilities, capabilityObj, requiredCapabilityIds, reportedCapabilities } = params;
-    const capabilitySet = new Set(capabilities);
-    return requiredCapabilityIds.every((capabilityId) => (
-        hasRequiredFlowCapability({
-            capabilityId,
-            capabilities,
-            capabilityObj,
-            capabilitySet,
-            reportedCapabilities,
-        })
-    ));
-}
-
-function hasRequiredFlowCapability(params: {
-    capabilityId: FlowEffectiveRequiredCapabilityId;
-    capabilities: readonly string[];
-    capabilityObj: DeviceCapabilityMap;
-    capabilitySet: Set<string>;
-    reportedCapabilities: FlowReportedCapabilitiesForDevice;
-}): boolean {
-    const {
-        capabilityId,
-        capabilities,
-        capabilityObj,
-        capabilitySet,
-        reportedCapabilities,
-    } = params;
-
-    if (capabilityId === 'measure_power') {
-        return getCapabilityValueByPrefix([...capabilities], capabilityObj, 'measure_power') !== undefined
-            || getCapabilityValueByPrefix([...capabilities], capabilityObj, 'meter_power') !== undefined;
-    }
-
-    if (capabilityId === 'alarm_generic.car_connected' || capabilityId === 'pels_evcharger_resumable') {
-        return typeof reportedCapabilities[capabilityId]?.value === 'boolean';
-    }
-
-    return capabilitySet.has(capabilityId) && capabilityObj[capabilityId] !== undefined;
 }
 
 function resolveParsedDeviceSettings(
@@ -457,56 +393,6 @@ function resolveParsedDeviceSettings(
         managed: providers.getManaged?.(deviceId),
         budgetExempt: providers.getBudgetExempt?.(deviceId),
     };
-}
-
-function resolveSnapshotCurrentOn(params: {
-    logger: Logger;
-    deviceLabel: string;
-    controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
-    capabilityObj: DeviceCapabilityMap;
-    evChargingState: TargetDeviceSnapshot['evChargingState'];
-    currentOn: boolean;
-}): boolean {
-    const {
-        logger,
-        deviceLabel,
-        controlCapabilityId,
-        capabilityObj,
-        evChargingState,
-        currentOn,
-    } = params;
-    if (controlCapabilityId === 'onoff' && typeof capabilityObj.onoff?.value !== 'boolean') {
-        logger.debug(
-            `Snapshot missing boolean onoff value for ${deviceLabel}; assuming device is on`,
-            capabilityObj.onoff?.value,
-        );
-    } else if (controlCapabilityId === 'evcharger_charging'
-        && typeof capabilityObj.evcharger_charging?.value !== 'boolean'
-        && evChargingState === undefined) {
-        logger.debug(
-            `Snapshot missing EV charging state for ${deviceLabel}; assuming device is on`,
-        );
-    }
-    return currentOn;
-}
-
-function getTrackedCapabilityLastUpdatedMs(
-    capabilityObj: DeviceCapabilityMap,
-    trackedIds: readonly string[],
-): number | undefined {
-    let latest = 0;
-    for (const id of trackedIds) {
-        const rawValue = capabilityObj[id]?.lastUpdated;
-        let parsed: number | undefined;
-        if (rawValue instanceof Date) parsed = rawValue.getTime();
-        else if (typeof rawValue === 'number' && Number.isFinite(rawValue)) parsed = rawValue;
-        else if (typeof rawValue === 'string') {
-            const nextParsed = Date.parse(rawValue);
-            if (Number.isFinite(nextParsed)) parsed = nextParsed;
-        }
-        if (parsed !== undefined) latest = Math.max(latest, parsed);
-    }
-    return latest > 0 ? latest : undefined;
 }
 
 export function isDevicePowerCapable(params: {

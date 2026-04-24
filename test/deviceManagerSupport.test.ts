@@ -2,6 +2,7 @@ import type { Logger, TargetDeviceSnapshot } from '../lib/utils/types';
 import {
   getCanSetControl,
   getControlCapabilityId,
+  getEvCharging,
   getCurrentOn,
   getEvChargingState,
   logEvCapabilityAccepted,
@@ -70,7 +71,12 @@ describe('device manager support helpers', () => {
 
     expect(getControlCapabilityId({ deviceClassKey: 'evcharger', capabilities: ['onoff', 'evcharger_charging'] })).toBe('evcharger_charging');
     expect(getControlCapabilityId({ deviceClassKey: 'socket', capabilities: ['onoff'] })).toBe('onoff');
-    expect(getCurrentOn({ deviceClassKey: 'evcharger', capabilityObj, controlCapabilityId: 'evcharger_charging' })).toBe(false);
+    expect(getCurrentOn({ deviceClassKey: 'evcharger', capabilityObj, controlCapabilityId: 'evcharger_charging' })).toBe(true);
+    expect(getCurrentOn({
+      deviceClassKey: 'evcharger',
+      capabilityObj: { evcharger_charging_state: { value: 'plugged_in_paused' } },
+      controlCapabilityId: 'evcharger_charging',
+    })).toBe(true);
     expect(getCurrentOn({
       deviceClassKey: 'evcharger',
       capabilityObj: { evcharger_charging_state: { value: 'plugged_in_charging' } },
@@ -83,7 +89,7 @@ describe('device manager support helpers', () => {
         evcharger_charging_state: { value: 'plugged_in_paused' },
       },
       controlCapabilityId: 'evcharger_charging',
-    })).toBe(false);
+    })).toBe(true);
     expect(getCurrentOn({
       deviceClassKey: 'socket',
       capabilityObj: { onoff: { value: true } },
@@ -91,6 +97,7 @@ describe('device manager support helpers', () => {
     })).toBe(true);
     expect(getCanSetControl('evcharger_charging', capabilityObj)).toBe(true);
     expect(getCanSetControl('onoff', capabilityObj)).toBe(false);
+    expect(getEvCharging(capabilityObj)).toBe(false);
     expect(getEvChargingState(capabilityObj)).toBe('plugged_in_paused');
     expect(getCurrentTemperature(capabilityObj)).toBe(21);
     expect(buildTargets({
