@@ -18,7 +18,11 @@ import { PriceLevel } from './lib/price/priceLevels';
 import { buildPeriodicStatusLogFields } from './lib/core/periodicStatus';
 import { getDeviceLoadSetting } from './lib/core/deviceLoad';
 import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
-import type { DailyBudgetUiPayload } from './lib/dailyBudget/dailyBudgetTypes';
+import type {
+  DailyBudgetModelPreviewResponse,
+  DailyBudgetSettingsInput,
+  DailyBudgetUiPayload,
+} from './lib/dailyBudget/dailyBudgetTypes';
 import { type DebugLoggingTopic } from './lib/utils/debugLogging';
 import {
   AppDeviceControlHelpers,
@@ -1002,6 +1006,15 @@ class PelsApp extends Homey.App {
   }
   private loadPriceOptimizationSettings(): void { this.priceCoordinator.loadPriceOptimizationSettings(); }
   public getDailyBudgetUiPayload(): DailyBudgetUiPayload | null { return this.dailyBudgetService.getUiPayload(); }
+  public recomputeDailyBudgetToday(): DailyBudgetUiPayload | null {
+    return this.dailyBudgetService.recomputeTodayPlan();
+  }
+  public previewDailyBudgetModel(settings: DailyBudgetSettingsInput): DailyBudgetModelPreviewResponse {
+    return this.dailyBudgetService.previewModelSettings(settings);
+  }
+  public applyDailyBudgetModel(settings: DailyBudgetSettingsInput): DailyBudgetUiPayload | null {
+    return this.dailyBudgetService.applyModelSettings(settings);
+  }
   public getLatestPlanSnapshotForUi(): DevicePlan | null { return this.planService?.getLatestPlanSnapshot() ?? null; }
   private async updateOverheadToken(value?: number): Promise<void> {
     const overhead = Number.isFinite(value) ? Number(value) : this.capacitySettings.marginKw;

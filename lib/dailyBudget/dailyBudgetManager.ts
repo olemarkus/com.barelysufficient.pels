@@ -90,6 +90,7 @@ export class DailyBudgetManager {
       refreshObservedStats = true,
       refreshConfidence = false,
       includeConfidenceBootstrapDebug = false,
+      recomputeFrozenPlan = false,
     } = params;
 
     const context = buildDayContext({ nowMs, timeZone, powerTracker });
@@ -107,6 +108,7 @@ export class DailyBudgetManager {
       enabled,
       dailyBudgetKWh: settings.dailyBudgetKWh,
     });
+    this.clearFrozenPlanForRecompute(context, enabled, recomputeFrozenPlan);
 
     const plan = this.resolvePlan({
       context,
@@ -117,6 +119,7 @@ export class DailyBudgetManager {
       combinedPrices,
       priceOptimizationEnabled,
       forcePlanRebuild,
+      recomputeFrozenPlan,
       capacityBudgetKWh,
     });
 
@@ -236,6 +239,17 @@ export class DailyBudgetManager {
     if (!enabled) this.clearStoredPlanBreakdown();
   }
 
+  private clearFrozenPlanForRecompute(context: DayContext, enabled: boolean, recomputeFrozenPlan: boolean): void {
+    if (!enabled || !recomputeFrozenPlan || !this.state.frozen) return;
+    const currentBucketStartUtcMs = context.bucketStartUtcMs[context.currentBucketIndex];
+    if (Number.isFinite(currentBucketStartUtcMs)) {
+      this.state.lastPlanBucketStartUtcMs = currentBucketStartUtcMs;
+    }
+    this.state.frozen = false;
+    this.markDirty(true);
+    this.deps.logDebug('Daily budget: recompute requested, clearing frozen plan state');
+  }
+
   private preparePlanState(params: {
     context: DayContext; enabled: boolean; dailyBudgetKWh: number;
   }): ExistingPlanState {
@@ -263,7 +277,8 @@ export class DailyBudgetManager {
   private resolvePlan(params: {
     context: DayContext; settings: DailyBudgetSettings; enabled: boolean; planStateMismatch: boolean;
     existingPlan: number[] | null; combinedPrices?: CombinedPriceData | null;
-    priceOptimizationEnabled: boolean; forcePlanRebuild?: boolean; capacityBudgetKWh?: number;
+    priceOptimizationEnabled: boolean; forcePlanRebuild?: boolean; recomputeFrozenPlan?: boolean;
+    capacityBudgetKWh?: number;
   }): PlanResult {
     const { context, enabled } = params;
     const shouldRebuildPlan = shouldRebuildDailyBudgetPlan({
@@ -271,6 +286,7 @@ export class DailyBudgetManager {
       enabled,
       planStateMismatch: params.planStateMismatch,
       forcePlanRebuild: params.forcePlanRebuild,
+      recomputeFrozenPlan: params.recomputeFrozenPlan,
       frozen: Boolean(this.state.frozen),
       lastPlanBucketStartUtcMs: this.state.lastPlanBucketStartUtcMs,
       lastUsedNowKWh: this.state.lastUsedNowKWh,

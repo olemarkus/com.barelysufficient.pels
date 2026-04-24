@@ -25,7 +25,13 @@ import {
 } from './dailyBudgetConstants';
 import { DailyBudgetManager } from './dailyBudgetManager';
 import type { CombinedPriceData } from './dailyBudgetManager';
-import type { DailyBudgetDayPayload, DailyBudgetSettings, DailyBudgetUiPayload } from './dailyBudgetTypes';
+import type {
+  DailyBudgetDayPayload,
+  DailyBudgetModelPreviewResponse,
+  DailyBudgetSettings,
+  DailyBudgetSettingsInput,
+  DailyBudgetUiPayload,
+} from './dailyBudgetTypes';
 import { incPerfCounter, addPerfDuration } from '../utils/perfCounters';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { normalizeDebugLoggingTopics } from '../utils/debugLogging';
@@ -114,6 +120,51 @@ export class DailyBudgetService {
     this.deps.error(message, normalizeError(error));
   }
 
+  private createManagerClone(): DailyBudgetManager {
+    const manager = new DailyBudgetManager({
+      log: (...args: unknown[]) => this.deps.log(...args),
+      logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
+    });
+    manager.loadState(this.manager.exportState());
+    return manager;
+  }
+
+  private resolveSettingsInput(input: DailyBudgetSettingsInput): DailyBudgetSettings {
+    const enabled = typeof input.enabled === 'boolean' ? input.enabled : this.settings.enabled;
+    const rawBudget = isFiniteNumber(input.dailyBudgetKWh)
+      ? Math.max(0, input.dailyBudgetKWh)
+      : this.settings.dailyBudgetKWh;
+    if (enabled && (rawBudget < MIN_DAILY_BUDGET_KWH || rawBudget > MAX_DAILY_BUDGET_KWH)) {
+      throw new Error(`Daily budget must be between ${MIN_DAILY_BUDGET_KWH} and ${MAX_DAILY_BUDGET_KWH} kWh.`);
+    }
+    const boundedBudget = rawBudget === 0
+      ? 0
+      : Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, rawBudget));
+    const controlledUsageWeight = isFiniteNumber(input.controlledUsageWeight)
+      ? Math.min(1, Math.max(0, input.controlledUsageWeight))
+      : this.settings.controlledUsageWeight;
+    const priceShapingFlexShare = isFiniteNumber(input.priceShapingFlexShare)
+      ? Math.min(1, Math.max(0, input.priceShapingFlexShare))
+      : this.settings.priceShapingFlexShare;
+    return {
+      enabled,
+      dailyBudgetKWh: boundedBudget,
+      priceShapingEnabled: typeof input.priceShapingEnabled === 'boolean'
+        ? input.priceShapingEnabled
+        : this.settings.priceShapingEnabled,
+      controlledUsageWeight,
+      priceShapingFlexShare,
+    };
+  }
+
+  private persistSettings(settings: DailyBudgetSettings): void {
+    this.deps.homey.settings.set(DAILY_BUDGET_ENABLED, settings.enabled);
+    this.deps.homey.settings.set(DAILY_BUDGET_KWH, settings.dailyBudgetKWh);
+    this.deps.homey.settings.set(DAILY_BUDGET_PRICE_SHAPING_ENABLED, settings.priceShapingEnabled);
+    this.deps.homey.settings.set(DAILY_BUDGET_CONTROLLED_WEIGHT, settings.controlledUsageWeight);
+    this.deps.homey.settings.set(DAILY_BUDGET_PRICE_FLEX_SHARE, settings.priceShapingFlexShare);
+  }
+
   private resolveTimeZone(): string {
     try {
       const tz = this.deps.homey.clock?.getTimezone?.();
@@ -132,6 +183,7 @@ export class DailyBudgetService {
     refreshConfidence?: boolean;
     includeConfidenceBootstrapDebug?: boolean;
     emitStructuredEvent?: boolean;
+    recomputeFrozenPlan?: boolean;
   } = {}): void {
     const stopSpan = startRuntimeSpan('daily_budget_update');
     const start = Date.now();
@@ -155,6 +207,7 @@ export class DailyBudgetService {
         refreshObservedStats: params.refreshObservedStats,
         refreshConfidence: params.refreshConfidence,
         includeConfidenceBootstrapDebug: params.includeConfidenceBootstrapDebug,
+        recomputeFrozenPlan: params.recomputeFrozenPlan,
       });
       incPerfCounter('daily_budget_compute_total');
       addPerfDuration('daily_budget_compute_ms', Date.now() - computeStart);
@@ -195,7 +248,11 @@ export class DailyBudgetService {
     this.persistState();
   }
 
-  private buildTomorrowPreview(nowMs: number): DailyBudgetDayPayload | null {
+  private buildTomorrowPreview(
+    nowMs: number,
+    manager: DailyBudgetManager = this.manager,
+    settings: DailyBudgetSettings = this.settings,
+  ): DailyBudgetDayPayload | null {
     try {
       const timeZone = this.resolveTimeZone();
       const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
@@ -204,10 +261,10 @@ export class DailyBudgetService {
       const combinedPrices = this.deps.homey.settings.get(COMBINED_PRICES) as CombinedPriceData | null;
       const capacity = this.deps.getCapacitySettings();
       const capacityBudgetKWh = resolveUsableCapacityKw(capacity);
-      return this.manager.buildPreview({
+      return manager.buildPreview({
         dayStartUtcMs: tomorrowStartUtcMs,
         timeZone,
-        settings: this.settings,
+        settings,
         combinedPrices,
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
         capacityBudgetKWh,
@@ -332,6 +389,65 @@ export class DailyBudgetService {
     });
     if (!this.snapshot) return null;
     return this.snapshot;
+  }
+
+  recomputeTodayPlan(): DailyBudgetUiPayload | null {
+    const nowMs = Date.now();
+    this.updateState({
+      nowMs,
+      forcePlanRebuild: true,
+      recomputeFrozenPlan: true,
+      includeAdjacentDays: true,
+      refreshConfidence: true,
+      includeConfidenceBootstrapDebug: this.shouldIncludeConfidenceBootstrapDebug(),
+    });
+    return this.snapshot;
+  }
+
+  previewModelSettings(input: DailyBudgetSettingsInput): DailyBudgetModelPreviewResponse {
+    const nowMs = Date.now();
+    const settings = this.resolveSettingsInput(input);
+    const active = this.snapshot;
+    const manager = this.createManagerClone();
+    const timeZone = this.resolveTimeZone();
+    const combinedPrices = this.deps.homey.settings.get(COMBINED_PRICES) as CombinedPriceData | null;
+    const capacity = this.deps.getCapacitySettings();
+    const capacityBudgetKWh = resolveUsableCapacityKw(capacity);
+    const update = manager.update({
+      nowMs,
+      timeZone,
+      settings,
+      powerTracker: this.deps.getPowerTracker(),
+      combinedPrices,
+      priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
+      forcePlanRebuild: true,
+      recomputeFrozenPlan: true,
+      capacityBudgetKWh,
+      refreshObservedStats: false,
+      refreshConfidence: true,
+      includeConfidenceBootstrapDebug: this.shouldIncludeConfidenceBootstrapDebug(),
+    });
+    const tomorrowSnapshot = this.applyOverallModelConfidence(
+      this.buildTomorrowPreview(nowMs, manager, settings),
+      update.snapshot,
+    );
+    const candidate: DailyBudgetUiPayload = {
+      days: {
+        [update.snapshot.dateKey]: update.snapshot,
+        ...(tomorrowSnapshot ? { [tomorrowSnapshot.dateKey]: tomorrowSnapshot } : {}),
+      },
+      todayKey: update.snapshot.dateKey,
+      tomorrowKey: tomorrowSnapshot?.dateKey ?? null,
+      yesterdayKey: null,
+    };
+    return { active, candidate, settings };
+  }
+
+  applyModelSettings(input: DailyBudgetSettingsInput): DailyBudgetUiPayload | null {
+    const settings = this.resolveSettingsInput(input);
+    this.persistSettings(settings);
+    this.settings = settings;
+    return this.recomputeTodayPlan();
   }
 
   private applyOverallModelConfidence(

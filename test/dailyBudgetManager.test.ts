@@ -1022,6 +1022,53 @@ describe('daily budget exceeded state', () => {
 
     expect(underUpdate.snapshot.state.frozen).toBe(false);
   });
+
+  it('recomputes future buckets from a frozen plan while keeping the current bucket locked', () => {
+    const manager = buildManager();
+    const settings = buildSettings({ dailyBudgetKWh: 12 });
+    const dateKey = '2024-01-15';
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const now = dayStart + 70 * 60 * 1000;
+    const firstBucketKey = new Date(dayStart).toISOString();
+    const currentBucketKey = new Date(dayStart + 60 * 60 * 1000).toISOString();
+    const previousPlan = Array.from({ length: 24 }, () => 1);
+    const profileWeights = Array.from({ length: 24 }, () => 0);
+    profileWeights[3] = 1;
+
+    manager.loadState({
+      dateKey,
+      dayStartUtcMs: dayStart,
+      plannedKWh: previousPlan,
+      frozen: true,
+      lastPlanBucketStartUtcMs: dayStart,
+      profile: {
+        weights: normalizeWeights(profileWeights),
+        sampleCount: 14,
+      },
+    });
+
+    const update = manager.update({
+      nowMs: now,
+      timeZone: TZ,
+      settings,
+      powerTracker: {
+        buckets: {
+          [firstBucketKey]: 0.5,
+          [currentBucketKey]: 0.1,
+        },
+      },
+      priceOptimizationEnabled: false,
+      forcePlanRebuild: true,
+      recomputeFrozenPlan: true,
+    });
+
+    const planned = update.snapshot.buckets.plannedKWh;
+    expect(planned[0]).toBeCloseTo(previousPlan[0], 6);
+    expect(planned[1]).toBeCloseTo(previousPlan[1], 6);
+    expect(planned[2]).toBeLessThan(0.6);
+    expect(planned[3]).toBeGreaterThan(3);
+    expect(update.snapshot.state.frozen).toBe(false);
+  });
 });
 
 describe('daily budget profile learning math', () => {
