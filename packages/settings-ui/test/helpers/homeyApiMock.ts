@@ -33,6 +33,7 @@ const BOOTSTRAP_SETTING_KEYS = [
   'controllable_devices',
   'managed_devices',
   'budget_exempt_devices',
+  'native_ev_wiring_devices',
   'mode_aliases',
   'overshoot_behaviors',
   'price_optimization_settings',

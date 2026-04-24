@@ -21,6 +21,7 @@ import {
   supportsPowerDevice,
   supportsTemperatureDevice,
   isGrayStateDevice,
+  requiresNativeWiringForActivation,
 } from './deviceUtils.ts';
 
 export const getTargetDevices = async (): Promise<TargetDeviceSnapshot[]> => {
@@ -122,8 +123,15 @@ const resolveDeviceClassLabel = (deviceClass?: string): string => {
   return DEVICE_CLASS_LABELS[key] || toTitleCase(key);
 };
 
-const getManagedTitle = (isLoadingComplete: boolean, supportsManage: boolean): string => {
+const getManagedTitle = (
+  isLoadingComplete: boolean,
+  supportsManage: boolean,
+  nativeWiringRequired: boolean,
+): string => {
   if (!isLoadingComplete) return 'Loading...';
+  if (nativeWiringRequired) {
+    return 'Managed by PELS (open the device page and enable built-in charger control first)';
+  }
   if (!supportsManage) return 'Managed by PELS (requires a temperature target or power capability)';
   return 'Managed by PELS';
 };
@@ -244,35 +252,69 @@ const buildFlowBackedChip = (device: TargetDeviceSnapshot): HTMLElement | null =
   );
 };
 
-const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
+const appendDeviceStateChips = (container: HTMLElement, device: TargetDeviceSnapshot) => {
+  const chips = [
+    buildDeviceAvailabilityChip(device),
+    buildFlowBackedChip(device),
+    buildBudgetExemptChip(device),
+  ];
+  chips.forEach((chip) => {
+    if (chip) container.appendChild(chip);
+  });
+};
+
+const resolveDeviceManageability = (device: TargetDeviceSnapshot) => {
   const supportsTemperature = supportsTemperatureDevice(device);
   const supportsPower = supportsPowerDevice(device);
   const supportsManage = supportsManagedDevice(supportsPower, supportsTemperature);
-  const isManaged = supportsManage && resolveManagedState(device.id);
+  const nativeWiringRequired = requiresNativeWiringForActivation(device);
+  const canManage = supportsManage && !nativeWiringRequired;
+  return {
+    supportsTemperature,
+    supportsPower,
+    supportsManage,
+    nativeWiringRequired,
+    canManage,
+    isManaged: canManage && resolveManagedState(device.id),
+  };
+};
+
+const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
+  const manageability = resolveDeviceManageability(device);
   const isLoadingComplete = state.initialLoadComplete;
 
   const managedCheckbox = createCheckboxLabel({
-    title: getManagedTitle(isLoadingComplete, supportsManage),
-    checked: isManaged,
-    disabled: !isLoadingComplete || !supportsManage,
+    title: getManagedTitle(
+      isLoadingComplete,
+      manageability.supportsManage,
+      manageability.nativeWiringRequired,
+    ),
+    checked: manageability.isManaged,
+    disabled: !isLoadingComplete || !manageability.canManage,
     onChange: buildManagedToggleHandler(device.id),
   });
 
   const ctrlCheckbox = createCheckboxLabel({
-    title: getCapacityTitle({ isLoadingComplete, supportsPower, isManaged }),
-    checked: supportsPower && state.controllableMap[device.id] === true,
-    disabled: !isLoadingComplete || !supportsPower || !isManaged,
+    title: getCapacityTitle({
+      isLoadingComplete,
+      supportsPower: manageability.supportsPower,
+      isManaged: manageability.isManaged,
+    }),
+    checked: manageability.supportsPower && state.controllableMap[device.id] === true,
+    disabled: !isLoadingComplete || !manageability.supportsPower || !manageability.isManaged,
     onChange: buildControllableToggleHandler(device.id),
   });
 
   const priceOptCheckbox = createCheckboxLabel({
     title: getPriceTitle({
       isLoadingComplete,
-      supportsTemperature,
-      isManaged,
+      supportsTemperature: manageability.supportsTemperature,
+      isManaged: manageability.isManaged,
     }),
-    checked: supportsTemperature && isManaged && state.priceOptimizationSettings[device.id]?.enabled === true,
-    disabled: !isLoadingComplete || !supportsTemperature || !isManaged,
+    checked: manageability.supportsTemperature
+      && manageability.isManaged
+      && state.priceOptimizationSettings[device.id]?.enabled === true,
+    disabled: !isLoadingComplete || !manageability.supportsTemperature || !manageability.isManaged,
     onChange: buildPriceToggleHandler(device.id),
   });
 
@@ -294,12 +336,7 @@ const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
   nameText.textContent = device.name;
 
   nameWrap.replaceChildren(nameText);
-  const stateChip = buildDeviceAvailabilityChip(device);
-  if (stateChip) nameWrap.appendChild(stateChip);
-  const flowBackedChip = buildFlowBackedChip(device);
-  if (flowBackedChip) nameWrap.appendChild(flowBackedChip);
-  const budgetExemptChip = buildBudgetExemptChip(device);
-  if (budgetExemptChip) nameWrap.appendChild(budgetExemptChip);
+  appendDeviceStateChips(nameWrap, device);
   return row;
 };
 

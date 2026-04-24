@@ -18,6 +18,7 @@ import {
 import { getSetting, setSetting } from './homey.ts';
 import {
   BUDGET_EXEMPT_DEVICES,
+  NATIVE_EV_WIRING_DEVICES,
   OPERATING_MODE_SETTING,
 } from '../../../contracts/src/settingsKeys.ts';
 import { showToast, showToastError } from './toast.ts';
@@ -40,6 +41,21 @@ const normalizeDeviceTargetValue = (
   value,
 });
 
+const readBooleanSettingMap = (value: unknown): Record<string, boolean> => (
+  value && typeof value === 'object' ? value as Record<string, boolean> : {}
+);
+
+const readModeAliases = (value: unknown): Record<string, string> => (
+  value && typeof value === 'object'
+    ? Object.entries(value).reduce<Record<string, string>>((acc, [key, alias]) => {
+      if (typeof key === 'string' && typeof alias === 'string') {
+        return { ...acc, [key.toLowerCase()]: alias };
+      }
+      return acc;
+    }, {})
+    : {}
+);
+
 export const loadModeAndPriorities = async () => {
   const mode = await getSetting(OPERATING_MODE_SETTING);
   const priorities = await getSetting('capacity_priorities');
@@ -47,6 +63,7 @@ export const loadModeAndPriorities = async () => {
   const controllables = await getSetting('controllable_devices');
   const managed = await getSetting('managed_devices');
   const budgetExempt = await getSetting(BUDGET_EXEMPT_DEVICES);
+  const nativeWiring = await getSetting(NATIVE_EV_WIRING_DEVICES);
   const aliases = await getSetting('mode_aliases');
   state.activeMode = typeof mode === 'string' && mode.trim() ? mode : 'Home';
   state.editingMode = state.activeMode; // Start editing the active mode
@@ -56,23 +73,11 @@ export const loadModeAndPriorities = async () => {
   state.modeTargets = targets && typeof targets === 'object'
     ? targets as Record<string, Record<string, number>>
     : {};
-  state.controllableMap = controllables && typeof controllables === 'object'
-    ? controllables as Record<string, boolean>
-    : {};
-  state.managedMap = managed && typeof managed === 'object'
-    ? managed as Record<string, boolean>
-    : {};
-  state.budgetExemptMap = budgetExempt && typeof budgetExempt === 'object'
-    ? budgetExempt as Record<string, boolean>
-    : {};
-  state.modeAliases = aliases && typeof aliases === 'object'
-    ? Object.entries(aliases).reduce<Record<string, string>>((acc, [k, v]) => {
-      if (typeof k === 'string' && typeof v === 'string') {
-        return { ...acc, [k.toLowerCase()]: v };
-      }
-      return acc;
-    }, {})
-    : {};
+  state.controllableMap = readBooleanSettingMap(controllables);
+  state.managedMap = readBooleanSettingMap(managed);
+  state.budgetExemptMap = readBooleanSettingMap(budgetExempt);
+  state.nativeWiringMap = readBooleanSettingMap(nativeWiring);
+  state.modeAliases = readModeAliases(aliases);
   renderModeOptions();
 };
 

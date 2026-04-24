@@ -12,6 +12,10 @@ const buildDom = () => {
       <div id="device-detail-panel">
         <div id="device-detail-title"></div>
         <button id="device-detail-close"></button>
+        <div id="device-detail-native-wiring-row" hidden></div>
+        <input id="device-detail-native-wiring" type="checkbox">
+        <div id="device-detail-native-wiring-confirm-row" hidden></div>
+        <input id="device-detail-native-wiring-confirm" type="checkbox">
         <input id="device-detail-managed" type="checkbox">
         <input id="device-detail-controllable" type="checkbox">
         <input id="device-detail-price-opt" type="checkbox">
@@ -144,6 +148,200 @@ describe('device detail managed state saves', () => {
 
     expect(detailTitle?.textContent).toBe('Bedroom Heater');
     expect(managedInput?.checked).toBe(false);
+  });
+
+  it('requires transient confirmation before enabling built-in charger control', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      settings: {
+        managed_devices: { 'zaptec-1': true },
+        native_ev_wiring_devices: {},
+      },
+    });
+    homeyModule.setHomeyClient(homey);
+
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [buildDevice('zaptec-1', 'Driveway Zaptec', {
+      deviceClass: 'evcharger',
+      deviceType: 'onoff',
+      targets: [],
+      controlAdapter: {
+        kind: 'capability_adapter',
+        activationRequired: true,
+        activationEnabled: false,
+      },
+      capabilities: ['measure_power', 'charging_button', 'charge_mode', 'alarm_generic.car_connected'],
+      currentOn: false,
+    })];
+    state.managedMap = { 'zaptec-1': true };
+    state.controllableMap = { 'zaptec-1': false };
+    state.budgetExemptMap = {};
+    state.nativeWiringMap = {};
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'zaptec-1': 1 } };
+    state.modeTargets = { Home: {} };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+    openDeviceDetail('zaptec-1');
+    await flushPromises();
+
+    const nativeWiringInput = document.querySelector('#device-detail-native-wiring') as HTMLInputElement | null;
+    const confirmRow = document.querySelector('#device-detail-native-wiring-confirm-row') as HTMLElement | null;
+    const confirmInput = document.querySelector('#device-detail-native-wiring-confirm') as HTMLInputElement | null;
+    const managedInput = document.querySelector('#device-detail-managed') as HTMLInputElement | null;
+    const controlModelRow = document.querySelector('#device-detail-control-model-row') as HTMLElement | null;
+
+    expect(nativeWiringInput?.checked).toBe(false);
+    expect(confirmRow?.hidden).toBe(true);
+    expect(managedInput?.disabled).toBe(true);
+    expect(controlModelRow?.hidden).toBe(true);
+
+    nativeWiringInput!.checked = true;
+    nativeWiringInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    expect(confirmRow?.hidden).toBe(false);
+    expect(homey.set).not.toHaveBeenCalledWith('native_ev_wiring_devices', expect.anything(), expect.any(Function));
+
+    confirmInput!.checked = true;
+    confirmInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    expect(homey.set).toHaveBeenCalledWith(
+      'native_ev_wiring_devices',
+      { 'zaptec-1': true },
+      expect.any(Function),
+    );
+    expect(state.nativeWiringMap['zaptec-1']).toBe(true);
+    expect(managedInput?.disabled).toBe(false);
+
+    nativeWiringInput!.checked = false;
+    nativeWiringInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    expect(homey.set).toHaveBeenCalledWith(
+      'native_ev_wiring_devices',
+      { 'zaptec-1': false },
+      expect.any(Function),
+    );
+    expect(homey.set).toHaveBeenCalledWith(
+      'managed_devices',
+      { 'zaptec-1': false },
+      expect.any(Function),
+    );
+    const managedDisableCall = homey.set.mock.calls.findIndex(([key, value]) => (
+      key === 'managed_devices' && (value as Record<string, boolean>)['zaptec-1'] === false
+    ));
+    const nativeDisableCall = homey.set.mock.calls.findIndex(([key, value]) => (
+      key === 'native_ev_wiring_devices' && (value as Record<string, boolean>)['zaptec-1'] === false
+    ));
+    expect(managedDisableCall).toBeGreaterThanOrEqual(0);
+    expect(nativeDisableCall).toBeGreaterThanOrEqual(0);
+    expect(managedDisableCall).toBeLessThan(nativeDisableCall);
+    expect(state.managedMap['zaptec-1']).toBe(false);
+  });
+
+  it('clears stale managed state when built-in charger control is already off', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      settings: {
+        managed_devices: { 'zaptec-1': true },
+        native_ev_wiring_devices: {},
+      },
+    });
+    homeyModule.setHomeyClient(homey);
+
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [buildDevice('zaptec-1', 'Driveway Zaptec', {
+      deviceClass: 'evcharger',
+      deviceType: 'onoff',
+      targets: [],
+      controlAdapter: {
+        kind: 'capability_adapter',
+        activationRequired: true,
+        activationEnabled: false,
+      },
+      capabilities: ['measure_power', 'charging_button', 'charge_mode', 'alarm_generic.car_connected'],
+      currentOn: false,
+    })];
+    state.managedMap = { 'zaptec-1': true };
+    state.controllableMap = { 'zaptec-1': false };
+    state.budgetExemptMap = {};
+    state.nativeWiringMap = {};
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'zaptec-1': 1 } };
+    state.modeTargets = { Home: {} };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+    openDeviceDetail('zaptec-1');
+    await flushPromises();
+
+    const nativeWiringInput = document.querySelector('#device-detail-native-wiring') as HTMLInputElement | null;
+    const confirmRow = document.querySelector('#device-detail-native-wiring-confirm-row') as HTMLElement | null;
+
+    nativeWiringInput!.checked = true;
+    nativeWiringInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+    expect(confirmRow?.hidden).toBe(false);
+
+    nativeWiringInput!.checked = false;
+    nativeWiringInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    expect(homey.set).toHaveBeenCalledWith(
+      'managed_devices',
+      { 'zaptec-1': false },
+      expect.any(Function),
+    );
+    expect(homey.set).not.toHaveBeenCalledWith(
+      'native_ev_wiring_devices',
+      { 'zaptec-1': false },
+      expect.any(Function),
+    );
+    expect(state.managedMap['zaptec-1']).toBe(false);
+    expect(confirmRow?.hidden).toBe(true);
   });
 
   it('restores the controllable checkbox when saving fails', async () => {
