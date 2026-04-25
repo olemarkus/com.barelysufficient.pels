@@ -67,6 +67,16 @@ describe('device detail diagnostics', () => {
       diagnosticsByDeviceId: {
         'heater-1': {
           currentPenaltyLevel: 2,
+          starvation: {
+            isStarved: true,
+            starvedAccumulatedMs: 23 * 60 * 1000,
+            starvationEpisodeStartedAt: Date.UTC(2026, 3, 20, 11, 0, 0),
+            starvationLastResumedAt: Date.UTC(2026, 3, 20, 11, 15, 0),
+            intendedNormalTargetC: 22,
+            currentTemperatureC: 18.2,
+            starvationCause: 'capacity',
+            starvationPauseReason: null,
+          },
           windows: {
             '1d': {
               unmetDemandMs: 2 * 60 * 60 * 1000,
@@ -175,9 +185,14 @@ describe('device detail diagnostics', () => {
       expect.arrayContaining(['GET', '/ui_device_diagnostics']),
     ]));
     expect(document.getElementById('device-detail-diagnostics-status')?.textContent).toContain('Current penalty level: L2');
-    expect(document.getElementById('device-detail-diagnostics-cards')?.children).toHaveLength(3);
+    expect(document.getElementById('device-detail-diagnostics-status')?.textContent).toContain('Starvation: Starved 23m');
+    expect(document.getElementById('device-detail-diagnostics-cards')?.children).toHaveLength(4);
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Failed activations');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Penalty history');
+    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Starvation');
+    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('18.2C / 22.0C');
+    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('2026-04-20 11:00:00');
+    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('2026-04-20 11:15:00');
   });
 
   it('uses the device target step in the device detail modal and saves normalized values', async () => {
