@@ -15,10 +15,15 @@ import type {
 } from '../utils/types';
 import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from '../plan/planConstants';
 import { LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS } from '../plan/planObservationPolicy';
+import {
+  PELS_MEASURE_STEP_CAPABILITY_ID,
+  PELS_TARGET_STEP_CAPABILITY_ID,
+} from '../core/steppedLoadSyntheticCapabilities';
 
 export const STEPPED_LOAD_COMMAND_STALE_MS = LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS;
 
 export type SteppedLoadDesiredRuntimeState = {
+  capabilityId: typeof PELS_TARGET_STEP_CAPABILITY_ID;
   stepId: string;
   previousStepId?: string;
   changedAtMs: number;
@@ -31,8 +36,10 @@ export type SteppedLoadDesiredRuntimeState = {
 };
 
 export type SteppedLoadReportedRuntimeState = {
+  capabilityId: typeof PELS_MEASURE_STEP_CAPABILITY_ID;
   stepId: string;
   updatedAtMs: number;
+  source: 'flow';
 };
 
 export type DeviceControlRuntimeState = {
@@ -166,6 +173,7 @@ export const markSteppedLoadDesiredStepIssued = (params: {
     : 0;
   /* eslint-disable functional/immutable-data -- Shared runtime cache update. */
   runtimeState.steppedLoadDesiredByDeviceId[deviceId] = {
+    capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
     stepId: desiredStepId,
     previousStepId,
     changedAtMs: issuedAtMs,
@@ -201,8 +209,10 @@ export const reportSteppedLoadActualStep = (params: {
   const previousReport = runtimeState.steppedLoadReportedByDeviceId[deviceId];
   /* eslint-disable functional/immutable-data -- Shared runtime cache update. */
   runtimeState.steppedLoadReportedByDeviceId[deviceId] = {
+    capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
     stepId,
     updatedAtMs: reportedAtMs,
+    source: 'flow',
   };
   /* eslint-enable functional/immutable-data */
 
@@ -349,6 +359,8 @@ export class AppDeviceControlHelpers {
         event: 'stepped_feedback_confirmed',
         deviceId,
         deviceName,
+        measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+        targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
         reportedStepId: stepId,
         desiredStepId: previousDesired.stepId,
         pending: previousDesired.pending,
@@ -359,6 +371,8 @@ export class AppDeviceControlHelpers {
         event: 'stepped_feedback_external_change',
         deviceId,
         deviceName,
+        measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+        targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
         previousStepId: previousReportedStepId,
         newStepId: stepId,
         desiredStepId: previousDesired?.stepId ?? null,
@@ -368,6 +382,8 @@ export class AppDeviceControlHelpers {
         event: 'stepped_feedback_mismatch',
         deviceId,
         deviceName,
+        measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+        targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
         reportedStepId: stepId,
         desiredStepId: previousDesired.stepId,
       });
@@ -376,6 +392,7 @@ export class AppDeviceControlHelpers {
         event: 'stepped_feedback_reported',
         deviceId,
         deviceName,
+        measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
         reportedStepId: stepId,
       });
     }

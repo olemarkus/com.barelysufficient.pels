@@ -47,6 +47,10 @@ import {
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../lib/dailyBudget/dailyBudgetConstants';
 import { getHourBucketKey } from '../lib/utils/dateUtils';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';
+import {
+  PELS_MEASURE_STEP_CAPABILITY_ID,
+  PELS_TARGET_STEP_CAPABILITY_ID,
+} from '../lib/core/steppedLoadSyntheticCapabilities';
 
 const flushPromises = () => new Promise<void>((resolve) => {
   if (typeof setImmediate === 'function') {
@@ -355,6 +359,7 @@ describe('MyApp initialization', () => {
       event: 'stepped_feedback_reported',
       deviceId: 'dev-1',
       deviceName: 'Water heater',
+      measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
       reportedStepId: 'low',
     }));
     expect(infoSpy).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'stepped_feedback_external_change' }));
@@ -386,6 +391,8 @@ describe('MyApp initialization', () => {
       event: 'stepped_feedback_confirmed',
       deviceId: 'dev-1',
       deviceName: 'Water heater',
+      measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+      targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       reportedStepId: 'low',
       desiredStepId: 'low',
       pending: true,
@@ -419,14 +426,18 @@ describe('MyApp initialization', () => {
       status: 'stale',
     };
     runtimeState.steppedLoadReportedByDeviceId['dev-1'] = {
+      capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
       stepId: 'low',
       updatedAtMs: Date.now() - 1000,
+      source: 'flow',
     };
 
     expect((app as any).deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
     expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_feedback_confirmed',
       deviceId: 'dev-1',
+      measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+      targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       reportedStepId: 'max',
       desiredStepId: 'max',
       stale: true,
@@ -456,6 +467,8 @@ describe('MyApp initialization', () => {
       event: 'stepped_feedback_external_change',
       deviceId: 'dev-1',
       deviceName: 'Water heater',
+      measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+      targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       previousStepId: 'low',
       newStepId: 'max',
     }));

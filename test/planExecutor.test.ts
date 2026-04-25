@@ -3,6 +3,7 @@ import { PlanExecutor, type PlanExecutorDeps } from '../lib/plan/planExecutor';
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../lib/plan/planConstants';
 import { createPlanEngineState } from '../lib/plan/planState';
 import { DEVICE_LAST_CONTROLLED_MS } from '../lib/utils/settingsKeys';
+import { PELS_TARGET_STEP_CAPABILITY_ID } from '../lib/core/steppedLoadSyntheticCapabilities';
 import type {
   DevicePlan,
   DevicePlanDevice,
@@ -962,6 +963,11 @@ describe('PlanExecutor stepped loads', () => {
       pendingWindowMs: expect.any(Number),
     });
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect(deps.structuredLog?.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_command_requested',
+      targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+      desiredStepId: 'max',
+    }));
     expect(state.lastRestoreMs).toEqual(expect.any(Number));
   });
 

@@ -18,6 +18,7 @@ import { startRuntimeSpan } from '../lib/utils/runtimeTrace';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { evaluateLowestPriceCard, type LowestPriceCardId } from '../lib/price/priceLowestFlowEvaluator';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
+import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../lib/core/steppedLoadSyntheticCapabilities';
 import {
   registerBudgetExemptionCards,
   registerBudgetExemptionCondition,
@@ -446,6 +447,7 @@ function emitSteppedLoadReportReceivedLog(params: {
     event: 'stepped_load_report_received',
     sourceCardId: params.sourceCardId,
     deviceId: params.deviceId ?? null,
+    capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
     reportedStepId: params.reportedStepId ?? null,
     rawPowerInput: params.rawPowerInput ?? null,
   });
@@ -466,6 +468,7 @@ function emitSteppedLoadReportResolvedLog(params: {
     sourceCardId: params.sourceCardId,
     deviceId: params.deviceId,
     deviceName: params.deviceName,
+    capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
     resolvedStepId: params.resolvedStepId,
     parsedPowerW: params.parsedPowerW ?? null,
     outcome: params.outcome,
@@ -489,6 +492,7 @@ function emitSteppedLoadReportRejectedLog(params: {
     event: 'stepped_load_report_rejected',
     sourceCardId: params.sourceCardId,
     deviceId: params.deviceId ?? null,
+    capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
     reportedStepId: params.reportedStepId ?? null,
     rawPowerInput: params.rawPowerInput ?? null,
     reasonCode,
