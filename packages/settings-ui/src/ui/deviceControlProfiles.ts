@@ -29,6 +29,10 @@ const resolveEstimatedMaxPlanningPowerW = (device: TargetDeviceSnapshot): number
 };
 
 export const createDefaultSteppedLoadProfile = (device: TargetDeviceSnapshot): SteppedLoadProfile => {
+  if (device.suggestedSteppedLoadProfile?.model === 'stepped_load') {
+    return device.suggestedSteppedLoadProfile;
+  }
+
   const maxPlanningPowerW = resolveEstimatedMaxPlanningPowerW(device);
   const lowPlanningPowerW = roundPowerW(Math.max(100, maxPlanningPowerW * 0.5));
   const steps = lowPlanningPowerW < maxPlanningPowerW
@@ -49,7 +53,14 @@ export const createDefaultSteppedLoadProfile = (device: TargetDeviceSnapshot): S
 
 export const getStoredDeviceControlProfile = (deviceId: string) => state.deviceControlProfiles[deviceId] ?? null;
 
+export const isNativeSteppedLoadProfileActive = (device?: TargetDeviceSnapshot | null): boolean => (
+  device?.controlAdapter?.kind === 'capability_adapter'
+  && device.controlAdapter.activationEnabled === true
+  && device.suggestedSteppedLoadProfile?.model === 'stepped_load'
+);
+
 export const getEffectiveControlModel = (device: TargetDeviceSnapshot): DeviceControlModel => {
+  if (isNativeSteppedLoadProfileActive(device)) return 'stepped_load';
   if (device.controlModel) return device.controlModel;
   const storedProfile = getStoredDeviceControlProfile(device.id);
   if (storedProfile?.model === 'stepped_load') return 'stepped_load';

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Device manager coordinates SDK setup, snapshots, realtime updates, and command writes. */
 import Homey from 'homey';
 import { EventEmitter } from 'events';
 import { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
@@ -70,6 +71,7 @@ import {
     type DeviceManagerObservationState,
 } from './deviceManagerObservation';
 import {
+    applyDeviceDriverOverride,
     isDevicePowerCapable,
     parseDevice,
     parseDeviceList,
@@ -79,7 +81,19 @@ import {
     buildNativeEvObservationDevice,
     normalizeNativeEvCapabilityUpdate,
 } from './nativeEvWiring';
+import {
+    observeNativeSteppedLoadCapabilityUpdate,
+    observeNativeSteppedLoadCommandAdapter,
+    resolveObservedNativeSteppedLoadReportedStepId,
+    syncNativeSteppedLoadCommandAdapters,
+} from './deviceManagerNativeSteppedCommand';
 import { applyFreshnessOnlyCapabilityUpdate } from './deviceManagerFreshness';
+import {
+    isNativeSteppedLoadControlEnabled,
+    resolveNativeSteppedLoadCapabilityId,
+    resolveNativeSteppedLoadReportedStepId,
+} from './nativeSteppedLoadWiring';
+import { PELS_MEASURE_STEP_CAPABILITY_ID } from './steppedLoadSyntheticCapabilities';
 
 const MIN_SIGNIFICANT_POWER_W = 5;
 const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
@@ -134,6 +148,15 @@ export class DeviceManager extends EventEmitter {
             value,
         });
         for (const normalizedEvent of normalizedEvents) {
+            const handledNativeSteppedLoadUpdate = this.handleNativeSteppedLoadCapabilityUpdate({
+                snapshotIndex,
+                deviceId,
+                capabilityId: normalizedEvent.capabilityId,
+                value: normalizedEvent.value,
+                snapshot,
+            });
+            if (handledNativeSteppedLoadUpdate) continue;
+
             const resolvedEvent = this.resolveRealtimeCapabilityEvent(
                 snapshot,
                 normalizedEvent.capabilityId,
@@ -177,6 +200,111 @@ export class DeviceManager extends EventEmitter {
             );
         }
     };
+
+    private handleNativeSteppedLoadCapabilityUpdate(params: {
+        snapshotIndex: number;
+        deviceId: string;
+        capabilityId: string;
+        value: unknown;
+        snapshot: TargetDeviceSnapshot;
+    }): boolean {
+        const {
+            snapshotIndex,
+            deviceId,
+            capabilityId,
+            value,
+            snapshot,
+        } = params;
+        if (!isNativeSteppedLoadControlEnabled(snapshot)) return false;
+        const profile = snapshot.suggestedSteppedLoadProfile;
+        if (profile?.model !== 'stepped_load') return false;
+
+        const nativeCapabilityId = resolveNativeSteppedLoadCapabilityId([capabilityId]);
+        const isNativePowerStepUpdate = nativeCapabilityId !== undefined;
+        const isNativeBinaryUpdate = capabilityId === snapshot.controlCapabilityId && typeof value === 'boolean';
+        if (!isNativePowerStepUpdate && !isNativeBinaryUpdate) return false;
+
+        const normalizedValue = this.normalizeRealtimeCapabilityEventValue(capabilityId, value);
+        if (this.hasMatchingRecentLocalWrite(deviceId, capabilityId, normalizedValue)) {
+            return isNativePowerStepUpdate;
+        }
+
+        observeNativeSteppedLoadCapabilityUpdate({
+            owner: this,
+            deviceId,
+            capabilityId,
+            value,
+        });
+
+        const fallbackReportedStepId = value === false ? resolveNativeSteppedLoadReportedStepId({
+            profile,
+            capabilities: [],
+            capabilityObj: {
+                onoff: { value: false },
+            },
+        }) : undefined;
+        const nextReportedStepId = resolveObservedNativeSteppedLoadReportedStepId({
+            owner: this,
+            deviceId,
+            profile,
+        }) ?? fallbackReportedStepId;
+
+        const currentSnapshot = this.latestSnapshot[snapshotIndex];
+        const previousReportedStepId = currentSnapshot.reportedStepId;
+        if (nextReportedStepId) currentSnapshot.reportedStepId = nextReportedStepId;
+        else delete currentSnapshot.reportedStepId;
+        currentSnapshot.lastFreshDataMs = Date.now();
+        currentSnapshot.lastUpdated = currentSnapshot.lastFreshDataMs;
+        if (previousReportedStepId !== nextReportedStepId) {
+            this.emitNativeSteppedLoadReportedStepChanged({
+                deviceId,
+                deviceName: currentSnapshot.name,
+                previousReportedStepId,
+                nextReportedStepId,
+            });
+        }
+        return isNativePowerStepUpdate;
+    }
+
+    private emitNativeSteppedLoadReportedStepChanged(params: {
+        deviceId: string;
+        deviceName: string;
+        previousReportedStepId: string | undefined;
+        nextReportedStepId: string | undefined;
+    }): void {
+        const {
+            deviceId,
+            deviceName,
+            previousReportedStepId,
+            nextReportedStepId,
+        } = params;
+        const change = {
+            capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+            previousValue: previousReportedStepId ?? 'unknown',
+            nextValue: nextReportedStepId ?? 'unknown',
+        };
+        this.emitCapabilityEventReceived(
+            deviceId,
+            PELS_MEASURE_STEP_CAPABILITY_ID,
+            nextReportedStepId ?? 'unknown',
+        );
+        this.logger.structuredLog?.info({
+            event: 'realtime_capability_drift',
+            deviceId,
+            capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+            changes: [change],
+        });
+        this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, {
+            source: 'realtime_capability',
+            deviceId,
+            capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+        } satisfies ObservedDeviceStateEvent);
+        this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, {
+            deviceId,
+            name: deviceName,
+            changes: [change],
+        } satisfies PlanRealtimeUpdateEvent);
+    }
 
     private handleFreshnessOnlyCapabilityUpdate(
         snapshotIndex: number,
@@ -447,9 +575,18 @@ export class DeviceManager extends EventEmitter {
 
     private readonly handleRealtimeDeviceUpdate = (device: HomeyDeviceLike): void => {
         const deviceId = getDeviceId(device);
+        const effectiveDevice = this.applyDeviceDriverOverride(device);
+        if (deviceId && this.shouldTrackRealtimeDevice(deviceId)) {
+            observeNativeSteppedLoadCommandAdapter({
+                owner: this,
+                deviceId,
+                device: effectiveDevice,
+                clearWhenUnavailable: true,
+            });
+        }
         const previousSnapshot = this.latestSnapshotById.get(deviceId);
         const observedDevice = buildNativeEvObservationDevice({
-            device,
+            device: effectiveDevice,
             previousSnapshot,
         });
         const result = handleRealtimeDeviceUpdate({
@@ -533,13 +670,8 @@ export class DeviceManager extends EventEmitter {
         return this.updateHomePowerFromReport(await this.fetchLivePowerReport());
     }
     setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void { this.setSnapshot(snapshot); }
-    setSnapshot(snapshot: TargetDeviceSnapshot[]): void {
-        this.latestSnapshot = snapshot;
-        this.syncLatestSnapshotIndex();
-    }
-    /** Inject a device update directly into the reconcile path. Test-only. */
+    setSnapshot(s: TargetDeviceSnapshot[]): void { this.latestSnapshot = s; this.syncLatestSnapshotIndex(); }
     injectDeviceUpdateForTest(device: HomeyDeviceLike): void { this.handleRealtimeDeviceUpdate(device); }
-    /** Inject a per-capability event directly into the reconcile path. Test-only. */
     injectCapabilityUpdateForTest(deviceId: string, capabilityId: string, value: unknown): void {
         this.handleRealtimeCapabilityUpdate(deviceId, capabilityId, value);
     }
@@ -634,12 +766,15 @@ export class DeviceManager extends EventEmitter {
                 ? buildEmptyLivePowerReport()
                 : await this.fetchLivePowerReport();
             this.updateHomePowerFromReport(livePowerReport);
-            const snapshot = this.parseDeviceList(list, livePowerReport.byDeviceId);
+            const effectiveList = list.map((device) => this.applyDeviceDriverOverride(device));
+            syncNativeSteppedLoadCommandAdapters({ owner: this, devices: effectiveList,
+                shouldTrackDevice: (deviceId) => this.shouldTrackRealtimeDevice(deviceId) });
+            const snapshot = this.parseDeviceList(effectiveList, livePowerReport.byDeviceId);
             mergeFresherCapabilityObservations({
                 state: this.observationState,
                 previousSnapshot,
                 nextSnapshot: snapshot,
-                devices: list,
+                devices: effectiveList,
                 targetedRefreshPollAtMs: isTargetedRefresh ? start : undefined,
                 logger: this.logger,
             });
@@ -886,6 +1021,13 @@ export class DeviceManager extends EventEmitter {
 
     private shouldTrackRealtimeDevice(deviceId: string): boolean {
         return this.providers.getManaged ? this.providers.getManaged(deviceId) === true : true;
+    }
+
+    private applyDeviceDriverOverride(device: HomeyDeviceLike): HomeyDeviceLike {
+        return applyDeviceDriverOverride(
+            device,
+            this.providers.getDeviceDriverIdOverride?.(getDeviceId(device)),
+        );
     }
 
     public destroy(): void {

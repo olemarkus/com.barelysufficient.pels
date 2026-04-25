@@ -1,5 +1,5 @@
 import { shouldEmitOnChange } from '../logging/logDedupe';
-import type { DeviceControlAdapterSnapshot, HomeyDeviceLike, Logger } from '../utils/types';
+import type { DeviceControlAdapterSnapshot, HomeyDeviceLike, Logger, SteppedLoadProfile } from '../utils/types';
 import {
   augmentCapabilitiesWithFlowReports,
   getFlowEffectiveRequiredCapabilitiesForType,
@@ -14,6 +14,13 @@ import {
 import type { DeviceCapabilityMap } from './deviceManagerControl';
 import { resolveDeviceCapabilities } from './deviceManagerParse';
 import type { DeviceManagerParseProviders } from './deviceManagerParseDevice';
+import {
+  buildNativeSteppedLoadControlAdapter,
+  isNativeSteppedLoadWiringCandidate,
+  resolveNativeSteppedLoadProfileSuggestion,
+  resolveNativeSteppedLoadReportedStepId,
+  stripNativeSteppedLoadControlCapabilities,
+} from './nativeSteppedLoadWiring';
 
 export type FlowEffectiveRequiredCapabilityId =
   'onoff'
@@ -44,6 +51,8 @@ export function resolveFlowCapabilityOverlay(params: {
   flowBackedCapabilityIds: FlowReportedCapabilityId[];
   requiredFlowCapabilityIds: readonly FlowEffectiveRequiredCapabilityId[];
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
+  reportedStepId?: string;
+  suggestedSteppedLoadProfile?: SteppedLoadProfile;
 } {
   const {
     device,
@@ -68,6 +77,13 @@ export function resolveFlowCapabilityOverlay(params: {
 
   const overlayCapabilities = nativeEvOverlay.capabilities;
   const overlayCapabilityObj = nativeEvOverlay.capabilityObj;
+  const nativeSteppedOverlay = resolveNativeSteppedLoadOverlay({
+    device,
+    deviceId,
+    capabilities: overlayCapabilities,
+    capabilityObj: overlayCapabilityObj,
+    providers,
+  });
   const targetCapabilityIds = overlayCapabilities.filter(
     (capabilityId) => capabilityId.startsWith('target_temperature'),
   );
@@ -98,15 +114,55 @@ export function resolveFlowCapabilityOverlay(params: {
   });
 
   return {
-    capabilities,
+    capabilities: stripNativeSteppedLoadControlCapabilities({ device, capabilities }),
     capabilityObj,
-    controlAdapter: nativeEvOverlay.controlAdapter,
+    controlAdapter: nativeSteppedOverlay.controlAdapter ?? nativeEvOverlay.controlAdapter,
     controlWriteCapabilityId: nativeEvOverlay.controlWriteCapabilityId,
     controlObservationCapabilityId: nativeEvOverlay.controlObservationCapabilityId,
     flowAugmentedDeviceType,
     flowBackedCapabilityIds,
     requiredFlowCapabilityIds,
     reportedCapabilities,
+    reportedStepId: nativeSteppedOverlay.reportedStepId,
+    suggestedSteppedLoadProfile: nativeSteppedOverlay.suggestedSteppedLoadProfile,
+  };
+}
+
+function resolveNativeSteppedLoadOverlay(params: {
+  device: HomeyDeviceLike;
+  deviceId: string;
+  capabilities: string[];
+  capabilityObj: DeviceCapabilityMap;
+  providers: DeviceManagerParseProviders;
+}): {
+  controlAdapter?: DeviceControlAdapterSnapshot;
+  reportedStepId?: string;
+  suggestedSteppedLoadProfile?: SteppedLoadProfile;
+} {
+  const {
+    device,
+    deviceId,
+    capabilities,
+    capabilityObj,
+    providers,
+  } = params;
+  const suggestedSteppedLoadProfile = resolveNativeSteppedLoadProfileSuggestion({ device, capabilities });
+  if (!suggestedSteppedLoadProfile) return {};
+
+  const nativeSteppedCandidate = isNativeSteppedLoadWiringCandidate({ device, capabilities });
+  if (!nativeSteppedCandidate) return { suggestedSteppedLoadProfile };
+
+  const nativeSteppedEnabled = providers.getNativeEvWiringEnabled?.(deviceId) === true;
+  return {
+    controlAdapter: buildNativeSteppedLoadControlAdapter({ nativeWiringEnabled: nativeSteppedEnabled }),
+    reportedStepId: nativeSteppedEnabled
+      ? resolveNativeSteppedLoadReportedStepId({
+        profile: suggestedSteppedLoadProfile,
+        capabilities,
+        capabilityObj,
+      })
+      : undefined,
+    suggestedSteppedLoadProfile,
   };
 }
 

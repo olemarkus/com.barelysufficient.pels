@@ -42,5 +42,8 @@ export const requiresNativeWiringForActivation = (device?: TargetDeviceSnapshot 
 
 export const supportsNativeWiringActivation = (device?: TargetDeviceSnapshot | null): boolean => (
   device?.controlAdapter?.kind === 'capability_adapter'
-  && device.controlAdapter.activationRequired === true
+  && (
+    device.controlAdapter.activationRequired === true
+    || device.controlAdapter.activationAvailable === true
+  )
 );

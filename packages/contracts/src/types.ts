@@ -32,6 +32,7 @@ export type DeviceControlProfiles = Record<string, DeviceControlProfile>;
 
 export type DeviceControlAdapterSnapshot = {
     kind: 'capability_adapter';
+    activationAvailable?: boolean;
     activationRequired: boolean;
     activationEnabled: boolean;
 };
@@ -49,6 +50,7 @@ export type TargetDeviceSnapshot = {
     controlAdapter?: DeviceControlAdapterSnapshot;
     controlWriteCapabilityId?: string;
     controlObservationCapabilityId?: string;
+    suggestedSteppedLoadProfile?: SteppedLoadProfile;
     powerKw?: number;
     expectedPowerKw?: number;
     planningPowerKw?: number;
