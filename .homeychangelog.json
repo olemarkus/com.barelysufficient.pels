@@ -322,5 +322,8 @@
   },
   "2.2.0": {
     "en": "Add native support for zaptec go chargers."
+  },
+  "2.3.0": {
+    "en": "Add support for previewing/approving new budget."
   }
 }
