@@ -21,6 +21,7 @@ import {
   applyLocalDeviceControlProfile,
   createDefaultSteppedLoadProfile,
   getEffectiveControlModel,
+  isNativeSteppedLoadProfileActive,
 } from '../deviceControlProfiles.ts';
 import {
   requiresNativeWiringForActivation,
@@ -146,8 +147,9 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   setDeviceDetailBudgetExemptState(device);
   if (deviceDetailControlModel && deviceDetailControlModelRow) {
     const effectiveControlModel = device ? getEffectiveControlModel(device) : 'temperature_target';
+    const nativeSteppedLoadLocked = isNativeSteppedLoadProfileActive(device);
     deviceDetailControlModel.value = effectiveControlModel === 'stepped_load' ? 'stepped_load' : 'temperature_target';
-    deviceDetailControlModel.disabled = !controlState.canManageDevice;
+    deviceDetailControlModel.disabled = !controlState.canManageDevice || nativeSteppedLoadLocked;
     deviceDetailControlModelRow.hidden = !controlState.canManageDevice;
   }
 };
@@ -347,6 +349,10 @@ const initDeviceDetailControlModelHandler = () => {
 
     const device = getDeviceById(deviceId);
     if (!device) return;
+    if (isNativeSteppedLoadProfileActive(device)) {
+      refreshOpenDeviceDetail();
+      return;
+    }
 
     const nextProfile = deviceDetailControlModel.value === 'stepped_load'
       ? resolveSavedSteppedLoadProfile(device) ?? createDefaultSteppedLoadProfile(device)

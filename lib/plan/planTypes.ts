@@ -2,6 +2,7 @@ import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSe
 import type { PowerFreshnessState } from './planPowerFreshness';
 import type {
   DeviceControlModel,
+  DeviceControlAdapterSnapshot,
   SteppedLoadActualStepSource,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
@@ -67,6 +68,7 @@ export type DevicePlanDevice = {
   actualStepSource?: SteppedLoadActualStepSource;
   hasBinaryControl?: boolean;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  controlAdapter?: DeviceControlAdapterSnapshot;
   evChargingState?: string;
   priority?: number;
   powerKw?: number;
@@ -185,6 +187,7 @@ export type PlanInputDevice = {
   actualStepSource?: SteppedLoadActualStepSource;
   hasBinaryControl?: boolean;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  controlAdapter?: DeviceControlAdapterSnapshot;
   priority?: number;
   // Raw observed binary snapshot input. Planner decisions should resolve through currentState helpers.
   currentOn: boolean;

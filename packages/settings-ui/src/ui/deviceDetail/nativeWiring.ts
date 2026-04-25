@@ -100,7 +100,7 @@ export const initDeviceDetailNativeWiringHandler = (params: {
       key: NATIVE_EV_WIRING_DEVICES,
       context: 'device detail',
       logMessage: 'Failed to update native wiring setting',
-      toastMessage: 'Failed to update built-in charger control.',
+      toastMessage: 'Failed to update built-in device control.',
       fallbackValue: {},
       readFresh: readRecordSetting<boolean>,
       mutate: (currentMap) => ({
@@ -135,7 +135,8 @@ export const initDeviceDetailNativeWiringHandler = (params: {
     }
 
     nativeWiringActivationPendingDeviceId = null;
-    if (!await disableManagedForDevice(deviceId)) return;
+    const nativeWiringRequired = device.controlAdapter?.activationRequired === true;
+    if (nativeWiringRequired && !await disableManagedForDevice(deviceId)) return;
 
     if (!nativeWiringEffectiveEnabled) {
       refreshSharedDeviceViews();

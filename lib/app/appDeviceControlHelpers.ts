@@ -5,6 +5,7 @@ import {
   normalizeDeviceControlProfiles,
   resolveSteppedLoadPlanningPowerKw,
 } from '../utils/deviceControlProfiles';
+import { isNativeSteppedLoadControlEnabled } from '../core/nativeSteppedLoadWiring';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type {
   DeviceControlModel,
@@ -70,6 +71,12 @@ export const resolveDefaultControlModel = (device: TargetDeviceSnapshot): Device
   return 'binary_power';
 };
 
+const resolveNativeSteppedLoadProfile = (snapshot: TargetDeviceSnapshot): SteppedLoadProfile | null => (
+  isNativeSteppedLoadControlEnabled(snapshot) && snapshot.suggestedSteppedLoadProfile?.model === 'stepped_load'
+    ? snapshot.suggestedSteppedLoadProfile
+    : null
+);
+
 const resolveSteppedLoadActualStepSource = (params: {
   reportedStepId?: string;
   assumedStepId?: string;
@@ -101,8 +108,10 @@ export const decorateSnapshotWithDeviceControl = (params: {
   nowMs?: number;
 }): TargetDeviceSnapshot => {
   const { snapshot, profiles, runtimeState, nowMs = Date.now() } = params;
-  const profile = profiles[snapshot.id];
-  if (!profile || profile.model !== 'stepped_load') {
+  const nativeProfile = resolveNativeSteppedLoadProfile(snapshot);
+  const storedProfile = profiles[snapshot.id];
+  const profile = nativeProfile ?? (storedProfile?.model === 'stepped_load' ? storedProfile : null);
+  if (!profile) {
     return {
       ...snapshot,
       controlModel: resolveDefaultControlModel(snapshot),
@@ -113,7 +122,27 @@ export const decorateSnapshotWithDeviceControl = (params: {
 
   const desired = runtimeState.steppedLoadDesiredByDeviceId[snapshot.id];
   const reported = runtimeState.steppedLoadReportedByDeviceId[snapshot.id];
-  const reportedStepId = getSteppedLoadStep(profile, reported?.stepId)?.id;
+  const nativeSteppedControlEnabled = nativeProfile !== null;
+  const nativeReportedStepId = nativeSteppedControlEnabled
+    ? getSteppedLoadStep(profile, snapshot.reportedStepId)?.id
+    : undefined;
+  if (nativeSteppedControlEnabled && reported) {
+    /* eslint-disable-next-line functional/immutable-data -- Shared stepped-load runtime cache update. */
+    delete runtimeState.steppedLoadReportedByDeviceId[snapshot.id];
+  }
+  if (nativeReportedStepId && desired?.stepId === nativeReportedStepId) {
+    /* eslint-disable-next-line functional/immutable-data -- Shared stepped-load runtime cache update. */
+    runtimeState.steppedLoadDesiredByDeviceId[snapshot.id] = {
+      ...desired,
+      retryCount: 0,
+      nextRetryAtMs: undefined,
+      pending: false,
+      status: 'success',
+    };
+  }
+  const reportedStepId = nativeSteppedControlEnabled
+    ? nativeReportedStepId
+    : getSteppedLoadStep(profile, reported?.stepId)?.id;
   const desiredStepId = getSteppedLoadStep(profile, desired?.stepId)?.id;
   const fallbackStepId = getSteppedLoadLowestActiveStep(profile)?.id;
   const assumedStepId = reportedStepId ? undefined : fallbackStepId;
@@ -277,6 +306,11 @@ export class AppDeviceControlHelpers {
   }) {}
 
   getSteppedLoadProfile(deviceId: string): SteppedLoadProfile | null {
+    const snapshot = this.deps.getDeviceSnapshots().find((device) => device.id === deviceId);
+    if (snapshot) {
+      const nativeProfile = resolveNativeSteppedLoadProfile(snapshot);
+      if (nativeProfile) return nativeProfile;
+    }
     const profile = this.deps.getProfiles()[deviceId];
     return profile?.model === 'stepped_load' ? profile : null;
   }
@@ -307,6 +341,11 @@ export class AppDeviceControlHelpers {
   reportSteppedLoadActualStep(deviceId: string, stepId: string): ReportSteppedLoadActualStepResult {
     const snapshot = this.deps.getDeviceSnapshots().find((device) => device.id === deviceId);
     const deviceName = snapshot ? snapshot.name.trim() : `device ${deviceId}`;
+    if (snapshot && isNativeSteppedLoadControlEnabled(snapshot)) {
+      delete this.runtimeState.steppedLoadReportedByDeviceId[deviceId];
+      this.deps.logDebug('devices', `Stepped load feedback ignored for ${deviceName}: native wiring is enabled`);
+      return 'unchanged';
+    }
     const previousReportedStepId = this.runtimeState.steppedLoadReportedByDeviceId[deviceId]?.stepId;
     const previousDesired = this.runtimeState.steppedLoadDesiredByDeviceId[deviceId];
     const changed = reportSteppedLoadActualStep({

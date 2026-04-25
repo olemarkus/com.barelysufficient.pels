@@ -671,6 +671,7 @@ class PelsApp extends Homey.App {
       getExperimentalEvSupportEnabled: () => this.experimentalEvSupportEnabled,
       getNativeEvWiringEnabled: (id) => this.nativeEvWiringDevices[id] === true,
       getDeviceDriverIdOverride: (id) => this.getDeviceDriverIdOverride(id),
+      getDeviceControlProfile: (id) => this.deviceControlProfiles[id],
       getFlowReportedCapabilities: (deviceId) => this.getFlowReportedCapabilitiesForDevice(deviceId),
     }, {
       expectedPowerKwOverrides: this.expectedPowerKwOverrides,

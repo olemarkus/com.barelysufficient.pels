@@ -150,7 +150,7 @@ describe('device detail managed state saves', () => {
     expect(managedInput?.checked).toBe(false);
   });
 
-  it('requires transient confirmation before enabling built-in charger control', async () => {
+  it('requires transient confirmation before enabling built-in device control', async () => {
     vi.doMock('../src/ui/devices.ts', () => ({
       renderDevices: vi.fn(),
     }));
@@ -262,7 +262,7 @@ describe('device detail managed state saves', () => {
     expect(state.managedMap['zaptec-1']).toBe(false);
   });
 
-  it('clears stale managed state when built-in charger control is already off', async () => {
+  it('clears stale managed state when built-in device control is already off', async () => {
     vi.doMock('../src/ui/devices.ts', () => ({
       renderDevices: vi.fn(),
     }));
@@ -680,6 +680,115 @@ describe('device detail managed state saves', () => {
 
     expect(detailTitle?.textContent).toBe('Bedroom Heater');
     expect(cheapDeltaInput?.value).toBe('99');
+  });
+
+  it('locks stepped-load profile editing to device-supported steps when native wiring is enabled', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const controlModelInput = document.querySelector('#device-detail-control-model') as HTMLSelectElement | null;
+    controlModelInput!.innerHTML = `
+      <option value="temperature_target">Temperature target</option>
+      <option value="stepped_load">Stepped load</option>
+    `;
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      settings: {
+        device_control_profiles: {
+          'hoiax-1': {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'eco', planningPowerW: 900 },
+              { id: 'boost', planningPowerW: 4000 },
+            ],
+          },
+        },
+      },
+    });
+    homeyModule.setHomeyClient(homey);
+
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [buildDevice('hoiax-1', 'Connected 300', {
+      controlAdapter: {
+        kind: 'capability_adapter',
+        activationAvailable: true,
+        activationRequired: false,
+        activationEnabled: true,
+      },
+      suggestedSteppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1250 },
+          { id: 'medium', planningPowerW: 1750 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+    })];
+    state.managedMap = { 'hoiax-1': true };
+    state.controllableMap = { 'hoiax-1': true };
+    state.budgetExemptMap = {};
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'hoiax-1': 1 } };
+    state.modeTargets = { Home: { 'hoiax-1': 20 } };
+    state.deviceControlProfiles = homey.__settingsStore.device_control_profiles as typeof state.deviceControlProfiles;
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+    openDeviceDetail('hoiax-1');
+    await flushPromises();
+
+    const stepIds = Array.from(
+      document.querySelectorAll('#device-detail-stepped-steps [data-step-field="id"]'),
+    ) as HTMLInputElement[];
+    const planningInputs = Array.from(
+      document.querySelectorAll('#device-detail-stepped-steps [data-step-field="planningPowerW"]'),
+    ) as HTMLInputElement[];
+    const addButton = document.querySelector('#device-detail-stepped-add-step') as HTMLButtonElement | null;
+    const resetButton = document.querySelector('#device-detail-stepped-reset') as HTMLButtonElement | null;
+    const saveButton = document.querySelector('#device-detail-stepped-save') as HTMLButtonElement | null;
+    const removeButtons = Array.from(
+      document.querySelectorAll('#device-detail-stepped-steps button'),
+    ) as HTMLButtonElement[];
+
+    expect(controlModelInput?.value).toBe('stepped_load');
+    expect(controlModelInput?.disabled).toBe(true);
+    expect(stepIds.map((input) => input.value)).toEqual(['off', 'low', 'medium', 'max']);
+    expect(planningInputs.map((input) => input.value)).toEqual(['0', '1250', '1750', '3000']);
+    expect(stepIds.every((input) => input.disabled)).toBe(true);
+    expect(planningInputs.every((input) => input.disabled)).toBe(true);
+    expect(removeButtons.every((button) => button.disabled)).toBe(true);
+    expect(addButton?.disabled).toBe(true);
+    expect(resetButton?.disabled).toBe(true);
+    expect(saveButton?.disabled).toBe(true);
+
+    saveButton?.dispatchEvent(new Event('click', { bubbles: true }));
+    controlModelInput!.value = 'temperature_target';
+    controlModelInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+    await flushPromises();
+
+    expect(homey.set).not.toHaveBeenCalledWith('device_control_profiles', expect.anything(), expect.any(Function));
+    expect(controlModelInput?.value).toBe('stepped_load');
   });
 
   it('serializes control-model saves so concurrent devices do not lose earlier updates', async () => {
