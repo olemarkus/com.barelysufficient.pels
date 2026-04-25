@@ -2242,6 +2242,12 @@ describe('buildSheddingPlan', () => {
       allShedCandidatesExhausted: true,
       controlRecoverable: false,
     });
+    expect(capacityGuard.checkShortfall).toHaveBeenCalledWith(false, expect.closeTo(0.8, 6), expect.objectContaining({
+      remainingReducibleControlledLoadW: 0,
+      remainingReducibleControlledLoad: false,
+      remainingActionableControlledLoadW: 0,
+      remainingActionableControlledLoad: false,
+    }));
   });
 
   it('counts stepped lowest non-zero load as blocked-or-minimum, not reducible, when cooldown blocks further shedding', async () => {

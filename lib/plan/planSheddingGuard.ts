@@ -4,13 +4,14 @@ import type { PlanCapacityStateSummary } from '../core/capacityStateSummary';
 import type { PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanContext } from './planContext';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
-import { resolveCandidatePower } from './planCandidatePower';
-import {
-  getSteppedLoadShedTargetStep,
-  isSteppedLoadDevice,
-  resolveSteppedUnknownCurrentMeasuredShedding,
-} from './planSteppedLoad';
 import { buildPlanInputCapacityStateSummary } from './planLogging';
+import {
+  isCapacityBreached,
+  normalizeRemainingShedBehavior,
+  resolveRemainingSheddableLoadKw,
+  sumRemainingSheddableLoadKw,
+  toInputRemainingSheddableDevice,
+} from './planRemainingSheddableLoad';
 import { sumControlledUsageKw } from './planUsage';
 
 function handleShortfallCheck(
@@ -36,11 +37,6 @@ function computeShortfallDeficitKw(total: number | null, shortfallThreshold: num
   return Math.max(0, total - shortfallThreshold);
 }
 
-function resolveReduciblePowerKw(device: PlanInputDevice): number | null {
-  const power = resolveCandidatePower(device);
-  return power !== null && power > 0 ? power : null;
-}
-
 function sumRemainingReducibleControlledLoadKw(params: {
   devices: PlanInputDevice[];
   shedSet: Set<string>;
@@ -51,58 +47,13 @@ function sumRemainingReducibleControlledLoadKw(params: {
 }): number {
   const { devices, shedSet, limitSource, total, capacitySoftLimit, getShedBehavior } = params;
   const capacityBreached = isCapacityBreached(total, capacitySoftLimit);
-  let totalKw = 0;
-  for (const device of devices) {
-    const reduciblePowerKw = resolveReducibleControlledLoadCandidatePowerKw({
-      device,
-      shedSet,
-      limitSource,
-      capacityBreached,
-      getShedBehavior,
-    });
-    if (reduciblePowerKw === null) continue;
-    totalKw += reduciblePowerKw;
-  }
-  return totalKw;
-}
-
-function resolveReducibleControlledLoadCandidatePowerKw(params: {
-  device: PlanInputDevice;
-  shedSet: Set<string>;
-  limitSource: PlanContext['softLimitSource'];
-  capacityBreached: boolean;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
-}): number | null {
-  const { device, shedSet, limitSource, capacityBreached, getShedBehavior } = params;
-  const effectiveCurrentOn = resolveEffectiveCurrentOn(device);
-  if (device.controllable === false || effectiveCurrentOn === false || shedSet.has(device.id)) return null;
-  if (limitSource === 'daily' && !capacityBreached && device.budgetExempt === true) return null;
-  const reduciblePowerKw = resolveReduciblePowerKw(device);
-  if (reduciblePowerKw === null) return null;
-  return canStillReduceSteppedLoad(device, getShedBehavior) ? reduciblePowerKw : null;
-}
-
-function canStillReduceSteppedLoad(
-  device: PlanInputDevice,
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null },
-): boolean {
-  if (!isSteppedLoadDevice(device)) return true;
-  const shedBehavior = getShedBehavior(device.id);
-  if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
-    return true;
-  }
-  if (!device.selectedStepId) {
-    return Boolean(resolveSteppedUnknownCurrentMeasuredShedding({
-      device,
-      shedAction: shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',
-    }));
-  }
-  const targetStep = getSteppedLoadShedTargetStep({
-    device,
-    shedAction: shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',
-    currentDesiredStepId: device.selectedStepId,
+  return sumRemainingSheddableLoadKw({
+    devices: devices.map(toInputRemainingSheddableDevice),
+    shedBehaviorForDevice: (device) => normalizeRemainingShedBehavior(getShedBehavior(device.id)),
+    isAlreadyShed: (device) => shedSet.has(device.id),
+    limitSource,
+    capacityBreached,
   });
-  return Boolean(targetStep && targetStep.id !== device.selectedStepId);
 }
 
 function buildShortfallCapacityStateSummary(params: {
@@ -128,7 +79,7 @@ function buildShortfallCapacityStateSummary(params: {
     total,
     capacitySoftLimit,
     getShedBehavior,
-  }) * 1000);
+  }));
 
   return {
     ...summary,
@@ -193,31 +144,14 @@ export function countRemainingCandidates(params: {
       return d.controllable !== false && effectiveCurrentOn !== false && !shedSet.has(d.id);
     })
     .filter((d) => limitSource !== 'daily' || capacityBreached || d.budgetExempt !== true)
-    .filter((d) => {
-      if (resolveReduciblePowerKw(d) === null) return false;
-      if (isSteppedLoadDevice(d)) {
-        const shedBehavior = getShedBehavior(d.id);
-        if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) return true;
-        if (!d.selectedStepId) {
-          return Boolean(resolveSteppedUnknownCurrentMeasuredShedding({
-            device: d,
-            shedAction: shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',
-          }));
-        }
-        const targetStep = getSteppedLoadShedTargetStep({
-          device: d,
-          shedAction: shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',
-          currentDesiredStepId: d.selectedStepId,
-        });
-        return Boolean(targetStep && targetStep.id !== d.selectedStepId);
-      }
-      return true;
-    })
+    .filter((d) => resolveRemainingSheddableLoadKw({
+      device: toInputRemainingSheddableDevice(d),
+      shedBehavior: normalizeRemainingShedBehavior(getShedBehavior(d.id)),
+      alreadyShed: false,
+      limitSource,
+      capacityBreached,
+    }) > 0)
     .length;
-}
-
-export function isCapacityBreached(total: number | null, capacitySoftLimit: number): boolean {
-  return typeof total === 'number' && Number.isFinite(total) && total > capacitySoftLimit;
 }
 
 export function resolvePlanningTotalPower(total: number | null, powerKnown: boolean): number | null {

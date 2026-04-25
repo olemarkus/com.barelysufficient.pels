@@ -357,6 +357,88 @@ describe('plan logging helpers', () => {
     }));
   });
 
+  it('does not count a stepped load at its configured shed step as remaining reducible', () => {
+    const plan = {
+      meta: {
+        headroomKw: -0.5,
+        totalKw: 4,
+        softLimitKw: 0,
+        capacitySoftLimitKw: 0,
+        softLimitSource: 'capacity',
+      },
+      devices: [
+        {
+          id: 'connected-300',
+          name: 'Connected 300',
+          plannedState: 'keep',
+          currentOn: true,
+          currentState: 'on',
+          controllable: true,
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'Low', planningPowerW: 1250 },
+              { id: 'Medium', planningPowerW: 2500 },
+            ],
+          },
+          selectedStepId: undefined,
+          desiredStepId: 'Low',
+          targetStepId: 'Low',
+          measuredPowerKw: 1.193,
+          expectedPowerKw: 1.25,
+          shedAction: 'set_step',
+          reason: r('shed invariant: Low -> Medium blocked (11 device(s) shed, max step: Low)'),
+        },
+      ],
+    } as unknown as DevicePlan;
+
+    expect(buildPlanCapacityStateSummary(plan)).toEqual(expect.objectContaining({
+      activeControlledDevices: 1,
+      blockedByInvariantDevices: 1,
+      remainingReducibleControlledLoadW: 0,
+      remainingReducibleControlledLoad: false,
+      remainingActionableControlledLoadW: 0,
+      remainingActionableControlledLoad: false,
+    }));
+  });
+
+  it('does not count a target device already at its shed temperature as remaining reducible', () => {
+    const plan = {
+      meta: {
+        headroomKw: -0.8,
+        totalKw: 4.8,
+        softLimitKw: 4,
+        capacitySoftLimitKw: 4,
+        softLimitSource: 'capacity',
+      },
+      devices: [
+        {
+          id: 'heater-at-shed-temp',
+          name: 'Heater At Shed Temp',
+          plannedState: 'keep',
+          currentOn: true,
+          currentState: 'on',
+          currentTarget: 15,
+          plannedTarget: 15,
+          controllable: true,
+          expectedPowerKw: 0.8,
+          shedAction: 'set_temperature',
+          shedTemperature: 15,
+          reason: KEEP_REASON,
+        },
+      ],
+    } as unknown as DevicePlan;
+
+    expect(buildPlanCapacityStateSummary(plan)).toEqual(expect.objectContaining({
+      remainingReducibleControlledLoadW: 0,
+      remainingReducibleControlledLoad: false,
+      remainingActionableControlledLoadW: 0,
+      remainingActionableControlledLoad: false,
+    }));
+  });
+
   it('returns explicit null summary fields when no plan is available', () => {
     expect(buildPlanCapacityStateSummary(null)).toEqual({
       controlledDevices: null,
