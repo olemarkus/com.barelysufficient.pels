@@ -47,7 +47,7 @@ import {
   refreshDailyBudgetPlan,
 } from './dailyBudget.ts';
 import { loadDailyBudgetTuningSettings } from './dailyBudgetTuning.ts';
-import { parsePlanSnapshot, refreshPlan, renderPlan, type PlanSnapshot } from './plan.ts';
+import { parsePlanSnapshot, refreshPlan, renderPlan, updatePlanPower, type PlanSnapshot } from './plan.ts';
 import { refreshAdvancedDeviceCleanup } from './advanced.ts';
 import { loadShedBehaviors } from './deviceDetail/index.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
@@ -298,7 +298,9 @@ const handlePricesUpdated = () => {
 };
 
 const handlePowerUpdated = (power: unknown) => {
-  primeApiCache(SETTINGS_UI_POWER_PATH, power as SettingsUiPowerPayload);
+  const payload = power as SettingsUiPowerPayload;
+  primeApiCache(SETTINGS_UI_POWER_PATH, payload);
+  updatePlanPower(payload?.status ?? null);
   refreshStaleDataStatus('realtime power_updated');
   refreshPowerDataIfVisible('realtime power_updated');
 };

@@ -17,6 +17,16 @@ export type PlanStateTone =
   | 'neutral'
   | 'warning';
 
+export const PLAN_STATE_LABEL: Record<PlanStateKind, string> = {
+  active: 'Running',
+  idle: 'Idle',
+  held: 'Limited',
+  resuming: 'Resuming',
+  manual: 'Manual',
+  unavailable: 'Unavailable',
+  unknown: 'Unknown',
+};
+
 export const PLAN_STATE_TONE: Record<PlanStateKind, PlanStateTone> = {
   active: 'active',
   idle: 'idle',

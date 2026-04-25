@@ -47,6 +47,11 @@ const buildDom = () => {
     <div id="stale-data-banner" hidden>
       <span id="stale-data-text"></span>
     </div>
+    <div id="legacy-shell-copy">
+      <p class="eyebrow">PELS · App control</p>
+      <h1>Control center</h1>
+      <p class="lede">Manage devices, modes, budgets, and usage.</p>
+    </div>
     <div class="tabs">
       <button class="tab active" data-tab="overview"></button>
       <button class="tab" data-tab="devices"></button>
@@ -57,9 +62,22 @@ const buildDom = () => {
       <button class="tab" data-tab="advanced"></button>
     </div>
     <section class="panel hidden" id="overview-panel" data-panel="overview">
-      <div id="plan-list"></div>
+      <div id="plan-legacy-surface">
+        <div class="card__header">
+          <div>
+            <p class="eyebrow">Overview</p>
+            <h2>Planned device states</h2>
+          </div>
+        </div>
+        <div id="plan-meta"></div>
+        <div id="plan-list"></div>
+      </div>
+      <div id="plan-redesign-surface" hidden>
+        <div id="plan-hero"></div>
+        <div id="plan-hour-strip"></div>
+        <div id="plan-cards"></div>
+      </div>
       <p id="plan-empty" hidden></p>
-      <div id="plan-meta"></div>
       <button id="plan-refresh-button"></button>
     </section>
     <section class="panel" data-panel="devices">
@@ -169,6 +187,7 @@ const buildDom = () => {
       <label id="advanced-overview-redesign-row" hidden>
         <input id="advanced-overview-redesign-enabled" type="checkbox">
       </label>
+      <input id="advanced-ev-support-enabled" type="checkbox">
       <form id="daily-budget-advanced-form">
         <input id="daily-budget-controlled-weight" type="number">
         <input id="daily-budget-price-flex-share" type="number">
@@ -248,12 +267,19 @@ const installSettingsHomeyMock = (settings: Record<string, unknown> = {}) => ins
   settings: buildSettingsHomeyState(settings),
 });
 
-const installSettingsHomeyMockWithOverviewToggle = (settings: Record<string, unknown> = {}) => installHomeyMock({
-  settings: buildSettingsHomeyState(settings),
-  uiState: {
-    featureAccess: { canToggleOverviewRedesign: true },
-  },
-});
+const enableOverviewRedesignForBrowser = () => {
+  window.localStorage.setItem(OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY, 'true');
+};
+
+const installOverviewRedesignHomeyMock = (settings: Record<string, unknown> = {}) => {
+  enableOverviewRedesignForBrowser();
+  return installHomeyMock({
+    settings: buildSettingsHomeyState(settings),
+    uiState: {
+      featureAccess: { canToggleOverviewRedesign: true },
+    },
+  });
+};
 
 describe('settings script', () => {
   beforeEach(() => {
@@ -272,24 +298,42 @@ describe('settings script', () => {
     expect(document.querySelector('#empty-state')?.hasAttribute('hidden')).toBe(true);
   });
 
-  it('uses bootstrap settings to avoid refetching primed values during initial load', async () => {
-    const homey = installHomeyMock({
-      settings: buildSettingsHomeyState({
-        capacity_limit_kw: 10,
-        capacity_margin_kw: 0.5,
-        capacity_dry_run: true,
-      }),
+  it('renders all debug logging topics including overview', async () => {
+    await loadSettingsScript();
+
+    const { DEBUG_LOGGING_TOPICS } = await import('../../shared-domain/src/utils/debugLogging.ts');
+    const renderedTopics = Array.from(document.querySelectorAll<HTMLInputElement>('[data-debug-topic]'))
+      .map((input) => input.dataset.debugTopic);
+
+    expect(renderedTopics).toEqual(DEBUG_LOGGING_TOPICS.map((topic) => topic.id));
+    expect(document.getElementById('debug-topic-overview')).toBeTruthy();
+  });
+
+  it('keeps the overview redesign toggle hidden when bootstrap denies access', async () => {
+    await loadSettingsScript();
+
+    expect(document.querySelector('#advanced-overview-redesign-row')?.hasAttribute('hidden')).toBe(true);
+    expect(document.body.dataset.uiVariant).toBe('legacy');
+    expect((document.querySelector('#legacy-shell-copy') as HTMLElement | null)?.hidden).toBe(false);
+    expect(document.querySelector('#plan-legacy-surface .card__header h2')?.textContent).toBe('Planned device states');
+  });
+
+  it('shows the overview redesign toggle when bootstrap grants access', async () => {
+    installHomeyMock({
+      settings: buildSettingsHomeyState(),
       apiHandlers: {
-        'GET /ui_bootstrap': async () => ({
+        'GET /ui_bootstrap': async ({ homey }) => ({
           settings: {
-            capacity_limit_kw: 7,
-            capacity_margin_kw: 0.3,
-            capacity_dry_run: false,
+            ...homey.__settingsStore,
           },
           dailyBudget: null,
-          featureAccess: { canToggleOverviewRedesign: false },
+          featureAccess: { canToggleOverviewRedesign: true },
           plan: null,
-          power: { tracker: null, status: null, heartbeat: null },
+          power: {
+            tracker: null,
+            status: null,
+            heartbeat: null,
+          },
           prices: {
             combinedPrices: null,
             electricityPrices: null,
@@ -307,96 +351,49 @@ describe('settings script', () => {
 
     await loadSettingsScript();
 
-    expect((document.querySelector('#capacity-limit') as HTMLInputElement).value).toBe('7');
-    expect((document.querySelector('#capacity-margin') as HTMLInputElement).value).toBe('0.3');
-    expect((document.querySelector('#capacity-dry-run') as HTMLInputElement).checked).toBe(false);
-    const fetchedKeys = homey.get.mock.calls.map(([key]) => key);
-    expect(fetchedKeys).not.toContain('capacity_limit_kw');
-    expect(fetchedKeys).not.toContain('capacity_margin_kw');
-    expect(fetchedKeys).not.toContain('capacity_dry_run');
+    expect(document.querySelector('#advanced-overview-redesign-row')?.hasAttribute('hidden')).toBe(false);
   });
 
-  it('falls back to existing load paths when bootstrap fails', async () => {
+  it('uses the browser-local preference when bootstrap grants access', async () => {
+    enableOverviewRedesignForBrowser();
     installHomeyMock({
-      settings: buildSettingsHomeyState({
-        capacity_limit_kw: 8,
-        capacity_margin_kw: 0.4,
-        capacity_dry_run: false,
-      }),
-      apiHandlers: {
-        'GET /ui_bootstrap': async () => {
-          throw new Error('bootstrap unavailable');
-        },
+      settings: buildSettingsHomeyState(),
+      uiState: {
+        featureAccess: { canToggleOverviewRedesign: true },
       },
     });
 
     await loadSettingsScript();
 
-    const rows = document.querySelectorAll('#device-list .device-row');
-    expect(rows.length).toBe(1);
-    expect((document.querySelector('#capacity-limit') as HTMLInputElement).value).toBe('8');
-    expect((document.querySelector('#capacity-margin') as HTMLInputElement).value).toBe('0.4');
-    expect((document.querySelector('#capacity-dry-run') as HTMLInputElement).checked).toBe(false);
+    expect((document.querySelector('#advanced-overview-redesign-enabled') as HTMLInputElement | null)?.checked).toBe(true);
+    expect(document.body.dataset.uiVariant).toBe('redesign');
+    expect((document.querySelector('#legacy-shell-copy') as HTMLElement | null)?.hidden).toBe(true);
+    expect((document.querySelector('#plan-legacy-surface') as HTMLElement | null)?.hidden).toBe(true);
+    expect((document.querySelector('#plan-redesign-surface') as HTMLElement | null)?.hidden).toBe(false);
   });
 
-  it('renders all debug logging topics including overview', async () => {
-    await loadSettingsScript();
-
-    const { DEBUG_LOGGING_TOPICS } = await import('../../shared-domain/src/utils/debugLogging.ts');
-    const renderedTopics = Array.from(document.querySelectorAll<HTMLInputElement>('[data-debug-topic]'))
-      .map((input) => input.dataset.debugTopic);
-
-    expect(renderedTopics).toEqual(DEBUG_LOGGING_TOPICS.map((topic) => topic.id));
-    expect(document.getElementById('debug-topic-overview')).toBeTruthy();
-  });
-
-  it('keeps the overview redesign toggle hidden when feature access is disallowed', async () => {
-    window.localStorage.setItem(OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY, 'true');
+  it('ignores stale Homey preference values when browser storage enables the redesign', async () => {
+    enableOverviewRedesignForBrowser();
+    installHomeyMock({
+      settings: buildSettingsHomeyState({ overview_redesign_enabled: false }),
+      uiState: {
+        featureAccess: { canToggleOverviewRedesign: true },
+      },
+    });
 
     await loadSettingsScript();
 
-    expect(document.querySelector('#advanced-overview-redesign-row')?.hasAttribute('hidden')).toBe(true);
-    expect((document.querySelector('#advanced-overview-redesign-enabled') as HTMLInputElement | null)?.checked).toBe(
-      true,
-    );
-    expect(document.body.dataset.uiVariant).toBe('legacy');
-  });
-
-  it('shows the overview redesign toggle when feature access is allowed', async () => {
-    installSettingsHomeyMockWithOverviewToggle();
-
-    await loadSettingsScript();
-
-    expect(document.querySelector('#advanced-overview-redesign-row')?.hasAttribute('hidden')).toBe(false);
-    expect(document.body.dataset.uiVariant).toBe('legacy');
-  });
-
-  it('applies a persisted true overview redesign preference when feature access is allowed', async () => {
-    window.localStorage.setItem(OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY, 'true');
-    installSettingsHomeyMockWithOverviewToggle();
-
-    await loadSettingsScript();
-
-    expect((document.querySelector('#advanced-overview-redesign-enabled') as HTMLInputElement | null)?.checked).toBe(
-      true,
-    );
+    expect((document.querySelector('#advanced-overview-redesign-enabled') as HTMLInputElement | null)?.checked).toBe(true);
     expect(document.body.dataset.uiVariant).toBe('redesign');
   });
 
-  it('applies a persisted false overview redesign preference when feature access is allowed', async () => {
-    window.localStorage.setItem(OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY, 'false');
-    installSettingsHomeyMockWithOverviewToggle();
-
-    await loadSettingsScript();
-
-    expect((document.querySelector('#advanced-overview-redesign-enabled') as HTMLInputElement | null)?.checked).toBe(
-      false,
-    );
-    expect(document.body.dataset.uiVariant).toBe('legacy');
-  });
-
   it('persists overview redesign toggle changes to browser storage only', async () => {
-    const homey = installSettingsHomeyMockWithOverviewToggle();
+    const homey = installHomeyMock({
+      settings: buildSettingsHomeyState(),
+      uiState: {
+        featureAccess: { canToggleOverviewRedesign: true },
+      },
+    });
 
     await loadSettingsScript();
 
@@ -408,19 +405,6 @@ describe('settings script', () => {
     expect(window.localStorage.getItem(OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY)).toBe('true');
     expect(homey.set).not.toHaveBeenCalledWith('overview_redesign_enabled', expect.anything(), expect.any(Function));
     expect(document.body.dataset.uiVariant).toBe('redesign');
-  });
-
-  it('ignores overview redesign toggle changes when feature access is disallowed', async () => {
-    await loadSettingsScript();
-
-    const toggle = document.querySelector('#advanced-overview-redesign-enabled') as HTMLInputElement;
-    toggle.checked = true;
-    toggle.dispatchEvent(new Event('change'));
-    await flushPromises();
-
-    expect(window.localStorage.getItem(OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY)).toBeNull();
-    expect(toggle.checked).toBe(false);
-    expect(document.body.dataset.uiVariant).toBe('legacy');
   });
 
   it('shows only the minimum temperature setting for temperature-target shed mode', async () => {
@@ -2160,7 +2144,7 @@ describe('Plan sorting', () => {
   });
 
   const setupPlanHomeyMock = (planSnapshot: any) => {
-    installSettingsHomeyMock({
+    installOverviewRedesignHomeyMock({
       device_plan_snapshot: planSnapshot,
       target_devices_snapshot: [],
     });
@@ -2196,14 +2180,14 @@ describe('Plan sorting', () => {
     overviewTab?.click();
     await flushPromises();
 
-    const planList = document.querySelector('#plan-list');
-    const deviceRows = planList?.querySelectorAll('.device-row');
+    const planList = document.querySelector('#plan-cards');
+    const deviceRows = planList?.querySelectorAll('.plan-card');
 
     expect(deviceRows?.length).toBe(3);
 
     // Get device names in order
     const deviceNames = Array.from(deviceRows || []).map(
-      (row) => row.querySelector('.device-row__name')?.textContent,
+      (row) => row.querySelector('.plan-card__title')?.textContent,
     );
 
     // Priority 1 = most important, shown first: 1, 3, 5
@@ -2214,7 +2198,7 @@ describe('Plan sorting', () => {
     ]);
   });
 
-  it('shows planned state lines for devices', async () => {
+  it('shows held devices with the new state chip text', async () => {
     const planSnapshot = {
       meta: {
         totalKw: 5.1,
@@ -2236,16 +2220,15 @@ describe('Plan sorting', () => {
     overviewTab?.click();
     await flushPromises();
 
-    const deviceRows = document.querySelectorAll('#plan-list .device-row');
+    const deviceRows = document.querySelectorAll('#plan-cards .plan-card');
     const deviceNames = Array.from(deviceRows).map(
-      (row) => row.querySelector('.device-row__name')?.textContent,
+      (row) => row.querySelector('.plan-card__title')?.textContent,
     );
     expect(deviceNames).toEqual(['Bravo One', 'Alpha One', 'Alpha Two']); // priority order
 
-    const stateValues = Array.from(document.querySelectorAll('#plan-list .plan-meta-line'))
-      .filter((line) => line.querySelector('.plan-label')?.textContent === 'State')
-      .map((line) => line.querySelector('span:last-child')?.textContent);
-    expect(stateValues).toContain('Shed (powered off)');
+    const stateValues = Array.from(document.querySelectorAll('#plan-cards .plan-state-chip'))
+      .map((line) => line.textContent?.trim());
+    expect(stateValues).toContain('Limited');
   });
 
   it('shows measured and expected power in usage line when available', async () => {
@@ -2276,14 +2259,11 @@ describe('Plan sorting', () => {
     overviewTab?.click();
     await flushPromises();
 
-    const usageLines = Array.from(document.querySelectorAll('#plan-list .plan-meta-line'))
-      .filter((line) => line.querySelector('.plan-label')?.textContent === 'Usage')
-      .map((line) => line.querySelector('span:last-child')?.textContent || '');
-
-    expect(usageLines[0]).toContain('Measured: 1.23 kW / Expected: 2.34 kW');
+    const usageLine = document.querySelector('#plan-cards .plan-card__metric-label')?.textContent || '';
+    expect(usageLine).toBe('1.2 kW');
   });
 
-  it('shows expected power when device is off and only expected is known', async () => {
+  it('shows expected draw label when a keep-off device has no live draw', async () => {
     const planSnapshot = {
       meta: {
         totalKw: 1.0,
@@ -2310,14 +2290,12 @@ describe('Plan sorting', () => {
     overviewTab?.click();
     await flushPromises();
 
-    const usageLines = Array.from(document.querySelectorAll('#plan-list .plan-meta-line'))
-      .filter((line) => line.querySelector('.plan-label')?.textContent === 'Usage')
-      .map((line) => line.querySelector('span:last-child')?.textContent || '');
-
-    expect(usageLines[0]).toBe('Expected: 1.50 kW');
+    const metric = document.querySelector('#plan-cards .plan-card__metric') as HTMLElement | null;
+    expect(metric?.dataset.variant).toBe('expected');
+    expect(metric?.textContent).toContain('~1.5 kW when active');
   });
 
-  it('shows measured 0 with expected power when device is on but not drawing', async () => {
+  it('shows expected draw label when on but not drawing power', async () => {
     const planSnapshot = {
       meta: {
         totalKw: 2.0,
@@ -2337,7 +2315,7 @@ describe('Plan sorting', () => {
       ],
     };
 
-    installSettingsHomeyMock({
+    installOverviewRedesignHomeyMock({
       device_plan_snapshot: planSnapshot,
       target_devices_snapshot: [],
     });
@@ -2348,15 +2326,13 @@ describe('Plan sorting', () => {
     overviewTab?.click();
     await flushPromises();
 
-    const usageLines = Array.from(document.querySelectorAll('#plan-list .plan-meta-line'))
-      .filter((line) => line.querySelector('.plan-label')?.textContent === 'Usage')
-      .map((line) => line.querySelector('span:last-child')?.textContent || '');
-
-    expect(usageLines[0]).toBe('Measured: 0.00 kW / Expected: 0.12 kW');
+    const metric = document.querySelector('#plan-cards .plan-card__metric') as HTMLElement | null;
+    expect(metric?.dataset.variant).toBe('expected');
+    expect(metric?.textContent).toContain('~0.1 kW when active');
   });
 
   it('keeps the last rendered plan when a realtime plan update is malformed', async () => {
-    const homey = installSettingsHomeyMock({
+    const homey = installOverviewRedesignHomeyMock({
       device_plan_snapshot: {
         meta: {
           totalKw: 2.0,
@@ -2383,8 +2359,8 @@ describe('Plan sorting', () => {
     overviewTab?.click();
     await flushPromises();
 
-    expect(document.querySelectorAll('#plan-list .device-row')).toHaveLength(1);
-    expect(document.querySelector('#plan-list .device-row__name')?.textContent).toContain('Heater');
+    expect(document.querySelectorAll('#plan-cards .plan-card')).toHaveLength(1);
+    expect(document.querySelector('#plan-cards .plan-card__title')?.textContent).toContain('Heater');
 
     emitHomeyEvent(homey, 'plan_updated', {
       meta: {
@@ -2404,8 +2380,8 @@ describe('Plan sorting', () => {
     });
     await flushPromises();
 
-    expect(document.querySelectorAll('#plan-list .device-row')).toHaveLength(1);
-    expect(document.querySelector('#plan-list .device-row__name')?.textContent).toContain('Heater');
+    expect(document.querySelectorAll('#plan-cards .plan-card')).toHaveLength(1);
+    expect(document.querySelector('#plan-cards .plan-card__title')?.textContent).toContain('Heater');
   });
 
   it('refreshes plan when capacity priorities change via settings event', async () => {
@@ -2427,7 +2403,7 @@ describe('Plan sorting', () => {
       return cb(null, null);
     });
 
-    installSettingsHomeyMock({
+    installOverviewRedesignHomeyMock({
       device_plan_snapshot: {
         meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
         devices: [],

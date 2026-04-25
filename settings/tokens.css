@@ -73,6 +73,13 @@
   --color-overlay-toast: rgba(12, 17, 27, 0.9);
   --color-gradient-accent-radial: rgba(127, 209, 174, 0.12);
   --color-gradient-accent-radial-blue: rgba(116, 145, 255, 0.1);
+  --chip-padding-block: 4px;
+  --chip-padding-inline: 10px;
+  --chip-radius: 9999px;
+  --chip-font-size: 11px;
+  --chip-font-weight: 600;
+  --chip-line-height: 1.2;
+  --chip-border-width: 1px;
   --color-semantic-bg: var(--color-base-black);
   --color-semantic-text-primary: var(--color-base-gray-50);
   --color-semantic-text-secondary: var(--color-base-gray-100);

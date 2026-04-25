@@ -290,6 +290,7 @@ const initAdvancedHandlers = () => {
       const enabled = advancedOverviewRedesignEnabledInput.checked;
       setStoredOverviewRedesignPreference(enabled);
       applySettingsUiVariant(enabled ? 'redesign' : 'legacy');
+      await refreshPlan();
       await showToast(
         enabled ? 'Overview redesign enabled.' : 'Overview redesign disabled.',
         'ok',

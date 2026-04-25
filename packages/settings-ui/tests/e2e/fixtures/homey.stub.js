@@ -147,6 +147,8 @@
           name: 'Living Room Heat Pump',
           currentState: 'on',
           plannedState: 'keep',
+          controlModel: 'temperature_target',
+          deviceClass: 'thermostat',
           currentTarget: 21,
           plannedTarget: 22,
           currentTemperature: 20.3,
@@ -154,7 +156,13 @@
           controllable: true,
           expectedPowerKw: 1.6,
           measuredPowerKw: 1.2,
-          reason: 'Cheap hour, preheating',
+          reason: {
+            code: 'restore_need',
+            fromTarget: '21°',
+            toTarget: '22°',
+            needKw: 0.4,
+            headroomKw: 2.1,
+          },
           shedAction: 'set_temperature',
           shedTemperature: 16,
         },
@@ -167,7 +175,7 @@
           controllable: true,
           expectedPowerKw: 2.0,
           measuredPowerKw: 2.1,
-          reason: 'Approaching capacity cap',
+          reason: { code: 'capacity', detail: 'high household load' },
           shedAction: 'turn_off',
         },
         {
@@ -179,7 +187,17 @@
           controllable: true,
           expectedPowerKw: 7.2,
           measuredPowerKw: 0,
-          reason: 'Waiting for headroom',
+          reason: {
+            code: 'insufficient_headroom',
+            needKw: 7.2,
+            availableKw: 1.4,
+            postReserveMarginKw: null,
+            minimumRequiredPostReserveMarginKw: null,
+            penaltyExtraKw: null,
+            swapReserveKw: null,
+            effectiveAvailableKw: null,
+            swapTargetName: null,
+          },
           shedAction: 'turn_off',
         },
       ],
@@ -391,6 +409,7 @@
     capacity_margin_kw: 0.4,
     capacity_dry_run: true,
     experimental_ev_support_enabled: false,
+    overview_redesign_enabled: false,
 
     // Status and heartbeat
     pels_status: { lastPowerUpdate: Date.now() - 12 * 1000 },
@@ -529,6 +548,7 @@
     debug_logging_topics: settings.debug_logging_topics,
     debug_logging_enabled: settings.debug_logging_enabled,
     experimental_ev_support_enabled: settings.experimental_ev_support_enabled,
+    overview_redesign_enabled: settings.overview_redesign_enabled,
   });
 
   const apiHandlers = {
@@ -545,7 +565,7 @@
     'GET /ui_bootstrap': () => ({
       settings: buildBootstrapSettings(),
       dailyBudget: resolveDailyBudgetPayload(),
-      featureAccess: { canToggleOverviewRedesign: false },
+      featureAccess: initialOverrides.featureAccess ?? { canToggleOverviewRedesign: false },
       devices: settings.target_devices_snapshot,
       plan: settings.device_plan_snapshot,
       power: buildPowerPayload(),

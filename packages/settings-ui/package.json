@@ -2,6 +2,9 @@
   "name": "@pels/settings-ui",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "@material/web": "^2.3.0"
+  },
   "scripts": {
     "clean": "rm -rf dist",
     "build": "npm run clean && npm run build:script && npm run build:tokens && npm run copy:public",
