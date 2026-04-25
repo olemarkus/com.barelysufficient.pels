@@ -25,7 +25,7 @@ const parsePortArg = (argv) => {
   const idx = argv.indexOf('--port');
   if (idx === -1) return DEFAULT_PORT;
   const value = Number(argv[idx + 1]);
-  if (!Number.isFinite(value) || value <= 0 || value > 65535) {
+  if (!Number.isInteger(value) || value < 0 || value > 65535) {
     throw new Error(`Invalid --port value: ${argv[idx + 1]}`);
   }
   return value;
@@ -115,7 +115,9 @@ const main = async () => {
   });
 
   server.listen(port, '127.0.0.1', () => {
-    console.log(`settings-ui static server listening on http://127.0.0.1:${port}`);
+    const address = server.address();
+    const boundPort = address && typeof address !== 'string' ? address.port : port;
+    console.log(`settings-ui static server listening on http://127.0.0.1:${boundPort}`);
   });
 };
 

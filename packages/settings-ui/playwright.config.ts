@@ -1,7 +1,9 @@
 import { defineConfig } from '@playwright/test';
 
-const PORT = Number(process.env.PELS_E2E_PORT ?? 4173);
-const BASE_URL = process.env.PELS_E2E_BASE_URL ?? `http://127.0.0.1:${PORT}`;
+const PORT = process.env.PELS_E2E_PORT ?? '0';
+const IS_DYNAMIC_PORT = PORT === '0';
+const BASE_URL = process.env.PELS_E2E_BASE_URL
+  ?? (IS_DYNAMIC_PORT ? undefined : `http://127.0.0.1:${PORT}`);
 const SHOULD_BUILD = process.env.PELS_E2E_BUILD !== '0';
 
 export default defineConfig({
@@ -30,7 +32,14 @@ export default defineConfig({
     command: SHOULD_BUILD
       ? `npm run build && node scripts/static-server.mjs --port ${PORT}`
       : `node scripts/static-server.mjs --port ${PORT}`,
-    url: BASE_URL,
+    ...(BASE_URL
+      ? { url: BASE_URL }
+      : {
+        wait: {
+          stdout: /settings-ui static server listening on http:\/\/127\.0\.0\.1:(?<pels_e2e_server_port>\d+)/,
+        },
+        stdout: 'pipe' as const,
+      }),
     reuseExistingServer: !process.env.CI,
   },
 });
