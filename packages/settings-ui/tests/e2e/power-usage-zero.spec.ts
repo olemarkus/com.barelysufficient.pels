@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './fixtures/test';
 
 const FIXED_NOW_MS = Date.UTC(2025, 0, 6, 12, 0, 0);
 

@@ -3,7 +3,6 @@
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
-import net from 'node:net';
 import { spawn } from 'node:child_process';
 
 const PACKAGE_ROOT = path.resolve(__dirname, '..');
@@ -14,39 +13,21 @@ const FIXTURE_NAME = 'static-server-fixture.txt';
 const FIXTURE_PATH = path.join(DIST_DIR, FIXTURE_NAME);
 const FIXTURE_CONTENT = 'settings-ui static server fixture';
 
-const getFreePort = async (): Promise<number> => (
-  await new Promise<number>((resolve, reject) => {
-    const server = net.createServer();
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address();
-      if (!address || typeof address === 'string') {
-        reject(new Error('Failed to allocate test port.'));
-        return;
-      }
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve(address.port);
-      });
-    });
-  })
-);
-
 const waitForServer = async (
   server: ReturnType<typeof spawn>,
-): Promise<void> => {
-  await new Promise<void>((resolve, reject) => {
+): Promise<number> => {
+  const readyPattern = /settings-ui static server listening on http:\/\/127\.0\.0\.1:(\d+)/;
+
+  return await new Promise<number>((resolve, reject) => {
     const timeout = setTimeout(() => {
       cleanup();
       reject(new Error('Timed out waiting for static server to become ready.'));
     }, 5000);
     const onStdout = (chunk: Buffer) => {
-      if (chunk.toString('utf8').includes('settings-ui static server listening')) {
+      const match = readyPattern.exec(chunk.toString('utf8'));
+      if (match) {
         cleanup();
-        resolve();
+        resolve(Number(match[1]));
       }
     };
     const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
@@ -117,12 +98,11 @@ describe('settings-ui static server', () => {
   beforeAll(async () => {
     await fs.mkdir(DIST_DIR, { recursive: true });
     await fs.writeFile(FIXTURE_PATH, FIXTURE_CONTENT, 'utf8');
-    port = await getFreePort();
-    server = spawn(process.execPath, [STATIC_SERVER_PATH, '--port', String(port)], {
+    server = spawn(process.execPath, [STATIC_SERVER_PATH, '--port', '0'], {
       cwd: REPO_ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    await waitForServer(server);
+    port = await waitForServer(server);
   });
 
   afterAll(async () => {

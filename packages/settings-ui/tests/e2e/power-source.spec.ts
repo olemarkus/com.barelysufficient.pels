@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from './fixtures/test';
 
 test.describe('Power source setting', () => {
   test('defaults to "Flow card" when no setting is stored', async ({ page }) => {
