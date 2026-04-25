@@ -20,7 +20,8 @@ import {
 import { getSteppedLoadLowestActiveStep } from '../utils/deviceControlProfiles';
 
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
-import { updateGuardState, isCapacityBreached, resolvePlanningTotalPower } from './planSheddingGuard';
+import { isCapacityBreached } from './planRemainingSheddableLoad';
+import { updateGuardState, resolvePlanningTotalPower } from './planSheddingGuard';
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import {
   type BinaryShedCandidate,

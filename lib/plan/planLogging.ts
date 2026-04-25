@@ -13,7 +13,12 @@ import {
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
-import { resolveCandidatePower } from './planCandidatePower';
+import {
+  isCapacityBreached,
+  resolveRemainingSheddableLoadKw,
+  toPlanRemainingSheddableDevice,
+  type RemainingShedBehavior,
+} from './planRemainingSheddableLoad';
 
 export type { PlanCapacityStateSummary } from '../core/capacityStateSummary';
 
@@ -50,11 +55,9 @@ export function buildPlanCapacityStateSummary(
     summary.blockedByPenaltyDevices += Number(isBlockedByPenalty(device));
     summary.blockedByInvariantDevices += Number(isBlockedByInvariant(device));
   }
-  const remainingReducibleControlledLoadKw = sumReducibleControlledLoadKw(
-    plan.devices,
-    (device) => device.plannedState === 'shed',
-  );
-  const remainingActionableControlledLoadKw = sumActionableControlledLoadKw(plan.devices);
+  const remainingContext = resolvePlanRemainingSheddableContext(plan);
+  const remainingReducibleControlledLoadKw = sumPlanRemainingSheddableLoadKw(plan.devices, remainingContext);
+  const remainingActionableControlledLoadKw = sumActionableControlledLoadKw(plan.devices, remainingContext);
   const remainingReducibleControlledLoadW = roundPowerW(remainingReducibleControlledLoadKw);
   const remainingActionableControlledLoadW = roundPowerW(remainingActionableControlledLoadKw);
   return {
@@ -118,32 +121,41 @@ function buildPlannedShedCounts(
   };
 }
 
-function sumReducibleControlledLoadKw<T extends {
-  controllable?: boolean;
-  currentState?: string;
-  currentOn?: boolean;
-  measuredPowerKw?: number;
-  expectedPowerKw?: number;
-  planningPowerKw?: number;
-  powerKw?: number;
-}>(devices: T[], isShed: (device: T) => boolean): number {
+function sumPlanRemainingSheddableLoadKw(
+  devices: DevicePlanDevice[],
+  context: RemainingSheddableContext,
+): number {
   let totalKw = 0;
-  for (const device of devices) {
-    if (device.controllable === false || resolveEffectiveCurrentOn(device) === false || isShed(device)) continue;
-    const power = resolveCandidatePower(device);
-    if (power !== null && power > 0) {
+  for (const sourceDevice of devices) {
+    const power = resolveRemainingSheddableLoadKw({
+      device: toPlanRemainingSheddableDevice(sourceDevice),
+      shedBehavior: resolvePlanDeviceShedBehavior(sourceDevice),
+      alreadyShed: sourceDevice.plannedState === 'shed',
+      limitSource: context.limitSource,
+      capacityBreached: context.capacityBreached,
+    });
+    if (power > 0) {
       totalKw += power;
     }
   }
   return totalKw;
 }
 
-function sumActionableControlledLoadKw(devices: DevicePlanDevice[]): number {
+function sumActionableControlledLoadKw(
+  devices: DevicePlanDevice[],
+  context: RemainingSheddableContext,
+): number {
   let totalKw = 0;
-  for (const device of devices) {
-    if (!isActionableShortfallCandidate(device)) continue;
-    const power = resolveCandidatePower(device);
-    if (power !== null && power > 0) {
+  for (const sourceDevice of devices) {
+    if (!isActionableShortfallCandidate(sourceDevice)) continue;
+    const power = resolveRemainingSheddableLoadKw({
+      device: toPlanRemainingSheddableDevice(sourceDevice),
+      shedBehavior: resolvePlanDeviceShedBehavior(sourceDevice),
+      alreadyShed: sourceDevice.plannedState === 'shed',
+      limitSource: context.limitSource,
+      capacityBreached: context.capacityBreached,
+    });
+    if (power > 0) {
       totalKw += power;
     }
   }
@@ -153,6 +165,29 @@ function sumActionableControlledLoadKw(devices: DevicePlanDevice[]): number {
 function roundPowerW(powerKw: number | null | undefined): number | null {
   if (typeof powerKw !== 'number' || !Number.isFinite(powerKw)) return null;
   return Math.round(Math.max(0, powerKw * 1000));
+}
+
+type RemainingSheddableContext = {
+  limitSource: 'capacity' | 'daily' | 'both';
+  capacityBreached: boolean;
+};
+
+function resolvePlanRemainingSheddableContext(plan: DevicePlan): RemainingSheddableContext {
+  const capacitySoftLimitKw = plan.meta.capacitySoftLimitKw ?? plan.meta.softLimitKw;
+  return {
+    limitSource: plan.meta.softLimitSource ?? 'capacity',
+    capacityBreached: isCapacityBreached(plan.meta.totalKw, capacitySoftLimitKw),
+  };
+}
+
+function resolvePlanDeviceShedBehavior(device: DevicePlanDevice | undefined): RemainingShedBehavior {
+  if (device?.shedAction === 'set_temperature' && typeof device.shedTemperature === 'number') {
+    return { action: 'set_temperature', temperature: device.shedTemperature };
+  }
+  if (device?.shedAction === 'set_step') {
+    return { action: 'set_step' };
+  }
+  return { action: 'turn_off' };
 }
 
 function buildPlanSignatureDevice(device: DevicePlanDevice): Record<string, unknown> {

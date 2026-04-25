@@ -19,7 +19,7 @@ file.
 
 ## P1 Observability and runtime diagnostics
 
-- [ ] Align `remainingReducibleControlledLoadW` / overshoot summary reporting with the actual
+- [x] Align `remainingReducibleControlledLoadW` / overshoot summary reporting with the actual
       stepped-load shed candidate set so logs do not claim live reducible load when stepped
       shedding has no actionable candidate.
       Files: `lib/plan/planLogging.ts`, `lib/plan/planSheddingGuard.ts`,
