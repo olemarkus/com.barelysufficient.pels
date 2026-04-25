@@ -1,7 +1,32 @@
-import { initSettingsHandlerForApp } from '../lib/app/appSettingsHelpers';
+import {
+  buildCapacitySettingsSnapshot,
+  initSettingsHandlerForApp,
+  type CapacitySettingsSnapshot,
+} from '../lib/app/appSettingsHelpers';
 import type { AppContext } from '../lib/app/appContext';
 import { TimerRegistry } from '../lib/app/timerRegistry';
-import { CAPACITY_LIMIT_KW } from '../lib/utils/settingsKeys';
+import { CAPACITY_LIMIT_KW, DEVICE_DRIVER_OVERRIDES } from '../lib/utils/settingsKeys';
+
+const buildCapacitySnapshot = (
+  overrides: Partial<CapacitySettingsSnapshot> = {},
+): CapacitySettingsSnapshot => ({
+  capacitySettings: { limitKw: 12, marginKw: 0.5 },
+  modeAliases: {},
+  operatingMode: 'Home',
+  capacityPriorities: {},
+  modeDeviceTargets: {},
+  capacityDryRun: false,
+  controllableDevices: {},
+  managedDevices: {},
+  budgetExemptDevices: {},
+  nativeEvWiringDevices: {},
+  deviceDriverOverrides: {},
+  deviceControlProfiles: {},
+  deviceCommunicationModels: {},
+  experimentalEvSupportEnabled: false,
+  shedBehaviors: {},
+  ...overrides,
+});
 
 const buildContext = (): AppContext => {
   const settingsListeners = new Map<string, (...args: unknown[]) => void>();
@@ -86,6 +111,8 @@ const buildContext = (): AppContext => {
     set managedDevices(_value) {},
     get budgetExemptDevices() { return {}; },
     set budgetExemptDevices(_value) {},
+    get deviceDriverOverrides() { return {}; },
+    set deviceDriverOverrides(_value) {},
     get deviceControlProfiles() { return {}; },
     set deviceControlProfiles(_value) {},
     get deviceCommunicationModels() { return {}; },
@@ -168,5 +195,55 @@ describe('initSettingsHandlerForApp', () => {
     expect(() => initSettingsHandlerForApp(ctx)).toThrow(
       'DailyBudgetService must be initialized before settings handler setup.',
     );
+  });
+});
+
+describe('buildCapacitySettingsSnapshot', () => {
+  it('loads normalized device driver overrides from settings', () => {
+    const settings = {
+      get: vi.fn((key: string) => (
+        key === DEVICE_DRIVER_OVERRIDES
+          ? {
+            ' 0528ae3e-1289-49db-8fb4-624c32592745 ': ' homey:app:com.zaptec:go2 ',
+            empty: '   ',
+            '   ': 'homey:app:com.zaptec:go',
+          }
+          : undefined
+      )),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot({
+        deviceDriverOverrides: {
+          old: 'homey:app:com.zaptec:go',
+        },
+      }),
+    });
+
+    expect(next.deviceDriverOverrides).toEqual({
+      '0528ae3e-1289-49db-8fb4-624c32592745': 'homey:app:com.zaptec:go2',
+    });
+  });
+
+  it('keeps current device driver overrides when settings payload is invalid', () => {
+    const settings = {
+      get: vi.fn((key: string) => (
+        key === DEVICE_DRIVER_OVERRIDES ? { device: 123 } : undefined
+      )),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot({
+        deviceDriverOverrides: {
+          device: 'homey:app:com.zaptec:go2',
+        },
+      }),
+    });
+
+    expect(next.deviceDriverOverrides).toEqual({
+      device: 'homey:app:com.zaptec:go2',
+    });
   });
 });

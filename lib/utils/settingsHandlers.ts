@@ -10,6 +10,7 @@ import {
   CONTROLLABLE_DEVICES,
   DEVICE_CONTROL_PROFILES,
   DEVICE_COMMUNICATION_MODELS,
+  DEVICE_DRIVER_OVERRIDES,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
@@ -77,6 +78,7 @@ const DEDUPED_CAPACITY_KEYS = [
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
+  DEVICE_DRIVER_OVERRIDES,
   BUDGET_EXEMPT_DEVICES,
   DEVICE_CONTROL_PROFILES,
   DEVICE_COMMUNICATION_MODELS,
@@ -273,6 +275,11 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'Failed to refresh devices after native wiring change');
       await rebuildPlanFromSettings(deps, NATIVE_EV_WIRING_DEVICES);
+    },
+    [DEVICE_DRIVER_OVERRIDES]: async () => {
+      deps.loadCapacitySettings();
+      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after device driver override change');
+      await rebuildPlanFromSettings(deps, DEVICE_DRIVER_OVERRIDES);
     },
     [DEVICE_CONTROL_PROFILES]: async () => {
       deps.loadCapacitySettings();

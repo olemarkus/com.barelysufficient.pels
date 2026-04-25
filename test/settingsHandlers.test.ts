@@ -8,6 +8,7 @@ import {
   DAILY_BUDGET_RESET,
   DEBUG_LOGGING_TOPICS,
   DEVICE_COMMUNICATION_MODELS,
+  DEVICE_DRIVER_OVERRIDES,
   MANAGED_DEVICES,
 } from '../lib/utils/settingsKeys';
 
@@ -124,6 +125,17 @@ describe('createSettingsHandler', () => {
     expect(deps.loadCapacitySettings).toHaveBeenCalled();
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
+  });
+
+  it('reloads capacity settings, refreshes snapshot, and rebuilds when device driver overrides change', async () => {
+    const deps = buildDeps();
+    const handler = createSettingsHandler(deps);
+
+    await handler(DEVICE_DRIVER_OVERRIDES);
+
+    expect(deps.loadCapacitySettings).toHaveBeenCalled();
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(`settings:${DEVICE_DRIVER_OVERRIDES}`);
   });
 
   it('logs when a refresh snapshot fails', async () => {
