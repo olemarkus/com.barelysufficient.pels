@@ -621,7 +621,6 @@ export class DeviceManager extends EventEmitter {
                     : await this.fetchDevicesForSnapshot();
             } catch (error) {
                 const normalizedError = normalizeError(error);
-                this.logger.error('Device snapshot refresh failed, keeping previous snapshot', error);
                 this.logger.structuredLog?.error({
                     event: 'device_snapshot_refresh_failed',
                     reasonCode: 'refresh_failed',
