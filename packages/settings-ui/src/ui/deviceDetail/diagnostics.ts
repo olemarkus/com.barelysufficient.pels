@@ -1,5 +1,6 @@
 import type {
   DeviceDiagnosticsSummary,
+  DeviceDiagnosticsStarvationSummary,
   DeviceDiagnosticsWindowKey,
   SettingsUiDeviceDiagnosticsPayload,
 } from '../../../../contracts/src/deviceDiagnosticsTypes.ts';
@@ -9,7 +10,7 @@ import {
   deviceDetailDiagnosticsDisclosure,
   deviceDetailDiagnosticsStatus,
 } from '../dom.ts';
-import { getApiReadModel } from '../homey.ts';
+import { getApiReadModel, getHomeyTimezone } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
 
 const DIAGNOSTICS_WINDOW_LABELS: Record<DeviceDiagnosticsWindowKey, string> = {
@@ -37,6 +38,66 @@ const formatCycleDuration = (durationMs: number | null): string => {
   return `${(durationMs / (60 * 60 * 1000)).toFixed(1)}h`;
 };
 
+const formatStarvationDuration = (durationMs: number): string => formatHours(durationMs);
+
+const createEmptyStarvationSummary = (): DeviceDiagnosticsStarvationSummary => ({
+  isStarved: false,
+  starvedAccumulatedMs: 0,
+  starvationEpisodeStartedAt: null,
+  starvationLastResumedAt: null,
+  intendedNormalTargetC: null,
+  currentTemperatureC: null,
+  starvationCause: null,
+  starvationPauseReason: null,
+});
+
+const getDateTimePart = (partsByType: Record<string, string>, type: string): string => partsByType[type] ?? '00';
+
+const formatStarvationTimestamp = (timestamp: number | null): string => {
+  if (timestamp === null || !Number.isFinite(timestamp)) return 'None';
+
+  const partsByType = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: getHomeyTimezone(),
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date(timestamp)).map((part) => [part.type, part.value]),
+  );
+
+  return [
+    [
+      getDateTimePart(partsByType, 'year'),
+      getDateTimePart(partsByType, 'month'),
+      getDateTimePart(partsByType, 'day'),
+    ].join('-'),
+    [
+      getDateTimePart(partsByType, 'hour'),
+      getDateTimePart(partsByType, 'minute'),
+      getDateTimePart(partsByType, 'second'),
+    ].join(':'),
+  ].join(' ');
+};
+
+const formatStarvationReason = (value: string | null): string => (
+  value ? value.split('_').join(' ') : 'None'
+);
+
+const formatStarvationContext = (starvation: DeviceDiagnosticsStarvationSummary): string | null => {
+  if (starvation.starvationPauseReason) return `paused: ${formatStarvationReason(starvation.starvationPauseReason)}`;
+  if (starvation.starvationCause) return formatStarvationReason(starvation.starvationCause);
+  return null;
+};
+
+const formatStarvationTemperatureTarget = (starvation: DeviceDiagnosticsStarvationSummary): string => {
+  if (starvation.currentTemperatureC === null || starvation.intendedNormalTargetC === null) return 'Unavailable';
+  return `${starvation.currentTemperatureC.toFixed(1)}C / ${starvation.intendedNormalTargetC.toFixed(1)}C`;
+};
+
 const createDiagnosticsMetric = (label: string, value: string) => {
   const row = document.createElement('div');
   const dt = document.createElement('dt');
@@ -61,8 +122,16 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
     renderDeviceDiagnosticsEmpty('No diagnostics recorded yet.');
     return;
   }
+  const starvation = summary.starvation ?? createEmptyStarvationSummary();
+  const starvationStatus = starvation.isStarved
+    ? `Starved ${formatStarvationDuration(starvation.starvedAccumulatedMs)}`
+    : 'Not starved';
+  const starvationContext = formatStarvationContext(starvation);
   if (deviceDetailDiagnosticsStatus) {
-    deviceDetailDiagnosticsStatus.textContent = `Current penalty level: L${summary.currentPenaltyLevel}.`;
+    deviceDetailDiagnosticsStatus.textContent = [
+      `Current penalty level: L${summary.currentPenaltyLevel}.`,
+      `Starvation: ${starvationStatus}${starvationContext ? ` (${starvationContext})` : ''}.`,
+    ].join(' ');
   }
   if (!deviceDetailDiagnosticsCards) return;
 
@@ -104,6 +173,30 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
     card.append(title, list);
     deviceDetailDiagnosticsCards.appendChild(card);
   });
+
+  const starvationCard = document.createElement('section');
+  starvationCard.className = 'detail-diagnostics-card';
+
+  const starvationTitle = document.createElement('h4');
+  starvationTitle.textContent = 'Starvation';
+
+  const starvationList = document.createElement('dl');
+  starvationList.className = 'detail-diagnostics-list';
+  starvationList.append(
+    createDiagnosticsMetric('State', starvationStatus),
+    createDiagnosticsMetric('Accumulated', formatStarvationDuration(starvation.starvedAccumulatedMs)),
+    createDiagnosticsMetric('Temperature / target', formatStarvationTemperatureTarget(starvation)),
+    createDiagnosticsMetric(
+      'Cause / pause',
+      starvation.starvationCause
+        ? formatStarvationReason(starvation.starvationCause)
+        : formatStarvationReason(starvation.starvationPauseReason),
+    ),
+    createDiagnosticsMetric('Started', formatStarvationTimestamp(starvation.starvationEpisodeStartedAt)),
+    createDiagnosticsMetric('Resumed', formatStarvationTimestamp(starvation.starvationLastResumedAt)),
+  );
+  starvationCard.append(starvationTitle, starvationList);
+  deviceDetailDiagnosticsCards.appendChild(starvationCard);
 };
 
 export const showDeviceDetailDiagnosticsLoading = () => {

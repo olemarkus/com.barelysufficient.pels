@@ -175,6 +175,16 @@ describe('DeviceDiagnosticsService', () => {
     const summary = payload.diagnosticsByDeviceId['heater-1'];
 
     expect(summary.currentPenaltyLevel).toBe(2);
+    expect(summary.starvation).toMatchObject({
+      isStarved: false,
+      starvedAccumulatedMs: 0,
+      starvationEpisodeStartedAt: null,
+      starvationLastResumedAt: null,
+      intendedNormalTargetC: 22,
+      currentTemperatureC: 18,
+      starvationCause: null,
+      starvationPauseReason: null,
+    });
     expect(summary.windows['1d']).toMatchObject({
       unmetDemandMs: 9 * 60 * 1000,
       blockedByHeadroomMs: 6 * 60 * 1000,
@@ -453,6 +463,18 @@ describe('DeviceDiagnosticsService', () => {
     expect(starvation?.starvedAccumulatedMs).toBe(60 * 1000);
     expect(starvation?.starvationCause).toBe('capacity');
     expect(starvation?.starvationPauseReason).toBeNull();
+
+    expect(service.getUiPayload(start + (16 * 60 * 1000)).diagnosticsByDeviceId['heater-1']?.starvation)
+      .toMatchObject({
+        isStarved: true,
+        starvedAccumulatedMs: 60 * 1000,
+        starvationEpisodeStartedAt: start + (15 * 60 * 1000),
+        starvationLastResumedAt: start + (15 * 60 * 1000),
+        intendedNormalTargetC: 22,
+        currentTemperatureC: 18,
+        starvationCause: 'capacity',
+        starvationPauseReason: null,
+      });
   });
 
   it('pauses and resumes starvation accumulation without counting paused time', () => {
@@ -842,6 +864,48 @@ describe('DeviceDiagnosticsService', () => {
     });
 
     expect(service.getCurrentStarvedDeviceCount()).toBe(0);
+  });
+
+  it('does not export stale starvation state for devices missing from the latest plan sample', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    service.observePlanSample({
+      nowTs: start,
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (9 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (16 * 60 * 1000),
+      observations: [buildObservation()],
+    });
+
+    expect(service.getUiPayload(start + (16 * 60 * 1000)).diagnosticsByDeviceId['heater-1']?.starvation)
+      .toMatchObject({
+        isStarved: true,
+        starvedAccumulatedMs: 60 * 1000,
+        starvationCause: 'capacity',
+      });
+
+    service.observePlanSample({
+      nowTs: start + (17 * 60 * 1000),
+      observations: [],
+    });
+
+    expect(service.getUiPayload(start + (17 * 60 * 1000)).diagnosticsByDeviceId['heater-1']?.starvation)
+      .toEqual({
+        isStarved: false,
+        starvedAccumulatedMs: 0,
+        starvationEpisodeStartedAt: null,
+        starvationLastResumedAt: null,
+        intendedNormalTargetC: null,
+        currentTemperatureC: null,
+        starvationCause: null,
+        starvationPauseReason: null,
+      });
   });
 
   it('repairs invalid persisted payloads and prunes expired day buckets', () => {

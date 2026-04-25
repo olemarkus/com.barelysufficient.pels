@@ -489,4 +489,39 @@ describe('plan diagnostics observations', () => {
     expect(observation.pauseReason).toBe('cooldown');
     expect(observation.suppressionState).toBe('paused');
   });
+
+  it('treats activation backoff as paused starvation rather than counting suppression', () => {
+    const observation = buildObservation({
+      inputDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        deviceType: 'temperature',
+        managed: true,
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+        currentOn: false,
+        targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
+      },
+      planDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        currentState: 'off',
+        plannedState: 'keep',
+        currentTarget: 18,
+        plannedTarget: 21,
+        reason: r('activation backoff (30s remaining)'),
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+      },
+      desiredForMode: { 'heater-1': 21 },
+    });
+
+    expect(observation.pauseReason).toBe('activation_backoff');
+    expect(observation.suppressionState).toBe('paused');
+    expect(observation.countingCause).toBeNull();
+  });
 });

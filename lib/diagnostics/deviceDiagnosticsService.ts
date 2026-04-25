@@ -7,6 +7,9 @@ import {
 import { ACTIVATION_BACKOFF_MAX_LEVEL, type ActivationAttemptSource } from '../plan/planActivationBackoff';
 import type {
   DeviceDiagnosticsSummary,
+  DeviceDiagnosticsStarvationCountingCause,
+  DeviceDiagnosticsStarvationPauseReason,
+  DeviceDiagnosticsStarvationSummary,
   DeviceDiagnosticsWindowKey,
   SettingsUiDeviceDiagnosticsPayload,
 } from '../../packages/contracts/src/deviceDiagnosticsTypes';
@@ -44,27 +47,10 @@ const STARVATION_ENTRY_ANCHORS = [
 
 export type DeviceDiagnosticsBlockCause = 'not_blocked' | 'headroom' | 'cooldown_backoff';
 export type DeviceDiagnosticsStarvationSuppressionState = 'counting' | 'paused' | 'none';
-export type DeviceDiagnosticsStarvationCountingCause =
-  | 'capacity'
-  | 'daily_budget'
-  | 'hourly_budget'
-  | 'shortfall'
-  | 'swap_pending'
-  | 'swapped_out'
-  | 'insufficient_headroom'
-  | 'shedding_active';
-export type DeviceDiagnosticsStarvationPauseReason =
-  | 'cooldown'
-  | 'headroom_cooldown'
-  | 'restore_throttled'
-  | 'activation_backoff'
-  | 'inactive'
-  | 'keep'
-  | 'restore'
-  | 'suppression_none'
-  | 'invalid_observation'
-  | 'sample_gap'
-  | 'unknown_suppression_reason';
+export type {
+  DeviceDiagnosticsStarvationCountingCause,
+  DeviceDiagnosticsStarvationPauseReason,
+} from '../../packages/contracts/src/deviceDiagnosticsTypes';
 
 type DeviceDiagnosticsStarvationResetReasonCode = 'device_no_longer_eligible';
 export type DeviceDiagnosticsPlanObservation = {
@@ -240,6 +226,41 @@ const createEmptyStarvationState = (): LiveStarvationState => ({
 });
 
 const UNKNOWN_DEVICE_NAME = 'unknown device';
+
+const createEmptyStarvationSummary = (): DeviceDiagnosticsStarvationSummary => ({
+  isStarved: false,
+  starvedAccumulatedMs: 0,
+  starvationEpisodeStartedAt: null,
+  starvationLastResumedAt: null,
+  intendedNormalTargetC: null,
+  currentTemperatureC: null,
+  starvationCause: null,
+  starvationPauseReason: null,
+});
+
+const buildStarvationSummary = (
+  live: LiveDeviceDiagnostics | undefined,
+): DeviceDiagnosticsStarvationSummary => {
+  if (!live) return createEmptyStarvationSummary();
+
+  const { starvation } = live;
+  const observation = live.lastStarvationObservation;
+
+  return {
+    isStarved: starvation.isStarved,
+    starvedAccumulatedMs: starvation.starvedAccumulatedMs,
+    starvationEpisodeStartedAt: starvation.isStarved
+      ? starvation.starvationEpisodeStartedAt ?? null
+      : null,
+    starvationLastResumedAt: starvation.isStarved
+      ? starvation.starvationLastResumedAt ?? null
+      : null,
+    intendedNormalTargetC: observation?.intendedNormalTargetC ?? null,
+    currentTemperatureC: observation?.currentTemperatureC ?? null,
+    starvationCause: starvation.starvationCause,
+    starvationPauseReason: starvation.starvationPauseReason,
+  };
+};
 
 const roundUpToStep = (value: number, step: number): number => (
   Math.ceil(value / step) * step
@@ -477,8 +498,11 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     ]);
 
     for (const deviceId of deviceIds) {
+      const live = this.liveByDeviceId[deviceId];
+      const freshLive = live?.lastObservationBatchId === this.latestObservationBatchId ? live : undefined;
       diagnosticsByDeviceId[deviceId] = {
-        currentPenaltyLevel: this.liveByDeviceId[deviceId]?.currentPenaltyLevel ?? 0,
+        currentPenaltyLevel: live?.currentPenaltyLevel ?? 0,
+        starvation: buildStarvationSummary(freshLive),
         windows: {
           '1d': buildWindowSummary(this.persistedState.devicesById[deviceId], dateKeysByWindow['1d']),
           '7d': buildWindowSummary(this.persistedState.devicesById[deviceId], dateKeysByWindow['7d']),

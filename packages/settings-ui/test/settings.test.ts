@@ -1877,6 +1877,16 @@ describe('settings script', () => {
       diagnosticsByDeviceId: {
         'dev-1': {
           currentPenaltyLevel: 2,
+          starvation: {
+            isStarved: true,
+            starvedAccumulatedMs: 23 * 60 * 1000,
+            starvationEpisodeStartedAt: Date.UTC(2026, 3, 20, 11, 0, 0),
+            starvationLastResumedAt: Date.UTC(2026, 3, 20, 11, 15, 0),
+            intendedNormalTargetC: 22,
+            currentTemperatureC: 18.2,
+            starvationCause: 'capacity',
+            starvationPauseReason: null,
+          },
           windows: {
             '1d': {
               unmetDemandMs: 2 * 60 * 60 * 1000,
@@ -1956,6 +1966,7 @@ describe('settings script', () => {
     ]));
     expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Failed activations');
     expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Penalty history');
+    expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Starved 23m');
   });
 
   it('shows a diagnostics unavailable state when the Homey API route fails', async () => {

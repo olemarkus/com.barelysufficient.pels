@@ -169,6 +169,9 @@ const resolveSuppressionFromReason = (reason: DeviceReason): StarvationSuppressi
   if (reason.code === PLAN_REASON_CODES.restoreThrottled) {
     return { suppressionState: 'paused', countingCause: null, pauseReason: 'restore_throttled' };
   }
+  if (reason.code === PLAN_REASON_CODES.activationBackoff) {
+    return { suppressionState: 'paused', countingCause: null, pauseReason: 'activation_backoff' };
+  }
   if (PAUSED_RESTORE_CODES.has(reason.code)) {
     return { suppressionState: 'paused', countingCause: null, pauseReason: 'restore' };
   }
