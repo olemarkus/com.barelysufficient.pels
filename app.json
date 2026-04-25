@@ -69,6 +69,18 @@
       "method": "GET",
       "path": "/daily_budget"
     },
+    "ui_recompute_daily_budget": {
+      "method": "POST",
+      "path": "/ui_recompute_daily_budget"
+    },
+    "ui_preview_daily_budget_model": {
+      "method": "POST",
+      "path": "/ui_preview_daily_budget_model"
+    },
+    "ui_apply_daily_budget_model": {
+      "method": "POST",
+      "path": "/ui_apply_daily_budget_model"
+    },
     "ui_refresh_devices": {
       "method": "POST",
       "path": "/ui_refresh_devices"

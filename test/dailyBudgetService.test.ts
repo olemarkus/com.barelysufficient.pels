@@ -183,6 +183,77 @@ describe('DailyBudgetService', () => {
     }));
   });
 
+  it('recomputes today plan with frozen-plan override and adjacent day payloads', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW_MS);
+    const service = buildService();
+    const today = buildDayPayload({
+      dateKey: '2025-03-15',
+      confidence: 0.72,
+      confidenceDebug: buildConfidenceDebug(),
+    });
+    const updateSpy = vi.fn(() => ({
+      snapshot: today,
+      shouldPersist: false,
+    }));
+    (service as any).manager.update = updateSpy;
+
+    const payload = service.recomputeTodayPlan();
+
+    expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
+      nowMs: NOW_MS,
+      forcePlanRebuild: true,
+      recomputeFrozenPlan: true,
+      refreshConfidence: true,
+    }));
+    expect(payload?.todayKey).toBe('2025-03-15');
+    vi.useRealTimers();
+  });
+
+  it('previews draft settings without persisting them', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW_MS);
+    const service = buildService();
+    const set = (service as any).deps.homey.settings.set as ReturnType<typeof vi.fn>;
+
+    const preview = service.previewModelSettings({
+      enabled: true,
+      dailyBudgetKWh: 24,
+      priceShapingEnabled: true,
+      controlledUsageWeight: 0.7,
+      priceShapingFlexShare: 0.4,
+    });
+
+    expect(set).not.toHaveBeenCalled();
+    expect(preview.settings.dailyBudgetKWh).toBe(24);
+    expect(preview.candidate?.todayKey).toBe('2025-03-15');
+    expect(preview.candidate?.tomorrowKey).toBe('2025-03-16');
+    vi.useRealTimers();
+  });
+
+  it('applies draft settings before recomputing the active plan', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW_MS);
+    const service = buildService();
+    const set = (service as any).deps.homey.settings.set as ReturnType<typeof vi.fn>;
+
+    const payload = service.applyModelSettings({
+      enabled: true,
+      dailyBudgetKWh: 24,
+      priceShapingEnabled: false,
+      controlledUsageWeight: 0.7,
+      priceShapingFlexShare: 0.4,
+    });
+
+    expect(set).toHaveBeenCalledWith('daily_budget_enabled', true);
+    expect(set).toHaveBeenCalledWith('daily_budget_kwh', 24);
+    expect(set).toHaveBeenCalledWith('daily_budget_price_shaping_enabled', false);
+    expect(set).toHaveBeenCalledWith('daily_budget_controlled_weight', 0.7);
+    expect(set).toHaveBeenCalledWith('daily_budget_price_flex_share', 0.4);
+    expect(payload?.days[payload.todayKey]?.budget.dailyBudgetKWh).toBe(24);
+    vi.useRealTimers();
+  });
+
   it('logs daily budget update failures to error', () => {
     const error = vi.fn();
     const service = new DailyBudgetService({

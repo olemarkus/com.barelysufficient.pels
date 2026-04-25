@@ -33,6 +33,7 @@ export type DailyBudgetUpdateParams = {
   refreshObservedStats?: boolean;
   refreshConfidence?: boolean;
   includeConfidenceBootstrapDebug?: boolean;
+  recomputeFrozenPlan?: boolean;
 };
 
 export type PlanResult = {

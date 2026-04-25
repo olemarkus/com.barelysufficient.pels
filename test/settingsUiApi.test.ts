@@ -6,9 +6,12 @@ import {
   getSettingsUiPowerPayload,
   getSettingsUiPricesPayload,
   logSettingsUiMessage,
+  applySettingsUiDailyBudgetModel,
+  previewSettingsUiDailyBudgetModel,
   refreshSettingsUiDevices,
   refreshSettingsUiGridTariff,
   refreshSettingsUiPrices,
+  recomputeSettingsUiDailyBudget,
   resetSettingsUiPowerStats,
 } from '../lib/app/settingsUiApi';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
@@ -54,6 +57,13 @@ describe('settingsUiApi', () => {
       persistPowerTrackerState();
     });
     const getDailyBudgetUiPayload = vi.fn().mockReturnValue({ days: {}, todayKey: '2026-03-03' });
+    const recomputeDailyBudgetToday = vi.fn().mockReturnValue({ days: {}, todayKey: '2026-03-03' });
+    const previewDailyBudgetModel = vi.fn().mockImplementation((settings: Record<string, unknown>) => ({
+      active: { days: {}, todayKey: '2026-03-03' },
+      candidate: { days: {}, todayKey: '2026-03-03', tomorrowKey: '2026-03-04' },
+      settings,
+    }));
+    const applyDailyBudgetModel = vi.fn().mockReturnValue({ days: {}, todayKey: '2026-03-03' });
     const getDeviceDiagnosticsUiPayload = vi.fn().mockReturnValue({
       generatedAt: 123456,
       windowDays: 21,
@@ -123,6 +133,9 @@ describe('settingsUiApi', () => {
       },
       replacePowerTrackerForUi,
       getDailyBudgetUiPayload,
+      recomputeDailyBudgetToday,
+      previewDailyBudgetModel,
+      applyDailyBudgetModel,
       getDeviceDiagnosticsUiPayload,
       get latestTargetSnapshot() {
         return latestDevices;
@@ -154,6 +167,9 @@ describe('settingsUiApi', () => {
       updateDailyBudgetAndRecordCap,
       persistPowerTrackerState,
       getDailyBudgetUiPayload,
+      recomputeDailyBudgetToday,
+      previewDailyBudgetModel,
+      applyDailyBudgetModel,
       getDeviceDiagnosticsUiPayload,
     };
   };
@@ -236,6 +252,36 @@ describe('settingsUiApi', () => {
       unreliablePeriods: [],
     });
     expect(result.dailyBudget).toEqual({ days: {}, todayKey: '2026-03-03' });
+  });
+
+  it('routes daily budget model preview and apply requests through the app', () => {
+    const homey = createHomey();
+    const body = {
+      enabled: true,
+      dailyBudgetKWh: 12,
+      priceShapingEnabled: false,
+      controlledUsageWeight: 0.7,
+      priceShapingFlexShare: 0.4,
+    };
+
+    const preview = previewSettingsUiDailyBudgetModel({ homey: homey as never, body });
+    const applied = applySettingsUiDailyBudgetModel({ homey: homey as never, body });
+
+    expect(homey.previewDailyBudgetModel).toHaveBeenCalledWith(body);
+    expect(homey.applyDailyBudgetModel).toHaveBeenCalledWith(body);
+    expect(preview?.candidate?.tomorrowKey).toBe('2026-03-04');
+    expect(applied?.todayKey).toBe('2026-03-03');
+  });
+
+  it('rethrows daily budget recompute failures after logging them', () => {
+    const homey = createHomey();
+    const error = new Error('recompute failed');
+    homey.recomputeDailyBudgetToday.mockImplementation(() => {
+      throw error;
+    });
+
+    expect(() => recomputeSettingsUiDailyBudget({ homey: homey as never })).toThrow(error);
+    expect(homey.error).toHaveBeenCalledWith('Daily budget recompute API failed', error);
   });
 
   it('builds dedicated read payloads for the remaining volatile UI models', () => {

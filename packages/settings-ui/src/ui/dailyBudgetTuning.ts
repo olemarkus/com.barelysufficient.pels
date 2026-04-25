@@ -17,16 +17,11 @@ import {
   DAILY_BUDGET_BREAKDOWN_ENABLED,
   DAILY_BUDGET_PRICE_FLEX_SHARE,
 } from '../../../contracts/src/settingsKeys.ts';
-import { rerenderDailyBudget } from './dailyBudget.ts';
+import { markDailyBudgetModelDraftChanged, rerenderDailyBudget } from './dailyBudget.ts';
 
 const clampRatio = (value: number, fallback: number): number => {
   if (!Number.isFinite(value)) return fallback;
   return Math.min(1, Math.max(0, value));
-};
-
-const parseRatioInput = (value: string, fallback: number): number => {
-  const parsed = Number.parseFloat(value);
-  return clampRatio(parsed, fallback);
 };
 
 const setInputValue = (input: HTMLInputElement | null, value: number) => {
@@ -57,36 +52,11 @@ export const loadDailyBudgetTuningSettings = async () => {
   }
 };
 
-const saveDailyBudgetTuningSettings = async () => {
-  const controlledWeight = parseRatioInput(
-    dailyBudgetControlledWeightInput?.value ?? '',
-    CONTROLLED_USAGE_WEIGHT,
-  );
-  const priceFlexShare = parseRatioInput(
-    dailyBudgetPriceFlexShareInput?.value ?? '',
-    PRICE_SHAPING_FLEX_SHARE,
-  );
+const saveDailyBudgetBreakdownSetting = async () => {
   const breakdownEnabled = dailyBudgetBreakdownInput?.checked ?? false;
-
-  const [currentControlledWeight, currentPriceFlexShare, currentBreakdown] = await Promise.all([
-    getSetting(DAILY_BUDGET_CONTROLLED_WEIGHT),
-    getSetting(DAILY_BUDGET_PRICE_FLEX_SHARE),
-    getSetting(DAILY_BUDGET_BREAKDOWN_ENABLED),
-  ]);
+  const currentBreakdown = await getSetting(DAILY_BUDGET_BREAKDOWN_ENABLED);
 
   const writes: Array<Promise<void>> = [];
-  pushSettingWriteIfChanged(
-    writes,
-    DAILY_BUDGET_CONTROLLED_WEIGHT,
-    currentControlledWeight,
-    controlledWeight,
-  );
-  pushSettingWriteIfChanged(
-    writes,
-    DAILY_BUDGET_PRICE_FLEX_SHARE,
-    currentPriceFlexShare,
-    priceFlexShare,
-  );
   pushSettingWriteIfChanged(
     writes,
     DAILY_BUDGET_BREAKDOWN_ENABLED,
@@ -97,8 +67,6 @@ const saveDailyBudgetTuningSettings = async () => {
     await Promise.all(writes);
   }
 
-  setInputValue(dailyBudgetControlledWeightInput, controlledWeight);
-  setInputValue(dailyBudgetPriceFlexShareInput, priceFlexShare);
   if (dailyBudgetBreakdownInput) {
     dailyBudgetBreakdownInput.checked = breakdownEnabled;
   }
@@ -107,18 +75,18 @@ const saveDailyBudgetTuningSettings = async () => {
 
 export const initDailyBudgetTuningHandlers = () => {
   if (!dailyBudgetControlledWeightInput && !dailyBudgetPriceFlexShareInput && !dailyBudgetBreakdownInput) return;
-  const autoSave = async () => {
+  const autoSaveBreakdown = async () => {
     try {
-      await saveDailyBudgetTuningSettings();
-      await showToast('Daily budget tuning saved.', 'ok');
+      await saveDailyBudgetBreakdownSetting();
+      await showToast('Daily budget breakdown setting saved.', 'ok');
     } catch (error) {
-      await logSettingsError('Failed to save daily budget tuning', error, 'dailyBudgetTuning');
-      await showToastError(error, 'Failed to save daily budget tuning.');
+      await logSettingsError('Failed to save daily budget breakdown setting', error, 'dailyBudgetTuning');
+      await showToastError(error, 'Failed to save daily budget breakdown setting.');
     }
   };
 
-  dailyBudgetControlledWeightInput?.addEventListener('change', autoSave);
-  dailyBudgetPriceFlexShareInput?.addEventListener('change', autoSave);
-  dailyBudgetBreakdownInput?.addEventListener('change', autoSave);
+  dailyBudgetControlledWeightInput?.addEventListener('change', markDailyBudgetModelDraftChanged);
+  dailyBudgetPriceFlexShareInput?.addEventListener('change', markDailyBudgetModelDraftChanged);
+  dailyBudgetBreakdownInput?.addEventListener('change', autoSaveBreakdown);
   dailyBudgetAdvancedForm?.addEventListener('submit', (event) => event.preventDefault());
 };

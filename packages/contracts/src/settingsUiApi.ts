@@ -15,6 +15,9 @@ export const SETTINGS_UI_REFRESH_GRID_TARIFF_PATH = '/ui_refresh_grid_tariff';
 export const SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH = '/ui_device_diagnostics';
 export const SETTINGS_UI_LOG_PATH = '/settings_ui_log';
 export const SETTINGS_UI_RESET_POWER_STATS_PATH = '/ui_reset_power_stats';
+export const SETTINGS_UI_RECOMPUTE_DAILY_BUDGET_PATH = '/ui_recompute_daily_budget';
+export const SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH = '/ui_preview_daily_budget_model';
+export const SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH = '/ui_apply_daily_budget_model';
 
 export type SettingsUiSettingsPatch = {
   settings: Record<string, unknown>;

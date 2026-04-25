@@ -95,6 +95,7 @@ export function shouldRebuildDailyBudgetPlan(params: {
   enabled: boolean;
   planStateMismatch: boolean;
   forcePlanRebuild?: boolean;
+  recomputeFrozenPlan?: boolean;
   frozen: boolean;
   lastPlanBucketStartUtcMs?: number | null;
   lastUsedNowKWh?: number;
@@ -105,12 +106,14 @@ export function shouldRebuildDailyBudgetPlan(params: {
     enabled,
     planStateMismatch,
     forcePlanRebuild,
+    recomputeFrozenPlan,
     frozen,
     lastPlanBucketStartUtcMs,
     lastUsedNowKWh,
     lastPlanRebuildMs,
   } = params;
-  if (!enabled || frozen) return false;
+  if (!enabled) return false;
+  if (frozen && !recomputeFrozenPlan) return false;
   const currentBucketStartUtcMs = context.bucketStartUtcMs[context.currentBucketIndex];
   const usageDeltaKWh = typeof lastUsedNowKWh === 'number'
     ? Math.abs(context.budgetControlUsedNowKWh - lastUsedNowKWh)

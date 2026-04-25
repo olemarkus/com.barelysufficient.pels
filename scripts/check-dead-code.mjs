@@ -65,6 +65,9 @@ const allowedUnusedExportPatterns = [
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH$/,
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_LOG_PATH$/,
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_RESET_POWER_STATS_PATH$/,
+  /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_RECOMPUTE_DAILY_BUDGET_PATH$/,
+  /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH$/,
+  /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH$/,
   /^packages\/contracts\/src\/targetCapabilities\.ts:\d+ - getTargetCapabilityStep$/,
   /^lib\/app\/smapsRollup\.ts:\d+ - _resetSmapsCacheForTests$/,
 ];
