@@ -7,6 +7,7 @@ export const MANAGED_DEVICES = 'managed_devices';
 export const CONTROLLABLE_DEVICES = 'controllable_devices';
 export const BUDGET_EXEMPT_DEVICES = 'budget_exempt_devices';
 export const NATIVE_EV_WIRING_DEVICES = 'native_ev_wiring_devices';
+export const DEVICE_DRIVER_OVERRIDES = 'device_driver_overrides';
 export const DEVICE_CONTROL_PROFILES = 'device_control_profiles';
 export const EXPERIMENTAL_EV_SUPPORT_ENABLED = 'experimental_ev_support_enabled';
 export const OVERSHOOT_BEHAVIORS = 'overshoot_behaviors';

@@ -163,6 +163,7 @@ class PelsApp extends Homey.App {
   private managedDevices: Record<string, boolean> = {};
   private budgetExemptDevices: Record<string, boolean> = {};
   private nativeEvWiringDevices: Record<string, boolean> = {};
+  private deviceDriverOverrides: Record<string, string> = {};
   private flowReportedCapabilities: FlowReportedCapabilitiesByDevice = {};
   private flowBackedCardsAvailable?: boolean;
   private flowDeviceAutocompleteCache?: { devices: HomeyDeviceLike[]; fetchedAtMs: number };
@@ -516,6 +517,8 @@ class PelsApp extends Homey.App {
       set managedDevices(value) { appRef.managedDevices = value; },
       get budgetExemptDevices() { return app.budgetExemptDevices; },
       set budgetExemptDevices(value) { appRef.budgetExemptDevices = value; },
+      get deviceDriverOverrides() { return app.deviceDriverOverrides; },
+      set deviceDriverOverrides(value) { appRef.deviceDriverOverrides = value; },
       get deviceControlProfiles() { return app.deviceControlProfiles; },
       set deviceControlProfiles(value) { appRef.deviceControlProfiles = value; },
       get deviceCommunicationModels() { return app.deviceCommunicationModels; },
@@ -657,6 +660,7 @@ class PelsApp extends Homey.App {
       getCommunicationModel: (id) => this.getCommunicationModel(id),
       getExperimentalEvSupportEnabled: () => this.experimentalEvSupportEnabled,
       getNativeEvWiringEnabled: (id) => this.nativeEvWiringDevices[id] === true,
+      getDeviceDriverIdOverride: (id) => this.getDeviceDriverIdOverride(id),
       getFlowReportedCapabilities: (deviceId) => this.getFlowReportedCapabilitiesForDevice(deviceId),
     }, {
       expectedPowerKwOverrides: this.expectedPowerKwOverrides,
@@ -971,6 +975,7 @@ class PelsApp extends Homey.App {
         managedDevices: this.managedDevices,
         budgetExemptDevices: this.budgetExemptDevices,
         nativeEvWiringDevices: this.nativeEvWiringDevices,
+        deviceDriverOverrides: this.deviceDriverOverrides,
         deviceControlProfiles: this.deviceControlProfiles,
         deviceCommunicationModels: this.deviceCommunicationModels,
         experimentalEvSupportEnabled: this.experimentalEvSupportEnabled,
@@ -987,6 +992,7 @@ class PelsApp extends Homey.App {
     this.managedDevices = next.managedDevices;
     this.budgetExemptDevices = next.budgetExemptDevices;
     this.nativeEvWiringDevices = next.nativeEvWiringDevices;
+    this.deviceDriverOverrides = next.deviceDriverOverrides;
     this.deviceControlProfiles = normalizeStoredDeviceControlProfiles(next.deviceControlProfiles) ?? {};
     this.deviceCommunicationModels = next.deviceCommunicationModels;
     this.experimentalEvSupportEnabled = next.experimentalEvSupportEnabled;
@@ -1268,6 +1274,10 @@ class PelsApp extends Homey.App {
   private getCommunicationModel = (deviceId: string): 'local' | 'cloud' => (
     this.deviceCommunicationModels[deviceId] ?? 'local'
   );
+  private getDeviceDriverIdOverride = (deviceId: string): string | undefined => {
+    const override = this.deviceDriverOverrides[deviceId]?.trim();
+    return override || undefined;
+  };
   private isCapacityControlEnabled = (deviceId: string) => (
     this.managedDevices[deviceId] === true && this.controllableDevices[deviceId] === true
   );

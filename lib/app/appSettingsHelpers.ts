@@ -22,6 +22,7 @@ import {
   CAPACITY_MARGIN_KW,
   DEVICE_CONTROL_PROFILES,
   DEVICE_COMMUNICATION_MODELS,
+  DEVICE_DRIVER_OVERRIDES,
   EXPERIMENTAL_EV_SUPPORT_ENABLED,
   NATIVE_EV_WIRING_DEVICES,
   CONTROLLABLE_DEVICES,
@@ -44,6 +45,7 @@ export type CapacitySettingsSnapshot = {
   managedDevices: Record<string, boolean>;
   budgetExemptDevices: Record<string, boolean>;
   nativeEvWiringDevices: Record<string, boolean>;
+  deviceDriverOverrides: Record<string, string>;
   deviceControlProfiles: DeviceControlProfiles;
   deviceCommunicationModels: Record<string, 'local' | 'cloud'>;
   experimentalEvSupportEnabled: boolean;
@@ -64,6 +66,7 @@ export function buildCapacitySettingsSnapshot(params: {
   const dryRun = settings.get(CAPACITY_DRY_RUN) as unknown;
   const deviceFlags = readDeviceFlagSettings({ settings, current });
   const deviceSettings = readDeviceControlSettings({ settings, current });
+  const deviceOverrides = readDeviceOverrideSettings({ settings, current });
   const nativeEvSettings = readNativeEvSettings({ settings, current });
   const experimentalEvSupportEnabled = settings.get(EXPERIMENTAL_EV_SUPPORT_ENABLED) as unknown;
   const rawShedBehaviors = settings.get(OVERSHOOT_BEHAVIORS) as unknown;
@@ -102,6 +105,7 @@ export function buildCapacitySettingsSnapshot(params: {
     managedDevices: deviceFlags.managedDevices,
     budgetExemptDevices: deviceFlags.budgetExemptDevices,
     nativeEvWiringDevices: nativeEvSettings.nativeEvWiringDevices,
+    deviceDriverOverrides: deviceOverrides.deviceDriverOverrides,
     deviceControlProfiles: deviceSettings.deviceControlProfiles,
     deviceCommunicationModels: deviceSettings.deviceCommunicationModels,
     experimentalEvSupportEnabled: nextExperimentalEvSupportEnabled,
@@ -143,6 +147,22 @@ function readNativeEvSettings(params: {
   };
 }
 
+function readDeviceOverrideSettings(params: {
+  settings: Homey.App['homey']['settings'];
+  current: CapacitySettingsSnapshot;
+}): Pick<
+  CapacitySettingsSnapshot,
+  'deviceDriverOverrides'
+> {
+  const { settings, current } = params;
+  const driverOverrides = settings.get(DEVICE_DRIVER_OVERRIDES) as unknown;
+  return {
+    deviceDriverOverrides: isStringMap(driverOverrides)
+      ? normalizeStringMap(driverOverrides)
+      : current.deviceDriverOverrides,
+  };
+}
+
 function readDeviceControlSettings(params: {
   settings: Homey.App['homey']['settings'];
   current: CapacitySettingsSnapshot;
@@ -161,6 +181,16 @@ function readDeviceControlSettings(params: {
       ? deviceCommunicationModels
       : current.deviceCommunicationModels,
   };
+}
+
+function normalizeStringMap(value: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, entry]) => {
+      const normalizedKey = key.trim();
+      const normalizedEntry = entry.trim();
+      return normalizedKey && normalizedEntry ? [[normalizedKey, normalizedEntry]] : [];
+    }),
+  );
 }
 
 export function loadCapacitySettingsFromHomey(params: {

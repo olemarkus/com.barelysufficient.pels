@@ -81,6 +81,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   let controllableDevices: Record<string, boolean> = {};
   let managedDevices: Record<string, boolean> = {};
   let budgetExemptDevices: Record<string, boolean> = {};
+  let deviceDriverOverrides: Record<string, string> = {};
   let deviceControlProfiles: DeviceControlProfiles = {};
   let deviceCommunicationModels: Record<string, 'local' | 'cloud'> = {};
   let experimentalEvSupportEnabled = false;
@@ -199,6 +200,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     set managedDevices(value) { managedDevices = value; },
     get budgetExemptDevices() { return budgetExemptDevices; },
     set budgetExemptDevices(value) { budgetExemptDevices = value; },
+    get deviceDriverOverrides() { return deviceDriverOverrides; },
+    set deviceDriverOverrides(value) { deviceDriverOverrides = value; },
     get deviceControlProfiles() { return deviceControlProfiles; },
     set deviceControlProfiles(value) { deviceControlProfiles = value; },
     get deviceCommunicationModels() { return deviceCommunicationModels; },

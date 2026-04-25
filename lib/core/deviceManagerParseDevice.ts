@@ -56,6 +56,7 @@ export type DeviceManagerParseProviders = {
     getManaged?: (deviceId: string) => boolean;
     getBudgetExempt?: (deviceId: string) => boolean;
     getCommunicationModel?: (deviceId: string) => 'local' | 'cloud';
+    getDeviceDriverIdOverride?: (deviceId: string) => string | undefined;
     getExperimentalEvSupportEnabled?: () => boolean;
     getNativeEvWiringEnabled?: (deviceId: string) => boolean;
     getFlowReportedCapabilities?: (deviceId: string) => FlowReportedCapabilitiesForDevice;
@@ -110,14 +111,18 @@ export function parseDevice(params: {
     } = deps;
 
     const deviceId = getDeviceId(device);
-    const deviceClassKey = resolveDeviceClassKey({
+    const effectiveDevice = applyDeviceDriverOverride(
         device,
+        providers.getDeviceDriverIdOverride?.(deviceId),
+    );
+    const deviceClassKey = resolveDeviceClassKey({
+        device: effectiveDevice,
         experimentalEvSupportEnabled: providers.getExperimentalEvSupportEnabled?.() === true,
     });
     if (!deviceClassKey) return null;
-    const deviceLabel = resolveDeviceLabel(device, deviceId);
-    const rawCapabilities = getCapabilities(device);
-    const rawCapabilityObj = getCapabilityObj(device);
+    const deviceLabel = resolveDeviceLabel(effectiveDevice, deviceId);
+    const rawCapabilities = getCapabilities(effectiveDevice);
+    const rawCapabilityObj = getCapabilityObj(effectiveDevice);
     const {
         capabilities,
         capabilityObj,
@@ -129,7 +134,7 @@ export function parseDevice(params: {
         requiredFlowCapabilityIds,
         reportedCapabilities,
     } = resolveFlowCapabilityOverlay({
-        device,
+        device: effectiveDevice,
         deviceClassKey,
         deviceId,
         rawCapabilities,
@@ -151,7 +156,7 @@ export function parseDevice(params: {
         measuredPower,
         powerEstimate,
     } = resolveDevicePowerState({
-        device,
+        device: effectiveDevice,
         deviceId,
         deviceLabel,
         capabilities,
@@ -186,8 +191,8 @@ export function parseDevice(params: {
         flowBackedCapabilityIds,
         currentOn: getCurrentOn({ deviceClassKey, capabilityObj, controlCapabilityId }),
     });
-    const available = getIsAvailable(device);
-    const powerCapable = isPowerCapable(device, capsStatus, powerEstimate);
+    const available = getIsAvailable(effectiveDevice);
+    const powerCapable = isPowerCapable(effectiveDevice, capsStatus, powerEstimate);
     if (shouldSkipFlowBackedCandidate({
         flowAugmentedDeviceType,
         flowBackedCapabilityIds,
@@ -206,7 +211,7 @@ export function parseDevice(params: {
         measuredPowerObservedAtMs: measuredPower.observedAtMs,
     });
     return buildParsedDeviceSnapshot({
-        device,
+        device: effectiveDevice,
         deviceId,
         deviceClassKey,
         providers,
@@ -229,6 +234,19 @@ export function parseDevice(params: {
         lastFreshDataMs,
         lastLocalWriteMs: resolveLatestLocalWriteMs(deviceId),
     });
+}
+
+function applyDeviceDriverOverride(
+    device: HomeyDeviceLike,
+    driverIdOverride: string | undefined,
+): HomeyDeviceLike {
+    const driverId = normalizeDriverIdOverride(driverIdOverride);
+    return driverId ? { ...device, driverId } : device;
+}
+
+function normalizeDriverIdOverride(value: string | undefined): string | undefined {
+    const normalized = value?.trim();
+    return normalized || undefined;
 }
 
 function resolveTargetDeviceType(targetCaps: readonly string[]): TargetDeviceSnapshot['deviceType'] {
