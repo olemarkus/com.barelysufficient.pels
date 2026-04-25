@@ -2,7 +2,6 @@ import type { DailyBudgetUiPayload } from './dailyBudgetTypes.js';
 import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsTypes.js';
 import type { PowerTrackerState } from './powerTrackerTypes.js';
 import type { SettingsUiLogEntry, TargetDeviceSnapshot } from './types.js';
-import type { DeviceOverviewSnapshot } from '../../shared-domain/src/deviceOverview.js';
 
 export const SETTINGS_UI_BOOTSTRAP_PATH = '/ui_bootstrap';
 export const SETTINGS_UI_DEVICES_PATH = '/ui_devices';
@@ -25,9 +24,14 @@ export type SettingsUiSettingsPatch = {
 
 export type SettingsUiBootstrap = SettingsUiSettingsPatch & {
   dailyBudget: DailyBudgetUiPayload | null;
+  featureAccess?: SettingsUiFeatureAccess;
   plan: SettingsUiPlanSnapshot | null;
   power: SettingsUiPowerPayload;
   prices: SettingsUiPricesPayload;
+};
+
+export type SettingsUiFeatureAccess = {
+  canToggleOverviewRedesign: boolean;
 };
 
 export type SettingsUiLogRequest = SettingsUiLogEntry;
@@ -39,21 +43,10 @@ export type SettingsUiPlanPendingTargetCommand = {
   status: 'waiting_confirmation' | 'temporary_unavailable';
 };
 
-export type SettingsUiPlanDevice = DeviceOverviewSnapshot & {
-  id: string;
-  name: string;
-  plannedTarget?: number | null;
-  priority?: number;
-  zone?: string;
-  budgetExempt?: boolean;
-  currentTemperature?: number;
-  pendingTargetCommand?: SettingsUiPlanPendingTargetCommand;
-};
-
 export type SettingsUiPlanSnapshot = {
   generatedAtMs?: number;
-  meta?: Record<string, unknown>;
-  devices?: SettingsUiPlanDevice[];
+  meta?: SettingsUiPlanMetaSnapshot;
+  devices?: SettingsUiPlanDeviceSnapshot[];
 };
 
 export type SettingsUiPlanPayload = {
@@ -76,6 +69,87 @@ export type SettingsUiPowerStatus = {
   shortfallBudgetHeadroomKw?: number | null;
   hardCapHeadroomKw?: number | null;
 };
+
+export type SettingsUiPlanStarvationCause = 'capacity' | 'budget' | 'manual' | 'external';
+
+export type SettingsUiPlanDeviceStarvation = {
+  isStarved: boolean;
+  accumulatedMs: number;
+  cause: SettingsUiPlanStarvationCause;
+  startedAtMs: number | null;
+};
+
+export type SettingsUiPlanMetaSnapshot = {
+  [key: string]: unknown;
+  totalKw?: number | null;
+  softLimitKw?: number;
+  capacitySoftLimitKw?: number;
+  dailySoftLimitKw?: number | null;
+  softLimitSource?: 'capacity' | 'daily' | 'both';
+  headroomKw?: number;
+  powerKnown?: boolean;
+  hasLivePowerSample?: boolean;
+  powerSampleAgeMs?: number | null;
+  powerFreshnessState?: 'fresh' | 'stale_hold' | 'stale_fail_closed';
+  capacityShortfall?: boolean;
+  shortfallBudgetThresholdKw?: number;
+  shortfallBudgetHeadroomKw?: number | null;
+  hardCapLimitKw?: number | null;
+  hardCapHeadroomKw?: number | null;
+  hourlyBudgetExhausted?: boolean;
+  usedKWh?: number;
+  budgetKWh?: number;
+  minutesRemaining?: number;
+  controlledKw?: number;
+  uncontrolledKw?: number;
+  hourControlledKWh?: number;
+  hourUncontrolledKWh?: number;
+  dailyBudgetRemainingKWh?: number;
+  dailyBudgetExceeded?: boolean;
+  dailyBudgetHourKWh?: number;
+  lastPowerUpdateMs?: number;
+};
+
+export type SettingsUiPlanDeviceSnapshot = {
+  [key: string]: unknown;
+  id: string;
+  name: string;
+  deviceClass?: string;
+  priority?: number;
+  zone?: string;
+  controllable?: boolean;
+  available?: boolean;
+  currentState?: string;
+  plannedState?: string;
+  controlModel?: 'temperature_target' | 'binary_power' | 'stepped_load';
+  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  evChargingState?: string;
+  currentTarget?: number | null;
+  plannedTarget?: number | null;
+  currentTemperature?: number;
+  measuredPowerKw?: number;
+  expectedPowerKw?: number;
+  planningPowerKw?: number;
+  budgetExempt?: boolean;
+  observationStale?: boolean;
+  shedAction?: 'turn_off' | 'set_temperature' | 'set_step';
+  shedTemperature?: number | null;
+  selectedStepId?: string;
+  desiredStepId?: string;
+  reportedStepId?: string;
+  targetStepId?: string;
+  actualStepId?: string;
+  assumedStepId?: string;
+  actualStepSource?: 'reported' | 'assumed' | 'profile_default';
+  binaryCommandPending?: boolean;
+  stateKind?: string;
+  stateTone?: string;
+  reason: unknown;
+  starvation?: SettingsUiPlanDeviceStarvation;
+  pendingTargetCommand?: SettingsUiPlanPendingTargetCommand;
+};
+
+export type SettingsUiPlanDevice = SettingsUiPlanDeviceSnapshot;
 
 export type SettingsUiPowerPayload = {
   tracker: PowerTrackerState | null;

@@ -170,6 +170,7 @@ function logNativeEvCandidate(params: {
     key: `${device.id}:candidate`,
     signature: JSON.stringify({
       driverId: device.driverId ?? null,
+      driverUri: device.driverUri ?? null,
       ownerUri: device.ownerUri ?? null,
       activationEnabled: controlAdapter.activationEnabled,
     }),
@@ -181,6 +182,7 @@ function logNativeEvCandidate(params: {
     deviceId: device.id,
     deviceName: device.name,
     driverId: device.driverId ?? null,
+    driverUri: device.driverUri ?? null,
     ownerUri: device.ownerUri ?? null,
     activationEnabled: controlAdapter.activationEnabled,
   });

@@ -43,7 +43,6 @@ README.txt
 LICENSE
 CODE_OF_CONDUCT.md
 CONTRIBUTING.md
-
 eslint.config.mjs
 style-dictionary.config.mjs
 .dependency-cruiser.cjs

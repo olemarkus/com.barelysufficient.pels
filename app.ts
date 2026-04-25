@@ -8,6 +8,7 @@ import {
 } from './lib/core/deviceManager';
 import { PlanEngine } from './lib/plan/planEngine';
 import { DevicePlan, ShedBehavior } from './lib/plan/planTypes';
+import type { SettingsUiPlanSnapshot } from './packages/contracts/src/settingsUiApi';
 import { PlanService } from './lib/plan/planService';
 import { isPlanConverging } from './lib/plan/planStateHelpers';
 import { buildPlanCapacityStateSummary } from './lib/plan/planLogging';
@@ -1028,7 +1029,9 @@ class PelsApp extends Homey.App {
   public applyDailyBudgetModel(settings: DailyBudgetSettingsInput): DailyBudgetUiPayload | null {
     return this.dailyBudgetService.applyModelSettings(settings);
   }
-  public getLatestPlanSnapshotForUi(): DevicePlan | null { return this.planService?.getLatestPlanSnapshot() ?? null; }
+  public getLatestPlanSnapshotForUi(): SettingsUiPlanSnapshot | null {
+    return this.planService?.getLatestPlanSnapshotForUi() ?? null;
+  }
   private async updateOverheadToken(value?: number): Promise<void> {
     const overhead = Number.isFinite(value) ? Number(value) : this.capacitySettings.marginKw;
     try {

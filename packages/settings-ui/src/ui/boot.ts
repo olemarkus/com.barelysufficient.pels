@@ -13,6 +13,8 @@ import {
   priceRefreshButton,
   priceOptimizationEnabledCheckbox,
   advancedEvSupportEnabledInput,
+  advancedOverviewRedesignEnabledInput,
+  advancedOverviewRedesignRow,
   gridTariffSettingsForm,
   gridTariffCountySelect,
   gridTariffCompanySelect,
@@ -104,7 +106,15 @@ import {
   showTab,
   startStaleDataRefreshInterval,
 } from './realtime.ts';
-import { refreshPlan } from './plan.ts';
+import {
+  refreshPlan,
+} from './plan.ts';
+import {
+  applySettingsUiVariant,
+  applyStoredOverviewRedesignPreference,
+  resolveOverviewRedesignPreference,
+  setStoredOverviewRedesignPreference,
+} from './uiVariant.ts';
 
 const initTabHandlers = () => {
   tabs.forEach((tab) => {
@@ -270,6 +280,26 @@ const initAdvancedHandlers = () => {
     }
   });
 
+  advancedOverviewRedesignEnabledInput?.addEventListener('change', async () => {
+    try {
+      const enabled = advancedOverviewRedesignEnabledInput.checked;
+      setStoredOverviewRedesignPreference(enabled);
+      applySettingsUiVariant(enabled ? 'redesign' : 'legacy');
+      await refreshPlan();
+      await showToast(
+        enabled ? 'Overview redesign enabled.' : 'Overview redesign disabled.',
+        'ok',
+      );
+    } catch (error) {
+      await logSettingsError(
+        'Failed to update Overview redesign preference',
+        error,
+        'advancedOverviewRedesignEnabledInput',
+      );
+      await showToastError(error, 'Failed to update Overview redesign preference.');
+    }
+  });
+
   initAdvancedDeviceCleanupHandlers();
   initAdvancedDeviceLoggerHandlers();
   initDailyBudgetTuningHandlers();
@@ -291,6 +321,18 @@ const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
   } catch {
     return null;
   }
+};
+
+const applyOverviewExperimentBootstrap = (bootstrap: SettingsUiBootstrap | null) => {
+  const canToggleOverviewRedesign = bootstrap?.featureAccess?.canToggleOverviewRedesign === true;
+  if (advancedOverviewRedesignRow) {
+    advancedOverviewRedesignRow.hidden = !canToggleOverviewRedesign;
+  }
+  const overviewRedesignEnabled = resolveOverviewRedesignPreference();
+  if (advancedOverviewRedesignEnabledInput) {
+    advancedOverviewRedesignEnabledInput.checked = overviewRedesignEnabled;
+  }
+  applyStoredOverviewRedesignPreference(canToggleOverviewRedesign);
 };
 
 const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
@@ -335,7 +377,8 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   }
 };
 
-const initializeBootHandlers = () => {
+const initializeBootHandlers = (bootstrap: SettingsUiBootstrap | null) => {
+  applyOverviewExperimentBootstrap(bootstrap);
   initTooltips();
   initDebouncedSaveFlush();
   initRealtimeListeners();
@@ -396,7 +439,7 @@ export const boot = async () => {
     }
     const bootstrap = await loadBootstrapData();
     markSettingsUi('boot:bootstrap-loaded');
-    initializeBootHandlers();
+    initializeBootHandlers(bootstrap);
     await loadInitialData(bootstrap);
     startStaleDataRefreshInterval();
     markBootComplete();

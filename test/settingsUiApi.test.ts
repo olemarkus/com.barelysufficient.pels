@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   buildSettingsUiBootstrap,
   getSettingsUiDeviceDiagnosticsPayload,
@@ -18,7 +19,22 @@ import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys
 import { buildComparablePlanReason } from '../packages/shared-domain/src/planReasonSemantics';
 
 describe('settingsUiApi', () => {
-  const createHomey = (options: { latestPlanSnapshot?: Record<string, unknown> | null } = {}) => {
+  const originalOverviewRedesignHomeyIdHashesEnv = process.env.PELS_OVERVIEW_REDESIGN_HOMEY_ID_HASHES;
+
+  afterEach(() => {
+    if (originalOverviewRedesignHomeyIdHashesEnv === undefined) {
+      delete process.env.PELS_OVERVIEW_REDESIGN_HOMEY_ID_HASHES;
+      return;
+    }
+    process.env.PELS_OVERVIEW_REDESIGN_HOMEY_ID_HASHES = originalOverviewRedesignHomeyIdHashesEnv;
+  });
+
+  const createHomey = (
+    options: {
+      homeyId?: string;
+      latestPlanSnapshot?: Record<string, unknown> | null;
+    } = {},
+  ) => {
     const store = new Map<string, unknown>([
       ['target_devices_snapshot', [{ id: 'dev-1', name: 'Heater' }]],
       ['device_plan_snapshot', {
@@ -157,6 +173,9 @@ describe('settingsUiApi', () => {
       settings: {
         get: (key: string) => store.get(key),
       },
+      cloud: {
+        getHomeyId: vi.fn(async () => options.homeyId ?? 'mock-homey-id'),
+      },
       app,
       log,
       error,
@@ -174,15 +193,16 @@ describe('settingsUiApi', () => {
     };
   };
 
-  it('builds bootstrap payload from current settings and daily budget data', () => {
+  it('builds bootstrap payload from current settings and daily budget data', async () => {
     const homey = createHomey();
 
-    const result = buildSettingsUiBootstrap({ homey: homey as never });
+    const result = await buildSettingsUiBootstrap({ homey: homey as never });
 
     expect(Object.keys(result.settings)).toEqual([...SETTINGS_UI_BOOTSTRAP_KEYS]);
     expect(result.settings.target_devices_snapshot).toBeUndefined();
     expect(result.settings.combined_prices).toBeUndefined();
     expect(result.dailyBudget).toEqual({ days: {}, todayKey: '2026-03-03' });
+    expect(result.featureAccess).toEqual({ canToggleOverviewRedesign: true });
     expect((result as unknown as Record<string, unknown>).devices).toBeUndefined();
     expect(result.plan).toEqual({
       devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
@@ -194,6 +214,25 @@ describe('settingsUiApi', () => {
     });
     expect(result.prices.combinedPrices).toEqual({ prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] });
     expect(result.prices.homeyCurrency).toBe('NOK');
+  });
+
+  it('hides restricted feature toggles for non-allowlisted Homeys', async () => {
+    const homey = createHomey({ homeyId: 'some-other-homey-id' });
+
+    await expect(buildSettingsUiBootstrap({ homey: homey as never })).resolves.toMatchObject({
+      featureAccess: { canToggleOverviewRedesign: false },
+    });
+  });
+
+  it('allows restricted feature toggles for Homeys listed in process env', async () => {
+    process.env.PELS_OVERVIEW_REDESIGN_HOMEY_ID_HASHES = createHash('sha256')
+      .update('env-homey-id')
+      .digest('hex');
+    const homey = createHomey({ homeyId: 'env-homey-id' });
+
+    await expect(buildSettingsUiBootstrap({ homey: homey as never })).resolves.toMatchObject({
+      featureAccess: { canToggleOverviewRedesign: true },
+    });
   });
 
   it('returns refreshed devices from the app wrapper', async () => {
@@ -345,7 +384,7 @@ describe('settingsUiApi', () => {
     expect(homey.error).toHaveBeenCalledWith('Device diagnostics API failed', expect.any(Error));
   });
 
-  it('prefers the live in-memory plan snapshot over the persisted settings snapshot', () => {
+  it('prefers the live in-memory plan snapshot over the persisted settings snapshot', async () => {
     const homey = createHomey({
       latestPlanSnapshot: {
         generatedAtMs: 123456789,
@@ -353,10 +392,12 @@ describe('settingsUiApi', () => {
       },
     });
 
-    expect(buildSettingsUiBootstrap({ homey: homey as never }).plan).toEqual({
-      generatedAtMs: 123456789,
-      devices: [{ id: 'dev-2', name: 'Pump', priority: 2, reason: buildComparablePlanReason('keep') }],
-    });
+    await expect(buildSettingsUiBootstrap({ homey: homey as never })).resolves.toEqual(expect.objectContaining({
+      plan: {
+        generatedAtMs: 123456789,
+        devices: [{ id: 'dev-2', name: 'Pump', priority: 2, reason: buildComparablePlanReason('keep') }],
+      },
+    }));
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
       plan: {
         generatedAtMs: 123456789,
@@ -365,7 +406,7 @@ describe('settingsUiApi', () => {
     });
   });
 
-  it('falls back to the persisted plan snapshot when the in-memory app snapshot is invalid', () => {
+  it('falls back to the persisted plan snapshot when the in-memory app snapshot is invalid', async () => {
     const homey = createHomey({
       latestPlanSnapshot: {
         generatedAtMs: 123456789,
@@ -373,9 +414,11 @@ describe('settingsUiApi', () => {
       },
     });
 
-    expect(buildSettingsUiBootstrap({ homey: homey as never }).plan).toEqual({
-      devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
-    });
+    await expect(buildSettingsUiBootstrap({ homey: homey as never })).resolves.toEqual(expect.objectContaining({
+      plan: {
+        devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
+      },
+    }));
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
       plan: {
         devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
@@ -386,7 +429,7 @@ describe('settingsUiApi', () => {
     );
   });
 
-  it('drops invalid persisted plan snapshots instead of normalizing missing reasons', () => {
+  it('drops invalid persisted plan snapshots instead of normalizing missing reasons', async () => {
     const homey = createHomey();
     const settingsGet = homey.settings.get;
     homey.settings.get = ((key: string) => {
@@ -395,7 +438,9 @@ describe('settingsUiApi', () => {
     }) as typeof homey.settings.get;
 
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({ plan: null });
-    expect(buildSettingsUiBootstrap({ homey: homey as never }).plan).toBeNull();
+    await expect(buildSettingsUiBootstrap({ homey: homey as never })).resolves.toEqual(expect.objectContaining({
+      plan: null,
+    }));
     expect(homey.error).toHaveBeenCalledWith(
       'Ignoring invalid persisted settings UI plan snapshot: finalized devices must include structured reason',
     );

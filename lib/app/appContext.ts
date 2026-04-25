@@ -8,7 +8,7 @@ import type { DeviceDiagnosticsService } from '../diagnostics/deviceDiagnosticsS
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import type { HeadroomForDeviceDecision } from '../plan/planHeadroomDevice';
 import type { PlanEngine } from '../plan/planEngine';
-import type { PendingTargetObservationSource, DevicePlan, ShedAction, ShedBehavior } from '../plan/planTypes';
+import type { PendingTargetObservationSource, ShedAction, ShedBehavior } from '../plan/planTypes';
 import type { PlanService } from '../plan/planService';
 import type { PriceLevel } from '../price/priceLevels';
 import type { PriceCoordinator } from '../price/priceCoordinator';
@@ -117,7 +117,7 @@ export type AppContext = {
   ) => HeadroomForDeviceDecision | null;
   getCombinedHourlyPrices: () => unknown;
   getDailyBudgetUiPayload: () => DailyBudgetUiPayload | null;
-  getLatestPlanSnapshotForUi: () => DevicePlan | null;
+  getLatestPlanSnapshotForUi: () => import('../../packages/contracts/src/settingsUiApi').SettingsUiPlanSnapshot | null;
   get powerTracker(): PowerTrackerState;
   set powerTracker(value: PowerTrackerState);
   get capacitySettings(): { limitKw: number; marginKw: number };

@@ -1451,6 +1451,44 @@ describe('PlanService', () => {
     }));
   });
 
+  it('preserves pending target command metadata in the UI plan snapshot', () => {
+    const { service } = createPlanService();
+    (service as any).latestPlanSnapshot = buildPlan(18, 'stable', {}, {
+      pendingTargetCommand: {
+        desired: 20,
+        retryCount: 1,
+        nextRetryAtMs: Date.now() + 30_000,
+        status: 'temporary_unavailable',
+        lastObservedValue: 18,
+        lastObservedSource: 'snapshot_refresh',
+      },
+    });
+
+    expect(service.getLatestPlanSnapshotForUi()?.devices[0].pendingTargetCommand)
+      .toEqual(expect.objectContaining({
+        desired: 20,
+        retryCount: 1,
+        status: 'temporary_unavailable',
+        lastObservedValue: 18,
+        lastObservedSource: 'snapshot_refresh',
+      }));
+  });
+
+  it('preserves EV charging state in the UI plan snapshot', () => {
+    const { service } = createPlanService();
+    (service as any).latestPlanSnapshot = buildPlan(18, 'stable', {}, {
+      deviceClass: 'evcharger',
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_in_paused',
+    });
+
+    expect(service.getLatestPlanSnapshotForUi()?.devices[0]).toEqual(expect.objectContaining({
+      deviceClass: 'evcharger',
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_in_paused',
+    }));
+  });
+
   it('refreshes the stored current target when a pending target command is confirmed', async () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
