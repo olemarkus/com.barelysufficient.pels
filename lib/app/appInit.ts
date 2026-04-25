@@ -114,6 +114,7 @@ export function createPlanService(ctx: AppContext): PlanService {
     overviewDebugStructured: ctx.getStructuredDebugEmitter('overview', 'overview'),
     isOverviewDebugEnabled: () => ctx.debugLoggingTopics.has('overview'),
     isPlanDebugEnabled: () => ctx.debugLoggingTopics.has('plan'),
+    deviceDiagnostics: ctx.deviceDiagnosticsService,
   });
 }
 

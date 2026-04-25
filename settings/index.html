@@ -9,9 +9,11 @@
 <body>
   <main class="screen">
     <header class="hero">
-      <p class="eyebrow">PELS · App control</p>
-      <h1>Control center</h1>
-      <p class="lede">Manage devices, modes, budgets, and usage.</p>
+      <div id="legacy-shell-copy">
+        <p class="eyebrow">PELS · App control</p>
+        <h1>Control center</h1>
+        <p class="lede">Manage devices, modes, budgets, and usage.</p>
+      </div>
       <div class="tabs" role="tablist">
         <button type="button" class="tab active" data-tab="overview" role="tab" aria-selected="true">Overview</button>
         <button type="button" class="tab" data-tab="devices" role="tab" aria-selected="false">Devices</button>
@@ -25,7 +27,7 @@
 
     <div id="dry-run-banner" class="banner banner--warning" hidden>
       <span class="banner__icon">⚠️</span>
-      <span class="banner__text">Dry-run mode is enabled. Devices will not be switched automatically.</span>
+      <span class="banner__text">Test mode is on. Devices will not be switched automatically.</span>
     </div>
 
     <div id="stale-data-banner" class="banner banner--warning" hidden>
@@ -332,23 +334,32 @@
     </section>
 
     <section class="card panel" id="overview-panel" data-panel="overview">
-      <div class="card__header">
-        <div>
-          <p class="eyebrow">Overview</p>
-          <h2>Planned device states</h2>
+      <div id="plan-legacy-surface">
+        <div class="card__header">
+          <div>
+            <p class="eyebrow">Overview</p>
+            <h2>Planned device states</h2>
+          </div>
         </div>
-      </div>
-      <div class="overview-stats">
-        <div class="section-header">
-          <h3 class="section-title">Quick stats</h3>
+        <div class="overview-stats">
+          <div class="section-header">
+            <h3 class="section-title">Quick stats</h3>
+          </div>
+          <div class="pill" id="plan-meta">Awaiting data…</div>
         </div>
-        <div class="pill" id="plan-meta">Awaiting data…</div>
+        <ul id="plan-list" class="device-list"></ul>
       </div>
-      <ul id="plan-list" class="device-list"></ul>
+      <div id="plan-redesign-surface" hidden>
+        <div id="plan-hero" class="plan-hero" aria-live="polite">
+          <p class="plan-hero__placeholder muted">Awaiting data…</p>
+        </div>
+        <div id="plan-hour-strip" class="plan-hour-strip" hidden></div>
+        <div id="plan-cards" class="plan-cards"></div>
+      </div>
       <p id="plan-empty" class="muted" hidden>No plan available yet. Send power data or refresh devices.</p>
       <div class="list__footer">
         <button type="button" class="btn secondary" id="plan-refresh-button">Refresh plan</button>
-        <p class="muted">Plan is recalculated when power usage updates or when you refresh devices.</p>
+        <p class="muted">Updates automatically. Refresh if readings look stale.</p>
       </div>
     </section>
 
@@ -366,6 +377,13 @@
         </summary>
         <div class="collapse-content">
           <div class="form-grid">
+            <label class="field checkbox-field" id="advanced-overview-redesign-row" hidden>
+              <input id="advanced-overview-redesign-enabled" type="checkbox">
+              <span class="checkbox-field__content">
+                <span class="field__label">Enable Overview redesign</span>
+                <small class="field__hint">Opt into the new Overview dashboard in this browser.</small>
+              </span>
+            </label>
             <label class="field checkbox-field">
               <input id="advanced-ev-support-enabled" type="checkbox">
               <span class="checkbox-field__content">

@@ -607,14 +607,13 @@ describe('Settings UI', () => {
     });
   });
 
-  describe('Plan view temperature display', () => {
-    const setupPlanPage = async (devices: Array<{
+  describe('Overview layout', () => {
+    const setupOverviewPage = async (devices: Array<{
       name: string;
-      zone: string;
-      currentTemperature: number;
-      currentTarget: number;
-      plannedTarget?: number;
-    }>) => {
+      state: string;
+      reason: string;
+      load: string;
+    }>, viewport: { width: number; height: number } = { width: 480, height: 800 }) => {
       const devicesJson = JSON.stringify(devices);
       const mockScript = `
         document.addEventListener('DOMContentLoaded', () => {
@@ -629,75 +628,62 @@ describe('Settings UI', () => {
             p.classList.toggle('hidden', p.dataset.panel !== 'overview');
           });
           
-          const planList = document.getElementById('plan-list');
-          const planMeta = document.getElementById('plan-meta');
+          const planList = document.getElementById('plan-cards');
+          const planHero = document.getElementById('plan-hero');
           const planEmpty = document.getElementById('plan-empty');
+          const legacySurface = document.getElementById('plan-legacy-surface');
+          const redesignSurface = document.getElementById('plan-redesign-surface');
           
           if (planEmpty) planEmpty.hidden = true;
-          if (planMeta) {
-            planMeta.innerHTML = '<div>Now 4.2kW / Limit 9.5kW</div><div>5.3kW available</div>';
+          if (legacySurface) legacySurface.hidden = true;
+          if (redesignSurface) redesignSurface.hidden = false;
+          if (planHero) {
+            planHero.innerHTML = [
+              '<div class="plan-hero__top">',
+              '  <div class="plan-hero__heading">',
+              '    <p class="eyebrow plan-hero__eyebrow">Overview</p>',
+              '    <div class="plan-hero__headline-row"><h2 class="plan-hero__value">4.2 kW</h2><p class="plan-hero__limit">of 9.5 kW soft limit</p></div>',
+              '    <p class="plan-hero__message">5.3 kW to spare</p>',
+              '  </div>',
+              '  <div class="plan-hero__status"><span class="plan-chip plan-chip--ok">Live</span><span class="plan-hero__age">10s ago</span></div>',
+              '</div>',
+              '<div class="plan-hero__bar-wrap">',
+              '  <div class="plan-hero__bar">',
+              '    <div class="plan-hero__segments">',
+              '      <span class="plan-hero__seg plan-hero__seg--managed" style="flex-basis:44%"></span>',
+              '      <span class="plan-hero__seg plan-hero__seg--other" style="flex-basis:12%"></span>',
+              '      <span class="plan-hero__seg plan-hero__seg--free" style="flex-basis:44%"></span>',
+              '    </div>',
+              '    <span class="plan-hero__tick plan-hero__tick--soft" style="left:100%"></span>',
+              '  </div>',
+              '</div>',
+            ].join('');
           }
-          
+
           const devices = ${devicesJson};
-          const grouped = devices.reduce((acc, dev) => {
-            const zone = dev.zone || 'Unknown';
-            if (!acc[zone]) acc[zone] = [];
-            acc[zone].push(dev);
-            return acc;
-          }, {});
-          
-          Object.keys(grouped).sort().forEach(zone => {
-            const header = document.createElement('div');
-            header.className = 'muted';
-            header.style.cssText = 'margin: 12px 0 4px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; font-size: 12px;';
-            header.textContent = zone;
-            planList.appendChild(header);
-            
-            grouped[zone].forEach(dev => {
-              const row = document.createElement('div');
-              row.className = 'device-row';
-              row.dataset.deviceId = dev.name.replace(/\\s+/g, '-').toLowerCase();
-              
-              const metaWrap = document.createElement('div');
-              metaWrap.className = 'device-row__target plan-row__meta';
-              
-              const name = document.createElement('div');
-              name.className = 'device-row__name';
-              name.textContent = dev.name;
-              
-              const tempLine = document.createElement('div');
-              tempLine.className = 'plan-meta-line';
-              
-              const currentTemp = typeof dev.currentTemperature === 'number' 
-                ? dev.currentTemperature.toFixed(1) + '°' 
-                : '–';
-              const targetTemp = dev.currentTarget ?? '–';
-              const plannedTemp = dev.plannedTarget ?? dev.currentTarget;
-              const targetChanging = dev.plannedTarget != null && dev.plannedTarget !== dev.currentTarget;
-              const targetText = targetChanging 
-                ? targetTemp + '° → ' + plannedTemp + '°' 
-                : targetTemp + '°';
-              
-              tempLine.innerHTML = '<span class="plan-label">Temperature</span><span class="temp-value">' + currentTemp + ' / target ' + targetText + '</span>';
-              
-              const powerLine = document.createElement('div');
-              powerLine.className = 'plan-meta-line';
-              powerLine.innerHTML = '<span class="plan-label">Power</span><span>heating</span>';
-              
-              const reasonLine = document.createElement('div');
-              reasonLine.className = 'plan-meta-line';
-              reasonLine.innerHTML = '<span class="plan-label">Reason</span><span>Test reason</span>';
-              
-              metaWrap.append(name, tempLine, powerLine, reasonLine);
-              row.appendChild(metaWrap);
-              planList.appendChild(row);
-            });
+          devices.forEach(dev => {
+            const row = document.createElement('div');
+            row.className = 'device-row plan-card';
+            row.dataset.deviceId = dev.name.replace(/\\s+/g, '-').toLowerCase();
+            row.innerHTML = [
+              '<div class="plan-card__header">',
+              '  <span class="plan-card__icon"><svg viewBox="0 0 24 24"></svg></span>',
+              '  <div class="plan-card__title-wrap"><h3 class="plan-card__title">' + dev.name + '</h3></div>',
+              '  <div class="plan-card__chips"><span class="plan-state-chip plan-state-chip--active">' + dev.state + '</span></div>',
+              '</div>',
+              '<div class="plan-card__load">',
+              '  <div class="plan-card__load-track"><span class="plan-card__load-fill" style="width:52%"></span><span class="plan-card__load-tick" style="left:80%"></span></div>',
+              '  <span class="plan-card__load-label">' + dev.load + '</span>',
+              '</div>',
+              '<p class="plan-card__reason">' + dev.reason + '</p>',
+            ].join('');
+            planList.appendChild(row);
           });
         });
       `;
 
       await recreatePage({
-        viewport: { width: 480, height: 800 },
+        viewport,
         isMobile: false,
         hasTouch: false,
       });
@@ -707,74 +693,60 @@ describe('Settings UI', () => {
       await sleep(50);
     };
 
-    test('displays 2-digit temperatures with 0.5 increments correctly', async () => {
-      await setupPlanPage([
+    test('renders the hero bar and three-row overview cards', async () => {
+      await setupOverviewPage([
         {
-          name: 'Heater 1', zone: 'Living Room', currentTemperature: 21.5, currentTarget: 22.5,
-        },
-        {
-          name: 'Heater 2', zone: 'Living Room', currentTemperature: 19.0, currentTarget: 20.5,
-        },
-        {
-          name: 'Heater 3', zone: 'Bedroom', currentTemperature: 18.5, currentTarget: 19.5,
+          name: 'Bathroom Floor',
+          state: 'Held',
+          load: '0.2 / 1.4 kW',
+          reason: 'Waiting for room to reopen — 23 min below target',
         },
       ]);
 
-      const tempTexts = await page.$$eval('.plan-meta-line .temp-value', (els) => els.map((el) => el.textContent?.trim()));
-
-      expect(tempTexts).toContain('21.5° / target 22.5°');
-      expect(tempTexts).toContain('19.0° / target 20.5°');
-      expect(tempTexts).toContain('18.5° / target 19.5°');
+      expect(await page.locator('.plan-hero__segments .plan-hero__seg').count()).toBe(3);
+      expect(await page.locator('.plan-card').count()).toBe(1);
+      expect(await page.textContent('.plan-card__title')).toContain('Bathroom Floor');
+      expect(await page.textContent('.plan-card__load-label')).toContain('0.2 / 1.4 kW');
+      expect(await page.textContent('.plan-card__reason')).toContain('Waiting for room to reopen');
     });
 
-    test('displays temperature changes with arrow notation', async () => {
-      await setupPlanPage([
+    test('keeps overview cards within 480px without horizontal overflow', async () => {
+      await setupOverviewPage([
         {
-          name: 'Changing Heater', zone: 'Test', currentTemperature: 20.0, currentTarget: 22.0, plannedTarget: 18.5,
+          name: 'Very Long Device Name That Could Cause Issues On Narrow Homey Layouts',
+          state: 'Reactivating',
+          load: '0.0 / 7.4 kW',
+          reason: 'insufficient headroom to restore (need 7.20kW, available 1.40kW)',
         },
       ]);
 
-      const tempText = await page.$eval('.plan-meta-line .temp-value', (el) => el.textContent?.trim());
-      expect(tempText).toContain('22° → 18.5°');
+      const overflowInfo = await page.evaluate(() => ({
+        hasHorizontalScroll: document.body.scrollWidth > document.documentElement.clientWidth,
+        titleOverflow: Array.from(document.querySelectorAll('.plan-card__title')).some((el) => el.scrollWidth > el.clientWidth),
+        reasonOverflow: Array.from(document.querySelectorAll('.plan-card__reason')).some((el) => el.scrollWidth > el.clientWidth),
+      }));
+
+      expect(overflowInfo.hasHorizontalScroll).toBe(false);
+      expect(overflowInfo.reasonOverflow).toBe(false);
+      expect(overflowInfo.titleOverflow).toBe(false);
     });
 
-    test('temperature lines do not overflow at 480px', async () => {
-      await setupPlanPage([
+    test('keeps overview content within 320px without horizontal scroll', async () => {
+      await setupOverviewPage([
         {
-          name: 'Very Long Device Name That Could Cause Issues', zone: 'Room', currentTemperature: 99.5, currentTarget: 99.5, plannedTarget: 10.0,
+          name: 'Long Device Name',
+          state: 'Active',
+          load: '1.2 / 1.6 kW',
+          reason: 'restore 21° -> 22° (need 0.40kW)',
         },
-      ]);
-
-      const hasOverflow = await page.evaluate(() => {
-        const metaLines = document.querySelectorAll('.plan-meta-line');
-        let overflow = false;
-        metaLines.forEach((line) => {
-          if (line.scrollWidth > line.clientWidth) overflow = true;
-        });
-        return overflow;
-      });
-
-      expect(hasOverflow).toBe(false);
-    });
-
-    test('temperature lines do not overflow at 320px', async () => {
-      await recreatePage({
-        viewport: { width: 320, height: 600 },
-        isMobile: false,
-        hasTouch: false,
-      });
-      await setupPlanPage([
-        {
-          name: 'Long Device Name', zone: 'Room', currentTemperature: 99.5, currentTarget: 99.5, plannedTarget: 10.0,
-        },
-      ]);
+      ], { width: 320, height: 600 });
 
       const overflowInfo = await page.evaluate(() => {
         const viewportWidth = document.documentElement.clientWidth;
-        const metaLines = document.querySelectorAll('.plan-meta-line');
+        const cards = document.querySelectorAll('.plan-card, .plan-hero, .plan-hour-strip');
 
         let lineOverflow = false;
-        metaLines.forEach((line) => {
+        cards.forEach((line) => {
           const rect = (line as HTMLElement).getBoundingClientRect();
           if (rect.right > viewportWidth) lineOverflow = true;
         });
@@ -787,59 +759,6 @@ describe('Settings UI', () => {
 
       expect(overflowInfo.lineOverflow).toBe(false);
       expect(overflowInfo.hasHorizontalScroll).toBe(false);
-    });
-
-    test('handles extreme temperature values (0.5 to 99.5)', async () => {
-      await setupPlanPage([
-        {
-          name: 'Cold', zone: 'Test', currentTemperature: 0.5, currentTarget: 5.0,
-        },
-        {
-          name: 'Hot', zone: 'Test', currentTemperature: 99.5, currentTarget: 99.5,
-        },
-        {
-          name: 'Negative', zone: 'Test', currentTemperature: -5.5, currentTarget: 10.0,
-        },
-      ]);
-
-      const tempTexts = await page.$$eval('.plan-meta-line .temp-value', (els) => els.map((el) => el.textContent?.trim()));
-
-      expect(tempTexts.some((t) => t?.includes('0.5°'))).toBe(true);
-      expect(tempTexts.some((t) => t?.includes('99.5°'))).toBe(true);
-      expect(tempTexts.some((t) => t?.includes('-5.5°'))).toBe(true);
-    });
-
-    test('plan label column has consistent width', async () => {
-      await setupPlanPage([
-        {
-          name: 'Device 1', zone: 'Zone', currentTemperature: 20.0, currentTarget: 21.0,
-        },
-        {
-          name: 'Device 2', zone: 'Zone', currentTemperature: 22.5, currentTarget: 23.5,
-        },
-      ]);
-
-      const labelWidths = await page.$$eval('.plan-label', (els) => els.map((el) => (el as HTMLElement).getBoundingClientRect().width));
-
-      if (labelWidths.length > 1) {
-        const minWidth = Math.min(...labelWidths);
-        const maxWidth = Math.max(...labelWidths);
-        expect(maxWidth - minWidth).toBeLessThanOrEqual(5);
-      }
-    });
-
-    test('temperature display is readable (font size check)', async () => {
-      await setupPlanPage([
-        {
-          name: 'Device', zone: 'Zone', currentTemperature: 21.5, currentTarget: 22.0,
-        },
-      ]);
-
-      const fontSize = await page.$eval('.plan-row__meta', (el) => {
-        return parseInt(getComputedStyle(el).fontSize, 10);
-      });
-
-      expect(fontSize).toBeGreaterThanOrEqual(12);
     });
   });
 

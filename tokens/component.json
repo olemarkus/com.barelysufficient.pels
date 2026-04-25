@@ -1,0 +1,15 @@
+{
+  "chip": {
+    "padding": {
+      "block": { "value": "4px" },
+      "inline": { "value": "10px" }
+    },
+    "radius": { "value": "9999px" },
+    "font": {
+      "size": { "value": "11px" },
+      "weight": { "value": "600" }
+    },
+    "lineHeight": { "value": "1.2" },
+    "border": { "width": { "value": "1px" } }
+  }
+}

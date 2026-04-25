@@ -3,13 +3,13 @@ import { expect, test } from './fixtures/test';
 test.describe('Settings UI (smoke)', () => {
   test('loads control center', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('heading', { name: 'Control center' })).toBeVisible();
+    await expect(page.getByRole('tablist')).toBeVisible();
     await expect(page.locator('#overview-panel')).toBeVisible();
   });
 
   test('can navigate core tabs and render device/mode data', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('heading', { name: 'Control center' })).toBeVisible();
+    await expect(page.getByRole('tablist')).toBeVisible();
 
     await page.getByRole('tab', { name: 'Devices' }).click();
     await expect(page.locator('#devices-panel')).toBeVisible();

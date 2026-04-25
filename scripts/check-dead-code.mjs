@@ -44,6 +44,7 @@ const allowedUnusedExportPatterns = [
   /:Infinity - prototype$/,
   /\(used in module\)$/,
   // TODO(dead-code): Include settings UI in this check and remove these exceptions.
+  /^packages\/shared-domain\/src\/planStateLabels\.ts:\d+ - PLAN_STATE_LABEL$/,
   /^lib\/utils\/dateUtils\.ts:\d+ - getWeekStartInTimeZone$/,
   /^lib\/utils\/dateUtils\.ts:\d+ - formatDateInTimeZone$/,
   /^lib\/utils\/dateUtils\.ts:\d+ - formatTimeInTimeZone$/,

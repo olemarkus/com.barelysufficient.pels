@@ -87,6 +87,7 @@ export type HomeyDeviceLike = {
     name: string;
     class?: string;
     driverId?: string;
+    driverUri?: string;
     ownerUri?: string;
     data?: {
         id?: string;

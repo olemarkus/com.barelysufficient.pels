@@ -13,6 +13,10 @@ import type {
   DeviceDiagnosticsWindowKey,
   SettingsUiDeviceDiagnosticsPayload,
 } from '../../packages/contracts/src/deviceDiagnosticsTypes';
+import type {
+  SettingsUiPlanDeviceStarvation,
+  SettingsUiPlanStarvationCause,
+} from '../../packages/contracts/src/settingsUiApi';
 import {
   buildWindowSummary,
   countPersistedDays,
@@ -260,6 +264,44 @@ const buildStarvationSummary = (
     starvationCause: starvation.starvationCause,
     starvationPauseReason: starvation.starvationPauseReason,
   };
+};
+
+const OVERVIEW_CAPACITY_STARVATION_CAUSES = new Set<DeviceDiagnosticsStarvationCountingCause>([
+  'capacity',
+  'insufficient_headroom',
+  'shedding_active',
+  'swap_pending',
+  'swapped_out',
+]);
+
+const OVERVIEW_BUDGET_STARVATION_CAUSES = new Set<DeviceDiagnosticsStarvationCountingCause>([
+  'daily_budget',
+  'hourly_budget',
+  'shortfall',
+]);
+
+const OVERVIEW_MANUAL_STARVATION_PAUSE_REASONS = new Set<DeviceDiagnosticsStarvationPauseReason>([
+  'inactive',
+  'keep',
+  'restore',
+  'suppression_none',
+]);
+
+const resolveOverviewStarvationCause = (params: {
+  countingCause: DeviceDiagnosticsStarvationCountingCause | null;
+  pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
+}): SettingsUiPlanStarvationCause => {
+  const { countingCause, pauseReason } = params;
+  if (countingCause && OVERVIEW_CAPACITY_STARVATION_CAUSES.has(countingCause)) {
+    return 'capacity';
+  }
+  if (countingCause && OVERVIEW_BUDGET_STARVATION_CAUSES.has(countingCause)) {
+    return 'budget';
+  }
+  if (pauseReason && OVERVIEW_MANUAL_STARVATION_PAUSE_REASONS.has(pauseReason)) {
+    return 'manual';
+  }
+  return 'external';
 };
 
 const roundUpToStep = (value: number, step: number): number => (
@@ -523,6 +565,21 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       .filter((live) => live.lastObservationBatchId === this.latestObservationBatchId)
       .filter((live) => live.starvation.isStarved)
       .length;
+  }
+
+  getOverviewStarvation(deviceId: string): SettingsUiPlanDeviceStarvation | null {
+    const live = this.liveByDeviceId[deviceId];
+    if (!live?.lastStarvationObservation?.eligibleForStarvation) return null;
+    if (!live.starvation.isStarved) return null;
+    return {
+      isStarved: true,
+      accumulatedMs: live.starvation.starvedAccumulatedMs,
+      cause: resolveOverviewStarvationCause({
+        countingCause: live.starvation.starvationCause,
+        pauseReason: live.starvation.starvationPauseReason,
+      }),
+      startedAtMs: live.starvation.starvationEpisodeStartedAt ?? null,
+    };
   }
 
   destroy(): void {

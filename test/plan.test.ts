@@ -1224,8 +1224,6 @@ describe('Device plan snapshot', () => {
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(reasonText(devPlan?.reason)).toContain('cooldown (shedding');
-    expect(devPlan).not.toHaveProperty('headroomCardBlocked');
-    expect(devPlan).not.toHaveProperty('headroomCardCooldownSource');
   });
 
   it('does not start shedding cooldown when no devices can be shed', async () => {

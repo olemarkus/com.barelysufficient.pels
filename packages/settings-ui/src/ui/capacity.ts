@@ -4,6 +4,7 @@ import {
   capacityDryRunInput,
   powerSourceSelect,
   advancedEvSupportEnabledInput,
+  advancedOverviewRedesignEnabledInput,
   dryRunBanner,
   staleDataBanner,
   staleDataBannerText,
@@ -27,6 +28,7 @@ import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../../shared-domain/src/powe
 import type { SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
 import { showToast } from './toast.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
+import { resolveOverviewRedesignPreference } from './uiVariant.ts';
 const HEARTBEAT_THRESHOLD_MS = 90 * 1000;
 
 type PowerSource = 'flow' | 'homey_energy';
@@ -160,5 +162,8 @@ export const loadAdvancedSettings = async () => {
   });
   if (advancedEvSupportEnabledInput) {
     advancedEvSupportEnabledInput.checked = evSupportEnabled === true;
+  }
+  if (advancedOverviewRedesignEnabledInput) {
+    advancedOverviewRedesignEnabledInput.checked = resolveOverviewRedesignPreference();
   }
 };

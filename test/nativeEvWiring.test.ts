@@ -126,6 +126,7 @@ describe('native EV wiring shim', () => {
 
     const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice({
       driverId: 'homey:app:com.zaptec:go',
+      driverUri: 'homey:app:com.zaptec:go',
     })]);
 
     expect(parsed).toEqual(expect.objectContaining({
@@ -144,7 +145,7 @@ describe('native EV wiring shim', () => {
     }));
   });
 
-  it('uses a device driver override to treat a mock device as Zaptec Go 2', () => {
+  it('applies driver overrides before native EV wiring detection', () => {
     const deviceManager = new DeviceManager(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -206,13 +207,6 @@ describe('native EV wiring shim', () => {
       buildZaptecDevice({
         id: 'zaptec-clone-go',
         driverId: 'homey:app:com.zaptecclone:go',
-      }),
-    ])).toEqual([]);
-    expect(deviceManager.parseDeviceListForTests([
-      buildZaptecDevice({
-        id: 'zaptec-testdevices-go2',
-        driverId: 'homey:app:com.olemarkus.testdevices:go2',
-        ownerUri: 'homey:app:com.olemarkus.testdevices',
       }),
     ])).toEqual([]);
   });

@@ -14,7 +14,6 @@ import {
   COMBINED_PRICES,
   BUDGET_EXEMPT_DEVICES,
   DEVICE_CONTROL_PROFILES,
-  DEVICE_DRIVER_OVERRIDES,
   NATIVE_EV_WIRING_DEVICES,
   DAILY_BUDGET_BREAKDOWN_ENABLED,
   DAILY_BUDGET_CONTROLLED_WEIGHT,
@@ -47,7 +46,7 @@ import {
   refreshDailyBudgetPlan,
 } from './dailyBudget.ts';
 import { loadDailyBudgetTuningSettings } from './dailyBudgetTuning.ts';
-import { parsePlanSnapshot, refreshPlan, renderPlan, type PlanSnapshot } from './plan.ts';
+import { parsePlanSnapshot, refreshPlan, renderPlan, updatePlanPower, type PlanSnapshot } from './plan.ts';
 import { refreshAdvancedDeviceCleanup } from './advanced.ts';
 import { loadShedBehaviors } from './deviceDetail/index.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
@@ -104,7 +103,6 @@ const DEVICE_CONTROL_KEYS = new Set([
   'controllable_devices',
   BUDGET_EXEMPT_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
-  DEVICE_DRIVER_OVERRIDES,
   DEVICE_CONTROL_PROFILES,
 ]);
 const PLAN_REFRESH_KEYS = new Set([
@@ -298,7 +296,9 @@ const handlePricesUpdated = () => {
 };
 
 const handlePowerUpdated = (power: unknown) => {
-  primeApiCache(SETTINGS_UI_POWER_PATH, power as SettingsUiPowerPayload);
+  const payload = power as SettingsUiPowerPayload;
+  primeApiCache(SETTINGS_UI_POWER_PATH, payload);
+  updatePlanPower(payload?.status ?? null);
   refreshStaleDataStatus('realtime power_updated');
   refreshPowerDataIfVisible('realtime power_updated');
 };

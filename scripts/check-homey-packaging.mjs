@@ -7,6 +7,14 @@ const homeyBuildDir = path.join(rootDir, '.homeybuild');
 const homeyBuildPackageJsonPath = path.join(homeyBuildDir, 'package.json');
 const homeyBuildPackageLockJsonPath = path.join(homeyBuildDir, 'package-lock.json');
 const homeyBuildNapiRsDir = path.join(homeyBuildDir, 'node_modules', '@napi-rs');
+const forbiddenNodeModules = [
+  '@lit',
+  '@lit-labs',
+  '@material',
+  'lit',
+  'lit-element',
+  'lit-html',
+];
 
 const failures = [];
 const isNotFoundError = (error) => error instanceof Error && 'code' in error && error.code === 'ENOENT';
@@ -65,6 +73,29 @@ try {
 } catch (error) {
   if (!isNotFoundError(error)) {
     failures.push(`node_modules/@napi-rs could not be inspected: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+for (const moduleName of forbiddenNodeModules) {
+  const modulePath = path.join(homeyBuildDir, 'node_modules', ...moduleName.split('/'));
+  try {
+    await fs.access(modulePath);
+    failures.push(`node_modules/${moduleName} is still present.`);
+  } catch (error) {
+    if (!isNotFoundError(error)) {
+      failures.push(`node_modules/${moduleName} could not be inspected: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
+
+try {
+  const rootEntries = await fs.readdir(homeyBuildDir, { withFileTypes: true });
+  rootEntries
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.png'))
+    .forEach((entry) => failures.push(`unexpected root PNG artifact: ${entry.name}`));
+} catch (error) {
+  if (!isNotFoundError(error)) {
+    failures.push(`root build artifacts could not be inspected: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

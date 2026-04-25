@@ -60,8 +60,8 @@ const formatRelativeTime = (timestampMs: number, nowMs = Date.now()): string => 
 
 const getSoftLimitSourceText = (source?: PlanMetaSnapshot['softLimitSource']) => {
   if (source === 'daily') return 'Limited by daily budget';
-  if (source === 'both') return 'Limited by daily + capacity caps';
-  return 'Limited by capacity cap';
+  if (source === 'both') return 'Limited by daily + capacity limits';
+  return 'Limited by capacity limit';
 };
 
 const getDisplayBudgetKWh = (meta: PlanMetaSnapshot): number | null => {
@@ -100,14 +100,14 @@ const buildHardCapDisplay = (meta: ValidatedMeta): HardCapDisplay => {
     const breachKw = Math.abs(Math.min(0, hardCapHeadroomKw));
     return {
       breached: true,
-      breachText: `Hard cap breached by ${breachKw.toFixed(1)}kW`,
+      breachText: `Hard limit breached by ${breachKw.toFixed(1)}kW`,
       remainingText: null,
     };
   }
   return {
     breached: false,
     breachText: null,
-    remainingText: `${hardCapHeadroomKw.toFixed(1)}kW before hard cap`,
+    remainingText: `${hardCapHeadroomKw.toFixed(1)}kW before hard limit`,
   };
 };
 

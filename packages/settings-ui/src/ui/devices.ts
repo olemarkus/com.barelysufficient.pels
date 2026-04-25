@@ -29,6 +29,14 @@ export const getTargetDevices = async (): Promise<TargetDeviceSnapshot[]> => {
   return Array.isArray(payload?.devices) ? payload.devices : [];
 };
 
+export const getDeviceClassMap = (): Map<string, string> => {
+  const map = new Map<string, string>();
+  for (const device of state.latestDevices) {
+    if (device.deviceClass) map.set(device.id, device.deviceClass);
+  }
+  return map;
+};
+
 const DEVICE_CLASS_LABELS: Record<string, string> = {
   airconditioning: 'Air Conditioning',
   airfryer: 'Air Fryer',
