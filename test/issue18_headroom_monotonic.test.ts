@@ -7,7 +7,12 @@ import Homey from 'homey';
 describe('Issue #18 Reproduction: Expected Power Overlap', () => {
     let deviceManager: DeviceManager;
     let homeyMock: Homey.App;
-    let loggerMock: { log: vi.Mock; debug: vi.Mock; error: vi.Mock };
+    let loggerMock: {
+        log: vi.Mock;
+        debug: vi.Mock;
+        error: vi.Mock;
+        structuredLog: { info: vi.Mock; error: vi.Mock; debug: vi.Mock };
+    };
     // Shared state objects
     let expectedPowerKwOverrides: Record<string, { kw: number; ts: number }>;
     let lastKnownPowerKw: Record<string, number>;
@@ -22,6 +27,11 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
             log: vi.fn(),
             debug: vi.fn(),
             error: vi.fn(),
+            structuredLog: {
+                info: vi.fn(),
+                error: vi.fn(),
+                debug: vi.fn(),
+            },
         };
 
         // Initialize state objects

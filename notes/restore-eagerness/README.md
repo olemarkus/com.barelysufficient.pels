@@ -46,8 +46,8 @@ is now a calibration and observability problem around delayed power visibility.
 - `overshoot_entered` fields including `reasonCode`, `lastPlanBuildAgeMs`,
   `lastPowerUpdateAgeMs`, `overshootPlanAgeMs`, `overshootPowerSampleAgeMs`,
   `overshootTopControlledContributors`, and `overshootTopUncontrolledContributors`
-- `overshoot_cleared` duration plus the same age fields above, to distinguish stale lifecycle
-  state from genuine slow recovery
+- `overshoot_cleared` fields including `durationMs`, `lastPlanBuildAgeMs`, and
+  `lastPowerUpdateAgeMs`, to distinguish stale lifecycle state from genuine slow recovery
 
 ## Useful regression coverage
 

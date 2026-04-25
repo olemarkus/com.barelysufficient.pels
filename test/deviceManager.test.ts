@@ -330,6 +330,7 @@ describe('DeviceManager', () => {
                 targetedRefresh: false,
                 err: refreshFailure,
             }));
+            expect(loggerMock.error).not.toHaveBeenCalled();
         });
 
         it('stores cumulative home power from live report in getHomePowerW', async () => {

@@ -651,11 +651,17 @@ class PelsApp extends Homey.App {
     this.dailyBudgetService.loadState();
   }
   private async initDeviceManager(): Promise<void> {
+    if (!this.structuredLogger) {
+      this.structuredLogger = createRootLogger(
+        createHomeyDestination({ log: (...a) => this.log(...a), error: (...a) => this.error(...a) }),
+      );
+    }
+    const structuredLog = this.structuredLogger.child({ component: 'devices' });
     this.deviceManager = new DeviceManager(this, {
       log: this.log.bind(this),
       debug: (...args: unknown[]) => this.logDebug('devices', ...args),
       error: this.error.bind(this),
-      structuredLog: this.getStructuredLogger('devices'),
+      structuredLog,
     }, {
       getPriority: (id) => this.getPriorityForDevice(id),
       getControllable: (id) => this.isCapacityControlEnabled(id),
