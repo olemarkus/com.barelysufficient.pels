@@ -1499,6 +1499,66 @@ describe('buildSheddingPlan', () => {
     expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('off');
   });
 
+  it('sheds a stepped turn_off device at lowest active step even without an explicit off step', async () => {
+    const state = createPlanEngineState();
+
+    const devices = [
+      buildDevice({
+        id: 'connected-300',
+        name: 'Connected 300',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'low', planningPowerW: 1250 },
+            { id: 'medium', planningPowerW: 1750 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'low',
+        measuredPowerKw: 1.193,
+        expectedPowerKw: 1.25,
+        currentOn: true,
+        hasBinaryControl: true,
+        controllable: true,
+        budgetExempt: false,
+      }),
+    ];
+
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 4.23,
+        softLimit: 3.82,
+        capacitySoftLimit: 4.5,
+        dailySoftLimit: 3.82,
+        headroomRaw: -0.41,
+        headroom: -0.41,
+        softLimitSource: 'daily',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 335 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    );
+
+    expect(result.shedSet.has('connected-300')).toBe(true);
+    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('low');
+  });
+
   it('keeps shedding other devices when a lower stepped-load target is already pending but unconfirmed', async () => {
     const state = createPlanEngineState();
 
@@ -1996,6 +2056,77 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.has('bath')).toBe(true);
+    expect(result.shedSet.has('hall')).toBe(true);
+  });
+
+  it('keeps shedding other devices when a stepped binary-off command is still unconfirmed', async () => {
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands['connected-300'] = {
+      capabilityId: 'onoff',
+      desired: false,
+      startedMs: Date.now() - 5_000,
+    };
+
+    const devices = [
+      buildDevice({
+        id: 'connected-300',
+        name: 'Connected 300',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'low', planningPowerW: 1250 },
+            { id: 'medium', planningPowerW: 1750 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'low',
+        measuredPowerKw: 1.193,
+        expectedPowerKw: 1.25,
+        currentOn: true,
+        hasBinaryControl: true,
+        controllable: true,
+      }),
+      buildDevice({
+        id: 'hall',
+        name: 'Hall thermostat',
+        measuredPowerKw: 0.5,
+        currentOn: true,
+        controllable: true,
+      }),
+    ];
+
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 4.23,
+        softLimit: 3.43,
+        capacitySoftLimit: 3.43,
+        headroomRaw: -0.8,
+        headroom: -0.8,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 667 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 10 : 5),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    );
+
+    expect(result.shedSet.has('connected-300')).toBe(true);
+    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('low');
     expect(result.shedSet.has('hall')).toBe(true);
   });
 

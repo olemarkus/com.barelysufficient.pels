@@ -7,6 +7,7 @@ import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSe
 import type { PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
+import type { SteppedLoadProfile } from '../utils/types';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { resolveCandidatePower } from './planCandidatePower';
 import {
@@ -17,7 +18,11 @@ import {
   resolveSteppedLoadSheddingTarget,
   resolveSteppedUnknownCurrentMeasuredShedding,
 } from './planSteppedLoad';
-import { getSteppedLoadLowestActiveStep } from '../utils/deviceControlProfiles';
+import {
+  getSteppedLoadLowestActiveStep,
+  getSteppedLoadStep,
+  isSteppedLoadOffStep,
+} from '../utils/deviceControlProfiles';
 
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import { isCapacityBreached } from './planRemainingSheddableLoad';
@@ -538,6 +543,8 @@ function buildSteppedCandidate(params: {
     state,
     getShedBehavior,
   } = params;
+  const deviceSteppedProfile = device.steppedLoadProfile;
+  if (!deviceSteppedProfile) return null;
   const shedBehavior = getShedBehavior(device.id);
   if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
     const target = device.targets?.[0];
@@ -563,6 +570,16 @@ function buildSteppedCandidate(params: {
   });
   const steppedTarget = resolveSteppedLoadSheddingTarget({ device, targetStep });
   if (!steppedTarget) {
+    const preparedBinaryOffCandidate = buildPreparedSteppedBinaryOffCandidate({
+      device,
+      steppedProfile: deviceSteppedProfile,
+      targetStep,
+      priority,
+      recentlyRestored,
+      shedAction: steppedShedAction,
+      state,
+    });
+    if (preparedBinaryOffCandidate) return preparedBinaryOffCandidate;
     return buildUnknownCurrentMeasuredSteppedCandidate({
       device,
       priority,
@@ -604,6 +621,53 @@ function resolveEffectiveCurrentStepIdForSteppedShedding(device: PlanInputDevice
     && resolveSteppedLoadPlanningKw(device, device.desiredStepId)
       < resolveSteppedLoadPlanningKw(device, device.selectedStepId);
   return pendingIsLower ? device.desiredStepId : device.selectedStepId;
+}
+
+function buildPreparedSteppedBinaryOffCandidate(params: {
+  device: PlanInputDevice;
+  steppedProfile: SteppedLoadProfile;
+  targetStep: ReturnType<typeof getSteppedLoadShedTargetStep>;
+  priority: number;
+  recentlyRestored: boolean;
+  shedAction: 'turn_off' | 'set_step';
+  state: Pick<PlanEngineState, 'pendingBinaryCommands'>;
+}): ShedCandidate | null {
+  const {
+    device,
+    steppedProfile,
+    targetStep,
+    priority,
+    recentlyRestored,
+    shedAction,
+    state,
+  } = params;
+  if (
+    shedAction !== 'turn_off'
+    || device.hasBinaryControl === false
+    || !device.selectedStepId
+    || targetStep?.id !== device.selectedStepId
+  ) {
+    return null;
+  }
+  const selectedStep = getSteppedLoadStep(steppedProfile, device.selectedStepId);
+  if (!selectedStep || isSteppedLoadOffStep(steppedProfile, selectedStep.id)) return null;
+  const effectivePower = resolveCandidatePower(device);
+  if (effectivePower === null || effectivePower <= 0) return null;
+  const pendingBinary = isPendingBinaryCommandActive({
+    pending: state.pendingBinaryCommands[device.id],
+    communicationModel: device.communicationModel,
+  }) ? state.pendingBinaryCommands[device.id] : undefined;
+  return {
+    ...device,
+    kind: 'stepped',
+    priority,
+    recentlyRestored,
+    unconfirmedRelief: pendingBinary?.desired === false,
+    effectivePower,
+    fromStepId: selectedStep.id,
+    toStepId: selectedStep.id,
+    preemptiveStepDown: false,
+  };
 }
 
 function buildUnknownCurrentMeasuredSteppedCandidate(params: {

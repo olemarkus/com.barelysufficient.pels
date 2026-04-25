@@ -404,6 +404,54 @@ describe('plan logging helpers', () => {
     }));
   });
 
+  it('counts a stepped turn_off load at lowest active step as remaining reducible without an off step', () => {
+    const plan = {
+      meta: {
+        headroomKw: -0.41,
+        totalKw: 4.23,
+        softLimitKw: 3.82,
+        capacitySoftLimitKw: 4.5,
+        softLimitSource: 'daily',
+      },
+      devices: [
+        {
+          id: 'connected-300',
+          name: 'Connected 300',
+          plannedState: 'keep',
+          currentOn: true,
+          currentState: 'on',
+          controllable: true,
+          budgetExempt: false,
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'Low', planningPowerW: 1250 },
+              { id: 'Medium', planningPowerW: 1750 },
+              { id: 'Max', planningPowerW: 3000 },
+            ],
+          },
+          selectedStepId: 'Low',
+          desiredStepId: 'Low',
+          targetStepId: 'Low',
+          hasBinaryControl: true,
+          measuredPowerKw: 1.193,
+          expectedPowerKw: 1.25,
+          shedAction: 'turn_off',
+          reason: KEEP_REASON,
+        },
+      ],
+    } as unknown as DevicePlan;
+
+    expect(buildPlanCapacityStateSummary(plan)).toEqual(expect.objectContaining({
+      activeControlledDevices: 1,
+      remainingReducibleControlledLoadW: 1193,
+      remainingReducibleControlledLoad: true,
+      remainingActionableControlledLoadW: 1193,
+      remainingActionableControlledLoad: true,
+    }));
+  });
+
   it('does not count a target device already at its shed temperature as remaining reducible', () => {
     const plan = {
       meta: {
