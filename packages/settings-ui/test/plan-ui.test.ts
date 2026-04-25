@@ -1103,29 +1103,6 @@ describe('plan device state', () => {
     expect(getBadgeClassList('dev-temp-only')?.contains('cheap')).toBe(true);
   });
 
-  it('keeps the active keep status text when cooldown metadata is present', async () => {
-    await renderPlanSnapshot({
-      devices: [
-        {
-          id: 'dev-1',
-          name: 'EV Charger',
-          currentState: 'on',
-          plannedState: 'keep',
-          controllable: true,
-          reason: 'keep',
-          headroomCardBlocked: true,
-          headroomCardCooldownSec: 45,
-          headroomCardCooldownSource: 'step_down',
-          headroomCardCooldownFromKw: 6.0,
-          headroomCardCooldownToKw: 3.5,
-        },
-      ],
-    });
-
-    expect(getStateText()).toBe('Active');
-    expect(getStatusText()).toBe('keep');
-    expect(getBadgeClassList('dev-1')?.contains('cheap')).toBe(true);
-  });
 });
 
 describe('plan meta budget display', () => {

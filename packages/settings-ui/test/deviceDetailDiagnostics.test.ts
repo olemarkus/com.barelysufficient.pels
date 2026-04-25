@@ -12,6 +12,10 @@ const buildDom = () => {
     <div id="device-detail-panel"></div>
     <div id="device-detail-title"></div>
     <button id="device-detail-close"></button>
+    <div id="device-detail-native-wiring-row" hidden></div>
+    <input id="device-detail-native-wiring" type="checkbox">
+    <div id="device-detail-native-wiring-confirm-row" hidden></div>
+    <input id="device-detail-native-wiring-confirm" type="checkbox">
     <input id="device-detail-managed" type="checkbox">
     <input id="device-detail-controllable" type="checkbox">
     <input id="device-detail-price-opt" type="checkbox">

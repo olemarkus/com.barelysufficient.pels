@@ -293,8 +293,68 @@ describe('plan logging helpers', () => {
       uncontrolledPowerW: null,
       remainingReducibleControlledLoadW: 4000,
       remainingReducibleControlledLoad: true,
+      remainingActionableControlledLoadW: 2000,
+      remainingActionableControlledLoad: true,
       actuationInFlight: true,
     });
+  });
+
+  it('distinguishes actionable shortfall load from reducible live load', () => {
+    const plan = {
+      meta: { headroomKw: -0.5 },
+      devices: [
+        {
+          id: 'cooldown',
+          name: 'Cooldown',
+          plannedState: 'keep',
+          currentOn: true,
+          currentState: 'on',
+          controllable: true,
+          reason: r('meter settling (10s remaining)'),
+        },
+        {
+          id: 'penalty',
+          name: 'Penalty',
+          plannedState: 'keep',
+          currentOn: true,
+          currentState: 'on',
+          controllable: true,
+          reason: r('activation backoff (30s remaining)'),
+        },
+      ],
+    } as unknown as DevicePlan;
+
+    expect(buildPlanCapacityStateSummary(plan)).toEqual(expect.objectContaining({
+      remainingReducibleControlledLoadW: 2000,
+      remainingReducibleControlledLoad: true,
+      remainingActionableControlledLoadW: 0,
+      remainingActionableControlledLoad: false,
+    }));
+  });
+
+  it('keeps shed-invariant stepped restore blocks actionable for shortfall shedding', () => {
+    const plan = {
+      meta: { headroomKw: -0.5 },
+      devices: [
+        {
+          id: 'invariant',
+          name: 'Stepped load',
+          plannedState: 'keep',
+          currentOn: true,
+          currentState: 'on',
+          controllable: true,
+          reason: r('shed invariant: low -> max blocked (1 device(s) shed, max step: low)'),
+        },
+      ],
+    } as unknown as DevicePlan;
+
+    expect(buildPlanCapacityStateSummary(plan)).toEqual(expect.objectContaining({
+      blockedByInvariantDevices: 1,
+      remainingReducibleControlledLoadW: 1000,
+      remainingReducibleControlledLoad: true,
+      remainingActionableControlledLoadW: 1000,
+      remainingActionableControlledLoad: true,
+    }));
   });
 
   it('returns explicit null summary fields when no plan is available', () => {
@@ -316,6 +376,8 @@ describe('plan logging helpers', () => {
       uncontrolledPowerW: null,
       remainingReducibleControlledLoadW: null,
       remainingReducibleControlledLoad: null,
+      remainingActionableControlledLoadW: null,
+      remainingActionableControlledLoad: null,
       actuationInFlight: null,
     });
   });

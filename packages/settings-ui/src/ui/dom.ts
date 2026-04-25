@@ -133,6 +133,12 @@ export const deviceDetailOverlay = qs('#device-detail-overlay');
 export const deviceDetailPanel = qs('#device-detail-panel');
 export const deviceDetailTitle = qs('#device-detail-title');
 export const deviceDetailClose = qs('#device-detail-close') as HTMLButtonElement;
+export const deviceDetailNativeWiringRow = qs('#device-detail-native-wiring-row');
+export const deviceDetailNativeWiring = document.querySelector('#device-detail-native-wiring') as HTMLInputElement;
+export const deviceDetailNativeWiringConfirmRow = qs('#device-detail-native-wiring-confirm-row');
+export const deviceDetailNativeWiringConfirm = document.querySelector(
+  '#device-detail-native-wiring-confirm',
+) as HTMLInputElement;
 export const deviceDetailManaged = document.querySelector('#device-detail-managed') as HTMLInputElement;
 export const deviceDetailControllable = document.querySelector('#device-detail-controllable') as HTMLInputElement;
 export const deviceDetailPriceOpt = document.querySelector('#device-detail-price-opt') as HTMLInputElement;

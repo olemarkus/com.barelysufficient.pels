@@ -12,10 +12,7 @@ import { buildPlanCapacityStateSummary } from './planLogging';
 import { buildInitialPlanDevices } from './planDevices';
 import { applyRestorePlan, type RestorePlanResult } from './planRestore';
 import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from './planUsage';
-import {
-  resolveHeadroomCardCooldown,
-  syncHeadroomCardState,
-} from './planHeadroomDevice';
+import { syncHeadroomCardState } from './planHeadroomDevice';
 import {
   applyShedTemperatureHold,
   finalizePlanDevices,
@@ -171,7 +168,7 @@ export class PlanBuilder {
     planDevices = holdResult.planDevices;
 
     planDevices = this.normalizeReasonsWithTiming(planDevices, context, restoreResult, sheddingPlan);
-    planDevices = this.applyHeadroomCooldownOverlayWithTiming(planDevices);
+    this.syncHeadroomCardStateWithTiming(planDevices);
     const finalized = this.finalizePlanWithTiming(planDevices);
     this.state.lastPlannedShedIds = finalized.lastPlannedShedIds;
     this.updateOvershootState({
@@ -456,6 +453,7 @@ export class PlanBuilder {
       planDevices,
       context,
       sheddingActive: sheddingPlan.sheddingActive,
+      guardInShortfall: sheddingPlan.guardInShortfall,
       deviceNameById,
     }));
   }
@@ -479,6 +477,7 @@ export class PlanBuilder {
       holdDuringRestoreCooldown: restoreResult.inRestoreCooldown,
       restoreCooldownSeconds: restoreResult.restoreCooldownSeconds,
       restoreCooldownRemainingSec: restoreResult.restoreCooldownRemainingSec,
+      guardInShortfall: sheddingPlan.guardInShortfall,
       debugStructured: this.deps.debugStructured,
       getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
     }));
@@ -519,35 +518,14 @@ export class PlanBuilder {
     }));
   }
 
-  private applyHeadroomCooldownOverlayWithTiming(planDevices: DevicePlanDevice[]): DevicePlanDevice[] {
+  private syncHeadroomCardStateWithTiming(planDevices: DevicePlanDevice[]): void {
     return this.trackDuration('plan_headroom_cooldown_ms', () => {
-      const nowTs = Date.now();
       syncHeadroomCardState({
         state: this.state,
         devices: planDevices,
-        nowTs,
+        nowTs: Date.now(),
         cleanupMissingDevices: false,
         diagnostics: this.deps.deviceDiagnostics,
-      });
-
-      return planDevices.map((device) => {
-        const cooldown = resolveHeadroomCardCooldown({
-          state: this.state,
-          deviceId: device.id,
-          nowTs,
-        });
-        if (!cooldown) return device;
-
-        const nextDevice: DevicePlanDevice = {
-          ...device,
-          headroomCardBlocked: true,
-          headroomCardCooldownSec: cooldown.remainingSec,
-          headroomCardCooldownSource: cooldown.source,
-          headroomCardCooldownFromKw: cooldown.dropFromKw,
-          headroomCardCooldownToKw: cooldown.dropToKw,
-        };
-
-        return nextDevice;
       });
     });
   }
@@ -619,14 +597,16 @@ export class PlanBuilder {
     planDevices: DevicePlanDevice[];
     context: PlanContext;
     sheddingActive: boolean;
+    guardInShortfall: boolean;
     deviceNameById: ReadonlyMap<string, string>;
   }): RestorePlanResult {
-    const { planDevices, context, sheddingActive, deviceNameById } = params;
+    const { planDevices, context, sheddingActive, guardInShortfall, deviceNameById } = params;
     const restoreResult = applyRestorePlan({
       planDevices,
       context,
       state: this.state,
       sheddingActive,
+      guardInShortfall,
       deps: {
         powerTracker: this.powerTracker,
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
@@ -936,7 +916,6 @@ function trackPlanDeviceForOvershoot(
     pendingBinaryOnCommand: pendingBinaryCommandActive && pendingBinaryCommand?.desired === true,
     pendingBinaryOffCommand: pendingBinaryCommandActive && pendingBinaryCommand?.desired === false,
     stepCommandPending: device.stepCommandPending,
-    headroomCardBlocked: device.headroomCardBlocked,
     reason: device.reason,
     pendingTargetCommand: shouldExposePendingTargetCommand(device, state),
   };
@@ -998,10 +977,10 @@ function hasPendingWindow(
 }
 
 function isCooldownBlocked(
-  device: Pick<OvershootTrackedPlanDevice, 'headroomCardBlocked' | 'reason'> | undefined,
+  device: Pick<OvershootTrackedPlanDevice, 'reason'> | undefined,
 ): boolean {
   if (!device) return false;
-  return device.headroomCardBlocked === true || isCooldownReason(device.reason);
+  return isCooldownReason(device.reason);
 }
 
 function isCooldownReason(reason: DeviceReason): boolean {

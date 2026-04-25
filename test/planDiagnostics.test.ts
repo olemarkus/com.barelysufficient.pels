@@ -456,43 +456,7 @@ describe('plan diagnostics observations', () => {
     expect(restoreObservation.suppressionState).toBe('paused');
   });
 
-  it('treats keep devices with explicit PELS cooldown metadata as paused by headroom cooldown', () => {
-    const observation = buildObservation({
-      inputDevice: {
-        id: 'heater-1',
-        name: 'Hall Heater',
-        deviceClass: 'thermostat',
-        deviceType: 'temperature',
-        managed: true,
-        controllable: true,
-        available: true,
-        currentTemperature: 18,
-        currentOn: true,
-        targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
-      },
-      planDevice: {
-        id: 'heater-1',
-        name: 'Hall Heater',
-        deviceClass: 'thermostat',
-        currentState: 'not_applicable',
-        plannedState: 'keep',
-        currentTarget: 18,
-        plannedTarget: 21,
-        reason: r('keep'),
-        controllable: true,
-        available: true,
-        currentTemperature: 18,
-        headroomCardBlocked: true,
-        headroomCardCooldownSource: 'pels_shed',
-      },
-      desiredForMode: { 'heater-1': 21 },
-    });
-
-    expect(observation.pauseReason).toBe('headroom_cooldown');
-    expect(observation.suppressionState).toBe('paused');
-  });
-
-  it('preserves explicit keep-state hold reasons over headroom cooldown metadata', () => {
+  it('uses explicit keep-state hold reasons for starvation suppression', () => {
     const observation = buildObservation({
       inputDevice: {
         id: 'heater-1',
@@ -518,8 +482,6 @@ describe('plan diagnostics observations', () => {
         controllable: true,
         available: true,
         currentTemperature: 18,
-        headroomCardBlocked: true,
-        headroomCardCooldownSource: 'pels_shed',
       },
       desiredForMode: { 'heater-1': 21 },
     });

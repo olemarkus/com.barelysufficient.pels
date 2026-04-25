@@ -16,6 +16,8 @@ export type PlanCapacityStateCounts = {
   uncontrolledPowerW: number | null;
   remainingReducibleControlledLoadW: number | null;
   remainingReducibleControlledLoad: boolean | null;
+  remainingActionableControlledLoadW: number | null;
+  remainingActionableControlledLoad: boolean | null;
   actuationInFlight: boolean | null;
 };
 
@@ -40,6 +42,8 @@ export type KnownPlanCapacityStateCounts = {
   uncontrolledPowerW: number;
   remainingReducibleControlledLoadW: number;
   remainingReducibleControlledLoad: boolean;
+  remainingActionableControlledLoadW: number;
+  remainingActionableControlledLoad: boolean;
   actuationInFlight: boolean;
 };
 
@@ -60,6 +64,8 @@ export function buildNullCapacityStateSummary(): PlanCapacityStateSummary {
     uncontrolledPowerW: null,
     remainingReducibleControlledLoadW: null,
     remainingReducibleControlledLoad: null,
+    remainingActionableControlledLoadW: null,
+    remainingActionableControlledLoad: null,
     actuationInFlight: null,
     summarySource: null,
     summarySourceAtMs: null,
@@ -83,6 +89,8 @@ export function buildEmptyCapacityStateSummary(): KnownPlanCapacityStateCounts {
     uncontrolledPowerW: 0,
     remainingReducibleControlledLoadW: 0,
     remainingReducibleControlledLoad: false,
+    remainingActionableControlledLoadW: 0,
+    remainingActionableControlledLoad: false,
     actuationInFlight: false,
   };
 }

@@ -17,7 +17,11 @@ import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from './planDeb
 import {
   buildSwapCandidates,
 } from './planRestoreSwap';
-import { buildInsufficientHeadroomUpdate, resolveRestorePowerSource } from './planRestoreAccounting';
+import {
+  buildInsufficientHeadroomUpdate,
+  computeBaseRestoreNeed,
+  resolveRestorePowerSource,
+} from './planRestoreAccounting';
 import {
   getInactiveReason,
   getOffDevices,
@@ -50,7 +54,7 @@ import {
   getRestoreNeed,
   reserveHeadroomForPendingRestores,
 } from './planRestoreSupport';
-import { buildMeterSettlingReason } from './planReasonStrings';
+import { buildMeterSettlingReason, buildShortfallReason } from './planReasonStrings';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 
 export type RestoreDeps = {
@@ -86,15 +90,17 @@ export type RestorePlanResult = {
   lastRestoreCooldownBumpMs: number | null;
 };
 
-/* eslint-disable-next-line max-statements -- restore gating branches stay together at the top level. */
+/* eslint-disable-next-line max-lines-per-function, max-statements, complexity --
+restore gating branches stay together at the top level. */
 export function applyRestorePlan(params: {
   planDevices: DevicePlanDevice[];
   context: PlanContext;
   state: PlanEngineState;
   sheddingActive: boolean;
+  guardInShortfall?: boolean;
   deps: RestoreDeps;
 }): RestorePlanResult {
-  const { planDevices, context, state, sheddingActive, deps } = params;
+  const { planDevices, context, state, sheddingActive, guardInShortfall = false, deps } = params;
   const deviceMap = new Map(planDevices.map((dev) => [dev.id, dev]));
   const swapState = buildSwapState(state);
   const timing = buildRestoreTiming(state, context.headroomRaw, deps.powerTracker);
@@ -110,17 +116,25 @@ export function applyRestorePlan(params: {
   cleanupStaleSwaps(swapState, deps.structuredLog);
 
   const restoredThisCycle = new Set<string>();
-  let availableHeadroom = reserveHeadroomForPendingRestores({
-    rawHeadroom: context.headroomRaw,
-    planDevices,
-    lastDeviceRestoreMs: state.lastDeviceRestoreMs,
-    measurementTs: deps.powerTracker.lastTimestamp ?? null,
-    debugStructured: deps.debugStructured,
-    deviceNameById: deps.deviceNameById,
-  });
+  let availableHeadroom = guardInShortfall
+    ? context.headroomRaw
+    : reserveHeadroomForPendingRestores({
+      rawHeadroom: context.headroomRaw,
+      planDevices,
+      lastDeviceRestoreMs: state.lastDeviceRestoreMs,
+      measurementTs: deps.powerTracker.lastTimestamp ?? null,
+      debugStructured: deps.debugStructured,
+      deviceNameById: deps.deviceNameById,
+    });
   let restoredOneThisCycle = false;
 
-  if (shouldPlanRestores(context.headroomRaw, sheddingActive, effectiveTiming)) {
+  if (guardInShortfall) {
+    markRestoreCandidatesStayShedForShortfall({
+      deviceMap,
+      headroomKw: context.headroomRaw,
+      setDevice: (id, updates) => setDevice(deviceMap, id, updates),
+    });
+  } else if (shouldPlanRestores(context.headroomRaw, sheddingActive, effectiveTiming)) {
     const snapshot = Array.from(deviceMap.values());
     const offDevices = getOffDevices(snapshot);
     const onDevices = getOnDevices(snapshot, deps.getShedBehavior);
@@ -207,6 +221,49 @@ export function applyRestorePlan(params: {
     restoredOneThisCycle,
     ...effectiveTiming,
   };
+}
+
+function buildRestoreShortfallReason(dev: DevicePlanDevice, headroomKw: number): DevicePlanDevice['reason'] {
+  const { needed } = computeBaseRestoreNeed(dev);
+  return buildShortfallReason(needed, headroomKw);
+}
+
+function markRestoreCandidatesStayShedForShortfall(params: {
+  deviceMap: Map<string, DevicePlanDevice>;
+  headroomKw: number;
+  setDevice: (id: string, updates: Partial<DevicePlanDevice>) => void;
+}): void {
+  const { deviceMap, headroomKw, setDevice: setPlanDevice } = params;
+  markOffDevicesStayOff({
+    deviceMap,
+    timing: {
+      activeOvershoot: false,
+      inCooldown: false,
+      inStartupStabilization: false,
+      restoreCooldownSeconds: 0,
+      shedCooldownRemainingSec: null,
+      startupStabilizationRemainingSec: null,
+    },
+    setDevice: setPlanDevice,
+    reasonOverride: (dev) => buildRestoreShortfallReason(dev, headroomKw),
+  });
+
+  const steppedCandidates = getSteppedRestoreCandidates([...deviceMap.values()]);
+  for (const dev of steppedCandidates) {
+    const currentOff = resolveEffectiveCurrentOn(dev) === false;
+    const update: Partial<DevicePlanDevice> = {
+      reason: buildRestoreShortfallReason(dev, headroomKw),
+    };
+    if (currentOff) update.plannedState = 'shed';
+    if (!currentOff && dev.selectedStepId !== undefined) {
+      update.plannedState = 'shed';
+      update.desiredStepId = dev.selectedStepId;
+      update.targetStepId = dev.selectedStepId;
+      update.shedAction = 'set_step';
+      update.shedStepId = dev.selectedStepId;
+    }
+    setPlanDevice(dev.id, update);
+  }
 }
 
 /* eslint-disable-next-line max-lines-per-function, max-statements --

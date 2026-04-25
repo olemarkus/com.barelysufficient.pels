@@ -1,3 +1,4 @@
+import type { PlanCapacityStateSummary } from '../core/capacityStateSummary';
 import type { PowerSampleRebuildState } from './appPowerRebuildScheduler';
 
 export const clearShortfallSuppressionInvalidation = (
@@ -18,6 +19,18 @@ export const resetShortfallSuppressionInvalidationWhenRecovered = (params: {
   const nextState = clearShortfallSuppressionInvalidation(state);
   setState(nextState);
   return nextState;
+};
+
+export const shouldSkipShortfallRebuildFromPlanSummary = (params: {
+  summary: PlanCapacityStateSummary;
+  state: PowerSampleRebuildState;
+}): boolean => {
+  const { summary, state } = params;
+  return (
+    summary.remainingActionableControlledLoad === false
+    && summary.actuationInFlight === false
+    && state.shortfallSuppressionInvalidated !== true
+  );
 };
 
 export const shouldSkipUnrecoverableShortfallRebuild = (params: {

@@ -185,20 +185,6 @@ const resolveSuppressionFromReason = (reason: DeviceReason): StarvationSuppressi
   return noStarvationSuppression();
 };
 
-const resolveSuppressionFromHeadroomCooldown = (
-  device: DevicePlanDevice,
-): StarvationSuppressionNormalization => {
-  if (device.plannedState !== 'keep') return noStarvationSuppression();
-  if (device.headroomCardBlocked !== true || !device.headroomCardCooldownSource) {
-    return noStarvationSuppression();
-  }
-  return {
-    suppressionState: 'paused',
-    countingCause: null,
-    pauseReason: 'headroom_cooldown',
-  };
-};
-
 const resolveStarvationSuppression = (params: {
   device: DevicePlanDevice;
   inputDevice?: PlanInputDevice;
@@ -209,15 +195,7 @@ const resolveStarvationSuppression = (params: {
     return noStarvationSuppression();
   }
   const reason = device.reason;
-  const headroomCooldown = resolveSuppressionFromHeadroomCooldown(device);
   const normalized = resolveSuppressionFromReason(reason);
-  if (
-    headroomCooldown.suppressionState !== 'none'
-    && normalized.pauseReason === 'keep'
-  ) {
-    return headroomCooldown;
-  }
-
   if (normalized.suppressionState !== 'none') {
     return normalized;
   }

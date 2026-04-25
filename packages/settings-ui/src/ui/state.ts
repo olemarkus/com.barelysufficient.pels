@@ -26,6 +26,7 @@ export type UiState = {
   controllableMap: Record<string, boolean>;
   managedMap: Record<string, boolean>;
   budgetExemptMap: Record<string, boolean>;
+  nativeWiringMap: Record<string, boolean>;
   deviceControlProfiles: DeviceControlProfiles;
   modeAliases: Record<string, string>;
   shedBehaviors: Record<string, ShedBehavior>;
@@ -51,6 +52,7 @@ export const state: UiState = {
   controllableMap: {},
   managedMap: {},
   budgetExemptMap: {},
+  nativeWiringMap: {},
   deviceControlProfiles: {},
   modeAliases: {},
   shedBehaviors: {},
