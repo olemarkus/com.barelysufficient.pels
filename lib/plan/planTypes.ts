@@ -65,6 +65,7 @@ export type DevicePlanDevice = {
   actualStepId?: string;
   assumedStepId?: string;
   actualStepSource?: SteppedLoadActualStepSource;
+  hasBinaryControl?: boolean;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
   evChargingState?: string;
   priority?: number;

@@ -8,6 +8,10 @@ import {
   isSteppedLoadDevice,
   resolveSteppedUnknownCurrentMeasuredShedding,
 } from './planSteppedLoad';
+import {
+  getSteppedLoadStep,
+  isSteppedLoadOffStep,
+} from '../utils/deviceControlProfiles';
 
 type RemainingSheddablePowerFields = {
   measuredPowerKw?: number;
@@ -22,6 +26,7 @@ type RemainingSheddableBaseDevice = RemainingSheddablePowerFields & {
   currentOn: boolean;
   currentState?: string;
   budgetExempt: boolean;
+  hasBinaryControl?: boolean;
 };
 
 export type RemainingSheddableTemperatureTarget = {
@@ -96,6 +101,7 @@ type RemainingSheddableSourceDevice = RemainingSheddablePowerFields & {
   currentOn: boolean;
   currentState?: string;
   budgetExempt?: boolean;
+  hasBinaryControl?: boolean;
 };
 
 export function normalizeRemainingShedBehavior(behavior: RawShedBehavior): RemainingShedBehavior {
@@ -187,6 +193,7 @@ function toRemainingSheddableBaseDevice(device: RemainingSheddableSourceDevice):
     currentOn: device.currentOn,
     currentState: device.currentState,
     budgetExempt: device.budgetExempt === true,
+    hasBinaryControl: device.hasBinaryControl,
     measuredPowerKw: device.measuredPowerKw,
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: device.planningPowerKw,
@@ -293,7 +300,26 @@ function canStillShedSteppedLoad(params: {
     shedAction,
     currentDesiredStepId: device.selectedStepId,
   });
-  return Boolean(targetStep && targetStep.id !== device.selectedStepId);
+  if (targetStep && targetStep.id !== device.selectedStepId) return true;
+  return canFinishSteppedTurnOffWithBinary({ device, shedAction, targetStep });
+}
+
+function canFinishSteppedTurnOffWithBinary(params: {
+  device: SteppedRemainingSheddableDevice | SteppedTemperatureRemainingSheddableDevice;
+  shedAction: 'turn_off' | 'set_step';
+  targetStep: ReturnType<typeof getSteppedLoadShedTargetStep>;
+}): boolean {
+  const { device, shedAction, targetStep } = params;
+  if (
+    shedAction !== 'turn_off'
+    || device.hasBinaryControl === false
+    || !device.selectedStepId
+    || targetStep?.id !== device.selectedStepId
+  ) {
+    return false;
+  }
+  const selectedStep = getSteppedLoadStep(device.steppedLoadProfile, device.selectedStepId);
+  return Boolean(selectedStep && !isSteppedLoadOffStep(device.steppedLoadProfile, selectedStep.id));
 }
 
 function canStillShedTemperatureDevice(params: {

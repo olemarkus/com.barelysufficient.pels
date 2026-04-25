@@ -315,6 +315,7 @@ function buildBasePlanDevice(params: {
     actualStepId: dev.actualStepId,
     assumedStepId: dev.assumedStepId,
     actualStepSource: dev.actualStepSource,
+    hasBinaryControl: dev.hasBinaryControl,
     priority,
     powerKw: dev.powerKw,
     expectedPowerKw: resolveExpectedPowerKw(dev, currentState, plannedState, effectiveDesiredStepId),
