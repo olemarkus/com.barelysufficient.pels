@@ -126,7 +126,6 @@ describe('native EV wiring shim', () => {
 
     const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice({
       driverId: 'homey:app:com.zaptec:go',
-      driverUri: 'homey:app:com.zaptec:go',
     })]);
 
     expect(parsed).toEqual(expect.objectContaining({
@@ -142,6 +141,42 @@ describe('native EV wiring shim', () => {
       currentOn: true,
       evChargingState: 'plugged_in_paused',
       powerCapable: true,
+    }));
+  });
+
+  it('uses a device driver override to treat a mock device as Zaptec Go 2', () => {
+    const deviceManager = new DeviceManager(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      {
+        getExperimentalEvSupportEnabled: () => true,
+        getNativeEvWiringEnabled: () => true,
+        getDeviceDriverIdOverride: (id) => (
+          id === 'zaptec-go2-mock' ? 'homey:app:com.zaptec:go2' : undefined
+        ),
+      },
+    );
+
+    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice({
+      id: 'zaptec-go2-mock',
+      name: 'Zaptec Go 2 Mock',
+      driverId: 'homey:app:com.olemarkus.testdevices:go2',
+      ownerUri: 'homey:app:com.olemarkus.testdevices',
+    })]);
+
+    expect(parsed).toEqual(expect.objectContaining({
+      id: 'zaptec-go2-mock',
+      name: 'Zaptec Go 2 Mock',
+      controlCapabilityId: 'evcharger_charging',
+      controlAdapter: {
+        kind: 'capability_adapter',
+        activationRequired: true,
+        activationEnabled: true,
+      },
+      controlWriteCapabilityId: 'charging_button',
+      currentOn: true,
+      evChargingState: 'plugged_in_paused',
+      canSetControl: true,
     }));
   });
 
@@ -171,6 +206,13 @@ describe('native EV wiring shim', () => {
       buildZaptecDevice({
         id: 'zaptec-clone-go',
         driverId: 'homey:app:com.zaptecclone:go',
+      }),
+    ])).toEqual([]);
+    expect(deviceManager.parseDeviceListForTests([
+      buildZaptecDevice({
+        id: 'zaptec-testdevices-go2',
+        driverId: 'homey:app:com.olemarkus.testdevices:go2',
+        ownerUri: 'homey:app:com.olemarkus.testdevices',
       }),
     ])).toEqual([]);
   });

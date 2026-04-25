@@ -138,6 +138,8 @@ export type AppContext = {
   set managedDevices(value: Record<string, boolean>);
   get budgetExemptDevices(): Record<string, boolean>;
   set budgetExemptDevices(value: Record<string, boolean>);
+  get deviceDriverOverrides(): Record<string, string>;
+  set deviceDriverOverrides(value: Record<string, string>);
   get deviceControlProfiles(): DeviceControlProfiles;
   set deviceControlProfiles(value: DeviceControlProfiles);
   get deviceCommunicationModels(): Record<string, 'local' | 'cloud'>;

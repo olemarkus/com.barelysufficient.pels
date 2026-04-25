@@ -14,6 +14,7 @@ const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'device_control_profiles',
   'budget_exempt_devices',
   'native_ev_wiring_devices',
+  'device_driver_overrides',
   'experimental_ev_support_enabled',
   'mode_aliases',
   'overshoot_behaviors',
