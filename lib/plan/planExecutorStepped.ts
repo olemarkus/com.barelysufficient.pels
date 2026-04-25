@@ -27,6 +27,7 @@ import type { PlanActuationMode } from './planExecutor';
 import type { DevicePlan } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { DeviceManager } from '../core/deviceManager';
+import { PELS_TARGET_STEP_CAPABILITY_ID } from '../core/steppedLoadSyntheticCapabilities';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 
@@ -493,6 +494,7 @@ const logSteppedLoadCommandSkip = (
     reasonCode,
     deviceId: dev.id,
     deviceName: dev.name,
+    targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
     logContext: 'capacity',
     actuationMode: mode,
     ...fields,
@@ -556,6 +558,7 @@ const executeSteppedLoadCommand = async (
       event: 'stepped_load_command_requested',
       deviceId: dev.id,
       deviceName: dev.name,
+      targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       previousStepId: previousStepId ?? null,
       desiredStepId: desiredStep.id,
       plannedDesiredStepId: transition?.plannedDesiredStepId ?? desiredStep.id,

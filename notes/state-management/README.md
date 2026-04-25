@@ -40,6 +40,14 @@ Use these meanings consistently:
 - `reportedStepId`: confirmed device feedback only. This is the observed step.
 - `targetStepId`: the step PELS currently wants. This is planner/runtime intent.
 
+Internally, stepped-load feedback and intent use synthetic PELS capability IDs:
+
+- `pels_measure_step`: observed stepped-load position, surfaced as `reportedStepId`.
+- `pels_target_step`: requested stepped-load position, surfaced as `targetStepId` / `desiredStepId`.
+
+These IDs are internal capability-shaped contracts. They are not Homey-declared device
+capabilities unless a future change intentionally exposes them.
+
 Legacy compatibility fields still exist in some snapshots and plans:
 
 - `selectedStepId`: planner-effective current step. This may be reported or inferred.

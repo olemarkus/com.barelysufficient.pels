@@ -1,5 +1,6 @@
 import { registerFlowCards, type FlowCardDeps } from '../flowCards/registerFlowCards';
 import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
+import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../lib/core/steppedLoadSyntheticCapabilities';
 
 const stateChangedOutcome = (
   overrides: Partial<FlowBackedCapabilityReportOutcome> = {},
@@ -193,6 +194,7 @@ describe('registerFlowCards', () => {
       event: 'stepped_load_report_received',
       sourceCardId: 'report_stepped_load_actual_step',
       deviceId: 'dev-1',
+      capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
       reportedStepId: 'max',
     }));
     expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
@@ -200,6 +202,7 @@ describe('registerFlowCards', () => {
       sourceCardId: 'report_stepped_load_actual_step',
       deviceId: 'dev-1',
       deviceName: 'Tank',
+      capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
       resolvedStepId: 'max',
       outcome: 'accepted',
     }));
