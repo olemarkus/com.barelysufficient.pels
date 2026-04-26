@@ -10,9 +10,26 @@ const removePath = async (targetPath) => {
   await fs.rm(targetPath, { recursive: true, force: true });
 };
 
-await removePath(path.join(homeyBuildDir, 'node_modules', '@pels'));
-await removePath(path.join(homeyBuildDir, 'node_modules', '@napi-rs'));
-await removePath(path.join(homeyBuildDir, 'node_modules', '.bin'));
+const removeNodeModule = async (modulePath) => {
+  await removePath(path.join(homeyBuildDir, 'node_modules', ...modulePath.split('/')));
+};
+
+const prunedNodeModules = [
+  '.bin',
+  '@pels',
+  '@napi-rs',
+  '@lit',
+  '@lit-labs',
+  '@material',
+  'lit',
+  'lit-element',
+  'lit-html',
+];
+
+for (const moduleName of prunedNodeModules) {
+  await removeNodeModule(moduleName);
+}
+
 await removePath(path.join(homeyBuildDir, 'packages', 'contracts'));
 await removePath(path.join(homeyBuildDir, 'package-lock.json'));
 
