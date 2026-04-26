@@ -40,6 +40,9 @@ jobs:
       - name: Run build, lint, and static checks
         run: npm run ci:checks
 
+      - name: Validate Homey package contents
+        run: npm run validate
+
   docs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
