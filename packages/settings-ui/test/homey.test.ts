@@ -2,10 +2,20 @@ import type { HomeyCallback, HomeySettingsClient } from '../src/ui/homey.ts';
 
 const setGlobalHomey = (value: unknown): void => {
   (globalThis as typeof globalThis & { Homey?: unknown }).Homey = value;
+  (window as Window & { Homey?: unknown }).Homey = value;
 };
 
 const clearGlobalHomey = (): void => {
   delete (globalThis as typeof globalThis & { Homey?: unknown }).Homey;
+  delete (window as Window & { Homey?: unknown }).Homey;
+};
+
+const setHomeyReadyPromise = (value: Promise<unknown>): void => {
+  (window as Window & { __PELS_HOMEY_READY__?: Promise<unknown> }).__PELS_HOMEY_READY__ = value;
+};
+
+const clearHomeyReadyPromise = (): void => {
+  delete (window as Window & { __PELS_HOMEY_READY__?: Promise<unknown> }).__PELS_HOMEY_READY__;
 };
 
 const createClient = (overrides: Partial<HomeySettingsClient> = {}): HomeySettingsClient => ({
@@ -17,7 +27,9 @@ const createClient = (overrides: Partial<HomeySettingsClient> = {}): HomeySettin
 
 describe('waitForHomey', () => {
   afterEach(async () => {
+    vi.useRealTimers();
     clearGlobalHomey();
+    clearHomeyReadyPromise();
     const { setHomeyClient } = await import('../src/ui/homey.ts');
     setHomeyClient(null);
     vi.resetModules();
@@ -50,6 +62,38 @@ describe('waitForHomey', () => {
     const client = await waitForHomey(1, 0);
     expect(client).toBeInstanceOf(HomeyConstructor);
     expect(getHomeyClient()).toBe(client);
+  });
+
+  it('accepts the Homey client delivered through onHomeyReady', async () => {
+    const client = createClient();
+    setHomeyReadyPromise(Promise.resolve(client));
+    clearGlobalHomey();
+
+    const { getHomeyClient, waitForHomey } = await import('../src/ui/homey.ts');
+
+    await expect(waitForHomey(1, 0)).resolves.toBe(client);
+    expect(getHomeyClient()).toBe(client);
+  });
+
+  it('does not add a second wait while the onHomeyReady promise is pending', async () => {
+    vi.useFakeTimers();
+    setHomeyReadyPromise(new Promise(() => {}));
+    clearGlobalHomey();
+
+    const { waitForHomey } = await import('../src/ui/homey.ts');
+
+    let settled = false;
+    const result = waitForHomey(2, 100).then((value) => {
+      settled = true;
+      return value;
+    });
+
+    await vi.advanceTimersByTimeAsync(199);
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(result).resolves.toBeNull();
+    expect(settled).toBe(true);
   });
 });
 
