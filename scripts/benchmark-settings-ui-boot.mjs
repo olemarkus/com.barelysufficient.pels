@@ -297,6 +297,7 @@ const buildFixture = () => {
     'GET /ui_bootstrap': {
       settings,
       dailyBudget,
+      featureAccess: { canToggleOverviewRedesign: false },
       devices: settings.target_devices_snapshot,
       plan: settings.device_plan_snapshot,
       power: {

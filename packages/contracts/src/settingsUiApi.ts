@@ -25,9 +25,14 @@ export type SettingsUiSettingsPatch = {
 
 export type SettingsUiBootstrap = SettingsUiSettingsPatch & {
   dailyBudget: DailyBudgetUiPayload | null;
+  featureAccess: SettingsUiFeatureAccess;
   plan: SettingsUiPlanSnapshot | null;
   power: SettingsUiPowerPayload;
   prices: SettingsUiPricesPayload;
+};
+
+export type SettingsUiFeatureAccess = {
+  canToggleOverviewRedesign: boolean;
 };
 
 export type SettingsUiLogRequest = SettingsUiLogEntry;

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type Homey from 'homey';
 import type {
   DailyBudgetModelPreviewResponse,
@@ -10,6 +11,7 @@ import type {
   SettingsUiBootstrap,
   SettingsUiDeviceDiagnosticsResponse,
   SettingsUiDevicesPayload,
+  SettingsUiFeatureAccess,
   SettingsUiLogRequest,
   SettingsUiPlanPayload,
   SettingsUiPlanSnapshot,
@@ -43,6 +45,47 @@ type ApiContext = {
 const getApp = (homey: Homey.App['homey']): SettingsUiApiApp | null => {
   if (!homey || typeof homey !== 'object') return null;
   return homey.app as SettingsUiApiApp;
+};
+
+const DEFAULT_OVERVIEW_REDESIGN_TOGGLE_HOMEY_ID_HASHES = new Set<string>([
+  '3c9207efba429629030489371722f72f8e96bff1cf8c106c304bb1f055e22a8b',
+  '4e57091f5b42550e7bf53b206cf5ffa4b548b40aad7d3a1999e4ebf7677abd4b',
+]);
+const HOMEY_ID_LOOKUP_TIMEOUT_MS = 500;
+
+const ALLOWED_OVERVIEW_REDESIGN_HOMEY_ID_HASHES = (() => {
+  const hashes = new Set(DEFAULT_OVERVIEW_REDESIGN_TOGGLE_HOMEY_ID_HASHES);
+  const raw = String(process.env.PELS_OVERVIEW_REDESIGN_HOMEY_ID_HASHES ?? '');
+  if (!raw.trim()) return hashes;
+  raw.split(',').forEach((value) => {
+    const trimmed = value.trim();
+    if (trimmed) {
+      hashes.add(trimmed);
+    }
+  });
+  return hashes;
+})();
+
+const hashHomeyId = (homeyId: string): string => (
+  createHash('sha256').update(homeyId).digest('hex')
+);
+
+const getHomeyIdWithTimeout = async (
+  cloud: { getHomeyId: () => Promise<unknown> },
+): Promise<unknown> => {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      cloud.getHomeyId(),
+      new Promise<null>((resolve) => {
+        timeout = setTimeout(() => resolve(null), HOMEY_ID_LOOKUP_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
 };
 
 const pickSettings = (
@@ -136,11 +179,31 @@ const buildEmptyDeviceDiagnosticsPayload = (): SettingsUiDeviceDiagnosticsRespon
   diagnosticsByDeviceId: {},
 });
 
-export const buildSettingsUiBootstrap = ({ homey }: ApiContext): SettingsUiBootstrap => {
+const getFeatureAccess = async ({ homey }: ApiContext): Promise<SettingsUiFeatureAccess> => {
+  const cloud = (homey as Homey.App['homey'] & {
+    cloud?: { getHomeyId?: () => Promise<unknown> };
+  }).cloud;
+  const getHomeyId = cloud?.getHomeyId;
+  if (typeof getHomeyId !== 'function') {
+    return { canToggleOverviewRedesign: false };
+  }
+  try {
+    const homeyId = await getHomeyIdWithTimeout({ getHomeyId: getHomeyId.bind(cloud) });
+    return {
+      canToggleOverviewRedesign: typeof homeyId === 'string'
+        && ALLOWED_OVERVIEW_REDESIGN_HOMEY_ID_HASHES.has(hashHomeyId(homeyId)),
+    };
+  } catch {
+    return { canToggleOverviewRedesign: false };
+  }
+};
+
+export const buildSettingsUiBootstrap = async ({ homey }: ApiContext): Promise<SettingsUiBootstrap> => {
   const app = getApp(homey);
   return {
     settings: pickSettings(homey, SETTINGS_UI_BOOTSTRAP_KEYS),
     dailyBudget: app?.getDailyBudgetUiPayload?.() ?? null,
+    featureAccess: await getFeatureAccess({ homey }),
     plan: getSettingsUiPlan({ homey }),
     power: getSettingsUiPower({ homey }),
     prices: getSettingsUiPrices({ homey }),
