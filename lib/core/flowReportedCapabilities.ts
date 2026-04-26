@@ -7,6 +7,7 @@ export const FLOW_REPORTED_CAPABILITY_IDS = [
   'evcharger_charging',
   'alarm_generic.car_connected',
   'pels_evcharger_resumable',
+  'measure_battery',
 ] as const;
 export const FLOW_REPORTED_OBSERVATION_CAPABILITY_IDS = FLOW_REPORTED_CAPABILITY_IDS;
 
@@ -39,6 +40,7 @@ const EV_INPUT_CAPABILITIES: readonly FlowReportedCapabilityId[] = [
   'evcharger_charging',
   'alarm_generic.car_connected',
   'pels_evcharger_resumable',
+  'measure_battery',
 ];
 const BINARY_EFFECTIVE_REQUIRED_CAPABILITIES = ['onoff', 'measure_power'] as const;
 const EV_EFFECTIVE_REQUIRED_CAPABILITIES = [
@@ -456,6 +458,8 @@ function isValidFlowReportedValue(
   capabilityId: FlowReportedCapabilityId,
   value: unknown,
 ): value is boolean | number | string {
-  void capabilityId;
+  if (capabilityId === 'measure_battery') {
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100;
+  }
   return typeof value === 'boolean';
 }

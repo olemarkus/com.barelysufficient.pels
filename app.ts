@@ -105,6 +105,7 @@ import {
   type FlowReportedCapabilitiesByDevice,
   type FlowReportedCapabilitiesForDevice,
 } from './lib/core/flowReportedCapabilities';
+import { EV_SOC_CAPABILITY_ID, updateStateOfChargeObservationFreshness } from './lib/core/deviceStateOfCharge';
 import type { FlowBackedCapabilityReportOutcome } from './lib/app/appContext';
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 // Let non-urgent power deltas settle before rebuilding the full plan again.
@@ -113,7 +114,8 @@ const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 1
 const FLOW_REBUILD_COOLDOWN_MS = 1000;
 const FLOW_DEVICE_AUTOCOMPLETE_CACHE_MS = 15 * 1000;
 const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
-const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000; const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
+const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000;
+const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const POWER_TRACKER_PERSIST_DELAY_MS = VOLATILE_WRITE_THROTTLE_MS;
 type PriceOptimizationSettings = Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
 const getAppPlanRebuildNowMs = (): number => (
@@ -137,6 +139,7 @@ const isDevicePlanForUiSerialization = (value: unknown): value is DevicePlan => 
 function resolveFlowBackedCapabilityReportOutcome(update: {
   valueChanged: boolean;
   freshnessAdvanced: boolean;
+  capabilityId: FlowReportedCapabilityId;
 }): FlowBackedCapabilityReportOutcome {
   if (update.valueChanged) {
     return {
@@ -144,7 +147,7 @@ function resolveFlowBackedCapabilityReportOutcome(update: {
       valueChanged: true,
       freshnessAdvanced: update.freshnessAdvanced,
       refreshSnapshot: true,
-      rebuildPlan: true,
+      rebuildPlan: update.capabilityId !== EV_SOC_CAPABILITY_ID,
     };
   }
   if (update.freshnessAdvanced) {
@@ -332,7 +335,7 @@ class PelsApp extends Homey.App {
       value: params.value,
       reportedAt: params.reportedAt,
     });
-    if (update.valueChanged) {
+    if (update.valueChanged || (params.capabilityId === EV_SOC_CAPABILITY_ID && update.freshnessAdvanced)) {
       this.homey.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, this.flowReportedCapabilities);
     }
     if (!update.valueChanged && update.freshnessAdvanced) {
@@ -342,7 +345,10 @@ class PelsApp extends Homey.App {
         reportedAt: update.entry.reportedAt,
       });
     }
-    return resolveFlowBackedCapabilityReportOutcome(update);
+    return resolveFlowBackedCapabilityReportOutcome({
+      ...update,
+      capabilityId: params.capabilityId,
+    });
   }
 
   private syncFlowBackedObservationFreshness(params: {
@@ -355,6 +361,14 @@ class PelsApp extends Homey.App {
     const device = snapshot.find((entry) => entry.id === params.deviceId);
     if (!device || device.flowBacked !== true) return;
     if (!isFlowReportedObservationCapabilityId(params.capabilityId)) {
+      return;
+    }
+    if (params.capabilityId === EV_SOC_CAPABILITY_ID) {
+      updateStateOfChargeObservationFreshness({
+        snapshot: device,
+        reportedAt: params.reportedAt,
+        nowMs: Date.now(),
+      });
       return;
     }
     const nextFreshDataMs = Math.max(device.lastFreshDataMs ?? 0, params.reportedAt);
@@ -396,6 +410,7 @@ class PelsApp extends Homey.App {
       this.latestTargetSnapshot
         .filter((device) => (
           device.controlAdapter?.kind === 'capability_adapter'
+          && !this.flowReportedCapabilities[device.id]?.measure_battery
           && (
             device.controlAdapter.activationEnabled === true
             || (

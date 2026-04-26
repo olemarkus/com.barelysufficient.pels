@@ -9,6 +9,12 @@ import type { HandleRealtimeDeviceUpdateResult } from './deviceManagerRealtimeHa
 import type { DeviceFetchSource } from './deviceManagerFetch';
 import { getDeviceId } from './deviceManagerHelpers';
 import { resolveEvCurrentOn } from './deviceManagerControl';
+import {
+    EV_SOC_NATIVE_CAPABILITY_IDS,
+    isStateOfChargeCapabilityId,
+    updateStateOfChargeFromRealtimeCapability,
+    updateStateOfChargeSessionBoundary,
+} from './deviceStateOfCharge';
 
 export type CapabilityObservationSource = 'device_update' | 'realtime_capability' | 'local_write';
 
@@ -250,6 +256,20 @@ export function recordSnapshotCapabilityObservations(params: {
             capabilityIdSet,
         }),
     ].some(Boolean);
+    const stateOfChargeCapabilityId = snapshot.stateOfCharge?.capabilityId;
+    const observedStateOfChargeCapabilityId = stateOfChargeCapabilityId
+        && isStateOfChargeCapabilityId(stateOfChargeCapabilityId)
+        ? stateOfChargeCapabilityId
+        : 'measure_battery';
+    recordSnapshotScalarObservation(state, snapshot, {
+        deviceId,
+        capabilityId: observedStateOfChargeCapabilityId,
+        value: snapshot.stateOfCharge?.percent,
+        source,
+        observedAt,
+        capabilityIdSet,
+        countsTowardDeviceFreshness: false,
+    });
     if (recordedFreshData) {
         snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observedAt);
         snapshot.lastUpdated = snapshot.lastFreshDataMs;
@@ -265,6 +285,7 @@ export function recordCapabilityObservation(params: {
     source: CapabilityObservationSource;
     observedAt?: number;
     snapshot?: TargetDeviceSnapshot;
+    countsTowardDeviceFreshness?: boolean;
 }): void {
     const {
         state,
@@ -275,6 +296,7 @@ export function recordCapabilityObservation(params: {
         source,
         observedAt = Date.now(),
         snapshot,
+        countsTowardDeviceFreshness = !isStateOfChargeCapabilityId(capabilityId),
     } = params;
     state.capabilityObservations.set(buildCapabilityObservationKey(deviceId, capabilityId), {
         value,
@@ -287,6 +309,7 @@ export function recordCapabilityObservation(params: {
         updateLocalWriteTimestamps(state, latestSnapshot, deviceId, observedAt, resolvedSnapshot);
         return;
     }
+    if (!countsTowardDeviceFreshness) return;
     resolvedSnapshot.lastFreshDataMs = Math.max(resolvedSnapshot.lastFreshDataMs ?? 0, observedAt);
     resolvedSnapshot.lastUpdated = resolvedSnapshot.lastFreshDataMs;
 }
@@ -391,7 +414,11 @@ function mergeSnapshotObservationsForDevice(params: {
         });
     }
 
-    for (const capabilityId of ['measure_power', 'measure_temperature', 'evcharger_charging_state']) {
+    for (const capabilityId of [
+        'measure_power',
+        'measure_temperature',
+        'evcharger_charging_state',
+    ]) {
         mergeCapabilityObservation({
             state,
             deviceId: snapshot.id,
@@ -402,12 +429,62 @@ function mergeSnapshotObservationsForDevice(params: {
             logger,
         });
     }
+    mergeStateOfChargeObservationsForDevice({
+        state,
+        snapshot,
+        sourceDevice,
+        logger,
+    });
 
     const maxRetainedMs = getMaxRetainedObservationTimeMs(state, snapshot);
     if (maxRetainedMs > 0) {
         snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, maxRetainedMs) || undefined;
         snapshot.lastUpdated = snapshot.lastFreshDataMs;
     }
+}
+
+function mergeStateOfChargeObservationsForDevice(params: {
+    state: DeviceManagerObservationState;
+    snapshot: TargetDeviceSnapshot;
+    sourceDevice: HomeyDeviceLike;
+    logger: { debug: (...args: unknown[]) => void };
+}): void {
+    const {
+        state,
+        snapshot,
+        sourceDevice,
+        logger,
+    } = params;
+    let newestCapabilityId: string | undefined;
+    let newestObservedAt = 0;
+    for (const capabilityId of EV_SOC_NATIVE_CAPABILITY_IDS) {
+        const observation = state.capabilityObservations.get(
+            buildCapabilityObservationKey(snapshot.id, capabilityId),
+        );
+        if (!observation || observation.observedAt <= newestObservedAt) continue;
+        newestCapabilityId = capabilityId;
+        newestObservedAt = observation.observedAt;
+    }
+    if (!newestCapabilityId) return;
+
+    for (const capabilityId of EV_SOC_NATIVE_CAPABILITY_IDS) {
+        if (capabilityId === newestCapabilityId) continue;
+        const observation = state.capabilityObservations.get(
+            buildCapabilityObservationKey(snapshot.id, capabilityId),
+        );
+        if (!observation || observation.observedAt > newestObservedAt) continue;
+        state.capabilityObservations.delete(buildCapabilityObservationKey(snapshot.id, capabilityId));
+    }
+
+    mergeCapabilityObservation({
+        state,
+        deviceId: snapshot.id,
+        deviceName: snapshot.name,
+        capabilityId: newestCapabilityId,
+        sourceDevice,
+        nextSnapshot: snapshot,
+        logger,
+    });
 }
 
 function getMaxRetainedObservationTimeMs(
@@ -505,6 +582,9 @@ function applyCapabilityObservation(
     if (capabilityId === 'measure_temperature') {
         return applyMeasuredTemperatureObservation(nextSnapshot, observation);
     }
+    if (isStateOfChargeCapabilityId(capabilityId)) {
+        return applyStateOfChargeObservation(nextSnapshot, capabilityId, observation);
+    }
     return applyTargetCapabilityObservation(nextSnapshot, capabilityId, observation);
 }
 
@@ -558,6 +638,12 @@ function applyEvChargingStateObservation(
         evChargingState: snapshot.evChargingState,
         evchargerCharging: snapshot.evCharging,
     });
+    updateStateOfChargeSessionBoundary({
+        snapshot,
+        evChargingState: observation.value,
+        observedAtMs: observation.observedAt,
+        nowMs: observation.observedAt,
+    });
     snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
     snapshot.lastUpdated = snapshot.lastFreshDataMs;
     return true;
@@ -596,6 +682,22 @@ function applyMeasuredTemperatureObservation(
     snapshot.currentTemperature = observation.value;
     snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
     snapshot.lastUpdated = snapshot.lastFreshDataMs;
+    return true;
+}
+
+function applyStateOfChargeObservation(
+    nextSnapshot: TargetDeviceSnapshot,
+    capabilityId: string,
+    observation: CapabilityObservation,
+): boolean {
+    const snapshot = nextSnapshot;
+    const changed = updateStateOfChargeFromRealtimeCapability({
+        snapshot,
+        capabilityId,
+        value: observation.value,
+        observedAtMs: observation.observedAt,
+    });
+    if (!changed) return false;
     return true;
 }
 
@@ -640,34 +742,34 @@ function clearCapabilityObservationIfMatched(
     const key = buildCapabilityObservationKey(deviceId, capabilityId);
     const observation = state.capabilityObservations.get(key);
     if (!observation) return;
-    if (capabilityId === snapshot.controlCapabilityId) {
-        if (matchesCurrentControlObservation(snapshot, observation.value)) {
-            state.capabilityObservations.delete(key);
-        }
+    if (isStateOfChargeCapabilityId(capabilityId)) {
+        state.capabilityObservations.delete(key);
         return;
     }
-    if (capabilityId === 'measure_power') {
-        if (snapshot.measuredPowerKw === observation.value) {
-            state.capabilityObservations.delete(key);
-        }
-        return;
-    }
-    if (capabilityId === 'measure_temperature') {
-        if (snapshot.currentTemperature === observation.value) {
-            state.capabilityObservations.delete(key);
-        }
-        return;
-    }
-    if (capabilityId === 'evcharger_charging_state') {
-        if (snapshot.evChargingState === observation.value) {
-            state.capabilityObservations.delete(key);
-        }
-        return;
-    }
-    const target = snapshot.targets.find((entry) => entry.id === capabilityId);
-    if (target && Object.is(target.value, observation.value)) {
+    if (doesCapabilityObservationMatchSnapshot(snapshot, capabilityId, observation.value)) {
         state.capabilityObservations.delete(key);
     }
+}
+
+function doesCapabilityObservationMatchSnapshot(
+    snapshot: TargetDeviceSnapshot,
+    capabilityId: string,
+    observationValue: unknown,
+): boolean {
+    if (capabilityId === snapshot.controlCapabilityId) {
+        return matchesCurrentControlObservation(snapshot, observationValue);
+    }
+    if (capabilityId === 'measure_power') {
+        return snapshot.measuredPowerKw === observationValue;
+    }
+    if (capabilityId === 'measure_temperature') {
+        return snapshot.currentTemperature === observationValue;
+    }
+    if (capabilityId === 'evcharger_charging_state') {
+        return snapshot.evChargingState === observationValue;
+    }
+    const target = snapshot.targets.find((entry) => entry.id === capabilityId);
+    return target ? Object.is(target.value, observationValue) : false;
 }
 
 function matchesCurrentControlObservation(
@@ -744,11 +846,12 @@ function recordSnapshotScalarObservation(
     snapshot: TargetDeviceSnapshot,
     params: {
         deviceId: string;
-        capabilityId: 'measure_power' | 'evcharger_charging_state';
+        capabilityId: 'measure_power' | 'evcharger_charging_state' | (typeof EV_SOC_NATIVE_CAPABILITY_IDS)[number];
         value: number | string | undefined;
         source: CapabilityObservationSource;
         observedAt: number;
         capabilityIdSet: Set<string> | null;
+        countsTowardDeviceFreshness?: boolean;
     },
 ): boolean {
     const {
@@ -758,6 +861,7 @@ function recordSnapshotScalarObservation(
         source,
         observedAt,
         capabilityIdSet,
+        countsTowardDeviceFreshness = true,
     } = params;
     if (typeof value !== 'number' && typeof value !== 'string') return false;
     if (capabilityIdSet && !capabilityIdSet.has(capabilityId)) return false;
@@ -770,6 +874,7 @@ function recordSnapshotScalarObservation(
         source,
         observedAt,
         snapshot,
+        countsTowardDeviceFreshness,
     });
     return true;
 }

@@ -53,6 +53,7 @@ export function resolveFlowCapabilityOverlay(params: {
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
   reportedStepId?: string;
   suggestedSteppedLoadProfile?: SteppedLoadProfile;
+  allReportedCapabilities: FlowReportedCapabilitiesForDevice;
 } {
   const {
     device,
@@ -99,9 +100,10 @@ export function resolveFlowCapabilityOverlay(params: {
     nativeEvOverlay.controlAdapter?.activationRequired === true
     && providers.getManaged?.(deviceId) !== true
   );
+  const allReportedCapabilities = providers.getFlowReportedCapabilities?.(deviceId) ?? {};
   const reportedCapabilities = shouldIgnoreFlowReports
-    ? {}
-    : (providers.getFlowReportedCapabilities?.(deviceId) ?? {});
+    ? pickSupplementalFlowReports(allReportedCapabilities)
+    : allReportedCapabilities;
   const {
     capabilities,
     capabilityObj,
@@ -125,6 +127,7 @@ export function resolveFlowCapabilityOverlay(params: {
     reportedCapabilities,
     reportedStepId: nativeSteppedOverlay.reportedStepId,
     suggestedSteppedLoadProfile: nativeSteppedOverlay.suggestedSteppedLoadProfile,
+    allReportedCapabilities,
   };
 }
 
@@ -164,6 +167,14 @@ function resolveNativeSteppedLoadOverlay(params: {
       : undefined,
     suggestedSteppedLoadProfile,
   };
+}
+
+function pickSupplementalFlowReports(
+  reportedCapabilities: FlowReportedCapabilitiesForDevice,
+): FlowReportedCapabilitiesForDevice {
+  return reportedCapabilities.measure_battery
+    ? { measure_battery: reportedCapabilities.measure_battery }
+    : {};
 }
 
 export function resolveCandidateCapabilities(params: {

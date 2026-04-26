@@ -3,6 +3,7 @@ import type {
     DeviceControlModel,
     DeviceControlProfile,
     DeviceControlProfiles,
+    DeviceStateOfChargeSnapshot,
     SteppedLoadActualStepSource,
     SteppedLoadCommandStatus,
     SteppedLoadProfile,
@@ -16,6 +17,7 @@ export type {
     DeviceControlModel,
     DeviceControlProfile,
     DeviceControlProfiles,
+    DeviceStateOfChargeSnapshot,
     SteppedLoadActualStepSource,
     SteppedLoadCommandStatus,
     SteppedLoadProfile,
@@ -109,6 +111,9 @@ export type HomeyDeviceLike = {
         'alarm_generic.car_connected'?: CapabilityValue<boolean>;
         evcharger_charging?: CapabilityValue<boolean>;
         evcharger_charging_state?: CapabilityValue<string>;
+        measure_battery?: CapabilityValue<number>;
+        measure_soc_level?: CapabilityValue<number>;
+        measure_soc_usable?: CapabilityValue<number>;
         target_temperature?: CapabilityValue<number>;
     };
     settings?: Record<string, unknown> & {

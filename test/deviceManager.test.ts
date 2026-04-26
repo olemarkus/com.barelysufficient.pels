@@ -2549,6 +2549,111 @@ describe('DeviceManager', () => {
             evDeviceManager.destroy();
         });
 
+        it('keeps EV state of charge valid across in-session charging-state changes', async () => {
+            vi.useFakeTimers();
+            try {
+                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                    getExperimentalEvSupportEnabled: () => true,
+                });
+                await evDeviceManager.init();
+                vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: [
+                            'evcharger_charging',
+                            'evcharger_charging_state',
+                            'measure_power',
+                            'measure_battery',
+                        ],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_paused',
+                                id: 'evcharger_charging_state',
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
+                            },
+                            measure_battery: {
+                                id: 'measure_battery',
+                                value: 51,
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+
+                await evDeviceManager.refreshSnapshot();
+                vi.setSystemTime(new Date('2026-03-20T06:05:00.000Z'));
+                evDeviceManager.injectCapabilityUpdateForTest('ev1', 'evcharger_charging_state', 'plugged_in_charging');
+
+                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                    percent: 51,
+                    status: 'fresh',
+                    sessionStartedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime(),
+                }));
+
+                evDeviceManager.destroy();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('initializes realtime EV state of charge against the current connected session', async () => {
+            vi.useFakeTimers();
+            try {
+                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                    getExperimentalEvSupportEnabled: () => true,
+                });
+                await evDeviceManager.init();
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state' },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+
+                await evDeviceManager.refreshSnapshot();
+                vi.setSystemTime(new Date('2026-03-20T06:05:00.000Z'));
+                evDeviceManager.injectCapabilityUpdateForTest('ev1', 'measure_battery', 52);
+
+                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                    percent: 52,
+                    status: 'fresh',
+                    sessionStartedAtMs: new Date('2026-03-20T06:05:00.000Z').getTime(),
+                }));
+
+                evDeviceManager.destroy();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('ignores realtime state of charge capability updates for non-EV devices', () => {
+            deviceManager.setSnapshotForTests([{
+                id: 'sensor1',
+                name: 'Battery Sensor',
+                deviceClass: 'sensor',
+                currentOn: true,
+                targets: [],
+                powerCapable: false,
+                capabilities: ['measure_battery'],
+            }]);
+
+            deviceManager.injectCapabilityUpdateForTest('sensor1', 'measure_battery', 48);
+
+            expect(deviceManager.getSnapshot()[0].stateOfCharge).toBeUndefined();
+        });
+
         it('treats a fresher charging-state start as on even when the stored EV boolean is stale false', async () => {
             const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
                 getExperimentalEvSupportEnabled: () => true,
@@ -2650,6 +2755,647 @@ describe('DeviceManager', () => {
                     currentOn: true,
                     evChargingState: 'plugged_in_paused',
                     lastFreshDataMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
+                }));
+
+                evDeviceManager.destroy();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('preserves the preferred EV state of charge capability across a stale snapshot refresh', async () => {
+            vi.useFakeTimers();
+            try {
+                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                    getExperimentalEvSupportEnabled: () => true,
+                });
+                await evDeviceManager.init();
+
+                vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: [
+                            'evcharger_charging',
+                            'evcharger_charging_state',
+                            'measure_power',
+                            'measure_battery',
+                            'measure_soc_level',
+                        ],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_charging',
+                                id: 'evcharger_charging_state',
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
+                            },
+                            measure_battery: {
+                                id: 'measure_battery',
+                                value: 50,
+                                lastUpdated: '2026-03-20T05:59:00.000Z',
+                            },
+                            measure_soc_level: {
+                                id: 'measure_soc_level',
+                                value: 55,
+                                lastUpdated: '2026-03-20T05:59:00.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+
+                await evDeviceManager.refreshSnapshot();
+                vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
+                evDeviceManager.injectCapabilityUpdateForTest('ev1', 'measure_battery', 61);
+                evDeviceManager.injectCapabilityUpdateForTest('ev1', 'measure_soc_level', 72);
+
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: [
+                            'evcharger_charging',
+                            'evcharger_charging_state',
+                            'measure_power',
+                            'measure_battery',
+                            'measure_soc_level',
+                        ],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_charging',
+                                id: 'evcharger_charging_state',
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
+                            },
+                            measure_battery: {
+                                id: 'measure_battery',
+                                value: 50,
+                                lastUpdated: '2026-03-20T05:59:30.000Z',
+                            },
+                            measure_soc_level: {
+                                id: 'measure_soc_level',
+                                value: 55,
+                                lastUpdated: '2026-03-20T05:59:30.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+
+                await evDeviceManager.refreshSnapshot();
+
+                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                    percent: 61,
+                    capabilityId: 'measure_battery',
+                    status: 'fresh',
+                }));
+
+                evDeviceManager.destroy();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('preserves EV state of charge from device.update across a stale snapshot refresh', async () => {
+            vi.useFakeTimers();
+            try {
+                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                    getExperimentalEvSupportEnabled: () => true,
+                });
+                await evDeviceManager.init();
+
+                vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: [
+                            'evcharger_charging',
+                            'evcharger_charging_state',
+                            'measure_power',
+                            'measure_battery',
+                        ],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_charging',
+                                id: 'evcharger_charging_state',
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
+                            },
+                            measure_battery: {
+                                id: 'measure_battery',
+                                value: 50,
+                                lastUpdated: '2026-03-20T05:59:00.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+
+                await evDeviceManager.refreshSnapshot();
+                vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
+                evDeviceManager.injectDeviceUpdateForTest({
+                    id: 'ev1',
+                    name: 'Easee',
+                    class: 'evcharger',
+                    capabilities: [
+                        'evcharger_charging',
+                        'evcharger_charging_state',
+                        'measure_power',
+                        'measure_battery',
+                    ],
+                    capabilitiesObj: {
+                        evcharger_charging: { id: 'evcharger_charging', setable: true },
+                        evcharger_charging_state: {
+                            value: 'plugged_in_charging',
+                            id: 'evcharger_charging_state',
+                            lastUpdated: '2026-03-20T06:00:00.000Z',
+                        },
+                        measure_battery: {
+                            id: 'measure_battery',
+                            value: 61,
+                            lastUpdated: '2026-03-20T06:00:01.000Z',
+                        },
+                        measure_power: { value: 0, id: 'measure_power' },
+                    },
+                });
+
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: [
+                            'evcharger_charging',
+                            'evcharger_charging_state',
+                            'measure_power',
+                            'measure_battery',
+                        ],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_charging',
+                                id: 'evcharger_charging_state',
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
+                            },
+                            measure_battery: {
+                                id: 'measure_battery',
+                                value: 50,
+                                lastUpdated: '2026-03-20T05:59:30.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+                await evDeviceManager.refreshSnapshot();
+
+                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                    percent: 61,
+                    capabilityId: 'measure_battery',
+                    status: 'fresh',
+                }));
+
+                evDeviceManager.destroy();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('preserves non-measure-battery EV state of charge from device.update across a stale snapshot refresh', async () => {
+            vi.useFakeTimers();
+            try {
+                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                    getExperimentalEvSupportEnabled: () => true,
+                });
+                await evDeviceManager.init();
+
+                vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: [
+                            'evcharger_charging',
+                            'evcharger_charging_state',
+                            'measure_power',
+                            'measure_soc_level',
+                        ],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_charging',
+                                id: 'evcharger_charging_state',
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
+                            },
+                            measure_soc_level: {
+                                id: 'measure_soc_level',
+                                value: 50,
+                                lastUpdated: '2026-03-20T05:59:00.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+
+                await evDeviceManager.refreshSnapshot();
+                vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
+                evDeviceManager.injectDeviceUpdateForTest({
+                    id: 'ev1',
+                    name: 'Easee',
+                    class: 'evcharger',
+                    capabilities: [
+                        'evcharger_charging',
+                        'evcharger_charging_state',
+                        'measure_power',
+                        'measure_soc_level',
+                    ],
+                    capabilitiesObj: {
+                        evcharger_charging: { id: 'evcharger_charging', setable: true },
+                        evcharger_charging_state: {
+                            value: 'plugged_in_charging',
+                            id: 'evcharger_charging_state',
+                            lastUpdated: '2026-03-20T06:00:00.000Z',
+                        },
+                        measure_soc_level: {
+                            id: 'measure_soc_level',
+                            value: 61,
+                            lastUpdated: '2026-03-20T06:00:01.000Z',
+                        },
+                        measure_power: { value: 0, id: 'measure_power' },
+                    },
+                });
+
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: [
+                            'evcharger_charging',
+                            'evcharger_charging_state',
+                            'measure_power',
+                            'measure_soc_level',
+                        ],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_charging',
+                                id: 'evcharger_charging_state',
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
+                            },
+                            measure_soc_level: {
+                                id: 'measure_soc_level',
+                                value: 50,
+                                lastUpdated: '2026-03-20T05:59:30.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+                await evDeviceManager.refreshSnapshot();
+
+                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                    percent: 61,
+                    capabilityId: 'measure_soc_level',
+                    status: 'fresh',
+                }));
+
+                evDeviceManager.destroy();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('does not preserve EV state of charge when only derived status changes', async () => {
+            vi.useFakeTimers();
+            try {
+                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                    getExperimentalEvSupportEnabled: () => true,
+                });
+                await evDeviceManager.init();
+
+                vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: [
+                            'evcharger_charging',
+                            'evcharger_charging_state',
+                            'measure_power',
+                            'measure_battery',
+                        ],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_charging',
+                                id: 'evcharger_charging_state',
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
+                            },
+                            measure_battery: {
+                                id: 'measure_battery',
+                                value: 50,
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+
+                await evDeviceManager.refreshSnapshot();
+                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                    percent: 50,
+                    observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime(),
+                    status: 'fresh',
+                }));
+
+                vi.setSystemTime(new Date('2026-03-20T06:45:00.000Z'));
+                evDeviceManager.injectDeviceUpdateForTest({
+                    id: 'ev1',
+                    name: 'Easee',
+                    class: 'evcharger',
+                    capabilities: [
+                        'evcharger_charging',
+                        'evcharger_charging_state',
+                        'measure_power',
+                        'measure_battery',
+                    ],
+                    capabilitiesObj: {
+                        evcharger_charging: { id: 'evcharger_charging', setable: true },
+                        evcharger_charging_state: {
+                            value: 'plugged_in_charging',
+                            id: 'evcharger_charging_state',
+                            lastUpdated: '2026-03-20T06:00:00.000Z',
+                        },
+                        measure_battery: {
+                            id: 'measure_battery',
+                            value: 50,
+                            lastUpdated: '2026-03-20T06:00:00.000Z',
+                        },
+                        measure_power: { value: 0, id: 'measure_power' },
+                    },
+                });
+                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                    percent: 50,
+                    observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime(),
+                    status: 'stale',
+                }));
+
+                await evDeviceManager.refreshSnapshot();
+
+                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                    percent: 50,
+                    observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime(),
+                    status: 'stale',
+                }));
+
+                evDeviceManager.destroy();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('clears older retained EV state of charge observations for other SoC capabilities', async () => {
+            vi.useFakeTimers();
+            try {
+                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                    getExperimentalEvSupportEnabled: () => true,
+                });
+                await evDeviceManager.init();
+
+                vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: [
+                            'evcharger_charging',
+                            'evcharger_charging_state',
+                            'measure_power',
+                            'measure_battery',
+                            'measure_soc_level',
+                        ],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_charging',
+                                id: 'evcharger_charging_state',
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
+                            },
+                            measure_battery: {
+                                id: 'measure_battery',
+                                value: 50,
+                                lastUpdated: '2026-03-20T05:59:00.000Z',
+                            },
+                            measure_soc_level: {
+                                id: 'measure_soc_level',
+                                value: 55,
+                                lastUpdated: '2026-03-20T05:59:00.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+
+                await evDeviceManager.refreshSnapshot();
+                vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
+                evDeviceManager.injectCapabilityUpdateForTest('ev1', 'measure_soc_level', 61);
+                vi.setSystemTime(new Date('2026-03-20T06:00:02.000Z'));
+                evDeviceManager.injectCapabilityUpdateForTest('ev1', 'measure_battery', 70);
+
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: [
+                            'evcharger_charging',
+                            'evcharger_charging_state',
+                            'measure_power',
+                            'measure_battery',
+                            'measure_soc_level',
+                        ],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_charging',
+                                id: 'evcharger_charging_state',
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
+                            },
+                            measure_battery: {
+                                id: 'measure_battery',
+                                value: 70,
+                                lastUpdated: '2026-03-20T06:00:03.000Z',
+                            },
+                            measure_soc_level: {
+                                id: 'measure_soc_level',
+                                value: 55,
+                                lastUpdated: '2026-03-20T05:59:30.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+                await evDeviceManager.refreshSnapshot();
+                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                    percent: 70,
+                    capabilityId: 'measure_battery',
+                }));
+
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: [
+                            'evcharger_charging',
+                            'evcharger_charging_state',
+                            'measure_power',
+                            'measure_battery',
+                            'measure_soc_level',
+                        ],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_charging',
+                                id: 'evcharger_charging_state',
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
+                            },
+                            measure_battery: {
+                                id: 'measure_battery',
+                                value: 70,
+                            },
+                            measure_soc_level: {
+                                id: 'measure_soc_level',
+                                value: 55,
+                                lastUpdated: '2026-03-20T05:59:30.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+                await evDeviceManager.refreshSnapshot();
+
+                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                    percent: 70,
+                    capabilityId: 'measure_battery',
+                }));
+
+                evDeviceManager.destroy();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('clears retained EV state of charge after a native snapshot catches up', async () => {
+            vi.useFakeTimers();
+            try {
+                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                    getExperimentalEvSupportEnabled: () => true,
+                });
+                await evDeviceManager.init();
+
+                vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: [
+                            'evcharger_charging',
+                            'evcharger_charging_state',
+                            'measure_power',
+                            'measure_battery',
+                        ],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_charging',
+                                id: 'evcharger_charging_state',
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
+                            },
+                            measure_battery: {
+                                id: 'measure_battery',
+                                value: 50,
+                                lastUpdated: '2026-03-20T05:59:00.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+
+                await evDeviceManager.refreshSnapshot();
+                vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
+                evDeviceManager.injectCapabilityUpdateForTest('ev1', 'measure_battery', 61);
+
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: [
+                            'evcharger_charging',
+                            'evcharger_charging_state',
+                            'measure_power',
+                            'measure_battery',
+                        ],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_charging',
+                                id: 'evcharger_charging_state',
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
+                            },
+                            measure_battery: {
+                                id: 'measure_battery',
+                                value: 61,
+                                lastUpdated: '2026-03-20T06:00:02.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+                await evDeviceManager.refreshSnapshot();
+
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: [
+                            'evcharger_charging',
+                            'evcharger_charging_state',
+                            'measure_power',
+                            'measure_battery',
+                        ],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_charging',
+                                id: 'evcharger_charging_state',
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
+                            },
+                            measure_battery: {
+                                id: 'measure_battery',
+                                value: 50,
+                                lastUpdated: '2026-03-20T05:59:30.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+                await evDeviceManager.refreshSnapshot();
+
+                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                    percent: 50,
+                    capabilityId: 'measure_battery',
                 }));
 
                 evDeviceManager.destroy();
