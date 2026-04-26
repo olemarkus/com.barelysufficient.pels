@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   buildSettingsUiBootstrap,
   getSettingsUiDeviceDiagnosticsPayload,
@@ -16,6 +17,10 @@ import {
 } from '../lib/app/settingsUiApi';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
 import { buildComparablePlanReason } from '../packages/shared-domain/src/planReasonSemantics';
+
+const hashHomeyIdForTest = (homeyId: string): string => (
+  createHash('sha256').update(homeyId).digest('hex')
+);
 
 describe('settingsUiApi', () => {
   const createHomey = (
@@ -208,6 +213,67 @@ describe('settingsUiApi', () => {
     const result = await buildSettingsUiBootstrap({ homey: homey as never });
 
     expect(result.featureAccess).toEqual({ canToggleOverviewRedesign: true });
+  });
+
+  it('grants overview redesign feature access for configured Homey id hashes', async () => {
+    const previous = process.env.PELS_OVERVIEW_REDESIGN_HOMEY_ID_HASHES;
+    try {
+      vi.resetModules();
+      process.env.PELS_OVERVIEW_REDESIGN_HOMEY_ID_HASHES = hashHomeyIdForTest('redesign-homey');
+      const { buildSettingsUiBootstrap: buildBootstrapWithEnv } = await import('../lib/app/settingsUiApi');
+      const homey = createHomey();
+      homey.cloud.getHomeyId.mockResolvedValue('redesign-homey');
+
+      const result = await buildBootstrapWithEnv({ homey: homey as never });
+
+      expect(result.featureAccess).toEqual({ canToggleOverviewRedesign: true });
+    } finally {
+      if (previous === undefined) {
+        delete process.env.PELS_OVERVIEW_REDESIGN_HOMEY_ID_HASHES;
+      } else {
+        process.env.PELS_OVERVIEW_REDESIGN_HOMEY_ID_HASHES = previous;
+      }
+      vi.resetModules();
+    }
+  });
+
+  it('keeps overview redesign id hashes fixed after module initialization', async () => {
+    const previous = process.env.PELS_OVERVIEW_REDESIGN_HOMEY_ID_HASHES;
+    try {
+      vi.resetModules();
+      process.env.PELS_OVERVIEW_REDESIGN_HOMEY_ID_HASHES = hashHomeyIdForTest('first-redesign-homey');
+      const { buildSettingsUiBootstrap: buildBootstrapWithEnv } = await import('../lib/app/settingsUiApi');
+      const firstHomey = createHomey();
+      firstHomey.cloud.getHomeyId.mockResolvedValue('first-redesign-homey');
+
+      await expect(buildBootstrapWithEnv({ homey: firstHomey as never })).resolves.toMatchObject({
+        featureAccess: { canToggleOverviewRedesign: true },
+      });
+
+      process.env.PELS_OVERVIEW_REDESIGN_HOMEY_ID_HASHES = hashHomeyIdForTest('second-redesign-homey');
+      const secondHomey = createHomey();
+      secondHomey.cloud.getHomeyId.mockResolvedValue('second-redesign-homey');
+
+      await expect(buildBootstrapWithEnv({ homey: secondHomey as never })).resolves.toMatchObject({
+        featureAccess: { canToggleOverviewRedesign: false },
+      });
+    } finally {
+      if (previous === undefined) {
+        delete process.env.PELS_OVERVIEW_REDESIGN_HOMEY_ID_HASHES;
+      } else {
+        process.env.PELS_OVERVIEW_REDESIGN_HOMEY_ID_HASHES = previous;
+      }
+      vi.resetModules();
+    }
+  });
+
+  it('falls back to disabled feature access when Homey id lookup fails', async () => {
+    const homey = createHomey();
+    homey.cloud.getHomeyId.mockRejectedValue(new Error('cloud unavailable'));
+
+    const result = await buildSettingsUiBootstrap({ homey: homey as never });
+
+    expect(result.featureAccess).toEqual({ canToggleOverviewRedesign: false });
   });
 
   it('denies overview redesign access when Homey ID lookup does not return promptly', async () => {

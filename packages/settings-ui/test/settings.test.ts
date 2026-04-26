@@ -272,6 +272,73 @@ describe('settings script', () => {
     expect(document.querySelector('#empty-state')?.hasAttribute('hidden')).toBe(true);
   });
 
+  it('uses bootstrap settings to avoid refetching primed values during initial load', async () => {
+    const homey = installHomeyMock({
+      settings: buildSettingsHomeyState({
+        capacity_limit_kw: 10,
+        capacity_margin_kw: 0.5,
+        capacity_dry_run: true,
+      }),
+      apiHandlers: {
+        'GET /ui_bootstrap': async () => ({
+          settings: {
+            capacity_limit_kw: 7,
+            capacity_margin_kw: 0.3,
+            capacity_dry_run: false,
+          },
+          dailyBudget: null,
+          featureAccess: { canToggleOverviewRedesign: false },
+          plan: null,
+          power: { tracker: null, status: null, heartbeat: null },
+          prices: {
+            combinedPrices: null,
+            electricityPrices: null,
+            priceArea: null,
+            gridTariffData: null,
+            flowToday: null,
+            flowTomorrow: null,
+            homeyCurrency: null,
+            homeyToday: null,
+            homeyTomorrow: null,
+          },
+        }),
+      },
+    });
+
+    await loadSettingsScript();
+
+    expect((document.querySelector('#capacity-limit') as HTMLInputElement).value).toBe('7');
+    expect((document.querySelector('#capacity-margin') as HTMLInputElement).value).toBe('0.3');
+    expect((document.querySelector('#capacity-dry-run') as HTMLInputElement).checked).toBe(false);
+    const fetchedKeys = homey.get.mock.calls.map(([key]) => key);
+    expect(fetchedKeys).not.toContain('capacity_limit_kw');
+    expect(fetchedKeys).not.toContain('capacity_margin_kw');
+    expect(fetchedKeys).not.toContain('capacity_dry_run');
+  });
+
+  it('falls back to existing load paths when bootstrap fails', async () => {
+    installHomeyMock({
+      settings: buildSettingsHomeyState({
+        capacity_limit_kw: 8,
+        capacity_margin_kw: 0.4,
+        capacity_dry_run: false,
+      }),
+      apiHandlers: {
+        'GET /ui_bootstrap': async () => {
+          throw new Error('bootstrap unavailable');
+        },
+      },
+    });
+
+    await loadSettingsScript();
+
+    const rows = document.querySelectorAll('#device-list .device-row');
+    expect(rows.length).toBe(1);
+    expect((document.querySelector('#capacity-limit') as HTMLInputElement).value).toBe('8');
+    expect((document.querySelector('#capacity-margin') as HTMLInputElement).value).toBe('0.4');
+    expect((document.querySelector('#capacity-dry-run') as HTMLInputElement).checked).toBe(false);
+  });
+
   it('renders all debug logging topics including overview', async () => {
     await loadSettingsScript();
 
