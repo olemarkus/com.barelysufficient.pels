@@ -13,6 +13,8 @@ export type SteppedRestoreAttemptState = {
   baselinePowerKw: number;
   deltaKw: number;
   remainingSec: number;
+  countdownStartedAtMs?: number;
+  countdownTotalSec?: number;
 };
 
 export type PendingSteppedRestoreHold = {
@@ -60,6 +62,8 @@ export function resolveSteppedRestoreAttemptState(
       baselinePowerKw: baseAttempt.reservation.baselinePowerKw,
       deltaKw: baseAttempt.reservation.deltaKw,
       remainingSec: powerSettleRemainingSec,
+      countdownStartedAtMs: lastRestoreMs,
+      countdownTotalSec: Math.ceil(powerSettleWindowMs / 1000),
     };
   }
 
@@ -87,8 +91,14 @@ export function buildPendingSteppedRestoreHold(
   if (!attempt || attempt.status === 'retry_backoff') return null;
   return {
     reason: attempt.status === 'awaiting_confirmation'
-      ? buildRestorePendingReason(attempt.remainingSec)
-      : buildMeterSettlingReason(attempt.remainingSec),
+      ? buildRestorePendingReason(attempt.remainingSec, {
+        countdownStartedAtMs: attempt.countdownStartedAtMs,
+        countdownTotalSec: attempt.countdownTotalSec,
+      })
+      : buildMeterSettlingReason(attempt.remainingSec, {
+        countdownStartedAtMs: attempt.countdownStartedAtMs,
+        countdownTotalSec: attempt.countdownTotalSec,
+      }),
     remainingSec: attempt.remainingSec,
     reasonCode: attempt.status === 'awaiting_confirmation'
       ? 'waiting_confirmation'
@@ -169,6 +179,8 @@ function resolvePendingOrBackoffAttempt(
       status: 'awaiting_confirmation',
       ...baseAttempt,
       remainingSec,
+      countdownStartedAtMs: issuedAtMs,
+      countdownTotalSec: Math.ceil(pendingWindowMs / 1000),
     };
   }
 

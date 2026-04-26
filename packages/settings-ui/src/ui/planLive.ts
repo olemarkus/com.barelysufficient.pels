@@ -1,5 +1,5 @@
 type LivePlanControllerOptions<TPlan> = {
-  hasLiveUpdates: (plan: TPlan | null, renderedAtMs: number) => boolean;
+  hasLiveUpdates: (plan: TPlan | null, renderedAtMs: number, nowMs: number) => boolean;
   isVisible: () => boolean;
   render: (plan: TPlan | null, renderedAtMs: number, nowMs: number) => void;
   update: (plan: TPlan | null, renderedAtMs: number, nowMs: number) => void;
@@ -29,14 +29,14 @@ export const createLivePlanController = <TPlan>(
     }
     const nowMs = Date.now();
     options.update(basePlan, renderedAtMs, nowMs);
-    if (!options.hasLiveUpdates(basePlan, renderedAtMs)) {
+    if (!options.hasLiveUpdates(basePlan, renderedAtMs, nowMs)) {
       clearIntervalIfNeeded();
     }
   };
 
-  const restart = () => {
+  const restart = (nowMs: number) => {
     clearIntervalIfNeeded();
-    if (!options.hasLiveUpdates(basePlan, renderedAtMs) || !options.isVisible()) return;
+    if (!options.hasLiveUpdates(basePlan, renderedAtMs, nowMs) || !options.isVisible()) return;
     interval = setInterval(() => {
       tick();
     }, 1000);
@@ -45,13 +45,15 @@ export const createLivePlanController = <TPlan>(
   if (typeof document !== 'undefined') {
     document.addEventListener('visibilitychange', () => {
       if (!basePlan || !options.isVisible()) return;
-      options.update(basePlan, renderedAtMs, Date.now());
-      restart();
+      const nowMs = Date.now();
+      options.update(basePlan, renderedAtMs, nowMs);
+      restart(nowMs);
     });
     document.addEventListener('overview-tab-activated', () => {
       if (!basePlan || !options.isVisible()) return;
-      options.update(basePlan, renderedAtMs, Date.now());
-      restart();
+      const nowMs = Date.now();
+      options.update(basePlan, renderedAtMs, nowMs);
+      restart(nowMs);
     });
   }
 
@@ -60,7 +62,7 @@ export const createLivePlanController = <TPlan>(
       basePlan = plan;
       renderedAtMs = Date.now();
       options.render(plan, renderedAtMs, renderedAtMs);
-      restart();
+      restart(renderedAtMs);
     },
   };
 };
