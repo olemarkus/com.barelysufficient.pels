@@ -1,4 +1,5 @@
 import type {
+    DeviceControlProfile,
     HomeyDeviceLike,
     Logger,
     TargetDeviceSnapshot,
@@ -59,6 +60,7 @@ export type DeviceManagerParseProviders = {
     getDeviceDriverIdOverride?: (deviceId: string) => string | undefined;
     getExperimentalEvSupportEnabled?: () => boolean;
     getNativeEvWiringEnabled?: (deviceId: string) => boolean;
+    getDeviceControlProfile?: (deviceId: string) => DeviceControlProfile | undefined;
     getFlowReportedCapabilities?: (deviceId: string) => FlowReportedCapabilitiesForDevice;
 };
 
@@ -133,6 +135,8 @@ export function parseDevice(params: {
         flowBackedCapabilityIds,
         requiredFlowCapabilityIds,
         reportedCapabilities,
+        reportedStepId,
+        suggestedSteppedLoadProfile,
     } = resolveFlowCapabilityOverlay({
         device: effectiveDevice,
         deviceClassKey,
@@ -231,17 +235,24 @@ export function parseDevice(params: {
         controlObservationCapabilityId,
         canSetControl,
         available,
+        reportedStepId,
+        suggestedSteppedLoadProfile,
         lastFreshDataMs,
         lastLocalWriteMs: resolveLatestLocalWriteMs(deviceId),
     });
 }
 
-function applyDeviceDriverOverride(
+export function applyDeviceDriverOverride(
     device: HomeyDeviceLike,
     driverIdOverride: string | undefined,
 ): HomeyDeviceLike {
     const driverId = normalizeDriverIdOverride(driverIdOverride);
-    return driverId ? { ...device, driverId } : device;
+    if (!driverId || driverId === device.driverId) return device;
+    return {
+        ...device,
+        driverId,
+        realDriverId: device.realDriverId ?? device.driverId,
+    };
 }
 
 function normalizeDriverIdOverride(value: string | undefined): string | undefined {
@@ -274,6 +285,8 @@ function buildParsedDeviceSnapshot(params: {
     controlObservationCapabilityId?: string;
     canSetControl: boolean | undefined;
     available: boolean;
+    reportedStepId?: string;
+    suggestedSteppedLoadProfile?: TargetDeviceSnapshot['suggestedSteppedLoadProfile'];
     lastFreshDataMs?: number;
     lastLocalWriteMs?: number;
 }): TargetDeviceSnapshot {
@@ -298,6 +311,8 @@ function buildParsedDeviceSnapshot(params: {
         controlObservationCapabilityId,
         canSetControl,
         available,
+        reportedStepId,
+        suggestedSteppedLoadProfile,
         lastFreshDataMs,
         lastLocalWriteMs,
     } = params;
@@ -325,6 +340,8 @@ function buildParsedDeviceSnapshot(params: {
         controlAdapter,
         controlWriteCapabilityId,
         controlObservationCapabilityId,
+        reportedStepId,
+        suggestedSteppedLoadProfile,
         ...(flowBackedCapabilityIds.length > 0 ? {
             flowBacked: true,
             flowBackedCapabilityIds,

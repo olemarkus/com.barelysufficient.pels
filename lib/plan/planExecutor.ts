@@ -9,7 +9,7 @@ import {
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
 import type { PendingTargetObservationSource } from './planTypes';
-import type { TargetDeviceSnapshot } from '../utils/types';
+import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../utils/types';
 import type { PlanEngineState } from './planState';
 import { DEVICE_LAST_CONTROLLED_MS } from '../utils/settingsKeys';
 import { incPerfCounter } from '../utils/perfCounters';
@@ -47,6 +47,7 @@ import {
   type PlanExecutorSteppedContext,
 } from './planExecutorStepped';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
+import { setObservedNativeSteppedLoadStep } from '../core/deviceManagerNativeSteppedCommand';
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
@@ -139,6 +140,17 @@ export class PlanExecutor {
   private readonly boundGetDesiredSteppedLoadTrigger = () => (
     this.deps.homey.flow?.getTriggerCard?.('desired_stepped_load_changed')
   );
+  private readonly boundSetNativeSteppedLoadStep = (
+    deviceId: string,
+    profile: SteppedLoadProfile,
+    desiredStepId: string,
+  ) => setObservedNativeSteppedLoadStep({
+    owner: this.deviceManager,
+    deviceId,
+    profile,
+    desiredStepId,
+    setCapability: (capabilityId, value) => this.deviceManager.setCapability(deviceId, capabilityId, value),
+  });
 
   private targetExecutorContext?: PlanExecutorTargetContext;
   private steppedExecutorContext?: PlanExecutorSteppedContext;
@@ -373,6 +385,7 @@ export class PlanExecutor {
         recordRestoreActuation: this.boundRecordRestoreActuation,
         getRestoreLogSource: this.boundGetRestoreLogSource,
         getDesiredSteppedLoadTrigger: this.boundGetDesiredSteppedLoadTrigger,
+        setNativeSteppedLoadStep: this.boundSetNativeSteppedLoadStep,
         deviceDiagnostics: this.deps.deviceDiagnostics,
       };
     }

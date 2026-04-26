@@ -130,7 +130,7 @@ const getManagedTitle = (
 ): string => {
   if (!isLoadingComplete) return 'Loading...';
   if (nativeWiringRequired) {
-    return 'Managed by PELS (open the device page and enable built-in charger control first)';
+    return 'Managed by PELS (open the device page and enable built-in device control first)';
   }
   if (!supportsManage) return 'Managed by PELS (requires a temperature target or power capability)';
   return 'Managed by PELS';

@@ -16,6 +16,7 @@ import {
   createDefaultSteppedLoadProfile,
   getEffectiveControlModel,
   getStoredDeviceControlProfile,
+  isNativeSteppedLoadProfileActive,
 } from '../deviceControlProfiles.ts';
 import { logSettingsError } from '../logging.ts';
 import { state } from '../state.ts';
@@ -40,9 +41,11 @@ const attachDraftSyncOnChange = (
 };
 
 const getDraftProfileFromCurrentDevice = (device: TargetDeviceSnapshot): SteppedLoadProfile => (
-  currentSteppedLoadDraft
-  ?? resolveSavedSteppedLoadProfile(device)
-  ?? createDefaultSteppedLoadProfile(device)
+  isNativeSteppedLoadProfileActive(device)
+    ? createDefaultSteppedLoadProfile(device)
+    : currentSteppedLoadDraft
+      ?? resolveSavedSteppedLoadProfile(device)
+      ?? createDefaultSteppedLoadProfile(device)
 );
 
 const collectSteppedLoadDraftFromDom = (): SteppedLoadProfile | null => {
@@ -68,6 +71,7 @@ const collectSteppedLoadDraftFromDom = (): SteppedLoadProfile | null => {
 const buildSteppedLoadStepRow = (params: {
   step: SteppedLoadProfile['steps'][number];
   onDraftChanged: () => void;
+  disabled?: boolean;
 }): HTMLElement => {
   const row = document.createElement('div');
   row.className = 'device-row detail-stepped-row';
@@ -78,6 +82,7 @@ const buildSteppedLoadStepRow = (params: {
   idInput.value = params.step.id;
   idInput.dataset.stepField = 'id';
   idInput.placeholder = 'step';
+  idInput.disabled = params.disabled === true;
   idInput.setAttribute('aria-label', 'Step id');
 
   const planningInput = document.createElement('input');
@@ -87,6 +92,7 @@ const buildSteppedLoadStepRow = (params: {
   planningInput.value = String(params.step.planningPowerW);
   planningInput.dataset.stepField = 'planningPowerW';
   planningInput.placeholder = '0';
+  planningInput.disabled = params.disabled === true;
   planningInput.setAttribute('aria-label', 'Planning power in watts');
 
   attachDraftSyncOnChange(params.onDraftChanged, idInput, planningInput);
@@ -95,6 +101,7 @@ const buildSteppedLoadStepRow = (params: {
   removeButton.type = 'button';
   removeButton.className = 'btn ghost';
   removeButton.textContent = 'Remove';
+  removeButton.disabled = params.disabled === true;
   removeButton.setAttribute('aria-label', `Remove step ${params.step.id}`);
   removeButton.addEventListener('click', () => {
     row.remove();
@@ -144,11 +151,20 @@ export const renderSteppedLoadDraft = (device: TargetDeviceSnapshot) => {
   if (!steppedEnabled) {
     currentSteppedLoadDraft = null;
     deviceDetailSteppedSteps.replaceChildren();
+    if (deviceDetailSteppedAddStep) deviceDetailSteppedAddStep.disabled = false;
+    if (deviceDetailSteppedReset) deviceDetailSteppedReset.disabled = false;
+    if (deviceDetailSteppedSave) deviceDetailSteppedSave.disabled = false;
     updateSetStepOptionLabel(device, null);
     return;
   }
 
+  const nativeProfileLocked = isNativeSteppedLoadProfileActive(device);
+  if (deviceDetailSteppedAddStep) deviceDetailSteppedAddStep.disabled = nativeProfileLocked;
+  if (deviceDetailSteppedReset) deviceDetailSteppedReset.disabled = nativeProfileLocked;
+  if (deviceDetailSteppedSave) deviceDetailSteppedSave.disabled = nativeProfileLocked;
+
   const syncSteppedLoadDraftState = () => {
+    if (nativeProfileLocked) return;
     const profile = collectSteppedLoadDraftFromDom()
       ?? currentSteppedLoadDraft
       ?? getDraftProfileFromCurrentDevice(device);
@@ -162,6 +178,7 @@ export const renderSteppedLoadDraft = (device: TargetDeviceSnapshot) => {
   const rows = sortSteppedLoadSteps(profile.steps).map((step) => buildSteppedLoadStepRow({
     step,
     onDraftChanged: syncSteppedLoadDraftState,
+    disabled: nativeProfileLocked,
   }));
   deviceDetailSteppedSteps.replaceChildren(...rows);
 };
@@ -182,6 +199,7 @@ export const initSteppedLoadDraftHandlers = (params: {
 
     const device = params.getDeviceById(deviceId);
     if (!device) return;
+    if (isNativeSteppedLoadProfileActive(device)) return;
 
     const profile = collectSteppedLoadDraftFromDom()
       ?? currentSteppedLoadDraft
@@ -211,6 +229,7 @@ export const initSteppedLoadDraftHandlers = (params: {
 
     const device = params.getDeviceById(deviceId);
     if (!device) return;
+    if (isNativeSteppedLoadProfileActive(device)) return;
 
     currentSteppedLoadDraft = resolveSavedSteppedLoadProfile(device) ?? createDefaultSteppedLoadProfile(device);
     renderSteppedLoadDraft(device);
@@ -222,6 +241,7 @@ export const initSteppedLoadDraftHandlers = (params: {
 
     const device = params.getDeviceById(deviceId);
     if (!device) return;
+    if (isNativeSteppedLoadProfileActive(device)) return;
 
     const profile = collectSteppedLoadDraftFromDom();
     if (!profile) {
