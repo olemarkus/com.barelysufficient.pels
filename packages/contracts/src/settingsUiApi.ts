@@ -42,23 +42,72 @@ export type SettingsUiPlanPendingTargetCommand = {
   retryCount: number;
   nextRetryAtMs: number;
   status: 'waiting_confirmation' | 'temporary_unavailable';
+  lastObservedValue?: unknown;
+  lastObservedSource?: string;
 };
 
-export type SettingsUiPlanDevice = DeviceOverviewSnapshot & {
+export type SettingsUiPlanStarvationCause = 'capacity' | 'budget' | 'manual' | 'external';
+
+export type SettingsUiPlanDeviceStarvation = {
+  isStarved: boolean;
+  accumulatedMs: number;
+  cause: SettingsUiPlanStarvationCause;
+  startedAtMs: number | null;
+};
+
+export type SettingsUiPlanMetaSnapshot = {
+  [key: string]: unknown;
+  totalKw?: number | null;
+  softLimitKw?: number;
+  capacitySoftLimitKw?: number;
+  dailySoftLimitKw?: number | null;
+  softLimitSource?: 'capacity' | 'daily' | 'both';
+  headroomKw?: number;
+  powerKnown?: boolean;
+  hasLivePowerSample?: boolean;
+  powerSampleAgeMs?: number | null;
+  powerFreshnessState?: 'fresh' | 'stale_hold' | 'stale_fail_closed';
+  capacityShortfall?: boolean;
+  shortfallBudgetThresholdKw?: number;
+  shortfallBudgetHeadroomKw?: number | null;
+  hardCapLimitKw?: number | null;
+  hardCapHeadroomKw?: number | null;
+  hourlyBudgetExhausted?: boolean;
+  usedKWh?: number;
+  budgetKWh?: number;
+  minutesRemaining?: number;
+  controlledKw?: number;
+  uncontrolledKw?: number;
+  hourControlledKWh?: number;
+  hourUncontrolledKWh?: number;
+  dailyBudgetRemainingKWh?: number;
+  dailyBudgetExceeded?: boolean;
+  dailyBudgetHourKWh?: number;
+  lastPowerUpdateMs?: number;
+};
+
+export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
+  [key: string]: unknown;
   id: string;
   name: string;
+  deviceClass?: string;
   plannedTarget?: number | null;
   priority?: number;
   zone?: string;
   budgetExempt?: boolean;
   currentTemperature?: number;
+  stateKind?: string;
+  stateTone?: string;
+  starvation?: SettingsUiPlanDeviceStarvation;
   pendingTargetCommand?: SettingsUiPlanPendingTargetCommand;
 };
 
+export type SettingsUiPlanDevice = SettingsUiPlanDeviceSnapshot;
+
 export type SettingsUiPlanSnapshot = {
   generatedAtMs?: number;
-  meta?: Record<string, unknown>;
-  devices?: SettingsUiPlanDevice[];
+  meta?: SettingsUiPlanMetaSnapshot;
+  devices?: SettingsUiPlanDeviceSnapshot[];
 };
 
 export type SettingsUiPlanPayload = {

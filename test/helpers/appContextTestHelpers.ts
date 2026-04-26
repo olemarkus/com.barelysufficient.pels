@@ -7,10 +7,11 @@ import { TimerRegistry } from '../../lib/app/timerRegistry';
 import type { PowerTrackerState } from '../../lib/core/powerTracker';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { StructuredDebugEmitter } from '../../lib/logging/logger';
-import type { DevicePlan, ShedBehavior } from '../../lib/plan/planTypes';
+import type { ShedBehavior } from '../../lib/plan/planTypes';
 import type { PriceOptimizationSettings } from '../../lib/price/priceOptimizer';
 import type { DebugLoggingTopic } from '../../lib/utils/debugLogging';
 import type { DeviceControlProfiles, FlowCard, FlowHomeyLike, TargetDeviceSnapshot } from '../../lib/utils/types';
+import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 
 type MockHomey = FlowHomeyLike & {
   settings: FlowHomeyLike['settings'] & {
@@ -179,7 +180,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     evaluateHeadroomForDevice: vi.fn(() => null),
     getCombinedHourlyPrices: vi.fn(() => []),
     getDailyBudgetUiPayload: vi.fn((): DailyBudgetUiPayload | null => null),
-    getLatestPlanSnapshotForUi: vi.fn((): DevicePlan | null => null),
+    getLatestPlanSnapshotForUi: vi.fn((): SettingsUiPlanSnapshot | null => null),
     get powerTracker() { return powerTracker; },
     set powerTracker(value) { powerTracker = value; },
     get capacitySettings() { return capacitySettings; },

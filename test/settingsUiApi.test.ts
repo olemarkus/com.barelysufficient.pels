@@ -24,7 +24,11 @@ const hashHomeyIdForTest = (homeyId: string): string => (
 
 describe('settingsUiApi', () => {
   const createHomey = (
-    options: { cloudHomeyId?: string; latestPlanSnapshot?: Record<string, unknown> | null } = {},
+    options: {
+      cloudHomeyId?: string;
+      latestPlanSnapshot?: Record<string, unknown> | null;
+      persistedPlanSerializer?: (plan: Record<string, unknown>) => Record<string, unknown> | null;
+    } = {},
   ) => {
     const store = new Map<string, unknown>([
       ['target_devices_snapshot', [{ id: 'dev-1', name: 'Heater' }]],
@@ -158,6 +162,15 @@ describe('settingsUiApi', () => {
       (app as typeof app & { getLatestPlanSnapshotForUi?: () => Record<string, unknown> | null }).getLatestPlanSnapshotForUi = () => (
         options.latestPlanSnapshot ?? null
       );
+    }
+    if (options.persistedPlanSerializer) {
+      (
+        app as typeof app & {
+          getPlanSnapshotForUiFromPersistedPlan?: (
+            plan: Record<string, unknown>
+          ) => Record<string, unknown> | null;
+        }
+      ).getPlanSnapshotForUiFromPersistedPlan = options.persistedPlanSerializer;
     }
 
     return {
@@ -462,6 +475,96 @@ describe('settingsUiApi', () => {
         devices: [{ id: 'dev-2', name: 'Pump', priority: 2, reason: buildComparablePlanReason('keep') }],
       },
     });
+  });
+
+  it('returns enriched live plan payloads for redesign consumers', () => {
+    const enrichedPlan = {
+      generatedAtMs: 123456789,
+      meta: {
+        totalKw: 6.2,
+        softLimitKw: 5,
+        headroomKw: -1.2,
+        hardCapLimitKw: 7,
+        hardCapHeadroomKw: 0.8,
+        dailyBudgetHourKWh: 1.9,
+      },
+      devices: [{
+        id: 'dev-2',
+        name: 'Pump',
+        currentState: 'on',
+        plannedState: 'shed',
+        stateKind: 'held',
+        stateTone: 'held',
+        starvation: {
+          isStarved: true,
+          accumulatedMs: 1_800_000,
+          cause: 'capacity',
+          startedAtMs: 1234,
+        },
+        reason: buildComparablePlanReason('capacity'),
+      }],
+    };
+    const homey = createHomey({ latestPlanSnapshot: enrichedPlan });
+
+    expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({ plan: enrichedPlan });
+  });
+
+  it('serializes persisted plan fallbacks for redesign consumers', () => {
+    const enrichedPlan = {
+      generatedAtMs: 123456789,
+      meta: {
+        totalKw: 6.2,
+        softLimitKw: 5,
+        headroomKw: -1.2,
+        hardCapLimitKw: 7,
+        hardCapHeadroomKw: 0.8,
+      },
+      devices: [{
+        id: 'dev-1',
+        name: 'Heater',
+        priority: 1,
+        plannedState: 'keep',
+        stateKind: 'normal',
+        stateTone: 'ok',
+        starvation: {
+          isStarved: true,
+          accumulatedMs: 1_800_000,
+          cause: 'external',
+          startedAtMs: 1234,
+        },
+        reason: buildComparablePlanReason('keep'),
+      }],
+    };
+    const persistedPlanSerializer = vi.fn(() => enrichedPlan);
+    const homey = createHomey({
+      latestPlanSnapshot: null,
+      persistedPlanSerializer,
+    });
+
+    expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({ plan: enrichedPlan });
+    expect(persistedPlanSerializer).toHaveBeenCalledWith({
+      devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
+    });
+  });
+
+  it('falls back to the persisted plan when persisted plan serialization fails', () => {
+    const persistedPlanSerializer = vi.fn(() => {
+      throw new Error('missing plan meta');
+    });
+    const homey = createHomey({
+      latestPlanSnapshot: null,
+      persistedPlanSerializer,
+    });
+
+    expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
+      plan: {
+        devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
+      },
+    });
+    expect(homey.error).toHaveBeenCalledWith(
+      'Failed to serialize persisted settings UI plan snapshot',
+      expect.any(Error),
+    );
   });
 
   it('falls back to the persisted plan snapshot when the in-memory app snapshot is invalid', async () => {
