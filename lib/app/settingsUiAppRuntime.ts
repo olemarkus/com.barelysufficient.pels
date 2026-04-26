@@ -11,6 +11,7 @@ type SettingsUiRuntimeApp = Homey.App & {
   latestTargetSnapshot?: TargetDeviceSnapshot[];
   powerTracker?: PowerTrackerState;
   getLatestPlanSnapshotForUi?: () => SettingsUiPlanSnapshot | null;
+  getPlanSnapshotForUiFromPersistedPlan?: (plan: SettingsUiPlanSnapshot) => SettingsUiPlanSnapshot | null;
   priceCoordinator?: {
     refreshSpotPrices: (forceRefresh?: boolean) => Promise<void>;
     refreshGridTariffData: (forceRefresh?: boolean) => Promise<void>;
@@ -40,6 +41,25 @@ export const getLatestDevicesForUiFromApp = (homey: Homey.App['homey']): TargetD
   return Array.isArray(snapshot) ? snapshot : null;
 };
 
+const getSerializedPersistedPlanForUi = (
+  app: SettingsUiRuntimeApp | null,
+  plan: SettingsUiPlanSnapshot,
+): SettingsUiPlanSnapshot | null => {
+  let serializedPlan: SettingsUiPlanSnapshot | null | undefined;
+  try {
+    serializedPlan = app?.getPlanSnapshotForUiFromPersistedPlan?.(plan);
+  } catch (error) {
+    app?.error?.('Failed to serialize persisted settings UI plan snapshot', error as Error);
+    return null;
+  }
+  if (serializedPlan === null || serializedPlan === undefined) return null;
+  if (isValidPlanSnapshot(serializedPlan)) return serializedPlan;
+  app?.error?.(
+    'Ignoring invalid serialized settings UI plan snapshot: finalized devices must include structured reason',
+  );
+  return null;
+};
+
 export const getPlanSnapshotForUiFromHomey = (homey: Homey.App['homey']): SettingsUiPlanSnapshot | null => {
   const app = getRuntimeApp(homey);
   const appPlan = app?.getLatestPlanSnapshotForUi?.();
@@ -58,7 +78,7 @@ export const getPlanSnapshotForUiFromHomey = (homey: Homey.App['homey']): Settin
     }
     return null;
   }
-  return plan;
+  return getSerializedPersistedPlanForUi(app, plan) ?? plan;
 };
 
 const hasStructuredReason = (value: unknown): boolean => (

@@ -48,6 +48,7 @@ export const normalizePlanMeta = (meta: DevicePlan['meta']): DevicePlan['meta'] 
   headroomKw: roundRequired(meta.headroomKw, PLAN_META_KW_STEP),
   shortfallBudgetThresholdKw: roundOptional(meta.shortfallBudgetThresholdKw, PLAN_META_KW_STEP),
   shortfallBudgetHeadroomKw: roundOptionalNullable(meta.shortfallBudgetHeadroomKw, PLAN_META_KW_STEP),
+  hardCapLimitKw: roundOptionalNullable(meta.hardCapLimitKw, PLAN_META_KW_STEP),
   hardCapHeadroomKw: roundOptionalNullable(meta.hardCapHeadroomKw, PLAN_META_KW_STEP),
   usedKWh: roundOptional(meta.usedKWh, PLAN_META_KWH_STEP),
   budgetKWh: roundOptional(meta.budgetKWh, PLAN_META_KWH_STEP),

@@ -979,6 +979,98 @@ describe('PlanService', () => {
     }));
   });
 
+  it('serializes enriched UI plan fields without changing the runtime snapshot', () => {
+    const { service } = createPlanService({
+      deviceDiagnostics: {
+        getOverviewStarvation: vi.fn(() => ({
+          isStarved: true,
+          accumulatedMs: 30 * 60 * 1000,
+          cause: 'capacity',
+          startedAtMs: 1_234,
+        })),
+      },
+    });
+    const runtimePlan = buildPlan(
+      18,
+      'capacity',
+      {
+        totalKw: 6.24,
+        softLimitKw: 5.04,
+        headroomKw: -1.2,
+        hardCapLimitKw: 7.01,
+        hardCapHeadroomKw: 0.77,
+        usedKWh: 1.234,
+        budgetKWh: 2.345,
+        dailyBudgetHourKWh: 1.987,
+        minutesRemaining: 8.4,
+        lastPowerUpdateMs: 1_700_000_000_000,
+      },
+      {
+        plannedState: 'shed',
+        shedAction: 'set_temperature',
+        shedTemperature: 12,
+        deviceClass: 'thermostat',
+        controlModel: 'temperature_target',
+        priority: 3,
+        zone: 'Living room',
+        budgetExempt: false,
+        currentTemperature: 16,
+        measuredPowerKw: 1.2,
+        expectedPowerKw: 2.5,
+        observationStale: false,
+        pendingTargetCommand: {
+          desired: 20,
+          retryCount: 1,
+          nextRetryAtMs: Date.now() + 30_000,
+          status: 'temporary_unavailable',
+          lastObservedValue: 18,
+          lastObservedSource: 'snapshot_refresh',
+        },
+      },
+    );
+    (service as any).latestPlanSnapshot = runtimePlan;
+
+    expect(service.getLatestPlanSnapshot()).toBe(runtimePlan);
+    expect(service.getLatestPlanSnapshotForUi()).toEqual({
+      generatedAtMs: undefined,
+      meta: expect.objectContaining({
+        totalKw: 6.2,
+        softLimitKw: 5,
+        headroomKw: -1.2000000000000002,
+        hardCapLimitKw: 7,
+        hardCapHeadroomKw: 0.8,
+        usedKWh: 1.23,
+        budgetKWh: 2.35,
+        dailyBudgetHourKWh: 1.99,
+        minutesRemaining: 8,
+      }),
+      devices: [
+        expect.objectContaining({
+          id: 'dev-1',
+          name: 'Heater',
+          deviceClass: 'thermostat',
+          plannedState: 'shed',
+          stateKind: 'held',
+          stateTone: 'held',
+          currentTemperature: 16,
+          pendingTargetCommand: expect.objectContaining({
+            desired: 20,
+            retryCount: 1,
+            status: 'temporary_unavailable',
+            lastObservedValue: 18,
+            lastObservedSource: 'snapshot_refresh',
+          }),
+          starvation: {
+            isStarved: true,
+            accumulatedMs: 30 * 60 * 1000,
+            cause: 'capacity',
+            startedAtMs: 1_234,
+          },
+        }),
+      ],
+    });
+  });
+
   it('logs a post-actuation overview transition once the live state settles', async () => {
     let currentOn = false;
     const overviewDebugStructured = vi.fn();

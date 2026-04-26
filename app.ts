@@ -23,6 +23,7 @@ import type {
   DailyBudgetSettingsInput,
   DailyBudgetUiPayload,
 } from './lib/dailyBudget/dailyBudgetTypes';
+import type { SettingsUiPlanSnapshot } from './packages/contracts/src/settingsUiApi';
 import { type DebugLoggingTopic } from './lib/utils/debugLogging';
 import {
   AppDeviceControlHelpers,
@@ -123,6 +124,16 @@ const getAppPlanRebuildNowMs = (): number => (
   || typeof performance.now !== 'function'
     ? Date.now()
     : performance.now()
+);
+
+const isDevicePlanForUiSerialization = (value: unknown): value is DevicePlan => (
+  Boolean(value)
+  && typeof value === 'object'
+  && !Array.isArray(value)
+  && Boolean((value as { meta?: unknown }).meta)
+  && typeof (value as { meta?: unknown }).meta === 'object'
+  && !Array.isArray((value as { meta?: unknown }).meta)
+  && Array.isArray((value as { devices?: unknown }).devices)
 );
 
 function resolveFlowBackedCapabilityReportOutcome(update: {
@@ -1045,7 +1056,13 @@ class PelsApp extends Homey.App {
   public applyDailyBudgetModel(settings: DailyBudgetSettingsInput): DailyBudgetUiPayload | null {
     return this.dailyBudgetService.applyModelSettings(settings);
   }
-  public getLatestPlanSnapshotForUi(): DevicePlan | null { return this.planService?.getLatestPlanSnapshot() ?? null; }
+  public getLatestPlanSnapshotForUi(): SettingsUiPlanSnapshot | null {
+    return this.planService?.getLatestPlanSnapshotForUi() ?? null;
+  }
+  public getPlanSnapshotForUiFromPersistedPlan(plan: unknown): SettingsUiPlanSnapshot | null {
+    if (!isDevicePlanForUiSerialization(plan)) return null;
+    return this.planService?.serializePlanSnapshotForUi(plan) ?? null;
+  }
   private async updateOverheadToken(value?: number): Promise<void> {
     const overhead = Number.isFinite(value) ? Number(value) : this.capacitySettings.marginKw;
     try {

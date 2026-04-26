@@ -12,6 +12,10 @@ import {
 } from '../../packages/shared-domain/src/deviceOverview';
 import { formatDeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
+  resolvePlanStateKind,
+  resolvePlanStateTone,
+} from '../../packages/shared-domain/src/planStateLabels';
+import {
   buildPlanChangeLines,
   buildPlanCapacityStateSummary,
   buildPlanDebugSummaryEvent,
@@ -27,6 +31,10 @@ import { recordPlanRebuildTrace } from '../utils/planRebuildTrace';
 import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { withRebuildContext } from '../logging/logger';
+import type {
+  SettingsUiPlanDeviceSnapshot,
+  SettingsUiPlanSnapshot,
+} from '../../packages/contracts/src/settingsUiApi';
 import { normalizePlanMeta } from './planStatusHelpers';
 import { PlanStatusWriter } from './planStatusWriter';
 import { PlanSnapshotWriter } from './planSnapshotWriter';
@@ -58,6 +66,59 @@ import type { PlanActuationMode, PlanActuationResult } from './planExecutor';
 
 const SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS = 1500;
 
+const serializePlanDeviceForUi = (
+  device: DevicePlan['devices'][number],
+  deps: PlanServiceDeps,
+): SettingsUiPlanDeviceSnapshot => ({
+  id: device.id,
+  name: device.name,
+  deviceClass: device.deviceClass,
+  priority: device.priority,
+  zone: device.zone,
+  controllable: device.controllable,
+  available: device.available,
+  currentState: device.currentState,
+  plannedState: device.plannedState,
+  controlModel: device.controlModel,
+  controlCapabilityId: device.controlCapabilityId,
+  evChargingState: device.evChargingState,
+  currentTarget: device.currentTarget,
+  plannedTarget: device.plannedTarget,
+  currentTemperature: device.currentTemperature,
+  measuredPowerKw: device.measuredPowerKw,
+  expectedPowerKw: device.expectedPowerKw,
+  planningPowerKw: device.planningPowerKw,
+  budgetExempt: device.budgetExempt,
+  observationStale: device.observationStale,
+  shedAction: device.shedAction,
+  shedTemperature: device.shedTemperature,
+  selectedStepId: device.selectedStepId,
+  desiredStepId: device.desiredStepId,
+  reportedStepId: device.reportedStepId,
+  targetStepId: device.targetStepId,
+  actualStepId: device.actualStepId,
+  assumedStepId: device.assumedStepId,
+  actualStepSource: device.actualStepSource,
+  binaryCommandPending: device.binaryCommandPending,
+  pendingTargetCommand: device.pendingTargetCommand,
+  stateKind: resolvePlanStateKind(device),
+  stateTone: resolvePlanStateTone(device),
+  reason: device.reason,
+  starvation: deps.deviceDiagnostics?.getOverviewStarvation?.(device.id) ?? undefined,
+});
+
+const serializePlanForUi = (
+  plan: DevicePlan | null,
+  deps: PlanServiceDeps,
+): SettingsUiPlanSnapshot | null => {
+  if (!plan) return null;
+  return {
+    generatedAtMs: plan.generatedAtMs,
+    meta: normalizePlanMeta(plan.meta),
+    devices: plan.devices.map((device) => serializePlanDeviceForUi(device, deps)),
+  };
+};
+
 function resolveOverviewTargetStepId(device: DevicePlan['devices'][number]): string | null {
   return device.targetStepId ?? device.desiredStepId ?? null;
 }
@@ -81,6 +142,8 @@ function buildOverviewEventForDevice(
     stateMsg: overview.stateMsg,
     usageMsg: overview.usageMsg,
     statusMsg: overview.statusMsg,
+    stateKind: resolvePlanStateKind(device),
+    stateTone: resolvePlanStateTone(device),
     currentState: device.currentState,
     plannedState: device.plannedState,
     reasonCode: device.reason.code,
@@ -226,6 +289,9 @@ export type PlanServiceDeps = {
   overviewDebugStructured?: StructuredDebugEmitter;
   isOverviewDebugEnabled?: () => boolean;
   isPlanDebugEnabled?: () => boolean;
+  deviceDiagnostics?: {
+    getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceSnapshot['starvation'] | null;
+  };
 };
 
 export class PlanService {
@@ -305,6 +371,14 @@ export class PlanService {
 
   getLatestPlanSnapshot(): DevicePlan | null {
     return this.latestPlanSnapshot;
+  }
+
+  getLatestPlanSnapshotForUi(): SettingsUiPlanSnapshot | null {
+    return serializePlanForUi(this.latestPlanSnapshot, this.deps);
+  }
+
+  serializePlanSnapshotForUi(plan: DevicePlan | null): SettingsUiPlanSnapshot | null {
+    return serializePlanForUi(plan, this.deps);
   }
 
   getLatestPlanSnapshotUpdatedAtMs(): number | null {
@@ -610,7 +684,7 @@ export class PlanService {
     const api = this.deps.homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
     const realtime = api?.realtime;
     if (typeof realtime === 'function') {
-      realtime.call(api, 'plan_updated', plan)
+      realtime.call(api, 'plan_updated', serializePlanForUi(plan, this.deps))
         .catch((err: unknown) => this.deps.error('Failed to emit plan_updated event', normalizeError(err)));
     }
   }
