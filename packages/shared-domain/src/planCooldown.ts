@@ -1,7 +1,9 @@
 import type { SettingsUiPlanDeviceSnapshot } from '../../contracts/src/settingsUiApi.js';
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore.js';
 
-type CooldownDevice = Pick<SettingsUiPlanDeviceSnapshot, 'reason'>;
+type CooldownDevice = Pick<SettingsUiPlanDeviceSnapshot, 'reason'> & {
+  displayCountdownTotalSec?: number;
+};
 
 // Canonical cooldown durations, in seconds. Used as the denominator for the
 // ring animation so a given `remainingSec` always maps to the same fill ratio
@@ -31,6 +33,9 @@ const readRemainingSec = (reason: unknown): number | null => {
 };
 
 export const resolveCooldownBaseSec = (device: CooldownDevice): number | null => {
+  if (typeof device.displayCountdownTotalSec === 'number' && device.displayCountdownTotalSec > 0) {
+    return Math.ceil(device.displayCountdownTotalSec);
+  }
   const code = readReasonCode(device.reason);
   if (code !== null && code in COOLDOWN_BASE_SEC) return COOLDOWN_BASE_SEC[code];
   const reasonSec = readRemainingSec(device.reason);
@@ -45,7 +50,7 @@ export const resolveCooldownRemainingSec = (device: CooldownDevice): number | nu
 };
 
 export const hasActiveCooldown = (device: CooldownDevice): boolean => (
-  resolveCooldownBaseSec(device) !== null
+  resolveCooldownRemainingSec(device) !== null && resolveCooldownBaseSec(device) !== null
 );
 
 export const summarizeCooldowns = (

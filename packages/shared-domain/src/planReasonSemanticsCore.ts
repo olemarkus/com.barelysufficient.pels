@@ -29,6 +29,11 @@ export const PLAN_REASON_CODES = {
 
 export type PlanReasonCode = typeof PLAN_REASON_CODES[keyof typeof PLAN_REASON_CODES];
 
+export type CountdownReasonTiming = {
+  countdownStartedAtMs?: number;
+  countdownTotalSec?: number;
+};
+
 export type DeviceReason =
   | { code: typeof PLAN_REASON_CODES.none }
   | { code: typeof PLAN_REASON_CODES.keep; detail: string | null }
@@ -45,18 +50,18 @@ export type DeviceReason =
   | { code: typeof PLAN_REASON_CODES.hourlyBudget; detail: string | null }
   | { code: typeof PLAN_REASON_CODES.dailyBudget; detail: string | null }
   | { code: typeof PLAN_REASON_CODES.shortfall; needKw: number | null; headroomKw: number | null }
-  | { code: typeof PLAN_REASON_CODES.cooldownShedding; remainingSec: number }
-  | { code: typeof PLAN_REASON_CODES.cooldownRestore; remainingSec: number }
-  | { code: typeof PLAN_REASON_CODES.meterSettling; remainingSec: number }
-  | { code: typeof PLAN_REASON_CODES.activationBackoff; remainingSec: number }
-  | { code: typeof PLAN_REASON_CODES.restorePending; remainingSec: number }
-  | {
+  | ({ code: typeof PLAN_REASON_CODES.cooldownShedding; remainingSec: number } & CountdownReasonTiming)
+  | ({ code: typeof PLAN_REASON_CODES.cooldownRestore; remainingSec: number } & CountdownReasonTiming)
+  | ({ code: typeof PLAN_REASON_CODES.meterSettling; remainingSec: number } & CountdownReasonTiming)
+  | ({ code: typeof PLAN_REASON_CODES.activationBackoff; remainingSec: number } & CountdownReasonTiming)
+  | ({ code: typeof PLAN_REASON_CODES.restorePending; remainingSec: number } & CountdownReasonTiming)
+  | ({
     code: typeof PLAN_REASON_CODES.headroomCooldown;
     kind: 'recent_pels_shed' | 'recent_pels_restore' | 'usage_step_down';
     remainingSec: number;
     fromKw: number | null;
     toKw: number | null;
-  }
+  } & CountdownReasonTiming)
   | { code: typeof PLAN_REASON_CODES.restoreThrottled }
   | { code: typeof PLAN_REASON_CODES.waitingForOtherDevices }
   | {

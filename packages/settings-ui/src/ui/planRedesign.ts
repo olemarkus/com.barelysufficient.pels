@@ -9,7 +9,7 @@ import {
 } from '../../../contracts/src/settingsUiApi.ts';
 import { getApiReadModel } from './homey.ts';
 import { createLivePlanController } from './planLive.ts';
-import { planNeedsLiveUpdates } from './planLiveData.ts';
+import { planNeedsLiveUpdates, resolveDisplayPlanDevices } from './planLiveData.ts';
 import { renderPlanHero, renderPlanHourStrip } from './planHero.ts';
 import { buildPlanCard, updatePlanCardBinding } from './planDeviceCard.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot, PlanStatusBinding } from './planTypes.ts';
@@ -18,6 +18,7 @@ let liveStatusBindings: PlanStatusBinding[] = [];
 let cachedOverviewPanel: Element | null = null;
 let hasCachedOverviewPanel = false;
 let lastRenderedPlan: PlanSnapshot | null = null;
+let lastRenderedAtMs = 0;
 let cachedPowerStatus: SettingsUiPowerStatus | null = null;
 
 const hasStructuredReason = (value: unknown): boolean => (
@@ -68,6 +69,10 @@ const resetLiveBindings = () => {
   liveStatusBindings = [];
 };
 
+const sortPlanDevicesByPriority = <Device extends PlanDeviceSnapshot>(devices: Device[]): Device[] => (
+  [...devices].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999))
+);
+
 const isOverviewVisible = (): boolean => {
   if (typeof document === 'undefined') return true;
   if (typeof document.hidden === 'boolean' && document.hidden) return false;
@@ -82,8 +87,11 @@ const isOverviewVisible = (): boolean => {
 
 const updateLivePlanAt = (plan: PlanSnapshot | null, renderedAtMs: number, nowMs: number) => {
   lastRenderedPlan = plan;
+  lastRenderedAtMs = renderedAtMs;
   const devices = Array.isArray(plan?.devices) ? plan.devices : [];
-  renderPlanHero(plan?.meta, devices, cachedPowerStatus, nowMs);
+  const sortedDevices = sortPlanDevicesByPriority(devices);
+  const displayDevices = resolveDisplayPlanDevices(plan, sortedDevices, renderedAtMs, nowMs);
+  renderPlanHero(plan?.meta, displayDevices, cachedPowerStatus, nowMs);
   renderPlanHourStrip(plan?.meta);
   for (let i = 0; i < liveStatusBindings.length; i += 1) {
     updatePlanCardBinding(liveStatusBindings[i], plan, renderedAtMs, nowMs);
@@ -92,6 +100,7 @@ const updateLivePlanAt = (plan: PlanSnapshot | null, renderedAtMs: number, nowMs
 
 const renderPlanAt = (plan: PlanSnapshot | null, renderedAtMs: number, nowMs: number) => {
   lastRenderedPlan = plan;
+  lastRenderedAtMs = renderedAtMs;
   resetLiveBindings();
   planCards.replaceChildren();
   if (!plan) {
@@ -103,8 +112,9 @@ const renderPlanAt = (plan: PlanSnapshot | null, renderedAtMs: number, nowMs: nu
   }
 
   const devices = Array.isArray(plan.devices) ? plan.devices : [];
-  const sortedDevices = [...devices].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
-  renderPlanHero(plan.meta, sortedDevices, cachedPowerStatus, nowMs);
+  const sortedDevices = sortPlanDevicesByPriority(devices);
+  const sortedDisplayDevices = resolveDisplayPlanDevices(plan, sortedDevices, renderedAtMs, nowMs);
+  renderPlanHero(plan.meta, sortedDisplayDevices, cachedPowerStatus, nowMs);
   renderPlanHourStrip(plan.meta);
   if (devices.length === 0) {
     planEmpty.hidden = false;
@@ -121,7 +131,7 @@ const renderPlanAt = (plan: PlanSnapshot | null, renderedAtMs: number, nowMs: nu
 };
 
 const livePlanController = createLivePlanController<PlanSnapshot>({
-  hasLiveUpdates: (plan, renderedAtMs) => planNeedsLiveUpdates(plan, renderedAtMs),
+  hasLiveUpdates: (plan, renderedAtMs, nowMs) => planNeedsLiveUpdates(plan, renderedAtMs, nowMs),
   isVisible: isOverviewVisible,
   render: (plan, renderedAtMs, nowMs) => {
     renderPlanAt(plan, renderedAtMs, nowMs);
@@ -138,9 +148,11 @@ export const renderPlan = (plan: PlanSnapshot | null) => {
 export const updatePlanPower = (power: SettingsUiPowerStatus | null): void => {
   cachedPowerStatus = power;
   if (!lastRenderedPlan) return;
+  const nowMs = Date.now();
   const devices = Array.isArray(lastRenderedPlan.devices) ? lastRenderedPlan.devices : [];
-  const sortedDevices = [...devices].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
-  renderPlanHero(lastRenderedPlan.meta, sortedDevices, cachedPowerStatus, Date.now());
+  const sortedDevices = sortPlanDevicesByPriority(devices);
+  const displayDevices = resolveDisplayPlanDevices(lastRenderedPlan, sortedDevices, lastRenderedAtMs, nowMs);
+  renderPlanHero(lastRenderedPlan.meta, displayDevices, cachedPowerStatus, nowMs);
 };
 
 export const refreshPlan = async () => {

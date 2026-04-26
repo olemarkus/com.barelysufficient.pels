@@ -1479,6 +1479,156 @@ describe('Redesign plan UI', () => {
 
       expect(timer?.value).toBeCloseTo(0.6, 2);
     });
+
+    it('hides expired cooldown timers and hero cooldown chips on initial render', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-04-20T12:00:02Z'));
+
+      await renderPlanSnapshot({
+        generatedAtMs: Date.parse('2026-04-20T12:00:00Z'),
+        meta: { totalKw: 2.2, softLimitKw: 6, headroomKw: 3.8 },
+        devices: [
+          {
+            id: 'dev-expired-cooldown',
+            name: 'EV Charger',
+            currentState: 'on',
+            plannedState: 'keep',
+            reason: { code: 'cooldown_restore', remainingSec: 1 },
+          },
+        ],
+      });
+
+      const timer = document.querySelector(
+        '[data-device-id="dev-expired-cooldown"] .plan-state-chip__timer',
+      ) as HTMLElement | null;
+      const heroChips = Array.from(document.querySelectorAll('#plan-hero .plan-chip'))
+        .map((el) => el.textContent?.trim());
+
+      expect(timer?.hidden).toBe(true);
+      expect(heroChips).not.toContain('1 cooling down');
+      expect(getReasonText('dev-expired-cooldown')).toBe('');
+    });
+
+    it('clears live-expiring cooldown UI across the card and hero', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-04-20T12:00:00Z'));
+
+      await renderPlanSnapshot({
+        generatedAtMs: Date.now(),
+        meta: { totalKw: 2.2, softLimitKw: 6, headroomKw: 3.8 },
+        devices: [
+          {
+            id: 'dev-live-cooldown',
+            name: 'EV Charger',
+            currentState: 'on',
+            plannedState: 'keep',
+            reason: { code: 'cooldown_restore', remainingSec: 2 },
+          },
+        ],
+      });
+
+      const timer = document.querySelector(
+        '[data-device-id="dev-live-cooldown"] .plan-state-chip__timer',
+      ) as (HTMLElement & { value?: number }) | null;
+      expect(timer?.hidden).toBe(false);
+      expect(getReasonText('dev-live-cooldown')).toBe('Waiting before switching again (2s)');
+      expect(Array.from(document.querySelectorAll('#plan-hero .plan-chip'))
+        .map((el) => el.textContent?.trim())).toContain('1 cooling down');
+
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(timer?.hidden).toBe(true);
+      expect(getReasonText('dev-live-cooldown')).toBe('');
+      expect(Array.from(document.querySelectorAll('#plan-hero .plan-chip'))
+        .map((el) => el.textContent?.trim())).not.toContain('1 cooling down');
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('keeps expired cooldown display consistent for non-keep plan states', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-04-20T12:00:02Z'));
+
+      await renderPlanSnapshot({
+        generatedAtMs: Date.parse('2026-04-20T12:00:00Z'),
+        meta: { totalKw: 2.2, softLimitKw: 6, headroomKw: 3.8 },
+        devices: [
+          {
+            id: 'dev-shed-expired-cooldown',
+            name: 'Water Heater',
+            currentState: 'off',
+            plannedState: 'shed',
+            stateKind: 'held',
+            stateTone: 'held',
+            reason: { code: 'cooldown_shedding', remainingSec: 1 },
+          },
+        ],
+      });
+
+      const timer = document.querySelector(
+        '[data-device-id="dev-shed-expired-cooldown"] .plan-state-chip__timer',
+      ) as HTMLElement | null;
+      const chip = document.querySelector(
+        '[data-device-id="dev-shed-expired-cooldown"] .plan-state-chip',
+      ) as HTMLElement | null;
+
+      expect(chip?.textContent?.trim()).toBe('Limited');
+      expect(timer?.hidden).toBe(true);
+      expect(getReasonText('dev-shed-expired-cooldown')).toBe('Reducing load now');
+      expect(getReasonText('dev-shed-expired-cooldown')).not.toMatch(/0s|cooldown|switching/);
+    });
+
+    it('preserves expired activation-backoff semantics for shed devices', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-04-20T12:00:02Z'));
+
+      await renderPlanSnapshot({
+        generatedAtMs: Date.parse('2026-04-20T12:00:00Z'),
+        meta: { totalKw: 2.2, softLimitKw: 6, headroomKw: 3.8 },
+        devices: [
+          {
+            id: 'dev-shed-expired-backoff',
+            name: 'Water Heater',
+            currentState: 'off',
+            plannedState: 'shed',
+            stateKind: 'held',
+            stateTone: 'held',
+            reason: { code: 'activation_backoff', remainingSec: 1 },
+          },
+        ],
+      });
+
+      const timer = document.querySelector(
+        '[data-device-id="dev-shed-expired-backoff"] .plan-state-chip__timer',
+      ) as HTMLElement | null;
+
+      expect(timer?.hidden).toBe(true);
+      expect(getReasonText('dev-shed-expired-backoff')).toBe('Waiting before turning more devices on');
+      expect(getReasonText('dev-shed-expired-backoff')).not.toMatch(/0s|capacity|switching/);
+    });
+
+    it('does not count up absolute countdown metadata under client clock skew', async () => {
+      const { resolveDisplayPlanDeviceSnapshot } = await import('../src/ui/planLiveData.ts');
+      const generatedAtMs = Date.parse('2026-04-20T12:00:00Z');
+      const device = {
+        id: 'dev-skewed-countdown',
+        plannedState: 'keep',
+        reason: {
+          code: 'cooldown_restore',
+          remainingSec: 45,
+          countdownStartedAtMs: generatedAtMs,
+          countdownTotalSec: 60,
+        },
+      } as const;
+      const displayDevice = resolveDisplayPlanDeviceSnapshot(
+        { generatedAtMs, devices: [device] },
+        device,
+        generatedAtMs,
+        generatedAtMs - 5_000,
+      );
+
+      expect(displayDevice.reason).toEqual(device.reason);
+      expect(displayDevice.displayCountdownTotalSec).toBe(60);
+    });
   
     it('adds dim and dashed treatments from the structured state kind', async () => {
       await renderPlanSnapshot({

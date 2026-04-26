@@ -25,7 +25,7 @@ import {
 } from '../../../shared-domain/src/planSteppedBar.ts';
 import { setTooltip } from './tooltips.ts';
 import { getStoredDeviceControlProfile } from './deviceControlProfiles.ts';
-import { getDisplayReason, resolveSnapshotGeneratedAtMs } from './planLiveData.ts';
+import { resolveDisplayPlanDeviceSnapshot } from './planLiveData.ts';
 import { formatReasonSummary } from './planReasonSummary.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot, PlanStatusBinding } from './planTypes.ts';
 import type { DeviceReason } from '../../../shared-domain/src/planReasonSemanticsCore.ts';
@@ -33,17 +33,6 @@ import type { DeviceReason } from '../../../shared-domain/src/planReasonSemantic
 const formatKw = (value: number | undefined): string => (
   typeof value === 'number' && Number.isFinite(value) ? value.toFixed(1) : '–'
 );
-
-const resolveDisplayPlanDeviceSnapshot = (
-  plan: PlanSnapshot | null,
-  dev: PlanDeviceSnapshot,
-  renderedAtMs: number,
-  nowMs: number,
-): PlanDeviceSnapshot => {
-  const displayReason = getDisplayReason(dev.reason, resolveSnapshotGeneratedAtMs(plan, renderedAtMs), nowMs);
-  if (displayReason === dev.reason) return dev;
-  return { ...dev, reason: displayReason };
-};
 
 const isPlanStateKind = (value: string | undefined): value is PlanStateKind => (
   value === 'active'
@@ -471,7 +460,7 @@ export const buildPlanCard = (
   ripple.setAttribute('aria-hidden', 'true');
   card.append(elevation, ripple);
 
-  const header = buildHeader(dev);
+  const header = buildHeader(displayDev);
   const metric = buildMetricRow(displayDev);
   const reasonText = resolveReasonText(displayDev);
   const reason = document.createElement('p');

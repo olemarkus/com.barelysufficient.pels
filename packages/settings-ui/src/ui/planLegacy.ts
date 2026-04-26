@@ -15,9 +15,8 @@ import { isGrayStateDevice } from './deviceUtils.ts';
 import { setTooltip } from './tooltips.ts';
 import { createLivePlanController } from './planLive.ts';
 import {
-  getDisplayReason,
   planNeedsLiveUpdates,
-  resolveSnapshotGeneratedAtMs,
+  resolveDisplayPlanDeviceSnapshot,
 } from './planLiveData.ts';
 import { renderPlanMeta, type PlanMetaBinding, type PlanMetaSnapshot, updatePlanMetaBinding } from './planMeta.ts';
 
@@ -146,17 +145,6 @@ const buildPlanStatusLine = (dev: PlanDeviceSnapshot, overview: DeviceOverviewSt
   return line;
 };
 
-const getDisplayPlanDeviceSnapshot = (
-  plan: PlanSnapshot | null,
-  dev: PlanDeviceSnapshot,
-  renderedAtMs: number,
-  nowMs: number,
-): PlanDeviceSnapshot => {
-  const displayReason = getDisplayReason(dev.reason, resolveSnapshotGeneratedAtMs(plan, renderedAtMs), nowMs);
-  if (displayReason === dev.reason) return dev;
-  return { ...dev, reason: displayReason };
-};
-
 const isOnLikeState = (value: string | undefined): boolean => {
   const normalized = (value || '').trim().toLowerCase();
   if (!normalized) return false;
@@ -236,7 +224,7 @@ const buildBudgetExemptChip = () => {
 };
 
 const buildPlanRow = (plan: PlanSnapshot | null, dev: PlanDeviceSnapshot, renderedAtMs: number, nowMs: number) => {
-  const displayDev = getDisplayPlanDeviceSnapshot(plan, dev, renderedAtMs, nowMs);
+  const displayDev = resolveDisplayPlanDeviceSnapshot(plan, dev, renderedAtMs, nowMs);
   const overview = formatDeviceOverview(displayDev);
   const row = document.createElement('li');
   row.className = 'device-row plan-row clickable';
@@ -302,7 +290,7 @@ const isOverviewVisible = (): boolean => {
 const updateLivePlanAt = (plan: PlanSnapshot | null, renderedAtMs: number, nowMs: number) => {
   updatePlanMetaBinding(liveMetaBinding, nowMs);
   liveStatusBindings.forEach((binding) => {
-    const displayDev = getDisplayPlanDeviceSnapshot(plan, binding.device, renderedAtMs, nowMs);
+    const displayDev = resolveDisplayPlanDeviceSnapshot(plan, binding.device, renderedAtMs, nowMs);
     const { valueEl } = binding;
     valueEl.textContent = formatDeviceOverview(displayDev).statusMsg;
   });
@@ -334,7 +322,7 @@ const renderPlanAt = (plan: PlanSnapshot | null, renderedAtMs: number, nowMs: nu
 };
 
 const livePlanController = createLivePlanController<PlanSnapshot>({
-  hasLiveUpdates: (plan, renderedAtMs) => planNeedsLiveUpdates(plan, renderedAtMs),
+  hasLiveUpdates: (plan, renderedAtMs, nowMs) => planNeedsLiveUpdates(plan, renderedAtMs, nowMs),
   isVisible: isOverviewVisible,
   render: (plan, renderedAtMs, nowMs) => {
     renderPlanAt(plan, renderedAtMs, nowMs);
