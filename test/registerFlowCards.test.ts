@@ -1,6 +1,35 @@
 import { registerFlowCards, type FlowCardDeps } from '../flowCards/registerFlowCards';
 import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../lib/core/steppedLoadSyntheticCapabilities';
+import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../lib/utils/types';
+
+const steppedProfile: SteppedLoadProfile = {
+  model: 'stepped_load',
+  steps: [
+    { id: 'off', planningPowerW: 0 },
+    { id: 'low', planningPowerW: 1250 },
+    { id: 'max', planningPowerW: 3000 },
+  ],
+};
+
+const nativeSteppedSnapshot = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+  id: 'dev-1',
+  name: 'Connected 300',
+  targets: [],
+  currentOn: true,
+  measuredPowerKw: 1.25,
+  controlModel: 'stepped_load',
+  steppedLoadProfile: steppedProfile,
+  reportedStepId: 'low',
+  controlAdapter: {
+    kind: 'capability_adapter',
+    activationAvailable: true,
+    activationRequired: false,
+    activationEnabled: true,
+  },
+  suggestedSteppedLoadProfile: steppedProfile,
+  ...overrides,
+});
 
 const stateChangedOutcome = (
   overrides: Partial<FlowBackedCapabilityReportOutcome> = {},
@@ -308,6 +337,65 @@ describe('registerFlowCards', () => {
     expect(deps.rebuildPlan).not.toHaveBeenCalled();
   });
 
+  it('does not let actual-step flow reports interfere with native stepped-load wiring', async () => {
+    const nativeSnapshot = nativeSteppedSnapshot();
+    const reportSteppedLoadActualStep = vi.fn();
+    const { deps, actionListeners, structuredInfo } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([nativeSnapshot]),
+      reportSteppedLoadActualStep,
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_actual_step({
+      device: 'dev-1',
+      step: 'max',
+    })).resolves.toBe(true);
+
+    expect(reportSteppedLoadActualStep).not.toHaveBeenCalled();
+    expect(deps.refreshSnapshot).not.toHaveBeenCalled();
+    expect(deps.rebuildPlan).not.toHaveBeenCalled();
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_resolved',
+      sourceCardId: 'report_stepped_load_actual_step',
+      deviceId: 'dev-1',
+      deviceName: 'Connected 300',
+      capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+      resolvedStepId: 'max',
+      outcome: 'unchanged',
+      reasonCode: 'native_wiring_enabled',
+    }));
+  });
+
+  it('accepts missing actual-step flow reports as native stepped-load no-ops', async () => {
+    const nativeSnapshot = nativeSteppedSnapshot();
+    const reportSteppedLoadActualStep = vi.fn();
+    const { deps, actionListeners, structuredInfo } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([nativeSnapshot]),
+      reportSteppedLoadActualStep,
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_actual_step({
+      device: 'dev-1',
+    })).resolves.toBe(true);
+
+    expect(reportSteppedLoadActualStep).not.toHaveBeenCalled();
+    expect(deps.refreshSnapshot).not.toHaveBeenCalled();
+    expect(deps.rebuildPlan).not.toHaveBeenCalled();
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_resolved',
+      sourceCardId: 'report_stepped_load_actual_step',
+      deviceId: 'dev-1',
+      deviceName: 'Connected 300',
+      capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+      resolvedStepId: null,
+      outcome: 'unchanged',
+      reasonCode: 'native_wiring_enabled',
+    }));
+  });
+
   it('logs one terminal rejection event when the service rejects the reported step', async () => {
     const { deps, actionListeners, structuredInfo, structuredWarn } = buildDeps({
       reportSteppedLoadActualStep: vi.fn(() => 'invalid'),
@@ -345,6 +433,75 @@ describe('registerFlowCards', () => {
       reportedStepId: 'max',
       reasonCode: 'invalid_step',
       errorMessage: 'Device is not configured as a stepped load, or the reported step is invalid.',
+    }));
+  });
+
+  it('does not let power flow reports interfere with native stepped-load wiring', async () => {
+    const nativeSnapshot = nativeSteppedSnapshot();
+    const reportSteppedLoadActualStep = vi.fn();
+    const { deps, actionListeners, structuredInfo } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([nativeSnapshot]),
+      reportSteppedLoadActualStep,
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_power({
+      device: 'dev-1',
+      power_w: '3000 W',
+    })).resolves.toBe(true);
+
+    expect(reportSteppedLoadActualStep).not.toHaveBeenCalled();
+    expect(deps.refreshSnapshot).not.toHaveBeenCalled();
+    expect(deps.rebuildPlan).not.toHaveBeenCalled();
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_received',
+      sourceCardId: 'report_stepped_load_power',
+      deviceId: 'dev-1',
+      rawPowerInput: '3000 W',
+    }));
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_resolved',
+      sourceCardId: 'report_stepped_load_power',
+      deviceId: 'dev-1',
+      deviceName: 'Connected 300',
+      capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+      resolvedStepId: null,
+      parsedPowerW: null,
+      outcome: 'unchanged',
+      reasonCode: 'native_wiring_enabled',
+    }));
+  });
+
+  it('accepts unmapped power flow reports as native stepped-load no-ops', async () => {
+    const nativeSnapshot = nativeSteppedSnapshot();
+    const reportSteppedLoadActualStep = vi.fn();
+    const { deps, actionListeners, structuredInfo, structuredWarn } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([nativeSnapshot]),
+      reportSteppedLoadActualStep,
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_power({
+      device: 'dev-1',
+      power_w: '2500 W',
+    })).resolves.toBe(true);
+
+    expect(reportSteppedLoadActualStep).not.toHaveBeenCalled();
+    expect(deps.refreshSnapshot).not.toHaveBeenCalled();
+    expect(deps.rebuildPlan).not.toHaveBeenCalled();
+    expect(structuredWarn).not.toHaveBeenCalled();
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_resolved',
+      sourceCardId: 'report_stepped_load_power',
+      deviceId: 'dev-1',
+      deviceName: 'Connected 300',
+      capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+      resolvedStepId: null,
+      parsedPowerW: null,
+      outcome: 'unchanged',
+      reasonCode: 'native_wiring_enabled',
     }));
   });
 

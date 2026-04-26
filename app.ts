@@ -244,6 +244,7 @@ class PelsApp extends Homey.App {
   private readonly deviceControlHelpers = new AppDeviceControlHelpers({
     getProfiles: () => this.deviceControlProfiles,
     getDeviceSnapshots: () => this.deviceManager?.getSnapshot() ?? [],
+    getLatestPlanSnapshot: () => this.planService?.getLatestPlanSnapshot() ?? null,
     getStructuredLogger: (component) => this.getStructuredLogger(component),
     logDebug: (topic, ...args) => this.logDebug(topic, ...args),
   });

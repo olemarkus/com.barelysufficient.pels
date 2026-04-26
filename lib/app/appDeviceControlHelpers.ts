@@ -7,6 +7,7 @@ import {
 } from '../utils/deviceControlProfiles';
 import { isNativeSteppedLoadControlEnabled } from '../core/nativeSteppedLoadWiring';
 import type { Logger as PinoLogger } from '../logging/logger';
+import type { DevicePlan } from '../plan/planTypes';
 import type {
   DeviceControlModel,
   DeviceControlProfiles,
@@ -216,6 +217,36 @@ export const markSteppedLoadDesiredStepIssued = (params: {
   /* eslint-enable functional/immutable-data */
 };
 
+const preserveSteppedLoadDesiredStep = (params: {
+  runtimeState: DeviceControlRuntimeState;
+  deviceId: string;
+  desiredStepId: string;
+  previousStepId?: string;
+  changedAtMs?: number;
+  status?: SteppedLoadCommandStatus;
+}): void => {
+  const {
+    runtimeState,
+    deviceId,
+    desiredStepId,
+    previousStepId,
+    changedAtMs = Date.now(),
+    status = 'idle',
+  } = params;
+  /* eslint-disable functional/immutable-data -- Shared runtime cache update. */
+  runtimeState.steppedLoadDesiredByDeviceId[deviceId] = {
+    capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+    stepId: desiredStepId,
+    previousStepId,
+    changedAtMs,
+    retryCount: 0,
+    nextRetryAtMs: undefined,
+    pending: false,
+    status,
+  };
+  /* eslint-enable functional/immutable-data */
+};
+
 export const reportSteppedLoadActualStep = (params: {
   runtimeState: DeviceControlRuntimeState;
   profiles: DeviceControlProfiles;
@@ -301,6 +332,7 @@ export class AppDeviceControlHelpers {
   constructor(private readonly deps: {
     getProfiles: () => DeviceControlProfiles;
     getDeviceSnapshots: () => TargetDeviceSnapshot[];
+    getLatestPlanSnapshot?: () => DevicePlan | null;
     getStructuredLogger: (component: string) => PinoLogger | undefined;
     logDebug: (topic: 'devices', ...args: unknown[]) => void;
   }) {}
@@ -348,6 +380,9 @@ export class AppDeviceControlHelpers {
     }
     const previousReportedStepId = this.runtimeState.steppedLoadReportedByDeviceId[deviceId]?.stepId;
     const previousDesired = this.runtimeState.steppedLoadDesiredByDeviceId[deviceId];
+    const previousDesiredStepId = this.resolvePreviousDesiredStepId(deviceId, previousDesired);
+    const latestPlanDesiredStepId = this.resolveLatestPlanDesiredStepId(deviceId);
+    const plannedDesiredStepId = latestPlanDesiredStepId ?? previousDesiredStepId;
     const changed = reportSteppedLoadActualStep({
       runtimeState: this.runtimeState,
       profiles: this.deps.getProfiles(),
@@ -358,6 +393,22 @@ export class AppDeviceControlHelpers {
     if (changed === 'invalid') {
       this.deps.logDebug('devices', `Stepped load feedback ignored for ${deviceName}: invalid step '${stepId}'`);
       return changed;
+    }
+    const desiredStepToPreserve = this.resolvePlannedDesiredStepToPreserve({
+      previousDesired,
+      previousDesiredStepId,
+      latestPlanDesiredStepId,
+      plannedDesiredStepId,
+      reportedStepId: stepId,
+    });
+    if (desiredStepToPreserve) {
+      preserveSteppedLoadDesiredStep({
+        runtimeState: this.runtimeState,
+        deviceId,
+        desiredStepId: desiredStepToPreserve,
+        previousStepId: stepId,
+        status: desiredStepToPreserve === stepId ? 'success' : 'idle',
+      });
     }
     if (changed === 'unchanged') {
       this.deps.logDebug('devices', `Stepped load feedback unchanged for ${deviceName}: ${stepId}`);
@@ -370,6 +421,7 @@ export class AppDeviceControlHelpers {
       stepId,
       previousReportedStepId,
       previousDesired,
+      plannedDesiredStepId,
     });
     return changed;
   }
@@ -378,12 +430,14 @@ export class AppDeviceControlHelpers {
     return this.runtimeState;
   }
 
+  /* eslint-disable-next-line complexity -- Feedback logging maps mutually exclusive runtime states to stable events. */
   private emitSteppedFeedbackLog(params: {
     deviceId: string;
     deviceName: string;
     stepId: string;
     previousReportedStepId: string | undefined;
     previousDesired: SteppedLoadDesiredRuntimeState | undefined;
+    plannedDesiredStepId: string | undefined;
   }): void {
     const {
       deviceId,
@@ -391,6 +445,7 @@ export class AppDeviceControlHelpers {
       stepId,
       previousReportedStepId,
       previousDesired,
+      plannedDesiredStepId,
     } = params;
     const log = this.deps.getStructuredLogger('devices');
     if (previousDesired?.stepId === stepId) {
@@ -404,6 +459,28 @@ export class AppDeviceControlHelpers {
         desiredStepId: previousDesired.stepId,
         pending: previousDesired.pending,
         stale: previousDesired.status === 'stale',
+      });
+    } else if (plannedDesiredStepId === stepId) {
+      log?.info({
+        event: 'stepped_feedback_confirmed',
+        deviceId,
+        deviceName,
+        measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+        targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+        reportedStepId: stepId,
+        desiredStepId: plannedDesiredStepId,
+        pending: previousDesired?.pending ?? false,
+        stale: previousDesired?.status === 'stale',
+      });
+    } else if (plannedDesiredStepId && plannedDesiredStepId !== stepId) {
+      log?.info({
+        event: 'stepped_feedback_mismatch',
+        deviceId,
+        deviceName,
+        measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+        targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+        reportedStepId: stepId,
+        desiredStepId: plannedDesiredStepId,
       });
     } else if (previousReportedStepId && previousReportedStepId !== stepId) {
       log?.info({
@@ -435,5 +512,47 @@ export class AppDeviceControlHelpers {
         reportedStepId: stepId,
       });
     }
+  }
+
+  private resolvePlannedDesiredStepToPreserve(params: {
+    previousDesired: SteppedLoadDesiredRuntimeState | undefined;
+    previousDesiredStepId: string | undefined;
+    latestPlanDesiredStepId: string | undefined;
+    plannedDesiredStepId: string | undefined;
+    reportedStepId: string;
+  }): string | undefined {
+    const {
+      previousDesired,
+      previousDesiredStepId,
+      latestPlanDesiredStepId,
+      plannedDesiredStepId,
+      reportedStepId,
+    } = params;
+    if (!plannedDesiredStepId) return undefined;
+    if (latestPlanDesiredStepId && previousDesired && previousDesiredStepId !== latestPlanDesiredStepId) {
+      return latestPlanDesiredStepId;
+    }
+    return !previousDesired && plannedDesiredStepId !== reportedStepId ? plannedDesiredStepId : undefined;
+  }
+
+  private resolvePreviousDesiredStepId(
+    deviceId: string,
+    previousDesired: SteppedLoadDesiredRuntimeState | undefined,
+  ): string | undefined {
+    const profile = this.deps.getProfiles()[deviceId];
+    if (!profile || profile.model !== 'stepped_load') return undefined;
+
+    return getSteppedLoadStep(profile, previousDesired?.stepId)?.id;
+  }
+
+  private resolveLatestPlanDesiredStepId(deviceId: string): string | undefined {
+    const profile = this.deps.getProfiles()[deviceId];
+    if (!profile || profile.model !== 'stepped_load') return undefined;
+
+    const plannedDevice = this.deps.getLatestPlanSnapshot?.()?.devices.find((device) => device.id === deviceId);
+    return getSteppedLoadStep(
+      profile,
+      plannedDevice?.targetStepId ?? plannedDevice?.desiredStepId,
+    )?.id;
   }
 }
