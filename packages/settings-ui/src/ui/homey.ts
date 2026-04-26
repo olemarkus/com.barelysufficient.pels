@@ -27,14 +27,21 @@ export type HomeySettingsClient = {
   };
 };
 
-// Homey global injected by runtime.
-declare const Homey: HomeySettingsClient;
+type HomeySettingsConstructor = {
+  new(): HomeySettingsClient;
+  prototype?: Partial<HomeySettingsClient>;
+};
+
+// Homey global injected by runtime. Some Homey hosts expose a client object,
+// while my.homey.app exposes a constructor that must be instantiated.
+declare const Homey: HomeySettingsClient | HomeySettingsConstructor;
 
 type WindowWithHomey = Window & {
-  Homey?: HomeySettingsClient;
+  Homey?: HomeySettingsClient | HomeySettingsConstructor;
 };
 
 let homeyClient: HomeySettingsClient | null = null;
+let constructedHomeyClient: HomeySettingsClient | null = null;
 const settingsCache = new Map<string, unknown>();
 const apiCache = new Map<string, unknown>();
 
@@ -46,6 +53,7 @@ export const setHomeyClient = (client: HomeySettingsClient | null) => {
     apiCache.clear();
   }
   homeyClient = client;
+  if (client === null) constructedHomeyClient = null;
 };
 
 export const applySettingsPatch = (settings: Record<string, unknown>) => {
@@ -201,11 +209,38 @@ export const getApiReadModel = async <T>(uri: string): Promise<T> => {
   return value;
 };
 
+const isHomeySettingsClient = (candidate: unknown): candidate is HomeySettingsClient => (
+  Boolean(candidate)
+  && typeof (candidate as Partial<HomeySettingsClient>).ready === 'function'
+  && typeof (candidate as Partial<HomeySettingsClient>).get === 'function'
+);
+
+const isHomeySettingsConstructor = (candidate: unknown): candidate is HomeySettingsConstructor => (
+  typeof candidate === 'function'
+  && typeof (candidate as HomeySettingsConstructor).prototype?.ready === 'function'
+  && typeof (candidate as HomeySettingsConstructor).prototype?.get === 'function'
+);
+
+const getHomeyClientFromGlobal = (candidate: unknown): HomeySettingsClient | null => {
+  if (isHomeySettingsClient(candidate)) return candidate;
+  if (!isHomeySettingsConstructor(candidate)) return null;
+  if (constructedHomeyClient) return constructedHomeyClient;
+  try {
+    constructedHomeyClient = new candidate();
+    return constructedHomeyClient;
+  } catch {
+    return null;
+  }
+};
+
 export const waitForHomey = async (attempts = 50, interval = 100) => {
   const resolveHomey = () => {
-    if (typeof Homey !== 'undefined') return Homey;
+    if (typeof Homey !== 'undefined') {
+      const globalHomey = getHomeyClientFromGlobal(Homey);
+      if (globalHomey) return globalHomey;
+    }
     if (typeof window !== 'undefined' && window.parent) {
-      const parentHomey = (window.parent as WindowWithHomey).Homey;
+      const parentHomey = getHomeyClientFromGlobal((window.parent as WindowWithHomey).Homey);
       if (parentHomey) return parentHomey;
     }
     return null;
@@ -213,7 +248,7 @@ export const waitForHomey = async (attempts = 50, interval = 100) => {
 
   for (let i = 0; i < attempts; i += 1) {
     const candidate = resolveHomey();
-    if (candidate && typeof candidate.ready === 'function' && typeof candidate.get === 'function') {
+    if (isHomeySettingsClient(candidate)) {
       setHomeyClient(candidate);
       return candidate;
     }
