@@ -112,6 +112,7 @@ export type DevicePlan = {
     capacityShortfall?: boolean;
     shortfallBudgetThresholdKw?: number;
     shortfallBudgetHeadroomKw?: number | null;
+    hardCapLimitKw?: number | null;
     hardCapHeadroomKw?: number | null;
     hourlyBudgetExhausted?: boolean;
     usedKWh?: number;

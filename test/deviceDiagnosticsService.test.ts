@@ -477,6 +477,30 @@ describe('DeviceDiagnosticsService', () => {
       });
   });
 
+  it('maps shortfall starvation to the compact capacity cause', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+    const shortfallObservation = buildObservation({ countingCause: 'shortfall' });
+
+    service.observePlanSample({
+      nowTs: start,
+      observations: [shortfallObservation],
+    });
+    service.observePlanSample({
+      nowTs: start + (9 * 60 * 1000),
+      observations: [shortfallObservation],
+    });
+    service.observePlanSample({
+      nowTs: start + (16 * 60 * 1000),
+      observations: [shortfallObservation],
+    });
+
+    expect(service.getOverviewStarvation('heater-1')).toMatchObject({
+      isStarved: true,
+      cause: 'capacity',
+    });
+  });
+
   it('pauses and resumes starvation accumulation without counting paused time', () => {
     const { service } = createDeps();
     const start = Date.now();
@@ -578,6 +602,10 @@ describe('DeviceDiagnosticsService', () => {
     expect(starvation?.starvationCause).toBeNull();
     expect(starvation?.starvationPauseReason).toBe('suppression_none');
     expect(starvation?.starvationLastResumedAt).toBeUndefined();
+    expect(service.getOverviewStarvation('heater-1')).toMatchObject({
+      isStarved: true,
+      cause: 'external',
+    });
   });
 
   it('resets pending starvation entry when the intended normal target changes', () => {

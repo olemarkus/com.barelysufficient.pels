@@ -8,7 +8,7 @@ import type { DeviceDiagnosticsService } from '../diagnostics/deviceDiagnosticsS
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import type { HeadroomForDeviceDecision } from '../plan/planHeadroomDevice';
 import type { PlanEngine } from '../plan/planEngine';
-import type { PendingTargetObservationSource, DevicePlan, ShedAction, ShedBehavior } from '../plan/planTypes';
+import type { PendingTargetObservationSource, ShedAction, ShedBehavior } from '../plan/planTypes';
 import type { PlanService } from '../plan/planService';
 import type { PriceLevel } from '../price/priceLevels';
 import type { PriceCoordinator } from '../price/priceCoordinator';
@@ -23,6 +23,7 @@ import type { PlanRebuildScheduler } from './planRebuildScheduler';
 import type { RefreshTargetDevicesSnapshotOptions, AppSnapshotHelpers } from './appSnapshotHelpers';
 import type { TimerRegistry } from './timerRegistry';
 import type { FlowReportedCapabilitiesForDevice, FlowReportedCapabilityId } from '../core/flowReportedCapabilities';
+import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 
 export type FlowBackedCapabilityReportOutcome = {
   kind: 'state_changed' | 'freshness_only' | 'noop';
@@ -117,7 +118,7 @@ export type AppContext = {
   ) => HeadroomForDeviceDecision | null;
   getCombinedHourlyPrices: () => unknown;
   getDailyBudgetUiPayload: () => DailyBudgetUiPayload | null;
-  getLatestPlanSnapshotForUi: () => DevicePlan | null;
+  getLatestPlanSnapshotForUi: () => SettingsUiPlanSnapshot | null;
   get powerTracker(): PowerTrackerState;
   set powerTracker(value: PowerTrackerState);
   get capacitySettings(): { limitKw: number; marginKw: number };
