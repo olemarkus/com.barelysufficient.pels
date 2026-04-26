@@ -962,6 +962,69 @@ input:focus-visible {
   flex-wrap: wrap;
 }
 
+body.overview-redesign-enabled :where(#overview-panel) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+body.overview-redesign-enabled :where(#overview-panel) > :where(.card__header),
+body.overview-redesign-enabled :where(#overview-panel) > :where(.overview-stats),
+body.overview-redesign-enabled :where(#overview-panel) > :where(.list__footer) {
+  padding: var(--spacing-4);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+}
+
+body.overview-redesign-enabled :where(#overview-panel) > :where(.card__header),
+body.overview-redesign-enabled :where(#overview-panel) > :where(.overview-stats) {
+  margin-bottom: var(--spacing-3);
+}
+
+body.overview-redesign-enabled :where(#overview-panel) :where(#plan-list) {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-3);
+}
+
+body.overview-redesign-enabled :where(#overview-panel) :where(.plan-row) {
+  min-height: 160px;
+  display: grid;
+  align-content: start;
+  gap: var(--spacing-3);
+  padding: var(--spacing-4);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+}
+
+body.overview-redesign-enabled :where(#overview-panel) :where(.plan-row:last-child) {
+  border-bottom: 1px solid var(--panel-border);
+}
+
+body.overview-redesign-enabled :where(#overview-panel) :where(.plan-row__name) {
+  margin-bottom: 0;
+  font-size: var(--font-size-md);
+}
+
+body.overview-redesign-enabled :where(#overview-panel) :where(.plan-row__meta) {
+  gap: var(--spacing-2);
+}
+
+body.overview-redesign-enabled :where(#overview-panel) :where(.plan-meta-line) {
+  display: grid;
+  grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
+  gap: var(--spacing-2);
+}
+
+body.overview-redesign-enabled :where(#overview-panel) :where(.plan-label) {
+  min-width: 0;
+}
+
 .toast {
   position: fixed;
   bottom: var(--spacing-4);

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import http from 'node:http';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -16,6 +17,10 @@ const DEFAULT_APP_ID = 'com.barelysufficient.pels';
 const DEFAULT_ITERATIONS = 3;
 const DEFAULT_VIEWPORT = { width: 480, height: 900 };
 const ATHOM_CLI_SETTINGS_PATH = path.join(process.env.HOME || '', '.athom-cli', 'settings.json');
+const DEFAULT_OVERVIEW_REDESIGN_TOGGLE_HOMEY_ID_HASHES = new Set([
+  '3c9207efba429629030489371722f72f8e96bff1cf8c106c304bb1f055e22a8b',
+  '4e57091f5b42550e7bf53b206cf5ffa4b548b40aad7d3a1999e4ebf7677abd4b',
+]);
 
 const CONTENT_TYPES = new Map([
   ['.css', 'text/css; charset=utf-8'],
@@ -96,6 +101,25 @@ export const parseArgs = (argv) => {
 const deepClone = (value) => (
   value == null ? value : JSON.parse(JSON.stringify(value))
 );
+
+const getAllowedOverviewRedesignHomeyIdHashes = () => {
+  const hashes = new Set(DEFAULT_OVERVIEW_REDESIGN_TOGGLE_HOMEY_ID_HASHES);
+  const raw = String(process.env.PELS_OVERVIEW_REDESIGN_HOMEY_ID_HASHES ?? '');
+  raw.split(',').forEach((value) => {
+    const trimmed = value.trim();
+    if (trimmed) hashes.add(trimmed);
+  });
+  return hashes;
+};
+
+const hashHomeyId = (homeyId) => (
+  createHash('sha256').update(homeyId).digest('hex')
+);
+
+const getFeatureAccess = (homeyId) => ({
+  canToggleOverviewRedesign: typeof homeyId === 'string'
+    && getAllowedOverviewRedesignHomeyIdHashes().has(hashHomeyId(homeyId)),
+});
 
 const runBuild = (repoDir) => {
   const result = spawnSync('npm', ['run', 'build:settings'], {
@@ -300,6 +324,7 @@ const createHomeyContext = async ({ appId, homeyId }) => {
     const plan = allSettings.device_plan_snapshot;
     return {
       dailyBudget,
+      featureAccess: getFeatureAccess(selectedHomeyId),
       devices: getArraySetting(allSettings, 'target_devices_snapshot'),
       plan: plan && typeof plan === 'object' ? plan : null,
       power: buildPowerPayload(allSettings),

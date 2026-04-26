@@ -45,25 +45,6 @@ describe('waitForHomey', () => {
     expect(getHomeyClient()).toBe(client);
   });
 
-  it('instantiates the Homey constructor exposed by my.homey.app', async () => {
-    class HomeyConstructor implements HomeySettingsClient {
-      ready(): Promise<void> {
-        return Promise.resolve();
-      }
-
-      get(): void {}
-
-      set(): void {}
-    }
-    setGlobalHomey(HomeyConstructor);
-
-    const { getHomeyClient, waitForHomey } = await import('../src/ui/homey.ts');
-
-    const client = await waitForHomey(1, 0);
-    expect(client).toBeInstanceOf(HomeyConstructor);
-    expect(getHomeyClient()).toBe(client);
-  });
-
   it('accepts the Homey client delivered through onHomeyReady', async () => {
     const client = createClient();
     setHomeyReadyPromise(Promise.resolve(client));
@@ -73,6 +54,18 @@ describe('waitForHomey', () => {
 
     await expect(waitForHomey(1, 0)).resolves.toBe(client);
     expect(getHomeyClient()).toBe(client);
+  });
+
+  it('does not instantiate constructor-shaped mocks', async () => {
+    const HomeyConstructor = vi.fn();
+    HomeyConstructor.prototype.ready = vi.fn();
+    HomeyConstructor.prototype.get = vi.fn();
+    setGlobalHomey(HomeyConstructor);
+
+    const { waitForHomey } = await import('../src/ui/homey.ts');
+
+    await expect(waitForHomey(1, 0)).resolves.toBeNull();
+    expect(HomeyConstructor).not.toHaveBeenCalled();
   });
 
   it('does not add a second wait while the onHomeyReady promise is pending', async () => {

@@ -255,6 +255,13 @@ const installSettingsHomeyMockWithOverviewToggle = (settings: Record<string, unk
   },
 });
 
+const installSettingsHomeyMockWithoutOverviewToggle = (settings: Record<string, unknown> = {}) => installHomeyMock({
+  settings: buildSettingsHomeyState(settings),
+  uiState: {
+    featureAccess: { canToggleOverviewRedesign: false },
+  },
+});
+
 describe('settings script', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -337,6 +344,7 @@ describe('settings script', () => {
     expect((document.querySelector('#capacity-limit') as HTMLInputElement).value).toBe('8');
     expect((document.querySelector('#capacity-margin') as HTMLInputElement).value).toBe('0.4');
     expect((document.querySelector('#capacity-dry-run') as HTMLInputElement).checked).toBe(false);
+    expect(document.querySelector('#advanced-overview-redesign-row')?.hasAttribute('hidden')).toBe(true);
   });
 
   it('renders all debug logging topics including overview', async () => {
@@ -352,6 +360,7 @@ describe('settings script', () => {
 
   it('keeps the overview redesign toggle hidden when feature access is disallowed', async () => {
     window.localStorage.setItem(OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY, 'true');
+    installSettingsHomeyMockWithoutOverviewToggle();
 
     await loadSettingsScript();
 
@@ -411,6 +420,8 @@ describe('settings script', () => {
   });
 
   it('ignores overview redesign toggle changes when feature access is disallowed', async () => {
+    installSettingsHomeyMockWithoutOverviewToggle();
+
     await loadSettingsScript();
 
     const toggle = document.querySelector('#advanced-overview-redesign-enabled') as HTMLInputElement;
