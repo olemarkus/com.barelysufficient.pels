@@ -1,4 +1,5 @@
 import {
+  AppDeviceControlHelpers,
   STEPPED_LOAD_COMMAND_STALE_MS,
   createDeviceControlRuntimeState,
   decorateSnapshotWithDeviceControl,
@@ -363,6 +364,145 @@ describe('appDeviceControlHelpers', () => {
       retryCount: 0,
       pending: true,
       status: 'pending',
+    });
+  });
+
+  it('preserves the latest plan target when flow feedback reports stepped-load drift', () => {
+    const structuredLogger = { info: vi.fn() };
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => steppedProfiles,
+      getDeviceSnapshots: () => [baseSnapshot({ currentOn: true })],
+      getLatestPlanSnapshot: () => ({
+        devices: [{
+          id: 'dev-1',
+          targetStepId: 'low',
+          desiredStepId: 'low',
+        }],
+      } as never),
+      getStructuredLogger: () => structuredLogger as never,
+      logDebug: vi.fn(),
+    });
+
+    expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
+
+    const runtimeState = helpers.getRuntimeStateForTests();
+    expect(runtimeState.steppedLoadReportedByDeviceId['dev-1']).toMatchObject({
+      capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+      source: 'flow',
+      stepId: 'max',
+    });
+    expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+      capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+      stepId: 'low',
+      previousStepId: 'max',
+      retryCount: 0,
+      pending: false,
+      status: 'idle',
+    });
+
+    const [decorated] = helpers.decorateTargetSnapshotList([baseSnapshot({ currentOn: true })]);
+    expect(decorated.reportedStepId).toBe('max');
+    expect(decorated.selectedStepId).toBe('max');
+    expect(decorated.targetStepId).toBe('low');
+    expect(decorated.desiredStepId).toBe('low');
+
+    expect(structuredLogger.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_feedback_mismatch',
+      deviceId: 'dev-1',
+      measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+      targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+      reportedStepId: 'max',
+      desiredStepId: 'low',
+    }));
+  });
+
+  it('replaces a stale desired step with the latest plan target when feedback catches up', () => {
+    const structuredLogger = { info: vi.fn() };
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => steppedProfiles,
+      getDeviceSnapshots: () => [baseSnapshot({ currentOn: true })],
+      getLatestPlanSnapshot: () => ({
+        devices: [{
+          id: 'dev-1',
+          targetStepId: 'low',
+          desiredStepId: 'low',
+        }],
+      } as never),
+      getStructuredLogger: () => structuredLogger as never,
+      logDebug: vi.fn(),
+    });
+
+    helpers.markSteppedLoadDesiredStepIssued({
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      previousStepId: 'low',
+      issuedAtMs: 1_000,
+    });
+
+    expect(helpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
+
+    const runtimeState = helpers.getRuntimeStateForTests();
+    expect(runtimeState.steppedLoadReportedByDeviceId['dev-1']).toMatchObject({
+      capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+      source: 'flow',
+      stepId: 'low',
+    });
+    expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+      capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+      stepId: 'low',
+      previousStepId: 'low',
+      retryCount: 0,
+      pending: false,
+      status: 'success',
+    });
+
+    const [decorated] = helpers.decorateTargetSnapshotList([baseSnapshot({ currentOn: true })]);
+    expect(decorated.reportedStepId).toBe('low');
+    expect(decorated.selectedStepId).toBe('low');
+    expect(decorated.targetStepId).toBe('low');
+    expect(decorated.desiredStepId).toBe('low');
+
+    expect(structuredLogger.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_feedback_confirmed',
+      deviceId: 'dev-1',
+      measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+      targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+      reportedStepId: 'low',
+      desiredStepId: 'low',
+    }));
+  });
+
+  it('replaces a stale desired step even when the repeated feedback report is unchanged', () => {
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => steppedProfiles,
+      getDeviceSnapshots: () => [baseSnapshot({ currentOn: true })],
+      getLatestPlanSnapshot: () => ({
+        devices: [{
+          id: 'dev-1',
+          targetStepId: 'low',
+          desiredStepId: 'low',
+        }],
+      } as never),
+      getStructuredLogger: () => ({ info: vi.fn() }) as never,
+      logDebug: vi.fn(),
+    });
+
+    expect(helpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
+    helpers.markSteppedLoadDesiredStepIssued({
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      previousStepId: 'low',
+      issuedAtMs: 1_000,
+    });
+
+    expect(helpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('unchanged');
+
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+      capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+      stepId: 'low',
+      retryCount: 0,
+      pending: false,
+      status: 'success',
     });
   });
 

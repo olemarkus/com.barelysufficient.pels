@@ -95,6 +95,8 @@ export default tseslint.config(
       '.playwright/**',
       '.playwright-cli/**',
       '.playwright-mcp/**',
+      '.chrome-homey-profile/**',
+      '.firefox-homey-profile/**',
       'docs/.vitepress/.temp/**',
       'docs/.vitepress/dist/**',
       'docs/.vitepress/cache/**',

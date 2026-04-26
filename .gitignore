@@ -25,6 +25,8 @@ node_modules/
 /.playwright/
 /.playwright-cli/
 /.playwright-mcp/
+/.chrome-homey-profile/
+/.firefox-homey-profile/
 /teste/
 /tmp/
 

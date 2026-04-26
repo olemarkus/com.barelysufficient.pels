@@ -22,7 +22,14 @@ type NativeStepRank = 'off' | 'low' | 'medium' | 'high';
 
 const NATIVE_STEPPED_LOAD_CAPABILITY_SET = new Set<string>(NATIVE_STEPPED_LOAD_CAPABILITY_IDS);
 const HOIAX_OWNER_URIS = new Set(['homey:app:no.hoiax']);
-const HOIAX_DRIVER_ID_PREFIX = 'homey:app:no.hoiax:';
+const HOIAX_DRIVER_ID_PREFIXES = [
+  'homey:app:no.hoiax:',
+  'no.hoiax:',
+] as const;
+const HOIAX_DRIVER_IDS = new Set([
+  'homey:app:com.myuplink:hoiax',
+  'com.myuplink:hoiax',
+]);
 
 const NATIVE_VALUES_BY_RANK = {
   low: ['low_power', '1', 1],
@@ -152,12 +159,13 @@ export function isNativeSteppedLoadControlEnabled(snapshot: {
 }
 
 function isHoiaxDevice(device: HomeyDeviceLike): boolean {
-  const ownerUri = normalizeText(device.ownerUri);
+  const ownerUri = normalizeText(device.ownerUri ?? device.driver?.owner_uri);
   if (HOIAX_OWNER_URIS.has(ownerUri)) return true;
-  const driverUri = normalizeText(device.driverUri);
+  const driverUri = normalizeText(device.driverUri ?? device.driver?.uri);
   if (HOIAX_OWNER_URIS.has(driverUri)) return true;
-  const driverId = normalizeText(device.driverId);
-  return driverId.startsWith(HOIAX_DRIVER_ID_PREFIX);
+  const driverId = normalizeText(device.driverId ?? device.driver?.id);
+  return HOIAX_DRIVER_IDS.has(driverId)
+    || HOIAX_DRIVER_ID_PREFIXES.some((prefix) => driverId.startsWith(prefix));
 }
 
 function normalizeText(value: unknown): string {

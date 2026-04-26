@@ -14,7 +14,10 @@ import { AppDeviceControlHelpers } from '../lib/app/appDeviceControlHelpers';
 import type { HomeyDeviceLike, Logger, SteppedLoadProfile, TargetDeviceSnapshot } from '../lib/utils/types';
 import { mockHomeyInstance } from './mocks/homey';
 import { setRestClient } from '../lib/core/deviceManagerHomeyApi';
-import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../lib/core/steppedLoadSyntheticCapabilities';
+import {
+  PELS_MEASURE_STEP_CAPABILITY_ID,
+  PELS_TARGET_STEP_CAPABILITY_ID,
+} from '../lib/core/steppedLoadSyntheticCapabilities';
 
 const steppedProfile: SteppedLoadProfile = {
   model: 'stepped_load',
@@ -167,6 +170,121 @@ describe('native stepped-load wiring', () => {
     expect(parsed.capabilities).toContain('max_power_3000');
   });
 
+  it('detects native stepped-load wiring from real Høiax driver shapes', () => {
+    const deviceManager = new DeviceManager(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      {
+        getNativeEvWiringEnabled: () => false,
+      },
+    );
+
+    const [compactDriverId, nestedDriverOwner, myuplinkHoiax, myuplinkOther] = deviceManager.parseDeviceListForTests([
+      {
+        ...buildHoiaxDevice(),
+        id: 'compact-driver-id',
+        driverId: 'no.hoiax:hiax-connected-200',
+        ownerUri: undefined,
+        capabilities: ['measure_power', 'target_temperature', 'measure_temperature', 'onoff', 'max_power'],
+        capabilitiesObj: {
+          ...buildHoiaxDevice().capabilitiesObj,
+          max_power: { value: 'medium_power', setable: true },
+        },
+      },
+      {
+        ...buildHoiaxDevice(),
+        id: 'nested-driver-owner',
+        driverId: 'hiax-connected-300',
+        ownerUri: undefined,
+        driver: { owner_uri: 'homey:app:no.hoiax' },
+      },
+      {
+        ...buildHoiaxDevice(),
+        id: 'myuplink-hoiax',
+        driverId: 'homey:app:com.myuplink:hoiax',
+        ownerUri: undefined,
+      },
+      {
+        ...buildHoiaxDevice(),
+        id: 'myuplink-other',
+        driverId: 'homey:app:com.myuplink:ctc',
+        ownerUri: undefined,
+        capabilities: ['measure_power', 'target_temperature', 'measure_temperature', 'onoff', 'max_power_2000'],
+        capabilitiesObj: {
+          ...buildHoiaxDevice().capabilitiesObj,
+          max_power_2000: { value: 'medium_power', setable: true },
+        },
+      },
+    ]);
+
+    expect(compactDriverId.controlAdapter).toEqual(expect.objectContaining({
+      activationAvailable: true,
+      activationEnabled: false,
+    }));
+    expect(nestedDriverOwner.controlAdapter).toEqual(expect.objectContaining({
+      activationAvailable: true,
+      activationEnabled: false,
+    }));
+    expect(myuplinkHoiax.controlAdapter).toEqual(expect.objectContaining({
+      activationAvailable: true,
+      activationEnabled: false,
+    }));
+    expect(myuplinkOther.controlAdapter).toBeUndefined();
+  });
+
+  it('detects native stepped-load wiring from MyUplink Høiax Connected 300 shape', () => {
+    const device = {
+      id: 'myuplink-hoiax-connected-300',
+      name: 'Connected 300',
+      class: 'heater',
+      driverId: 'homey:app:com.myuplink:hoiax',
+      available: true,
+      capabilities: [
+        'measure_power',
+        'target_temperature',
+        'measure_temperature',
+        'onoff',
+        'max_power_3000',
+      ],
+      capabilitiesObj: {
+        measure_power: { value: 1193 },
+        target_temperature: { value: 80 },
+        measure_temperature: { value: 54.8 },
+        onoff: { value: true },
+        max_power_3000: { value: '1', setable: true },
+      },
+    } satisfies HomeyDeviceLike;
+
+    const disabledManager = new DeviceManager(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      {
+        getNativeEvWiringEnabled: () => false,
+      },
+    );
+    const [disabledParsed] = disabledManager.parseDeviceListForTests([device]);
+
+    expect(disabledParsed.controlAdapter).toEqual(expect.objectContaining({
+      activationAvailable: true,
+      activationEnabled: false,
+    }));
+    expect(disabledParsed.capabilities).not.toContain('max_power_3000');
+
+    const enabledManager = new DeviceManager(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      {
+        getNativeEvWiringEnabled: () => true,
+      },
+    );
+    const [enabledParsed] = enabledManager.parseDeviceListForTests([device]);
+
+    expect(enabledParsed.controlAdapter).toEqual(expect.objectContaining({
+      activationEnabled: true,
+    }));
+    expect(enabledParsed.reportedStepId).toBe('low');
+  });
+
   it('uses native stepped-load feedback instead of flow reports when native wiring is enabled', () => {
     const flowSnapshot = {
       id: 'hoiax-1',
@@ -267,10 +385,12 @@ describe('native stepped-load wiring', () => {
   it('writes native capability instead of triggering the stepped-load flow when enabled', async () => {
     const setNativeSteppedLoadStep = vi.fn(async () => true);
     const trigger = vi.fn(async () => undefined);
+    const structuredLog = { info: vi.fn(), error: vi.fn() };
     const ctx = {
       state: {},
       logDebug: vi.fn(),
       error: vi.fn(),
+      structuredLog,
       buildBinaryControlDeps: () => ({ deviceManager: { setNativeSteppedLoadStep } }),
       markSteppedLoadDesiredStepIssued: vi.fn(),
       recordShedActuation: vi.fn(),
@@ -305,6 +425,13 @@ describe('native stepped-load wiring', () => {
     expect(wrote).toBe(true);
     expect(setNativeSteppedLoadStep).toHaveBeenCalledWith('hoiax-1', steppedProfile, 'medium');
     expect(trigger).not.toHaveBeenCalled();
+    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_command_requested',
+      deviceId: 'hoiax-1',
+      targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+      desiredStepId: 'medium',
+      commandTransport: 'native_capability',
+    }));
   });
 
   it('applies native stepped-load commands from the cached observed adapter', async () => {

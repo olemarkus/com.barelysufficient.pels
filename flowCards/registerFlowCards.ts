@@ -19,6 +19,7 @@ import { normalizeError } from '../lib/utils/errorUtils';
 import { evaluateLowestPriceCard, type LowestPriceCardId } from '../lib/price/priceLowestFlowEvaluator';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../lib/core/steppedLoadSyntheticCapabilities';
+import { isNativeSteppedLoadControlEnabled } from '../lib/core/nativeSteppedLoadWiring';
 import {
   registerBudgetExemptionCards,
   registerBudgetExemptionCondition,
@@ -206,6 +207,19 @@ function registerReportActualStepCard(deps: FlowCardDeps): void {
       if (!deviceId) {
         throw createSteppedLoadReportError('device_missing', 'Device must be provided.');
       }
+      const nativeIgnored = await resolveNativeSteppedLoadFlowReportIgnore(deps, deviceId);
+      if (nativeIgnored) {
+        emitSteppedLoadReportResolvedLog({
+          deps,
+          sourceCardId,
+          deviceId,
+          deviceName: nativeIgnored.deviceName,
+          resolvedStepId: stepId || null,
+          outcome: 'unchanged',
+          reasonCode: 'native_wiring_enabled',
+        });
+        return true;
+      }
       if (!stepId) {
         throw createSteppedLoadReportError('step_missing', 'Step must be provided.');
       }
@@ -265,6 +279,19 @@ function registerReportActualPowerCard(deps: FlowCardDeps): void {
     try {
       if (!deviceId) {
         throw createSteppedLoadReportError('device_missing', 'Device must be provided.');
+      }
+      const nativeIgnored = await resolveNativeSteppedLoadFlowReportIgnore(deps, deviceId);
+      if (nativeIgnored) {
+        emitSteppedLoadReportResolvedLog({
+          deps,
+          sourceCardId,
+          deviceId,
+          deviceName: nativeIgnored.deviceName,
+          resolvedStepId: null,
+          outcome: 'unchanged',
+          reasonCode: 'native_wiring_enabled',
+        });
+        return true;
       }
       const { stepId, deviceName, parsedPowerW } = await resolveSteppedLoadStepIdFromPowerInput({
         deps,
@@ -345,6 +372,20 @@ async function handleSteppedLoadReportResult(params: {
     parsedPowerW,
     outcome: 'accepted',
   });
+}
+
+async function resolveNativeSteppedLoadFlowReportIgnore(
+  deps: FlowCardDeps,
+  deviceId: string,
+): Promise<{ deviceName: string } | null> {
+  try {
+    const snapshot = await deps.getSnapshot();
+    const device = snapshot.find((entry) => entry.id === deviceId);
+    if (!device || !isNativeSteppedLoadControlEnabled(device)) return null;
+    return { deviceName: device.name.trim() || deviceId };
+  } catch {
+    return null;
+  }
 }
 
 async function resolveSteppedLoadStepIdFromPowerInput(params: {
@@ -458,7 +499,7 @@ function emitSteppedLoadReportResolvedLog(params: {
   sourceCardId: string;
   deviceId: string;
   deviceName: string;
-  resolvedStepId: string;
+  resolvedStepId: string | null;
   parsedPowerW?: number;
   outcome: 'accepted' | 'unchanged' | 'rejected';
   reasonCode?: string;
