@@ -36,6 +36,7 @@ export type HeadroomCooldownCandidate = {
   remainingSec: number;
   expiresAtMs: number;
   startMs: number;
+  totalSec: number;
   dropFromKw: number | null;
   dropToKw: number | null;
 };

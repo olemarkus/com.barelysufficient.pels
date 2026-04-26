@@ -474,6 +474,8 @@ export class PlanBuilder {
       restoredOneThisCycle: restoreResult.restoredOneThisCycle,
       restoredThisCycle: restoreResult.restoredThisCycle,
       shedCooldownRemainingSec: restoreResult.shedCooldownRemainingSec,
+      shedCooldownStartedAtMs: restoreResult.shedCooldownStartedAtMs,
+      shedCooldownTotalSec: restoreResult.shedCooldownTotalSec,
       holdDuringRestoreCooldown: restoreResult.inRestoreCooldown,
       restoreCooldownSeconds: restoreResult.restoreCooldownSeconds,
       restoreCooldownRemainingSec: restoreResult.restoreCooldownRemainingSec,
@@ -497,6 +499,8 @@ export class PlanBuilder {
       inCooldown: restoreResult.inCooldown,
       activeOvershoot: restoreResult.activeOvershoot,
       shedCooldownRemainingSec: restoreResult.shedCooldownRemainingSec,
+      shedCooldownStartedAtMs: restoreResult.shedCooldownStartedAtMs,
+      shedCooldownTotalSec: restoreResult.shedCooldownTotalSec,
     }));
   }
 

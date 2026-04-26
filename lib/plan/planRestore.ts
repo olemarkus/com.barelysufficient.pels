@@ -41,6 +41,7 @@ import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnostics
 import {
   buildRestoreTiming,
   resolveCapacityRestoreBlockReason,
+  resolveMeterSettlingCountdownTiming,
   resolveMeterSettlingRemainingSec,
   shouldPlanRestores,
   type RestoreTiming,
@@ -84,7 +85,11 @@ export type RestorePlanResult = {
   activeOvershoot: boolean;
   restoreCooldownSeconds: number;
   shedCooldownRemainingSec: number | null;
+  shedCooldownStartedAtMs: number | null;
+  shedCooldownTotalSec: number | null;
   restoreCooldownRemainingSec: number | null;
+  restoreCooldownStartedAtMs: number | null;
+  restoreCooldownTotalSec: number | null;
   inShedWindow: boolean;
   restoreCooldownMs: number;
   lastRestoreCooldownBumpMs: number | null;
@@ -326,7 +331,14 @@ function planRestoreForDevice(params: {
     restoredOneThisCycle,
   });
   if (meterSettlingRemainingSec !== null) {
-    const reason = buildMeterSettlingReason(meterSettlingRemainingSec);
+    const reason = buildMeterSettlingReason(
+      meterSettlingRemainingSec,
+      resolveMeterSettlingCountdownTiming({
+        timing,
+        lastRestoreTs: state.lastRestoreMs,
+        restoredOneThisCycle,
+      }),
+    );
     setDevice(deviceMap, dev.id, {
       plannedState: 'keep',
       reason,
@@ -671,7 +683,10 @@ function markOffDevicesMeterSettling(params: {
   const { deviceMap, timing, lastRestoreTs = null } = params;
   const remainingSec = resolveMeterSettlingRemainingSec({ timing, lastRestoreTs });
   if (remainingSec === null) return;
-  const reason = buildMeterSettlingReason(remainingSec);
+  const reason = buildMeterSettlingReason(
+    remainingSec,
+    resolveMeterSettlingCountdownTiming({ timing, lastRestoreTs }),
+  );
   const snapshot: DevicePlanDevice[] = [];
   for (const dev of deviceMap.values()) snapshot.push(dev);
 

@@ -9,7 +9,11 @@ import {
   type DeviceReason,
   type PlanReasonCode,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-import { getActivationPenaltyLevel, getActivationRestoreBlockRemainingMs } from './planActivationBackoff';
+import {
+  getActivationPenaltyLevel,
+  getActivationRestoreBlockCountdownTiming,
+  getActivationRestoreBlockRemainingMs,
+} from './planActivationBackoff';
 import { computeBaseRestoreNeed, resolveRestorePowerSource } from './planRestoreAccounting';
 import { getRestoreNeed } from './planRestoreSupport';
 import {
@@ -92,15 +96,33 @@ function maybeApplyCooldownReason(params: {
   inCooldown: boolean;
   activeOvershoot: boolean;
   shedCooldownRemainingSec: number | null;
+  shedCooldownStartedAtMs?: number | null;
+  shedCooldownTotalSec?: number | null;
 }): PlanReasonDecision | null {
-  const { currentReason, inCooldown, activeOvershoot, shedCooldownRemainingSec } = params;
+  const {
+    currentReason,
+    inCooldown,
+    activeOvershoot,
+    shedCooldownRemainingSec,
+    shedCooldownStartedAtMs,
+    shedCooldownTotalSec,
+  } = params;
   if (
     inCooldown
     && !activeOvershoot
     && !isSwapReason(currentReason)
     && currentReason.code !== PLAN_REASON_CODES.neutralStartupHold
   ) {
-    return { code: 'cooldown_shedding', remainingSec: shedCooldownRemainingSec };
+    return {
+      code: 'cooldown_shedding',
+      remainingSec: shedCooldownRemainingSec,
+      countdownTiming: {
+        ...(typeof shedCooldownStartedAtMs === 'number' ? { countdownStartedAtMs: shedCooldownStartedAtMs } : {}),
+        ...(typeof shedCooldownTotalSec === 'number' && shedCooldownTotalSec > 0
+          ? { countdownTotalSec: shedCooldownTotalSec }
+          : {}),
+      },
+    };
   }
   return null;
 }
@@ -224,6 +246,8 @@ export type ShedHoldParams = {
   restoredOneThisCycle: boolean;
   restoredThisCycle: Set<string>;
   shedCooldownRemainingSec: number | null;
+  shedCooldownStartedAtMs?: number | null;
+  shedCooldownTotalSec?: number | null;
   holdDuringRestoreCooldown: boolean;
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
@@ -252,6 +276,8 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
     restoredOneThisCycle,
     restoredThisCycle,
     shedCooldownRemainingSec,
+    shedCooldownStartedAtMs,
+    shedCooldownTotalSec,
     holdDuringRestoreCooldown,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
@@ -263,7 +289,7 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
   let headroom = availableHeadroom;
   let restoredOne = restoredOneThisCycle;
   const nextDevices: DevicePlanDevice[] = [];
-  const pendingRestoreDelaySec = getPendingRestoreDelaySeconds(planDevices, state, getShedBehavior);
+  const pendingRestoreDelay = getPendingRestoreDelay(planDevices, state, getShedBehavior);
 
   for (const dev of planDevices) {
     const behavior = getShedBehavior(dev.id);
@@ -279,10 +305,12 @@ export function applyShedTemperatureHold(params: ShedHoldParams): {
       restoredOneThisCycle: restoredOne,
       restoredThisCycle,
       shedCooldownRemainingSec,
+      shedCooldownStartedAtMs,
+      shedCooldownTotalSec,
       holdDuringRestoreCooldown,
       restoreCooldownSeconds,
       restoreCooldownRemainingSec,
-      pendingRestoreDelaySec,
+      pendingRestoreDelay,
       guardInShortfall,
       debugStructured,
     });
@@ -306,6 +334,8 @@ export function normalizeShedReasons(params: {
   inCooldown: boolean;
   activeOvershoot: boolean;
   shedCooldownRemainingSec: number | null;
+  shedCooldownStartedAtMs?: number | null;
+  shedCooldownTotalSec?: number | null;
 }): DevicePlanDevice[] {
   const {
     planDevices,
@@ -315,6 +345,8 @@ export function normalizeShedReasons(params: {
     inCooldown,
     activeOvershoot,
     shedCooldownRemainingSec,
+    shedCooldownStartedAtMs,
+    shedCooldownTotalSec,
   } = params;
 
   return planDevices.map((dev) => normalizeDeviceReason({
@@ -325,6 +357,8 @@ export function normalizeShedReasons(params: {
     inCooldown,
     activeOvershoot,
     shedCooldownRemainingSec,
+    shedCooldownStartedAtMs,
+    shedCooldownTotalSec,
   }));
 }
 
@@ -360,6 +394,12 @@ type HoldDecision =
   | { type: 'skip' }
   | { type: 'restore'; availableHeadroom: number; restoredOneThisCycle: boolean }
   | { type: 'hold'; reason: PlanReasonDecision };
+
+type PendingRestoreDelay = {
+  remainingSec: number;
+  countdownStartedAtMs: number;
+  countdownTotalSec: number;
+};
 
 function hasTemperatureTarget(dev: DevicePlanDevice): boolean {
   return (typeof dev.currentTarget === 'number' && Number.isFinite(dev.currentTarget))
@@ -411,7 +451,11 @@ function resolveActivationBackoffHold(params: {
   const setbackRemainingMs = getActivationRestoreBlockRemainingMs({ state, deviceId: dev.id });
   if (setbackRemainingMs === null) return null;
 
-  const reason: PlanReasonDecision = { code: 'activation_backoff', remainingMs: setbackRemainingMs };
+  const reason: PlanReasonDecision = {
+    code: 'activation_backoff',
+    remainingMs: setbackRemainingMs,
+    countdownTiming: getActivationRestoreBlockCountdownTiming({ state, deviceId: dev.id }),
+  };
   const renderedReason = renderPlanReasonDecision(reason);
   const reasonText = formatDeviceReason(renderedReason);
   emitRestoreRejectedDebug({
@@ -666,10 +710,12 @@ function resolveHoldDecision(params: {
   restoredOneThisCycle: boolean;
   restoredThisCycle: Set<string>;
   shedCooldownRemainingSec: number | null;
+  shedCooldownStartedAtMs?: number | null;
+  shedCooldownTotalSec?: number | null;
   holdDuringRestoreCooldown: boolean;
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
-  pendingRestoreDelaySec: number | null;
+  pendingRestoreDelay: PendingRestoreDelay | null;
   guardInShortfall: boolean;
   debugStructured?: StructuredDebugEmitter;
 }): HoldDecision {
@@ -685,7 +731,7 @@ function resolveHoldDecision(params: {
     holdDuringRestoreCooldown,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
-    pendingRestoreDelaySec,
+    pendingRestoreDelay,
     guardInShortfall,
     debugStructured,
   } = params;
@@ -719,7 +765,7 @@ function resolveHoldDecision(params: {
       restoredThisCycle,
       restoreCooldownSeconds,
       restoreCooldownRemainingSec,
-      pendingRestoreDelaySec,
+      pendingRestoreDelay,
       debugStructured,
     });
   }
@@ -743,7 +789,7 @@ function resolvePostHoldRestoreDecision(params: {
   restoredThisCycle: Set<string>;
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
-  pendingRestoreDelaySec: number | null;
+  pendingRestoreDelay: PendingRestoreDelay | null;
   debugStructured?: StructuredDebugEmitter;
 }): HoldDecision {
   const {
@@ -754,11 +800,21 @@ function resolvePostHoldRestoreDecision(params: {
     restoredThisCycle,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
-    pendingRestoreDelaySec,
+    pendingRestoreDelay,
     debugStructured,
   } = params;
-  if (pendingRestoreDelaySec !== null) {
-    return { type: 'hold', reason: { code: 'restore_pending', remainingSec: pendingRestoreDelaySec } };
+  if (pendingRestoreDelay !== null) {
+    return {
+      type: 'hold',
+      reason: {
+        code: 'restore_pending',
+        remainingSec: pendingRestoreDelay.remainingSec,
+        countdownTiming: {
+          countdownStartedAtMs: pendingRestoreDelay.countdownStartedAtMs,
+          countdownTotalSec: pendingRestoreDelay.countdownTotalSec,
+        },
+      },
+    };
   }
   return resolveRestoreDecision({
     dev,
@@ -784,10 +840,12 @@ function applyHoldToDevice(params: {
   restoredOneThisCycle: boolean;
   restoredThisCycle: Set<string>;
   shedCooldownRemainingSec: number | null;
+  shedCooldownStartedAtMs?: number | null;
+  shedCooldownTotalSec?: number | null;
   holdDuringRestoreCooldown: boolean;
   restoreCooldownSeconds: number;
   restoreCooldownRemainingSec: number | null;
-  pendingRestoreDelaySec: number | null;
+  pendingRestoreDelay: PendingRestoreDelay | null;
   guardInShortfall: boolean;
   debugStructured?: StructuredDebugEmitter;
 }): { device: DevicePlanDevice; availableHeadroom: number; restoredOneThisCycle: boolean } {
@@ -803,10 +861,12 @@ function applyHoldToDevice(params: {
     restoredOneThisCycle,
     restoredThisCycle,
     shedCooldownRemainingSec,
+    shedCooldownStartedAtMs,
+    shedCooldownTotalSec,
     holdDuringRestoreCooldown,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
-    pendingRestoreDelaySec,
+    pendingRestoreDelay,
     guardInShortfall,
     debugStructured,
   } = params;
@@ -827,10 +887,12 @@ function applyHoldToDevice(params: {
     restoredOneThisCycle,
     restoredThisCycle,
     shedCooldownRemainingSec,
+    shedCooldownStartedAtMs,
+    shedCooldownTotalSec,
     holdDuringRestoreCooldown,
     restoreCooldownSeconds,
     restoreCooldownRemainingSec,
-    pendingRestoreDelaySec,
+    pendingRestoreDelay,
     guardInShortfall,
     debugStructured,
   });
@@ -854,7 +916,7 @@ function applyHoldToDevice(params: {
   return { device: dev, availableHeadroom, restoredOneThisCycle };
 }
 
-function getPendingRestoreDelaySeconds(
+function getPendingRestoreDelay(
   planDevices: DevicePlanDevice[],
   state: PlanEngineState,
   getShedBehavior: (deviceId: string) => {
@@ -862,8 +924,9 @@ function getPendingRestoreDelaySeconds(
     temperature: number | null;
     stepId: string | null;
   },
-): number | null {
+): PendingRestoreDelay | null {
   let maxRemainingMs = 0;
+  let countdownStartedAtMs: number | null = null;
   const nowMs = Date.now();
   for (const dev of planDevices) {
     const behavior = getShedBehavior(dev.id);
@@ -878,10 +941,15 @@ function getPendingRestoreDelaySeconds(
     const remainingMs = RESTORE_CONFIRM_RETRY_MS - elapsedMs;
     if (remainingMs > maxRemainingMs) {
       maxRemainingMs = remainingMs;
+      countdownStartedAtMs = lastRestoreMs;
     }
   }
-  if (maxRemainingMs <= 0) return null;
-  return Math.ceil(maxRemainingMs / 1000);
+  if (maxRemainingMs <= 0 || countdownStartedAtMs === null) return null;
+  return {
+    remainingSec: Math.ceil(maxRemainingMs / 1000),
+    countdownStartedAtMs,
+    countdownTotalSec: Math.ceil(RESTORE_CONFIRM_RETRY_MS / 1000),
+  };
 }
 
 function normalizeDeviceReason(params: {
@@ -892,6 +960,8 @@ function normalizeDeviceReason(params: {
   inCooldown: boolean;
   activeOvershoot: boolean;
   shedCooldownRemainingSec: number | null;
+  shedCooldownStartedAtMs?: number | null;
+  shedCooldownTotalSec?: number | null;
 }): DevicePlanDevice {
   const {
     dev,
@@ -901,6 +971,8 @@ function normalizeDeviceReason(params: {
     inCooldown,
     activeOvershoot,
     shedCooldownRemainingSec,
+    shedCooldownStartedAtMs,
+    shedCooldownTotalSec,
   } = params;
 
   if (dev.plannedState !== 'shed') return dev;
@@ -921,6 +993,8 @@ function normalizeDeviceReason(params: {
     inCooldown,
     activeOvershoot,
     shedCooldownRemainingSec,
+    shedCooldownStartedAtMs,
+    shedCooldownTotalSec,
   });
   if (cooldownReason) return { ...dev, reason: renderPlanReasonDecision(cooldownReason) };
 

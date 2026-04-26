@@ -10,4 +10,4 @@ export {
   formatDeviceReason,
   buildComparablePlanReason,
 };
-export type { DeviceReason, PlanReasonCode } from './planReasonSemanticsCore.js';
+export type { CountdownReasonTiming, DeviceReason, PlanReasonCode } from './planReasonSemanticsCore.js';

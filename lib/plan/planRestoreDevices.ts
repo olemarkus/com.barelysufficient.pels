@@ -120,6 +120,10 @@ export function markOffDevicesStayOff(params: {
     inStartupStabilization: boolean;
     restoreCooldownSeconds: number;
     shedCooldownRemainingSec: number | null;
+    shedCooldownStartedAtMs?: number | null;
+    shedCooldownTotalSec?: number | null;
+    restoreCooldownStartedAtMs?: number | null;
+    restoreCooldownTotalSec?: number | null;
     startupStabilizationRemainingSec: number | null;
   };
   setDevice: (id: string, updates: Partial<DevicePlanDevice>) => void;
@@ -177,6 +181,10 @@ function resolveOffDeviceReason(
     inStartupStabilization: boolean;
     restoreCooldownSeconds: number;
     shedCooldownRemainingSec: number | null;
+    shedCooldownStartedAtMs?: number | null;
+    shedCooldownTotalSec?: number | null;
+    restoreCooldownStartedAtMs?: number | null;
+    restoreCooldownTotalSec?: number | null;
     startupStabilizationRemainingSec: number | null;
   },
   defaultReason: DeviceReason,
@@ -188,7 +196,25 @@ function resolveOffDeviceReason(
   if (timing.activeOvershoot) return defaultReason;
   if (timing.inCooldown) {
     const seconds = timing.shedCooldownRemainingSec ?? 0;
-    return { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: seconds };
+    return {
+      code: PLAN_REASON_CODES.cooldownShedding,
+      remainingSec: seconds,
+      ...(typeof timing.shedCooldownStartedAtMs === 'number'
+        ? { countdownStartedAtMs: timing.shedCooldownStartedAtMs }
+        : {}),
+      ...(typeof timing.shedCooldownTotalSec === 'number' && timing.shedCooldownTotalSec > 0
+        ? { countdownTotalSec: timing.shedCooldownTotalSec }
+        : {}),
+    };
   }
-  return { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: timing.restoreCooldownSeconds };
+  return {
+    code: PLAN_REASON_CODES.cooldownRestore,
+    remainingSec: timing.restoreCooldownSeconds,
+    ...(typeof timing.restoreCooldownStartedAtMs === 'number'
+      ? { countdownStartedAtMs: timing.restoreCooldownStartedAtMs }
+      : {}),
+    ...(typeof timing.restoreCooldownTotalSec === 'number' && timing.restoreCooldownTotalSec > 0
+      ? { countdownTotalSec: timing.restoreCooldownTotalSec }
+      : {}),
+  };
 }

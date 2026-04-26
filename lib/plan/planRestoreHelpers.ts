@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Restore helper decisions and their countdown metadata are kept together. */
 import type { DevicePlanDevice } from './planTypes';
 import type { RestoreTiming } from './planRestoreTiming';
 import type { SwapState } from './planSwapState';
@@ -19,7 +20,11 @@ import {
   resolveSteppedLoadRestoreDeltaKw,
 } from './planSteppedLoad';
 import { getSteppedLoadLowestActiveStep } from '../utils/deviceControlProfiles';
-import { getActivationPenaltyLevel, getActivationRestoreBlockRemainingMs } from './planActivationBackoff';
+import {
+  getActivationPenaltyLevel,
+  getActivationRestoreBlockCountdownTiming,
+  getActivationRestoreBlockRemainingMs,
+} from './planActivationBackoff';
 import { computeRestoreBufferKw } from './planRestoreAccounting';
 import { RESTORE_ADMISSION_FLOOR_KW } from './planConstants';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from './planDebugDedupe';
@@ -58,7 +63,11 @@ export function markSteppedDevicesStayAtCurrentLevel(params: {
   | 'restoreCooldownSeconds'
   | 'restoreCooldownMs'
   | 'shedCooldownRemainingSec'
+  | 'shedCooldownStartedAtMs'
+  | 'shedCooldownTotalSec'
   | 'restoreCooldownRemainingSec'
+  | 'restoreCooldownStartedAtMs'
+  | 'restoreCooldownTotalSec'
   | 'startupStabilizationRemainingSec'>;
   currentOffPlannedState?: 'shed' | 'keep';
   getLastControlledMs?: (deviceId: string) => number | undefined;
@@ -187,7 +196,10 @@ export function blockRestoreForRecentActivationSetback(params: {
   } = params;
   const remainingMs = getActivationRestoreBlockRemainingMs({ state, deviceId });
   if (remainingMs === null) return false;
-  const reason = buildActivationBackoffReason(remainingMs);
+  const reason = buildActivationBackoffReason(
+    remainingMs,
+    getActivationRestoreBlockCountdownTiming({ state, deviceId }),
+  );
   if (stepped) {
     setRestorePlanDevice(deviceMap, deviceId, { reason });
   } else {

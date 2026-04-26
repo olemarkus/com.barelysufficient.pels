@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Activation backoff state transitions and countdown metadata share private helpers. */
 import type {
   ActivationAttemptState,
   ActivationAttemptSource,
@@ -555,4 +556,23 @@ export function getActivationRestoreBlockRemainingMs(params: {
   const nowTs = params.nowTs ?? Date.now();
   const remainingMs = getCooldownMsForPenaltyLevel(penaltyLevel) - elapsedMs(lastSetbackMs, nowTs);
   return remainingMs > 0 ? remainingMs : null;
+}
+
+export function getActivationRestoreBlockCountdownTiming(params: {
+  state: PlanEngineState;
+  deviceId: string;
+}): { countdownStartedAtMs: number; countdownTotalSec: number } | undefined {
+  const { state, deviceId } = params;
+  const penaltyLevel = getPenaltyLevel(state, deviceId);
+  if (penaltyLevel <= 0) return undefined;
+
+  const lastSetbackMs = getLastSetbackMs(state, deviceId);
+  if (lastSetbackMs === null) return undefined;
+
+  const cooldownMs = getCooldownMsForPenaltyLevel(penaltyLevel);
+  if (cooldownMs <= 0) return undefined;
+  return {
+    countdownStartedAtMs: lastSetbackMs,
+    countdownTotalSec: Math.ceil(cooldownMs / 1000),
+  };
 }

@@ -382,6 +382,7 @@ const getPelsCooldown = (
       remainingSec: Math.max(0, Math.ceil((shedExpiresAtMs - nowTs) / 1000)),
       expiresAtMs: shedExpiresAtMs,
       startMs: lastShedMs,
+      totalSec: Math.ceil(SHED_COOLDOWN_MS / 1000),
       dropFromKw: null,
       dropToKw: null,
     });
@@ -392,6 +393,7 @@ const getPelsCooldown = (
       remainingSec: Math.max(0, Math.ceil((restoreExpiresAtMs - nowTs) / 1000)),
       expiresAtMs: restoreExpiresAtMs,
       startMs: lastRestoreMs,
+      totalSec: Math.ceil(RESTORE_COOLDOWN_MS / 1000),
       dropFromKw: null,
       dropToKw: null,
     });

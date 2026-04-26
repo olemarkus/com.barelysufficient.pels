@@ -1,4 +1,5 @@
 import { normalizeUiTestPlanSnapshot } from './helpers/homeyApiMock.ts';
+import type { DeviceReason } from '../../shared-domain/src/planReasonSemantics.ts';
 
 const setupPlanDom = () => {
   document.body.innerHTML = `
@@ -321,6 +322,174 @@ describe('plan meta usage summary', () => {
 });
 
 describe('plan live timing', () => {
+  it('preserves display device identity when no timed reason changes', async () => {
+    const { resolveDisplayPlanDeviceSnapshot, resolveDisplayPlanDevices } = await import('../src/ui/planLiveData.ts');
+    const device: { reason: DeviceReason } = { reason: { code: 'keep', detail: null } };
+    const devices = [device];
+    const plan = { generatedAtMs: Date.parse('2026-04-18T12:00:00Z'), devices };
+
+    expect(resolveDisplayPlanDeviceSnapshot(plan, device, plan.generatedAtMs, plan.generatedAtMs)).toBe(device);
+    expect(resolveDisplayPlanDevices(plan, devices, plan.generatedAtMs, plan.generatedAtMs)).toBe(devices);
+  });
+
+  it('keeps total countdown seconds separate from display remaining seconds', async () => {
+    const { resolveDisplayPlanDeviceSnapshot } = await import('../src/ui/planLiveData.ts');
+    const generatedAtMs = Date.parse('2026-04-18T12:00:00Z');
+    const countdownStartedAtMs = generatedAtMs;
+    const device: { reason: DeviceReason } = {
+      reason: {
+        code: 'cooldown_restore',
+        remainingSec: 60,
+        countdownStartedAtMs,
+        countdownTotalSec: 60,
+      },
+    };
+    const plan = { generatedAtMs, devices: [device] };
+
+    const displayDevice = resolveDisplayPlanDeviceSnapshot(plan, device, generatedAtMs, generatedAtMs + 15_000);
+
+    expect(displayDevice).not.toBe(device);
+    expect(displayDevice.reason).toEqual({
+      code: 'cooldown_restore',
+      remainingSec: 45,
+      countdownStartedAtMs,
+      countdownTotalSec: 60,
+    });
+    expect(displayDevice.displayCountdownTotalSec).toBe(60);
+    expect(device.reason).toEqual({
+      code: 'cooldown_restore',
+      remainingSec: 60,
+      countdownStartedAtMs,
+      countdownTotalSec: 60,
+    });
+  });
+
+  it('uses backend total countdown seconds across newer snapshots of the same countdown', async () => {
+    const { resolveDisplayPlanDeviceSnapshot } = await import('../src/ui/planLiveData.ts');
+    const firstGeneratedAtMs = Date.parse('2026-04-18T12:00:00Z');
+    const nextGeneratedAtMs = firstGeneratedAtMs + 15_000;
+    const countdownStartedAtMs = firstGeneratedAtMs;
+    const firstDevice: { id: string; reason: DeviceReason } = {
+      id: 'dev-same-countdown',
+      reason: {
+        code: 'cooldown_restore',
+        remainingSec: 60,
+        countdownStartedAtMs,
+        countdownTotalSec: 60,
+      },
+    };
+    const nextDevice: { id: string; reason: DeviceReason } = {
+      id: 'dev-same-countdown',
+      reason: {
+        code: 'cooldown_restore',
+        remainingSec: 45,
+        countdownStartedAtMs,
+        countdownTotalSec: 60,
+      },
+    };
+
+    const firstDisplayDevice = resolveDisplayPlanDeviceSnapshot(
+      { generatedAtMs: firstGeneratedAtMs, devices: [firstDevice] },
+      firstDevice,
+      firstGeneratedAtMs,
+      firstGeneratedAtMs,
+    );
+    const nextDisplayDevice = resolveDisplayPlanDeviceSnapshot(
+      { generatedAtMs: nextGeneratedAtMs, devices: [nextDevice] },
+      nextDevice,
+      nextGeneratedAtMs,
+      nextGeneratedAtMs,
+    );
+
+    expect(firstDisplayDevice.displayCountdownTotalSec).toBe(60);
+    expect(nextDisplayDevice.reason).toEqual({
+      code: 'cooldown_restore',
+      remainingSec: 45,
+      countdownStartedAtMs,
+      countdownTotalSec: 60,
+    });
+    expect(nextDisplayDevice.displayCountdownTotalSec).toBe(60);
+  });
+
+  it('does not infer total countdown seconds without backend timing', async () => {
+    const { resolveDisplayPlanDeviceSnapshot } = await import('../src/ui/planLiveData.ts');
+    const generatedAtMs = Date.parse('2026-04-18T12:00:00Z');
+    const device: { reason: DeviceReason } = {
+      reason: { code: 'cooldown_restore', remainingSec: 45 },
+    };
+    const plan = { generatedAtMs, devices: [device] };
+
+    const displayDevice = resolveDisplayPlanDeviceSnapshot(plan, device, generatedAtMs, generatedAtMs);
+
+    expect(displayDevice.reason).toEqual({ code: 'cooldown_restore', remainingSec: 45 });
+    expect(displayDevice.displayCountdownTotalSec).toBeUndefined();
+  });
+
+  it('clears total countdown seconds when a timed reason expires', async () => {
+    const { resolveDisplayPlanDeviceSnapshot } = await import('../src/ui/planLiveData.ts');
+    const generatedAtMs = Date.parse('2026-04-18T12:00:00Z');
+    const device: { reason: DeviceReason; displayCountdownTotalSec?: number } = {
+      reason: { code: 'cooldown_restore', remainingSec: 1 },
+      displayCountdownTotalSec: 1,
+    };
+    const plan = { generatedAtMs, devices: [device] };
+
+    const displayDevice = resolveDisplayPlanDeviceSnapshot(plan, device, generatedAtMs, generatedAtMs + 1_000);
+
+    expect(displayDevice.reason).toEqual({ code: 'keep', detail: null });
+    expect(displayDevice.displayCountdownTotalSec).toBeUndefined();
+  });
+
+  it('renders an already-expired restore cooldown as keep on initial render', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-18T12:00:02Z'));
+
+    await renderPlanSnapshot({
+      generatedAtMs: Date.parse('2026-04-18T12:00:00Z'),
+      devices: [
+        {
+          id: 'dev-expired-restore',
+          name: 'Expired restore device',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          reason: { code: 'cooldown_restore', remainingSec: 1 },
+        },
+      ],
+    });
+
+    expect(getStatusText()).toBe('keep');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('renders an already-expired headroom cooldown as keep on initial render', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-18T12:00:02Z'));
+
+    await renderPlanSnapshot({
+      generatedAtMs: Date.parse('2026-04-18T12:00:00Z'),
+      devices: [
+        {
+          id: 'dev-expired-headroom',
+          name: 'Expired headroom device',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          reason: {
+            code: 'headroom_cooldown',
+            kind: 'recent_pels_restore',
+            remainingSec: 1,
+            fromKw: null,
+            toKw: null,
+          },
+        },
+      ],
+    });
+
+    expect(getStatusText()).toBe('keep');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('updates timed status text live', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-18T12:00:00Z'));
@@ -345,6 +514,34 @@ describe('plan live timing', () => {
 
     await vi.advanceTimersByTimeAsync(2000);
     expect(getStatusText()).toBe('keep');
+  });
+
+  it('clears restore cooldown status when the live countdown expires', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-18T12:00:00Z'));
+
+    await renderPlanSnapshot({
+      generatedAtMs: Date.now(),
+      devices: [
+        {
+          id: 'dev-live-restore-cooldown',
+          name: 'Live restore cooldown device',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          reason: { code: 'cooldown_restore', remainingSec: 2 },
+        },
+      ],
+    });
+
+    expect(getStatusText()).toBe('cooldown (restore, 2s remaining)');
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(getStatusText()).toBe('cooldown (restore, 1s remaining)');
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(getStatusText()).toBe('keep');
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('stops the live ticker after the last countdown reaches zero', async () => {
@@ -419,6 +616,27 @@ describe('plan live timing', () => {
 
     await vi.advanceTimersByTimeAsync(1000);
     expect(getStatusText()).toBe('waiting for meter to settle (2s remaining)');
+  });
+
+  it('does not increase countdowns when generatedAtMs is ahead of render time', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-18T12:00:00Z'));
+
+    await renderPlanSnapshot({
+      generatedAtMs: Date.parse('2026-04-18T12:00:02Z'),
+      devices: [
+        {
+          id: 'dev-future-generated-at',
+          name: 'Future generated-at device',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          reason: 'meter settling (3s remaining)',
+        },
+      ],
+    });
+
+    expect(getStatusText()).toBe('waiting for meter to settle (3s remaining)');
   });
 
   it('does not restart countdowns when the same stale snapshot is rendered again', async () => {

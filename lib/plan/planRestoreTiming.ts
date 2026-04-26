@@ -15,7 +15,11 @@ export type RestoreTiming = {
   activeOvershoot: boolean;
   restoreCooldownSeconds: number;
   shedCooldownRemainingSec: number | null;
+  shedCooldownStartedAtMs: number | null;
+  shedCooldownTotalSec: number | null;
   restoreCooldownRemainingSec: number | null;
+  restoreCooldownStartedAtMs: number | null;
+  restoreCooldownTotalSec: number | null;
   startupStabilizationRemainingSec: number | null;
   inShedWindow: boolean;
   measurementTs: number | null;
@@ -29,6 +33,7 @@ type RestoreCooldownState = {
   lastRestoreCooldownBumpMs: number | null;
 };
 
+/* eslint-disable complexity -- restore timing combines independent cooldown windows. */
 export const buildRestoreTiming = (
   state: PlanEngineState,
   headroomRaw: number,
@@ -56,12 +61,18 @@ export const buildRestoreTiming = (
     ? Math.max(0, Math.ceil((cooldownState.restoreCooldownMs - sinceRestore) / 1000))
     : Math.ceil(cooldownState.restoreCooldownMs / 1000);
   const shedCooldownRemainingSec = cooldownRemainingMs !== null ? Math.ceil(cooldownRemainingMs / 1000) : null;
+  const shedCooldownStartedAtMs = cooldown.cooldownStartedAtMs;
+  const shedCooldownTotalSec = cooldown.cooldownTotalMs !== null
+    ? Math.ceil(cooldown.cooldownTotalMs / 1000)
+    : null;
   const restoreCooldownRemainingMs = sinceRestore !== null
     ? Math.max(0, cooldownState.restoreCooldownMs - sinceRestore)
     : null;
   const restoreCooldownRemainingSec = restoreCooldownRemainingMs !== null
     ? Math.ceil(restoreCooldownRemainingMs / 1000)
     : null;
+  const restoreCooldownStartedAtMs = typeof state.lastRestoreMs === 'number' ? state.lastRestoreMs : null;
+  const restoreCooldownTotalSec = Math.ceil(cooldownState.restoreCooldownMs / 1000);
   const startupStabilizationRemainingSec = startupBlockRemainingMs !== null
     ? Math.ceil(startupBlockRemainingMs / 1000)
     : null;
@@ -74,7 +85,11 @@ export const buildRestoreTiming = (
     activeOvershoot,
     restoreCooldownSeconds,
     shedCooldownRemainingSec,
+    shedCooldownStartedAtMs,
+    shedCooldownTotalSec,
     restoreCooldownRemainingSec,
+    restoreCooldownStartedAtMs,
+    restoreCooldownTotalSec,
     startupStabilizationRemainingSec,
     inShedWindow,
     measurementTs,
@@ -82,6 +97,7 @@ export const buildRestoreTiming = (
     ...cooldownState,
   };
 };
+/* eslint-enable complexity */
 
 export const shouldPlanRestores = (
   _headroomRaw: number,
@@ -164,16 +180,41 @@ export function getShedCooldownState(params: {
   lastRecoveryMs?: number | null;
   nowTs?: number;
   cooldownMs?: number;
-}): { cooldownRemainingMs: number | null; inCooldown: boolean } {
+}): {
+  cooldownRemainingMs: number | null;
+  cooldownStartedAtMs: number | null;
+  cooldownTotalMs: number | null;
+  inCooldown: boolean;
+} {
   const nowTs = params.nowTs ?? Date.now();
   const cooldownMs = params.cooldownMs ?? SHED_COOLDOWN_MS;
-  const sinceInstability = typeof params.lastInstabilityMs === 'number' ? nowTs - params.lastInstabilityMs : null;
-  const sinceRecovery = typeof params.lastRecoveryMs === 'number' ? nowTs - params.lastRecoveryMs : null;
-  const parts = [sinceInstability, sinceRecovery].filter((v) => v !== null) as number[];
-  if (parts.length === 0) return { cooldownRemainingMs: null, inCooldown: false };
-  const min = Math.min(...parts);
-  const cooldownRemainingMs = Math.max(0, cooldownMs - min);
-  return { cooldownRemainingMs, inCooldown: cooldownRemainingMs > 0 };
+  const candidates = [
+    typeof params.lastInstabilityMs === 'number'
+      ? { startedAtMs: params.lastInstabilityMs, elapsedMs: nowTs - params.lastInstabilityMs }
+      : null,
+    typeof params.lastRecoveryMs === 'number'
+      ? { startedAtMs: params.lastRecoveryMs, elapsedMs: nowTs - params.lastRecoveryMs }
+      : null,
+  ].filter((value) => value !== null);
+  if (candidates.length === 0) {
+    return {
+      cooldownRemainingMs: null,
+      cooldownStartedAtMs: null,
+      cooldownTotalMs: null,
+      inCooldown: false,
+    };
+  }
+  let activeCandidate = candidates[0];
+  for (const candidate of candidates.slice(1)) {
+    if (candidate.elapsedMs < activeCandidate.elapsedMs) activeCandidate = candidate;
+  }
+  const cooldownRemainingMs = Math.max(0, cooldownMs - activeCandidate.elapsedMs);
+  return {
+    cooldownRemainingMs,
+    cooldownStartedAtMs: activeCandidate.startedAtMs,
+    cooldownTotalMs: cooldownMs,
+    inCooldown: cooldownRemainingMs > 0,
+  };
 }
 
 import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -188,7 +229,11 @@ export type CapacityRestoreGateTiming = {
   restoreCooldownSeconds: number;
   restoreCooldownMs: number;
   shedCooldownRemainingSec: number | null;
+  shedCooldownStartedAtMs?: number | null;
+  shedCooldownTotalSec?: number | null;
   restoreCooldownRemainingSec: number | null;
+  restoreCooldownStartedAtMs?: number | null;
+  restoreCooldownTotalSec?: number | null;
   startupStabilizationRemainingSec: number | null;
 };
 
@@ -201,7 +246,23 @@ export type CapacityRestoreBlockReasonTiming = Pick<
   | 'restoreCooldownSeconds'
   | 'shedCooldownRemainingSec'
   | 'restoreCooldownRemainingSec'
->;
+> & Partial<Pick<
+  CapacityRestoreGateTiming,
+  | 'nowTs'
+  | 'restoreCooldownMs'
+  | 'shedCooldownStartedAtMs'
+  | 'shedCooldownTotalSec'
+  | 'restoreCooldownStartedAtMs'
+  | 'restoreCooldownTotalSec'
+>>;
+
+const buildCountdownTiming = (
+  startedAtMs: number | null | undefined,
+  totalSec: number | null | undefined,
+) => ({
+  ...(typeof startedAtMs === 'number' ? { countdownStartedAtMs: startedAtMs } : {}),
+  ...(typeof totalSec === 'number' && totalSec > 0 ? { countdownTotalSec: totalSec } : {}),
+});
 
 type MeterSettlingTiming = Pick<
   CapacityRestoreGateTiming,
@@ -232,7 +293,11 @@ export function resolveCapacityRestoreBlockReason(params: {
   if (restoredOneThisCycle) {
     return useThrottleLabel
       ? { code: PLAN_REASON_CODES.restoreThrottled }
-      : { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: timing.restoreCooldownSeconds };
+      : {
+        code: PLAN_REASON_CODES.cooldownRestore,
+        remainingSec: timing.restoreCooldownSeconds,
+        ...buildCountdownTiming(timing.nowTs, timing.restoreCooldownSeconds),
+      };
   }
   if (waitingForOtherRecovery) {
     return { code: PLAN_REASON_CODES.waitingForOtherDevices };
@@ -251,10 +316,18 @@ function resolveStartupStabilizationReason(
 function resolveCapacityRestoreCooldownReason(timing: CapacityRestoreBlockReasonTiming): DeviceReason | null {
   if (timing.activeOvershoot) return null;
   if (timing.inCooldown) {
-    return { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: timing.shedCooldownRemainingSec ?? 0 };
+    return {
+      code: PLAN_REASON_CODES.cooldownShedding,
+      remainingSec: timing.shedCooldownRemainingSec ?? 0,
+      ...buildCountdownTiming(timing.shedCooldownStartedAtMs, timing.shedCooldownTotalSec),
+    };
   }
   if (timing.inRestoreCooldown) {
-    return { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: timing.restoreCooldownRemainingSec ?? 0 };
+    return {
+      code: PLAN_REASON_CODES.cooldownRestore,
+      remainingSec: timing.restoreCooldownRemainingSec ?? 0,
+      ...buildCountdownTiming(timing.restoreCooldownStartedAtMs, timing.restoreCooldownTotalSec),
+    };
   }
   return null;
 }
@@ -272,4 +345,20 @@ export function resolveMeterSettlingRemainingSec(params: {
   const remainingMs = (referenceRestoreTs + RESTORE_COOLDOWN_MS) - timing.nowTs;
   if (remainingMs <= 0) return null;
   return Math.ceil(remainingMs / 1000);
+}
+
+export function resolveMeterSettlingCountdownTiming(params: {
+  timing: MeterSettlingTiming;
+  lastRestoreTs?: number | null;
+  restoredOneThisCycle?: boolean;
+}): { countdownStartedAtMs: number; countdownTotalSec: number } | undefined {
+  const { timing, lastRestoreTs = null, restoredOneThisCycle = false } = params;
+  if (timing.activeOvershoot) return undefined;
+  const referenceRestoreTs = restoredOneThisCycle ? timing.nowTs : lastRestoreTs;
+  if (typeof referenceRestoreTs !== 'number') return undefined;
+  if (timing.measurementTs !== null && timing.measurementTs > referenceRestoreTs) return undefined;
+  return {
+    countdownStartedAtMs: referenceRestoreTs,
+    countdownTotalSec: Math.ceil(RESTORE_COOLDOWN_MS / 1000),
+  };
 }
