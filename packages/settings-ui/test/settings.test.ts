@@ -166,6 +166,9 @@ const buildDom = () => {
     </section>
     <section class="panel hidden" data-panel="advanced">
       <div id="debug-logging-checkboxes"></div>
+      <label id="advanced-overview-redesign-row" hidden>
+        <input id="advanced-overview-redesign-enabled" type="checkbox">
+      </label>
       <form id="daily-budget-advanced-form">
         <input id="daily-budget-controlled-weight" type="number">
         <input id="daily-budget-price-flex-share" type="number">
@@ -222,6 +225,8 @@ const loadSettingsScript = async () => {
   });
 };
 
+const OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY = 'pels.settingsUi.overviewRedesignEnabled';
+
 const buildSettingsHomeyState = (settings: Record<string, unknown> = {}) => ({
   target_devices_snapshot: [
     {
@@ -243,10 +248,18 @@ const installSettingsHomeyMock = (settings: Record<string, unknown> = {}) => ins
   settings: buildSettingsHomeyState(settings),
 });
 
+const installSettingsHomeyMockWithOverviewToggle = (settings: Record<string, unknown> = {}) => installHomeyMock({
+  settings: buildSettingsHomeyState(settings),
+  uiState: {
+    featureAccess: { canToggleOverviewRedesign: true },
+  },
+});
+
 describe('settings script', () => {
   beforeEach(() => {
     vi.resetModules();
     buildDom();
+    window.localStorage.clear();
     installSettingsHomeyMock();
   });
 
@@ -268,6 +281,79 @@ describe('settings script', () => {
 
     expect(renderedTopics).toEqual(DEBUG_LOGGING_TOPICS.map((topic) => topic.id));
     expect(document.getElementById('debug-topic-overview')).toBeTruthy();
+  });
+
+  it('keeps the overview redesign toggle hidden when feature access is disallowed', async () => {
+    window.localStorage.setItem(OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY, 'true');
+
+    await loadSettingsScript();
+
+    expect(document.querySelector('#advanced-overview-redesign-row')?.hasAttribute('hidden')).toBe(true);
+    expect((document.querySelector('#advanced-overview-redesign-enabled') as HTMLInputElement | null)?.checked).toBe(
+      true,
+    );
+    expect(document.body.dataset.uiVariant).toBe('legacy');
+  });
+
+  it('shows the overview redesign toggle when feature access is allowed', async () => {
+    installSettingsHomeyMockWithOverviewToggle();
+
+    await loadSettingsScript();
+
+    expect(document.querySelector('#advanced-overview-redesign-row')?.hasAttribute('hidden')).toBe(false);
+    expect(document.body.dataset.uiVariant).toBe('legacy');
+  });
+
+  it('applies a persisted true overview redesign preference when feature access is allowed', async () => {
+    window.localStorage.setItem(OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY, 'true');
+    installSettingsHomeyMockWithOverviewToggle();
+
+    await loadSettingsScript();
+
+    expect((document.querySelector('#advanced-overview-redesign-enabled') as HTMLInputElement | null)?.checked).toBe(
+      true,
+    );
+    expect(document.body.dataset.uiVariant).toBe('redesign');
+  });
+
+  it('applies a persisted false overview redesign preference when feature access is allowed', async () => {
+    window.localStorage.setItem(OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY, 'false');
+    installSettingsHomeyMockWithOverviewToggle();
+
+    await loadSettingsScript();
+
+    expect((document.querySelector('#advanced-overview-redesign-enabled') as HTMLInputElement | null)?.checked).toBe(
+      false,
+    );
+    expect(document.body.dataset.uiVariant).toBe('legacy');
+  });
+
+  it('persists overview redesign toggle changes to browser storage only', async () => {
+    const homey = installSettingsHomeyMockWithOverviewToggle();
+
+    await loadSettingsScript();
+
+    const toggle = document.querySelector('#advanced-overview-redesign-enabled') as HTMLInputElement;
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event('change'));
+    await flushPromises();
+
+    expect(window.localStorage.getItem(OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY)).toBe('true');
+    expect(homey.set).not.toHaveBeenCalledWith('overview_redesign_enabled', expect.anything(), expect.any(Function));
+    expect(document.body.dataset.uiVariant).toBe('redesign');
+  });
+
+  it('ignores overview redesign toggle changes when feature access is disallowed', async () => {
+    await loadSettingsScript();
+
+    const toggle = document.querySelector('#advanced-overview-redesign-enabled') as HTMLInputElement;
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event('change'));
+    await flushPromises();
+
+    expect(window.localStorage.getItem(OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY)).toBeNull();
+    expect(toggle.checked).toBe(false);
+    expect(document.body.dataset.uiVariant).toBe('legacy');
   });
 
   it('shows only the minimum temperature setting for temperature-target shed mode', async () => {

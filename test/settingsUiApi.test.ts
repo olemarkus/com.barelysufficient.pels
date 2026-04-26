@@ -18,7 +18,9 @@ import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys
 import { buildComparablePlanReason } from '../packages/shared-domain/src/planReasonSemantics';
 
 describe('settingsUiApi', () => {
-  const createHomey = (options: { latestPlanSnapshot?: Record<string, unknown> | null } = {}) => {
+  const createHomey = (
+    options: { cloudHomeyId?: string; latestPlanSnapshot?: Record<string, unknown> | null } = {},
+  ) => {
     const store = new Map<string, unknown>([
       ['target_devices_snapshot', [{ id: 'dev-1', name: 'Heater' }]],
       ['device_plan_snapshot', {
@@ -157,6 +159,9 @@ describe('settingsUiApi', () => {
       settings: {
         get: (key: string) => store.get(key),
       },
+      cloud: {
+        getHomeyId: vi.fn().mockResolvedValue(options.cloudHomeyId ?? 'unlisted-homey-id'),
+      },
       app,
       log,
       error,
@@ -174,16 +179,17 @@ describe('settingsUiApi', () => {
     };
   };
 
-  it('builds bootstrap payload from current settings and daily budget data', () => {
+  it('builds bootstrap payload from current settings and daily budget data', async () => {
     const homey = createHomey();
 
-    const result = buildSettingsUiBootstrap({ homey: homey as never });
+    const result = await buildSettingsUiBootstrap({ homey: homey as never });
 
     expect(Object.keys(result.settings)).toEqual([...SETTINGS_UI_BOOTSTRAP_KEYS]);
     expect(result.settings.target_devices_snapshot).toBeUndefined();
     expect(result.settings.combined_prices).toBeUndefined();
     expect(result.dailyBudget).toEqual({ days: {}, todayKey: '2026-03-03' });
     expect((result as unknown as Record<string, unknown>).devices).toBeUndefined();
+    expect(result.featureAccess).toEqual({ canToggleOverviewRedesign: false });
     expect(result.plan).toEqual({
       devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
     });
@@ -194,6 +200,31 @@ describe('settingsUiApi', () => {
     });
     expect(result.prices.combinedPrices).toEqual({ prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] });
     expect(result.prices.homeyCurrency).toBe('NOK');
+  });
+
+  it('allows overview redesign toggles for allowlisted Homey IDs', async () => {
+    const homey = createHomey({ cloudHomeyId: 'mock-homey-id' });
+
+    const result = await buildSettingsUiBootstrap({ homey: homey as never });
+
+    expect(result.featureAccess).toEqual({ canToggleOverviewRedesign: true });
+  });
+
+  it('denies overview redesign access when Homey ID lookup does not return promptly', async () => {
+    vi.useFakeTimers();
+    try {
+      const homey = createHomey();
+      homey.cloud.getHomeyId.mockReturnValue(new Promise(() => {}));
+
+      const resultPromise = buildSettingsUiBootstrap({ homey: homey as never });
+      await vi.advanceTimersByTimeAsync(500);
+
+      await expect(resultPromise).resolves.toMatchObject({
+        featureAccess: { canToggleOverviewRedesign: false },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('returns refreshed devices from the app wrapper', async () => {
@@ -345,7 +376,7 @@ describe('settingsUiApi', () => {
     expect(homey.error).toHaveBeenCalledWith('Device diagnostics API failed', expect.any(Error));
   });
 
-  it('prefers the live in-memory plan snapshot over the persisted settings snapshot', () => {
+  it('prefers the live in-memory plan snapshot over the persisted settings snapshot', async () => {
     const homey = createHomey({
       latestPlanSnapshot: {
         generatedAtMs: 123456789,
@@ -353,9 +384,11 @@ describe('settingsUiApi', () => {
       },
     });
 
-    expect(buildSettingsUiBootstrap({ homey: homey as never }).plan).toEqual({
-      generatedAtMs: 123456789,
-      devices: [{ id: 'dev-2', name: 'Pump', priority: 2, reason: buildComparablePlanReason('keep') }],
+    await expect(buildSettingsUiBootstrap({ homey: homey as never })).resolves.toMatchObject({
+      plan: {
+        generatedAtMs: 123456789,
+        devices: [{ id: 'dev-2', name: 'Pump', priority: 2, reason: buildComparablePlanReason('keep') }],
+      },
     });
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
       plan: {
@@ -365,7 +398,7 @@ describe('settingsUiApi', () => {
     });
   });
 
-  it('falls back to the persisted plan snapshot when the in-memory app snapshot is invalid', () => {
+  it('falls back to the persisted plan snapshot when the in-memory app snapshot is invalid', async () => {
     const homey = createHomey({
       latestPlanSnapshot: {
         generatedAtMs: 123456789,
@@ -373,8 +406,10 @@ describe('settingsUiApi', () => {
       },
     });
 
-    expect(buildSettingsUiBootstrap({ homey: homey as never }).plan).toEqual({
-      devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
+    await expect(buildSettingsUiBootstrap({ homey: homey as never })).resolves.toMatchObject({
+      plan: {
+        devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
+      },
     });
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
       plan: {
@@ -386,7 +421,7 @@ describe('settingsUiApi', () => {
     );
   });
 
-  it('drops invalid persisted plan snapshots instead of normalizing missing reasons', () => {
+  it('drops invalid persisted plan snapshots instead of normalizing missing reasons', async () => {
     const homey = createHomey();
     const settingsGet = homey.settings.get;
     homey.settings.get = ((key: string) => {
@@ -395,7 +430,7 @@ describe('settingsUiApi', () => {
     }) as typeof homey.settings.get;
 
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({ plan: null });
-    expect(buildSettingsUiBootstrap({ homey: homey as never }).plan).toBeNull();
+    await expect(buildSettingsUiBootstrap({ homey: homey as never })).resolves.toMatchObject({ plan: null });
     expect(homey.error).toHaveBeenCalledWith(
       'Ignoring invalid persisted settings UI plan snapshot: finalized devices must include structured reason',
     );

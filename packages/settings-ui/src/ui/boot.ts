@@ -12,6 +12,8 @@ import {
   priceMinDiffInput,
   priceRefreshButton,
   priceOptimizationEnabledCheckbox,
+  advancedOverviewRedesignEnabledInput,
+  advancedOverviewRedesignRow,
   advancedEvSupportEnabledInput,
   gridTariffSettingsForm,
   gridTariffCountySelect,
@@ -105,6 +107,14 @@ import {
   startStaleDataRefreshInterval,
 } from './realtime.ts';
 import { refreshPlan } from './plan.ts';
+import {
+  applySettingsUiVariant,
+  applyStoredOverviewRedesignPreference,
+  getStoredOverviewRedesignPreference,
+  setStoredOverviewRedesignPreference,
+} from './uiVariant.ts';
+
+let canToggleOverviewRedesign = false;
 
 const initTabHandlers = () => {
   tabs.forEach((tab) => {
@@ -270,6 +280,30 @@ const initAdvancedHandlers = () => {
     }
   });
 
+  advancedOverviewRedesignEnabledInput?.addEventListener('change', async () => {
+    try {
+      if (!canToggleOverviewRedesign) {
+        advancedOverviewRedesignEnabledInput.checked = getStoredOverviewRedesignPreference();
+        applyStoredOverviewRedesignPreference(false);
+        return;
+      }
+      const enabled = advancedOverviewRedesignEnabledInput.checked;
+      setStoredOverviewRedesignPreference(enabled);
+      applySettingsUiVariant(enabled ? 'redesign' : 'legacy');
+      await showToast(
+        enabled ? 'Overview redesign enabled.' : 'Overview redesign disabled.',
+        'ok',
+      );
+    } catch (error) {
+      await logSettingsError(
+        'Failed to update Overview redesign preference',
+        error,
+        'advancedOverviewRedesignEnabledInput',
+      );
+      await showToastError(error, 'Failed to update Overview redesign preference.');
+    }
+  });
+
   initAdvancedDeviceCleanupHandlers();
   initAdvancedDeviceLoggerHandlers();
   initDailyBudgetTuningHandlers();
@@ -291,6 +325,17 @@ const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
   } catch {
     return null;
   }
+};
+
+const applyOverviewRedesignBootstrap = (bootstrap: SettingsUiBootstrap | null) => {
+  canToggleOverviewRedesign = bootstrap?.featureAccess?.canToggleOverviewRedesign === true;
+  if (advancedOverviewRedesignRow) {
+    advancedOverviewRedesignRow.hidden = !canToggleOverviewRedesign;
+  }
+  if (advancedOverviewRedesignEnabledInput) {
+    advancedOverviewRedesignEnabledInput.checked = getStoredOverviewRedesignPreference();
+  }
+  applyStoredOverviewRedesignPreference(canToggleOverviewRedesign);
 };
 
 const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
@@ -335,7 +380,8 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   }
 };
 
-const initializeBootHandlers = () => {
+const initializeBootHandlers = (bootstrap: SettingsUiBootstrap | null) => {
+  applyOverviewRedesignBootstrap(bootstrap);
   initTooltips();
   initDebouncedSaveFlush();
   initRealtimeListeners();
@@ -396,7 +442,7 @@ export const boot = async () => {
     }
     const bootstrap = await loadBootstrapData();
     markSettingsUi('boot:bootstrap-loaded');
-    initializeBootHandlers();
+    initializeBootHandlers(bootstrap);
     await loadInitialData(bootstrap);
     startStaleDataRefreshInterval();
     markBootComplete();

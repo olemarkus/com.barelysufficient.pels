@@ -545,6 +545,7 @@
     'GET /ui_bootstrap': () => ({
       settings: buildBootstrapSettings(),
       dailyBudget: resolveDailyBudgetPayload(),
+      featureAccess: { canToggleOverviewRedesign: false },
       devices: settings.target_devices_snapshot,
       plan: settings.device_plan_snapshot,
       power: buildPowerPayload(),

@@ -70,6 +70,7 @@ export type HomeyApiMethod = 'DELETE' | 'GET' | 'POST' | 'PUT';
 export type MockHomeyUiState = {
   dailyBudget?: unknown;
   deviceDiagnostics?: unknown;
+  featureAccess?: unknown;
   homeyDevices?: unknown;
   plan?: unknown;
   power?: unknown;
@@ -212,7 +213,7 @@ const buildUiBootstrap = async (homey: MockHomeyClient) => ({
     BOOTSTRAP_SETTING_KEYS.map(async (key) => [key, await getHomeySetting(homey, key)]),
   )),
   dailyBudget: getUiOverride(homey, 'dailyBudget') ?? null,
-  devices: await getHomeySetting(homey, 'target_devices_snapshot') || [],
+  featureAccess: getUiOverride(homey, 'featureAccess') ?? { canToggleOverviewRedesign: false },
   plan: await buildUiPlan(homey),
   power: await buildUiPower(homey),
   prices: await buildUiPrices(homey),

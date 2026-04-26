@@ -117,6 +117,12 @@ export const priceOptimizationSection = qs('#price-optimization-section');
 export const priceOptimizationEnabledCheckbox = document.querySelector(
   '#price-optimization-enabled',
 ) as HTMLInputElement;
+export const advancedOverviewRedesignRow = document.querySelector(
+  '#advanced-overview-redesign-row',
+) as HTMLElement | null;
+export const advancedOverviewRedesignEnabledInput = document.querySelector(
+  '#advanced-overview-redesign-enabled',
+) as HTMLInputElement | null;
 export const advancedEvSupportEnabledInput = document.querySelector('#advanced-ev-support-enabled') as HTMLInputElement;
 export const advancedDeviceSelect = document.querySelector('#advanced-device-select') as HTMLSelectElement;
 export const advancedDeviceClearButton = document.querySelector('#advanced-device-clear') as HTMLButtonElement;
