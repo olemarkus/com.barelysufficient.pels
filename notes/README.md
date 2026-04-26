@@ -17,3 +17,6 @@ Current notes:
 - `starvation/README.md`: intended temperature-device starvation model and the remaining rollout
   work; core diagnostics/service pieces now exist, but flows/insights are still the main gap.
 - `daily-budget-auto-adjust/README.md`: planned daily-budget auto-adjust policy based on eligible exempted energy from completed days.
+- `deferred-load-objectives/README.md`: planned deadline-aware objective model for loads that
+  need to reach a ready state, starting with Connected 300-style thermal storage and keeping room
+  for future EV charging support.
