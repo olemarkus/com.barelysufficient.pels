@@ -5,6 +5,7 @@ export const OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY = 'pels.settingsUi.overvie
 const OVERVIEW_REDESIGN_ENABLED_CLASS = 'overview-redesign-enabled';
 
 let currentSettingsUiVariant: SettingsUiVariant = 'legacy';
+let fallbackOverviewRedesignPreference: boolean | null = null;
 
 const getStorage = (): Storage | null => {
   try {
@@ -25,12 +26,27 @@ const syncSettingsUiVariant = () => {
 
 export const getCurrentSettingsUiVariant = (): SettingsUiVariant => currentSettingsUiVariant;
 
-export const getStoredOverviewRedesignPreference = (): boolean => (
-  getStorage()?.getItem(OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY) === 'true'
-);
+export const getStoredOverviewRedesignPreference = (): boolean => {
+  const storage = getStorage();
+  if (!storage) return fallbackOverviewRedesignPreference === true;
+  try {
+    const stored = storage.getItem(OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY);
+    if (stored === 'true') return true;
+    if (stored === 'false') return false;
+  } catch {
+    return fallbackOverviewRedesignPreference === true;
+  }
+  return fallbackOverviewRedesignPreference === true;
+};
 
 export const setStoredOverviewRedesignPreference = (enabled: boolean): void => {
-  getStorage()?.setItem(OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY, enabled ? 'true' : 'false');
+  fallbackOverviewRedesignPreference = enabled;
+  try {
+    getStorage()?.setItem(OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY, enabled ? 'true' : 'false');
+  } catch {
+    // Some hosted Homey contexts sandbox storage; the in-memory value keeps the
+    // toggle effective for the current settings session.
+  }
 };
 
 export const resolveSettingsUiVariant = (
