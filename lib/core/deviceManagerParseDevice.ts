@@ -45,6 +45,7 @@ import {
     resolveLastFreshDataMs,
     resolveParsedControlState,
 } from './deviceManagerParseSnapshot';
+import { resolveStateOfChargeSnapshot } from './deviceStateOfCharge';
 
 type ParsedDeviceSettings = Pick<
     TargetDeviceSnapshot,
@@ -155,11 +156,7 @@ export function parseDevice(params: {
         logDebug: (...args: unknown[]) => logger.debug(...args),
     });
     if (!capsStatus) return null;
-    const {
-        currentTemperature,
-        measuredPower,
-        powerEstimate,
-    } = resolveDevicePowerState({
+    const { currentTemperature, measuredPower, powerEstimate } = resolveDevicePowerState({
         device: effectiveDevice,
         deviceId,
         deviceLabel,
@@ -181,10 +178,7 @@ export function parseDevice(params: {
     const controlCapabilityId = getControlCapabilityId({ deviceClassKey, capabilities });
     const evCharging = getEvCharging(capabilityObj);
     const evChargingState = getEvChargingState(capabilityObj);
-    const {
-        currentOn,
-        canSetControl,
-    } = resolveParsedControlState({
+    const { currentOn, canSetControl } = resolveParsedControlState({
         logger,
         deviceLabel,
         controlCapabilityId,
@@ -227,6 +221,9 @@ export function parseDevice(params: {
         currentOn,
         evCharging,
         evChargingState,
+        stateOfCharge: resolveParsedSoc(
+            deviceClassKey, now, capabilityObj, flowBackedCapabilityIds, reportedCapabilities,
+        ),
         currentTemperature,
         capabilities,
         flowBackedCapabilityIds,
@@ -264,6 +261,22 @@ function resolveTargetDeviceType(targetCaps: readonly string[]): TargetDeviceSna
     return targetCaps.length > 0 ? 'temperature' : 'onoff';
 }
 
+function resolveParsedSoc(
+    deviceClassKey: string,
+    nowMs: number,
+    capabilityObj: DeviceCapabilityMap,
+    flowBackedCapabilityIds: readonly FlowReportedCapabilityId[],
+    reportedCapabilities: FlowReportedCapabilitiesForDevice,
+): TargetDeviceSnapshot['stateOfCharge'] {
+    return resolveStateOfChargeSnapshot({
+        deviceClassKey,
+        nowMs,
+        capabilityObj,
+        flowBackedCapabilityIds,
+        reportedCapabilities,
+    });
+}
+
 function buildParsedDeviceSnapshot(params: {
     device: HomeyDeviceLike;
     deviceId: string;
@@ -277,6 +290,7 @@ function buildParsedDeviceSnapshot(params: {
     currentOn: boolean;
     evCharging: TargetDeviceSnapshot['evCharging'];
     evChargingState: TargetDeviceSnapshot['evChargingState'];
+    stateOfCharge: TargetDeviceSnapshot['stateOfCharge'];
     currentTemperature: TargetDeviceSnapshot['currentTemperature'];
     capabilities: string[];
     flowBackedCapabilityIds: FlowReportedCapabilityId[];
@@ -303,6 +317,7 @@ function buildParsedDeviceSnapshot(params: {
         currentOn,
         evCharging,
         evChargingState,
+        stateOfCharge,
         currentTemperature,
         capabilities,
         flowBackedCapabilityIds,
@@ -333,6 +348,7 @@ function buildParsedDeviceSnapshot(params: {
         currentOn,
         evCharging,
         evChargingState,
+        stateOfCharge,
         currentTemperature,
         measuredPowerKw: powerEstimate.measuredPowerKw,
         zone: resolveZoneLabel(device),

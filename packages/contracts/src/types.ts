@@ -37,6 +37,16 @@ export type DeviceControlAdapterSnapshot = {
     activationEnabled: boolean;
 };
 
+export type DeviceStateOfChargeSnapshot = {
+    percent: number;
+    observedAtMs?: number;
+    status: 'unknown' | 'fresh' | 'stale' | 'invalid_session';
+    source: 'capability' | 'flow';
+    capabilityId?: string;
+    sessionStartedAtMs?: number;
+    invalidatedAtMs?: number;
+};
+
 export type TargetDeviceSnapshot = {
     id: string;
     name: string;
@@ -63,6 +73,7 @@ export type TargetDeviceSnapshot = {
     currentOn: boolean;
     evCharging?: boolean;
     evChargingState?: string;
+    stateOfCharge?: DeviceStateOfChargeSnapshot;
     currentTemperature?: number;
     measuredPowerKw?: number;
     reportedStepId?: string;

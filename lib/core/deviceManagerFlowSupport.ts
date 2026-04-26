@@ -28,14 +28,17 @@ export function shouldSkipFlowBackedCandidate(params: {
   } = params;
   if (flowAugmentedDeviceType === 'unsupported') return false;
 
-  const hasIncompleteFlowSupport = flowBackedCapabilityIds.length > 0
+  const effectiveFlowCapabilityIds = flowBackedCapabilityIds.filter(
+    (capabilityId) => capabilityId !== 'measure_battery',
+  );
+  const hasIncompleteFlowSupport = effectiveFlowCapabilityIds.length > 0
     && !hasAllRequiredFlowCapabilitiesInEffectiveView({
       capabilities,
       capabilityObj,
       requiredCapabilityIds: requiredFlowCapabilityIds,
       reportedCapabilities,
     });
-  const isMissingDirectPowerSupport = flowBackedCapabilityIds.length === 0 && powerCapable === false;
+  const isMissingDirectPowerSupport = effectiveFlowCapabilityIds.length === 0 && powerCapable === false;
   return hasIncompleteFlowSupport || isMissingDirectPowerSupport;
 }
 

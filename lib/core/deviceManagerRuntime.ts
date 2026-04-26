@@ -7,6 +7,7 @@ import {
   type RecentLocalCapabilityWrites,
 } from './deviceManagerRealtimeSupport';
 import { resolveEvCurrentOn } from './deviceManagerControl';
+import { EV_SOC_CAPABILITY_ID } from './deviceStateOfCharge';
 
 const REALTIME_CONTROL_CAPABILITY_IDS = ['onoff', 'evcharger_charging'] as const;
 
@@ -272,6 +273,9 @@ function getObservedCapabilityIds(
   if (previous.evChargingState !== next.evChargingState) {
     capabilityIds.add('evcharger_charging_state');
   }
+  if (hasStateOfChargeObservationChanged(previous, next)) {
+    capabilityIds.add(next.stateOfCharge.capabilityId ?? EV_SOC_CAPABILITY_ID);
+  }
 
   const previousTargetsById = new Map(previous.targets.map((target) => [target.id, target]));
   for (const nextTarget of next.targets) {
@@ -281,6 +285,18 @@ function getObservedCapabilityIds(
   }
 
   return [...capabilityIds];
+}
+
+function hasStateOfChargeObservationChanged(
+  previous: TargetDeviceSnapshot,
+  next: TargetDeviceSnapshot,
+): next is TargetDeviceSnapshot & { stateOfCharge: NonNullable<TargetDeviceSnapshot['stateOfCharge']> } {
+  const previousSoc = previous.stateOfCharge;
+  const nextSoc = next.stateOfCharge;
+  if (!nextSoc) return false;
+  return previousSoc?.capabilityId !== nextSoc.capabilityId
+    || previousSoc?.percent !== nextSoc.percent
+    || previousSoc?.observedAtMs !== nextSoc.observedAtMs;
 }
 
 export function isRealtimeControlCapability(
