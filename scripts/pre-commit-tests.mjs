@@ -4,17 +4,18 @@ import process from 'node:process';
 
 const files = process.argv.slice(2)
   .map((file) => path.relative(process.cwd(), path.resolve(file)).replaceAll(path.sep, '/'))
-  .filter((file) => file.endsWith('.ts'));
+  .filter((file) => file.endsWith('.ts') || file.endsWith('.mts'));
 
 const unique = (values) => [...new Set(values)];
 
 const matches = (file, prefixes) => prefixes.some((prefix) => file === prefix || file.startsWith(prefix));
 
 const runtimeTestWiringFiles = [
-  'vitest.config.ts',
-  'vitest.config.fast.ts',
-  'vitest.config.dom.ts',
-  'vitest.config.dom.fast.ts',
+  'vitest.config.mts',
+  'vitest.config.fast.mts',
+  'vitest.config.dom.mts',
+  'vitest.config.dom.fast.mts',
+  'vitest.config.perf.mts',
   'vitest-env.d.ts',
 ];
 
@@ -52,14 +53,14 @@ const run = (command, args, options = {}) => {
 };
 
 if (hasRuntimeTestWiringChange) {
-  run('npx', ['vitest', 'run', '--config', 'vitest.config.fast.ts']);
-  run('npx', ['vitest', 'run', '--config', 'vitest.config.dom.fast.ts']);
+  run('npx', ['vitest', 'run', '--config', 'vitest.config.fast.mts']);
+  run('npx', ['vitest', 'run', '--config', 'vitest.config.dom.fast.mts']);
 } else if (runtimeFiles.length > 0) {
   run('npx', [
     'vitest',
     'related',
     '--config',
-    'vitest.config.fast.ts',
+    'vitest.config.fast.mts',
     '--passWithNoTests',
     ...runtimeFiles,
   ]);
@@ -68,7 +69,7 @@ if (hasRuntimeTestWiringChange) {
     'vitest',
     'related',
     '--config',
-    'vitest.config.dom.fast.ts',
+    'vitest.config.dom.fast.mts',
     '--passWithNoTests',
     ...runtimeFiles,
   ]);
