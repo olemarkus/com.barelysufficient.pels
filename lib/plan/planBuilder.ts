@@ -46,6 +46,7 @@ type ShortfallMeta = Pick<
   | 'capacityShortfall'
   | 'shortfallBudgetThresholdKw'
   | 'shortfallBudgetHeadroomKw'
+  | 'hardCapLimitKw'
   | 'hardCapHeadroomKw'
 >;
 
@@ -745,6 +746,7 @@ function buildShortfallMeta(
     capacityShortfall: capacityGuard?.isInShortfall() ?? false,
     shortfallBudgetThresholdKw,
     shortfallBudgetHeadroomKw,
+    hardCapLimitKw,
     hardCapHeadroomKw,
   };
 }

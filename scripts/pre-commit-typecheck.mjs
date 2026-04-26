@@ -4,7 +4,7 @@ import process from 'node:process';
 
 const files = process.argv.slice(2)
   .map((file) => path.relative(process.cwd(), path.resolve(file)).replaceAll(path.sep, '/'))
-  .filter((file) => file.endsWith('.ts'));
+  .filter((file) => file.endsWith('.ts') || file.endsWith('.mts'));
 
 const matches = (prefixes) => files.some((file) => prefixes.some((prefix) => file === prefix || file.startsWith(prefix)));
 
@@ -19,10 +19,11 @@ if (matches([
   'test/',
   'packages/contracts/src/',
   'packages/shared-domain/src/',
-  'vitest.config.ts',
-  'vitest.config.fast.ts',
-  'vitest.config.dom.ts',
-  'vitest.config.dom.fast.ts',
+  'vitest.config.mts',
+  'vitest.config.fast.mts',
+  'vitest.config.dom.mts',
+  'vitest.config.dom.fast.mts',
+  'vitest.config.perf.mts',
   'vitest-env.d.ts',
 ])) {
   commands.push(['npx', ['tsc', '--noEmit']]);

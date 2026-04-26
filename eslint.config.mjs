@@ -112,6 +112,7 @@ export default tseslint.config(
       'echarts-modules.d.ts',
       'playwright.config.ts',
       'vitest.config*.ts',
+      'vitest.config*.mts',
       'vitest-env.d.ts',
       'tmp/**',
     ],

@@ -94,6 +94,7 @@ import {
     resolveNativeSteppedLoadReportedStepId,
 } from './nativeSteppedLoadWiring';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from './steppedLoadSyntheticCapabilities';
+import { isStateOfChargeCapabilityId } from './deviceStateOfCharge';
 
 const MIN_SIGNIFICANT_POWER_W = 5;
 const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
@@ -461,7 +462,8 @@ export class DeviceManager extends EventEmitter {
     private isFreshnessOnlyCapability(capabilityId: string): boolean {
         return capabilityId === 'measure_power'
             || capabilityId === 'measure_temperature'
-            || capabilityId === 'evcharger_charging_state';
+            || capabilityId === 'evcharger_charging_state'
+            || isStateOfChargeCapabilityId(capabilityId);
     }
 
     private hasMatchingRecentLocalWrite(deviceId: string, capabilityId: string, normalizedValue: unknown): boolean {

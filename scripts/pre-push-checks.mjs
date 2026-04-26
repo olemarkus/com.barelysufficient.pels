@@ -42,10 +42,11 @@ const RUNTIME_PATHS = [
   'packages/contracts/src/',
   'packages/shared-domain/src/',
   'widgets/',
-  'vitest.config.ts',
-  'vitest.config.fast.ts',
-  'vitest.config.dom.ts',
-  'vitest.config.dom.fast.ts',
+  'vitest.config.mts',
+  'vitest.config.fast.mts',
+  'vitest.config.dom.mts',
+  'vitest.config.dom.fast.mts',
+  'vitest.config.perf.mts',
   'vitest-env.d.ts',
 ];
 

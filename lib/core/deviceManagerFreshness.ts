@@ -1,5 +1,10 @@
 import type { TargetDeviceSnapshot } from '../utils/types';
 import { resolveEvCurrentOn } from './deviceManagerControl';
+import {
+  isStateOfChargeCapabilityId,
+  updateStateOfChargeFromRealtimeCapability,
+  updateStateOfChargeSessionBoundary,
+} from './deviceStateOfCharge';
 import { formatBinaryState } from './deviceManagerRealtimeSupport';
 import type { RealtimeDeviceReconcileChange } from './deviceManagerRuntime';
 
@@ -26,6 +31,19 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
     snapshot.currentTemperature = value;
     return { changed: true, normalizedValue: value };
   }
+  if (isStateOfChargeCapabilityId(capabilityId)) {
+    const observedAtMs = Date.now();
+    const changed = updateStateOfChargeFromRealtimeCapability({
+      snapshot,
+      capabilityId,
+      value,
+      observedAtMs,
+    });
+    return {
+      changed,
+      normalizedValue: snapshot.stateOfCharge?.percent,
+    };
+  }
   if (capabilityId === 'evcharger_charging_state' && typeof value === 'string') {
     if (Object.is(snapshot.evChargingState, value)) return { changed: false, normalizedValue: value };
     const previousCurrentOn = snapshot.currentOn;
@@ -35,6 +53,12 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
       evchargerCharging: snapshot.evCharging,
     });
     snapshot.currentOn = nextCurrentOn;
+    updateStateOfChargeSessionBoundary({
+      snapshot,
+      evChargingState: value,
+      observedAtMs: Date.now(),
+      nowMs: Date.now(),
+    });
     return {
       changed: true,
       normalizedValue: value,

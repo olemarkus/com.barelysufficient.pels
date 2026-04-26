@@ -2834,6 +2834,87 @@ describe('periodic snapshot refresh scheduling', () => {
     });
   });
 
+  it('requests snapshot refresh and plan rebuild when flow-backed control state changes', async () => {
+    const app = createApp();
+    const reportedAt = Date.parse('2026-03-20T09:05:00Z');
+    (app as any).flowReportedCapabilities = {};
+
+    const result = (app as any).reportFlowBackedCapability({
+      deviceId: 'dev-1',
+      capabilityId: 'onoff',
+      value: true,
+      reportedAt,
+    });
+
+    expect(result).toEqual({
+      kind: 'state_changed',
+      valueChanged: true,
+      freshnessAdvanced: true,
+      refreshSnapshot: true,
+      rebuildPlan: true,
+    });
+  });
+
+  it('requests snapshot refresh without plan rebuild when flow-backed EV state of charge changes', async () => {
+    const app = createApp();
+    const reportedAt = Date.parse('2026-03-20T09:05:00Z');
+    (app as any).flowReportedCapabilities = {
+      'ev-1': {
+        measure_battery: { value: 62, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
+      },
+    };
+
+    const result = (app as any).reportFlowBackedCapability({
+      deviceId: 'ev-1',
+      capabilityId: 'measure_battery',
+      value: 63,
+      reportedAt,
+    });
+
+    expect(result).toEqual({
+      kind: 'state_changed',
+      valueChanged: true,
+      freshnessAdvanced: true,
+      refreshSnapshot: true,
+      rebuildPlan: false,
+    });
+  });
+
+  it('persists same-value flow-backed EV state of charge freshness advances', async () => {
+    const app = createApp();
+    const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+    const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
+    const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
+    (app as any).flowReportedCapabilities = {
+      'ev-1': {
+        measure_battery: { value: 62, reportedAt: initialReportedAt, source: 'flow' },
+      },
+    };
+
+    const result = (app as any).reportFlowBackedCapability({
+      deviceId: 'ev-1',
+      capabilityId: 'measure_battery',
+      value: 62,
+      reportedAt: nextReportedAt,
+    });
+
+    expect(result).toEqual({
+      kind: 'freshness_only',
+      valueChanged: false,
+      freshnessAdvanced: true,
+      refreshSnapshot: false,
+      rebuildPlan: false,
+    });
+    expect(settingsSetSpy).toHaveBeenCalledWith(
+      'flow_reported_device_capabilities',
+      {
+        'ev-1': {
+          measure_battery: { value: 62, reportedAt: nextReportedAt, source: 'flow' },
+        },
+      },
+    );
+  });
+
   it('advances runtime freshness for same-value flow-backed reports without rewriting settings', async () => {
     const app = createApp();
     const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
