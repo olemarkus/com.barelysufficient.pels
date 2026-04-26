@@ -325,5 +325,8 @@
   },
   "2.3.0": {
     "en": "Add support for previewing/approving new budget."
+  },
+  "2.4.0": {
+    "en": "PELS can now natively use stepped load for Høiax Connected. Changes to budget settings are no longer directly applied. Instead you can preview and approve them to better understand what will change."
   }
 }
