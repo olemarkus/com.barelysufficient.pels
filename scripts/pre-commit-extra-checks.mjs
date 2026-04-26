@@ -25,7 +25,7 @@ const stagedFiles = getStagedFiles();
 const commands = [];
 
 if (hasStagedFile(stagedFiles, ['.husky/pre-commit', 'scripts/pre-commit-extra-checks.mjs', 'scripts/pre-push-checks.mjs'])) {
-  commands.push(['npx', ['vitest', 'run', '--config', 'vitest.config.fast.ts', 'test/prePushChecks.test.ts']]);
+  commands.push(['npx', ['vitest', 'run', '--config', 'vitest.config.fast.mts', 'test/prePushChecks.test.ts']]);
 }
 
 if (hasStagedFile(stagedFiles, ['.husky/pre-commit', 'scripts/pre-commit-extra-checks.mjs', 'scripts/pre-commit-typecheck.mjs'])) {

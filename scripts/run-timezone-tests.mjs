@@ -18,7 +18,7 @@ for (const timeZone of TIME_ZONES) {
     './node_modules/vitest/vitest.mjs',
     'run',
     '--config',
-    'vitest.config.fast.ts',
+    'vitest.config.fast.mts',
     '--reporter=verbose',
     ...TEST_FILES,
   ];
