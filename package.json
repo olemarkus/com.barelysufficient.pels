@@ -19,8 +19,8 @@
     "bench:settings-ui:boot": "node scripts/benchmark-settings-ui-boot.mjs",
     "watch:settings": "npm run build:settings && esbuild packages/settings-ui/src/script.ts --bundle --outfile=settings/script.js --format=iife --target=es2020 --watch",
     "measure:settings-ui:homey": "node scripts/measure-settings-ui-homey.mjs",
-    "start": "zsh -lc 'mkdir -p tmp; branch=$(git branch --show-current 2>/dev/null || true); branch=${branch:-${PWD:t}}; branch=$(printf \"%s\" \"$branch\" | tr -cs \"A-Za-z0-9._-\" \"-\"); { npm run build:settings && npm run build:widgets && homey app run --remote; } > >(tee \"tmp/start.${branch}.stdout.log\") 2> >(tee \"tmp/start.${branch}.stderr.log\" >&2)'",
-    "install-app": "zsh -lc 'mkdir -p tmp; branch=$(git branch --show-current 2>/dev/null || true); branch=${branch:-${PWD:t}}; branch=$(printf \"%s\" \"$branch\" | tr -cs \"A-Za-z0-9._-\" \"-\"); { npm run build:settings && npm run build:widgets && homey app install; } > >(tee \"tmp/install-app.${branch}.stdout.log\") 2> >(tee \"tmp/install-app.${branch}.stderr.log\" >&2)'",
+    "start": "zsh -lc 'log_dir=${PELS_LOG_DIR:-/tmp/pels}; mkdir -p \"$log_dir\"; branch=$(git branch --show-current 2>/dev/null || true); branch=${branch:-${PWD:t}}; branch=$(printf \"%s\" \"$branch\" | tr -cs \"A-Za-z0-9._-\" \"-\"); { npm run build:settings && npm run build:widgets && homey app run --remote; } > >(tee \"$log_dir/start.${branch}.stdout.log\") 2> >(tee \"$log_dir/start.${branch}.stderr.log\" >&2)'",
+    "install-app": "zsh -lc 'log_dir=${PELS_LOG_DIR:-/tmp/pels}; mkdir -p \"$log_dir\"; branch=$(git branch --show-current 2>/dev/null || true); branch=${branch:-${PWD:t}}; branch=$(printf \"%s\" \"$branch\" | tr -cs \"A-Za-z0-9._-\" \"-\"); { npm run build:settings && npm run build:widgets && homey app install; } > >(tee \"$log_dir/install-app.${branch}.stdout.log\") 2> >(tee \"$log_dir/install-app.${branch}.stderr.log\" >&2)'",
     "lint": "eslint . --max-warnings=0",
     "lint:runtime": "eslint \"app.ts\" \"api.ts\" \"flowCards/**/*.ts\" \"drivers/**/*.ts\" \"lib/**/*.ts\" --max-warnings=0",
     "lint:css": "stylelint \"packages/settings-ui/public/**/*.css\" \"widgets/**/*.css\" --max-warnings=0",
@@ -47,7 +47,7 @@
     "test:all": "npm run ci",
     "validate": "homey app validate && npm run package:check",
     "check": "npm run ci",
-    "start:local": "zsh -lc 'mkdir -p tmp; branch=$(git branch --show-current 2>/dev/null || true); branch=${branch:-${PWD:t}}; branch=$(printf \"%s\" \"$branch\" | tr -cs \"A-Za-z0-9._-\" \"-\"); { npm run build:settings && npm run build:widgets && homey app run; } > >(tee \"tmp/start-local.${branch}.stdout.log\") 2> >(tee \"tmp/start-local.${branch}.stderr.log\" >&2)'",
+    "start:local": "zsh -lc 'log_dir=${PELS_LOG_DIR:-/tmp/pels}; mkdir -p \"$log_dir\"; branch=$(git branch --show-current 2>/dev/null || true); branch=${branch:-${PWD:t}}; branch=$(printf \"%s\" \"$branch\" | tr -cs \"A-Za-z0-9._-\" \"-\"); { npm run build:settings && npm run build:widgets && homey app run; } > >(tee \"$log_dir/start-local.${branch}.stdout.log\") 2> >(tee \"$log_dir/start-local.${branch}.stderr.log\" >&2)'",
     "prepare": "husky"
   },
   "lint-staged": {

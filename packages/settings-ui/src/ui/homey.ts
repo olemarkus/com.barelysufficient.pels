@@ -38,6 +38,8 @@ declare const Homey: HomeySettingsClient | HomeySettingsConstructor;
 
 type WindowWithHomey = Window & {
   Homey?: HomeySettingsClient | HomeySettingsConstructor;
+  __PELS_HOMEY_READY__?: Promise<HomeySettingsClient | HomeySettingsConstructor>;
+  onHomeyReady?: (homey: HomeySettingsClient | HomeySettingsConstructor) => void;
 };
 
 let homeyClient: HomeySettingsClient | null = null;
@@ -234,6 +236,19 @@ const getHomeyClientFromGlobal = (candidate: unknown): HomeySettingsClient | nul
 };
 
 export const waitForHomey = async (attempts = 50, interval = 100) => {
+  let callbackCandidate: HomeySettingsClient | HomeySettingsConstructor | null = null;
+  if (typeof window !== 'undefined') {
+    const readyPromise = (window as WindowWithHomey).__PELS_HOMEY_READY__;
+    if (readyPromise && typeof readyPromise.then === 'function') {
+      readyPromise
+        .then((candidate) => {
+          callbackCandidate = candidate;
+        })
+        .catch(() => {});
+      await Promise.resolve();
+    }
+  }
+
   const resolveHomey = () => {
     if (typeof Homey !== 'undefined') {
       const globalHomey = getHomeyClientFromGlobal(Homey);
@@ -247,7 +262,7 @@ export const waitForHomey = async (attempts = 50, interval = 100) => {
   };
 
   for (let i = 0; i < attempts; i += 1) {
-    const candidate = resolveHomey();
+    const candidate = resolveHomey() ?? getHomeyClientFromGlobal(callbackCandidate);
     if (isHomeySettingsClient(candidate)) {
       setHomeyClient(candidate);
       return candidate;
