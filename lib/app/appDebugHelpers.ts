@@ -65,12 +65,18 @@ type PelsTargetSnapshotSummary = {
   name: string;
   deviceType?: string;
   controlCapabilityId?: string;
+  controlAdapter?: TargetDeviceSnapshot['controlAdapter'];
+  capabilities?: string[];
+  suggestedSteppedLoadProfile?: TargetDeviceSnapshot['suggestedSteppedLoadProfile'];
   currentOn: boolean;
   currentTemperature?: number;
   targets: Array<{ id: string; value?: unknown; unit: string }>;
   powerKw?: number;
   expectedPowerKw?: number;
   measuredPowerKw?: number;
+  reportedStepId?: string;
+  targetStepId?: string;
+  desiredStepId?: string;
   controllable?: boolean;
   managed?: boolean;
   available?: boolean;
@@ -416,12 +422,18 @@ const compactPelsTargetSnapshot = (
     name: snapshot.name,
     deviceType: snapshot.deviceType,
     controlCapabilityId: snapshot.controlCapabilityId,
+    controlAdapter: snapshot.controlAdapter,
+    capabilities: snapshot.capabilities,
+    suggestedSteppedLoadProfile: snapshot.suggestedSteppedLoadProfile,
     currentOn: snapshot.currentOn,
     currentTemperature: snapshot.currentTemperature,
     targets: snapshot.targets,
     powerKw: snapshot.powerKw,
     expectedPowerKw: snapshot.expectedPowerKw,
     measuredPowerKw: snapshot.measuredPowerKw,
+    reportedStepId: snapshot.reportedStepId,
+    targetStepId: snapshot.targetStepId,
+    desiredStepId: snapshot.desiredStepId,
     controllable: snapshot.controllable,
     managed: snapshot.managed,
     available: snapshot.available,
