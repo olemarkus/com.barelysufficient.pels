@@ -37,6 +37,12 @@ const NATIVE_VALUES_BY_RANK = {
   high: ['high_power', '3', 3],
 } as const;
 
+const NATIVE_WRITE_VALUE_BY_RANK = {
+  low: 1,
+  medium: 2,
+  high: 3,
+} as const;
+
 export const CONNECTED_300_STEPPED_LOAD_PROFILE: SteppedLoadProfile = {
   model: 'stepped_load',
   steps: [
@@ -214,5 +220,5 @@ function normalizeNativeStepRank(value: unknown): Exclude<NativeStepRank, 'off'>
 function resolveNativeValueForRank(
   rank: Exclude<NativeStepRank, 'off'>,
 ): unknown {
-  return NATIVE_VALUES_BY_RANK[rank][0];
+  return NATIVE_WRITE_VALUE_BY_RANK[rank];
 }
