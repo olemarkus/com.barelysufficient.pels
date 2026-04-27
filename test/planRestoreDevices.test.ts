@@ -140,14 +140,32 @@ describe('plan restore device helpers', () => {
         },
         selectedStepId: undefined,
       }),
+      makeDevice({
+        id: 'no-binary-step',
+        priority: 7,
+        currentState: 'on',
+        hasBinaryControl: false,
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1250 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'low',
+      }),
       makeDevice({ id: 'fresh-on', priority: 5, currentState: 'on' }),
       makeDevice({ id: 'stale-on', priority: 6, currentState: 'on', observationStale: true }),
     ];
 
     expect(getOffDevices(devices).map((device) => device.id)).toEqual(['fresh-off']);
     expect(getSteppedRestoreCandidates(devices).map((device) => device.id))
-      .toEqual(['unknown-step-off', 'fresh-step', 'high-step-off']);
+      .toEqual(['unknown-step-off', 'fresh-step', 'high-step-off', 'no-binary-step']);
     expect(getOnDevices(devices, () => ({ action: 'turn_off', temperature: null, stepId: null }))
+      .map((device) => device.id)).toEqual(['fresh-on', 'fresh-step', 'unknown-step-on']);
+    expect(getOnDevices(devices, () => ({ action: 'set_step', temperature: null, stepId: 'low' }))
       .map((device) => device.id)).toEqual(['fresh-on']);
   });
 
