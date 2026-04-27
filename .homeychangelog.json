@@ -328,5 +328,8 @@
   },
   "2.4.0": {
     "en": "PELS can now natively use stepped load for Høiax Connected. Changes to budget settings are no longer directly applied. Instead you can preview and approve them to better understand what will change."
+  },
+  "2.4.1": {
+    "en": "Fix various instability issues related to stepped load devices."
   }
 }
