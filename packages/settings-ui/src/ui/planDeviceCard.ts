@@ -289,6 +289,27 @@ const buildPowerRow = (dev: PlanDeviceSnapshot): HTMLElement | null => {
   return row;
 };
 
+const buildSteppedDirectionGlyph = (view: PlanSteppedBarView): HTMLSpanElement | null => {
+  if (view.direction === 'none' || !view.targetLabel) return null;
+  const glyph = document.createElement('span');
+  glyph.className = 'plan-card__stepped-direction';
+  glyph.dataset.direction = view.direction;
+  glyph.textContent = view.direction === 'up' ? '▲' : '▼';
+  const label = `Stepping ${view.direction} to ${view.targetLabel}`;
+  glyph.setAttribute('aria-label', label);
+  setTooltip(glyph, label);
+  return glyph;
+};
+
+const buildSteppedTrackWrap = (track: HTMLElement, view: PlanSteppedBarView): HTMLDivElement => {
+  const wrap = document.createElement('div');
+  wrap.className = 'plan-card__stepped-track-wrap';
+  wrap.appendChild(track);
+  const glyph = buildSteppedDirectionGlyph(view);
+  if (glyph) wrap.appendChild(glyph);
+  return wrap;
+};
+
 const buildSteppedRow = (view: PlanSteppedBarView): HTMLElement => {
   const row = document.createElement('div');
   row.className = 'plan-card__metric plan-card__metric--stepped';
@@ -309,7 +330,8 @@ const buildSteppedRow = (view: PlanSteppedBarView): HTMLElement => {
     track.appendChild(cell);
     void idx;
   });
-  row.appendChild(track);
+
+  row.appendChild(buildSteppedTrackWrap(track, view));
 
   const readout = document.createElement('div');
   readout.className = 'plan-card__metric-readout';
@@ -317,8 +339,7 @@ const buildSteppedRow = (view: PlanSteppedBarView): HTMLElement => {
   const label = document.createElement('span');
   label.className = 'plan-card__metric-label';
   if (view.targetLabel && view.direction !== 'none') {
-    const arrow = view.direction === 'up' ? '↑' : '↓';
-    label.textContent = `${view.activeLabel} ${arrow} ${view.targetLabel}`;
+    label.textContent = `${view.activeLabel} → ${view.targetLabel}`;
   } else {
     label.textContent = view.activeLabel;
   }

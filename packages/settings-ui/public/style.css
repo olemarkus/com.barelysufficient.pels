@@ -1393,10 +1393,45 @@ input:focus-visible {
   gap: 6px;
 }
 
+.plan-card__stepped-track-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
 .plan-card__stepped-track {
   display: flex;
+  flex: 1 1 auto;
   gap: 3px;
   height: 14px;
+}
+
+.plan-card__stepped-direction {
+  flex: 0 0 auto;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.plan-card__stepped-direction[data-direction="down"] {
+  color: var(--text-secondary);
+  animation-name: plan-stepped-direction-pulse-down;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .plan-card__stepped-direction {
+    animation: plan-stepped-direction-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes plan-stepped-direction-pulse {
+  0%, 100% { transform: translateY(0); opacity: 1; }
+  50% { transform: translateY(-2px); opacity: 0.6; }
+}
+
+@keyframes plan-stepped-direction-pulse-down {
+  0%, 100% { transform: translateY(0); opacity: 1; }
+  50% { transform: translateY(2px); opacity: 0.6; }
 }
 
 .plan-card__stepped-seg {
