@@ -53,6 +53,14 @@ import {
 } from './planReasonStrings';
 import { applySteppedRestoreAttemptHold } from './planSteppedRestoreHold';
 
+export type SteppedRestoreSwapAttempt = (params: {
+  dev: DevicePlanDevice;
+  nextStep: { id: string; planningPowerW: number };
+  lowestNonZeroStep: { id: string; planningPowerW: number } | null;
+  needed: number;
+  availableHeadroom: number;
+}) => { availableHeadroom: number; restoredOneThisCycle: boolean } | null;
+
 export function setRestorePlanDevice(
   deviceMap: Map<string, DevicePlanDevice>,
   id: string,
@@ -245,7 +253,7 @@ export function blockRestoreForRecentActivationSetback(params: {
   return true;
 }
 
-/* eslint-disable-next-line max-statements -- stepped restore gating mirrors binary restore precedence */
+/* eslint-disable-next-line max-statements, max-lines-per-function -- stepped restore gates stay together */
 export function planRestoreForSteppedDevice(params: {
   dev: DevicePlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
@@ -265,8 +273,11 @@ export function planRestoreForSteppedDevice(params: {
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
   debugStructured?: StructuredDebugEmitter;
+  attemptSwapRestore?: SteppedRestoreSwapAttempt;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
-  const { dev, deviceMap, state, timing, availableHeadroom, restoredOneThisCycle, debugStructured } = params;
+  const {
+    dev, deviceMap, state, timing, availableHeadroom, restoredOneThisCycle, debugStructured, attemptSwapRestore,
+  } = params;
   const restoreDebugKey = `stepped:${dev.id}`;
 
   if (countShedDevices(deviceMap, dev.id) === 0) {
@@ -371,6 +382,7 @@ export function planRestoreForSteppedDevice(params: {
     availableHeadroom,
     debugStructured,
     restoreDebugKey,
+    attemptSwapRestore,
   });
 }
 
@@ -385,14 +397,23 @@ function admitSteppedRestore(params: {
   availableHeadroom: number;
   debugStructured?: StructuredDebugEmitter;
   restoreDebugKey: string;
+  attemptSwapRestore?: SteppedRestoreSwapAttempt;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep,
-    deltaKw, availableHeadroom, debugStructured, restoreDebugKey } = params;
+    deltaKw, availableHeadroom, debugStructured, restoreDebugKey, attemptSwapRestore } = params;
   const restoreBuffer = computeRestoreBufferKw(deltaKw);
   const needed = deltaKw + restoreBuffer;
   const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: needed });
   const shedDeviceCount = countShedDevices(deviceMap, dev.id);
   if (admission.postReserveMarginKw < RESTORE_ADMISSION_FLOOR_KW) {
+    const swapResult = attemptSwapRestore?.({
+      dev,
+      nextStep,
+      lowestNonZeroStep,
+      needed,
+      availableHeadroom,
+    });
+    if (swapResult) return swapResult;
     return rejectSteppedRestoreForInsufficientHeadroom({
       dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
       admission, availableHeadroom, needed, debugStructured, restoreDebugKey,
