@@ -70,6 +70,8 @@ const allowedUnusedExportPatterns = [
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH$/,
   /^packages\/contracts\/src\/targetCapabilities\.ts:\d+ - getTargetCapabilityStep$/,
   /^lib\/app\/smapsRollup\.ts:\d+ - _resetSmapsCacheForTests$/,
+  // Consumed by packages/settings-ui/src/ui/planDeviceCard.ts via cross-package relative import; ts-prune doesn't follow these.
+  /^packages\/shared-domain\/src\/planStateLabels\.ts:\d+ - PLAN_STATE_LABEL$/,
 ];
 
 const orphanResult = run(
