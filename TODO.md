@@ -27,14 +27,14 @@ file.
 
 ## P1 Observability and runtime diagnostics
 
-- [ ] Revisit the planner/executor boundary for stepped-load hold states and simplify the
-      non-executable hold model.
-      Context: PR #513 needed several review cycles to keep cooldown, meter-settling, shed-cooldown,
-      and startup-stabilization holds non-executable while still preserving useful plan state.
-      That back-and-forth is a signal that the current split between planner `plannedState`,
-      reason codes, stepped desired-step fields, and executor guards is too subtle.
-      Files: `lib/plan/planRestore.ts`, `lib/plan/planRestoreHelpers.ts`,
-      `lib/plan/planExecutor.ts`, `lib/plan/planExecutorStepped.ts`, stepped restore/hold tests.
+- [ ] Simplify the non-executable hold model for stepped-load devices.
+      Context: the swap eligibility guards and admitted/rejected state computation have been moved
+      into `planRestoreHelpers.ts` where they belong. What remains is `isShedSteppedNonExecutableHoldForSnapshot`
+      in `planExecutorStepped.ts`: it combines two asymmetric reason-code groups (admission-hold vs
+      shed-window) with a snapshot fallback into one predicate, and the name encodes implementation
+      rather than intent. The broader signal — that planner `plannedState`, reason codes, stepped
+      desired-step fields, and executor guards are too coupled — is still present.
+      Files: `lib/plan/planExecutorStepped.ts`, stepped restore/hold tests.
 - [ ] Normalize comparable `restoreNeed` / `insufficientHeadroom` kW fields so small
       admission-metric jitter does not churn detail signatures, overview transitions, or restore
       debug dedupe while the device remains in the same restore-admission posture.
