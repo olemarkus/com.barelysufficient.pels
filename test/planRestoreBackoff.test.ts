@@ -1259,7 +1259,7 @@ describe('restore cooldown backoff', () => {
     expect(reasonText(binaryDevice?.reason)).toBe('cooldown (restore, 55s remaining)');
   });
 
-  it('keeps stepped peers on restore cooldown instead of a shed invariant after a fresh sample', () => {
+  it('active stepped device hits shed invariant when binary peers are held off in restore cooldown', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
@@ -1301,10 +1301,13 @@ describe('restore cooldown backoff', () => {
     const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
+    // Binary off device is held by global restore cooldown.
     expect(binaryDevice?.plannedState).toBe('shed');
     expect(reasonText(binaryDevice?.reason)).toBe('cooldown (restore, 55s remaining)');
+    // Active stepped device bypasses the global cooldown gate but is then blocked by the shed
+    // invariant because dev-off is still shed — the more accurate blocking reason.
     expect(steppedDevice?.desiredStepId).toBe('low');
-    expect(reasonText(steppedDevice?.reason)).toBe('cooldown (restore, 55s remaining)');
+    expect(reasonText(steppedDevice?.reason)).toBe('shed invariant: low -> medium blocked (1 device(s) shed, max step: low)');
   });
 
   it('keeps meter settling bounded to 60 seconds even when restore cooldown backs off longer', () => {
@@ -3138,8 +3141,8 @@ describe('stepped-load shed invariant', () => {
     });
     expect(debugStructured).toHaveBeenCalledTimes(1);
 
-    // Round 2: shed cleared BUT cooldown active — early return before invariant check
-    // Without the early-clear fix, tracking would survive here
+    // Round 2: shed cleared, cooldown active — active device bypasses global cooldown and
+    // admits the step-up to 'max', clearing the invariant tracking as a side effect.
     const mapClear = new Map([['binary-shed', restoredDevice], ['dev-step', steppedDev]]);
     planRestoreForSteppedDevice({
       dev: mapClear.get('dev-step')!,
@@ -3151,6 +3154,7 @@ describe('stepped-load shed invariant', () => {
       logDebug: vi.fn(),
       debugStructured,
     });
+    expect(debugStructured).toHaveBeenCalledTimes(2); // step-up admitted → debug event emitted
 
     // Round 3: new shed episode starts → must re-emit (tracking was cleared in round 2)
     planRestoreForSteppedDevice({
@@ -3163,7 +3167,7 @@ describe('stepped-load shed invariant', () => {
       logDebug: vi.fn(),
       debugStructured,
     });
-    expect(debugStructured).toHaveBeenCalledTimes(2);
+    expect(debugStructured).toHaveBeenCalledTimes(3);
   });
 
   it('upward step action is never emitted while shed devices exist (end-to-end via applyRestorePlan)', () => {
