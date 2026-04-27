@@ -36,7 +36,7 @@ import {
   markSteppedDevicesStayAtCurrentLevel,
   planRestoreForSteppedDevice,
   setRestorePlanDevice as setDevice,
-  type SteppedRestoreSwapAttempt,
+  type SteppedSwapExecutor,
 } from './planRestoreHelpers';
 import { hasOtherDevicesWithUnconfirmedRecovery } from './planRestoreCoordination';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
@@ -163,7 +163,7 @@ export function applyRestorePlan(params: {
     }
 
     const steppedDevices = getSteppedRestoreCandidates(Array.from(deviceMap.values()));
-    const steppedSwapAttempt = buildSteppedSwapAttempt({
+    const steppedSwapExecutor = buildSteppedSwapExecutor({
       deviceMap,
       onDevices,
       swapState,
@@ -181,7 +181,7 @@ export function applyRestorePlan(params: {
         availableHeadroom,
         restoredOneThisCycle,
         debugStructured: deps.debugStructured,
-        attemptSwapRestore: steppedSwapAttempt,
+        swapExecutor: steppedSwapExecutor,
       });
       availableHeadroom = result.availableHeadroom;
       restoredOneThisCycle = result.restoredOneThisCycle;
@@ -238,7 +238,7 @@ export function applyRestorePlan(params: {
   };
 }
 
-function buildSteppedSwapAttempt(params: {
+function buildSteppedSwapExecutor(params: {
   deviceMap: Map<string, DevicePlanDevice>;
   onDevices: DevicePlanDevice[];
   swapState: SwapState;
@@ -246,56 +246,24 @@ function buildSteppedSwapAttempt(params: {
   timing: Pick<RestoreTiming, 'measurementTs'>;
   restoredThisCycle: Set<string>;
   deps: RestoreDeps;
-}): SteppedRestoreSwapAttempt {
-  const {
-    deviceMap,
-    onDevices,
-    swapState,
-    state,
-    timing,
-    restoredThisCycle,
-    deps,
-  } = params;
-  return ({ dev, nextStep, lowestNonZeroStep, needed, availableHeadroom }) => {
-    if (resolveEffectiveCurrentOn(dev) !== false) return null;
-    if (!lowestNonZeroStep || nextStep.id !== lowestNonZeroStep.id) return null;
-
-    const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
-    return attemptSwapRestore({
+}): SteppedSwapExecutor {
+  const { deviceMap, onDevices, swapState, state, timing, restoredThisCycle, deps } = params;
+  return ({ dev, needed, devPower, availableHeadroom, admittedDeviceUpdate, rejectedDeviceUpdate }) => (
+    attemptSwapRestore({
       dev,
       deviceMap,
       onDevices,
       swapState,
-      phase,
+      phase: resolveRestoreDecisionPhase(state.currentRebuildReason),
       availableHeadroom,
-      restoreNeed: {
-        needed,
-        devPower: nextStep.planningPowerW / 1000,
-        penaltyLevel: 0,
-        penaltyExtraKw: 0,
-      },
+      restoreNeed: { needed, devPower, penaltyLevel: 0, penaltyExtraKw: 0 },
       measurementTs: timing.measurementTs,
       restoredThisCycle,
       deps,
-      admittedDeviceUpdate: {
-        desiredStepId: nextStep.id,
-        targetStepId: nextStep.id,
-        expectedPowerKw: nextStep.planningPowerW / 1000,
-        reason: {
-          code: PLAN_REASON_CODES.restoreNeed,
-          fromTarget: dev.selectedStepId ?? 'unknown',
-          toTarget: nextStep.id,
-          needKw: needed,
-          headroomKw: null,
-        },
-      },
-      rejectedDeviceUpdate: buildRejectedSteppedSwapUpdate(dev),
-    });
-  };
-}
-
-function buildRejectedSteppedSwapUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {
-  return buildOffSteppedRestoreShedUpdate(dev);
+      admittedDeviceUpdate,
+      rejectedDeviceUpdate,
+    })
+  );
 }
 
 function buildRestoreShortfallReason(dev: DevicePlanDevice, headroomKw: number): DevicePlanDevice['reason'] {
@@ -787,7 +755,7 @@ function markOffDevicesMeterSettling(params: {
 
     const updates: Partial<DevicePlanDevice> = { plannedState: 'shed', reason };
     if (dev.steppedLoadProfile) {
-      Object.assign(updates, buildRejectedSteppedSwapUpdate(dev));
+      Object.assign(updates, buildOffSteppedRestoreShedUpdate(dev));
     }
     setDevice(deviceMap, dev.id, updates);
   }
