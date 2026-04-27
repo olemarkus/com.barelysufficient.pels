@@ -71,6 +71,18 @@ export function setRestorePlanDevice(
   deviceMap.set(id, { ...current, ...updates });
 }
 
+export function buildOffSteppedRestoreShedUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {
+  const offStepId = dev.steppedLoadProfile
+    ? (getSteppedLoadOffStep(dev.steppedLoadProfile) ?? getSteppedLoadLowestStep(dev.steppedLoadProfile))?.id
+    : dev.selectedStepId;
+  return {
+    plannedState: 'shed',
+    desiredStepId: offStepId,
+    targetStepId: offStepId,
+    shedAction: dev.shedAction ?? (dev.hasBinaryControl === false ? 'set_step' : 'turn_off'),
+  };
+}
+
 export function markSteppedDevicesStayAtCurrentLevel(params: {
   deviceMap: Map<string, DevicePlanDevice>;
   timing: Pick<RestoreTiming,
@@ -291,16 +303,18 @@ export function planRestoreForSteppedDevice(params: {
     restoredOneThisCycle,
   });
   if (meterSettlingRemainingSec !== null) {
-    setRestorePlanDevice(deviceMap, dev.id, {
-      reason: buildMeterSettlingReason(
-        meterSettlingRemainingSec,
-        resolveMeterSettlingCountdownTiming({
-          timing,
-          lastRestoreTs: state.lastRestoreMs,
-          restoredOneThisCycle,
-        }),
-      ),
-    });
+    const reason = buildMeterSettlingReason(
+      meterSettlingRemainingSec,
+      resolveMeterSettlingCountdownTiming({
+        timing,
+        lastRestoreTs: state.lastRestoreMs,
+        restoredOneThisCycle,
+      }),
+    );
+    const update = resolveEffectiveCurrentOn(dev) === false
+      ? buildOffSteppedRestoreHoldUpdate(dev, reason)
+      : { reason };
+    setRestorePlanDevice(deviceMap, dev.id, update);
     clearRestoreDebugEvent(state, restoreDebugKey);
     return { availableHeadroom, restoredOneThisCycle };
   }
@@ -384,6 +398,16 @@ export function planRestoreForSteppedDevice(params: {
     restoreDebugKey,
     attemptSwapRestore,
   });
+}
+
+function buildOffSteppedRestoreHoldUpdate(
+  dev: DevicePlanDevice,
+  reason: DevicePlanDevice['reason'],
+): Partial<DevicePlanDevice> {
+  return {
+    ...buildOffSteppedRestoreShedUpdate(dev),
+    reason,
+  };
 }
 
 function admitSteppedRestore(params: {
@@ -553,13 +577,7 @@ function rejectSteppedRestoreForInsufficientHeadroom(params: {
     }),
   };
   if (resolveEffectiveCurrentOn(dev) === false) {
-    const offStepId = dev.steppedLoadProfile
-      ? (getSteppedLoadOffStep(dev.steppedLoadProfile) ?? getSteppedLoadLowestStep(dev.steppedLoadProfile))?.id
-      : dev.selectedStepId;
-    update.plannedState = 'shed';
-    update.desiredStepId = offStepId;
-    update.targetStepId = offStepId;
-    update.shedAction = dev.shedAction ?? (dev.hasBinaryControl === false ? 'set_step' : 'turn_off');
+    Object.assign(update, buildOffSteppedRestoreShedUpdate(dev));
   }
   setRestorePlanDevice(deviceMap, dev.id, update);
   emitRestoreDebugEventOnChange({

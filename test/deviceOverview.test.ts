@@ -51,7 +51,7 @@ describe('device overview formatter', () => {
     });
   });
 
-  it('formats keep devices blocked by meter settling without inventing shed state', () => {
+  it('formats legacy keep devices blocked by meter settling without inventing shed state', () => {
     expect(formatDeviceOverview({
       currentState: 'off',
       plannedState: 'keep',
@@ -73,6 +73,20 @@ describe('device overview formatter', () => {
       stateMsg: 'Shed (powered off)',
       usageMsg: 'Unknown',
       statusMsg: 'cooldown (restore, 10s remaining)',
+    });
+  });
+
+  it('formats shed devices blocked by meter settling as held off', () => {
+    expect(formatDeviceOverview({
+      currentState: 'off',
+      plannedState: 'shed',
+      reason: r('meter settling (10s remaining)'),
+      shedAction: 'turn_off',
+    })).toEqual({
+      powerMsg: 'off',
+      stateMsg: 'Shed (powered off)',
+      usageMsg: 'Unknown',
+      statusMsg: 'waiting for meter to settle (10s remaining)',
     });
   });
 

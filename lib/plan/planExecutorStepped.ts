@@ -42,6 +42,28 @@ export const allowsSteppedLoadKeepInvariantRestore = (reason: DeviceReason): boo
   || reason.code === PLAN_REASON_CODES.restoreNeed
 );
 
+const isSteppedRestoreAdmissionHoldReason = (reason: DeviceReason): boolean => (
+  reason.code === PLAN_REASON_CODES.meterSettling
+  || reason.code === PLAN_REASON_CODES.cooldownRestore
+);
+
+const isSteppedShedWindowHoldReason = (reason: DeviceReason): boolean => (
+  reason.code === PLAN_REASON_CODES.cooldownShedding
+  || reason.code === PLAN_REASON_CODES.startupStabilization
+);
+
+const isShedSteppedNonExecutableHoldForSnapshot = (
+  dev: PlanDevice,
+  snapshot?: TargetDeviceSnapshot,
+): boolean => (
+  dev.plannedState === 'shed'
+  && (
+    isSteppedRestoreAdmissionHoldReason(dev.reason)
+    || (isSteppedShedWindowHoldReason(dev.reason)
+      && (snapshot?.currentOn ?? resolveEffectiveCurrentOn(dev)) === false)
+  )
+);
+
 export type PlanExecutorSteppedContext = {
   state: PlanEngineState;
   logDebug: (...args: unknown[]) => void;
@@ -89,9 +111,10 @@ export const applySteppedLoadCommand = async (
   ctx: PlanExecutorSteppedContext,
   dev: PlanDevice,
   mode: PlanActuationMode,
+  snapshot?: TargetDeviceSnapshot,
   options: { recordPlanActuation?: boolean } = {},
 ): Promise<boolean> => {
-  if (!isSteppedLoadDevice(dev)) return false;
+  if (!isSteppedLoadDevice(dev) || isShedSteppedNonExecutableHoldForSnapshot(dev, snapshot)) return false;
   const profile = dev.steppedLoadProfile;
   if (!profile) return false;
   const plannedDesiredStepId = resolveSteppedKeepDesiredStepId(dev);
@@ -445,7 +468,7 @@ export const applySteppedLoadShedOff = async (
   snapshot: TargetDeviceSnapshot | undefined,
   mode: PlanActuationMode,
 ): Promise<boolean> => {
-  if (dev.plannedState !== 'shed') return false;
+  if (dev.plannedState !== 'shed' || isShedSteppedNonExecutableHoldForSnapshot(dev, snapshot)) return false;
   const atOffStep = dev.steppedLoadProfile
     && dev.selectedStepId
     && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId);

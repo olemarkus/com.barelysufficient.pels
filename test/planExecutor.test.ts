@@ -119,6 +119,45 @@ const buildExecutor = (
 };
 
 describe('PlanExecutor restore logging', () => {
+  it.each([
+    { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 30 },
+    { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
+  ] as const)('does not turn off binary devices during restore-admission hold reason $code', async (reason) => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 1,
+        softLimitKw: 5,
+        headroomKw: 4,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater',
+          currentState: 'off',
+          plannedState: 'shed',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: true,
+          reason,
+        },
+      ],
+    });
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
   it('logs restore from shed state when the device has not been restored since the last shed', async () => {
     const state = createPlanEngineState();
     state.lastDeviceShedMs['dev-1'] = Date.now() - 10_000;
@@ -1150,6 +1189,135 @@ describe('PlanExecutor stepped loads', () => {
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     // Binary restore must not be issued either
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it.each([
+    { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 30 },
+    { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
+  ] as const)('does not issue stepped shed preparation for restore-admission hold reason $code', async (reason) => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      selectedStepId: 'max',
+      desiredStepId: 'off',
+      shedAction: 'turn_off',
+      reason,
+    }));
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 30 },
+    { code: PLAN_REASON_CODES.startupStabilization },
+  ] as const)('does not issue stepped shed preparation for already-off shed-window hold reason $code', async (reason) => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      selectedStepId: 'max',
+      desiredStepId: 'off',
+      shedAction: 'turn_off',
+      reason,
+    }));
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 30 },
+    { code: PLAN_REASON_CODES.startupStabilization },
+  ] as const)('still enforces shed actuation for on stepped devices during hold reason $code', async (reason) => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'shed',
+      selectedStepId: 'max',
+      desiredStepId: 'off',
+      shedAction: 'turn_off',
+      reason,
+    }));
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deps.markSteppedLoadDesiredStepIssued).toHaveBeenCalledWith(expect.objectContaining({
+      deviceId: 'dev-1',
+      desiredStepId: 'low',
+      previousStepId: 'max',
+    }));
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+  });
+
+  it.each([
+    { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 30 },
+    { code: PLAN_REASON_CODES.startupStabilization },
+  ] as const)('uses live snapshot to enforce shed actuation during hold reason $code', async (reason) => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      selectedStepId: 'max',
+      desiredStepId: 'off',
+      shedAction: 'turn_off',
+      reason,
+    }));
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
   });
 
   it('keep-invariant enforcement does not restore a shed stepped device even when desiredStepId is non-zero', async () => {
