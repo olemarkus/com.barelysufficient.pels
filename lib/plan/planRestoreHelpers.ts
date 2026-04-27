@@ -14,12 +14,20 @@ import {
   getSteppedRestoreCandidates,
   NEUTRAL_STARTUP_HOLD_REASON,
 } from './planRestoreDevices';
-import { resolveCapacityRestoreBlockReason, resolveMeterSettlingRemainingSec } from './planRestoreTiming';
+import {
+  resolveCapacityRestoreBlockReason,
+  resolveMeterSettlingCountdownTiming,
+  resolveMeterSettlingRemainingSec,
+} from './planRestoreTiming';
 import {
   getSteppedLoadNextRestoreStep,
   resolveSteppedLoadRestoreDeltaKw,
 } from './planSteppedLoad';
-import { getSteppedLoadLowestActiveStep } from '../utils/deviceControlProfiles';
+import {
+  getSteppedLoadLowestActiveStep,
+  getSteppedLoadLowestStep,
+  getSteppedLoadOffStep,
+} from '../utils/deviceControlProfiles';
 import {
   getActivationPenaltyLevel,
   getActivationRestoreBlockCountdownTiming,
@@ -38,7 +46,11 @@ import {
   resolveRestoreDecisionPhase,
   type RestoreAdmissionMetrics,
 } from './planRestoreAdmission';
-import { buildActivationBackoffReason, buildRestoreHeadroomReason } from './planReasonStrings';
+import {
+  buildActivationBackoffReason,
+  buildMeterSettlingReason,
+  buildRestoreHeadroomReason,
+} from './planReasonStrings';
 import { applySteppedRestoreAttemptHold } from './planSteppedRestoreHold';
 
 export function setRestorePlanDevice(
@@ -262,11 +274,22 @@ export function planRestoreForSteppedDevice(params: {
   }
 
   const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
-  if (resolveMeterSettlingRemainingSec({
+  const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
     timing,
     lastRestoreTs: state.lastRestoreMs,
     restoredOneThisCycle,
-  }) !== null) {
+  });
+  if (meterSettlingRemainingSec !== null) {
+    setRestorePlanDevice(deviceMap, dev.id, {
+      reason: buildMeterSettlingReason(
+        meterSettlingRemainingSec,
+        resolveMeterSettlingCountdownTiming({
+          timing,
+          lastRestoreTs: state.lastRestoreMs,
+          restoredOneThisCycle,
+        }),
+      ),
+    });
     clearRestoreDebugEvent(state, restoreDebugKey);
     return { availableHeadroom, restoredOneThisCycle };
   }
@@ -500,14 +523,24 @@ function rejectSteppedRestoreForInsufficientHeadroom(params: {
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
     admission, availableHeadroom, needed, debugStructured, restoreDebugKey } = params;
-  setRestorePlanDevice(deviceMap, dev.id, {
+  const update: Partial<DevicePlanDevice> = {
     reason: buildRestoreHeadroomReason({
       neededKw: needed,
       availableKw: availableHeadroom,
       postReserveMarginKw: admission.postReserveMarginKw,
       minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
     }),
-  });
+  };
+  if (resolveEffectiveCurrentOn(dev) === false) {
+    const offStepId = dev.steppedLoadProfile
+      ? (getSteppedLoadOffStep(dev.steppedLoadProfile) ?? getSteppedLoadLowestStep(dev.steppedLoadProfile))?.id
+      : dev.selectedStepId;
+    update.plannedState = 'shed';
+    update.desiredStepId = offStepId;
+    update.targetStepId = offStepId;
+    update.shedAction = dev.shedAction ?? (dev.hasBinaryControl === false ? 'set_step' : 'turn_off');
+  }
+  setRestorePlanDevice(deviceMap, dev.id, update);
   emitRestoreDebugEventOnChange({
     state,
     key: restoreDebugKey,
