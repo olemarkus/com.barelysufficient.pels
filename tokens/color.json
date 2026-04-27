@@ -10,9 +10,9 @@
         "900": { "value": "#0d1117" }
       },
       "accent": {
-        "light": { "value": "#9ee8c8" },
-        "default": { "value": "#7fd1ae" },
-        "dark": { "value": "#6ab894" }
+        "light": { "value": "#34d399" },
+        "default": { "value": "#10b981" },
+        "dark": { "value": "#059669" }
       },
       "danger": {
         "default": { "value": "#f26b6b" },
@@ -57,10 +57,10 @@
     },
     "state": {
       "positive": {
-        "bg": { "value": "rgba(127, 209, 174, 0.15)" },
-        "bg-muted": { "value": "rgba(127, 209, 174, 0.1)" },
-        "bg-strong": { "value": "rgba(127, 209, 174, 0.25)" },
-        "border": { "value": "rgba(127, 209, 174, 0.4)" },
+        "bg": { "value": "rgba(16, 185, 129, 0.15)" },
+        "bg-muted": { "value": "rgba(16, 185, 129, 0.1)" },
+        "bg-strong": { "value": "rgba(16, 185, 129, 0.25)" },
+        "border": { "value": "rgba(16, 185, 129, 0.4)" },
         "text": { "value": "{color.base.accent.light}" }
       },
       "negative": {
@@ -86,14 +86,14 @@
       }
     },
     "focus": {
-      "ring": { "value": "rgba(127, 209, 174, 0.6)" }
+      "ring": { "value": "rgba(16, 185, 129, 0.6)" }
     },
     "overlay": {
       "backdrop": { "value": "rgba(0, 0, 0, 0.6)" },
       "toast": { "value": "rgba(12, 17, 27, 0.9)" }
     },
     "gradient": {
-      "accent-radial": { "value": "rgba(127, 209, 174, 0.12)" },
+      "accent-radial": { "value": "rgba(16, 185, 129, 0.12)" },
       "accent-radial-blue": { "value": "rgba(116, 145, 255, 0.1)" }
     }
   }

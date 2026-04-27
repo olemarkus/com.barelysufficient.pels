@@ -1564,11 +1564,13 @@ describe('Redesign plan UI', () => {
         ],
       });
   
-      expect((document.querySelector('.plan-hero__value') as HTMLElement | null)?.textContent?.trim()).toBe('5.2 kW');
-      expect((document.querySelector('.plan-hero__limit') as HTMLElement | null)?.textContent?.trim())
-        .toBe('of 11.0 kW limit');
-      expect((document.querySelector('.plan-hero__message') as HTMLElement | null)?.textContent?.trim())
-        .toBe('5.8 kW to spare');
+      expect((document.querySelector('.plan-hero__primary-value') as HTMLElement | null)?.textContent?.trim())
+        .toBe('5.8 kW');
+      expect((document.querySelector('.plan-hero__primary-caption') as HTMLElement | null)?.textContent?.trim())
+        .toBe('to spare');
+      expect((document.querySelector('.plan-hero__sub') as HTMLElement | null)?.textContent?.trim())
+        .toBe('5.2 kW of 11.0 kW limit');
+      expect(document.querySelector('.plan-hero__message')).toBeNull();
       expect((document.querySelector('#plan-hero .plan-chip') as HTMLElement | null)?.textContent?.trim()).toBe('Live');
       expect((document.querySelector('.plan-hour-strip__primary') as HTMLElement | null)?.textContent?.trim())
         .toBe('4.20 of 12.0 kWh');

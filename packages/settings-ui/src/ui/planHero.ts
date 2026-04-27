@@ -54,18 +54,39 @@ const buildHeroInfoButton = (tooltipText: string): HTMLButtonElement => {
   return info;
 };
 
-const buildHeadlineRow = (headline: Headline): HTMLDivElement => {
-  const headlineRow = document.createElement('div');
-  headlineRow.className = 'plan-hero__headline-row';
-  const total = document.createElement('h2');
-  total.className = 'plan-hero__value';
-  total.textContent = headline.kwText;
-  const limit = document.createElement('p');
-  limit.className = 'plan-hero__limit';
-  limit.textContent = headline.limitText;
-  headlineRow.append(total, limit);
-  return headlineRow;
+type PrimaryView = { valueText: string; captionText: string };
+
+const resolvePrimary = (headline: Headline): PrimaryView => {
+  const magnitude = Math.abs(headline.headroomKw).toFixed(1);
+  if (headline.overHardLimit) return { valueText: `${magnitude} kW`, captionText: 'over hard limit' };
+  if (headline.overSoftLimit) return { valueText: `${magnitude} kW`, captionText: 'over the limit' };
+  return { valueText: `${magnitude} kW`, captionText: 'to spare' };
 };
+
+const buildPrimary = (headline: Headline): HTMLDivElement => {
+  const primary = resolvePrimary(headline);
+  const wrap = document.createElement('div');
+  wrap.className = 'plan-hero__primary';
+  const value = document.createElement('h2');
+  value.className = 'plan-hero__primary-value';
+  value.textContent = primary.valueText;
+  const caption = document.createElement('p');
+  caption.className = 'plan-hero__primary-caption';
+  caption.textContent = primary.captionText;
+  wrap.append(value, caption);
+  return wrap;
+};
+
+const buildSubLine = (headline: Headline): HTMLParagraphElement => {
+  const sub = document.createElement('p');
+  sub.className = 'plan-hero__sub';
+  sub.textContent = `${headline.kwText} ${headline.limitText}`;
+  return sub;
+};
+
+const isPrimaryRedundant = (message: string): boolean => (
+  message.endsWith('to spare') || message.startsWith('Over')
+);
 
 const buildStatusBlock = (
   headline: Headline,
@@ -103,8 +124,11 @@ const buildStatusBlock = (
 const buildHeroHeading = (headline: Headline): HTMLDivElement => {
   const heading = document.createElement('div');
   heading.className = 'plan-hero__heading';
-  heading.appendChild(buildHeadlineRow(headline));
-  appendTextElement(heading, 'plan-hero__message', headline.message);
+  heading.appendChild(buildPrimary(headline));
+  heading.appendChild(buildSubLine(headline));
+  if (!isPrimaryRedundant(headline.message)) {
+    appendTextElement(heading, 'plan-hero__message', headline.message);
+  }
   return heading;
 };
 
@@ -162,9 +186,15 @@ const appendTick = (bar: HTMLElement, variant: string, offsetPct: number, toolti
   bar.appendChild(tick);
 };
 
+const resolveCellCount = (scale: BarScale): number => {
+  const step = scale.scaleKw <= 12 ? 1 : 2;
+  return Math.max(2, Math.round(scale.scaleKw / step));
+};
+
 const buildBarSegments = (scale: BarScale): HTMLDivElement => {
   const segments = document.createElement('div');
   segments.className = 'plan-hero__segments';
+  segments.style.setProperty('--cell-count', String(resolveCellCount(scale)));
   const managedPct = pctOf(Math.min(scale.controlled, scale.total), scale.scaleKw);
   const otherPct = pctOf(Math.min(scale.uncontrolled, Math.max(scale.total - scale.controlled, 0)), scale.scaleKw);
   const freePct = pctOf(Math.max(scale.softKw - scale.total, 0), scale.scaleKw);
@@ -188,6 +218,26 @@ const appendOverOverlay = (bar: HTMLElement, scale: BarScale): void => {
   bar.appendChild(over);
 };
 
+const buildHeroLegend = (scale: BarScale): HTMLDivElement => {
+  const legend = document.createElement('div');
+  legend.className = 'plan-hero__legend';
+  const items: Array<{ variant: string; label: string }> = [
+    { variant: 'managed', label: `Managed ${scale.controlled.toFixed(1)} kW` },
+    { variant: 'other', label: `Other ${scale.uncontrolled.toFixed(1)} kW` },
+  ];
+  for (const item of items) {
+    const wrap = document.createElement('span');
+    wrap.className = 'plan-hero__legend-item';
+    const swatch = document.createElement('span');
+    swatch.className = `plan-hero__legend-swatch plan-hero__legend-swatch--${item.variant}`;
+    const text = document.createElement('span');
+    text.textContent = item.label;
+    wrap.append(swatch, text);
+    legend.appendChild(wrap);
+  }
+  return legend;
+};
+
 const buildHeroBar = (headline: Headline, meta: PlanMetaSnapshot): HTMLDivElement | null => {
   const scale = computeBarScale(headline, meta);
   if (!scale) return null;
@@ -209,6 +259,7 @@ const buildHeroBar = (headline: Headline, meta: PlanMetaSnapshot): HTMLDivElemen
     appendTick(bar, 'hard', hardPct, `Hard limit ${scale.hardKw.toFixed(1)} kW — breaker safety cap`);
   }
   wrap.appendChild(bar);
+  wrap.appendChild(buildHeroLegend(scale));
   return wrap;
 };
 
