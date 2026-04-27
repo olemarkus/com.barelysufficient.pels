@@ -163,6 +163,140 @@ describe('restore cooldown backoff', () => {
     expect(result.stateUpdates.swapByDevice['dev-on']?.swappedOutFor).toBe('dev-off');
   });
 
+  it('can swap out a turn-off stepped device for a higher-priority restore', () => {
+    const state = createPlanEngineState();
+    const deps = {
+      powerTracker: { lastTimestamp: 321 } as PowerTrackerState,
+      getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+    };
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-off',
+          name: 'Priority heater',
+          priority: 10,
+          currentState: 'off',
+          powerKw: 0.7,
+        }),
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Connected 300',
+          priority: 90,
+          currentState: 'on',
+          selectedStepId: 'low',
+          desiredStepId: 'low',
+          measuredPowerKw: 1.25,
+          planningPowerKw: 1.25,
+          shedAction: 'turn_off',
+        }),
+      ],
+      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      state,
+      sheddingActive: false,
+      deps,
+    });
+
+    const offDevice = result.planDevices.find((device) => device.id === 'dev-off');
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+    expect(offDevice?.plannedState).toBe('keep');
+    expect(steppedDevice?.plannedState).toBe('shed');
+    expect(steppedDevice?.shedAction).toBe('turn_off');
+    expect(reasonText(steppedDevice?.reason)).toBe('swapped out for Priority heater');
+    expect(result.stateUpdates.swapByDevice['dev-step']?.swappedOutFor).toBe('dev-off');
+  });
+
+  it('does not swap out a set-step stepped device for a higher-priority restore', () => {
+    const state = createPlanEngineState();
+    const deps = {
+      powerTracker: { lastTimestamp: 321 } as PowerTrackerState,
+      getShedBehavior: () => ({ action: 'set_step' as const, temperature: null, stepId: 'low' }),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+    };
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-off',
+          name: 'Priority heater',
+          priority: 10,
+          currentState: 'off',
+          powerKw: 0.7,
+        }),
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Connected 300',
+          priority: 90,
+          currentState: 'on',
+          selectedStepId: 'low',
+          desiredStepId: 'low',
+          measuredPowerKw: 1.25,
+          planningPowerKw: 1.25,
+          shedAction: 'set_step',
+        }),
+      ],
+      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      state,
+      sheddingActive: false,
+      deps,
+    });
+
+    const offDevice = result.planDevices.find((device) => device.id === 'dev-off');
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+    expect(offDevice?.plannedState).toBe('shed');
+    expect(reasonText(offDevice?.reason)).toContain('insufficient headroom');
+    expect(steppedDevice?.plannedState).toBe('keep');
+    expect(result.stateUpdates.swapByDevice['dev-step']).toBeUndefined();
+  });
+
+  it('does not swap out a stepped device without binary control', () => {
+    const state = createPlanEngineState();
+    const deps = {
+      powerTracker: { lastTimestamp: 321 } as PowerTrackerState,
+      getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+    };
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-off',
+          name: 'Priority heater',
+          priority: 10,
+          currentState: 'off',
+          powerKw: 0.7,
+        }),
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Connected 300',
+          priority: 90,
+          currentState: 'on',
+          hasBinaryControl: false,
+          selectedStepId: 'low',
+          desiredStepId: 'low',
+          measuredPowerKw: 1.25,
+          planningPowerKw: 1.25,
+          shedAction: 'set_step',
+        }),
+      ],
+      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      state,
+      sheddingActive: false,
+      deps,
+    });
+
+    const offDevice = result.planDevices.find((device) => device.id === 'dev-off');
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+    expect(offDevice?.plannedState).toBe('shed');
+    expect(reasonText(offDevice?.reason)).toContain('insufficient headroom');
+    expect(steppedDevice?.plannedState).toBe('keep');
+    expect(result.stateUpdates.swapByDevice['dev-step']).toBeUndefined();
+  });
+
   it('blocks stepped-load step-up while another device is still waiting to recover', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
