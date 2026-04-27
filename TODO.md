@@ -27,6 +27,14 @@ file.
 
 ## P1 Observability and runtime diagnostics
 
+- [ ] Revisit the planner/executor boundary for stepped-load hold states and simplify the
+      non-executable hold model.
+      Context: PR #513 needed several review cycles to keep cooldown, meter-settling, shed-cooldown,
+      and startup-stabilization holds non-executable while still preserving useful plan state.
+      That back-and-forth is a signal that the current split between planner `plannedState`,
+      reason codes, stepped desired-step fields, and executor guards is too subtle.
+      Files: `lib/plan/planRestore.ts`, `lib/plan/planRestoreHelpers.ts`,
+      `lib/plan/planExecutor.ts`, `lib/plan/planExecutorStepped.ts`, stepped restore/hold tests.
 - [ ] Normalize comparable `restoreNeed` / `insufficientHeadroom` kW fields so small
       admission-metric jitter does not churn detail signatures, overview transitions, or restore
       debug dedupe while the device remains in the same restore-admission posture.
@@ -132,8 +140,9 @@ file.
 
 - [ ] Split planner state from render-only explanation data so keep/shed/inactive decisions no
       longer depend on UI-facing `reason` objects. The stepped restore admission path now keeps
-      rejected off restores explicit in the plan; continue with cooldown holds and the remaining
-      reason-derived rendering boundaries.
+      rejected off restores explicit in the plan, and cooldown / meter-settling restore blocks now
+      stay non-executable until admission. Continue with the remaining reason-derived rendering
+      boundaries.
       Why P1: this is the next boundary cleanup after the local `planReasons.ts` split and would
       remove a recurring source of state/reason coupling bugs.
       Files: `lib/plan/planRestore.ts`, `lib/plan/planReasons.ts`, plan/executor/rendering

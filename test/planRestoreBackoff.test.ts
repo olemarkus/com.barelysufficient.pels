@@ -1136,7 +1136,7 @@ describe('restore cooldown backoff', () => {
     expect(reasonText(steppedDevice?.reason)).toBe('cooldown (shedding, 55s remaining)');
   });
 
-  it('applies meter settling only to off keep devices during recent restore cooldown', () => {
+  it('keeps off binary restore candidates shed during recent restore meter settling', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
@@ -1178,13 +1178,13 @@ describe('restore cooldown backoff', () => {
     const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
-    expect(binaryDevice?.plannedState).toBe('keep');
+    expect(binaryDevice?.plannedState).toBe('shed');
     expect(reasonText(binaryDevice?.reason)).toBe('meter settling (55s remaining)');
     expect(reasonText(steppedDevice?.reason)).not.toBe('meter settling (55s remaining)');
     expect(steppedDevice?.desiredStepId).toBe('low');
   });
 
-  it('applies meter settling to off-like stepped keep devices during recent restore cooldown', () => {
+  it('keeps off-like stepped restore candidates shed during recent restore meter settling', () => {
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
@@ -1218,9 +1218,10 @@ describe('restore cooldown backoff', () => {
     });
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
-    expect(steppedDevice?.plannedState).toBe('keep');
+    expect(steppedDevice?.plannedState).toBe('shed');
     expect(reasonText(steppedDevice?.reason)).toBe('meter settling (55s remaining)');
-    expect(steppedDevice?.desiredStepId).toBe('low');
+    expect(steppedDevice?.desiredStepId).toBe('off');
+    expect(steppedDevice?.targetStepId).toBe('off');
   });
 
   it('clears meter settling after a fresh whole-home sample and falls back to restore cooldown', () => {
@@ -1254,7 +1255,7 @@ describe('restore cooldown backoff', () => {
     });
 
     const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
-    expect(binaryDevice?.plannedState).toBe('keep');
+    expect(binaryDevice?.plannedState).toBe('shed');
     expect(reasonText(binaryDevice?.reason)).toBe('cooldown (restore, 55s remaining)');
   });
 
@@ -1300,7 +1301,7 @@ describe('restore cooldown backoff', () => {
     const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
-    expect(binaryDevice?.plannedState).toBe('keep');
+    expect(binaryDevice?.plannedState).toBe('shed');
     expect(reasonText(binaryDevice?.reason)).toBe('cooldown (restore, 55s remaining)');
     expect(steppedDevice?.desiredStepId).toBe('low');
     expect(reasonText(steppedDevice?.reason)).toBe('cooldown (restore, 55s remaining)');
@@ -1338,7 +1339,7 @@ describe('restore cooldown backoff', () => {
     });
 
     const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
-    expect(binaryDevice?.plannedState).toBe('keep');
+    expect(binaryDevice?.plannedState).toBe('shed');
     expect(reasonText(binaryDevice?.reason)).toBe('cooldown (restore, 60s remaining)');
   });
 
@@ -1425,7 +1426,7 @@ describe('restore cooldown backoff', () => {
 
     expect(restoredDevice?.plannedState).toBe('keep');
     expect(restoredDevice?.reason).not.toBe('meter settling (60s remaining)');
-    expect(waitingDevice?.plannedState).toBe('keep');
+    expect(waitingDevice?.plannedState).toBe('shed');
     expect(reasonText(waitingDevice?.reason)).toBe('meter settling (60s remaining)');
   });
 
@@ -1473,7 +1474,7 @@ describe('restore cooldown backoff', () => {
 
     expect(restoredDevice?.plannedState).toBe('keep');
     expect(reasonText(restoredDevice?.reason)).toBe('keep');
-    expect(waitingDevice?.plannedState).toBe('keep');
+    expect(waitingDevice?.plannedState).toBe('shed');
     expect(reasonText(waitingDevice?.reason)).toBe('meter settling (60s remaining)');
   });
 
@@ -2712,8 +2713,9 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     });
 
     const dev = deviceMap.get('dev-step')!;
-    expect(dev.plannedState).toBe('keep');
-    expect(dev.desiredStepId).toBe('low');
+    expect(dev.plannedState).toBe('shed');
+    expect(dev.desiredStepId).toBe('off');
+    expect(dev.targetStepId).toBe('off');
     expect(reasonText(dev.reason)).toBe('meter settling (60s remaining)');
   });
 

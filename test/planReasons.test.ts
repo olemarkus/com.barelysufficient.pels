@@ -167,6 +167,13 @@ describe('finalizePlanDevices', () => {
     })])).not.toThrow();
   });
 
+  it('allows meter-settling shed reasons for blocked restore candidates', () => {
+    expect(() => finalizePlanDevices([buildPlanDevice({
+      plannedState: 'shed',
+      reason: 'meter settling (30s remaining)',
+    })])).not.toThrow();
+  });
+
   it('allows legacy restore cooldown keep reasons that still surface during restore holds', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'keep',

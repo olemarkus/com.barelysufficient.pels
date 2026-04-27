@@ -166,6 +166,7 @@ const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.shortfall, label: 'shortfall shed' },
   { code: PLAN_REASON_CODES.cooldownShedding, label: 'shedding cooldown' },
   { code: PLAN_REASON_CODES.cooldownRestore, label: 'restore cooldown' },
+  { code: PLAN_REASON_CODES.meterSettling, label: 'meter settling' },
   { code: PLAN_REASON_CODES.restoreThrottled, label: 'restore throttle' },
   { code: PLAN_REASON_CODES.restorePending, label: 'restore pending' },
   { code: PLAN_REASON_CODES.waitingForOtherDevices, label: 'recovery gate' },

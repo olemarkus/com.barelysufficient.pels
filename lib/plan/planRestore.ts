@@ -12,10 +12,6 @@ import type { PowerTrackerState } from '../core/powerTracker';
 import {
   RESTORE_ADMISSION_FLOOR_KW,
 } from './planConstants';
-import {
-  getSteppedLoadLowestStep,
-  getSteppedLoadOffStep,
-} from '../utils/deviceControlProfiles';
 import { SwapState, SwapStateSnapshot, buildSwapState, cleanupStaleSwaps, exportSwapState } from './planSwapState';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from './planDebugDedupe';
 import {
@@ -36,6 +32,7 @@ import {
 import {
   blockRestoreForRecentActivationSetback,
   isBlockedBySwapState,
+  buildOffSteppedRestoreShedUpdate,
   markSteppedDevicesStayAtCurrentLevel,
   planRestoreForSteppedDevice,
   setRestorePlanDevice as setDevice,
@@ -221,13 +218,11 @@ export function applyRestorePlan(params: {
         deviceMap,
         timing: effectiveTiming,
         setDevice: (id, updates) => setDevice(deviceMap, id, updates),
-        blockedPlannedState: 'keep',
         getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
       });
       markSteppedDevicesStayAtCurrentLevel({
         deviceMap,
         timing: effectiveTiming,
-        currentOffPlannedState: 'keep',
         getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
       });
     }
@@ -300,14 +295,7 @@ function buildSteppedSwapAttempt(params: {
 }
 
 function buildRejectedSteppedSwapUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {
-  const offStepId = dev.steppedLoadProfile
-    ? (getSteppedLoadOffStep(dev.steppedLoadProfile) ?? getSteppedLoadLowestStep(dev.steppedLoadProfile))?.id
-    : dev.selectedStepId;
-  return {
-    desiredStepId: offStepId,
-    targetStepId: offStepId,
-    shedAction: dev.shedAction ?? (dev.hasBinaryControl === false ? 'set_step' : 'turn_off'),
-  };
+  return buildOffSteppedRestoreShedUpdate(dev);
 }
 
 function buildRestoreShortfallReason(dev: DevicePlanDevice, headroomKw: number): DevicePlanDevice['reason'] {
@@ -422,7 +410,7 @@ function planRestoreForDevice(params: {
       }),
     );
     setDevice(deviceMap, dev.id, {
-      plannedState: 'keep',
+      plannedState: 'shed',
       reason,
     });
     emitRestoreDebugEventOnChange({
@@ -797,9 +785,10 @@ function markOffDevicesMeterSettling(params: {
       continue;
     }
 
-    setDevice(deviceMap, dev.id, {
-      plannedState: 'keep',
-      reason,
-    });
+    const updates: Partial<DevicePlanDevice> = { plannedState: 'shed', reason };
+    if (dev.steppedLoadProfile) {
+      Object.assign(updates, buildRejectedSteppedSwapUpdate(dev));
+    }
+    setDevice(deviceMap, dev.id, updates);
   }
 }

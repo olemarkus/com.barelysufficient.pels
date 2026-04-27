@@ -263,7 +263,7 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
 
   let statusMsg = 'Waiting for headroom';
   if (device.reason.code !== PLAN_REASON_CODES.none) {
-    statusMsg = device.plannedState === 'keep'
+    statusMsg = device.plannedState === 'keep' || device.reason.code === PLAN_REASON_CODES.meterSettling
       ? formatOverviewStatus(device.reason)
       : formatDeviceReason(device.reason);
   }
