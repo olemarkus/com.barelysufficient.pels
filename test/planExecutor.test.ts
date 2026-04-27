@@ -11,6 +11,7 @@ import type {
 } from '../lib/plan/planTypes';
 import { buildLiveStatePlan, hasPlanExecutionDrift } from '../lib/plan/planReconcileState';
 import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
+import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
 
 const KEEP_REASON = legacyDeviceReason('keep')!;
 const CAPACITY_REASON = legacyDeviceReason('shed due to capacity')!;
@@ -1846,6 +1847,38 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
     expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.not.objectContaining({
       actuationSuffix: expect.anything(),
+    }));
+  });
+
+  it('does not use the keep invariant to restore a stepped load rejected for headroom', async () => {
+    const snapshot = buildSnapshot({ currentOn: false });
+    const { executor, deviceManager, desiredSteppedTrigger, debugStructured } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'low',
+      reason: {
+        code: PLAN_REASON_CODES.insufficientHeadroom,
+        needKw: 1.475,
+        availableKw: 0.93,
+        postReserveMarginKw: -0.79,
+        minimumRequiredPostReserveMarginKw: 0.25,
+        penaltyExtraKw: null,
+        swapReserveKw: null,
+        effectiveAvailableKw: null,
+        swapTargetName: null,
+      },
+    });
+
+    await executor.applyPlanActions(plan, 'plan');
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_binary_transition_applied',
+      desiredBinaryState: true,
     }));
   });
 

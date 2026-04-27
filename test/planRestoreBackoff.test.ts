@@ -2461,8 +2461,126 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     });
 
     const dev = deviceMap.get('dev-step')!;
-    expect(dev.desiredStepId).toBeUndefined();
+    expect(dev.plannedState).toBe('shed');
+    expect(dev.desiredStepId).toBe('off');
+    expect(dev.targetStepId).toBe('off');
     expect(reasonText(dev.reason)).toContain('insufficient headroom');
+  });
+
+  it('targets the off step when rejecting an off stepped restore with stale active selectedStepId', () => {
+    const state = createPlanEngineState();
+    const deviceMap = new Map([
+      ['dev-step', steppedPlanDevice({
+        id: 'dev-step',
+        name: 'Tank',
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: 'low',
+        desiredStepId: 'low',
+        measuredPowerKw: 0,
+      })],
+    ]);
+
+    planRestoreForSteppedDevice({
+      dev: deviceMap.get('dev-step')!,
+      deviceMap,
+      state,
+      timing: {
+        activeOvershoot: false, inCooldown: false, inRestoreCooldown: false,
+        inStartupStabilization: false, restoreCooldownSeconds: 60,
+        shedCooldownRemainingSec: null, restoreCooldownRemainingSec: null,
+        startupStabilizationRemainingSec: null,
+      },
+      availableHeadroom: 1.974,
+      restoredOneThisCycle: false,
+      logDebug: vi.fn(),
+    });
+
+    const dev = deviceMap.get('dev-step')!;
+    expect(dev.plannedState).toBe('shed');
+    expect(dev.desiredStepId).toBe('off');
+    expect(dev.targetStepId).toBe('off');
+    expect(reasonText(dev.reason)).toContain('insufficient headroom');
+  });
+
+  it('preserves configured stepped shed action when rejecting an off restore for headroom', () => {
+    const state = createPlanEngineState();
+    const deviceMap = new Map([
+      ['dev-step', steppedPlanDevice({
+        id: 'dev-step',
+        name: 'Tank',
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: 'low',
+        desiredStepId: 'low',
+        measuredPowerKw: 0,
+        hasBinaryControl: false,
+        shedAction: 'set_step',
+      })],
+    ]);
+
+    planRestoreForSteppedDevice({
+      dev: deviceMap.get('dev-step')!,
+      deviceMap,
+      state,
+      timing: {
+        activeOvershoot: false, inCooldown: false, inRestoreCooldown: false,
+        inStartupStabilization: false, restoreCooldownSeconds: 60,
+        shedCooldownRemainingSec: null, restoreCooldownRemainingSec: null,
+        startupStabilizationRemainingSec: null,
+      },
+      availableHeadroom: 1.974,
+      restoredOneThisCycle: false,
+      logDebug: vi.fn(),
+    });
+
+    const dev = deviceMap.get('dev-step')!;
+    expect(dev.plannedState).toBe('shed');
+    expect(dev.desiredStepId).toBe('off');
+    expect(dev.targetStepId).toBe('off');
+    expect(dev.shedAction).toBe('set_step');
+    expect(reasonText(dev.reason)).toContain('insufficient headroom');
+  });
+
+  it('keeps stepped meter settling explicit when another device restored this cycle', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    const state = createPlanEngineState();
+    const deviceMap = new Map([
+      ['dev-step', steppedPlanDevice({
+        id: 'dev-step',
+        name: 'Tank',
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: 'off',
+        desiredStepId: 'low',
+        targetStepId: 'low',
+        measuredPowerKw: 0,
+        reason: { code: PLAN_REASON_CODES.keep, detail: null },
+      })],
+    ]);
+
+    planRestoreForSteppedDevice({
+      dev: deviceMap.get('dev-step')!,
+      deviceMap,
+      state,
+      timing: {
+        activeOvershoot: false, inCooldown: false, inRestoreCooldown: true,
+        inStartupStabilization: false, restoreCooldownSeconds: 60,
+        restoreCooldownMs: 60_000,
+        measurementTs: now - 1_000,
+        nowTs: now,
+        shedCooldownRemainingSec: null, restoreCooldownRemainingSec: 60,
+        startupStabilizationRemainingSec: null,
+      },
+      availableHeadroom: 5,
+      restoredOneThisCycle: true,
+      logDebug: vi.fn(),
+    });
+
+    const dev = deviceMap.get('dev-step')!;
+    expect(dev.plannedState).toBe('keep');
+    expect(dev.desiredStepId).toBe('low');
+    expect(reasonText(dev.reason)).toBe('meter settling (60s remaining)');
   });
 
   it('admits stepped restore when postReserveMarginKw is exactly at the floor', () => {

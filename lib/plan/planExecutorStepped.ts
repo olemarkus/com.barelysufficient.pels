@@ -33,8 +33,14 @@ import type { DeviceManager } from '../core/deviceManager';
 import { PELS_TARGET_STEP_CAPABILITY_ID } from '../core/steppedLoadSyntheticCapabilities';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
+import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 
 type PlanDevice = DevicePlan['devices'][number];
+
+export const allowsSteppedLoadKeepInvariantRestore = (reason: DeviceReason): boolean => (
+  reason.code === PLAN_REASON_CODES.keep
+  || reason.code === PLAN_REASON_CODES.restoreNeed
+);
 
 export type PlanExecutorSteppedContext = {
   state: PlanEngineState;
@@ -354,6 +360,14 @@ export const applySteppedLoadRestore = async (
       mode,
       reasonCode: 'planned_state',
       logMessage: `Capacity: skip stepped-load restore for ${name}, plannedState is ${dev.plannedState}`,
+    });
+  }
+  if (!allowsSteppedLoadKeepInvariantRestore(dev.reason)) {
+    return logSteppedLoadRestoreSkip(ctx, {
+      dev,
+      mode,
+      reasonCode: 'restore_not_admitted',
+      logMessage: `Capacity: skip stepped-load restore for ${name}, reason is ${dev.reason.code}`,
     });
   }
   const {
@@ -743,6 +757,7 @@ const logSteppedLoadRestoreSkip = (
     reasonCode:
       | 'planned_state'
       | 'no_keep_violation'
+      | 'restore_not_admitted'
       | 'waiting_for_confirmation'
       | 'retry_backoff'
       | 'missing_snapshot'

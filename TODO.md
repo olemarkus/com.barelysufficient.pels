@@ -42,6 +42,15 @@ file.
       makes overshoot and cooldown diagnostics harder to reason about.
       Files: `lib/plan/planHeadroomSupport.ts`, `lib/plan/planHeadroomState.ts`,
       `lib/plan/planPowerResolution.ts`, headroom diagnostics tests.
+- [ ] Use the configured device load as the stable expected load for binary restore planning and
+      overview copy when live/measurement evidence is absent or the device is off.
+      Context: `Termostat kontor` flipped between 1.0kW and 0kW expected load during restore
+      logging. For binary/thermostat devices, the Homey device setting / energy load value
+      should remain the expected restore load instead of being erased by current off-state power.
+      Why P1: restore admission and operator-facing overview text should not lose the configured
+      demand estimate just because the device is currently shed.
+      Files: `lib/core/deviceManagerControl.ts`, `lib/plan/planPowerResolution.ts`,
+      `lib/plan/planDevices.ts`, restore/overview power-source tests.
 - [ ] Finish the starvation rollout beyond the current diagnostics implementation: add
       per-episode / duration-threshold flow triggers, verify insights coverage, and close any
       remaining snapshot/UI contract gaps against `notes/starvation/README.md`.
@@ -122,8 +131,9 @@ file.
 ## P1 Simplification follow-ups
 
 - [ ] Split planner state from render-only explanation data so keep/shed/inactive decisions no
-      longer depend on UI-facing `reason` objects. Start with stepped restore and cooldown holds,
-      where planner code still leaks presentation phrasing into internal plan devices.
+      longer depend on UI-facing `reason` objects. The stepped restore admission path now keeps
+      rejected off restores explicit in the plan; continue with cooldown holds and the remaining
+      reason-derived rendering boundaries.
       Why P1: this is the next boundary cleanup after the local `planReasons.ts` split and would
       remove a recurring source of state/reason coupling bugs.
       Files: `lib/plan/planRestore.ts`, `lib/plan/planReasons.ts`, plan/executor/rendering
