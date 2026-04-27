@@ -97,8 +97,7 @@ export type RestorePlanResult = {
   lastRestoreCooldownBumpMs: number | null;
 };
 
-/* eslint-disable-next-line max-lines-per-function, max-statements, complexity --
-restore gating branches stay together at the top level. */
+/* eslint-disable-next-line complexity -- restore gating branches stay together at the top level. */
 export function applyRestorePlan(params: {
   planDevices: DevicePlanDevice[];
   context: PlanContext;
@@ -203,29 +202,9 @@ export function applyRestorePlan(params: {
       getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
     });
   } else if (effectiveTiming.inRestoreCooldown) {
-    const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
-      timing: effectiveTiming,
-      lastRestoreTs: state.lastRestoreMs,
-    });
-    if (meterSettlingRemainingSec !== null) {
-      markOffDevicesMeterSettling({
-        deviceMap,
-        timing: effectiveTiming,
-        lastRestoreTs: state.lastRestoreMs,
-      });
-    } else {
-      markOffDevicesStayOff({
-        deviceMap,
-        timing: effectiveTiming,
-        setDevice: (id, updates) => setDevice(deviceMap, id, updates),
-        getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
-      });
-      markSteppedDevicesStayAtCurrentLevel({
-        deviceMap,
-        timing: effectiveTiming,
-        getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
-      });
-    }
+    ({ availableHeadroom, restoredOneThisCycle } = applyRestorePlanInCooldown({
+      deviceMap, state, effectiveTiming, deps, availableHeadroom, restoredOneThisCycle,
+    }));
   }
 
   return {
@@ -264,6 +243,52 @@ function buildSteppedSwapExecutor(params: {
       rejectedDeviceUpdate,
     })
   );
+}
+
+// Handles the inRestoreCooldown branch of applyRestorePlan, extracted to keep that function's
+// cognitive complexity within the allowed ceiling.
+function applyRestorePlanInCooldown(params: {
+  deviceMap: Map<string, DevicePlanDevice>;
+  state: PlanEngineState;
+  effectiveTiming: Parameters<typeof planRestoreForSteppedDevice>[0]['timing'];
+  deps: RestoreDeps;
+  availableHeadroom: number;
+  restoredOneThisCycle: boolean;
+}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
+  const { deviceMap, state, effectiveTiming, deps } = params;
+  let { availableHeadroom, restoredOneThisCycle } = params;
+  const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
+    timing: effectiveTiming,
+    lastRestoreTs: state.lastRestoreMs,
+  });
+  if (meterSettlingRemainingSec !== null) {
+    markOffDevicesMeterSettling({ deviceMap, timing: effectiveTiming, lastRestoreTs: state.lastRestoreMs });
+  } else {
+    markOffDevicesStayOff({
+      deviceMap,
+      timing: effectiveTiming,
+      setDevice: (id, updates) => setDevice(deviceMap, id, updates),
+      getLastControlledMs: (deviceId) => state.lastDeviceControlledMs[deviceId],
+    });
+  }
+  // Run stepped candidates through planRestoreForSteppedDevice even during global restore
+  // cooldown. Off stepped devices get the cooldown gate applied inside the function; active
+  // stepped devices bypass it (they were already drawing power before the last restore).
+  // In the meter-settling sub-path, off stepped devices are already marked above, so only
+  // active devices need processing.
+  const steppedCandidates = getSteppedRestoreCandidates(Array.from(deviceMap.values()));
+  const eligibleStepped = meterSettlingRemainingSec !== null
+    ? steppedCandidates.filter((dev) => resolveEffectiveCurrentOn(dev) === true)
+    : steppedCandidates;
+  for (const dev of eligibleStepped) {
+    const result = planRestoreForSteppedDevice({
+      dev, deviceMap, state, timing: effectiveTiming,
+      availableHeadroom, restoredOneThisCycle, debugStructured: deps.debugStructured,
+    });
+    availableHeadroom = result.availableHeadroom;
+    restoredOneThisCycle = result.restoredOneThisCycle;
+  }
+  return { availableHeadroom, restoredOneThisCycle };
 }
 
 function buildRestoreShortfallReason(dev: DevicePlanDevice, headroomKw: number): DevicePlanDevice['reason'] {
