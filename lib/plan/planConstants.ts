@@ -24,6 +24,10 @@ export const PENDING_RESTORE_CONFIRMED_FRACTION = 0.5;
 export const SWAP_TIMEOUT_MS = 60000; // Clear pending swaps after 60s if they couldn't complete
 export const RESTORE_ADMISSION_RESERVE_KW = 0.25; // Final slack required after restore admission
 export const RESTORE_ADMISSION_FLOOR_KW = 0.25; // Minimum postReserveMarginKw for any restore to be admitted
+// When power is fresh and headroom is abundant, allow a small restore batch instead of draining
+// large shed backlogs one device per cooldown window.
+export const RESTORE_BATCH_MAX_DEVICES = 3;
+export const RESTORE_BATCH_HEADROOM_FRACTION = 0.5;
 // Swaps cannot rely on shed capacity becoming fully effective immediately; reserve some headroom.
 export const SWAP_RESTORE_RESERVE_KW = 0.3;
 export const BINARY_COMMAND_PENDING_MS = 15000;

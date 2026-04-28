@@ -11,6 +11,8 @@ import type { PlanContext } from './planContext';
 import type { PowerTrackerState } from '../core/powerTracker';
 import {
   RESTORE_ADMISSION_FLOOR_KW,
+  RESTORE_BATCH_HEADROOM_FRACTION,
+  RESTORE_BATCH_MAX_DEVICES,
 } from './planConstants';
 import { SwapState, SwapStateSnapshot, buildSwapState, cleanupStaleSwaps, exportSwapState } from './planSwapState';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from './planDebugDedupe';
@@ -76,6 +78,14 @@ export type RestoreDeps = {
 
 export type RestorePlanState = SwapStateSnapshot;
 
+type RestoreBatchState = {
+  enabled: boolean;
+  maxDevices: number;
+  maxNeedKw: number;
+  admittedCount: number;
+  admittedNeedKw: number;
+};
+
 export type RestorePlanResult = {
   planDevices: DevicePlanDevice[];
   stateUpdates: RestorePlanState;
@@ -133,6 +143,11 @@ export function applyRestorePlan(params: {
       deviceNameById: deps.deviceNameById,
     });
   let restoredOneThisCycle = false;
+  const batchState = buildRestoreBatchState({
+    context,
+    timing: effectiveTiming,
+    availableHeadroom,
+  });
 
   if (guardInShortfall) {
     markRestoreCandidatesStayShedForShortfall({
@@ -155,6 +170,7 @@ export function applyRestorePlan(params: {
         availableHeadroom,
         restoredThisCycle,
         restoredOneThisCycle,
+        batchState,
         deps,
       });
       availableHeadroom = result.availableHeadroom;
@@ -357,6 +373,7 @@ function planRestoreForDevice(params: {
   availableHeadroom: number;
   restoredThisCycle: Set<string>;
   restoredOneThisCycle: boolean;
+  batchState: RestoreBatchState;
   deps: RestoreDeps;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const {
@@ -369,6 +386,7 @@ function planRestoreForDevice(params: {
     availableHeadroom,
     restoredThisCycle,
     restoredOneThisCycle,
+    batchState,
     deps,
   } = params;
 
@@ -384,56 +402,31 @@ function planRestoreForDevice(params: {
     return { availableHeadroom, restoredOneThisCycle };
   }
 
+  const batchContinuation = restoredOneThisCycle && canAttemptBatchContinuation(batchState);
+  const shouldBlockForInCycleRestore = restoredOneThisCycle && !batchContinuation;
   const gateReason = resolveCapacityRestoreBlockReason({
     timing,
-    restoredOneThisCycle,
+    restoredOneThisCycle: shouldBlockForInCycleRestore,
   });
   const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
     timing,
     lastRestoreTs: state.lastRestoreMs,
-    restoredOneThisCycle,
+    restoredOneThisCycle: shouldBlockForInCycleRestore,
   });
   if (meterSettlingRemainingSec !== null) {
-    const reason = buildMeterSettlingReason(
-      meterSettlingRemainingSec,
-      resolveMeterSettlingCountdownTiming({
-        timing,
-        lastRestoreTs: state.lastRestoreMs,
-        restoredOneThisCycle,
-      }),
-    );
-    setDevice(deviceMap, dev.id, {
-      plannedState: 'shed',
-      reason,
-    });
-    emitRestoreDebugEventOnChange({
+    return rejectBinaryRestoreForMeterSettling({
       state,
-      key: restoreDebugKey,
-      payload: {
-        event: 'restore_rejected',
-        restoreType: 'binary',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        phase,
-        reason: formatDeviceReason(reason),
-        availableKw: availableHeadroom,
-        decision: 'rejected',
-        decisionReason: formatDeviceReason(reason),
-      },
-      signaturePayload: {
-        event: 'restore_rejected',
-        restoreType: 'binary',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        phase,
-        reason: buildComparableDeviceReason(reason),
-        availableKw: availableHeadroom,
-        decision: 'rejected',
-        decisionReason: buildComparableDeviceReason(reason),
-      },
+      deviceMap,
+      dev,
+      phase,
+      timing,
+      lastRestoreTs: state.lastRestoreMs,
+      restoredOneThisCycle: shouldBlockForInCycleRestore,
+      availableHeadroom,
+      restoreDebugKey,
+      restoredOneThisCycleResult: restoredOneThisCycle,
       debugStructured: deps.debugStructured,
     });
-    return { availableHeadroom, restoredOneThisCycle };
   }
   if (gateReason) {
     setDevice(deviceMap, dev.id, {
@@ -526,6 +519,21 @@ function planRestoreForDevice(params: {
   }
 
   const restoreNeed = getRestoreNeed(dev, state, deps.deviceDiagnostics);
+  if (batchContinuation && !canAdmitWithinBatch(batchState, restoreNeed.needed)) {
+    return rejectBinaryRestoreForMeterSettling({
+      state,
+      deviceMap,
+      dev,
+      phase,
+      timing,
+      lastRestoreTs: state.lastRestoreMs,
+      restoredOneThisCycle: true,
+      availableHeadroom,
+      restoreDebugKey,
+      restoredOneThisCycleResult: restoredOneThisCycle,
+      debugStructured: deps.debugStructured,
+    });
+  }
   const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
   const powerSource = resolveRestorePowerSource(dev);
   if (admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) {
@@ -551,7 +559,237 @@ function planRestoreForDevice(params: {
       debugStructured: deps.debugStructured,
     });
     restoredThisCycle.add(dev.id);
+    recordBatchAdmission(batchState, restoreNeed.needed);
     return { availableHeadroom: availableHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
+  }
+
+  return handleInsufficientBinaryRestoreHeadroom({
+    state,
+    dev,
+    deviceMap,
+    onDevices,
+    swapState,
+    phase,
+    powerSource,
+    availableHeadroom,
+    restoreNeed,
+    admission,
+    measurementTs: timing.measurementTs,
+    restoredThisCycle,
+    restoredOneThisCycle,
+    batchContinuation,
+    restoreDebugKey,
+    deps,
+  });
+}
+
+function buildRestoreBatchState(params: {
+  context: PlanContext;
+  timing: RestoreTiming;
+  availableHeadroom: number;
+}): RestoreBatchState {
+  const { context, timing, availableHeadroom } = params;
+  const enabled = availableHeadroom > 0
+    && !timing.inCooldown
+    && !timing.inRestoreCooldown
+    && !timing.inStartupStabilization
+    && !timing.activeOvershoot
+    && context.powerFreshnessState === 'fresh';
+  return {
+    enabled,
+    maxDevices: RESTORE_BATCH_MAX_DEVICES,
+    maxNeedKw: Math.max(0, availableHeadroom * RESTORE_BATCH_HEADROOM_FRACTION),
+    admittedCount: 0,
+    admittedNeedKw: 0,
+  };
+}
+
+function canAttemptBatchContinuation(batchState: RestoreBatchState): boolean {
+  return batchState.enabled && batchState.admittedCount > 0 && batchState.admittedCount < batchState.maxDevices;
+}
+
+function canAdmitWithinBatch(batchState: RestoreBatchState, neededKw: number): boolean {
+  return batchState.admittedNeedKw + neededKw <= batchState.maxNeedKw;
+}
+
+function recordBatchAdmission(batchState: RestoreBatchState, neededKw: number): void {
+  Object.assign(batchState, {
+    admittedCount: batchState.admittedCount + 1,
+    admittedNeedKw: batchState.admittedNeedKw + neededKw,
+  });
+}
+
+function rejectBinaryRestoreForMeterSettling(params: {
+  state: PlanEngineState;
+  deviceMap: Map<string, DevicePlanDevice>;
+  dev: DevicePlanDevice;
+  phase: ReturnType<typeof resolveRestoreDecisionPhase>;
+  timing: Parameters<typeof resolveMeterSettlingRemainingSec>[0]['timing'];
+  lastRestoreTs?: number | null;
+  restoredOneThisCycle: boolean;
+  availableHeadroom: number;
+  restoreDebugKey: string;
+  restoredOneThisCycleResult: boolean;
+  debugStructured: RestoreDeps['debugStructured'];
+}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
+  const {
+    state,
+    deviceMap,
+    dev,
+    phase,
+    timing,
+    lastRestoreTs,
+    restoredOneThisCycle,
+    availableHeadroom,
+    restoreDebugKey,
+    restoredOneThisCycleResult,
+    debugStructured,
+  } = params;
+  const remainingSec = resolveMeterSettlingRemainingSec({ timing, lastRestoreTs, restoredOneThisCycle }) ?? 0;
+  const reason = buildMeterSettlingReason(
+    remainingSec,
+    resolveMeterSettlingCountdownTiming({ timing, lastRestoreTs, restoredOneThisCycle }),
+  );
+  setDevice(deviceMap, dev.id, {
+    plannedState: 'shed',
+    reason,
+  });
+  emitRestoreDebugEventOnChange({
+    state,
+    key: restoreDebugKey,
+    payload: {
+      event: 'restore_rejected',
+      restoreType: 'binary',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      reason: formatDeviceReason(reason),
+      availableKw: availableHeadroom,
+      decision: 'rejected',
+      decisionReason: formatDeviceReason(reason),
+    },
+    signaturePayload: {
+      event: 'restore_rejected',
+      restoreType: 'binary',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      reason: buildComparableDeviceReason(reason),
+      availableKw: availableHeadroom,
+      decision: 'rejected',
+      decisionReason: buildComparableDeviceReason(reason),
+    },
+    debugStructured,
+  });
+  return { availableHeadroom, restoredOneThisCycle: restoredOneThisCycleResult };
+}
+
+function rejectBinaryRestoreForInsufficientHeadroom(params: {
+  state: PlanEngineState;
+  deviceMap: Map<string, DevicePlanDevice>;
+  dev: DevicePlanDevice;
+  phase: ReturnType<typeof resolveRestoreDecisionPhase>;
+  powerSource: ReturnType<typeof resolveRestorePowerSource>;
+  restoreNeed: ReturnType<typeof getRestoreNeed>;
+  admission: ReturnType<typeof buildRestoreAdmissionMetrics>;
+  availableHeadroom: number;
+  restoreDebugKey: string;
+  restoredOneThisCycle: boolean;
+  debugStructured: RestoreDeps['debugStructured'];
+}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
+  const {
+    state,
+    deviceMap,
+    dev,
+    phase,
+    powerSource,
+    restoreNeed,
+    admission,
+    availableHeadroom,
+    restoreDebugKey,
+    restoredOneThisCycle,
+    debugStructured,
+  } = params;
+  setDevice(deviceMap, dev.id, buildInsufficientHeadroomUpdate({
+    neededKw: restoreNeed.needed,
+    availableKw: availableHeadroom,
+    postReserveMarginKw: admission.postReserveMarginKw,
+    minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+    penaltyExtraKw: restoreNeed.penaltyExtraKw,
+  }));
+  emitRestoreDebugEventOnChange({
+    state,
+    key: restoreDebugKey,
+    payload: {
+      event: 'restore_rejected',
+      restoreType: 'binary',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      powerSource,
+      neededKw: restoreNeed.needed,
+      availableKw: availableHeadroom,
+      ...buildRestoreAdmissionLogFields(admission),
+      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+      decision: 'rejected',
+      rejectionReason: 'insufficient_headroom',
+      swapAttempt: false,
+    },
+    debugStructured,
+  });
+  return { availableHeadroom, restoredOneThisCycle };
+}
+
+function handleInsufficientBinaryRestoreHeadroom(params: {
+  state: PlanEngineState;
+  dev: DevicePlanDevice;
+  deviceMap: Map<string, DevicePlanDevice>;
+  onDevices: DevicePlanDevice[];
+  swapState: SwapState;
+  phase: ReturnType<typeof resolveRestoreDecisionPhase>;
+  powerSource: ReturnType<typeof resolveRestorePowerSource>;
+  availableHeadroom: number;
+  restoreNeed: ReturnType<typeof getRestoreNeed>;
+  admission: ReturnType<typeof buildRestoreAdmissionMetrics>;
+  measurementTs: number | null;
+  restoredThisCycle: Set<string>;
+  restoredOneThisCycle: boolean;
+  batchContinuation: boolean;
+  restoreDebugKey: string;
+  deps: RestoreDeps;
+}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
+  const {
+    state,
+    dev,
+    deviceMap,
+    onDevices,
+    swapState,
+    phase,
+    powerSource,
+    availableHeadroom,
+    restoreNeed,
+    admission,
+    measurementTs,
+    restoredThisCycle,
+    restoredOneThisCycle,
+    batchContinuation,
+    restoreDebugKey,
+    deps,
+  } = params;
+  if (batchContinuation) {
+    return rejectBinaryRestoreForInsufficientHeadroom({
+      state,
+      deviceMap,
+      dev,
+      phase,
+      powerSource,
+      restoreNeed,
+      admission,
+      availableHeadroom,
+      restoreDebugKey,
+      restoredOneThisCycle,
+      debugStructured: deps.debugStructured,
+    });
   }
 
   emitRestoreDebugEventOnChange({
@@ -583,7 +821,7 @@ function planRestoreForDevice(params: {
     phase,
     availableHeadroom,
     restoreNeed,
-    measurementTs: timing.measurementTs,
+    measurementTs,
     restoredThisCycle,
     deps,
   });
