@@ -34,6 +34,8 @@ export type PowerSampleRebuildState = {
   legacyScheduler?: PlanRebuildScheduler;
   lastRebuildPowerW?: number;
   lastSoftLimitKw?: number;
+  lastHardCapBreached?: boolean;
+  lastHardCapDeficitKw?: number;
   shortfallSuppressionInvalidated?: boolean;
   tightNoopStreak?: number;
   backoffUntilMs?: number;
@@ -65,17 +67,15 @@ const handleSkippedRebuildDecision = (params: {
   isInShortfall?: boolean;
   setState: (state: PowerSampleRebuildState) => void;
 }): void => {
-  const {
-    state,
-    decision,
-    now,
-    hardCapBreach,
-    isInShortfall,
-    setState,
-  } = params;
-  if (!decision.headroomTight && !isInShortfall && !hardCapBreach?.breached && hasTightNoopBackoffState(state)) {
-    setState(resetTightNoopBackoff(state));
+  const { state, decision, now, hardCapBreach, isInShortfall, setState } = params;
+  let nextState = state;
+  if (!decision.headroomTight && !isInShortfall && !hardCapBreach?.breached && hasTightNoopBackoffState(nextState)) {
+    nextState = resetTightNoopBackoff(nextState);
   }
+  if (hardCapBreach?.breached !== true && nextState.lastHardCapBreached === true) {
+    nextState = { ...nextState, lastHardCapBreached: false, lastHardCapDeficitKw: undefined };
+  }
+  if (nextState !== state) setState(nextState);
   incPerfCounters([
     'plan_rebuild_skipped_total',
     decision.deltaMeaningful
@@ -166,9 +166,7 @@ const clearPendingState = (snapshot: PowerSampleRebuildState): PowerSampleRebuil
 });
 
 const clearInFlightState = (snapshot: PowerSampleRebuildState): PowerSampleRebuildState => ({
-  ...snapshot,
-  inFlight: undefined,
-});
+  ...snapshot, inFlight: undefined });
 
 const createPendingPromiseState = (
   snapshot: PowerSampleRebuildState,
@@ -408,9 +406,11 @@ export function executePendingPowerRebuild(params: {
       ) {
         await onTightNoopHardCapBreach?.(hardCapBreach.deficitKw);
       }
-      setState(clearInFlightState(clearShortfallSuppressionInvalidation(
-        updateTightRebuildSuppression(getState(), reason, outcome, getNowMs()),
-      )));
+      setState(clearInFlightState(clearShortfallSuppressionInvalidation(updateTightRebuildSuppression({
+        ...getState(),
+        lastHardCapBreached: hardCapBreach?.breached === true,
+        lastHardCapDeficitKw: hardCapBreach?.breached === true ? hardCapBreach.deficitKw : undefined,
+      }, reason, outcome, getNowMs()))));
       pendingResolve?.();
     })
     .catch((error: unknown) => {
