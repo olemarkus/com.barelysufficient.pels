@@ -28,6 +28,7 @@ import {
 } from './planServiceInternals';
 import { recordPlanRebuildTrace } from '../utils/planRebuildTrace';
 import { normalizeError } from '../utils/errorUtils';
+import { isFiniteNumber } from '../utils/appTypeGuards';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { withRebuildContext } from '../logging/logger';
 import type {
@@ -759,6 +760,7 @@ export class PlanService {
             hadShedding: outcome.hadShedding,
             appliedActions: outcome.appliedActions,
             deviceWriteCount: outcome.deviceWriteCount,
+            commandRequestCount: outcome.commandRequestCount,
             failed: outcome.failed,
             ...buildPlanHeadroomLogFields(this.latestPlanSnapshot),
             ...buildPlanCapacityStateSummary(this.latestPlanSnapshot, {
@@ -793,7 +795,7 @@ export class PlanService {
       this.deps.log('Dry run: shedding planned but not executed');
     }
 
-    const { applyMs, appliedActions, deviceWriteCount } = await this.maybeApplyPlanChanges(
+    const { applyMs, appliedActions, deviceWriteCount, commandRequestCount } = await this.maybeApplyPlanChanges(
       stampedPlan,
       changes,
       isDryRun,
@@ -814,6 +816,7 @@ export class PlanService {
       metaChanged: changes.metaChanged,
       appliedActions,
       deviceWriteCount,
+      commandRequestCount,
       hadShedding,
     });
   }
@@ -893,20 +896,23 @@ export class PlanService {
     plan: DevicePlan,
     changes: PlanChangeSet,
     isDryRun: boolean,
-  ): Promise<{ applyMs: number; appliedActions: boolean; deviceWriteCount: number }> {
+  ): Promise<{ applyMs: number; appliedActions: boolean; deviceWriteCount: number; commandRequestCount: number }> {
     const shouldApplyStablePlanActions = this.deps.planEngine.shouldApplyStablePlanActions?.(plan) ?? false;
     if (isDryRun || (!changes.actionChanged && !shouldApplyStablePlanActions)) {
-      return { applyMs: 0, appliedActions: false, deviceWriteCount: 0 };
+      return { applyMs: 0, appliedActions: false, deviceWriteCount: 0, commandRequestCount: 0 };
     }
 
     const applyStart = Date.now();
     let appliedActions = false;
     let deviceWriteCount = 0;
+    let commandRequestCount = 0;
     try {
       const actuation = await this.applyPlanActions(plan);
       const rawDeviceWriteCount = actuation?.deviceWriteCount;
-      deviceWriteCount = Number.isFinite(rawDeviceWriteCount) ? Math.max(0, Math.trunc(rawDeviceWriteCount)) : 0;
-      appliedActions = deviceWriteCount > 0;
+      const rawCommandRequestCount = actuation?.commandRequestCount;
+      deviceWriteCount = sanitizeActuationCount(rawDeviceWriteCount);
+      commandRequestCount = sanitizeActuationCount(rawCommandRequestCount);
+      appliedActions = deviceWriteCount > 0 || commandRequestCount > 0;
       if (appliedActions) {
         this.deps.schedulePostActuationRefresh?.();
       }
@@ -921,6 +927,7 @@ export class PlanService {
       applyMs: Date.now() - applyStart,
       appliedActions,
       deviceWriteCount,
+      commandRequestCount,
     };
   }
 
@@ -959,6 +966,7 @@ export class PlanService {
       isDryRun: outcome.isDryRun,
       appliedActions: outcome.appliedActions,
       deviceWriteCount: outcome.deviceWriteCount,
+      commandRequestCount: outcome.commandRequestCount,
       hadShedding: outcome.hadShedding,
       failed: outcome.failed,
     });
@@ -1017,6 +1025,10 @@ export class PlanService {
   flushPendingNonActionSnapshotFromScheduler(nowMs: number): number {
     return this.planSnapshotWriter.flushPendingNonActionSnapshotFromScheduler(nowMs);
   }
+}
+
+function sanitizeActuationCount(value: unknown): number {
+  return isFiniteNumber(value) ? Math.max(0, Math.trunc(value)) : 0;
 }
 
 function getPlanRebuildLogLevel(
