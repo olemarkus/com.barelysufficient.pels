@@ -117,6 +117,7 @@ const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
 const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000;
 const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const POWER_TRACKER_PERSIST_DELAY_MS = VOLATILE_WRITE_THROTTLE_MS;
+const PLAN_REBUILD_SCHEDULER_DEBUG_RATE_LIMIT_MS = 60 * 1000;
 type PriceOptimizationSettings = Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
 const getAppPlanRebuildNowMs = (): number => (
   process.env.NODE_ENV === 'test'
@@ -204,6 +205,7 @@ class PelsApp extends Homey.App {
   private lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
   private lastNotifiedOperatingMode = 'Home';
   private powerSampleRebuildState: PowerSampleRebuildState = { lastMs: 0 };
+  private readonly planRebuildSchedulerDebugLastEmittedAtMsByKey = new Map<string, number>();
   private readonly planRebuildScheduler = new PlanRebuildScheduler({
     getNowMs: getAppPlanRebuildNowMs,
     resolveDueAtMs: (intent, state) => this.resolvePlanRebuildDueAtMs(intent, state),
@@ -801,11 +803,15 @@ class PelsApp extends Homey.App {
     return this.planService.rebuildPlanFromCache(intent.reason).then(() => undefined);
   }
   private onPlanRebuildIntentDropped(dropped: RebuildIntent, kept: RebuildIntent): void {
-    this.logDebug(
-      'plan',
-      'Plan rebuild scheduler:'
-        + ` dropping ${dropped.kind}:${dropped.reason}`
-        + ` while ${kept.kind}:${kept.reason} remains scheduled`,
+    this.emitRateLimitedPlanRebuildSchedulerDebug(
+      `dropped:${dropped.kind}:${dropped.reason}:${kept.kind}:${kept.reason}`,
+      {
+        event: 'plan_rebuild_scheduler_intent_dropped',
+        droppedKind: dropped.kind,
+        droppedReason: dropped.reason,
+        keptKind: kept.kind,
+        keptReason: kept.reason,
+      },
     );
   }
   private onPlanRebuildPendingIntentReplaced(previous: RebuildIntent, next: RebuildIntent): void {
@@ -815,9 +821,15 @@ class PelsApp extends Homey.App {
         incPerfCounter('plan_rebuild_requested.flow_pending_source_replaced_total');
       }
     }
-    this.logDebug(
-      'plan',
-      `Plan rebuild scheduler: replacing pending ${previous.kind}:${previous.reason} with ${next.kind}:${next.reason}`,
+    this.emitRateLimitedPlanRebuildSchedulerDebug(
+      `replaced:${previous.kind}:${previous.reason}:${next.kind}:${next.reason}`,
+      {
+        event: 'plan_rebuild_scheduler_intent_replaced',
+        previousKind: previous.kind,
+        previousReason: previous.reason,
+        nextKind: next.kind,
+        nextReason: next.reason,
+      },
     );
   }
   private onPlanRebuildIntentCancelled(intent: RebuildIntent, reason: string): void {
@@ -841,6 +853,27 @@ class PelsApp extends Homey.App {
       return;
     }
     this.error('Plan rebuild scheduler failed to flush pending snapshot', error);
+  }
+  private emitRateLimitedPlanRebuildSchedulerDebug(key: string, payload: Record<string, unknown>): void {
+    if (!this.structuredLogger || !this.debugLoggingTopics.has('plan')) return;
+    const nowMs = this.getPlanRebuildNowMs();
+    for (const [storedKey, lastEmittedAtMs] of this.planRebuildSchedulerDebugLastEmittedAtMsByKey) {
+      if (nowMs - lastEmittedAtMs >= PLAN_REBUILD_SCHEDULER_DEBUG_RATE_LIMIT_MS) {
+        this.planRebuildSchedulerDebugLastEmittedAtMsByKey.delete(storedKey);
+      }
+    }
+    const lastEmittedAtMs = this.planRebuildSchedulerDebugLastEmittedAtMsByKey.get(key);
+    if (
+      typeof lastEmittedAtMs === 'number'
+      && nowMs - lastEmittedAtMs < PLAN_REBUILD_SCHEDULER_DEBUG_RATE_LIMIT_MS
+    ) {
+      return;
+    }
+    this.planRebuildSchedulerDebugLastEmittedAtMsByKey.set(key, nowMs);
+    this.structuredLogger.child({ component: 'plan' }, { level: 'debug' }).debug({
+      ...payload,
+      debugTopic: 'plan',
+    });
   }
   private initCapacityGuardProviders(): void {
     if (!this.capacityGuard) return;

@@ -32,6 +32,8 @@ This note is for contributors changing runtime logging.
 
 - `plan_rebuild_started`
 - `plan_rebuild_completed`
+- `plan_rebuild_scheduler_intent_dropped`
+- `plan_rebuild_scheduler_intent_replaced`
 - `plan_snapshot_written`
 - `plan_snapshot_write_throttled`
 - `binary_command_applied`
@@ -110,6 +112,8 @@ This note is for contributors changing runtime logging.
 - Overview transition logging keeps `device_overview_changed` for single-device transitions and
   emits `device_overview_changes` when one rebuild produces multiple changed device rows. The
   batched `devices` entries should keep the same per-device fields as the single-device event.
+- Plan rebuild scheduler transition logs should stay structured and rate-limited by the
+  intent-kind/reason tuple so repeated coalescing does not flood debug logs.
 - When adding a new event, keep payload fields machine-friendly and consistent with existing unit
   naming such as `durationMs`, `powerW`, `kWh`, and explicit IDs.
 - Capacity-state summary fields should stay semantically explicit. Do not reuse one counter name
