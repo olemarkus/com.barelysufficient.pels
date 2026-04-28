@@ -1,7 +1,6 @@
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
-  isSteppedLoadOffStep,
   normalizeDeviceControlProfiles,
   resolveSteppedLoadPlanningPowerKw,
 } from '../utils/deviceControlProfiles';
@@ -17,11 +16,16 @@ import type {
 } from '../utils/types';
 import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from '../plan/planConstants';
 import { LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS } from '../plan/planObservationPolicy';
-import { serializeLegacyStepFieldsFromEvidence } from '../plan/planSteppedLoadState';
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../core/steppedLoadSyntheticCapabilities';
+import {
+  buildSteppedLoadSnapshotStepFields,
+  resolveNativeSteppedLoadProfile,
+  resolveSteppedLoadCurrentOn,
+  shouldSuppressSteppedLoadFlowReport,
+} from './appDeviceControlSteppedState';
 
 export const STEPPED_LOAD_COMMAND_STALE_MS = LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS;
 
@@ -73,23 +77,6 @@ export const resolveDefaultControlModel = (device: TargetDeviceSnapshot): Device
   return 'binary_power';
 };
 
-const resolveNativeSteppedLoadProfile = (snapshot: TargetDeviceSnapshot): SteppedLoadProfile | null => (
-  isNativeSteppedLoadControlEnabled(snapshot) && snapshot.suggestedSteppedLoadProfile?.model === 'stepped_load'
-    ? snapshot.suggestedSteppedLoadProfile
-    : null
-);
-
-const resolveSteppedLoadCurrentOn = (params: {
-  snapshot: TargetDeviceSnapshot;
-  profile: SteppedLoadProfile;
-  selectedStepId?: string;
-}): boolean => {
-  const { snapshot, profile, selectedStepId } = params;
-  if (snapshot.currentOn === false) return false;
-  if (!selectedStepId) return true;
-  return !isSteppedLoadOffStep(profile, selectedStepId);
-};
-
 /* eslint-disable complexity --
  * Decoration resolves reported step state plus legacy planner fallback in one place.
  */
@@ -132,19 +119,19 @@ export const decorateSnapshotWithDeviceControl = (params: {
       status: 'success',
     };
   }
-  const reportedStepId = nativeSteppedControlEnabled
-    ? nativeReportedStepId
-    : getSteppedLoadStep(profile, reported?.stepId)?.id;
-  const desiredStepId = getSteppedLoadStep(profile, desired?.stepId)?.id;
   const fallbackStepId = getSteppedLoadLowestActiveStep(profile)?.id;
-  const legacyStepFields = serializeLegacyStepFieldsFromEvidence({
+  const legacyStepFields = buildSteppedLoadSnapshotStepFields({
+    profile,
     nowMs,
-    reportedStepId,
-    reportedStepSource: nativeSteppedControlEnabled ? 'native' : 'flow',
-    reportedObservedAtMs: nativeSteppedControlEnabled ? snapshot.lastUpdated : reported?.updatedAtMs,
-    targetStepId: desiredStepId,
-    targetChangedAtMs: desired?.changedAtMs,
-    targetStatus: desired?.status,
+    currentOn: snapshot.currentOn,
+    nativeSteppedControlEnabled,
+    nativeReportedStep: { stepId: nativeReportedStepId, observedAtMs: snapshot.lastUpdated },
+    flowReportedStep: { stepId: reported?.stepId, observedAtMs: reported?.updatedAtMs },
+    targetStep: {
+      stepId: desired?.stepId,
+      changedAtMs: desired?.changedAtMs,
+      status: desired?.status,
+    },
     fallbackStepId,
   });
   const selectedStepId = legacyStepFields.selectedStepId;
@@ -376,6 +363,22 @@ export class AppDeviceControlHelpers {
       this.deps.logDebug('devices', `Stepped load feedback ignored for ${deviceName}: native wiring is enabled`);
       return 'unchanged';
     }
+    const profile = this.deps.getProfiles()[deviceId];
+    if (!profile || profile.model !== 'stepped_load' || !getSteppedLoadStep(profile, stepId)) {
+      this.deps.logDebug('devices', `Stepped load feedback ignored for ${deviceName}: invalid step '${stepId}'`);
+      return 'invalid';
+    }
+    if (shouldSuppressSteppedLoadFlowReport({
+      profile,
+      currentOn: snapshot?.currentOn,
+      stepId,
+    })) {
+      this.deps.logDebug(
+        'devices',
+        `Stepped load feedback ignored for ${deviceName}: non-off step '${stepId}' while device is off`,
+      );
+      return 'unchanged';
+    }
     const previousReportedStepId = this.runtimeState.steppedLoadReportedByDeviceId[deviceId]?.stepId;
     const previousDesired = this.runtimeState.steppedLoadDesiredByDeviceId[deviceId];
     const previousDesiredStepId = this.resolvePreviousDesiredStepId(deviceId, previousDesired);
@@ -388,10 +391,6 @@ export class AppDeviceControlHelpers {
       stepId,
     });
 
-    if (changed === 'invalid') {
-      this.deps.logDebug('devices', `Stepped load feedback ignored for ${deviceName}: invalid step '${stepId}'`);
-      return changed;
-    }
     const desiredStepToPreserve = this.resolvePlannedDesiredStepToPreserve({
       previousDesired,
       previousDesiredStepId,
