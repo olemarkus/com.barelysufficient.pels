@@ -822,6 +822,65 @@ describe('MyApp initialization', () => {
     });
   });
 
+  it('does not schedule convergence rebuilds for passive recent restore history alone', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.5);
+
+    const app = createApp();
+    await initApp(app);
+    const rebuildSpy = vi.spyOn((app as any).planService, 'rebuildPlanFromCache');
+    rebuildSpy.mockClear();
+
+    const nowMs = (app as any).getPlanRebuildNowMs();
+    (app as any).powerSampleRebuildState = {
+      ...(app as any).powerSampleRebuildState,
+      lastMs: nowMs,
+      lastRebuildPowerW: 5000,
+      lastSoftLimitKw: 9.5,
+    };
+    (app as any).planEngine.state.lastRestoreMs = nowMs - 1_000;
+    (app as any).planEngine.state.lastDeviceRestoreMs = { 'dev-1': nowMs - 1_000 };
+
+    await (app as any).runPowerSample(5300, nowMs + 1);
+
+    expect(rebuildSpy).not.toHaveBeenCalled();
+    rebuildSpy.mockRestore();
+  });
+
+  it('still schedules convergence rebuilds for active overshoot', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.5);
+
+    const app = createApp();
+    await initApp(app);
+    const rebuildSpy = vi.spyOn((app as any).planService, 'rebuildPlanFromCache');
+    rebuildSpy.mockClear();
+
+    const nowMs = (app as any).getPlanRebuildNowMs();
+    (app as any).powerSampleRebuildState = {
+      ...(app as any).powerSampleRebuildState,
+      lastMs: nowMs,
+      lastRebuildPowerW: 5000,
+      lastSoftLimitKw: 9.5,
+    };
+    (app as any).planEngine.state.wasOvershoot = true;
+
+    await (app as any).runPowerSample(5300, nowMs + 1);
+
+    expect(rebuildSpy).toHaveBeenCalledWith('power_sample_convergence');
+    rebuildSpy.mockRestore();
+  });
+
   it('only clears startup stabilization when a power sample advances the tracked timestamp', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
