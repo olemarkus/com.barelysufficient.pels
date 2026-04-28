@@ -1,5 +1,6 @@
 import { PlanService } from '../lib/plan/planService';
 import type { DevicePlan } from '../lib/plan/planTypes';
+import type { BinaryControlObservation } from '../lib/utils/types';
 import * as pelsStatusModule from '../lib/core/pelsStatus';
 import { getRecentPlanRebuildTraces } from '../lib/utils/planRebuildTrace';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';
@@ -2966,6 +2967,78 @@ describe('PlanService', () => {
     expect(syncPendingTargetCommands).toHaveBeenCalledWith(firstLiveDevices, 'rebuild');
     expect(syncPendingBinaryCommands).toHaveBeenCalledWith(firstLiveDevices, 'rebuild');
     expect(buildDevicePlanSnapshot).toHaveBeenCalledWith(firstLiveDevices);
+  });
+
+  it('passes snapshot_refresh and realtime_capability binary evidence to rebuild and live sync without source filtering', async () => {
+    const snapshotRefreshEvidence = {
+      valid: true as const,
+      capabilityId: 'onoff' as const,
+      observedValue: true,
+      observedCapabilityIds: ['onoff'],
+      observedAtMs: Date.now() + 1,
+      source: 'snapshot_refresh' as const,
+    };
+    const realtimeEvidence = {
+      ...snapshotRefreshEvidence,
+      observedValue: false,
+      observedAtMs: Date.now() + 2,
+      source: 'realtime_capability' as const,
+    };
+    const buildLiveDevice = (binaryControlObservation: BinaryControlObservation) => ({
+      id: 'dev-1',
+      name: 'Heater',
+      targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+      deviceType: 'temperature' as const,
+      hasBinaryControl: true,
+      controlCapabilityId: 'onoff' as const,
+      currentOn: binaryControlObservation.observedValue,
+      currentTemperature: 21,
+      binaryControlObservation,
+    });
+    let liveDevices = [buildLiveDevice(snapshotRefreshEvidence)];
+    const syncPendingBinaryCommands = vi.fn(() => false);
+    const service = new PlanService({
+      homey: {
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable')),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+        hasPendingBinaryCommands: vi.fn(() => true),
+        syncPendingBinaryCommands,
+        prunePendingTargetCommands: vi.fn(() => false),
+        decoratePlanWithPendingTargetCommands: vi.fn((plan: DevicePlan) => plan),
+      } as any,
+      getPlanDevices: () => liveDevices,
+      getCapacityDryRun: () => true,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+    });
+
+    await service.rebuildPlanFromCache('binary_evidence_snapshot_refresh');
+    expect(syncPendingBinaryCommands).toHaveBeenCalledWith([
+      expect.objectContaining({ binaryControlObservation: snapshotRefreshEvidence }),
+    ], 'rebuild');
+
+    (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, { binaryCommandPending: true });
+    liveDevices = [buildLiveDevice(realtimeEvidence)];
+    await service.syncLivePlanState('realtime_capability');
+
+    expect(syncPendingBinaryCommands).toHaveBeenLastCalledWith([
+      expect.objectContaining({ binaryControlObservation: realtimeEvidence }),
+    ], 'realtime_capability');
   });
 
   it('clears pending throttled snapshot timer on destroy', async () => {
