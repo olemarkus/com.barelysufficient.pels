@@ -32,7 +32,7 @@ import {
   shouldSkipShedding,
   shouldSkipUnavailable,
 } from './planExecutorSupport';
-import { isSteppedLoadDevice } from './planSteppedLoad';
+import { isSteppedLoadDevice, resolveSteppedKeepDesiredStepId } from './planSteppedLoad';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import {
   applyShedTemperaturePlan,
@@ -49,6 +49,7 @@ import {
 } from './planExecutorStepped';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { setObservedNativeSteppedLoadStep } from '../core/deviceManagerNativeSteppedCommand';
+import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
@@ -733,10 +734,8 @@ export class PlanExecutor {
 
   public hasStablePlanActuation(plan: DevicePlan): boolean {
     return plan.devices.some((dev) => (
-      dev.controllable === false
-      && dev.plannedState === 'keep'
-      && resolveEffectiveCurrentOn(dev) === false
-      && Boolean(this.state.lastDeviceShedMs[dev.id])
+      hasStableUncontrolledRestoreActuation(dev, this.state)
+      || hasStableSteppedLoadStepUpActuation(dev)
     ));
   }
 
@@ -970,6 +969,45 @@ function resolveConfirmedBinaryCommandReasonCode(
     return 'reconcile_restore';
   }
   return pending.restoreSource ?? 'current_plan';
+}
+
+function hasStableUncontrolledRestoreActuation(
+  dev: DevicePlan['devices'][number],
+  state: PlanEngineState,
+): boolean {
+  return dev.controllable === false
+    && dev.plannedState === 'keep'
+    && resolveEffectiveCurrentOn(dev) === false
+    && Boolean(state.lastDeviceShedMs[dev.id]);
+}
+
+function hasStableSteppedLoadStepUpActuation(dev: DevicePlan['devices'][number]): boolean {
+  if (!isSteppedLoadDevice(dev) || dev.plannedState !== 'keep' || !dev.steppedLoadProfile) return false;
+  if (!allowsSteppedLoadKeepInvariantRestore(dev.reason)) return false;
+  const desiredStepId = resolveSteppedKeepDesiredStepId(dev);
+  if (!desiredStepId || !dev.selectedStepId || desiredStepId === dev.selectedStepId) return false;
+  if (hasEquivalentSteppedLoadCommandHold(dev, desiredStepId)) return false;
+
+  const selectedStep = getSteppedLoadStep(dev.steppedLoadProfile, dev.selectedStepId);
+  const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, desiredStepId);
+  return Boolean(
+    selectedStep
+    && desiredStep
+    && desiredStep.planningPowerW > selectedStep.planningPowerW,
+  );
+}
+
+function hasEquivalentSteppedLoadCommandHold(
+  dev: DevicePlan['devices'][number],
+  desiredStepId: string,
+): boolean {
+  const lastDesiredStepId = dev.lastDesiredStepId ?? dev.desiredStepId;
+  const sameCommand = lastDesiredStepId === desiredStepId;
+  if (!sameCommand) return false;
+  if (dev.stepCommandPending === true) return true;
+  return dev.stepCommandStatus === 'stale'
+    && typeof dev.nextStepCommandRetryAtMs === 'number'
+    && Date.now() < dev.nextStepCommandRetryAtMs;
 }
 
 function resolveFlowBackedBinaryTriggerCardId(
