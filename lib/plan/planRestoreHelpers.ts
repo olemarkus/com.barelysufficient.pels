@@ -293,24 +293,20 @@ function applySteppedDeviceGates(params: {
   restoreDebugKey: string;
 }): boolean {
   const { dev, deviceMap, state, timing, deviceIsActive, restoredOneThisCycle, restoreDebugKey } = params;
-  if (!deviceIsActive) {
-    const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
-      timing,
-      lastRestoreTs: state.lastRestoreMs,
-      restoredOneThisCycle,
-    });
-    if (meterSettlingRemainingSec !== null) {
-      const reason = buildMeterSettlingReason(
-        meterSettlingRemainingSec,
-        resolveMeterSettlingCountdownTiming({ timing, lastRestoreTs: state.lastRestoreMs, restoredOneThisCycle }),
-      );
-      setRestorePlanDevice(deviceMap, dev.id, buildOffSteppedRestoreHoldUpdate(dev, reason));
-      clearRestoreDebugEvent(state, restoreDebugKey);
-      return true;
-    }
-  } else if (resolveMeterSettlingRemainingSec({
-    timing, lastRestoreTs: state.lastDeviceRestoreMs[dev.id] ?? null,
-  }) !== null) {
+  const lastRestoreTs = deviceIsActive
+    ? (state.lastDeviceRestoreMs[dev.id] ?? null)
+    : state.lastRestoreMs;
+  const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
+    timing, lastRestoreTs, restoredOneThisCycle,
+  });
+  if (meterSettlingRemainingSec !== null) {
+    const reason = buildMeterSettlingReason(
+      meterSettlingRemainingSec,
+      resolveMeterSettlingCountdownTiming({ timing, lastRestoreTs, restoredOneThisCycle }),
+    );
+    setRestorePlanDevice(deviceMap, dev.id,
+      deviceIsActive ? { reason } : buildOffSteppedRestoreHoldUpdate(dev, reason),
+    );
     clearRestoreDebugEvent(state, restoreDebugKey);
     return true;
   }
