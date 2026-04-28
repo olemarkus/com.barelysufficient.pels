@@ -181,6 +181,13 @@ describe('DeviceManager', () => {
                 budgetExempt: true,
                 controlCapabilityId: 'onoff',
                 currentOn: false,
+                binaryControlObservation: {
+                    valid: true,
+                    capabilityId: 'onoff',
+                    observedValue: false,
+                    observedCapabilityIds: ['onoff'],
+                    observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
+                },
                 currentTemperature: 19.5,
                 canSetControl: true,
                 available: false,
@@ -227,12 +234,34 @@ describe('DeviceManager', () => {
                 id: 'thermo-2',
                 controlCapabilityId: 'onoff',
                 currentOn: true,
+                binaryControlObservation: undefined,
                 deviceType: 'temperature',
             }));
             expect(loggerMock.debug).toHaveBeenCalledWith(
                 expect.stringContaining('Snapshot missing boolean onoff value for Bedroom Thermostat (thermo-2); assuming device is on'),
                 'unexpected',
             );
+        });
+
+        it('does not create binary settlement evidence from an invalid Date lastUpdated', () => {
+            const [parsed] = deviceManager.parseDeviceListForTests([{
+                id: 'thermo-invalid-date',
+                name: 'Invalid Date Thermostat',
+                class: 'thermostat',
+                capabilities: ['onoff', 'measure_temperature', 'target_temperature'],
+                capabilitiesObj: {
+                    onoff: { value: false, id: 'onoff', lastUpdated: new Date('bad timestamp') },
+                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
+                    target_temperature: { value: 22, id: 'target_temperature', units: '°C' },
+                },
+            }]);
+
+            expect(parsed).toEqual(expect.objectContaining({
+                id: 'thermo-invalid-date',
+                controlCapabilityId: 'onoff',
+                currentOn: false,
+                binaryControlObservation: undefined,
+            }));
         });
 
         it('keeps temperature devices when target capability values are malformed and preserves an unknown current target', () => {
@@ -1065,6 +1094,40 @@ describe('DeviceManager', () => {
                     previousValue: 'on',
                     nextValue: 'off',
                 }],
+            }));
+        });
+
+        it('does not erase valid binary evidence when device.update omits the binary value', async () => {
+            const previousEvidence = {
+                valid: true as const,
+                capabilityId: 'onoff' as const,
+                observedValue: false,
+                observedCapabilityIds: ['onoff'],
+                observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
+            };
+            deviceManager.setSnapshotForTests([{
+                id: 'dev1',
+                name: 'Heater',
+                targets: [],
+                deviceClass: 'heater',
+                deviceType: 'onoff',
+                controlCapabilityId: 'onoff',
+                currentOn: false,
+                binaryControlObservation: previousEvidence,
+            }]);
+
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'dev1',
+                name: 'Heater',
+                capabilities: ['measure_power', 'onoff'],
+                class: 'heater',
+                capabilitiesObj: {
+                    measure_power: { value: 500, id: 'measure_power' },
+                },
+            });
+
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toEqual(expect.objectContaining({
+                binaryControlObservation: previousEvidence,
             }));
         });
 

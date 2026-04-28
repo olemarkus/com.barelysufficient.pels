@@ -1,6 +1,7 @@
 import type {
     DeviceControlAdapterSnapshot,
     DeviceControlModel,
+    BinaryControlObservation,
     DeviceControlProfile,
     DeviceControlProfiles,
     DeviceStateOfChargeSnapshot,
@@ -15,6 +16,7 @@ import type {
 export type {
     DeviceControlAdapterSnapshot,
     DeviceControlModel,
+    BinaryControlObservation,
     DeviceControlProfile,
     DeviceControlProfiles,
     DeviceStateOfChargeSnapshot,

@@ -133,6 +133,8 @@ export function reconcileRealtimeDeviceUpdate(params: {
       value: explicitBinaryObservation,
     });
   }
+  const preservedBinaryControlObservation = getPreservedBinaryControlObservation(previous, parsed);
+  if (preservedBinaryControlObservation) parsed.binaryControlObservation = preservedBinaryControlObservation;
 
   preserveRecentLocalBinaryState({
     previous,
@@ -157,6 +159,21 @@ export function reconcileRealtimeDeviceUpdate(params: {
     observedCapabilityIds,
     currentSnapshot: parsed,
   };
+}
+
+function getPreservedBinaryControlObservation(
+  previous: TargetDeviceSnapshot | null,
+  parsed: TargetDeviceSnapshot,
+): TargetDeviceSnapshot['binaryControlObservation'] {
+  if (!previous?.binaryControlObservation) return undefined;
+  const nextObservation = parsed.binaryControlObservation;
+  if (
+    !nextObservation
+    || nextObservation.observedAtMs < previous.binaryControlObservation.observedAtMs
+  ) {
+    return { ...previous.binaryControlObservation };
+  }
+  return undefined;
 }
 
 function applyExplicitBinaryObservation(params: {

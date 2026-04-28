@@ -3,6 +3,7 @@ import type { PowerFreshnessState } from './planPowerFreshness';
 import type {
   DeviceControlModel,
   DeviceControlAdapterSnapshot,
+  BinaryControlObservation,
   SteppedLoadActualStepSource,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
@@ -211,4 +212,5 @@ export type PlanInputDevice = {
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
   binaryCommandPending?: boolean;
+  binaryControlObservation?: BinaryControlObservation;
 };

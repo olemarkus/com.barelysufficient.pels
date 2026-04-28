@@ -8,6 +8,18 @@ import {
 } from '../lib/plan/planBinaryControl';
 import { getPendingBinaryCommand } from '../lib/plan/planBinaryControlHelpers';
 
+const binaryObservation = (
+  capabilityId: 'onoff' | 'evcharger_charging',
+  observedValue: boolean,
+  observedAtMs: number,
+) => ({
+  valid: true as const,
+  capabilityId,
+  observedValue,
+  observedCapabilityIds: [capabilityId],
+  observedAtMs,
+});
+
 describe('plan binary control helpers', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -51,6 +63,7 @@ describe('plan binary control helpers', () => {
         communicationModel: 'cloud',
         currentOn: false,
         hasBinaryControl: true,
+        binaryControlObservation: binaryObservation('onoff', false, 61_000),
         targets: [],
       }],
       source: 'snapshot_refresh',
@@ -78,6 +91,7 @@ describe('plan binary control helpers', () => {
         communicationModel: 'cloud',
         currentOn: false,
         hasBinaryControl: true,
+        binaryControlObservation: binaryObservation('onoff', false, 61_000),
         targets: [],
       }],
       source: 'snapshot_refresh',
@@ -451,6 +465,11 @@ describe('plan binary control helpers', () => {
         name: 'Socket',
         currentOn: false,
         hasBinaryControl: true,
+        binaryControlObservation: binaryObservation(
+          'onoff',
+          false,
+          state.pendingBinaryCommands.socket1.startedMs + 1,
+        ),
         targets: [],
       }],
       source: 'device_update',
@@ -498,6 +517,11 @@ describe('plan binary control helpers', () => {
         name: 'Socket',
         currentOn: false,
         hasBinaryControl: true,
+        binaryControlObservation: binaryObservation(
+          'onoff',
+          false,
+          state.pendingBinaryCommands.socket1.startedMs + 1,
+        ),
         targets: [],
       }],
       source: 'rebuild',
@@ -514,6 +538,118 @@ describe('plan binary control helpers', () => {
     expect(logDebug).toHaveBeenCalledWith(
       'Capacity: waiting for onoff confirmation for Socket; observed off via rebuild, expected on',
     );
+  });
+
+  it('does not settle a binary command from stale snapshot evidence', () => {
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands.socket1 = {
+      capabilityId: 'onoff',
+      desired: true,
+      startedMs: 1_000,
+    };
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_001);
+
+    const changed = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'socket1',
+        name: 'Socket',
+        currentOn: true,
+        hasBinaryControl: true,
+        binaryControlObservation: binaryObservation('onoff', true, 999),
+        targets: [],
+      }],
+      source: 'snapshot_refresh',
+      logDebug: vi.fn(),
+    });
+    nowSpy.mockRestore();
+
+    expect(changed).toBe(false);
+    expect(state.pendingBinaryCommands.socket1).toBeDefined();
+  });
+
+  it('settles a binary command from fresh snapshot evidence', () => {
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands.socket1 = {
+      capabilityId: 'onoff',
+      desired: true,
+      startedMs: 1_000,
+    };
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_001);
+
+    const changed = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'socket1',
+        name: 'Socket',
+        currentOn: true,
+        hasBinaryControl: true,
+        binaryControlObservation: binaryObservation('onoff', true, 1_001),
+        targets: [],
+      }],
+      source: 'snapshot_refresh',
+      logDebug: vi.fn(),
+    });
+    nowSpy.mockRestore();
+
+    expect(changed).toBe(true);
+    expect(state.pendingBinaryCommands.socket1).toBeUndefined();
+  });
+
+  it('does not settle a newly started command from same-millisecond old evidence', () => {
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands.socket1 = {
+      capabilityId: 'onoff',
+      desired: true,
+      startedMs: 1_000,
+    };
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_001);
+
+    const changed = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'socket1',
+        name: 'Socket',
+        currentOn: true,
+        hasBinaryControl: true,
+        binaryControlObservation: binaryObservation('onoff', true, 1_000),
+        targets: [],
+      }],
+      source: 'snapshot_refresh',
+      logDebug: vi.fn(),
+    });
+    nowSpy.mockRestore();
+
+    expect(changed).toBe(false);
+    expect(state.pendingBinaryCommands.socket1).toBeDefined();
+  });
+
+  it('does not settle from non-finite evidence timestamps', () => {
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands.socket1 = {
+      capabilityId: 'onoff',
+      desired: true,
+      startedMs: 1_000,
+    };
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_001);
+
+    const changed = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'socket1',
+        name: 'Socket',
+        currentOn: true,
+        hasBinaryControl: true,
+        binaryControlObservation: binaryObservation('onoff', true, Number.NaN),
+        targets: [],
+      }],
+      source: 'snapshot_refresh',
+      logDebug: vi.fn(),
+    });
+    nowSpy.mockRestore();
+
+    expect(changed).toBe(false);
+    expect(state.pendingBinaryCommands.socket1).toBeDefined();
   });
 
   it('logs unexpected conflicting telemetry while a binary command is still pending', async () => {
@@ -550,6 +686,11 @@ describe('plan binary control helpers', () => {
         name: 'Socket',
         currentOn: false,
         hasBinaryControl: true,
+        binaryControlObservation: binaryObservation(
+          'onoff',
+          false,
+          state.pendingBinaryCommands.socket1.startedMs + 1,
+        ),
         targets: [],
       }],
       source: 'snapshot_refresh',
@@ -605,6 +746,11 @@ describe('plan binary control helpers', () => {
         evChargingState: 'plugged_in_paused',
         hasBinaryControl: true,
         controlCapabilityId: 'evcharger_charging',
+        binaryControlObservation: binaryObservation(
+          'evcharger_charging',
+          false,
+          state.pendingBinaryCommands.ev1.startedMs + 1,
+        ),
         targets: [],
       }],
       source: 'device_update',
@@ -641,6 +787,7 @@ describe('plan binary control helpers', () => {
         evChargingState: 'plugged_in_paused',
         hasBinaryControl: true,
         controlCapabilityId: 'evcharger_charging',
+        binaryControlObservation: binaryObservation('evcharger_charging', false, startedMs + 1),
         targets: [],
       }],
       source: 'device_update',
