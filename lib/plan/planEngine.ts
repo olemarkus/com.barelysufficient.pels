@@ -2,7 +2,13 @@ import Homey from 'homey';
 import CapacityGuard from '../core/capacityGuard';
 import { DeviceManager } from '../core/deviceManager';
 import type { PowerTrackerState } from '../core/powerTracker';
-import type { DevicePlan, PendingTargetObservationSource, PlanInputDevice, ShedAction } from './planTypes';
+import type {
+  BinarySettleEvidenceByDeviceId,
+  DevicePlan,
+  PendingTargetObservationSource,
+  PlanInputDevice,
+  ShedAction,
+} from './planTypes';
 import { PlanBuilder, PlanBuilderDeps } from './planBuilder';
 import { PlanActuationMode, PlanActuationResult, PlanExecutor, PlanExecutorDeps } from './planExecutor';
 import { createPlanEngineState, PlanEngineState } from './planState';
@@ -180,11 +186,13 @@ export class PlanEngine {
   public syncPendingBinaryCommands(
     devices: PlanInputDevice[],
     source: PendingTargetObservationSource,
+    binarySettleEvidenceByDeviceId?: BinarySettleEvidenceByDeviceId,
   ): boolean {
     return syncPendingBinaryCommands({
       state: this.state,
       liveDevices: devices,
       source,
+      binarySettleEvidenceByDeviceId,
       logDebug: (message) => this.logDebugFn(message),
       onConfirmed: ({ deviceId, liveDevice, pending, confirmedAtMs }) => {
         this.executor.handleConfirmedBinaryCommand({

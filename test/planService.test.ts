@@ -1,5 +1,5 @@
 import { PlanService } from '../lib/plan/planService';
-import type { DevicePlan } from '../lib/plan/planTypes';
+import type { BinarySettleEvidenceByDeviceId, DevicePlan } from '../lib/plan/planTypes';
 import * as pelsStatusModule from '../lib/core/pelsStatus';
 import { getRecentPlanRebuildTraces } from '../lib/utils/planRebuildTrace';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';
@@ -2966,6 +2966,53 @@ describe('PlanService', () => {
     expect(syncPendingTargetCommands).toHaveBeenCalledWith(firstLiveDevices, 'rebuild');
     expect(syncPendingBinaryCommands).toHaveBeenCalledWith(firstLiveDevices, 'rebuild');
     expect(buildDevicePlanSnapshot).toHaveBeenCalledWith(firstLiveDevices);
+  });
+
+  it('passes latest binary settlement evidence into rebuild sync without source filtering', async () => {
+    const liveDevices = [{
+      id: 'dev-1',
+      name: 'Heater',
+      targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+      deviceType: 'temperature',
+      hasBinaryControl: true,
+      currentOn: true,
+      currentTemperature: 21,
+    }];
+    const evidenceByDeviceId: BinarySettleEvidenceByDeviceId = new Map([[
+      'dev-1',
+      {
+        capabilityId: 'onoff',
+        observedValue: true,
+        source: 'snapshot_refresh',
+        observedAtMs: Date.now(),
+      },
+    ]]);
+    const getBinarySettleEvidenceByDeviceId = vi.fn(() => evidenceByDeviceId);
+    const syncPendingBinaryCommands = vi.fn(() => true);
+    const buildDevicePlanSnapshot = vi.fn().mockResolvedValue(buildPlan(20, 'stable'));
+    const { service } = createPlanService({
+      planEngine: {
+        buildDevicePlanSnapshot,
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue(undefined),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+        syncPendingTargetCommands: vi.fn(() => false),
+        syncPendingBinaryCommands,
+        prunePendingTargetCommands: vi.fn(() => false),
+        decoratePlanWithPendingTargetCommands: vi.fn((plan: DevicePlan) => plan),
+      } as any,
+      getPlanDevices: () => liveDevices,
+      getBinarySettleEvidenceByDeviceId,
+    });
+
+    await service.rebuildPlanFromCache('binary_evidence_rebuild');
+
+    expect(getBinarySettleEvidenceByDeviceId).toHaveBeenCalledWith();
+    expect(syncPendingBinaryCommands).toHaveBeenCalledWith(liveDevices, 'rebuild', evidenceByDeviceId);
+    expect(buildDevicePlanSnapshot).toHaveBeenCalledWith(liveDevices);
   });
 
   it('clears pending throttled snapshot timer on destroy', async () => {

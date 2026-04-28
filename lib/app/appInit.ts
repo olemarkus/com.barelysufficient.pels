@@ -100,6 +100,9 @@ export function createPlanService(ctx: AppContext): PlanService {
     getPlanDevices: () => ctx.latestTargetSnapshot
       .map((device) => toPlanDevice(ctx, device))
       .filter((device) => device.managed !== false),
+    getBinarySettleEvidenceByDeviceId: () => (
+      ctx.deviceManager?.getBinarySettleEvidenceByDeviceId() ?? new Map()
+    ),
     getCapacityDryRun: () => ctx.capacityDryRun,
     log: (...args: unknown[]) => ctx.log(...args),
     logDebug: (...args: unknown[]) => ctx.logDebug('plan', ...args),

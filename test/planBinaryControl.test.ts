@@ -7,6 +7,22 @@ import {
   syncPendingBinaryCommands,
 } from '../lib/plan/planBinaryControl';
 import { getPendingBinaryCommand } from '../lib/plan/planBinaryControlHelpers';
+import type { BinarySettleEvidenceByDeviceId, PendingTargetObservationSource } from '../lib/plan/planTypes';
+
+function binaryEvidence(
+  deviceId: string,
+  capabilityId: 'onoff' | 'evcharger_charging',
+  observedValue: boolean,
+  source: PendingTargetObservationSource,
+  observedAtMs = Date.now(),
+): BinarySettleEvidenceByDeviceId {
+  return new Map([[deviceId, {
+    capabilityId,
+    observedValue,
+    source,
+    observedAtMs,
+  }]]);
+}
 
 describe('plan binary control helpers', () => {
   afterEach(() => {
@@ -54,6 +70,7 @@ describe('plan binary control helpers', () => {
         targets: [],
       }],
       source: 'snapshot_refresh',
+      binarySettleEvidenceByDeviceId: binaryEvidence('connected-300', 'onoff', false, 'snapshot_refresh'),
       logDebug: waitingLog,
     });
 
@@ -81,6 +98,7 @@ describe('plan binary control helpers', () => {
         targets: [],
       }],
       source: 'snapshot_refresh',
+      binarySettleEvidenceByDeviceId: binaryEvidence('connected-300', 'onoff', false, 'snapshot_refresh'),
       logDebug: timeoutLog,
     });
     nowSpy.mockRestore();
@@ -454,6 +472,7 @@ describe('plan binary control helpers', () => {
         targets: [],
       }],
       source: 'device_update',
+      binarySettleEvidenceByDeviceId: binaryEvidence('socket1', 'onoff', false, 'device_update'),
       logDebug,
     });
 
@@ -462,6 +481,52 @@ describe('plan binary control helpers', () => {
     expect(logDebug).toHaveBeenCalledWith(
       'Capacity: confirmed onoff for Socket at off via device_update',
     );
+  });
+
+  it('does not settle a pending binary command from currentOn without explicit evidence', async () => {
+    const state = createPlanEngineState();
+
+    await expect(setBinaryControl({
+      state,
+      deviceManager: {
+        setCapability: vi.fn().mockResolvedValue(undefined),
+        getSnapshot: vi.fn().mockReturnValue([]),
+      } as never,
+      updateLocalSnapshot: vi.fn(),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      deviceId: 'socket1',
+      name: 'Socket',
+      desired: false,
+      snapshot: {
+        id: 'socket1',
+        name: 'Socket',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+      },
+      logContext: 'capacity',
+      reason: 'shedding',
+    })).resolves.toBe(true);
+
+    const changed = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'socket1',
+        name: 'Socket',
+        currentOn: false,
+        hasBinaryControl: true,
+        targets: [],
+      }],
+      source: 'device_update',
+      logDebug: vi.fn(),
+    });
+
+    expect(changed).toBe(false);
+    expect(state.pendingBinaryCommands.socket1).toMatchObject({
+      capabilityId: 'onoff',
+      desired: false,
+    });
   });
 
   it('keeps a pending restore when telemetry still shows the device off', async () => {
@@ -501,6 +566,7 @@ describe('plan binary control helpers', () => {
         targets: [],
       }],
       source: 'rebuild',
+      binarySettleEvidenceByDeviceId: binaryEvidence('socket1', 'onoff', false, 'rebuild'),
       logDebug,
     });
 
@@ -553,6 +619,7 @@ describe('plan binary control helpers', () => {
         targets: [],
       }],
       source: 'snapshot_refresh',
+      binarySettleEvidenceByDeviceId: binaryEvidence('socket1', 'onoff', false, 'snapshot_refresh'),
       logDebug,
     });
 
@@ -608,6 +675,7 @@ describe('plan binary control helpers', () => {
         targets: [],
       }],
       source: 'device_update',
+      binarySettleEvidenceByDeviceId: binaryEvidence('ev1', 'evcharger_charging', false, 'device_update'),
       logDebug,
     });
 
@@ -644,6 +712,7 @@ describe('plan binary control helpers', () => {
         targets: [],
       }],
       source: 'device_update',
+      binarySettleEvidenceByDeviceId: binaryEvidence('ev1', 'evcharger_charging', false, 'device_update'),
       logDebug,
       onConfirmed,
     });

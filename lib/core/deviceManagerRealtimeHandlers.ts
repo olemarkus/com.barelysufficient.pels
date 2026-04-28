@@ -1,4 +1,6 @@
 import type { HomeyDeviceLike, TargetDeviceSnapshot } from '../utils/types';
+import type { BinaryControlObservation } from './deviceManagerControl';
+import type { ParsedDeviceResult } from './deviceManagerParseDevice';
 import type { RecentLocalCapabilityWrites } from './deviceManagerRealtimeSupport';
 import {
   reconcileRealtimeDeviceUpdate,
@@ -16,6 +18,7 @@ export type ObservedDeviceStateEvent = {
   source: 'realtime_capability' | 'device_update';
   deviceId: string;
   capabilityId?: string;
+  binaryControlObservation?: BinaryControlObservation;
   measurePowerBecameSignificantlyPositive?: boolean;
 };
 
@@ -25,6 +28,7 @@ export type HandleRealtimeDeviceUpdateResult = {
   changes: RealtimeDeviceReconcileChange[];
   observedCapabilityIds: string[];
   currentSnapshot: TargetDeviceSnapshot | null | undefined;
+  binaryControlObservation?: BinaryControlObservation;
 };
 
 type BinarySettleOutcome = 'settled' | 'drift' | 'none';
@@ -41,7 +45,7 @@ export function handleRealtimeDeviceUpdate(params: {
   latestSnapshot: TargetDeviceSnapshot[];
   recentLocalCapabilityWrites: RecentLocalCapabilityWrites;
   shouldTrackRealtimeDevice: (deviceId: string) => boolean;
-  parseDevice: (device: HomeyDeviceLike, nowTs: number) => TargetDeviceSnapshot | null;
+  parseDevice: (device: HomeyDeviceLike, nowTs: number) => ParsedDeviceResult;
   minSignificantPowerW?: number;
   recordObservedCapabilities?: (deviceId: string, capabilityIds: string[]) => void;
   notePendingBinarySettleObservation?: PendingBinarySettleObservationRecorder;
@@ -72,6 +76,7 @@ export function handleRealtimeDeviceUpdate(params: {
       changes: [],
       observedCapabilityIds: [],
       currentSnapshot: undefined,
+      binaryControlObservation: undefined,
     };
   }
   const label = device.name;
@@ -109,7 +114,7 @@ export function handleRealtimeDeviceUpdate(params: {
   // observation (which is filtered from filteredChanges to avoid a double reconcile)
   // is still recorded as a meaningful update.
   const hadChanges = result.changes.length > 0;
-  if (hadChanges) {
+  if (hadChanges || result.binaryControlObservation?.valid) {
     emitObservedState({
       source: 'device_update',
       deviceId,
@@ -118,6 +123,7 @@ export function handleRealtimeDeviceUpdate(params: {
         result.currentSnapshot?.measuredPowerKw,
         minSignificantPowerW,
       ),
+      binaryControlObservation: result.binaryControlObservation,
     });
   }
   if (!shouldReconcilePlan) {
@@ -127,6 +133,7 @@ export function handleRealtimeDeviceUpdate(params: {
       changes: filteredChanges,
       observedCapabilityIds: result.observedCapabilityIds,
       currentSnapshot: result.currentSnapshot,
+      binaryControlObservation: result.binaryControlObservation,
     };
   }
   emitPlanReconcile({
@@ -140,6 +147,7 @@ export function handleRealtimeDeviceUpdate(params: {
     changes: filteredChanges,
     observedCapabilityIds: result.observedCapabilityIds,
     currentSnapshot: result.currentSnapshot,
+    binaryControlObservation: result.binaryControlObservation,
   };
 }
 

@@ -7,6 +7,8 @@ import {
   type RecentLocalCapabilityWrites,
 } from './deviceManagerRealtimeSupport';
 import { resolveEvCurrentOn } from './deviceManagerControl';
+import type { BinaryControlObservation } from './deviceManagerControl';
+import type { ParsedDeviceResult } from './deviceManagerParseDevice';
 import { EV_SOC_CAPABILITY_ID } from './deviceStateOfCharge';
 
 const REALTIME_CONTROL_CAPABILITY_IDS = ['onoff', 'evcharger_charging'] as const;
@@ -22,6 +24,7 @@ type RealtimeReconcileResult = {
   changes: RealtimeDeviceReconcileChange[];
   observedCapabilityIds: string[];
   currentSnapshot: TargetDeviceSnapshot | null;
+  binaryControlObservation?: BinaryControlObservation;
 };
 
 export function updateLastKnownPower(params: {
@@ -69,7 +72,7 @@ export function updateLastKnownPower(params: {
 export function reconcileRealtimeDeviceUpdate(params: {
   latestSnapshot: TargetDeviceSnapshot[];
   device: HomeyDeviceLike;
-  parseDevice: (device: HomeyDeviceLike, nowTs: number) => TargetDeviceSnapshot | null;
+  parseDevice: (device: HomeyDeviceLike, nowTs: number) => ParsedDeviceResult;
   recentLocalCapabilityWrites?: RecentLocalCapabilityWrites;
   hasPendingBinarySettleWindow?: (deviceId: string, capabilityId: string) => boolean;
 }): RealtimeReconcileResult {
@@ -88,7 +91,8 @@ export function reconcileRealtimeDeviceUpdate(params: {
     currentSnapshot: null,
   };
 
-  const parsed = parseDevice(device, Date.now());
+  const parsedResult = parseDevice(device, Date.now());
+  const parsed = parsedResult.snapshot;
   const snapshotIndex = latestSnapshot.findIndex((entry) => entry.id === deviceId);
   const previous = snapshotIndex >= 0 ? latestSnapshot[snapshotIndex] : null;
   if (!parsed) {
@@ -106,6 +110,7 @@ export function reconcileRealtimeDeviceUpdate(params: {
       changes: [],
       observedCapabilityIds: [],
       currentSnapshot: null,
+      binaryControlObservation: parsedResult.binaryControlObservation,
     };
   }
 
@@ -156,6 +161,7 @@ export function reconcileRealtimeDeviceUpdate(params: {
     changes,
     observedCapabilityIds,
     currentSnapshot: parsed,
+    binaryControlObservation: parsedResult.binaryControlObservation,
   };
 }
 

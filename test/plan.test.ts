@@ -408,7 +408,7 @@ describe('Device plan snapshot', () => {
       expect.objectContaining({
         deviceId: 'dev-pending',
         deltaKw: 0.5,
-        changedDuringPendingWindow: false,
+        changedDuringPendingWindow: true,
       }),
       expect.objectContaining({
         deviceId: 'dev-cooldown',

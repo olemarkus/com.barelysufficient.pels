@@ -17,6 +17,15 @@ export type PendingTargetObservationSource =
   | 'realtime_capability'
   | 'device_update';
 
+export type BinarySettleEvidence = {
+  capabilityId: 'onoff' | 'evcharger_charging';
+  observedValue: boolean;
+  source: PendingTargetObservationSource;
+  observedAtMs: number;
+};
+
+export type BinarySettleEvidenceByDeviceId = ReadonlyMap<string, BinarySettleEvidence>;
+
 export type PendingTargetCommandStatus =
   | 'waiting_confirmation'
   | 'temporary_unavailable';

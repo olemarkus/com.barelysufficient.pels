@@ -1,5 +1,10 @@
 import type { Logger, TargetDeviceSnapshot } from '../utils/types';
-import { getCanSetControl, type DeviceCapabilityMap } from './deviceManagerControl';
+import {
+  getCanSetControl,
+  resolveBinaryControlObservation,
+  type BinaryControlObservation,
+  type DeviceCapabilityMap,
+} from './deviceManagerControl';
 import type { FlowReportedCapabilityId } from './flowReportedCapabilities';
 
 export function resolveParsedControlState(params: {
@@ -15,6 +20,7 @@ export function resolveParsedControlState(params: {
 }): {
   currentOn: boolean;
   canSetControl: boolean | undefined;
+  binaryControlObservation?: BinaryControlObservation;
 } {
   const {
     logger,
@@ -27,6 +33,13 @@ export function resolveParsedControlState(params: {
     flowBackedCapabilityIds,
     currentOn,
   } = params;
+  const binaryControlObservation = resolveBinaryControlObservation({
+    capabilityId: controlCapabilityId,
+    capabilityObj,
+    evCharging,
+    evChargingState,
+  });
+  logInvalidBinaryControlObservation({ logger, deviceLabel, observation: binaryControlObservation });
   return {
     currentOn: resolveSnapshotCurrentOn({
       logger,
@@ -40,6 +53,7 @@ export function resolveParsedControlState(params: {
     canSetControl: controlCapabilityId && flowBackedCapabilityIds.includes(controlCapabilityId)
       ? true
       : getCanSetControl(controlCapabilityId, controlWriteCapabilityId, capabilityObj),
+    binaryControlObservation,
   };
 }
 
@@ -99,6 +113,19 @@ function resolveSnapshotCurrentOn(params: {
     );
   }
   return currentOn;
+}
+
+function logInvalidBinaryControlObservation(params: {
+  logger: Logger;
+  deviceLabel: string;
+  observation?: BinaryControlObservation;
+}): void {
+  const { logger, deviceLabel, observation } = params;
+  if (!observation || observation.valid) return;
+  logger.debug(
+    `Invalid binary control observation for ${deviceLabel}: ${observation.reasonCode}`,
+    observation.invalidControlCapabilityIds,
+  );
 }
 
 function getTrackedCapabilityLastUpdatedMs(

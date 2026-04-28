@@ -50,6 +50,7 @@ import type {
 } from './planRebuildSchedulerContract';
 import type { PlanEngine } from './planEngine';
 import type {
+  BinarySettleEvidenceByDeviceId,
   DevicePlan,
   PendingTargetObservationSource,
   PlanChangeSet,
@@ -285,6 +286,7 @@ export type PlanServiceDeps = {
   homey: Homey.App['homey'];
   planEngine: PlanEngine;
   getPlanDevices: () => PlanInputDevice[];
+  getBinarySettleEvidenceByDeviceId?: () => BinarySettleEvidenceByDeviceId;
   getCapacityDryRun: () => boolean;
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
@@ -422,7 +424,6 @@ export class PlanService {
     );
   }
 
-  // eslint-disable-next-line complexity
   syncLivePlanStateInline(source: PendingTargetObservationSource): boolean {
     const hasPendingTargetCommands = this.deps.planEngine.hasPendingTargetCommands?.() ?? false;
     const hasPendingBinaryCommands = this.deps.planEngine.hasPendingBinaryCommands?.() ?? false;
@@ -430,14 +431,11 @@ export class PlanService {
       return false;
     }
 
-    const liveDevices = this.deps.getPlanDevices();
-    const pendingTargetChanged = hasPendingTargetCommands
-      ? (this.deps.planEngine.syncPendingTargetCommands?.(liveDevices, source) ?? false)
-      : false;
-    const pendingBinaryChanged = hasPendingBinaryCommands
-      ? (this.deps.planEngine.syncPendingBinaryCommands?.(liveDevices, source) ?? false)
-      : false;
-    const pendingChanged = pendingTargetChanged || pendingBinaryChanged;
+    const { liveDevices, pendingChanged } = this.syncPendingCommandsForLiveState({
+      source,
+      hasPendingTargetCommands,
+      hasPendingBinaryCommands,
+    });
     if (!this.latestPlanSnapshot) {
       return pendingChanged;
     }
@@ -469,6 +467,42 @@ export class PlanService {
     this.latestPlanSnapshotUpdatedAtMs = nowMs;
     this.emitPlanUpdated(refreshedPlan);
     return true;
+  }
+
+  private syncPendingCommandsForLiveState(params: {
+    source: PendingTargetObservationSource;
+    hasPendingTargetCommands: boolean;
+    hasPendingBinaryCommands: boolean;
+  }): { liveDevices: PlanInputDevice[]; pendingChanged: boolean } {
+    const {
+      source,
+      hasPendingTargetCommands,
+      hasPendingBinaryCommands,
+    } = params;
+    const liveDevices = this.deps.getPlanDevices();
+    const binarySettleEvidenceByDeviceId = this.deps.getBinarySettleEvidenceByDeviceId?.();
+    const pendingTargetChanged = hasPendingTargetCommands
+      ? (this.deps.planEngine.syncPendingTargetCommands?.(liveDevices, source) ?? false)
+      : false;
+    const pendingBinaryChanged = hasPendingBinaryCommands
+      ? this.syncPendingBinaryCommands(liveDevices, source, binarySettleEvidenceByDeviceId)
+      : false;
+    return { liveDevices, pendingChanged: pendingTargetChanged || pendingBinaryChanged };
+  }
+
+  private syncPendingBinaryCommands(
+    liveDevices: PlanInputDevice[],
+    source: PendingTargetObservationSource,
+    binarySettleEvidenceByDeviceId?: BinarySettleEvidenceByDeviceId,
+  ): boolean {
+    if (binarySettleEvidenceByDeviceId) {
+      return this.deps.planEngine.syncPendingBinaryCommands?.(
+        liveDevices,
+        source,
+        binarySettleEvidenceByDeviceId,
+      ) ?? false;
+    }
+    return this.deps.planEngine.syncPendingBinaryCommands?.(liveDevices, source) ?? false;
   }
 
   async reconcileLatestPlanState(): Promise<boolean> {
@@ -824,7 +858,16 @@ export class PlanService {
   private async buildPlanForRebuild(reason: string): Promise<{ plan: DevicePlan; buildMs: number }> {
     const liveDevices = this.deps.getPlanDevices() ?? [];
     this.deps.planEngine.syncPendingTargetCommands?.(liveDevices, 'rebuild');
-    this.deps.planEngine.syncPendingBinaryCommands?.(liveDevices, 'rebuild');
+    const binarySettleEvidenceByDeviceId = this.deps.getBinarySettleEvidenceByDeviceId?.();
+    if (binarySettleEvidenceByDeviceId) {
+      this.deps.planEngine.syncPendingBinaryCommands?.(
+        liveDevices,
+        'rebuild',
+        binarySettleEvidenceByDeviceId,
+      );
+    } else {
+      this.deps.planEngine.syncPendingBinaryCommands?.(liveDevices, 'rebuild');
+    }
     const buildStart = Date.now();
     this.currentBuildReason = reason;
     if (this.deps.planEngine.state) {

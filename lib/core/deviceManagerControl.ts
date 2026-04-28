@@ -1,5 +1,23 @@
 import type { Logger, TargetDeviceSnapshot } from '../utils/types';
 
+export type BinaryControlCapabilityId = 'onoff' | 'evcharger_charging';
+
+export type BinaryControlObservation =
+  | {
+      valid: true;
+      capabilityId: BinaryControlCapabilityId;
+      observedValue: boolean;
+      observedCapabilityIds: string[];
+      canSettleBinary: true;
+    }
+  | {
+      valid: false;
+      capabilityId: BinaryControlCapabilityId;
+      invalidControlCapabilityIds: string[];
+      reasonCode: 'invalid_onoff' | 'missing_ev_charging_state';
+      canSettleBinary: false;
+    };
+
 export type DeviceCapabilityValue = {
   value?: unknown;
   units?: string;
@@ -61,6 +79,83 @@ export function resolveEvCurrentOn(params: {
     return false;
   }
   return true;
+}
+
+export function resolveEvBinaryObservationFromState(
+  evChargingState: string | undefined,
+): boolean | string | undefined {
+  switch (evChargingState) {
+    case 'plugged_in_charging':
+      return true;
+    case 'plugged_in':
+    case 'plugged_in_paused':
+    case 'plugged_out':
+    case 'plugged_in_discharging':
+      return false;
+    default:
+      return evChargingState;
+  }
+}
+
+export function resolveBinaryControlObservation(params: {
+  capabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+  capabilityObj: DeviceCapabilityMap;
+  evCharging?: boolean;
+  evChargingState?: string;
+}): BinaryControlObservation | undefined {
+  const {
+    capabilityId,
+    capabilityObj,
+    evCharging,
+    evChargingState,
+  } = params;
+  if (capabilityId === 'onoff') {
+    const value = capabilityObj.onoff?.value;
+    if (typeof value === 'boolean') {
+      return {
+        valid: true,
+        capabilityId,
+        observedValue: value,
+        observedCapabilityIds: ['onoff'],
+        canSettleBinary: true,
+      };
+    }
+    return {
+      valid: false,
+      capabilityId,
+      invalidControlCapabilityIds: ['onoff'],
+      reasonCode: 'invalid_onoff',
+      canSettleBinary: false,
+    };
+  }
+  if (capabilityId !== 'evcharger_charging') return undefined;
+
+  const stateObservation = resolveEvBinaryObservationFromState(evChargingState);
+  if (typeof stateObservation === 'boolean') {
+    return {
+      valid: true,
+      capabilityId,
+      observedValue: stateObservation,
+      observedCapabilityIds: ['evcharger_charging_state'],
+      canSettleBinary: true,
+    };
+  }
+  if (evChargingState === undefined && typeof evCharging === 'boolean') {
+    return {
+      valid: true,
+      capabilityId,
+      observedValue: evCharging,
+      observedCapabilityIds: ['evcharger_charging'],
+      canSettleBinary: true,
+    };
+  }
+  return {
+    valid: false,
+    capabilityId,
+    invalidControlCapabilityIds: ['evcharger_charging_state'],
+    reasonCode: 'missing_ev_charging_state',
+    canSettleBinary: false,
+  };
 }
 
 export function getCanSetControl(

@@ -8,6 +8,8 @@ file.
 - [ ] Stop treating missing binary / EV telemetry as an observed on state. Missing `onoff`,
       missing EV charging state, or unavailable telemetry should become an explicit unknown state
       before planning, not `currentOn=true`.
+      Context: binary command settlement now uses explicit valid observation evidence instead of
+      `currentOn`; the remaining work is the broader planner-facing unknown-state model.
       Why P0: the current fallback can make degraded or missing state look like confirmed
       controllable load, which can produce incorrect shedding / restore decisions.
       Files: `lib/core/deviceManagerControl.ts`, `packages/contracts/src/types.ts`,
@@ -15,6 +17,8 @@ file.
 - [ ] Make observation freshness source-aware. Targeted snapshot refreshes and same-value
       realtime updates should only advance freshness when the value source proves the capability
       was observed, and stale / missing freshness should not be silently considered safe.
+      Context: binary control evidence is now tracked separately from durable snapshot state; the
+      remaining work is source-aware freshness policy for the wider observation model.
       Why P0: freshness is currently easy to stamp from a refresh cycle rather than from trusted
       data, which can hide stale state in control paths.
       Files: `lib/core/deviceManagerObservation.ts`, `lib/core/deviceManager.ts`,

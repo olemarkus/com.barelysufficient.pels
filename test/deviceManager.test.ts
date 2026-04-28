@@ -1560,6 +1560,50 @@ describe('DeviceManager', () => {
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: false }));
             });
 
+            it('emits valid same-value capability observations as binary settle evidence', async () => {
+                mockApiGet.mockResolvedValue({ dev1: heaterOnDevice() });
+                await deviceManager.refreshSnapshot();
+                const liveStateListener = vi.fn();
+                deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
+
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', true);
+
+                expect(liveStateListener).toHaveBeenCalledWith(expect.objectContaining({
+                    source: 'realtime_capability',
+                    deviceId: 'dev1',
+                    capabilityId: 'onoff',
+                    binaryControlObservation: expect.objectContaining({
+                        valid: true,
+                        capabilityId: 'onoff',
+                        observedValue: true,
+                    }),
+                }));
+                expect(deviceManager.getBinarySettleEvidenceByDeviceId().get('dev1'))
+                    .toEqual(expect.objectContaining({
+                        capabilityId: 'onoff',
+                        observedValue: true,
+                        source: 'realtime_capability',
+                    }));
+            });
+
+            it('logs and drops invalid direct binary capability observations', async () => {
+                mockApiGet.mockResolvedValue({ dev1: heaterOnDevice() });
+                await deviceManager.refreshSnapshot();
+                const liveStateListener = vi.fn();
+                deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
+
+                deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', 'unknown');
+
+                expect(liveStateListener).not.toHaveBeenCalled();
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: true }));
+                expect(deviceManager.getBinarySettleEvidenceByDeviceId().has('dev1'))
+                    .toBe(false);
+                expect(loggerMock.debug).toHaveBeenCalledWith(
+                    'Invalid binary control observation for Heater: invalid_onoff',
+                    'unknown',
+                );
+            });
+
             it('pending off write + capability event on => drift immediately', async () => {
                 mockApiGet.mockResolvedValue({ dev1: heaterOnDevice() });
                 await deviceManager.refreshSnapshot();

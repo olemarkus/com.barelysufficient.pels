@@ -1,14 +1,13 @@
 import type { DeviceManager } from '../core/deviceManager';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import type { PlanEngineState } from './planState';
-import type { PendingTargetObservationSource, PlanInputDevice } from './planTypes';
+import type { BinarySettleEvidenceByDeviceId, PendingTargetObservationSource, PlanInputDevice } from './planTypes';
 import {
   resolveBinaryCommandPendingMs,
   isPendingBinaryCommandActive,
 } from './planObservationPolicy';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import {
-  buildPendingBinaryTimeoutLogMessage,
   buildFlowBackedBinaryControlRequestLogMessage,
   buildFlowBackedEvBinaryControlRequestLogMessage,
   resolveBinaryRestoreSuffix,
@@ -16,10 +15,12 @@ import {
   type BinaryControlLogContext,
   type BinaryControlPlan,
   type BinaryControlRestoreSource,
+  applyBinarySettleEvidence,
   formatEvSnapshot,
+  clearTimedOutPendingBinaryCommand,
+  getMatchingBinarySettleEvidence,
   isFlowBackedBinaryControl,
   shouldSkipBinaryControl,
-  formatPendingBinaryObservedValue,
 } from './planBinaryControlHelpers';
 
 export { formatEvSnapshot, isFlowBackedBinaryControl } from './planBinaryControlHelpers';
@@ -386,6 +387,7 @@ export function syncPendingBinaryCommands(params: {
   state: PlanEngineState;
   liveDevices: PlanInputDevice[];
   source: PendingTargetObservationSource;
+  binarySettleEvidenceByDeviceId?: BinarySettleEvidenceByDeviceId;
   logDebug: (message: string) => void;
   onConfirmed?: (params: {
     deviceId: string;
@@ -398,7 +400,7 @@ export function syncPendingBinaryCommands(params: {
   const {
     state,
     liveDevices,
-    source,
+    binarySettleEvidenceByDeviceId,
     logDebug,
     onConfirmed,
   } = params;
@@ -408,83 +410,30 @@ export function syncPendingBinaryCommands(params: {
 
   for (const [deviceId, pending] of Object.entries(state.pendingBinaryCommands)) {
     const liveDevice = liveById.get(deviceId);
-    const ageMs = nowMs - pending.startedMs;
     if (!isPendingBinaryCommandActive({
       pending,
       nowMs,
       communicationModel: liveDevice?.communicationModel,
     })) {
-      delete state.pendingBinaryCommands[deviceId];
+      clearTimedOutPendingBinaryCommand({ state, deviceId, pending, liveDevice, nowMs, logDebug });
       changed = true;
-      logDebug(buildPendingBinaryTimeoutLogMessage({
-        pending,
-        name: liveDevice ? liveDevice.name : `device ${deviceId}`,
-        ageMs,
-      }));
       continue;
     }
     if (!liveDevice) continue;
 
-    const observedValue = getObservedBinaryValue(liveDevice, pending.capabilityId);
-    if (observedValue === pending.desired) {
-      onConfirmed?.({
-        deviceId,
-        liveDevice,
-        pending,
-        source,
-        confirmedAtMs: nowMs,
-      });
-      delete state.pendingBinaryCommands[deviceId];
-      changed = true;
-      logDebug(
-        `Capacity: confirmed ${pending.capabilityId} for ${liveDevice.name} `
-        + `at ${formatPendingBinaryObservedValue(pending.capabilityId, observedValue)} via ${source}`,
-      );
-      continue;
-    }
-
-    if (
-      pending.lastObservedValue === observedValue
-      && pending.lastObservedSource === source
-    ) {
-      continue;
-    }
-
-    pending.lastObservedValue = observedValue;
-    pending.lastObservedSource = source;
-    pending.lastObservedAtMs = nowMs;
-    changed = true;
-    logDebug(
-      `Capacity: waiting for ${pending.capabilityId} confirmation for ${liveDevice.name}; `
-      + `observed ${formatPendingBinaryObservedValue(pending.capabilityId, observedValue)} via ${source}, `
-      + `expected ${formatPendingBinaryObservedValue(pending.capabilityId, pending.desired)}`,
-    );
+    const evidence = getMatchingBinarySettleEvidence(binarySettleEvidenceByDeviceId, deviceId, pending);
+    if (!evidence) continue;
+    changed = applyBinarySettleEvidence({
+      state,
+      deviceId,
+      liveDevice,
+      pending,
+      evidence,
+      nowMs,
+      logDebug,
+      onConfirmed,
+    }) || changed;
   }
 
   return changed;
-}
-function getObservedBinaryValue(
-  liveDevice: PlanInputDevice,
-  capabilityId: 'onoff' | 'evcharger_charging',
-): boolean | string | undefined {
-  if (capabilityId === 'evcharger_charging') {
-    return resolveEvChargingObservedState(liveDevice.evChargingState);
-  }
-  return liveDevice.currentOn;
-}
-
-function resolveEvChargingObservedState(
-  evChargingState: PlanInputDevice['evChargingState'],
-): boolean | string | undefined {
-  switch (evChargingState) {
-    case 'plugged_in_charging':
-      return true;
-    case 'plugged_in':
-    case 'plugged_in_paused':
-    case 'plugged_out':
-    case 'plugged_in_discharging':
-      return false;
-    default:
-      return evChargingState;
-  }
 }

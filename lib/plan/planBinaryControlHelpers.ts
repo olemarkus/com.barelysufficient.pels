@@ -1,6 +1,12 @@
 import type { DeviceManager } from '../core/deviceManager';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import type { PlanEngineState } from './planState';
+import type {
+  BinarySettleEvidence,
+  BinarySettleEvidenceByDeviceId,
+  PendingTargetObservationSource,
+  PlanInputDevice,
+} from './planTypes';
 import {
   getPendingBinaryCommandWindowMs,
   isPendingBinaryCommandActive,
@@ -298,4 +304,100 @@ export function formatPendingBinaryObservedValue(
   if (value === true) return 'on';
   if (value === false) return 'off';
   return String(value ?? 'unknown');
+}
+
+export function clearTimedOutPendingBinaryCommand(params: {
+  state: PlanEngineState;
+  deviceId: string;
+  pending: PlanEngineState['pendingBinaryCommands'][string];
+  liveDevice?: PlanInputDevice;
+  nowMs: number;
+  logDebug: (message: string) => void;
+}): void {
+  const {
+    state,
+    deviceId,
+    pending,
+    liveDevice,
+    nowMs,
+    logDebug,
+  } = params;
+  delete state.pendingBinaryCommands[deviceId];
+  logDebug(buildPendingBinaryTimeoutLogMessage({
+    pending,
+    name: liveDevice ? liveDevice.name : `device ${deviceId}`,
+    ageMs: nowMs - pending.startedMs,
+  }));
+}
+
+export function getMatchingBinarySettleEvidence(
+  evidenceByDeviceId: BinarySettleEvidenceByDeviceId | undefined,
+  deviceId: string,
+  pending: PlanEngineState['pendingBinaryCommands'][string],
+): BinarySettleEvidence | undefined {
+  const evidence = evidenceByDeviceId?.get(deviceId);
+  if (!evidence) return undefined;
+  if (evidence.capabilityId !== pending.capabilityId) return undefined;
+  return evidence.observedAtMs >= pending.startedMs ? evidence : undefined;
+}
+
+export function applyBinarySettleEvidence(params: {
+  state: PlanEngineState;
+  deviceId: string;
+  liveDevice: PlanInputDevice;
+  pending: PlanEngineState['pendingBinaryCommands'][string];
+  evidence: BinarySettleEvidence;
+  nowMs: number;
+  logDebug: (message: string) => void;
+  onConfirmed?: (params: {
+    deviceId: string;
+    liveDevice: PlanInputDevice;
+    pending: PlanEngineState['pendingBinaryCommands'][string];
+    source: PendingTargetObservationSource;
+    confirmedAtMs: number;
+  }) => void;
+}): boolean {
+  const {
+    state,
+    deviceId,
+    liveDevice,
+    pending,
+    evidence,
+    nowMs,
+    logDebug,
+    onConfirmed,
+  } = params;
+  const observedValue = evidence.observedValue;
+  if (observedValue === pending.desired) {
+    onConfirmed?.({
+      deviceId,
+      liveDevice,
+      pending,
+      source: evidence.source,
+      confirmedAtMs: nowMs,
+    });
+    delete state.pendingBinaryCommands[deviceId];
+    logDebug(
+      `Capacity: confirmed ${pending.capabilityId} for ${liveDevice.name} `
+      + `at ${formatPendingBinaryObservedValue(pending.capabilityId, observedValue)} via ${evidence.source}`,
+    );
+    return true;
+  }
+
+  if (
+    pending.lastObservedValue === observedValue
+    && pending.lastObservedSource === evidence.source
+  ) {
+    return false;
+  }
+
+  pending.lastObservedValue = observedValue;
+  pending.lastObservedSource = evidence.source;
+  pending.lastObservedAtMs = nowMs;
+  logDebug(
+    `Capacity: waiting for ${pending.capabilityId} confirmation for ${liveDevice.name}; `
+    + `observed ${formatPendingBinaryObservedValue(pending.capabilityId, observedValue)} via ${evidence.source}, `
+    + `expected ${formatPendingBinaryObservedValue(pending.capabilityId, pending.desired)}`,
+  );
+  return true;
 }
