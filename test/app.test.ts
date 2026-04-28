@@ -317,6 +317,107 @@ describe('MyApp initialization', () => {
     expect(childLogger.debug).not.toHaveBeenCalled();
   });
 
+  it('emits rate-limited structured plan rebuild scheduler replacement events', () => {
+    const app = createApp();
+    const childLogger = { debug: vi.fn() };
+    const child = vi.fn().mockReturnValue(childLogger);
+
+    (app as any).structuredLogger = { child };
+    (app as any).debugLoggingTopics = new Set(['plan']);
+
+    const previous = { kind: 'snapshot', reason: 'meta_only' };
+    const next = { kind: 'hardCap', reason: 'shortfall' };
+    (app as any).onPlanRebuildPendingIntentReplaced(previous, next);
+    (app as any).onPlanRebuildPendingIntentReplaced(previous, next);
+
+    expect(child).toHaveBeenCalledWith({ component: 'plan' }, { level: 'debug' });
+    expect(childLogger.debug).toHaveBeenCalledTimes(1);
+    expect(childLogger.debug).toHaveBeenCalledWith({
+      event: 'plan_rebuild_scheduler_intent_replaced',
+      previousKind: 'snapshot',
+      previousReason: 'meta_only',
+      nextKind: 'hardCap',
+      nextReason: 'shortfall',
+      debugTopic: 'plan',
+    });
+  });
+
+  it('does not rate-limit distinct plan rebuild scheduler replacement keys', () => {
+    const app = createApp();
+    const childLogger = { debug: vi.fn() };
+    const child = vi.fn().mockReturnValue(childLogger);
+
+    (app as any).structuredLogger = { child };
+    (app as any).debugLoggingTopics = new Set(['plan']);
+
+    (app as any).onPlanRebuildPendingIntentReplaced(
+      { kind: 'snapshot', reason: 'meta_only' },
+      { kind: 'hardCap', reason: 'shortfall' },
+    );
+    (app as any).onPlanRebuildPendingIntentReplaced(
+      { kind: 'snapshot', reason: 'non_action_details' },
+      { kind: 'hardCap', reason: 'shortfall' },
+    );
+
+    expect(childLogger.debug).toHaveBeenCalledTimes(2);
+    expect(childLogger.debug).toHaveBeenLastCalledWith(expect.objectContaining({
+      event: 'plan_rebuild_scheduler_intent_replaced',
+      previousKind: 'snapshot',
+      previousReason: 'non_action_details',
+      nextKind: 'hardCap',
+      nextReason: 'shortfall',
+      debugTopic: 'plan',
+    }));
+  });
+
+  it('emits rate-limited structured plan rebuild scheduler dropped events', () => {
+    const app = createApp();
+    const childLogger = { debug: vi.fn() };
+    const child = vi.fn().mockReturnValue(childLogger);
+
+    (app as any).structuredLogger = { child };
+    (app as any).debugLoggingTopics = new Set(['plan']);
+
+    const dropped = { kind: 'snapshot', reason: 'meta_only' };
+    const kept = { kind: 'hardCap', reason: 'shortfall' };
+    (app as any).onPlanRebuildIntentDropped(dropped, kept);
+    (app as any).onPlanRebuildIntentDropped(dropped, kept);
+
+    expect(childLogger.debug).toHaveBeenCalledTimes(1);
+    expect(childLogger.debug).toHaveBeenCalledWith({
+      event: 'plan_rebuild_scheduler_intent_dropped',
+      droppedKind: 'snapshot',
+      droppedReason: 'meta_only',
+      keptKind: 'hardCap',
+      keptReason: 'shortfall',
+      debugTopic: 'plan',
+    });
+  });
+
+  it('prunes stale plan rebuild scheduler rate-limit keys', () => {
+    const app = createApp();
+    const childLogger = { debug: vi.fn() };
+    const child = vi.fn().mockReturnValue(childLogger);
+    const map = (app as any).planRebuildSchedulerDebugLastEmittedAtMsByKey as Map<string, number>;
+
+    vi.spyOn(app as any, 'getPlanRebuildNowMs')
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(60_000);
+    (app as any).structuredLogger = { child };
+    (app as any).debugLoggingTopics = new Set(['plan']);
+
+    const dropped = { kind: 'snapshot', reason: 'meta_only' };
+    const kept = { kind: 'hardCap', reason: 'shortfall' };
+    (app as any).onPlanRebuildIntentDropped(dropped, kept);
+    expect(map.size).toBe(1);
+
+    (app as any).onPlanRebuildIntentDropped(dropped, kept);
+
+    expect(childLogger.debug).toHaveBeenCalledTimes(2);
+    expect(map.size).toBe(1);
+    expect(map.get('dropped:snapshot:meta_only:hardCap:shortfall')).toBe(60_000);
+  });
+
   it('keeps devices disabled by default when no settings exist', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
 
