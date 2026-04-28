@@ -12,11 +12,12 @@ const binaryObservation = (
   capabilityId: 'onoff' | 'evcharger_charging',
   observedValue: boolean,
   observedAtMs: number,
+  observedCapabilityIds: string[] = [capabilityId],
 ) => ({
   valid: true as const,
   capabilityId,
   observedValue,
-  observedCapabilityIds: [capabilityId],
+  observedCapabilityIds,
   observedAtMs,
 });
 
@@ -750,6 +751,7 @@ describe('plan binary control helpers', () => {
           'evcharger_charging',
           false,
           state.pendingBinaryCommands.ev1.startedMs + 1,
+          ['evcharger_charging_state'],
         ),
         targets: [],
       }],
@@ -762,6 +764,237 @@ describe('plan binary control helpers', () => {
     expect(logDebug).toHaveBeenCalledWith(
       'Capacity: confirmed evcharger_charging for EV at paused via device_update',
     );
+  });
+
+  it('does not settle a pending EV pause from raw false while charging state is still charging', () => {
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands.ev1 = {
+      capabilityId: 'evcharger_charging',
+      desired: false,
+      startedMs: 1_000,
+    };
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_001);
+
+    const changed = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'ev1',
+        name: 'EV',
+        currentOn: true,
+        evChargingState: 'plugged_in_charging',
+        hasBinaryControl: true,
+        controlCapabilityId: 'evcharger_charging',
+        binaryControlObservation: binaryObservation('evcharger_charging', false, 1_001),
+        targets: [],
+      }],
+      source: 'device_update',
+      logDebug: vi.fn(),
+    });
+    nowSpy.mockRestore();
+
+    expect(changed).toBe(false);
+    expect(state.pendingBinaryCommands.ev1).toBeDefined();
+  });
+
+  it('does not settle a pending EV pause from raw evidence while charging state is present', () => {
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands.ev1 = {
+      capabilityId: 'evcharger_charging',
+      desired: false,
+      startedMs: 1_000,
+    };
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_001);
+
+    const changed = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'ev1',
+        name: 'EV',
+        currentOn: true,
+        evChargingState: 'plugged_in_paused',
+        hasBinaryControl: true,
+        controlCapabilityId: 'evcharger_charging',
+        binaryControlObservation: binaryObservation('evcharger_charging', false, 1_001),
+        targets: [],
+      }],
+      source: 'device_update',
+      logDebug: vi.fn(),
+    });
+    nowSpy.mockRestore();
+
+    expect(changed).toBe(false);
+    expect(state.pendingBinaryCommands.ev1).toBeDefined();
+  });
+
+  it('does not settle EV pending commands from raw evidence even when the current EV state agrees', () => {
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands.ev1 = {
+      capabilityId: 'evcharger_charging',
+      desired: false,
+      startedMs: 1_000,
+    };
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_001);
+
+    const changed = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'ev1',
+        name: 'EV',
+        currentOn: true,
+        evChargingState: 'plugged_in_paused',
+        hasBinaryControl: true,
+        controlCapabilityId: 'evcharger_charging',
+        binaryControlObservation: binaryObservation('evcharger_charging', false, 1_001),
+        targets: [],
+      }],
+      source: 'device_update',
+      logDebug: vi.fn(),
+    });
+    nowSpy.mockRestore();
+
+    expect(changed).toBe(false);
+    expect(state.pendingBinaryCommands.ev1).toBeDefined();
+  });
+
+  it('settles pending EV resume from charging state', () => {
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands.ev1 = {
+      capabilityId: 'evcharger_charging',
+      desired: true,
+      startedMs: 1_000,
+    };
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_001);
+
+    const logDebug = vi.fn();
+    const changed = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'ev1',
+        name: 'EV',
+        currentOn: true,
+        evChargingState: 'plugged_in_charging',
+        hasBinaryControl: true,
+        controlCapabilityId: 'evcharger_charging',
+        binaryControlObservation: binaryObservation(
+          'evcharger_charging',
+          true,
+          1_001,
+          ['evcharger_charging_state'],
+        ),
+        targets: [],
+      }],
+      source: 'device_update',
+      logDebug,
+    });
+    nowSpy.mockRestore();
+
+    expect(changed).toBe(true);
+    expect(state.pendingBinaryCommands.ev1).toBeUndefined();
+    expect(logDebug).toHaveBeenCalledWith(
+      'Capacity: confirmed evcharger_charging for EV at charging via device_update',
+    );
+  });
+
+  it('does not settle EV resume by recomputing old state evidence from a newer charging state', () => {
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands.ev1 = {
+      capabilityId: 'evcharger_charging',
+      desired: true,
+      startedMs: 1_000,
+    };
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_001);
+
+    const changed = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'ev1',
+        name: 'EV',
+        currentOn: true,
+        evChargingState: 'plugged_in_charging',
+        hasBinaryControl: true,
+        controlCapabilityId: 'evcharger_charging',
+        binaryControlObservation: binaryObservation(
+          'evcharger_charging',
+          false,
+          1_001,
+          ['evcharger_charging_state'],
+        ),
+        targets: [],
+      }],
+      source: 'snapshot_refresh',
+      logDebug: vi.fn(),
+    });
+    nowSpy.mockRestore();
+
+    expect(changed).toBe(true);
+    expect(state.pendingBinaryCommands.ev1).toBeDefined();
+    expect(state.pendingBinaryCommands.ev1.lastObservedValue).toBe(false);
+  });
+
+  it('settles raw EV boolean-only evidence only when state is absent and fresh', () => {
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands.ev1 = {
+      capabilityId: 'evcharger_charging',
+      desired: false,
+      startedMs: 1_000,
+    };
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_001);
+
+    const staleChanged = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'ev1',
+        name: 'EV',
+        currentOn: false,
+        hasBinaryControl: true,
+        controlCapabilityId: 'evcharger_charging',
+        binaryControlObservation: binaryObservation('evcharger_charging', false, 999),
+        targets: [],
+      }],
+      source: 'snapshot_refresh',
+      logDebug: vi.fn(),
+    });
+
+    expect(staleChanged).toBe(false);
+    expect(state.pendingBinaryCommands.ev1).toBeDefined();
+
+    const invalidStateChanged = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'ev1',
+        name: 'EV',
+        currentOn: false,
+        evChargingState: 'mystery',
+        hasBinaryControl: true,
+        controlCapabilityId: 'evcharger_charging',
+        binaryControlObservation: binaryObservation('evcharger_charging', false, 1_001),
+        targets: [],
+      }],
+      source: 'snapshot_refresh',
+      logDebug: vi.fn(),
+    });
+
+    expect(invalidStateChanged).toBe(false);
+    expect(state.pendingBinaryCommands.ev1).toBeDefined();
+
+    const freshChanged = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'ev1',
+        name: 'EV',
+        currentOn: false,
+        hasBinaryControl: true,
+        controlCapabilityId: 'evcharger_charging',
+        binaryControlObservation: binaryObservation('evcharger_charging', false, 1_001),
+        targets: [],
+      }],
+      source: 'snapshot_refresh',
+      logDebug: vi.fn(),
+    });
+
+    expect(freshChanged).toBe(true);
+    expect(state.pendingBinaryCommands.ev1).toBeUndefined();
+    nowSpy.mockRestore();
   });
 
   it('runs confirmation callbacks before clearing pending flow-backed binary commands', () => {
@@ -787,7 +1020,12 @@ describe('plan binary control helpers', () => {
         evChargingState: 'plugged_in_paused',
         hasBinaryControl: true,
         controlCapabilityId: 'evcharger_charging',
-        binaryControlObservation: binaryObservation('evcharger_charging', false, startedMs + 1),
+        binaryControlObservation: binaryObservation(
+          'evcharger_charging',
+          false,
+          startedMs + 1,
+          ['evcharger_charging_state'],
+        ),
         targets: [],
       }],
       source: 'device_update',

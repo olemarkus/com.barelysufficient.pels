@@ -6,10 +6,14 @@ import {
   getRecentLocalCapabilityWrite,
   type RecentLocalCapabilityWrites,
 } from './deviceManagerRealtimeSupport';
-import { resolveEvCurrentOn } from './deviceManagerControl';
+import {
+  resolveEvChargingStateBinaryEvidence,
+  resolveEvCurrentOn,
+} from './deviceManagerControl';
 import { EV_SOC_CAPABILITY_ID } from './deviceStateOfCharge';
 
 const REALTIME_CONTROL_CAPABILITY_IDS = ['onoff', 'evcharger_charging'] as const;
+type RealtimeControlCapabilityId = NonNullable<TargetDeviceSnapshot['controlCapabilityId']>;
 
 export type RealtimeDeviceReconcileChange = {
   capabilityId: string;
@@ -109,30 +113,11 @@ export function reconcileRealtimeDeviceUpdate(params: {
     };
   }
 
-  // Only let the raw device value bypass local-state preservation when the settle
-  // window is active AND the payload contains an explicit boolean for the control
-  // capability. A device.update without the binary capability in its payload would
-  // cause parseDevice to synthesize a default (getCurrentOn returns true when the
-  // value is missing), which must not be treated as a real observation.
-  const controlCapabilityId = parsed.controlCapabilityId ?? previous?.controlCapabilityId;
-  const explicitBinaryObservation = getExplicitObservedBinaryValue({
+  applyExplicitControlObservation({
     device,
-    controlObservationCapabilityId: (
-      parsed.controlObservationCapabilityId
-      ?? previous?.controlObservationCapabilityId
-      ?? controlCapabilityId
-    ),
+    parsed,
+    previous,
   });
-  if (
-    (controlCapabilityId === 'onoff' || controlCapabilityId === 'evcharger_charging')
-    && explicitBinaryObservation !== undefined
-  ) {
-    applyExplicitBinaryObservation({
-      parsed,
-      controlCapabilityId,
-      value: explicitBinaryObservation,
-    });
-  }
   const preservedBinaryControlObservation = getPreservedBinaryControlObservation(previous, parsed);
   if (preservedBinaryControlObservation) parsed.binaryControlObservation = preservedBinaryControlObservation;
 
@@ -142,7 +127,7 @@ export function reconcileRealtimeDeviceUpdate(params: {
     deviceId,
     recentLocalCapabilityWrites,
     hasPendingBinarySettleWindow,
-    binaryValueExplicitlyObserved: explicitBinaryObservation !== undefined,
+    binaryValueExplicitlyObserved: hasExplicitControlObservation({ device, parsed, previous }),
   });
 
   if (snapshotIndex >= 0) {
@@ -159,6 +144,54 @@ export function reconcileRealtimeDeviceUpdate(params: {
     observedCapabilityIds,
     currentSnapshot: parsed,
   };
+}
+
+function applyExplicitControlObservation(params: {
+  device: HomeyDeviceLike;
+  parsed: TargetDeviceSnapshot;
+  previous: TargetDeviceSnapshot | null;
+}): void {
+  const explicitObservation = resolveExplicitControlObservation(params);
+  if (!explicitObservation) return;
+  applyExplicitBinaryObservation({
+    parsed: params.parsed,
+    controlCapabilityId: explicitObservation.controlCapabilityId,
+    value: explicitObservation.value,
+  });
+}
+
+function hasExplicitControlObservation(params: {
+  device: HomeyDeviceLike;
+  parsed: TargetDeviceSnapshot;
+  previous: TargetDeviceSnapshot | null;
+}): boolean {
+  return resolveExplicitControlObservation(params) !== null;
+}
+
+function resolveExplicitControlObservation(params: {
+  device: HomeyDeviceLike;
+  parsed: TargetDeviceSnapshot;
+  previous: TargetDeviceSnapshot | null;
+}): {
+  controlCapabilityId: RealtimeControlCapabilityId;
+  value: boolean;
+} | null {
+  const { device, parsed, previous } = params;
+  const controlCapabilityId = parsed.controlCapabilityId ?? previous?.controlCapabilityId;
+  if (typeof controlCapabilityId !== 'string') return null;
+  if (!isRealtimeControlCapability(controlCapabilityId)) return null;
+  const value = getExplicitObservedBinaryValue({
+    device,
+    controlCapabilityId,
+    controlObservationCapabilityId: (
+      parsed.controlObservationCapabilityId
+      ?? previous?.controlObservationCapabilityId
+      ?? controlCapabilityId
+    ),
+    previousEvChargingState: previous?.evChargingState,
+  });
+  if (value === undefined) return null;
+  return { controlCapabilityId, value };
 }
 
 function getPreservedBinaryControlObservation(
@@ -195,13 +228,25 @@ function applyExplicitBinaryObservation(params: {
 
 function getExplicitObservedBinaryValue(params: {
   device: HomeyDeviceLike;
+  controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
   controlObservationCapabilityId?: TargetDeviceSnapshot['controlObservationCapabilityId'];
+  previousEvChargingState?: string;
 }): boolean | undefined {
   const {
     device,
+    controlCapabilityId,
     controlObservationCapabilityId,
+    previousEvChargingState,
   } = params;
   if (typeof controlObservationCapabilityId !== 'string') return undefined;
+  if (controlCapabilityId === 'evcharger_charging') {
+    const rawStateValue = device.capabilitiesObj?.evcharger_charging_state?.value;
+    if (rawStateValue !== undefined) {
+      if (!Object.is(rawStateValue, previousEvChargingState)) {
+        return resolveEvChargingStateBinaryEvidence(rawStateValue);
+      }
+    }
+  }
   const value = device.capabilitiesObj?.[controlObservationCapabilityId]?.value;
   return typeof value === 'boolean' ? value : undefined;
 }

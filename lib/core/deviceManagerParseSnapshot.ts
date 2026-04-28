@@ -2,6 +2,7 @@ import type { TargetDeviceSnapshot } from '../utils/types';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import {
   getCanSetControl,
+  resolveEvChargingStateBinaryEvidence,
   toCapabilityTimestampMs,
   type DeviceCapabilityMap,
 } from './deviceManagerControl';
@@ -88,6 +89,12 @@ export function resolveBinaryControlObservation(params: {
     controlObservationCapabilityId,
   } = params;
   if (!controlCapabilityId) return undefined;
+  if (controlCapabilityId === 'evcharger_charging') {
+    return resolveEvBinaryControlObservation({
+      capabilityObj,
+      controlObservationCapabilityId,
+    });
+  }
   const sourceCapabilityId = controlObservationCapabilityId ?? controlCapabilityId;
   const sourceCapability = capabilityObj[sourceCapabilityId];
   const observedAtMs = toCapabilityTimestampMs(sourceCapability?.lastUpdated);
@@ -97,6 +104,43 @@ export function resolveBinaryControlObservation(params: {
   return {
     valid: true,
     capabilityId: controlCapabilityId,
+    observedValue,
+    observedCapabilityIds: [sourceCapabilityId],
+    observedAtMs,
+    source: 'snapshot_refresh',
+  };
+}
+
+function resolveEvBinaryControlObservation(params: {
+  capabilityObj: DeviceCapabilityMap;
+  controlObservationCapabilityId?: string;
+}): TargetDeviceSnapshot['binaryControlObservation'] {
+  const { capabilityObj, controlObservationCapabilityId } = params;
+  const rawStateValue = capabilityObj.evcharger_charging_state?.value;
+  if (rawStateValue !== undefined) {
+    const observedValue = resolveEvChargingStateBinaryEvidence(rawStateValue);
+    if (observedValue === undefined) return undefined;
+    const observedAtMs = toCapabilityTimestampMs(capabilityObj.evcharger_charging_state?.lastUpdated);
+    if (observedAtMs === undefined) return undefined;
+    return {
+      valid: true,
+      capabilityId: 'evcharger_charging',
+      observedValue,
+      observedCapabilityIds: ['evcharger_charging_state'],
+      observedAtMs,
+      source: 'snapshot_refresh',
+    };
+  }
+
+  const sourceCapabilityId = controlObservationCapabilityId ?? 'evcharger_charging';
+  const sourceCapability = capabilityObj[sourceCapabilityId];
+  const observedAtMs = toCapabilityTimestampMs(sourceCapability?.lastUpdated);
+  if (observedAtMs === undefined) return undefined;
+  const observedValue = sourceCapability?.value;
+  if (typeof observedValue !== 'boolean') return undefined;
+  return {
+    valid: true,
+    capabilityId: 'evcharger_charging',
     observedValue,
     observedCapabilityIds: [sourceCapabilityId],
     observedAtMs,
