@@ -368,6 +368,7 @@ describe('Device plan snapshot', () => {
           observedValue: true,
           observedCapabilityIds: ['onoff'],
           observedAtMs: pendingStartedMs + 1,
+          source: 'realtime_capability',
         },
         measuredPowerKw: 0.7,
         expectedPowerKw: 0.2,

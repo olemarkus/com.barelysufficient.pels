@@ -187,6 +187,7 @@ describe('DeviceManager', () => {
                     observedValue: false,
                     observedCapabilityIds: ['onoff'],
                     observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
+                    source: 'snapshot_refresh',
                 },
                 currentTemperature: 19.5,
                 canSetControl: true,
@@ -1104,6 +1105,7 @@ describe('DeviceManager', () => {
                 observedValue: false,
                 observedCapabilityIds: ['onoff'],
                 observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
+                source: 'realtime_capability' as const,
             };
             deviceManager.setSnapshotForTests([{
                 id: 'dev1',
@@ -1129,6 +1131,386 @@ describe('DeviceManager', () => {
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toEqual(expect.objectContaining({
                 binaryControlObservation: previousEvidence,
             }));
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(previousEvidence);
+        });
+
+        it('keeps realtime binary evidence through target-only and power-only device.update payloads', async () => {
+            deviceManager.setSnapshotForTests([{
+                id: 'dev1',
+                name: 'Hall Thermostat',
+                targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+                deviceClass: 'thermostat',
+                deviceType: 'temperature',
+                controlCapabilityId: 'onoff',
+                currentOn: true,
+            }]);
+
+            deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
+            const realtimeEvidence = deviceManager.getBinarySettleEvidenceByDeviceId('dev1');
+            expect(realtimeEvidence).toEqual(expect.objectContaining({
+                source: 'realtime_capability',
+                capabilityId: 'onoff',
+                observedValue: false,
+            }));
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(false);
+
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'dev1',
+                name: 'Hall Thermostat',
+                capabilities: ['onoff', 'measure_temperature', 'target_temperature', 'measure_power'],
+                class: 'thermostat',
+                capabilitiesObj: {
+                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
+                    target_temperature: { value: 19, id: 'target_temperature', units: '°C' },
+                },
+            });
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(realtimeEvidence);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(false);
+
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'dev1',
+                name: 'Hall Thermostat',
+                capabilities: ['onoff', 'measure_temperature', 'target_temperature', 'measure_power'],
+                class: 'thermostat',
+                capabilitiesObj: {
+                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
+                    target_temperature: { value: 19, id: 'target_temperature', units: '°C' },
+                    measure_power: { value: 500, id: 'measure_power' },
+                },
+            });
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(realtimeEvidence);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(false);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation)
+                .toEqual(realtimeEvidence);
+        });
+
+        it("clears binary evidence and logs when device.update carries invalid direct onoff='unknown'", async () => {
+            const previousEvidence = {
+                valid: true as const,
+                capabilityId: 'onoff' as const,
+                observedValue: false,
+                observedCapabilityIds: ['onoff'],
+                observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
+                source: 'realtime_capability' as const,
+            };
+            deviceManager.setSnapshotForTests([{
+                id: 'dev1',
+                name: 'Heater',
+                targets: [],
+                deviceClass: 'heater',
+                deviceType: 'onoff',
+                controlCapabilityId: 'onoff',
+                currentOn: false,
+                binaryControlObservation: previousEvidence,
+            }]);
+
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'dev1',
+                name: 'Heater',
+                capabilities: ['onoff'],
+                class: 'heater',
+                capabilitiesObj: {
+                    onoff: { value: 'unknown', id: 'onoff' },
+                },
+            });
+
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(false);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation).toBeUndefined();
+            expect(loggerMock.structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'binary_settle_evidence_cleared',
+                reasonCode: 'invalid_control_payload',
+                deviceId: 'dev1',
+                deviceName: 'Heater',
+                capabilityId: 'onoff',
+                source: 'device_update',
+                valueType: 'string',
+            }));
+        });
+
+        it("keeps valid telemetry from device.update when direct onoff='unknown' clears evidence", async () => {
+            const previousEvidence = {
+                valid: true as const,
+                capabilityId: 'onoff' as const,
+                observedValue: false,
+                observedCapabilityIds: ['onoff'],
+                observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
+                source: 'realtime_capability' as const,
+            };
+            deviceManager.setSnapshotForTests([{
+                id: 'dev1',
+                name: 'Hall Thermostat',
+                targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+                deviceClass: 'thermostat',
+                deviceType: 'temperature',
+                controlCapabilityId: 'onoff',
+                currentOn: false,
+                measuredPowerKw: 0.1,
+                binaryControlObservation: previousEvidence,
+            }]);
+
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'dev1',
+                name: 'Hall Thermostat',
+                capabilities: ['onoff', 'measure_temperature', 'measure_power', 'target_temperature'],
+                class: 'thermostat',
+                capabilitiesObj: {
+                    onoff: { value: 'unknown', id: 'onoff' },
+                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
+                    measure_power: { value: 500, id: 'measure_power' },
+                    target_temperature: { value: 19, id: 'target_temperature', units: '°C' },
+                },
+            });
+
+            const snapshotDevice = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
+            expect(snapshotDevice).toEqual(expect.objectContaining({
+                measuredPowerKw: 0.5,
+                targets: [expect.objectContaining({ id: 'target_temperature', value: 19 })],
+            }));
+            expect(snapshotDevice?.binaryControlObservation).toBeUndefined();
+        });
+
+        it('uses device.update capability lastUpdated as the binary evidence timestamp', async () => {
+            const observedAtMs = new Date('2026-04-01T12:00:00.000Z').getTime();
+            deviceManager.setSnapshotForTests([{
+                id: 'dev1',
+                name: 'Heater',
+                targets: [],
+                deviceClass: 'heater',
+                deviceType: 'onoff',
+                controlCapabilityId: 'onoff',
+                currentOn: false,
+            }]);
+
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'dev1',
+                name: 'Heater',
+                capabilities: ['onoff', 'measure_power'],
+                class: 'heater',
+                capabilitiesObj: {
+                    onoff: {
+                        value: true,
+                        id: 'onoff',
+                        lastUpdated: new Date(observedAtMs).toISOString(),
+                    },
+                    measure_power: { value: 500, id: 'measure_power' },
+                },
+            });
+
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(expect.objectContaining({
+                source: 'device_update',
+                observedValue: true,
+                observedAtMs,
+            }));
+        });
+
+        it('does not reattach cached evidence when an explicit timestamp-less boolean contradicts it', async () => {
+            deviceManager.setSnapshotForTests([{
+                id: 'dev1',
+                name: 'Heater',
+                targets: [],
+                deviceClass: 'heater',
+                deviceType: 'onoff',
+                controlCapabilityId: 'onoff',
+                currentOn: false,
+                binaryControlObservation: {
+                    valid: true,
+                    capabilityId: 'onoff',
+                    observedValue: false,
+                    observedCapabilityIds: ['onoff'],
+                    observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
+                    source: 'snapshot_refresh',
+                },
+            }]);
+
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'dev1',
+                name: 'Heater',
+                capabilities: ['onoff', 'measure_power'],
+                class: 'heater',
+                capabilitiesObj: {
+                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 500, id: 'measure_power' },
+                },
+            });
+
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(true);
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation).toBeUndefined();
+        });
+
+        it('keeps currentOn aligned with newer cached evidence when device.update carries stale binary evidence', async () => {
+            const newerEvidence = {
+                valid: true as const,
+                capabilityId: 'onoff' as const,
+                observedValue: true,
+                observedCapabilityIds: ['onoff'],
+                observedAtMs: new Date('2026-04-01T12:00:00.000Z').getTime(),
+                source: 'realtime_capability' as const,
+            };
+            deviceManager.setSnapshotForTests([{
+                id: 'dev1',
+                name: 'Heater',
+                targets: [],
+                deviceClass: 'heater',
+                deviceType: 'onoff',
+                controlCapabilityId: 'onoff',
+                currentOn: true,
+                binaryControlObservation: newerEvidence,
+            }]);
+
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'dev1',
+                name: 'Heater',
+                capabilities: ['onoff', 'measure_power'],
+                class: 'heater',
+                capabilitiesObj: {
+                    onoff: {
+                        value: false,
+                        id: 'onoff',
+                        lastUpdated: '2026-04-01T11:59:00.000Z',
+                    },
+                    measure_power: { value: 500, id: 'measure_power' },
+                },
+            });
+
+            const snapshotDevice = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(newerEvidence);
+            expect(snapshotDevice?.binaryControlObservation).toEqual(newerEvidence);
+            expect(snapshotDevice?.currentOn).toBe(true);
+        });
+
+        it('keeps currentOn aligned with newer cached evidence when snapshot refresh carries stale binary evidence', async () => {
+            const newerEvidence = {
+                valid: true as const,
+                capabilityId: 'onoff' as const,
+                observedValue: true,
+                observedCapabilityIds: ['onoff'],
+                observedAtMs: new Date('2026-04-01T12:00:00.000Z').getTime(),
+                source: 'realtime_capability' as const,
+            };
+            deviceManager.setSnapshotForTests([{
+                id: 'dev1',
+                name: 'Heater',
+                targets: [],
+                deviceClass: 'heater',
+                deviceType: 'onoff',
+                controlCapabilityId: 'onoff',
+                currentOn: true,
+                binaryControlObservation: newerEvidence,
+            }]);
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    capabilities: ['onoff', 'measure_power'],
+                    class: 'heater',
+                    capabilitiesObj: {
+                        onoff: {
+                            value: false,
+                            id: 'onoff',
+                            lastUpdated: '2026-04-01T11:59:00.000Z',
+                        },
+                        measure_power: { value: 500, id: 'measure_power' },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+
+            const snapshotDevice = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(newerEvidence);
+            expect(snapshotDevice?.binaryControlObservation).toEqual(newerEvidence);
+            expect(snapshotDevice?.currentOn).toBe(true);
+        });
+
+        it('does not reattach cached evidence when snapshot refresh has a contradictory timestamp-less boolean', async () => {
+            deviceManager.setSnapshotForTests([{
+                id: 'dev1',
+                name: 'Heater',
+                targets: [],
+                deviceClass: 'heater',
+                deviceType: 'onoff',
+                controlCapabilityId: 'onoff',
+                currentOn: false,
+                binaryControlObservation: {
+                    valid: true,
+                    capabilityId: 'onoff',
+                    observedValue: false,
+                    observedCapabilityIds: ['onoff'],
+                    observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
+                    source: 'snapshot_refresh',
+                },
+            }]);
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    capabilities: ['onoff', 'measure_power'],
+                    class: 'heater',
+                    capabilitiesObj: {
+                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 500, id: 'measure_power' },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(true);
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation).toBeUndefined();
+        });
+
+        it('clears binary evidence when a device disappears from snapshot refresh', async () => {
+            deviceManager.setSnapshotForTests([{
+                id: 'dev1',
+                name: 'Heater',
+                targets: [],
+                deviceClass: 'heater',
+                deviceType: 'onoff',
+                controlCapabilityId: 'onoff',
+                currentOn: false,
+                binaryControlObservation: {
+                    valid: true,
+                    capabilityId: 'onoff',
+                    observedValue: false,
+                    observedCapabilityIds: ['onoff'],
+                    observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
+                    source: 'snapshot_refresh',
+                },
+            }]);
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeDefined();
+
+            mockApiGet.mockResolvedValue({});
+            await deviceManager.refreshSnapshot();
+
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
+        });
+
+        it('clears binary evidence on destroy', async () => {
+            deviceManager.setSnapshotForTests([{
+                id: 'dev1',
+                name: 'Heater',
+                targets: [],
+                deviceClass: 'heater',
+                deviceType: 'onoff',
+                controlCapabilityId: 'onoff',
+                currentOn: false,
+                binaryControlObservation: {
+                    valid: true,
+                    capabilityId: 'onoff',
+                    observedValue: false,
+                    observedCapabilityIds: ['onoff'],
+                    observedAtMs: new Date('2026-04-01T11:50:00.000Z').getTime(),
+                    source: 'snapshot_refresh',
+                },
+            }]);
+
+            deviceManager.destroy();
+
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
         });
 
         it('prunes stale debug sources and ignores no-op realtime updates for removed devices', async () => {

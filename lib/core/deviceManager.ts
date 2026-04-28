@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- Device manager coordinates SDK setup, snapshots, realtime updates, and command writes. */
 import Homey from 'homey';
 import { EventEmitter } from 'events';
-import { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
+import { BinaryControlObservation, HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
 import { getDeviceId } from './deviceManagerHelpers';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { estimatePower, type PowerEstimateState } from './powerEstimate';
@@ -11,6 +11,7 @@ import {
     logEvCapabilityAccepted,
     logEvCapabilityRequest,
     logEvSnapshotChanges,
+    toCapabilityTimestampMs,
     type DeviceCapabilityMap,
 } from './deviceManagerControl';
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
@@ -128,6 +129,7 @@ export class DeviceManager extends EventEmitter {
     private powerState: Required<PowerEstimateState>;
     private measuredPowerResolver: DeviceMeasuredPowerResolver;
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
+    private latestBinarySettleEvidenceByDeviceId: Map<string, BinaryControlObservation> = new Map();
     private binarySettleState: DeviceManagerBinarySettleState = createBinarySettleState();
     private observationState: DeviceManagerObservationState = createObservationState();
     private recentRealtimeCapabilityEventLogByKey: Map<string, number> = new Map();
@@ -378,6 +380,20 @@ export class DeviceManager extends EventEmitter {
                 return;
             }
         }
+        if (
+            capabilityId === snapshot.controlCapabilityId
+            && (capabilityId === 'onoff' || capabilityId === 'evcharger_charging')
+            && typeof value !== 'boolean'
+        ) {
+            this.clearBinarySettleEvidenceForInvalidControlPayload({
+                deviceId,
+                deviceName: snapshot.name,
+                capabilityId,
+                source: 'realtime_capability',
+                value,
+            });
+            return;
+        }
 
         for (const target of snapshot.targets) {
             if (
@@ -524,7 +540,7 @@ export class DeviceManager extends EventEmitter {
         // observation (value === currentOn) can still settle it.
         const hasSettleWindow = hasPendingBinarySettleWindow(this.binarySettleState, deviceId, capabilityId);
         if (hasSettleWindow) {
-            this.applyBinaryObservationToSnapshot(snapshot, capabilityId, value);
+            this.applyBinaryObservationToSnapshot(snapshot, capabilityId, value, 'realtime_capability');
         }
         const settleOutcome = notePendingBinarySettleObservation({
             state: this.binarySettleState,
@@ -552,7 +568,7 @@ export class DeviceManager extends EventEmitter {
         }
 
         if (!hasSettleWindow) {
-            this.applyBinaryObservationToSnapshot(snapshot, capabilityId, value);
+            this.applyBinaryObservationToSnapshot(snapshot, capabilityId, value, 'realtime_capability');
         }
         if (snapshot.currentOn === previousCurrentOn) return false;
         changes.push({
@@ -567,6 +583,7 @@ export class DeviceManager extends EventEmitter {
         snapshot: TargetDeviceSnapshot,
         capabilityId: string,
         value: boolean,
+        source: BinaryControlObservation['source'],
     ): void {
         const mutableSnapshot = snapshot;
         const observedAtMs = Date.now();
@@ -580,30 +597,39 @@ export class DeviceManager extends EventEmitter {
             mutableSnapshot.currentOn = value;
         }
         if (capabilityId === 'onoff' || capabilityId === 'evcharger_charging') {
-            mutableSnapshot.binaryControlObservation = {
+            const evidence: BinaryControlObservation = {
                 valid: true,
                 capabilityId,
                 observedValue: value,
                 observedCapabilityIds: [capabilityId],
                 observedAtMs,
+                source,
             };
+            this.applyBinarySettleEvidenceToSnapshot(mutableSnapshot, evidence);
         }
     }
 
     private readonly handleRealtimeDeviceUpdate = (device: HomeyDeviceLike): void => {
         const deviceId = getDeviceId(device);
+        if (deviceId && !this.shouldTrackRealtimeDevice(deviceId)) {
+            this.clearBinarySettleEvidence(deviceId);
+        }
         const effectiveDevice = this.applyDeviceDriverOverride(device);
+        const previousSnapshot = this.latestSnapshotById.get(deviceId);
+        const binarySafeUpdate = deviceId
+            ? this.clearInvalidBinarySettleEvidenceFromDeviceUpdate(deviceId, effectiveDevice, previousSnapshot)
+            : { device: effectiveDevice, hadInvalidBinaryControlPayload: false };
+        const { device: binarySafeDevice, hadInvalidBinaryControlPayload } = binarySafeUpdate;
         if (deviceId && this.shouldTrackRealtimeDevice(deviceId)) {
             observeNativeSteppedLoadCommandAdapter({
                 owner: this,
                 deviceId,
-                device: effectiveDevice,
+                device: binarySafeDevice,
                 clearWhenUnavailable: true,
             });
         }
-        const previousSnapshot = this.latestSnapshotById.get(deviceId);
         const observedDevice = buildNativeEvObservationDevice({
-            device: effectiveDevice,
+            device: binarySafeDevice,
             previousSnapshot,
         });
         const result = handleRealtimeDeviceUpdate({
@@ -639,9 +665,21 @@ export class DeviceManager extends EventEmitter {
             emitPlanReconcile: (event) => this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event),
             emitObservedState: (event: ObservedDeviceStateEvent) => this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, event),
         });
-        if (deviceId && result.currentSnapshot !== undefined) {
-            if (result.currentSnapshot) this.latestSnapshotById.set(deviceId, result.currentSnapshot);
-            else this.latestSnapshotById.delete(deviceId);
+        const currentSnapshot = deviceId
+            ? this.syncRealtimeDeviceUpdateSnapshot({
+                deviceId,
+                currentSnapshot: result.currentSnapshot,
+                previousSnapshot,
+                preservePreviousSnapshot: hadInvalidBinaryControlPayload,
+            })
+            : null;
+        if (deviceId) {
+            this.applyBinarySettleEvidenceFromDeviceUpdate({
+                deviceId,
+                device: observedDevice,
+                snapshot: currentSnapshot,
+                previousSnapshot,
+            });
         }
         if (deviceId && result.hadChanges) {
             recordDeviceUpdateObservation({
@@ -652,6 +690,351 @@ export class DeviceManager extends EventEmitter {
             });
         }
     };
+
+    private syncRealtimeDeviceUpdateSnapshot(params: {
+        deviceId: string;
+        currentSnapshot: TargetDeviceSnapshot | null | undefined;
+        previousSnapshot: TargetDeviceSnapshot | undefined;
+        preservePreviousSnapshot: boolean;
+    }): TargetDeviceSnapshot | null {
+        const {
+            deviceId,
+            currentSnapshot,
+            previousSnapshot,
+            preservePreviousSnapshot,
+        } = params;
+        if (currentSnapshot === undefined) return null;
+        if (currentSnapshot) {
+            this.latestSnapshotById.set(deviceId, currentSnapshot);
+            return currentSnapshot;
+        }
+        if (preservePreviousSnapshot && previousSnapshot) {
+            if (!this.latestSnapshot.some((snapshot) => snapshot.id === deviceId)) {
+                this.latestSnapshot.push(previousSnapshot);
+            }
+            this.latestSnapshotById.set(deviceId, previousSnapshot);
+            return previousSnapshot;
+        }
+        this.latestSnapshotById.delete(deviceId);
+        return null;
+    }
+
+    private clearInvalidBinarySettleEvidenceFromDeviceUpdate(
+        deviceId: string,
+        device: HomeyDeviceLike,
+        previousSnapshot: TargetDeviceSnapshot | undefined,
+    ): { device: HomeyDeviceLike; hadInvalidBinaryControlPayload: boolean } {
+        if (!previousSnapshot) return { device, hadInvalidBinaryControlPayload: false };
+        const payload = this.resolveBinaryControlPayload(device, previousSnapshot, previousSnapshot);
+        if (!payload.present || typeof payload.value === 'boolean') {
+            return { device, hadInvalidBinaryControlPayload: false };
+        }
+        this.clearBinarySettleEvidenceForInvalidControlPayload({
+            deviceId,
+            deviceName: previousSnapshot.name,
+            capabilityId: payload.capabilityId,
+            source: 'device_update',
+            value: payload.value,
+        });
+        return {
+            device: this.withoutCapabilityValue(device, payload.observedCapabilityId),
+            hadInvalidBinaryControlPayload: true,
+        };
+    }
+
+    private applyBinarySettleEvidenceFromDeviceUpdate(params: {
+        deviceId: string;
+        device: HomeyDeviceLike;
+        snapshot: TargetDeviceSnapshot | null;
+        previousSnapshot: TargetDeviceSnapshot | undefined;
+    }): void {
+        const {
+            deviceId,
+            device,
+            snapshot,
+            previousSnapshot,
+        } = params;
+        if (!snapshot) {
+            if (previousSnapshot) {
+                const payload = this.resolveBinaryControlPayload(device, previousSnapshot, previousSnapshot);
+                if (payload.present && typeof payload.value !== 'boolean') {
+                    this.clearBinarySettleEvidenceForInvalidControlPayload({
+                        deviceId,
+                        deviceName: previousSnapshot.name,
+                        capabilityId: payload.capabilityId,
+                        source: 'device_update',
+                        value: payload.value,
+                    });
+                    return;
+                }
+            }
+            this.clearBinarySettleEvidence(deviceId);
+            return;
+        }
+        const payload = this.resolveBinaryControlPayload(device, snapshot, previousSnapshot);
+        if (!payload.present) {
+            this.applyCachedBinarySettleEvidenceToSnapshot(snapshot);
+            return;
+        }
+        if (typeof payload.value !== 'boolean') {
+            this.clearBinarySettleEvidenceForInvalidControlPayload({
+                deviceId,
+                deviceName: snapshot.name,
+                capabilityId: payload.capabilityId,
+                source: 'device_update',
+                value: payload.value,
+            });
+            return;
+        }
+        if (!payload.capabilityId) return;
+        if (payload.observedAtMs === undefined) {
+            this.clearContradictoryBinarySettleEvidence({
+                deviceId,
+                snapshot,
+                capabilityId: payload.capabilityId,
+                observedValue: payload.value,
+            });
+            this.applyCachedBinarySettleEvidenceToSnapshot(snapshot);
+            return;
+        }
+        const evidence: BinaryControlObservation = {
+            valid: true,
+            capabilityId: payload.capabilityId,
+            observedValue: payload.value,
+            observedCapabilityIds: [payload.observedCapabilityId],
+            observedAtMs: payload.observedAtMs,
+            source: 'device_update',
+        };
+        this.applyBinarySettleEvidenceToSnapshot(snapshot, evidence);
+    }
+
+    private reconcileBinarySettleEvidenceAfterSnapshotRefresh(
+        snapshot: TargetDeviceSnapshot[],
+        devices: HomeyDeviceLike[],
+    ): void {
+        const devicesById = new Map<string, HomeyDeviceLike>();
+        for (const device of devices) {
+            const deviceId = getDeviceId(device);
+            if (deviceId) devicesById.set(deviceId, device);
+        }
+
+        for (const deviceSnapshot of snapshot) {
+            const sourceDevice = devicesById.get(deviceSnapshot.id);
+            if (!sourceDevice) continue;
+            if (sourceDevice && this.hasInvalidBinaryControlPayload(deviceSnapshot, sourceDevice)) {
+                this.clearBinarySettleEvidenceForInvalidControlPayload({
+                    deviceId: deviceSnapshot.id,
+                    deviceName: deviceSnapshot.name,
+                    capabilityId: deviceSnapshot.controlCapabilityId,
+                    source: 'snapshot_refresh',
+                    value: this.readCapabilityValue(
+                        sourceDevice,
+                        deviceSnapshot.controlObservationCapabilityId ?? deviceSnapshot.controlCapabilityId,
+                    ).value,
+                });
+                continue;
+            }
+            const payload = this.resolveBinaryControlPayload(sourceDevice, deviceSnapshot, deviceSnapshot);
+            if (
+                payload.present
+                && payload.observedAtMs === undefined
+                && typeof payload.value === 'boolean'
+                && payload.capabilityId
+            ) {
+                this.clearContradictoryBinarySettleEvidence({
+                    deviceId: deviceSnapshot.id,
+                    snapshot: deviceSnapshot,
+                    capabilityId: payload.capabilityId,
+                    observedValue: payload.value,
+                });
+            }
+        }
+    }
+
+    private reconcileBinarySettleEvidenceWithSnapshot(snapshot: TargetDeviceSnapshot[]): void {
+        const activeDeviceIds = new Set(snapshot.map((device) => device.id));
+        for (const deviceId of this.latestBinarySettleEvidenceByDeviceId.keys()) {
+            if (!activeDeviceIds.has(deviceId)) this.latestBinarySettleEvidenceByDeviceId.delete(deviceId);
+        }
+        for (const device of snapshot) {
+            if (this.shouldClearBinarySettleEvidenceForSnapshot(device)) {
+                this.clearBinarySettleEvidence(device.id);
+                delete device.binaryControlObservation;
+                continue;
+            }
+            const evidence = device.binaryControlObservation;
+            if (evidence) {
+                this.applyBinarySettleEvidenceToSnapshot(device, evidence);
+                continue;
+            }
+            this.applyCachedBinarySettleEvidenceToSnapshot(device);
+        }
+    }
+
+    private shouldClearBinarySettleEvidenceForSnapshot(snapshot: TargetDeviceSnapshot): boolean {
+        return !this.shouldTrackRealtimeDevice(snapshot.id) || snapshot.managed === false;
+    }
+
+    private applyCachedBinarySettleEvidenceToSnapshot(snapshot: TargetDeviceSnapshot): void {
+        const cached = this.latestBinarySettleEvidenceByDeviceId.get(snapshot.id);
+        if (!cached) return;
+        if (cached.capabilityId !== snapshot.controlCapabilityId) return;
+        this.applyBinarySettleEvidenceToSnapshot(snapshot, cached);
+    }
+
+    private applyBinarySettleEvidenceToSnapshot(
+        snapshot: TargetDeviceSnapshot,
+        evidence: BinaryControlObservation,
+    ): void {
+        const acceptedEvidence = this.upsertBinarySettleEvidence(snapshot.id, evidence);
+        const mutableSnapshot = snapshot;
+        if (acceptedEvidence.capabilityId === 'evcharger_charging') {
+            mutableSnapshot.evCharging = acceptedEvidence.observedValue;
+            mutableSnapshot.currentOn = resolveEvCurrentOn({
+                evChargingState: mutableSnapshot.evChargingState,
+                evchargerCharging: acceptedEvidence.observedValue,
+            });
+        } else {
+            mutableSnapshot.currentOn = acceptedEvidence.observedValue;
+        }
+        mutableSnapshot.binaryControlObservation = acceptedEvidence;
+    }
+
+    private clearContradictoryBinarySettleEvidence(params: {
+        deviceId: string;
+        snapshot: TargetDeviceSnapshot;
+        capabilityId: BinaryControlObservation['capabilityId'];
+        observedValue: boolean;
+    }): void {
+        const {
+            deviceId,
+            snapshot,
+            capabilityId,
+            observedValue,
+        } = params;
+        const existing = this.latestBinarySettleEvidenceByDeviceId.get(deviceId);
+        if (!existing || existing.capabilityId !== capabilityId || existing.observedValue === observedValue) return;
+        this.clearBinarySettleEvidence(deviceId);
+        delete snapshot.binaryControlObservation;
+    }
+
+    private upsertBinarySettleEvidence(
+        deviceId: string,
+        evidence: BinaryControlObservation,
+    ): BinaryControlObservation {
+        const existing = this.latestBinarySettleEvidenceByDeviceId.get(deviceId);
+        if (existing && existing.observedAtMs > evidence.observedAtMs) {
+            return cloneBinaryControlObservation(existing);
+        }
+        const next = cloneBinaryControlObservation(evidence);
+        this.latestBinarySettleEvidenceByDeviceId.set(deviceId, next);
+        return next;
+    }
+
+    private clearBinarySettleEvidence(deviceId: string): boolean {
+        const removed = this.latestBinarySettleEvidenceByDeviceId.delete(deviceId);
+        const snapshot = this.latestSnapshotById.get(deviceId)
+            ?? this.latestSnapshot.find((device) => device.id === deviceId);
+        if (snapshot) delete snapshot.binaryControlObservation;
+        return removed;
+    }
+
+    private clearBinarySettleEvidenceForInvalidControlPayload(params: {
+        deviceId: string;
+        deviceName?: string;
+        capabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+        source: BinaryControlObservation['source'];
+        value: unknown;
+    }): void {
+        const {
+            deviceId,
+            deviceName,
+            capabilityId,
+            source,
+            value,
+        } = params;
+        if (!capabilityId) return;
+        const existing = this.latestBinarySettleEvidenceByDeviceId.get(deviceId);
+        if (!existing || existing.capabilityId !== capabilityId) return;
+        this.clearBinarySettleEvidence(deviceId);
+        this.logger.structuredLog?.info({
+            event: 'binary_settle_evidence_cleared',
+            reasonCode: 'invalid_control_payload',
+            deviceId,
+            ...(deviceName ? { deviceName } : {}),
+            capabilityId,
+            source,
+            valueType: typeof value,
+        });
+    }
+
+    private resolveBinaryControlPayload(
+        device: HomeyDeviceLike,
+        snapshot: TargetDeviceSnapshot,
+        previousSnapshot: TargetDeviceSnapshot | undefined,
+    ): {
+        present: boolean;
+        capabilityId: TargetDeviceSnapshot['controlCapabilityId'];
+        observedCapabilityId: string;
+        value: unknown;
+        observedAtMs?: number;
+    } {
+        const capabilityId = snapshot.controlCapabilityId ?? previousSnapshot?.controlCapabilityId;
+        const observedCapabilityId = (
+            snapshot.controlObservationCapabilityId
+            ?? previousSnapshot?.controlObservationCapabilityId
+            ?? capabilityId
+        );
+        if (!capabilityId || !observedCapabilityId) {
+            return { present: false, capabilityId, observedCapabilityId: '', value: undefined };
+        }
+        return {
+            capabilityId,
+            observedCapabilityId,
+            ...this.readCapabilityValue(device, observedCapabilityId),
+        };
+    }
+
+    private hasInvalidBinaryControlPayload(snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike): boolean {
+        if (!snapshot.controlCapabilityId) return false;
+        const observedCapabilityId = snapshot.controlObservationCapabilityId ?? snapshot.controlCapabilityId;
+        const payload = this.readCapabilityValue(device, observedCapabilityId);
+        return payload.present && typeof payload.value !== 'boolean';
+    }
+
+    private readCapabilityValue(device: HomeyDeviceLike, capabilityId: string | undefined): {
+        present: boolean;
+        value: unknown;
+        observedAtMs?: number;
+    } {
+        if (!capabilityId || !device.capabilitiesObj) return { present: false, value: undefined };
+        if (!Object.prototype.hasOwnProperty.call(device.capabilitiesObj, capabilityId)) {
+            return { present: false, value: undefined };
+        }
+        const capability = device.capabilitiesObj[capabilityId];
+        if (!Object.prototype.hasOwnProperty.call(capability ?? {}, 'value')) {
+            return { present: false, value: undefined };
+        }
+        return {
+            present: true,
+            value: capability?.value,
+            observedAtMs: toCapabilityTimestampMs(capability?.lastUpdated),
+        };
+    }
+
+    private withoutCapabilityValue(device: HomeyDeviceLike, capabilityId: string): HomeyDeviceLike {
+        const capability = device.capabilitiesObj?.[capabilityId];
+        if (!capability) return device;
+        const nextCapability = { ...capability };
+        delete nextCapability.value;
+        return {
+            ...device,
+            capabilitiesObj: {
+                ...device.capabilitiesObj,
+                [capabilityId]: nextCapability,
+            },
+        };
+    }
 
     private debugStructured: StructuredDebugEmitter | undefined;
 
@@ -687,7 +1070,11 @@ export class DeviceManager extends EventEmitter {
         return this.updateHomePowerFromReport(await this.fetchLivePowerReport());
     }
     setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void { this.setSnapshot(snapshot); }
-    setSnapshot(s: TargetDeviceSnapshot[]): void { this.latestSnapshot = s; this.syncLatestSnapshotIndex(); }
+    setSnapshot(s: TargetDeviceSnapshot[]): void {
+        this.latestSnapshot = s;
+        this.syncLatestSnapshotIndex();
+        this.reconcileBinarySettleEvidenceWithSnapshot(s);
+    }
     injectDeviceUpdateForTest(device: HomeyDeviceLike): void { this.handleRealtimeDeviceUpdate(device); }
     injectCapabilityUpdateForTest(deviceId: string, capabilityId: string, value: unknown): void {
         this.handleRealtimeCapabilityUpdate(deviceId, capabilityId, value);
@@ -696,6 +1083,10 @@ export class DeviceManager extends EventEmitter {
     async getDevicesForDebug(): Promise<HomeyDeviceLike[]> { return this.fetchDevices(); }
     getDebugObservedSources(deviceId: string): DeviceDebugObservedSources | null {
         return getDebugObservedSources(this.observationState, deviceId);
+    }
+    getBinarySettleEvidenceByDeviceId(deviceId: string): BinaryControlObservation | undefined {
+        const evidence = this.latestBinarySettleEvidenceByDeviceId.get(deviceId);
+        return evidence ? cloneBinaryControlObservation(evidence) : undefined;
     }
 
     async init(): Promise<void> {
@@ -794,6 +1185,7 @@ export class DeviceManager extends EventEmitter {
                 targetedRefreshPollAtMs: isTargetedRefresh ? start : undefined,
                 logger: this.logger,
             });
+            this.reconcileBinarySettleEvidenceAfterSnapshotRefresh(snapshot, effectiveList);
             this.setSnapshot(snapshot);
             this.liveFeed?.updateTrackedDevices(snapshot.map((d) => d.id));
             recordSnapshotRefreshObservations({
@@ -1085,6 +1477,7 @@ export class DeviceManager extends EventEmitter {
         void this.liveFeed?.stop();
         this.liveFeed = null;
         clearAllPendingBinarySettleWindows(this.binarySettleState);
+        this.latestBinarySettleEvidenceByDeviceId.clear();
         this.removeAllListeners();
     }
 
@@ -1157,5 +1550,14 @@ function summarizeSnapshotRefreshMetrics(snapshot: TargetDeviceSnapshot[]): Snap
         temperatureKnownDevices,
         temperatureUnknownDevices: availableDevices - temperatureKnownDevices,
         unavailableDevices,
+    };
+}
+
+function cloneBinaryControlObservation(
+    evidence: BinaryControlObservation,
+): BinaryControlObservation {
+    return {
+        ...evidence,
+        observedCapabilityIds: [...evidence.observedCapabilityIds],
     };
 }

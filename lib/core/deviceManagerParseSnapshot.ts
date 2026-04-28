@@ -93,6 +93,7 @@ export function resolveBinaryControlObservation(params: {
     observedValue,
     observedCapabilityIds: [sourceCapabilityId],
     observedAtMs,
+    source: 'snapshot_refresh',
   };
 }
 

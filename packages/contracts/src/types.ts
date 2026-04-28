@@ -53,6 +53,7 @@ export type BinaryControlObservation = {
     observedValue: boolean;
     observedCapabilityIds: string[];
     observedAtMs: number;
+    source: 'snapshot_refresh' | 'realtime_capability' | 'device_update';
 };
 
 export type TargetDeviceSnapshot = {
