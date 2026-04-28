@@ -105,7 +105,7 @@ export type { DeviceDebugObservedSource, DeviceDebugObservedSources } from './de
 
 const createEstimateDecisionLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
 const createPeakPowerLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
-const buildEmptyLivePowerReport = (): LivePowerReport => ({ byDeviceId: {}, homePowerW: null });
+const buildEmptyLivePowerReport = (): LivePowerReport => ({ byDeviceId: {}, homePowerW: null, deviceCount: 0 });
 
 type DeviceManagerPowerState = PowerEstimateState & {
     lastPositiveMeasuredPowerKw?: Record<string, { kw: number; ts: number }>;
@@ -661,7 +661,7 @@ export class DeviceManager extends EventEmitter {
             hasPendingBinarySettleWindow: (nextDeviceId, capabilityId) => (
                 hasPendingBinarySettleWindow(this.binarySettleState, nextDeviceId, capabilityId)
             ),
-            logDebug: (message) => this.logger.debug(message),
+            emitDeviceUpdateProcessed: (event) => this.debugStructured?.(event),
             emitPlanReconcile: (event) => this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event),
             emitObservedState: (event: ObservedDeviceStateEvent) => this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, event),
         });
@@ -1193,7 +1193,14 @@ export class DeviceManager extends EventEmitter {
                 snapshot,
                 fetchSource,
             });
-            this.logger.debug(`Device snapshot refreshed: ${snapshot.length} devices found`);
+            this.debugStructured?.({
+                event: 'device_snapshot_refresh_processed',
+                devicesTotal: snapshot.length,
+                targetedRefresh: isTargetedRefresh,
+                fetchSource,
+                homePowerW: livePowerReport.homePowerW,
+                livePowerDeviceCount: livePowerReport.deviceCount,
+            });
             if (this.logger.structuredLog) {
                 const metrics = summarizeSnapshotRefreshMetrics(snapshot);
                 if (this.shouldEmitSnapshotRefreshLog(snapshot.length, metrics)) {
@@ -1453,7 +1460,7 @@ export class DeviceManager extends EventEmitter {
     }
 
     private async fetchLivePowerReport(): Promise<LivePowerReport> {
-        return fetchLivePowerReport({ logger: this.logger });
+        return fetchLivePowerReport({ logger: this.logger, debugStructured: this.debugStructured });
     }
 
     private updateHomePowerFromReport(report: LivePowerReport): number | null {
@@ -1500,6 +1507,7 @@ export class DeviceManager extends EventEmitter {
         return {
             logger: this.logger,
             providers: this.providers,
+            debugStructured: this.debugStructured,
             powerState: this.powerState,
             measuredPowerResolver: this.measuredPowerResolver,
             getCapabilityObj: (device: HomeyDeviceLike) => this.getCapabilityObj(device),

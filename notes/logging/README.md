@@ -71,6 +71,10 @@ This note is for contributors changing runtime logging.
 - `realtime_reconcile_applied`
 - `realtime_reconcile_circuit_opened`
 - `realtime_reconcile_failed`
+- `device_update_processed`
+- `device_snapshot_refresh_processed`
+- `device_snapshot_control_state_fallback`
+- `energy_live_report_received`
 - `device_overview_changed`
 - `device_overview_changes`
 - `device_starvation_started`
