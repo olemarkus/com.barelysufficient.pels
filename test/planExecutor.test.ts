@@ -1530,7 +1530,7 @@ describe('PlanExecutor stepped loads', () => {
         currentOn: false,
       },
     ];
-    const { executor, deviceManager, deps } = buildExecutor(undefined, snapshot, {
+    const { executor, deviceManager, debugStructured } = buildExecutor(undefined, snapshot, {
       homey: {
         settings: { set: vi.fn() },
         flow: { getTriggerCard: vi.fn(() => null) },
@@ -1545,9 +1545,14 @@ describe('PlanExecutor stepped loads', () => {
     }));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(deps.logDebug).toHaveBeenCalledWith(
-      expect.stringContaining('required pre-restore step command was not issued'),
-    );
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'pre_restore_step_required',
+      skipDetailCode: 'pre_restore_step_command_not_issued',
+      desiredStepId: 'low',
+      deviceId: 'dev-1',
+      deviceName: 'Tank',
+    }));
   });
 
   it('retries binary restore when the required pre-restore step command is already pending', async () => {
@@ -1607,6 +1612,7 @@ describe('PlanExecutor stepped loads', () => {
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'retry_backoff',
+      desiredStepId: 'low',
       deviceId: 'dev-1',
       actuationMode: 'plan',
     }));
@@ -2130,6 +2136,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'waiting_for_confirmation',
+      desiredStepId: 'max',
       deviceId: 'dev-1',
       actuationMode: 'reconcile',
     }));
@@ -2260,8 +2267,33 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'pre_restore_step_required',
+      skipDetailCode: 'assumed_step_pending_confirmation',
+      desiredStepId: 'low',
+      assumedStepId: 'low',
       deviceId: 'dev-1',
       actuationMode: 'reconcile',
+    }));
+  });
+
+  it('logs the plan reason when stepped restore is not admitted', async () => {
+    const snapshot = buildSnapshot({ currentOn: true });
+    const { executor, deviceManager, debugStructured } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+      reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
+    }));
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'restore_not_admitted',
+      blockedByPlanReasonCode: PLAN_REASON_CODES.meterSettling,
+      deviceId: 'dev-1',
+      actuationMode: 'plan',
     }));
   });
 

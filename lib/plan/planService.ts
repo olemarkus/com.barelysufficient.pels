@@ -16,7 +16,6 @@ import {
   resolvePlanStateTone,
 } from '../../packages/shared-domain/src/planStateLabels';
 import {
-  buildPlanChangeLines,
   buildPlanCapacityStateSummary,
   buildPlanDebugSummaryEvent,
   buildPlanDebugSummarySignatureFromEvent,
@@ -598,14 +597,6 @@ export class PlanService {
     });
 
     if (actionChanged) {
-      try {
-        const lines = buildPlanChangeLines(plan);
-        if (lines.length) {
-          this.deps.logDebug(`Plan updated (${lines.length} devices):\n- ${lines.join('\n- ')}`);
-        }
-      } catch (err) {
-        this.deps.error('Plan updated (logging failed)', normalizeError(err));
-      }
       incPerfCounter('plan_rebuild_action_signature_changed_total');
     } else if (detailChanged || metaChanged) {
       incPerfCounter('plan_rebuild_reason_or_meta_only_changed_total');

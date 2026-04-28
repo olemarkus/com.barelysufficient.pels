@@ -739,7 +739,6 @@ export class DeviceManager extends EventEmitter {
             component: 'devices',
             event: 'device_api_initialized',
         });
-        this.logger.log('Device API initialized from SDK');
     }
 
     async refreshSnapshot(options: { includeLivePower?: boolean; targetedRefresh?: boolean } = {}): Promise<void> {
