@@ -890,6 +890,14 @@ export class DeviceManager extends EventEmitter {
             value: normalizedValue,
             deviceName: snapshotBefore?.name,
         });
+        this.emitCapabilityWriteDebug({
+            event: 'device_capability_write_requested',
+            deviceId,
+            deviceName: snapshotBefore?.name,
+            capabilityId,
+            writeCapabilityId,
+            value: normalizedValue,
+        });
         try {
             await setRawCapabilityValue(deviceId, writeCapabilityId, normalizedValue);
         } catch (error) {
@@ -901,6 +909,14 @@ export class DeviceManager extends EventEmitter {
             clearPendingBinarySettleWindow(this.binarySettleState, deviceId, capabilityId);
             throw error;
         }
+        this.emitCapabilityWriteDebug({
+            event: 'device_capability_write_accepted',
+            deviceId,
+            deviceName: snapshotBefore?.name,
+            capabilityId,
+            writeCapabilityId,
+            value: normalizedValue,
+        });
 
         // Keep local binary turn-off optimistic, but let binary turn-on stay pending until
         // telemetry confirms it. A restore request is intent, not observed truth.
@@ -929,6 +945,25 @@ export class DeviceManager extends EventEmitter {
             value: normalizedValue,
         });
         return normalizedValue;
+    }
+
+    private emitCapabilityWriteDebug(params: {
+        event: 'device_capability_write_requested' | 'device_capability_write_accepted';
+        deviceId: string;
+        deviceName?: string;
+        capabilityId: string;
+        writeCapabilityId: string;
+        value: unknown;
+    }): void {
+        this.debugStructured?.({
+            event: params.event,
+            deviceId: params.deviceId,
+            deviceName: params.deviceName ?? null,
+            capabilityId: params.capabilityId,
+            writeCapabilityId: params.writeCapabilityId,
+            value: params.value,
+            valueType: typeof params.value,
+        });
     }
 
     async applyDeviceTargets(targets: Record<string, number>, contextInfo = ''): Promise<void> {
