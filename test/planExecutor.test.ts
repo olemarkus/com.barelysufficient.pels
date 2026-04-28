@@ -2,6 +2,7 @@ import type Homey from 'homey';
 import { PlanExecutor, type PlanExecutorDeps } from '../lib/plan/planExecutor';
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../lib/plan/planConstants';
 import { createPlanEngineState } from '../lib/plan/planState';
+import { observeNativeSteppedLoadCommandAdapter } from '../lib/core/deviceManagerNativeSteppedCommand';
 import { DEVICE_LAST_CONTROLLED_MS } from '../lib/utils/settingsKeys';
 import { PELS_TARGET_STEP_CAPABILITY_ID } from '../lib/core/steppedLoadSyntheticCapabilities';
 import type {
@@ -986,7 +987,10 @@ describe('PlanExecutor stepped loads', () => {
   it('triggers desired stepped-load change and records the issued command', async () => {
     const { executor, deps, deviceManager, desiredSteppedTrigger, state } = buildExecutor();
 
-    await expect(executor.applyPlanActions(steppedPlan())).resolves.toEqual({ deviceWriteCount: 0 });
+    await expect(executor.applyPlanActions(steppedPlan())).resolves.toEqual({
+      deviceWriteCount: 0,
+      commandRequestCount: 1,
+    });
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
       step_id: 'max',
@@ -1009,6 +1013,52 @@ describe('PlanExecutor stepped loads', () => {
       desiredStepId: 'max',
     }));
     expect(state.lastRestoreMs).toEqual(expect.any(Number));
+  });
+
+  it('counts native stepped-load commands as command requests without concrete device writes', async () => {
+    const { executor, deps, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, [{
+      id: 'dev-1',
+      name: 'Tank',
+      controlCapabilityId: 'onoff',
+      canSetControl: true,
+      available: true,
+      currentOn: true,
+    }]);
+    observeNativeSteppedLoadCommandAdapter({
+      owner: deviceManager,
+      deviceId: 'dev-1',
+      device: {
+        id: 'dev-1',
+        name: 'Tank',
+        ownerUri: 'homey:app:no.hoiax',
+        capabilities: ['onoff', 'max_power_3000'],
+        capabilitiesObj: {
+          onoff: { value: true },
+          max_power_3000: { value: '1' },
+        },
+      } as any,
+      clearWhenUnavailable: true,
+    });
+
+    await expect(executor.applyPlanActions(steppedPlan({
+      controlAdapter: {
+        kind: 'capability_adapter',
+        activationAvailable: true,
+        activationRequired: false,
+        activationEnabled: true,
+      },
+    }))).resolves.toEqual({
+      deviceWriteCount: 0,
+      commandRequestCount: 1,
+    });
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'max_power_3000', '3');
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deps.structuredLog?.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_command_requested',
+      commandTransport: 'native_capability',
+      desiredStepId: 'max',
+    }));
   });
 
   it('marks stable keep step-up intent as actuatable while the selected step remains lower', () => {
@@ -2048,7 +2098,10 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       buildSnapshot({ currentOn: true }),
     );
 
-    await expect(executor.applyPlanActions(plan, 'reconcile')).resolves.toEqual({ deviceWriteCount: 0 });
+    await expect(executor.applyPlanActions(plan, 'reconcile')).resolves.toEqual({
+      deviceWriteCount: 0,
+      commandRequestCount: 1,
+    });
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low' }),

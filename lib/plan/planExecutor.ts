@@ -88,6 +88,7 @@ export type PlanExecutorDeps = {
 export type PlanActuationMode = 'plan' | 'reconcile';
 export type PlanActuationResult = {
   deviceWriteCount: number;
+  commandRequestCount: number;
 };
 type PlanActionHandleResult = {
   handled: boolean;
@@ -872,7 +873,7 @@ export class PlanExecutor {
    * loop.
    */
   public async applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<PlanActuationResult> {
-    if (!plan || !Array.isArray(plan.devices)) return { deviceWriteCount: 0 };
+    if (!plan || !Array.isArray(plan.devices)) return { deviceWriteCount: 0, commandRequestCount: 0 };
 
     this.controlPersistenceBatchDepth += 1;
     try {
@@ -880,6 +881,7 @@ export class PlanExecutor {
       const logCapacityDebug = (...args: unknown[]) => this.logDebug(...args);
       const anyShedDevices = plan.devices.some((d) => d.plannedState === 'shed');
       let deviceWriteCount = 0;
+      let commandRequestCount = 0;
       for (const dev of plan.devices) {
         const snapshot = snapshotMap.get(dev.id);
         try {
@@ -892,7 +894,7 @@ export class PlanExecutor {
             continue;
           }
           if (dev.controllable === false) {
-            await this.applySteppedLoadCommand(dev, mode, snapshot);
+            if (await this.applySteppedLoadCommand(dev, mode, snapshot)) commandRequestCount += 1;
             if (await this.applyUncontrolledRestore(dev, snapshot)) deviceWriteCount += 1;
             if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
             continue;
@@ -907,6 +909,7 @@ export class PlanExecutor {
             const preRestoreStepIssued = onoffViolated
               ? await this.applySteppedLoadCommand(dev, mode, snapshot, { recordPlanActuation: false })
               : false;
+            if (preRestoreStepIssued) commandRequestCount += 1;
             const stepRestoreReady = await this.applySteppedLoadRestore(
               dev,
               snapshot,
@@ -914,13 +917,17 @@ export class PlanExecutor {
               anyShedDevices,
               { preRestoreStepIssued },
             );
-            if (stepRestoreReady && !onoffViolated) await this.applySteppedLoadCommand(dev, mode, snapshot);
+            if (
+              stepRestoreReady
+              && !onoffViolated
+              && await this.applySteppedLoadCommand(dev, mode, snapshot)
+            ) commandRequestCount += 1;
             if (stepRestoreReady && onoffViolated) deviceWriteCount += 1;
             if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
             continue;
           }
           if (isSteppedLoadDevice(dev)) {
-            await this.applySteppedLoadCommand(dev, mode, snapshot);
+            if (await this.applySteppedLoadCommand(dev, mode, snapshot)) commandRequestCount += 1;
             if (await this.applySteppedLoadShedOff(dev, snapshot, mode)) deviceWriteCount += 1;
             await this.applySteppedLoadRestore(dev, snapshot, mode, anyShedDevices);
             if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
@@ -940,7 +947,7 @@ export class PlanExecutor {
           );
         }
       }
-      return { deviceWriteCount };
+      return { deviceWriteCount, commandRequestCount };
     } finally {
       this.controlPersistenceBatchDepth = Math.max(0, this.controlPersistenceBatchDepth - 1);
       this.flushLastControlledPersistence();

@@ -160,6 +160,7 @@ export type PlanRebuildOutcome = {
   metaChanged: boolean;
   appliedActions: boolean;
   deviceWriteCount: number;
+  commandRequestCount: number;
   hadShedding: boolean;
   isDryRun: boolean;
   failed: boolean;

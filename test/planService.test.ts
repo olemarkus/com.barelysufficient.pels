@@ -3456,11 +3456,60 @@ describe('PlanService', () => {
       actionChanged: true,
       appliedActions: true,
       deviceWriteCount: 2,
+      commandRequestCount: 0,
       failed: false,
     }));
   });
 
-  it('normalizes non-finite actuation write counts to zero in rebuild logs and traces', async () => {
+  it('emits plan_rebuild_completed with commandRequestCount when actuation requested commands', async () => {
+    const structuredLog = { info: vi.fn(), debug: vi.fn() };
+    const schedulePostActuationRefresh = vi.fn();
+    const { service, deps } = createPlanService({
+      structuredLog: structuredLog as any,
+      schedulePostActuationRefresh,
+      planEngine: {
+        buildDevicePlanSnapshot: vi
+          .fn()
+          .mockResolvedValueOnce(buildPlan(20, 'stable'))
+          .mockResolvedValueOnce(buildPlan(20, 'stable', {}, { plannedState: 'shed' })),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0, commandRequestCount: 1 }),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+      } as any,
+    });
+
+    await service.rebuildPlanFromCache('seed');
+    structuredLog.info.mockClear();
+    structuredLog.debug.mockClear();
+    schedulePostActuationRefresh.mockClear();
+
+    await service.rebuildPlanFromCache('power_delta');
+
+    expect((deps.planEngine.applyPlanActions as vi.Mock)).toHaveBeenCalled();
+    expect(schedulePostActuationRefresh).toHaveBeenCalledTimes(1);
+    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_rebuild_completed',
+      reasonCode: 'power_delta',
+      actionChanged: true,
+      appliedActions: true,
+      deviceWriteCount: 0,
+      commandRequestCount: 1,
+      failed: false,
+    }));
+
+    const trace = getRecentPlanRebuildTraces(1)[0];
+    expect(trace).toEqual(expect.objectContaining({
+      reason: 'power_delta',
+      appliedActions: true,
+      deviceWriteCount: 0,
+      commandRequestCount: 1,
+    }));
+  });
+
+  it('normalizes non-finite actuation counts to zero in rebuild logs and traces', async () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
       structuredLog: structuredLog as any,
@@ -3473,7 +3522,10 @@ describe('PlanService', () => {
         computeShortfallThreshold: vi.fn(() => 0),
         handleShortfall: vi.fn().mockResolvedValue(undefined),
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: Number.NaN }),
+        applyPlanActions: vi.fn().mockResolvedValue({
+          deviceWriteCount: Number.NaN,
+          commandRequestCount: Number.POSITIVE_INFINITY,
+        }),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
     });
@@ -3490,6 +3542,7 @@ describe('PlanService', () => {
       reasonCode: 'power_delta',
       appliedActions: false,
       deviceWriteCount: 0,
+      commandRequestCount: 0,
     }));
 
     const trace = getRecentPlanRebuildTraces(1)[0];
@@ -3497,6 +3550,7 @@ describe('PlanService', () => {
       reason: 'power_delta',
       appliedActions: false,
       deviceWriteCount: 0,
+      commandRequestCount: 0,
     }));
   });
 
@@ -3608,70 +3662,6 @@ describe('PlanService', () => {
 
     await service.rebuildPlanFromCache();
     expect(applyPlanActions).toHaveBeenCalled();
-    expect(schedulePostActuationRefresh).not.toHaveBeenCalled();
-  });
-
-  it('does not call schedulePostActuationRefresh when stepped-load flow actuation is the only rebuild actuation', async () => {
-    const schedulePostActuationRefresh = vi.fn();
-    const steppedPlan = buildPlan(20, 'stable', {}, {
-      currentState: 'off',
-      plannedState: 'keep',
-      controlModel: 'stepped_load',
-      steppedLoadProfile: {
-        model: 'stepped_load',
-        steps: [
-          { id: 'off', planningPowerW: 0 },
-          { id: 'low', planningPowerW: 1250 },
-          { id: 'max', planningPowerW: 3000 },
-        ],
-      },
-      selectedStepId: 'off',
-      desiredStepId: 'low',
-      currentOn: true,
-    });
-    const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 0 });
-    const service = new PlanService({
-      homey: {
-        settings: { set: vi.fn() },
-        api: { realtime: vi.fn().mockResolvedValue(undefined) },
-        flow: {},
-      } as any,
-      planEngine: {
-        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(steppedPlan),
-        computeDynamicSoftLimit: vi.fn(() => 0),
-        computeShortfallThreshold: vi.fn(() => 0),
-        handleShortfall: vi.fn().mockResolvedValue(undefined),
-        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
-        applyPlanActions,
-        applySheddingToDevice: vi.fn().mockResolvedValue(false),
-      } as any,
-      getPlanDevices: () => [{
-        id: 'dev-1',
-        name: 'Tank',
-        targets: [],
-        deviceType: 'onoff',
-        controlModel: 'stepped_load',
-        controlCapabilityId: 'onoff',
-        steppedLoadProfile: steppedPlan.devices[0].steppedLoadProfile,
-        hasBinaryControl: true,
-        currentOn: true,
-        selectedStepId: 'off',
-        desiredStepId: 'low',
-      }],
-      getCapacityDryRun: () => false,
-      isCurrentHourCheap: () => false,
-      isCurrentHourExpensive: () => false,
-      getCombinedPrices: () => null,
-      getLastPowerUpdate: () => null,
-      schedulePostActuationRefresh,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
-
-    await service.rebuildPlanFromCache();
-
-    expect(applyPlanActions).toHaveBeenCalledWith(expect.objectContaining(steppedPlan), 'plan');
     expect(schedulePostActuationRefresh).not.toHaveBeenCalled();
   });
 

@@ -15,6 +15,7 @@ export const createPlanRebuildOutcome = (isDryRun: boolean): PlanRebuildOutcome 
   metaChanged: false,
   appliedActions: false,
   deviceWriteCount: 0,
+  commandRequestCount: 0,
   hadShedding: false,
   isDryRun,
   failed: false,

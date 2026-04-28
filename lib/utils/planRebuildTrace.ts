@@ -17,6 +17,7 @@ export type PlanRebuildTrace = {
   isDryRun: boolean;
   appliedActions: boolean;
   deviceWriteCount: number;
+  commandRequestCount: number;
   hadShedding: boolean;
   failed: boolean;
 };
@@ -41,6 +42,7 @@ export type PlanRebuildTraceSummary = {
   appliedActionsCount: number;
   hadSheddingCount: number;
   totalDeviceWriteCount: number;
+  totalCommandRequestCount: number;
   reasons: Record<string, number>;
 };
 
@@ -82,6 +84,7 @@ export const recordPlanRebuildTrace = (
       isDryRun: trace.isDryRun === true,
       appliedActions: trace.appliedActions === true,
       deviceWriteCount: roundMs(trace.deviceWriteCount),
+      commandRequestCount: roundMs(trace.commandRequestCount),
       hadShedding: trace.hadShedding === true,
       failed: trace.failed === true,
     },
@@ -126,6 +129,7 @@ export const summarizeRecentPlanRebuildTraces = (
       appliedActionsCount: 0,
       hadSheddingCount: 0,
       totalDeviceWriteCount: 0,
+      totalCommandRequestCount: 0,
       reasons: {},
     };
   }
@@ -145,6 +149,7 @@ export const summarizeRecentPlanRebuildTraces = (
     appliedActionsCount: 0,
     hadSheddingCount: 0,
     totalDeviceWriteCount: 0,
+    totalCommandRequestCount: 0,
     reasons: {} as Record<string, number>,
   };
 
@@ -165,6 +170,7 @@ export const summarizeRecentPlanRebuildTraces = (
       appliedActionsCount: totals.appliedActionsCount + (trace.appliedActions ? 1 : 0),
       hadSheddingCount: totals.hadSheddingCount + (trace.hadShedding ? 1 : 0),
       totalDeviceWriteCount: totals.totalDeviceWriteCount + trace.deviceWriteCount,
+      totalCommandRequestCount: totals.totalCommandRequestCount + trace.commandRequestCount,
       reasons: {
         ...totals.reasons,
         [trace.reason]: (totals.reasons[trace.reason] || 0) + 1,
@@ -188,6 +194,7 @@ export const summarizeRecentPlanRebuildTraces = (
     appliedActionsCount: totals.appliedActionsCount,
     hadSheddingCount: totals.hadSheddingCount,
     totalDeviceWriteCount: totals.totalDeviceWriteCount,
+    totalCommandRequestCount: totals.totalCommandRequestCount,
     reasons: totals.reasons,
   };
 };
