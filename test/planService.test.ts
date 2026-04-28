@@ -730,6 +730,62 @@ describe('PlanService', () => {
     }));
   });
 
+  it('batches multiple overview changes from the same rebuild', async () => {
+    const overviewDebugStructured = vi.fn();
+    const plan = buildPlan(20, 'keep', {}, {
+      currentState: 'on',
+      plannedState: 'keep',
+      measuredPowerKw: 0,
+      expectedPowerKw: 3,
+    });
+    plan.devices.push({
+      ...plan.devices[0],
+      id: 'dev-2',
+      name: 'Bedroom',
+      currentState: 'off',
+      currentOn: false,
+      plannedState: 'shed',
+      measuredPowerKw: 0,
+      expectedPowerKw: 1.2,
+      reason: legacyDeviceReason('shed due to capacity'),
+    });
+    const { service } = createPlanService({
+      planEngine: {
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(plan),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+      } as any,
+      overviewDebugStructured,
+    });
+
+    await service.rebuildPlanFromCache();
+
+    expect(overviewDebugStructured).toHaveBeenCalledTimes(1);
+    expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      component: 'overview',
+      event: 'device_overview_changes',
+      changedDeviceCount: 2,
+      devices: [
+        expect.objectContaining({
+          event: 'device_overview_changed',
+          deviceId: 'dev-1',
+          stateMsg: 'Active',
+          usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW',
+        }),
+        expect.objectContaining({
+          event: 'device_overview_changed',
+          deviceId: 'dev-2',
+          stateMsg: 'Shed (powered off)',
+          usageMsg: 'Measured: 0.00 kW / Expected: 1.20 kW',
+        }),
+      ],
+    }));
+  });
+
   it('logs the freshest confirmed reported step in overview events', async () => {
     const overviewDebugStructured = vi.fn();
     const { service } = createPlanService({

@@ -155,6 +155,17 @@ function buildOverviewEventForDevice(
   };
 }
 
+function buildOverviewBatchEvent(
+  changedDevices: Record<string, unknown>[],
+): Record<string, unknown> {
+  return {
+    component: 'overview',
+    event: 'device_overview_changes',
+    changedDeviceCount: changedDevices.length,
+    devices: changedDevices,
+  };
+}
+
 const createPlanSnapshotFallbackScheduler = (deps: {
   getNowMs: () => number;
   resolveDueAtMs: (state: PlanRebuildSchedulerState) => number;
@@ -685,6 +696,7 @@ export class PlanService {
       return;
     }
     const nextDeviceIds = new Set<string>();
+    const changedDevices: Record<string, unknown>[] = [];
     for (const device of plan.devices) {
       nextDeviceIds.add(device.id);
       const overview = formatDeviceOverview(device);
@@ -692,13 +704,19 @@ export class PlanService {
       const previousSignature = this.lastOverviewSignatureByDeviceId.get(device.id);
       this.lastOverviewSignatureByDeviceId.set(device.id, signature);
       if (signature === previousSignature) continue;
-      this.deps.overviewDebugStructured(buildOverviewEventForDevice(device, overview));
+      changedDevices.push(buildOverviewEventForDevice(device, overview));
     }
 
     for (const deviceId of this.lastOverviewSignatureByDeviceId.keys()) {
       if (!nextDeviceIds.has(deviceId)) {
         this.lastOverviewSignatureByDeviceId.delete(deviceId);
       }
+    }
+
+    if (changedDevices.length === 1) {
+      this.deps.overviewDebugStructured(changedDevices[0]);
+    } else if (changedDevices.length > 1) {
+      this.deps.overviewDebugStructured(buildOverviewBatchEvent(changedDevices));
     }
   }
 
