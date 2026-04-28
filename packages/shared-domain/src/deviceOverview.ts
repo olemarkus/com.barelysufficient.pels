@@ -24,6 +24,7 @@ export type DeviceOverviewSnapshot = {
   targetStepId?: string;
   selectedStepId?: string;
   desiredStepId?: string;
+  restorePreparedStepId?: string;
   actualStepId?: string;
   assumedStepId?: string;
   actualStepSource?: 'reported' | 'assumed' | 'profile_default';

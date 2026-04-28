@@ -208,12 +208,17 @@ const evaluateSteppedLoadRestoreState = (
   const desiredIsNonOff = desiredStepId
     && dev.steppedLoadProfile
     && !isSteppedLoadOffStep(dev.steppedLoadProfile, desiredStepId);
+  const stepPrepared = desiredStepId !== undefined
+    && (
+      desiredStepId === dev.reportedStepId
+      || desiredStepId === dev.restorePreparedStepId
+    );
   return {
     effectiveCurrentOn,
     desiredStepId,
     matchingRestoreAttempt,
     stepNeedsAdjustment: Boolean(desiredIsNonOff && desiredStepId !== dev.selectedStepId),
-    stepNeedsConfirmation: Boolean(desiredIsNonOff && desiredStepId === dev.assumedStepId),
+    stepNeedsConfirmation: Boolean(desiredIsNonOff && desiredStepId === dev.assumedStepId && !stepPrepared),
   };
 };
 

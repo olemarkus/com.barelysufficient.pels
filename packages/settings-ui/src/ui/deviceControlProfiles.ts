@@ -92,6 +92,7 @@ export const applyLocalDeviceControlProfile = (
     delete device.desiredStepId;
     delete device.actualStepId;
     delete device.assumedStepId;
+    delete device.restorePreparedStepId;
     delete device.selectedStepId;
     delete device.actualStepSource;
     delete device.planningPowerKw;

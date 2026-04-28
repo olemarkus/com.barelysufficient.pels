@@ -134,6 +134,24 @@ describe('device overview formatter', () => {
     }).usageMsg).toBe('Measured: 0.00 kW / Expected: 3.00 kW (reported: low / target: max)');
   });
 
+  it('does not display suppressed flow feedback as reported truth', () => {
+    const device = {
+      controlModel: 'stepped_load' as const,
+      currentState: 'off',
+      plannedState: 'keep',
+      restorePreparedStepId: 'low',
+      selectedStepId: 'low',
+      targetStepId: 'low',
+      planningPowerKw: 1.25,
+      measuredPowerKw: 0,
+      reason: r('restore off -> low (need 1.25kW)'),
+    };
+
+    expect(getDeviceOverviewReportedStepId(device)).toBeUndefined();
+    expect(formatDeviceOverview(device).usageMsg)
+      .toBe('Measured: 0.00 kW / Expected: 1.25 kW (target: low)');
+  });
+
   it('treats on-like stepped step changes as active mode transitions', () => {
     expect(formatDeviceOverview({
       controlModel: 'stepped_load',

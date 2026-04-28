@@ -401,6 +401,40 @@ describe('planReconcileState stepped device drift', () => {
       expect(result.devices[0].binaryCommandPending).toBe(false);
     });
 
+    it('clears stale stepped restore proof when live state no longer reports it', () => {
+      const plan = buildPlan([buildSteppedDevice({
+        currentState: 'off',
+        plannedState: 'keep',
+        reportedStepId: 'low',
+        restorePreparedStepId: 'low',
+        actualStepId: 'low',
+        actualStepSource: 'reported',
+        selectedStepId: 'low',
+        desiredStepId: 'low',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-1',
+        name: 'Tank',
+        currentOn: false,
+        selectedStepId: 'low',
+        targets: [],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+      }];
+
+      const result = buildLiveStatePlan(plan, liveDevices);
+
+      expect(result.devices[0]).toEqual(expect.objectContaining({
+        currentState: 'off',
+        selectedStepId: 'low',
+        desiredStepId: 'low',
+      }));
+      expect(result.devices[0].reportedStepId).toBeUndefined();
+      expect(result.devices[0].restorePreparedStepId).toBeUndefined();
+      expect(result.devices[0].actualStepId).toBeUndefined();
+      expect(result.devices[0].actualStepSource).toBeUndefined();
+    });
+
     it('clamps desiredStepId to the live selectedStepId when a shed device has jumped past its planned target', () => {
       // Previous plan: stepping the device from max down to low (set_step shed, mid-cascade)
       // desiredStepId='low' was the next intermediate target, selectedStepId='max' was the confirmed position

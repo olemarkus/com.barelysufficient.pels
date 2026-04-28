@@ -17,7 +17,7 @@ import type { ShedAction } from './planTypes';
 
 type StepCapableDevice = Pick<
   PlanInputDevice | DevicePlanDevice,
-  'controlModel' | 'steppedLoadProfile' | 'selectedStepId' | 'desiredStepId' | 'measuredPowerKw'
+  'controlModel' | 'steppedLoadProfile' | 'reportedStepId' | 'selectedStepId' | 'desiredStepId' | 'measuredPowerKw'
 >;
 type StepSheddingCapableDevice = Pick<
   PlanInputDevice,
@@ -32,9 +32,11 @@ type StepSheddingCapableDevice = Pick<
 type StepTransitionCapableDevice = {
   controlModel?: StepCapableDevice['controlModel'];
   steppedLoadProfile?: StepCapableDevice['steppedLoadProfile'];
+  reportedStepId?: StepCapableDevice['reportedStepId'];
   selectedStepId?: StepCapableDevice['selectedStepId'];
   desiredStepId?: StepCapableDevice['desiredStepId'];
   assumedStepId?: string;
+  restorePreparedStepId?: string;
   currentState?: string;
   currentOn?: boolean;
   controlCapabilityId?: DevicePlanDevice['controlCapabilityId'];
@@ -108,8 +110,10 @@ export const resolveSteppedLoadTransition = (
   if (device.plannedState === 'keep' && currentOn === false) {
     const commandStepId = lowestActiveStep?.id ?? desiredStep?.id;
     const stepPrepared = commandStepId !== undefined
-      && selectedStep?.id === commandStepId
-      && device.assumedStepId !== commandStepId;
+      && (
+        device.reportedStepId === commandStepId
+        || device.restorePreparedStepId === commandStepId
+      );
     return {
       effectiveTransition: 'restore_from_off_at_low',
       stepPreparationPurpose: commandStepId ? 'prepare_for_on' : null,

@@ -21,6 +21,7 @@ import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../core/steppedLoadSyntheticCapabilities';
+import { resolveDecoratedSteppedLoadState } from './appDeviceControlSteppedState';
 
 export const STEPPED_LOAD_COMMAND_STALE_MS = LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS;
 
@@ -78,16 +79,6 @@ const resolveNativeSteppedLoadProfile = (snapshot: TargetDeviceSnapshot): Steppe
     : null
 );
 
-const resolveSteppedLoadActualStepSource = (params: {
-  reportedStepId?: string;
-  assumedStepId?: string;
-}): 'reported' | 'assumed' | undefined => {
-  const { reportedStepId, assumedStepId } = params;
-  if (reportedStepId) return 'reported';
-  if (assumedStepId) return 'assumed';
-  return undefined;
-};
-
 const resolveSteppedLoadCurrentOn = (params: {
   snapshot: TargetDeviceSnapshot;
   profile: SteppedLoadProfile;
@@ -141,15 +132,24 @@ export const decorateSnapshotWithDeviceControl = (params: {
       status: 'success',
     };
   }
-  const reportedStepId = nativeSteppedControlEnabled
-    ? nativeReportedStepId
-    : getSteppedLoadStep(profile, reported?.stepId)?.id;
   const desiredStepId = getSteppedLoadStep(profile, desired?.stepId)?.id;
   const fallbackStepId = getSteppedLoadLowestActiveStep(profile)?.id;
-  const assumedStepId = reportedStepId ? undefined : fallbackStepId;
-  const selectedStepId = reportedStepId ?? assumedStepId;
-  const actualStepId = reportedStepId;
-  const actualStepSource = resolveSteppedLoadActualStepSource({ reportedStepId, assumedStepId });
+  const decoratedStepState = resolveDecoratedSteppedLoadState({
+    snapshot,
+    profile,
+    nativeReportedStepId,
+    flowReportedStepId: nativeSteppedControlEnabled ? undefined : getSteppedLoadStep(profile, reported?.stepId)?.id,
+    targetStepId: desiredStepId,
+    fallbackStepId,
+  });
+  const {
+    reportedStepId,
+    selectedStepId,
+    assumedStepId,
+    restorePreparedStepId,
+    actualStepId,
+    actualStepSource,
+  } = decoratedStepState;
   const planningPowerKw = resolveSteppedLoadPlanningPowerKw(profile, selectedStepId);
 
   return {
@@ -163,6 +163,7 @@ export const decorateSnapshotWithDeviceControl = (params: {
     previousStepId: desired?.previousStepId,
     actualStepId,
     assumedStepId,
+    restorePreparedStepId,
     actualStepSource,
     planningPowerKw,
     // Preserve an explicit off state from the raw onoff capability for stepped devices. A device

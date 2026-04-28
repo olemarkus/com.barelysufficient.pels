@@ -94,6 +94,7 @@ const serializePlanDeviceForUi = (
   shedTemperature: device.shedTemperature,
   selectedStepId: device.selectedStepId,
   desiredStepId: device.desiredStepId,
+  restorePreparedStepId: device.restorePreparedStepId,
   reportedStepId: device.reportedStepId,
   targetStepId: device.targetStepId,
   actualStepId: device.actualStepId,

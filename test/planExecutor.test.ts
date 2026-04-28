@@ -2394,6 +2394,28 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     }));
   });
 
+  it('turns on after explicit restore preparation without treating selectedStepId as proof', async () => {
+    const snapshot = buildSnapshot({ currentOn: false });
+    const { executor, deviceManager, desiredSteppedTrigger, debugStructured } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      restorePreparedStepId: 'low',
+      desiredStepId: 'low',
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'pre_restore_step_required',
+    }));
+  });
+
   it('logs the plan reason when stepped restore is not admitted', async () => {
     const snapshot = buildSnapshot({ currentOn: true });
     const { executor, deviceManager, debugStructured } = buildExecutor(undefined, snapshot);
@@ -2717,8 +2739,8 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   describe('turn_on (keep) actuation semantics (Group 3)', () => {
     // Test 3.1: device has a non-zero step but onoff is false — only binary on needed,
-    // no step change. The step is already non-zero so it must not be overwritten.
-    it('sends onoff=true without changing step when step is already non-zero', async () => {
+    // no step change. The step is confirmed non-zero so it must not be overwritten.
+    it('sends onoff=true without changing step when step is already reported non-zero', async () => {
       const snapshot = [
         {
           id: 'dev-1',
@@ -2734,6 +2756,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       await executor.applyPlanActions(steppedPlan({
         currentState: 'off',
         plannedState: 'keep',
+        reportedStepId: 'low',
         selectedStepId: 'low',
         desiredStepId: 'low', // non-zero, matches selected — no step change
       }));
@@ -2811,7 +2834,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         .toBeLessThan(deviceManager.setCapability.mock.invocationCallOrder[0]);
     });
 
-    it('does not issue a forced normalization step when the current non-zero step is already known', async () => {
+    it('does not issue a forced normalization step when the current non-zero step is reported', async () => {
       const snapshot = [
         {
           id: 'dev-1',
@@ -2827,6 +2850,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       await executor.applyPlanActions(steppedPlan({
         currentState: 'off',
         plannedState: 'keep',
+        reportedStepId: 'low',
         selectedStepId: 'low',
         desiredStepId: 'low',
       }));

@@ -148,6 +148,146 @@ describe('appDeviceControlHelpers', () => {
     expect(decorated.currentOn).toBe(false);
   });
 
+  it('keeps native non-off stepped feedback reported while currentOn=false', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+    const decorated = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({
+        currentOn: false,
+        reportedStepId: 'max',
+        suggestedSteppedLoadProfile: steppedProfiles['dev-1'],
+        controlAdapter: {
+          kind: 'capability_adapter',
+          activationAvailable: true,
+          activationRequired: false,
+          activationEnabled: true,
+        },
+      }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 1000,
+    });
+
+    expect(decorated.reportedStepId).toBe('max');
+    expect(decorated.selectedStepId).toBe('max');
+    expect(decorated.actualStepId).toBe('max');
+    expect(decorated.assumedStepId).toBeUndefined();
+    expect(decorated.restorePreparedStepId).toBeUndefined();
+    expect(decorated.actualStepSource).toBe('reported');
+    expect(decorated.currentOn).toBe(false);
+  });
+
+  it('hides stale flow non-off feedback from reported truth while currentOn=false', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+
+    expect(reportSteppedLoadActualStep({
+      runtimeState,
+      profiles: steppedProfiles,
+      deviceId: 'dev-1',
+      stepId: 'max',
+      reportedAtMs: 1000,
+    })).toBe('changed');
+
+    const decorated = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({ currentOn: false }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 1000,
+    });
+
+    expect(decorated.reportedStepId).toBeUndefined();
+    expect(decorated.restorePreparedStepId).toBeUndefined();
+    expect(decorated.selectedStepId).toBe('low');
+    expect(decorated.assumedStepId).toBe('low');
+    expect(decorated.actualStepId).toBeUndefined();
+    expect(decorated.actualStepSource).toBe('assumed');
+  });
+
+  it('uses matching suppressed flow feedback as restore preparation, not fallback assumption', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'low',
+      issuedAtMs: 1000,
+    });
+    expect(reportSteppedLoadActualStep({
+      runtimeState,
+      profiles: steppedProfiles,
+      deviceId: 'dev-1',
+      stepId: 'low',
+      reportedAtMs: 1100,
+    })).toBe('changed');
+
+    const decorated = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({ currentOn: false }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 1200,
+    });
+
+    expect(decorated.reportedStepId).toBeUndefined();
+    expect(decorated.restorePreparedStepId).toBe('low');
+    expect(decorated.selectedStepId).toBe('low');
+    expect(decorated.assumedStepId).toBeUndefined();
+    expect(decorated.actualStepSource).toBeUndefined();
+    expect(decorated.stepCommandStatus).toBe('success');
+  });
+
+  it('uses suppressed lowest-active flow feedback as restore preparation without a runtime desired step', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+
+    expect(reportSteppedLoadActualStep({
+      runtimeState,
+      profiles: steppedProfiles,
+      deviceId: 'dev-1',
+      stepId: 'low',
+      reportedAtMs: 1100,
+    })).toBe('changed');
+
+    const decorated = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({ currentOn: false }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 1200,
+    });
+
+    expect(decorated.targetStepId).toBeUndefined();
+    expect(decorated.reportedStepId).toBeUndefined();
+    expect(decorated.restorePreparedStepId).toBe('low');
+    expect(decorated.assumedStepId).toBeUndefined();
+  });
+
+  it('does not mark mismatched suppressed flow feedback as restore preparation', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'low',
+      issuedAtMs: 1000,
+    });
+    expect(reportSteppedLoadActualStep({
+      runtimeState,
+      profiles: steppedProfiles,
+      deviceId: 'dev-1',
+      stepId: 'max',
+      reportedAtMs: 1100,
+    })).toBe('changed');
+
+    const decorated = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({ currentOn: false }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 1200,
+    });
+
+    expect(decorated.reportedStepId).toBeUndefined();
+    expect(decorated.restorePreparedStepId).toBeUndefined();
+    expect(decorated.selectedStepId).toBe('low');
+    expect(decorated.assumedStepId).toBe('low');
+  });
+
   it('preserves snapshot power source and currentOn when a stepped profile cannot resolve any step', () => {
     const runtimeState = createDeviceControlRuntimeState();
     const emptyProfiles = {
@@ -245,7 +385,7 @@ describe('appDeviceControlHelpers', () => {
     });
 
     const reportedDecorated = decorateSnapshotWithDeviceControl({
-      snapshot: baseSnapshot(),
+      snapshot: baseSnapshot({ currentOn: true }),
       profiles: steppedProfiles,
       runtimeState,
       nowMs: 1700,
@@ -268,7 +408,7 @@ describe('appDeviceControlHelpers', () => {
     expect(pruneStaleSteppedLoadCommandStates(runtimeState, 2000 + STEPPED_LOAD_COMMAND_STALE_MS + 1)).toBe(true);
 
     const staleDecorated = decorateSnapshotWithDeviceControl({
-      snapshot: baseSnapshot(),
+      snapshot: baseSnapshot({ currentOn: true }),
       profiles: steppedProfiles,
       runtimeState,
       nowMs: 2000 + STEPPED_LOAD_COMMAND_STALE_MS + 1,

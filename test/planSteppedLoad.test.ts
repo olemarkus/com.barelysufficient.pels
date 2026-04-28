@@ -93,6 +93,35 @@ describe('planSteppedLoad', () => {
     expect(transition?.stepPreparationPurpose).toBe('prepare_for_on');
   });
 
+  it('treats an explicit restore-prepared step as ready for binary restore', () => {
+    const transition = resolveSteppedLoadTransition(steppedPlanDevice({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+      restorePreparedStepId: 'low',
+      controlCapabilityId: 'onoff',
+    }));
+
+    expect(transition?.effectiveTransition).toBe('restore_from_off_at_low');
+    expect(transition?.commandStepId).toBe('low');
+    expect(transition?.transitionPhase).toBe('binary_transition');
+  });
+
+  it('does not treat selectedStepId alone as restore preparation', () => {
+    const transition = resolveSteppedLoadTransition(steppedPlanDevice({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+      controlCapabilityId: 'onoff',
+    }));
+
+    expect(transition?.effectiveTransition).toBe('restore_from_off_at_low');
+    expect(transition?.commandStepId).toBe('low');
+    expect(transition?.transitionPhase).toBe('step_preparation');
+  });
+
   it('is idempotent when re-run on its own normalized keep-step output', () => {
     const device = steppedPlanDevice({
       currentState: 'off',

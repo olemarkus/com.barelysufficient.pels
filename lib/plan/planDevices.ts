@@ -307,6 +307,7 @@ function buildBasePlanDevice(params: {
     targetStepId: effectiveDesiredStepId,
     selectedStepId: dev.selectedStepId,
     desiredStepId: effectiveDesiredStepId,
+    restorePreparedStepId: dev.restorePreparedStepId,
     previousStepId: dev.previousStepId,
     lastDesiredStepId: dev.desiredStepId,
     lastStepCommandIssuedAt: dev.lastStepCommandIssuedAt,
