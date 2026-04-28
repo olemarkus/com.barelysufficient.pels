@@ -38,9 +38,9 @@ const NATIVE_VALUES_BY_RANK = {
 } as const;
 
 const NATIVE_WRITE_VALUE_BY_RANK = {
-  low: 1,
-  medium: 2,
-  high: 3,
+  low: '1',
+  medium: '2',
+  high: '3',
 } as const;
 
 export const CONNECTED_300_STEPPED_LOAD_PROFILE: SteppedLoadProfile = {
