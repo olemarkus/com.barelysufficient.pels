@@ -1057,6 +1057,19 @@ describe('shouldSkipShortfallRebuildFromPlanSummary', () => {
       state: { lastMs: 0 },
     })).toBe(true);
   });
+
+  it('suppresses while actuation is still marked in-flight once no actionable load remains', () => {
+    const summary = {
+      ...buildEmptyCapacityStateSummary(),
+      remainingActionableControlledLoad: false,
+      actuationInFlight: true,
+    };
+
+    expect(shouldSkipShortfallRebuildFromPlanSummary({
+      summary,
+      state: { lastMs: 0 },
+    })).toBe(true);
+  });
 });
 
 describe('schedulePlanRebuildFromSignal', () => {

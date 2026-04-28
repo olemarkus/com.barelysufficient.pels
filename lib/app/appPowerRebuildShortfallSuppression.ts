@@ -28,7 +28,6 @@ export const shouldSkipShortfallRebuildFromPlanSummary = (params: {
   const { summary, state } = params;
   return (
     summary.remainingActionableControlledLoad === false
-    && summary.actuationInFlight === false
     && state.shortfallSuppressionInvalidated !== true
   );
 };
