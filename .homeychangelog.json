@@ -334,5 +334,8 @@
   },
   "2.4.2": {
     "en": "Improves stability. Fixed an issue with Høiax devices."
+  },
+  "2.4.3": {
+    "en": "Fixed various issues with stepped devices."
   }
 }
