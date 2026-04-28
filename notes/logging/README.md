@@ -70,6 +70,7 @@ This note is for contributors changing runtime logging.
 - `realtime_reconcile_circuit_opened`
 - `realtime_reconcile_failed`
 - `device_overview_changed`
+- `device_overview_changes`
 - `device_starvation_started`
 - `device_starvation_paused`
 - `device_starvation_resumed`
@@ -106,6 +107,9 @@ This note is for contributors changing runtime logging.
 - Any future Settings UI device-log or diagnostics surface that shows the per-device overview
   wording should reuse `packages/shared-domain/src/deviceOverview.ts` rather than rebuilding
   `powerMsg`/`stateMsg`/`usageMsg`/`statusMsg` separately in the UI.
+- Overview transition logging keeps `device_overview_changed` for single-device transitions and
+  emits `device_overview_changes` when one rebuild produces multiple changed device rows. The
+  batched `devices` entries should keep the same per-device fields as the single-device event.
 - When adding a new event, keep payload fields machine-friendly and consistent with existing unit
   naming such as `durationMs`, `powerW`, `kWh`, and explicit IDs.
 - Capacity-state summary fields should stay semantically explicit. Do not reuse one counter name
