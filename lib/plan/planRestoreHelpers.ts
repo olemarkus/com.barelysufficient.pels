@@ -266,7 +266,75 @@ export function blockRestoreForRecentActivationSetback(params: {
   return true;
 }
 
-/* eslint-disable-next-line max-statements, max-lines-per-function -- stepped restore gates stay together */
+type SteppedDeviceGateTiming = Pick<RestoreTiming,
+| 'activeOvershoot'
+| 'inCooldown'
+| 'inRestoreCooldown'
+| 'inStartupStabilization'
+| 'measurementTs'
+| 'nowTs'
+| 'restoreCooldownSeconds'
+| 'restoreCooldownMs'
+| 'shedCooldownRemainingSec'
+| 'restoreCooldownRemainingSec'
+| 'startupStabilizationRemainingSec'
+>;
+
+// Returns true if a gate fired and planRestoreForSteppedDevice should return early.
+// Encapsulates meter-settling and capacity-block gate checks, applying global gates only
+// to OFF devices and per-device settling to active devices.
+function applySteppedDeviceGates(params: {
+  dev: DevicePlanDevice;
+  deviceMap: Map<string, DevicePlanDevice>;
+  state: PlanEngineState;
+  timing: SteppedDeviceGateTiming;
+  deviceIsActive: boolean;
+  restoredOneThisCycle: boolean;
+  restoreDebugKey: string;
+}): boolean {
+  const { dev, deviceMap, state, timing, deviceIsActive, restoredOneThisCycle, restoreDebugKey } = params;
+  const lastRestoreTs = deviceIsActive
+    ? (state.lastDeviceRestoreMs[dev.id] ?? null)
+    : state.lastRestoreMs;
+  const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
+    timing, lastRestoreTs, restoredOneThisCycle,
+  });
+  if (meterSettlingRemainingSec !== null) {
+    const reason = buildMeterSettlingReason(
+      meterSettlingRemainingSec,
+      resolveMeterSettlingCountdownTiming({ timing, lastRestoreTs, restoredOneThisCycle }),
+    );
+    setRestorePlanDevice(deviceMap, dev.id,
+      deviceIsActive ? { reason } : buildOffSteppedRestoreHoldUpdate(dev, reason),
+    );
+    clearRestoreDebugEvent(state, restoreDebugKey);
+    return true;
+  }
+  const gateTiming = deviceIsActive
+    ? { ...timing, inRestoreCooldown: false as const, inCooldown: false as const }
+    : timing;
+  const gateReason = resolveCapacityRestoreBlockReason({ timing: gateTiming, restoredOneThisCycle });
+  if (gateReason) {
+    setRestorePlanDevice(deviceMap, dev.id, deviceIsActive
+      ? { reason: gateReason }
+      : { ...buildOffSteppedRestoreShedUpdate(dev), reason: gateReason });
+    clearRestoreDebugEvent(state, restoreDebugKey);
+    return true;
+  }
+  const waitingReason = resolveCapacityRestoreBlockReason({
+    timing: gateTiming,
+    waitingForOtherRecovery: hasOtherDevicesBlockingSteppedRestore(deviceMap, dev.id, state.lastDeviceShedMs),
+  });
+  if (waitingReason) {
+    setRestorePlanDevice(deviceMap, dev.id, deviceIsActive
+      ? { reason: waitingReason }
+      : { ...buildOffSteppedRestoreShedUpdate(dev), reason: waitingReason });
+    clearRestoreDebugEvent(state, restoreDebugKey);
+    return true;
+  }
+  return false;
+}
+
 export function planRestoreForSteppedDevice(params: {
   dev: DevicePlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
@@ -298,41 +366,12 @@ export function planRestoreForSteppedDevice(params: {
   }
 
   const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
-  const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
-    timing,
-    lastRestoreTs: state.lastRestoreMs,
-    restoredOneThisCycle,
-  });
-  if (meterSettlingRemainingSec !== null) {
-    const reason = buildMeterSettlingReason(
-      meterSettlingRemainingSec,
-      resolveMeterSettlingCountdownTiming({
-        timing,
-        lastRestoreTs: state.lastRestoreMs,
-        restoredOneThisCycle,
-      }),
-    );
-    const update = resolveEffectiveCurrentOn(dev) === false
-      ? buildOffSteppedRestoreHoldUpdate(dev, reason)
-      : { reason };
-    setRestorePlanDevice(deviceMap, dev.id, update);
-    clearRestoreDebugEvent(state, restoreDebugKey);
-    return { availableHeadroom, restoredOneThisCycle };
-  }
-  const gateReason = resolveCapacityRestoreBlockReason({ timing, restoredOneThisCycle });
-  if (gateReason) {
-    setRestorePlanDevice(deviceMap, dev.id, { reason: gateReason });
-    clearRestoreDebugEvent(state, restoreDebugKey);
-    return { availableHeadroom, restoredOneThisCycle };
-  }
-
-  const waitingReason = resolveCapacityRestoreBlockReason({
-    timing,
-    waitingForOtherRecovery: hasOtherDevicesBlockingSteppedRestore(deviceMap, dev.id, state.lastDeviceShedMs),
-  });
-  if (waitingReason) {
-    setRestorePlanDevice(deviceMap, dev.id, { reason: waitingReason });
-    clearRestoreDebugEvent(state, restoreDebugKey);
+  // Active stepped devices (ON but below their target step) must not be blocked by the global
+  // restore cooldown or meter-settling gate — per-device restore timing still applies.
+  const deviceIsActive = resolveEffectiveCurrentOn(dev) === true;
+  if (applySteppedDeviceGates({
+    dev, deviceMap, state, timing, deviceIsActive, restoredOneThisCycle, restoreDebugKey,
+  })) {
     return { availableHeadroom, restoredOneThisCycle };
   }
 
