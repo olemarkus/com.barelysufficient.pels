@@ -759,7 +759,9 @@ describe('restore cooldown backoff', () => {
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
-    expect(reasonText(steppedDevice?.reason)).toBe('keep');
+    // Reason reflects per-device settling (50s remaining), not the global cooldown_restore reason.
+    // Headroom is reserved by reserveHeadroomForPendingRestores before the cooldown path runs.
+    expect(reasonText(steppedDevice?.reason)).toBe('meter settling (50s remaining)');
     expect(result.availableHeadroom).toBeCloseTo(4.25);
     expect(result.restoredOneThisCycle).toBe(false);
   });
@@ -2720,6 +2722,92 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
     expect(dev.desiredStepId).toBe('off');
     expect(dev.targetStepId).toBe('off');
     expect(reasonText(dev.reason)).toBe('meter settling (60s remaining)');
+  });
+
+  it('active stepped device gets meter settling reason (not backoff cooldown) when another device restored this cycle', () => {
+    // Bug: missing restoredOneThisCycle in active-device settling check caused it to skip the
+    // meterSettling gate and fall through to resolveCapacityRestoreBlockReason, which returned
+    // the full backoff cooldown duration (e.g. 300s) instead of the 60s meterSettling reason.
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    const state = createPlanEngineState();
+    // No per-device restore history for this device — first time it would step up.
+    const deviceMap = new Map([
+      ['dev-step', steppedPlanDevice({
+        id: 'dev-step',
+        name: 'Tank',
+        currentState: 'on',
+        currentOn: true,
+        plannedState: 'keep',
+        selectedStepId: 'low',
+        desiredStepId: 'low',
+        measuredPowerKw: 1.25,
+      })],
+    ]);
+
+    planRestoreForSteppedDevice({
+      dev: deviceMap.get('dev-step')!,
+      deviceMap,
+      state,
+      timing: {
+        activeOvershoot: false, inCooldown: false, inRestoreCooldown: true,
+        inStartupStabilization: false,
+        restoreCooldownSeconds: 300, // backed-off cooldown
+        restoreCooldownMs: 300_000,
+        measurementTs: now - 1_000,
+        nowTs: now,
+        shedCooldownRemainingSec: null, restoreCooldownRemainingSec: 300,
+        startupStabilizationRemainingSec: null,
+      },
+      availableHeadroom: 5,
+      restoredOneThisCycle: true, // another device was restored this cycle
+      logDebug: vi.fn(),
+    });
+
+    const dev = deviceMap.get('dev-step')!;
+    // Must be meterSettling (60s) — not the 300s backoff cooldown_restore reason.
+    expect(reasonText(dev.reason)).toBe('meter settling (60s remaining)');
+  });
+
+  it('active stepped device gets explicit meter settling reason when per-device settling is active', () => {
+    // Bug: the per-device settling branch returned early without setting a reason on the device,
+    // leaving desiredStepId above selectedStepId with no visible blocking reason in the plan.
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    const state = createPlanEngineState();
+    state.lastDeviceRestoreMs['dev-step'] = now - 10_000; // stepped up 10s ago, settling 50s left
+    const deviceMap = new Map([
+      ['dev-step', steppedPlanDevice({
+        id: 'dev-step',
+        name: 'Tank',
+        currentState: 'on',
+        currentOn: true,
+        plannedState: 'keep',
+        selectedStepId: 'low',
+        desiredStepId: 'low',
+        measuredPowerKw: 1.25,
+      })],
+    ]);
+
+    planRestoreForSteppedDevice({
+      dev: deviceMap.get('dev-step')!,
+      deviceMap,
+      state,
+      timing: {
+        activeOvershoot: false, inCooldown: false, inRestoreCooldown: false,
+        inStartupStabilization: false,
+        restoreCooldownSeconds: 60, restoreCooldownMs: 60_000,
+        measurementTs: now - 11_000, // measurement predates the step — settling not yet cleared
+        nowTs: now,
+        shedCooldownRemainingSec: null, restoreCooldownRemainingSec: null,
+        startupStabilizationRemainingSec: null,
+      },
+      availableHeadroom: 5,
+      restoredOneThisCycle: false,
+      logDebug: vi.fn(),
+    });
+
+    const dev = deviceMap.get('dev-step')!;
+    // Reason must be set (not silent), reflecting the per-device 50s settling window.
+    expect(reasonText(dev.reason)).toBe('meter settling (50s remaining)');
   });
 
   it('admits stepped restore when postReserveMarginKw is exactly at the floor', () => {
