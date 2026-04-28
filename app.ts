@@ -726,7 +726,12 @@ class PelsApp extends Homey.App {
             shortfallSuppressionInvalidated: true,
           };
         }
-        void this.planService?.syncLivePlanState(event.source);
+        void this.planService?.syncLivePlanState(
+          event.source,
+          event.canSettleBinary === false
+            ? { canSettleBinaryByDeviceId: new Map([[event.deviceId, false]]) }
+            : undefined,
+        );
       },
     );
   }

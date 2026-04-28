@@ -485,6 +485,55 @@ describe('DeviceManager', () => {
             }));
         });
 
+        it('drops EV refresh control observations missing both charging boolean and charging state', async () => {
+            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                getExperimentalEvSupportEnabled: () => true,
+            });
+            await evDeviceManager.init();
+            mockApiGet.mockResolvedValue({
+                ev1: {
+                    id: 'ev1',
+                    name: 'Easee',
+                    class: 'evcharger',
+                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                    capabilitiesObj: {
+                        evcharger_charging: { value: true, id: 'evcharger_charging', setable: true },
+                        evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state' },
+                        measure_power: { value: 7100, id: 'measure_power' },
+                    },
+                },
+            });
+            await evDeviceManager.refreshSnapshot();
+
+            mockApiGet.mockResolvedValue({
+                ev1: {
+                    id: 'ev1',
+                    name: 'Easee',
+                    class: 'evcharger',
+                    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                    capabilitiesObj: {
+                        evcharger_charging: { id: 'evcharger_charging', setable: true },
+                        evcharger_charging_state: { id: 'evcharger_charging_state' },
+                        measure_power: { value: 1200, id: 'measure_power' },
+                    },
+                },
+            });
+
+            await evDeviceManager.refreshSnapshot();
+
+            expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                currentOn: true,
+                evCharging: true,
+                evChargingState: 'plugged_in_charging',
+                measuredPowerKw: 1.2,
+            }));
+            expect(loggerMock.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'invalid_control_observation',
+                reasonCode: 'missing_ev_charging_state',
+                deviceId: 'ev1',
+            }));
+        });
+
         it('excludes EV chargers without the official charging capability', async () => {
             const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
                 getExperimentalEvSupportEnabled: () => true,
@@ -1471,7 +1520,7 @@ describe('DeviceManager', () => {
             }
         });
 
-        it('does not preserve the old desired onoff value after settle timeout when a later device.update omits the binary capability', async () => {
+        it('drops invalid device.update onoff while preserving valid power freshness', async () => {
             vi.useFakeTimers();
             try {
                 mockApiGet.mockResolvedValue({
@@ -1497,7 +1546,6 @@ describe('DeviceManager', () => {
                 }));
 
                 await vi.advanceTimersByTimeAsync(5000);
-
                 deviceManager.injectDeviceUpdateForTest({
                     id: 'dev1',
                     name: 'Heater',
@@ -1509,16 +1557,16 @@ describe('DeviceManager', () => {
                 });
 
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: true,
+                    currentOn: false,
+                    measuredPowerKw: 0.9,
                 }));
-                expect(realtimeListener).toHaveBeenCalledOnce();
-                expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
+                expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBeGreaterThan(0);
+                expect(realtimeListener).not.toHaveBeenCalled();
+                expect(loggerMock.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
+                    event: 'invalid_control_observation',
+                    reasonCode: 'invalid_onoff',
                     deviceId: 'dev1',
-                    changes: [expect.objectContaining({
-                        capabilityId: 'onoff',
-                        previousValue: 'off',
-                        nextValue: 'on',
-                    })],
+                    invalidControlCapabilityIds: ['onoff'],
                 }));
             } finally {
                 vi.useRealTimers();
@@ -4134,6 +4182,47 @@ describe('DeviceManager', () => {
                 }
             });
 
+            it('marks mixed invalid control and valid target device.update unable to settle binary', async () => {
+                vi.useFakeTimers();
+                try {
+                    await deviceManager.init();
+                    vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+                    mockApiGet.mockResolvedValue(buildThermostatDevice());
+                    await deviceManager.refreshSnapshot();
+
+                    vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
+                    const liveStateListener = vi.fn();
+                    const reconcileListener = vi.fn();
+                    deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
+                    deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+
+                    deviceManager.injectDeviceUpdateForTest({
+                        id: 'dev1',
+                        name: 'Thermostat',
+                        capabilities: ['onoff', 'target_temperature', 'measure_temperature', 'measure_power'],
+                        class: 'thermostat',
+                        capabilitiesObj: {
+                            onoff: { value: 'unknown', id: 'onoff' },
+                            target_temperature: { value: 22, id: 'target_temperature', units: '°C' },
+                            measure_temperature: { value: 19, id: 'measure_temperature', units: '°C' },
+                            measure_power: { value: 360, id: 'measure_power' },
+                        },
+                    });
+
+                    const snapshot = deviceManager.getSnapshot()[0];
+                    expect(snapshot.currentOn).toBe(true);
+                    expect(snapshot.targets.find((target) => target.id === 'target_temperature')?.value).toBe(22);
+                    expect(liveStateListener).toHaveBeenCalledWith(expect.objectContaining({
+                        source: 'device_update',
+                        deviceId: 'dev1',
+                        canSettleBinary: false,
+                    }));
+                    expect(reconcileListener).toHaveBeenCalledOnce();
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
+
             it('realtime measure_power update advances freshness and does not trigger reconcile', async () => {
                 vi.useFakeTimers();
                 try {
@@ -4539,6 +4628,53 @@ describe('DeviceManager', () => {
                     expect(deviceManager.getSnapshot()[0].lastFreshDataMs).not.toBe(
                         new Date('2026-04-01T12:08:00.000Z').getTime(),
                     );
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
+
+            it('snapshot refresh drops invalid onoff while retaining valid power freshness', async () => {
+                vi.useFakeTimers();
+                try {
+                    vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+                    mockApiGet.mockResolvedValue({
+                        dev1: {
+                            id: 'dev1',
+                            name: 'Heater',
+                            capabilities: ['onoff', 'measure_power'],
+                            class: 'heater',
+                            capabilitiesObj: {
+                                onoff: { value: false, id: 'onoff', lastUpdated: '2026-04-01T11:59:00.000Z' },
+                                measure_power: { value: 500, id: 'measure_power', lastUpdated: '2026-04-01T11:59:00.000Z' },
+                            },
+                        },
+                    });
+                    await deviceManager.refreshSnapshot();
+
+                    mockApiGet.mockResolvedValue({
+                        dev1: {
+                            id: 'dev1',
+                            name: 'Heater',
+                            capabilities: ['onoff', 'measure_power'],
+                            class: 'heater',
+                            capabilitiesObj: {
+                                onoff: { value: 'unknown', id: 'onoff', lastUpdated: '2026-04-01T12:10:00.000Z' },
+                                measure_power: { value: 1500, id: 'measure_power', lastUpdated: '2026-04-01T12:02:00.000Z' },
+                            },
+                        },
+                    });
+
+                    await deviceManager.refreshSnapshot();
+
+                    const snapshot = deviceManager.getSnapshot()[0];
+                    expect(snapshot.currentOn).toBe(false);
+                    expect(snapshot.measuredPowerKw).toBe(1.5);
+                    expect(snapshot.lastFreshDataMs).toBe(new Date('2026-04-01T12:02:00.000Z').getTime());
+                    expect(loggerMock.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
+                        event: 'invalid_control_observation',
+                        reasonCode: 'invalid_onoff',
+                        deviceId: 'dev1',
+                    }));
                 } finally {
                     vi.useRealTimers();
                 }

@@ -93,6 +93,40 @@ describe('plan binary control helpers', () => {
     );
   });
 
+  it('does not confirm pending binary commands from observations marked unable to settle', () => {
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands.socket1 = {
+      capabilityId: 'onoff',
+      desired: false,
+      startedMs: Date.now(),
+      logContext: 'capacity',
+      actuationMode: 'plan',
+    };
+    const logDebug = vi.fn();
+
+    const changed = syncPendingBinaryCommands({
+      state,
+      liveDevices: [{
+        id: 'socket1',
+        name: 'Socket',
+        currentOn: false,
+        hasBinaryControl: true,
+        targets: [],
+      }],
+      source: 'snapshot_refresh',
+      canSettleBinaryByDeviceId: new Map([['socket1', false]]),
+      logDebug,
+    });
+
+    expect(changed).toBe(false);
+    expect(state.pendingBinaryCommands.socket1).toMatchObject({
+      desired: false,
+    });
+    expect(state.pendingBinaryCommands.socket1.lastObservedValue).toBeUndefined();
+    expect(state.pendingBinaryCommands.socket1.lastObservedSource).toBeUndefined();
+    expect(logDebug).not.toHaveBeenCalled();
+  });
+
   it('resolves binary control plans and EV restore blocks', () => {
     expect(getBinaryControlPlan()).toBeNull();
     expect(getBinaryControlPlan({

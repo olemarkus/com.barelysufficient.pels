@@ -65,6 +65,10 @@ import type { PlanActuationMode, PlanActuationResult } from './planExecutor';
 
 const SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS = 1500;
 
+export type SyncLivePlanStateOptions = {
+  canSettleBinaryByDeviceId?: ReadonlyMap<string, boolean>;
+};
+
 const serializePlanDeviceForUi = (
   device: DevicePlan['devices'][number],
   deps: PlanServiceDeps,
@@ -402,16 +406,22 @@ export class PlanService {
     };
   }
 
-  async syncLivePlanState(source: PendingTargetObservationSource): Promise<boolean> {
+  async syncLivePlanState(
+    source: PendingTargetObservationSource,
+    options?: SyncLivePlanStateOptions,
+  ): Promise<boolean> {
     return this.enqueuePlanOperation(
-      () => Promise.resolve(this.syncLivePlanStateInline(source)),
+      () => Promise.resolve(this.syncLivePlanStateInline(source, options)),
       'Failed to sync live plan state',
       false,
     );
   }
 
   // eslint-disable-next-line complexity
-  syncLivePlanStateInline(source: PendingTargetObservationSource): boolean {
+  syncLivePlanStateInline(
+    source: PendingTargetObservationSource,
+    options?: SyncLivePlanStateOptions,
+  ): boolean {
     const hasPendingTargetCommands = this.deps.planEngine.hasPendingTargetCommands?.() ?? false;
     const hasPendingBinaryCommands = this.deps.planEngine.hasPendingBinaryCommands?.() ?? false;
     if (!hasPendingTargetCommands && !hasPendingBinaryCommands) {
@@ -423,7 +433,7 @@ export class PlanService {
       ? (this.deps.planEngine.syncPendingTargetCommands?.(liveDevices, source) ?? false)
       : false;
     const pendingBinaryChanged = hasPendingBinaryCommands
-      ? (this.deps.planEngine.syncPendingBinaryCommands?.(liveDevices, source) ?? false)
+      ? this.syncPendingBinaryCommands(liveDevices, source, options)
       : false;
     const pendingChanged = pendingTargetChanged || pendingBinaryChanged;
     if (!this.latestPlanSnapshot) {
@@ -457,6 +467,19 @@ export class PlanService {
     this.latestPlanSnapshotUpdatedAtMs = nowMs;
     this.emitPlanUpdated(refreshedPlan);
     return true;
+  }
+
+  private syncPendingBinaryCommands(
+    liveDevices: PlanInputDevice[],
+    source: PendingTargetObservationSource,
+    options?: SyncLivePlanStateOptions,
+  ): boolean {
+    if (!options?.canSettleBinaryByDeviceId) {
+      return this.deps.planEngine.syncPendingBinaryCommands?.(liveDevices, source) ?? false;
+    }
+    return this.deps.planEngine.syncPendingBinaryCommands?.(liveDevices, source, {
+      canSettleBinaryByDeviceId: options.canSettleBinaryByDeviceId,
+    }) ?? false;
   }
 
   async reconcileLatestPlanState(): Promise<boolean> {

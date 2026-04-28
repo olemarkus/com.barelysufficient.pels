@@ -180,11 +180,13 @@ export class PlanEngine {
   public syncPendingBinaryCommands(
     devices: PlanInputDevice[],
     source: PendingTargetObservationSource,
+    options?: { canSettleBinaryByDeviceId?: ReadonlyMap<string, boolean> },
   ): boolean {
     return syncPendingBinaryCommands({
       state: this.state,
       liveDevices: devices,
       source,
+      canSettleBinaryByDeviceId: options?.canSettleBinaryByDeviceId,
       logDebug: (message) => this.logDebugFn(message),
       onConfirmed: ({ deviceId, liveDevice, pending, confirmedAtMs }) => {
         this.executor.handleConfirmedBinaryCommand({

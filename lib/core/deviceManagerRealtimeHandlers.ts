@@ -4,6 +4,7 @@ import {
   reconcileRealtimeDeviceUpdate,
   type RealtimeDeviceReconcileChange,
 } from './deviceManagerRuntime';
+import type { ParsedDeviceResult } from './deviceManagerParseDevice';
 
 export type PlanRealtimeUpdateEvent = {
   deviceId: string;
@@ -16,6 +17,7 @@ export type ObservedDeviceStateEvent = {
   source: 'realtime_capability' | 'device_update';
   deviceId: string;
   capabilityId?: string;
+  canSettleBinary?: boolean;
   measurePowerBecameSignificantlyPositive?: boolean;
 };
 
@@ -42,6 +44,7 @@ export function handleRealtimeDeviceUpdate(params: {
   recentLocalCapabilityWrites: RecentLocalCapabilityWrites;
   shouldTrackRealtimeDevice: (deviceId: string) => boolean;
   parseDevice: (device: HomeyDeviceLike, nowTs: number) => TargetDeviceSnapshot | null;
+  parseDeviceWithControlObservation?: (device: HomeyDeviceLike, nowTs: number) => ParsedDeviceResult;
   minSignificantPowerW?: number;
   recordObservedCapabilities?: (deviceId: string, capabilityIds: string[]) => void;
   notePendingBinarySettleObservation?: PendingBinarySettleObservationRecorder;
@@ -56,6 +59,7 @@ export function handleRealtimeDeviceUpdate(params: {
     recentLocalCapabilityWrites,
     shouldTrackRealtimeDevice,
     parseDevice,
+    parseDeviceWithControlObservation,
     minSignificantPowerW = 0,
     recordObservedCapabilities,
     notePendingBinarySettleObservation,
@@ -76,14 +80,8 @@ export function handleRealtimeDeviceUpdate(params: {
   }
   const label = device.name;
 
-  // Extract the raw binary value from the device payload before reconcile so the
-  // settle window receives the actual observed value rather than a preserved or
-  // synthesized snapshot value.
   const priorSnapshot = latestSnapshot.find((s) => s.id === deviceId);
-  const rawBinaryValue = extractRawBinaryValue(
-    device,
-    priorSnapshot?.controlObservationCapabilityId ?? priorSnapshot?.controlCapabilityId,
-  );
+  let parsedResultForSettle: ParsedDeviceResult | undefined;
 
   const result = reconcileRealtimeDeviceUpdate({
     latestSnapshot,
@@ -91,11 +89,17 @@ export function handleRealtimeDeviceUpdate(params: {
     recentLocalCapabilityWrites,
     hasPendingBinarySettleWindow,
     parseDevice: (nextDevice, nowTs) => parseDevice(nextDevice, nowTs),
+    parseDeviceWithControlObservation: parseDeviceWithControlObservation
+      ? (nextDevice, nowTs) => {
+        parsedResultForSettle = parseDeviceWithControlObservation(nextDevice, nowTs);
+        return parsedResultForSettle;
+      }
+      : undefined,
   });
   const settleResult = applyPendingBinarySettleToDeviceUpdate({
     currentSnapshot: result.currentSnapshot,
     changes: result.changes,
-    rawBinaryValue,
+    controlObservation: parsedResultForSettle?.controlObservation,
     notePendingBinarySettleObservation,
   });
   const filteredChanges = settleResult.changes;
@@ -113,6 +117,7 @@ export function handleRealtimeDeviceUpdate(params: {
     emitObservedState({
       source: 'device_update',
       deviceId,
+      canSettleBinary: parsedResultForSettle?.controlObservation.canSettleBinary,
       measurePowerBecameSignificantlyPositive: didMeasurePowerBecomeSignificantlyPositive(
         priorSnapshot?.measuredPowerKw,
         result.currentSnapshot?.measuredPowerKw,
@@ -157,7 +162,7 @@ export function didMeasurePowerBecomeSignificantlyPositive(
 function applyPendingBinarySettleToDeviceUpdate(params: {
   currentSnapshot: TargetDeviceSnapshot | null;
   changes: RealtimeDeviceReconcileChange[];
-  rawBinaryValue: boolean | undefined;
+  controlObservation: ParsedDeviceResult['controlObservation'] | undefined;
   notePendingBinarySettleObservation?: PendingBinarySettleObservationRecorder;
 }): {
   changes: RealtimeDeviceReconcileChange[];
@@ -166,16 +171,15 @@ function applyPendingBinarySettleToDeviceUpdate(params: {
   const {
     currentSnapshot,
     changes,
-    rawBinaryValue,
+    controlObservation,
     notePendingBinarySettleObservation,
   } = params;
   const deviceId = currentSnapshot?.id;
   const binaryCapabilityId = currentSnapshot?.controlCapabilityId;
+  const observedValue = getSettleObservedBinaryValue(currentSnapshot, controlObservation);
 
-  // rawBinaryValue is undefined when the device.update payload contained no explicit
-  // boolean for the control capability — treat it as no observation (do not resolve).
   if (
-    rawBinaryValue === undefined
+    observedValue === undefined
     || !currentSnapshot
     || !deviceId
     || typeof binaryCapabilityId !== 'string'
@@ -187,7 +191,7 @@ function applyPendingBinarySettleToDeviceUpdate(params: {
   const outcome = notePendingBinarySettleObservation(
     deviceId,
     binaryCapabilityId,
-    rawBinaryValue,
+    observedValue,
     'device_update',
   );
 
@@ -208,10 +212,18 @@ function buildReconcileSuffix(outcome: BinarySettleOutcome, shouldReconcilePlan:
   return '';
 }
 
-/** Returns the explicit boolean value for `capabilityId` from the device payload, or
- *  undefined if the capability is absent or its value is not a boolean. */
-function extractRawBinaryValue(device: HomeyDeviceLike, capabilityId: string | undefined): boolean | undefined {
-  if (capabilityId === undefined) return undefined;
-  const capValue = device.capabilitiesObj?.[capabilityId]?.value;
-  return typeof capValue === 'boolean' ? capValue : undefined;
+function getSettleObservedBinaryValue(
+  snapshot: TargetDeviceSnapshot | null,
+  controlObservation: ParsedDeviceResult['controlObservation'] | undefined,
+): boolean | undefined {
+  if (!snapshot || !controlObservation?.canSettleBinary) return undefined;
+  if (snapshot.controlCapabilityId === 'evcharger_charging') {
+    if (typeof snapshot.evCharging === 'boolean') return snapshot.evCharging;
+    if (typeof snapshot.evChargingState === 'string') {
+      return snapshot.evChargingState === 'plugged_in_charging'
+        || snapshot.evChargingState === 'plugged_in_paused';
+    }
+    return undefined;
+  }
+  return snapshot.currentOn;
 }

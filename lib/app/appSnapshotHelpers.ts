@@ -35,6 +35,19 @@ function toPersistedTargetSnapshotFingerprint(value: unknown): string {
   }));
 }
 
+function getSnapshotCanSettleBinaryByDeviceId(
+  deviceManager: DeviceManager,
+): ReadonlyMap<string, boolean> | undefined {
+  const maybeDeviceManager = deviceManager as Partial<
+    Pick<DeviceManager, 'getLatestSnapshotCanSettleBinaryByDeviceId'>
+  >;
+  if (typeof maybeDeviceManager.getLatestSnapshotCanSettleBinaryByDeviceId !== 'function') return undefined;
+  const canSettleBinaryByDeviceId = maybeDeviceManager.getLatestSnapshotCanSettleBinaryByDeviceId();
+  return [...canSettleBinaryByDeviceId.values()].some((canSettle) => !canSettle)
+    ? canSettleBinaryByDeviceId
+    : undefined;
+}
+
 export class AppSnapshotHelpers {
   private snapshotRefreshTimer?: ReturnType<typeof setTimeout>;
   private staleObservationRefreshTimer?: ReturnType<typeof setTimeout>;
@@ -268,7 +281,11 @@ export class AppSnapshotHelpers {
       snapshot.filter((device) => this.deps.resolveManagedState(device.id)),
       'snapshot_refresh',
     );
-    await this.deps.getPlanService()?.syncLivePlanState('snapshot_refresh');
+    const canSettleBinaryByDeviceId = getSnapshotCanSettleBinaryByDeviceId(deviceManager);
+    await this.deps.getPlanService()?.syncLivePlanState(
+      'snapshot_refresh',
+      canSettleBinaryByDeviceId ? { canSettleBinaryByDeviceId } : undefined,
+    );
     this.deps.getPlanService()?.syncHeadroomCardState({
       devices: snapshot,
       cleanupMissingDevices: true,

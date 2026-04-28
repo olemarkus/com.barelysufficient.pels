@@ -386,6 +386,7 @@ export function syncPendingBinaryCommands(params: {
   state: PlanEngineState;
   liveDevices: PlanInputDevice[];
   source: PendingTargetObservationSource;
+  canSettleBinaryByDeviceId?: ReadonlyMap<string, boolean>;
   logDebug: (message: string) => void;
   onConfirmed?: (params: {
     deviceId: string;
@@ -399,6 +400,7 @@ export function syncPendingBinaryCommands(params: {
     state,
     liveDevices,
     source,
+    canSettleBinaryByDeviceId,
     logDebug,
     onConfirmed,
   } = params;
@@ -424,6 +426,9 @@ export function syncPendingBinaryCommands(params: {
       continue;
     }
     if (!liveDevice) continue;
+    if (canSettleBinaryByDeviceId?.get(deviceId) === false) {
+      continue;
+    }
 
     const observedValue = getObservedBinaryValue(liveDevice, pending.capabilityId);
     if (observedValue === pending.desired) {

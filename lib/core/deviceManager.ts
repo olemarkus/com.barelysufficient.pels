@@ -75,7 +75,10 @@ import {
     isDevicePowerCapable,
     parseDevice,
     parseDeviceList,
+    parseDeviceListWithControlObservations,
+    parseDeviceWithControlObservation,
     type DeviceManagerParseProviders,
+    type ParsedDeviceResult,
 } from './deviceManagerParseDevice';
 import {
     buildNativeEvObservationDevice,
@@ -105,6 +108,13 @@ export type { DeviceDebugObservedSource, DeviceDebugObservedSources } from './de
 const createEstimateDecisionLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
 const createPeakPowerLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
 const buildEmptyLivePowerReport = (): LivePowerReport => ({ byDeviceId: {}, homePowerW: null });
+const buildCanSettleBinaryMap = (parsedResults: ParsedDeviceResult[]): Map<string, boolean> => new Map(
+    parsedResults.flatMap((result) => (
+        result.snapshot
+            ? [[result.snapshot.id, result.controlObservation.canSettleBinary] as const]
+            : []
+    )),
+);
 
 type DeviceManagerPowerState = PowerEstimateState & {
     lastPositiveMeasuredPowerKw?: Record<string, { kw: number; ts: number }>;
@@ -130,6 +140,7 @@ export class DeviceManager extends EventEmitter {
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
     private binarySettleState: DeviceManagerBinarySettleState = createBinarySettleState();
     private observationState: DeviceManagerObservationState = createObservationState();
+    private latestSnapshotCanSettleBinaryByDeviceId: Map<string, boolean> = new Map();
     private recentRealtimeCapabilityEventLogByKey: Map<string, number> = new Map();
     private lastSnapshotRefreshMetricsKey: string | null = null;
     private providers: DeviceManagerParseProviders = {};
@@ -597,6 +608,9 @@ export class DeviceManager extends EventEmitter {
             recentLocalCapabilityWrites: this.recentLocalCapabilityWrites,
             shouldTrackRealtimeDevice: (deviceId) => this.shouldTrackRealtimeDevice(deviceId),
             parseDevice: (nextDevice, nowTs) => this.parseDevice(nextDevice, nowTs, {}),
+            parseDeviceWithControlObservation: (nextDevice, nowTs) => (
+                this.parseDeviceWithControlObservation(nextDevice, nowTs, {})
+            ),
             minSignificantPowerW: MIN_SIGNIFICANT_POWER_W,
             recordObservedCapabilities: (nextDeviceId, capabilityIds) => {
                 recordSnapshotCapabilityObservations({
@@ -667,6 +681,9 @@ export class DeviceManager extends EventEmitter {
     }
 
     getSnapshot(): TargetDeviceSnapshot[] { return this.latestSnapshot; }
+    getLatestSnapshotCanSettleBinaryByDeviceId(): ReadonlyMap<string, boolean> {
+        return this.latestSnapshotCanSettleBinaryByDeviceId;
+    }
     getHomePowerW(): number | null { return this.latestHomePowerW; }
     async pollHomePowerW(): Promise<number | null> {
         return this.updateHomePowerFromReport(await this.fetchLivePowerReport());
@@ -770,7 +787,11 @@ export class DeviceManager extends EventEmitter {
             const effectiveList = list.map((device) => this.applyDeviceDriverOverride(device));
             syncNativeSteppedLoadCommandAdapters({ owner: this, devices: effectiveList,
                 shouldTrackDevice: (deviceId) => this.shouldTrackRealtimeDevice(deviceId) });
-            const snapshot = this.parseDeviceList(effectiveList, livePowerReport.byDeviceId);
+            const snapshot = this.parseSnapshotRefreshResults({
+                devices: effectiveList,
+                livePowerWByDeviceId: livePowerReport.byDeviceId,
+                previousSnapshot,
+            });
             mergeFresherCapabilityObservations({
                 state: this.observationState,
                 previousSnapshot,
@@ -1080,12 +1101,68 @@ export class DeviceManager extends EventEmitter {
         return parseDeviceList({ list, livePowerWByDeviceId, deps: this.getParseDeviceDeps() });
     }
 
+    private parseDeviceListWithControlObservations(
+        list: HomeyDeviceLike[],
+        livePowerWByDeviceId: LiveDevicePowerWatts = {},
+    ): ParsedDeviceResult[] {
+        return parseDeviceListWithControlObservations({ list, livePowerWByDeviceId, deps: this.getParseDeviceDeps() });
+    }
+
     private parseDevice(
         device: HomeyDeviceLike,
         now: number,
         livePowerWByDeviceId: LiveDevicePowerWatts,
     ): TargetDeviceSnapshot | null {
         return parseDevice({ device, now, livePowerWByDeviceId, deps: this.getParseDeviceDeps() });
+    }
+
+    private parseDeviceWithControlObservation(
+        device: HomeyDeviceLike,
+        now: number,
+        livePowerWByDeviceId: LiveDevicePowerWatts,
+    ): ParsedDeviceResult {
+        return parseDeviceWithControlObservation({
+            device,
+            now,
+            livePowerWByDeviceId,
+            deps: this.getParseDeviceDeps(),
+        });
+    }
+
+    private parseSnapshotRefreshResults(params: {
+        devices: HomeyDeviceLike[];
+        livePowerWByDeviceId: LiveDevicePowerWatts;
+        previousSnapshot: TargetDeviceSnapshot[];
+    }): TargetDeviceSnapshot[] {
+        const parsedResults = this.parseDeviceListWithControlObservations(
+            params.devices,
+            params.livePowerWByDeviceId,
+        );
+        this.latestSnapshotCanSettleBinaryByDeviceId = buildCanSettleBinaryMap(parsedResults);
+        return this.buildSnapshotFromParsedResults({
+            parsedResults,
+            previousSnapshot: params.previousSnapshot,
+        });
+    }
+
+    private buildSnapshotFromParsedResults(params: {
+        parsedResults: ParsedDeviceResult[];
+        previousSnapshot: TargetDeviceSnapshot[];
+    }): TargetDeviceSnapshot[] {
+        const previousById = new Map(params.previousSnapshot.map((device) => [device.id, device]));
+        return params.parsedResults.flatMap((result) => {
+            const snapshot = result.snapshot;
+            if (!snapshot) return [];
+            if (result.controlObservation.valid) return [snapshot];
+            const previous = previousById.get(snapshot.id);
+            if (!previous) return [snapshot];
+            snapshot.currentOn = previous.currentOn;
+            if (snapshot.controlCapabilityId === 'evcharger_charging') {
+                snapshot.evCharging = previous.evCharging;
+                snapshot.evChargingState = previous.evChargingState;
+            }
+            return [snapshot];
+        });
     }
 
     private getParseDeviceDeps() {
