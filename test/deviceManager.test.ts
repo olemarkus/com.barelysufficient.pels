@@ -96,7 +96,10 @@ describe('DeviceManager', () => {
     describe('init', () => {
         it('marks SDK ready and logs initialization when checks pass', async () => {
             await deviceManager.init();
-            expect(loggerMock.log).toHaveBeenCalledWith(expect.stringContaining('initialized'));
+            expect(loggerMock.structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+                component: 'devices',
+                event: 'device_api_initialized',
+            }));
         });
 
         it('skips initialization if api is missing', async () => {

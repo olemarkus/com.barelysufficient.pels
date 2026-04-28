@@ -6,7 +6,7 @@ import {
 } from '../lib/core/deviceManagerBinarySettle';
 
 describe('deviceManagerBinarySettle device identity hygiene', () => {
-  it('omits deviceName when a binary settle window starts without a known label', () => {
+  it('does not emit a duplicate lifecycle log when a binary settle window starts', () => {
     vi.useFakeTimers();
     const info = vi.fn();
     const state = createBinarySettleState();
@@ -27,13 +27,7 @@ describe('deviceManagerBinarySettle device identity hygiene', () => {
         value: true,
       });
 
-      expect(info).toHaveBeenCalledWith({
-        event: 'binary_write_started',
-        deviceId: 'dev-1',
-        capabilityId: 'onoff',
-        desired: true,
-        settleWindowMs: 5_000,
-      });
+      expect(info).not.toHaveBeenCalled();
     } finally {
       clearAllPendingBinarySettleWindows(state);
       vi.useRealTimers();

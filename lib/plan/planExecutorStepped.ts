@@ -250,16 +250,12 @@ const logSteppedLoadRestoreAttemptSkip = (
   params: {
     dev: PlanDevice;
     mode: PlanActuationMode;
-    deviceName: string;
-    desiredStepId?: string;
     matchingRestoreAttempt: NonNullable<ReturnType<typeof resolveSteppedRestoreAttemptState>>;
   },
 ): false => {
   const {
     dev,
     mode,
-    deviceName,
-    desiredStepId,
     matchingRestoreAttempt,
   } = params;
   return logSteppedLoadRestoreSkip(ctx, {
@@ -268,12 +264,7 @@ const logSteppedLoadRestoreAttemptSkip = (
     reasonCode: matchingRestoreAttempt.status === 'awaiting_confirmation'
       ? 'waiting_for_confirmation'
       : 'retry_backoff',
-    logMessage:
-      matchingRestoreAttempt.status === 'awaiting_confirmation'
-        ? `Capacity: skip stepped-load restore for ${deviceName}, `
-          + `awaiting confirmation of ${desiredStepId ?? 'unknown'}`
-        : `Capacity: skip stepped-load restore for ${deviceName}, `
-          + `retry backoff for ${desiredStepId ?? 'unknown'} remains active`,
+    desiredStepId: matchingRestoreAttempt.requestedStepId,
   });
 };
 
@@ -283,11 +274,11 @@ const maybeSkipSteppedLoadRestoreBinary = (
     dev: PlanDevice;
     snapshot: TargetDeviceSnapshot | undefined;
     mode: PlanActuationMode;
-    deviceName: string;
     matchingRestoreAttempt: ReturnType<typeof resolveSteppedRestoreAttemptState>;
     stepNeedsAdjustment: boolean;
     stepNeedsConfirmation: boolean;
     stepViolated: boolean;
+    desiredStepId?: string;
     preRestoreStepIssued?: boolean;
   },
 ): false | null => {
@@ -295,11 +286,11 @@ const maybeSkipSteppedLoadRestoreBinary = (
     dev,
     snapshot,
     mode,
-    deviceName,
     matchingRestoreAttempt,
     stepNeedsAdjustment,
     stepNeedsConfirmation,
     stepViolated,
+    desiredStepId,
     preRestoreStepIssued,
   } = params;
   if (!snapshot) {
@@ -307,7 +298,6 @@ const maybeSkipSteppedLoadRestoreBinary = (
       dev,
       mode,
       reasonCode: 'missing_snapshot',
-      logMessage: `Capacity: skip stepped-load restore for ${deviceName}, no snapshot available`,
     });
   }
   if (!canTurnOnDevice(snapshot)) {
@@ -315,7 +305,6 @@ const maybeSkipSteppedLoadRestoreBinary = (
       dev,
       mode,
       reasonCode: 'not_setable',
-      logMessage: `Capacity: skip stepped-load restore for ${deviceName}, cannot turn on from current snapshot`,
     });
   }
   if (ctx.state.pendingRestores.has(dev.id)) {
@@ -323,7 +312,6 @@ const maybeSkipSteppedLoadRestoreBinary = (
       dev,
       mode,
       reasonCode: 'already_in_progress',
-      logMessage: `Capacity: skip stepped-load restore for ${deviceName}, already in progress`,
     });
   }
   if (snapshot.currentOn === false && stepNeedsConfirmation) {
@@ -331,9 +319,9 @@ const maybeSkipSteppedLoadRestoreBinary = (
       dev,
       mode,
       reasonCode: 'pre_restore_step_required',
-      logMessage:
-        `Capacity: skip stepped-load restore for ${deviceName}, `
-        + `assumed step ${dev.assumedStepId ?? 'unknown'} must be confirmed before binary restore`,
+      skipDetailCode: 'assumed_step_pending_confirmation',
+      desiredStepId,
+      assumedStepId: dev.assumedStepId,
     });
   }
   if (
@@ -346,9 +334,8 @@ const maybeSkipSteppedLoadRestoreBinary = (
       dev,
       mode,
       reasonCode: 'pre_restore_step_required',
-      logMessage:
-        `Capacity: skip stepped-load restore for ${deviceName}, `
-        + 'required pre-restore step command was not issued',
+      skipDetailCode: 'pre_restore_step_command_not_issued',
+      desiredStepId,
     });
   }
   if (snapshot.currentOn !== false && !stepNeedsAdjustment) {
@@ -356,9 +343,6 @@ const maybeSkipSteppedLoadRestoreBinary = (
       dev,
       mode,
       reasonCode: 'no_keep_violation',
-      logMessage:
-        `Capacity: skip stepped-load restore for ${deviceName}, `
-        + 'no keep violations detected',
     });
   }
   return null;
@@ -382,7 +366,6 @@ export const applySteppedLoadRestore = async (
       dev,
       mode,
       reasonCode: 'planned_state',
-      logMessage: `Capacity: skip stepped-load restore for ${name}, plannedState is ${dev.plannedState}`,
     });
   }
   if (!allowsSteppedLoadKeepInvariantRestore(dev.reason)) {
@@ -390,7 +373,7 @@ export const applySteppedLoadRestore = async (
       dev,
       mode,
       reasonCode: 'restore_not_admitted',
-      logMessage: `Capacity: skip stepped-load restore for ${name}, reason is ${dev.reason.code}`,
+      blockedByPlanReasonCode: dev.reason.code,
     });
   }
   const {
@@ -406,8 +389,6 @@ export const applySteppedLoadRestore = async (
     return logSteppedLoadRestoreAttemptSkip(ctx, {
       dev,
       mode,
-      deviceName: name,
-      desiredStepId,
       matchingRestoreAttempt,
     });
   }
@@ -422,9 +403,6 @@ export const applySteppedLoadRestore = async (
       dev,
       mode,
       reasonCode: 'no_keep_violation',
-      logMessage:
-        `Capacity: skip stepped-load restore for ${name}, `
-        + 'no keep violations detected',
     });
   }
   const stepViolated = effectiveCurrentOn === false && stepNeedsAdjustment;
@@ -438,11 +416,11 @@ export const applySteppedLoadRestore = async (
     dev,
     snapshot,
     mode,
-    deviceName: name,
     matchingRestoreAttempt,
     stepNeedsAdjustment,
     stepNeedsConfirmation,
     stepViolated,
+    desiredStepId,
     preRestoreStepIssued: options.preRestoreStepIssued,
   });
   if (binaryRestoreSkip === false) return false;
@@ -787,19 +765,35 @@ const logSteppedLoadRestoreSkip = (
       | 'not_setable'
       | 'already_in_progress'
       | 'pre_restore_step_required';
-    logMessage: string;
+    skipDetailCode?:
+      | 'assumed_step_pending_confirmation'
+      | 'pre_restore_step_command_not_issued';
+    blockedByPlanReasonCode?: DeviceReason['code'];
+    desiredStepId?: string;
+    assumedStepId?: string;
   },
 ): false => {
-  const { dev, mode, reasonCode, logMessage } = params;
+  const {
+    dev,
+    mode,
+    reasonCode,
+    skipDetailCode,
+    blockedByPlanReasonCode,
+    desiredStepId,
+    assumedStepId,
+  } = params;
   ctx.debugStructured?.({
     event: 'restore_command_skipped',
     reasonCode,
+    ...(skipDetailCode ? { skipDetailCode } : {}),
+    ...(blockedByPlanReasonCode ? { blockedByPlanReasonCode } : {}),
+    ...(desiredStepId ? { desiredStepId } : {}),
+    ...(assumedStepId ? { assumedStepId } : {}),
     deviceId: dev.id,
     deviceName: dev.name,
     logContext: 'capacity',
     actuationMode: mode,
   });
-  ctx.logDebug(logMessage);
   return false;
 };
 

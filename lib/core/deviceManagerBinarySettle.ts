@@ -99,14 +99,6 @@ export function startPendingBinarySettleWindow(params: {
         desired: value,
         timer,
     });
-    deps.logger.structuredLog?.info?.({
-        event: 'binary_write_started',
-        deviceId,
-        ...buildBinarySettleDeviceNameFields(deviceName),
-        capabilityId,
-        desired: value,
-        settleWindowMs: LOCAL_BINARY_SETTLE_WINDOW_MS,
-    });
 }
 
 export function notePendingBinarySettleObservation(params: {

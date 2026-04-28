@@ -1,6 +1,5 @@
 import {
   buildPlanCapacityStateSummary,
-  buildPlanChangeLines,
   buildPlanDebugSummaryEvent,
   buildPlanDebugSummarySignatureFromEvent,
   buildPlanSignature,
@@ -13,110 +12,6 @@ const KEEP_REASON = r('keep')!;
 const CAPACITY_REASON = r('shed due to capacity')!;
 
 describe('plan logging helpers', () => {
-  it('formats restore hints with power and headroom context', () => {
-    const plan = {
-      meta: { headroomKw: 1.2 },
-      devices: [
-        {
-          id: 'dev-1',
-          name: 'Heater',
-          plannedState: 'keep',
-          plannedTarget: 21,
-          currentState: 'off',
-          currentTarget: 20,
-          powerKw: 1.5,
-          reason: r('restore (need 1.50kW, headroom unknownkW)'),
-        },
-      ],
-    } as unknown as DevicePlan;
-
-    const lines = buildPlanChangeLines(plan);
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain('restoring, needs ~1.50kW vs headroom 1.20kW');
-    expect(lines[0]).toContain('power off -> on');
-  });
-
-  it('handles uncontrollable devices and null targets', () => {
-    const plan = {
-      meta: { headroomKw: null },
-      devices: [
-        {
-          id: 'same',
-          name: 'Same',
-          plannedState: 'keep',
-          plannedTarget: 'eco',
-          currentState: 'on',
-          currentTarget: 'eco',
-          controllable: false,
-          reason: KEEP_REASON,
-        },
-        {
-          id: 'diff',
-          name: 'Diff',
-          plannedState: 'keep',
-          plannedTarget: 'comfort',
-          currentState: 'on',
-          currentTarget: null,
-          controllable: false,
-          reason: r('manual'),
-        },
-      ],
-    } as unknown as DevicePlan;
-
-    const lines = buildPlanChangeLines(plan);
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain('temp –° -> comfort°');
-    expect(lines[0]).toContain('power on -> on');
-  });
-
-  it('formats shed actions and sorts by priority/name', () => {
-    const plan = {
-      meta: { headroomKw: null },
-      devices: [
-        {
-          id: 'temp-no-target',
-          name: 'Zeta',
-          plannedState: 'shed',
-          plannedTarget: null,
-          currentState: 'on',
-          currentTarget: 18,
-          shedAction: 'set_temperature',
-          priority: 2,
-          reason: CAPACITY_REASON,
-        },
-        {
-          id: 'off',
-          name: 'Beta',
-          plannedState: 'shed',
-          plannedTarget: null,
-          currentState: 'on',
-          currentTarget: null,
-          shedAction: 'turn_off',
-          priority: 1,
-          reason: CAPACITY_REASON,
-        },
-        {
-          id: 'temp',
-          name: 'Alpha',
-          plannedState: 'shed',
-          plannedTarget: 18,
-          currentState: 'on',
-          currentTarget: { mode: 'eco' },
-          shedAction: 'set_temperature',
-          priority: 1,
-          reason: CAPACITY_REASON,
-        },
-      ],
-    } as unknown as DevicePlan;
-
-    const lines = buildPlanChangeLines(plan);
-    expect(lines).toHaveLength(3);
-    expect(lines[0].startsWith('Alpha:')).toBe(true);
-    expect(lines[0]).toContain('set temp 18°');
-    expect(lines[1]).toContain('power on -> off');
-    expect(lines[2]).toContain('set temp');
-  });
-
   it('builds a deterministic plan signature', () => {
     const plan = {
       meta: { headroomKw: 0 },
@@ -136,79 +31,6 @@ describe('plan logging helpers', () => {
     const signature = buildPlanSignature(plan);
     expect(signature).toContain('dev-1');
     expect(signature).toContain('plannedState');
-  });
-
-  it('falls back to default power and sort keys when missing', () => {
-    const plan = {
-      meta: { headroomKw: 0.5 },
-      devices: [
-        {
-          id: 'fallback',
-          name: '',
-          plannedState: 'keep',
-          plannedTarget: null,
-          currentState: 'off',
-          currentTarget: null,
-          reason: KEEP_REASON,
-        },
-        {
-          id: 'other',
-          name: 'Other',
-          plannedState: 'keep',
-          plannedTarget: null,
-          currentState: 'off',
-          currentTarget: null,
-          reason: KEEP_REASON,
-        },
-      ],
-    } as unknown as DevicePlan;
-
-    const lines = buildPlanChangeLines(plan);
-    expect(lines[0]).toContain('needs ~1.00kW');
-  });
-
-  it('does not model non-onoff devices as power restore transitions', () => {
-    const plan = {
-      meta: { headroomKw: 0.8 },
-      devices: [
-        {
-          id: 'temp-only',
-          name: 'Temp Only',
-          plannedState: 'keep',
-          plannedTarget: 21,
-          currentState: 'not_applicable',
-          currentTarget: 16,
-          shedAction: 'set_temperature',
-          shedTemperature: 16,
-          reason: r('keep'),
-        },
-      ],
-    } as unknown as DevicePlan;
-
-    const lines = buildPlanChangeLines(plan);
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain('power n/a -> n/a');
-    expect(lines[0]).not.toContain('unknown -> on');
-  });
-
-  it('does not model inactive EV devices as restore transitions', () => {
-    const plan = {
-      meta: { headroomKw: 3.2 },
-      devices: [
-        {
-          id: 'ev-1',
-          name: 'EV Charger',
-          plannedState: 'inactive',
-          plannedTarget: null,
-          currentState: 'off',
-          currentTarget: null,
-          reason: r('inactive (charger is unplugged)'),
-        },
-      ],
-    } as unknown as DevicePlan;
-
-    const lines = buildPlanChangeLines(plan);
-    expect(lines).toEqual([]);
   });
 
   it('builds capacity state summary counts with stable zero fields', () => {
