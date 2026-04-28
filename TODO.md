@@ -35,6 +35,14 @@ file.
       rather than intent. The broader signal — that planner `plannedState`, reason codes, stepped
       desired-step fields, and executor guards are too coupled — is still present.
       Files: `lib/plan/planExecutorStepped.ts`, stepped restore/hold tests.
+- [ ] Separate "command requested" from concrete device writes in plan actuation outcomes.
+      Context: stepped-load flow/native command requests currently return through the same
+      `deviceWriteCount` / `appliedActions` surface as direct binary or target writes, but the
+      current counters only represent concrete device writes. This can make rebuild summaries look
+      like no actuation happened even when PELS requested a stepped-load command. Add explicit
+      command-request counters or richer actuation result fields before changing refresh/logging
+      behavior.
+      Files: `lib/plan/planExecutor.ts`, `lib/plan/planService.ts`, stepped-load actuation tests.
 - [ ] Normalize comparable `restoreNeed` / `insufficientHeadroom` kW fields so small
       admission-metric jitter does not churn detail signatures, overview transitions, or restore
       debug dedupe while the device remains in the same restore-admission posture.
