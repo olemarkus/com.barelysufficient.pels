@@ -518,8 +518,14 @@ export class DeviceManager extends EventEmitter {
         value: boolean,
         changes: NonNullable<PlanRealtimeUpdateEvent['changes']>,
     ): boolean {
+        const snapshot = this.latestSnapshot[snapshotIndex];
+        const previousCurrentOn = snapshot.currentOn;
         // Check the settle window before the equality check so a confirmation
         // observation (value === currentOn) can still settle it.
+        const hasSettleWindow = hasPendingBinarySettleWindow(this.binarySettleState, deviceId, capabilityId);
+        if (hasSettleWindow) {
+            this.applyBinaryObservationToSnapshot(snapshot, capabilityId, value);
+        }
         const settleOutcome = notePendingBinarySettleObservation({
             state: this.binarySettleState,
             deps: this.getBinarySettleDeps(),
@@ -529,16 +535,6 @@ export class DeviceManager extends EventEmitter {
             source: 'realtime_capability',
         });
         if (settleOutcome !== 'none') {
-            // Update snapshot to reflect the actual device state in both cases.
-            if (capabilityId === 'evcharger_charging') {
-                this.latestSnapshot[snapshotIndex].evCharging = value;
-                this.latestSnapshot[snapshotIndex].currentOn = resolveEvCurrentOn({
-                    evChargingState: this.latestSnapshot[snapshotIndex].evChargingState,
-                    evchargerCharging: value,
-                });
-            } else {
-                this.latestSnapshot[snapshotIndex].currentOn = value;
-            }
             // Record the observation so freshness tracking advances even for settle events.
             recordSnapshotCapabilityObservations({
                 state: this.observationState,
@@ -555,16 +551,8 @@ export class DeviceManager extends EventEmitter {
             return true; // reconcile already emitted by settle window on drift; none needed on settle
         }
 
-        const snapshot = this.latestSnapshot[snapshotIndex];
-        const previousCurrentOn = snapshot.currentOn;
-        if (capabilityId === 'evcharger_charging') {
-            this.latestSnapshot[snapshotIndex].evCharging = value;
-            this.latestSnapshot[snapshotIndex].currentOn = resolveEvCurrentOn({
-                evChargingState: snapshot.evChargingState,
-                evchargerCharging: value,
-            });
-        } else {
-            this.latestSnapshot[snapshotIndex].currentOn = value;
+        if (!hasSettleWindow) {
+            this.applyBinaryObservationToSnapshot(snapshot, capabilityId, value);
         }
         if (snapshot.currentOn === previousCurrentOn) return false;
         changes.push({
@@ -573,6 +561,23 @@ export class DeviceManager extends EventEmitter {
             nextValue: formatBinaryState(snapshot.currentOn),
         });
         return false;
+    }
+
+    private applyBinaryObservationToSnapshot(
+        snapshot: TargetDeviceSnapshot,
+        capabilityId: string,
+        value: boolean,
+    ): void {
+        const mutableSnapshot = snapshot;
+        if (capabilityId === 'evcharger_charging') {
+            mutableSnapshot.evCharging = value;
+            mutableSnapshot.currentOn = resolveEvCurrentOn({
+                evChargingState: mutableSnapshot.evChargingState,
+                evchargerCharging: value,
+            });
+            return;
+        }
+        mutableSnapshot.currentOn = value;
     }
 
     private readonly handleRealtimeDeviceUpdate = (device: HomeyDeviceLike): void => {

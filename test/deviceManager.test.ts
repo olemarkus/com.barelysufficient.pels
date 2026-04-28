@@ -1247,6 +1247,72 @@ describe('DeviceManager', () => {
             }));
         });
 
+        it('updates observed state before emitting drift for contradictory realtime onoff during binary settle', async () => {
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        onoff: { value: true, id: 'onoff' },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+            await deviceManager.setCapability('dev1', 'onoff', false);
+
+            const currentOnAtReconcile: unknown[] = [];
+            const realtimeListener = vi.fn(() => {
+                currentOnAtReconcile.push(deviceManager.getSnapshot()[0]?.currentOn);
+            });
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+            deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', true);
+
+            expect(realtimeListener).toHaveBeenCalledOnce();
+            expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
+                deviceId: 'dev1',
+                name: 'Heater',
+                capabilityId: 'onoff',
+                changes: [{ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' }],
+            }));
+            expect(currentOnAtReconcile).toEqual([true]);
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                currentOn: true,
+            }));
+        });
+
+        it('settles matching realtime onoff confirmations without reconcile loops', async () => {
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        onoff: { value: true, id: 'onoff' },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+            await deviceManager.setCapability('dev1', 'onoff', false);
+
+            const realtimeListener = vi.fn();
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+            deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
+
+            expect(realtimeListener).not.toHaveBeenCalled();
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                currentOn: false,
+            }));
+        });
+
         it('stops preserving the local off-state after settle timeout so a later non-boolean device.update re-synthesizes the default on-state', async () => {
             vi.useFakeTimers();
             try {
