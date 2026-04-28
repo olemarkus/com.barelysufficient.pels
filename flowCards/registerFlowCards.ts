@@ -30,6 +30,9 @@ import {
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 import { parseFlowPowerInput, registerFlowBackedDeviceCards } from './flowBackedDeviceCards';
 
+const STEPPED_LOAD_POWER_CEILING_MARGIN_RATIO = 0.05;
+const STEPPED_LOAD_POWER_CEILING_MARGIN_MAX_W = 150;
+
 type DeviceArg = RawFlowDeviceArg;
 
 export type FlowCardDeps = {
@@ -403,24 +406,92 @@ async function resolveSteppedLoadStepIdFromPowerInput(params: {
   }
   const device = await getSteppedLoadDeviceSnapshot(deps, deviceId);
   const steps = device?.steppedLoadProfile?.steps ?? [];
-  const matches = steps.filter((step) => Math.round(step.planningPowerW) === powerW);
-  if (matches.length === 0) {
+  const resolvedStep = resolveSteppedLoadStepFromPower(steps, powerW);
+  if (!resolvedStep) {
     throw createSteppedLoadReportError(
       'no_matching_step',
-      `No configured stepped-load step matches ${powerW} W.`,
+      buildNoMatchingSteppedLoadPowerMessage(steps, powerW),
     );
   }
-  if (matches.length > 1) {
+  if (resolvedStep === 'ambiguous') {
     throw createSteppedLoadReportError(
       'multiple_matching_steps',
       `Multiple configured stepped-load steps match ${powerW} W. Report the step directly instead.`,
     );
   }
   return {
-    stepId: matches[0].id,
+    stepId: resolvedStep.id,
     deviceName: device.name.trim(),
     parsedPowerW: powerW,
   };
+}
+
+function resolveSteppedLoadStepFromPower(
+  steps: Array<{ id: string; planningPowerW: number }>,
+  powerW: number,
+): { id: string } | 'ambiguous' | null {
+  const roundedSteps = steps.map((step) => ({
+    step,
+    roundedPowerW: Math.round(step.planningPowerW),
+  }));
+  const exactMatches = roundedSteps.filter(({ roundedPowerW }) => roundedPowerW === powerW);
+  if (exactMatches.length === 1) return exactMatches[0].step;
+  if (exactMatches.length > 1) return 'ambiguous';
+
+  const ceilingMatches = roundedSteps
+    .filter(({ roundedPowerW }) => {
+      const deficitW = roundedPowerW - powerW;
+      return deficitW >= 0 && deficitW <= getSteppedLoadPowerCeilingMarginW(roundedPowerW);
+    })
+    .sort((left, right) => (
+      left.roundedPowerW - right.roundedPowerW || left.step.id.localeCompare(right.step.id)
+    ));
+  if (ceilingMatches.length === 0) return null;
+
+  const nearestCeilingPowerW = ceilingMatches[0].roundedPowerW;
+  const nearestMatches = ceilingMatches.filter(({ roundedPowerW }) => roundedPowerW === nearestCeilingPowerW);
+  if (nearestMatches.length > 1) return 'ambiguous';
+
+  return nearestMatches[0].step;
+}
+
+function getSteppedLoadPowerCeilingMarginW(stepPowerW: number): number {
+  return Math.min(
+    STEPPED_LOAD_POWER_CEILING_MARGIN_MAX_W,
+    Math.max(0, stepPowerW * STEPPED_LOAD_POWER_CEILING_MARGIN_RATIO),
+  );
+}
+
+function buildNoMatchingSteppedLoadPowerMessage(
+  steps: Array<{ id: string; planningPowerW: number }>,
+  powerW: number,
+): string {
+  const roundedSteps = steps
+    .map((step) => ({ step, roundedPowerW: Math.round(step.planningPowerW) }))
+    .sort((left, right) => (
+      left.roundedPowerW - right.roundedPowerW || left.step.id.localeCompare(right.step.id)
+    ));
+  const closestUpward = roundedSteps.find(({ roundedPowerW }) => roundedPowerW >= powerW);
+  if (closestUpward) {
+    const marginW = getSteppedLoadPowerCeilingMarginW(closestUpward.roundedPowerW);
+    const deficitW = closestUpward.roundedPowerW - powerW;
+    return `No configured stepped-load step matches ${powerW} W. `
+      + `Closest upward step is '${closestUpward.step.id}' at ${closestUpward.roundedPowerW} W, `
+      + `with an allowed margin of ${formatWattsForMessage(marginW)} W below the step; `
+      + `this report is ${formatWattsForMessage(deficitW)} W below.`;
+  }
+
+  const highest = roundedSteps.at(-1);
+  if (highest) {
+    return `No configured stepped-load step matches ${powerW} W. `
+      + `No upward step exists; highest configured step is '${highest.step.id}' at ${highest.roundedPowerW} W.`;
+  }
+
+  return `No configured stepped-load step matches ${powerW} W. No configured steps are available.`;
+}
+
+function formatWattsForMessage(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 async function getBestEffortSteppedLoadDeviceName(

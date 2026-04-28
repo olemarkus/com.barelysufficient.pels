@@ -551,6 +551,46 @@ describe('registerFlowCards', () => {
     }));
   });
 
+  it('maps nearby lower power reports to the nearest configured upward step within margin', async () => {
+    const { deps, actionListeners } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1250 },
+              { id: 'medium', planningPowerW: 1750 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_power({
+      device: 'dev-1',
+      power_w: '1193 W',
+    })).resolves.toBe(true);
+    await expect(actionListeners.report_stepped_load_power({
+      device: 'dev-1',
+      power_w: '1671 W',
+    })).resolves.toBe(true);
+    await expect(actionListeners.report_stepped_load_power({
+      device: 'dev-1',
+      power_w: '2865 W',
+    })).resolves.toBe(true);
+
+    expect(deps.reportSteppedLoadActualStep).toHaveBeenNthCalledWith(1, 'dev-1', 'low');
+    expect(deps.reportSteppedLoadActualStep).toHaveBeenNthCalledWith(2, 'dev-1', 'medium');
+    expect(deps.reportSteppedLoadActualStep).toHaveBeenNthCalledWith(3, 'dev-1', 'max');
+  });
+
   it('logs an explicit rejection when no configured step matches the reported power', async () => {
     const { deps, actionListeners, structuredInfo, structuredWarn } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([
@@ -574,7 +614,9 @@ describe('registerFlowCards', () => {
     await expect(actionListeners.report_stepped_load_power({
       device: 'dev-1',
       power_w: '3000 W',
-    })).rejects.toThrow('No configured stepped-load step matches 3000 W.');
+    })).rejects.toThrow(
+      "No configured stepped-load step matches 3000 W. No upward step exists; highest configured step is 'low' at 1750 W.",
+    );
 
     expect(deps.reportSteppedLoadActualStep).not.toHaveBeenCalled();
     expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
@@ -589,7 +631,49 @@ describe('registerFlowCards', () => {
       deviceId: 'dev-1',
       rawPowerInput: '3000 W',
       reasonCode: 'no_matching_step',
-      errorMessage: 'No configured stepped-load step matches 3000 W.',
+      errorMessage: "No configured stepped-load step matches 3000 W. No upward step exists; highest configured step is 'low' at 1750 W.",
+    }));
+  });
+
+  it('rejects upward step matches outside the allowed margin and includes the closest upward step', async () => {
+    const { deps, actionListeners, structuredWarn } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1250 },
+              { id: 'medium', planningPowerW: 1750 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_power({
+      device: 'dev-1',
+      power_w: '1662 W',
+    })).rejects.toThrow(
+      "No configured stepped-load step matches 1662 W. Closest upward step is 'medium' at 1750 W, "
+      + 'with an allowed margin of 87.5 W below the step; this report is 88 W below.',
+    );
+
+    expect(deps.reportSteppedLoadActualStep).not.toHaveBeenCalled();
+    expect(structuredWarn).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_rejected',
+      sourceCardId: 'report_stepped_load_power',
+      deviceId: 'dev-1',
+      rawPowerInput: '1662 W',
+      reasonCode: 'no_matching_step',
+      errorMessage: "No configured stepped-load step matches 1662 W. Closest upward step is 'medium' at 1750 W, "
+        + 'with an allowed margin of 87.5 W below the step; this report is 88 W below.',
     }));
   });
 
