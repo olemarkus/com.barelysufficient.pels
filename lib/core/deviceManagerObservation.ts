@@ -8,7 +8,10 @@ import type { HomeyDeviceLike, TargetDeviceSnapshot } from '../utils/types';
 import type { HandleRealtimeDeviceUpdateResult } from './deviceManagerRealtimeHandlers';
 import type { DeviceFetchSource } from './deviceManagerFetch';
 import { getDeviceId } from './deviceManagerHelpers';
-import { resolveEvCurrentOn } from './deviceManagerControl';
+import {
+    resolveEvChargingStateBinaryEvidence,
+    resolveEvCurrentOn,
+} from './deviceManagerControl';
 import {
     EV_SOC_NATIVE_CAPABILITY_IDS,
     isStateOfChargeCapabilityId,
@@ -439,6 +442,7 @@ function mergeSnapshotObservationsForDevice(params: {
         sourceDevice,
         logger,
     });
+    dropRawEvBinaryObservationWhenStatePresent(snapshot, sourceDevice);
 
     const maxRetainedMs = getMaxRetainedObservationTimeMs(state, snapshot);
     if (maxRetainedMs > 0) {
@@ -458,9 +462,34 @@ function preserveBinaryControlObservation(params: {
     const previousObservation = previous.binaryControlObservation;
     const nextObservation = snapshot.binaryControlObservation;
     if (!previousObservation) return;
+    if (previousObservation.capabilityId === 'evcharger_charging' && snapshot.evChargingState !== undefined) {
+        if (!previousObservation.observedCapabilityIds.includes('evcharger_charging_state')) {
+            if (nextObservation?.observedCapabilityIds.includes('evcharger_charging_state')) return;
+            delete snapshot.binaryControlObservation;
+            return;
+        }
+        if (nextObservation && nextObservation.observedAtMs >= previousObservation.observedAtMs) return;
+    }
     if (!nextObservation || nextObservation.observedAtMs < previousObservation.observedAtMs) {
         snapshot.binaryControlObservation = { ...previousObservation };
     }
+}
+
+function dropRawEvBinaryObservationWhenStatePresent(
+    snapshot: TargetDeviceSnapshot,
+    sourceDevice: HomeyDeviceLike,
+): void {
+    const mutableSnapshot = snapshot;
+    if (
+        mutableSnapshot.evChargingState === undefined
+        && sourceDevice.capabilitiesObj?.evcharger_charging_state?.value === undefined
+    ) {
+        return;
+    }
+    const observation = mutableSnapshot.binaryControlObservation;
+    if (!observation || observation.capabilityId !== 'evcharger_charging') return;
+    if (observation.observedCapabilityIds.includes('evcharger_charging_state')) return;
+    delete mutableSnapshot.binaryControlObservation;
 }
 
 function mergeStateOfChargeObservationsForDevice(params: {
@@ -658,6 +687,19 @@ function applyEvChargingStateObservation(
         evChargingState: snapshot.evChargingState,
         evchargerCharging: snapshot.evCharging,
     });
+    const binaryEvidence = resolveEvChargingStateBinaryEvidence(observation.value);
+    if (binaryEvidence !== undefined && observation.source !== 'local_write') {
+        snapshot.binaryControlObservation = {
+            valid: true,
+            capabilityId: 'evcharger_charging',
+            observedValue: binaryEvidence,
+            observedCapabilityIds: ['evcharger_charging_state'],
+            observedAtMs: observation.observedAt,
+            source: observation.source,
+        };
+    } else {
+        delete snapshot.binaryControlObservation;
+    }
     updateStateOfChargeSessionBoundary({
         snapshot,
         evChargingState: observation.value,
