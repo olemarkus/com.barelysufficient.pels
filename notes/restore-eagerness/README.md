@@ -27,6 +27,23 @@ Field behavior still needs monitoring for this narrower case:
 This is no longer the broad "restore logic is wrong" problem from the earlier investigation. It
 is now a calibration and observability problem around delayed power visibility.
 
+## Bounded Restore Batching
+
+PELS may restore more than one binary device in a single planning cycle only when whole-home power
+is fresh and the normal restore gates are otherwise clear. This is intended for recovery after a
+capacity limit or margin increase, where many devices can be shed despite abundant headroom.
+
+Batching is intentionally narrow:
+
+- the first restore still follows the normal admission rule
+- at most three binary restores can be admitted in one cycle
+- cumulative admitted restore need is capped at 50% of the starting available headroom
+- stale whole-home power, startup stabilization, shortfall, overshoot, shed cooldown, and restore
+  cooldown keep the previous one-at-a-time behavior
+- target-based and stepped restores remain conservative unless separately proven safe
+
+After a batch, the normal meter-settling / restore-cooldown behavior still blocks the next cycle.
+
 ## Questions still worth answering
 
 1. Is the remaining overshoot pattern primarily stale whole-home power, device-level ramp delay,

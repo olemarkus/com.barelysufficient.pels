@@ -2031,6 +2031,149 @@ describe('restore admission — headroom and penalty gates', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
+  const freshBatchContext = (headroomKw: number): PlanContext => buildContext({
+    headroomRaw: headroomKw,
+    headroom: headroomKw,
+    powerKnown: true,
+    hasLivePowerSample: true,
+    powerSampleAgeMs: 1_000,
+    powerFreshnessState: 'fresh',
+  } as Partial<PlanContext>);
+
+  const freshBatchDeps = (now: number) => ({
+    ...makeDeps(),
+    powerTracker: { lastTimestamp: now - 1_000 } as PowerTrackerState,
+  });
+
+  const batchDevice = (id: string, priority: number, expectedPowerKw = 0.5) => buildPlanDevice({
+    id,
+    name: id,
+    priority,
+    currentState: 'off',
+    expectedPowerKw,
+    measuredPowerKw: 0,
+  });
+
+  it('admits up to three binary restores when headroom is abundant and power is fresh', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+
+    const result = applyRestorePlan({
+      planDevices: [
+        batchDevice('dev-1', 10),
+        batchDevice('dev-2', 20),
+        batchDevice('dev-3', 30),
+        batchDevice('dev-4', 40),
+      ],
+      context: freshBatchContext(5),
+      state,
+      sheddingActive: false,
+      deps: freshBatchDeps(now),
+    });
+
+    expect(result.restoredThisCycle).toEqual(new Set(['dev-1', 'dev-2', 'dev-3']));
+    expect(result.planDevices.find((d) => d.id === 'dev-1')?.plannedState).toBe('keep');
+    expect(result.planDevices.find((d) => d.id === 'dev-2')?.plannedState).toBe('keep');
+    expect(result.planDevices.find((d) => d.id === 'dev-3')?.plannedState).toBe('keep');
+    const fourth = result.planDevices.find((d) => d.id === 'dev-4');
+    expect(fourth?.plannedState).toBe('shed');
+    expect(reasonText(fourth?.reason)).toBe('meter settling (60s remaining)');
+  });
+
+  it('caps restore batching at half of the starting available headroom', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+
+    const result = applyRestorePlan({
+      planDevices: [
+        batchDevice('dev-1', 10, 1),
+        batchDevice('dev-2', 20, 0.5),
+        batchDevice('dev-3', 30, 0.5),
+      ],
+      context: freshBatchContext(4),
+      state,
+      sheddingActive: false,
+      deps: freshBatchDeps(now),
+    });
+
+    expect(result.restoredThisCycle).toEqual(new Set(['dev-1', 'dev-2']));
+    expect(result.planDevices.find((d) => d.id === 'dev-1')?.plannedState).toBe('keep');
+    expect(result.planDevices.find((d) => d.id === 'dev-2')?.plannedState).toBe('keep');
+    const third = result.planDevices.find((d) => d.id === 'dev-3');
+    expect(third?.plannedState).toBe('shed');
+    expect(reasonText(third?.reason)).toBe('meter settling (60s remaining)');
+  });
+
+  it('keeps one-restore behavior when the whole-home power sample is stale', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+
+    const result = applyRestorePlan({
+      planDevices: [
+        batchDevice('dev-1', 10),
+        batchDevice('dev-2', 20),
+      ],
+      context: buildContext({
+        headroomRaw: 5,
+        headroom: 5,
+        powerKnown: false,
+        hasLivePowerSample: false,
+        powerSampleAgeMs: 61_000,
+        powerFreshnessState: 'stale_hold',
+      } as Partial<PlanContext>),
+      state,
+      sheddingActive: false,
+      deps: {
+        ...makeDeps(),
+        powerTracker: { lastTimestamp: now - 61_000 } as PowerTrackerState,
+      },
+    });
+
+    expect(result.restoredThisCycle).toEqual(new Set(['dev-1']));
+    expect(result.planDevices.find((d) => d.id === 'dev-1')?.plannedState).toBe('keep');
+    const second = result.planDevices.find((d) => d.id === 'dev-2');
+    expect(second?.plannedState).toBe('shed');
+    expect(reasonText(second?.reason)).toBe('meter settling (60s remaining)');
+  });
+
+  it('allows a swap as the first restore and holds later binary restores', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+
+    const result = applyRestorePlan({
+      planDevices: [
+        batchDevice('swap-target', 10, 1),
+        batchDevice('later-restore', 20),
+        buildPlanDevice({
+          id: 'swap-source',
+          name: 'swap-source',
+          priority: 90,
+          currentState: 'on',
+          expectedPowerKw: 2,
+          measuredPowerKw: 2,
+          powerKw: 2,
+        }),
+      ],
+      context: freshBatchContext(0),
+      state,
+      sheddingActive: false,
+      deps: freshBatchDeps(now),
+    });
+
+    expect(result.restoredThisCycle).toEqual(new Set(['swap-target']));
+    expect(result.planDevices.find((d) => d.id === 'swap-target')?.plannedState).toBe('keep');
+    const swapSource = result.planDevices.find((d) => d.id === 'swap-source');
+    expect(swapSource?.plannedState).toBe('shed');
+    expect(reasonText(swapSource?.reason)).toBe('swapped out for swap-target');
+    const laterRestore = result.planDevices.find((d) => d.id === 'later-restore');
+    expect(laterRestore?.plannedState).toBe('shed');
+    expect(reasonText(laterRestore?.reason)).toBe('meter settling (60s remaining)');
+  });
+
   it('admits device when headroom exactly meets base need plus admission reserve plus floor', () => {
     const state = createPlanEngineState();
     // expected=2kW, buffer=0.3kW → needed=2.3kW, plus 0.25kW reserve + 0.25kW floor = 2.80kW
