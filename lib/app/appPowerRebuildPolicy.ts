@@ -3,6 +3,8 @@ import type CapacityGuard from '../core/capacityGuard';
 export type RebuildDecisionState = {
   lastMs: number;
   lastRebuildPowerW?: number;
+  lastHardCapBreached?: boolean;
+  lastHardCapDeficitKw?: number;
   backoffUntilMs?: number;
   mitigationHoldoffUntilMs?: number;
 };
@@ -32,6 +34,7 @@ export type HardCapBreach = {
 
 const MIN_REBUILD_DELTA_W = 100;
 const MIN_REBUILD_DELTA_RATIO = 0.005; // 0.5% of limit
+const MIN_HARD_CAP_DEFICIT_DELTA_KW = 0.001;
 const TIGHT_NOOP_BACKOFF_MS = [15_000, 30_000, 60_000];
 const TIGHT_NOOP_BACKOFF_MAX_MS = 120_000;
 export const TIGHT_MITIGATION_HOLDOFF_MS = 15_000;
@@ -119,18 +122,28 @@ export const resolveRebuildDecision = (params: {
     limitKw,
   });
   const maxIntervalExceeded = maxIntervalMs > 0 && elapsedMs >= maxIntervalMs;
+  const repeatedHardCapBreach = hardCapBreachActive && state.lastHardCapBreached === true;
+  const hardCapDeficitIncreased = hardCapBreachActive
+    && typeof state.lastHardCapDeficitKw === 'number'
+    && (hardCapBreach?.deficitKw ?? 0) > state.lastHardCapDeficitKw + MIN_HARD_CAP_DEFICIT_DELTA_KW;
+  const hardCapBreachShouldRebuild = hardCapBreachActive && (
+    !repeatedHardCapBreach
+    || deltaMeaningful
+    || hardCapDeficitIncreased
+    || maxIntervalExceeded
+  );
   const backoffActive = isTightNoopBackoffActive({
     state,
     nowMs,
     headroomTight,
     isInShortfall,
-    hardCapBreachActive,
+    hardCapBreachActive: hardCapBreachShouldRebuild,
     deltaMeaningful,
   });
   const shouldRebuild = shouldRebuildFromDecision({
     isInitialSample: state.lastMs === 0,
     controlBoundaryActive,
-    hardCapBreachActive,
+    hardCapBreachActive: hardCapBreachShouldRebuild,
     planConvergenceActive,
     isInShortfall,
     backoffActive,
