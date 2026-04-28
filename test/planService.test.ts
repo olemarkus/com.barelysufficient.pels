@@ -3619,6 +3619,79 @@ describe('PlanService', () => {
     expect(schedulePostActuationRefresh).not.toHaveBeenCalled();
   });
 
+  it('retries unchanged stepped-load step-up plans while the reported step is still lower than desired', async () => {
+    const steppedPlan = buildPlan(20, 'stable', {}, {
+      currentState: 'on',
+      plannedState: 'keep',
+      controlModel: 'stepped_load',
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'step_0', planningPowerW: 0 },
+          { id: 'step_1', planningPowerW: 1_200 },
+          { id: 'step_2', planningPowerW: 1_640 },
+        ],
+      },
+      selectedStepId: 'step_1',
+      desiredStepId: 'step_2',
+      currentOn: true,
+    });
+    const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 0 });
+    const planEngine = {
+      buildDevicePlanSnapshot: vi.fn().mockResolvedValue(steppedPlan),
+      computeDynamicSoftLimit: vi.fn(() => 0),
+      computeShortfallThreshold: vi.fn(() => 0),
+      handleShortfall: vi.fn().mockResolvedValue(undefined),
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+      applyPlanActions,
+      applySheddingToDevice: vi.fn().mockResolvedValue(false),
+      shouldApplyStablePlanActions: vi.fn(() => (
+        steppedPlan.devices.some((device) => (
+          device.controlModel === 'stepped_load'
+          && device.plannedState === 'keep'
+          && device.selectedStepId !== device.desiredStepId
+          && device.stepCommandPending !== true
+        ))
+      )),
+    };
+    const service = new PlanService({
+      homey: {
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: planEngine as any,
+      getPlanDevices: () => [{
+        id: 'dev-1',
+        name: 'RovikCharger',
+        targets: [],
+        deviceType: 'onoff',
+        controlModel: 'stepped_load',
+        controlCapabilityId: 'onoff',
+        steppedLoadProfile: steppedPlan.devices[0].steppedLoadProfile,
+        hasBinaryControl: true,
+        currentOn: true,
+        selectedStepId: 'step_1',
+        desiredStepId: 'step_2',
+      }],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+    });
+
+    const firstOutcome = await service.rebuildPlanFromCache('power_delta');
+    const secondOutcome = await service.rebuildPlanFromCache('power_delta');
+
+    expect(firstOutcome.actionChanged).toBe(true);
+    expect(secondOutcome.actionChanged).toBe(false);
+    expect(applyPlanActions).toHaveBeenCalledTimes(2);
+  });
+
   it('calls schedulePostActuationRefresh after reconcile actuation', async () => {
     const schedulePostActuationRefresh = vi.fn();
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);

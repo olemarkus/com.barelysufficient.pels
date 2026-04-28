@@ -1011,6 +1011,42 @@ describe('PlanExecutor stepped loads', () => {
     expect(state.lastRestoreMs).toEqual(expect.any(Number));
   });
 
+  it('marks stable keep step-up intent as actuatable while the selected step remains lower', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(steppedPlan())).toBe(true);
+  });
+
+  it('does not mark stable stepped step-up intent actuatable when restore is not admitted', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(steppedPlan({
+      reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
+    }))).toBe(false);
+  });
+
+  it('does not mark stable stepped step-up intent actuatable while the same command is pending', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(steppedPlan({
+      lastDesiredStepId: 'max',
+      lastStepCommandIssuedAt: Date.now() - 1_000,
+      stepCommandPending: true,
+      stepCommandStatus: 'pending',
+    }))).toBe(false);
+  });
+
+  it('does not mark stable stepped step-up intent actuatable during retry backoff', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(steppedPlan({
+      lastDesiredStepId: 'max',
+      stepCommandPending: false,
+      stepCommandStatus: 'stale',
+      nextStepCommandRetryAtMs: Date.now() + 30_000,
+    }))).toBe(false);
+  });
+
   it('does not wait for stepped-load flow execution before completing apply', async () => {
     const { executor, desiredSteppedTrigger, deps, state } = buildExecutor();
     desiredSteppedTrigger.trigger.mockImplementation(() => new Promise<void>(() => {}));
