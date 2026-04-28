@@ -1,5 +1,9 @@
 import type { Logger, TargetDeviceSnapshot } from '../utils/types';
-import { getCanSetControl, type DeviceCapabilityMap } from './deviceManagerControl';
+import {
+  getCanSetControl,
+  toCapabilityTimestampMs,
+  type DeviceCapabilityMap,
+} from './deviceManagerControl';
 import type { FlowReportedCapabilityId } from './flowReportedCapabilities';
 
 export function resolveParsedControlState(params: {
@@ -66,6 +70,32 @@ export function resolveLastFreshDataMs(params: {
   ) || undefined;
 }
 
+export function resolveBinaryControlObservation(params: {
+  capabilityObj: DeviceCapabilityMap;
+  controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+  controlObservationCapabilityId?: string;
+}): TargetDeviceSnapshot['binaryControlObservation'] {
+  const {
+    capabilityObj,
+    controlCapabilityId,
+    controlObservationCapabilityId,
+  } = params;
+  if (!controlCapabilityId) return undefined;
+  const sourceCapabilityId = controlObservationCapabilityId ?? controlCapabilityId;
+  const sourceCapability = capabilityObj[sourceCapabilityId];
+  const observedAtMs = toCapabilityTimestampMs(sourceCapability?.lastUpdated);
+  if (observedAtMs === undefined) return undefined;
+  const observedValue = sourceCapability?.value;
+  if (typeof observedValue !== 'boolean') return undefined;
+  return {
+    valid: true,
+    capabilityId: controlCapabilityId,
+    observedValue,
+    observedCapabilityIds: [sourceCapabilityId],
+    observedAtMs,
+  };
+}
+
 function resolveSnapshotCurrentOn(params: {
   logger: Logger;
   deviceLabel: string;
@@ -107,14 +137,7 @@ function getTrackedCapabilityLastUpdatedMs(
 ): number | undefined {
   let latest = 0;
   for (const id of trackedIds) {
-    const rawValue = capabilityObj[id]?.lastUpdated;
-    let parsed: number | undefined;
-    if (rawValue instanceof Date) parsed = rawValue.getTime();
-    else if (typeof rawValue === 'number' && Number.isFinite(rawValue)) parsed = rawValue;
-    else if (typeof rawValue === 'string') {
-      const nextParsed = Date.parse(rawValue);
-      if (Number.isFinite(nextParsed)) parsed = nextParsed;
-    }
+    const parsed = toCapabilityTimestampMs(capabilityObj[id]?.lastUpdated);
     if (parsed !== undefined) latest = Math.max(latest, parsed);
   }
   return latest > 0 ? latest : undefined;

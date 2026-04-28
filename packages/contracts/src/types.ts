@@ -47,6 +47,14 @@ export type DeviceStateOfChargeSnapshot = {
     invalidatedAtMs?: number;
 };
 
+export type BinaryControlObservation = {
+    valid: true;
+    capabilityId: 'onoff' | 'evcharger_charging';
+    observedValue: boolean;
+    observedCapabilityIds: string[];
+    observedAtMs: number;
+};
+
 export type TargetDeviceSnapshot = {
     id: string;
     name: string;
@@ -99,6 +107,7 @@ export type TargetDeviceSnapshot = {
     flowBacked?: boolean;
     flowBackedCapabilityIds?: string[];
     canSetControl?: boolean;
+    binaryControlObservation?: BinaryControlObservation;
     available?: boolean;
     lastFreshDataMs?: number;
     lastLocalWriteMs?: number;

@@ -389,6 +389,10 @@ function mergeSnapshotObservationsForDevice(params: {
         previous.lastFreshDataMs ?? 0,
     ) || undefined;
     snapshot.lastUpdated = snapshot.lastFreshDataMs;
+    preserveBinaryControlObservation({
+        previous,
+        snapshot,
+    });
 
     if (snapshot.controlCapabilityId) {
         mergeCapabilityObservation({
@@ -440,6 +444,22 @@ function mergeSnapshotObservationsForDevice(params: {
     if (maxRetainedMs > 0) {
         snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, maxRetainedMs) || undefined;
         snapshot.lastUpdated = snapshot.lastFreshDataMs;
+    }
+}
+
+function preserveBinaryControlObservation(params: {
+    previous: TargetDeviceSnapshot;
+    snapshot: TargetDeviceSnapshot;
+}): void {
+    const {
+        previous,
+        snapshot,
+    } = params;
+    const previousObservation = previous.binaryControlObservation;
+    const nextObservation = snapshot.binaryControlObservation;
+    if (!previousObservation) return;
+    if (!nextObservation || nextObservation.observedAtMs < previousObservation.observedAtMs) {
+        snapshot.binaryControlObservation = { ...previousObservation };
     }
 }
 

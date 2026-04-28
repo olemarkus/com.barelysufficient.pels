@@ -425,14 +425,16 @@ export function syncPendingBinaryCommands(params: {
     }
     if (!liveDevice) continue;
 
-    const observedValue = getObservedBinaryValue(liveDevice, pending.capabilityId);
+    const observation = getSettlingBinaryObservation(liveDevice, pending);
+    if (!observation) continue;
+    const observedValue = observation.observedValue;
     if (observedValue === pending.desired) {
       onConfirmed?.({
         deviceId,
         liveDevice,
         pending,
         source,
-        confirmedAtMs: nowMs,
+        confirmedAtMs: observation.observedAtMs,
       });
       delete state.pendingBinaryCommands[deviceId];
       changed = true;
@@ -446,13 +448,14 @@ export function syncPendingBinaryCommands(params: {
     if (
       pending.lastObservedValue === observedValue
       && pending.lastObservedSource === source
+      && pending.lastObservedAtMs === observation.observedAtMs
     ) {
       continue;
     }
 
     pending.lastObservedValue = observedValue;
     pending.lastObservedSource = source;
-    pending.lastObservedAtMs = nowMs;
+    pending.lastObservedAtMs = observation.observedAtMs;
     changed = true;
     logDebug(
       `Capacity: waiting for ${pending.capabilityId} confirmation for ${liveDevice.name}; `
@@ -463,28 +466,15 @@ export function syncPendingBinaryCommands(params: {
 
   return changed;
 }
-function getObservedBinaryValue(
-  liveDevice: PlanInputDevice,
-  capabilityId: 'onoff' | 'evcharger_charging',
-): boolean | string | undefined {
-  if (capabilityId === 'evcharger_charging') {
-    return resolveEvChargingObservedState(liveDevice.evChargingState);
-  }
-  return liveDevice.currentOn;
-}
 
-function resolveEvChargingObservedState(
-  evChargingState: PlanInputDevice['evChargingState'],
-): boolean | string | undefined {
-  switch (evChargingState) {
-    case 'plugged_in_charging':
-      return true;
-    case 'plugged_in':
-    case 'plugged_in_paused':
-    case 'plugged_out':
-    case 'plugged_in_discharging':
-      return false;
-    default:
-      return evChargingState;
-  }
+function getSettlingBinaryObservation(
+  liveDevice: PlanInputDevice,
+  pending: PlanEngineState['pendingBinaryCommands'][string],
+): NonNullable<PlanInputDevice['binaryControlObservation']> | undefined {
+  const observation = liveDevice.binaryControlObservation;
+  if (!observation) return undefined;
+  if (observation.capabilityId !== pending.capabilityId) return undefined;
+  if (!Number.isFinite(observation.observedAtMs)) return undefined;
+  if (observation.observedAtMs <= pending.startedMs) return undefined;
+  return observation;
 }

@@ -99,6 +99,19 @@ export function getEvCharging(capabilityObj: DeviceCapabilityMap): boolean | und
   return typeof value === 'boolean' ? value : undefined;
 }
 
+export function toCapabilityTimestampMs(rawValue: string | number | Date | null | undefined): number | undefined {
+  if (rawValue instanceof Date) {
+    const timestampMs = rawValue.getTime();
+    return Number.isFinite(timestampMs) ? timestampMs : undefined;
+  }
+  if (typeof rawValue === 'number' && Number.isFinite(rawValue)) return rawValue;
+  if (typeof rawValue === 'string') {
+    const parsed = Date.parse(rawValue);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
 export function logEvCapabilityRequest(params: {
   logger: Logger;
   snapshotBefore?: TargetDeviceSnapshot;

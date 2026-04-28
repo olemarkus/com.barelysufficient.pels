@@ -43,6 +43,7 @@ import {
 import { shouldSkipFlowBackedCandidate } from './deviceManagerFlowSupport';
 import {
     resolveLastFreshDataMs,
+    resolveBinaryControlObservation,
     resolveParsedControlState,
 } from './deviceManagerParseSnapshot';
 import { resolveStateOfChargeSnapshot } from './deviceStateOfCharge';
@@ -231,6 +232,9 @@ export function parseDevice(params: {
         controlWriteCapabilityId,
         controlObservationCapabilityId,
         canSetControl,
+        binaryControlObservation: resolveBinaryControlObservation(
+            { capabilityObj, controlCapabilityId, controlObservationCapabilityId },
+        ),
         available,
         reportedStepId,
         suggestedSteppedLoadProfile,
@@ -298,6 +302,7 @@ function buildParsedDeviceSnapshot(params: {
     controlWriteCapabilityId?: string;
     controlObservationCapabilityId?: string;
     canSetControl: boolean | undefined;
+    binaryControlObservation: TargetDeviceSnapshot['binaryControlObservation'];
     available: boolean;
     reportedStepId?: string;
     suggestedSteppedLoadProfile?: TargetDeviceSnapshot['suggestedSteppedLoadProfile'];
@@ -325,6 +330,7 @@ function buildParsedDeviceSnapshot(params: {
         controlWriteCapabilityId,
         controlObservationCapabilityId,
         canSetControl,
+        binaryControlObservation,
         available,
         reportedStepId,
         suggestedSteppedLoadProfile,
@@ -356,6 +362,7 @@ function buildParsedDeviceSnapshot(params: {
         controlAdapter,
         controlWriteCapabilityId,
         controlObservationCapabilityId,
+        binaryControlObservation,
         reportedStepId,
         suggestedSteppedLoadProfile,
         ...(flowBackedCapabilityIds.length > 0 ? {

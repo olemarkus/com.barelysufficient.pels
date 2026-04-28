@@ -569,15 +569,25 @@ export class DeviceManager extends EventEmitter {
         value: boolean,
     ): void {
         const mutableSnapshot = snapshot;
+        const observedAtMs = Date.now();
         if (capabilityId === 'evcharger_charging') {
             mutableSnapshot.evCharging = value;
             mutableSnapshot.currentOn = resolveEvCurrentOn({
                 evChargingState: mutableSnapshot.evChargingState,
                 evchargerCharging: value,
             });
-            return;
+        } else {
+            mutableSnapshot.currentOn = value;
         }
-        mutableSnapshot.currentOn = value;
+        if (capabilityId === 'onoff' || capabilityId === 'evcharger_charging') {
+            mutableSnapshot.binaryControlObservation = {
+                valid: true,
+                capabilityId,
+                observedValue: value,
+                observedCapabilityIds: [capabilityId],
+                observedAtMs,
+            };
+        }
     }
 
     private readonly handleRealtimeDeviceUpdate = (device: HomeyDeviceLike): void => {

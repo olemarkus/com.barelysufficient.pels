@@ -332,10 +332,11 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
+    const pendingStartedMs = Date.now();
     (app as any).planEngine.state.pendingBinaryCommands['dev-pending'] = {
       capabilityId: 'onoff',
       desired: true,
-      startedMs: Date.now(),
+      startedMs: pendingStartedMs,
     };
     (app as any).planEngine.state.lastDeviceShedMs['dev-cooldown'] = Date.now();
     (app as any).planEngine.state.lastInstabilityMs = Date.now();
@@ -360,6 +361,14 @@ describe('Device plan snapshot', () => {
         targets: [],
         currentOn: true,
         currentState: 'on',
+        controlCapabilityId: 'onoff',
+        binaryControlObservation: {
+          valid: true,
+          capabilityId: 'onoff',
+          observedValue: true,
+          observedCapabilityIds: ['onoff'],
+          observedAtMs: pendingStartedMs + 1,
+        },
         measuredPowerKw: 0.7,
         expectedPowerKw: 0.2,
         controllable: true,
@@ -408,7 +417,7 @@ describe('Device plan snapshot', () => {
       expect.objectContaining({
         deviceId: 'dev-pending',
         deltaKw: 0.5,
-        changedDuringPendingWindow: false,
+        changedDuringPendingWindow: true,
       }),
       expect.objectContaining({
         deviceId: 'dev-cooldown',
