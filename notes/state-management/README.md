@@ -35,10 +35,13 @@ Planner/device snapshot contributor rule:
 
 Stepped loads need the same separation, but for step identity rather than only binary on/off state.
 
-Use these meanings consistently:
+Use these meanings consistently at their owning layer:
 
-- `reportedStepId`: confirmed device feedback only. This is the observed step.
-- `targetStepId`: the step PELS currently wants. This is planner/runtime intent.
+- observed step: trusted step telemetry from native reporting or admitted flow feedback.
+- target step: the step PELS currently wants. This is planner/runtime intent.
+- planning assumption: a conservative fallback used only to keep planning possible when no
+  observed step exists.
+- restore preparation: explicit evidence that the device is already at the pre-restore step.
 
 Internally, stepped-load feedback and intent use synthetic PELS capability IDs:
 
@@ -48,7 +51,29 @@ Internally, stepped-load feedback and intent use synthetic PELS capability IDs:
 These IDs are internal capability-shaped contracts. They are not Homey-declared device
 capabilities unless a future change intentionally exposes them.
 
-Legacy compatibility fields still exist in some snapshots and plans:
+The planner-private stepped state model is intentionally narrower than the public snapshot shape.
+It has no optional step-state fields:
+
+- observation is either `reported` or `unknown`
+- intent is either `target` or `none`
+- planning assumption is either `fallback` or `none`
+- restore preparation is either `prepared` or `not_prepared`
+
+Unknown is represented explicitly. A missing field is only allowed at raw Homey, flow, persisted,
+API, or settings-UI boundaries before those inputs are normalized. The normalized state does not
+store an "effective step"; planner code must resolve that through a helper so the derived value
+does not become another source of truth.
+
+Layer ownership:
+
+- app/snapshot code may classify raw evidence and serialize compatibility fields
+- stepped-load planner and executor code own the typed semantic state and restore-preparation
+  checks
+- shared-domain and settings UI must not import the planner state model
+- UI overview needs only the observed reported step and the target step
+
+Legacy compatibility fields may still exist in older snapshots and plans while migration is in
+progress:
 
 - `selectedStepId`: planner-effective current step. This may be reported or inferred.
 - `desiredStepId`: legacy alias for the current target step.
@@ -58,8 +83,16 @@ Legacy compatibility fields still exist in some snapshots and plans:
 
 Contributor rules:
 
-- overview/UI wording must use `reportedStepId` for confirmed observed step
+- planner/runtime restore decisions must not branch on `selectedStepId`, `assumedStepId`, or
+  `actualStepId` as proof of preparation
+- fallback lowest-active-step assumptions are planning inputs only, never restore proof
+- restore preparation must come from explicit reported evidence or narrowly admitted suppressed
+  flow feedback tied to current intent or an explicit freshness policy
+- stale, mismatched, or old-plan flow feedback must not prepare restore
+- overview/UI wording must use observed reported evidence for confirmed observed step
 - if there is no `reportedStepId`, do not infer a step from `measure_power` for human-facing state
+- UI may show target intent, but it must not display fallback or restore-preparation evidence as
+  reported truth
 - planner logic should reason from actual measured power directly when it needs live load
 - do not use `selectedStepId` or `actualStepId` as human-facing observed truth without first
   resolving whether they are actually reported

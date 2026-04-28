@@ -17,6 +17,7 @@ import type {
 } from '../utils/types';
 import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from '../plan/planConstants';
 import { LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS } from '../plan/planObservationPolicy';
+import { serializeLegacyStepFieldsFromEvidence } from '../plan/planSteppedLoadState';
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
@@ -78,16 +79,6 @@ const resolveNativeSteppedLoadProfile = (snapshot: TargetDeviceSnapshot): Steppe
     : null
 );
 
-const resolveSteppedLoadActualStepSource = (params: {
-  reportedStepId?: string;
-  assumedStepId?: string;
-}): 'reported' | 'assumed' | undefined => {
-  const { reportedStepId, assumedStepId } = params;
-  if (reportedStepId) return 'reported';
-  if (assumedStepId) return 'assumed';
-  return undefined;
-};
-
 const resolveSteppedLoadCurrentOn = (params: {
   snapshot: TargetDeviceSnapshot;
   profile: SteppedLoadProfile;
@@ -146,24 +137,31 @@ export const decorateSnapshotWithDeviceControl = (params: {
     : getSteppedLoadStep(profile, reported?.stepId)?.id;
   const desiredStepId = getSteppedLoadStep(profile, desired?.stepId)?.id;
   const fallbackStepId = getSteppedLoadLowestActiveStep(profile)?.id;
-  const assumedStepId = reportedStepId ? undefined : fallbackStepId;
-  const selectedStepId = reportedStepId ?? assumedStepId;
-  const actualStepId = reportedStepId;
-  const actualStepSource = resolveSteppedLoadActualStepSource({ reportedStepId, assumedStepId });
+  const legacyStepFields = serializeLegacyStepFieldsFromEvidence({
+    nowMs,
+    reportedStepId,
+    reportedStepSource: nativeSteppedControlEnabled ? 'native' : 'flow',
+    reportedObservedAtMs: nativeSteppedControlEnabled ? snapshot.lastUpdated : reported?.updatedAtMs,
+    targetStepId: desiredStepId,
+    targetChangedAtMs: desired?.changedAtMs,
+    targetStatus: desired?.status,
+    fallbackStepId,
+  });
+  const selectedStepId = legacyStepFields.selectedStepId;
   const planningPowerKw = resolveSteppedLoadPlanningPowerKw(profile, selectedStepId);
 
   return {
     ...snapshot,
     controlModel: 'stepped_load',
     steppedLoadProfile: profile,
-    reportedStepId,
-    targetStepId: desiredStepId,
+    reportedStepId: legacyStepFields.reportedStepId,
+    targetStepId: legacyStepFields.targetStepId,
     selectedStepId,
-    desiredStepId,
+    desiredStepId: legacyStepFields.desiredStepId,
     previousStepId: desired?.previousStepId,
-    actualStepId,
-    assumedStepId,
-    actualStepSource,
+    actualStepId: legacyStepFields.actualStepId,
+    assumedStepId: legacyStepFields.assumedStepId,
+    actualStepSource: legacyStepFields.actualStepSource,
     planningPowerKw,
     // Preserve an explicit off state from the raw onoff capability for stepped devices. A device
     // at a non-zero step but with onoff=false is genuinely off — the step is configuration, not
