@@ -228,6 +228,46 @@ describe('appRealtimeDeviceReconcile', () => {
     expect(shouldQueue).toBe(true);
   });
 
+  it('queues reconcile after an off plan observes fresh on realtime drift', () => {
+    const debugStructured = createDebugStructuredMock();
+
+    const shouldQueue = shouldQueueRealtimeDeviceReconcile({
+      event: {
+        deviceId: 'dev-1',
+        name: 'Heater',
+        capabilityId: 'onoff',
+        changes: [{ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' }],
+      },
+      latestPlanSnapshot: {
+        meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+        devices: [{
+          id: 'dev-1',
+          name: 'Heater',
+          currentState: 'off',
+          plannedState: 'shed',
+          shedAction: 'turn_off',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+        }],
+      },
+      liveDevices: [{
+        id: 'dev-1',
+        name: 'Heater',
+        hasBinaryControl: true,
+        currentOn: true,
+        currentTemperature: 21,
+        targets: [],
+      }],
+      debugStructured,
+    });
+
+    expect(shouldQueue).toBe(true);
+    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'realtime_reconcile_skipped_no_drift',
+    }));
+  });
+
   it('skips reconcile for target drift when a shed device is already off', () => {
     const debugStructured = createDebugStructuredMock();
 
