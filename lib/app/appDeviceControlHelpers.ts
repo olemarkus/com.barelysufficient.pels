@@ -52,24 +52,18 @@ export type DeviceControlRuntimeState = {
 export type ReportSteppedLoadActualStepResult = 'changed' | 'unchanged' | 'invalid';
 
 export type MarkSteppedLoadDesiredStepIssuedParams = {
-  deviceId: string;
-  desiredStepId: string;
-  previousStepId?: string;
-  issuedAtMs?: number;
-  pendingWindowMs?: number;
+  deviceId: string; desiredStepId: string; previousStepId?: string;
+  issuedAtMs?: number; pendingWindowMs?: number;
 };
 
 export const createDeviceControlRuntimeState = (): DeviceControlRuntimeState => ({
-  steppedLoadDesiredByDeviceId: {},
-  steppedLoadReportedByDeviceId: {},
+  steppedLoadDesiredByDeviceId: {}, steppedLoadReportedByDeviceId: {},
 });
 
 export const normalizeStoredDeviceControlProfiles = normalizeDeviceControlProfiles;
 
 export const resolveDefaultControlModel = (device: TargetDeviceSnapshot): DeviceControlModel => {
-  if (device.controlModel) return device.controlModel;
-  if (device.deviceType === 'temperature') return 'temperature_target';
-  return 'binary_power';
+  return device.controlModel ?? (device.deviceType === 'temperature' ? 'temperature_target' : 'binary_power');
 };
 
 const resolveNativeSteppedLoadProfile = (snapshot: TargetDeviceSnapshot): SteppedLoadProfile | null => (
@@ -78,10 +72,9 @@ const resolveNativeSteppedLoadProfile = (snapshot: TargetDeviceSnapshot): Steppe
     : null
 );
 
-const resolveSteppedLoadActualStepSource = (params: {
-  reportedStepId?: string;
-  assumedStepId?: string;
-}): 'reported' | 'assumed' | undefined => {
+const resolveSteppedLoadActualStepSource = (
+  params: { reportedStepId?: string; assumedStepId?: string },
+): 'reported' | 'assumed' | undefined => {
   const { reportedStepId, assumedStepId } = params;
   if (reportedStepId) return 'reported';
   if (assumedStepId) return 'assumed';
@@ -95,9 +88,12 @@ const resolveSteppedLoadCurrentOn = (params: {
 }): boolean => {
   const { snapshot, profile, selectedStepId } = params;
   if (snapshot.currentOn === false) return false;
-  if (!selectedStepId) return true;
-  return !isSteppedLoadOffStep(profile, selectedStepId);
+  return selectedStepId ? !isSteppedLoadOffStep(profile, selectedStepId) : true;
 };
+
+const shouldSuppressSteppedLoadReportForOffState = (
+  snapshot: TargetDeviceSnapshot, profile: SteppedLoadProfile, stepId?: string,
+): boolean => snapshot.currentOn === false && stepId !== undefined && !isSteppedLoadOffStep(profile, stepId);
 
 /* eslint-disable complexity --
  * Decoration resolves reported step state plus legacy planner fallback in one place.
@@ -124,12 +120,24 @@ export const decorateSnapshotWithDeviceControl = (params: {
   const desired = runtimeState.steppedLoadDesiredByDeviceId[snapshot.id];
   const reported = runtimeState.steppedLoadReportedByDeviceId[snapshot.id];
   const nativeSteppedControlEnabled = nativeProfile !== null;
-  const nativeReportedStepId = nativeSteppedControlEnabled
+  let nativeReportedStepId = nativeSteppedControlEnabled
     ? getSteppedLoadStep(profile, snapshot.reportedStepId)?.id
     : undefined;
   if (nativeSteppedControlEnabled && reported) {
     /* eslint-disable-next-line functional/immutable-data -- Shared stepped-load runtime cache update. */
     delete runtimeState.steppedLoadReportedByDeviceId[snapshot.id];
+  }
+  const desiredStepId = getSteppedLoadStep(profile, desired?.stepId)?.id;
+  let reportedStepId = nativeSteppedControlEnabled
+    ? nativeReportedStepId
+    : getSteppedLoadStep(profile, reported?.stepId)?.id;
+  let suppressedPreparedStepId: string | undefined;
+  if (!nativeSteppedControlEnabled && shouldSuppressSteppedLoadReportForOffState(snapshot, profile, reportedStepId)) {
+    /* eslint-disable-next-line functional/immutable-data -- Explicit off state invalidates stale flow-reported step. */
+    delete runtimeState.steppedLoadReportedByDeviceId[snapshot.id];
+    suppressedPreparedStepId = reportedStepId === desiredStepId ? reportedStepId : undefined;
+    nativeReportedStepId = undefined;
+    reportedStepId = undefined;
   }
   if (nativeReportedStepId && desired?.stepId === nativeReportedStepId) {
     /* eslint-disable-next-line functional/immutable-data -- Shared stepped-load runtime cache update. */
@@ -141,13 +149,9 @@ export const decorateSnapshotWithDeviceControl = (params: {
       status: 'success',
     };
   }
-  const reportedStepId = nativeSteppedControlEnabled
-    ? nativeReportedStepId
-    : getSteppedLoadStep(profile, reported?.stepId)?.id;
-  const desiredStepId = getSteppedLoadStep(profile, desired?.stepId)?.id;
   const fallbackStepId = getSteppedLoadLowestActiveStep(profile)?.id;
-  const assumedStepId = reportedStepId ? undefined : fallbackStepId;
-  const selectedStepId = reportedStepId ?? assumedStepId;
+  const assumedStepId = reportedStepId || suppressedPreparedStepId ? undefined : fallbackStepId;
+  const selectedStepId = reportedStepId ?? suppressedPreparedStepId ?? assumedStepId;
   const actualStepId = reportedStepId;
   const actualStepSource = resolveSteppedLoadActualStepSource({ reportedStepId, assumedStepId });
   const planningPowerKw = resolveSteppedLoadPlanningPowerKw(profile, selectedStepId);

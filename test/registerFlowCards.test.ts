@@ -635,6 +635,54 @@ describe('registerFlowCards', () => {
     }));
   });
 
+  it('rejects a 0 W stepped-load power report without a configured off step and has no side effects', async () => {
+    const { deps, actionListeners, structuredInfo, structuredWarn } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'low', planningPowerW: 1250 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_power({
+      device: 'dev-1',
+      power_w: '0 W',
+    })).rejects.toThrow(
+      "No configured stepped-load step matches 0 W. Closest upward step is 'low' at 1250 W, "
+      + 'with an allowed margin of 62.5 W below the step; this report is 1250 W below.',
+    );
+
+    expect(deps.reportSteppedLoadActualStep).not.toHaveBeenCalled();
+    expect(deps.refreshSnapshot).not.toHaveBeenCalled();
+    expect(deps.rebuildPlan).not.toHaveBeenCalled();
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_received',
+      sourceCardId: 'report_stepped_load_power',
+      deviceId: 'dev-1',
+      rawPowerInput: '0 W',
+    }));
+    expect(structuredWarn).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_rejected',
+      sourceCardId: 'report_stepped_load_power',
+      deviceId: 'dev-1',
+      rawPowerInput: '0 W',
+      reasonCode: 'no_matching_step',
+      errorMessage: "No configured stepped-load step matches 0 W. Closest upward step is 'low' at 1250 W, "
+        + 'with an allowed margin of 62.5 W below the step; this report is 1250 W below.',
+    }));
+  });
+
   it('rejects upward step matches outside the allowed margin and includes the closest upward step', async () => {
     const { deps, actionListeners, structuredWarn } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([

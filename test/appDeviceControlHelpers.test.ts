@@ -245,7 +245,7 @@ describe('appDeviceControlHelpers', () => {
     });
 
     const reportedDecorated = decorateSnapshotWithDeviceControl({
-      snapshot: baseSnapshot(),
+      snapshot: baseSnapshot({ currentOn: true }),
       profiles: steppedProfiles,
       runtimeState,
       nowMs: 1700,
@@ -268,7 +268,7 @@ describe('appDeviceControlHelpers', () => {
     expect(pruneStaleSteppedLoadCommandStates(runtimeState, 2000 + STEPPED_LOAD_COMMAND_STALE_MS + 1)).toBe(true);
 
     const staleDecorated = decorateSnapshotWithDeviceControl({
-      snapshot: baseSnapshot(),
+      snapshot: baseSnapshot({ currentOn: true }),
       profiles: steppedProfiles,
       runtimeState,
       nowMs: 2000 + STEPPED_LOAD_COMMAND_STALE_MS + 1,
@@ -365,6 +365,124 @@ describe('appDeviceControlHelpers', () => {
       pending: true,
       status: 'pending',
     });
+  });
+
+  it('clears a stale non-off reported step when the stepped load is observed off', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'low',
+      previousStepId: 'max',
+      issuedAtMs: 1_000,
+    });
+    expect(reportSteppedLoadActualStep({
+      runtimeState,
+      profiles: steppedProfiles,
+      deviceId: 'dev-1',
+      stepId: 'max',
+      reportedAtMs: 1_100,
+    })).toBe('changed');
+
+    const decorated = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({ currentOn: false }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 1_200,
+    });
+
+    expect(runtimeState.steppedLoadReportedByDeviceId['dev-1']).toBeUndefined();
+    expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+      capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+      stepId: 'low',
+      pending: true,
+      status: 'pending',
+    });
+    expect(decorated.reportedStepId).toBeUndefined();
+    expect(decorated.actualStepId).toBeUndefined();
+    expect(decorated.selectedStepId).toBe('low');
+    expect(decorated.assumedStepId).toBe('low');
+    expect(decorated.targetStepId).toBe('low');
+    expect(decorated.desiredStepId).toBe('low');
+    expect(decorated.currentOn).toBe(false);
+  });
+
+  it('preserves restore eligibility when suppressing matching off-state flow feedback', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'low',
+      previousStepId: 'max',
+      issuedAtMs: 1_000,
+    });
+    expect(reportSteppedLoadActualStep({
+      runtimeState,
+      profiles: steppedProfiles,
+      deviceId: 'dev-1',
+      stepId: 'low',
+      reportedAtMs: 1_100,
+    })).toBe('changed');
+
+    const decorated = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({ currentOn: false }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 1_200,
+    });
+
+    expect(runtimeState.steppedLoadReportedByDeviceId['dev-1']).toBeUndefined();
+    expect(decorated.reportedStepId).toBeUndefined();
+    expect(decorated.actualStepId).toBeUndefined();
+    expect(decorated.actualStepSource).toBeUndefined();
+    expect(decorated.assumedStepId).toBeUndefined();
+    expect(decorated.selectedStepId).toBe('low');
+    expect(decorated.targetStepId).toBe('low');
+    expect(decorated.desiredStepId).toBe('low');
+    expect(decorated.currentOn).toBe(false);
+  });
+
+  it('keeps native non-off reported step feedback when the stepped load is observed off', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'low',
+      previousStepId: 'max',
+      issuedAtMs: 1_000,
+    });
+
+    const decorated = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({
+        controlAdapter: {
+          kind: 'capability_adapter',
+          activationAvailable: true,
+          activationEnabled: true,
+          activationRequired: false,
+        },
+        currentOn: false,
+        reportedStepId: 'low',
+        suggestedSteppedLoadProfile: steppedProfiles['dev-1'],
+      }),
+      profiles: {},
+      runtimeState,
+      nowMs: 1_200,
+    });
+
+    expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+      capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+      stepId: 'low',
+      pending: false,
+      status: 'success',
+    });
+    expect(decorated.reportedStepId).toBe('low');
+    expect(decorated.actualStepId).toBe('low');
+    expect(decorated.selectedStepId).toBe('low');
+    expect(decorated.assumedStepId).toBeUndefined();
+    expect(decorated.currentOn).toBe(false);
   });
 
   it('preserves the latest plan target when flow feedback reports stepped-load drift', () => {
