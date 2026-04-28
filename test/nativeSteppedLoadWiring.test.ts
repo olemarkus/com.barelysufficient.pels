@@ -93,19 +93,19 @@ describe('native stepped-load wiring', () => {
       desiredStepId: 'medium',
       capabilities: ['onoff', 'max_power_3000'],
       capabilityObj: { max_power_3000: { value: 'high_power' } },
-    })).toEqual({ capabilityId: 'max_power_3000', value: 2 });
+    })).toEqual({ capabilityId: 'max_power_3000', value: '2' });
     expect(resolveNativeSteppedLoadCommand({
       profile: steppedProfile,
       desiredStepId: 'medium',
       capabilities: ['onoff', 'max_power_3000'],
       capabilityObj: { max_power_3000: { value: undefined } },
-    })).toEqual({ capabilityId: 'max_power_3000', value: 2 });
+    })).toEqual({ capabilityId: 'max_power_3000', value: '2' });
     expect(resolveNativeSteppedLoadCommand({
       profile: steppedProfile,
       desiredStepId: 'medium',
       capabilities: ['onoff', 'max_power'],
       capabilityObj: { max_power: { value: undefined } },
-    })).toEqual({ capabilityId: 'max_power', value: 2 });
+    })).toEqual({ capabilityId: 'max_power', value: '2' });
     expect(resolveNativeSteppedLoadCommand({
       profile: steppedProfile,
       desiredStepId: 'off',
@@ -122,7 +122,7 @@ describe('native stepped-load wiring', () => {
       desiredStepId: 'max',
       capabilities: ['onoff', 'max_power_3000'],
       capabilityObj: { max_power_3000: { value: 'medium_power' } },
-    })).toEqual({ capabilityId: 'max_power_3000', value: 3 });
+    })).toEqual({ capabilityId: 'max_power_3000', value: '3' });
   });
 
   it('exposes native stepped-load wiring from the device-supported profile', () => {
@@ -470,7 +470,7 @@ describe('native stepped-load wiring', () => {
       expect(get).toHaveBeenCalledTimes(1);
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
-        { value: 2 },
+        { value: '2' },
       );
       expect(debugStructured).toHaveBeenCalledWith({
         event: 'device_capability_write_requested',
@@ -478,8 +478,8 @@ describe('native stepped-load wiring', () => {
         deviceName: 'Connected 300',
         capabilityId: 'max_power_3000',
         writeCapabilityId: 'max_power_3000',
-        value: 2,
-        valueType: 'number',
+        value: '2',
+        valueType: 'string',
       });
       expect(debugStructured).toHaveBeenCalledWith({
         event: 'device_capability_write_accepted',
@@ -487,8 +487,8 @@ describe('native stepped-load wiring', () => {
         deviceName: 'Connected 300',
         capabilityId: 'max_power_3000',
         writeCapabilityId: 'max_power_3000',
-        value: 2,
-        valueType: 'number',
+        value: '2',
+        valueType: 'string',
       });
 
       put.mockClear();
@@ -512,14 +512,14 @@ describe('native stepped-load wiring', () => {
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
-        { value: 2 },
+        { value: '2' },
       );
 
       const liveStateObserved = vi.fn();
       const realtimeReconcile = vi.fn();
       deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateObserved);
       deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeReconcile);
-      deviceManager.injectCapabilityUpdateForTest('hoiax-1', 'max_power_3000', 3);
+      deviceManager.injectCapabilityUpdateForTest('hoiax-1', 'max_power_3000', '3');
 
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
         reportedStepId: 'max',
@@ -551,7 +551,7 @@ describe('native stepped-load wiring', () => {
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
-        { value: 2 },
+        { value: '2' },
       );
     } finally {
       setRestClient({
@@ -596,10 +596,10 @@ describe('native stepped-load wiring', () => {
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
-        { value: 3 },
+        { value: '3' },
       );
 
-      deviceManager.injectCapabilityUpdateForTest('hoiax-1', 'max_power_3000', 3);
+      deviceManager.injectCapabilityUpdateForTest('hoiax-1', 'max_power_3000', '3');
 
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
         reportedStepId: 'medium',
@@ -709,7 +709,7 @@ describe('native stepped-load wiring', () => {
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-mock/capability/max_power_3000',
-        { value: 2 },
+        { value: '2' },
       );
     } finally {
       setRestClient({
