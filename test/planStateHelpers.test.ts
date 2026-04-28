@@ -1,7 +1,7 @@
 import { createPlanEngineState } from '../lib/plan/planState';
-import { isPlanConverging } from '../lib/plan/planStateHelpers';
+import { isPlanActivelyConverging } from '../lib/plan/planStateHelpers';
 
-describe('isPlanConverging', () => {
+describe('isPlanActivelyConverging', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-16T12:00:00.000Z'));
@@ -12,32 +12,30 @@ describe('isPlanConverging', () => {
   });
 
   it('returns false for empty state', () => {
-    expect(isPlanConverging(null, Date.now())).toBe(false);
-    expect(isPlanConverging(undefined, Date.now())).toBe(false);
+    expect(isPlanActivelyConverging(null)).toBe(false);
+    expect(isPlanActivelyConverging(undefined)).toBe(false);
   });
 
-  it('ignores timestamps in the future', () => {
+  it('returns true for active overshoot', () => {
     const state = createPlanEngineState();
-    state.lastInstabilityMs = Date.now() + 1_000;
+    state.wasOvershoot = true;
 
-    expect(isPlanConverging(state, Date.now())).toBe(false);
+    expect(isPlanActivelyConverging(state)).toBe(true);
   });
 
-  it('treats recent instability as convergence', () => {
+  it('returns true for pending shed and restore work', () => {
     const state = createPlanEngineState();
-    state.lastInstabilityMs = Date.now() - 1_000;
+    state.pendingSheds.add('shed-dev');
 
-    expect(isPlanConverging(state, Date.now(), 5_000)).toBe(true);
+    expect(isPlanActivelyConverging(state)).toBe(true);
+
+    state.pendingSheds.clear();
+    state.pendingRestores.add('restore-dev');
+
+    expect(isPlanActivelyConverging(state)).toBe(true);
   });
 
-  it('treats recent device activity as convergence', () => {
-    const state = createPlanEngineState();
-    state.lastDeviceRestoreMs = { dev1: Date.now() - 1_000 };
-
-    expect(isPlanConverging(state, Date.now(), 5_000)).toBe(true);
-  });
-
-  it('treats pending work as convergence', () => {
+  it('returns true for pending target and binary commands', () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands = {
       dev1: {
@@ -51,13 +49,34 @@ describe('isPlanConverging', () => {
       },
     };
 
-    expect(isPlanConverging(state, Date.now(), 5_000)).toBe(true);
+    expect(isPlanActivelyConverging(state)).toBe(true);
+
+    state.pendingTargetCommands = {};
+    state.pendingBinaryCommands = {
+      dev1: {
+        capabilityId: 'onoff',
+        desired: true,
+        startedMs: Date.now(),
+      },
+    };
+
+    expect(isPlanActivelyConverging(state)).toBe(true);
   });
 
-  it('treats overshoot as convergence', () => {
+  it('returns false for recent device shed and restore timestamps alone', () => {
     const state = createPlanEngineState();
-    state.wasOvershoot = true;
+    state.lastDeviceShedMs = { shedDev: Date.now() - 1_000 };
+    state.lastDeviceRestoreMs = { restoreDev: Date.now() - 1_000 };
 
-    expect(isPlanConverging(state, Date.now(), 5_000)).toBe(true);
+    expect(isPlanActivelyConverging(state)).toBe(false);
+  });
+
+  it('returns false for recent instability, recovery, and restore timestamps alone', () => {
+    const state = createPlanEngineState();
+    state.lastInstabilityMs = Date.now() - 1_000;
+    state.lastRecoveryMs = Date.now() - 1_000;
+    state.lastRestoreMs = Date.now() - 1_000;
+
+    expect(isPlanActivelyConverging(state)).toBe(false);
   });
 });

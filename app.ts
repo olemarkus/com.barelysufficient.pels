@@ -9,7 +9,7 @@ import {
 import { PlanEngine } from './lib/plan/planEngine';
 import { DevicePlan, ShedBehavior } from './lib/plan/planTypes';
 import { PlanService } from './lib/plan/planService';
-import { isPlanConverging } from './lib/plan/planStateHelpers';
+import { isPlanActivelyConverging } from './lib/plan/planStateHelpers';
 import { buildPlanCapacityStateSummary } from './lib/plan/planLogging';
 import { HomeyDeviceLike, TargetDeviceSnapshot } from './lib/utils/types';
 import { PriceCoordinator } from './lib/price/priceCoordinator';
@@ -1141,7 +1141,7 @@ class PelsApp extends Homey.App {
     const previousSampleTs = this.powerTracker.lastTimestamp;
     try {
       const planState = this.planEngine?.state;
-      const planConvergenceActive = isPlanConverging(planState, nowMs);
+      const planConvergenceActive = isPlanActivelyConverging(planState);
       const latestPlanSummary = buildPlanCapacityStateSummary(
         this.planService?.getLatestPlanSnapshot(),
         {
