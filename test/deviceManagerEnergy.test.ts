@@ -94,6 +94,7 @@ describe('fetchLivePowerReport', () => {
 
     expect(result.byDeviceId).toEqual({ dev1: 800 });
     expect(result.homePowerW).toBe(3200);
+    expect(result.deviceCount).toBe(1);
   });
 
   it('returns empty results when REST client is not initialized', async () => {
@@ -103,6 +104,7 @@ describe('fetchLivePowerReport', () => {
 
     expect(result.byDeviceId).toEqual({});
     expect(result.homePowerW).toBeNull();
+    expect(result.deviceCount).toBe(0);
   });
 
   it('returns empty results on API error', async () => {
@@ -113,6 +115,7 @@ describe('fetchLivePowerReport', () => {
 
     expect(result.byDeviceId).toEqual({});
     expect(result.homePowerW).toBeNull();
+    expect(result.deviceCount).toBe(0);
     expect(stderrSpy).toHaveBeenCalled();
   });
 });
