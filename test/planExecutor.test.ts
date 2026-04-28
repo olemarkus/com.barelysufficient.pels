@@ -1067,6 +1067,36 @@ describe('PlanExecutor stepped loads', () => {
     expect(executor.hasStablePlanActuation(steppedPlan())).toBe(true);
   });
 
+  it('marks stable keep step-down intent as actuatable while the selected step remains higher', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(steppedPlan({
+      selectedStepId: 'max',
+      desiredStepId: 'low',
+    }))).toBe(true);
+  });
+
+  it('marks stable keep step-down intent as actuatable even when restore is not admitted', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(steppedPlan({
+      selectedStepId: 'max',
+      desiredStepId: 'low',
+      reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
+    }))).toBe(true);
+  });
+
+  it('does not mark off stepped keep step-down intent actuatable during restore hold', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(steppedPlan({
+      currentState: 'off',
+      selectedStepId: 'max',
+      desiredStepId: 'low',
+      reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
+    }))).toBe(false);
+  });
+
   it('does not mark stable stepped step-up intent actuatable when restore is not admitted', () => {
     const { executor } = buildExecutor();
 

@@ -736,7 +736,7 @@ export class PlanExecutor {
   public hasStablePlanActuation(plan: DevicePlan): boolean {
     return plan.devices.some((dev) => (
       hasStableUncontrolledRestoreActuation(dev, this.state)
-      || hasStableSteppedLoadStepUpActuation(dev)
+      || hasStableSteppedLoadStepActuation(dev)
     ));
   }
 
@@ -988,20 +988,21 @@ function hasStableUncontrolledRestoreActuation(
     && Boolean(state.lastDeviceShedMs[dev.id]);
 }
 
-function hasStableSteppedLoadStepUpActuation(dev: DevicePlan['devices'][number]): boolean {
+function hasStableSteppedLoadStepActuation(dev: DevicePlan['devices'][number]): boolean {
   if (!isSteppedLoadDevice(dev) || dev.plannedState !== 'keep' || !dev.steppedLoadProfile) return false;
-  if (!allowsSteppedLoadKeepInvariantRestore(dev.reason)) return false;
   const desiredStepId = resolveSteppedKeepDesiredStepId(dev);
   if (!desiredStepId || !dev.selectedStepId || desiredStepId === dev.selectedStepId) return false;
   if (hasEquivalentSteppedLoadCommandHold(dev, desiredStepId)) return false;
 
   const selectedStep = getSteppedLoadStep(dev.steppedLoadProfile, dev.selectedStepId);
   const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, desiredStepId);
-  return Boolean(
-    selectedStep
-    && desiredStep
-    && desiredStep.planningPowerW > selectedStep.planningPowerW,
-  );
+  if (!selectedStep || !desiredStep) return false;
+  if (desiredStep.planningPowerW < selectedStep.planningPowerW) {
+    return resolveEffectiveCurrentOn(dev) !== false
+      || !isRestoreHoldReason(dev.reason);
+  }
+  return desiredStep.planningPowerW > selectedStep.planningPowerW
+    && allowsSteppedLoadKeepInvariantRestore(dev.reason);
 }
 
 function hasEquivalentSteppedLoadCommandHold(
