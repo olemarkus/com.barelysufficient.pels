@@ -37,6 +37,11 @@ const buildDom = () => {
         <select id="device-detail-overshoot-step"></select>
         <section id="device-detail-stepped-section" hidden>
           <div id="device-detail-stepped-steps"></div>
+          <div id="device-detail-temperature-boost">
+            <input id="device-detail-temperature-boost-enabled" type="checkbox">
+            <div id="device-detail-temperature-boost-below-row"></div>
+            <input id="device-detail-temperature-boost-below" type="number">
+          </div>
           <button id="device-detail-stepped-add-step" type="button"></button>
           <button id="device-detail-stepped-save" type="button"></button>
           <button id="device-detail-stepped-reset" type="button"></button>
@@ -885,5 +890,148 @@ describe('device detail managed state saves', () => {
       'heater-1',
       'heater-2',
     ]);
+  });
+
+  it('shows and saves temperature boost settings for stepped temperature devices', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      settings: {
+        temperature_boost_settings: {},
+      },
+    });
+    homeyModule.setHomeyClient(homey);
+
+    const {
+      initDeviceDetailHandlers,
+      loadTemperatureBoostSettings,
+      openDeviceDetail,
+    } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [buildDevice('tank-1', 'Water tank', {
+      controlModel: 'stepped_load',
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1250 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+    })];
+    state.managedMap = { 'tank-1': true };
+    state.controllableMap = { 'tank-1': true };
+    state.budgetExemptMap = {};
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'tank-1': 1 } };
+    state.modeTargets = { Home: { 'tank-1': 65 } };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    await loadTemperatureBoostSettings();
+    initDeviceDetailHandlers();
+    openDeviceDetail('tank-1');
+    await flushPromises();
+
+    const boostSection = document.querySelector('#device-detail-temperature-boost') as HTMLElement | null;
+    const boostEnabled = document.querySelector('#device-detail-temperature-boost-enabled') as HTMLInputElement | null;
+    const boostBelow = document.querySelector('#device-detail-temperature-boost-below') as HTMLInputElement | null;
+
+    expect(boostSection?.hidden).toBe(false);
+    expect(boostEnabled?.checked).toBe(false);
+    expect(boostBelow?.value).toBe('55');
+
+    boostBelow!.value = '54';
+    boostEnabled!.checked = true;
+    boostEnabled!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+    await flushPromises();
+
+    expect(homey.__settingsStore.temperature_boost_settings).toEqual({
+      'tank-1': { enabled: true, boostBelowC: 54 },
+    });
+  });
+
+  it('hides temperature boost for stepped devices without target temperature capability', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      settings: {
+        temperature_boost_settings: {
+          'tank-1': { enabled: true, boostBelowC: 54 },
+        },
+      },
+    });
+    homeyModule.setHomeyClient(homey);
+
+    const {
+      initDeviceDetailHandlers,
+      loadTemperatureBoostSettings,
+      openDeviceDetail,
+    } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [buildDevice('tank-1', 'Water tank', {
+      targets: [],
+      capabilities: ['onoff'],
+      controlModel: 'stepped_load',
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1250 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+    })];
+    state.managedMap = { 'tank-1': true };
+    state.controllableMap = { 'tank-1': true };
+    state.budgetExemptMap = {};
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'tank-1': 1 } };
+    state.modeTargets = { Home: { 'tank-1': 65 } };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    await loadTemperatureBoostSettings();
+    initDeviceDetailHandlers();
+    openDeviceDetail('tank-1');
+    await flushPromises();
+
+    const boostSection = document.querySelector('#device-detail-temperature-boost') as HTMLElement | null;
+    expect(boostSection?.hidden).toBe(true);
   });
 });

@@ -9,6 +9,8 @@ import type {
     SteppedLoadCommandStatus,
     SteppedLoadProfile,
     SteppedLoadStep,
+    TemperatureBoostConfig,
+    TemperatureBoostSettings,
     TargetCapabilitySnapshot,
     TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
@@ -24,6 +26,8 @@ export type {
     SteppedLoadCommandStatus,
     SteppedLoadProfile,
     SteppedLoadStep,
+    TemperatureBoostConfig,
+    TemperatureBoostSettings,
     TargetCapabilitySnapshot,
     TargetDeviceSnapshot,
 };

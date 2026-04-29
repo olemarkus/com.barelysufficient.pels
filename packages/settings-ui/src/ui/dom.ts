@@ -165,6 +165,14 @@ export const deviceDetailShedStepRow = qs('#device-detail-overshoot-step-row');
 export const deviceDetailShedStep = document.querySelector('#device-detail-overshoot-step') as HTMLSelectElement;
 export const deviceDetailSteppedSection = qs('#device-detail-stepped-section');
 export const deviceDetailSteppedSteps = qs('#device-detail-stepped-steps');
+export const deviceDetailTemperatureBoost = qs('#device-detail-temperature-boost');
+export const deviceDetailTemperatureBoostEnabled = document.querySelector(
+  '#device-detail-temperature-boost-enabled',
+) as HTMLInputElement;
+export const deviceDetailTemperatureBoostBelowRow = qs('#device-detail-temperature-boost-below-row');
+export const deviceDetailTemperatureBoostBelow = document.querySelector(
+  '#device-detail-temperature-boost-below',
+) as HTMLInputElement;
 export const deviceDetailSteppedAddStep = document.querySelector(
   '#device-detail-stepped-add-step',
 ) as HTMLButtonElement;

@@ -30,6 +30,13 @@ export type DeviceControlProfile = SteppedLoadProfile;
 
 export type DeviceControlProfiles = Record<string, DeviceControlProfile>;
 
+export type TemperatureBoostConfig = {
+    enabled: boolean;
+    boostBelowC: number;
+};
+
+export type TemperatureBoostSettings = Record<string, TemperatureBoostConfig>;
+
 export type DeviceControlAdapterSnapshot = {
     kind: 'capability_adapter';
     activationAvailable?: boolean;
@@ -84,6 +91,7 @@ export type TargetDeviceSnapshot = {
     evChargingState?: string;
     stateOfCharge?: DeviceStateOfChargeSnapshot;
     currentTemperature?: number;
+    temperatureBoost?: TemperatureBoostConfig;
     measuredPowerKw?: number;
     reportedStepId?: string;
     targetStepId?: string;

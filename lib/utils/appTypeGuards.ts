@@ -1,5 +1,8 @@
 import type { PowerTrackerState } from '../core/powerTracker';
-import type { DeviceControlProfiles } from '../../packages/contracts/src/types';
+import type { DeviceControlProfiles, TemperatureBoostSettings } from '../../packages/contracts/src/types';
+import {
+  normalizeTemperatureBoostSettings as normalizeTemperatureBoostSettingsContract,
+} from '../../packages/contracts/src/temperatureBoost';
 import { normalizeDeviceControlProfiles } from './deviceControlProfiles';
 
 export function isFiniteNumber(value: unknown): value is number {
@@ -45,6 +48,10 @@ export function isDeviceControlProfiles(value: unknown): value is DeviceControlP
   const normalized = normalizeDeviceControlProfiles(value);
   if (!normalized) return false;
   return Object.keys(normalized).length === Object.keys(value as Record<string, unknown>).length;
+}
+
+export function normalizeTemperatureBoostSettings(value: unknown): TemperatureBoostSettings {
+  return normalizeTemperatureBoostSettingsContract(value);
 }
 
 export function isPowerTrackerState(value: unknown): value is PowerTrackerState {
