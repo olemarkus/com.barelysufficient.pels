@@ -430,8 +430,6 @@ export class PlanBuilder {
       state: this.state,
       shedSet: sheddingPlan.shedSet,
       shedReasons: sheddingPlan.shedReasons,
-      steppedDesiredStepByDeviceId: sheddingPlan.steppedDesiredStepByDeviceId,
-      temperatureShedTargets: sheddingPlan.temperatureShedTargets,
       guardInShortfall: sheddingPlan.guardInShortfall,
       deps: {
         getPriorityForDevice: (deviceId) => this.deps.getPriorityForDevice(deviceId),
