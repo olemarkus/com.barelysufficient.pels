@@ -203,6 +203,15 @@ const buildBudgetExemptChip = () => {
   return chip;
 };
 
+const buildTemperatureBoostChip = () => {
+  const chip = document.createElement('span');
+  chip.className = 'chip chip--boost plan-row__chip';
+  chip.textContent = 'Boost';
+  chip.setAttribute('aria-label', 'Temperature boost active');
+  setTooltip(chip, 'Temperature boost active');
+  return chip;
+};
+
 const buildPlanRow = (plan: PlanSnapshot | null, dev: PlanDeviceSnapshot, renderedAtMs: number, nowMs: number) => {
   const displayDev = resolveDisplayPlanDeviceSnapshot(plan, dev, renderedAtMs, nowMs);
   const overview = formatDeviceOverview(displayDev);
@@ -218,6 +227,9 @@ const buildPlanRow = (plan: PlanSnapshot | null, dev: PlanDeviceSnapshot, render
   name.append(buildPlanStateBadge(dev), document.createTextNode(dev.name));
   if (dev.budgetExempt === true) {
     name.appendChild(buildBudgetExemptChip());
+  }
+  if (dev.temperatureBoostActive === true) {
+    name.appendChild(buildTemperatureBoostChip());
   }
 
   const metaWrap = document.createElement('div');

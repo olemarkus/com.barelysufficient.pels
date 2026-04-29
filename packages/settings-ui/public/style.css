@@ -877,6 +877,12 @@ input:focus-visible {
   border-color: var(--color-state-success-bg);
 }
 
+.chip--boost {
+  background: var(--color-state-warning-bg-muted);
+  border-color: var(--color-state-warning-border-muted);
+  color: var(--color-state-warning-text);
+}
+
 .chip--neutral {
   background: var(--color-surface-4);
   border-color: var(--color-border-strong);

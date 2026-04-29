@@ -895,6 +895,38 @@ describe('plan device state', () => {
     expect(chip?.textContent?.trim()).toBe('Budget exempt');
   });
 
+  it('shows a boost chip when temperature boost is active', async () => {
+    await renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-boost',
+          name: 'Boosted tank',
+          controlModel: 'stepped_load',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          temperatureBoostActive: true,
+        },
+        {
+          id: 'dev-normal',
+          name: 'Normal tank',
+          controlModel: 'stepped_load',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          temperatureBoostActive: false,
+        },
+      ],
+    });
+
+    const boostChip = document.querySelector('[data-device-id="dev-boost"] .chip--boost') as HTMLElement | null;
+    const normalChip = document.querySelector('[data-device-id="dev-normal"] .chip--boost') as HTMLElement | null;
+    expect(boostChip?.textContent?.trim()).toBe('Boost');
+    expect(boostChip?.getAttribute('data-tooltip')).toBe('Temperature boost active');
+    expect(boostChip?.getAttribute('aria-label')).toBe('Temperature boost active');
+    expect(normalChip).toBeNull();
+  });
+
   it('uses the shared tooltip hook for the plan state badge', async () => {
     await renderPlanSnapshot({
       devices: [

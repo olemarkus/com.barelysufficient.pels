@@ -33,10 +33,12 @@ import {
 } from '../utils/deviceControlProfiles';
 import { resolveObservedCurrentState } from './planStateResolution';
 import {
+  emitTemperatureBoostStateChange,
   resolveTemperatureBoostActive,
   supportsTemperatureBoostDevice,
 } from './planTemperatureBoost';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
+import type { StructuredDebugEmitter } from '../logging/logger';
 
 export type PlanDevicesDeps = {
   getPriorityForDevice: (deviceId: string) => number;
@@ -45,6 +47,7 @@ export type PlanDevicesDeps = {
   isCurrentHourExpensive: () => boolean;
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
+  debugStructured?: StructuredDebugEmitter;
 };
 
 const supportsTemperatureDevice = (device: PlanInputDevice): boolean => {
@@ -85,6 +88,10 @@ export function buildInitialPlanDevices(params: {
       ? deps.getShedBehavior(dev.id)
       : { action: 'turn_off', temperature: null, stepId: null };
 
+    const previousActive = state.temperatureBoostActiveByDevice[dev.id] === true;
+    const active = resolveTemperatureBoostActive({ dev, previousActive });
+    emitTemperatureBoostStateChange({ dev, previousActive, active, debugStructured: deps.debugStructured });
+
     const base = buildBasePlanDevice({
       dev,
       devices: context.devices,
@@ -102,10 +109,7 @@ export function buildInitialPlanDevices(params: {
       shedBehavior,
       shedSet,
       shedReasons,
-      temperatureBoostActive: resolveTemperatureBoostActive({
-        dev,
-        previousActive: state.temperatureBoostActiveByDevice[dev.id] === true,
-      }),
+      temperatureBoostActive: active,
     });
     state.temperatureBoostActiveByDevice[dev.id] = base.temperatureBoostActive === true;
 

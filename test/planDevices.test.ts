@@ -93,6 +93,66 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.temperatureBoostActive).toBe(false);
   });
 
+  it('emits a structured debug event when temperature boost becomes active', () => {
+    const debugStructured = vi.fn();
+    const state = createPlanEngineState();
+
+    buildInitialPlanDevices({
+      context: buildContext([steppedInputDevice({
+        id: 'tank',
+        name: 'Water tank',
+        deviceType: 'temperature',
+        currentTemperature: 54.9,
+        temperatureBoost: { enabled: true, boostBelowC: 55 },
+      })]),
+      state,
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      deps: { ...defaultDeps, debugStructured },
+    });
+
+    expect(debugStructured).toHaveBeenCalledWith({
+      event: 'temperature_boost_state_changed',
+      deviceId: 'tank',
+      deviceName: 'Water tank',
+      active: true,
+      previousActive: false,
+      currentTemperatureC: 54.9,
+      boostBelowC: 55,
+      exitThresholdC: 57,
+      observationStale: false,
+    });
+  });
+
+  it('emits a structured debug event when temperature boost ends', () => {
+    const debugStructured = vi.fn();
+    const state = createPlanEngineState();
+    state.temperatureBoostActiveByDevice.tank = true;
+
+    buildInitialPlanDevices({
+      context: buildContext([steppedInputDevice({
+        id: 'tank',
+        name: 'Water tank',
+        deviceType: 'temperature',
+        currentTemperature: 57,
+        temperatureBoost: { enabled: true, boostBelowC: 55 },
+      })]),
+      state,
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      deps: { ...defaultDeps, debugStructured },
+    });
+
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'temperature_boost_state_changed',
+      deviceId: 'tank',
+      active: false,
+      previousActive: true,
+    }));
+  });
+
   it('does not independently shed devices when hourly budget is exhausted without a shedSet decision', () => {
     const state = createPlanEngineState();
     state.hourlyBudgetExhausted = true;
