@@ -47,6 +47,7 @@ import {
   applySteppedLoadShedOff,
   type PlanExecutorSteppedContext,
 } from './planExecutorStepped';
+import { buildExecutableSteppedLoadDevice } from './planExecutableSteppedLoad';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { setObservedNativeSteppedLoadStep } from '../core/deviceManagerNativeSteppedCommand';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
@@ -670,7 +671,10 @@ export class PlanExecutor {
     snapshot?: TargetDeviceSnapshot,
     options: { recordPlanActuation?: boolean } = {},
   ): Promise<boolean> {
-    return applySteppedLoadCommand(this.buildSteppedExecutorContext(), dev, mode, snapshot, options);
+    const action = buildExecutableSteppedLoadDevice(dev);
+    return action
+      ? applySteppedLoadCommand(this.buildSteppedExecutorContext(), action, mode, snapshot, options)
+      : false;
   }
 
   private async applySteppedLoadRestore(
@@ -680,7 +684,10 @@ export class PlanExecutor {
     anyShedDevices: boolean,
     options: { preRestoreStepIssued?: boolean } = {},
   ): Promise<boolean> {
-    return applySteppedLoadRestore(this.buildSteppedExecutorContext(), dev, snapshot, mode, anyShedDevices, options);
+    const action = buildExecutableSteppedLoadDevice(dev);
+    return action
+      ? applySteppedLoadRestore(this.buildSteppedExecutorContext(), action, snapshot, mode, anyShedDevices, options)
+      : false;
   }
 
   private async applySteppedLoadShedOff(
@@ -688,7 +695,10 @@ export class PlanExecutor {
     snapshot: TargetDeviceSnapshot | undefined,
     mode: PlanActuationMode,
   ): Promise<boolean> {
-    return applySteppedLoadShedOff(this.buildSteppedExecutorContext(), dev, snapshot, mode);
+    const action = buildExecutableSteppedLoadDevice(dev);
+    return action
+      ? applySteppedLoadShedOff(this.buildSteppedExecutorContext(), action, snapshot, mode)
+      : false;
   }
 
   public async applySheddingToDevice(deviceId: string, deviceName: string, reason?: string): Promise<boolean> {

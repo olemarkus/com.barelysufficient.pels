@@ -2591,6 +2591,42 @@ describe('restore admission — headroom and penalty gates', () => {
     expect(device?.shedStepId).toBe('medium');
     expect(reasonText(device?.reason)).toContain('shortfall');
   });
+
+  it('holds current-off stepped restore candidates at the off step during shortfall', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+
+    const result = applyRestorePlan({
+      planDevices: [steppedPlanDevice({
+        id: 'dev-step',
+        name: 'Tank',
+        currentState: 'off',
+        currentOn: false,
+        plannedState: 'keep',
+        selectedStepId: 'off',
+        desiredStepId: 'max',
+        targetStepId: 'max',
+        measuredPowerKw: 0,
+      })],
+      context: buildContext({ headroomRaw: -0.5, headroom: -0.5 }),
+      state,
+      sheddingActive: false,
+      guardInShortfall: true,
+      deps: {
+        powerTracker: { lastTimestamp: now - 1_000 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const device = result.planDevices.find((entry) => entry.id === 'dev-step');
+    expect(device?.plannedState).toBe('shed');
+    expect(device?.desiredStepId).toBe('off');
+    expect(device?.targetStepId).toBe('off');
+    expect(device?.shedAction).toBe('turn_off');
+    expect(reasonText(device?.reason)).toContain('shortfall');
+  });
 });
 
 describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () => {

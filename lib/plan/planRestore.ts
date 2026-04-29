@@ -318,6 +318,7 @@ function markRestoreCandidatesStayShedForShortfall(params: {
   setDevice: (id: string, updates: Partial<DevicePlanDevice>) => void;
 }): void {
   const { deviceMap, headroomKw, setDevice: setPlanDevice } = params;
+  const steppedCandidates = getSteppedRestoreCandidates([...deviceMap.values()]);
   markOffDevicesStayOff({
     deviceMap,
     timing: {
@@ -332,13 +333,22 @@ function markRestoreCandidatesStayShedForShortfall(params: {
     reasonOverride: (dev) => buildRestoreShortfallReason(dev, headroomKw),
   });
 
-  const steppedCandidates = getSteppedRestoreCandidates([...deviceMap.values()]);
   for (const dev of steppedCandidates) {
     const currentOff = resolveEffectiveCurrentOn(dev) === false;
-    const update: Partial<DevicePlanDevice> = {
-      reason: buildRestoreShortfallReason(dev, headroomKw),
+    const reason = buildRestoreShortfallReason(dev, headroomKw);
+    let update: Partial<DevicePlanDevice> = {
+      reason,
     };
-    if (currentOff) update.plannedState = 'shed';
+    if (currentOff) {
+      const offUpdate = buildOffSteppedRestoreShedUpdate(dev);
+      update = {
+        plannedState: offUpdate.plannedState,
+        desiredStepId: offUpdate.desiredStepId,
+        targetStepId: offUpdate.targetStepId,
+        shedAction: offUpdate.shedAction,
+        reason,
+      };
+    }
     if (!currentOff && dev.selectedStepId !== undefined) {
       update.plannedState = 'shed';
       update.desiredStepId = dev.selectedStepId;

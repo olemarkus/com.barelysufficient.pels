@@ -11,12 +11,13 @@ import {
   applyNativeEvWiringOverlay,
   hasOfficialEvChargerCapabilities,
 } from './nativeEvWiring';
-import type { DeviceCapabilityMap } from './deviceManagerControl';
+import { toCapabilityTimestampMs, type DeviceCapabilityMap } from './deviceManagerControl';
 import { resolveDeviceCapabilities } from './deviceManagerParse';
 import type { DeviceManagerParseProviders } from './deviceManagerParseDevice';
 import {
   buildNativeSteppedLoadControlAdapter,
   isNativeSteppedLoadWiringCandidate,
+  resolveNativeSteppedLoadCapabilityId,
   resolveNativeSteppedLoadProfileSuggestion,
   resolveNativeSteppedLoadReportedStepId,
   stripNativeSteppedLoadControlCapabilities,
@@ -52,6 +53,7 @@ export function resolveFlowCapabilityOverlay(params: {
   requiredFlowCapabilityIds: readonly FlowEffectiveRequiredCapabilityId[];
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
   reportedStepId?: string;
+  reportedStepObservedAtMs?: number;
   suggestedSteppedLoadProfile?: SteppedLoadProfile;
   allReportedCapabilities: FlowReportedCapabilitiesForDevice;
 } {
@@ -126,6 +128,7 @@ export function resolveFlowCapabilityOverlay(params: {
     requiredFlowCapabilityIds,
     reportedCapabilities,
     reportedStepId: nativeSteppedOverlay.reportedStepId,
+    reportedStepObservedAtMs: nativeSteppedOverlay.reportedStepObservedAtMs,
     suggestedSteppedLoadProfile: nativeSteppedOverlay.suggestedSteppedLoadProfile,
     allReportedCapabilities,
   };
@@ -140,6 +143,7 @@ function resolveNativeSteppedLoadOverlay(params: {
 }): {
   controlAdapter?: DeviceControlAdapterSnapshot;
   reportedStepId?: string;
+  reportedStepObservedAtMs?: number;
   suggestedSteppedLoadProfile?: SteppedLoadProfile;
 } {
   const {
@@ -156,17 +160,31 @@ function resolveNativeSteppedLoadOverlay(params: {
   if (!nativeSteppedCandidate) return { suggestedSteppedLoadProfile };
 
   const nativeSteppedEnabled = providers.getNativeEvWiringEnabled?.(deviceId) === true;
+  const reportedStepId = nativeSteppedEnabled
+    ? resolveNativeSteppedLoadReportedStepId({
+      profile: suggestedSteppedLoadProfile,
+      capabilities,
+      capabilityObj,
+    })
+    : undefined;
   return {
     controlAdapter: buildNativeSteppedLoadControlAdapter({ nativeWiringEnabled: nativeSteppedEnabled }),
-    reportedStepId: nativeSteppedEnabled
-      ? resolveNativeSteppedLoadReportedStepId({
-        profile: suggestedSteppedLoadProfile,
-        capabilities,
-        capabilityObj,
-      })
+    reportedStepId,
+    reportedStepObservedAtMs: reportedStepId
+      ? resolveNativeSteppedLoadObservedAtMs({ capabilities, capabilityObj })
       : undefined,
     suggestedSteppedLoadProfile,
   };
+}
+
+function resolveNativeSteppedLoadObservedAtMs(params: {
+  capabilities: readonly string[];
+  capabilityObj: DeviceCapabilityMap;
+}): number | undefined {
+  const nativeCapabilityId = resolveNativeSteppedLoadCapabilityId(params.capabilities);
+  return toCapabilityTimestampMs(
+    nativeCapabilityId ? params.capabilityObj[nativeCapabilityId]?.lastUpdated : undefined,
+  );
 }
 
 function pickSupplementalFlowReports(

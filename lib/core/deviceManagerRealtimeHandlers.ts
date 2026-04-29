@@ -1,4 +1,5 @@
 import type { HomeyDeviceLike, TargetDeviceSnapshot } from '../utils/types';
+import { resolveEvChargingStateBinaryEvidence } from './deviceManagerControl';
 import type { RecentLocalCapabilityWrites } from './deviceManagerRealtimeSupport';
 import {
   reconcileRealtimeDeviceUpdate,
@@ -52,6 +53,11 @@ export type HandleRealtimeDeviceUpdateResult = {
 
 type BinarySettleOutcome = 'settled' | 'drift' | 'none';
 
+type BinarySettleEvidence = {
+  value?: boolean;
+  suppressRawBinaryChange?: boolean;
+};
+
 type PendingBinarySettleObservationRecorder = (
   deviceId: string,
   capabilityId: string,
@@ -99,14 +105,17 @@ export function handleRealtimeDeviceUpdate(params: {
   }
   const label = device.name;
 
-  // Extract the raw binary value from the device payload before reconcile so the
-  // settle window receives the actual observed value rather than a preserved or
-  // synthesized snapshot value.
+  // Extract explicit settlement evidence before reconcile so the settle window
+  // receives the observed value rather than a preserved snapshot value.
   const priorSnapshot = latestSnapshot.find((s) => s.id === deviceId);
   const controlCapabilityId = priorSnapshot?.controlObservationCapabilityId ?? priorSnapshot?.controlCapabilityId;
   const rawBinaryValue = extractRawBinaryValue(
     device,
     controlCapabilityId,
+  );
+  const binaryEvidence = extractBinarySettleEvidence(
+    device,
+    priorSnapshot,
   );
 
   const result = reconcileRealtimeDeviceUpdate({
@@ -119,8 +128,9 @@ export function handleRealtimeDeviceUpdate(params: {
   const settleResult = applyPendingBinarySettleToDeviceUpdate({
     currentSnapshot: result.currentSnapshot,
     changes: result.changes,
-    rawBinaryValue,
+    binaryEvidence,
     notePendingBinarySettleObservation,
+    hasPendingBinarySettleWindow,
   });
   const filteredChanges = settleResult.changes;
   const shouldReconcilePlan = filteredChanges.length > 0;
@@ -195,8 +205,9 @@ export function didMeasurePowerBecomeSignificantlyPositive(
 function applyPendingBinarySettleToDeviceUpdate(params: {
   currentSnapshot: TargetDeviceSnapshot | null;
   changes: RealtimeDeviceReconcileChange[];
-  rawBinaryValue: boolean | undefined;
+  binaryEvidence: BinarySettleEvidence;
   notePendingBinarySettleObservation?: PendingBinarySettleObservationRecorder;
+  hasPendingBinarySettleWindow?: (deviceId: string, capabilityId: string) => boolean;
 }): {
   changes: RealtimeDeviceReconcileChange[];
   binarySettleOutcome: BinarySettleOutcome;
@@ -204,35 +215,47 @@ function applyPendingBinarySettleToDeviceUpdate(params: {
   const {
     currentSnapshot,
     changes,
-    rawBinaryValue,
+    binaryEvidence,
     notePendingBinarySettleObservation,
+    hasPendingBinarySettleWindow,
   } = params;
   const deviceId = currentSnapshot?.id;
   const binaryCapabilityId = currentSnapshot?.controlCapabilityId;
 
-  // rawBinaryValue is undefined when the device.update payload contained no explicit
-  // boolean for the control capability — treat it as no observation (do not resolve).
-  if (
-    !hasRawBinaryObservation(rawBinaryValue)
-    || !currentSnapshot
-    || !deviceId
-    || typeof binaryCapabilityId !== 'string'
-    || !notePendingBinarySettleObservation
-  ) {
+  if (shouldSuppressPendingBinaryChange({
+    binaryEvidence,
+    currentSnapshot,
+    deviceId,
+    binaryCapabilityId,
+    hasPendingBinarySettleWindow,
+  })) {
+    return {
+      changes: changes.filter((change) => change.capabilityId !== binaryCapabilityId),
+      binarySettleOutcome: 'none',
+    };
+  }
+
+  const applicableEvidence = resolveApplicableBinarySettleEvidence({
+    binaryEvidence,
+    currentSnapshot,
+    deviceId,
+    binaryCapabilityId,
+  });
+  if (!applicableEvidence || !notePendingBinarySettleObservation) {
     return { changes, binarySettleOutcome: 'none' };
   }
 
   const outcome = notePendingBinarySettleObservation(
-    deviceId,
-    binaryCapabilityId,
-    rawBinaryValue,
+    applicableEvidence.deviceId,
+    applicableEvidence.binaryCapabilityId,
+    applicableEvidence.value,
     'device_update',
   );
 
   if (outcome === 'settled' || outcome === 'drift') {
     // Binary change handled by settle window (reconcile already emitted on drift).
     // Filter it out to prevent a duplicate reconcile from this path.
-    const filteredChanges = changes.filter((change) => change.capabilityId !== binaryCapabilityId);
+    const filteredChanges = changes.filter((change) => change.capabilityId !== applicableEvidence.binaryCapabilityId);
     return { changes: filteredChanges, binarySettleOutcome: outcome };
   }
 
@@ -310,8 +333,94 @@ function hasRawBinaryObservation(rawBinaryValue: boolean | undefined): rawBinary
   return rawBinaryValue !== undefined;
 }
 
-/** Returns the explicit boolean value for `capabilityId` from the device payload, or
- *  undefined if the capability is absent or its value is not a boolean. */
+function shouldSuppressPendingBinaryChange(params: {
+  binaryEvidence: BinarySettleEvidence;
+  currentSnapshot: TargetDeviceSnapshot | null;
+  deviceId?: string;
+  binaryCapabilityId?: string;
+  hasPendingBinarySettleWindow?: (deviceId: string, capabilityId: string) => boolean;
+}): boolean {
+  const {
+    binaryEvidence,
+    currentSnapshot,
+    deviceId,
+    binaryCapabilityId,
+    hasPendingBinarySettleWindow,
+  } = params;
+  if (binaryEvidence.value !== undefined) return false;
+  if (binaryEvidence.suppressRawBinaryChange !== true) return false;
+  if (currentSnapshot === null) return false;
+  if (typeof deviceId !== 'string') return false;
+  if (typeof binaryCapabilityId !== 'string') return false;
+  return hasPendingBinarySettleWindow?.(deviceId, binaryCapabilityId) === true;
+}
+
+function resolveApplicableBinarySettleEvidence(params: {
+  binaryEvidence: BinarySettleEvidence;
+  currentSnapshot: TargetDeviceSnapshot | null;
+  deviceId?: string;
+  binaryCapabilityId?: string;
+}): {
+  deviceId: string;
+  binaryCapabilityId: string;
+  value: boolean;
+} | null {
+  const {
+    binaryEvidence,
+    currentSnapshot,
+    deviceId,
+    binaryCapabilityId,
+  } = params;
+  if (
+    binaryEvidence.value !== undefined
+    && currentSnapshot !== null
+    && typeof deviceId === 'string'
+    && typeof binaryCapabilityId === 'string'
+  ) {
+    return {
+      deviceId,
+      binaryCapabilityId,
+      value: binaryEvidence.value,
+    };
+  }
+  return null;
+}
+
+function extractBinarySettleEvidence(
+  device: HomeyDeviceLike,
+  priorSnapshot: TargetDeviceSnapshot | undefined,
+): BinarySettleEvidence {
+  const capabilityId = priorSnapshot?.controlObservationCapabilityId ?? priorSnapshot?.controlCapabilityId;
+  if (capabilityId === undefined) return {};
+
+  if (priorSnapshot?.controlCapabilityId === 'evcharger_charging') {
+    const rawStateValue = device.capabilitiesObj?.evcharger_charging_state?.value;
+    if (rawStateValue !== undefined) {
+      const stateEvidence = resolveEvChargingStateBinaryEvidence(rawStateValue);
+      const rawBinaryValue = extractRawBinaryValue(device, capabilityId);
+      if (
+        Object.is(rawStateValue, priorSnapshot.evChargingState)
+        && stateEvidence !== undefined
+        && rawBinaryValue !== undefined
+        && rawBinaryValue !== stateEvidence
+      ) {
+        return { suppressRawBinaryChange: true };
+      }
+      return {
+        value: stateEvidence,
+        suppressRawBinaryChange: true,
+      };
+    }
+    if (priorSnapshot.evChargingState !== undefined) {
+      return {
+        suppressRawBinaryChange: extractRawBinaryValue(device, capabilityId) !== undefined,
+      };
+    }
+  }
+
+  return { value: extractRawBinaryValue(device, capabilityId) };
+}
+
 function extractRawBinaryValue(device: HomeyDeviceLike, capabilityId: string | undefined): boolean | undefined {
   if (capabilityId === undefined) return undefined;
   const capValue = device.capabilitiesObj?.[capabilityId]?.value;

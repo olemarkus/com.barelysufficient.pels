@@ -98,6 +98,13 @@ file.
 
 ## P1 Type-safety and state-boundary follow-ups
 
+- [ ] Remove legacy stepped-load optional fields from persisted/API contracts after the release
+      cut. Planner and executor semantics should stay behind typed stepped-state adapters; the
+      remaining compatibility fields (`selectedStepId`, `actualStepId`, `assumedStepId`, and
+      related provenance) should be retired from public snapshots only with an explicit contract
+      migration.
+      Files: `packages/contracts/src/types.ts`, `lib/plan/planTypes.ts`, settings UI contract
+      tests, persisted snapshot compatibility tests.
 - [ ] Replace the broad optional-field device snapshots with stronger discriminated state types.
       `TargetDeviceSnapshot`, `DevicePlanDevice`, and `PlanInputDevice` should not carry all
       binary, temperature, stepped-load, EV, freshness, and power fields as one nullable bag.

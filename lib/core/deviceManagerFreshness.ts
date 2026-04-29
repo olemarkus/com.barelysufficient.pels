@@ -1,5 +1,8 @@
 import type { TargetDeviceSnapshot } from '../utils/types';
-import { resolveEvCurrentOn } from './deviceManagerControl';
+import {
+  resolveEvChargingStateBinaryEvidence,
+  resolveEvCurrentOn,
+} from './deviceManagerControl';
 import {
   isStateOfChargeCapabilityId,
   updateStateOfChargeFromRealtimeCapability,
@@ -12,6 +15,7 @@ export type FreshnessOnlyCapabilityUpdateResult = {
   changed: boolean;
   normalizedValue: unknown;
   reconcileChange?: RealtimeDeviceReconcileChange;
+  binaryControlObservation?: TargetDeviceSnapshot['binaryControlObservation'];
 };
 
 export function applyFreshnessOnlyCapabilityUpdate(params: {
@@ -45,31 +49,68 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
     };
   }
   if (capabilityId === 'evcharger_charging_state' && typeof value === 'string') {
-    if (Object.is(snapshot.evChargingState, value)) return { changed: false, normalizedValue: value };
-    const previousCurrentOn = snapshot.currentOn;
-    snapshot.evChargingState = value;
-    const nextCurrentOn = resolveEvCurrentOn({
-      evChargingState: snapshot.evChargingState,
-      evchargerCharging: snapshot.evCharging,
-    });
-    snapshot.currentOn = nextCurrentOn;
-    updateStateOfChargeSessionBoundary({
-      snapshot,
-      evChargingState: value,
-      observedAtMs: Date.now(),
-      nowMs: Date.now(),
-    });
-    return {
-      changed: true,
-      normalizedValue: value,
-      reconcileChange: previousCurrentOn === nextCurrentOn
-        ? undefined
-        : {
-          capabilityId: 'evcharger_charging',
-          previousValue: formatBinaryState(previousCurrentOn),
-          nextValue: formatBinaryState(nextCurrentOn),
-        },
-    };
+    return applyEvChargingStateUpdate(snapshot, value);
   }
   return { changed: false, normalizedValue: undefined };
+}
+
+function applyEvChargingStateUpdate(
+  snapshot: TargetDeviceSnapshot,
+  value: string,
+): FreshnessOnlyCapabilityUpdateResult {
+  const mutableSnapshot = snapshot;
+  const observedAtMs = Date.now();
+  const binaryControlObservation = buildEvChargingStateBinaryControlObservation(value, observedAtMs);
+  if (binaryControlObservation) mutableSnapshot.binaryControlObservation = binaryControlObservation;
+  else delete mutableSnapshot.binaryControlObservation;
+  if (Object.is(mutableSnapshot.evChargingState, value)) {
+    return { changed: false, normalizedValue: value, binaryControlObservation };
+  }
+  const previousCurrentOn = mutableSnapshot.currentOn;
+  mutableSnapshot.evChargingState = value;
+  const nextCurrentOn = resolveEvCurrentOn({
+    evChargingState: mutableSnapshot.evChargingState,
+    evchargerCharging: mutableSnapshot.evCharging,
+  });
+  mutableSnapshot.currentOn = nextCurrentOn;
+  updateStateOfChargeSessionBoundary({
+    snapshot: mutableSnapshot,
+    evChargingState: value,
+    observedAtMs,
+    nowMs: observedAtMs,
+  });
+  return {
+    changed: true,
+    normalizedValue: value,
+    binaryControlObservation,
+    reconcileChange: buildEvChargingStateReconcileChange(previousCurrentOn, nextCurrentOn),
+  };
+}
+
+function buildEvChargingStateReconcileChange(
+  previousCurrentOn: boolean,
+  nextCurrentOn: boolean,
+): RealtimeDeviceReconcileChange | undefined {
+  if (previousCurrentOn === nextCurrentOn) return undefined;
+  return {
+    capabilityId: 'evcharger_charging',
+    previousValue: formatBinaryState(previousCurrentOn),
+    nextValue: formatBinaryState(nextCurrentOn),
+  };
+}
+
+function buildEvChargingStateBinaryControlObservation(
+  value: string,
+  observedAtMs: number,
+): TargetDeviceSnapshot['binaryControlObservation'] {
+  const observedValue = resolveEvChargingStateBinaryEvidence(value);
+  if (observedValue === undefined) return undefined;
+  return {
+    valid: true,
+    capabilityId: 'evcharger_charging',
+    observedValue,
+    observedCapabilityIds: ['evcharger_charging_state'],
+    observedAtMs,
+    source: 'realtime_capability',
+  };
 }

@@ -337,5 +337,8 @@
   },
   "2.4.3": {
     "en": "Fixed various issues with stepped devices."
+  },
+  "2.4.4": {
+    "en": "Various stability improvements."
   }
 }

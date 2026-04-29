@@ -140,6 +140,7 @@ export function parseDevice(params: {
         requiredFlowCapabilityIds,
         reportedCapabilities,
         reportedStepId,
+        reportedStepObservedAtMs,
         suggestedSteppedLoadProfile,
     } = resolveFlowCapabilityOverlay({
         device: effectiveDevice,
@@ -209,7 +210,7 @@ export function parseDevice(params: {
         capabilityObj,
         controlCapabilityId,
         targetCaps,
-        measuredPowerObservedAtMs: measuredPower.observedAtMs,
+        observedCapabilityAtMs: reportedStepObservedAtMs, measuredPowerObservedAtMs: measuredPower.observedAtMs,
     });
     return buildParsedDeviceSnapshot({
         device: effectiveDevice,

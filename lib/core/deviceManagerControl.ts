@@ -63,6 +63,20 @@ export function resolveEvCurrentOn(params: {
   return true;
 }
 
+export function resolveEvChargingStateBinaryEvidence(evChargingState: unknown): boolean | undefined {
+  switch (evChargingState) {
+    case 'plugged_in_charging':
+      return true;
+    case 'plugged_in':
+    case 'plugged_in_paused':
+    case 'plugged_out':
+    case 'plugged_in_discharging':
+      return false;
+    default:
+      return undefined;
+  }
+}
+
 export function getCanSetControl(
   controlCapabilityId: TargetDeviceSnapshot['controlCapabilityId'],
   controlWriteCapabilityIdOrCapabilityObj: string | DeviceCapabilityMap | undefined = undefined,

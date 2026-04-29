@@ -476,5 +476,21 @@ function getSettlingBinaryObservation(
   if (observation.capabilityId !== pending.capabilityId) return undefined;
   if (!Number.isFinite(observation.observedAtMs)) return undefined;
   if (observation.observedAtMs <= pending.startedMs) return undefined;
+  if (pending.capabilityId === 'evcharger_charging') return resolveSettlingEvObservation(liveDevice, observation);
+  return observation;
+}
+
+function resolveSettlingEvObservation(
+  liveDevice: PlanInputDevice,
+  observation: NonNullable<PlanInputDevice['binaryControlObservation']>,
+): NonNullable<PlanInputDevice['binaryControlObservation']> | undefined {
+  const rawStateValue = liveDevice.evChargingState;
+  if (rawStateValue === undefined) {
+    return observation.observedCapabilityIds.includes('evcharger_charging_state')
+      ? undefined
+      : observation;
+  }
+  const observedFromState = observation.observedCapabilityIds.includes('evcharger_charging_state');
+  if (!observedFromState) return undefined;
   return observation;
 }
