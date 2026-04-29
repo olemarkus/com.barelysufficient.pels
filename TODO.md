@@ -5,13 +5,6 @@ file.
 
 ## P0 Correctness and control integrity
 
-- [ ] Stop treating missing binary / EV telemetry as an observed on state. Missing `onoff`,
-      missing EV charging state, or unavailable telemetry should become an explicit unknown state
-      before planning, not `currentOn=true`.
-      Why P0: the current fallback can make degraded or missing state look like confirmed
-      controllable load, which can produce incorrect shedding / restore decisions.
-      Files: `lib/core/deviceManagerControl.ts`, `packages/contracts/src/types.ts`,
-      `lib/plan/planCurrentState.ts`, planner/current-state tests.
 - [ ] Make observation freshness source-aware. Targeted snapshot refreshes and same-value
       realtime updates should only advance freshness when the value source proves the capability
       was observed, and stale / missing freshness should not be silently considered safe.

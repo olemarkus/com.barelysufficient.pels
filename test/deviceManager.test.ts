@@ -1,5 +1,10 @@
 import { DeviceManager, PLAN_LIVE_STATE_OBSERVED_EVENT, PLAN_RECONCILE_REALTIME_UPDATE_EVENT } from '../lib/core/deviceManager';
+import {
+    createObservationState,
+    mergeFresherCapabilityObservations,
+} from '../lib/core/deviceManagerObservation';
 import type { LiveFeedHealth } from '../lib/core/deviceLiveFeed';
+import type { HomeyDeviceLike, TargetDeviceSnapshot } from '../lib/utils/types';
 import {
     mockHomeyInstance,
 } from './mocks/homey';
@@ -226,8 +231,8 @@ describe('DeviceManager', () => {
             ]);
         });
 
-        it('keeps the synthesized currentOn fallback when onoff is missing a boolean value', () => {
-            const [parsed] = deviceManager.parseDeviceListForTests([{
+        it('drops devices with invalid onoff telemetry when no previous observation can be preserved', () => {
+            const parsed = deviceManager.parseDeviceListForTests([{
                 id: 'thermo-2',
                 name: 'Bedroom Thermostat',
                 class: 'thermostat',
@@ -239,12 +244,16 @@ describe('DeviceManager', () => {
                 },
             }]);
 
-            expect(parsed).toEqual(expect.objectContaining({
-                id: 'thermo-2',
-                controlCapabilityId: 'onoff',
-                currentOn: true,
-                binaryControlObservation: undefined,
-                deviceType: 'temperature',
+            expect(parsed).toEqual([]);
+            expect(loggerMock.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_snapshot_control_state_dropped',
+                reasonCode: 'missing_boolean_onoff',
+                source: 'snapshot_parse',
+                deviceId: 'thermo-2',
+                deviceName: 'Bedroom Thermostat',
+                capabilityId: 'onoff',
+                rawValue: 'unexpected',
+                rawValueType: 'string',
             }));
             expect(debugStructuredMock).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_snapshot_control_state_fallback',
@@ -254,7 +263,7 @@ describe('DeviceManager', () => {
                 capabilityId: 'onoff',
                 rawValue: 'unexpected',
                 rawValueType: 'string',
-                fallbackCurrentOn: true,
+                fallbackCurrentOn: undefined,
             }));
         });
 
@@ -1380,7 +1389,7 @@ describe('DeviceManager', () => {
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(false);
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation).toBeUndefined();
-            expect(loggerMock.structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+            expect(loggerMock.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'binary_settle_evidence_cleared',
                 reasonCode: 'invalid_control_payload',
                 deviceId: 'dev1',
@@ -3330,12 +3339,24 @@ describe('DeviceManager', () => {
             expect(realtimeListener).not.toHaveBeenCalled();
         });
 
-        it('assumes on for onoff devices when snapshot data omits the boolean value', async () => {
+        it('keeps observable onoff devices when snapshot data omits the boolean value without refreshing binary evidence', async () => {
             await deviceManager.refreshSnapshot();
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 currentOn: true,
                 measuredPowerKw: 1,
+                binaryControlObservation: undefined,
+                lastFreshDataMs: undefined,
+            }));
+            expect(loggerMock.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_snapshot_control_state_dropped',
+                reasonCode: 'missing_boolean_onoff',
+                source: 'snapshot_parse',
+                deviceId: 'dev1',
+                deviceName: 'Heater',
+                capabilityId: 'onoff',
+                rawValue: null,
+                rawValueType: 'undefined',
             }));
             expect(debugStructuredMock).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_snapshot_control_state_fallback',
@@ -5780,6 +5801,124 @@ describe('DeviceManager', () => {
                     vi.useRealTimers();
                 }
             });
+
+            it('preserves previous currentOn but does not refresh freshness when onoff disappears without other signs of life', async () => {
+                vi.useFakeTimers();
+                try {
+                    await deviceManager.init();
+                    vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+                    mockApiGet.mockResolvedValue({
+                        dev1: {
+                            id: 'dev1',
+                            name: 'Heater',
+                            class: 'heater',
+                            capabilities: ['onoff', 'measure_power'],
+                            capabilitiesObj: {
+                                onoff: {
+                                    value: true,
+                                    id: 'onoff',
+                                    lastUpdated: '2026-04-01T11:59:00.000Z',
+                                },
+                                measure_power: {
+                                    value: 1000,
+                                    id: 'measure_power',
+                                    lastUpdated: '2026-04-01T11:59:00.000Z',
+                                },
+                            },
+                        },
+                    });
+                    await deviceManager.refreshSnapshot();
+                    const freshnessAfterFirstRefresh = deviceManager.getSnapshot()[0].lastFreshDataMs;
+                    expect(deviceManager.getSnapshot()[0].currentOn).toBe(true);
+
+                    vi.setSystemTime(new Date('2026-04-01T12:10:00.000Z'));
+                    mockApiGet.mockResolvedValue({
+                        dev1: {
+                            id: 'dev1',
+                            name: 'Heater',
+                            class: 'heater',
+                            capabilities: ['onoff', 'measure_power'],
+                            capabilitiesObj: {
+                                onoff: { id: 'onoff' },
+                            },
+                        },
+                    });
+                    await deviceManager.refreshSnapshot({ targetedRefresh: true });
+
+                    const snapshot = deviceManager.getSnapshot()[0];
+                    expect(snapshot.currentOn).toBe(true);
+                    expect(snapshot.lastFreshDataMs).toBe(freshnessAfterFirstRefresh);
+                    expect(snapshot.lastFreshDataMs).not.toBe(new Date('2026-04-01T12:10:00.000Z').getTime());
+                    expect(loggerMock.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
+                        event: 'device_snapshot_control_state_dropped',
+                        reasonCode: 'missing_boolean_onoff',
+                        deviceId: 'dev1',
+                        capabilityId: 'onoff',
+                    }));
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
+
+            it('preserves previous currentOn while accepting fresh non-binary evidence from the same device update', async () => {
+                vi.useFakeTimers();
+                try {
+                    await deviceManager.init();
+                    vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+                    mockApiGet.mockResolvedValue({
+                        dev1: {
+                            id: 'dev1',
+                            name: 'Heater',
+                            class: 'heater',
+                            capabilities: ['onoff', 'measure_power'],
+                            capabilitiesObj: {
+                                onoff: {
+                                    value: false,
+                                    id: 'onoff',
+                                    lastUpdated: '2026-04-01T11:59:00.000Z',
+                                },
+                                measure_power: {
+                                    value: 0,
+                                    id: 'measure_power',
+                                    lastUpdated: '2026-04-01T11:59:00.000Z',
+                                },
+                            },
+                        },
+                    });
+                    await deviceManager.refreshSnapshot();
+
+                    vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
+                    const reconcileListener = vi.fn();
+                    deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+
+                    deviceManager.injectDeviceUpdateForTest({
+                        id: 'dev1',
+                        name: 'Heater',
+                        class: 'heater',
+                        capabilities: ['onoff', 'measure_power'],
+                        capabilitiesObj: {
+                            onoff: { value: 'unknown', id: 'onoff' },
+                            measure_power: { value: 500, id: 'measure_power' },
+                        },
+                    });
+
+                    const snapshot = deviceManager.getSnapshot()[0];
+                    expect(snapshot.currentOn).toBe(false);
+                    expect(snapshot.measuredPowerKw).toBe(0.5);
+                    expect(snapshot.lastFreshDataMs).toBe(new Date('2026-04-01T12:01:00.000Z').getTime());
+                    expect(snapshot.binaryControlObservation).toBeUndefined();
+                    expect(reconcileListener).not.toHaveBeenCalled();
+                    expect(loggerMock.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
+                        event: 'binary_settle_evidence_cleared',
+                        reasonCode: 'invalid_control_payload',
+                        deviceId: 'dev1',
+                        capabilityId: 'onoff',
+                        source: 'device_update',
+                    }));
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
         });
 
         describe('stale-targeted refresh freshness policy', () => {
@@ -5836,6 +5975,55 @@ describe('DeviceManager', () => {
                 } finally {
                     vi.useRealTimers();
                 }
+            });
+
+            it('trusts parsed EV control observations during targeted refresh', () => {
+                const observationState = createObservationState();
+                const initialFreshAt = new Date('2026-04-01T11:55:00.000Z').getTime();
+                const targetedPollAt = new Date('2026-04-01T12:06:00.000Z').getTime();
+                const previousSnapshot: TargetDeviceSnapshot[] = [{
+                    id: 'ev1',
+                    name: 'Zaptec',
+                    deviceClass: 'evcharger',
+                    capabilities: ['evcharger_charging'],
+                    currentOn: true,
+                    controlCapabilityId: 'evcharger_charging',
+                    targets: [],
+                    powerCapable: false,
+                    lastFreshDataMs: initialFreshAt,
+                }];
+                const nextSnapshot: TargetDeviceSnapshot[] = [{
+                    ...previousSnapshot[0],
+                    binaryControlObservation: {
+                        valid: true,
+                        capabilityId: 'evcharger_charging',
+                        observedValue: true,
+                        observedCapabilityIds: ['evcharger_charging_state'],
+                        observedAtMs: initialFreshAt,
+                        source: 'snapshot_refresh',
+                    },
+                }];
+                const sourceDevice: HomeyDeviceLike = {
+                    id: 'ev1',
+                    name: 'Zaptec',
+                    class: 'evcharger',
+                    capabilities: ['charge_mode'],
+                    capabilitiesObj: {
+                        charge_mode: { value: 'active' },
+                    },
+                };
+
+                mergeFresherCapabilityObservations({
+                    state: observationState,
+                    previousSnapshot,
+                    nextSnapshot,
+                    devices: [sourceDevice],
+                    targetedRefreshPollAtMs: targetedPollAt,
+                    logger: loggerMock,
+                });
+
+                expect(nextSnapshot[0].lastFreshDataMs).toBe(targetedPollAt);
+                expect(nextSnapshot[0].lastUpdated).toBe(targetedPollAt);
             });
         });
 

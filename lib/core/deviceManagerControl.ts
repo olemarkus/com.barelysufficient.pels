@@ -32,10 +32,10 @@ export function getCurrentOn(params: {
   deviceClassKey: DeviceClassKey;
   capabilityObj: DeviceCapabilityMap;
   controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
-}): boolean {
+}): boolean | undefined {
   const { deviceClassKey, capabilityObj, controlCapabilityId } = params;
   if (controlCapabilityId === 'evcharger_charging' || deviceClassKey === 'evcharger') {
-    return resolveEvCurrentOn({
+    return resolveEvCurrentOnObservation({
       evChargingState: getEvChargingState(capabilityObj),
       evchargerCharging: getEvCharging(capabilityObj),
     });
@@ -43,7 +43,7 @@ export function getCurrentOn(params: {
   if (typeof capabilityObj.onoff?.value === 'boolean') {
     return capabilityObj.onoff.value;
   }
-  return true;
+  return undefined;
 }
 
 export function resolveEvCurrentOn(params: {
@@ -61,6 +61,19 @@ export function resolveEvCurrentOn(params: {
     return false;
   }
   return true;
+}
+
+export function resolveEvCurrentOnObservation(params: {
+  evChargingState: string | undefined;
+  evchargerCharging: unknown;
+}): boolean | undefined {
+  const { evChargingState, evchargerCharging } = params;
+  if (evchargerCharging === true) return true;
+  if (evChargingState !== undefined) {
+    return resolveEvCurrentOn({ evChargingState, evchargerCharging });
+  }
+  if (evchargerCharging === false) return false;
+  return undefined;
 }
 
 export function resolveEvChargingStateBinaryEvidence(evChargingState: unknown): boolean | undefined {
