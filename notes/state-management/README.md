@@ -67,6 +67,8 @@ does not become another source of truth.
 Layer ownership:
 
 - app/snapshot code may classify raw evidence and serialize compatibility fields
+- reconcile is an evidence-refresh boundary: live stepped-load evidence replaces the previous
+  plan's stepped evidence, and missing live evidence clears previous reported/prepared evidence
 - stepped-load planner and executor code own the typed semantic state and restore-preparation
   checks
 - shared-domain and settings UI must not import the planner state model
@@ -93,6 +95,9 @@ Contributor rules:
   `actualStepId` alone as proof of preparation; during migration, executor compatibility code may
   treat `actualStepId` as preparation evidence only when `actualStepSource === 'reported'`
 - fallback lowest-active-step assumptions are planning inputs only, never restore proof
+- the planner may consume a best available effective/planning step when provenance does not change
+  the planning decision; trust/provenance belongs at the observer/reconcile boundary and the
+  executor restore gate
 - a just-issued pre-restore step command is pending intent, not preparation proof for the same
   executor pass
 - restore preparation must come from explicit reported evidence or narrowly admitted suppressed

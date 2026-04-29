@@ -2100,6 +2100,53 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
 
+  it('does not restore from stale reported step evidence after live state only has fallback evidence', async () => {
+    const appliedPlan = steppedPlan({
+      currentState: 'on',
+      selectedStepId: 'low',
+      reportedStepId: 'low',
+      actualStepId: 'low',
+      actualStepSource: 'reported',
+      desiredStepId: 'low',
+    });
+    const liveDevices = buildLiveDevices({
+      currentOn: false,
+      selectedStepId: 'low',
+      actualStepId: undefined,
+      assumedStepId: 'low',
+      actualStepSource: 'assumed',
+    });
+
+    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
+    expect(livePlan.devices[0]).toEqual(expect.objectContaining({
+      reportedStepId: undefined,
+      actualStepId: undefined,
+      assumedStepId: 'low',
+      actualStepSource: 'assumed',
+    }));
+
+    const { executor, deviceManager, desiredSteppedTrigger, debugStructured } = buildExecutor(
+      undefined,
+      buildSnapshot({ currentOn: false }),
+    );
+    await executor.applyPlanActions(livePlan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'pre_restore_step_required',
+      skipDetailCode: 'assumed_step_pending_confirmation',
+      desiredStepId: 'low',
+      assumedStepId: 'low',
+      deviceId: 'dev-1',
+      actuationMode: 'reconcile',
+    }));
+  });
+
   it('detects step drift and re-issues step command for a keep device at off-step', async () => {
     const appliedPlan = steppedPlan({ currentState: 'on', selectedStepId: 'low', desiredStepId: 'low' });
     const liveDevices = buildLiveDevices({ currentOn: false, selectedStepId: 'off' });
@@ -2506,6 +2553,41 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       effectiveTransition: 'step_down_while_on',
       binaryTarget: null,
       mode: 'reconcile',
+    }));
+  });
+
+  it('preserves effective shed step during telemetry gaps so down-step is not blocked', async () => {
+    const appliedPlan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      shedAction: 'set_step',
+      shedStepId: 'low',
+      selectedStepId: 'max',
+      desiredStepId: 'low',
+      reportedStepId: 'max',
+      actualStepId: 'max',
+      actualStepSource: 'reported',
+    });
+    const liveDevices = buildLiveDevices({ currentOn: true });
+
+    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
+    expect(livePlan.devices[0]).toEqual(expect.objectContaining({
+      selectedStepId: 'max',
+      reportedStepId: undefined,
+      actualStepId: undefined,
+      actualStepSource: undefined,
+    }));
+    expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
+
+    const { executor, desiredSteppedTrigger, debugStructured } = buildExecutor(undefined, buildSnapshot({ currentOn: true }));
+    await executor.applyPlanActions(livePlan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+      reasonCode: 'step_up_blocked',
     }));
   });
 
