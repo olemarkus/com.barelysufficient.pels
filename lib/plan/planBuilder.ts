@@ -7,7 +7,7 @@ import type { DevicePlan, DevicePlanDevice, PlanInputDevice, ShedAction } from '
 import type { OvershootTrackedPlanDevice, PlanEngineState } from './planState';
 import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
 import { buildPlanContext, type PlanContext, type SoftLimitSource } from './planContext';
-import { buildSheddingPlan, type SheddingPlan } from './planShedding';
+import { buildSheddingPlan, type SheddingPlan } from './shedding';
 import { buildPlanCapacityStateSummary } from './planLogging';
 import { buildInitialPlanDevices } from './planDevices';
 import { applyRestorePlan, type RestorePlanResult } from './planRestore';

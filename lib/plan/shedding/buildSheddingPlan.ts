@@ -1,15 +1,13 @@
 /* eslint-disable max-lines --
   shedding candidate evaluation and overshoot diagnostics share the same control-authority math.
 */
-import type CapacityGuard from '../core/capacityGuard';
-import type { PowerTrackerState } from '../core/powerTracker';
-import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
-import type { PlanInputDevice, ShedAction } from './planTypes';
-import type { PlanEngineState } from './planState';
-import type { PlanContext } from './planContext';
-import type { SteppedLoadProfile } from '../utils/types';
-import { resolveEffectiveCurrentOn } from './planCurrentState';
-import { resolveCandidatePower } from './planCandidatePower';
+import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
+import type { PlanInputDevice, ShedAction } from '../planTypes';
+import type { PlanEngineState } from '../planState';
+import type { PlanContext } from '../planContext';
+import type { SteppedLoadProfile } from '../../utils/types';
+import { resolveEffectiveCurrentOn } from '../planCurrentState';
+import { resolveCandidatePower } from '../planCandidatePower';
 import {
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
@@ -17,74 +15,34 @@ import {
   resolveSteppedLoadPlanningKw,
   resolveSteppedLoadSheddingTarget,
   resolveSteppedUnknownCurrentMeasuredShedding,
-} from './planSteppedLoad';
+} from '../planSteppedLoad';
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
   isSteppedLoadOffStep,
-} from '../utils/deviceControlProfiles';
+} from '../../utils/deviceControlProfiles';
 
-import { isPendingBinaryCommandActive } from './planObservationPolicy';
-import { isCapacityBreached } from './planRemainingSheddableLoad';
-import { updateGuardState, resolvePlanningTotalPower } from './planSheddingGuard';
-import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
+import { isPendingBinaryCommandActive } from '../planObservationPolicy';
+import { isCapacityBreached } from '../planRemainingSheddableLoad';
+import { updateGuardState, resolvePlanningTotalPower } from './guard';
+import { normalizeTargetCapabilityValue } from '../../utils/targetCapabilities';
 import {
   type BinaryShedCandidate,
+  type PlanSheddingResult,
   type ShedCandidate,
+  type ShedCandidateParams,
+  type SheddingDeps,
+  type SheddingPlan,
   type TemperatureShedCandidate,
+} from './types';
+import {
   emitOvershootEscalationBlocked,
   resolveRecentRestoreState,
   resolveSameMeasurementSheddingDecision,
-  resolveShedReason,
-  selectShedDevices,
-} from './planSheddingHelpers';
-
-export type SheddingPlan = {
-  shedSet: Set<string>;
-  shedReasons: Map<string, DeviceReason>;
-  steppedDesiredStepByDeviceId: Map<string, string>;
-  temperatureShedTargets: Map<string, { temperature: number; capabilityId: string }>;
-  sheddingActive: boolean;
-  guardInShortfall: boolean;
-  updates: {
-    lastInstabilityMs?: number;
-    lastRecoveryMs?: number;
-    lastShedPlanMeasurementTs?: number;
-    lastOvershootEscalationMs?: number;
-    lastOvershootMitigationMs?: number;
-  };
-  overshootStats: OvershootStats | null;
-};
-
-export type OvershootStats = {
-  needed: number;
-  eligibleCandidateCount: number;
-  blockedCandidateCount: number;
-  reducibleControlledKw: number;
-  blockedReducibleControlledKw: number;
-  allShedCandidatesExhausted: boolean;
-  controlRecoverable: boolean;
-};
-
-export type SheddingDeps = {
-  capacityGuard: CapacityGuard | undefined;
-  powerTracker: PowerTrackerState;
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
-  getPriorityForDevice: (deviceId: string) => number;
-  log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
-  structuredLog?: import('../logging/logger').Logger;
-};
-
-type ShedCandidateParams = {
-  devices: PlanInputDevice[];
-  needed: number;
-  limitSource: PlanContext['softLimitSource'];
-  total: number | null;
-  capacitySoftLimit: number;
-  state: PlanEngineState;
-  deps: SheddingDeps;
-};
+  buildOvershootStats,
+} from './overshoot';
+import { resolveShedReason, selectShedDevices } from './selection';
+import { isNotAtShedTemperature } from './candidates';
 
 export async function buildSheddingPlan(
   context: PlanContext,
@@ -134,21 +92,6 @@ export async function buildSheddingPlan(
 function shouldPlanShedding(headroom: number): boolean {
   return headroom < 0;
 }
-
-type PlanSheddingResult = {
-  shedSet: Set<string>;
-  shedReasons: Map<string, DeviceReason>;
-  steppedDesiredStepByDeviceId: Map<string, string>;
-  temperatureShedTargets: Map<string, { temperature: number; capabilityId: string }>;
-  updates: {
-    lastInstabilityMs?: number;
-    lastRecoveryMs?: number;
-    lastShedPlanMeasurementTs?: number;
-    lastOvershootEscalationMs?: number;
-    lastOvershootMitigationMs?: number;
-  };
-  overshootStats: SheddingPlan['overshootStats'];
-};
 
 function emptySheddingResult(
   updates: PlanSheddingResult['updates'] = {},
@@ -261,31 +204,6 @@ function planShedding(
     ...result,
     updates,
     overshootStats,
-  };
-}
-
-function buildOvershootStats(params: {
-  needed: number;
-  eligibleCandidateCount: number;
-  blockedCandidateCount: number;
-  reducibleControlledKw: number;
-  blockedReducibleControlledKw: number;
-}): OvershootStats {
-  const {
-    needed,
-    eligibleCandidateCount,
-    blockedCandidateCount,
-    reducibleControlledKw,
-    blockedReducibleControlledKw,
-  } = params;
-  return {
-    needed,
-    eligibleCandidateCount,
-    blockedCandidateCount,
-    reducibleControlledKw,
-    blockedReducibleControlledKw,
-    allShedCandidatesExhausted: eligibleCandidateCount === 0,
-    controlRecoverable: reducibleControlledKw > 0,
   };
 }
 
@@ -693,12 +611,6 @@ function buildUnknownCurrentMeasuredSteppedCandidate(params: {
     toStepId: measuredFallback.targetStep.id,
     preemptiveStepDown: shedAction === 'set_step',
   };
-}
-
-function isNotAtShedTemperature(device: ShedCandidate): boolean {
-  if (device.kind !== 'temperature') return true;
-  const currentTarget = device.targets?.find((t) => t.id === device.targetCapabilityId)?.value;
-  return !(typeof currentTarget === 'number' && currentTarget === device.shedTemperature);
 }
 
 function sortCandidates(a: ShedCandidate, b: ShedCandidate): number {

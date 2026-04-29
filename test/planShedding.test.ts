@@ -4,7 +4,7 @@ import type { PlanContext } from '../lib/plan/planContext';
 import { SOFT_OVERSHOOT_PERSIST_MS } from '../lib/plan/planConstants';
 import { createPlanEngineState } from '../lib/plan/planState';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
-import { buildSheddingPlan } from '../lib/plan/planShedding';
+import { buildSheddingPlan } from '../lib/plan/shedding';
 import { resolveSoftOvershootDecision } from '../lib/plan/planOvershoot';
 import { reasonText } from './utils/deviceReasonTestUtils';
 

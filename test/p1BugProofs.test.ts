@@ -6,7 +6,7 @@ import { resolveLiveUsagePowerKw } from '../lib/plan/planPowerResolution';
 import { getOffDevices, getSteppedRestoreCandidates } from '../lib/plan/planRestoreDevices';
 import { estimateRestorePower } from '../lib/plan/planRestoreAccounting';
 import { createPlanEngineState } from '../lib/plan/planState';
-import { updateGuardState } from '../lib/plan/planSheddingGuard';
+import { updateGuardState } from '../lib/plan/shedding/guard';
 import { sumControlledUsageKw } from '../lib/plan/planUsage';
 import { mockHomeyInstance } from './mocks/homey';
 import {
