@@ -26,6 +26,7 @@ export type DailyBudgetDayPayload = {
     frozen: boolean;
     confidence: number;
     priceShapingActive: boolean;
+    allocationPressure?: DailyBudgetAllocationPressure;
     confidenceDebug?: ConfidenceDebug;
   };
   buckets: {
@@ -42,6 +43,14 @@ export type DailyBudgetDayPayload = {
     price?: Array<number | null>;
     priceFactor?: Array<number | null>;
   };
+};
+
+export type DailyBudgetAllocationPressure = {
+  requestedBudgetKWh: number;
+  plannedBudgetKWh: number;
+  unallocatedBudgetKWh: number;
+  saturationRatio: number;
+  constrained: boolean;
 };
 
 export type ConfidenceDebug = {

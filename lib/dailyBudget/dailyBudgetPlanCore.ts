@@ -5,7 +5,7 @@ import {
   PRICE_SHAPING_FLEX_SHARE,
 } from './dailyBudgetConstants';
 import {
-  allocateBudgetWithCapsAndFloors,
+  allocateBudgetWithPriceTargets,
   normalizeWeights,
 } from './dailyBudgetAllocation';
 import {
@@ -71,6 +71,7 @@ type PlanSetup = {
   combinedWeights: number[];
   usedInCurrent: number;
   priceShape: ReturnType<typeof buildPriceFactors>;
+  remainingPrices?: Array<number | null>;
   effectivePriceShapingFlexShare: number;
 };
 
@@ -83,6 +84,8 @@ export function buildPlan(params: BuildPlanParams): BuildPlanResult {
     normalizedDayWeights: setup.normalizedDayWeights,
     splitShares: setup.splitShares,
     usedInCurrent: setup.usedInCurrent,
+    remainingPrices: setup.remainingPrices,
+    effectivePriceShapingFlexShare: setup.effectivePriceShapingFlexShare,
   });
   const controlledMinFloors = buildControlledMinFloors({
     bucketStartUtcMs: params.bucketStartUtcMs,
@@ -90,6 +93,7 @@ export function buildPlan(params: BuildPlanParams): BuildPlanResult {
     profileObservedMinControlledKWh: params.profileObservedMinControlledKWh,
     observedPeakMarginRatio: params.observedPeakMarginRatio,
     applyFromIndex: setup.bounds.remainingStartIndex,
+    controlledUsageWeight: params.controlledUsageWeight,
   });
   const plannedSplit = buildPlannedSplit({
     plannedKWh,
@@ -149,7 +153,8 @@ const resolvePlanSetup = (params: BuildPlanParams): PlanSetup => {
     ? priceShape.priceSpreadFactor
     : 0;
   const effectivePriceShapingFlexShare = priceShape.priceShapingActive
-    ? clamp(configuredFlexShare * priceSpreadFactor, 0, 1)
+    && priceSpreadFactor > 0
+    ? clamp(configuredFlexShare, 0, 1)
     : 0;
   const planWeights = buildPlanWeights({
     bucketStartUtcMs,
@@ -157,8 +162,8 @@ const resolvePlanSetup = (params: BuildPlanParams): PlanSetup => {
     profileWeights,
     profileWeightsControlled,
     profileWeightsUncontrolled,
-    priceFactors: priceShape.priceFactors,
-    flexShare: effectivePriceShapingFlexShare,
+    priceFactors: undefined,
+    flexShare: 0,
   });
   const splitShares = resolveSplitShares({
     uncontrolledWeights: planWeights.uncontrolled,
@@ -171,6 +176,7 @@ const resolvePlanSetup = (params: BuildPlanParams): PlanSetup => {
     combinedWeights: planWeights.combined,
     usedInCurrent: bucketUsage[bounds.safeCurrentBucketIndex] ?? 0,
     priceShape,
+    remainingPrices: priceShape.prices?.slice(bounds.remainingStartIndex),
     effectivePriceShapingFlexShare,
   };
 };
@@ -212,6 +218,8 @@ const resolvePlannedTotals = (params: {
   normalizedDayWeights: number[];
   splitShares: SplitShares;
   usedInCurrent: number;
+  remainingPrices?: Array<number | null>;
+  effectivePriceShapingFlexShare: number;
 }): number[] => {
   const {
     params: {
@@ -234,6 +242,8 @@ const resolvePlannedTotals = (params: {
     normalizedDayWeights,
     splitShares,
     usedInCurrent,
+    remainingPrices,
+    effectivePriceShapingFlexShare,
   } = params;
   const normalizedRemaining = resolveRemainingWeights({
     baseWeights: combinedWeights,
@@ -280,6 +290,8 @@ const resolvePlannedTotals = (params: {
     remainingBudgetKWh: remainingBudgetForFuture,
     caps: remainingCaps,
     floors: remainingFloors,
+    prices: remainingPrices,
+    priceFlexShare: effectivePriceShapingFlexShare,
   });
   return buildPlannedKWh({
     bucketCount: bucketStartUtcMs.length,
@@ -432,19 +444,25 @@ function resolveRemainingAllocations(params: {
   remainingBudgetKWh: number;
   caps: number[];
   floors: number[];
+  prices?: Array<number | null>;
+  priceFlexShare: number;
 }): number[] {
   const {
     weights,
     remainingBudgetKWh,
     caps,
     floors,
+    prices,
+    priceFlexShare,
   } = params;
   if (weights.length === 0 || remainingBudgetKWh <= 0) return weights.map(() => 0);
-  return allocateBudgetWithCapsAndFloors({
-    weights,
+  return allocateBudgetWithPriceTargets({
+    neutralWeights: weights,
     totalKWh: remainingBudgetKWh,
     caps,
     floors,
+    prices,
+    flexShare: priceFlexShare,
   });
 }
 

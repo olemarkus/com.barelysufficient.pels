@@ -3,6 +3,7 @@ import { normalizeWeights } from './dailyBudgetAllocation';
 import {
   allocateBudgetWithCaps,
   allocateBudgetWithCapsAndFloors,
+  allocateBudgetWithPriceTargets,
   buildCompositeWeights,
 } from './dailyBudgetAllocation';
 import { buildPlan } from './dailyBudgetPlanCore';
@@ -58,6 +59,7 @@ export function sumArray(values: number[]): number {
 export {
   allocateBudgetWithCaps,
   allocateBudgetWithCapsAndFloors,
+  allocateBudgetWithPriceTargets,
   buildCompositeWeights,
   buildPlan,
   normalizeWeights,

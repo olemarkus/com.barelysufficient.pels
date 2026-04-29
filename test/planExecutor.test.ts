@@ -120,6 +120,66 @@ const buildExecutor = (
 };
 
 describe('PlanExecutor restore logging', () => {
+  it('continues applying later devices when stepped-load projection fails for one device', async () => {
+    const snapshot = [
+      {
+        id: 'bad-step',
+        name: 'Bad stepped load',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, deviceManager, deps } = buildExecutor(undefined, snapshot);
+
+    await expect(executor.applyPlanActions({
+      meta: {
+        totalKw: 2,
+        softLimitKw: 1,
+        headroomKw: -1,
+      },
+      devices: [
+        {
+          id: 'bad-step',
+          name: 'Bad stepped load',
+          currentState: 'on',
+          plannedState: 'keep',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+          reason: KEEP_REASON,
+          controlModel: 'stepped_load',
+          steppedLoadProfile: { model: 'stepped_load' } as never,
+        },
+        {
+          id: 'dev-1',
+          name: 'Heater',
+          currentState: 'on',
+          plannedState: 'shed',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: true,
+          reason: CAPACITY_REASON,
+        },
+      ],
+    })).resolves.toEqual({ deviceWriteCount: 1, commandRequestCount: 0 });
+
+    expect(deps.error).toHaveBeenCalledWith(
+      'Failed to apply action for Bad stepped load; continuing with remaining devices',
+      expect.any(TypeError),
+    );
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+  });
+
   it.each([
     { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 30 },
     { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },

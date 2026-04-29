@@ -9,15 +9,15 @@ import {
   isPendingTargetCommandTemporarilyUnavailable,
   recordFailedPendingTargetCommandAttempt,
   recordPendingTargetCommandAttempt,
-} from './planTargetControl';
+} from '../plan/planTargetControl';
 import type {
   DevicePlan,
   PendingTargetCommandStatus,
   PendingTargetObservationSource,
   ShedAction,
-} from './planTypes';
-import type { PlanEngineState } from './planState';
-import type { PlanActuationMode } from './planExecutor';
+} from '../plan/planTypes';
+import type { PlanEngineState } from '../plan/planState';
+import type { PlanActuationMode } from './executorTypes';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { StructuredDebugEmitter } from '../logging/logger';
 
@@ -494,7 +494,7 @@ const syncPendingTargetCommandAfterActuation = async (
   const latestObservedValueAfterActuation = getLatestObservedTargetValue(ctx, deviceId, targetCap);
   let pendingStillExists = hasMatchingPendingTargetCommand(ctx, deviceId, targetCap, desired);
   if (pendingStillExists && Object.is(latestObservedValueAfterActuation, desired)) {
-    // eslint-disable-next-line no-param-reassign -- Shared executor state update.
+    // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
     delete ctx.state.pendingTargetCommands[deviceId];
     pendingStillExists = false;
     ctx.syncLivePlanStateAfterTargetActuation?.('realtime_capability');

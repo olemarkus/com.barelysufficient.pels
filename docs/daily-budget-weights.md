@@ -34,9 +34,9 @@ For each local hour `h` (0-23), PELS works with:
 - `qMax`: upper quantile for observed caps (current implementation: `0.90`)
 - `qMin`: lower quantile for observed minimums (current implementation: `0.25`)
 - `Nq`: minimum samples per hour before quantiles are used (current implementation: `5`)
-- `f[b]`: price factor per plan bucket (typically `0.7..1.3`), where:
-  - `f > 1` means cheaper-than-median bucket
-  - `f < 1` means more expensive-than-median bucket
+- `price[b]`: combined price for each plan bucket
+- `pricePosition[b]`: normalized position within the remaining price range
+  (`0 = cheapest`, `1 = most expensive`)
 
 ## 2) How daily learning updates profiles
 
@@ -212,41 +212,24 @@ Ucap[h] = Umax[h] * (1 + m)
 Ccap[h] = Cmax[h] * (1 + m)
 ```
 
-Then PELS blends the split caps by `w`:
+PELS then combines the split caps into a total plausible-load cap:
 
 ```text
-blendedCap[h] = blend(Ucap[h], Ccap[h], w)
+observedCap[h] = Ucap[h] + Ccap[h]
 ```
 
 Notes:
 
-- If one side has no usable observed max, blending is normalized over available sides.
+- If one side has no usable observed max, the other side still contributes.
 - If neither side has usable observed max, this cap is effectively disabled for that hour.
-
-The plan uses split shares per bucket:
-
-```text
-uShare[b] = plannedUncontrolledWeight[b] / (plannedUncontrolledWeight[b] + plannedControlledWeight[b])
-cShare[b] = 1 - uShare[b]
-weightedShare[b] = (1 - w) * uShare[b] + w * cShare[b]
-```
-
-The blended split cap is converted to a bucket total cap:
-
-```text
-totalCapFromBlend[b] = blendedCap[h(b)] / weightedShare[b]
-```
 
 Final bucket cap is the minimum of:
 
 - capacity per-hour cap (if configured), and
-- blended observed-peak cap above.
+- total observed-peak cap above.
 
-This gives endpoint behavior:
-
-- `w = 0`: uncontrolled side drives the cap
-- `w = 1`: controlled side drives the cap
-- `0 < w < 1`: smooth blend
+`w` does not affect the cap. Controlled usage is still available as flexible headroom above the
+floor even when `w = 0`.
 
 ## 5b) Observed hourly minimum floors (split-budget safety)
 
@@ -260,19 +243,20 @@ Ufloor[h] = max(0, Umin[h] * (1 - m))
 Cfloor[h] = max(0, Cmin[h] * (1 - m))
 ```
 
-The blended floor follows the same weighted-share math as caps:
+The floor always includes the uncontrolled minimum. Controlled minimums are added according to
+`w`:
 
 ```text
-blendedFloor[h] = blend(Ufloor[h], Cfloor[h], w)
-totalFloorFromBlend[b] = blendedFloor[h(b)] / weightedShare[b]
+floor[h] = Ufloor[h] + w * Cfloor[h]
 ```
 
 Important behavior:
 
 - Floors are enforced only while budget remains; if floors exceed remaining budget,
   all floors are scaled down proportionally to fit the budget.
-- Controlled minimums are applied post‑split so they are respected even when
-  `w = 0` (as long as the total bucket plan can accommodate them).
+- `w = 0`: only uncontrolled usage is treated as unavoidable floor.
+- `w = 1`: uncontrolled plus historical controlled minimum is treated as floor.
+- Controlled load between the floor and cap remains flexible budget headroom.
 
 ## 6) Price flex share (`p`) math
 
@@ -282,65 +266,81 @@ Price shaping applies only when:
 - daily price shaping is enabled
 - complete remaining price data is available
 
-Price spread is computed from remaining buckets:
+Price range is computed from remaining buckets:
 
 ```text
-median = p50(remainingPrices)
-spread = p90(remainingPrices) - p10(remainingPrices)
-spreadFactor = clamp(spread / max(1, abs(median)), 0, 1)
-pEff = p * spreadFactor
+minPrice = min(remainingPrices)
+maxPrice = max(remainingPrices)
+priceRange = maxPrice - minPrice
 ```
 
-`pEff` is the effective shaping strength used by the planner.
-
-For each bucket, controlled base weight is blended with a price-adjusted version using `pEff`:
+If `priceRange` is zero or within the planner's near-flat deadband, price shaping is effectively
+disabled for that plan.
+Otherwise `p` is used directly as the effective shaping strength:
 
 ```text
-priceAdjusted = base * f
-composite     = base * (1 - pEff) + priceAdjusted * pEff
-              = base * ((1 - pEff) + f * pEff)
+pEff = p
+```
+
+The planner first builds a neutral allocation from profile/history weights, floors, and caps.
+It then builds a full-flex price target between the same effective bounds:
+
+```text
+pricePosition[b] = (price[b] - minPrice) / priceRange
+priceTarget[b]   = cap[b] - pricePosition[b] * (cap[b] - floor[b])
+```
+
+`priceTarget[b] - floor[b]` becomes the preferred redistribution weight after floors are reserved.
+That means the cheapest bucket targets its cap, the most expensive bucket targets its floor, and
+intermediate buckets land between those extremes according to price.
+
+The final plan blends neutral allocation and full-flex allocation:
+
+```text
+planned[b] = neutralAllocation[b] * (1 - pEff)
+           + fullFlexAllocation[b] * pEff
 ```
 
 Behavior:
 
 - `p = 0`: no price shaping
-- large spread + high `p`: strongest shaping
-- small spread: shaping is automatically softened
-
-When split profiles are available, only controlled portion is price-shaped; uncontrolled stays on profile shape.
+- `p = 1`: cheapest remaining bucket is allowed up to cap, most expensive remaining bucket is held
+  to floor when the remaining budget permits it
+- `0 < p < 1`: smooth blend between profile-driven pacing and full price-driven pacing
 
 ### Example C: price flex effect
 
-Assume bucket controlled base weight `base = 0.10`, user `p = 0.35`, and `spreadFactor = 0.8`:
+Assume three remaining buckets:
 
 ```text
-pEff = 0.35 * 0.8 = 0.28
+prices = [10, 20, 30]
+caps   = [4, 4, 4]
+floors = [0, 0, 0]
 ```
-
-Cheap bucket with `f = 1.3`:
 
 ```text
-composite = 0.10 * (0.72 + 1.3 * 0.28)
-          = 0.10 * 1.084
-          = 0.1084
+pricePosition = [0, 0.5, 1]
+priceTarget   = [4, 2, 0]
 ```
 
-Expensive bucket with `f = 0.7`:
+With a `6 kWh` remaining budget and `p = 1`, the full-flex allocation is:
 
 ```text
-composite = 0.10 * (0.72 + 0.7 * 0.28)
-          = 0.10 * 0.916
-          = 0.0916
+[4, 2, 0]
 ```
 
-So shaping remains meaningful, and naturally scales with day volatility.
+With the same setup and `p = 0.5`, the result is halfway between neutral allocation and this
+full-flex allocation.
 
 ## 7) Practical tuning guidance
 
 - Keep defaults unless you have stable data and a clear tuning goal.
 - Change one setting at a time and observe at least one full day.
-- If split caps feel too strict, reduce **Controlled usage weight** (moves cap influence toward uncontrolled side).
+- If expensive hours keep too much controlled load, reduce **Controlled usage weight** so less
+  controlled history is treated as unavoidable floor.
 - If plan movement by price is too aggressive, lower **Price flex share**.
+- If the budget cannot be fully allocated under capacity and historical caps, the Budget UI shows
+  an allocation warning; lower the daily budget or raise the relevant capacity/load assumptions.
 - If confidence stays low, verify regular power reporting and controlled/uncontrolled split data.
 
 ## 8) Debug fields to inspect
@@ -354,11 +354,12 @@ With debug logging enabled for daily budget, these fields are useful:
 - `profileControlledShare`
 - `profileLearnedWeights`
 - `profileEffectiveWeights`
-- `priceFactor` array
+- `priceFactor` array (debug-only legacy price multiplier view)
 - `profileObservedMaxUncontrolledKWh`
 - `profileObservedMaxControlledKWh`
 - `priceSpreadFactor`
 - `effectivePriceShapingFlexShare`
+- `state.allocationPressure` — requested vs planned budget and whether caps prevent full allocation
 
 ### Budget confidence fields (in `state.confidenceDebug`)
 

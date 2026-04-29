@@ -1,7 +1,14 @@
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../core/powerTracker';
 import type { PlanContext } from './planContext';
-import { getHourBucketKey } from '../utils/dateUtils';
+import { clamp } from '../utils/mathUtils';
+import { isFiniteNumber } from '../utils/appTypeGuards';
+
+export type CurrentHourUsageSplit = {
+  totalKWh?: number;
+  controlledKWh?: number;
+  uncontrolledKWh?: number;
+};
 
 type DailySoftLimitBucket = {
   plannedKWh: number;
@@ -16,9 +23,53 @@ type DailySoftLimitInput = {
   nextBucketStartIso?: string;
 };
 
-export function getCurrentHourKWh(buckets?: Record<string, number>): number | undefined {
-  const value = buckets?.[getHourBucketKey()];
-  return typeof value === 'number' ? value : undefined;
+export function resolveHourlyUsageSplit(params: {
+  totalRaw: unknown;
+  controlledRaw: unknown;
+  uncontrolledRaw: unknown;
+}): CurrentHourUsageSplit {
+  const { totalRaw, controlledRaw, uncontrolledRaw } = params;
+  const hasTotal = isFiniteNumber(totalRaw);
+  const hasControlled = isFiniteNumber(controlledRaw);
+  const hasUncontrolled = isFiniteNumber(uncontrolledRaw);
+
+  if (hasTotal) {
+    const totalKWh = Math.max(0, totalRaw);
+    if (hasControlled) {
+      const controlledKWh = clamp(controlledRaw, 0, totalKWh);
+      return {
+        totalKWh,
+        controlledKWh,
+        uncontrolledKWh: Math.max(0, totalKWh - controlledKWh),
+      };
+    }
+    if (hasUncontrolled) {
+      const uncontrolledKWh = clamp(uncontrolledRaw, 0, totalKWh);
+      return {
+        totalKWh,
+        controlledKWh: Math.max(0, totalKWh - uncontrolledKWh),
+        uncontrolledKWh,
+      };
+    }
+    return { totalKWh };
+  }
+
+  if (hasControlled || hasUncontrolled) {
+    return {
+      controlledKWh: hasControlled ? Math.max(0, controlledRaw) : undefined,
+      uncontrolledKWh: hasUncontrolled ? Math.max(0, uncontrolledRaw) : undefined,
+    };
+  }
+
+  return {};
+}
+
+export function getHourUsageSplit(powerTracker: PowerTrackerState, bucketKey: string): CurrentHourUsageSplit {
+  return resolveHourlyUsageSplit({
+    totalRaw: powerTracker.buckets?.[bucketKey],
+    controlledRaw: powerTracker.controlledBuckets?.[bucketKey],
+    uncontrolledRaw: powerTracker.uncontrolledBuckets?.[bucketKey],
+  });
 }
 
 export function resolveDailySoftLimitBucket(

@@ -59,6 +59,9 @@ export const dailyBudgetBars = qs('#daily-budget-bars');
 export const dailyBudgetLabels = qs('#daily-budget-labels');
 export const dailyBudgetEmpty = qs('#daily-budget-empty');
 export const dailyBudgetConfidence = document.getElementById('daily-budget-confidence') as HTMLElement | null;
+export const dailyBudgetAllocationWarning = document.getElementById(
+  'daily-budget-allocation-warning',
+) as HTMLElement | null;
 export const dailyBudgetBreakdownInput = document.querySelector('#daily-budget-breakdown') as HTMLInputElement;
 export const dailyBudgetRecomputeButton = document.querySelector('#daily-budget-recompute') as HTMLButtonElement;
 export const dailyBudgetApplyButton = document.querySelector('#daily-budget-apply') as HTMLButtonElement;
