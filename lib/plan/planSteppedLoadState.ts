@@ -1,4 +1,5 @@
 import type { SteppedLoadActualStepSource, SteppedLoadCommandStatus } from '../utils/types';
+import { normalizeStepId } from '../utils/stepIds';
 
 type StepId = string;
 
@@ -134,15 +135,6 @@ export function resolveEffectiveStepId(state: NormalizedSteppedLoadStepState): S
   return 'unknown';
 }
 
-export function isRestoreStepPrepared(params: {
-  desiredStepId?: string | null;
-  preparedStepId?: string | null;
-}): boolean {
-  const desiredStepId = normalizeStepId(params.desiredStepId);
-  const preparedStepId = normalizeStepId(params.preparedStepId);
-  return desiredStepId !== undefined && preparedStepId === desiredStepId;
-}
-
 export function serializeLegacyStepFields(state: NormalizedSteppedLoadStepState): LegacyStepFields {
   const effectiveStepId = resolveEffectiveStepId(state);
   const reportedStepId = state.observation.kind === 'reported' ? state.observation.stepId : undefined;
@@ -259,10 +251,6 @@ function isFreshEnough(params: { observedAtMs: number; nowMs: number; maxAgeMs: 
 
 function normalizeTimestamp(value: number | null | undefined, fallbackMs: number): number {
   return Number.isFinite(value) ? Number(value) : fallbackMs;
-}
-
-function normalizeStepId(value: string | null | undefined): string | undefined {
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
 function resolveActualStepSource(params: {
