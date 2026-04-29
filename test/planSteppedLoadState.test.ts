@@ -1,5 +1,4 @@
 import {
-  isRestoreStepPrepared,
   normalizeSteppedLoadStepState,
   resolveEffectiveStepId,
   serializeLegacyStepFields,
@@ -148,12 +147,5 @@ describe('planSteppedLoadState', () => {
       source: 'suppressed_flow',
       observedAtMs: 1_900,
     });
-  });
-
-  it('matches restore preparation only by explicit prepared and desired step ids', () => {
-    expect(isRestoreStepPrepared({ preparedStepId: 'low', desiredStepId: 'low' })).toBe(true);
-    expect(isRestoreStepPrepared({ preparedStepId: 'max', desiredStepId: 'low' })).toBe(false);
-    expect(isRestoreStepPrepared({ preparedStepId: undefined, desiredStepId: 'low' })).toBe(false);
-    expect(isRestoreStepPrepared({ preparedStepId: 'low', desiredStepId: undefined })).toBe(false);
   });
 });

@@ -2139,9 +2139,8 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'pre_restore_step_required',
-      skipDetailCode: 'assumed_step_pending_confirmation',
+      skipDetailCode: 'pre_restore_step_pending_confirmation',
       desiredStepId: 'low',
-      assumedStepId: 'low',
       deviceId: 'dev-1',
       actuationMode: 'reconcile',
     }));
@@ -2446,9 +2445,8 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'pre_restore_step_required',
-      skipDetailCode: 'assumed_step_pending_confirmation',
+      skipDetailCode: 'pre_restore_step_pending_confirmation',
       desiredStepId: 'low',
-      assumedStepId: 'low',
       deviceId: 'dev-1',
       actuationMode: 'reconcile',
     }));
@@ -2467,12 +2465,15 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     await executor.applyPlanActions(plan, 'reconcile');
 
-    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'pre_restore_step_required',
-      skipDetailCode: 'pre_restore_step_command_not_issued',
+      skipDetailCode: 'pre_restore_step_pending_confirmation',
       desiredStepId: 'low',
       deviceId: 'dev-1',
       actuationMode: 'reconcile',

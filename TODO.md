@@ -101,10 +101,9 @@ file.
 - [ ] Retire `assumedStepId` and other stepped-load provenance fields from planner semantics.
       Planner decisions that are identical for reported and fallback steps should receive only a
       best available effective/planning step. Observer/snapshot/reconcile should own whether the
-      value is reported or fallback, and executor restore should own whether evidence is strong
-      enough to energize binary control.
-      Files: `lib/plan/planSteppedLoad.ts`, `lib/plan/planDevices.ts`,
-      `lib/plan/planExecutorStepped.ts`, stepped-load planner/executor tests.
+      value is reported or fallback. Executor restore now consumes a requested-step/materialization
+      adapter, so the remaining work is to remove provenance branching from planner helper inputs.
+      Files: `lib/plan/planSteppedLoad.ts`, `lib/plan/planDevices.ts`, stepped-load planner tests.
 - [ ] Replace the broad optional-field device snapshots with stronger discriminated state types.
       `TargetDeviceSnapshot`, `DevicePlanDevice`, and `PlanInputDevice` should not carry all
       binary, temperature, stepped-load, EV, freshness, and power fields as one nullable bag.
