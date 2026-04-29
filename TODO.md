@@ -101,9 +101,28 @@ file.
 - [ ] Retire `assumedStepId` and other stepped-load provenance fields from planner semantics.
       Planner decisions that are identical for reported and fallback steps should receive only a
       best available effective/planning step. Observer/snapshot/reconcile should own whether the
-      value is reported or fallback. Executor restore now consumes a requested-step/materialization
-      adapter, so the remaining work is to remove provenance branching from planner helper inputs.
-      Files: `lib/plan/planSteppedLoad.ts`, `lib/plan/planDevices.ts`, stepped-load planner tests.
+      value is reported or fallback. Stepped executor code now consumes an executable stepped-load
+      projection; the remaining work is to remove provenance branching from planner helper inputs.
+      Next PR shape: add a planner-facing typed step-state adapter/model with discriminated
+      concepts for reported observed step, target intent, fallback planning assumption, restore
+      preparation, and unknown. Planner restore/preparation logic must not branch directly on
+      `selectedStepId`, `assumedStepId`, `actualStepId`, `actualStepSource`, or
+      `restorePreparedStepId`; legacy optional fields should remain compatibility serialization
+      only after boundary normalization.
+      Tests to preserve/add: native non-off reports remain confirmed even when `currentOn=false`;
+      suppressed flow feedback is not exposed as confirmed `reportedStepId` / `actualStepId`;
+      suppressed flow restore-preparation evidence is explicit materialization/preparation, not
+      `assumedStepId` or `selectedStepId`; no-runtime-desired fallback does not deadlock binary
+      restore as `assumedStepId='low'`; mismatched suppressed feedback such as stale `max` while
+      restore wants `low` must not prepare restore; UI overview displays reported observed truth
+      only.
+      Files: `lib/plan/planSteppedLoad.ts`, `lib/plan/planDevices.ts`,
+      `lib/plan/planReconcileState.ts`, restore coordination/helpers, stepped-load planner and
+      executor-facing restore tests.
+- [ ] Reject 0 W stepped-load flow power reports when no configured off / 0 W step exists.
+      `report_stepped_load_power` should fail with the normal `no_matching_step` error and must
+      not call `reportSteppedLoadActualStep`, refresh snapshots, or rebuild the plan.
+      Files: `flowCards/registerFlowCards.ts`, `test/registerFlowCards.test.ts`.
 - [ ] Replace the broad optional-field device snapshots with stronger discriminated state types.
       `TargetDeviceSnapshot`, `DevicePlanDevice`, and `PlanInputDevice` should not carry all
       binary, temperature, stepped-load, EV, freshness, and power fields as one nullable bag.

@@ -1,0 +1,51 @@
+import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
+import type { DeviceControlAdapterSnapshot, SteppedLoadProfile } from '../utils/types';
+import type { SteppedStepActuationState } from './steppedLoadActuation';
+
+export type ExecutableSteppedLoadTransition = {
+  effectiveTransition:
+    | 'full_shed_to_off'
+    | 'restore_from_off_at_low'
+    | 'step_down_while_on'
+    | 'step_up_while_on'
+    | 'steady';
+  stepPreparationPurpose: 'prepare_for_off' | 'prepare_for_on' | null;
+  binaryTarget: boolean | null;
+  commandStepId: string | undefined;
+  plannedDesiredStepId: string | undefined;
+  transitionPhase: 'step_preparation' | 'binary_transition' | 'settled';
+};
+
+export type ExecutableSteppedLoadRestoreAttempt = {
+  status: 'awaiting_confirmation' | 'awaiting_power_settle' | 'retry_backoff';
+  requestedStepId: string;
+} | null;
+
+export type ExecutableSteppedLoadDevice = {
+  id: string;
+  name: string;
+  plannedState: string;
+  reason: DeviceReason;
+  steppedLoadProfile: SteppedLoadProfile;
+  communicationModel?: 'local' | 'cloud';
+  controlAdapter?: DeviceControlAdapterSnapshot;
+  shedAction?: 'turn_off' | 'set_temperature' | 'set_step';
+  effectiveCurrentOn: boolean | null;
+  requestedStepId?: string;
+  commandStepId?: string;
+  previousStepId?: string;
+  currentStepId?: string;
+  currentStepForShed?: {
+    stepId: string;
+    planningPowerW: number;
+  };
+  currentStepIsOffStep: boolean;
+  transition: ExecutableSteppedLoadTransition | null;
+  stepActuation: SteppedStepActuationState;
+  commandStepActuation: SteppedStepActuationState;
+  matchingRestoreAttempt: ExecutableSteppedLoadRestoreAttempt;
+  matchingCommandAttempt: ExecutableSteppedLoadRestoreAttempt;
+  stepNeedsAdjustment: boolean;
+  stepCommandRetryCount: number;
+  nextStepCommandRetryAtMs?: number;
+};
