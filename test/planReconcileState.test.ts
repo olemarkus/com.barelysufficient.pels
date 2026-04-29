@@ -1,6 +1,7 @@
 import type { DevicePlan } from '../lib/plan/planTypes';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
 import {
+  canRefreshPlanSnapshotFromLiveState,
   hasPlanExecutionDrift,
   hasPlanExecutionDriftForDevice,
   buildLiveStatePlan,
@@ -346,6 +347,128 @@ describe('planReconcileState stepped device drift', () => {
 
       expect(result.devices[0].currentState).toBe('off');
       expect(result.devices[0].selectedStepId).toBe('max');
+    });
+
+    it('clears stale reported step evidence when live stepped state only has fallback evidence', () => {
+      const plan = buildPlan([buildSteppedDevice({
+        currentState: 'on',
+        selectedStepId: 'low',
+        reportedStepId: 'low',
+        actualStepId: 'low',
+        actualStepSource: 'reported',
+        assumedStepId: undefined,
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-1',
+        name: 'Tank',
+        currentOn: false,
+        selectedStepId: 'low',
+        actualStepId: undefined,
+        assumedStepId: 'low',
+        actualStepSource: 'assumed',
+        targets: [],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+      }];
+
+      const result = buildLiveStatePlan(plan, liveDevices);
+
+      expect(result.devices[0]).toEqual(expect.objectContaining({
+        selectedStepId: 'low',
+        reportedStepId: undefined,
+        actualStepId: undefined,
+        assumedStepId: 'low',
+        actualStepSource: 'assumed',
+      }));
+    });
+
+    it('treats cleared step evidence as refresh-worthy even when selected step and binary state match', () => {
+      const plan = buildPlan([buildSteppedDevice({
+        currentState: 'on',
+        selectedStepId: 'low',
+        reportedStepId: 'low',
+        actualStepId: 'low',
+        actualStepSource: 'reported',
+        assumedStepId: undefined,
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-1',
+        name: 'Tank',
+        currentOn: true,
+        selectedStepId: 'low',
+        actualStepId: undefined,
+        assumedStepId: 'low',
+        actualStepSource: 'assumed',
+        targets: [],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+      }];
+
+      const result = buildLiveStatePlan(plan, liveDevices);
+
+      expect(hasPlanExecutionDrift(plan, result)).toBe(true);
+      expect(canRefreshPlanSnapshotFromLiveState(plan, result)).toBe(true);
+    });
+
+    it('preserves effective step while clearing stale evidence when live lacks step evidence', () => {
+      const plan = buildPlan([buildSteppedDevice({
+        currentState: 'on',
+        selectedStepId: 'low',
+        reportedStepId: 'low',
+        actualStepId: 'low',
+        actualStepSource: 'reported',
+        assumedStepId: 'low',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-1',
+        name: 'Tank',
+        currentOn: false,
+        targets: [],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+      }];
+
+      const result = buildLiveStatePlan(plan, liveDevices);
+
+      expect(result.devices[0]).toEqual(expect.objectContaining({
+        selectedStepId: 'low',
+        reportedStepId: undefined,
+        actualStepId: undefined,
+        assumedStepId: undefined,
+        actualStepSource: undefined,
+      }));
+    });
+
+    it('keeps fresh reported live step evidence when it replaces older plan evidence', () => {
+      const plan = buildPlan([buildSteppedDevice({
+        currentState: 'on',
+        selectedStepId: 'low',
+        reportedStepId: 'low',
+        actualStepId: 'low',
+        actualStepSource: 'reported',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-1',
+        name: 'Tank',
+        currentOn: true,
+        selectedStepId: 'max',
+        reportedStepId: 'max',
+        actualStepId: 'max',
+        actualStepSource: 'reported',
+        targets: [],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+      }];
+
+      const result = buildLiveStatePlan(plan, liveDevices);
+
+      expect(result.devices[0]).toEqual(expect.objectContaining({
+        selectedStepId: 'max',
+        reportedStepId: 'max',
+        actualStepId: 'max',
+        assumedStepId: undefined,
+        actualStepSource: 'reported',
+      }));
     });
 
     it('keeps stepped off-step classification consistent with initial planning even when currentOn is true', () => {
