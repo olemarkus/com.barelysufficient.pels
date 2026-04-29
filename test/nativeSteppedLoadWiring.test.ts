@@ -234,6 +234,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('detects native stepped-load wiring from MyUplink Høiax Connected 300 shape', () => {
+    const nativeStepObservedAt = '2026-04-01T12:03:00.000Z';
     const device = {
       id: 'myuplink-hoiax-connected-300',
       name: 'Connected 300',
@@ -252,7 +253,7 @@ describe('native stepped-load wiring', () => {
         target_temperature: { value: 80 },
         measure_temperature: { value: 54.8 },
         onoff: { value: true },
-        max_power_3000: { value: '1', setable: true },
+        max_power_3000: { value: '1', setable: true, lastUpdated: nativeStepObservedAt },
       },
     } satisfies HomeyDeviceLike;
 
@@ -284,6 +285,8 @@ describe('native stepped-load wiring', () => {
       activationEnabled: true,
     }));
     expect(enabledParsed.reportedStepId).toBe('low');
+    expect(enabledParsed.lastFreshDataMs).toBe(new Date(nativeStepObservedAt).getTime());
+    expect(enabledParsed.lastUpdated).toBe(new Date(nativeStepObservedAt).getTime());
   });
 
   it('uses native stepped-load feedback instead of flow reports when native wiring is enabled', () => {

@@ -59,12 +59,14 @@ export function resolveLastFreshDataMs(params: {
   capabilityObj: DeviceCapabilityMap;
   controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
   targetCaps: readonly string[];
+  observedCapabilityAtMs?: number;
   measuredPowerObservedAtMs?: number;
 }): number | undefined {
   const {
     capabilityObj,
     controlCapabilityId,
     targetCaps,
+    observedCapabilityAtMs,
     measuredPowerObservedAtMs,
   } = params;
   return Math.max(
@@ -74,6 +76,7 @@ export function resolveLastFreshDataMs(params: {
       'measure_temperature',
       'evcharger_charging_state',
     ]) ?? 0,
+    observedCapabilityAtMs ?? 0,
     measuredPowerObservedAtMs ?? 0,
   ) || undefined;
 }

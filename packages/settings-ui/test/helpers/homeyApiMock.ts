@@ -1,5 +1,12 @@
 import type { Mock } from 'vitest';
 import { buildComparablePlanReason } from '../../../shared-domain/src/planReasonSemantics.ts';
+import type { DailyBudgetModelSettings } from '../../../contracts/src/dailyBudgetTypes.ts';
+import {
+  CONTROLLED_USAGE_WEIGHT,
+  MAX_DAILY_BUDGET_KWH,
+  MIN_DAILY_BUDGET_KWH,
+  PRICE_SHAPING_FLEX_SHARE,
+} from '../../../contracts/src/dailyBudgetConstants.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
@@ -8,6 +15,7 @@ import {
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
+  SETTINGS_UI_BOOTSTRAP_KEYS,
   SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
   SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
   SETTINGS_UI_REFRESH_DEVICES_PATH,
@@ -16,6 +24,13 @@ import {
   SETTINGS_UI_RECOMPUTE_DAILY_BUDGET_PATH,
   SETTINGS_UI_RESET_POWER_STATS_PATH,
 } from '../../../contracts/src/settingsUiApi.ts';
+import {
+  DAILY_BUDGET_CONTROLLED_WEIGHT,
+  DAILY_BUDGET_ENABLED,
+  DAILY_BUDGET_KWH,
+  DAILY_BUDGET_PRICE_FLEX_SHARE,
+  DAILY_BUDGET_PRICE_SHAPING_ENABLED,
+} from '../../../contracts/src/settingsKeys.ts';
 import type { HomeySettingsClient } from '../../src/ui/homey.ts';
 
 const appManifest = require('../../../../app.json');
@@ -25,40 +40,6 @@ const DAILY_BUDGET_PATH = '/daily_budget';
 const LOG_HOMEY_DEVICE_PATH = '/log_homey_device';
 
 const DEFAULT_TIMEZONE = 'UTC';
-
-const BOOTSTRAP_SETTING_KEYS = [
-  'capacity_limit_kw',
-  'capacity_margin_kw',
-  'capacity_dry_run',
-  'capacity_priorities',
-  'mode_device_targets',
-  'operating_mode',
-  'controllable_devices',
-  'managed_devices',
-  'budget_exempt_devices',
-  'native_ev_wiring_devices',
-  'mode_aliases',
-  'overshoot_behaviors',
-  'price_optimization_settings',
-  'price_optimization_enabled',
-  'price_scheme',
-  'norway_price_model',
-  'price_area',
-  'provider_surcharge',
-  'price_threshold_percent',
-  'price_min_diff_ore',
-  'nettleie_fylke',
-  'nettleie_orgnr',
-  'nettleie_tariffgruppe',
-  'daily_budget_enabled',
-  'daily_budget_kwh',
-  'daily_budget_price_shaping_enabled',
-  'daily_budget_controlled_weight',
-  'daily_budget_price_flex_share',
-  'daily_budget_breakdown_enabled',
-  'debug_logging_topics',
-  'debug_logging_enabled',
-];
 
 const ALLOWED_HOMEY_API_ROUTES = new Set(
   Object.values(appManifest.api as Record<string, { method?: string; path?: string }>)
@@ -127,6 +108,49 @@ const getUiOverride = (homey: MockHomeyClient, key: keyof MockHomeyUiState): unk
   const uiState = homey.__uiState;
   if (!uiState || !Object.prototype.hasOwnProperty.call(uiState, key)) return undefined;
   return uiState[key];
+};
+
+const isFiniteNumber = (value: unknown): value is number => (
+  typeof value === 'number' && Number.isFinite(value)
+);
+
+const clampRatio = (value: number): number => Math.min(1, Math.max(0, value));
+
+const buildDailyBudgetModelSettings = (
+  homey: MockHomeyClient,
+  input: unknown,
+): DailyBudgetModelSettings => {
+  const body = (input && typeof input === 'object' && !Array.isArray(input))
+    ? input as Partial<DailyBudgetModelSettings>
+    : {};
+  const enabledSetting = homey.__settingsStore[DAILY_BUDGET_ENABLED];
+  const enabled = typeof body.enabled === 'boolean' ? body.enabled : enabledSetting === true;
+  const storedBudget = homey.__settingsStore[DAILY_BUDGET_KWH];
+  const rawBudget = isFiniteNumber(body.dailyBudgetKWh)
+    ? Math.max(0, body.dailyBudgetKWh)
+    : (isFiniteNumber(storedBudget) ? Math.max(0, storedBudget) : 0);
+  if (enabled && (rawBudget < MIN_DAILY_BUDGET_KWH || rawBudget > MAX_DAILY_BUDGET_KWH)) {
+    throw new Error(`Daily budget must be between ${MIN_DAILY_BUDGET_KWH} and ${MAX_DAILY_BUDGET_KWH} kWh.`);
+  }
+  const boundedBudget = rawBudget === 0
+    ? 0
+    : Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, rawBudget));
+  const storedPriceShaping = homey.__settingsStore[DAILY_BUDGET_PRICE_SHAPING_ENABLED];
+  const storedControlledWeight = homey.__settingsStore[DAILY_BUDGET_CONTROLLED_WEIGHT];
+  const storedPriceFlexShare = homey.__settingsStore[DAILY_BUDGET_PRICE_FLEX_SHARE];
+  return {
+    enabled,
+    dailyBudgetKWh: boundedBudget,
+    priceShapingEnabled: typeof body.priceShapingEnabled === 'boolean'
+      ? body.priceShapingEnabled
+      : storedPriceShaping !== false,
+    controlledUsageWeight: isFiniteNumber(body.controlledUsageWeight)
+      ? clampRatio(body.controlledUsageWeight)
+      : (isFiniteNumber(storedControlledWeight) ? clampRatio(storedControlledWeight) : CONTROLLED_USAGE_WEIGHT),
+    priceShapingFlexShare: isFiniteNumber(body.priceShapingFlexShare)
+      ? clampRatio(body.priceShapingFlexShare)
+      : (isFiniteNumber(storedPriceFlexShare) ? clampRatio(storedPriceFlexShare) : PRICE_SHAPING_FLEX_SHARE),
+  };
 };
 
 const buildEmptyDiagnosticsPayload = () => ({
@@ -210,7 +234,7 @@ const buildUiDiagnostics = async (homey: MockHomeyClient) => {
 
 const buildUiBootstrap = async (homey: MockHomeyClient) => ({
   settings: Object.fromEntries(await Promise.all(
-    BOOTSTRAP_SETTING_KEYS.map(async (key) => [key, await getHomeySetting(homey, key)]),
+    SETTINGS_UI_BOOTSTRAP_KEYS.map(async (key) => [key, await getHomeySetting(homey, key)]),
   )),
   dailyBudget: getUiOverride(homey, 'dailyBudget') ?? null,
   featureAccess: getUiOverride(homey, 'featureAccess') ?? { canToggleOverviewRedesign: false },
@@ -241,10 +265,10 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('POST', SETTINGS_UI_RECOMPUTE_DAILY_BUDGET_PATH)]: (homey) => async () => (
     getUiOverride(homey, 'dailyBudget') ?? null
   ),
-  [buildRouteKey('POST', SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH)]: (homey) => async (_body) => ({
+  [buildRouteKey('POST', SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH)]: (homey) => async ({ body }) => ({
     active: getUiOverride(homey, 'dailyBudget') ?? null,
     candidate: getUiOverride(homey, 'dailyBudget') ?? null,
-    settings: _body,
+    settings: buildDailyBudgetModelSettings(homey, body),
   }),
   [buildRouteKey('POST', SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH)]: (homey) => async () => (
     getUiOverride(homey, 'dailyBudget') ?? null

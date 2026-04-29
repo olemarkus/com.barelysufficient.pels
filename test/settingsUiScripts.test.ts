@@ -1,7 +1,7 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { TextDecoder, TextEncoder } from 'node:util';
+import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../packages/contracts/src/settingsUiApi';
 
 const globalWithEncoding = globalThis as typeof globalThis & {
   TextDecoder?: typeof TextDecoder;
@@ -70,16 +70,7 @@ describe('settings UI measurement scripts', () => {
     expect(result.stdout.trim()).toBe('function');
   });
 
-  it('keeps the script bootstrap keys aligned with the runtime list', async () => {
-    const runtimeModule = fs.readFileSync(
-      path.resolve(__dirname, '../lib/utils/settingsUiBootstrapKeys.ts'),
-      'utf8',
-    );
-    const runtimeBootstrapKeys = Array.from(
-      runtimeModule.matchAll(/'([^']+)'/g),
-      (match) => match[1],
-    );
-
-    expect(SCRIPT_BOOTSTRAP_KEYS).toEqual([...runtimeBootstrapKeys]);
+  it('keeps the script bootstrap keys aligned with the contract list', async () => {
+    expect(SCRIPT_BOOTSTRAP_KEYS).toEqual([...SETTINGS_UI_BOOTSTRAP_KEYS]);
   });
 });

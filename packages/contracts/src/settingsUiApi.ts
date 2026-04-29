@@ -19,8 +19,47 @@ export const SETTINGS_UI_RECOMPUTE_DAILY_BUDGET_PATH = '/ui_recompute_daily_budg
 export const SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH = '/ui_preview_daily_budget_model';
 export const SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH = '/ui_apply_daily_budget_model';
 
+export const SETTINGS_UI_BOOTSTRAP_KEYS = [
+  'capacity_limit_kw',
+  'capacity_margin_kw',
+  'capacity_dry_run',
+  'capacity_priorities',
+  'mode_device_targets',
+  'operating_mode',
+  'controllable_devices',
+  'managed_devices',
+  'device_control_profiles',
+  'budget_exempt_devices',
+  'native_ev_wiring_devices',
+  'device_driver_overrides',
+  'experimental_ev_support_enabled',
+  'mode_aliases',
+  'overshoot_behaviors',
+  'price_optimization_settings',
+  'price_optimization_enabled',
+  'price_scheme',
+  'norway_price_model',
+  'price_area',
+  'provider_surcharge',
+  'price_threshold_percent',
+  'price_min_diff_ore',
+  'nettleie_fylke',
+  'nettleie_orgnr',
+  'nettleie_tariffgruppe',
+  'daily_budget_enabled',
+  'daily_budget_kwh',
+  'daily_budget_price_shaping_enabled',
+  'daily_budget_controlled_weight',
+  'daily_budget_price_flex_share',
+  'daily_budget_breakdown_enabled',
+  'debug_logging_topics',
+  'debug_logging_enabled',
+] as const;
+
+export type SettingsUiBootstrapKey = (typeof SETTINGS_UI_BOOTSTRAP_KEYS)[number];
+
 export type SettingsUiSettingsPatch = {
-  settings: Record<string, unknown>;
+  settings: Partial<Record<SettingsUiBootstrapKey, unknown>>;
 };
 
 export type SettingsUiBootstrap = SettingsUiSettingsPatch & {
