@@ -26,7 +26,7 @@ import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/lo
 import {
   buildDailyBudgetContext as buildPlanDailyBudgetContext,
   extractDailyBudgetHourKWh as extractPlanDailyBudgetHourKWh,
-  getCurrentHourKWh,
+  getHourUsageSplit,
   resolveDailySoftLimitBucket,
 } from './planDailyBudgetWindow';
 import {
@@ -637,6 +637,7 @@ export class PlanBuilder {
       devices: planDevices,
       totalKw: context.total,
     });
+    const currentHourUsageSplit = getHourUsageSplit(this.powerTracker, context.hourBucketKey);
     const today = dailyBudgetSnapshot?.days[dailyBudgetSnapshot.todayKey] ?? null;
     const shortfallMeta = buildShortfallMeta(this.capacityGuard, context.total, this.capacitySettings.limitKw);
     return {
@@ -657,8 +658,8 @@ export class PlanBuilder {
       minutesRemaining: context.minutesRemaining,
       controlledKw: controlledKw ?? undefined,
       uncontrolledKw: uncontrolledKw ?? undefined,
-      hourControlledKWh: getCurrentHourKWh(this.powerTracker.controlledBuckets),
-      hourUncontrolledKWh: getCurrentHourKWh(this.powerTracker.uncontrolledBuckets),
+      hourControlledKWh: currentHourUsageSplit.controlledKWh,
+      hourUncontrolledKWh: currentHourUsageSplit.uncontrolledKWh,
       dailyBudgetRemainingKWh: today?.state.remainingKWh ?? 0,
       dailyBudgetExceeded: today?.state.exceeded ?? false,
       dailyBudgetHourKWh: extractPlanDailyBudgetHourKWh(dailyBudgetSnapshot),
