@@ -59,16 +59,19 @@ export async function buildSheddingPlan(
     updates,
     overshootStats,
   } = planShedding(context, state, deps, overshootActionable);
+  const hourlyBudgetExhausted = state.hourlyBudgetExhausted === true;
+  const sheddingActionable = overshootActionable || hourlyBudgetExhausted;
+  const sheddingLimitSource = hourlyBudgetExhausted ? 'daily' : context.softLimitSource;
   const wasSheddingActive = deps.capacityGuard?.isSheddingActive() ?? false;
   const guardResult = await updateGuardState({
     headroom: context.headroom,
     powerKnown: context.powerKnown,
-    overshootActionable,
+    overshootActionable: sheddingActionable,
     capacitySoftLimit: context.capacitySoftLimit,
     total: planningTotal,
     devices: context.devices,
     shedSet,
-    softLimitSource: context.softLimitSource,
+    softLimitSource: sheddingLimitSource,
     getShedBehavior: deps.getShedBehavior,
     capacityGuard: deps.capacityGuard,
   });
@@ -113,7 +116,10 @@ function planShedding(
   deps: SheddingDeps,
   overshootActionable: boolean,
 ): PlanSheddingResult {
-  if (!overshootActionable || !shouldPlanShedding(context.headroom)) return emptySheddingResult();
+  const hourlyBudgetExhausted = state.hourlyBudgetExhausted === true;
+  if (!shouldAttemptShedding({ hourlyBudgetExhausted, overshootActionable, headroom: context.headroom })) {
+    return emptySheddingResult();
+  }
 
   const nowTs = Date.now();
   const measurementTs = deps.powerTracker.lastTimestamp ?? null;
@@ -125,12 +131,14 @@ function planShedding(
     allowEscalation: isCapacityBreached(planningTotal, context.capacitySoftLimit),
   });
 
-  const needed = -context.headroom;
-  if (measurementDecision.skip) {
+  const needed = Math.max(0, -context.headroom);
+  const candidateNeeded = hourlyBudgetExhausted ? Number.POSITIVE_INFINITY : needed;
+  const candidateLimitSource = hourlyBudgetExhausted ? 'daily' : context.softLimitSource;
+  if (shouldSkipSameMeasurement({ hourlyBudgetExhausted, skip: measurementDecision.skip })) {
     const summary = summarizeSheddingCandidates({
       devices: context.devices,
-      needed,
-      limitSource: context.softLimitSource,
+      needed: candidateNeeded,
+      limitSource: candidateLimitSource,
       total: planningTotal,
       capacitySoftLimit: context.capacitySoftLimit,
       state,
@@ -150,8 +158,8 @@ function planShedding(
   }
   const candidateSummary = buildSheddingCandidates({
     devices: context.devices,
-    needed,
-    limitSource: context.softLimitSource,
+    needed: candidateNeeded,
+    limitSource: candidateLimitSource,
     total: planningTotal,
     capacitySoftLimit: context.capacitySoftLimit,
     state,
@@ -168,8 +176,9 @@ function planShedding(
   const result = selectShedDevices({
     candidates,
     needed,
-    reason: resolveShedReason(context.softLimitSource),
+    reason: resolveShedReason(hourlyBudgetExhausted ? 'daily' : context.softLimitSource),
     logDebug: deps.logDebug,
+    shedAllCandidates: hourlyBudgetExhausted,
   });
 
   if (result.shedSet.size === 0) {
@@ -205,6 +214,19 @@ function planShedding(
     updates,
     overshootStats,
   };
+}
+
+function shouldAttemptShedding(params: {
+  hourlyBudgetExhausted: boolean;
+  overshootActionable: boolean;
+  headroom: number;
+}): boolean {
+  return params.hourlyBudgetExhausted
+    || (params.overshootActionable && shouldPlanShedding(params.headroom));
+}
+
+function shouldSkipSameMeasurement(params: { hourlyBudgetExhausted: boolean; skip: boolean }): boolean {
+  return !params.hourlyBudgetExhausted && params.skip;
 }
 
 function summarizeSheddingCandidates(params: ShedCandidateParams): {

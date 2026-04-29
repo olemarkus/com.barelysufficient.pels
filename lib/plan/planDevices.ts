@@ -116,10 +116,7 @@ export function buildInitialPlanDevices(params: {
       guardInShortfall,
     });
 
-    return applyHourlyBudgetShed({
-      planDevice: withOffStateReason,
-      hourlyBudgetExhausted: params.state.hourlyBudgetExhausted,
-    });
+    return withOffStateReason;
   });
 }
 
@@ -501,32 +498,5 @@ function applyOffStateReason(params: {
       ...planDevice.candidateReasons,
       offStateAnalysis: formatDeviceReason(buildRestoreNeedReason(need, headroomRaw)),
     },
-  };
-}
-
-function applyHourlyBudgetShed(params: {
-  planDevice: DevicePlanDevice;
-  hourlyBudgetExhausted: boolean;
-}): DevicePlanDevice {
-  const { planDevice, hourlyBudgetExhausted } = params;
-  if (!planDevice.controllable) return planDevice;
-  if (!hourlyBudgetExhausted || planDevice.plannedState === 'shed') return planDevice;
-  if (
-    planDevice.currentState !== 'on'
-    && planDevice.currentState !== 'unknown'
-    && planDevice.currentState !== 'not_applicable'
-  ) return planDevice;
-  const desiredStepId = isSteppedLoadDevice(planDevice)
-    ? getSteppedLoadShedTargetStep({
-      device: planDevice,
-      shedAction: planDevice.shedAction === 'set_step' ? 'set_step' : 'turn_off',
-      currentDesiredStepId: planDevice.desiredStepId,
-    })?.id ?? planDevice.desiredStepId
-    : planDevice.desiredStepId;
-  return {
-    ...planDevice,
-    plannedState: 'shed',
-    desiredStepId,
-    reason: { code: PLAN_REASON_CODES.hourlyBudget, detail: null },
   };
 }

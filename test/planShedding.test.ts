@@ -1888,6 +1888,7 @@ describe('buildSheddingPlan', () => {
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
       getShortfallThreshold: vi.fn().mockReturnValue(10),
+      getRestoreMargin: vi.fn().mockReturnValue(0.2),
     } as unknown as CapacityGuard;
 
     // Need 0.5kW of relief. The binary device has higher priority (sheds first
@@ -1968,6 +1969,7 @@ describe('buildSheddingPlan', () => {
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
       getShortfallThreshold: vi.fn().mockReturnValue(10),
+      getRestoreMargin: vi.fn().mockReturnValue(0.2),
     } as unknown as CapacityGuard;
 
     // Need 1.5kW relief. heater-high is above lowest active and should step down
@@ -2958,6 +2960,7 @@ describe('buildSheddingPlan', () => {
       checkShortfall: vi.fn().mockResolvedValue(undefined),
       isInShortfall: vi.fn().mockReturnValue(false),
       getShortfallThreshold: vi.fn().mockReturnValue(10),
+      getRestoreMargin: vi.fn().mockReturnValue(0.2),
     } as unknown as CapacityGuard;
 
     const baseDeps = {
@@ -3288,6 +3291,202 @@ describe('buildSheddingPlan', () => {
       allShedCandidatesExhausted: true,
       controlRecoverable: false,
     });
+  });
+
+  it('sheds all eligible non-exempt devices through the shedding planner when hourly budget is exhausted', async () => {
+    const state = createPlanEngineState();
+    state.hourlyBudgetExhausted = true;
+
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(10),
+      getRestoreMargin: vi.fn().mockReturnValue(0.2),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'binary',
+            name: 'Binary',
+            currentOn: true,
+            controllable: true,
+            expectedPowerKw: 1.2,
+          }),
+          buildDevice({
+            id: 'second',
+            name: 'Second',
+            currentOn: true,
+            controllable: true,
+            expectedPowerKw: 0.8,
+          }),
+          buildDevice({
+            id: 'exempt',
+            name: 'Budget exempt',
+            currentOn: true,
+            controllable: true,
+            expectedPowerKw: 3,
+            budgetExempt: true,
+          }),
+        ],
+        total: 0,
+        softLimit: 0,
+        capacitySoftLimit: 10,
+        headroomRaw: 0,
+        headroom: 0,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 1007 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: (deviceId) => (deviceId === 'second' ? 200 : 100),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+      false,
+    );
+
+    expect(result.shedSet).toEqual(new Set(['second', 'binary']));
+    expect(reasonText(result.shedReasons.get('binary'))).toBe('shed due to daily budget');
+    expect(reasonText(result.shedReasons.get('second'))).toBe('shed due to daily budget');
+    expect(result.shedReasons.has('exempt')).toBe(false);
+    expect(capacityGuard.setSheddingActive).toHaveBeenCalledWith(true);
+  });
+
+  it('populates stepped and temperature shed targets for hourly budget exhaustion', async () => {
+    const state = createPlanEngineState();
+    state.hourlyBudgetExhausted = true;
+
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(10),
+      getRestoreMargin: vi.fn().mockReturnValue(0.2),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'stepped',
+            name: 'Stepped',
+            controlModel: 'stepped_load',
+            steppedLoadProfile: {
+              model: 'stepped_load',
+              steps: [
+                { id: 'off', planningPowerW: 0 },
+                { id: 'low', planningPowerW: 1000 },
+                { id: 'max', planningPowerW: 3000 },
+              ],
+            },
+            selectedStepId: 'max',
+            currentOn: true,
+            controllable: true,
+            planningPowerKw: 3,
+          }),
+          buildDevice({
+            id: 'temp',
+            name: 'Temperature',
+            deviceType: 'temperature',
+            targets: [{ id: 'target_temperature', value: 22, unit: 'C' }],
+            currentOn: true,
+            controllable: true,
+            expectedPowerKw: 1.5,
+          }),
+        ],
+        total: 0,
+        softLimit: 0,
+        capacitySoftLimit: 10,
+        headroomRaw: 0,
+        headroom: 0,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 1008 } as PowerTrackerState,
+        getShedBehavior: (deviceId) => (deviceId === 'temp'
+          ? { action: 'set_temperature', temperature: 17, stepId: null }
+          : { action: 'set_step', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+      false,
+    );
+
+    expect(result.shedSet.has('stepped')).toBe(true);
+    expect(result.shedSet.has('temp')).toBe(true);
+    expect(result.steppedDesiredStepByDeviceId.get('stepped')).toBe('low');
+    expect(result.temperatureShedTargets.get('temp')).toEqual({
+      temperature: 17,
+      capabilityId: 'target_temperature',
+    });
+  });
+
+  it('does not select or retarget zero-draw stepped loads when hourly budget is exhausted', async () => {
+    const state = createPlanEngineState();
+    state.hourlyBudgetExhausted = true;
+
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(10),
+      getRestoreMargin: vi.fn().mockReturnValue(0.2),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices: [
+          buildDevice({
+            id: 'stepped-zero',
+            name: 'Stepped zero',
+            controlModel: 'stepped_load',
+            steppedLoadProfile: {
+              model: 'stepped_load',
+              steps: [
+                { id: 'off', planningPowerW: 0 },
+                { id: 'idle', planningPowerW: 0 },
+              ],
+            },
+            selectedStepId: 'off',
+            currentOn: true,
+            controllable: true,
+            measuredPowerKw: 0,
+            expectedPowerKw: 0,
+            planningPowerKw: 0,
+          }),
+        ],
+        total: 0,
+        softLimit: 0,
+        capacitySoftLimit: 10,
+        headroomRaw: 0,
+        headroom: 0,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 1009 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
+        getPriorityForDevice: () => 100,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+      false,
+    );
+
+    expect(result.shedSet.has('stepped-zero')).toBe(false);
+    expect(result.steppedDesiredStepByDeviceId.has('stepped-zero')).toBe(false);
   });
 
   it('emits a bounded blocker event when sustained overshoot escalation has no candidates left', async () => {
