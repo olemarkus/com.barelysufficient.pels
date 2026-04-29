@@ -1,5 +1,8 @@
 import { clamp } from '../utils/mathUtils';
-import { PRICE_SHAPING_FLEX_SHARE } from './dailyBudgetConstants';
+import {
+  PRICE_SHAPING_FLEX_SHARE,
+  PRICE_SHAPING_PRICE_RANGE_EPSILON,
+} from './dailyBudgetConstants';
 
 export type CombinedPriceEntry = {
   startsAt: string;
@@ -34,7 +37,8 @@ export function buildPriceDebugData(params: {
     ? priceShape.priceSpreadFactor
     : 0;
   const effectivePriceShapingFlexShare = priceShape.priceShapingActive
-    ? clamp(configuredFlexShare * priceSpreadFactor, 0, 1)
+    && priceSpreadFactor > 0
+    ? clamp(configuredFlexShare, 0, 1)
     : 0;
   return {
     prices: priceShape.prices,
@@ -103,10 +107,12 @@ export function buildPriceFactors(params: {
   const numericPrices = remainingPrices as number[];
   const priceList = [...numericPrices].sort((a, b) => a - b);
   const median = percentile(priceList, 0.5);
-  const p10 = percentile(priceList, 0.1);
-  const p90 = percentile(priceList, 0.9);
-  const spread = Math.max(0, p90 - p10);
-  const priceSpreadFactor = resolvePriceSpreadFactor({ spread, median });
+  const min = priceList[0] ?? median;
+  const max = priceList.at(-1) ?? median;
+  const spread = Math.max(0, max - min);
+  const priceSpreadFactor = spread > PRICE_SHAPING_PRICE_RANGE_EPSILON
+    ? resolvePriceSpreadFactor({ spread, median })
+    : 0;
   // Avoid divide-by-zero and keep shaping stable when prices are flat.
   const normalizedSpread = Math.max(1, spread);
   const minFactor = 0.7;

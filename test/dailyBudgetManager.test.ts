@@ -561,10 +561,8 @@ describe('daily budget price shaping', () => {
       priceOptimizationEnabled: true,
     });
     expect(typeof priceData.effectivePriceShapingFlexShare).toBe('number');
-    expect(priceData.effectivePriceShapingFlexShare).toBeCloseTo(
-      settings.priceShapingFlexShare * (priceData.priceSpreadFactor ?? 0),
-      6,
-    );
+    expect(priceData.priceSpreadFactor).toBeGreaterThan(0);
+    expect(priceData.effectivePriceShapingFlexShare).toBeCloseTo(settings.priceShapingFlexShare, 6);
   });
 });
 
@@ -639,7 +637,7 @@ describe('daily budget advanced weighting integration', () => {
     expect(Math.max(...plannedControlled)).toBeLessThanOrEqual(2.4 + 1e-6);
   });
 
-  it('increases price-shift intensity when price spread is larger', () => {
+  it('uses full configured price flex for non-flat price ranges', () => {
     const manager = buildManager();
     const settings = buildSettings({
       dailyBudgetKWh: 24,
@@ -692,7 +690,8 @@ describe('daily budget advanced weighting integration', () => {
     const highSpreadPlanned = highSpreadUpdate.snapshot.buckets.plannedKWh;
     const highSpreadDelta = highSpreadPlanned[0] - highSpreadPlanned[23];
 
-    expect(highSpreadDelta).toBeGreaterThan(lowSpreadDelta + 0.05);
+    expect(lowSpreadDelta).toBeGreaterThan(0);
+    expect(highSpreadDelta).toBeCloseTo(lowSpreadDelta, 6);
   });
 });
 

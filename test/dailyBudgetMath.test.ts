@@ -1,6 +1,7 @@
 import {
   allocateBudgetWithCaps,
   allocateBudgetWithCapsAndFloors,
+  allocateBudgetWithPriceTargets,
   buildAllowedCumKWh,
   buildCompositeWeights,
   buildDefaultProfile,
@@ -97,6 +98,66 @@ describe('allocateBudgetWithCapsAndFloors', () => {
     });
     expect(result[0]).toBeLessThanOrEqual(2);
     expect(result[1]).toBeLessThanOrEqual(3);
+  });
+});
+
+describe('allocateBudgetWithPriceTargets', () => {
+  it('maps full price flex from cap in the cheapest bucket to floor in the most expensive bucket', () => {
+    const result = allocateBudgetWithPriceTargets({
+      neutralWeights: [1, 1, 1],
+      totalKWh: 6,
+      caps: [4, 4, 4],
+      floors: [0, 0, 0],
+      prices: [10, 20, 30],
+      flexShare: 1,
+    });
+
+    expect(result[0]).toBeCloseTo(4, 6);
+    expect(result[1]).toBeCloseTo(2, 6);
+    expect(result[2]).toBeCloseTo(0, 6);
+  });
+
+  it('blends neutral allocation toward the full price target', () => {
+    const result = allocateBudgetWithPriceTargets({
+      neutralWeights: [1, 1, 1],
+      totalKWh: 6,
+      caps: [4, 4, 4],
+      floors: [0, 0, 0],
+      prices: [10, 20, 30],
+      flexShare: 0.5,
+    });
+
+    expect(result[0]).toBeCloseTo(3, 6);
+    expect(result[1]).toBeCloseTo(2, 6);
+    expect(result[2]).toBeCloseTo(1, 6);
+  });
+
+  it('falls back to neutral allocation when prices are flat', () => {
+    const result = allocateBudgetWithPriceTargets({
+      neutralWeights: [1, 2],
+      totalKWh: 9,
+      caps: [10, 10],
+      floors: [0, 0],
+      prices: [50, 50],
+      flexShare: 1,
+    });
+
+    expect(result[0]).toBeCloseTo(3, 6);
+    expect(result[1]).toBeCloseTo(6, 6);
+  });
+
+  it('falls back to neutral allocation when prices are within the near-flat deadband', () => {
+    const result = allocateBudgetWithPriceTargets({
+      neutralWeights: [1, 2],
+      totalKWh: 9,
+      caps: [10, 10],
+      floors: [0, 0],
+      prices: [50, 50.0000005],
+      flexShare: 1,
+    });
+
+    expect(result[0]).toBeCloseTo(3, 6);
+    expect(result[1]).toBeCloseTo(6, 6);
   });
 });
 
@@ -328,12 +389,12 @@ describe('daily budget math helpers', () => {
     expect(result.plannedKWh[3]).toBeCloseTo(2, 6);
   });
 
-  it('applies price shaping to controlled load only when split profiles exist', () => {
-    const shortBucketStartUtcMs = bucketStartUtcMs.slice(0, 2);
+  it('targets cheapest hours toward the cap and most expensive hours toward the floor', () => {
+    const shortBucketStartUtcMs = bucketStartUtcMs.slice(0, 3);
     const combinedPrices = {
       prices: shortBucketStartUtcMs.map((ts, index) => ({
         startsAt: new Date(ts).toISOString(),
-        total: index === 0 ? 10 : 30,
+        total: [10, 20, 30][index] ?? 30,
       })),
     };
     const baseProfile = Array.from({ length: 24 }, () => 0);
@@ -341,24 +402,17 @@ describe('daily budget math helpers', () => {
     const uncontrolledProfile = baseProfile.slice();
     controlledProfile[0] = 1;
     controlledProfile[1] = 1;
+    controlledProfile[2] = 1;
     uncontrolledProfile[0] = 1;
-    uncontrolledProfile[1] = 3;
-
-    const priceShape = buildPriceFactorsFromPrices({
-      bucketStartUtcMs: shortBucketStartUtcMs,
-      currentBucketIndex: 0,
-      combinedPrices,
-      priceOptimizationEnabled: true,
-      priceShapingEnabled: true,
-    });
-    expect(priceShape.priceShapingActive).toBe(true);
+    uncontrolledProfile[1] = 1;
+    uncontrolledProfile[2] = 1;
 
     const result = buildPlan({
       bucketStartUtcMs: shortBucketStartUtcMs,
-      bucketUsage: [0, 0],
+      bucketUsage: [0, 0, 0],
       currentBucketIndex: 0,
       usedNowKWh: 0,
-      dailyBudgetKWh: 10,
+      dailyBudgetKWh: 6,
       profileWeights: baseProfile,
       profileWeightsControlled: controlledProfile,
       profileWeightsUncontrolled: uncontrolledProfile,
@@ -367,24 +421,63 @@ describe('daily budget math helpers', () => {
       priceOptimizationEnabled: true,
       priceShapingEnabled: true,
       priceShapingFlexShare: 1,
+      capacityBudgetKWh: 4,
     });
 
-    const uncontrolledWeights = [uncontrolledProfile[0], uncontrolledProfile[1]];
-    const controlledWeights = [controlledProfile[0], controlledProfile[1]];
-    const shapedControlled = buildCompositeWeights({
-      baseWeights: controlledWeights,
-      priceFactors: priceShape.priceFactors,
-      flexShare: result.effectivePriceShapingFlexShare,
-    });
-    const combinedWeights = uncontrolledWeights.map((value, index) => value + (shapedControlled[index] ?? 0));
-    const expectedWeights = normalizeWeights(combinedWeights);
-    const expectedPlanned = expectedWeights.map((weight) => 10 * weight);
-
-    expect(result.plannedKWh[0]).toBeCloseTo(expectedPlanned[0], 6);
-    expect(result.plannedKWh[1]).toBeCloseTo(expectedPlanned[1], 6);
+    expect(result.effectivePriceShapingFlexShare).toBe(1);
+    expect(result.plannedKWh[0]).toBeCloseTo(4, 6);
+    expect(result.plannedKWh[1]).toBeCloseTo(2, 6);
+    expect(result.plannedKWh[2]).toBeCloseTo(0, 6);
   });
 
-  it('applies price shaping to the full weights when split profiles are missing', () => {
+  it('uses controlled usage weight when resolving the expensive-hour floor', () => {
+    const shortBucketStartUtcMs = bucketStartUtcMs.slice(0, 3);
+    const combinedPrices = {
+      prices: shortBucketStartUtcMs.map((ts, index) => ({
+        startsAt: new Date(ts).toISOString(),
+        total: [10, 20, 30][index] ?? 30,
+      })),
+    };
+    const baseProfile = Array.from({ length: 24 }, () => 0);
+    baseProfile[0] = 1;
+    baseProfile[1] = 1;
+    baseProfile[2] = 1;
+    const controlledProfile = baseProfile.slice();
+    const uncontrolledProfile = baseProfile.slice();
+    const observedUncontrolledMin = Array.from({ length: 24 }, () => 0);
+    const observedControlledMin = Array.from({ length: 24 }, () => 0);
+    observedUncontrolledMin[2] = 1;
+    observedControlledMin[2] = 3;
+
+    const buildWeightedPlan = (controlledUsageWeight: number) => buildPlan({
+      bucketStartUtcMs: shortBucketStartUtcMs,
+      bucketUsage: [0, 0, 0],
+      currentBucketIndex: 0,
+      usedNowKWh: 0,
+      dailyBudgetKWh: 12,
+      profileWeights: baseProfile,
+      profileWeightsControlled: controlledProfile,
+      profileWeightsUncontrolled: uncontrolledProfile,
+      timeZone,
+      combinedPrices,
+      priceOptimizationEnabled: true,
+      priceShapingEnabled: true,
+      priceShapingFlexShare: 1,
+      capacityBudgetKWh: 10,
+      controlledUsageWeight,
+      observedPeakMarginRatio: 0,
+      profileObservedMinUncontrolledKWh: observedUncontrolledMin,
+      profileObservedMinControlledKWh: observedControlledMin,
+    });
+
+    const uncontrolledDriven = buildWeightedPlan(0);
+    const controlledDriven = buildWeightedPlan(1);
+
+    expect(uncontrolledDriven.plannedKWh[2]).toBeCloseTo(2, 6);
+    expect(controlledDriven.plannedKWh[2]).toBeCloseTo(6, 6);
+  });
+
+  it('applies price target shaping to the full plan when split profiles are missing', () => {
     const shortBucketStartUtcMs = bucketStartUtcMs.slice(0, 2);
     const combinedPrices = {
       prices: shortBucketStartUtcMs.map((ts, index) => ({
@@ -416,22 +509,15 @@ describe('daily budget math helpers', () => {
       priceOptimizationEnabled: true,
       priceShapingEnabled: true,
       priceShapingFlexShare: 1,
+      capacityBudgetKWh: 10,
     });
 
-    const baseWeights = [baseProfile[0], baseProfile[1]];
-    const shapedWeights = buildCompositeWeights({
-      baseWeights,
-      priceFactors: priceShape.priceFactors,
-      flexShare: result.effectivePriceShapingFlexShare,
-    });
-    const expectedWeights = normalizeWeights(shapedWeights);
-    const expectedPlanned = expectedWeights.map((weight) => 10 * weight);
-
-    expect(result.plannedKWh[0]).toBeCloseTo(expectedPlanned[0], 6);
-    expect(result.plannedKWh[1]).toBeCloseTo(expectedPlanned[1], 6);
+    expect(priceShape.priceShapingActive).toBe(true);
+    expect(result.plannedKWh[0]).toBeCloseTo(10, 6);
+    expect(result.plannedKWh[1]).toBeCloseTo(0, 6);
   });
 
-  it('falls back to base weights when split profiles are incomplete', () => {
+  it('uses price target shaping when split profiles are incomplete', () => {
     const shortBucketStartUtcMs = bucketStartUtcMs.slice(0, 2);
     const combinedPrices = {
       prices: shortBucketStartUtcMs.map((ts, index) => ({
@@ -467,19 +553,12 @@ describe('daily budget math helpers', () => {
       priceOptimizationEnabled: true,
       priceShapingEnabled: true,
       priceShapingFlexShare: 1,
+      capacityBudgetKWh: 10,
     });
 
-    const baseWeights = [baseProfile[0], baseProfile[1]];
-    const shapedWeights = buildCompositeWeights({
-      baseWeights,
-      priceFactors: priceShape.priceFactors,
-      flexShare: result.effectivePriceShapingFlexShare,
-    });
-    const expectedWeights = normalizeWeights(shapedWeights);
-    const expectedPlanned = expectedWeights.map((weight) => 10 * weight);
-
-    expect(result.plannedKWh[0]).toBeCloseTo(expectedPlanned[0], 6);
-    expect(result.plannedKWh[1]).toBeCloseTo(expectedPlanned[1], 6);
+    expect(priceShape.priceShapingActive).toBe(true);
+    expect(result.plannedKWh[0]).toBeCloseTo(10, 6);
+    expect(result.plannedKWh[1]).toBeCloseTo(0, 6);
   });
 
   it('handles cumulative budgets and weight normalization helpers', () => {
@@ -612,6 +691,29 @@ describe('daily budget math helpers', () => {
     expect(flatPlan.effectivePriceShapingFlexShare).toBe(0);
     expect(flatPlan.plannedKWh[0]).toBeCloseTo(3, 6);
     expect(flatPlan.plannedKWh[1]).toBeCloseTo(6, 6);
+
+    const nearFlatPlan = buildPlan({
+      bucketStartUtcMs: bucketStartUtcMs.slice(0, 2),
+      bucketUsage: [0, 0],
+      currentBucketIndex: 0,
+      usedNowKWh: 0,
+      dailyBudgetKWh: 9,
+      profileWeights: baseProfile,
+      timeZone,
+      combinedPrices: {
+        prices: bucketStartUtcMs.slice(0, 2).map((ts, index) => ({
+          startsAt: new Date(ts).toISOString(),
+          total: index === 0 ? 50 : 50.0000005,
+        })),
+      },
+      priceOptimizationEnabled: true,
+      priceShapingEnabled: true,
+      priceShapingFlexShare: 1,
+    });
+    expect(nearFlatPlan.priceSpreadFactor).toBe(0);
+    expect(nearFlatPlan.effectivePriceShapingFlexShare).toBe(0);
+    expect(nearFlatPlan.plannedKWh[0]).toBeCloseTo(3, 6);
+    expect(nearFlatPlan.plannedKWh[1]).toBeCloseTo(6, 6);
 
     const highSpreadPrices = {
       prices: bucketStartUtcMs.map((ts, index) => ({

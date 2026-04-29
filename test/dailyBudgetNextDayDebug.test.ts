@@ -50,9 +50,7 @@ describe('daily budget next-day debug', () => {
     );
     expect(typeof payload.meta.priceSpreadFactor).toBe('number');
     expect(typeof payload.meta.effectivePriceShapingFlexShare).toBe('number');
-    expect(payload.meta.effectivePriceShapingFlexShare).toBeCloseTo(
-      settings.priceShapingFlexShare * payload.meta.priceSpreadFactor,
-      6,
-    );
+    expect(payload.meta.priceSpreadFactor).toBeGreaterThan(0);
+    expect(payload.meta.effectivePriceShapingFlexShare).toBeCloseTo(settings.priceShapingFlexShare, 6);
   });
 });
