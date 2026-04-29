@@ -148,6 +148,60 @@ describe('appDeviceControlHelpers', () => {
     expect(decorated.currentOn).toBe(false);
   });
 
+  it('keeps native non-off step reports as observed truth even when currentOn=false', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+    const decorated = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({
+        currentOn: false,
+        reportedStepId: 'max',
+        lastUpdated: 1_500,
+        suggestedSteppedLoadProfile: steppedProfiles['dev-1'],
+        controlAdapter: {
+          kind: 'capability_adapter',
+          activationAvailable: true,
+          activationEnabled: true,
+          activationRequired: false,
+        },
+      }),
+      profiles: {},
+      runtimeState,
+      nowMs: 2_000,
+    });
+
+    expect(decorated.reportedStepId).toBe('max');
+    expect(decorated.selectedStepId).toBe('max');
+    expect(decorated.actualStepId).toBe('max');
+    expect(decorated.assumedStepId).toBeUndefined();
+    expect(decorated.actualStepSource).toBe('reported');
+    expect(decorated.currentOn).toBe(false);
+  });
+
+  it('does not turn flow non-off feedback into reported truth while currentOn=false', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+
+    expect(reportSteppedLoadActualStep({
+      runtimeState,
+      profiles: steppedProfiles,
+      deviceId: 'dev-1',
+      stepId: 'max',
+      reportedAtMs: 1_500,
+    })).toBe('changed');
+
+    const decorated = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({ currentOn: false }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 2_000,
+    });
+
+    expect(decorated.reportedStepId).toBeUndefined();
+    expect(decorated.selectedStepId).toBe('low');
+    expect(decorated.actualStepId).toBeUndefined();
+    expect(decorated.assumedStepId).toBe('low');
+    expect(decorated.actualStepSource).toBe('assumed');
+    expect(decorated.currentOn).toBe(false);
+  });
+
   it('preserves snapshot power source and currentOn when a stepped profile cannot resolve any step', () => {
     const runtimeState = createDeviceControlRuntimeState();
     const emptyProfiles = {
@@ -245,7 +299,7 @@ describe('appDeviceControlHelpers', () => {
     });
 
     const reportedDecorated = decorateSnapshotWithDeviceControl({
-      snapshot: baseSnapshot(),
+      snapshot: baseSnapshot({ currentOn: true }),
       profiles: steppedProfiles,
       runtimeState,
       nowMs: 1700,
@@ -268,7 +322,7 @@ describe('appDeviceControlHelpers', () => {
     expect(pruneStaleSteppedLoadCommandStates(runtimeState, 2000 + STEPPED_LOAD_COMMAND_STALE_MS + 1)).toBe(true);
 
     const staleDecorated = decorateSnapshotWithDeviceControl({
-      snapshot: baseSnapshot(),
+      snapshot: baseSnapshot({ currentOn: true }),
       profiles: steppedProfiles,
       runtimeState,
       nowMs: 2000 + STEPPED_LOAD_COMMAND_STALE_MS + 1,
@@ -319,7 +373,9 @@ describe('appDeviceControlHelpers', () => {
       nowMs: 4300,
     });
     expect(offDecorated.selectedStepId).toBe('off');
+    expect(offDecorated.reportedStepId).toBe('off');
     expect(offDecorated.actualStepId).toBe('off');
+    expect(offDecorated.actualStepSource).toBe('reported');
     expect(offDecorated.currentOn).toBe(false);
     expect(offDecorated.planningPowerKw).toBe(0);
 
@@ -504,6 +560,45 @@ describe('appDeviceControlHelpers', () => {
       pending: false,
       status: 'success',
     });
+  });
+
+  it('does not let suppressed flow feedback confirm a pending desired step while currentOn=false', () => {
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => steppedProfiles,
+      getDeviceSnapshots: () => [baseSnapshot({ currentOn: false })],
+      getStructuredLogger: () => ({ info: vi.fn() }) as never,
+      logDebug: vi.fn(),
+    });
+
+    helpers.markSteppedLoadDesiredStepIssued({
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      previousStepId: 'low',
+      issuedAtMs: 1_000,
+    });
+
+    expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('unchanged');
+
+    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId['dev-1']).toBeUndefined();
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+      capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+      stepId: 'max',
+      pending: true,
+      status: 'pending',
+      retryCount: 0,
+    });
+  });
+
+  it('returns invalid for unknown flow step reports even when currentOn=false', () => {
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => steppedProfiles,
+      getDeviceSnapshots: () => [baseSnapshot({ currentOn: false })],
+      getStructuredLogger: () => ({ info: vi.fn() }) as never,
+      logDebug: vi.fn(),
+    });
+
+    expect(helpers.reportSteppedLoadActualStep('dev-1', 'missing')).toBe('invalid');
+    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId['dev-1']).toBeUndefined();
   });
 
   it('increments stepped-load retry metadata when the same desired step is re-issued', () => {

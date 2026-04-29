@@ -72,6 +72,12 @@ Layer ownership:
 - shared-domain and settings UI must not import the planner state model
 - UI overview needs only the observed reported step and the target step
 
+Flow-reported step feedback is admitted as observed truth only when it agrees with the binary
+snapshot. A flow report for a non-off step while `currentOn=false` is suppressed at the
+app/snapshot boundary; native step telemetry remains reported truth because it comes from the
+device's modeled step capability. Suppressed flow feedback may be considered later only as explicit
+restore-preparation evidence under the planner/executor freshness rules.
+
 Legacy compatibility fields may still exist in older snapshots and plans while migration is in
 progress:
 
