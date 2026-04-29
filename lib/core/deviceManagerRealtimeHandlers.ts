@@ -19,6 +19,29 @@ export type ObservedDeviceStateEvent = {
   measurePowerBecameSignificantlyPositive?: boolean;
 };
 
+export type DeviceUpdateProcessedDebugEvent = {
+  event: 'device_update_processed';
+  source: 'device_update';
+  deviceId: string;
+  deviceName: string | null;
+  reasonCode: 'binary_settled' | 'binary_drift' | 'drift_detected' | 'changed_without_reconcile' | 'no_snapshot_change';
+  hadChanges: boolean;
+  shouldReconcilePlan: boolean;
+  rawChangeCount: number;
+  filteredChangeCount: number;
+  changes: RealtimeDeviceReconcileChange[];
+  observedCapabilityIds: string[];
+  controlCapabilityId: string | null;
+  rawBinaryObserved: boolean;
+  rawBinaryValue: boolean | null;
+  binarySettleOutcome: BinarySettleOutcome;
+  previousCurrentOn: boolean | null;
+  nextCurrentOn: boolean | null;
+  previousMeasuredPowerKw: number | null;
+  nextMeasuredPowerKw: number | null;
+  measurePowerBecameSignificantlyPositive: boolean;
+};
+
 export type HandleRealtimeDeviceUpdateResult = {
   hadChanges: boolean;
   shouldReconcilePlan: boolean;
@@ -46,7 +69,7 @@ export function handleRealtimeDeviceUpdate(params: {
   recordObservedCapabilities?: (deviceId: string, capabilityIds: string[]) => void;
   notePendingBinarySettleObservation?: PendingBinarySettleObservationRecorder;
   hasPendingBinarySettleWindow?: (deviceId: string, capabilityId: string) => boolean;
-  logDebug: (message: string) => void;
+  emitDeviceUpdateProcessed?: (event: DeviceUpdateProcessedDebugEvent) => void;
   emitPlanReconcile: (event: PlanRealtimeUpdateEvent) => void;
   emitObservedState: (event: ObservedDeviceStateEvent) => void;
 }): HandleRealtimeDeviceUpdateResult {
@@ -60,7 +83,7 @@ export function handleRealtimeDeviceUpdate(params: {
     recordObservedCapabilities,
     notePendingBinarySettleObservation,
     hasPendingBinarySettleWindow,
-    logDebug,
+    emitDeviceUpdateProcessed,
     emitPlanReconcile,
     emitObservedState,
   } = params;
@@ -80,9 +103,10 @@ export function handleRealtimeDeviceUpdate(params: {
   // settle window receives the actual observed value rather than a preserved or
   // synthesized snapshot value.
   const priorSnapshot = latestSnapshot.find((s) => s.id === deviceId);
+  const controlCapabilityId = priorSnapshot?.controlObservationCapabilityId ?? priorSnapshot?.controlCapabilityId;
   const rawBinaryValue = extractRawBinaryValue(
     device,
-    priorSnapshot?.controlObservationCapabilityId ?? priorSnapshot?.controlCapabilityId,
+    controlCapabilityId,
   );
 
   const result = reconcileRealtimeDeviceUpdate({
@@ -103,21 +127,35 @@ export function handleRealtimeDeviceUpdate(params: {
   if (result.observedCapabilityIds.length > 0) {
     recordObservedCapabilities?.(deviceId, result.observedCapabilityIds);
   }
-  const suffix = buildReconcileSuffix(settleResult.binarySettleOutcome, shouldReconcilePlan);
-  logDebug(`Realtime device.update received for ${label} (${deviceId})${suffix}`);
   // Use the pre-filter change count for hadChanges so that a drift-settled binary
   // observation (which is filtered from filteredChanges to avoid a double reconcile)
   // is still recorded as a meaningful update.
   const hadChanges = result.changes.length > 0;
+  const measurePowerBecameSignificantlyPositive = didMeasurePowerBecomeSignificantlyPositive(
+    priorSnapshot?.measuredPowerKw,
+    result.currentSnapshot?.measuredPowerKw,
+    minSignificantPowerW,
+  );
+  emitDeviceUpdateProcessed?.(buildDeviceUpdateProcessedDebugEvent({
+    deviceId,
+    deviceName: label,
+    priorSnapshot,
+    currentSnapshot: result.currentSnapshot,
+    controlCapabilityId,
+    rawBinaryValue,
+    binarySettleOutcome: settleResult.binarySettleOutcome,
+    hadChanges,
+    shouldReconcilePlan,
+    rawChanges: result.changes,
+    filteredChanges,
+    observedCapabilityIds: result.observedCapabilityIds,
+    measurePowerBecameSignificantlyPositive,
+  }));
   if (hadChanges) {
     emitObservedState({
       source: 'device_update',
       deviceId,
-      measurePowerBecameSignificantlyPositive: didMeasurePowerBecomeSignificantlyPositive(
-        priorSnapshot?.measuredPowerKw,
-        result.currentSnapshot?.measuredPowerKw,
-        minSignificantPowerW,
-      ),
+      measurePowerBecameSignificantlyPositive,
     });
   }
   if (!shouldReconcilePlan) {
@@ -175,7 +213,7 @@ function applyPendingBinarySettleToDeviceUpdate(params: {
   // rawBinaryValue is undefined when the device.update payload contained no explicit
   // boolean for the control capability — treat it as no observation (do not resolve).
   if (
-    rawBinaryValue === undefined
+    !hasRawBinaryObservation(rawBinaryValue)
     || !currentSnapshot
     || !deviceId
     || typeof binaryCapabilityId !== 'string'
@@ -201,11 +239,75 @@ function applyPendingBinarySettleToDeviceUpdate(params: {
   return { changes, binarySettleOutcome: 'none' };
 }
 
-function buildReconcileSuffix(outcome: BinarySettleOutcome, shouldReconcilePlan: boolean): string {
-  if (outcome === 'settled') return ' [binary settled]';
-  if (outcome === 'drift') return ' [binary drift]';
-  if (shouldReconcilePlan) return ' [drift detected]';
-  return '';
+function buildDeviceUpdateProcessedDebugEvent(params: {
+  deviceId: string;
+  deviceName?: string;
+  priorSnapshot: TargetDeviceSnapshot | undefined;
+  currentSnapshot: TargetDeviceSnapshot | null;
+  controlCapabilityId: string | undefined;
+  rawBinaryValue: boolean | undefined;
+  binarySettleOutcome: BinarySettleOutcome;
+  hadChanges: boolean;
+  shouldReconcilePlan: boolean;
+  rawChanges: RealtimeDeviceReconcileChange[];
+  filteredChanges: RealtimeDeviceReconcileChange[];
+  observedCapabilityIds: string[];
+  measurePowerBecameSignificantlyPositive: boolean;
+}): DeviceUpdateProcessedDebugEvent {
+  const {
+    deviceId,
+    deviceName,
+    priorSnapshot,
+    currentSnapshot,
+    controlCapabilityId,
+    rawBinaryValue,
+    binarySettleOutcome,
+    hadChanges,
+    shouldReconcilePlan,
+    rawChanges,
+    filteredChanges,
+    observedCapabilityIds,
+    measurePowerBecameSignificantlyPositive,
+  } = params;
+  return {
+    event: 'device_update_processed',
+    source: 'device_update',
+    deviceId,
+    deviceName: deviceName ?? null,
+    reasonCode: resolveDeviceUpdateReasonCode({ binarySettleOutcome, hadChanges, shouldReconcilePlan }),
+    hadChanges,
+    shouldReconcilePlan,
+    rawChangeCount: rawChanges.length,
+    filteredChangeCount: filteredChanges.length,
+    changes: filteredChanges,
+    observedCapabilityIds,
+    controlCapabilityId: controlCapabilityId ?? null,
+    rawBinaryObserved: hasRawBinaryObservation(rawBinaryValue),
+    rawBinaryValue: rawBinaryValue ?? null,
+    binarySettleOutcome,
+    previousCurrentOn: priorSnapshot?.currentOn ?? null,
+    nextCurrentOn: currentSnapshot?.currentOn ?? null,
+    previousMeasuredPowerKw: priorSnapshot?.measuredPowerKw ?? null,
+    nextMeasuredPowerKw: currentSnapshot?.measuredPowerKw ?? null,
+    measurePowerBecameSignificantlyPositive,
+  };
+}
+
+function resolveDeviceUpdateReasonCode(params: {
+  binarySettleOutcome: BinarySettleOutcome;
+  hadChanges: boolean;
+  shouldReconcilePlan: boolean;
+}): DeviceUpdateProcessedDebugEvent['reasonCode'] {
+  const { binarySettleOutcome, hadChanges, shouldReconcilePlan } = params;
+  if (binarySettleOutcome === 'settled') return 'binary_settled';
+  if (binarySettleOutcome === 'drift') return 'binary_drift';
+  if (shouldReconcilePlan) return 'drift_detected';
+  if (hadChanges) return 'changed_without_reconcile';
+  return 'no_snapshot_change';
+}
+
+function hasRawBinaryObservation(rawBinaryValue: boolean | undefined): rawBinaryValue is boolean {
+  return rawBinaryValue !== undefined;
 }
 
 /** Returns the explicit boolean value for `capabilityId` from the device payload, or

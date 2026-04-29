@@ -47,6 +47,7 @@ import {
     resolveParsedControlState,
 } from './deviceManagerParseSnapshot';
 import { resolveStateOfChargeSnapshot } from './deviceStateOfCharge';
+import type { StructuredDebugEmitter } from '../logging/logger';
 
 type ParsedDeviceSettings = Pick<
     TargetDeviceSnapshot,
@@ -68,6 +69,7 @@ export type DeviceManagerParseProviders = {
 
 export type DeviceManagerParseDeps = {
     logger: Logger;
+    debugStructured?: StructuredDebugEmitter;
     providers: DeviceManagerParseProviders;
     powerState: Required<PowerEstimateState>;
     measuredPowerResolver: DeviceMeasuredPowerResolver;
@@ -180,7 +182,7 @@ export function parseDevice(params: {
     const evCharging = getEvCharging(capabilityObj);
     const evChargingState = getEvChargingState(capabilityObj);
     const { currentOn, canSetControl } = resolveParsedControlState({
-        logger,
+        debugStructured: deps.debugStructured, deviceId, deviceName: effectiveDevice.name ?? null,
         deviceLabel,
         controlCapabilityId,
         controlWriteCapabilityId,

@@ -1,4 +1,5 @@
 import type { HomeyDeviceLike, Logger } from '../utils/types';
+import type { StructuredDebugEmitter } from '../logging/logger';
 import { isHomeyDeviceLike } from '../utils/types';
 import {
   extractLiveHomePowerWatts,
@@ -98,24 +99,32 @@ export async function fetchDevicesByIds(params: {
 export type LivePowerReport = {
   byDeviceId: LiveDevicePowerWatts;
   homePowerW: number | null;
+  deviceCount: number;
 };
 
 export async function fetchLivePowerReport(params: {
   logger: Logger;
+  debugStructured?: StructuredDebugEmitter;
 }): Promise<LivePowerReport> {
-  const { logger } = params;
+  const { logger, debugStructured } = params;
   try {
     const report = await getEnergyLiveReport();
     if (report === null) {
       logger.error('Energy live report unavailable: REST client not initialized');
-      return { byDeviceId: {}, homePowerW: null };
+      return { byDeviceId: {}, homePowerW: null, deviceCount: 0 };
     }
     const byDeviceId = extractLivePowerWattsByDeviceId(report);
     const homePowerW = extractLiveHomePowerWatts(report);
-    logger.debug(`Energy live report: homePowerW=${homePowerW}, devices=${Object.keys(byDeviceId).length}`);
-    return { byDeviceId, homePowerW };
+    const deviceCount = Object.keys(byDeviceId).length;
+    debugStructured?.({
+      event: 'energy_live_report_received',
+      source: 'homey_energy',
+      homePowerW,
+      deviceCount,
+    });
+    return { byDeviceId, homePowerW, deviceCount };
   } catch (error) {
     logDeviceManagerRuntimeError(logger, 'Energy live report fetch failed', error);
-    return { byDeviceId: {}, homePowerW: null };
+    return { byDeviceId: {}, homePowerW: null, deviceCount: 0 };
   }
 }

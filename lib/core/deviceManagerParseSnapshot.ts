@@ -1,4 +1,5 @@
-import type { Logger, TargetDeviceSnapshot } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../utils/types';
+import type { StructuredDebugEmitter } from '../logging/logger';
 import {
   getCanSetControl,
   toCapabilityTimestampMs,
@@ -7,7 +8,9 @@ import {
 import type { FlowReportedCapabilityId } from './flowReportedCapabilities';
 
 export function resolveParsedControlState(params: {
-  logger: Logger;
+  debugStructured?: StructuredDebugEmitter;
+  deviceId: string;
+  deviceName: string | null;
   deviceLabel: string;
   controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
   controlWriteCapabilityId?: string;
@@ -21,7 +24,9 @@ export function resolveParsedControlState(params: {
   canSetControl: boolean | undefined;
 } {
   const {
-    logger,
+    debugStructured,
+    deviceId,
+    deviceName,
     deviceLabel,
     controlCapabilityId,
     controlWriteCapabilityId,
@@ -33,7 +38,9 @@ export function resolveParsedControlState(params: {
   } = params;
   return {
     currentOn: resolveSnapshotCurrentOn({
-      logger,
+      debugStructured,
+      deviceId,
+      deviceName,
       deviceLabel,
       controlCapabilityId,
       capabilityObj,
@@ -98,7 +105,9 @@ export function resolveBinaryControlObservation(params: {
 }
 
 function resolveSnapshotCurrentOn(params: {
-  logger: Logger;
+  debugStructured?: StructuredDebugEmitter;
+  deviceId: string;
+  deviceName: string | null;
   deviceLabel: string;
   controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
   capabilityObj: DeviceCapabilityMap;
@@ -107,7 +116,9 @@ function resolveSnapshotCurrentOn(params: {
   currentOn: boolean;
 }): boolean {
   const {
-    logger,
+    debugStructured,
+    deviceId,
+    deviceName,
     deviceLabel,
     controlCapabilityId,
     capabilityObj,
@@ -116,18 +127,37 @@ function resolveSnapshotCurrentOn(params: {
     currentOn,
   } = params;
   if (controlCapabilityId === 'onoff' && typeof capabilityObj.onoff?.value !== 'boolean') {
-    logger.debug(
-      `Snapshot missing boolean onoff value for ${deviceLabel}; assuming device is on`,
-      capabilityObj.onoff?.value,
-    );
+    debugStructured?.({
+      event: 'device_snapshot_control_state_fallback',
+      reasonCode: 'missing_boolean_onoff',
+      source: 'snapshot_refresh',
+      deviceId,
+      deviceName,
+      deviceLabel,
+      capabilityId: 'onoff',
+      controlCapabilityId,
+      rawValue: capabilityObj.onoff?.value ?? null,
+      rawValueType: typeof capabilityObj.onoff?.value,
+      fallbackCurrentOn: currentOn,
+    });
   } else if (
     controlCapabilityId === 'evcharger_charging'
     && evCharging === undefined
     && evChargingState === undefined
   ) {
-    logger.debug(
-      `Snapshot missing EV charging state for ${deviceLabel}; assuming device is on`,
-    );
+    debugStructured?.({
+      event: 'device_snapshot_control_state_fallback',
+      reasonCode: 'missing_ev_charging_state',
+      source: 'snapshot_refresh',
+      deviceId,
+      deviceName,
+      deviceLabel,
+      capabilityId: 'evcharger_charging',
+      controlCapabilityId,
+      rawValue: null,
+      rawValueType: 'undefined',
+      fallbackCurrentOn: currentOn,
+    });
   }
   return currentOn;
 }

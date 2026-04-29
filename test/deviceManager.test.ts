@@ -63,6 +63,7 @@ describe('DeviceManager', () => {
         error: vi.Mock;
         structuredLog: { info: vi.Mock; error: vi.Mock; debug: vi.Mock };
     };
+    let debugStructuredMock: vi.Mock;
 
     afterEach(() => {
         vi.restoreAllMocks();
@@ -90,7 +91,14 @@ describe('DeviceManager', () => {
                 debug: vi.fn(),
             },
         };
-        deviceManager = new DeviceManager(homeyMock, loggerMock);
+        debugStructuredMock = vi.fn();
+        deviceManager = new DeviceManager(
+            homeyMock,
+            loggerMock,
+            undefined,
+            undefined,
+            { debugStructured: debugStructuredMock },
+        );
     });
 
     describe('init', () => {
@@ -238,10 +246,16 @@ describe('DeviceManager', () => {
                 binaryControlObservation: undefined,
                 deviceType: 'temperature',
             }));
-            expect(loggerMock.debug).toHaveBeenCalledWith(
-                expect.stringContaining('Snapshot missing boolean onoff value for Bedroom Thermostat (thermo-2); assuming device is on'),
-                'unexpected',
-            );
+            expect(debugStructuredMock).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_snapshot_control_state_fallback',
+                reasonCode: 'missing_boolean_onoff',
+                deviceId: 'thermo-2',
+                deviceName: 'Bedroom Thermostat',
+                capabilityId: 'onoff',
+                rawValue: 'unexpected',
+                rawValueType: 'string',
+                fallbackCurrentOn: true,
+            }));
         });
 
         it('does not create binary settlement evidence from an invalid Date lastUpdated', () => {
@@ -1040,6 +1054,7 @@ describe('DeviceManager', () => {
 
             // Verify initial state
             expect(deviceManager.getSnapshot()[0].measuredPowerKw).toBe(1);
+            debugStructuredMock.mockClear();
 
             // Trigger update 2000W via device.update
             deviceManager.injectDeviceUpdateForTest({
@@ -1055,6 +1070,21 @@ describe('DeviceManager', () => {
             const snapshot = deviceManager.getSnapshot();
             expect(snapshot[0].measuredPowerKw).toBe(2);
             expect(snapshot[0].powerKw).toBe(2);
+            expect(debugStructuredMock).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_update_processed',
+                source: 'device_update',
+                deviceId: 'dev1',
+                deviceName: 'Heater',
+                reasonCode: 'no_snapshot_change',
+                hadChanges: false,
+                shouldReconcilePlan: false,
+                rawChangeCount: 0,
+                filteredChangeCount: 0,
+                observedCapabilityIds: ['measure_power'],
+                previousMeasuredPowerKw: 1,
+                nextMeasuredPowerKw: 2,
+                measurePowerBecameSignificantlyPositive: false,
+            }));
         });
 
         it('tracks snapshot refresh and device.update sources for debug dumps', async () => {
@@ -1540,6 +1570,7 @@ describe('DeviceManager', () => {
             await deviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+            debugStructuredMock.mockClear();
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
@@ -1564,6 +1595,22 @@ describe('DeviceManager', () => {
                     nextValue: 'off',
                 }],
             });
+            expect(debugStructuredMock).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_update_processed',
+                source: 'device_update',
+                deviceId: 'dev1',
+                reasonCode: 'drift_detected',
+                hadChanges: true,
+                shouldReconcilePlan: true,
+                rawChangeCount: 1,
+                filteredChangeCount: 1,
+                controlCapabilityId: 'onoff',
+                rawBinaryObserved: true,
+                rawBinaryValue: false,
+                binarySettleOutcome: 'none',
+                previousCurrentOn: true,
+                nextCurrentOn: false,
+            }));
         });
 
         it('suppresses reconcile for the realtime echo of a local onoff write', async () => {
@@ -2805,10 +2852,16 @@ describe('DeviceManager', () => {
                 currentOn: true,
                 measuredPowerKw: 1,
             }));
-            expect(loggerMock.debug).toHaveBeenCalledWith(
-                expect.stringContaining('Snapshot missing boolean onoff value for Heater (dev1); assuming device is on'),
-                undefined,
-            );
+            expect(debugStructuredMock).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_snapshot_control_state_fallback',
+                reasonCode: 'missing_boolean_onoff',
+                deviceId: 'dev1',
+                deviceName: 'Heater',
+                capabilityId: 'onoff',
+                rawValue: null,
+                rawValueType: 'undefined',
+                fallbackCurrentOn: true,
+            }));
         });
 
         it('updates local state on generic device.update events', async () => {
