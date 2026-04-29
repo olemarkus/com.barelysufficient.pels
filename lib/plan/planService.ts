@@ -62,7 +62,8 @@ import type {
   HeadroomForDeviceDecision,
   HeadroomUsageObservation,
 } from './planHeadroomDevice';
-import type { PlanActuationMode, PlanActuationResult } from './planExecutor';
+import type { PlanActuationMode } from '../executor/executorTypes';
+import type { PlanActuationResult } from './planExecutor';
 
 const SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS = 1500;
 

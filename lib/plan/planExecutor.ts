@@ -11,6 +11,7 @@ import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
 import type { PendingTargetObservationSource } from './planTypes';
 import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../utils/types';
 import type { ExecutableSteppedLoadDevice } from '../executor/executablePlan';
+import type { PlanActuationMode } from '../executor/executorTypes';
 import type { PlanEngineState } from './planState';
 import { DEVICE_LAST_CONTROLLED_MS } from '../utils/settingsKeys';
 import { incPerfCounter } from '../utils/perfCounters';
@@ -47,7 +48,7 @@ import {
   applySteppedLoadRestore,
   applySteppedLoadShedOff,
   type PlanExecutorSteppedContext,
-} from './planExecutorStepped';
+} from '../executor/steppedLoadExecutor';
 import { buildExecutablePlan, buildExecutablePlanDevice } from './planExecutablePlan';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { setObservedNativeSteppedLoadStep } from '../core/deviceManagerNativeSteppedCommand';
@@ -87,7 +88,6 @@ export type PlanExecutorDeps = {
   error: (...args: unknown[]) => void;
 };
 
-export type PlanActuationMode = 'plan' | 'reconcile';
 export type PlanActuationResult = {
   deviceWriteCount: number;
   commandRequestCount: number;

@@ -9,7 +9,7 @@ import {
   resolveNativeSteppedLoadReportedStepId,
 } from '../lib/core/nativeSteppedLoadWiring';
 import { setObservedNativeSteppedLoadStep } from '../lib/core/deviceManagerNativeSteppedCommand';
-import { applySteppedLoadCommand, type PlanExecutorSteppedContext } from '../lib/plan/planExecutorStepped';
+import { applySteppedLoadCommand, type PlanExecutorSteppedContext } from '../lib/executor/steppedLoadExecutor';
 import { buildExecutableSteppedLoadDevice } from '../lib/plan/planExecutableSteppedLoad';
 import { AppDeviceControlHelpers } from '../lib/app/appDeviceControlHelpers';
 import type { HomeyDeviceLike, Logger, SteppedLoadProfile, TargetDeviceSnapshot } from '../lib/utils/types';
