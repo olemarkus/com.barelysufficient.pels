@@ -69,7 +69,9 @@ Layer ownership:
 - app/snapshot code may classify raw evidence and serialize compatibility fields
 - reconcile is an evidence-refresh boundary: live stepped-load evidence replaces the previous
   plan's stepped evidence, and missing live evidence clears previous reported/prepared evidence
-- stepped-load planner code owns effective/planning-step decisions
+- `planSteppedLoadState.ts` is the planner/app normalization boundary for typed stepped evidence;
+  stepped-load planner code should consume that normalized state or derived helper values instead
+  of reinterpreting optional legacy step fields inline
 - `planExecutableSteppedLoad.ts` is the stepped-load executor boundary adapter: it may read legacy
   planner fields and project them into executor concepts
 - executor code owns requested-step actuation and materialization checks; it consumes the projected
