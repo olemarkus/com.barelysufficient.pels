@@ -41,6 +41,7 @@ import {
   type SteppedSwapExecutor,
 } from './planRestoreHelpers';
 import { hasOtherDevicesWithUnconfirmedRecovery } from './planRestoreCoordination';
+import { isSteppedLoadDevice } from './planSteppedLoad';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import {
   buildRestoreTiming,
@@ -837,7 +838,6 @@ function handleInsufficientBinaryRestoreHeadroom(params: {
   });
 }
 
-/* eslint-disable-next-line max-lines-per-function -- swap approval, logging, and state writes stay together */
 function attemptSwapRestore(params: {
   dev: DevicePlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
@@ -868,18 +868,12 @@ function attemptSwapRestore(params: {
   } = params;
 
   if (measurementTs !== null && swapState.lastSwapPlanMeasurementTs.get(dev.id) === measurementTs) {
-    setDevice(deviceMap, dev.id, {
-      plannedState: 'shed',
-      reason: { code: PLAN_REASON_CODES.swapPending, targetName: null },
-    });
+    setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
     return { availableHeadroom, restoredOneThisCycle: false };
   }
 
   if (swapState.pendingSwapTargets.has(dev.id)) {
-    setDevice(deviceMap, dev.id, {
-      plannedState: 'shed',
-      reason: { code: PLAN_REASON_CODES.swapPending, targetName: null },
-    });
+    setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
     return { availableHeadroom, restoredOneThisCycle: false };
   }
 
@@ -963,6 +957,14 @@ function attemptSwapRestore(params: {
   restoredThisCycle.add(dev.id);
   setDevice(deviceMap, dev.id, { plannedState: 'keep', ...admittedDeviceUpdate });
   return { availableHeadroom: nextHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
+}
+
+function buildSwapPendingTargetUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {
+  const reason = { code: PLAN_REASON_CODES.swapPending, targetName: null } as const;
+  if (isSteppedLoadDevice(dev) && resolveEffectiveCurrentOn(dev) !== false) {
+    return { plannedState: 'keep', reason };
+  }
+  return { plannedState: 'shed', reason };
 }
 
 function buildRejectedSwapUpdate(params: {

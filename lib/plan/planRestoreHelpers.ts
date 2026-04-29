@@ -536,7 +536,7 @@ function admitSteppedRestore(params: {
 function resolveRejectedSteppedSwapUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {
   return resolveEffectiveCurrentOn(dev) === false
     ? buildOffSteppedRestoreShedUpdate(dev)
-    : {};
+    : { plannedState: 'keep' };
 }
 
 function blockSteppedRestoreForShedInvariant(params: {
