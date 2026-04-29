@@ -5,7 +5,6 @@
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
-  isSteppedLoadOffStep,
 } from '../utils/deviceControlProfiles';
 import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../utils/types';
 import {
@@ -14,34 +13,22 @@ import {
   recordActivationSetbackForDevice,
 } from './planExecutorSupport';
 import { setBinaryControl } from './planBinaryControl';
-import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { resolveSteppedLoadCommandPendingMs } from './planObservationPolicy';
 import {
-  isSteppedLoadDevice,
-  resolveSteppedKeepDesiredStepId,
-  resolveSteppedLoadTransition,
-  type SteppedLoadTransition,
-} from './planSteppedLoad';
-import {
-  type ExecutableSteppedStepState,
   isRequestedStepMaterialized,
-  resolveSteppedStepActuationState,
   type SteppedStepActuationState,
 } from '../executor/steppedLoadActuation';
+import type { ExecutableSteppedLoadDevice, ExecutableSteppedLoadTransition } from '../executor/executablePlan';
 import {
   isNativeSteppedLoadControlEnabled,
 } from '../core/nativeSteppedLoadWiring';
-import { resolveSteppedRestoreAttemptState } from './planSteppedRestorePending';
 import type { PlanActuationMode } from './planExecutor';
-import type { DevicePlan } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { DeviceManager } from '../core/deviceManager';
 import { PELS_TARGET_STEP_CAPABILITY_ID } from '../core/steppedLoadSyntheticCapabilities';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
-
-type PlanDevice = DevicePlan['devices'][number];
 
 export const allowsSteppedLoadKeepInvariantRestore = (reason: DeviceReason): boolean => (
   reason.code === PLAN_REASON_CODES.keep
@@ -59,14 +46,14 @@ const isSteppedShedWindowHoldReason = (reason: DeviceReason): boolean => (
 );
 
 const isShedSteppedNonExecutableHoldForSnapshot = (
-  dev: PlanDevice,
+  action: ExecutableSteppedLoadDevice,
   snapshot?: TargetDeviceSnapshot,
 ): boolean => (
-  dev.plannedState === 'shed'
+  action.plannedState === 'shed'
   && (
-    isSteppedRestoreAdmissionHoldReason(dev.reason)
-    || (isSteppedShedWindowHoldReason(dev.reason)
-      && (snapshot?.currentOn ?? resolveEffectiveCurrentOn(dev)) === false)
+    isSteppedRestoreAdmissionHoldReason(action.reason)
+    || (isSteppedShedWindowHoldReason(action.reason)
+      && (snapshot?.currentOn ?? action.effectiveCurrentOn) === false)
   )
 );
 
@@ -115,149 +102,103 @@ export type PlanExecutorSteppedContext = {
  */
 export const applySteppedLoadCommand = async (
   ctx: PlanExecutorSteppedContext,
-  dev: PlanDevice,
+  action: ExecutableSteppedLoadDevice,
   mode: PlanActuationMode,
   snapshot?: TargetDeviceSnapshot,
   options: { recordPlanActuation?: boolean } = {},
 ): Promise<boolean> => {
-  if (!isSteppedLoadDevice(dev) || isShedSteppedNonExecutableHoldForSnapshot(dev, snapshot)) return false;
-  const profile = dev.steppedLoadProfile;
-  if (!profile) return false;
-  const plannedDesiredStepId = resolveSteppedKeepDesiredStepId(dev);
-  const transition = resolveSteppedLoadTransition(dev, plannedDesiredStepId);
-  const commandStepId = transition?.commandStepId ?? plannedDesiredStepId;
-  const commandStepActuation = resolveSteppedStepActuationState({
-    step: toExecutableSteppedStepState(dev, commandStepId),
-  });
-  const needsStepPreparation = transition?.transitionPhase === 'step_preparation'
-    && transition.commandStepId === commandStepId;
-  const restoreStepNeedsMaterialization = transition?.effectiveTransition === 'restore_from_off_at_low'
-    && !isRequestedStepMaterialized(commandStepActuation);
+  if (isShedSteppedNonExecutableHoldForSnapshot(action, snapshot)) return false;
+  const profile = action.steppedLoadProfile;
+  const commandStepId = action.commandStepId;
+  const needsStepPreparation = action.transition?.transitionPhase === 'step_preparation'
+    && action.transition.commandStepId === commandStepId;
+  const restoreStepNeedsMaterialization = action.transition?.effectiveTransition === 'restore_from_off_at_low'
+    && !isRequestedStepMaterialized(action.commandStepActuation);
   if (!commandStepId) return false;
-  if (commandStepId === dev.selectedStepId && !needsStepPreparation && !restoreStepNeedsMaterialization) return false;
+  if (
+    commandStepId === action.currentStepId
+    && !needsStepPreparation
+    && !restoreStepNeedsMaterialization
+  ) return false;
   const desiredStep = getSteppedLoadStep(profile, commandStepId);
   if (!desiredStep) {
     return logSteppedLoadCommandSkip(ctx, {
-      dev,
+      action,
       mode,
       reasonCode: 'missing_step',
-      logMessage: `Capacity: skip stepped-load command for ${dev.name}, `
+      logMessage: `Capacity: skip stepped-load command for ${action.name}, `
         + `desired step ${commandStepId} is not in profile`,
-      fields: { desiredStepId: commandStepId, plannedDesiredStepId: plannedDesiredStepId ?? null },
+      fields: { desiredStepId: commandStepId, plannedDesiredStepId: action.requestedStepId ?? null },
     });
   }
-  if (dev.plannedState === 'shed') {
-    const selectedStep = dev.selectedStepId ? getSteppedLoadStep(profile, dev.selectedStepId) : null;
-    const selectedPowerW = selectedStep?.planningPowerW ?? 0;
+  if (action.plannedState === 'shed') {
+    const selectedPowerW = action.currentStepForShed?.planningPowerW ?? 0;
     if (desiredStep.planningPowerW > selectedPowerW) {
       return logSteppedLoadCommandSkip(ctx, {
-        dev,
+        action,
         mode,
         reasonCode: 'step_up_blocked',
-        logMessage: `Capacity: skip step command for ${dev.name}, shed device has upward`
-          + ` desiredStepId=${commandStepId} vs selectedStepId=${dev.selectedStepId ?? 'unknown'}`
+        logMessage: `Capacity: skip step command for ${action.name}, shed device has upward`
+          + ` desiredStepId=${commandStepId} vs currentStepId=${action.currentStepForShed?.stepId ?? 'unknown'}`
           + ` (power ${selectedPowerW}W)`,
-        fields: { desiredStepId: commandStepId, selectedStepId: dev.selectedStepId ?? null },
+        fields: { desiredStepId: commandStepId, currentStepId: action.currentStepForShed?.stepId ?? null },
       });
     }
   }
   const now = Date.now();
-  const previousStepId = dev.selectedStepId ?? dev.lastDesiredStepId;
-  const sameDesiredStepPendingState = resolveSteppedRestoreAttemptState(dev, commandStepId, now);
+  const previousStepId = action.previousStepId;
+  const sameDesiredStepPendingState = action.matchingCommandAttempt;
   if (sameDesiredStepPendingState?.status === 'awaiting_confirmation') {
     return logSteppedLoadCommandSkip(ctx, {
-      dev,
+      action,
       mode,
       reasonCode: 'waiting_for_confirmation',
-      logMessage: `Capacity: skip stepped-load command for ${dev.name}, `
+      logMessage: `Capacity: skip stepped-load command for ${action.name}, `
         + `awaiting confirmation of ${commandStepId}`,
-      fields: { desiredStepId: commandStepId, plannedDesiredStepId: plannedDesiredStepId ?? null },
+      fields: { desiredStepId: commandStepId, plannedDesiredStepId: action.requestedStepId ?? null },
     });
   }
   if (sameDesiredStepPendingState?.status === 'retry_backoff') {
     return logSteppedLoadCommandSkip(ctx, {
-      dev,
+      action,
       mode,
       reasonCode: 'retry_backoff',
-      logMessage: `Capacity: skip stepped-load command for ${dev.name}, `
+      logMessage: `Capacity: skip stepped-load command for ${action.name}, `
         + `retry backoff for ${commandStepId} remains active`,
       fields: {
         desiredStepId: commandStepId,
-        nextRetryAtMs: dev.nextStepCommandRetryAtMs ?? null,
-        retryCount: dev.stepCommandRetryCount ?? 0,
+        nextRetryAtMs: action.nextStepCommandRetryAtMs ?? null,
+        retryCount: action.stepCommandRetryCount,
       },
     });
   }
   return executeSteppedLoadCommand(ctx, {
-    dev,
+    action,
     mode,
     options,
     desiredStep,
-    transition,
+    transition: action.transition,
     previousStepId,
     now,
   });
 };
 /* eslint-enable complexity */
 
-type SteppedLoadRestoreState = {
-  effectiveCurrentOn: boolean | null;
-  desiredStepId?: string;
-  stepActuation: SteppedStepActuationState;
-  matchingRestoreAttempt: ReturnType<typeof resolveSteppedRestoreAttemptState>;
-  stepNeedsAdjustment: boolean;
-};
-
-const toExecutableSteppedStepState = (dev: PlanDevice, requestedStepId?: string): ExecutableSteppedStepState => {
-  const observedStepId = dev.actualStepSource === 'reported' && dev.actualStepId
-    ? dev.actualStepId
-    : dev.reportedStepId;
-  return {
-    requestedStepId,
-    observedStep: observedStepId ? { kind: 'reported', stepId: observedStepId } : { kind: 'unknown' },
-    fallbackStepId: dev.assumedStepId,
-  };
-};
-
-const evaluateSteppedLoadRestoreState = (
-  dev: PlanDevice,
-): SteppedLoadRestoreState => {
-  const effectiveCurrentOn = resolveEffectiveCurrentOn(dev);
-  const desiredStepId = resolveSteppedKeepDesiredStepId(dev);
-  const stepActuation = resolveSteppedStepActuationState({
-    step: toExecutableSteppedStepState(dev, desiredStepId),
-  });
-  const matchingRestoreAttempt = desiredStepId !== undefined
-    ? resolveSteppedRestoreAttemptState(dev, desiredStepId)
-    : null;
-  const desiredIsNonOff = desiredStepId
-    && dev.steppedLoadProfile
-    && !isSteppedLoadOffStep(dev.steppedLoadProfile, desiredStepId);
-  return {
-    effectiveCurrentOn,
-    desiredStepId,
-    stepActuation,
-    matchingRestoreAttempt,
-    stepNeedsAdjustment: Boolean(desiredIsNonOff && !isRequestedStepMaterialized(stepActuation)),
-  };
-};
-
 const logSteppedLoadStepViolation = (
   ctx: PlanExecutorSteppedContext,
-  dev: PlanDevice,
+  action: ExecutableSteppedLoadDevice,
   name: string,
   desiredStepId?: string,
 ): void => {
-  const stepDetail = dev.steppedLoadProfile && dev.selectedStepId
-    && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId)
-    ? `${dev.selectedStepId} (off-step)`
-    : `${dev.selectedStepId ?? 'unknown'} -> ${desiredStepId ?? 'unknown'}`;
+  const stepDetail = action.currentStepIsOffStep
+    ? `${action.currentStepForShed?.stepId ?? 'unknown'} (off-step)`
+    : `${action.currentStepForShed?.stepId ?? 'unknown'} -> ${desiredStepId ?? 'unknown'}`;
   ctx.logDebug(`Capacity: ${name} violates keep invariant: step=${stepDetail}`);
 };
 
 const logSteppedLoadRestoreViolations = (
   ctx: PlanExecutorSteppedContext,
-  dev: PlanDevice,
+  action: ExecutableSteppedLoadDevice,
   name: string,
   params: {
     desiredStepId?: string;
@@ -266,25 +207,25 @@ const logSteppedLoadRestoreViolations = (
 ): void => {
   const { desiredStepId, stepNeedsAdjustment } = params;
   if (stepNeedsAdjustment) {
-    logSteppedLoadStepViolation(ctx, dev, name, desiredStepId);
+    logSteppedLoadStepViolation(ctx, action, name, desiredStepId);
   }
 };
 
 const logSteppedLoadRestoreAttemptSkip = (
   ctx: PlanExecutorSteppedContext,
   params: {
-    dev: PlanDevice;
+    action: ExecutableSteppedLoadDevice;
     mode: PlanActuationMode;
-    matchingRestoreAttempt: NonNullable<ReturnType<typeof resolveSteppedRestoreAttemptState>>;
+    matchingRestoreAttempt: NonNullable<ExecutableSteppedLoadDevice['matchingRestoreAttempt']>;
   },
 ): false => {
   const {
-    dev,
+    action,
     mode,
     matchingRestoreAttempt,
   } = params;
   return logSteppedLoadRestoreSkip(ctx, {
-    dev,
+    action,
     mode,
     reasonCode: matchingRestoreAttempt.status === 'awaiting_confirmation'
       ? 'waiting_for_confirmation'
@@ -301,10 +242,10 @@ const isStepMaterializationPending = (state: SteppedStepActuationState): boolean
 const maybeSkipSteppedLoadRestoreBinary = (
   ctx: PlanExecutorSteppedContext,
   params: {
-    dev: PlanDevice;
+    action: ExecutableSteppedLoadDevice;
     snapshot: TargetDeviceSnapshot | undefined;
     mode: PlanActuationMode;
-    matchingRestoreAttempt: ReturnType<typeof resolveSteppedRestoreAttemptState>;
+    matchingRestoreAttempt: ExecutableSteppedLoadDevice['matchingRestoreAttempt'];
     stepActuation: SteppedStepActuationState;
     stepNeedsAdjustment: boolean;
     stepViolated: boolean;
@@ -313,7 +254,7 @@ const maybeSkipSteppedLoadRestoreBinary = (
   },
 ): false | null => {
   const {
-    dev,
+    action,
     snapshot,
     mode,
     matchingRestoreAttempt,
@@ -325,21 +266,21 @@ const maybeSkipSteppedLoadRestoreBinary = (
   } = params;
   if (!snapshot) {
     return logSteppedLoadRestoreSkip(ctx, {
-      dev,
+      action,
       mode,
       reasonCode: 'missing_snapshot',
     });
   }
   if (!canTurnOnDevice(snapshot)) {
     return logSteppedLoadRestoreSkip(ctx, {
-      dev,
+      action,
       mode,
       reasonCode: 'not_setable',
     });
   }
-  if (ctx.state.pendingRestores.has(dev.id)) {
+  if (ctx.state.pendingRestores.has(action.id)) {
     return logSteppedLoadRestoreSkip(ctx, {
-      dev,
+      action,
       mode,
       reasonCode: 'already_in_progress',
     });
@@ -350,7 +291,7 @@ const maybeSkipSteppedLoadRestoreBinary = (
     && !isRequestedStepMaterialized(stepActuation)
   ) {
     return logSteppedLoadRestoreSkip(ctx, {
-      dev,
+      action,
       mode,
       reasonCode: 'pre_restore_step_required',
       skipDetailCode: preRestoreStepIssued === true
@@ -363,7 +304,7 @@ const maybeSkipSteppedLoadRestoreBinary = (
   }
   if (snapshot.currentOn !== false && !stepNeedsAdjustment) {
     return logSteppedLoadRestoreSkip(ctx, {
-      dev,
+      action,
       mode,
       reasonCode: 'no_keep_violation',
     });
@@ -377,53 +318,53 @@ const maybeSkipSteppedLoadRestoreBinary = (
  */
 export const applySteppedLoadRestore = async (
   ctx: PlanExecutorSteppedContext,
-  dev: PlanDevice,
+  action: ExecutableSteppedLoadDevice,
   snapshot: TargetDeviceSnapshot | undefined,
   mode: PlanActuationMode,
   anyShedDevices: boolean,
   options: { preRestoreStepIssued?: boolean } = {},
 ): Promise<boolean> => {
-  const name = dev.name;
-  if (dev.plannedState !== 'keep') {
+  const name = action.name;
+  if (action.plannedState !== 'keep') {
     return logSteppedLoadRestoreSkip(ctx, {
-      dev,
+      action,
       mode,
       reasonCode: 'planned_state',
     });
   }
-  if (!allowsSteppedLoadKeepInvariantRestore(dev.reason)) {
+  if (!allowsSteppedLoadKeepInvariantRestore(action.reason)) {
     return logSteppedLoadRestoreSkip(ctx, {
-      dev,
+      action,
       mode,
       reasonCode: 'restore_not_admitted',
-      blockedByPlanReasonCode: dev.reason.code,
+      blockedByPlanReasonCode: action.reason.code,
     });
   }
   const {
     effectiveCurrentOn,
-    desiredStepId,
+    requestedStepId,
     stepActuation,
     matchingRestoreAttempt,
     stepNeedsAdjustment,
-  } = evaluateSteppedLoadRestoreState(dev);
+  } = action;
   const shouldDeferRestoreForAttempt = stepNeedsAdjustment && matchingRestoreAttempt
     && (effectiveCurrentOn === true || matchingRestoreAttempt.status === 'retry_backoff');
   if (shouldDeferRestoreForAttempt) {
     return logSteppedLoadRestoreAttemptSkip(ctx, {
-      dev,
+      action,
       mode,
       matchingRestoreAttempt,
     });
   }
-  logSteppedLoadRestoreViolations(ctx, dev, name, {
-    desiredStepId,
+  logSteppedLoadRestoreViolations(ctx, action, name, {
+    desiredStepId: requestedStepId,
     stepNeedsAdjustment,
   });
 
   if (effectiveCurrentOn === true) {
     if (stepNeedsAdjustment) return false;
     return logSteppedLoadRestoreSkip(ctx, {
-      dev,
+      action,
       mode,
       reasonCode: 'no_keep_violation',
     });
@@ -432,24 +373,24 @@ export const applySteppedLoadRestore = async (
   if (snapshot?.currentOn === false) {
     ctx.logDebug(`Capacity: ${name} violates keep invariant: onoff=${snapshot?.currentOn}`);
   }
-  if (applyKeepInvariantShedBlock(ctx, dev, name, anyShedDevices, desiredStepId)) return false;
+  if (applyKeepInvariantShedBlock(ctx, action, name, anyShedDevices, requestedStepId)) return false;
   // eslint-disable-next-line no-param-reassign -- Shared executor state update.
-  delete ctx.state.keepInvariantShedBlockedByDevice[dev.id];
+  delete ctx.state.keepInvariantShedBlockedByDevice[action.id];
   const binaryRestoreSkip = maybeSkipSteppedLoadRestoreBinary(ctx, {
-    dev,
+    action,
     snapshot,
     mode,
     matchingRestoreAttempt,
     stepActuation,
     stepNeedsAdjustment,
     stepViolated,
-    desiredStepId,
+    desiredStepId: requestedStepId,
     preRestoreStepIssued: options.preRestoreStepIssued,
   });
   if (binaryRestoreSkip === false) return false;
   if (snapshot?.currentOn !== false) return true;
   return executeSteppedLoadRestoreBinary(ctx, {
-    dev,
+    action,
     snapshot,
     mode,
     name,
@@ -459,27 +400,21 @@ export const applySteppedLoadRestore = async (
 };
 /* eslint-enable max-params, complexity */
 
-/* eslint-disable complexity --
- * Stepped-load shed-off still combines off-step validation with binary
- * actuation and transition logging in one path.
- */
 export const applySteppedLoadShedOff = async (
   ctx: PlanExecutorSteppedContext,
-  dev: PlanDevice,
+  action: ExecutableSteppedLoadDevice,
   snapshot: TargetDeviceSnapshot | undefined,
   mode: PlanActuationMode,
 ): Promise<boolean> => {
-  if (dev.plannedState !== 'shed' || isShedSteppedNonExecutableHoldForSnapshot(dev, snapshot)) return false;
-  const atOffStep = dev.steppedLoadProfile
-    && dev.selectedStepId
-    && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId);
-  if (dev.shedAction !== 'turn_off' && !atOffStep) return false;
+  if (action.plannedState !== 'shed' || isShedSteppedNonExecutableHoldForSnapshot(action, snapshot)) return false;
+  const atOffStep = action.currentStepIsOffStep;
+  if (action.shedAction !== 'turn_off' && !atOffStep) return false;
   if (!snapshot) return false;
-  const name = dev.name;
+  const name = action.name;
   try {
     const applied = await setBinaryControl({
       ...ctx.buildBinaryControlDeps(),
-      deviceId: dev.id,
+      deviceId: action.id,
       name,
       desired: false,
       snapshot,
@@ -489,11 +424,11 @@ export const applySteppedLoadShedOff = async (
     if (!applied) return false;
     if (mode === 'plan') {
       const now = Date.now();
-      ctx.recordShedActuation(dev.id, name, now);
+      ctx.recordShedActuation(action.id, name, now);
     }
     ctx.structuredLog?.info({
       event: 'binary_command_applied',
-      deviceId: dev.id,
+      deviceId: action.id,
       deviceName: name,
       capabilityId: snapshot.controlCapabilityId ?? 'onoff',
       desired: false,
@@ -502,7 +437,7 @@ export const applySteppedLoadShedOff = async (
     });
     ctx.structuredLog?.info({
       event: 'stepped_load_binary_transition_applied',
-      deviceId: dev.id,
+      deviceId: action.id,
       deviceName: name,
       desiredBinaryState: false,
       effectiveTransition: 'full_shed_to_off',
@@ -517,12 +452,11 @@ export const applySteppedLoadShedOff = async (
     return false;
   }
 };
-/* eslint-enable complexity */
 
 const logSteppedLoadCommandSkip = (
   ctx: PlanExecutorSteppedContext,
   params: {
-    dev: PlanDevice;
+    action: ExecutableSteppedLoadDevice;
     mode: PlanActuationMode;
     reasonCode:
       | 'missing_step'
@@ -535,12 +469,12 @@ const logSteppedLoadCommandSkip = (
     fields: Record<string, unknown>;
   },
 ): false => {
-  const { dev, mode, reasonCode, logMessage, fields } = params;
+  const { action, mode, reasonCode, logMessage, fields } = params;
   ctx.debugStructured?.({
     event: 'stepped_load_command_skipped',
     reasonCode,
-    deviceId: dev.id,
-    deviceName: dev.name,
+    deviceId: action.id,
+    deviceName: action.name,
     targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
     logContext: 'capacity',
     actuationMode: mode,
@@ -551,11 +485,11 @@ const logSteppedLoadCommandSkip = (
 };
 
 type ExecuteSteppedLoadCommandParams = {
-  dev: PlanDevice;
+  action: ExecutableSteppedLoadDevice;
   mode: PlanActuationMode;
   options: { recordPlanActuation?: boolean };
   desiredStep: NonNullable<ReturnType<typeof getSteppedLoadStep>>;
-  transition: SteppedLoadTransition | null;
+  transition: ExecutableSteppedLoadTransition | null;
   previousStepId: string | undefined;
   now: number;
 };
@@ -569,17 +503,17 @@ const markAcceptedSteppedLoadCommand = (
   params: AcceptedSteppedLoadCommandParams,
 ): void => {
   const {
-    dev,
+    action,
     desiredStep,
     previousStepId,
     now,
   } = params;
   ctx.markSteppedLoadDesiredStepIssued({
-    deviceId: dev.id,
+    deviceId: action.id,
     desiredStepId: desiredStep.id,
     previousStepId,
     issuedAtMs: now,
-    pendingWindowMs: resolveSteppedLoadCommandPendingMs(dev.communicationModel),
+    pendingWindowMs: resolveSteppedLoadCommandPendingMs(action.communicationModel),
   });
 };
 
@@ -588,7 +522,7 @@ const logAcceptedSteppedLoadCommand = (
   params: AcceptedSteppedLoadCommandParams,
 ): void => {
   const {
-    dev,
+    action,
     mode,
     desiredStep,
     transition,
@@ -612,8 +546,8 @@ const logAcceptedSteppedLoadCommand = (
   };
   ctx.structuredLog?.info({
     event: 'stepped_load_command_requested',
-    deviceId: dev.id,
-    deviceName: dev.name,
+    deviceId: action.id,
+    deviceName: action.name,
     targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
     previousStepId: previousStepId ?? null,
     desiredStepId: desiredStep.id,
@@ -629,7 +563,7 @@ const recordAcceptedSteppedLoadPlanActuation = (
   params: AcceptedSteppedLoadCommandParams,
 ): void => {
   const {
-    dev,
+    action,
     mode,
     options,
     transition,
@@ -638,19 +572,19 @@ const recordAcceptedSteppedLoadPlanActuation = (
   const shouldRecordPlanActuation = options.recordPlanActuation !== false;
   if (mode !== 'plan' || !shouldRecordPlanActuation) return;
   if (transition?.effectiveTransition === 'step_down_while_on') {
-    ctx.recordShedActuation(dev.id, dev.name, now);
+    ctx.recordShedActuation(action.id, action.name, now);
     return;
   }
   if (
     transition?.effectiveTransition !== 'step_up_while_on'
     && transition?.effectiveTransition !== 'restore_from_off_at_low'
   ) return;
-  ctx.recordRestoreActuation(dev.id, dev.name, now);
+  ctx.recordRestoreActuation(action.id, action.name, now);
   recordActivationAttemptStarted({
     state: ctx.state,
     diagnostics: ctx.deviceDiagnostics,
-    deviceId: dev.id,
-    name: dev.name,
+    deviceId: action.id,
+    name: action.name,
     nowTs: now,
     source: 'pels_restore',
   });
@@ -671,18 +605,18 @@ const executeSteppedLoadCommand = async (
   params: ExecuteSteppedLoadCommandParams,
 ): Promise<boolean> => {
   const {
-    dev,
+    action,
     mode,
     desiredStep,
     previousStepId,
   } = params;
-  if (isNativeSteppedLoadControlEnabled(dev)) {
+  if (isNativeSteppedLoadControlEnabled(action)) {
     return executeNativeSteppedLoadCommand(ctx, params);
   }
   const triggerCard = ctx.getDesiredSteppedLoadTrigger();
   if (!triggerCard?.trigger) {
     return logSteppedLoadCommandSkip(ctx, {
-      dev,
+      action,
       mode,
       reasonCode: 'missing_trigger',
       logMessage: 'Capacity: desired_stepped_load_changed trigger is unavailable; cannot issue stepped-load command',
@@ -696,33 +630,33 @@ const executeSteppedLoadCommand = async (
       planning_power_w: planningPowerW,
       previous_step_id: previousStepId ?? '',
     }, {
-      deviceId: dev.id,
+      deviceId: action.id,
     });
     recordAcceptedSteppedLoadCommand(ctx, params);
     void Promise.resolve(triggerPromise).catch((error) => {
       ctx.structuredLog?.error({
         event: 'stepped_load_command_failed',
         reasonCode: 'flow_trigger_failed',
-        deviceId: dev.id,
-        deviceName: dev.name,
+        deviceId: action.id,
+        deviceName: action.name,
         desiredStepId: desiredStep.id,
         planningPowerW,
         mode,
       });
-      ctx.error(`Failed to trigger stepped-load command for ${dev.name}`, error);
+      ctx.error(`Failed to trigger stepped-load command for ${action.name}`, error);
     });
     return true;
   } catch (error) {
     ctx.structuredLog?.error({
       event: 'stepped_load_command_failed',
       reasonCode: 'flow_trigger_failed',
-      deviceId: dev.id,
-      deviceName: dev.name,
+      deviceId: action.id,
+      deviceName: action.name,
       desiredStepId: desiredStep.id,
       planningPowerW,
       mode,
     });
-    ctx.error(`Failed to trigger stepped-load command for ${dev.name}`, error);
+    ctx.error(`Failed to trigger stepped-load command for ${action.name}`, error);
     return false;
   }
 };
@@ -732,24 +666,23 @@ const executeNativeSteppedLoadCommand = async (
   params: ExecuteSteppedLoadCommandParams,
 ): Promise<boolean> => {
   const {
-    dev,
+    action,
     mode,
     desiredStep,
   } = params;
-  if (!dev.steppedLoadProfile) return false;
 
   try {
     const applied = await ctx.setNativeSteppedLoadStep(
-      dev.id,
-      dev.steppedLoadProfile,
+      action.id,
+      action.steppedLoadProfile,
       desiredStep.id,
     );
     if (!applied) {
       return logSteppedLoadCommandSkip(ctx, {
-        dev,
+        action,
         mode,
         reasonCode: 'missing_native_command',
-        logMessage: `Capacity: skip native stepped-load command for ${dev.name}, `
+        logMessage: `Capacity: skip native stepped-load command for ${action.name}, `
           + `no native command for desired step ${desiredStep.id}`,
         fields: { desiredStepId: desiredStep.id },
       });
@@ -762,13 +695,13 @@ const executeNativeSteppedLoadCommand = async (
     ctx.structuredLog?.error({
       event: 'stepped_load_command_failed',
       reasonCode: 'native_capability_failed',
-      deviceId: dev.id,
-      deviceName: dev.name,
+      deviceId: action.id,
+      deviceName: action.name,
       desiredStepId: desiredStep.id,
       planningPowerW: desiredStep.planningPowerW,
       mode,
     });
-    ctx.error(`Failed to set native stepped-load command for ${dev.name}`, error);
+    ctx.error(`Failed to set native stepped-load command for ${action.name}`, error);
     return false;
   }
 };
@@ -776,7 +709,7 @@ const executeNativeSteppedLoadCommand = async (
 const logSteppedLoadRestoreSkip = (
   ctx: PlanExecutorSteppedContext,
   params: {
-    dev: PlanDevice;
+    action: ExecutableSteppedLoadDevice;
     mode: PlanActuationMode;
     reasonCode:
       | 'planned_state'
@@ -796,7 +729,7 @@ const logSteppedLoadRestoreSkip = (
   },
 ): false => {
   const {
-    dev,
+    action,
     mode,
     reasonCode,
     skipDetailCode,
@@ -809,8 +742,8 @@ const logSteppedLoadRestoreSkip = (
     ...(skipDetailCode ? { skipDetailCode } : {}),
     ...(blockedByPlanReasonCode ? { blockedByPlanReasonCode } : {}),
     ...(desiredStepId ? { desiredStepId } : {}),
-    deviceId: dev.id,
-    deviceName: dev.name,
+    deviceId: action.id,
+    deviceName: action.name,
     logContext: 'capacity',
     actuationMode: mode,
   });
@@ -820,7 +753,7 @@ const logSteppedLoadRestoreSkip = (
 const executeSteppedLoadRestoreBinary = async (
   ctx: PlanExecutorSteppedContext,
   params: {
-    dev: PlanDevice;
+    action: ExecutableSteppedLoadDevice;
     snapshot: TargetDeviceSnapshot;
     mode: PlanActuationMode;
     name: string;
@@ -829,29 +762,29 @@ const executeSteppedLoadRestoreBinary = async (
   },
 ): Promise<boolean> => {
   const {
-    dev,
+    action,
     snapshot,
     mode,
     name,
     onoffViolated,
     stepViolated,
   } = params;
-  ctx.state.pendingRestores.add(dev.id);
+  ctx.state.pendingRestores.add(action.id);
   try {
     const applied = await setBinaryControl({
       ...ctx.buildBinaryControlDeps(),
-      deviceId: dev.id,
+      deviceId: action.id,
       name,
       desired: true,
       snapshot,
       logContext: 'capacity',
-      restoreSource: ctx.getRestoreLogSource(dev.id),
+      restoreSource: ctx.getRestoreLogSource(action.id),
       actuationMode: mode,
     });
     if (!applied) return false;
     ctx.structuredLog?.info({
       event: 'stepped_load_binary_transition_applied',
-      deviceId: dev.id,
+      deviceId: action.id,
       deviceName: name,
       desiredBinaryState: true,
       effectiveTransition: 'restore_from_off_at_low',
@@ -864,11 +797,11 @@ const executeSteppedLoadRestoreBinary = async (
     });
     if (mode === 'plan') {
       const now = Date.now();
-      ctx.recordRestoreActuation(dev.id, name, now);
+      ctx.recordRestoreActuation(action.id, name, now);
       recordActivationAttemptStarted({
         state: ctx.state,
         diagnostics: ctx.deviceDiagnostics,
-        deviceId: dev.id,
+        deviceId: action.id,
         name,
         nowTs: now,
       });
@@ -876,7 +809,7 @@ const executeSteppedLoadRestoreBinary = async (
       recordActivationSetbackForDevice({
         state: ctx.state,
         diagnostics: ctx.deviceDiagnostics,
-        deviceId: dev.id,
+        deviceId: action.id,
         name,
         nowTs: Date.now(),
       });
@@ -886,26 +819,26 @@ const executeSteppedLoadRestoreBinary = async (
     ctx.error(`Failed to restore stepped-load device ${name} via binary control`, error);
     return false;
   } finally {
-    ctx.state.pendingRestores.delete(dev.id);
+    ctx.state.pendingRestores.delete(action.id);
   }
 };
 
 const applyKeepInvariantShedBlock = (
   ctx: PlanExecutorSteppedContext,
-  dev: PlanDevice,
+  action: ExecutableSteppedLoadDevice,
   name: string,
   anyShedDevices: boolean,
   desiredStepId?: string,
 ): boolean => {
-  if (!anyShedDevices || !dev.steppedLoadProfile || !desiredStepId) return false;
-  const lowestNonZeroStep = getSteppedLoadLowestActiveStep(dev.steppedLoadProfile);
-  const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, desiredStepId);
+  if (!anyShedDevices || !desiredStepId) return false;
+  const lowestNonZeroStep = getSteppedLoadLowestActiveStep(action.steppedLoadProfile);
+  const desiredStep = getSteppedLoadStep(action.steppedLoadProfile, desiredStepId);
   if (!lowestNonZeroStep || !desiredStep || desiredStep.planningPowerW <= lowestNonZeroStep.planningPowerW) {
     return false;
   }
   ctx.logDebug(`Capacity: skip stepped-load restore for ${name}, shed invariant: `
     + `desiredStep=${desiredStepId} exceeds lowestNonZeroStep=${lowestNonZeroStep.id}`);
-  const prevBlock = ctx.state.keepInvariantShedBlockedByDevice[dev.id];
+  const prevBlock = ctx.state.keepInvariantShedBlockedByDevice[action.id];
   const unchanged = prevBlock !== undefined
     && prevBlock.desiredStepId === desiredStepId
     && prevBlock.lowestNonZeroStepId === lowestNonZeroStep.id;
@@ -913,14 +846,14 @@ const applyKeepInvariantShedBlock = (
     ctx.debugStructured?.({
       event: 'restore_keep_invariant_shed_blocked',
       reasonCode: 'shed_invariant',
-      deviceId: dev.id,
+      deviceId: action.id,
       deviceName: name,
       desiredStepId,
       lowestNonZeroStepId: lowestNonZeroStep.id,
       rejectionReason: 'shed_invariant',
     });
     // eslint-disable-next-line no-param-reassign -- Shared executor state update.
-    ctx.state.keepInvariantShedBlockedByDevice[dev.id] = {
+    ctx.state.keepInvariantShedBlockedByDevice[action.id] = {
       desiredStepId,
       lowestNonZeroStepId: lowestNonZeroStep.id,
     };

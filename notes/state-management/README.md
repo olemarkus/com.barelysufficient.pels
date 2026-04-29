@@ -70,8 +70,11 @@ Layer ownership:
 - reconcile is an evidence-refresh boundary: live stepped-load evidence replaces the previous
   plan's stepped evidence, and missing live evidence clears previous reported/prepared evidence
 - stepped-load planner code owns effective/planning-step decisions
-- executor code owns requested-step actuation and materialization checks; it should ask whether the
-  step it is about to actualize has materialized, not branch on reported/prepared legacy fields
+- `planExecutableSteppedLoad.ts` is the stepped-load executor boundary adapter: it may read legacy
+  planner fields and project them into executor concepts
+- executor code owns requested-step actuation and materialization checks; it consumes the projected
+  executable stepped-load action and should ask whether the step it is about to actualize has
+  materialized, not branch on reported/prepared legacy fields
 - shared-domain and settings UI must not import the planner state model
 - UI overview needs only the observed reported step and the target step
 
@@ -94,7 +97,9 @@ Contributor rules:
 
 - planner/runtime restore decisions must not branch on `selectedStepId`, `assumedStepId`, or
   `actualStepId` alone as proof of preparation; during migration, executor compatibility code may
-  adapt `actualStepId` to materialized-step evidence only when `actualStepSource === 'reported'`
+  adapt `actualStepId` to materialized-step evidence only when `actualStepSource === 'reported'`,
+  and that adaptation belongs in the executable stepped-load boundary, not in executor command or
+  restore logic
 - fallback lowest-active-step assumptions are planning inputs only, never restore proof
 - the planner may consume a best available effective/planning step when provenance does not change
   the planning decision; trust/provenance belongs at the observer/reconcile boundary and the

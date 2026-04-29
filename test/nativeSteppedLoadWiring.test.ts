@@ -10,6 +10,7 @@ import {
 } from '../lib/core/nativeSteppedLoadWiring';
 import { setObservedNativeSteppedLoadStep } from '../lib/core/deviceManagerNativeSteppedCommand';
 import { applySteppedLoadCommand, type PlanExecutorSteppedContext } from '../lib/plan/planExecutorStepped';
+import { buildExecutableSteppedLoadDevice } from '../lib/plan/planExecutableSteppedLoad';
 import { AppDeviceControlHelpers } from '../lib/app/appDeviceControlHelpers';
 import type { HomeyDeviceLike, Logger, SteppedLoadProfile, TargetDeviceSnapshot } from '../lib/utils/types';
 import { mockHomeyInstance } from './mocks/homey';
@@ -400,7 +401,7 @@ describe('native stepped-load wiring', () => {
       setNativeSteppedLoadStep,
     } as unknown as PlanExecutorSteppedContext;
 
-    const wrote = await applySteppedLoadCommand(ctx, {
+    const action = buildExecutableSteppedLoadDevice({
       id: 'hoiax-1',
       name: 'Connected 300',
       currentOn: true,
@@ -420,7 +421,10 @@ describe('native stepped-load wiring', () => {
         activationEnabled: true,
       },
       reason: { code: 'overCapacity', label: 'over capacity' },
-    }, 'plan');
+    });
+
+    expect(action).not.toBeNull();
+    const wrote = await applySteppedLoadCommand(ctx, action!, 'plan');
 
     expect(wrote).toBe(true);
     expect(setNativeSteppedLoadStep).toHaveBeenCalledWith('hoiax-1', steppedProfile, 'medium');
