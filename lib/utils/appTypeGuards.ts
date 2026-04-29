@@ -2,7 +2,7 @@ import type { PowerTrackerState } from '../core/powerTracker';
 import type { DeviceControlProfiles, TemperatureBoostSettings } from '../../packages/contracts/src/types';
 import {
   normalizeTemperatureBoostSettings as normalizeTemperatureBoostSettingsContract,
-} from '../../packages/contracts/src/temperatureBoost';
+} from './temperatureBoost';
 import { normalizeDeviceControlProfiles } from './deviceControlProfiles';
 
 export function isFiniteNumber(value: unknown): value is number {
