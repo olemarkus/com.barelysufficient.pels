@@ -1,6 +1,6 @@
 import type { PlanInputDevice } from './planTypes';
 import { isSteppedLoadDevice } from './planSteppedLoad';
-import { hasTemperatureBoostTarget } from '../../packages/contracts/src/temperatureBoost';
+import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
 
 export const TEMPERATURE_BOOST_EXIT_MARGIN_C = 2;
 
