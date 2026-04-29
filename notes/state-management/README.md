@@ -80,6 +80,18 @@ Layer ownership:
 - shared-domain and settings UI must not import the planner state model
 - UI overview needs only the observed reported step and the target step
 
+Post-release executor boundary rollout:
+
+- `lib/executor` owns actuation concepts: command intent, materialization, retry/wait/skip
+  decisions, and executor-facing action types.
+- `lib/plan` may still adapt broad planner devices into executor actions while compatibility
+  fields remain in planner snapshots.
+- Broad `DevicePlanDevice` inputs at executor dispatch boundaries are transitional. The next
+  narrowing steps are target-command projection and then dispatch over projected executable device
+  concepts instead of repeatedly unwrapping planner devices.
+- Behavioral cleanups, including the stepped-load non-executable hold model, should stay separate
+  from move-only or projection-only PRs.
+
 Flow-reported step feedback is admitted as observed truth only when it agrees with the binary
 snapshot. A flow report for a non-off step while `currentOn=false` is suppressed at the
 app/snapshot boundary; native step telemetry remains reported truth because it comes from the

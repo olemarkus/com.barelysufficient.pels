@@ -2,7 +2,7 @@
 
 > Status note: this document started as a point-in-time complexity review. Several simplifications
 > called out below have already landed since the original snapshot, including
-> `planReasonStrings.ts`, the `planExecutorTarget.ts` / `steppedLoadExecutor.ts` split, the
+> `planReasonStrings.ts`, the `targetExecutor.ts` / `steppedLoadExecutor.ts` split, the
 > `deviceManager` parsing / observation / binary-settle extractions, the activation-backoff
 > simplification, and the first `app.ts` helper extractions around snapshot refresh / Homey Energy
 > / stepped-load runtime ownership. Treat the raw LOC counts and any "current hotspot"
