@@ -23,6 +23,7 @@ import {
   dailyBudgetLabels,
   dailyBudgetEmpty,
   dailyBudgetConfidence,
+  dailyBudgetAllocationWarning,
   dailyBudgetBreakdownInput,
   dailyBudgetRecomputeButton,
   dailyBudgetApplyButton,
@@ -34,7 +35,9 @@ import { showToast, showToastError } from './toast.ts';
 import { logSettingsError } from './logging.ts';
 import { setTooltip } from './tooltips.ts';
 import { formatKWh, formatSignedKWh } from './dailyBudgetFormat.ts';
+import { formatCost, type CostDisplay } from './dailyBudgetCost.ts';
 import { renderDailyBudgetChart } from './dailyBudgetChart.ts';
+import { setDailyBudgetAllocationWarning } from './dailyBudgetAllocationWarning.ts';
 import { getPricesReadModel } from './prices.ts';
 import {
   DAILY_BUDGET_CONTROLLED_WEIGHT,
@@ -55,19 +58,6 @@ import {
 } from '../../../contracts/src/dailyBudgetConstants.ts';
 const DEFAULT_COST_UNIT = 'kr';
 const DEFAULT_COST_DIVISOR = 100;
-
-type CostDisplay = {
-  unit: string;
-  divisor: number;
-};
-
-const formatCost = (value: number | null | undefined, display: CostDisplay) => {
-  const unit = display.unit.trim();
-  const suffix = unit ? ` ${unit}` : '';
-  if (!Number.isFinite(value)) return `--${suffix}`;
-  const adjusted = (value as number) / Math.max(1, display.divisor);
-  return `${adjusted.toFixed(2)}${suffix}`;
-};
 
 type DailyBudgetView = 'today' | 'tomorrow' | 'yesterday';
 let currentDailyBudgetView: DailyBudgetView = 'today';
@@ -208,6 +198,7 @@ const renderDailyBudgetEmptyState = (message = 'Daily budget data not available 
 
   setText(dailyBudgetCostLabel, resolveDailyBudgetCostLabel(currentDailyBudgetView));
   setText(dailyBudgetCost, formatCost(null, costDisplay));
+  setDailyBudgetAllocationWarning(dailyBudgetAllocationWarning, null);
 };
 
 const renderDailyBudgetHeader = (payload: DailyBudgetDayPayload, view: DailyBudgetView) => {
@@ -243,6 +234,7 @@ const renderDailyBudgetStats = (payload: DailyBudgetDayPayload, view: DailyBudge
     prices: payload.buckets.price,
   });
   if (dailyBudgetCost) dailyBudgetCost.textContent = formatCost(estimatedCost, costDisplay);
+  setDailyBudgetAllocationWarning(dailyBudgetAllocationWarning, payload);
 };
 
 const hasPlanBreakdownData = (payload: DailyBudgetDayPayload) => (

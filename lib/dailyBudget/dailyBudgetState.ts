@@ -338,6 +338,12 @@ export const buildDailyBudgetSnapshot = (params: {
     frozen,
     confidenceDebug,
   } = params;
+  const allocationPressure = computeAllocationPressure({
+    dailyBudgetKWh: settings.dailyBudgetKWh,
+    enabled,
+    context,
+    plannedKWh,
+  });
 
   return {
     dateKey: context.dateKey,
@@ -359,6 +365,7 @@ export const buildDailyBudgetSnapshot = (params: {
       frozen,
       confidence: budget.confidence,
       priceShapingActive: priceData.priceShapingActive,
+      allocationPressure,
       confidenceDebug,
     },
     buckets: {
@@ -377,3 +384,61 @@ export const buildDailyBudgetSnapshot = (params: {
     },
   };
 };
+
+function computeAllocationPressure(params: {
+  dailyBudgetKWh: number;
+  enabled: boolean;
+  context: DayContext;
+  plannedKWh: number[];
+}) {
+  const { dailyBudgetKWh, enabled, context, plannedKWh } = params;
+  if (context.currentBucketIndex >= plannedKWh.length) {
+    return {
+      requestedBudgetKWh: 0,
+      plannedBudgetKWh: 0,
+      unallocatedBudgetKWh: 0,
+      saturationRatio: 1,
+      constrained: false,
+    };
+  }
+
+  const requestedBudgetKWh = Number.isFinite(dailyBudgetKWh)
+    ? Math.max(0, dailyBudgetKWh - context.budgetControlUsedNowKWh)
+    : 0;
+  const plannedBudgetKWh = computeRemainingPlannedBudget({
+    context,
+    plannedKWh,
+  });
+  const unallocatedBudgetKWh = Math.max(0, requestedBudgetKWh - plannedBudgetKWh);
+  const saturationRatio = requestedBudgetKWh > 0
+    ? Math.min(1, plannedBudgetKWh / requestedBudgetKWh)
+    : 1;
+  const meaningfulGapKWh = Math.max(1, requestedBudgetKWh * 0.05);
+  return {
+    requestedBudgetKWh,
+    plannedBudgetKWh,
+    unallocatedBudgetKWh,
+    saturationRatio,
+    constrained: enabled && unallocatedBudgetKWh > meaningfulGapKWh,
+  };
+}
+
+function computeRemainingPlannedBudget(params: {
+  context: DayContext;
+  plannedKWh: number[];
+}): number {
+  const { context, plannedKWh } = params;
+  const startIndex = Math.max(0, context.currentBucketIndex);
+  let total = 0;
+  for (let index = startIndex; index < plannedKWh.length; index += 1) {
+    const value = plannedKWh[index];
+    const planned = Number.isFinite(value) ? Math.max(0, value) : 0;
+    if (index === startIndex) {
+      const usedInCurrent = context.budgetControlBucketUsage[startIndex] ?? 0;
+      total += Math.max(0, planned - Math.max(0, usedInCurrent));
+    } else {
+      total += planned;
+    }
+  }
+  return total;
+}
