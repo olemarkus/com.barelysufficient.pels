@@ -14,6 +14,7 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
     devices: plan.devices.map((device) => {
       const live = liveById.get(device.id);
       if (!live) return device;
+      const liveStepState = resolveLiveSteppedStepState(device, live);
       return {
         ...device,
         currentState: resolveCurrentStateFromPlanInput(device, live),
@@ -21,19 +22,20 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         observationStale: live.observationStale ?? device.observationStale,
         controlModel: live.controlModel ?? device.controlModel,
         steppedLoadProfile: live.steppedLoadProfile ?? device.steppedLoadProfile,
-        selectedStepId: live.selectedStepId ?? device.selectedStepId,
+        selectedStepId: liveStepState.selectedStepId,
         desiredStepId: clampShedDesiredStepId(
           device,
-          live.selectedStepId ?? device.selectedStepId,
+          liveStepState.selectedStepId,
           live.steppedLoadProfile ?? device.steppedLoadProfile,
         ),
         lastDesiredStepId: live.desiredStepId ?? device.lastDesiredStepId,
         lastStepCommandIssuedAt: live.lastStepCommandIssuedAt ?? device.lastStepCommandIssuedAt,
         stepCommandRetryCount: live.stepCommandRetryCount ?? device.stepCommandRetryCount,
         nextStepCommandRetryAtMs: live.nextStepCommandRetryAtMs ?? device.nextStepCommandRetryAtMs,
-        actualStepId: live.actualStepId ?? device.actualStepId,
-        assumedStepId: live.assumedStepId ?? device.assumedStepId,
-        actualStepSource: live.actualStepSource ?? device.actualStepSource,
+        reportedStepId: liveStepState.reportedStepId,
+        actualStepId: liveStepState.actualStepId,
+        assumedStepId: liveStepState.assumedStepId,
+        actualStepSource: liveStepState.actualStepSource,
         currentTemperature: live.currentTemperature,
         powerKw: live.powerKw,
         expectedPowerKw: live.expectedPowerKw,
@@ -50,6 +52,37 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         stepCommandStatus: live.stepCommandStatus ?? device.stepCommandStatus,
       };
     }),
+  };
+}
+
+function resolveLiveSteppedStepState(
+  previous: DevicePlan['devices'][number],
+  live: PlanInputDevice,
+): Pick<
+  DevicePlan['devices'][number],
+  'reportedStepId' | 'selectedStepId' | 'actualStepId' | 'assumedStepId' | 'actualStepSource'
+> {
+  if ((live.controlModel ?? previous.controlModel) !== 'stepped_load') {
+    return {
+      reportedStepId: undefined,
+      selectedStepId: undefined,
+      actualStepId: undefined,
+      assumedStepId: undefined,
+      actualStepSource: undefined,
+    };
+  }
+  const actualStepSource = live.actualStepSource === 'reported' || live.actualStepSource === 'assumed'
+    ? live.actualStepSource
+    : undefined;
+  const actualStepId = actualStepSource === 'reported' || actualStepSource === 'assumed'
+    ? live.actualStepId
+    : undefined;
+  return {
+    reportedStepId: live.reportedStepId,
+    selectedStepId: live.selectedStepId ?? previous.selectedStepId,
+    actualStepId,
+    assumedStepId: live.assumedStepId,
+    actualStepSource: actualStepId || live.assumedStepId ? actualStepSource : undefined,
   };
 }
 
@@ -220,12 +253,21 @@ function hasRelevantBinaryExecutionDrift(
   liveDevice: DevicePlan['devices'][number],
 ): boolean {
   if (previousDevice.controlModel === 'stepped_load') {
-    // Check both step drift and binary (onoff) drift for dual-control devices.
-    // A stepped device can drift in step alone, binary alone, or both.
     return previousDevice.selectedStepId !== liveDevice.selectedStepId
-      || previousDevice.currentState !== liveDevice.currentState;
+      || previousDevice.currentState !== liveDevice.currentState
+      || hasSteppedEvidenceChanged(previousDevice, liveDevice);
   }
   return previousDevice.currentState !== liveDevice.currentState;
+}
+
+function hasSteppedEvidenceChanged(
+  previousDevice: DevicePlan['devices'][number],
+  liveDevice: DevicePlan['devices'][number],
+): boolean {
+  return previousDevice.reportedStepId !== liveDevice.reportedStepId
+    || previousDevice.actualStepId !== liveDevice.actualStepId
+    || previousDevice.assumedStepId !== liveDevice.assumedStepId
+    || previousDevice.actualStepSource !== liveDevice.actualStepSource;
 }
 
 function hasRelevantTargetExecutionDrift(
