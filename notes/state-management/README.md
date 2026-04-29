@@ -90,8 +90,11 @@ progress:
 Contributor rules:
 
 - planner/runtime restore decisions must not branch on `selectedStepId`, `assumedStepId`, or
-  `actualStepId` as proof of preparation
+  `actualStepId` alone as proof of preparation; during migration, executor compatibility code may
+  treat `actualStepId` as preparation evidence only when `actualStepSource === 'reported'`
 - fallback lowest-active-step assumptions are planning inputs only, never restore proof
+- a just-issued pre-restore step command is pending intent, not preparation proof for the same
+  executor pass
 - restore preparation must come from explicit reported evidence or narrowly admitted suppressed
   flow feedback tied to current intent or an explicit freshness policy
 - stale, mismatched, or old-plan flow feedback must not prepare restore

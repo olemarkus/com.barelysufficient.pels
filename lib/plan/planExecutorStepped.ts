@@ -22,6 +22,7 @@ import {
   resolveSteppedLoadTransition,
   type SteppedLoadTransition,
 } from './planSteppedLoad';
+import { isRestoreStepPrepared } from './planSteppedLoadState';
 import {
   isNativeSteppedLoadControlEnabled,
 } from '../core/nativeSteppedLoadWiring';
@@ -193,8 +194,14 @@ type SteppedLoadRestoreState = {
   effectiveCurrentOn: boolean | null;
   desiredStepId?: string;
   matchingRestoreAttempt: ReturnType<typeof resolveSteppedRestoreAttemptState>;
+  restoreStepPrepared: boolean;
   stepNeedsAdjustment: boolean;
   stepNeedsConfirmation: boolean;
+};
+
+const resolveReportedRestorePreparedStepId = (dev: PlanDevice): string | undefined => {
+  if (dev.actualStepSource === 'reported' && dev.actualStepId) return dev.actualStepId;
+  return dev.reportedStepId;
 };
 
 const evaluateSteppedLoadRestoreState = (
@@ -208,11 +215,16 @@ const evaluateSteppedLoadRestoreState = (
   const desiredIsNonOff = desiredStepId
     && dev.steppedLoadProfile
     && !isSteppedLoadOffStep(dev.steppedLoadProfile, desiredStepId);
+  const restoreStepPrepared = isRestoreStepPrepared({
+    desiredStepId,
+    preparedStepId: resolveReportedRestorePreparedStepId(dev),
+  });
   return {
     effectiveCurrentOn,
     desiredStepId,
     matchingRestoreAttempt,
-    stepNeedsAdjustment: Boolean(desiredIsNonOff && desiredStepId !== dev.selectedStepId),
+    restoreStepPrepared,
+    stepNeedsAdjustment: Boolean(desiredIsNonOff && !restoreStepPrepared),
     stepNeedsConfirmation: Boolean(desiredIsNonOff && desiredStepId === dev.assumedStepId),
   };
 };
@@ -278,6 +290,7 @@ const maybeSkipSteppedLoadRestoreBinary = (
     stepNeedsAdjustment: boolean;
     stepNeedsConfirmation: boolean;
     stepViolated: boolean;
+    restoreStepPrepared: boolean;
     desiredStepId?: string;
     preRestoreStepIssued?: boolean;
   },
@@ -290,6 +303,7 @@ const maybeSkipSteppedLoadRestoreBinary = (
     stepNeedsAdjustment,
     stepNeedsConfirmation,
     stepViolated,
+    restoreStepPrepared,
     desiredStepId,
     preRestoreStepIssued,
   } = params;
@@ -327,14 +341,15 @@ const maybeSkipSteppedLoadRestoreBinary = (
   if (
     snapshot.currentOn === false
     && stepViolated
-    && preRestoreStepIssued !== true
-    && !matchingRestoreAttempt
+    && !restoreStepPrepared
   ) {
     return logSteppedLoadRestoreSkip(ctx, {
       dev,
       mode,
       reasonCode: 'pre_restore_step_required',
-      skipDetailCode: 'pre_restore_step_command_not_issued',
+      skipDetailCode: preRestoreStepIssued === true || matchingRestoreAttempt?.status === 'awaiting_confirmation'
+        ? 'pre_restore_step_pending_confirmation'
+        : 'pre_restore_step_command_not_issued',
       desiredStepId,
     });
   }
@@ -380,6 +395,7 @@ export const applySteppedLoadRestore = async (
     effectiveCurrentOn,
     desiredStepId,
     matchingRestoreAttempt,
+    restoreStepPrepared,
     stepNeedsAdjustment,
     stepNeedsConfirmation,
   } = evaluateSteppedLoadRestoreState(dev);
@@ -420,6 +436,7 @@ export const applySteppedLoadRestore = async (
     stepNeedsAdjustment,
     stepNeedsConfirmation,
     stepViolated,
+    restoreStepPrepared,
     desiredStepId,
     preRestoreStepIssued: options.preRestoreStepIssued,
   });
@@ -767,6 +784,7 @@ const logSteppedLoadRestoreSkip = (
       | 'pre_restore_step_required';
     skipDetailCode?:
       | 'assumed_step_pending_confirmation'
+      | 'pre_restore_step_pending_confirmation'
       | 'pre_restore_step_command_not_issued';
     blockedByPlanReasonCode?: DeviceReason['code'];
     desiredStepId?: string;
