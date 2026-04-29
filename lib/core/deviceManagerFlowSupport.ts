@@ -1,7 +1,7 @@
 import type { FlowEffectiveRequiredCapabilityId } from './deviceManagerNativeEv';
 import type { DeviceCapabilityMap } from './deviceManagerControl';
 import {
-  getCapabilityValueByPrefix,
+  getExactPowerCapabilityValue,
 } from './deviceManagerParse';
 import type {
   FlowReportedCapabilityId,
@@ -77,8 +77,8 @@ function hasRequiredFlowCapability(params: {
   } = params;
 
   if (capabilityId === 'measure_power') {
-    return getCapabilityValueByPrefix([...capabilities], capabilityObj, 'measure_power') !== undefined
-      || getCapabilityValueByPrefix([...capabilities], capabilityObj, 'meter_power') !== undefined;
+    return getExactPowerCapabilityValue(capabilities, capabilityObj, 'measure_power') !== undefined
+      || getExactPowerCapabilityValue(capabilities, capabilityObj, 'meter_power') !== undefined;
   }
 
   if (capabilityId === 'alarm_generic.car_connected' || capabilityId === 'pels_evcharger_resumable') {

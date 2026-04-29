@@ -498,7 +498,7 @@ export class DeviceManager extends EventEmitter {
     private normalizeRealtimeCapabilityEventValue(capabilityId: string, value: unknown): unknown {
         if (typeof value === 'boolean') return value;
         if (typeof value === 'number') {
-            if (capabilityId === 'measure_power' || capabilityId.startsWith('meter_power')) return Math.round(value);
+            if (capabilityId === 'measure_power' || capabilityId === 'meter_power') return Math.round(value);
             if (capabilityId.includes('temperature')) return Math.round(value * 10) / 10;
             return Math.round(value * 100) / 100;
         }

@@ -11,7 +11,7 @@ import {
 } from '../lib/core/deviceManagerControl';
 import {
   buildTargets,
-  getCapabilityValueByPrefix,
+  getExactPowerCapabilityValue,
   getCurrentTemperature,
   resolveDeviceCapabilities,
 } from '../lib/core/deviceManagerParse';
@@ -199,11 +199,23 @@ describe('device manager support helpers', () => {
       capabilities: ['measure_power', 'onoff'],
       logDebug,
     })).toEqual({ targetCaps: [], hasPower: true });
-    expect(getCapabilityValueByPrefix(
-      ['measure_power.l1'],
-      { 'measure_power.l1': { value: 400 } },
+    expect(resolveDeviceCapabilities({
+      deviceClassKey: 'socket',
+      deviceId: 'socket2',
+      deviceLabel: 'Socket 2',
+      capabilities: ['measure_power.internal', 'onoff'],
+      logDebug,
+    })).toEqual({ targetCaps: [], hasPower: false });
+    expect(getExactPowerCapabilityValue(
+      ['measure_power'],
+      { measure_power: { value: 400 } },
       'measure_power',
     )).toBe(400);
+    expect(getExactPowerCapabilityValue(
+      ['measure_power.internal'],
+      { 'measure_power.internal': { value: 400 } },
+      'measure_power',
+    )).toBeUndefined();
   });
 
   it('updates runtime device manager power state helpers', async () => {
