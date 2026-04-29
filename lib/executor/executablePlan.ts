@@ -2,6 +2,18 @@ import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSe
 import type { DeviceControlAdapterSnapshot, SteppedLoadProfile } from '../utils/types';
 import type { SteppedStepActuationState } from './steppedLoadActuation';
 
+export type ExecutablePlanDevice<TPlanDevice = unknown> = {
+  planDevice: TPlanDevice;
+};
+
+export type ExecutablePlan<TPlanDevice = unknown> = {
+  devices: ExecutablePlanDevice<TPlanDevice>[];
+};
+
+export type ProjectedExecutablePlanDevice<TPlanDevice = unknown> = ExecutablePlanDevice<TPlanDevice> & {
+  steppedLoad: ExecutableSteppedLoadDevice | null;
+};
+
 export type ExecutableSteppedLoadTransition = {
   effectiveTransition:
     | 'full_shed_to_off'
