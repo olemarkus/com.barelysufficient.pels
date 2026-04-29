@@ -14,6 +14,18 @@ export type ProjectedExecutablePlanDevice<TPlanDevice = unknown> = ExecutablePla
   steppedLoad: ExecutableSteppedLoadDevice | null;
 };
 
+export type ExecutableTargetCommand = {
+  deviceId: string;
+  name: string;
+  targetCap: string;
+  desired: number;
+  observedValue: unknown;
+};
+
+export type ExecutableTargetUpdate = ExecutableTargetCommand & {
+  isRestoring: boolean;
+};
+
 export type ExecutableSteppedLoadTransition = {
   effectiveTransition:
     | 'full_shed_to_off'

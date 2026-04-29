@@ -1075,6 +1075,35 @@ describe('PlanExecutor stepped loads', () => {
     expect(state.lastRestoreMs).toEqual(expect.any(Number));
   });
 
+  it('projects target updates after awaited stepped-load work in the same cycle', async () => {
+    const snapshot = [{
+      id: 'dev-1',
+      name: 'Tank',
+      controlCapabilityId: 'onoff' as const,
+      canSetControl: true,
+      available: true,
+      currentOn: true,
+    }];
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+    desiredSteppedTrigger.trigger.mockImplementation(async () => {
+      Object.assign(snapshot[0], {
+        targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+      });
+      return true;
+    });
+
+    await expect(executor.applyPlanActions(steppedPlan({
+      currentTarget: 18,
+      plannedTarget: 23,
+    }))).resolves.toEqual({
+      deviceWriteCount: 1,
+      commandRequestCount: 1,
+    });
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalled();
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
+  });
+
   it('counts native stepped-load commands as command requests without concrete device writes', async () => {
     const { executor, deps, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, [{
       id: 'dev-1',
