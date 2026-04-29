@@ -14,27 +14,50 @@ import type { SteppedLoadProfile, SteppedLoadStep } from '../utils/types';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import type { ShedAction } from './planTypes';
+import {
+  isReportedStep,
+  normalizeSteppedLoadStepStateFromLegacyFields,
+  resolveKnownEffectiveStepId,
+} from './planSteppedLoadState';
 
 type StepCapableDevice = Pick<
   PlanInputDevice | DevicePlanDevice,
-  'controlModel' | 'steppedLoadProfile' | 'selectedStepId' | 'desiredStepId' | 'measuredPowerKw'
+  | 'controlModel'
+  | 'steppedLoadProfile'
+  | 'reportedStepId'
+  | 'selectedStepId'
+  | 'desiredStepId'
+  | 'actualStepId'
+  | 'assumedStepId'
+  | 'actualStepSource'
+  | 'measuredPowerKw'
+>;
+type StepIdentityFields = Pick<
+StepCapableDevice,
+| 'reportedStepId'
+| 'selectedStepId'
+| 'desiredStepId'
+| 'actualStepId'
+| 'assumedStepId'
+| 'actualStepSource'
 >;
 type StepSheddingCapableDevice = Pick<
   PlanInputDevice,
   | 'controlModel'
   | 'steppedLoadProfile'
-  | 'selectedStepId'
-  | 'desiredStepId'
   | 'stepCommandPending'
   | 'stepCommandStatus'
->;
+> & StepIdentityFields;
 
 type StepTransitionCapableDevice = {
   controlModel?: StepCapableDevice['controlModel'];
   steppedLoadProfile?: StepCapableDevice['steppedLoadProfile'];
+  reportedStepId?: string;
   selectedStepId?: StepCapableDevice['selectedStepId'];
   desiredStepId?: StepCapableDevice['desiredStepId'];
+  actualStepId?: string;
   assumedStepId?: string;
+  actualStepSource?: StepCapableDevice['actualStepSource'];
   currentState?: string;
   currentOn?: boolean;
   controlCapabilityId?: DevicePlanDevice['controlCapabilityId'];
@@ -73,11 +96,11 @@ const getSteppedLoadProfileForDevice = (
 ): SteppedLoadProfile | null => (isSteppedLoadDevice(device) ? (device.steppedLoadProfile ?? null) : null);
 
 export const resolveSteppedLoadInitialDesiredStepId = (
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId'>,
+  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'> & StepIdentityFields,
 ): string | undefined => {
   const profile = getSteppedLoadProfileForDevice(device);
   if (!profile) return undefined;
-  return getSteppedLoadStep(profile, device.selectedStepId)?.id ?? undefined;
+  return getSteppedLoadStep(profile, resolvePlannerEffectiveStepId(device))?.id ?? undefined;
 };
 
 /* eslint-disable complexity, sonarjs/cognitive-complexity */
@@ -89,7 +112,8 @@ export const resolveSteppedLoadTransition = (
   if (!profile) return null;
 
   const currentOn = resolveEffectiveCurrentOn(device);
-  const selectedStep = getSteppedLoadStep(profile, device.selectedStepId);
+  const stepState = normalizePlannerStepState(device);
+  const selectedStep = getSteppedLoadStep(profile, resolveKnownEffectiveStepId(stepState));
   const desiredStep = getSteppedLoadStep(profile, plannedDesiredStepId);
   const lowestActiveStep = getSteppedLoadLowestActiveStep(profile);
   if (device.plannedState === 'shed' && device.shedAction === 'turn_off') {
@@ -109,7 +133,7 @@ export const resolveSteppedLoadTransition = (
     const commandStepId = lowestActiveStep?.id ?? desiredStep?.id;
     const stepPrepared = commandStepId !== undefined
       && selectedStep?.id === commandStepId
-      && device.assumedStepId !== commandStepId;
+      && isReportedStep(stepState, commandStepId);
     return {
       effectiveTransition: 'restore_from_off_at_low',
       stepPreparationPurpose: commandStepId ? 'prepare_for_on' : null,
@@ -146,7 +170,7 @@ export const resolveSteppedLoadTransition = (
 /* eslint-enable complexity, sonarjs/cognitive-complexity */
 
 export const resolveSteppedKeepDesiredStepId = (
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId' | 'desiredStepId'>
+  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'> & StepIdentityFields
   & { currentState?: string; plannedState?: string },
 ): string | undefined => {
   const profile = getSteppedLoadProfileForDevice(device);
@@ -168,13 +192,14 @@ export const resolveSteppedKeepDesiredStepId = (
     return lowestActiveStepId;
   }
 
-  const selectedStep = getSteppedLoadStep(profile, device.selectedStepId);
+  const selectedStep = getSteppedLoadStep(profile, resolvePlannerEffectiveStepId(device));
   if (!selectedStep || selectedStep.planningPowerW <= 0) return lowestActiveStepId;
   return selectedStep.id;
 };
 
 export const getSteppedLoadNextRestoreStep = (
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId'> & { currentState?: string },
+  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'> & StepIdentityFields
+  & { currentState?: string },
 ) => {
   const profile = getSteppedLoadProfileForDevice(device);
   if (!profile) return null;
@@ -186,13 +211,14 @@ export const getSteppedLoadNextRestoreStep = (
   const highestStepId = getSteppedLoadHighestStep(profile)?.id;
   return getSteppedLoadNextHigherStep({
     profile,
-    stepId: device.selectedStepId,
+    stepId: resolvePlannerEffectiveStepId(device),
     ceilingStepId: highestStepId,
   });
 };
 
 export const getSteppedLoadShedTargetStep = (params: {
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId'> & { currentState?: string };
+  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'> & StepIdentityFields
+  & { currentState?: string };
   shedAction: 'turn_off' | 'set_step';
   currentDesiredStepId?: string;
 }): ReturnType<typeof getSteppedLoadStep> => {
@@ -203,7 +229,7 @@ export const getSteppedLoadShedTargetStep = (params: {
   } = params;
   const profile = getSteppedLoadProfileForDevice(device);
   if (!profile) return null;
-  const currentStep = getSteppedLoadStep(profile, currentDesiredStepId ?? device.selectedStepId);
+  const currentStep = getSteppedLoadStep(profile, currentDesiredStepId ?? resolvePlannerEffectiveStepId(device));
   if (!currentStep) return null;
 
   const targetStep = shedAction === 'set_step'
@@ -240,7 +266,7 @@ export const resolveSteppedLoadSheddingTarget = (params: {
   const { device, targetStep } = params;
   const steppedProfile = getSteppedLoadProfileForDevice(device);
   if (!steppedProfile) return null;
-  const selectedStep = getSteppedLoadStep(steppedProfile, device.selectedStepId);
+  const selectedStep = getSteppedLoadStep(steppedProfile, resolvePlannerEffectiveStepId(device));
   if (!selectedStep) return null;
   const desiredStep = resolveUnconfirmedLowerDesiredStep({ device, steppedProfile, selectedStep });
   const clampedTargetStep = clampSteppedShedTarget(targetStep, desiredStep);
@@ -263,14 +289,14 @@ export const resolveSteppedLoadPlanningKw = (
 };
 
 export const resolveSteppedLoadImmediateReliefKw = (params: {
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'measuredPowerKw' | 'selectedStepId'>;
+  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'measuredPowerKw'> & StepIdentityFields;
   fromStepId?: string;
   toStepId?: string;
 }): number => {
   const { device, fromStepId: rawFromStepId, toStepId } = params;
   if (!isSteppedLoadDevice(device)) return 0;
 
-  const effectiveFromStepId = rawFromStepId ?? device.selectedStepId;
+  const effectiveFromStepId = rawFromStepId ?? resolvePlannerEffectiveStepId(device);
   const measured = typeof device.measuredPowerKw === 'number' && Number.isFinite(device.measuredPowerKw)
     ? Math.max(0, device.measuredPowerKw)
     : 0;
@@ -335,14 +361,14 @@ export function resolveSteppedCandidatePower(
 }
 
 export const resolveSteppedUnknownCurrentMeasuredShedding = (params: {
-  device: Pick<PlanInputDevice, 'controlModel' | 'steppedLoadProfile' | 'selectedStepId' | 'measuredPowerKw'>;
+  device: Pick<PlanInputDevice, 'controlModel' | 'steppedLoadProfile' | 'measuredPowerKw'> & StepIdentityFields;
   shedAction: 'turn_off' | 'set_step';
 }): {
   targetStep: SteppedLoadStep;
   effectivePowerKw: number;
 } | null => {
   const { device, shedAction } = params;
-  if (!isSteppedLoadDevice(device) || device.selectedStepId) return null;
+  if (!isSteppedLoadDevice(device) || resolvePlannerEffectiveStepId(device)) return null;
   const steppedProfile = getSteppedLoadProfileForDevice(device);
   if (!steppedProfile) return null;
   const measuredPowerKw = typeof device.measuredPowerKw === 'number' && Number.isFinite(device.measuredPowerKw)
@@ -366,3 +392,14 @@ export const resolveSteppedUnknownCurrentMeasuredShedding = (params: {
     effectivePowerKw,
   };
 };
+
+function normalizePlannerStepState(device: StepIdentityFields) {
+  return normalizeSteppedLoadStepStateFromLegacyFields({
+    fields: device,
+    selectedStepFallbackIsPlanningAssumption: true,
+  });
+}
+
+function resolvePlannerEffectiveStepId(device: Parameters<typeof normalizePlannerStepState>[0]): string | undefined {
+  return resolveKnownEffectiveStepId(normalizePlannerStepState(device));
+}
