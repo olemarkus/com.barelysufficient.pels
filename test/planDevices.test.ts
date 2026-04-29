@@ -21,7 +21,84 @@ const buildContext = (devices: PlanContext['devices']): PlanContext => ({
   restoreMarginPlanning: 0.2,
 });
 
+const defaultDeps: PlanDevicesDeps = {
+  getPriorityForDevice: () => 100,
+  getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+  isCurrentHourCheap: () => false,
+  isCurrentHourExpensive: () => false,
+  getPriceOptimizationEnabled: () => false,
+  getPriceOptimizationSettings: () => ({}),
+};
+
 describe('buildInitialPlanDevices', () => {
+  it('applies temperature boost hysteresis for stepped temperature devices', () => {
+    const state = createPlanEngineState();
+    const build = (currentTemperature: number) => buildInitialPlanDevices({
+      context: buildContext([steppedInputDevice({
+        id: 'tank',
+        name: 'Water tank',
+        deviceType: 'temperature',
+        currentTemperature,
+        temperatureBoost: { enabled: true, boostBelowC: 55 },
+      })]),
+      state,
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: defaultDeps,
+    })[0];
+
+    expect(build(54.9).temperatureBoostActive).toBe(true);
+    expect(build(56.5).temperatureBoostActive).toBe(true);
+    expect(build(57).temperatureBoostActive).toBe(false);
+  });
+
+  it('does not enable temperature boost for stale temperature observations', () => {
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([steppedInputDevice({
+        id: 'tank',
+        name: 'Water tank',
+        deviceType: 'temperature',
+        currentTemperature: 50,
+        observationStale: true,
+        temperatureBoost: { enabled: true, boostBelowC: 55 },
+      })]),
+      state: createPlanEngineState(),
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: defaultDeps,
+    });
+
+    expect(planDevice.temperatureBoostActive).toBe(false);
+  });
+
+  it('does not enable temperature boost without a target temperature capability', () => {
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([steppedInputDevice({
+        id: 'tank',
+        name: 'Water tank',
+        deviceType: 'temperature',
+        targets: [],
+        currentTemperature: 50,
+        temperatureBoost: { enabled: true, boostBelowC: 55 },
+      })]),
+      state: createPlanEngineState(),
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: defaultDeps,
+    });
+
+    expect(planDevice.temperatureBoostActive).toBe(false);
+  });
+
   it('keeps stepped loads on temperature shedding when that is the chosen shed behavior', () => {
     const steppedDevice = steppedInputDevice({
       id: 'dev-1',

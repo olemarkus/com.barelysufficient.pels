@@ -14,7 +14,12 @@ import type { PriceLevel } from '../price/priceLevels';
 import type { PriceCoordinator } from '../price/priceCoordinator';
 import type { PriceOptimizationSettings } from '../price/priceOptimizer';
 import type { DebugLoggingTopic } from '../utils/debugLogging';
-import type { DeviceControlProfiles, TargetDeviceSnapshot } from '../utils/types';
+import type {
+  DeviceControlProfiles,
+  TargetDeviceSnapshot,
+  TemperatureBoostConfig,
+  TemperatureBoostSettings,
+} from '../utils/types';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { AppDeviceControlHelpers } from './appDeviceControlHelpers';
 import type { AppHomeyEnergyHelpers } from './appHomeyEnergyHelpers';
@@ -95,6 +100,7 @@ export type AppContext = {
   getCommunicationModel: (deviceId: string) => 'local' | 'cloud';
   isCapacityControlEnabled: (deviceId: string) => boolean;
   isBudgetExempt: (deviceId: string) => boolean;
+  getTemperatureBoostConfig: (deviceId: string) => TemperatureBoostConfig | undefined;
   getShedBehavior: (deviceId: string) => {
     action: ShedAction;
     temperature: number | null;
@@ -139,6 +145,8 @@ export type AppContext = {
   set managedDevices(value: Record<string, boolean>);
   get budgetExemptDevices(): Record<string, boolean>;
   set budgetExemptDevices(value: Record<string, boolean>);
+  get temperatureBoostSettings(): TemperatureBoostSettings;
+  set temperatureBoostSettings(value: TemperatureBoostSettings);
   get deviceDriverOverrides(): Record<string, string>;
   set deviceDriverOverrides(value: Record<string, string>);
   get deviceControlProfiles(): DeviceControlProfiles;

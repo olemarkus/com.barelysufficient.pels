@@ -28,6 +28,7 @@ import {
   MANAGED_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
   OVERSHOOT_BEHAVIORS,
+  TEMPERATURE_BOOST_SETTINGS,
   OPERATING_MODE_SETTING,
   POWER_SOURCE,
   PRICE_OPTIMIZATION_ENABLED,
@@ -296,6 +297,10 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       await refreshSnapshotWithLog(deps, 'Failed to refresh devices after budget exemption change');
       deps.updateDailyBudgetState();
       await rebuildPlanFromSettings(deps, BUDGET_EXEMPT_DEVICES);
+    },
+    [TEMPERATURE_BOOST_SETTINGS]: async () => {
+      deps.loadCapacitySettings();
+      await rebuildPlanFromSettings(deps, TEMPERATURE_BOOST_SETTINGS);
     },
     [EXPERIMENTAL_EV_SUPPORT_ENABLED]: async () => {
       deps.loadCapacitySettings();

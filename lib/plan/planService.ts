@@ -90,6 +90,8 @@ const serializePlanDeviceForUi = (
   expectedPowerKw: device.expectedPowerKw,
   planningPowerKw: device.planningPowerKw,
   budgetExempt: device.budgetExempt,
+  temperatureBoost: device.temperatureBoost,
+  temperatureBoostActive: device.temperatureBoostActive,
   observationStale: device.observationStale,
   shedAction: device.shedAction,
   shedTemperature: device.shedTemperature,

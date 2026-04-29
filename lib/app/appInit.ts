@@ -186,6 +186,7 @@ function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
     managed: ctx.resolveManagedState(device.id),
     controllable: ctx.isCapacityControlEnabled(device.id),
     budgetExempt: ctx.isBudgetExempt(device.id),
+    temperatureBoost: ctx.getTemperatureBoostConfig?.(device.id),
     binaryCommandPending: (
       ctx.planEngine?.isBinaryCommandPendingForDevice?.(device.id, device.communicationModel) ?? false
     ),

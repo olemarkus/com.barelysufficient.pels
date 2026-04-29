@@ -1,4 +1,8 @@
-import type { DeviceControlProfiles, TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
+import type {
+  DeviceControlProfiles,
+  TargetDeviceSnapshot,
+  TemperatureBoostSettings,
+} from '../../../contracts/src/types.ts';
 
 export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 export type ShedBehavior = {
@@ -30,6 +34,7 @@ export type UiState = {
   deviceControlProfiles: DeviceControlProfiles;
   modeAliases: Record<string, string>;
   shedBehaviors: Record<string, ShedBehavior>;
+  temperatureBoostSettings: TemperatureBoostSettings;
   priceOptimizationSettings: Record<string, PriceOptimizationConfig>;
 };
 
@@ -56,6 +61,7 @@ export const state: UiState = {
   deviceControlProfiles: {},
   modeAliases: {},
   shedBehaviors: {},
+  temperatureBoostSettings: {},
   priceOptimizationSettings: {},
 };
 
