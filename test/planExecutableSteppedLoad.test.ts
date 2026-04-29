@@ -48,6 +48,22 @@ describe('planExecutableSteppedLoad', () => {
     expect(action?.commandStepActuation).toEqual(action?.stepActuation);
   });
 
+  it('uses measured power as shed baseline when current stepped position is unknown', () => {
+    const action = buildExecutableSteppedLoadDevice(steppedPlanDevice({
+      plannedState: 'shed',
+      shedAction: 'set_step',
+      selectedStepId: undefined,
+      desiredStepId: 'low',
+      measuredPowerKw: 3,
+    }));
+
+    expect(action?.currentStepForShed).toEqual({
+      stepId: 'unknown',
+      planningPowerW: 3000,
+    });
+    expect(action?.commandStepId).toBe('low');
+  });
+
   it('returns null for non stepped-load devices', () => {
     expect(buildExecutableSteppedLoadDevice(steppedPlanDevice({
       controlModel: 'binary_power',

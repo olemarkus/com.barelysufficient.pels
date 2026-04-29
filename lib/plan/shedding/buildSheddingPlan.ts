@@ -54,8 +54,6 @@ export async function buildSheddingPlan(
   const {
     shedSet,
     shedReasons,
-    steppedDesiredStepByDeviceId,
-    temperatureShedTargets,
     updates,
     overshootStats,
   } = planShedding(context, state, deps, overshootActionable);
@@ -83,8 +81,6 @@ export async function buildSheddingPlan(
   return {
     shedSet,
     shedReasons,
-    steppedDesiredStepByDeviceId,
-    temperatureShedTargets,
     sheddingActive: guardResult.sheddingActive,
     guardInShortfall,
     updates: mergedUpdates,
@@ -103,8 +99,6 @@ function emptySheddingResult(
   return {
     shedSet: new Set<string>(),
     shedReasons: new Map<string, DeviceReason>(),
-    steppedDesiredStepByDeviceId: new Map<string, string>(),
-    temperatureShedTargets: new Map<string, { temperature: number; capabilityId: string }>(),
     updates,
     overshootStats,
   };

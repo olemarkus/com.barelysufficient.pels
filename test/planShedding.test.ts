@@ -610,11 +610,6 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.has('dev-stepped')).toBe(true);
-    expect(result.steppedDesiredStepByDeviceId.size).toBe(0);
-    expect(result.temperatureShedTargets.get('dev-stepped')).toEqual({
-      temperature: 55,
-      capabilityId: 'target_temperature',
-    });
   });
 
   it('marks temperature candidate with unconfirmedRelief when a pending target command matches shed temperature', async () => {
@@ -774,7 +769,7 @@ describe('buildSheddingPlan', () => {
     expect(result.shedSet.has('dev-other')).toBe(false);
   });
 
-  it('populates temperatureShedTargets in the shedding plan output', async () => {
+  it('selects temperature shed candidates without projecting actuation targets', async () => {
     const state = createPlanEngineState();
 
     const devices = [
@@ -828,11 +823,6 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.has('dev-temp')).toBe(true);
-    expect(result.temperatureShedTargets.size).toBe(1);
-    expect(result.temperatureShedTargets.get('dev-temp')).toEqual({
-      temperature: 18,
-      capabilityId: 'target_temperature',
-    });
   });
 
   it('steps down a stepped load with turn_off behavior before shedding any other device', async () => {
@@ -898,7 +888,6 @@ describe('buildSheddingPlan', () => {
     // Preemptive step-down should happen even with turn_off behavior
     expect(result.shedSet.has('connected-300')).toBe(true);
     expect(result.shedSet.has('bath')).toBe(false);
-    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('mid');
   });
 
   it('steps down a stepped load without measured power using planning power fallback', async () => {
@@ -965,7 +954,6 @@ describe('buildSheddingPlan', () => {
     // Should use planning power fallback and still get preemptive step-down
     expect(result.shedSet.has('connected-300')).toBe(true);
     expect(result.shedSet.has('bath')).toBe(false);
-    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('mid');
   });
 
   it('does not use planning power fallback when measured power is a valid zero', async () => {
@@ -1093,7 +1081,6 @@ describe('buildSheddingPlan', () => {
 
     // Should advance to 'low' (next step below pending 'mid'), not re-issue 'mid'
     expect(result.shedSet.has('connected-300')).toBe(true);
-    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('low');
   });
 
   it('steps down a stepped load with set_step behavior before shedding any other device', async () => {
@@ -1162,7 +1149,6 @@ describe('buildSheddingPlan', () => {
 
     expect(result.shedSet.has('connected-300')).toBe(true);
     expect(result.shedSet.has('bath')).toBe(false);
-    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('mid');
   });
 
   it('keeps stepping a stepped load down to its lowest active step before shedding other devices', async () => {
@@ -1231,7 +1217,6 @@ describe('buildSheddingPlan', () => {
 
     expect(result.shedSet.has('connected-300')).toBe(true);
     expect(result.shedSet.has('bath')).toBe(false);
-    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('low');
   });
 
   it('keeps a stepped device at its lowest active step while another device is already shed', async () => {
@@ -1300,7 +1285,6 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.has('connected-300')).toBe(true);
-    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('low');
   });
 
   it('does not force a stepped device to lowest active step for stale historical shed state', async () => {
@@ -1370,7 +1354,6 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.has('connected-300')).toBe(true);
-    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('mid');
   });
 
   it('allows other devices to shed first once the stepped load is already at its lowest active step', async () => {
@@ -1496,7 +1479,6 @@ describe('buildSheddingPlan', () => {
     // Stepped-load devices must use the stepped path (executor skips applyShedAction
     // for them), so turn_off at lowest active step should step to 'off', not binary.
     expect(result.shedSet.has('connected-300')).toBe(true);
-    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('off');
   });
 
   it('sheds a stepped turn_off device at lowest active step even without an explicit off step', async () => {
@@ -1556,7 +1538,6 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.has('connected-300')).toBe(true);
-    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('low');
   });
 
   it('keeps shedding other devices when a lower stepped-load target is already pending but unconfirmed', async () => {
@@ -1629,7 +1610,6 @@ describe('buildSheddingPlan', () => {
     // The system should advance past the pending 'mid' to 'low'
     expect(result.shedSet.has('connected-300')).toBe(true);
     expect(result.shedSet.has('bath')).toBe(true);
-    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('low');
   });
 
   it('does not free headroom early when Max -> Low is still pending without confirmation', async () => {
@@ -1703,7 +1683,6 @@ describe('buildSheddingPlan', () => {
     // still effectively at Max for overshoot protection and continue shedding other loads.
     expect(result.shedSet.has('connected-300')).toBe(true);
     expect(result.shedSet.has('hall')).toBe(true);
-    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('low');
   });
 
   it('does not raise a stepped-load shed target above a deeper pending unconfirmed step', async () => {
@@ -1777,7 +1756,6 @@ describe('buildSheddingPlan', () => {
     // which is the set_step target - never raises load.
     expect(result.shedSet.has('connected-300')).toBe(true);
     expect(result.shedSet.has('bath')).toBe(true);
-    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('low');
   });
 
   it('keeps shedding other devices when a previous stepped-load shed command went stale', async () => {
@@ -1849,7 +1827,6 @@ describe('buildSheddingPlan', () => {
 
     expect(result.shedSet.has('connected-300')).toBe(true);
     expect(result.shedSet.has('bath')).toBe(true);
-    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('mid');
   });
 
   it('preemptively steps down a stepped device before turning off a higher-priority binary device', async () => {
@@ -1918,7 +1895,6 @@ describe('buildSheddingPlan', () => {
 
     // Preemptive step-down of the stepped device should happen first
     expect(result.shedSet.has('heater')).toBe(true);
-    expect(result.steppedDesiredStepByDeviceId.get('heater')).toBe('low');
     // Binary device should NOT be shed — preemptive break stops the loop
     expect(result.shedSet.has('binary-dev')).toBe(false);
   });
@@ -1997,7 +1973,6 @@ describe('buildSheddingPlan', () => {
 
     // heater-high should be stepped down (preemptive, above lowest active)
     expect(result.shedSet.has('heater-high')).toBe(true);
-    expect(result.steppedDesiredStepByDeviceId.get('heater-high')).toBe('low');
     // heater-low should NOT be shed — preemptive step-down of heater-high breaks
     // the loop, so only one device is acted on per cycle.
     expect(result.shedSet.has('heater-low')).toBe(false);
@@ -2128,7 +2103,6 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.has('connected-300')).toBe(true);
-    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('low');
     expect(result.shedSet.has('hall')).toBe(true);
   });
 
@@ -2712,7 +2686,6 @@ describe('buildSheddingPlan', () => {
 
     // Should shed from 'low' (current), not from 'max' (pending restore)
     expect(result.shedSet.has('connected-300')).toBe(true);
-    expect(result.steppedDesiredStepByDeviceId.get('connected-300')).toBe('off');
   });
 
   it('counts remaining stepped-load turn_off candidates using stepped targets', async () => {
@@ -3002,7 +2975,6 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result1.shedSet.has('stepped-a')).toBe(true);
-    expect(result1.steppedDesiredStepByDeviceId.get('stepped-a')).toBe('low');
     expect(result1.shedSet.has('stepped-b')).toBe(false);
     expect(result1.shedSet.has('binary-dev')).toBe(false);
 
@@ -3029,7 +3001,6 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result2.shedSet.has('stepped-b')).toBe(true);
-    expect(result2.steppedDesiredStepByDeviceId.get('stepped-b')).toBe('low');
     expect(result2.shedSet.has('binary-dev')).toBe(false);
 
     Object.assign(state, result2.updates);
@@ -3358,7 +3329,7 @@ describe('buildSheddingPlan', () => {
     expect(capacityGuard.setSheddingActive).toHaveBeenCalledWith(true);
   });
 
-  it('populates stepped and temperature shed targets for hourly budget exhaustion', async () => {
+  it('selects stepped and temperature devices for hourly budget exhaustion', async () => {
     const state = createPlanEngineState();
     state.hourlyBudgetExhausted = true;
 
@@ -3424,11 +3395,6 @@ describe('buildSheddingPlan', () => {
 
     expect(result.shedSet.has('stepped')).toBe(true);
     expect(result.shedSet.has('temp')).toBe(true);
-    expect(result.steppedDesiredStepByDeviceId.get('stepped')).toBe('low');
-    expect(result.temperatureShedTargets.get('temp')).toEqual({
-      temperature: 17,
-      capabilityId: 'target_temperature',
-    });
   });
 
   it('does not select or retarget zero-draw stepped loads when hourly budget is exhausted', async () => {
@@ -3486,7 +3452,6 @@ describe('buildSheddingPlan', () => {
     );
 
     expect(result.shedSet.has('stepped-zero')).toBe(false);
-    expect(result.steppedDesiredStepByDeviceId.has('stepped-zero')).toBe(false);
   });
 
   it('emits a bounded blocker event when sustained overshoot escalation has no candidates left', async () => {
