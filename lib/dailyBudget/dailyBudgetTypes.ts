@@ -47,6 +47,14 @@ export type ConfidenceDebug = {
   profileBlendConfidence: number;
 };
 
+export type DailyBudgetAllocationPressure = {
+  requestedBudgetKWh: number;
+  plannedBudgetKWh: number;
+  unallocatedBudgetKWh: number;
+  saturationRatio: number;
+  constrained: boolean;
+};
+
 export type DailyBudgetDayPayload = {
   dateKey: string;
   timeZone: string;
@@ -67,6 +75,7 @@ export type DailyBudgetDayPayload = {
     frozen: boolean;
     confidence: number;
     priceShapingActive: boolean;
+    allocationPressure?: DailyBudgetAllocationPressure;
     confidenceDebug?: ConfidenceDebug;
   };
   buckets: {

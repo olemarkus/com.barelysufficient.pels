@@ -1,4 +1,11 @@
-import { buildBucketUsage, buildBudgetUsageViews, buildDayContext } from '../lib/dailyBudget/dailyBudgetState';
+import {
+  buildBucketUsage,
+  buildBudgetUsageViews,
+  buildDailyBudgetSnapshot,
+  buildDayContext,
+} from '../lib/dailyBudget/dailyBudgetState';
+import type { BudgetState, DayContext } from '../lib/dailyBudget/dailyBudgetState';
+import type { DailyBudgetSettings } from '../lib/dailyBudget/dailyBudgetTypes';
 
 describe('daily budget state helpers', () => {
   it('buildBucketUsage clamps split data to total usage', () => {
@@ -148,4 +155,155 @@ describe('daily budget state helpers', () => {
     expect(context.usedNowKWh).toBeCloseTo(3, 6);
     expect(context.budgetControlUsedNowKWh).toBeCloseTo(2.25, 6);
   });
+
+  it('does not report allocation pressure for already consumed budget', () => {
+    const context = buildSnapshotContext({
+      currentBucketIndex: 2,
+      budgetControlBucketUsage: [8, 8, 0, 0],
+      budgetControlUsedNowKWh: 20,
+      usedNowKWh: 20,
+    });
+    const snapshot = buildDailyBudgetSnapshot({
+      context,
+      settings: buildSettings({ dailyBudgetKWh: 24 }),
+      enabled: true,
+      plannedKWh: [0, 0, 2, 2],
+      priceData: { priceShapingActive: true },
+      budget: buildBudgetState({ remainingKWh: 4 }),
+      frozen: false,
+    });
+
+    expect(snapshot.state.allocationPressure).toMatchObject({
+      requestedBudgetKWh: 4,
+      plannedBudgetKWh: 4,
+      unallocatedBudgetKWh: 0,
+      constrained: false,
+    });
+  });
+
+  it('reports allocation pressure when remaining budget cannot fit into caps', () => {
+    const context = buildSnapshotContext({
+      currentBucketIndex: 2,
+      budgetControlBucketUsage: [0, 0, 1, 0],
+      budgetControlUsedNowKWh: 2,
+      usedNowKWh: 2,
+    });
+    const snapshot = buildDailyBudgetSnapshot({
+      context,
+      settings: buildSettings({ dailyBudgetKWh: 12 }),
+      enabled: true,
+      plannedKWh: [0, 0, 3, 2],
+      priceData: { priceShapingActive: true },
+      budget: buildBudgetState({ remainingKWh: 10 }),
+      frozen: false,
+    });
+
+    expect(snapshot.state.allocationPressure).toMatchObject({
+      requestedBudgetKWh: 10,
+      plannedBudgetKWh: 4,
+      unallocatedBudgetKWh: 6,
+      constrained: true,
+    });
+  });
+
+  it('bases allocation pressure on budget-control remaining budget with exempt usage', () => {
+    const context = buildSnapshotContext({
+      currentBucketIndex: 2,
+      budgetControlBucketUsage: [0, 0, 1, 0],
+      budgetControlUsedNowKWh: 2,
+      usedNowKWh: 8,
+    });
+    const snapshot = buildDailyBudgetSnapshot({
+      context,
+      settings: buildSettings({ dailyBudgetKWh: 12 }),
+      enabled: true,
+      plannedKWh: [0, 0, 3, 2],
+      priceData: { priceShapingActive: true },
+      budget: buildBudgetState({ remainingKWh: 4 }),
+      frozen: false,
+    });
+
+    expect(snapshot.state.allocationPressure).toMatchObject({
+      requestedBudgetKWh: 10,
+      plannedBudgetKWh: 4,
+      unallocatedBudgetKWh: 6,
+      constrained: true,
+    });
+  });
+
+  it('does not report allocation pressure after the day has ended', () => {
+    const context = buildSnapshotContext({
+      currentBucketIndex: 4,
+      budgetControlBucketUsage: [2, 2, 2, 2],
+      usedNowKWh: 8,
+    });
+    const snapshot = buildDailyBudgetSnapshot({
+      context,
+      settings: buildSettings({ dailyBudgetKWh: 12 }),
+      enabled: true,
+      plannedKWh: [2, 2, 2, 2],
+      priceData: { priceShapingActive: false },
+      budget: buildBudgetState({ remainingKWh: 4 }),
+      frozen: false,
+    });
+
+    expect(snapshot.state.allocationPressure).toMatchObject({
+      requestedBudgetKWh: 0,
+      plannedBudgetKWh: 0,
+      unallocatedBudgetKWh: 0,
+      constrained: false,
+    });
+  });
 });
+
+function buildSettings(overrides: Partial<DailyBudgetSettings> = {}): DailyBudgetSettings {
+  return {
+    enabled: true,
+    dailyBudgetKWh: 24,
+    priceShapingEnabled: true,
+    controlledUsageWeight: 0,
+    priceShapingFlexShare: 1,
+    ...overrides,
+  };
+}
+
+function buildBudgetState(overrides: Partial<BudgetState> = {}): BudgetState {
+  return {
+    plannedWeight: [],
+    allowedCumKWh: [],
+    allowedNowKWh: 0,
+    remainingKWh: 0,
+    deviationKWh: 0,
+    exceeded: false,
+    confidence: 1,
+    profileBlendConfidence: 1,
+    ...overrides,
+  };
+}
+
+function buildSnapshotContext(overrides: Partial<DayContext> = {}): DayContext {
+  const dayStartUtcMs = Date.UTC(2024, 0, 1, 0, 0, 0);
+  const hourMs = 60 * 60 * 1000;
+  const bucketStartUtcMs = [0, 1, 2, 3].map((hour) => dayStartUtcMs + hour * hourMs);
+  const bucketUsage = [0, 0, 0, 0];
+  const budgetControlBucketUsage = overrides.budgetControlBucketUsage ?? bucketUsage;
+  return {
+    nowMs: dayStartUtcMs + 2 * hourMs,
+    timeZone: 'UTC',
+    dateKey: '2024-01-01',
+    dayStartUtcMs,
+    bucketStartUtcMs,
+    bucketStartLocalLabels: ['00:00', '01:00', '02:00', '03:00'],
+    bucketKeys: bucketStartUtcMs.map((ts) => new Date(ts).toISOString()),
+    currentBucketIndex: 0,
+    currentBucketProgress: 0,
+    bucketUsage,
+    budgetControlBucketUsage,
+    usedNowKWh: 0,
+    budgetControlUsedNowKWh: 0,
+    meteredUsedNowKWh: 0,
+    exemptUsedNowKWh: 0,
+    currentBucketUsage: 0,
+    ...overrides,
+  };
+}

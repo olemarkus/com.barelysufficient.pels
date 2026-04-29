@@ -212,41 +212,24 @@ Ucap[h] = Umax[h] * (1 + m)
 Ccap[h] = Cmax[h] * (1 + m)
 ```
 
-Then PELS blends the split caps by `w`:
+PELS then combines the split caps into a total plausible-load cap:
 
 ```text
-blendedCap[h] = blend(Ucap[h], Ccap[h], w)
+observedCap[h] = Ucap[h] + Ccap[h]
 ```
 
 Notes:
 
-- If one side has no usable observed max, blending is normalized over available sides.
+- If one side has no usable observed max, the other side still contributes.
 - If neither side has usable observed max, this cap is effectively disabled for that hour.
-
-The plan uses split shares per bucket:
-
-```text
-uShare[b] = plannedUncontrolledWeight[b] / (plannedUncontrolledWeight[b] + plannedControlledWeight[b])
-cShare[b] = 1 - uShare[b]
-weightedShare[b] = (1 - w) * uShare[b] + w * cShare[b]
-```
-
-The blended split cap is converted to a bucket total cap:
-
-```text
-totalCapFromBlend[b] = blendedCap[h(b)] / weightedShare[b]
-```
 
 Final bucket cap is the minimum of:
 
 - capacity per-hour cap (if configured), and
-- blended observed-peak cap above.
+- total observed-peak cap above.
 
-This gives endpoint behavior:
-
-- `w = 0`: uncontrolled side drives the cap
-- `w = 1`: controlled side drives the cap
-- `0 < w < 1`: smooth blend
+`w` does not affect the cap. Controlled usage is still available as flexible headroom above the
+floor even when `w = 0`.
 
 ## 5b) Observed hourly minimum floors (split-budget safety)
 
@@ -260,19 +243,20 @@ Ufloor[h] = max(0, Umin[h] * (1 - m))
 Cfloor[h] = max(0, Cmin[h] * (1 - m))
 ```
 
-The blended floor follows the same weighted-share math as caps:
+The floor always includes the uncontrolled minimum. Controlled minimums are added according to
+`w`:
 
 ```text
-blendedFloor[h] = blend(Ufloor[h], Cfloor[h], w)
-totalFloorFromBlend[b] = blendedFloor[h(b)] / weightedShare[b]
+floor[h] = Ufloor[h] + w * Cfloor[h]
 ```
 
 Important behavior:
 
 - Floors are enforced only while budget remains; if floors exceed remaining budget,
   all floors are scaled down proportionally to fit the budget.
-- Controlled minimums are applied post‑split so they are respected even when
-  `w = 0` (as long as the total bucket plan can accommodate them).
+- `w = 0`: only uncontrolled usage is treated as unavoidable floor.
+- `w = 1`: uncontrolled plus historical controlled minimum is treated as floor.
+- Controlled load between the floor and cap remains flexible budget headroom.
 
 ## 6) Price flex share (`p`) math
 
@@ -352,8 +336,11 @@ full-flex allocation.
 
 - Keep defaults unless you have stable data and a clear tuning goal.
 - Change one setting at a time and observe at least one full day.
-- If split caps feel too strict, reduce **Controlled usage weight** (moves cap influence toward uncontrolled side).
+- If expensive hours keep too much controlled load, reduce **Controlled usage weight** so less
+  controlled history is treated as unavoidable floor.
 - If plan movement by price is too aggressive, lower **Price flex share**.
+- If the budget cannot be fully allocated under capacity and historical caps, the Budget UI shows
+  an allocation warning; lower the daily budget or raise the relevant capacity/load assumptions.
 - If confidence stays low, verify regular power reporting and controlled/uncontrolled split data.
 
 ## 8) Debug fields to inspect
@@ -372,6 +359,7 @@ With debug logging enabled for daily budget, these fields are useful:
 - `profileObservedMaxControlledKWh`
 - `priceSpreadFactor`
 - `effectivePriceShapingFlexShare`
+- `state.allocationPressure` — requested vs planned budget and whether caps prevent full allocation
 
 ### Budget confidence fields (in `state.confidenceDebug`)
 
