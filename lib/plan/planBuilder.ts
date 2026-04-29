@@ -438,6 +438,7 @@ export class PlanBuilder {
         isCurrentHourExpensive: () => this.deps.isCurrentHourExpensive(),
         getPriceOptimizationEnabled: () => this.priceOptimizationEnabled,
         getPriceOptimizationSettings: () => this.priceOptimizationSettings,
+        debugStructured: this.deps.debugStructured,
       },
     }));
   }
