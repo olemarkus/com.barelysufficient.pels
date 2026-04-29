@@ -4,7 +4,9 @@ import { DeviceManager } from '../core/deviceManager';
 import type { PowerTrackerState } from '../core/powerTracker';
 import type { DevicePlan, PendingTargetObservationSource, PlanInputDevice, ShedAction } from './planTypes';
 import { PlanBuilder, PlanBuilderDeps } from './planBuilder';
-import { PlanActuationMode, PlanActuationResult, PlanExecutor, PlanExecutorDeps } from './planExecutor';
+import type { PlanActuationMode } from '../executor/executorTypes';
+import { PlanExecutor } from './planExecutor';
+import type { PlanActuationResult, PlanExecutorDeps } from './planExecutor';
 import { createPlanEngineState, PlanEngineState } from './planState';
 import {
   evaluateHeadroomForDevice,

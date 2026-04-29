@@ -17,7 +17,7 @@ import type {
   ShedAction,
 } from './planTypes';
 import type { PlanEngineState } from './planState';
-import type { PlanActuationMode } from './planExecutor';
+import type { PlanActuationMode } from '../executor/executorTypes';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { StructuredDebugEmitter } from '../logging/logger';
 

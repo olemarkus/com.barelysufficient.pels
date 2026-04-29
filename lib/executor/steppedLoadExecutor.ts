@@ -11,19 +11,19 @@ import {
   canTurnOnDevice,
   recordActivationAttemptStarted,
   recordActivationSetbackForDevice,
-} from './planExecutorSupport';
-import { setBinaryControl } from './planBinaryControl';
-import { resolveSteppedLoadCommandPendingMs } from './planObservationPolicy';
+} from '../plan/planExecutorSupport';
+import { setBinaryControl } from '../plan/planBinaryControl';
+import { resolveSteppedLoadCommandPendingMs } from '../plan/planObservationPolicy';
 import {
   isRequestedStepMaterialized,
   type SteppedStepActuationState,
-} from '../executor/steppedLoadActuation';
-import type { ExecutableSteppedLoadDevice, ExecutableSteppedLoadTransition } from '../executor/executablePlan';
+} from './steppedLoadActuation';
+import type { ExecutableSteppedLoadDevice, ExecutableSteppedLoadTransition } from './executablePlan';
 import {
   isNativeSteppedLoadControlEnabled,
 } from '../core/nativeSteppedLoadWiring';
-import type { PlanActuationMode } from './planExecutor';
-import type { PlanEngineState } from './planState';
+import type { PlanActuationMode } from './executorTypes';
+import type { PlanEngineState } from '../plan/planState';
 import type { DeviceManager } from '../core/deviceManager';
 import { PELS_TARGET_STEP_CAPABILITY_ID } from '../core/steppedLoadSyntheticCapabilities';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
@@ -374,7 +374,7 @@ export const applySteppedLoadRestore = async (
     ctx.logDebug(`Capacity: ${name} violates keep invariant: onoff=${snapshot?.currentOn}`);
   }
   if (applyKeepInvariantShedBlock(ctx, action, name, anyShedDevices, requestedStepId)) return false;
-  // eslint-disable-next-line no-param-reassign -- Shared executor state update.
+  // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
   delete ctx.state.keepInvariantShedBlockedByDevice[action.id];
   const binaryRestoreSkip = maybeSkipSteppedLoadRestoreBinary(ctx, {
     action,
@@ -852,7 +852,7 @@ const applyKeepInvariantShedBlock = (
       lowestNonZeroStepId: lowestNonZeroStep.id,
       rejectionReason: 'shed_invariant',
     });
-    // eslint-disable-next-line no-param-reassign -- Shared executor state update.
+    // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
     ctx.state.keepInvariantShedBlockedByDevice[action.id] = {
       desiredStepId,
       lowestNonZeroStepId: lowestNonZeroStep.id,
