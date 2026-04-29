@@ -15,7 +15,7 @@ import {
   recomputeSettingsUiDailyBudget,
   resetSettingsUiPowerStats,
 } from '../lib/app/settingsUiApi';
-import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
+import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../packages/contracts/src/settingsUiApi';
 import { buildComparablePlanReason } from '../packages/shared-domain/src/planReasonSemantics';
 
 const hashHomeyIdForTest = (homeyId: string): string => (
