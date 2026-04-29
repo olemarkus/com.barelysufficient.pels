@@ -28,6 +28,7 @@ export type PlanContext = {
   capacitySoftLimit: number;
   dailySoftLimit: number | null;
   softLimitSource: SoftLimitSource;
+  hourBucketKey: string;
   budgetKWh: number;
   usedKWh: number;
   minutesRemaining: number;
@@ -102,6 +103,7 @@ export function buildPlanContext(params: {
     capacitySoftLimit,
     dailySoftLimit,
     softLimitSource,
+    hourBucketKey: hourContext.bucketKey,
     budgetKWh,
     usedKWh,
     minutesRemaining,

@@ -131,4 +131,96 @@ describe('PlanBuilder budget exemption handling', () => {
       expect.objectContaining({ id: 'regular', plannedState: 'keep' }),
     ]));
   });
+
+  it('derives plan meta hourly other energy from total minus controlled when raw uncontrolled is stale', async () => {
+    const currentHourIso = '2026-03-11T10:00:00.000Z';
+    const capacityGuard = new CapacityGuard({ limitKw: 10, softMarginKw: 0.2 });
+    capacityGuard.reportTotalPower(2.5);
+
+    const builder = new PlanBuilder({
+      homey: {
+        settings: {
+          set: vi.fn(),
+        },
+      } as never,
+      getCapacityGuard: () => capacityGuard,
+      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2 }),
+      getOperatingMode: () => 'Home',
+      getModeDeviceTargets: () => ({}),
+      getPriceOptimizationEnabled: () => false,
+      getPriceOptimizationSettings: () => ({}),
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getPowerTracker: () => ({
+        buckets: {
+          [currentHourIso]: 1.8,
+        },
+        controlledBuckets: {
+          [currentHourIso]: 0.6,
+        },
+        uncontrolledBuckets: {
+          [currentHourIso]: 0.15,
+        },
+        lastTimestamp: Date.now(),
+      }),
+      getDailyBudgetSnapshot: () => null,
+      getPriorityForDevice: () => 100,
+      getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+      getDynamicSoftLimitOverride: () => 10,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+    }, createPlanEngineState());
+
+    const plan = await builder.buildDevicePlanSnapshot([]);
+
+    expect(plan.meta.hourControlledKWh).toBeCloseTo(0.6, 6);
+    expect(plan.meta.hourUncontrolledKWh).toBeCloseTo(1.2, 6);
+    expect(plan.meta.usedKWh).toBeCloseTo(1.8, 6);
+  });
+
+  it('uses the planning hour bucket for plan meta hourly energy split', async () => {
+    const currentHourIso = '2026-03-11T10:00:00.000Z';
+    const lastSampleHourIso = '2026-03-11T09:00:00.000Z';
+    const capacityGuard = new CapacityGuard({ limitKw: 10, softMarginKw: 0.2 });
+    capacityGuard.reportTotalPower(2.5);
+
+    const builder = new PlanBuilder({
+      homey: {
+        settings: {
+          set: vi.fn(),
+        },
+      } as never,
+      getCapacityGuard: () => capacityGuard,
+      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2 }),
+      getOperatingMode: () => 'Home',
+      getModeDeviceTargets: () => ({}),
+      getPriceOptimizationEnabled: () => false,
+      getPriceOptimizationSettings: () => ({}),
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getPowerTracker: () => ({
+        buckets: {
+          [lastSampleHourIso]: 9,
+          [currentHourIso]: 1.8,
+        },
+        controlledBuckets: {
+          [lastSampleHourIso]: 8,
+          [currentHourIso]: 0.6,
+        },
+        lastTimestamp: new Date(lastSampleHourIso).getTime(),
+      }),
+      getDailyBudgetSnapshot: () => null,
+      getPriorityForDevice: () => 100,
+      getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+      getDynamicSoftLimitOverride: () => 10,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+    }, createPlanEngineState());
+
+    const plan = await builder.buildDevicePlanSnapshot([]);
+
+    expect(plan.meta.usedKWh).toBeCloseTo(1.8, 6);
+    expect(plan.meta.hourControlledKWh).toBeCloseTo(0.6, 6);
+    expect(plan.meta.hourUncontrolledKWh).toBeCloseTo(1.2, 6);
+  });
 });
