@@ -749,6 +749,7 @@ export class DeviceManager extends EventEmitter {
                 device: observedDevice,
                 snapshot: currentSnapshot,
                 previousSnapshot,
+                skipInvalidControlPayload: hadInvalidBinaryControlPayload,
             });
         }
         if (deviceId && result.hadChanges) {
@@ -806,10 +807,7 @@ export class DeviceManager extends EventEmitter {
             source: 'device_update',
             value: payload.value,
         });
-        return {
-            device: this.withoutCapabilityValue(device, payload.observedCapabilityId),
-            hadInvalidBinaryControlPayload: true,
-        };
+        return { device, hadInvalidBinaryControlPayload: true };
     }
 
     private applyBinarySettleEvidenceFromDeviceUpdate(params: {
@@ -817,12 +815,14 @@ export class DeviceManager extends EventEmitter {
         device: HomeyDeviceLike;
         snapshot: TargetDeviceSnapshot | null;
         previousSnapshot: TargetDeviceSnapshot | undefined;
+        skipInvalidControlPayload?: boolean;
     }): void {
         const {
             deviceId,
             device,
             snapshot,
             previousSnapshot,
+            skipInvalidControlPayload = false,
         } = params;
         if (!snapshot) {
             if (previousSnapshot) {
@@ -847,6 +847,7 @@ export class DeviceManager extends EventEmitter {
             snapshot,
         });
         if (evStateHandled) return;
+        if (skipInvalidControlPayload) return;
         const payload = this.resolveBinaryControlPayload(device, snapshot, previousSnapshot);
         if (!payload.present) {
             this.applyCachedBinarySettleEvidenceToSnapshot(snapshot);
@@ -1092,7 +1093,7 @@ export class DeviceManager extends EventEmitter {
         const existing = this.latestBinarySettleEvidenceByDeviceId.get(deviceId);
         if (!existing || existing.capabilityId !== capabilityId) return;
         this.clearBinarySettleEvidence(deviceId);
-        this.logger.structuredLog?.info({
+        this.logger.structuredLog?.error({
             event: 'binary_settle_evidence_cleared',
             reasonCode: 'invalid_control_payload',
             deviceId,
@@ -1154,20 +1155,6 @@ export class DeviceManager extends EventEmitter {
             present: true,
             value: capability?.value,
             observedAtMs: toCapabilityTimestampMs(capability?.lastUpdated),
-        };
-    }
-
-    private withoutCapabilityValue(device: HomeyDeviceLike, capabilityId: string): HomeyDeviceLike {
-        const capability = device.capabilitiesObj?.[capabilityId];
-        if (!capability) return device;
-        const nextCapability = { ...capability };
-        delete nextCapability.value;
-        return {
-            ...device,
-            capabilitiesObj: {
-                ...device.capabilitiesObj,
-                [capabilityId]: nextCapability,
-            },
         };
     }
 
@@ -1627,7 +1614,12 @@ export class DeviceManager extends EventEmitter {
         list: HomeyDeviceLike[],
         livePowerWByDeviceId: LiveDevicePowerWatts = {},
     ): TargetDeviceSnapshot[] {
-        return parseDeviceList({ list, livePowerWByDeviceId, deps: this.getParseDeviceDeps() });
+        return parseDeviceList({
+            list,
+            livePowerWByDeviceId,
+            previousSnapshotById: this.latestSnapshotById,
+            deps: this.getParseDeviceDeps(),
+        });
     }
 
     private parseDevice(
@@ -1635,7 +1627,13 @@ export class DeviceManager extends EventEmitter {
         now: number,
         livePowerWByDeviceId: LiveDevicePowerWatts,
     ): TargetDeviceSnapshot | null {
-        return parseDevice({ device, now, livePowerWByDeviceId, deps: this.getParseDeviceDeps() });
+        return parseDevice({
+            device,
+            now,
+            livePowerWByDeviceId,
+            previousSnapshot: this.latestSnapshotById.get(getDeviceId(device)),
+            deps: this.getParseDeviceDeps(),
+        });
     }
 
     private getParseDeviceDeps() {

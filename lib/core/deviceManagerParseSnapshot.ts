@@ -19,9 +19,9 @@ export function resolveParsedControlState(params: {
   evCharging: TargetDeviceSnapshot['evCharging'];
   evChargingState: TargetDeviceSnapshot['evChargingState'];
   flowBackedCapabilityIds: FlowReportedCapabilityId[];
-  currentOn: boolean;
+  currentOn?: boolean;
 }): {
-  currentOn: boolean;
+  currentOn?: boolean;
   canSetControl: boolean | undefined;
 } {
   const {
@@ -58,6 +58,7 @@ export function resolveParsedControlState(params: {
 export function resolveLastFreshDataMs(params: {
   capabilityObj: DeviceCapabilityMap;
   controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+  includeEvChargingState?: boolean;
   targetCaps: readonly string[];
   observedCapabilityAtMs?: number;
   measuredPowerObservedAtMs?: number;
@@ -65,6 +66,7 @@ export function resolveLastFreshDataMs(params: {
   const {
     capabilityObj,
     controlCapabilityId,
+    includeEvChargingState = true,
     targetCaps,
     observedCapabilityAtMs,
     measuredPowerObservedAtMs,
@@ -74,7 +76,7 @@ export function resolveLastFreshDataMs(params: {
       ...(controlCapabilityId ? [controlCapabilityId] : []),
       ...targetCaps,
       'measure_temperature',
-      'evcharger_charging_state',
+      ...(includeEvChargingState ? ['evcharger_charging_state'] : []),
     ]) ?? 0,
     observedCapabilityAtMs ?? 0,
     measuredPowerObservedAtMs ?? 0,
@@ -160,8 +162,8 @@ function resolveSnapshotCurrentOn(params: {
   capabilityObj: DeviceCapabilityMap;
   evCharging: TargetDeviceSnapshot['evCharging'];
   evChargingState: TargetDeviceSnapshot['evChargingState'];
-  currentOn: boolean;
-}): boolean {
+  currentOn?: boolean;
+}): boolean | undefined {
   const {
     debugStructured,
     deviceId,

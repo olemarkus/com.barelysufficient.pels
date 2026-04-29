@@ -204,6 +204,9 @@ export function mergeFresherCapabilityObservations(params: {
         const previous = previousById.get(snapshot.id);
         const sourceDevice = devicesById.get(snapshot.id);
         if (!previous || !sourceDevice) continue;
+        const hasTrustedTargetedRefresh = targetedRefreshPollAtMs
+            ? hasTrustedTargetedRefreshEvidence(sourceDevice, snapshot)
+            : false;
         mergeSnapshotObservationsForDevice({
             state,
             nextSnapshot: snapshot,
@@ -211,7 +214,7 @@ export function mergeFresherCapabilityObservations(params: {
             sourceDevice,
             logger,
         });
-        if (targetedRefreshPollAtMs) {
+        if (targetedRefreshPollAtMs && hasTrustedTargetedRefresh) {
             snapshot.lastFreshDataMs = Math.max(
                 snapshot.lastFreshDataMs ?? 0,
                 targetedRefreshPollAtMs,
@@ -219,6 +222,45 @@ export function mergeFresherCapabilityObservations(params: {
             snapshot.lastUpdated = snapshot.lastFreshDataMs;
         }
     }
+}
+
+function hasTrustedTargetedRefreshEvidence(
+    sourceDevice: HomeyDeviceLike,
+    snapshot: TargetDeviceSnapshot,
+): boolean {
+    const capabilities = sourceDevice.capabilitiesObj ?? {};
+    return hasTrustedControlRefreshEvidence(capabilities, snapshot)
+        || hasTrustedScalarRefreshEvidence(capabilities)
+        || hasTrustedTargetRefreshEvidence(capabilities, snapshot);
+}
+
+function hasTrustedControlRefreshEvidence(
+    capabilities: HomeyDeviceLike['capabilitiesObj'],
+    snapshot: TargetDeviceSnapshot,
+): boolean {
+    if (
+        snapshot.binaryControlObservation?.valid
+        && snapshot.binaryControlObservation.capabilityId === snapshot.controlCapabilityId
+        && typeof snapshot.binaryControlObservation.observedValue === 'boolean'
+    ) {
+        return true;
+    }
+    const controlCapabilityId = snapshot.controlObservationCapabilityId ?? snapshot.controlCapabilityId;
+    if (controlCapabilityId && typeof capabilities?.[controlCapabilityId]?.value === 'boolean') return true;
+    return snapshot.controlCapabilityId === 'evcharger_charging'
+        && resolveEvChargingStateBinaryEvidence(capabilities?.evcharger_charging_state?.value) !== undefined;
+}
+
+function hasTrustedScalarRefreshEvidence(capabilities: HomeyDeviceLike['capabilitiesObj']): boolean {
+    return typeof capabilities?.measure_power?.value === 'number'
+        || typeof capabilities?.measure_temperature?.value === 'number';
+}
+
+function hasTrustedTargetRefreshEvidence(
+    capabilities: HomeyDeviceLike['capabilitiesObj'],
+    snapshot: TargetDeviceSnapshot,
+): boolean {
+    return snapshot.targets.some((target) => typeof capabilities?.[target.id]?.value === 'number');
 }
 
 export function recordSnapshotCapabilityObservations(params: {

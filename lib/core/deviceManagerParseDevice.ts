@@ -20,8 +20,8 @@ import {
 import {
   getControlCapabilityId,
   getEvCharging,
-  getCurrentOn,
   getEvChargingState,
+  resolveEvChargingStateBinaryEvidence,
   type DeviceCapabilityMap,
 } from './deviceManagerControl';
 import {
@@ -44,10 +44,10 @@ import { shouldSkipFlowBackedCandidate } from './deviceManagerFlowSupport';
 import {
     resolveLastFreshDataMs,
     resolveBinaryControlObservation,
-    resolveParsedControlState,
 } from './deviceManagerParseSnapshot';
 import { resolveStateOfChargeSnapshot } from './deviceStateOfCharge';
 import type { StructuredDebugEmitter } from '../logging/logger';
+import { resolveDeviceParsedControlState } from './deviceManagerParsedControlState';
 
 type ParsedDeviceSettings = Pick<
     TargetDeviceSnapshot,
@@ -85,12 +85,19 @@ export type DeviceManagerParseDeps = {
 export function parseDeviceList(params: {
     list: HomeyDeviceLike[];
     livePowerWByDeviceId?: LiveDevicePowerWatts;
+    previousSnapshotById?: ReadonlyMap<string, TargetDeviceSnapshot>;
     deps: DeviceManagerParseDeps;
 }): TargetDeviceSnapshot[] {
-    const { list, livePowerWByDeviceId = {}, deps } = params;
+    const { list, livePowerWByDeviceId = {}, previousSnapshotById, deps } = params;
     const now = Date.now();
     return list
-        .map((device) => parseDevice({ device, now, livePowerWByDeviceId, deps }))
+        .map((device) => parseDevice({
+            device,
+            now,
+            livePowerWByDeviceId,
+            previousSnapshot: previousSnapshotById?.get(getDeviceId(device)),
+            deps,
+        }))
         .filter(Boolean) as TargetDeviceSnapshot[];
 }
 
@@ -98,14 +105,10 @@ export function parseDevice(params: {
     device: HomeyDeviceLike;
     now: number;
     livePowerWByDeviceId?: LiveDevicePowerWatts;
+    previousSnapshot?: TargetDeviceSnapshot;
     deps: DeviceManagerParseDeps;
 }): TargetDeviceSnapshot | null {
-    const {
-        device,
-        now,
-        livePowerWByDeviceId = {},
-        deps,
-    } = params;
+    const { device, now, livePowerWByDeviceId = {}, previousSnapshot, deps } = params;
     const {
         logger,
         providers,
@@ -182,33 +185,35 @@ export function parseDevice(params: {
     const controlCapabilityId = getControlCapabilityId({ deviceClassKey, capabilities });
     const evCharging = getEvCharging(capabilityObj);
     const evChargingState = getEvChargingState(capabilityObj);
-    const { currentOn, canSetControl } = resolveParsedControlState({
+    const { currentOn, canSetControl, observedCurrentOn } = resolveDeviceParsedControlState({
+        logger,
         debugStructured: deps.debugStructured, deviceId, deviceName: effectiveDevice.name ?? null,
         deviceLabel,
+        deviceClassKey,
         controlCapabilityId,
         controlWriteCapabilityId,
         capabilityObj,
         evCharging,
         evChargingState,
         flowBackedCapabilityIds,
-        currentOn: getCurrentOn({ deviceClassKey, capabilityObj, controlCapabilityId }),
+        previousSnapshot,
     });
+    if (currentOn === undefined) {
+        return null;
+    }
     const available = getIsAvailable(effectiveDevice);
     const powerCapable = isPowerCapable(effectiveDevice, capsStatus, powerEstimate);
     if (shouldSkipFlowBackedCandidate({
-        flowAugmentedDeviceType,
-        flowBackedCapabilityIds,
-        capabilities,
-        capabilityObj,
-        requiredFlowCapabilityIds,
-        reportedCapabilities,
-        powerCapable,
+        flowAugmentedDeviceType, flowBackedCapabilityIds, capabilities, capabilityObj,
+        requiredFlowCapabilityIds, reportedCapabilities, powerCapable,
     })) {
         return null;
     }
     const lastFreshDataMs = resolveLastFreshDataMs({
         capabilityObj,
-        controlCapabilityId,
+        controlCapabilityId: observedCurrentOn !== undefined ? controlCapabilityId : undefined,
+        includeEvChargingState: evChargingState === undefined
+            || resolveEvChargingStateBinaryEvidence(evChargingState) !== undefined,
         targetCaps,
         observedCapabilityAtMs: reportedStepObservedAtMs, measuredPowerObservedAtMs: measuredPower.observedAtMs,
     });
