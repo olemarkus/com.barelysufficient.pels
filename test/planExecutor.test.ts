@@ -1246,6 +1246,9 @@ describe('PlanExecutor stepped loads', () => {
       currentState: 'off',
       plannedState: 'keep',
       selectedStepId: 'low',
+      reportedStepId: 'low',
+      actualStepId: 'low',
+      actualStepSource: 'reported',
       desiredStepId: 'low', // no step change needed
     }));
 
@@ -1574,7 +1577,7 @@ describe('PlanExecutor stepped loads', () => {
     }));
   });
 
-  it('restores a stepped device at its off-step when keep intent requires onoff=true', async () => {
+  it('issues a pre-restore step for a stepped device at its off-step', async () => {
     const snapshot = [
       {
         id: 'dev-1',
@@ -1599,9 +1602,8 @@ describe('PlanExecutor stepped loads', () => {
       expect.objectContaining({ step_id: 'low' }),
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
-    // Binary control should also be set because keep requires onoff=true
-    // The device was at off-step with onoff=false, which violates keep invariant
-    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    // Binary restore waits for explicit reported preparation evidence.
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
 
   it('requests the lowest restore step before turning on a stepped device that is off at a stale higher step', async () => {
@@ -1628,11 +1630,7 @@ describe('PlanExecutor stepped loads', () => {
       expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
-    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
-
-    const [stepCallOrder] = desiredSteppedTrigger.trigger.mock.invocationCallOrder;
-    const [onoffCallOrder] = deviceManager.setCapability.mock.invocationCallOrder;
-    expect(stepCallOrder).toBeLessThan(onoffCallOrder);
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
 
   it('does not turn a stepped device on when the required pre-restore step command cannot be issued', async () => {
@@ -1671,7 +1669,7 @@ describe('PlanExecutor stepped loads', () => {
     }));
   });
 
-  it('retries binary restore when the required pre-restore step command is already pending', async () => {
+  it('does not retry binary restore when the required pre-restore step command is still pending', async () => {
     const snapshot = [
       {
         id: 'dev-1',
@@ -1682,7 +1680,7 @@ describe('PlanExecutor stepped loads', () => {
         currentOn: false,
       },
     ];
-    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+    const { executor, deviceManager, desiredSteppedTrigger, debugStructured } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
@@ -1695,7 +1693,15 @@ describe('PlanExecutor stepped loads', () => {
     }));
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
-    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'pre_restore_step_required',
+      skipDetailCode: 'pre_restore_step_pending_confirmation',
+      desiredStepId: 'low',
+      deviceId: 'dev-1',
+      actuationMode: 'plan',
+    }));
   });
 
   it('does not retry binary restore while the required pre-restore step is in retry backoff', async () => {
@@ -2053,7 +2059,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   });
 
   const buildLiveDevices = (
-    overrides: Partial<Pick<PlanInputDevice, 'currentOn' | 'selectedStepId'>> = {},
+    overrides: Partial<PlanInputDevice> = {},
   ): PlanInputDevice[] => [{
     id: 'dev-1',
     name: 'Tank',
@@ -2076,7 +2082,13 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('detects onoff drift and restores a keep device turned off externally', async () => {
     const appliedPlan = steppedPlan({ currentState: 'on', selectedStepId: 'low', desiredStepId: 'low' });
-    const liveDevices = buildLiveDevices({ currentOn: false, selectedStepId: 'low' });
+    const liveDevices = buildLiveDevices({
+      currentOn: false,
+      selectedStepId: 'low',
+      reportedStepId: 'low',
+      actualStepId: 'low',
+      actualStepSource: 'reported',
+    });
 
     const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
     expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
@@ -2332,7 +2344,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     }));
   });
 
-  it('fixes both onoff=false and step=off when keep intent is violated on both axes', async () => {
+  it('issues the pre-restore step and defers binary restore when both onoff and step are violated', async () => {
     // Both violations: raw snapshot has currentOn=false AND selectedStepId='off'
     // while desiredStepId='low'. Both onoffViolated and stepViolated should be true.
     const snapshot = buildSnapshot({ currentOn: false });
@@ -2352,8 +2364,9 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect.objectContaining({ step_id: 'low' }),
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
-    // Binary restore should be issued (onoff was false)
-    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    // Binary restore waits for reported step evidence; the same-cycle step
+    // request is not proof that the load is safe to energize.
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
     // Both violations should be logged
     expect(deps.logDebug).toHaveBeenCalledWith(
       expect.stringContaining('violates keep invariant: onoff='),
@@ -2392,6 +2405,51 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       deviceId: 'dev-1',
       actuationMode: 'reconcile',
     }));
+  });
+
+  it('does not use selectedStepId alone as restore preparation proof', async () => {
+    const snapshot = buildSnapshot({ currentOn: false });
+    const { executor, deviceManager, desiredSteppedTrigger, debugStructured } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'pre_restore_step_required',
+      skipDetailCode: 'pre_restore_step_command_not_issued',
+      desiredStepId: 'low',
+      deviceId: 'dev-1',
+      actuationMode: 'reconcile',
+    }));
+  });
+
+  it('uses reported step evidence as restore preparation proof', async () => {
+    const snapshot = buildSnapshot({ currentOn: false });
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      reportedStepId: 'low',
+      actualStepId: 'low',
+      actualStepSource: 'reported',
+      desiredStepId: 'low',
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
 
   it('logs the plan reason when stepped restore is not admitted', async () => {
@@ -2451,7 +2509,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     }));
   });
 
-  it('normalizes a shed-constrained keep restore to the lowest non-zero step before turning on', async () => {
+  it('normalizes a shed-constrained keep restore to the lowest non-zero step before binary restore', async () => {
     const snapshot = buildSnapshot({ currentOn: false });
     const structuredLog = { info: vi.fn() };
     const debugStructured = vi.fn();
@@ -2496,7 +2554,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
-    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
@@ -2505,7 +2563,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     }));
   });
 
-  it('allows keep-invariant restore when shed devices exist but desiredStepId is at lowestNonZeroStep', async () => {
+  it('defers keep-invariant restore when shed devices exist but step preparation is not reported', async () => {
     const snapshot = buildSnapshot({ currentOn: false });
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
@@ -2541,19 +2599,17 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     await executor.applyPlanActions(plan, 'reconcile');
 
-    // Binary restore IS allowed — desiredStepId is exactly lowestNonZeroStep
-    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
 
-  it('allows keep-invariant restore when no devices are shed', async () => {
+  it('defers keep-invariant restore when no devices are shed but step preparation is not reported', async () => {
     const snapshot = buildSnapshot({ currentOn: false });
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({ currentState: 'off', selectedStepId: 'off', desiredStepId: 'max' });
     await executor.applyPlanActions(plan, 'reconcile');
 
-    // No shed devices → restore allowed even though desiredStepId='max'
-    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
 
   it('does not emit restore_keep_invariant_shed_blocked for a true off restore while devices remain shed', async () => {
@@ -2634,7 +2690,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect.objectContaining({ step_id: 'low' }),
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
-    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
@@ -2735,6 +2791,9 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         currentState: 'off',
         plannedState: 'keep',
         selectedStepId: 'low',
+        reportedStepId: 'low',
+        actualStepId: 'low',
+        actualStepSource: 'reported',
         desiredStepId: 'low', // non-zero, matches selected — no step change
       }));
 
@@ -2746,10 +2805,10 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     // Test 3.2: desiredStepId has been pre-normalized to 'low' (lowest non-zero) before
     // the executor runs. With the correct desiredStepId in place, the executor must issue
-    // BOTH the binary on AND the step-up command.
+    // the step-up command and wait for reported preparation evidence before binary restore.
     // Note: this passes because desiredStepId is explicitly set to 'low' here.
     // The companion planDevices test (it.fails) covers the normalization gap.
-    it('issues onoff=true and step command when desiredStepId is pre-normalized to lowest non-zero and step is at off-step', async () => {
+    it('issues step command when desiredStepId is pre-normalized to lowest non-zero and step is at off-step', async () => {
       const snapshot = [
         {
           id: 'dev-1',
@@ -2769,8 +2828,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         desiredStepId: 'low', // pre-normalized to lowest non-zero
       }));
 
-      // Binary restore
-      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+      expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
       // Step command from off → low
       expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
         expect.objectContaining({ step_id: 'low' }),
@@ -2781,7 +2839,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     // Test 3.3: selectedStepId is unknown while binary onoff is false.
     // Restore must re-enter at the lowest non-zero step rather than trusting a stale
     // desiredStepId, so the load becomes deterministic again.
-    it('normalizes unknown-step restore to the lowest non-zero step before binary on', async () => {
+    it('normalizes unknown-step restore to the lowest non-zero step before binary restore', async () => {
       const snapshot = [
         {
           id: 'dev-1',
@@ -2806,9 +2864,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         expect.objectContaining({ step_id: 'low' }),
         expect.objectContaining({ deviceId: 'dev-1' }),
       );
-      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
-      expect(desiredSteppedTrigger.trigger.mock.invocationCallOrder[0])
-        .toBeLessThan(deviceManager.setCapability.mock.invocationCallOrder[0]);
+      expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
     });
 
     it('does not issue a forced normalization step when the current non-zero step is already known', async () => {
@@ -2828,6 +2884,9 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         currentState: 'off',
         plannedState: 'keep',
         selectedStepId: 'low',
+        reportedStepId: 'low',
+        actualStepId: 'low',
+        actualStepSource: 'reported',
         desiredStepId: 'low',
       }));
 
@@ -2835,7 +2894,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     });
 
-    it('still sends the normalization step before a failing binary restore', async () => {
+    it('still sends the normalization step and waits before binary restore', async () => {
       const snapshot = [
         {
           id: 'dev-1',
@@ -2847,7 +2906,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         },
       ];
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
-      deviceManager.setCapability.mockRejectedValueOnce(new Error('boom'));
 
       await executor.applyPlanActions(steppedPlan({
         currentState: 'off',
@@ -2860,7 +2918,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         expect.objectContaining({ step_id: 'low' }),
         expect.objectContaining({ deviceId: 'dev-1' }),
       );
-      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+      expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
     });
 
     // Test 3.4 / Regression 5.2 (executor layer): when both desiredStepId and selectedStepId
@@ -2890,8 +2948,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         desiredStepId: 'off', // un-normalized: should still trigger step command to 'low'
       }));
 
-      // Binary must be restored
-      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+      expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
       // A step command to the lowest non-zero step must also be issued
       expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
         expect.objectContaining({ step_id: 'low' }),

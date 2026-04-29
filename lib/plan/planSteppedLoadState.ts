@@ -134,6 +134,15 @@ export function resolveEffectiveStepId(state: NormalizedSteppedLoadStepState): S
   return 'unknown';
 }
 
+export function isRestoreStepPrepared(params: {
+  desiredStepId?: string | null;
+  preparedStepId?: string | null;
+}): boolean {
+  const desiredStepId = normalizeStepId(params.desiredStepId);
+  const preparedStepId = normalizeStepId(params.preparedStepId);
+  return desiredStepId !== undefined && preparedStepId === desiredStepId;
+}
+
 export function serializeLegacyStepFields(state: NormalizedSteppedLoadStepState): LegacyStepFields {
   const effectiveStepId = resolveEffectiveStepId(state);
   const reportedStepId = state.observation.kind === 'reported' ? state.observation.stepId : undefined;
