@@ -234,9 +234,7 @@ export function resolveCandidateCapabilities(params: {
 function hasAnyPowerCapability(capabilities: readonly string[]): boolean {
   return capabilities.some((capabilityId) => (
     capabilityId === 'measure_power'
-    || capabilityId.startsWith('measure_power.')
     || capabilityId === 'meter_power'
-    || capabilityId.startsWith('meter_power.')
   ));
 }
 

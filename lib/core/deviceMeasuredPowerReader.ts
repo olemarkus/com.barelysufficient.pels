@@ -1,6 +1,9 @@
 import type { DeviceCapabilityMap } from './deviceManagerControl';
 import type { LiveDevicePowerWatts } from './deviceManagerEnergy';
-import { getCapabilityValueByPrefix } from './deviceManagerParse';
+import {
+  getExactPowerCapabilityValue,
+  type PowerCapabilityId,
+} from './deviceManagerParse';
 
 export type DeviceMeasuredPowerObservation = {
   measurePowerW?: number;
@@ -25,8 +28,8 @@ export function readDeviceMeasuredPowerObservation(params: {
     livePowerWByDeviceId = {},
     homeyEnergyObservedAtMs,
   } = params;
-  const measurePower = readFiniteCapabilityByPrefix(capabilities, capabilityObj, 'measure_power');
-  const meterPower = readFiniteCapabilityByPrefix(capabilities, capabilityObj, 'meter_power');
+  const measurePower = readFinitePowerCapability(capabilities, capabilityObj, 'measure_power');
+  const meterPower = readFinitePowerCapability(capabilities, capabilityObj, 'meter_power');
   const homeyEnergyLiveW = toFiniteNumber(livePowerWByDeviceId[deviceId]);
   return {
     measurePowerW: measurePower.value,
@@ -42,27 +45,18 @@ function toFiniteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-function readFiniteCapabilityByPrefix(
-  capabilities: string[],
+function readFinitePowerCapability(
+  capabilities: readonly string[],
   capabilityObj: DeviceCapabilityMap,
-  prefix: 'measure_power' | 'meter_power',
+  capabilityId: PowerCapabilityId,
 ): { value?: number; observedAtMs?: number } {
-  const value = toFiniteNumber(getCapabilityValueByPrefix(capabilities, capabilityObj, prefix));
-  const capabilityId = resolveCapabilityIdByPrefix(capabilities, prefix);
+  const value = toFiniteNumber(getExactPowerCapabilityValue(capabilities, capabilityObj, capabilityId));
   return {
     value,
-    observedAtMs: capabilityId ? toTimestampMs(capabilityObj[capabilityId]?.lastUpdated) : undefined,
+    observedAtMs: capabilities.includes(capabilityId)
+      ? toTimestampMs(capabilityObj[capabilityId]?.lastUpdated)
+      : undefined,
   };
-}
-
-function resolveCapabilityIdByPrefix(
-  capabilities: string[],
-  prefix: 'measure_power' | 'meter_power',
-): string | undefined {
-  if (capabilities.includes(prefix)) {
-    return prefix;
-  }
-  return capabilities.find((capabilityId) => capabilityId.startsWith(`${prefix}.`));
 }
 
 function toTimestampMs(value: unknown): number | undefined {

@@ -4,6 +4,7 @@ import type { DeviceCapabilityMap } from './deviceManagerControl';
 const TARGET_CAPABILITY_PREFIXES = ['target_temperature'];
 const POWER_CAPABILITY_PREFIXES = ['measure_power', 'meter_power'] as const;
 const POWER_CAPABILITY_SET = new Set(POWER_CAPABILITY_PREFIXES);
+export type PowerCapabilityId = (typeof POWER_CAPABILITY_PREFIXES)[number];
 
 export function resolveDeviceCapabilities(params: {
   deviceClassKey: string;
@@ -48,17 +49,16 @@ export function resolveDeviceCapabilities(params: {
   return { targetCaps, hasPower };
 }
 
-export function getCapabilityValueByPrefix(
-  capabilities: string[],
+export function getExactPowerCapabilityValue(
+  capabilities: readonly string[],
   capabilityObj: DeviceCapabilityMap,
-  prefix: (typeof POWER_CAPABILITY_PREFIXES)[number],
+  capabilityId: PowerCapabilityId,
 ): unknown {
-  if (capabilities.includes(prefix)) {
-    const direct = capabilityObj[prefix]?.value;
+  if (capabilities.includes(capabilityId)) {
+    const direct = capabilityObj[capabilityId]?.value;
     if (direct !== undefined) return direct;
   }
-  const capId = capabilities.find((cap) => cap === prefix || cap.startsWith(`${prefix}.`));
-  return capId ? capabilityObj[capId]?.value : undefined;
+  return undefined;
 }
 
 export function getCurrentTemperature(capabilityObj: DeviceCapabilityMap): number | undefined {
@@ -121,10 +121,7 @@ function resolveTargetCapabilityValue(params: {
 }
 
 function hasPowerCapability(capabilities: string[]): boolean {
-  return capabilities.some((cap) => (
-    POWER_CAPABILITY_SET.has(cap as (typeof POWER_CAPABILITY_PREFIXES)[number])
-    || POWER_CAPABILITY_PREFIXES.some((prefix) => cap.startsWith(`${prefix}.`))
-  ));
+  return capabilities.some((cap) => POWER_CAPABILITY_SET.has(cap as PowerCapabilityId));
 }
 
 function getTargetCaps(capabilities: string[]): string[] {

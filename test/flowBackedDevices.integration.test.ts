@@ -155,7 +155,7 @@ describe('Flow-backed device support', () => {
     expect(getSnapshot().find((device) => device.id === 'binary-1')?.flowBacked).toBeUndefined();
   });
 
-  it('admits a binary device when native prefixed power exists and flow reports only onoff', async () => {
+  it('does not admit a binary device when only dotted native power exists and flow reports onoff', async () => {
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'binary-1': buildBinaryApiDevice({
         capabilities: ['measure_power.l1'],
@@ -171,13 +171,7 @@ describe('Flow-backed device support', () => {
 
     await runAction('report_flow_backed_device_onoff', { device: 'binary-1', state: 'on' });
 
-    expect(getSnapshot().find((device) => device.id === 'binary-1')).toEqual(expect.objectContaining({
-      id: 'binary-1',
-      flowBacked: true,
-      currentOn: true,
-      measuredPowerKw: 0.4,
-      canSetControl: true,
-    }));
+    expect(getSnapshot().find((device) => device.id === 'binary-1')).toBeUndefined();
   });
 
   it('admits EV chargers only after reported charging, car connected, and resumable when native power exists', async () => {
