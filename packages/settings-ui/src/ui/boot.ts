@@ -82,7 +82,7 @@ import {
   initDailyBudgetTuningHandlers,
   loadDailyBudgetTuningSettings,
 } from './dailyBudgetTuning.ts';
-import { initDeviceDetailHandlers, loadShedBehaviors } from './deviceDetail/index.ts';
+import { initDeviceDetailHandlers, loadShedBehaviors, loadTemperatureBoostSettings } from './deviceDetail/index.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
 import {
   initAdvancedDeviceCleanupHandlers,
@@ -352,6 +352,7 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
     loadStaleDataStatus(),
     loadDeviceControlProfiles(),
     loadShedBehaviors(),
+    loadTemperatureBoostSettings(),
     loadPriceOptimizationSettings(),
     loadPriceSettings(),
     loadGridTariffSettings(),

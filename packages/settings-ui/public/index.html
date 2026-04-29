@@ -807,6 +807,23 @@
               </div>
               <div class="detail-stepped-list" id="device-detail-stepped-steps"></div>
 
+              <div class="detail-control-list detail-stepped-boost" id="device-detail-temperature-boost">
+                <div class="device-row device-detail-row device-detail-row--toggle">
+                  <div class="device-row__name device-detail-row__name">
+                    <label class="device-row__title" for="device-detail-temperature-boost-enabled">Temperature Boost</label>
+                    <small class="device-detail-row__hint">Step this load up when it is cold, using only lower-priority devices if room must be made.</small>
+                  </div>
+                  <input type="checkbox" id="device-detail-temperature-boost-enabled">
+                </div>
+                <div class="device-row device-detail-row" id="device-detail-temperature-boost-below-row">
+                  <div class="device-row__name device-detail-row__name">
+                    <label class="device-row__title" for="device-detail-temperature-boost-below">Boost below (°C)</label>
+                    <small class="device-detail-row__hint">Boost continues 2°C above this value to avoid rapid step changes.</small>
+                  </div>
+                  <input type="number" id="device-detail-temperature-boost-below" step="0.5" min="0" max="95">
+                </div>
+              </div>
+
               <p class="muted">When a shed stepped-load device is restored, PELS starts from the lowest active step and only climbs higher when there is room for it.</p>
             </div>
           </details>

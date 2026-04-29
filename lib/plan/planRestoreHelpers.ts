@@ -471,9 +471,7 @@ function admitSteppedRestore(params: {
   const shedDeviceCount = countShedDevices(deviceMap, dev.id);
   if (admission.postReserveMarginKw < RESTORE_ADMISSION_FLOOR_KW) {
     if (swapExecutor
-        && resolveEffectiveCurrentOn(dev) === false
-        && lowestNonZeroStep !== null
-        && nextStep.id === lowestNonZeroStep.id) {
+        && canUseSwapForSteppedRestore({ dev, nextStep, lowestNonZeroStep })) {
       return swapExecutor({
         dev,
         needed,
@@ -491,7 +489,7 @@ function admitSteppedRestore(params: {
             headroomKw: null,
           },
         },
-        rejectedDeviceUpdate: buildOffSteppedRestoreShedUpdate(dev),
+        rejectedDeviceUpdate: resolveRejectedSteppedSwapUpdate(dev),
       });
     }
     return rejectSteppedRestoreForInsufficientHeadroom({
@@ -535,6 +533,12 @@ function admitSteppedRestore(params: {
   return { availableHeadroom: availableHeadroom - needed, restoredOneThisCycle: true };
 }
 
+function resolveRejectedSteppedSwapUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {
+  return resolveEffectiveCurrentOn(dev) === false
+    ? buildOffSteppedRestoreShedUpdate(dev)
+    : {};
+}
+
 function blockSteppedRestoreForShedInvariant(params: {
   dev: DevicePlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
@@ -546,6 +550,7 @@ function blockSteppedRestoreForShedInvariant(params: {
   restoreDebugKey: string;
 }): boolean {
   const { dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, debugStructured, restoreDebugKey } = params;
+  if (dev.temperatureBoostActive === true) return false;
   if (!lowestNonZeroStep || nextStep.planningPowerW <= lowestNonZeroStep.planningPowerW) return false;
   const shedDeviceCount = countShedDevices(deviceMap, dev.id);
   if (shedDeviceCount === 0) return false;
@@ -606,6 +611,17 @@ function blockSteppedRestoreForShedInvariant(params: {
     };
   }
   return true;
+}
+
+function canUseSwapForSteppedRestore(params: {
+  dev: DevicePlanDevice;
+  nextStep: { id: string; planningPowerW: number };
+  lowestNonZeroStep: { id: string; planningPowerW: number } | null;
+}): boolean {
+  const { dev, nextStep, lowestNonZeroStep } = params;
+  if (lowestNonZeroStep === null) return false;
+  if (resolveEffectiveCurrentOn(dev) === false && nextStep.id === lowestNonZeroStep.id) return true;
+  return dev.temperatureBoostActive === true;
 }
 
 function rejectSteppedRestoreForInsufficientHeadroom(params: {

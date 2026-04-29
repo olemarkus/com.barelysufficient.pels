@@ -30,6 +30,7 @@ export const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'managed_devices',
   'device_control_profiles',
   'budget_exempt_devices',
+  'temperature_boost_settings',
   'native_ev_wiring_devices',
   'device_driver_overrides',
   'experimental_ev_support_enabled',
@@ -134,6 +135,8 @@ export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
   priority?: number;
   zone?: string;
   budgetExempt?: boolean;
+  temperatureBoost?: TargetDeviceSnapshot['temperatureBoost'];
+  temperatureBoostActive?: boolean;
   currentTemperature?: number;
   stateKind?: string;
   stateTone?: string;

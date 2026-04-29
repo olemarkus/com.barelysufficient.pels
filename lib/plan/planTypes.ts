@@ -7,6 +7,7 @@ import type {
   SteppedLoadActualStepSource,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
+  TemperatureBoostConfig,
   TargetCapabilitySnapshot,
 } from '../utils/types';
 
@@ -85,6 +86,8 @@ export type DevicePlanDevice = {
   controllable?: boolean;
   budgetExempt?: boolean;
   currentTemperature?: number;
+  temperatureBoost?: TemperatureBoostConfig;
+  temperatureBoostActive?: boolean;
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
   binaryCommandPending?: boolean;
@@ -202,6 +205,7 @@ export type PlanInputDevice = {
   expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
   measuredPowerKw?: number;
   currentTemperature?: number;
+  temperatureBoost?: TemperatureBoostConfig;
   controllable?: boolean;
   managed?: boolean;
   budgetExempt?: boolean;

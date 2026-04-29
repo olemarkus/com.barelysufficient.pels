@@ -30,6 +30,10 @@ import {
   isSteppedLoadOffStep,
 } from '../utils/deviceControlProfiles';
 import { resolveObservedCurrentState } from './planStateResolution';
+import {
+  resolveTemperatureBoostActive,
+  supportsTemperatureBoostDevice,
+} from './planTemperatureBoost';
 
 export type PlanDevicesDeps = {
   getPriorityForDevice: (deviceId: string) => number;
@@ -41,11 +45,7 @@ export type PlanDevicesDeps = {
 };
 
 const supportsTemperatureDevice = (device: PlanInputDevice): boolean => {
-  const hasTargets = Array.isArray(device.targets) && device.targets.length > 0;
-  if (device.deviceType) {
-    return device.deviceType === 'temperature' && hasTargets;
-  }
-  return hasTargets;
+  return supportsTemperatureBoostDevice(device);
 };
 
 export function buildInitialPlanDevices(params: {
@@ -103,7 +103,12 @@ export function buildInitialPlanDevices(params: {
       shedReasons,
       steppedDesiredStepByDeviceId,
       temperatureShedTargets,
+      temperatureBoostActive: resolveTemperatureBoostActive({
+        dev,
+        previousActive: state.temperatureBoostActiveByDevice[dev.id] === true,
+      }),
     });
+    state.temperatureBoostActiveByDevice[dev.id] = base.temperatureBoostActive === true;
 
     const withOffStateReason = applyOffStateReason({
       planDevice: base,
@@ -237,6 +242,7 @@ function buildBasePlanDevice(params: {
   shedReasons: Map<string, DeviceReason>;
   steppedDesiredStepByDeviceId: Map<string, string>;
   temperatureShedTargets: Map<string, { temperature: number; capabilityId: string }>;
+  temperatureBoostActive: boolean;
 }): DevicePlanDevice {
   const {
     dev,
@@ -252,6 +258,7 @@ function buildBasePlanDevice(params: {
     shedReasons,
     steppedDesiredStepByDeviceId,
     temperatureShedTargets,
+    temperatureBoostActive,
   } = params;
 
   const initialDesiredStepId = resolveSteppedLoadInitialDesiredStepId(dev);
@@ -331,6 +338,8 @@ function buildBasePlanDevice(params: {
     budgetExempt: dev.budgetExempt,
     available: dev.available,
     currentTemperature: dev.currentTemperature,
+    temperatureBoost: dev.temperatureBoost,
+    temperatureBoostActive,
     stepCommandPending: dev.stepCommandPending,
     stepCommandStatus: dev.stepCommandStatus,
     binaryCommandPending: binaryCommandPending || undefined,

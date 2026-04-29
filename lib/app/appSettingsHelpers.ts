@@ -1,6 +1,6 @@
 import type Homey from 'homey';
 import type { ShedBehavior } from '../plan/planTypes';
-import type { DeviceControlProfiles } from '../utils/types';
+import type { DeviceControlProfiles, TemperatureBoostSettings } from '../utils/types';
 import {
   normalizeShedBehaviors as normalizeShedBehaviorsHelper,
   resolveModeName as resolveModeNameHelper,
@@ -14,6 +14,7 @@ import {
   isModeDeviceTargets,
   isPrioritySettings,
   isStringMap,
+  normalizeTemperatureBoostSettings,
 } from '../utils/appTypeGuards';
 import {
   BUDGET_EXEMPT_DEVICES,
@@ -29,6 +30,7 @@ import {
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
+  TEMPERATURE_BOOST_SETTINGS,
 } from '../utils/settingsKeys';
 import type { PriceCoordinator } from '../price/priceCoordinator';
 import type { SettingsHandler } from '../utils/settingsHandlers';
@@ -44,6 +46,7 @@ export type CapacitySettingsSnapshot = {
   controllableDevices: Record<string, boolean>;
   managedDevices: Record<string, boolean>;
   budgetExemptDevices: Record<string, boolean>;
+  temperatureBoostSettings: TemperatureBoostSettings;
   nativeEvWiringDevices: Record<string, boolean>;
   deviceDriverOverrides: Record<string, string>;
   deviceControlProfiles: DeviceControlProfiles;
@@ -70,6 +73,7 @@ export function buildCapacitySettingsSnapshot(params: {
   const nativeEvSettings = readNativeEvSettings({ settings, current });
   const experimentalEvSupportEnabled = settings.get(EXPERIMENTAL_EV_SUPPORT_ENABLED) as unknown;
   const rawShedBehaviors = settings.get(OVERSHOOT_BEHAVIORS) as unknown;
+  const rawTemperatureBoostSettings = settings.get(TEMPERATURE_BOOST_SETTINGS) as unknown;
 
   const nextCapacity = {
     limitKw: isFiniteNumber(limit) ? limit : current.capacitySettings.limitKw,
@@ -104,6 +108,7 @@ export function buildCapacitySettingsSnapshot(params: {
     controllableDevices: deviceFlags.controllableDevices,
     managedDevices: deviceFlags.managedDevices,
     budgetExemptDevices: deviceFlags.budgetExemptDevices,
+    temperatureBoostSettings: normalizeTemperatureBoostSettings(rawTemperatureBoostSettings),
     nativeEvWiringDevices: nativeEvSettings.nativeEvWiringDevices,
     deviceDriverOverrides: deviceOverrides.deviceDriverOverrides,
     deviceControlProfiles: deviceSettings.deviceControlProfiles,
