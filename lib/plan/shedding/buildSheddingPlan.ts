@@ -26,6 +26,7 @@ import { isPendingBinaryCommandActive } from '../planObservationPolicy';
 import { isCapacityBreached } from '../planRemainingSheddableLoad';
 import { updateGuardState, resolvePlanningTotalPower } from './guard';
 import { normalizeTargetCapabilityValue } from '../../utils/targetCapabilities';
+import { isFiniteNumber } from '../../utils/appTypeGuards';
 import {
   type BinaryShedCandidate,
   type PlanSheddingResult,
@@ -479,6 +480,7 @@ function buildSteppedCandidate(params: {
   } = params;
   const deviceSteppedProfile = device.steppedLoadProfile;
   if (!deviceSteppedProfile) return null;
+  if (hasIdleMeasuredPower(device)) return null;
   const shedBehavior = getShedBehavior(device.id);
   if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
     const target = device.targets?.[0];
@@ -555,6 +557,10 @@ function resolveEffectiveCurrentStepIdForSteppedShedding(device: PlanInputDevice
     && resolveSteppedLoadPlanningKw(device, device.desiredStepId)
       < resolveSteppedLoadPlanningKw(device, device.selectedStepId);
   return pendingIsLower ? device.desiredStepId : device.selectedStepId;
+}
+
+function hasIdleMeasuredPower(device: PlanInputDevice): boolean {
+  return isFiniteNumber(device.measuredPowerKw) && device.measuredPowerKw === 0;
 }
 
 function buildPreparedSteppedBinaryOffCandidate(params: {
