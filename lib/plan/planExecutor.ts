@@ -10,6 +10,7 @@ import {
 import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
 import type { PendingTargetObservationSource } from './planTypes';
 import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../utils/types';
+import type { ExecutableSteppedLoadDevice } from '../executor/executablePlan';
 import type { PlanEngineState } from './planState';
 import { DEVICE_LAST_CONTROLLED_MS } from '../utils/settingsKeys';
 import { incPerfCounter } from '../utils/perfCounters';
@@ -47,7 +48,7 @@ import {
   applySteppedLoadShedOff,
   type PlanExecutorSteppedContext,
 } from './planExecutorStepped';
-import { buildExecutableSteppedLoadDevice } from './planExecutableSteppedLoad';
+import { buildExecutablePlan, buildExecutablePlanDevice } from './planExecutablePlan';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { setObservedNativeSteppedLoadStep } from '../core/deviceManagerNativeSteppedCommand';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
@@ -666,36 +667,33 @@ export class PlanExecutor {
   /* eslint-enable complexity */
 
   private async applySteppedLoadCommand(
-    dev: DevicePlan['devices'][number],
+    action: ExecutableSteppedLoadDevice | null,
     mode: PlanActuationMode,
     snapshot?: TargetDeviceSnapshot,
     options: { recordPlanActuation?: boolean } = {},
   ): Promise<boolean> {
-    const action = buildExecutableSteppedLoadDevice(dev);
     return action
       ? applySteppedLoadCommand(this.buildSteppedExecutorContext(), action, mode, snapshot, options)
       : false;
   }
 
   private async applySteppedLoadRestore(
-    dev: DevicePlan['devices'][number],
+    action: ExecutableSteppedLoadDevice | null,
     snapshot: TargetDeviceSnapshot | undefined,
     mode: PlanActuationMode,
     anyShedDevices: boolean,
     options: { preRestoreStepIssued?: boolean } = {},
   ): Promise<boolean> {
-    const action = buildExecutableSteppedLoadDevice(dev);
     return action
       ? applySteppedLoadRestore(this.buildSteppedExecutorContext(), action, snapshot, mode, anyShedDevices, options)
       : false;
   }
 
   private async applySteppedLoadShedOff(
-    dev: DevicePlan['devices'][number],
+    action: ExecutableSteppedLoadDevice | null,
     snapshot: TargetDeviceSnapshot | undefined,
     mode: PlanActuationMode,
   ): Promise<boolean> {
-    const action = buildExecutableSteppedLoadDevice(dev);
     return action
       ? applySteppedLoadShedOff(this.buildSteppedExecutorContext(), action, snapshot, mode)
       : false;
@@ -887,12 +885,14 @@ export class PlanExecutor {
 
     this.controlPersistenceBatchDepth += 1;
     try {
+      const executablePlan = buildExecutablePlan(plan);
       const snapshotMap = new Map(this.latestTargetSnapshot.map((entry) => [entry.id, entry]));
       const logCapacityDebug = (...args: unknown[]) => this.logDebug(...args);
-      const anyShedDevices = plan.devices.some((d) => d.plannedState === 'shed');
+      const anyShedDevices = executablePlan.devices.some(({ planDevice }) => planDevice.plannedState === 'shed');
       let deviceWriteCount = 0;
       let commandRequestCount = 0;
-      for (const dev of plan.devices) {
+      for (const executableDevice of executablePlan.devices) {
+        const dev = executableDevice.planDevice;
         const snapshot = snapshotMap.get(dev.id);
         try {
           if (shouldSkipUnavailable({
@@ -903,8 +903,11 @@ export class PlanExecutor {
           })) {
             continue;
           }
+          const projectedDevice = buildExecutablePlanDevice(dev);
           if (dev.controllable === false) {
-            if (await this.applySteppedLoadCommand(dev, mode, snapshot)) commandRequestCount += 1;
+            if (await this.applySteppedLoadCommand(projectedDevice.steppedLoad, mode, snapshot)) {
+              commandRequestCount += 1;
+            }
             if (await this.applyUncontrolledRestore(dev, snapshot)) deviceWriteCount += 1;
             if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
             continue;
@@ -917,11 +920,16 @@ export class PlanExecutor {
             }
             const onoffViolated = snapshot?.currentOn === false;
             const preRestoreStepIssued = onoffViolated
-              ? await this.applySteppedLoadCommand(dev, mode, snapshot, { recordPlanActuation: false })
+              ? await this.applySteppedLoadCommand(
+                projectedDevice.steppedLoad,
+                mode,
+                snapshot,
+                { recordPlanActuation: false },
+              )
               : false;
             if (preRestoreStepIssued) commandRequestCount += 1;
             const stepRestoreReady = await this.applySteppedLoadRestore(
-              dev,
+              projectedDevice.steppedLoad,
               snapshot,
               mode,
               anyShedDevices,
@@ -930,16 +938,20 @@ export class PlanExecutor {
             if (
               stepRestoreReady
               && !onoffViolated
-              && await this.applySteppedLoadCommand(dev, mode, snapshot)
+              && await this.applySteppedLoadCommand(projectedDevice.steppedLoad, mode, snapshot)
             ) commandRequestCount += 1;
             if (stepRestoreReady && onoffViolated) deviceWriteCount += 1;
             if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
             continue;
           }
           if (isSteppedLoadDevice(dev)) {
-            if (await this.applySteppedLoadCommand(dev, mode, snapshot)) commandRequestCount += 1;
-            if (await this.applySteppedLoadShedOff(dev, snapshot, mode)) deviceWriteCount += 1;
-            await this.applySteppedLoadRestore(dev, snapshot, mode, anyShedDevices);
+            if (await this.applySteppedLoadCommand(projectedDevice.steppedLoad, mode, snapshot)) {
+              commandRequestCount += 1;
+            }
+            if (await this.applySteppedLoadShedOff(projectedDevice.steppedLoad, snapshot, mode)) {
+              deviceWriteCount += 1;
+            }
+            await this.applySteppedLoadRestore(projectedDevice.steppedLoad, snapshot, mode, anyShedDevices);
             if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
             continue;
           }
