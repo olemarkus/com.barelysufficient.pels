@@ -956,7 +956,7 @@ describe('buildSheddingPlan', () => {
     expect(result.shedSet.has('bath')).toBe(false);
   });
 
-  it('does not use planning power fallback when measured power is a valid zero', async () => {
+  it('does not step down a stepped load when measured power is a valid zero', async () => {
     const state = createPlanEngineState();
 
     const devices = [
@@ -975,6 +975,13 @@ describe('buildSheddingPlan', () => {
         selectedStepId: 'max',
         measuredPowerKw: 0,
         expectedPowerKw: 3,
+        currentOn: true,
+        controllable: true,
+      }),
+      buildDevice({
+        id: 'bath',
+        name: 'Bathroom thermostat',
+        measuredPowerKw: 1.2,
         currentOn: true,
         controllable: true,
       }),
@@ -1003,7 +1010,7 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         powerTracker: { lastTimestamp: 115 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-        getPriorityForDevice: () => 1,
+        getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
         log: vi.fn(),
         logDebug: vi.fn(),
       },
@@ -1012,6 +1019,72 @@ describe('buildSheddingPlan', () => {
     // measuredPowerKw=0 is a valid reading indicating no draw — should not
     // fall back to planning power and should not produce a stepped candidate.
     expect(result.shedSet.has('connected-300')).toBe(false);
+    expect(result.shedSet.has('bath')).toBe(true);
+  });
+
+  it('does not turn off a lowest-step stepped load when measured power is a valid zero', async () => {
+    const state = createPlanEngineState();
+
+    const devices = [
+      buildDevice({
+        id: 'connected-300',
+        name: 'Connected 300',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1000 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'low',
+        measuredPowerKw: 0,
+        expectedPowerKw: 1,
+        currentOn: true,
+        controllable: true,
+        hasBinaryControl: true,
+      }),
+      buildDevice({
+        id: 'bath',
+        name: 'Bathroom thermostat',
+        measuredPowerKw: 1.2,
+        currentOn: true,
+        controllable: true,
+      }),
+    ];
+
+    const capacityGuard = {
+      isSheddingActive: vi.fn().mockReturnValue(false),
+      setSheddingActive: vi.fn().mockResolvedValue(undefined),
+      checkShortfall: vi.fn().mockResolvedValue(undefined),
+      isInShortfall: vi.fn().mockReturnValue(false),
+      getShortfallThreshold: vi.fn().mockReturnValue(6),
+    } as unknown as CapacityGuard;
+
+    const result = await buildSheddingPlan(
+      buildContext({
+        devices,
+        total: 2.2,
+        softLimit: 1.6,
+        capacitySoftLimit: 1.6,
+        headroomRaw: -0.6,
+        headroom: -0.6,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        capacityGuard,
+        powerTracker: { lastTimestamp: 116 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 20 : 10),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    );
+
+    expect(result.shedSet.has('connected-300')).toBe(false);
+    expect(result.shedSet.has('bath')).toBe(true);
   });
 
   it('advances to the next step-down when a previous step command is still pending', async () => {
