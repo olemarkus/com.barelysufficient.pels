@@ -87,7 +87,7 @@ The daily budget controls live in the **Budget** tab.
 The **Advanced** tab includes two daily-budget tuning controls:
 
 - **Controlled usage weight** (default `0.30`): balances uncontrolled vs controlled influence in learned profile blending and how split caps/floors are allocated (0 = uncontrolled, 1 = controlled). Historical caps/floors are recomputed from a rolling 30-day window using robust hourly quantiles (with fallback to raw extrema when sample count is low).
-- **Price flex share** (default `0.35`): max price-shaping strength for controlled load; automatically reduced on low-spread price days.
+- **Price flex share** (default `0.35`): how strongly the plan moves remaining allowance toward cheaper hours. At `1`, the cheapest remaining hour targets the effective cap and the most expensive remaining hour targets the effective floor when budget permits.
 
 **Warning:** these controls can significantly change pacing behavior, shed order timing, and restore timing. Keep defaults unless you are deliberately tuning behavior. If you change them, adjust one parameter at a time and observe at least a full day.
 
@@ -116,7 +116,7 @@ Buckets are computed from local midnight to the next local midnight. On DST tran
 - **Default profile**: a safe baseline distribution across the day.
 - **Learned profile**: updated at the end of each day from actual usage.
 - **Profile blending**: ramps from default to learned over time (internal, not shown in UI).
-- **Price shaping** (optional): reweights remaining buckets based on today's prices.
+- **Price shaping** (optional): shifts remaining allowance between the effective floor and cap based on today's prices.
 
 The plan is a cumulative curve. The current bucket's planned kWh is turned into a daily soft limit for that hour, and the planner uses the effective soft limit (smaller of hourly and daily).
 

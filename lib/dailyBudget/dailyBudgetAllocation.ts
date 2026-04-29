@@ -1,4 +1,5 @@
 import { clamp } from '../utils/mathUtils';
+import { PRICE_SHAPING_PRICE_RANGE_EPSILON } from './dailyBudgetConstants';
 
 const CAP_ALLOCATION_EPSILON = 1e-6;
 // Allow a few extra redistribution passes when caps fill due to rounding.
@@ -136,4 +137,74 @@ export function allocateBudgetWithCapsAndFloors(params: {
     : weights.map(() => 0);
 
   return scaledFloors.map((value, index) => value + (remainderAllocations[index] ?? 0));
+}
+
+export function allocateBudgetWithPriceTargets(params: {
+  neutralWeights: number[];
+  totalKWh: number;
+  caps: number[];
+  floors: number[];
+  prices?: Array<number | null>;
+  flexShare: number;
+}): number[] {
+  const {
+    neutralWeights,
+    totalKWh,
+    caps,
+    floors,
+    prices,
+    flexShare,
+  } = params;
+  const neutral = allocateBudgetWithCapsAndFloors({
+    weights: neutralWeights,
+    totalKWh,
+    caps,
+    floors,
+  });
+  const safeFlexShare = clamp(flexShare, 0, 1);
+  if (safeFlexShare <= 0 || !prices || prices.length !== neutralWeights.length) {
+    return neutral;
+  }
+
+  const priceTargets = buildPriceTargetWeights({ prices, caps, floors, totalKWh });
+  if (!priceTargets) return neutral;
+
+  const priceTargetAllocation = allocateBudgetWithCapsAndFloors({
+    weights: priceTargets,
+    totalKWh,
+    caps,
+    floors,
+  });
+  const neutralShare = 1 - safeFlexShare;
+  return neutral.map((value, index) => (
+    value * neutralShare + (priceTargetAllocation[index] ?? 0) * safeFlexShare
+  ));
+}
+
+function buildPriceTargetWeights(params: {
+  prices: Array<number | null>;
+  caps: number[];
+  floors: number[];
+  totalKWh: number;
+}): number[] | null {
+  const { prices, caps, floors, totalKWh } = params;
+  if (prices.some((value) => typeof value !== 'number' || !Number.isFinite(value))) {
+    return null;
+  }
+  const numericPrices = prices as number[];
+  const minPrice = Math.min(...numericPrices);
+  const maxPrice = Math.max(...numericPrices);
+  const priceRange = maxPrice - minPrice;
+  if (!Number.isFinite(priceRange) || priceRange <= PRICE_SHAPING_PRICE_RANGE_EPSILON) {
+    return null;
+  }
+
+  return numericPrices.map((price, index) => {
+    const floor = Math.max(0, floors[index] ?? 0);
+    const cap = Math.max(floor, caps[index] ?? 0);
+    const effectiveCap = Number.isFinite(cap) ? cap : Math.max(floor, totalKWh);
+    const pricePosition = (price - minPrice) / priceRange;
+    const target = effectiveCap - pricePosition * (effectiveCap - floor);
+    return Math.max(0, target - floor);
+  });
 }

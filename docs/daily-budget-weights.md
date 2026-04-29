@@ -34,9 +34,9 @@ For each local hour `h` (0-23), PELS works with:
 - `qMax`: upper quantile for observed caps (current implementation: `0.90`)
 - `qMin`: lower quantile for observed minimums (current implementation: `0.25`)
 - `Nq`: minimum samples per hour before quantiles are used (current implementation: `5`)
-- `f[b]`: price factor per plan bucket (typically `0.7..1.3`), where:
-  - `f > 1` means cheaper-than-median bucket
-  - `f < 1` means more expensive-than-median bucket
+- `price[b]`: combined price for each plan bucket
+- `pricePosition[b]`: normalized position within the remaining price range
+  (`0 = cheapest`, `1 = most expensive`)
 
 ## 2) How daily learning updates profiles
 
@@ -282,58 +282,71 @@ Price shaping applies only when:
 - daily price shaping is enabled
 - complete remaining price data is available
 
-Price spread is computed from remaining buckets:
+Price range is computed from remaining buckets:
 
 ```text
-median = p50(remainingPrices)
-spread = p90(remainingPrices) - p10(remainingPrices)
-spreadFactor = clamp(spread / max(1, abs(median)), 0, 1)
-pEff = p * spreadFactor
+minPrice = min(remainingPrices)
+maxPrice = max(remainingPrices)
+priceRange = maxPrice - minPrice
 ```
 
-`pEff` is the effective shaping strength used by the planner.
-
-For each bucket, controlled base weight is blended with a price-adjusted version using `pEff`:
+If `priceRange` is zero or within the planner's near-flat deadband, price shaping is effectively
+disabled for that plan.
+Otherwise `p` is used directly as the effective shaping strength:
 
 ```text
-priceAdjusted = base * f
-composite     = base * (1 - pEff) + priceAdjusted * pEff
-              = base * ((1 - pEff) + f * pEff)
+pEff = p
+```
+
+The planner first builds a neutral allocation from profile/history weights, floors, and caps.
+It then builds a full-flex price target between the same effective bounds:
+
+```text
+pricePosition[b] = (price[b] - minPrice) / priceRange
+priceTarget[b]   = cap[b] - pricePosition[b] * (cap[b] - floor[b])
+```
+
+`priceTarget[b] - floor[b]` becomes the preferred redistribution weight after floors are reserved.
+That means the cheapest bucket targets its cap, the most expensive bucket targets its floor, and
+intermediate buckets land between those extremes according to price.
+
+The final plan blends neutral allocation and full-flex allocation:
+
+```text
+planned[b] = neutralAllocation[b] * (1 - pEff)
+           + fullFlexAllocation[b] * pEff
 ```
 
 Behavior:
 
 - `p = 0`: no price shaping
-- large spread + high `p`: strongest shaping
-- small spread: shaping is automatically softened
-
-When split profiles are available, only controlled portion is price-shaped; uncontrolled stays on profile shape.
+- `p = 1`: cheapest remaining bucket is allowed up to cap, most expensive remaining bucket is held
+  to floor when the remaining budget permits it
+- `0 < p < 1`: smooth blend between profile-driven pacing and full price-driven pacing
 
 ### Example C: price flex effect
 
-Assume bucket controlled base weight `base = 0.10`, user `p = 0.35`, and `spreadFactor = 0.8`:
+Assume three remaining buckets:
 
 ```text
-pEff = 0.35 * 0.8 = 0.28
+prices = [10, 20, 30]
+caps   = [4, 4, 4]
+floors = [0, 0, 0]
 ```
-
-Cheap bucket with `f = 1.3`:
 
 ```text
-composite = 0.10 * (0.72 + 1.3 * 0.28)
-          = 0.10 * 1.084
-          = 0.1084
+pricePosition = [0, 0.5, 1]
+priceTarget   = [4, 2, 0]
 ```
 
-Expensive bucket with `f = 0.7`:
+With a `6 kWh` remaining budget and `p = 1`, the full-flex allocation is:
 
 ```text
-composite = 0.10 * (0.72 + 0.7 * 0.28)
-          = 0.10 * 0.916
-          = 0.0916
+[4, 2, 0]
 ```
 
-So shaping remains meaningful, and naturally scales with day volatility.
+With the same setup and `p = 0.5`, the result is halfway between neutral allocation and this
+full-flex allocation.
 
 ## 7) Practical tuning guidance
 
@@ -354,7 +367,7 @@ With debug logging enabled for daily budget, these fields are useful:
 - `profileControlledShare`
 - `profileLearnedWeights`
 - `profileEffectiveWeights`
-- `priceFactor` array
+- `priceFactor` array (debug-only legacy price multiplier view)
 - `profileObservedMaxUncontrolledKWh`
 - `profileObservedMaxControlledKWh`
 - `priceSpreadFactor`
