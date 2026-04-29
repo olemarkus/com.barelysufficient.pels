@@ -41,7 +41,7 @@ import {
   applyTargetUpdate,
   trySetShedTemperature,
   type PlanExecutorTargetContext,
-} from './planExecutorTarget';
+} from '../executor/targetExecutor';
 import {
   allowsSteppedLoadKeepInvariantRestore,
   applySteppedLoadCommand,
