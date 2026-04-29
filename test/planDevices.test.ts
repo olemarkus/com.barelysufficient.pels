@@ -99,6 +99,31 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.temperatureBoostActive).toBe(false);
   });
 
+  it('does not independently shed devices when hourly budget is exhausted without a shedSet decision', () => {
+    const state = createPlanEngineState();
+    state.hourlyBudgetExhausted = true;
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([buildPlanInputDevice({
+        id: 'dev-1',
+        name: 'Heater',
+        currentOn: true,
+        controllable: true,
+        expectedPowerKw: 1.2,
+      })]),
+      state,
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      steppedDesiredStepByDeviceId: new Map(),
+      temperatureShedTargets: new Map(),
+      guardInShortfall: false,
+      deps: defaultDeps,
+    });
+
+    expect(planDevice.plannedState).toBe('keep');
+    expect(reasonText(planDevice.reason)).toBe('keep');
+  });
+
   it('keeps stepped loads on temperature shedding when that is the chosen shed behavior', () => {
     const steppedDevice = steppedInputDevice({
       id: 'dev-1',
