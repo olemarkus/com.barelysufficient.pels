@@ -4,6 +4,7 @@
  */
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import type { TargetDeviceSnapshot } from '../utils/types';
+import type { ExecutableTargetCommand, ExecutableTargetUpdate } from './executablePlan';
 import {
   getPendingTargetCommandDecision,
   isPendingTargetCommandTemporarilyUnavailable,
@@ -11,17 +12,13 @@ import {
   recordPendingTargetCommandAttempt,
 } from '../plan/planTargetControl';
 import type {
-  DevicePlan,
   PendingTargetCommandStatus,
   PendingTargetObservationSource,
-  ShedAction,
 } from '../plan/planTypes';
 import type { PlanEngineState } from '../plan/planState';
 import type { PlanActuationMode } from './executorTypes';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { StructuredDebugEmitter } from '../logging/logger';
-
-type PlanDevice = DevicePlan['devices'][number];
 
 type PlanActionHandleResult = {
   handled: boolean;
@@ -43,7 +40,6 @@ export type PlanExecutorTargetContext = {
     getSnapshot: () => TargetDeviceSnapshot[];
     setCapability: (deviceId: string, capabilityId: string, value: unknown) => Promise<unknown>;
   };
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   operatingMode: string;
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   logTargetRetryComparison?: (params: {
@@ -96,50 +92,46 @@ const resolveTargetCommandSkipReasonCode = (
 
 export const applyShedTemperaturePlan = async (
   ctx: PlanExecutorTargetContext,
-  dev: PlanDevice,
-  targetCap: string,
-  plannedTarget: number,
+  action: ExecutableTargetCommand,
 ): Promise<PlanActionHandleResult> => {
   try {
     const result = await dispatchTargetCommand(ctx, {
-      deviceId: dev.id,
-      name: dev.name,
-      targetCap,
-      desired: plannedTarget,
-      observedValue: dev.currentTarget,
+      deviceId: action.deviceId,
+      name: action.name,
+      targetCap: action.targetCap,
+      desired: action.desired,
+      observedValue: action.observedValue,
       skipContext: 'shedding',
       actuationMode: 'plan',
     });
     if (!result.applied) return { handled: true, wrote: false };
     ctx.structuredLog?.info({
       event: 'target_command_applied',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      capabilityId: targetCap,
-      targetValue: plannedTarget,
-      previousValue: dev.currentTarget ?? null,
+      deviceId: action.deviceId,
+      deviceName: action.name,
+      capabilityId: action.targetCap,
+      targetValue: action.desired,
+      previousValue: action.observedValue ?? null,
       mode: 'plan',
       attemptType: result.attemptType,
       reasonCode: 'shedding',
     });
     const now = Date.now();
-    ctx.recordShedActuation(dev.id, dev.name, now);
+    ctx.recordShedActuation(action.deviceId, action.name, now);
     return { handled: true, wrote: true };
   } catch (error) {
-    ctx.error(`Failed to set shed temperature for ${dev.name} via DeviceManager`, error);
+    ctx.error(`Failed to set shed temperature for ${action.name} via DeviceManager`, error);
     return { handled: true, wrote: false };
   }
 };
 
 export const applyTargetUpdate = async (
   ctx: PlanExecutorTargetContext,
-  dev: PlanDevice,
-  snapshot: TargetDeviceSnapshot | undefined,
+  action: ExecutableTargetUpdate | null,
   mode: PlanActuationMode,
 ): Promise<boolean> => {
-  const plan = getTargetUpdatePlan(ctx, dev, snapshot);
-  if (!plan) return false;
-  return applyTargetUpdatePlan(ctx, dev, plan.targetCap, plan.isRestoring, mode);
+  if (!action) return false;
+  return applyTargetUpdatePlan(ctx, action, mode);
 };
 
 export const trySetShedTemperature = async (
@@ -241,64 +233,47 @@ export const dispatchTargetCommand = async (
   });
 };
 
-const getTargetUpdatePlan = (
-  ctx: PlanExecutorTargetContext,
-  dev: PlanDevice,
-  snapshot?: TargetDeviceSnapshot,
-): { targetCap: string; isRestoring: boolean } | null => {
-  if (typeof dev.plannedTarget !== 'number' || dev.plannedTarget === dev.currentTarget) return null;
-  const entry = snapshot ?? ctx.deviceManager.getSnapshot().find((d) => d.id === dev.id);
-  const targetCap = entry?.targets?.[0]?.id;
-  if (!targetCap) return null;
-
-  const currentIsNumber = typeof dev.currentTarget === 'number';
-  const shedBehavior = ctx.getShedBehavior(dev.id);
-  const wasAtShedTemp = currentIsNumber && shedBehavior.action === 'set_temperature'
-    && shedBehavior.temperature !== null && dev.currentTarget === shedBehavior.temperature;
-  const isRestoring = wasAtShedTemp && dev.plannedTarget > (dev.currentTarget as number);
-  return { targetCap, isRestoring };
-};
-
 const applyTargetUpdatePlan = async (
   ctx: PlanExecutorTargetContext,
-  dev: PlanDevice,
-  targetCap: string,
-  isRestoring: boolean,
+  action: ExecutableTargetUpdate,
   mode: PlanActuationMode,
 ): Promise<boolean> => {
   try {
     const result = await dispatchTargetCommand(ctx, {
-      deviceId: dev.id,
-      name: dev.name,
-      targetCap,
-      desired: dev.plannedTarget as number,
-      observedValue: dev.currentTarget,
+      deviceId: action.deviceId,
+      name: action.name,
+      targetCap: action.targetCap,
+      desired: action.desired,
+      observedValue: action.observedValue,
       skipContext: 'plan',
       actuationMode: mode,
     });
-    const name = dev.name;
     if (!result.applied) return false;
     ctx.structuredLog?.info({
       event: 'target_command_applied',
-      deviceId: dev.id,
-      deviceName: name,
-      capabilityId: targetCap,
-      targetValue: dev.plannedTarget as number,
-      previousValue: dev.currentTarget ?? null,
+      deviceId: action.deviceId,
+      deviceName: action.name,
+      capabilityId: action.targetCap,
+      targetValue: action.desired,
+      previousValue: action.observedValue ?? null,
       mode,
       attemptType: result.attemptType,
-      reasonCode: resolveTargetCommandReasonCode({ mode, isRestoring, attemptType: result.attemptType }),
+      reasonCode: resolveTargetCommandReasonCode({
+        mode,
+        isRestoring: action.isRestoring,
+        attemptType: result.attemptType,
+      }),
       operatingMode: ctx.operatingMode,
     });
 
-    if (isRestoring && mode === 'plan') {
+    if (action.isRestoring && mode === 'plan') {
       const now = Date.now();
-      ctx.recordRestoreActuation(dev.id, dev.name, now);
-      ctx.recordActivationAttemptStarted(dev.id, dev.name, now);
+      ctx.recordRestoreActuation(action.deviceId, action.name, now);
+      ctx.recordActivationAttemptStarted(action.deviceId, action.name, now);
     }
     return true;
   } catch (error) {
-    ctx.error(`Failed to set ${targetCap} for ${dev.name} via DeviceManager`, error);
+    ctx.error(`Failed to set ${action.targetCap} for ${action.name} via DeviceManager`, error);
     return false;
   }
 };

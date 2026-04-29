@@ -10,7 +10,7 @@ import {
 import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
 import type { PendingTargetObservationSource } from './planTypes';
 import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../utils/types';
-import type { ExecutableSteppedLoadDevice } from '../executor/executablePlan';
+import type { ExecutableSteppedLoadDevice, ExecutableTargetUpdate } from '../executor/executablePlan';
 import type { PlanActuationMode } from '../executor/executorTypes';
 import type { PlanEngineState } from './planState';
 import { DEVICE_LAST_CONTROLLED_MS } from '../utils/settingsKeys';
@@ -50,6 +50,7 @@ import {
   type PlanExecutorSteppedContext,
 } from '../executor/steppedLoadExecutor';
 import { buildExecutablePlan, buildExecutablePlanDevice } from './planExecutablePlan';
+import { buildExecutableShedTemperatureCommand, buildExecutableTargetUpdate } from './planExecutableTarget';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { setObservedNativeSteppedLoadStep } from '../core/deviceManagerNativeSteppedCommand';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
@@ -350,7 +351,6 @@ export class PlanExecutor {
       this.targetExecutorContext = {
         state: this.state,
         deviceManager: this.deviceManager,
-        getShedBehavior: this.boundGetShedBehavior,
         operatingMode: this.operatingMode,
         syncLivePlanStateAfterTargetActuation: this.deps.syncLivePlanStateAfterTargetActuation,
         logTargetRetryComparison: this.deps.logTargetRetryComparison,
@@ -432,7 +432,10 @@ export class PlanExecutor {
     targetCap: string,
     plannedTarget: number,
   ): Promise<PlanActionHandleResult> {
-    return applyShedTemperaturePlan(this.buildTargetExecutorContext(), dev, targetCap, plannedTarget);
+    return applyShedTemperaturePlan(
+      this.buildTargetExecutorContext(),
+      buildExecutableShedTemperatureCommand(dev, targetCap, plannedTarget),
+    );
   }
 
   private async applyShedOff(
@@ -585,7 +588,19 @@ export class PlanExecutor {
     snapshot: TargetDeviceSnapshot | undefined,
     mode: PlanActuationMode,
   ): Promise<boolean> {
-    return applyTargetUpdate(this.buildTargetExecutorContext(), dev, snapshot, mode);
+    return applyTargetUpdate(this.buildTargetExecutorContext(), this.buildTargetUpdateAction(dev, snapshot), mode);
+  }
+
+  private buildTargetUpdateAction(
+    dev: DevicePlan['devices'][number],
+    snapshot: TargetDeviceSnapshot | undefined,
+  ): ExecutableTargetUpdate | null {
+    return buildExecutableTargetUpdate(
+      dev,
+      snapshot,
+      this.boundGetShedBehavior,
+      (deviceId) => this.latestTargetSnapshot.find((entry) => entry.id === deviceId),
+    );
   }
 
   /* eslint-disable complexity --
