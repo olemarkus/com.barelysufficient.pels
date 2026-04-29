@@ -335,7 +335,7 @@ describe('daily budget math helpers', () => {
     expect(result.plannedKWh[1]).toBeCloseTo(3.666666, 4);
   });
 
-  it('respects controlled min even when controlled weight is 0', () => {
+  it('treats controlled min as flexible when controlled weight is 0', () => {
     const result = buildPlan({
       bucketStartUtcMs,
       bucketUsage: [0, 0, 0, 0],
@@ -357,8 +357,8 @@ describe('daily budget math helpers', () => {
       ],
     });
 
-    expect(result.plannedControlledKWh[0]).toBeCloseTo(2, 6);
-    expect(result.plannedUncontrolledKWh[0]).toBeCloseTo(0.5, 6);
+    expect(result.plannedControlledKWh[0]).toBeCloseTo(0, 6);
+    expect(result.plannedUncontrolledKWh[0]).toBeCloseTo(2.5, 6);
   });
 
   it('scales observed min floors down when budget is lower than floors', () => {
@@ -473,8 +473,80 @@ describe('daily budget math helpers', () => {
     const uncontrolledDriven = buildWeightedPlan(0);
     const controlledDriven = buildWeightedPlan(1);
 
-    expect(uncontrolledDriven.plannedKWh[2]).toBeCloseTo(2, 6);
-    expect(controlledDriven.plannedKWh[2]).toBeCloseTo(6, 6);
+    expect(uncontrolledDriven.plannedKWh[2]).toBeCloseTo(1, 6);
+    expect(controlledDriven.plannedKWh[2]).toBeCloseTo(4, 6);
+    expect(controlledDriven.plannedControlledKWh[2]).toBeCloseTo(3, 6);
+  });
+
+  it('uses total observed load as the hourly ceiling independent of controlled usage weight', () => {
+    const shortBucketStartUtcMs = bucketStartUtcMs.slice(0, 2);
+    const profile = Array.from({ length: 24 }, () => 0);
+    profile[0] = 1;
+    profile[1] = 1;
+    const observedUncontrolledMax = [1, 1, ...Array.from({ length: 22 }, () => 0)];
+    const observedControlledMax = [3, 3, ...Array.from({ length: 22 }, () => 0)];
+
+    const result = buildPlan({
+      bucketStartUtcMs: shortBucketStartUtcMs,
+      bucketUsage: [0, 0],
+      currentBucketIndex: 0,
+      usedNowKWh: 0,
+      dailyBudgetKWh: 8,
+      profileWeights: profile,
+      profileWeightsControlled: profile,
+      profileWeightsUncontrolled: profile,
+      timeZone,
+      combinedPrices: null,
+      priceOptimizationEnabled: false,
+      priceShapingEnabled: false,
+      controlledUsageWeight: 0,
+      observedPeakMarginRatio: 0,
+      profileObservedMaxUncontrolledKWh: observedUncontrolledMax,
+      profileObservedMaxControlledKWh: observedControlledMax,
+    });
+
+    expect(result.plannedKWh[0]).toBeCloseTo(4, 6);
+    expect(result.plannedKWh[1]).toBeCloseTo(4, 6);
+  });
+
+  it('lets price flex fill controlled headroom above the uncontrolled floor', () => {
+    const shortBucketStartUtcMs = bucketStartUtcMs.slice(0, 2);
+    const combinedPrices = {
+      prices: shortBucketStartUtcMs.map((ts, index) => ({
+        startsAt: new Date(ts).toISOString(),
+        total: index === 0 ? 10 : 30,
+      })),
+    };
+    const profile = Array.from({ length: 24 }, () => 0);
+    profile[0] = 1;
+    profile[1] = 1;
+    const observedUncontrolledMax = [1, 1, ...Array.from({ length: 22 }, () => 0)];
+    const observedControlledMax = [3, 3, ...Array.from({ length: 22 }, () => 0)];
+    const observedUncontrolledMin = [0, 1, ...Array.from({ length: 22 }, () => 0)];
+
+    const result = buildPlan({
+      bucketStartUtcMs: shortBucketStartUtcMs,
+      bucketUsage: [0, 0],
+      currentBucketIndex: 0,
+      usedNowKWh: 0,
+      dailyBudgetKWh: 5,
+      profileWeights: profile,
+      profileWeightsControlled: profile,
+      profileWeightsUncontrolled: profile,
+      timeZone,
+      combinedPrices,
+      priceOptimizationEnabled: true,
+      priceShapingEnabled: true,
+      priceShapingFlexShare: 1,
+      controlledUsageWeight: 0,
+      observedPeakMarginRatio: 0,
+      profileObservedMaxUncontrolledKWh: observedUncontrolledMax,
+      profileObservedMaxControlledKWh: observedControlledMax,
+      profileObservedMinUncontrolledKWh: observedUncontrolledMin,
+    });
+
+    expect(result.plannedKWh[0]).toBeCloseTo(4, 6);
+    expect(result.plannedKWh[1]).toBeCloseTo(1, 6);
   });
 
   it('applies price target shaping to the full plan when split profiles are missing', () => {
@@ -572,7 +644,7 @@ describe('daily budget math helpers', () => {
     expect(resolveCurrentBucketIndex(0, 24, -hourMs)).toBe(0);
   });
 
-  it('uses the lower of capacity cap and observed split cap', () => {
+  it('uses the lower of capacity cap and total observed cap', () => {
     const shortBucketStartUtcMs = bucketStartUtcMs.slice(0, 2);
     const profileControlled = Array.from({ length: 24 }, () => 0);
     profileControlled[0] = 1;
@@ -594,9 +666,10 @@ describe('daily budget math helpers', () => {
       priceShapingEnabled: false,
       controlledUsageWeight: 1,
       capacityBudgetKWh: 2,
+      observedPeakMarginRatio: 0,
       profileObservedMaxControlledKWh: [1, 1, ...Array.from({ length: 22 }, () => 0)],
     });
-    expect(Math.max(...observedLimited.plannedKWh)).toBeLessThanOrEqual(1.2 + 1e-6);
+    expect(Math.max(...observedLimited.plannedKWh)).toBeLessThanOrEqual(1 + 1e-6);
 
     const capacityLimited = buildPlan({
       bucketStartUtcMs: shortBucketStartUtcMs,
@@ -613,6 +686,7 @@ describe('daily budget math helpers', () => {
       priceShapingEnabled: false,
       controlledUsageWeight: 1,
       capacityBudgetKWh: 2,
+      observedPeakMarginRatio: 0,
       profileObservedMaxControlledKWh: [10, 10, ...Array.from({ length: 22 }, () => 0)],
     });
     expect(Math.max(...capacityLimited.plannedKWh)).toBeLessThanOrEqual(2 + 1e-6);
