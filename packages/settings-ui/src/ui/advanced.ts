@@ -13,11 +13,7 @@ import { renderPriceOptimization } from './priceOptimization.ts';
 import { showToast, showToastError } from './toast.ts';
 import { logSettingsError } from './logging.ts';
 import { state } from './state.ts';
-import {
-  DEVICE_CONTROL_PROFILES,
-  OVERSHOOT_BEHAVIORS,
-  TEMPERATURE_BOOST_SETTINGS,
-} from '../../../contracts/src/settingsKeys.ts';
+import { DEVICE_CONTROL_PROFILES, OVERSHOOT_BEHAVIORS } from '../../../contracts/src/settingsKeys.ts';
 
 type HomeyApiDevice = {
   id: string;
@@ -36,7 +32,6 @@ const collectDeviceIdsFromSettings = (): Set<string> => {
     ...Object.keys(state.managedMap),
     ...Object.keys(state.deviceControlProfiles),
     ...Object.keys(state.shedBehaviors),
-    ...Object.keys(state.temperatureBoostSettings),
     ...Object.keys(state.priceOptimizationSettings),
   ];
 
@@ -134,13 +129,11 @@ const clearDeviceSettings = async (deviceId: string) => {
   const nextManagedMap = { ...state.managedMap };
   const nextDeviceControlProfiles = { ...state.deviceControlProfiles };
   const nextShedBehaviors = { ...state.shedBehaviors };
-  const nextTemperatureBoost = { ...state.temperatureBoostSettings };
   const nextPriceOptimization = { ...state.priceOptimizationSettings };
   delete nextControllableMap[deviceId];
   delete nextManagedMap[deviceId];
   delete nextDeviceControlProfiles[deviceId];
   delete nextShedBehaviors[deviceId];
-  delete nextTemperatureBoost[deviceId];
   delete nextPriceOptimization[deviceId];
   const nextCapacityPriorities = removeDeviceFromModeMap(state.capacityPriorities, deviceId);
   const nextModeTargets = removeDeviceFromModeMap(state.modeTargets, deviceId);
@@ -150,7 +143,6 @@ const clearDeviceSettings = async (deviceId: string) => {
     setSetting('managed_devices', nextManagedMap),
     setSetting(DEVICE_CONTROL_PROFILES, nextDeviceControlProfiles),
     setSetting(OVERSHOOT_BEHAVIORS, nextShedBehaviors),
-    setSetting(TEMPERATURE_BOOST_SETTINGS, nextTemperatureBoost),
     setSetting('price_optimization_settings', nextPriceOptimization),
     setSetting('capacity_priorities', nextCapacityPriorities),
     setSetting('mode_device_targets', nextModeTargets),
@@ -160,7 +152,6 @@ const clearDeviceSettings = async (deviceId: string) => {
   state.managedMap = nextManagedMap;
   state.deviceControlProfiles = nextDeviceControlProfiles;
   state.shedBehaviors = nextShedBehaviors;
-  state.temperatureBoostSettings = nextTemperatureBoost;
   state.priceOptimizationSettings = nextPriceOptimization;
   state.capacityPriorities = nextCapacityPriorities;
   state.modeTargets = nextModeTargets;
@@ -172,14 +163,12 @@ const clearMultipleDeviceSettings = async (deviceIds: string[]) => {
   const nextManagedMap = { ...state.managedMap };
   const nextDeviceControlProfiles = { ...state.deviceControlProfiles };
   const nextShedBehaviors = { ...state.shedBehaviors };
-  const nextTemperatureBoost = { ...state.temperatureBoostSettings };
   const nextPriceOptimization = { ...state.priceOptimizationSettings };
   deviceIds.forEach((deviceId) => {
     delete nextControllableMap[deviceId];
     delete nextManagedMap[deviceId];
     delete nextDeviceControlProfiles[deviceId];
     delete nextShedBehaviors[deviceId];
-    delete nextTemperatureBoost[deviceId];
     delete nextPriceOptimization[deviceId];
   });
   const nextCapacityPriorities = removeDeviceIdsFromModeMap(state.capacityPriorities, ids);
@@ -190,7 +179,6 @@ const clearMultipleDeviceSettings = async (deviceIds: string[]) => {
     setSetting('managed_devices', nextManagedMap),
     setSetting(DEVICE_CONTROL_PROFILES, nextDeviceControlProfiles),
     setSetting(OVERSHOOT_BEHAVIORS, nextShedBehaviors),
-    setSetting(TEMPERATURE_BOOST_SETTINGS, nextTemperatureBoost),
     setSetting('price_optimization_settings', nextPriceOptimization),
     setSetting('capacity_priorities', nextCapacityPriorities),
     setSetting('mode_device_targets', nextModeTargets),
@@ -200,7 +188,6 @@ const clearMultipleDeviceSettings = async (deviceIds: string[]) => {
   state.managedMap = nextManagedMap;
   state.deviceControlProfiles = nextDeviceControlProfiles;
   state.shedBehaviors = nextShedBehaviors;
-  state.temperatureBoostSettings = nextTemperatureBoost;
   state.priceOptimizationSettings = nextPriceOptimization;
   state.capacityPriorities = nextCapacityPriorities;
   state.modeTargets = nextModeTargets;

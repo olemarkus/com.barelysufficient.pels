@@ -4,11 +4,6 @@ import type { SteppedLoadProfile } from '../utils/types';
 import { resolveEffectiveCurrentOn, resolveObservedCurrentState } from './planCurrentState';
 import { resolveSteppedLoadTransition } from './planSteppedLoad';
 import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
-import {
-  normalizeSteppedLoadStepStateFromLegacyFields,
-  resolveKnownEffectiveStepId,
-  serializeLegacyStepFields,
-} from './planSteppedLoadState';
 
 export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevice[]): DevicePlan {
   const liveById = new Map(liveDevices.map((device) => [device.id, device]));
@@ -76,17 +71,18 @@ function resolveLiveSteppedStepState(
       actualStepSource: undefined,
     };
   }
-  const liveState = normalizeSteppedLoadStepStateFromLegacyFields({
-    fields: live,
-    selectedStepFallbackIsPlanningAssumption: false,
-  });
-  const legacyFields = serializeLegacyStepFields(liveState);
+  const actualStepSource = live.actualStepSource === 'reported' || live.actualStepSource === 'assumed'
+    ? live.actualStepSource
+    : undefined;
+  const actualStepId = actualStepSource === 'reported' || actualStepSource === 'assumed'
+    ? live.actualStepId
+    : undefined;
   return {
-    reportedStepId: legacyFields.reportedStepId,
-    selectedStepId: resolveKnownEffectiveStepId(liveState) ?? live.selectedStepId ?? previous.selectedStepId,
-    actualStepId: legacyFields.actualStepId,
-    assumedStepId: legacyFields.assumedStepId,
-    actualStepSource: legacyFields.actualStepSource,
+    reportedStepId: live.reportedStepId,
+    selectedStepId: live.selectedStepId ?? previous.selectedStepId,
+    actualStepId,
+    assumedStepId: live.assumedStepId,
+    actualStepSource: actualStepId || live.assumedStepId ? actualStepSource : undefined,
   };
 }
 

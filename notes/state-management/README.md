@@ -69,9 +69,7 @@ Layer ownership:
 - app/snapshot code may classify raw evidence and serialize compatibility fields
 - reconcile is an evidence-refresh boundary: live stepped-load evidence replaces the previous
   plan's stepped evidence, and missing live evidence clears previous reported/prepared evidence
-- `planSteppedLoadState.ts` is the planner/app normalization boundary for typed stepped evidence;
-  stepped-load planner code should consume that normalized state or derived helper values instead
-  of reinterpreting optional legacy step fields inline
+- stepped-load planner code owns effective/planning-step decisions
 - `planExecutableSteppedLoad.ts` is the stepped-load executor boundary adapter: it may read legacy
   planner fields and project them into executor concepts
 - executor code owns requested-step actuation and materialization checks; it consumes the projected
@@ -79,18 +77,6 @@ Layer ownership:
   materialized, not branch on reported/prepared legacy fields
 - shared-domain and settings UI must not import the planner state model
 - UI overview needs only the observed reported step and the target step
-
-Post-release executor boundary rollout:
-
-- `lib/executor` owns actuation concepts: command intent, materialization, retry/wait/skip
-  decisions, and executor-facing action types.
-- `lib/plan` may still adapt broad planner devices into executor actions while compatibility
-  fields remain in planner snapshots.
-- Broad `DevicePlanDevice` inputs at executor dispatch boundaries are transitional. The next
-  narrowing steps are target-command projection and then dispatch over projected executable device
-  concepts instead of repeatedly unwrapping planner devices.
-- Behavioral cleanups, including the stepped-load non-executable hold model, should stay separate
-  from move-only or projection-only PRs.
 
 Flow-reported step feedback is admitted as observed truth only when it agrees with the binary
 snapshot. A flow report for a non-off step while `currentOn=false` is suppressed at the

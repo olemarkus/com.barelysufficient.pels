@@ -108,7 +108,7 @@ export function buildPriceFactors(params: {
   const priceList = [...numericPrices].sort((a, b) => a - b);
   const median = percentile(priceList, 0.5);
   const min = priceList[0] ?? median;
-  const max = priceList[priceList.length - 1] ?? median;
+  const max = priceList.at(-1) ?? median;
   const spread = Math.max(0, max - min);
   const priceSpreadFactor = spread > PRICE_SHAPING_PRICE_RANGE_EPSILON
     ? resolvePriceSpreadFactor({ spread, median })

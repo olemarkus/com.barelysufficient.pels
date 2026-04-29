@@ -196,7 +196,10 @@ function isBlockedByPendingSwapTarget(
       continue;
     }
     const swapTargetPriority = swapTargetDev.priority ?? 100;
-    if (swapTargetPriority <= devPriority && swapTargetDev.currentState === 'off') {
+    const swapTargetBlocksRestore = swapTargetPriority <= devPriority
+      && swapTargetDev.currentState === 'off'
+      && swapTargetDev.plannedState !== 'keep';
+    if (swapTargetBlocksRestore) {
       setRestorePlanDevice(deviceMap, dev.id, {
         plannedState: 'shed',
         reason: { code: PLAN_REASON_CODES.swapPending, targetName: swapTargetDev.name },
@@ -339,6 +342,7 @@ export function planRestoreForSteppedDevice(params: {
   dev: DevicePlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
   state: PlanEngineState;
+  swapState?: SwapState;
   timing: Pick<RestoreTiming,
   | 'activeOvershoot'
   | 'inCooldown'
@@ -357,7 +361,7 @@ export function planRestoreForSteppedDevice(params: {
   swapExecutor?: SteppedSwapExecutor;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const {
-    dev, deviceMap, state, timing, availableHeadroom, restoredOneThisCycle, debugStructured, swapExecutor,
+    dev, deviceMap, state, swapState, timing, availableHeadroom, restoredOneThisCycle, debugStructured, swapExecutor,
   } = params;
   const restoreDebugKey = `stepped:${dev.id}`;
 
@@ -429,6 +433,7 @@ export function planRestoreForSteppedDevice(params: {
     dev,
     deviceMap,
     state,
+    swapState,
     phase,
     nextStep,
     lowestNonZeroStep,
@@ -450,10 +455,26 @@ function buildOffSteppedRestoreHoldUpdate(
   };
 }
 
+function isSteppedSwapSettleRequired(
+  dev: DevicePlanDevice,
+  nextStep: { id: string },
+  lowestNonZeroStep: { id: string } | null,
+  swapState: SwapState | undefined,
+  swapExecutor: SteppedSwapExecutor | undefined,
+): boolean {
+  return swapState !== undefined
+    && swapState.pendingSwapTargets.has(dev.id)
+    && swapExecutor !== undefined
+    && resolveEffectiveCurrentOn(dev) === false
+    && lowestNonZeroStep !== null
+    && nextStep.id === lowestNonZeroStep.id;
+}
+
 function admitSteppedRestore(params: {
   dev: DevicePlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
   state: PlanEngineState;
+  swapState?: SwapState;
   phase: 'startup' | 'runtime';
   nextStep: { id: string; planningPowerW: number };
   lowestNonZeroStep: { id: string; planningPowerW: number } | null;
@@ -463,7 +484,7 @@ function admitSteppedRestore(params: {
   restoreDebugKey: string;
   swapExecutor?: SteppedSwapExecutor;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
-  const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep,
+  const { dev, deviceMap, state, swapState, phase, nextStep, lowestNonZeroStep,
     deltaKw, availableHeadroom, debugStructured, restoreDebugKey, swapExecutor } = params;
   const restoreBuffer = computeRestoreBufferKw(deltaKw);
   const needed = deltaKw + restoreBuffer;
@@ -471,7 +492,9 @@ function admitSteppedRestore(params: {
   const shedDeviceCount = countShedDevices(deviceMap, dev.id);
   if (admission.postReserveMarginKw < RESTORE_ADMISSION_FLOOR_KW) {
     if (swapExecutor
-        && canUseSwapForSteppedRestore({ dev, nextStep, lowestNonZeroStep })) {
+        && resolveEffectiveCurrentOn(dev) === false
+        && lowestNonZeroStep !== null
+        && nextStep.id === lowestNonZeroStep.id) {
       return swapExecutor({
         dev,
         needed,
@@ -489,12 +512,35 @@ function admitSteppedRestore(params: {
             headroomKw: null,
           },
         },
-        rejectedDeviceUpdate: resolveRejectedSteppedSwapUpdate(dev),
+        rejectedDeviceUpdate: buildOffSteppedRestoreShedUpdate(dev),
       });
     }
     return rejectSteppedRestoreForInsufficientHeadroom({
       dev, deviceMap, state, phase, nextStep, lowestNonZeroStep, shedDeviceCount,
       admission, availableHeadroom, needed, debugStructured, restoreDebugKey,
+    });
+  }
+  // Pending swap targets must pass the fresh-measurement gate even with abundant headroom —
+  // route through swapExecutor (resolveSwapSettleGate) instead of admitting directly.
+  if (isSteppedSwapSettleRequired(dev, nextStep, lowestNonZeroStep, swapState, swapExecutor) && swapExecutor) {
+    return swapExecutor({
+      dev,
+      needed,
+      devPower: nextStep.planningPowerW / 1000,
+      availableHeadroom,
+      admittedDeviceUpdate: {
+        desiredStepId: nextStep.id,
+        targetStepId: nextStep.id,
+        expectedPowerKw: nextStep.planningPowerW / 1000,
+        reason: {
+          code: PLAN_REASON_CODES.restoreNeed,
+          fromTarget: dev.selectedStepId ?? 'unknown',
+          toTarget: nextStep.id,
+          needKw: needed,
+          headroomKw: null,
+        },
+      },
+      rejectedDeviceUpdate: buildOffSteppedRestoreShedUpdate(dev),
     });
   }
   setRestorePlanDevice(deviceMap, dev.id, {
@@ -533,12 +579,6 @@ function admitSteppedRestore(params: {
   return { availableHeadroom: availableHeadroom - needed, restoredOneThisCycle: true };
 }
 
-function resolveRejectedSteppedSwapUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {
-  return resolveEffectiveCurrentOn(dev) === false
-    ? buildOffSteppedRestoreShedUpdate(dev)
-    : { plannedState: 'keep' };
-}
-
 function blockSteppedRestoreForShedInvariant(params: {
   dev: DevicePlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
@@ -550,7 +590,6 @@ function blockSteppedRestoreForShedInvariant(params: {
   restoreDebugKey: string;
 }): boolean {
   const { dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, debugStructured, restoreDebugKey } = params;
-  if (dev.temperatureBoostActive === true) return false;
   if (!lowestNonZeroStep || nextStep.planningPowerW <= lowestNonZeroStep.planningPowerW) return false;
   const shedDeviceCount = countShedDevices(deviceMap, dev.id);
   if (shedDeviceCount === 0) return false;
@@ -611,17 +650,6 @@ function blockSteppedRestoreForShedInvariant(params: {
     };
   }
   return true;
-}
-
-function canUseSwapForSteppedRestore(params: {
-  dev: DevicePlanDevice;
-  nextStep: { id: string; planningPowerW: number };
-  lowestNonZeroStep: { id: string; planningPowerW: number } | null;
-}): boolean {
-  const { dev, nextStep, lowestNonZeroStep } = params;
-  if (lowestNonZeroStep === null) return false;
-  if (resolveEffectiveCurrentOn(dev) === false && nextStep.id === lowestNonZeroStep.id) return true;
-  return dev.temperatureBoostActive === true;
 }
 
 function rejectSteppedRestoreForInsufficientHeadroom(params: {

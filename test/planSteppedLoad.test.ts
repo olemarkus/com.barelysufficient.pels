@@ -93,20 +93,6 @@ describe('planSteppedLoad', () => {
     expect(transition?.stepPreparationPurpose).toBe('prepare_for_on');
   });
 
-  it('does not treat selected step alone as restore preparation', () => {
-    const transition = resolveSteppedLoadTransition(steppedPlanDevice({
-      currentState: 'off',
-      plannedState: 'keep',
-      selectedStepId: 'low',
-      desiredStepId: 'max',
-      controlCapabilityId: 'onoff',
-    }));
-
-    expect(transition?.effectiveTransition).toBe('restore_from_off_at_low');
-    expect(transition?.commandStepId).toBe('low');
-    expect(transition?.transitionPhase).toBe('step_preparation');
-  });
-
   it('is idempotent when re-run on its own normalized keep-step output', () => {
     const device = steppedPlanDevice({
       currentState: 'off',

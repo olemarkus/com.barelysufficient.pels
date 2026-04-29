@@ -93,7 +93,6 @@ export function buildPlan(params: BuildPlanParams): BuildPlanResult {
     profileObservedMinControlledKWh: params.profileObservedMinControlledKWh,
     observedPeakMarginRatio: params.observedPeakMarginRatio,
     applyFromIndex: setup.bounds.remainingStartIndex,
-    controlledUsageWeight: params.controlledUsageWeight,
   });
   const plannedSplit = buildPlannedSplit({
     plannedKWh,

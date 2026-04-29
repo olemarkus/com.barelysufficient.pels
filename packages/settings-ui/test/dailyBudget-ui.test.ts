@@ -13,7 +13,6 @@ const setupDailyBudgetDom = () => {
     <div id="daily-budget-labels"></div>
     <div id="daily-budget-empty"></div>
     <div id="daily-budget-confidence" class="chip" hidden></div>
-    <div id="daily-budget-allocation-warning" hidden><span class="banner__text"></span></div>
     <div id="daily-budget-status-pill"></div>
     <div id="daily-budget-toggle-mount"></div>
     <form id="daily-budget-form">
@@ -143,35 +142,6 @@ describe('daily budget chart render', () => {
     expect(chart?.hidden).toBe(false);
     expect(empty?.hidden).toBe(true);
     expect(legend).toBeNull();
-  });
-
-  it('shows allocation warning when caps leave budget unallocated', async () => {
-    const payload = buildDailyBudgetPayload();
-    (payload.days['2026-02-01'].state as {
-      allocationPressure?: {
-        requestedBudgetKWh: number;
-        plannedBudgetKWh: number;
-        unallocatedBudgetKWh: number;
-        saturationRatio: number;
-        constrained: boolean;
-      };
-    }).allocationPressure = {
-      requestedBudgetKWh: 12,
-      plannedBudgetKWh: 4.5,
-      unallocatedBudgetKWh: 7.5,
-      saturationRatio: 0.375,
-      constrained: true,
-    };
-
-    await installHomeyClient(payload);
-
-    const { refreshDailyBudgetPlan } = await import('../src/ui/dailyBudget.ts');
-    await refreshDailyBudgetPlan();
-
-    const warning = document.querySelector('#daily-budget-allocation-warning') as HTMLElement | null;
-    expect(warning?.hidden).toBe(false);
-    expect(warning?.textContent).toContain('7.5 kWh');
-    expect(warning?.textContent).toContain('4.5 kWh of 12.0 kWh');
   });
 
   it('keeps a candidate preview visible across background refreshes', async () => {

@@ -63,11 +63,6 @@ import {
   resolveSavedSteppedLoadProfile,
   updateSetStepOptionLabel,
 } from './steppedLoadDraft.ts';
-import {
-  initTemperatureBoostHandlers,
-  loadTemperatureBoostSettings,
-  renderTemperatureBoostSettings,
-} from './temperatureBoost.ts';
 import { createSerializedAsyncRunner, readRecordSetting, writeFreshSetting } from './settingsWrite.ts';
 import {
   clearPendingNativeWiringEnable,
@@ -227,7 +222,6 @@ const refreshOpenDeviceDetail = () => {
     updateSetStepOptionLabel,
   });
   renderSteppedLoadDraft(device);
-  renderTemperatureBoostSettings(device);
   setDeviceDetailDeltaValues(currentDetailDeviceId);
   renderDeviceDetailModes(device);
   updateDeltaSectionVisibility({
@@ -259,7 +253,6 @@ export const openDeviceDetail = (deviceId: string) => {
     updateSetStepOptionLabel,
   });
   renderSteppedLoadDraft(device);
-  renderTemperatureBoostSettings(device);
   renderDeviceDetailModes(device);
   setDeviceDetailDeltaValues(deviceId);
   updateDeltaSectionVisibility({
@@ -474,7 +467,7 @@ const initDeviceDetailRefreshHandlers = () => {
   });
 };
 
-export { loadShedBehaviors, loadTemperatureBoostSettings };
+export { loadShedBehaviors };
 
 export const initDeviceDetailHandlers = () => {
   initDeviceDetailCloseHandlers();
@@ -502,11 +495,6 @@ export const initDeviceDetailHandlers = () => {
     getCurrentDetailDeviceId,
     getDeviceById,
     persistDeviceControlProfile,
-    refreshOpenDeviceDetail,
-  });
-  initTemperatureBoostHandlers({
-    getCurrentDetailDeviceId,
-    getDeviceById,
     refreshOpenDeviceDetail,
   });
   initDeviceDetailDiagnosticsHandler();

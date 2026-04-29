@@ -7,7 +7,7 @@ describe('daily budget plan caps/floors', () => {
   const timeZone = 'UTC';
   const bucketStartUtcMs = [Date.UTC(2024, 0, 1, 0, 0, 0)];
 
-  it('uses available observed cap directly when only uncontrolled observed cap exists', () => {
+  it('does not inflate blended caps when only uncontrolled observed cap exists', () => {
     const result = resolveRemainingCaps({
       bucketStartUtcMs,
       timeZone,
@@ -26,7 +26,7 @@ describe('daily budget plan caps/floors', () => {
     expect(result[0]).toBeCloseTo(1.2, 6);
   });
 
-  it('uses available observed floor directly when only uncontrolled observed floor exists', () => {
+  it('does not inflate blended floors when only uncontrolled observed floor exists', () => {
     const result = resolveRemainingFloors({
       bucketStartUtcMs,
       timeZone,
@@ -45,7 +45,7 @@ describe('daily budget plan caps/floors', () => {
     expect(result[0]).toBeCloseTo(0.8, 6);
   });
 
-  it('does not scale caps by split share when controlled endpoint weight has no observed cap', () => {
+  it('falls back to uncontrolled cap when controlled endpoint weight has no observed cap', () => {
     const result = resolveRemainingCaps({
       bucketStartUtcMs,
       timeZone,
@@ -60,11 +60,11 @@ describe('daily budget plan caps/floors', () => {
       currentBucketIndex: 0,
     });
 
-    // Uncontrolled cap: 2 * 1.2 = 2.4 kWh.
-    expect(result[0]).toBeCloseTo(2.4, 6);
+    // Uncontrolled cap: 2 * 1.2 = 2.4 kWh; with 0.8 split share -> total cap 3.0 kWh.
+    expect(result[0]).toBeCloseTo(3, 6);
   });
 
-  it('does not scale floors by split share when controlled endpoint weight has no observed floor', () => {
+  it('falls back to uncontrolled floor when controlled endpoint weight has no observed floor', () => {
     const result = resolveRemainingFloors({
       bucketStartUtcMs,
       timeZone,
@@ -79,7 +79,7 @@ describe('daily budget plan caps/floors', () => {
       currentBucketIndex: 0,
     });
 
-    // Uncontrolled floor: 1 * 0.8 = 0.8 kWh.
-    expect(result[0]).toBeCloseTo(0.8, 6);
+    // Uncontrolled floor: 1 * 0.8 = 0.8 kWh; with 0.8 split share -> total floor 1.0 kWh.
+    expect(result[0]).toBeCloseTo(1, 6);
   });
 });

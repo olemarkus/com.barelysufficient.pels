@@ -3,23 +3,23 @@ import { normalizeStepId } from '../utils/stepIds';
 
 type StepId = string;
 
-export type StepObservation =
+type StepObservation =
   | { kind: 'reported'; stepId: StepId; source: 'native' | 'flow'; observedAtMs: number }
   | { kind: 'unknown' };
 
-export type StepIntent =
+type StepIntent =
   | { kind: 'target'; stepId: StepId; changedAtMs: number; status: SteppedLoadCommandStatus }
   | { kind: 'none' };
 
-export type StepPlanningAssumption =
+type StepPlanningAssumption =
   | { kind: 'fallback'; stepId: StepId; reason: 'lowest_active_step' }
   | { kind: 'none' };
 
-export type RestoreStepPreparation =
+type RestoreStepPreparation =
   | { kind: 'prepared'; stepId: StepId; source: 'reported' | 'suppressed_flow'; observedAtMs: number }
   | { kind: 'not_prepared' };
 
-export type NormalizedSteppedLoadStepState = {
+type NormalizedSteppedLoadStepState = {
   observation: StepObservation;
   intent: StepIntent;
   planningAssumption: StepPlanningAssumption;
@@ -71,17 +71,6 @@ type LegacyStepFields = {
   assumedStepId?: string;
   actualStepSource?: SteppedLoadActualStepSource;
   restorePreparedStepId?: string;
-};
-
-export type LegacySteppedLoadStepFieldsInput = {
-  reportedStepId?: string | null;
-  targetStepId?: string | null;
-  desiredStepId?: string | null;
-  selectedStepId?: string | null;
-  actualStepId?: string | null;
-  assumedStepId?: string | null;
-  actualStepSource?: SteppedLoadActualStepSource | null;
-  restorePreparedStepId?: string | null;
 };
 
 export function serializeLegacyStepFieldsFromEvidence(params: {
@@ -140,74 +129,10 @@ export function normalizeSteppedLoadStepState(
   };
 }
 
-export function normalizeSteppedLoadStepStateFromLegacyFields(params: {
-  fields: LegacySteppedLoadStepFieldsInput;
-  nowMs?: number;
-  selectedStepFallbackIsPlanningAssumption?: boolean;
-}): NormalizedSteppedLoadStepState {
-  const {
-    fields,
-    selectedStepFallbackIsPlanningAssumption = true,
-  } = params;
-  const nowMs = params.nowMs ?? 0;
-  const reportedStepId = resolveLegacyReportedStepId(fields);
-  const targetStepId = normalizeStepId(fields.targetStepId) ?? normalizeStepId(fields.desiredStepId);
-  const fallbackStepId = normalizeStepId(fields.assumedStepId)
-    ?? (fields.actualStepSource === 'assumed' ? normalizeStepId(fields.actualStepId) : undefined)
-    ?? (
-      selectedStepFallbackIsPlanningAssumption && !reportedStepId
-        ? normalizeStepId(fields.selectedStepId)
-        : undefined
-    );
-  const restorePreparedStepId = normalizeStepId(fields.restorePreparedStepId);
-  const state = normalizeSteppedLoadStepState({
-    nowMs,
-    reportedStep: reportedStepId
-      ? {
-        stepId: reportedStepId,
-        source: 'flow',
-        observedAtMs: nowMs,
-      }
-      : undefined,
-    targetStep: targetStepId
-      ? {
-        stepId: targetStepId,
-        changedAtMs: nowMs,
-        status: 'idle',
-      }
-      : undefined,
-    planningFallback: fallbackStepId
-      ? {
-        stepId: fallbackStepId,
-        reason: 'lowest_active_step',
-      }
-      : undefined,
-  });
-  if (!restorePreparedStepId) return state;
-  return {
-    ...state,
-    restorePreparation: {
-      kind: 'prepared',
-      stepId: restorePreparedStepId,
-      source: 'reported',
-      observedAtMs: nowMs,
-    },
-  };
-}
-
 export function resolveEffectiveStepId(state: NormalizedSteppedLoadStepState): StepId | 'unknown' {
   if (state.observation.kind === 'reported') return state.observation.stepId;
   if (state.planningAssumption.kind === 'fallback') return state.planningAssumption.stepId;
   return 'unknown';
-}
-
-export function resolveKnownEffectiveStepId(state: NormalizedSteppedLoadStepState): StepId | undefined {
-  const effectiveStepId = resolveEffectiveStepId(state);
-  return effectiveStepId === 'unknown' ? undefined : effectiveStepId;
-}
-
-export function isReportedStep(state: NormalizedSteppedLoadStepState, stepId: string | undefined): boolean {
-  return state.observation.kind === 'reported' && state.observation.stepId === stepId;
 }
 
 export function serializeLegacyStepFields(state: NormalizedSteppedLoadStepState): LegacyStepFields {
@@ -230,12 +155,6 @@ export function serializeLegacyStepFields(state: NormalizedSteppedLoadStepState)
     actualStepSource: resolveActualStepSource({ reportedStepId, assumedStepId }),
     restorePreparedStepId,
   };
-}
-
-function resolveLegacyReportedStepId(fields: LegacySteppedLoadStepFieldsInput): string | undefined {
-  const actualStepId = normalizeStepId(fields.actualStepId);
-  if (fields.actualStepSource === 'reported' && actualStepId) return actualStepId;
-  return normalizeStepId(fields.reportedStepId);
 }
 
 function normalizeObservation(

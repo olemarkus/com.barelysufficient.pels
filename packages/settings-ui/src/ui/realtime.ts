@@ -24,7 +24,6 @@ import {
   NORWAY_PRICE_MODEL,
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
-  TEMPERATURE_BOOST_SETTINGS,
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_SCHEME,
 } from '../../../contracts/src/settingsKeys.ts';
@@ -50,7 +49,7 @@ import {
 import { loadDailyBudgetTuningSettings } from './dailyBudgetTuning.ts';
 import { parsePlanSnapshot, refreshPlan, renderPlan, type PlanSnapshot } from './plan.ts';
 import { refreshAdvancedDeviceCleanup } from './advanced.ts';
-import { loadShedBehaviors, loadTemperatureBoostSettings } from './deviceDetail/index.ts';
+import { loadShedBehaviors } from './deviceDetail/index.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
 import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
 import { state } from './state.ts';
@@ -107,7 +106,6 @@ const DEVICE_CONTROL_KEYS = new Set([
   NATIVE_EV_WIRING_DEVICES,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_CONTROL_PROFILES,
-  TEMPERATURE_BOOST_SETTINGS,
 ]);
 const PLAN_REFRESH_KEYS = new Set([
   'capacity_priorities',
@@ -264,9 +262,6 @@ const createSettingsSetHandler = () => (key: string) => {
   }
   if (key === OVERSHOOT_BEHAVIORS) {
     runLoggedTask(loadShedBehaviors(), 'Failed to load shed behaviors', 'settings.set');
-  }
-  if (key === TEMPERATURE_BOOST_SETTINGS) {
-    runLoggedTask(loadTemperatureBoostSettings(), 'Failed to load temperature boost settings', 'settings.set');
   }
   if (key === DEVICE_CONTROL_PROFILES) {
     runLoggedTask(loadDeviceControlProfiles(), 'Failed to load device control profiles', 'settings.set');

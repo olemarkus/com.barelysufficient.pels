@@ -9,15 +9,15 @@ import {
   isPendingTargetCommandTemporarilyUnavailable,
   recordFailedPendingTargetCommandAttempt,
   recordPendingTargetCommandAttempt,
-} from '../plan/planTargetControl';
+} from './planTargetControl';
 import type {
   DevicePlan,
   PendingTargetCommandStatus,
   PendingTargetObservationSource,
   ShedAction,
-} from '../plan/planTypes';
-import type { PlanEngineState } from '../plan/planState';
-import type { PlanActuationMode } from './executorTypes';
+} from './planTypes';
+import type { PlanEngineState } from './planState';
+import type { PlanActuationMode } from '../executor/executorTypes';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { StructuredDebugEmitter } from '../logging/logger';
 
@@ -64,7 +64,7 @@ export type PlanExecutorTargetContext = {
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
-  recordShedActuation: (deviceId: string, name: string, now: number) => void;
+  recordShedActuation: (deviceId: string, name: string, now: number, isSwapShed?: boolean) => void;
   recordRestoreActuation: (deviceId: string, name: string, now: number) => void;
   recordActivationAttemptStarted: (deviceId: string, name: string, now: number) => void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
@@ -150,6 +150,7 @@ export const trySetShedTemperature = async (
     targetCap: string | undefined;
     shedTemp: number | null;
     canSetShedTemp: boolean;
+    isSwapShed?: boolean;
   },
 ): Promise<PlanActionHandleResult> => {
   const {
@@ -158,6 +159,7 @@ export const trySetShedTemperature = async (
     targetCap,
     shedTemp,
     canSetShedTemp,
+    isSwapShed,
   } = params;
   if (!canSetShedTemp || !targetCap || shedTemp === null) return { handled: false, wrote: false };
   const now = Date.now();
@@ -185,7 +187,7 @@ export const trySetShedTemperature = async (
       attemptType: result.attemptType,
       reasonCode: 'shedding',
     });
-    ctx.recordShedActuation(deviceId, name, now);
+    ctx.recordShedActuation(deviceId, name, now, isSwapShed);
     return { handled: true, wrote: true };
   } catch (error) {
     ctx.error(`Failed to set shed temperature for ${name} via DeviceManager`, error);
@@ -494,7 +496,7 @@ const syncPendingTargetCommandAfterActuation = async (
   const latestObservedValueAfterActuation = getLatestObservedTargetValue(ctx, deviceId, targetCap);
   let pendingStillExists = hasMatchingPendingTargetCommand(ctx, deviceId, targetCap, desired);
   if (pendingStillExists && Object.is(latestObservedValueAfterActuation, desired)) {
-    // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
+    // eslint-disable-next-line no-param-reassign -- Shared executor state update.
     delete ctx.state.pendingTargetCommands[deviceId];
     pendingStillExists = false;
     ctx.syncLivePlanStateAfterTargetActuation?.('realtime_capability');

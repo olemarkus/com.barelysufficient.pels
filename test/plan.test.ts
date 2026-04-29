@@ -2454,17 +2454,27 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.sheddingActive = false;
     }
 
+    // Phase 1: swap-out commands issued, swap-in deferred pending settle
     await (app as any).recordPowerSample(3000); // 3 kW total
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
-    const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
-    const lowPriPlan = plan.devices.find((d: any) => d.id === 'dev-low');
+    const plan1 = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const lowPriPlan1 = plan1.devices.find((d: any) => d.id === 'dev-low');
+    const highPriPlan1 = plan1.devices.find((d: any) => d.id === 'dev-high');
+    expect(lowPriPlan1?.plannedState).toBe('shed');
+    expect(reasonText(lowPriPlan1?.reason)).toContain('swapped out');
+    expect(highPriPlan1?.plannedState).toBe('shed');
 
-    // High priority device should be planned for restoration (keep)
-    // Low priority device should be planned for shedding (swap)
-    expect(lowPriPlan?.plannedState).toBe('shed');
-    expect(reasonText(lowPriPlan?.reason)).toContain('swapped out');
-    expect(highPriPlan?.plannedState).toBe('keep');
+    // Phase 2: swap candidate is now off, fresh measurement — high-priority device activates
+    const snapshot1 = (app as any).deviceManager.getSnapshot();
+    (app as any).deviceManager.setSnapshotForTests(
+      snapshot1.map((d: any) => d.id === 'dev-low' ? { ...d, currentOn: false, powerKw: 0, expectedPowerKw: 0 } : d),
+    );
+    const ts1 = (app as any).powerTracker?.lastTimestamp ?? Date.now();
+    await (app as any).recordPowerSample(1800, ts1 + 1); // 1.8 kW total after lowPri shed
+
+    const plan2 = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const highPriPlan2 = plan2.devices.find((d: any) => d.id === 'dev-high');
+    expect(highPriPlan2?.plannedState).toBe('keep');
   });
 
   it('does not swap when there are no lower-priority devices to shed', async () => {
@@ -2598,21 +2608,32 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.state.lastRestoreMs = null;
     (app as any).planEngine.state.lastDeviceShedMs = {};
 
+    // Phase 1: swap-out commands issued, swap-in deferred pending settle
     await (app as any).recordPowerSample(3000);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
-    const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
-    const low1Plan = plan.devices.find((d: any) => d.id === 'dev-low1');
-    const low2Plan = plan.devices.find((d: any) => d.id === 'dev-low2');
-
-    // High priority should be restored (swap successful)
-    expect(highPriPlan?.plannedState).toBe('keep');
-
-    // Both low priority devices should be shed for the swap
+    const plan1 = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const highPriPlan1 = plan1.devices.find((d: any) => d.id === 'dev-high');
+    const low1Plan = plan1.devices.find((d: any) => d.id === 'dev-low1');
+    const low2Plan = plan1.devices.find((d: any) => d.id === 'dev-low2');
+    expect(highPriPlan1?.plannedState).toBe('shed');
     expect(low1Plan?.plannedState).toBe('shed');
     expect(reasonText(low1Plan?.reason)).toContain('swapped out');
     expect(low2Plan?.plannedState).toBe('shed');
     expect(reasonText(low2Plan?.reason)).toContain('swapped out');
+
+    // Phase 2: swap candidates now off, fresh measurement — high-priority device activates
+    const snapshot1 = (app as any).deviceManager.getSnapshot();
+    (app as any).deviceManager.setSnapshotForTests(
+      snapshot1.map((d: any) => (d.id === 'dev-low1' || d.id === 'dev-low2')
+        ? { ...d, currentOn: false, powerKw: 0, expectedPowerKw: 0 }
+        : d),
+    );
+    const ts1 = (app as any).powerTracker?.lastTimestamp ?? Date.now();
+    await (app as any).recordPowerSample(2000, ts1 + 1); // 2.0 kW after both low-pri devices shed
+
+    const plan2 = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const highPriPlan2 = plan2.devices.find((d: any) => d.id === 'dev-high');
+    expect(highPriPlan2?.plannedState).toBe('keep');
   });
 
   it('blocks lower-priority devices from restoring before pending swap targets', async () => {
@@ -4280,15 +4301,48 @@ describe('Dry run mode', () => {
 
     // Headroom = 0.7 - 0.2 = 0.5kW. Direct restore still requires swapping out the lower-priority
     // thermostat (spotter needs ~0.25kW but the combined reserve+floor of 0.50kW makes direct fail).
+    // Phase 1: swap-out issued, spotter deferred pending settle
     await (app as any).recordPowerSample(200);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
-    const spotterPlan = plan.devices.find((d: any) => d.id === 'spotter');
-    const lowTempPlan = plan.devices.find((d: any) => d.id === 'low-temp');
-
-    expect(spotterPlan?.plannedState).toBe('keep');
+    const plan1 = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const spotterPlan1 = plan1.devices.find((d: any) => d.id === 'spotter');
+    const lowTempPlan = plan1.devices.find((d: any) => d.id === 'low-temp');
+    expect(spotterPlan1?.plannedState).toBe('shed');
     expect(lowTempPlan?.plannedState).toBe('shed');
     expect(reasonText(lowTempPlan?.reason)).toContain('swapped out for');
+
+    // Phase 2: low-temp is now off, fresh measurement — spotter activates directly (enough headroom)
+    (app as any).deviceManager.setSnapshotForTests([
+      {
+        id: 'spotter',
+        name: 'Spotter kjøkkenbenk',
+        targets: [],
+        capabilities: ['onoff'],
+        currentOn: false,
+        controllable: true,
+        powerKw: 0.05,
+        expectedPowerKw: 0.05,
+      },
+      {
+        id: 'low-temp',
+        name: 'Lower-priority thermostat',
+        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+        capabilities: ['target_temperature', 'onoff'],
+        currentOn: false,
+        controllable: true,
+        powerKw: 0,
+        expectedPowerKw: 0,
+      },
+    ]);
+    const ts1 = (app as any).powerTracker?.lastTimestamp ?? Date.now();
+    await (app as any).recordPowerSample(50, ts1 + 1); // only spotter drawing ~50W
+    // In dry run mode, no pendingSheds are set, so the scheduler won't rebuild automatically.
+    // Force a rebuild so the swap-settled plan is computed with the fresh measurement.
+    await (app as any).planService.rebuildPlanFromCache();
+
+    const plan2 = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const spotterPlan2 = plan2.devices.find((d: any) => d.id === 'spotter');
+    expect(spotterPlan2?.plannedState).toBe('keep');
   });
 
   it('restores a higher-priority onoff device by swapping out a lower-priority temperature-only active device', async () => {
@@ -4349,14 +4403,47 @@ describe('Dry run mode', () => {
       },
     ]);
 
+    // Phase 1: swap-out issued, spotter deferred pending settle
     await (app as any).recordPowerSample(200);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
-    const spotterPlan = plan.devices.find((d: any) => d.id === 'spotter');
-    const lowTempPlan = plan.devices.find((d: any) => d.id === 'low-temp-no-onoff');
-
-    expect(spotterPlan?.plannedState).toBe('keep');
+    const plan1 = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const spotterPlan1 = plan1.devices.find((d: any) => d.id === 'spotter');
+    const lowTempPlan = plan1.devices.find((d: any) => d.id === 'low-temp-no-onoff');
+    expect(spotterPlan1?.plannedState).toBe('shed');
     expect(lowTempPlan?.plannedState).toBe('shed');
     expect(reasonText(lowTempPlan?.reason)).toContain('swapped out for');
+
+    // Phase 2: low-temp-no-onoff is now off, fresh measurement — spotter activates directly
+    (app as any).deviceManager.setSnapshotForTests([
+      {
+        id: 'spotter',
+        name: 'Spotter kjøkkenbenk',
+        targets: [],
+        capabilities: ['onoff'],
+        currentOn: false,
+        controllable: true,
+        powerKw: 0.05,
+        expectedPowerKw: 0.05,
+      },
+      {
+        id: 'low-temp-no-onoff',
+        name: 'Lower-priority thermostat without onoff',
+        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+        capabilities: ['target_temperature'],
+        currentOn: false,
+        controllable: true,
+        powerKw: 0,
+        expectedPowerKw: 0,
+      },
+    ]);
+    const ts1 = (app as any).powerTracker?.lastTimestamp ?? Date.now();
+    await (app as any).recordPowerSample(50, ts1 + 1); // only spotter drawing ~50W
+    // In dry run mode, no pendingSheds are set, so the scheduler won't rebuild automatically.
+    // Force a rebuild so the swap-settled plan is computed with the fresh measurement.
+    await (app as any).planService.rebuildPlanFromCache();
+
+    const plan2 = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const spotterPlan2 = plan2.devices.find((d: any) => d.id === 'spotter');
+    expect(spotterPlan2?.plannedState).toBe('keep');
   });
 });

@@ -87,7 +87,7 @@ export type PlanExecutorSteppedContext = {
     issuedAtMs?: number;
     pendingWindowMs?: number;
   }) => void;
-  recordShedActuation: (deviceId: string, name: string, now: number) => void;
+  recordShedActuation: (deviceId: string, name: string, now: number, isSwapShed?: boolean) => void;
   recordRestoreActuation: (deviceId: string, name: string, now: number) => void;
   getRestoreLogSource: (deviceId: string) => 'shed_state' | 'current_plan';
   getDesiredSteppedLoadTrigger: () => {
@@ -400,6 +400,10 @@ export const applySteppedLoadRestore = async (
 };
 /* eslint-enable max-params, complexity */
 
+const isSwapShedAction = (action: ExecutableSteppedLoadDevice): boolean => (
+  action.reason?.code === PLAN_REASON_CODES.swappedOut
+);
+
 export const applySteppedLoadShedOff = async (
   ctx: PlanExecutorSteppedContext,
   action: ExecutableSteppedLoadDevice,
@@ -424,7 +428,7 @@ export const applySteppedLoadShedOff = async (
     if (!applied) return false;
     if (mode === 'plan') {
       const now = Date.now();
-      ctx.recordShedActuation(action.id, name, now);
+      ctx.recordShedActuation(action.id, name, now, isSwapShedAction(action));
     }
     ctx.structuredLog?.info({
       event: 'binary_command_applied',

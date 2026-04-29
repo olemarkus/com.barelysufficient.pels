@@ -1341,10 +1341,6 @@ input[type="text"]:focus {
   color: var(--color-state-warning-text);
 }
 
-.daily-budget-warning {
-  margin-top: var(--spacing-3);
-}
-
 /* Global banner for warnings/notices */
 .banner {
   display: flex;

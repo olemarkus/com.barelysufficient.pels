@@ -41,7 +41,6 @@ import {
   type SteppedSwapExecutor,
 } from './planRestoreHelpers';
 import { hasOtherDevicesWithUnconfirmedRecovery } from './planRestoreCoordination';
-import { isSteppedLoadDevice } from './planSteppedLoad';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import {
   buildRestoreTiming,
@@ -190,14 +189,9 @@ export function applyRestorePlan(params: {
     });
     for (const dev of steppedDevices) {
       const result = planRestoreForSteppedDevice({
-        dev,
-        deviceMap,
-        state,
-        timing: effectiveTiming,
-        availableHeadroom,
-        restoredOneThisCycle,
-        debugStructured: deps.debugStructured,
-        swapExecutor: steppedSwapExecutor,
+        dev, deviceMap, state, swapState, timing: effectiveTiming,
+        availableHeadroom, restoredOneThisCycle,
+        debugStructured: deps.debugStructured, swapExecutor: steppedSwapExecutor,
       });
       availableHeadroom = result.availableHeadroom;
       restoredOneThisCycle = result.restoredOneThisCycle;
@@ -359,6 +353,17 @@ function markRestoreCandidatesStayShedForShortfall(params: {
     }
     setPlanDevice(dev.id, update);
   }
+}
+
+function isDirectAdmissionEligible(
+  admission: { postReserveMarginKw: number },
+  swapState: SwapState,
+  devId: string,
+): boolean {
+  // Devices pending swap settle must pass the fresh-measurement gate even when headroom is
+  // abundant — exclude them from direct admission so they route through resolveSwapSettleGate.
+  return admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW
+    && !swapState.pendingSwapTargets.has(devId);
 }
 
 /* eslint-disable-next-line max-lines-per-function, max-statements --
@@ -547,7 +552,7 @@ function planRestoreForDevice(params: {
   }
   const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
   const powerSource = resolveRestorePowerSource(dev);
-  if (admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) {
+  if (isDirectAdmissionEligible(admission, swapState, dev.id)) {
     emitRestoreDebugEventOnChange({
       state,
       key: restoreDebugKey,
@@ -838,7 +843,7 @@ function handleInsufficientBinaryRestoreHeadroom(params: {
   });
 }
 
-function attemptSwapRestore(params: {
+type SwapRestoreParams = {
   dev: DevicePlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
   onDevices: DevicePlanDevice[];
@@ -851,31 +856,126 @@ function attemptSwapRestore(params: {
   deps: RestoreDeps;
   admittedDeviceUpdate?: Partial<DevicePlanDevice>;
   rejectedDeviceUpdate?: Partial<DevicePlanDevice>;
-}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
+};
+
+type SwapRestoreResult = { availableHeadroom: number; restoredOneThisCycle: boolean };
+
+function deferSwapPending(
+  deviceMap: Map<string, DevicePlanDevice>,
+  devId: string,
+): SwapRestoreResult & { handled: true } {
+  setDevice(deviceMap, devId, {
+    plannedState: 'shed',
+    reason: { code: PLAN_REASON_CODES.swapPending, targetName: null },
+  });
+  return { availableHeadroom: 0, restoredOneThisCycle: false, handled: true };
+}
+
+function resolveSwapSettleGate(params: SwapRestoreParams): (SwapRestoreResult & { handled: true }) | null {
   const {
-    dev,
-    deviceMap,
-    onDevices,
-    swapState,
+    dev, deviceMap, swapState, availableHeadroom, restoreNeed, measurementTs, restoredThisCycle, admittedDeviceUpdate,
+  } = params;
+  if (measurementTs !== null && swapState.lastSwapPlanMeasurementTs.get(dev.id) === measurementTs) {
+    return { ...deferSwapPending(deviceMap, dev.id), availableHeadroom };
+  }
+  if (!swapState.pendingSwapTargets.has(dev.id)) return null;
+  // A swap-shed was issued for this device in a prior cycle. Only proceed once a fresh
+  // power measurement has arrived (confirming the swap-out load has settled), so we don't
+  // activate the swap-in device while the swap-out devices are still drawing power.
+  const lastSwapMeasurementTs = swapState.lastSwapPlanMeasurementTs.get(dev.id);
+  // BUG-FIX: when swap was approved with measurementTs===null, lastSwapMeasurementTs is undefined;
+  // treat that as "any non-null measurement is fresh" rather than blocking forever.
+  const hasFreshMeasurement = measurementTs !== null
+    && (lastSwapMeasurementTs === undefined || measurementTs > lastSwapMeasurementTs);
+  if (!hasFreshMeasurement) return { ...deferSwapPending(deviceMap, dev.id), availableHeadroom };
+  // The prior swap settled: skip both the swap reserve and the admission reserve — the swap was
+  // already approved, so only require enough headroom above the floor (no extra buffer layers).
+  if (availableHeadroom - restoreNeed.needed >= RESTORE_ADMISSION_FLOOR_KW) {
+    swapState.pendingSwapTargets.delete(dev.id);
+    swapState.lastSwapPlanMeasurementTs.delete(dev.id);
+    swapState.pendingSwapTimestamps.delete(dev.id);
+    restoredThisCycle.add(dev.id);
+    setDevice(deviceMap, dev.id, { plannedState: 'keep', ...admittedDeviceUpdate });
+    return {
+      availableHeadroom: availableHeadroom - restoreNeed.needed,
+      restoredOneThisCycle: true,
+      handled: true,
+    };
+  }
+  // Headroom insufficient this cycle — keep in pendingSwapTargets so stale cleanup can rescue
+  // stranded swappedOutFor entries, and advance the measurement gate so we don't re-check the
+  // same stale measurement next cycle.
+  if (measurementTs !== null) swapState.lastSwapPlanMeasurementTs.set(dev.id, measurementTs);
+  return null;
+}
+
+function applySwapApproval(
+  params: SwapRestoreParams & { swap: ReturnType<typeof buildSwapCandidates> },
+): SwapRestoreResult {
+  const {
+    dev, deviceMap, swapState, phase, restoreNeed, measurementTs, restoredThisCycle, deps, admittedDeviceUpdate,
+  } = params;
+  const { swap } = params;
+  deps.debugStructured?.({
+    event: 'restore_swap_approved',
+    restoreType: 'swap',
+    deviceId: dev.id,
+    deviceName: dev.name,
     phase,
-    availableHeadroom,
-    restoreNeed,
-    measurementTs,
-    restoredThisCycle,
-    deps,
-    admittedDeviceUpdate,
-    rejectedDeviceUpdate,
+    shedDeviceIds: swap.toShed.map((d) => d.id),
+    neededKw: restoreNeed.needed,
+    potentialHeadroomKw: swap.potentialHeadroom,
+    effectiveHeadroomKw: swap.effectiveHeadroom,
+    ...buildRestoreAdmissionLogFields(swap.admission),
+    swapReserveKw: swap.reserveKw,
+    estimatedPowerKw: restoreNeed.devPower,
+    powerSource: resolveRestorePowerSource(dev),
+    decision: 'admitted',
+    penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+    penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+  });
+  swapState.pendingSwapTargets.add(dev.id);
+  swapState.pendingSwapTimestamps.set(dev.id, Date.now());
+  if (measurementTs !== null) swapState.lastSwapPlanMeasurementTs.set(dev.id, measurementTs);
+  const nextHeadroom = swap.effectiveHeadroom;
+  for (const shedDev of swap.toShed) {
+    setDevice(deviceMap, shedDev.id, {
+      plannedState: 'shed',
+      reason: { code: PLAN_REASON_CODES.swappedOut, targetName: dev.name },
+    });
+    deps.debugStructured?.({
+      event: 'restore_swap_shed',
+      shedDeviceId: shedDev.id,
+      shedDeviceName: shedDev.name,
+      forDeviceId: dev.id,
+      forDeviceName: dev.name,
+    });
+    swapState.swappedOutFor.set(shedDev.id, dev.id);
+  }
+  if (swap.toShed.length > 0) {
+    // Swap-out commands issued this cycle — defer activation until the next power measurement
+    // confirms the shed load has settled, to avoid a transient spike.
+    setDevice(deviceMap, dev.id, {
+      plannedState: 'shed',
+      reason: { code: PLAN_REASON_CODES.swapPending, targetName: null },
+    });
+    // Signal that a restore decision was made this cycle so subsequent devices don't also
+    // attempt restores before the meter settles after the swap-out commands.
+    return { availableHeadroom: nextHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
+  }
+  restoredThisCycle.add(dev.id);
+  setDevice(deviceMap, dev.id, { plannedState: 'keep', ...admittedDeviceUpdate });
+  return { availableHeadroom: nextHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
+}
+
+function attemptSwapRestore(params: SwapRestoreParams): SwapRestoreResult {
+  const {
+    dev, deviceMap, onDevices, swapState, phase,
+    availableHeadroom, restoreNeed, restoredThisCycle, deps, rejectedDeviceUpdate,
   } = params;
 
-  if (measurementTs !== null && swapState.lastSwapPlanMeasurementTs.get(dev.id) === measurementTs) {
-    setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
-    return { availableHeadroom, restoredOneThisCycle: false };
-  }
-
-  if (swapState.pendingSwapTargets.has(dev.id)) {
-    setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
-    return { availableHeadroom, restoredOneThisCycle: false };
-  }
+  const settleResult = resolveSwapSettleGate(params);
+  if (settleResult) return settleResult;
 
   const swap = buildSwapCandidates({
     dev,
@@ -887,10 +987,7 @@ function attemptSwapRestore(params: {
   });
   if (!swap.ready) {
     setDevice(deviceMap, dev.id, buildRejectedSwapUpdate({
-      availableHeadroom,
-      restoreNeed,
-      swap,
-      rejectedDeviceUpdate,
+      availableHeadroom, restoreNeed, swap, rejectedDeviceUpdate,
     }));
     deps.debugStructured?.({
       event: 'restore_rejected',
@@ -916,55 +1013,7 @@ function attemptSwapRestore(params: {
     return { availableHeadroom, restoredOneThisCycle: false };
   }
 
-  deps.debugStructured?.({
-    event: 'restore_swap_approved',
-    restoreType: 'swap',
-    deviceId: dev.id,
-    deviceName: dev.name,
-    phase,
-    shedDeviceIds: swap.toShed.map((d) => d.id),
-    neededKw: restoreNeed.needed,
-    potentialHeadroomKw: swap.potentialHeadroom,
-    effectiveHeadroomKw: swap.effectiveHeadroom,
-    ...buildRestoreAdmissionLogFields(swap.admission),
-    swapReserveKw: swap.reserveKw,
-    estimatedPowerKw: restoreNeed.devPower,
-    powerSource: resolveRestorePowerSource(dev),
-    decision: 'admitted',
-    penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
-    penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
-  });
-  swapState.pendingSwapTargets.add(dev.id);
-  swapState.pendingSwapTimestamps.set(dev.id, Date.now());
-  if (measurementTs !== null) {
-    swapState.lastSwapPlanMeasurementTs.set(dev.id, measurementTs);
-  }
-  const nextHeadroom = swap.effectiveHeadroom;
-  for (const shedDev of swap.toShed) {
-    setDevice(deviceMap, shedDev.id, {
-      plannedState: 'shed',
-      reason: { code: PLAN_REASON_CODES.swappedOut, targetName: dev.name },
-    });
-    deps.debugStructured?.({
-      event: 'restore_swap_shed',
-      shedDeviceId: shedDev.id,
-      shedDeviceName: shedDev.name,
-      forDeviceId: dev.id,
-      forDeviceName: dev.name,
-    });
-    swapState.swappedOutFor.set(shedDev.id, dev.id);
-  }
-  restoredThisCycle.add(dev.id);
-  setDevice(deviceMap, dev.id, { plannedState: 'keep', ...admittedDeviceUpdate });
-  return { availableHeadroom: nextHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
-}
-
-function buildSwapPendingTargetUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {
-  const reason = { code: PLAN_REASON_CODES.swapPending, targetName: null } as const;
-  if (isSteppedLoadDevice(dev) && resolveEffectiveCurrentOn(dev) !== false) {
-    return { plannedState: 'keep', reason };
-  }
-  return { plannedState: 'shed', reason };
+  return applySwapApproval({ ...params, swap });
 }
 
 function buildRejectedSwapUpdate(params: {

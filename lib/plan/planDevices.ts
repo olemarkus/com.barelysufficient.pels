@@ -335,14 +335,14 @@ function buildBasePlanDevice(params: {
     budgetExempt: dev.budgetExempt,
     available: dev.available,
     currentTemperature: dev.currentTemperature,
-    temperatureBoost: dev.temperatureBoost,
-    temperatureBoostActive,
     stepCommandPending: dev.stepCommandPending,
     stepCommandStatus: dev.stepCommandStatus,
     binaryCommandPending: binaryCommandPending || undefined,
     shedAction,
     shedTemperature,
     shedStepId,
+    temperatureBoost: dev.temperatureBoost,
+    temperatureBoostActive,
   };
 }
 
