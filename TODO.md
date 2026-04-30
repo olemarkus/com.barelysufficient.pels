@@ -145,18 +145,6 @@ file.
 
 ## P1 Simplification follow-ups
 
-- [ ] Make shedding a single planner boundary after the mechanical `lib/plan/shedding/` split.
-      Route hourly-budget exhaustion through `buildSheddingPlan` using the same candidate
-      construction, priority ordering, stepped target calculation, temperature target calculation,
-      and power eligibility as capacity shedding. Then remove `applyHourlyBudgetShed` from
-      `planDevices.ts` so materialization only copies `shedSet`, `shedReasons`,
-      `steppedDesiredStepByDeviceId`, and `temperatureShedTargets`; it must not independently set
-      `plannedState: 'shed'`, calculate stepped shed targets, or choose a device to shed. Use
-      `PLAN_REASON_CODES.dailyBudget` for daily/hourly budget shed reasons and cover empty
-      `shedSet` materialization, hourly-budget binary/stepped/temperature shedding, zero-draw
-      stepped-load exclusion, existing capacity shedding, and shortfall/off-state holds.
-      Files: `lib/plan/shedding/**`, `lib/plan/planDevices.ts`, `test/planShedding.test.ts`,
-      `test/planDevices.test.ts`.
 - [ ] Split planner state from render-only explanation data so keep/shed/inactive decisions no
       longer depend on UI-facing `reason` objects. The stepped restore admission path now keeps
       rejected off restores explicit in the plan, and cooldown / meter-settling restore blocks now

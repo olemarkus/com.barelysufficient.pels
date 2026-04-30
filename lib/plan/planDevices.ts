@@ -20,6 +20,8 @@ import {
   isSteppedLoadDevice,
   resolveSteppedKeepDesiredStepId,
   resolveSteppedLoadInitialDesiredStepId,
+  resolveSteppedLoadPlanningKw,
+  resolveSteppedUnknownCurrentMeasuredShedding,
   getSteppedLoadShedTargetStep,
 } from './planSteppedLoad';
 import {
@@ -31,9 +33,12 @@ import {
 } from '../utils/deviceControlProfiles';
 import { resolveObservedCurrentState } from './planStateResolution';
 import {
+  emitTemperatureBoostStateChange,
   resolveTemperatureBoostActive,
   supportsTemperatureBoostDevice,
 } from './planTemperatureBoost';
+import { resolveEffectiveCurrentOn } from './planCurrentState';
+import type { StructuredDebugEmitter } from '../logging/logger';
 
 export type PlanDevicesDeps = {
   getPriorityForDevice: (deviceId: string) => number;
@@ -42,6 +47,7 @@ export type PlanDevicesDeps = {
   isCurrentHourExpensive: () => boolean;
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
+  debugStructured?: StructuredDebugEmitter;
 };
 
 const supportsTemperatureDevice = (device: PlanInputDevice): boolean => {
@@ -53,8 +59,6 @@ export function buildInitialPlanDevices(params: {
   state: PlanEngineState;
   shedSet: Set<string>;
   shedReasons: Map<string, DeviceReason>;
-  steppedDesiredStepByDeviceId: Map<string, string>;
-  temperatureShedTargets: Map<string, { temperature: number; capabilityId: string }>;
   guardInShortfall: boolean;
   deps: PlanDevicesDeps;
 }): DevicePlanDevice[] {
@@ -63,8 +67,6 @@ export function buildInitialPlanDevices(params: {
     state,
     shedSet,
     shedReasons,
-    steppedDesiredStepByDeviceId,
-    temperatureShedTargets,
     guardInShortfall,
     deps,
   } = params;
@@ -86,8 +88,14 @@ export function buildInitialPlanDevices(params: {
       ? deps.getShedBehavior(dev.id)
       : { action: 'turn_off', temperature: null, stepId: null };
 
+    const previousActive = state.temperatureBoostActiveByDevice[dev.id] === true;
+    const active = resolveTemperatureBoostActive({ dev, previousActive });
+    emitTemperatureBoostStateChange({ dev, previousActive, active, debugStructured: deps.debugStructured });
+
     const base = buildBasePlanDevice({
       dev,
+      devices: context.devices,
+      state,
       priority,
       recentlyRestored: isRecentlyRestored(state.lastDeviceRestoreMs[dev.id]),
       binaryCommandPending: isPendingBinaryCommandActive({
@@ -101,12 +109,7 @@ export function buildInitialPlanDevices(params: {
       shedBehavior,
       shedSet,
       shedReasons,
-      steppedDesiredStepByDeviceId,
-      temperatureShedTargets,
-      temperatureBoostActive: resolveTemperatureBoostActive({
-        dev,
-        previousActive: state.temperatureBoostActiveByDevice[dev.id] === true,
-      }),
+      temperatureBoostActive: active,
     });
     state.temperatureBoostActiveByDevice[dev.id] = base.temperatureBoostActive === true;
 
@@ -116,10 +119,7 @@ export function buildInitialPlanDevices(params: {
       guardInShortfall,
     });
 
-    return applyHourlyBudgetShed({
-      planDevice: withOffStateReason,
-      hourlyBudgetExhausted: params.state.hourlyBudgetExhausted,
-    });
+    return withOffStateReason;
   });
 }
 
@@ -230,6 +230,8 @@ function hasKnownPowerFields(dev: PlanInputDevice): boolean {
 
 function buildBasePlanDevice(params: {
   dev: PlanInputDevice;
+  devices: PlanInputDevice[];
+  state: PlanEngineState;
   priority: number;
   recentlyRestored: boolean;
   binaryCommandPending: boolean;
@@ -240,12 +242,12 @@ function buildBasePlanDevice(params: {
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
   shedSet: Set<string>;
   shedReasons: Map<string, DeviceReason>;
-  steppedDesiredStepByDeviceId: Map<string, string>;
-  temperatureShedTargets: Map<string, { temperature: number; capabilityId: string }>;
   temperatureBoostActive: boolean;
 }): DevicePlanDevice {
   const {
     dev,
+    devices,
+    state,
     priority,
     recentlyRestored,
     binaryCommandPending,
@@ -256,8 +258,6 @@ function buildBasePlanDevice(params: {
     shedBehavior,
     shedSet,
     shedReasons,
-    steppedDesiredStepByDeviceId,
-    temperatureShedTargets,
     temperatureBoostActive,
   } = params;
 
@@ -265,11 +265,13 @@ function buildBasePlanDevice(params: {
   const runtimeDesiredStepId = dev.desiredStepId ?? initialDesiredStepId;
   const directShedStepId = resolveSteppedLoadDirectShedStepId({
     dev,
+    devices,
+    state,
     shedBehavior,
     shouldShed: shedSet.has(dev.id),
-    currentDesiredStepId: steppedDesiredStepByDeviceId.get(dev.id) ?? dev.selectedStepId,
+    currentDesiredStepId: resolveSteppedShedCurrentDesiredStepId(dev),
   });
-  const shedDesiredStepId = directShedStepId ?? steppedDesiredStepByDeviceId.get(dev.id);
+  const shedDesiredStepId = directShedStepId;
   const desiredStepId = shedDesiredStepId ?? runtimeDesiredStepId;
   const isSteppedShed = isSteppedLoadDevice(dev)
     && shedDesiredStepId !== undefined
@@ -291,7 +293,6 @@ function buildBasePlanDevice(params: {
     controllable,
     shouldShed: shedSet.has(dev.id),
     shedBehavior,
-    temperatureShedTargets,
   });
   const resolvedPlannedTarget = shedAction === 'set_temperature' && shedTemperature !== null
     ? shedTemperature
@@ -364,25 +365,8 @@ function resolveShedAction(params: {
   controllable: boolean;
   shouldShed: boolean;
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
-  temperatureShedTargets: Map<string, { temperature: number; capabilityId: string }>;
 }): { shedAction: ShedAction; shedTemperature: number | null; shedStepId: string | null } {
-  const { dev, controllable, shouldShed, shedBehavior, temperatureShedTargets } = params;
-  // Use pre-computed temperature target from the shedding planner when available
-  if (controllable && shouldShed) {
-    const tempTarget = temperatureShedTargets.get(dev.id);
-    if (tempTarget) {
-      const target = dev.targets?.find((t) => t.id === tempTarget.capabilityId) ?? null;
-      return {
-        shedAction: 'set_temperature',
-        shedTemperature: normalizeTargetCapabilityValue({ target, value: tempTarget.temperature }),
-        shedStepId: null,
-      };
-    }
-  }
-  if (isSteppedLoadDevice(dev)) {
-    return resolveSteppedShedAction({ controllable, hasBinaryControl: dev.hasBinaryControl, shedBehavior });
-  }
-  // Non-stepped temperature devices: fall back to shedBehavior when not in temperatureShedTargets
+  const { dev, controllable, shouldShed, shedBehavior } = params;
   if (controllable && shouldShed
     && shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
     const target = getPrimaryTargetCapability(dev.targets);
@@ -391,6 +375,9 @@ function resolveShedAction(params: {
       shedTemperature: normalizeTargetCapabilityValue({ target, value: shedBehavior.temperature }),
       shedStepId: null,
     };
+  }
+  if (isSteppedLoadDevice(dev)) {
+    return resolveSteppedShedAction({ controllable, hasBinaryControl: dev.hasBinaryControl, shedBehavior });
   }
   return { shedAction: 'turn_off', shedTemperature: null, shedStepId: null };
 }
@@ -413,12 +400,16 @@ function resolveSteppedShedAction(params: {
 
 function resolveSteppedLoadDirectShedStepId(params: {
   dev: PlanInputDevice;
+  devices: PlanInputDevice[];
+  state: PlanEngineState;
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
   shouldShed: boolean;
   currentDesiredStepId?: string;
 }): string | undefined {
   const {
     dev,
+    devices,
+    state,
     shedBehavior,
     shouldShed,
     currentDesiredStepId,
@@ -431,12 +422,53 @@ function resolveSteppedLoadDirectShedStepId(params: {
     return (getSteppedLoadOffStep(profile) ?? getSteppedLoadLowestStep(profile))?.id;
   }
   if (shedBehavior.action !== 'set_step') return undefined;
+  if (shouldForceLowestActiveStep({ dev, devices, state, shedBehaviorAction: shedBehavior.action })) {
+    return dev.steppedLoadProfile ? getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)?.id : undefined;
+  }
   const targetStep = getSteppedLoadShedTargetStep({
     device: dev,
     shedAction: 'set_step',
     currentDesiredStepId,
   });
-  return targetStep?.id;
+  return targetStep?.id
+    ?? resolveSteppedUnknownCurrentMeasuredShedding({ device: dev, shedAction: 'set_step' })?.targetStep.id;
+}
+
+function shouldForceLowestActiveStep(params: {
+  dev: PlanInputDevice;
+  devices: PlanInputDevice[];
+  state: Pick<PlanEngineState, 'lastDeviceShedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>;
+  shedBehaviorAction: ShedAction;
+}): boolean {
+  const { dev, devices, state, shedBehaviorAction } = params;
+  return shedBehaviorAction === 'set_step'
+    && devices.some((candidate) => candidate.id !== dev.id && isNonSteppedDeviceRecovering(candidate, state));
+}
+
+function isNonSteppedDeviceRecovering(
+  candidate: PlanInputDevice,
+  state: Pick<PlanEngineState, 'lastDeviceShedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>,
+): boolean {
+  const effectiveCurrentOn = resolveEffectiveCurrentOn(candidate);
+  if (candidate.controllable === false || isSteppedLoadDevice(candidate) || effectiveCurrentOn !== false) {
+    return false;
+  }
+  if (state.swapByDevice[candidate.id]?.swappedOutFor || state.swapByDevice[candidate.id]?.pendingTarget) {
+    return true;
+  }
+  const lastShedMs = state.lastDeviceShedMs[candidate.id];
+  if (lastShedMs == null) return false;
+  const lastRestoreMs = state.lastDeviceRestoreMs[candidate.id];
+  return lastRestoreMs == null || lastRestoreMs < lastShedMs;
+}
+
+function resolveSteppedShedCurrentDesiredStepId(dev: PlanInputDevice): string | undefined {
+  if (!isSteppedLoadDevice(dev) || !dev.stepCommandPending || !dev.desiredStepId || !dev.selectedStepId) {
+    return dev.selectedStepId;
+  }
+  const desiredKw = resolveSteppedLoadPlanningKw(dev, dev.desiredStepId);
+  const selectedKw = resolveSteppedLoadPlanningKw(dev, dev.selectedStepId);
+  return desiredKw < selectedKw ? dev.desiredStepId : dev.selectedStepId;
 }
 
 // Only physically-confirmed blocking EV states (plugged_out, discharging) warrant marking
@@ -501,32 +533,5 @@ function applyOffStateReason(params: {
       ...planDevice.candidateReasons,
       offStateAnalysis: formatDeviceReason(buildRestoreNeedReason(need, headroomRaw)),
     },
-  };
-}
-
-function applyHourlyBudgetShed(params: {
-  planDevice: DevicePlanDevice;
-  hourlyBudgetExhausted: boolean;
-}): DevicePlanDevice {
-  const { planDevice, hourlyBudgetExhausted } = params;
-  if (!planDevice.controllable) return planDevice;
-  if (!hourlyBudgetExhausted || planDevice.plannedState === 'shed') return planDevice;
-  if (
-    planDevice.currentState !== 'on'
-    && planDevice.currentState !== 'unknown'
-    && planDevice.currentState !== 'not_applicable'
-  ) return planDevice;
-  const desiredStepId = isSteppedLoadDevice(planDevice)
-    ? getSteppedLoadShedTargetStep({
-      device: planDevice,
-      shedAction: planDevice.shedAction === 'set_step' ? 'set_step' : 'turn_off',
-      currentDesiredStepId: planDevice.desiredStepId,
-    })?.id ?? planDevice.desiredStepId
-    : planDevice.desiredStepId;
-  return {
-    ...planDevice,
-    plannedState: 'shed',
-    desiredStepId,
-    reason: { code: PLAN_REASON_CODES.hourlyBudget, detail: null },
   };
 }

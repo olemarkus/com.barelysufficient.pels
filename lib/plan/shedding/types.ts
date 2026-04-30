@@ -8,8 +8,6 @@ import type { PlanInputDevice, ShedAction } from '../planTypes';
 export type SheddingPlan = {
   shedSet: Set<string>;
   shedReasons: Map<string, DeviceReason>;
-  steppedDesiredStepByDeviceId: Map<string, string>;
-  temperatureShedTargets: Map<string, { temperature: number; capabilityId: string }>;
   sheddingActive: boolean;
   guardInShortfall: boolean;
   updates: {
@@ -45,8 +43,6 @@ export type SheddingDeps = {
 export type PlanSheddingResult = {
   shedSet: Set<string>;
   shedReasons: Map<string, DeviceReason>;
-  steppedDesiredStepByDeviceId: Map<string, string>;
-  temperatureShedTargets: Map<string, { temperature: number; capabilityId: string }>;
   updates: SheddingPlan['updates'];
   overshootStats: SheddingPlan['overshootStats'];
 };
