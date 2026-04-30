@@ -87,7 +87,7 @@ export type PlanExecutorSteppedContext = {
     issuedAtMs?: number;
     pendingWindowMs?: number;
   }) => void;
-  recordShedActuation: (deviceId: string, name: string, now: number) => void;
+  recordShedActuation: (deviceId: string, name: string, now: number, isSwapShed?: boolean) => void;
   recordRestoreActuation: (deviceId: string, name: string, now: number) => void;
   getRestoreLogSource: (deviceId: string) => 'shed_state' | 'current_plan';
   getDesiredSteppedLoadTrigger: () => {
@@ -400,6 +400,7 @@ export const applySteppedLoadRestore = async (
 };
 /* eslint-enable max-params, complexity */
 
+/* eslint-disable complexity -- shed-off gates and swap-shed bookkeeping stay together. */
 export const applySteppedLoadShedOff = async (
   ctx: PlanExecutorSteppedContext,
   action: ExecutableSteppedLoadDevice,
@@ -411,6 +412,7 @@ export const applySteppedLoadShedOff = async (
   if (action.shedAction !== 'turn_off' && !atOffStep) return false;
   if (!snapshot) return false;
   const name = action.name;
+  const isSwapShed = action.reason?.code === PLAN_REASON_CODES.swappedOut;
   try {
     const applied = await setBinaryControl({
       ...ctx.buildBinaryControlDeps(),
@@ -420,11 +422,12 @@ export const applySteppedLoadShedOff = async (
       snapshot,
       logContext: 'capacity',
       actuationMode: mode,
+      isSwapShed,
     });
     if (!applied) return false;
     if (mode === 'plan') {
       const now = Date.now();
-      ctx.recordShedActuation(action.id, name, now);
+      ctx.recordShedActuation(action.id, name, now, isSwapShed);
     }
     ctx.structuredLog?.info({
       event: 'binary_command_applied',
@@ -452,6 +455,7 @@ export const applySteppedLoadShedOff = async (
     return false;
   }
 };
+/* eslint-enable complexity */
 
 const logSteppedLoadCommandSkip = (
   ctx: PlanExecutorSteppedContext,

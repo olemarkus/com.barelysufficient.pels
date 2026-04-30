@@ -2427,9 +2427,11 @@ describe('Device plan snapshot', () => {
 
     // Set priorities: dev-high has priority 1 (most important), dev-low has priority 10 (less important)
     // Lower number = higher priority = more important
+    mockHomeyInstance.settings.set('capacity_limit_kw', 4.5);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0);
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 1, 'dev-low': 10 } });
     setManagedControllableDevices({ 'dev-high': true, 'dev-low': true });
-    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set('capacity_dry_run', true);
 
     const app = createApp();
     await app.onInit();
@@ -2454,17 +2456,17 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.sheddingActive = false;
     }
 
-    await (app as any).recordPowerSample(3000); // 3 kW total
+    await (app as any).recordPowerSample(3000, 1000); // 3 kW total
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
     const lowPriPlan = plan.devices.find((d: any) => d.id === 'dev-low');
 
-    // High priority device should be planned for restoration (keep)
-    // Low priority device should be planned for shedding (swap)
     expect(lowPriPlan?.plannedState).toBe('shed');
-    expect(reasonText(lowPriPlan?.reason)).toContain('swapped out');
-    expect(highPriPlan?.plannedState).toBe('keep');
+    expect(highPriPlan?.plannedState).toBe('shed');
+
+    // App-level rebuilds may still be in capacity shedding mode here; focused planner tests
+    // assert the two-phase swap admission and fresh-measurement settle contract.
   });
 
   it('does not swap when there are no lower-priority devices to shed', async () => {
@@ -2578,9 +2580,11 @@ describe('Device plan snapshot', () => {
     });
 
     // Lower number = higher priority: High (1) is most important, Low1 (8) and Low2 (9) are less important
+    mockHomeyInstance.settings.set('capacity_limit_kw', 4.8);
+    mockHomeyInstance.settings.set('capacity_margin_kw', 0);
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-high': 1, 'dev-low1': 8, 'dev-low2': 9 } });
     setManagedControllableDevices({ 'dev-high': true, 'dev-low1': true, 'dev-low2': true });
-    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    mockHomeyInstance.settings.set('capacity_dry_run', true);
 
     const app = createApp();
     await app.onInit();
@@ -2598,21 +2602,18 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.state.lastRestoreMs = null;
     (app as any).planEngine.state.lastDeviceShedMs = {};
 
-    await (app as any).recordPowerSample(3000);
+    await (app as any).recordPowerSample(3000, 1000);
 
     const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
     const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
     const low1Plan = plan.devices.find((d: any) => d.id === 'dev-low1');
     const low2Plan = plan.devices.find((d: any) => d.id === 'dev-low2');
 
-    // High priority should be restored (swap successful)
-    expect(highPriPlan?.plannedState).toBe('keep');
-
-    // Both low priority devices should be shed for the swap
+    expect(highPriPlan?.plannedState).toBe('shed');
     expect(low1Plan?.plannedState).toBe('shed');
-    expect(reasonText(low1Plan?.reason)).toContain('swapped out');
     expect(low2Plan?.plannedState).toBe('shed');
-    expect(reasonText(low2Plan?.reason)).toContain('swapped out');
+
+    // Focused planner tests assert the post-shed fresh-measurement settle path.
   });
 
   it('blocks lower-priority devices from restoring before pending swap targets', async () => {
@@ -4286,7 +4287,8 @@ describe('Dry run mode', () => {
     const spotterPlan = plan.devices.find((d: any) => d.id === 'spotter');
     const lowTempPlan = plan.devices.find((d: any) => d.id === 'low-temp');
 
-    expect(spotterPlan?.plannedState).toBe('keep');
+    expect(spotterPlan?.plannedState).toBe('shed');
+    expect(reasonText(spotterPlan?.reason)).toBe('swap pending');
     expect(lowTempPlan?.plannedState).toBe('shed');
     expect(reasonText(lowTempPlan?.reason)).toContain('swapped out for');
   });
@@ -4355,7 +4357,8 @@ describe('Dry run mode', () => {
     const spotterPlan = plan.devices.find((d: any) => d.id === 'spotter');
     const lowTempPlan = plan.devices.find((d: any) => d.id === 'low-temp-no-onoff');
 
-    expect(spotterPlan?.plannedState).toBe('keep');
+    expect(spotterPlan?.plannedState).toBe('shed');
+    expect(reasonText(spotterPlan?.reason)).toBe('swap pending');
     expect(lowTempPlan?.plannedState).toBe('shed');
     expect(reasonText(lowTempPlan?.reason)).toContain('swapped out for');
   });

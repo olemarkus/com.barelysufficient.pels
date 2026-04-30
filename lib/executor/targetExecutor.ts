@@ -60,7 +60,7 @@ export type PlanExecutorTargetContext = {
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
-  recordShedActuation: (deviceId: string, name: string, now: number) => void;
+  recordShedActuation: (deviceId: string, name: string, now: number, isSwapShed?: boolean) => void;
   recordRestoreActuation: (deviceId: string, name: string, now: number) => void;
   recordActivationAttemptStarted: (deviceId: string, name: string, now: number) => void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
@@ -117,7 +117,7 @@ export const applyShedTemperaturePlan = async (
       reasonCode: 'shedding',
     });
     const now = Date.now();
-    ctx.recordShedActuation(action.deviceId, action.name, now);
+    ctx.recordShedActuation(action.deviceId, action.name, now, action.isSwapShed === true);
     return { handled: true, wrote: true };
   } catch (error) {
     ctx.error(`Failed to set shed temperature for ${action.name} via DeviceManager`, error);
@@ -142,6 +142,7 @@ export const trySetShedTemperature = async (
     targetCap: string | undefined;
     shedTemp: number | null;
     canSetShedTemp: boolean;
+    isSwapShed?: boolean;
   },
 ): Promise<PlanActionHandleResult> => {
   const {
@@ -150,6 +151,7 @@ export const trySetShedTemperature = async (
     targetCap,
     shedTemp,
     canSetShedTemp,
+    isSwapShed = false,
   } = params;
   if (!canSetShedTemp || !targetCap || shedTemp === null) return { handled: false, wrote: false };
   const now = Date.now();
@@ -177,7 +179,7 @@ export const trySetShedTemperature = async (
       attemptType: result.attemptType,
       reasonCode: 'shedding',
     });
-    ctx.recordShedActuation(deviceId, name, now);
+    ctx.recordShedActuation(deviceId, name, now, isSwapShed);
     return { handled: true, wrote: true };
   } catch (error) {
     ctx.error(`Failed to set shed temperature for ${name} via DeviceManager`, error);

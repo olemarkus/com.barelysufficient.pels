@@ -121,7 +121,8 @@ export class PlanExecutor {
     deviceId: string,
     name: string,
     now: number,
-  ): void => this.recordShedActuation(deviceId, name, now);
+    isSwapShed = false,
+  ): void => this.recordShedActuation(deviceId, name, now, isSwapShed);
   private readonly boundRecordRestoreActuation = (
     deviceId: string,
     name: string,
@@ -232,8 +233,10 @@ export class PlanExecutor {
     this.deps.error(...args);
   }
 
-  private recordShedActuation(deviceId: string, name: string, now: number): void {
-    this.state.lastInstabilityMs = now;
+  private recordShedActuation(deviceId: string, name: string, now: number, isSwapShed = false): void {
+    if (!isSwapShed) {
+      this.state.lastInstabilityMs = now;
+    }
     this.recordControlTimestamp(deviceId, now);
     this.state.lastDeviceShedMs[deviceId] = now;
     recordDiagnosticsShed({
@@ -325,7 +328,7 @@ export class PlanExecutor {
         }
       }
     } else {
-      this.recordShedActuation(deviceId, liveDevice.name, now);
+      this.recordShedActuation(deviceId, liveDevice.name, now, pending.isSwapShed === true);
     }
 
     this.flushLastControlledPersistence();
@@ -447,13 +450,12 @@ export class PlanExecutor {
     const reason = dev.reason;
     if (isRestoreHoldReason(reason)) return { handled: true, wrote: false };
     const isSwap = reason.code === PLAN_REASON_CODES.swappedOut;
+    const wrote = isSwap
+      ? await this.applySheddingToDevice(dev.id, dev.name, formatDeviceReason(reason), true)
+      : await this.applySheddingToDevice(dev.id, dev.name, undefined);
     return {
       handled: true,
-      wrote: await this.applySheddingToDevice(
-        dev.id,
-        dev.name,
-        isSwap ? formatDeviceReason(reason) : undefined,
-      ),
+      wrote,
     };
   }
 
@@ -714,7 +716,12 @@ export class PlanExecutor {
       : false;
   }
 
-  public async applySheddingToDevice(deviceId: string, deviceName: string, reason?: string): Promise<boolean> {
+  public async applySheddingToDevice(
+    deviceId: string,
+    deviceName: string,
+    reason?: string,
+    isSwapShed = false,
+  ): Promise<boolean> {
     try {
       if (this.capacityDryRun) return false;
       const snapshotState = this.latestTargetSnapshot.find((d) => d.id === deviceId);
@@ -743,9 +750,10 @@ export class PlanExecutor {
           targetCap,
           shedTemp,
           canSetShedTemp,
+          isSwapShed,
         });
         if (!shedTemperatureResult.handled) {
-          return this.turnOffDevice(deviceId, name, reason);
+          return this.turnOffDevice(deviceId, name, reason, isSwapShed);
         }
         return shedTemperatureResult.wrote;
       } finally {
@@ -769,6 +777,7 @@ export class PlanExecutor {
     targetCap: string | undefined;
     shedTemp: number | null;
     canSetShedTemp: boolean;
+    isSwapShed?: boolean;
   }): Promise<PlanActionHandleResult> {
     return trySetShedTemperature(this.buildTargetExecutorContext(), params);
   }
@@ -777,7 +786,12 @@ export class PlanExecutor {
    * Binary shed handling still combines capability discovery, skip diagnostics,
    * and actuation logging in one path.
    */
-  private async turnOffDevice(deviceId: string, name: string, reason?: string): Promise<boolean> {
+  private async turnOffDevice(
+    deviceId: string,
+    name: string,
+    reason?: string,
+    isSwapShed = false,
+  ): Promise<boolean> {
     const snapshotEntry = this.latestTargetSnapshot.find((entry) => entry.id === deviceId);
     const controlPlan = getBinaryControlPlan(snapshotEntry);
     if (snapshotEntry?.deviceClass === 'evcharger') {
@@ -827,6 +841,7 @@ export class PlanExecutor {
         logContext: 'capacity',
         reason,
         actuationMode: 'plan',
+        isSwapShed,
       });
       if (!applied) return false;
       const flowBackedControl = isFlowBackedBinaryControl(
@@ -843,7 +858,7 @@ export class PlanExecutor {
           mode: 'plan',
           reasonCode: reason ? 'shed_with_reason' : 'shedding',
         });
-        this.recordShedActuation(deviceId, name, now);
+        this.recordShedActuation(deviceId, name, now, isSwapShed);
       }
       return true;
     } catch (error) {

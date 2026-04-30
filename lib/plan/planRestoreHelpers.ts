@@ -21,12 +21,18 @@ import {
 } from './planRestoreTiming';
 import {
   getSteppedLoadNextRestoreStep,
+  isSteppedLoadDevice,
   resolveSteppedLoadRestoreDeltaKw,
 } from './planSteppedLoad';
+import {
+  normalizeSteppedLoadStepStateFromLegacyFields,
+  resolveKnownEffectiveStepId,
+} from './planSteppedLoadState';
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadLowestStep,
   getSteppedLoadOffStep,
+  getSteppedLoadStep,
 } from '../utils/deviceControlProfiles';
 import {
   getActivationPenaltyLevel,
@@ -167,7 +173,7 @@ function isBlockedByDirectSwap(
   const swappedFor = swapState.swappedOutFor.get(dev.id);
   if (!swappedFor) return false;
   const higherPriDev = deviceMap.get(swappedFor);
-  if (higherPriDev && higherPriDev.currentState === 'off') {
+  if (higherPriDev && !isPendingSwapTargetRestored(higherPriDev)) {
     setRestorePlanDevice(deviceMap, dev.id, {
       plannedState: 'shed',
       reason: { code: PLAN_REASON_CODES.swapPending, targetName: higherPriDev.name },
@@ -177,6 +183,7 @@ function isBlockedByDirectSwap(
   swapState.swappedOutFor.delete(dev.id);
   swapState.pendingSwapTargets.delete(swappedFor);
   swapState.pendingSwapTimestamps.delete(swappedFor);
+  swapState.lastSwapPlanMeasurementTs.delete(swappedFor);
   return false;
 }
 
@@ -193,22 +200,44 @@ function isBlockedByPendingSwapTarget(
     if (!swapTargetDev) {
       swapState.pendingSwapTargets.delete(swapTargetId);
       swapState.pendingSwapTimestamps.delete(swapTargetId);
+      swapState.lastSwapPlanMeasurementTs.delete(swapTargetId);
       continue;
     }
     const swapTargetPriority = swapTargetDev.priority ?? 100;
-    if (swapTargetPriority <= devPriority && swapTargetDev.currentState === 'off') {
+    const targetRestored = isPendingSwapTargetRestored(swapTargetDev);
+    const targetStillPending = swapTargetDev.currentState === 'off'
+      || (isSteppedLoadDevice(swapTargetDev) && swapTargetDev.currentState === 'on' && !targetRestored);
+    if (swapTargetPriority <= devPriority && targetStillPending) {
       setRestorePlanDevice(deviceMap, dev.id, {
         plannedState: 'shed',
         reason: { code: PLAN_REASON_CODES.swapPending, targetName: swapTargetDev.name },
       });
       return true;
     }
-    if (swapTargetDev.currentState === 'on') {
+    if (targetRestored) {
       swapState.pendingSwapTargets.delete(swapTargetId);
       swapState.pendingSwapTimestamps.delete(swapTargetId);
+      swapState.lastSwapPlanMeasurementTs.delete(swapTargetId);
     }
   }
   return false;
+}
+
+function isPendingSwapTargetRestored(dev: DevicePlanDevice): boolean {
+  if (dev.currentState !== 'on') return false;
+  if (!isSteppedLoadDevice(dev)) return true;
+
+  const targetStepId = dev.targetStepId ?? dev.desiredStepId;
+  if (!targetStepId || !dev.steppedLoadProfile) return true;
+
+  const targetStep = getSteppedLoadStep(dev.steppedLoadProfile, targetStepId);
+  const effectiveStepId = resolveKnownEffectiveStepId(normalizeSteppedLoadStepStateFromLegacyFields({
+    fields: dev,
+    selectedStepFallbackIsPlanningAssumption: true,
+  }));
+  const effectiveStep = getSteppedLoadStep(dev.steppedLoadProfile, effectiveStepId);
+  if (!targetStep || !effectiveStep) return false;
+  return effectiveStep.planningPowerW >= targetStep.planningPowerW;
 }
 
 export function blockRestoreForRecentActivationSetback(params: {
@@ -355,9 +384,11 @@ export function planRestoreForSteppedDevice(params: {
   restoredOneThisCycle: boolean;
   debugStructured?: StructuredDebugEmitter;
   swapExecutor?: SteppedSwapExecutor;
+  swapState?: SwapState;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const {
-    dev, deviceMap, state, timing, availableHeadroom, restoredOneThisCycle, debugStructured, swapExecutor,
+    dev, deviceMap, state, timing, availableHeadroom, restoredOneThisCycle,
+    debugStructured, swapExecutor, swapState,
   } = params;
   const restoreDebugKey = `stepped:${dev.id}`;
 
@@ -437,6 +468,7 @@ export function planRestoreForSteppedDevice(params: {
     debugStructured,
     restoreDebugKey,
     swapExecutor,
+    swapState,
   });
 }
 
@@ -462,13 +494,36 @@ function admitSteppedRestore(params: {
   debugStructured?: StructuredDebugEmitter;
   restoreDebugKey: string;
   swapExecutor?: SteppedSwapExecutor;
+  swapState?: SwapState;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const { dev, deviceMap, state, phase, nextStep, lowestNonZeroStep,
-    deltaKw, availableHeadroom, debugStructured, restoreDebugKey, swapExecutor } = params;
+    deltaKw, availableHeadroom, debugStructured, restoreDebugKey, swapExecutor, swapState } = params;
   const restoreBuffer = computeRestoreBufferKw(deltaKw);
   const needed = deltaKw + restoreBuffer;
   const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: needed });
   const shedDeviceCount = countShedDevices(deviceMap, dev.id);
+  const admittedDeviceUpdate = {
+    desiredStepId: nextStep.id,
+    targetStepId: nextStep.id,
+    expectedPowerKw: nextStep.planningPowerW / 1000,
+    reason: {
+      code: PLAN_REASON_CODES.restoreNeed,
+      fromTarget: dev.selectedStepId ?? 'unknown',
+      toTarget: nextStep.id,
+      needKw: needed,
+      headroomKw: null,
+    },
+  } satisfies Partial<DevicePlanDevice>;
+  if (swapExecutor && swapState?.pendingSwapTargets.has(dev.id) === true) {
+    return swapExecutor({
+      dev,
+      needed,
+      devPower: nextStep.planningPowerW / 1000,
+      availableHeadroom,
+      admittedDeviceUpdate,
+      rejectedDeviceUpdate: resolveRejectedSteppedSwapUpdate(dev),
+    });
+  }
   if (admission.postReserveMarginKw < RESTORE_ADMISSION_FLOOR_KW) {
     if (swapExecutor
         && canUseSwapForSteppedRestore({ dev, nextStep, lowestNonZeroStep })) {
@@ -477,18 +532,7 @@ function admitSteppedRestore(params: {
         needed,
         devPower: nextStep.planningPowerW / 1000,
         availableHeadroom,
-        admittedDeviceUpdate: {
-          desiredStepId: nextStep.id,
-          targetStepId: nextStep.id,
-          expectedPowerKw: nextStep.planningPowerW / 1000,
-          reason: {
-            code: PLAN_REASON_CODES.restoreNeed,
-            fromTarget: dev.selectedStepId ?? 'unknown',
-            toTarget: nextStep.id,
-            needKw: needed,
-            headroomKw: null,
-          },
-        },
+        admittedDeviceUpdate,
         rejectedDeviceUpdate: resolveRejectedSteppedSwapUpdate(dev),
       });
     }
@@ -498,15 +542,9 @@ function admitSteppedRestore(params: {
     });
   }
   setRestorePlanDevice(deviceMap, dev.id, {
-    desiredStepId: nextStep.id,
-    expectedPowerKw: nextStep.planningPowerW / 1000,
-    reason: {
-      code: PLAN_REASON_CODES.restoreNeed,
-      fromTarget: dev.selectedStepId ?? 'unknown',
-      toTarget: nextStep.id,
-      needKw: needed,
-      headroomKw: null,
-    },
+    desiredStepId: admittedDeviceUpdate.desiredStepId,
+    expectedPowerKw: admittedDeviceUpdate.expectedPowerKw,
+    reason: admittedDeviceUpdate.reason,
   });
   emitRestoreDebugEventOnChange({
     state,

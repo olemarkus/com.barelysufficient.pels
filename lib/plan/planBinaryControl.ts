@@ -80,11 +80,13 @@ export async function setBinaryControl(params: BinaryControlDeps & {
   restoreSource?: BinaryControlRestoreSource;
   reason?: string;
   actuationMode?: BinaryControlActuationMode;
+  isSwapShed?: boolean;
 }): Promise<boolean> {
   const {
     state, deviceManager, triggerFlowBackedBinaryControlRequest, log, logDebug, error, structuredLog, debugStructured,
     deviceId, name, desired, snapshot, logContext, restoreSource, reason,
     actuationMode = 'plan',
+    isSwapShed = false,
   } = params;
   const controlPlan = getBinaryControlPlan(snapshot);
   if (shouldSkipBinaryControl({
@@ -123,6 +125,7 @@ export async function setBinaryControl(params: BinaryControlDeps & {
     reason,
     restoreSource,
     actuationMode,
+    isSwapShed,
   });
 }
 
@@ -162,10 +165,12 @@ async function executeBinaryCommand(params: {
   reason?: string;
   restoreSource?: BinaryControlRestoreSource;
   actuationMode: BinaryControlActuationMode;
+  isSwapShed: boolean;
 }): Promise<boolean> {
   const {
     state, deviceManager, triggerFlowBackedBinaryControlRequest, log, logDebug, error, structuredLog,
-    controlPlan, pendingMs, deviceId, name, desired, snapshot, logContext, reason, restoreSource, actuationMode,
+    controlPlan, pendingMs, deviceId, name, desired, snapshot, logContext,
+    reason, restoreSource, actuationMode, isSwapShed,
   } = params;
   const flowBackedControl = isFlowBackedBinaryControl(snapshot, controlPlan.capabilityId);
 
@@ -178,6 +183,7 @@ async function executeBinaryCommand(params: {
     logContext,
     restoreSource,
     actuationMode,
+    isSwapShed,
     ...(reason ? { reason } : {}),
   };
 

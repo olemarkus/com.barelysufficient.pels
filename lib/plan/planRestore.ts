@@ -108,7 +108,7 @@ export type RestorePlanResult = {
   lastRestoreCooldownBumpMs: number | null;
 };
 
-/* eslint-disable-next-line complexity -- restore gating branches stay together at the top level. */
+/* eslint-disable-next-line complexity, max-lines-per-function -- restore gating branches stay together. */
 export function applyRestorePlan(params: {
   planDevices: DevicePlanDevice[];
   context: PlanContext;
@@ -198,6 +198,7 @@ export function applyRestorePlan(params: {
         restoredOneThisCycle,
         debugStructured: deps.debugStructured,
         swapExecutor: steppedSwapExecutor,
+        swapState,
       });
       availableHeadroom = result.availableHeadroom;
       restoredOneThisCycle = result.restoredOneThisCycle;
@@ -220,7 +221,7 @@ export function applyRestorePlan(params: {
     });
   } else if (effectiveTiming.inRestoreCooldown) {
     ({ availableHeadroom, restoredOneThisCycle } = applyRestorePlanInCooldown({
-      deviceMap, state, effectiveTiming, deps, availableHeadroom, restoredOneThisCycle,
+      deviceMap, state, swapState, effectiveTiming, deps, availableHeadroom, restoredOneThisCycle,
     }));
   }
 
@@ -267,12 +268,13 @@ function buildSteppedSwapExecutor(params: {
 function applyRestorePlanInCooldown(params: {
   deviceMap: Map<string, DevicePlanDevice>;
   state: PlanEngineState;
+  swapState: SwapState;
   effectiveTiming: Parameters<typeof planRestoreForSteppedDevice>[0]['timing'];
   deps: RestoreDeps;
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
-  const { deviceMap, state, effectiveTiming, deps } = params;
+  const { deviceMap, state, swapState, effectiveTiming, deps } = params;
   let { availableHeadroom, restoredOneThisCycle } = params;
   const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
     timing: effectiveTiming,
@@ -297,10 +299,21 @@ function applyRestorePlanInCooldown(params: {
   const eligibleStepped = meterSettlingRemainingSec !== null
     ? steppedCandidates.filter((dev) => resolveEffectiveCurrentOn(dev) === true)
     : steppedCandidates;
+  const onDevices = getOnDevices(Array.from(deviceMap.values()), deps.getShedBehavior);
+  const swapExecutor = buildSteppedSwapExecutor({
+    deviceMap,
+    onDevices,
+    swapState,
+    state,
+    timing: effectiveTiming,
+    restoredThisCycle: new Set(),
+    deps,
+  });
   for (const dev of eligibleStepped) {
     const result = planRestoreForSteppedDevice({
       dev, deviceMap, state, timing: effectiveTiming,
       availableHeadroom, restoredOneThisCycle, debugStructured: deps.debugStructured,
+      swapExecutor, swapState,
     });
     availableHeadroom = result.availableHeadroom;
     restoredOneThisCycle = result.restoredOneThisCycle;
@@ -361,7 +374,7 @@ function markRestoreCandidatesStayShedForShortfall(params: {
   }
 }
 
-/* eslint-disable-next-line max-lines-per-function, max-statements --
+/* eslint-disable-next-line max-lines-per-function, max-statements, sonarjs/cognitive-complexity --
 restore gating stays together to keep direct-vs-swap flow readable */
 function planRestoreForDevice(params: {
   dev: DevicePlanDevice;
@@ -547,6 +560,20 @@ function planRestoreForDevice(params: {
   }
   const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
   const powerSource = resolveRestorePowerSource(dev);
+  if (swapState.pendingSwapTargets.has(dev.id)) {
+    return attemptSwapRestore({
+      dev,
+      deviceMap,
+      onDevices,
+      swapState,
+      phase,
+      availableHeadroom,
+      restoreNeed,
+      measurementTs: timing.measurementTs,
+      restoredThisCycle,
+      deps,
+    });
+  }
   if (admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) {
     emitRestoreDebugEventOnChange({
       state,
@@ -838,6 +865,7 @@ function handleInsufficientBinaryRestoreHeadroom(params: {
   });
 }
 
+/* eslint-disable-next-line max-lines-per-function -- swap planning and logging share one decision context. */
 function attemptSwapRestore(params: {
   dev: DevicePlanDevice;
   deviceMap: Map<string, DevicePlanDevice>;
@@ -867,12 +895,20 @@ function attemptSwapRestore(params: {
     rejectedDeviceUpdate,
   } = params;
 
-  if (measurementTs !== null && swapState.lastSwapPlanMeasurementTs.get(dev.id) === measurementTs) {
-    setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
-    return { availableHeadroom, restoredOneThisCycle: false };
+  if (swapState.pendingSwapTargets.has(dev.id)) {
+    return resolvePendingSwapRestore({
+      dev,
+      deviceMap,
+      swapState,
+      availableHeadroom,
+      restoreNeed,
+      measurementTs,
+      restoredThisCycle,
+      admittedDeviceUpdate,
+    });
   }
 
-  if (swapState.pendingSwapTargets.has(dev.id)) {
+  if (measurementTs !== null && swapState.lastSwapPlanMeasurementTs.get(dev.id) === measurementTs) {
     setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
     return { availableHeadroom, restoredOneThisCycle: false };
   }
@@ -954,9 +990,54 @@ function attemptSwapRestore(params: {
     });
     swapState.swappedOutFor.set(shedDev.id, dev.id);
   }
+  if (swap.toShed.length > 0) {
+    setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
+    return { availableHeadroom: nextHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
+  }
   restoredThisCycle.add(dev.id);
   setDevice(deviceMap, dev.id, { plannedState: 'keep', ...admittedDeviceUpdate });
   return { availableHeadroom: nextHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
+}
+
+function resolvePendingSwapRestore(params: {
+  dev: DevicePlanDevice;
+  deviceMap: Map<string, DevicePlanDevice>;
+  swapState: SwapState;
+  availableHeadroom: number;
+  restoreNeed: { needed: number };
+  measurementTs: number | null;
+  restoredThisCycle: Set<string>;
+  admittedDeviceUpdate?: Partial<DevicePlanDevice>;
+}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
+  const {
+    dev,
+    deviceMap,
+    swapState,
+    availableHeadroom,
+    restoreNeed,
+    measurementTs,
+    restoredThisCycle,
+    admittedDeviceUpdate,
+  } = params;
+  const lastPlanMeasurementTs = swapState.lastSwapPlanMeasurementTs.get(dev.id);
+  const hasFreshMeasurement = measurementTs !== null
+    && (lastPlanMeasurementTs === undefined || measurementTs > lastPlanMeasurementTs);
+  if (!hasFreshMeasurement) {
+    setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
+    return { availableHeadroom, restoredOneThisCycle: false };
+  }
+
+  swapState.lastSwapPlanMeasurementTs.set(dev.id, measurementTs);
+  const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
+  if (admission.postReserveMarginKw < RESTORE_ADMISSION_FLOOR_KW) {
+    setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
+    return { availableHeadroom, restoredOneThisCycle: false };
+  }
+
+  swapState.lastSwapPlanMeasurementTs.delete(dev.id);
+  restoredThisCycle.add(dev.id);
+  setDevice(deviceMap, dev.id, { plannedState: 'keep', ...admittedDeviceUpdate });
+  return { availableHeadroom: availableHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
 }
 
 function buildSwapPendingTargetUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {

@@ -20,6 +20,7 @@ export type ExecutableTargetCommand = {
   targetCap: string;
   desired: number;
   observedValue: unknown;
+  isSwapShed?: boolean;
 };
 
 export type ExecutableTargetUpdate = ExecutableTargetCommand & {

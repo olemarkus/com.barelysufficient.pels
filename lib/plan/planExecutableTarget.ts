@@ -1,6 +1,7 @@
 import type { ExecutableTargetCommand, ExecutableTargetUpdate } from '../executor/executablePlan';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import type { DevicePlan, ShedAction } from './planTypes';
+import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 
 type PlanDevice = DevicePlan['devices'][number];
 
@@ -39,6 +40,7 @@ export function buildExecutableShedTemperatureCommand(
     targetCap,
     desired: plannedTarget,
     observedValue: dev.currentTarget,
+    isSwapShed: dev.reason?.code === PLAN_REASON_CODES.swappedOut,
   };
 }
 

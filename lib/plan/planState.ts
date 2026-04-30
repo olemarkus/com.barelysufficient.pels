@@ -86,6 +86,7 @@ export type PlanEngineState = {
     logContext?: PendingBinaryLogContext;
     restoreSource?: PendingBinaryRestoreSource;
     actuationMode?: PendingBinaryActuationMode;
+    isSwapShed?: boolean;
     reason?: string;
     lastObservedValue?: boolean | string;
     lastObservedSource?: PendingTargetObservationSource;

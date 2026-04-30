@@ -86,6 +86,7 @@ export function cleanupStaleSwaps(
       });
       swapState.pendingSwapTargets.delete(swapTargetId);
       swapState.pendingSwapTimestamps.delete(swapTargetId);
+      swapState.lastSwapPlanMeasurementTs.delete(swapTargetId);
       staleTargetIds.push(swapTargetId);
     }
   }
