@@ -1,11 +1,13 @@
 import type { PowerTrackerState } from '../core/powerTracker';
 import type { CombinedPriceData } from './dailyBudgetMath';
+import type { UncontrolledReservePlanDiagnostics } from './dailyBudgetPlanCaps';
 import type { PriceData } from './dailyBudgetState';
 import type { DailyBudgetSettings, DailyBudgetState } from './dailyBudgetTypes';
 
 export type DailyBudgetManagerDeps = {
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
+  structuredDebug?: (payload: Record<string, unknown>) => void;
 };
 
 export type ExistingPlanState = {
@@ -43,6 +45,7 @@ export type PlanResult = {
   priceData: PriceData;
   shouldLog: boolean;
   planDebug?: RebuildPlanDebug;
+  uncontrolledReserveDiagnostics?: UncontrolledReservePlanDiagnostics;
 };
 
 const isValidProfile = (profile?: DailyBudgetState['profile']): boolean => {
@@ -107,6 +110,10 @@ export const isDailyBudgetState = (value: unknown): value is DailyBudgetState =>
     , isHourlyArrayOrUndefined(state.profileObservedMaxControlledKWh)
     , isHourlyArrayOrUndefined(state.profileObservedMinUncontrolledKWh)
     , isHourlyArrayOrUndefined(state.profileObservedMinControlledKWh)
+    , isHourlyArrayOrUndefined(state.profileObservedP50UncontrolledKWh)
+    , isHourlyArrayOrUndefined(state.profileObservedP75UncontrolledKWh)
+    , isHourlyArrayOrUndefined(state.profileObservedP90UncontrolledKWh)
+    , isHourlyArrayOrUndefined(state.profileObservedUncontrolledSampleCounts)
     , isNullableStringOrUndefined(state.profileObservedStatsConfigKey)
     , isFiniteNumberArrayOrUndefined(state.plannedKWh)
     , isFiniteNumberArrayOrUndefined(state.plannedUncontrolledKWh)

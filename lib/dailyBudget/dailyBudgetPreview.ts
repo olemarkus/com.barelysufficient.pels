@@ -32,6 +32,10 @@ type BuildDailyBudgetPreviewParams = {
   profileObservedMaxControlledKWh?: number[];
   profileObservedMinUncontrolledKWh?: number[];
   profileObservedMinControlledKWh?: number[];
+  profileObservedP50UncontrolledKWh?: number[];
+  profileObservedP75UncontrolledKWh?: number[];
+  profileObservedP90UncontrolledKWh?: number[];
+  profileObservedUncontrolledSampleCounts?: number[];
 };
 
 const resolvePlannedBreakdown = (params: {
@@ -87,6 +91,10 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     profileObservedMaxControlledKWh,
     profileObservedMinUncontrolledKWh,
     profileObservedMinControlledKWh,
+    profileObservedP50UncontrolledKWh,
+    profileObservedP75UncontrolledKWh,
+    profileObservedP90UncontrolledKWh,
+    profileObservedUncontrolledSampleCounts,
   } = params;
 
   const nextDayStartUtcMs = getNextLocalDayStartUtcMs(dayStartUtcMs, timeZone);
@@ -143,6 +151,10 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
       profileObservedMaxControlledKWh,
       profileObservedMinUncontrolledKWh,
       profileObservedMinControlledKWh,
+      profileObservedP50UncontrolledKWh,
+      profileObservedP75UncontrolledKWh,
+      profileObservedP90UncontrolledKWh,
+      profileObservedUncontrolledSampleCounts,
     });
   }
   const plannedKWh = buildResult?.plannedKWh ?? bucketStartUtcMs.map(() => 0);

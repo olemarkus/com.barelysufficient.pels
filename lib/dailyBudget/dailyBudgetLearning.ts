@@ -250,6 +250,10 @@ const buildNextLearningState = (params: {
   observedMaxControlled: number[];
   observedMinUncontrolled: number[];
   observedMinControlled: number[];
+  observedP50Uncontrolled: number[];
+  observedP75Uncontrolled: number[];
+  observedP90Uncontrolled: number[];
+  observedUncontrolledSampleCounts: number[];
 }): DailyBudgetState => {
   const {
     state,
@@ -263,6 +267,10 @@ const buildNextLearningState = (params: {
     observedMaxControlled,
     observedMinUncontrolled,
     observedMinControlled,
+    observedP50Uncontrolled,
+    observedP75Uncontrolled,
+    observedP90Uncontrolled,
+    observedUncontrolledSampleCounts,
   } = params;
   const previousSampleCount = resolveProfileSampleCount(state);
   const previousSplitSampleCount = resolveProfileSplitSampleCount(state);
@@ -300,6 +308,10 @@ const buildNextLearningState = (params: {
     profileObservedMaxControlledKWh: observedMaxControlled,
     profileObservedMinUncontrolledKWh: observedMinUncontrolled,
     profileObservedMinControlledKWh: observedMinControlled,
+    profileObservedP50UncontrolledKWh: observedP50Uncontrolled,
+    profileObservedP75UncontrolledKWh: observedP75Uncontrolled,
+    profileObservedP90UncontrolledKWh: observedP90Uncontrolled,
+    profileObservedUncontrolledSampleCounts: observedUncontrolledSampleCounts,
   });
 };
 
@@ -360,6 +372,10 @@ export function finalizePreviousDayLearning(params: {
     observedMaxControlled,
     observedMinUncontrolled,
     observedMinControlled,
+    observedP50Uncontrolled,
+    observedP75Uncontrolled,
+    observedP90Uncontrolled,
+    observedUncontrolledSampleCounts,
     windowBucketCount,
   } = buildObservedHourlyStatsFromWindow({
     powerTracker,
@@ -379,6 +395,10 @@ export function finalizePreviousDayLearning(params: {
     observedMaxControlled,
     observedMinUncontrolled,
     observedMinControlled,
+    observedP50Uncontrolled,
+    observedP75Uncontrolled,
+    observedP90Uncontrolled,
+    observedUncontrolledSampleCounts,
   });
 
   const sourceLabel = bucketUsage.usedControlledData ? 'split' : 'total';

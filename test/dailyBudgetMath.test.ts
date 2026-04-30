@@ -478,6 +478,41 @@ describe('daily budget math helpers', () => {
     expect(controlledDriven.plannedControlledKWh[2]).toBeCloseTo(3, 6);
   });
 
+  it('keeps adaptive uncontrolled reserve in the uncontrolled plan split', () => {
+    const shortBucketStartUtcMs = bucketStartUtcMs.slice(0, 2);
+    const profile = Array.from({ length: 24 }, () => 0);
+    profile[0] = 1;
+    profile[1] = 1;
+    const p50 = [2, 0, ...Array.from({ length: 22 }, () => 0)];
+    const p75 = [3, 0, ...Array.from({ length: 22 }, () => 0)];
+    const p90 = [5, 0, ...Array.from({ length: 22 }, () => 0)];
+
+    const result = buildPlan({
+      bucketStartUtcMs: shortBucketStartUtcMs,
+      bucketUsage: [0, 0],
+      currentBucketIndex: 0,
+      usedNowKWh: 0,
+      dailyBudgetKWh: 6,
+      profileWeights: profile,
+      profileWeightsControlled: profile,
+      profileWeightsUncontrolled: profile,
+      timeZone,
+      combinedPrices: null,
+      priceOptimizationEnabled: false,
+      priceShapingEnabled: false,
+      controlledUsageWeight: 1,
+      observedPeakMarginRatio: 0.2,
+      profileObservedP50UncontrolledKWh: p50,
+      profileObservedP75UncontrolledKWh: p75,
+      profileObservedP90UncontrolledKWh: p90,
+      profileObservedUncontrolledSampleCounts: [30, 0, ...Array.from({ length: 22 }, () => 0)],
+    });
+
+    expect(result.plannedUncontrolledKWh[0]).toBeGreaterThan(2);
+    expect(result.plannedUncontrolledKWh[0]).toBeLessThanOrEqual(3);
+    expect(result.uncontrolledReserveDiagnostics?.hours[0]?.reasonCode).toBe('volatile_hour');
+  });
+
   it('uses total observed load as the hourly ceiling independent of controlled usage weight', () => {
     const shortBucketStartUtcMs = bucketStartUtcMs.slice(0, 2);
     const profile = Array.from({ length: 24 }, () => 0);
