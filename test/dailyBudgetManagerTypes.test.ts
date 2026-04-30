@@ -36,4 +36,16 @@ describe('daily budget manager state guard', () => {
     expect(isDailyBudgetState({ dateKey: 123 })).toBe(false);
     expect(isDailyBudgetState({ dayStartUtcMs: Number.NaN })).toBe(false);
   });
+
+  it('validates uncontrolled reserve profile arrays', () => {
+    expect(isDailyBudgetState({
+      profileObservedP50UncontrolledKWh: Array.from({ length: 24 }, () => 1),
+      profileObservedP75UncontrolledKWh: Array.from({ length: 24 }, () => 2),
+      profileObservedP90UncontrolledKWh: Array.from({ length: 24 }, () => 3),
+      profileObservedUncontrolledSampleCounts: Array.from({ length: 24 }, () => 30),
+    })).toBe(true);
+    expect(isDailyBudgetState({
+      profileObservedP50UncontrolledKWh: [1, 2],
+    })).toBe(false);
+  });
 });

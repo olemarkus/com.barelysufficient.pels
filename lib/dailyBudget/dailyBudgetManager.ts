@@ -42,6 +42,7 @@ import {
   getCachedConfidence,
   resolveConfidence,
 } from './dailyBudgetConfidence';
+import { logUncontrolledReserveDebug } from './dailyBudgetReserveLogging';
 
 const DEFAULT_PROFILE = buildDefaultProfile();
 
@@ -73,6 +74,10 @@ export class DailyBudgetManager {
     this.state.profileObservedMaxControlledKWh = Array.from({ length: 24 }, () => 0);
     this.state.profileObservedMinUncontrolledKWh = Array.from({ length: 24 }, () => 0);
     this.state.profileObservedMinControlledKWh = Array.from({ length: 24 }, () => 0);
+    this.state.profileObservedP50UncontrolledKWh = Array.from({ length: 24 }, () => 0);
+    this.state.profileObservedP75UncontrolledKWh = Array.from({ length: 24 }, () => 0);
+    this.state.profileObservedP90UncontrolledKWh = Array.from({ length: 24 }, () => 0);
+    this.state.profileObservedUncontrolledSampleCounts = Array.from({ length: 24 }, () => 0);
     this.state.profile = undefined;
     this.state.frozen = false;
     this.markDirty();
@@ -187,6 +192,7 @@ export class DailyBudgetManager {
       state: this.state,
       defaultProfile: DEFAULT_PROFILE,
       planDebug: plan.planDebug,
+      uncontrolledReserveDiagnostics: plan.uncontrolledReserveDiagnostics,
     });
     logNextDayPlanDebug({
       logDebug: this.deps.logDebug,
@@ -199,6 +205,7 @@ export class DailyBudgetManager {
       capacityBudgetKWh,
       defaultProfile: DEFAULT_PROFILE,
     });
+    logUncontrolledReserveDebug({ plan, structuredDebug: this.deps.structuredDebug });
 
     this.state.dateKey = context.dateKey;
     this.state.dayStartUtcMs = context.dayStartUtcMs;
@@ -303,6 +310,7 @@ export class DailyBudgetManager {
         priceData: rebuilt.priceData,
         shouldLog,
         planDebug: rebuilt.planDebug,
+        uncontrolledReserveDiagnostics: rebuilt.uncontrolledReserveDiagnostics,
       };
     }
 
@@ -327,6 +335,7 @@ export class DailyBudgetManager {
     plannedKWh: number[]; plannedUncontrolledKWh: number[]; plannedControlledKWh: number[];
     priceData: PriceData;
     planDebug: RebuildPlanDebug;
+    uncontrolledReserveDiagnostics: ReturnType<typeof buildPlan>['uncontrolledReserveDiagnostics'];
   } {
     const {
       context,
@@ -366,6 +375,10 @@ export class DailyBudgetManager {
       profileObservedMaxControlledKWh: this.state.profileObservedMaxControlledKWh,
       profileObservedMinUncontrolledKWh: this.state.profileObservedMinUncontrolledKWh,
       profileObservedMinControlledKWh: this.state.profileObservedMinControlledKWh,
+      profileObservedP50UncontrolledKWh: this.state.profileObservedP50UncontrolledKWh,
+      profileObservedP75UncontrolledKWh: this.state.profileObservedP75UncontrolledKWh,
+      profileObservedP90UncontrolledKWh: this.state.profileObservedP90UncontrolledKWh,
+      profileObservedUncontrolledSampleCounts: this.state.profileObservedUncontrolledSampleCounts,
     });
     this.state.plannedKWh = buildResult.plannedKWh;
     this.state.plannedUncontrolledKWh = buildResult.plannedUncontrolledKWh.slice();
@@ -391,6 +404,7 @@ export class DailyBudgetManager {
         remainingStartIndex: lockState.remainingStartIndex,
         hasPreviousPlan: lockState.hasPreviousPlan,
       },
+      uncontrolledReserveDiagnostics: buildResult.uncontrolledReserveDiagnostics,
     };
   }
 
@@ -506,15 +520,15 @@ export class DailyBudgetManager {
       profileObservedMaxControlledKWh: this.state.profileObservedMaxControlledKWh,
       profileObservedMinUncontrolledKWh: this.state.profileObservedMinUncontrolledKWh,
       profileObservedMinControlledKWh: this.state.profileObservedMinControlledKWh,
+      profileObservedP50UncontrolledKWh: this.state.profileObservedP50UncontrolledKWh,
+      profileObservedP75UncontrolledKWh: this.state.profileObservedP75UncontrolledKWh,
+      profileObservedP90UncontrolledKWh: this.state.profileObservedP90UncontrolledKWh,
+      profileObservedUncontrolledSampleCounts: this.state.profileObservedUncontrolledSampleCounts,
     });
   }
 
   private markDirty(force = false): void { this.dirty = true; if (force) this.lastPersistMs = 0; }
 }
 
-export {
-  buildDefaultProfile,
-  buildPlan,
-  buildPriceDebugData,
-} from './dailyBudgetMath';
+export { buildDefaultProfile, buildPlan, buildPriceDebugData } from './dailyBudgetMath';
 export type { CombinedPriceData } from './dailyBudgetMath';

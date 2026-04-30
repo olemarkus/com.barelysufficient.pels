@@ -32,6 +32,10 @@ export type DailyBudgetState = {
   profileObservedMaxControlledKWh?: number[];
   profileObservedMinUncontrolledKWh?: number[];
   profileObservedMinControlledKWh?: number[];
+  profileObservedP50UncontrolledKWh?: number[];
+  profileObservedP75UncontrolledKWh?: number[];
+  profileObservedP90UncontrolledKWh?: number[];
+  profileObservedUncontrolledSampleCounts?: number[];
   profileObservedStatsConfigKey?: string;
 };
 

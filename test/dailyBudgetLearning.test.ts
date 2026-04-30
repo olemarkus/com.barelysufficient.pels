@@ -364,6 +364,62 @@ describe('daily budget learning utilities', () => {
     expect(result.nextState.profileObservedMinControlledKWh?.[22]).toBeCloseTo(2, 6);
   });
 
+  it('counts exempt controlled usage as uncontrolled observed reserve usage', () => {
+    const timeZone = 'UTC';
+    const nowMs = Date.UTC(2024, 0, 20, 0, 0, 0);
+    const targetHour = 22;
+    const bucketKey = new Date(nowMs - 2 * 60 * 60 * 1000).toISOString();
+    const result = ensureObservedHourlyStats({
+      state: {},
+      powerTracker: {
+        buckets: {
+          [bucketKey]: 5,
+        },
+        controlledBuckets: {
+          [bucketKey]: 5,
+        },
+        exemptBuckets: {
+          [bucketKey]: 2,
+        },
+      },
+      timeZone,
+      nowMs,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.nextState.profileObservedMaxControlledKWh?.[targetHour]).toBeCloseTo(3, 6);
+    expect(result.nextState.profileObservedMaxUncontrolledKWh?.[targetHour]).toBeCloseTo(2, 6);
+    expect(result.nextState.profileObservedP50UncontrolledKWh?.[targetHour]).toBeCloseTo(2, 6);
+    expect(result.nextState.profileObservedP75UncontrolledKWh?.[targetHour]).toBeCloseTo(2, 6);
+    expect(result.nextState.profileObservedP90UncontrolledKWh?.[targetHour]).toBeCloseTo(2, 6);
+    expect(result.nextState.profileObservedUncontrolledSampleCounts?.[targetHour]).toBe(1);
+  });
+
+  it('preserves legacy observed minimums when reserve backfill has no bucket data', () => {
+    const legacyMinUncontrolled = Array.from({ length: 24 }, () => 0.25);
+    const legacyMinControlled = Array.from({ length: 24 }, () => 0.5);
+    const result = ensureObservedHourlyStats({
+      state: {
+        profileObservedMaxUncontrolledKWh: Array.from({ length: 24 }, () => 1),
+        profileObservedMaxControlledKWh: Array.from({ length: 24 }, () => 2),
+        profileObservedMinUncontrolledKWh: legacyMinUncontrolled,
+        profileObservedMinControlledKWh: legacyMinControlled,
+        profileObservedStatsConfigKey: 'legacy-config',
+      },
+      powerTracker: {
+        buckets: {},
+      },
+      timeZone: 'UTC',
+      nowMs: Date.UTC(2024, 0, 20, 0, 0, 0),
+    });
+
+    expect(result.changed).toBe(false);
+    expect(result.nextState.profileObservedMinUncontrolledKWh).toBe(legacyMinUncontrolled);
+    expect(result.nextState.profileObservedMinControlledKWh).toBe(legacyMinControlled);
+    expect(result.nextState.profileObservedP50UncontrolledKWh).toBeUndefined();
+    expect(result.nextState.profileObservedStatsConfigKey).toBe('legacy-config');
+  });
+
   it('backfill excludes the in-progress current hour bucket', () => {
     const timeZone = 'UTC';
     const nowMs = Date.UTC(2024, 0, 20, 10, 30, 0);
@@ -496,6 +552,38 @@ describe('daily budget learning utilities', () => {
     expect(result.changed).toBe(true);
     expect(result.nextState.profileObservedStatsConfigKey).toBe(getObservedStatsConfigKey());
     expect(observedMin).toBeCloseTo(4, 6);
+  });
+
+  it('backfills uncontrolled reserve quantiles from positive local-hour samples', () => {
+    const timeZone = 'UTC';
+    const nowMs = Date.UTC(2024, 0, 20, 12, 0, 0);
+    const targetHour = 7;
+    const buckets: Record<string, number> = {};
+    const uncontrolledBuckets: Record<string, number> = {};
+    const uncontrolledSeries = [0, 1, 2, 4, 8];
+
+    uncontrolledSeries.forEach((uncontrolled, index) => {
+      const ts = Date.UTC(2024, 0, 19 - index, targetHour, 0, 0);
+      const key = new Date(ts).toISOString();
+      buckets[key] = uncontrolled;
+      uncontrolledBuckets[key] = uncontrolled;
+    });
+
+    const result = ensureObservedHourlyStats({
+      state: {},
+      powerTracker: {
+        buckets,
+        uncontrolledBuckets,
+      },
+      timeZone,
+      nowMs,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.nextState.profileObservedUncontrolledSampleCounts?.[targetHour]).toBe(4);
+    expect(result.nextState.profileObservedP50UncontrolledKWh?.[targetHour]).toBeCloseTo(3, 6);
+    expect(result.nextState.profileObservedP75UncontrolledKWh?.[targetHour]).toBeCloseTo(5, 6);
+    expect(result.nextState.profileObservedP90UncontrolledKWh?.[targetHour]).toBeCloseTo(6.8, 6);
   });
 
   it('recomputes observed peaks from a rolling window and drops stale season peaks', () => {

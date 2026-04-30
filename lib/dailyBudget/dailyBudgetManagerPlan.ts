@@ -1,6 +1,7 @@
 import { computePlanDeviation, type DayContext, type PriceData } from './dailyBudgetState';
 import type { ExistingPlanState, RebuildPlanDebug } from './dailyBudgetManagerTypes';
 import { getProfileBlendConfidence } from './dailyBudgetMath';
+import type { UncontrolledReservePlanDiagnostics } from './dailyBudgetPlanCaps';
 import {
   OBSERVED_HOURLY_MAX_QUANTILE,
   OBSERVED_HOURLY_MIN_QUANTILE,
@@ -10,6 +11,8 @@ import {
   PLAN_REBUILD_INTERVAL_MS,
   PLAN_REBUILD_USAGE_DELTA_KWH,
   PLAN_REBUILD_USAGE_MIN_INTERVAL_MS,
+  UNCONTROLLED_RESERVE_BASE_QUANTILE,
+  UNCONTROLLED_RESERVE_MAX_QUANTILE,
 } from './dailyBudgetConstants';
 import { getProfileDebugSummary } from './dailyBudgetProfile';
 import type {
@@ -140,6 +143,7 @@ export function logDailyBudgetPlanDebug(params: {
   defaultProfile: number[];
   label?: string;
   planDebug?: RebuildPlanDebug;
+  uncontrolledReserveDiagnostics?: UncontrolledReservePlanDiagnostics;
 }): void {
   const {
     logDebug,
@@ -152,6 +156,7 @@ export function logDailyBudgetPlanDebug(params: {
     defaultProfile,
     label,
     planDebug,
+    uncontrolledReserveDiagnostics,
   } = params;
   const { combinedWeights, learnedWeights, profileMeta } = getProfileDebugSummary(
     state,
@@ -170,6 +175,7 @@ export function logDailyBudgetPlanDebug(params: {
     learnedWeights,
     profileMeta,
     planDebug,
+    uncontrolledReserveDiagnostics,
   });
   logDebug(
     `Daily budget: profile samples ${profileMeta.sampleCount} total, `
@@ -191,6 +197,7 @@ function buildPlanDebugPayload(params: {
   learnedWeights: number[] | null;
   profileMeta: ReturnType<typeof getProfileDebugSummary>['profileMeta'];
   planDebug?: RebuildPlanDebug;
+  uncontrolledReserveDiagnostics?: UncontrolledReservePlanDiagnostics;
 }): DailyBudgetDayPayload & { meta: Record<string, unknown> } {
   const {
     snapshot,
@@ -204,6 +211,7 @@ function buildPlanDebugPayload(params: {
     learnedWeights,
     profileMeta,
     planDebug,
+    uncontrolledReserveDiagnostics,
   } = params;
   return {
     ...snapshot,
@@ -231,14 +239,27 @@ function buildPlanDebugPayload(params: {
       observedPeakMaxQuantile: OBSERVED_HOURLY_MAX_QUANTILE,
       observedPeakMinQuantile: OBSERVED_HOURLY_MIN_QUANTILE,
       observedPeakQuantileMinSamples: OBSERVED_HOURLY_QUANTILE_MIN_SAMPLES,
-      profileObservedMaxUncontrolledKWh: state.profileObservedMaxUncontrolledKWh ?? null,
-      profileObservedMaxControlledKWh: state.profileObservedMaxControlledKWh ?? null,
-      profileObservedMinUncontrolledKWh: state.profileObservedMinUncontrolledKWh ?? null,
-      profileObservedMinControlledKWh: state.profileObservedMinControlledKWh ?? null,
+      uncontrolledReserveBaseQuantile: UNCONTROLLED_RESERVE_BASE_QUANTILE,
+      uncontrolledReserveMaxQuantile: UNCONTROLLED_RESERVE_MAX_QUANTILE,
+      ...buildObservedStatsDebugMeta(state),
+      uncontrolledReserveDiagnostics: uncontrolledReserveDiagnostics ?? null,
       priceSpreadFactor: priceData.priceSpreadFactor ?? null,
       effectivePriceShapingFlexShare: priceData.effectivePriceShapingFlexShare ?? null,
       planDebug: planDebug ?? null,
     },
+  };
+}
+
+function buildObservedStatsDebugMeta(state: DailyBudgetState): Record<string, unknown> {
+  return {
+    profileObservedMaxUncontrolledKWh: state.profileObservedMaxUncontrolledKWh ?? null,
+    profileObservedMaxControlledKWh: state.profileObservedMaxControlledKWh ?? null,
+    profileObservedMinUncontrolledKWh: state.profileObservedMinUncontrolledKWh ?? null,
+    profileObservedMinControlledKWh: state.profileObservedMinControlledKWh ?? null,
+    profileObservedP50UncontrolledKWh: state.profileObservedP50UncontrolledKWh ?? null,
+    profileObservedP75UncontrolledKWh: state.profileObservedP75UncontrolledKWh ?? null,
+    profileObservedP90UncontrolledKWh: state.profileObservedP90UncontrolledKWh ?? null,
+    profileObservedUncontrolledSampleCounts: state.profileObservedUncontrolledSampleCounts ?? null,
   };
 }
 
