@@ -9,6 +9,7 @@ import type {
   DailyBudgetState,
 } from './dailyBudgetTypes';
 import type { PlanResult } from './dailyBudgetManagerTypes';
+import type { UncontrolledReservePlanDiagnostics } from './dailyBudgetPlanCaps';
 
 export function logBudgetSummaryIfNeeded(params: {
   logDebug: (...args: unknown[]) => void;
@@ -93,6 +94,7 @@ export function logPlanDebugIfNeeded(params: {
     remainingStartIndex: number;
     hasPreviousPlan: boolean;
   };
+  uncontrolledReserveDiagnostics?: UncontrolledReservePlanDiagnostics;
 }): void {
   const {
     logDebug,
@@ -106,6 +108,7 @@ export function logPlanDebugIfNeeded(params: {
     defaultProfile,
     label,
     planDebug,
+    uncontrolledReserveDiagnostics,
   } = params;
   if (!shouldLog) return;
   logDailyBudgetPlanDebug({
@@ -119,5 +122,6 @@ export function logPlanDebugIfNeeded(params: {
     defaultProfile,
     label,
     planDebug,
+    uncontrolledReserveDiagnostics,
   });
 }

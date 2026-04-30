@@ -12,8 +12,10 @@ import {
   buildControlledMinFloors,
   resolveRemainingCaps,
   resolveRemainingFloors,
+  type UncontrolledReservePlanDiagnostics,
 } from './dailyBudgetPlanCaps';
 import { buildPlanWeights, resolveSplitShares } from './dailyBudgetPlanWeights';
+import { buildPlannedSplit } from './dailyBudgetPlanSplit';
 import type { CombinedPriceData } from './dailyBudgetPrices';
 import { buildPriceFactors } from './dailyBudgetPrices';
 
@@ -50,6 +52,10 @@ type BuildPlanParams = {
   profileObservedMaxControlledKWh?: number[];
   profileObservedMinUncontrolledKWh?: number[];
   profileObservedMinControlledKWh?: number[];
+  profileObservedP50UncontrolledKWh?: number[];
+  profileObservedP75UncontrolledKWh?: number[];
+  profileObservedP90UncontrolledKWh?: number[];
+  profileObservedUncontrolledSampleCounts?: number[];
   observedPeakMarginRatio?: number;
 };
 
@@ -62,6 +68,7 @@ type BuildPlanResult = {
   priceShapingActive: boolean;
   priceSpreadFactor?: number;
   effectivePriceShapingFlexShare: number;
+  uncontrolledReserveDiagnostics?: UncontrolledReservePlanDiagnostics;
 };
 
 type PlanSetup = {
@@ -75,9 +82,15 @@ type PlanSetup = {
   effectivePriceShapingFlexShare: number;
 };
 
+type PlannedTotalsResult = {
+  plannedKWh: number[];
+  uncontrolledReserveFloors: number[];
+  uncontrolledReserveDiagnostics?: UncontrolledReservePlanDiagnostics;
+};
+
 export function buildPlan(params: BuildPlanParams): BuildPlanResult {
   const setup = resolvePlanSetup(params);
-  const plannedKWh = resolvePlannedTotals({
+  const plannedTotals = resolvePlannedTotals({
     params,
     bounds: setup.bounds,
     combinedWeights: setup.combinedWeights,
@@ -87,6 +100,7 @@ export function buildPlan(params: BuildPlanParams): BuildPlanResult {
     remainingPrices: setup.remainingPrices,
     effectivePriceShapingFlexShare: setup.effectivePriceShapingFlexShare,
   });
+  const { plannedKWh } = plannedTotals;
   const controlledMinFloors = buildControlledMinFloors({
     bucketStartUtcMs: params.bucketStartUtcMs,
     timeZone: params.timeZone,
@@ -99,6 +113,7 @@ export function buildPlan(params: BuildPlanParams): BuildPlanResult {
     plannedKWh,
     splitShares: setup.splitShares,
     controlledMinFloors,
+    uncontrolledReserveFloors: plannedTotals.uncontrolledReserveFloors,
     previousPlannedUncontrolledKWh: params.previousPlannedUncontrolledKWh,
     previousPlannedControlledKWh: params.previousPlannedControlledKWh,
     currentBucketIndex: setup.bounds.safeCurrentBucketIndex,
@@ -114,6 +129,7 @@ export function buildPlan(params: BuildPlanParams): BuildPlanResult {
     priceShapingActive: setup.priceShape.priceShapingActive,
     priceSpreadFactor: setup.priceShape.priceSpreadFactor,
     effectivePriceShapingFlexShare: setup.effectivePriceShapingFlexShare,
+    uncontrolledReserveDiagnostics: plannedTotals.uncontrolledReserveDiagnostics,
   };
 }
 
@@ -220,7 +236,7 @@ const resolvePlannedTotals = (params: {
   usedInCurrent: number;
   remainingPrices?: Array<number | null>;
   effectivePriceShapingFlexShare: number;
-}): number[] => {
+}): PlannedTotalsResult => {
   const {
     params: {
       bucketStartUtcMs,
@@ -235,6 +251,10 @@ const resolvePlannedTotals = (params: {
       profileObservedMaxControlledKWh,
       profileObservedMinUncontrolledKWh,
       profileObservedMinControlledKWh,
+      profileObservedP50UncontrolledKWh,
+      profileObservedP75UncontrolledKWh,
+      profileObservedP90UncontrolledKWh,
+      profileObservedUncontrolledSampleCounts,
       observedPeakMarginRatio,
     },
     bounds,
@@ -272,7 +292,7 @@ const resolvePlannedTotals = (params: {
     remainingStartIndex: bounds.remainingStartIndex,
     currentBucketIndex: bounds.safeCurrentBucketIndex,
   });
-  const remainingFloors = resolveRemainingFloors({
+  const remainingFloorsResult = resolveRemainingFloors({
     bucketStartUtcMs,
     timeZone,
     splitSharesUncontrolled: splitShares.uncontrolled,
@@ -280,6 +300,10 @@ const resolvePlannedTotals = (params: {
     controlledUsageWeight: typeof controlledUsageWeight === 'number' ? controlledUsageWeight : 0,
     profileObservedMinUncontrolledKWh,
     profileObservedMinControlledKWh,
+    profileObservedP50UncontrolledKWh,
+    profileObservedP75UncontrolledKWh,
+    profileObservedP90UncontrolledKWh,
+    profileObservedUncontrolledSampleCounts,
     observedPeakMarginRatio,
     usedInCurrent,
     remainingStartIndex: bounds.remainingStartIndex,
@@ -289,11 +313,11 @@ const resolvePlannedTotals = (params: {
     weights: normalizedRemaining,
     remainingBudgetKWh: remainingBudgetForFuture,
     caps: remainingCaps,
-    floors: remainingFloors,
+    floors: remainingFloorsResult.floors,
     prices: remainingPrices,
     priceFlexShare: effectivePriceShapingFlexShare,
   });
-  return buildPlannedKWh({
+  const planned = buildPlannedKWh({
     bucketCount: bucketStartUtcMs.length,
     bucketUsage,
     currentBucketIndex: bounds.safeCurrentBucketIndex,
@@ -305,90 +329,12 @@ const resolvePlannedTotals = (params: {
     remainingStartIndex: bounds.remainingStartIndex,
     remainingAllocations,
   });
-};
-
-const buildPlannedSplit = (params: {
-  plannedKWh: number[];
-  splitShares: SplitShares;
-  controlledMinFloors?: number[];
-  previousPlannedUncontrolledKWh?: number[];
-  previousPlannedControlledKWh?: number[];
-  currentBucketIndex: number;
-  shouldLockCurrent: boolean;
-}): Array<{ plannedUncontrolled: number; plannedControlled: number }> => {
-  const {
-    plannedKWh,
-    splitShares,
-    controlledMinFloors,
-    previousPlannedUncontrolledKWh,
-    previousPlannedControlledKWh,
-    currentBucketIndex,
-    shouldLockCurrent,
-  } = params;
-  const hasPreviousSplit = Array.isArray(previousPlannedUncontrolledKWh)
-    && Array.isArray(previousPlannedControlledKWh)
-    && previousPlannedUncontrolledKWh.length === plannedKWh.length
-    && previousPlannedControlledKWh.length === plannedKWh.length;
-
-  return splitShares.uncontrolled.map((_share, index) => {
-    const planned = plannedKWh[index] ?? 0;
-    const shouldPreservePreviousSplit = hasPreviousSplit
-      && (index < currentBucketIndex || (shouldLockCurrent && index === currentBucketIndex));
-    const preservedSplit = shouldPreservePreviousSplit
-      ? resolvePreservedSplit({
-        planned,
-        previousUncontrolled: previousPlannedUncontrolledKWh?.[index],
-        previousControlled: previousPlannedControlledKWh?.[index],
-      })
-      : null;
-    if (preservedSplit) return preservedSplit;
-    return resolveComputedSplit({
-      planned,
-      shareControlled: splitShares.controlled[index] ?? 0,
-      controlledFloor: controlledMinFloors?.[index] ?? 0,
-    });
-  });
-};
-
-function resolvePreservedSplit(params: {
-  planned: number;
-  previousUncontrolled: number | undefined;
-  previousControlled: number | undefined;
-}): { plannedUncontrolled: number; plannedControlled: number } | null {
-  const { planned, previousUncontrolled, previousControlled } = params;
-  if (!Number.isFinite(previousUncontrolled) || !Number.isFinite(previousControlled)) return null;
-  const preservedUncontrolled = Math.max(0, previousUncontrolled as number);
-  const preservedControlled = Math.max(0, previousControlled as number);
-  const preservedTotal = preservedUncontrolled + preservedControlled;
-  if (planned <= 0) {
-    return {
-      plannedUncontrolled: 0,
-      plannedControlled: 0,
-    };
-  }
-  if (preservedTotal <= 0) return null;
-  const scale = planned / preservedTotal;
   return {
-    plannedUncontrolled: preservedUncontrolled * scale,
-    plannedControlled: preservedControlled * scale,
+    plannedKWh: planned,
+    uncontrolledReserveFloors: remainingFloorsResult.uncontrolledReserves,
+    uncontrolledReserveDiagnostics: remainingFloorsResult.diagnostics,
   };
-}
-
-function resolveComputedSplit(params: {
-  planned: number;
-  shareControlled: number;
-  controlledFloor: number;
-}): { plannedUncontrolled: number; plannedControlled: number } {
-  const { planned, shareControlled, controlledFloor } = params;
-  let plannedControlled = planned * shareControlled;
-  if (controlledFloor > plannedControlled) {
-    plannedControlled = Math.min(planned, controlledFloor);
-  }
-  return {
-    plannedUncontrolled: Math.max(0, planned - plannedControlled),
-    plannedControlled,
-  };
-}
+};
 
 function resolveRemainingWeights(params: {
   baseWeights: number[];

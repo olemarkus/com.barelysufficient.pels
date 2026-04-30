@@ -52,6 +52,10 @@ export function logNextDayPlanDebug(params: {
     profileObservedMaxControlledKWh: state.profileObservedMaxControlledKWh,
     profileObservedMinUncontrolledKWh: state.profileObservedMinUncontrolledKWh,
     profileObservedMinControlledKWh: state.profileObservedMinControlledKWh,
+    profileObservedP50UncontrolledKWh: state.profileObservedP50UncontrolledKWh,
+    profileObservedP75UncontrolledKWh: state.profileObservedP75UncontrolledKWh,
+    profileObservedP90UncontrolledKWh: state.profileObservedP90UncontrolledKWh,
+    profileObservedUncontrolledSampleCounts: state.profileObservedUncontrolledSampleCounts,
   });
   const bucketStartUtcMs = preview.buckets.startUtc.map((ts) => new Date(ts).getTime());
   const priceData: PriceData = buildPriceDebugData({

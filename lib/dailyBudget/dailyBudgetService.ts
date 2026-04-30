@@ -84,6 +84,7 @@ export class DailyBudgetService {
     this.manager = new DailyBudgetManager({
       log: (...args: unknown[]) => this.deps.log(...args),
       logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
+      structuredDebug: (payload: Record<string, unknown>) => this.emitStructuredDailyBudgetDebug(payload),
     });
   }
 
@@ -124,6 +125,7 @@ export class DailyBudgetService {
     const manager = new DailyBudgetManager({
       log: (...args: unknown[]) => this.deps.log(...args),
       logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
+      structuredDebug: (payload: Record<string, unknown>) => this.emitStructuredDailyBudgetDebug(payload),
     });
     manager.loadState(this.manager.exportState());
     return manager;
@@ -331,6 +333,14 @@ export class DailyBudgetService {
     if (this.deps.homey.settings.get('debug_logging_enabled') === true) return true;
     const rawTopics = this.deps.homey.settings.get(DEBUG_LOGGING_TOPICS) as unknown;
     return normalizeDebugLoggingTopics(rawTopics).includes('daily_budget');
+  }
+
+  private emitStructuredDailyBudgetDebug(payload: Record<string, unknown>): void {
+    if (!this.shouldIncludeConfidenceBootstrapDebug()) return;
+    this.deps.structuredLog?.info({
+      ...payload,
+      debugTopic: 'daily_budget',
+    });
   }
 
   getPeriodicStatusFields(): DailyBudgetPeriodicStatusFields | null {

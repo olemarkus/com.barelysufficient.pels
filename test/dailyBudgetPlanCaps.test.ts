@@ -1,4 +1,5 @@
 import {
+  resolveUncontrolledReserve,
   resolveRemainingCaps,
   resolveRemainingFloors,
 } from '../lib/dailyBudget/dailyBudgetPlanCaps';
@@ -42,7 +43,46 @@ describe('daily budget plan caps/floors', () => {
     });
 
     // 1.0 kWh observed min with 20% margin => 0.8 kWh floor for the hour.
-    expect(result[0]).toBeCloseTo(0.8, 6);
+    expect(result.floors[0]).toBeCloseTo(0.8, 6);
+  });
+
+  it('reserves uncontrolled load from p50-p75 without discounting by peak margin', () => {
+    const result = resolveRemainingFloors({
+      bucketStartUtcMs,
+      timeZone,
+      splitSharesUncontrolled: [1],
+      splitSharesControlled: [0],
+      controlledUsageWeight: 0,
+      profileObservedMinUncontrolledKWh: [1, ...Array.from({ length: 23 }, () => 0)],
+      profileObservedMinControlledKWh: Array.from({ length: 24 }, () => 0),
+      profileObservedP50UncontrolledKWh: [2, ...Array.from({ length: 23 }, () => 0)],
+      profileObservedP75UncontrolledKWh: [3, ...Array.from({ length: 23 }, () => 0)],
+      profileObservedP90UncontrolledKWh: [5, ...Array.from({ length: 23 }, () => 0)],
+      profileObservedUncontrolledSampleCounts: [30, ...Array.from({ length: 23 }, () => 0)],
+      observedPeakMarginRatio: 0.2,
+      usedInCurrent: 0,
+      remainingStartIndex: 0,
+      currentBucketIndex: 0,
+    });
+
+    expect(result.floors[0]).toBeGreaterThan(2);
+    expect(result.floors[0]).toBeLessThanOrEqual(3);
+    expect(result.floors[0]).not.toBeCloseTo(0.8, 6);
+    expect(result.diagnostics.hours[0]?.reasonCode).toBe('volatile_hour');
+  });
+
+  it('caps the adaptive reserve at p75 in balanced mode', () => {
+    const result = resolveUncontrolledReserve({
+      hour: 0,
+      p50: 1,
+      p75: 2,
+      p90: 10,
+      samples: 30,
+      marginRatio: 0.2,
+    });
+
+    expect(result.reservedUncontrolledKWh).toBeCloseTo(2, 6);
+    expect(result.diagnostic.quantileUsed).toBeCloseTo(0.75, 6);
   });
 
   it('does not scale caps by split share when controlled endpoint weight has no observed cap', () => {
@@ -80,6 +120,6 @@ describe('daily budget plan caps/floors', () => {
     });
 
     // Uncontrolled floor: 1 * 0.8 = 0.8 kWh.
-    expect(result[0]).toBeCloseTo(0.8, 6);
+    expect(result.floors[0]).toBeCloseTo(0.8, 6);
   });
 });
