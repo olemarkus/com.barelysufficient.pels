@@ -42,7 +42,7 @@ import {
   getCachedConfidence,
   resolveConfidence,
 } from './dailyBudgetConfidence';
-import { logUncontrolledReserveDebug } from './dailyBudgetReserveLogging';
+import { logUncontrolledReserveDebug as logReserveDebug } from './dailyBudgetReserveLogging';
 
 const DEFAULT_PROFILE = buildDefaultProfile();
 
@@ -205,7 +205,7 @@ export class DailyBudgetManager {
       capacityBudgetKWh,
       defaultProfile: DEFAULT_PROFILE,
     });
-    logUncontrolledReserveDebug({ plan, structuredDebug: this.deps.structuredDebug });
+    logReserveDebug({ plan, reserveMode: settings.controlledUsageWeight, structuredDebug: this.deps.structuredDebug });
 
     this.state.dateKey = context.dateKey;
     this.state.dayStartUtcMs = context.dayStartUtcMs;

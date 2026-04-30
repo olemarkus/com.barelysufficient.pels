@@ -1,6 +1,7 @@
 import { getZonedParts } from '../utils/dateUtils';
 import { clamp } from '../utils/mathUtils';
 import {
+  CONTROLLED_USAGE_WEIGHT,
   OBSERVED_HOURLY_PEAK_MARGIN_RATIO,
   UNCONTROLLED_RESERVE_BASE_QUANTILE,
   UNCONTROLLED_RESERVE_DENOMINATOR_FLOOR_KWH,
@@ -117,7 +118,8 @@ export function resolveRemainingFloors(params: {
   const marginRatio = Number.isFinite(observedPeakMarginRatio)
     ? Math.max(0, observedPeakMarginRatio ?? 0)
     : OBSERVED_HOURLY_PEAK_MARGIN_RATIO;
-  const weight = clamp(controlledUsageWeight, 0, 1);
+  const reserveAggressiveness = clamp(controlledUsageWeight, 0, 1);
+  const controlledFloorWeight = CONTROLLED_USAGE_WEIGHT;
   const diagnosticsHours: UncontrolledReserveHourDiagnostic[] = [];
 
   const floors = bucketStartUtcMs
@@ -133,10 +135,11 @@ export function resolveRemainingFloors(params: {
         samples: profileObservedUncontrolledSampleCounts?.[hour],
         fallbackMinObserved: profileObservedMinUncontrolledKWh?.[hour],
         marginRatio,
+        reserveAggressiveness,
       });
       diagnosticsHours.push(reserve.diagnostic);
       const controlledMin = resolveObservedMin(profileObservedMinControlledKWh?.[hour], marginRatio);
-      const totalFloor = reserve.reservedUncontrolledKWh + weight * controlledMin;
+      const totalFloor = reserve.reservedUncontrolledKWh + controlledFloorWeight * controlledMin;
       if (bucketIndex === currentBucketIndex) {
         return Math.max(0, totalFloor - usedInCurrent);
       }
@@ -152,6 +155,7 @@ export function resolveRemainingFloors(params: {
     profileObservedUncontrolledSampleCounts,
     observedPeakMarginRatio,
     applyFromIndex: remainingStartIndex,
+    reserveAggressiveness,
   });
   return {
     floors,
@@ -170,6 +174,7 @@ export function buildUncontrolledReserveFloors(params: {
   profileObservedUncontrolledSampleCounts?: number[];
   observedPeakMarginRatio?: number;
   applyFromIndex: number;
+  reserveAggressiveness?: number;
 }): number[] {
   const {
     bucketStartUtcMs,
@@ -181,6 +186,7 @@ export function buildUncontrolledReserveFloors(params: {
     profileObservedUncontrolledSampleCounts,
     observedPeakMarginRatio,
     applyFromIndex,
+    reserveAggressiveness,
   } = params;
   const marginRatio = Number.isFinite(observedPeakMarginRatio)
     ? Math.max(0, observedPeakMarginRatio ?? 0)
@@ -196,6 +202,7 @@ export function buildUncontrolledReserveFloors(params: {
       samples: profileObservedUncontrolledSampleCounts?.[hour],
       fallbackMinObserved: profileObservedMinUncontrolledKWh?.[hour],
       marginRatio,
+      reserveAggressiveness,
     }).reservedUncontrolledKWh;
   });
 }
@@ -214,12 +221,11 @@ export function buildControlledMinFloors(params: {
     profileObservedMinControlledKWh,
     observedPeakMarginRatio,
     applyFromIndex,
-    controlledUsageWeight,
   } = params;
   const marginRatio = Number.isFinite(observedPeakMarginRatio)
     ? Math.max(0, observedPeakMarginRatio ?? 0)
     : OBSERVED_HOURLY_PEAK_MARGIN_RATIO;
-  const weight = clamp(controlledUsageWeight ?? 0, 0, 1);
+  const weight = CONTROLLED_USAGE_WEIGHT;
   return bucketStartUtcMs.map((bucketStartMs, index) => {
     if (index < applyFromIndex) return 0;
     const hour = getZonedParts(new Date(bucketStartMs), timeZone).hour;
@@ -249,9 +255,13 @@ export function resolveUncontrolledReserve(params: {
   samples: unknown;
   fallbackMinObserved?: unknown;
   marginRatio: number;
+  reserveAggressiveness?: number;
 }): { reservedUncontrolledKWh: number; diagnostic: UncontrolledReserveHourDiagnostic } {
-  const { hour, p50, p75, p90, samples, fallbackMinObserved, marginRatio } = params;
+  const { hour, p50, p75, p90, samples, fallbackMinObserved, marginRatio, reserveAggressiveness } = params;
   const sampleCount = normalizeSampleCount(samples);
+  const reserveMode = clamp(reserveAggressiveness ?? 0, 0, 1);
+  const baseQuantile = UNCONTROLLED_RESERVE_BASE_QUANTILE + 0.1 * reserveMode;
+  const maxQuantile = UNCONTROLLED_RESERVE_MAX_QUANTILE + 0.1 * reserveMode;
   if (!isPositiveFinite(p50) || !isPositiveFinite(p75)) {
     const fallback = resolveObservedMin(fallbackMinObserved, marginRatio);
     return {
@@ -262,7 +272,7 @@ export function resolveUncontrolledReserve(params: {
         p50: 0,
         p75: 0,
         p90: isPositiveFinite(p90) ? p90 : 0,
-        quantileUsed: UNCONTROLLED_RESERVE_BASE_QUANTILE,
+        quantileUsed: baseQuantile,
         reservedUncontrolledKWh: fallback,
         confidence: confidenceFromSamples(sampleCount),
         reasonCode: 'missing_data_fallback',
@@ -275,11 +285,12 @@ export function resolveUncontrolledReserve(params: {
   const safeP90 = isPositiveFinite(p90) ? Math.max(p90, safeP75) : safeP75;
   const relativeTail = (safeP90 - safeP50) / Math.max(safeP50, UNCONTROLLED_RESERVE_DENOMINATOR_FLOOR_KWH);
   const uncertainty = clamp(relativeTail / UNCONTROLLED_RESERVE_TAIL_RATIO_FOR_MAX, 0, 1);
-  const quantileUsed = UNCONTROLLED_RESERVE_BASE_QUANTILE
-    + (UNCONTROLLED_RESERVE_MAX_QUANTILE - UNCONTROLLED_RESERVE_BASE_QUANTILE) * uncertainty;
-  const reserve = interpolateReserveBetweenP50AndP75({
+  const quantileUsed = baseQuantile
+    + (maxQuantile - baseQuantile) * uncertainty;
+  const reserve = interpolateUncontrolledReserve({
     p50: safeP50,
     p75: safeP75,
+    p90: safeP90,
     quantile: quantileUsed,
   });
   const reservedUncontrolledKWh = Math.min(
@@ -297,19 +308,26 @@ export function resolveUncontrolledReserve(params: {
       quantileUsed,
       reservedUncontrolledKWh,
       confidence: confidenceFromSamples(sampleCount),
-      reasonCode: quantileUsed > UNCONTROLLED_RESERVE_BASE_QUANTILE + 0.05
+      reasonCode: uncertainty > 0.2
         ? 'volatile_hour'
         : 'median_default',
     },
   };
 }
 
-function interpolateReserveBetweenP50AndP75(params: {
+function interpolateUncontrolledReserve(params: {
   p50: number;
   p75: number;
+  p90: number;
   quantile: number;
 }): number {
-  const { p50, p75, quantile } = params;
+  const { p50, p75, p90, quantile } = params;
+  if (quantile > UNCONTROLLED_RESERVE_MAX_QUANTILE) {
+    const tailSpan = 0.90 - UNCONTROLLED_RESERVE_MAX_QUANTILE;
+    if (tailSpan <= 0) return p75;
+    const tailRatio = clamp((quantile - UNCONTROLLED_RESERVE_MAX_QUANTILE) / tailSpan, 0, 1);
+    return p75 + (p90 - p75) * tailRatio;
+  }
   const span = UNCONTROLLED_RESERVE_MAX_QUANTILE - UNCONTROLLED_RESERVE_BASE_QUANTILE;
   if (span <= 0) return p50;
   const ratio = clamp((quantile - UNCONTROLLED_RESERVE_BASE_QUANTILE) / span, 0, 1);

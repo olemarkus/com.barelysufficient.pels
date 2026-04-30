@@ -215,7 +215,7 @@ export const getProfileSplitSampleCount = (state: DailyBudgetState): number => r
 
 const getLearnedProfileParts = (
   state: DailyBudgetState,
-  settings: DailyBudgetSettings,
+  _settings: DailyBudgetSettings,
   defaultProfile: number[],
 ): LearnedProfileParts | null => {
   const uncontrolled = state.profileUncontrolled?.weights;
@@ -224,7 +224,7 @@ const getLearnedProfileParts = (
   const normalizedUncontrolled = normalizeWithFallback(uncontrolled, defaultProfile);
   const normalizedControlled = normalizeWithFallback(controlled, defaultProfile);
   const controlledShare = clampShare(state.profileControlledShare ?? 0);
-  const weight = clampShare(settings.controlledUsageWeight ?? CONTROLLED_USAGE_WEIGHT);
+  const weight = CONTROLLED_USAGE_WEIGHT;
   const denom = (1 - controlledShare) + controlledShare * weight;
   if (!Number.isFinite(denom) || denom <= 0) {
     return {

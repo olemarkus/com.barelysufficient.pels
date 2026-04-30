@@ -183,6 +183,25 @@ describe('DailyBudgetService', () => {
     }));
   });
 
+  it('normalizes legacy persisted tuning values to dropdown modes on load', () => {
+    const service = buildService();
+    (service as any).deps.homey.settings.get = vi.fn((key: string) => {
+      if (key === 'daily_budget_enabled') return true;
+      if (key === 'daily_budget_kwh') return 24;
+      if (key === 'daily_budget_price_shaping_enabled') return true;
+      if (key === 'daily_budget_controlled_weight') return 0.3;
+      if (key === 'daily_budget_price_flex_share') return 0.35;
+      return null;
+    });
+
+    service.loadSettings();
+
+    expect((service as any).settings).toEqual(expect.objectContaining({
+      controlledUsageWeight: 0,
+      priceShapingFlexShare: 0.6,
+    }));
+  });
+
   it('recomputes today plan with frozen-plan override and adjacent day payloads', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW_MS);

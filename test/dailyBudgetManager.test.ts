@@ -386,9 +386,9 @@ describe('daily budget planning', () => {
     expect(nextState.profileControlled?.weights[1]).toBeCloseTo(1, 4);
   });
 
-  it('applies the controlled usage weight when building the combined plan', () => {
+  it('keeps learned profile allocation independent from unmanaged reserve mode', () => {
     const manager = buildManager();
-    manager.loadState({
+    const splitState = {
       profileUncontrolled: {
         weights: normalizeWeights([1, 0, ...Array.from({ length: 22 }, () => 0)]),
         sampleCount: 14,
@@ -399,26 +399,35 @@ describe('daily budget planning', () => {
       },
       profileControlledShare: 0.5,
       profileSampleCount: 14,
-    });
-    const settings = buildSettings({ dailyBudgetKWh: 8, controlledUsageWeight: 0 });
+    };
     const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
     const dayStart = getDateKeyStartMs(dateKey, TZ);
     const now = dayStart + 30 * 60 * 1000;
     const bucketKey0 = new Date(dayStart).toISOString();
 
+    manager.loadState(splitState);
     manager.update({
       nowMs: now,
       timeZone: TZ,
-      settings,
+      settings: buildSettings({ dailyBudgetKWh: 8, controlledUsageWeight: 0 }),
       powerTracker: { buckets: { [bucketKey0]: 0 } },
       priceOptimizationEnabled: false,
     });
+    const balanced = manager.getSnapshot()?.buckets.plannedKWh ?? [];
 
-    const snapshot = manager.getSnapshot();
-    expect(snapshot).not.toBeNull();
-    const planned = snapshot?.buckets.plannedKWh ?? [];
-    expect(planned[0]).toBeCloseTo(8, 4);
-    expect(planned[1]).toBeCloseTo(0, 4);
+    const conservativeManager = buildManager();
+    conservativeManager.loadState(splitState);
+    conservativeManager.update({
+      nowMs: now,
+      timeZone: TZ,
+      settings: buildSettings({ dailyBudgetKWh: 8, controlledUsageWeight: 1 }),
+      powerTracker: { buckets: { [bucketKey0]: 0 } },
+      priceOptimizationEnabled: false,
+    });
+    const conservative = conservativeManager.getSnapshot()?.buckets.plannedKWh ?? [];
+
+    expect(balanced[0]).toBeCloseTo(conservative[0], 6);
+    expect(balanced[1]).toBeCloseTo(conservative[1], 6);
   });
 
   it('falls back to total usage when controlled data is missing', () => {

@@ -8,9 +8,10 @@ import { getSetting } from './homey.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast, showToastError } from './toast.ts';
+import { priceFlexModeValue, reserveModeValue } from './dailyBudgetTuningValues.ts';
 import {
-  CONTROLLED_USAGE_WEIGHT,
   PRICE_SHAPING_FLEX_SHARE,
+  UNMANAGED_RESERVE_MODE,
 } from '../../../contracts/src/dailyBudgetConstants.ts';
 import {
   DAILY_BUDGET_CONTROLLED_WEIGHT,
@@ -24,10 +25,10 @@ const clampRatio = (value: number, fallback: number): number => {
   return Math.min(1, Math.max(0, value));
 };
 
-const setInputValue = (input: HTMLInputElement | null, value: number) => {
+const setSelectValue = (input: HTMLSelectElement | null, value: string) => {
   if (!input) return;
   const target = input;
-  target.value = value.toString();
+  target.value = value;
 };
 
 export const loadDailyBudgetTuningSettings = async () => {
@@ -39,14 +40,14 @@ export const loadDailyBudgetTuningSettings = async () => {
   ]);
   const controlledWeight = clampRatio(
     typeof controlledWeightRaw === 'number' ? controlledWeightRaw : Number.NaN,
-    CONTROLLED_USAGE_WEIGHT,
+    UNMANAGED_RESERVE_MODE,
   );
   const priceFlexShare = clampRatio(
     typeof priceFlexShareRaw === 'number' ? priceFlexShareRaw : Number.NaN,
     PRICE_SHAPING_FLEX_SHARE,
   );
-  setInputValue(dailyBudgetControlledWeightInput, controlledWeight);
-  setInputValue(dailyBudgetPriceFlexShareInput, priceFlexShare);
+  setSelectValue(dailyBudgetControlledWeightInput, reserveModeValue(controlledWeight));
+  setSelectValue(dailyBudgetPriceFlexShareInput, priceFlexModeValue(priceFlexShare));
   if (dailyBudgetBreakdownInput) {
     dailyBudgetBreakdownInput.checked = breakdownRaw === true;
   }

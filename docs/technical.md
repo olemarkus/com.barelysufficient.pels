@@ -104,7 +104,7 @@ See [Daily Energy Budget](daily-budget.md) for detailed documentation.
 
 ## Daily Budget Weighting Math
 
-Advanced daily-budget tuning (controlled usage weight, price flex share, and confidence blending) is documented in:
+Advanced daily-budget tuning (unmanaged reserve, managed device flexibility, and confidence blending) is documented in:
 
 - [Daily Budget Weighting Math (Advanced)](daily-budget-weights.md)
 

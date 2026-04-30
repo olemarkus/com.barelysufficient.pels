@@ -2,10 +2,10 @@ import type { Mock } from 'vitest';
 import { buildComparablePlanReason } from '../../../shared-domain/src/planReasonSemantics.ts';
 import type { DailyBudgetModelSettings } from '../../../contracts/src/dailyBudgetTypes.ts';
 import {
-  CONTROLLED_USAGE_WEIGHT,
   MAX_DAILY_BUDGET_KWH,
   MIN_DAILY_BUDGET_KWH,
   PRICE_SHAPING_FLEX_SHARE,
+  UNMANAGED_RESERVE_MODE,
 } from '../../../contracts/src/dailyBudgetConstants.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
@@ -146,7 +146,7 @@ const buildDailyBudgetModelSettings = (
       : storedPriceShaping !== false,
     controlledUsageWeight: isFiniteNumber(body.controlledUsageWeight)
       ? clampRatio(body.controlledUsageWeight)
-      : (isFiniteNumber(storedControlledWeight) ? clampRatio(storedControlledWeight) : CONTROLLED_USAGE_WEIGHT),
+      : (isFiniteNumber(storedControlledWeight) ? clampRatio(storedControlledWeight) : UNMANAGED_RESERVE_MODE),
     priceShapingFlexShare: isFiniteNumber(body.priceShapingFlexShare)
       ? clampRatio(body.priceShapingFlexShare)
       : (isFiniteNumber(storedPriceFlexShare) ? clampRatio(storedPriceFlexShare) : PRICE_SHAPING_FLEX_SHARE),

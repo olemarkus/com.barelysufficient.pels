@@ -1,14 +1,14 @@
 ---
 title: Daily Budget Weighting Math
-description: Exact formulas for controlled usage weight, price flex share, confidence, and observed hourly caps in the daily-budget planner.
+description: Exact formulas for unmanaged reserve, managed-device price flexibility, confidence, and observed hourly caps in the daily-budget planner.
 ---
 
 # Daily Budget Weighting Math (Advanced)
 
 This document explains the exact math behind:
 
-- **Controlled usage weight** (Advanced tab)
-- **Price flex share** (Advanced tab)
+- **Unmanaged usage reserve** (Advanced tab)
+- **Managed device flexibility** (Advanced tab)
 - **Observed hourly peak caps** (split-budget safety)
 - **Confidence** (backtested forecast-skill score shown in the UI)
 - **Profile blend confidence** (how quickly learned behavior influences the plan internally)
@@ -23,8 +23,9 @@ For each local hour `h` (0-23), PELS works with:
 - `U[h]`: learned **uncontrolled** weight, normalized to sum to 1
 - `C[h]`: learned **controlled** weight, normalized to sum to 1
 - `s`: learned controlled share of total energy (`0..1`)
-- `w`: **Controlled usage weight** setting (`0..1`, default `0.30`)
-- `p`: **Price flex share** setting (`0..1`, default `0.35`)
+- `r`: unmanaged reserve mode (`0 = balanced`, `1 = conservative`)
+- `w`: internal managed-load floor/profile weight (current implementation: `0.30`)
+- `p`: managed device price flexibility (`0.30 = low`, `0.60 = medium`, `0.85 = high`)
 - `Umax[h]`: robust upper observed uncontrolled kWh envelope for local hour `h` (hourly quantile)
 - `Cmax[h]`: robust upper observed controlled kWh envelope for local hour `h` (hourly quantile)
 - `Umin[h]`: robust lower positive observed uncontrolled kWh envelope for local hour `h` (`0` means no minimum data)
@@ -81,9 +82,11 @@ nextUmin[h] = min(... where > 0)
 nextCmin[h] = min(... where > 0)
 ```
 
-## 3) Controlled usage weight (`w`) math
+## 3) Managed-load profile weight (`w`) math
 
-`w` does not directly replace profile values. It scales the contribution of the controlled profile relative to uncontrolled, using learned controlled share `s`.
+`w` is no longer exposed as a normal user setting. The Advanced tab exposes **Unmanaged usage reserve** instead; that mode affects unmanaged reserve floors, not the learned controlled/uncontrolled profile split.
+
+Internally, `w` is fixed at the default value and scales the contribution of the controlled profile relative to uncontrolled, using learned controlled share `s`.
 
 ```text
 denom = (1 - s) + s * w
@@ -95,13 +98,13 @@ learnedControlled[h]   = C[h] * controlledScale
 learnedCombined[h]     = normalize(learnedUncontrolled[h] + learnedControlled[h])
 ```
 
-Behavior:
+Internal behavior:
 
-- `w = 0`: controlled contribution becomes 0 (ignored in learned shape)
-- `w = 1`: controlled contribution follows measured share `s`
-- `0 < w < 1`: controlled contribution is partially down-weighted
+- lower `w`: less controlled history influences the learned shape
+- higher `w`: controlled contribution follows more of measured share `s`
+- current implementation: fixed default, so changing **Unmanaged usage reserve** does not reshape controlled history
 
-### Example A: controlled weighting
+### Example A: managed-load profile weighting
 
 Assume:
 
@@ -116,7 +119,7 @@ uncontrolledScale = 0.60 / 0.72 = 0.8333
 controlledScale   = 0.12 / 0.72 = 0.1667
 ```
 
-So even though controlled energy share is 40%, the learned shape uses about 16.7% controlled influence at this stage.
+So even though controlled energy share is 40%, the learned shape uses about 16.7% controlled influence internally.
 
 ## 4) Confidence
 
@@ -243,8 +246,7 @@ Ufloor[h] = max(0, Umin[h] * (1 - m))
 Cfloor[h] = max(0, Cmin[h] * (1 - m))
 ```
 
-The floor always includes the uncontrolled minimum. Controlled minimums are added according to
-`w`:
+The floor always includes the uncontrolled minimum. The **Unmanaged usage reserve** mode controls how defensively this unmanaged floor is reserved. Controlled minimums are added with the fixed internal managed-load floor weight `w`:
 
 ```text
 floor[h] = Ufloor[h] + w * Cfloor[h]
@@ -254,11 +256,12 @@ Important behavior:
 
 - Floors are enforced only while budget remains; if floors exceed remaining budget,
   all floors are scaled down proportionally to fit the budget.
-- `w = 0`: only uncontrolled usage is treated as unavoidable floor.
-- `w = 1`: uncontrolled plus historical controlled minimum is treated as floor.
+- Balanced unmanaged reserve keeps the unmanaged floor closer to the learned minimum.
+- Conservative unmanaged reserve raises the unmanaged floor toward the robust reserve envelope.
+- Controlled service-floor influence stays fixed when changing unmanaged reserve mode.
 - Controlled load between the floor and cap remains flexible budget headroom.
 
-## 6) Price flex share (`p`) math
+## 6) Managed device flexibility (`p`) math
 
 Price shaping applies only when:
 
@@ -276,7 +279,7 @@ priceRange = maxPrice - minPrice
 
 If `priceRange` is zero or within the planner's near-flat deadband, price shaping is effectively
 disabled for that plan.
-Otherwise `p` is used directly as the effective shaping strength:
+Otherwise the selected managed-device flexibility maps to `p`, which is used directly as the effective shaping strength:
 
 ```text
 pEff = p
@@ -303,10 +306,12 @@ planned[b] = neutralAllocation[b] * (1 - pEff)
 
 Behavior:
 
-- `p = 0`: no price shaping
-- `p = 1`: cheapest remaining bucket is allowed up to cap, most expensive remaining bucket is held
+- Low (`p = 0.30`): modest price shaping
+- Medium (`p = 0.60`): default price shaping
+- High (`p = 0.85`): stronger movement toward cheaper feasible hours
+- Internally, `p = 1`: cheapest remaining bucket is allowed up to cap, most expensive remaining bucket is held
   to floor when the remaining budget permits it
-- `0 < p < 1`: smooth blend between profile-driven pacing and full price-driven pacing
+- Values between 0 and 1 smoothly blend profile-driven pacing and full price-driven pacing
 
 ### Example C: price flex effect
 
@@ -336,9 +341,9 @@ full-flex allocation.
 
 - Keep defaults unless you have stable data and a clear tuning goal.
 - Change one setting at a time and observe at least one full day.
-- If expensive hours keep too much controlled load, reduce **Controlled usage weight** so less
-  controlled history is treated as unavoidable floor.
-- If plan movement by price is too aggressive, lower **Price flex share**.
+- If unmanaged household load regularly causes budget misses, use **Conservative** unmanaged reserve.
+- If too much budget is held back from managed devices, use **Balanced** unmanaged reserve.
+- If plan movement by price is too aggressive, lower **Managed device flexibility**.
 - If the budget cannot be fully allocated under capacity and historical caps, the Budget UI shows
   an allocation warning; lower the daily budget or raise the relevant capacity/load assumptions.
 - If confidence stays low, verify regular power reporting and controlled/uncontrolled split data.

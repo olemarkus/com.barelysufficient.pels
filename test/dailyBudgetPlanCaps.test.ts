@@ -85,6 +85,47 @@ describe('daily budget plan caps/floors', () => {
     expect(result.diagnostic.quantileUsed).toBeCloseTo(0.75, 6);
   });
 
+  it('can reserve into the p75-p90 tail in conservative mode', () => {
+    const balanced = resolveUncontrolledReserve({
+      hour: 0,
+      p50: 1,
+      p75: 2,
+      p90: 10,
+      samples: 30,
+      marginRatio: 0.2,
+      reserveAggressiveness: 0,
+    });
+    const conservative = resolveUncontrolledReserve({
+      hour: 0,
+      p50: 1,
+      p75: 2,
+      p90: 10,
+      samples: 30,
+      marginRatio: 0.2,
+      reserveAggressiveness: 1,
+    });
+
+    expect(balanced.reservedUncontrolledKWh).toBeCloseTo(2, 6);
+    expect(conservative.diagnostic.quantileUsed).toBeCloseTo(0.85, 6);
+    expect(conservative.reservedUncontrolledKWh).toBeGreaterThan(balanced.reservedUncontrolledKWh);
+    expect(conservative.reservedUncontrolledKWh).toBeLessThan(10);
+  });
+
+  it('does not mark stable conservative reserve hours as volatile', () => {
+    const result = resolveUncontrolledReserve({
+      hour: 0,
+      p50: 2,
+      p75: 2,
+      p90: 2,
+      samples: 30,
+      marginRatio: 0.2,
+      reserveAggressiveness: 1,
+    });
+
+    expect(result.reservedUncontrolledKWh).toBeCloseTo(2, 6);
+    expect(result.diagnostic.reasonCode).toBe('median_default');
+  });
+
   it('does not scale caps by split share when controlled endpoint weight has no observed cap', () => {
     const result = resolveRemainingCaps({
       bucketStartUtcMs,

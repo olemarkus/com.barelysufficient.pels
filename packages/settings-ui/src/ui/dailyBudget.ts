@@ -51,11 +51,12 @@ import {
   SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
 } from '../../../contracts/src/settingsUiApi.ts';
 import {
-  CONTROLLED_USAGE_WEIGHT,
   MAX_DAILY_BUDGET_KWH,
   MIN_DAILY_BUDGET_KWH,
   PRICE_SHAPING_FLEX_SHARE,
+  UNMANAGED_RESERVE_MODE,
 } from '../../../contracts/src/dailyBudgetConstants.ts';
+import { priceFlexModeValue, reserveModeValue } from './dailyBudgetTuningValues.ts';
 const DEFAULT_COST_UNIT = 'kr';
 const DEFAULT_COST_DIVISOR = 100;
 
@@ -355,7 +356,7 @@ const readDailyBudgetModelDraft = (): DailyBudgetModelSettings => {
     priceShapingEnabled: dailyBudgetPriceShapingInput?.checked ?? true,
     controlledUsageWeight: parseDailyBudgetRatio(
       dailyBudgetControlledWeightInput?.value ?? '',
-      CONTROLLED_USAGE_WEIGHT,
+      UNMANAGED_RESERVE_MODE,
     ),
     priceShapingFlexShare: parseDailyBudgetRatio(
       dailyBudgetPriceFlexShareInput?.value ?? '',
@@ -391,16 +392,18 @@ export const loadDailyBudgetSettings = async () => {
     dailyBudgetPriceShapingInput.checked = priceShapingEnabled !== false;
   }
   if (dailyBudgetControlledWeightInput) {
-    dailyBudgetControlledWeightInput.value = parseDailyBudgetRatio(
+    const reserveMode = parseDailyBudgetRatio(
       typeof controlledWeightRaw === 'number' ? controlledWeightRaw.toString() : '',
-      CONTROLLED_USAGE_WEIGHT,
-    ).toString();
+      UNMANAGED_RESERVE_MODE,
+    );
+    dailyBudgetControlledWeightInput.value = reserveModeValue(reserveMode);
   }
   if (dailyBudgetPriceFlexShareInput) {
-    dailyBudgetPriceFlexShareInput.value = parseDailyBudgetRatio(
+    const priceFlexMode = parseDailyBudgetRatio(
       typeof priceFlexShareRaw === 'number' ? priceFlexShareRaw.toString() : '',
       PRICE_SHAPING_FLEX_SHARE,
-    ).toString();
+    );
+    dailyBudgetPriceFlexShareInput.value = priceFlexModeValue(priceFlexMode);
   }
   setDailyBudgetModelDirty(false);
 };

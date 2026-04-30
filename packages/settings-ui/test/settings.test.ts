@@ -170,8 +170,15 @@ const buildDom = () => {
         <input id="advanced-overview-redesign-enabled" type="checkbox">
       </label>
       <form id="daily-budget-advanced-form">
-        <input id="daily-budget-controlled-weight" type="number">
-        <input id="daily-budget-price-flex-share" type="number">
+        <select id="daily-budget-controlled-weight">
+          <option value="0">Balanced</option>
+          <option value="1">Conservative</option>
+        </select>
+        <select id="daily-budget-price-flex-share">
+          <option value="0.3">Low</option>
+          <option value="0.6">Medium</option>
+          <option value="0.85">High</option>
+        </select>
         <input id="daily-budget-breakdown" type="checkbox">
       </form>
     </section>
