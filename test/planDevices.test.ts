@@ -44,8 +44,6 @@ describe('buildInitialPlanDevices', () => {
       state,
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: defaultDeps,
     })[0];
@@ -68,8 +66,6 @@ describe('buildInitialPlanDevices', () => {
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: defaultDeps,
     });
@@ -90,13 +86,71 @@ describe('buildInitialPlanDevices', () => {
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: defaultDeps,
     });
 
     expect(planDevice.temperatureBoostActive).toBe(false);
+  });
+
+  it('emits a structured debug event when temperature boost becomes active', () => {
+    const debugStructured = vi.fn();
+    const state = createPlanEngineState();
+
+    buildInitialPlanDevices({
+      context: buildContext([steppedInputDevice({
+        id: 'tank',
+        name: 'Water tank',
+        deviceType: 'temperature',
+        currentTemperature: 54.9,
+        temperatureBoost: { enabled: true, boostBelowC: 55 },
+      })]),
+      state,
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      deps: { ...defaultDeps, debugStructured },
+    });
+
+    expect(debugStructured).toHaveBeenCalledWith({
+      event: 'temperature_boost_state_changed',
+      deviceId: 'tank',
+      deviceName: 'Water tank',
+      active: true,
+      previousActive: false,
+      currentTemperatureC: 54.9,
+      boostBelowC: 55,
+      exitThresholdC: 57,
+      observationStale: false,
+    });
+  });
+
+  it('emits a structured debug event when temperature boost ends', () => {
+    const debugStructured = vi.fn();
+    const state = createPlanEngineState();
+    state.temperatureBoostActiveByDevice.tank = true;
+
+    buildInitialPlanDevices({
+      context: buildContext([steppedInputDevice({
+        id: 'tank',
+        name: 'Water tank',
+        deviceType: 'temperature',
+        currentTemperature: 57,
+        temperatureBoost: { enabled: true, boostBelowC: 55 },
+      })]),
+      state,
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      deps: { ...defaultDeps, debugStructured },
+    });
+
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'temperature_boost_state_changed',
+      deviceId: 'tank',
+      active: false,
+      previousActive: true,
+    }));
   });
 
   it('does not independently shed devices when hourly budget is exhausted without a shedSet decision', () => {
@@ -114,8 +168,6 @@ describe('buildInitialPlanDevices', () => {
       state,
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: defaultDeps,
     });
@@ -143,8 +195,6 @@ describe('buildInitialPlanDevices', () => {
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
       shedReasons: new Map([['dev-1', 'shed due to capacity']]),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map([['dev-1', { temperature: 55, capabilityId: 'target_temperature' }]]),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -192,8 +242,6 @@ describe('buildInitialPlanDevices', () => {
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
       shedReasons: new Map([['dev-1', 'shed due to capacity']]),
-      steppedDesiredStepByDeviceId: new Map([['dev-1', 'low']]),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -209,6 +257,183 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.shedAction).toBe('set_step');
     expect(planDevice.shedStepId).toBeNull();
     expect(planDevice.desiredStepId).toBe('low');
+  });
+
+  it('advances past a pending lower stepped shed target during materialization', () => {
+    const steppedDevice: PlanInputDevice = {
+      id: 'dev-1',
+      name: 'Water Heater',
+      controlModel: 'stepped_load',
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1250 },
+          { id: 'mid', planningPowerW: 2000 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+      selectedStepId: 'max',
+      desiredStepId: 'mid',
+      stepCommandPending: true,
+      currentOn: true,
+      controllable: true,
+      expectedPowerKw: 3,
+      measuredPowerKw: 3,
+    };
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([steppedDevice]),
+      state: createPlanEngineState(),
+      shedSet: new Set(['dev-1']),
+      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      guardInShortfall: false,
+      deps: {
+        getPriorityForDevice: () => 100,
+        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+      },
+    });
+
+    expect(planDevice.plannedState).toBe('shed');
+    expect(planDevice.desiredStepId).toBe('low');
+  });
+
+  it('forces a shed stepped load to lowest active step while another device is recovering', () => {
+    const state = createPlanEngineState();
+    state.lastDeviceShedMs.gang = Date.now() - 60_000;
+    const steppedDevice: PlanInputDevice = {
+      id: 'dev-1',
+      name: 'Water Heater',
+      controlModel: 'stepped_load',
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1250 },
+          { id: 'mid', planningPowerW: 2000 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+      selectedStepId: 'max',
+      currentOn: true,
+      controllable: true,
+      expectedPowerKw: 3,
+      measuredPowerKw: 3,
+    };
+    const recoveringDevice = buildPlanInputDevice({
+      id: 'gang',
+      name: 'Hall thermostat',
+      currentOn: false,
+      controllable: true,
+      measuredPowerKw: 0,
+    });
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([steppedDevice, recoveringDevice]),
+      state,
+      shedSet: new Set(['dev-1']),
+      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      guardInShortfall: false,
+      deps: {
+        getPriorityForDevice: () => 100,
+        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+      },
+    });
+
+    expect(planDevice.plannedState).toBe('shed');
+    expect(planDevice.desiredStepId).toBe('low');
+  });
+
+  it('uses measured-power fallback for shed stepped loads without a known current step', () => {
+    const steppedDevice: PlanInputDevice = {
+      id: 'dev-1',
+      name: 'Water Heater',
+      controlModel: 'stepped_load',
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1250 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+      selectedStepId: undefined,
+      desiredStepId: undefined,
+      currentOn: true,
+      controllable: true,
+      measuredPowerKw: 3,
+    };
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([steppedDevice]),
+      state: createPlanEngineState(),
+      shedSet: new Set(['dev-1']),
+      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      guardInShortfall: false,
+      deps: {
+        getPriorityForDevice: () => 100,
+        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+      },
+    });
+
+    expect(planDevice.plannedState).toBe('shed');
+    expect(planDevice.shedAction).toBe('set_step');
+    expect(planDevice.desiredStepId).toBe('low');
+  });
+
+  it('does not advance from a stale lower desired step when no step command is pending', () => {
+    const steppedDevice: PlanInputDevice = {
+      id: 'dev-1',
+      name: 'Water Heater',
+      controlModel: 'stepped_load',
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1250 },
+          { id: 'mid', planningPowerW: 2000 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+      selectedStepId: 'max',
+      desiredStepId: 'low',
+      stepCommandPending: false,
+      currentOn: true,
+      controllable: true,
+      expectedPowerKw: 3,
+      measuredPowerKw: 3,
+    };
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([steppedDevice]),
+      state: createPlanEngineState(),
+      shedSet: new Set(['dev-1']),
+      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      guardInShortfall: false,
+      deps: {
+        getPriorityForDevice: () => 100,
+        getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+      },
+    });
+
+    expect(planDevice.plannedState).toBe('shed');
+    expect(planDevice.desiredStepId).toBe('mid');
   });
 
   it('does not let stale restore intent raise the shed target for set_step shedding', () => {
@@ -228,8 +453,6 @@ describe('buildInitialPlanDevices', () => {
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
       shedReasons: new Map([['dev-1', 'shed due to capacity']]),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -262,8 +485,6 @@ describe('buildInitialPlanDevices', () => {
       state,
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -290,8 +511,6 @@ describe('buildInitialPlanDevices', () => {
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -314,8 +533,6 @@ describe('buildInitialPlanDevices', () => {
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -345,8 +562,6 @@ describe('buildInitialPlanDevices', () => {
       state,
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -375,8 +590,6 @@ describe('buildInitialPlanDevices', () => {
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -412,8 +625,6 @@ describe('buildInitialPlanDevices', () => {
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: true, // Shortfall!
       deps: {
         getPriorityForDevice: () => 100,
@@ -449,8 +660,6 @@ describe('buildInitialPlanDevices', () => {
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -483,8 +692,6 @@ describe('buildInitialPlanDevices', () => {
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
       shedReasons: new Map([['dev-1', 'shed due to capacity']]),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: true,
       deps: {
         getPriorityForDevice: () => 100,
@@ -521,8 +728,6 @@ describe('buildInitialPlanDevices', () => {
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
       shedReasons: new Map([['dev-1', 'shed due to capacity']]),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -558,8 +763,6 @@ describe('buildInitialPlanDevices', () => {
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -595,8 +798,6 @@ describe('buildInitialPlanDevices', () => {
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -627,8 +828,6 @@ describe('buildInitialPlanDevices', () => {
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -676,8 +875,6 @@ describe('stepped-load turn_off shed action selection (Group 1)', () => {
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
       shedReasons: new Map([['dev-1', 'capacity']]),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });
@@ -700,8 +897,6 @@ describe('stepped-load turn_off shed action selection (Group 1)', () => {
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
       shedReasons: new Map([['dev-1', 'capacity']]),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });
@@ -726,8 +921,6 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
       shedReasons: new Map([['dev-1', 'capacity']]),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });
@@ -751,8 +944,6 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
       shedReasons: new Map([['dev-1', 'capacity']]),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });
@@ -778,8 +969,6 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
       shedReasons: new Map([['dev-1', 'capacity']]),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });
@@ -807,8 +996,6 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });
@@ -834,8 +1021,6 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });
@@ -862,8 +1047,6 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });
@@ -895,8 +1078,6 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });
@@ -920,8 +1101,6 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });

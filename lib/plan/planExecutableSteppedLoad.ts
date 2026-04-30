@@ -80,10 +80,24 @@ const toExecutableSteppedStepState = (dev: PlanDevice, requestedStepId?: string)
 const resolveCurrentStepForShed = (
   dev: PlanDevice,
 ): ExecutableSteppedLoadDevice['currentStepForShed'] => {
-  if (!dev.steppedLoadProfile || !dev.selectedStepId) return undefined;
+  if (!dev.steppedLoadProfile) return undefined;
+  if (!dev.selectedStepId) return resolveMeasuredCurrentStepForShed(dev);
   const currentStep = getSteppedLoadStep(dev.steppedLoadProfile, dev.selectedStepId);
   return currentStep ? {
     stepId: currentStep.id,
     planningPowerW: currentStep.planningPowerW,
   } : undefined;
+};
+
+const resolveMeasuredCurrentStepForShed = (
+  dev: PlanDevice,
+): ExecutableSteppedLoadDevice['currentStepForShed'] => {
+  if (dev.plannedState !== 'shed' || dev.shedAction !== 'set_step') return undefined;
+  if (typeof dev.measuredPowerKw !== 'number' || !Number.isFinite(dev.measuredPowerKw) || dev.measuredPowerKw <= 0) {
+    return undefined;
+  }
+  return {
+    stepId: 'unknown',
+    planningPowerW: Math.round(dev.measuredPowerKw * 1000),
+  };
 };

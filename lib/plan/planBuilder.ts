@@ -430,8 +430,6 @@ export class PlanBuilder {
       state: this.state,
       shedSet: sheddingPlan.shedSet,
       shedReasons: sheddingPlan.shedReasons,
-      steppedDesiredStepByDeviceId: sheddingPlan.steppedDesiredStepByDeviceId,
-      temperatureShedTargets: sheddingPlan.temperatureShedTargets,
       guardInShortfall: sheddingPlan.guardInShortfall,
       deps: {
         getPriorityForDevice: (deviceId) => this.deps.getPriorityForDevice(deviceId),
@@ -440,6 +438,7 @@ export class PlanBuilder {
         isCurrentHourExpensive: () => this.deps.isCurrentHourExpensive(),
         getPriceOptimizationEnabled: () => this.priceOptimizationEnabled,
         getPriceOptimizationSettings: () => this.priceOptimizationSettings,
+        debugStructured: this.deps.debugStructured,
       },
     }));
   }
