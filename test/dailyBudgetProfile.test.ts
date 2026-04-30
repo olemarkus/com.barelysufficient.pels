@@ -9,7 +9,7 @@ describe('daily budget profile helpers', () => {
       dailyBudgetKWh: 10,
       priceShapingEnabled: false,
       controlledUsageWeight: 1,
-      priceShapingFlexShare: 0.35,
+      priceShapingFlexShare: 0.6,
     };
 
     const data = getEffectiveProfileData({}, settings, defaultProfile);
@@ -20,28 +20,31 @@ describe('daily budget profile helpers', () => {
     expect(data.breakdown.controlled.every((value) => value === 0)).toBe(true);
   });
 
-  it('falls back safely when the combined denominator is zero', () => {
+  it('keeps learned profile blending independent from reserve-mode settings', () => {
     const defaultProfile = buildDefaultProfile();
-    const settings = {
+    const balancedSettings = {
       enabled: true,
       dailyBudgetKWh: 10,
       priceShapingEnabled: false,
       controlledUsageWeight: 0,
-      priceShapingFlexShare: 0.35,
+      priceShapingFlexShare: 0.6,
+    };
+    const conservativeSettings = {
+      ...balancedSettings,
+      controlledUsageWeight: 1,
     };
     const state = {
-      profileUncontrolled: { weights: Array.from({ length: 24 }, () => 0), sampleCount: 1 },
-      profileControlled: { weights: Array.from({ length: 24 }, () => 0), sampleCount: 1 },
-      profileControlledShare: 1,
-      profileSampleCount: 1,
+      profileUncontrolled: { weights: [1, 0, ...Array.from({ length: 22 }, () => 0)], sampleCount: 14 },
+      profileControlled: { weights: [0, 1, ...Array.from({ length: 22 }, () => 0)], sampleCount: 14 },
+      profileControlledShare: 0.5,
+      profileSampleCount: 14,
     };
 
-    const data = getEffectiveProfileData(state, settings, defaultProfile);
-    expect(data.combinedWeights).toHaveLength(defaultProfile.length);
-    data.combinedWeights.forEach((value, index) => {
-      expect(value).toBeCloseTo(defaultProfile[index] ?? 0, 8);
+    const balanced = getEffectiveProfileData(state, balancedSettings, defaultProfile);
+    const conservative = getEffectiveProfileData(state, conservativeSettings, defaultProfile);
+
+    balanced.combinedWeights.forEach((value, index) => {
+      expect(value).toBeCloseTo(conservative.combinedWeights[index] ?? 0, 8);
     });
-    expect(data.breakdown.controlled.every((value) => value === 0)).toBe(true);
-    expect(data.controlledShare).toBe(1);
   });
 });

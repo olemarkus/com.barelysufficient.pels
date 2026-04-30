@@ -43,10 +43,10 @@ export const dailyBudgetPriceShapingInput = document.querySelector('#daily-budge
 export const dailyBudgetAdvancedForm = document.querySelector('#daily-budget-advanced-form') as HTMLFormElement;
 export const dailyBudgetControlledWeightInput = document.querySelector(
   '#daily-budget-controlled-weight',
-) as HTMLInputElement;
+) as HTMLSelectElement;
 export const dailyBudgetPriceFlexShareInput = document.querySelector(
   '#daily-budget-price-flex-share',
-) as HTMLInputElement;
+) as HTMLSelectElement;
 export const dailyBudgetStatusPill = qs('#daily-budget-status-pill');
 export const dailyBudgetTitle = qs('#daily-budget-title');
 export const dailyBudgetDay = qs('#daily-budget-day');

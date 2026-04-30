@@ -3,7 +3,7 @@ import {
   SETTINGS_UI_BOOTSTRAP_KEYS,
   SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
 } from '../../contracts/src/settingsUiApi.ts';
-import { CONTROLLED_USAGE_WEIGHT } from '../../contracts/src/dailyBudgetConstants.ts';
+import { UNMANAGED_RESERVE_MODE } from '../../contracts/src/dailyBudgetConstants.ts';
 import { createHomeyMock, getUnhandledDeclaredHomeyApiRoutes, type MockHomeyClient } from './helpers/homeyApiMock';
 
 const callHomeyApi = async (
@@ -73,7 +73,7 @@ describe('homeyApiMock', () => {
         enabled: true,
         dailyBudgetKWh: 24,
         priceShapingEnabled: true,
-        controlledUsageWeight: CONTROLLED_USAGE_WEIGHT,
+        controlledUsageWeight: UNMANAGED_RESERVE_MODE,
         priceShapingFlexShare: 1,
       },
     }));

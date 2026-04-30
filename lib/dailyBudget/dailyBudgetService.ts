@@ -18,10 +18,15 @@ import {
   DEBUG_LOGGING_TOPICS,
 } from '../utils/settingsKeys';
 import {
-  CONTROLLED_USAGE_WEIGHT,
   MAX_DAILY_BUDGET_KWH,
   MIN_DAILY_BUDGET_KWH,
+  PRICE_FLEX_HIGH,
+  PRICE_FLEX_HIGH_THRESHOLD,
+  PRICE_FLEX_LOW,
+  PRICE_FLEX_MEDIUM,
   PRICE_SHAPING_FLEX_SHARE,
+  UNMANAGED_RESERVE_CONSERVATIVE_MODE,
+  UNMANAGED_RESERVE_MODE,
 } from './dailyBudgetConstants';
 import { DailyBudgetManager } from './dailyBudgetManager';
 import type { CombinedPriceData } from './dailyBudgetManager';
@@ -67,13 +72,26 @@ export type DailyBudgetPeriodicStatusFields = {
   exceeded: boolean;
 };
 
+const normalizeUnmanagedReserveMode = (value: unknown): number => {
+  if (!isFiniteNumber(value)) return UNMANAGED_RESERVE_MODE;
+  return value >= 0.5 ? UNMANAGED_RESERVE_CONSERVATIVE_MODE : UNMANAGED_RESERVE_MODE;
+};
+
+const normalizePriceFlexShare = (value: unknown): number => {
+  if (!isFiniteNumber(value)) return PRICE_SHAPING_FLEX_SHARE;
+  const bounded = Math.min(1, Math.max(0, value));
+  if (bounded <= PRICE_FLEX_LOW) return PRICE_FLEX_LOW;
+  if (bounded > PRICE_FLEX_HIGH_THRESHOLD) return PRICE_FLEX_HIGH;
+  return PRICE_FLEX_MEDIUM;
+};
+
 export class DailyBudgetService {
   private manager: DailyBudgetManager;
   private settings: DailyBudgetSettings = {
     enabled: false,
     dailyBudgetKWh: 0,
     priceShapingEnabled: true,
-    controlledUsageWeight: CONTROLLED_USAGE_WEIGHT,
+    controlledUsageWeight: UNMANAGED_RESERVE_MODE,
     priceShapingFlexShare: PRICE_SHAPING_FLEX_SHARE,
   };
   private snapshot: DailyBudgetUiPayload | null = null;
@@ -98,18 +116,12 @@ export class DailyBudgetService {
     const boundedBudget = rawBudget === 0
       ? 0
       : Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, rawBudget));
-    const boundedControlledWeight = isFiniteNumber(controlledWeight)
-      ? Math.min(1, Math.max(0, controlledWeight))
-      : CONTROLLED_USAGE_WEIGHT;
-    const boundedPriceFlexShare = isFiniteNumber(priceFlexShare)
-      ? Math.min(1, Math.max(0, priceFlexShare))
-      : PRICE_SHAPING_FLEX_SHARE;
     this.settings = {
       enabled: enabled === true,
       dailyBudgetKWh: boundedBudget,
       priceShapingEnabled: priceShapingEnabled !== false,
-      controlledUsageWeight: boundedControlledWeight,
-      priceShapingFlexShare: boundedPriceFlexShare,
+      controlledUsageWeight: normalizeUnmanagedReserveMode(controlledWeight),
+      priceShapingFlexShare: normalizePriceFlexShare(priceFlexShare),
     };
   }
 

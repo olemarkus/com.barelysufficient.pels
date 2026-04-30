@@ -21,8 +21,15 @@ const setupDailyBudgetDom = () => {
       <input id="daily-budget-kwh" type="number">
       <input id="daily-budget-price-shaping" type="checkbox">
     </form>
-    <input id="daily-budget-controlled-weight" type="number">
-    <input id="daily-budget-price-flex-share" type="number">
+    <select id="daily-budget-controlled-weight">
+      <option value="0">Balanced</option>
+      <option value="1">Conservative</option>
+    </select>
+    <select id="daily-budget-price-flex-share">
+      <option value="0.3">Low</option>
+      <option value="0.6">Medium</option>
+      <option value="0.85">High</option>
+    </select>
     <input id="daily-budget-breakdown" type="checkbox">
     <button id="daily-budget-recompute" type="button">Preview changes</button>
     <button id="daily-budget-apply" type="button" hidden>Apply changes</button>
@@ -62,6 +69,19 @@ const installHomeyClient = async (payload: unknown, previewPayload: unknown = pa
         return;
       }
       callback(null, null);
+    },
+    on: () => {},
+  });
+};
+
+const installSettingsHomeyClient = async (settings: Record<string, unknown>) => {
+  const { setHomeyClient } = await import('../src/ui/homey.ts');
+  setHomeyClient({
+    ready: async () => {},
+    get: (key, cb) => cb(null, settings[key]),
+    set: (_key, _value, cb) => cb(null),
+    api: (_method, _uri, _bodyOrCallback, cb) => {
+      if (cb) cb(null, null);
     },
     on: () => {},
   });
@@ -143,6 +163,24 @@ describe('daily budget chart render', () => {
     expect(chart?.hidden).toBe(false);
     expect(empty?.hidden).toBe(true);
     expect(legend).toBeNull();
+  });
+
+  it('snaps legacy numeric advanced settings to dropdown options', async () => {
+    await installSettingsHomeyClient({
+      daily_budget_enabled: true,
+      daily_budget_kwh: 24,
+      daily_budget_price_shaping_enabled: true,
+      daily_budget_controlled_weight: 0.3,
+      daily_budget_price_flex_share: 0.35,
+    });
+
+    const { loadDailyBudgetSettings } = await import('../src/ui/dailyBudget.ts');
+    await loadDailyBudgetSettings();
+
+    const reserveInput = document.querySelector('#daily-budget-controlled-weight') as HTMLSelectElement;
+    const priceFlexInput = document.querySelector('#daily-budget-price-flex-share') as HTMLSelectElement;
+    expect(reserveInput.value).toBe('0');
+    expect(priceFlexInput.value).toBe('0.6');
   });
 
   it('shows allocation warning when caps leave budget unallocated', async () => {

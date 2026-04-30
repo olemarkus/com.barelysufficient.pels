@@ -86,8 +86,8 @@ The daily budget controls live in the **Budget** tab.
 
 The **Advanced** tab includes two daily-budget tuning controls:
 
-- **Controlled usage weight** (default `0.30`): balances uncontrolled vs controlled influence in learned profile blending and how split caps/floors are allocated (0 = uncontrolled, 1 = controlled). Historical caps/floors are recomputed from a rolling 30-day window using robust hourly quantiles (with fallback to raw extrema when sample count is low).
-- **Price flex share** (default `0.35`): how strongly the plan moves remaining allowance toward cheaper hours. At `1`, the cheapest remaining hour targets the effective cap and the most expensive remaining hour targets the effective floor when budget permits.
+- **Unmanaged usage reserve**: how much daily budget PELS holds back for household usage it cannot move, such as appliances, lights, and unmanaged devices. `Balanced` uses the normal reserve. `Conservative` reserves more, which can reduce daily-budget misses but leaves less budget for managed devices.
+- **Managed device flexibility**: how freely PELS may shift managed-device usage toward cheaper hours after preserving minimum service. `Low` stays close to normal managed-device usage, `Medium` shifts some usage, and `High` shifts more aggressively toward cheaper feasible hours.
 
 **Warning:** these controls can significantly change pacing behavior, shed order timing, and restore timing. Keep defaults unless you are deliberately tuning behavior. If you change them, adjust one parameter at a time and observe at least a full day.
 

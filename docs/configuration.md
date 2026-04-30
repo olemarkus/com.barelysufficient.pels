@@ -145,8 +145,8 @@ The Advanced tab is for optional capabilities and expert tuning.
 | --- | --- |
 | **Enable EV charger support** | Shows supported EV chargers and allows pause-resume control through EV capabilities. |
 | **Debug logging topics** | Chooses which internal topics emit debug logs. |
-| **Controlled usage weight** | Tunes how strongly controlled usage influences the learned daily profile. |
-| **Price flex share** | Tunes how strongly price shaping moves remaining allowance toward cheap hours and away from expensive hours. |
+| **Unmanaged usage reserve** | Tunes how much daily budget PELS holds back for household usage it cannot move. |
+| **Managed device flexibility** | Tunes how freely PELS may shift managed-device usage toward cheaper feasible hours. |
 | **Show daily budget breakdown in chart** | Splits the plan chart into controlled and uncontrolled portions. |
 
 Only change the daily-budget tuning values if you understand the tradeoff. They can materially change shed timing and restore timing.
