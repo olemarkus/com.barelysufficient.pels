@@ -236,8 +236,6 @@ describe('P1 bug proofs', () => {
       state: createPlanEngineState(),
       shedSet: new Set(),
       shedReasons: new Map(),
-      steppedDesiredStepByDeviceId: new Map(),
-      temperatureShedTargets: new Map(),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,

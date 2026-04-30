@@ -249,13 +249,14 @@ export const resolveSteppedLoadSheddingTarget = (params: {
   const selectedStep = getSteppedLoadStep(steppedProfile, device.selectedStepId);
   if (!selectedStep) return null;
   const desiredStep = resolveUnconfirmedLowerDesiredStep({ device, steppedProfile, selectedStep });
+  const staleLowerDesiredStep = hasStaleLowerDesiredStep({ device, steppedProfile, selectedStep });
   const clampedTargetStep = clampSteppedShedTarget(targetStep, desiredStep);
   if (!clampedTargetStep || clampedTargetStep.id === selectedStep.id) return null;
   return {
     steppedProfile,
     selectedStep,
     clampedTargetStep,
-    hasUnconfirmedLowerDesiredStep: desiredStep !== null,
+    hasUnconfirmedLowerDesiredStep: desiredStep !== null || staleLowerDesiredStep,
   };
 };
 
@@ -309,8 +310,21 @@ function resolveUnconfirmedLowerDesiredStep(params: {
   if (!desiredStep) return null;
   if (desiredStep.id === selectedStep.id) return null;
   if (desiredStep.planningPowerW >= selectedStep.planningPowerW) return null;
-  if (!device.stepCommandPending && device.stepCommandStatus !== 'stale') return null;
+  if (!device.stepCommandPending) return null;
   return desiredStep;
+}
+
+function hasStaleLowerDesiredStep(params: {
+  device: StepSheddingCapableDevice;
+  steppedProfile: SteppedLoadProfile;
+  selectedStep: SteppedLoadStep;
+}): boolean {
+  const { device, steppedProfile, selectedStep } = params;
+  if (device.stepCommandPending || device.stepCommandStatus !== 'stale') return false;
+  const desiredStep = getSteppedLoadStep(steppedProfile, device.desiredStepId);
+  if (!desiredStep) return false;
+  if (desiredStep.id === selectedStep.id) return false;
+  return desiredStep.planningPowerW < selectedStep.planningPowerW;
 }
 
 function clampSteppedShedTarget(

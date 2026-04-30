@@ -145,13 +145,6 @@ file.
 
 ## P1 Simplification follow-ups
 
-- [ ] Narrow shedding planner output toward device selection only.
-      The planner should decide what to shed, not how to actuate that shed. Treat the current
-      `steppedDesiredStepByDeviceId` and `temperatureShedTargets` outputs as transitional fields,
-      and move stepped-load target projection plus temperature target projection toward the
-      executor or executable-plan boundary once the materialization contract is ready.
-      Files: `lib/plan/shedding/**`, `lib/plan/planDevices.ts`, executor/executable-plan target
-      modules, `test/planShedding.test.ts`, `test/planDevices.test.ts`.
 - [ ] Split planner state from render-only explanation data so keep/shed/inactive decisions no
       longer depend on UI-facing `reason` objects. The stepped restore admission path now keeps
       rejected off restores explicit in the plan, and cooldown / meter-settling restore blocks now

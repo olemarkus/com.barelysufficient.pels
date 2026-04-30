@@ -224,6 +224,18 @@ describe('planSteppedLoad', () => {
     });
     expect(targetWithPending?.hasUnconfirmedLowerDesiredStep).toBe(true);
 
+    const targetWithStaleDesired = resolveSteppedLoadSheddingTarget({
+      device: steppedInputDevice({
+        selectedStepId: 'max',
+        stepCommandPending: false,
+        stepCommandStatus: 'stale',
+        desiredStepId: 'low',
+      }),
+      targetStep: { id: 'medium', planningPowerW: 2000 },
+    });
+    expect(targetWithStaleDesired?.clampedTargetStep.id).toBe('medium');
+    expect(targetWithStaleDesired?.hasUnconfirmedLowerDesiredStep).toBe(true);
+
     expect(resolveSteppedLoadSheddingTarget({
       device: steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined }),
       targetStep,
