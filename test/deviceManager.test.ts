@@ -147,7 +147,7 @@ describe('DeviceManager', () => {
                     'onoff',
                     'measure_temperature',
                     'target_temperature',
-                    'measure_power.l1',
+                    'measure_power',
                 ],
                 capabilitiesObj: {
                     onoff: { value: false, id: 'onoff', lastUpdated: '2026-04-01T11:50:00.000Z', setable: true },
@@ -166,9 +166,9 @@ describe('DeviceManager', () => {
                         step: 0.5,
                         lastUpdated: '2026-04-01T11:51:00.000Z',
                     },
-                    'measure_power.l1': {
+                    measure_power: {
                         value: 730,
-                        id: 'measure_power.l1',
+                        id: 'measure_power',
                         lastUpdated: '2026-04-01T11:53:00.000Z',
                     },
                 },
@@ -222,7 +222,7 @@ describe('DeviceManager', () => {
                 'onoff',
                 'measure_temperature',
                 'target_temperature',
-                'measure_power.l1',
+                'measure_power',
             ]);
         });
 
@@ -276,6 +276,32 @@ describe('DeviceManager', () => {
                 controlCapabilityId: 'onoff',
                 currentOn: false,
                 binaryControlObservation: undefined,
+            }));
+        });
+
+        it('ignores dotted power sub-capabilities when resolving measured power', () => {
+            const [parsed] = deviceManager.parseDeviceListForTests([{
+                id: 'socket-subcap',
+                name: 'Socket With Internal Power',
+                class: 'socket',
+                capabilities: ['onoff', 'measure_power.internal'],
+                capabilitiesObj: {
+                    onoff: { value: true, id: 'onoff' },
+                    'measure_power.internal': {
+                        value: 730,
+                        id: 'measure_power.internal',
+                        lastUpdated: '2026-04-01T11:53:00.000Z',
+                    },
+                },
+                settings: { load: 900 },
+            }]);
+
+            expect(parsed).toEqual(expect.objectContaining({
+                id: 'socket-subcap',
+                powerCapable: true,
+                measuredPowerKw: undefined,
+                expectedPowerSource: 'load-setting',
+                powerKw: 0.9,
             }));
         });
 
@@ -888,7 +914,7 @@ describe('DeviceManager', () => {
             expect(getControllable).toHaveBeenCalledWith('dev1');
         });
 
-        it('uses meter_power delta when measure_power is missing', async () => {
+        it('uses exact meter_power delta when measure_power is missing', async () => {
             vi.useFakeTimers();
             vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
 
@@ -898,9 +924,9 @@ describe('DeviceManager', () => {
                     id: 'dev1',
                     name: 'AC',
                     class: 'airconditioning',
-                    capabilities: ['meter_power.in_tank', 'target_temperature', 'measure_temperature'],
+                    capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
                     capabilitiesObj: {
-                        'meter_power.in_tank': { value: 100, id: 'meter_power.in_tank', lastUpdated: '2026-01-01T00:00:30.000Z' },
+                        meter_power: { value: 100, id: 'meter_power', lastUpdated: '2026-01-01T00:00:30.000Z' },
                         target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
                         measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
                     },
@@ -915,9 +941,9 @@ describe('DeviceManager', () => {
                     id: 'dev1',
                     name: 'AC',
                     class: 'airconditioning',
-                    capabilities: ['meter_power.in_tank', 'target_temperature', 'measure_temperature'],
+                    capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
                     capabilitiesObj: {
-                        'meter_power.in_tank': { value: 101, id: 'meter_power.in_tank', lastUpdated: '2026-01-01T01:00:30.000Z' },
+                        meter_power: { value: 101, id: 'meter_power', lastUpdated: '2026-01-01T01:00:30.000Z' },
                         target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
                         measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
                     },
@@ -944,9 +970,9 @@ describe('DeviceManager', () => {
                     id: 'dev1',
                     name: 'AC',
                     class: 'airconditioning',
-                    capabilities: ['meter_power.in_tank', 'target_temperature', 'measure_temperature'],
+                    capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
                     capabilitiesObj: {
-                        'meter_power.in_tank': { value: 100, id: 'meter_power.in_tank' },
+                        meter_power: { value: 100, id: 'meter_power' },
                         target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
                         measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
                     },
@@ -961,9 +987,9 @@ describe('DeviceManager', () => {
                     id: 'dev1',
                     name: 'AC',
                     class: 'airconditioning',
-                    capabilities: ['meter_power.in_tank', 'target_temperature', 'measure_temperature'],
+                    capabilities: ['meter_power', 'target_temperature', 'measure_temperature'],
                     capabilitiesObj: {
-                        'meter_power.in_tank': { value: 99, id: 'meter_power.in_tank' },
+                        meter_power: { value: 99, id: 'meter_power' },
                         target_temperature: { value: 21, id: 'target_temperature', units: '°C' },
                         measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
                     },
