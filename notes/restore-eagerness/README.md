@@ -41,6 +41,8 @@ Batching is intentionally narrow:
 - stale whole-home power, startup stabilization, shortfall, overshoot, shed cooldown, and restore
   cooldown keep the previous one-at-a-time behavior
 - target-based and stepped restores remain conservative unless separately proven safe
+- stepped-load `off -> lowest active step` restores follow normal cross-device priority ordering;
+  the conservative stepped gate applies to later step-ups while other devices remain shed
 
 After a batch, the normal meter-settling / restore-cooldown behavior still blocks the next cycle.
 
