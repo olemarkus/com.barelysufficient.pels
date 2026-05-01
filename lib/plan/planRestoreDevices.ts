@@ -7,6 +7,11 @@ import { isSteppedLoadDevice } from './planSteppedLoad';
 
 export const NEUTRAL_STARTUP_HOLD_REASON: DeviceReason = { code: PLAN_REASON_CODES.neutralStartupHold };
 
+export type RestoreCandidate = {
+  kind: 'binary' | 'stepped';
+  device: DevicePlanDevice;
+};
+
 export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): boolean {
   return device.controllable !== false
     && device.observationStale !== true
@@ -46,6 +51,12 @@ export function isSteppedRestoreCandidate(device: DevicePlanDevice): boolean {
     );
 }
 
+export function isOffSteppedRestoreCandidate(device: DevicePlanDevice): boolean {
+  if (!isSteppedLoadDevice(device) || !device.steppedLoadProfile?.steps?.length) return false;
+  if (!isRestoreLiveEligibleDevice(device)) return false;
+  return resolveRestoreObservedState(device) === 'off';
+}
+
 export function isSwapRestoreCandidate(device: DevicePlanDevice): boolean {
   const observedState = resolveRestoreObservedState(device);
   return isRestoreLiveEligibleDevice(device) && (observedState === 'on' || observedState === 'target_only');
@@ -61,6 +72,18 @@ export function getSteppedRestoreCandidates(planDevices: DevicePlanDevice[]): De
   const filtered = planDevices
     .filter((device) => isSteppedRestoreCandidate(device));
   return sortByPriorityAsc(filtered);
+}
+
+export function getRestoreCandidates(planDevices: DevicePlanDevice[]): RestoreCandidate[] {
+  const candidates: RestoreCandidate[] = [
+    ...planDevices
+      .filter((device) => !isSteppedLoadDevice(device) && isBinaryRestoreCandidate(device))
+      .map((device) => ({ kind: 'binary' as const, device })),
+    ...planDevices
+      .filter((device) => isOffSteppedRestoreCandidate(device))
+      .map((device) => ({ kind: 'stepped' as const, device })),
+  ];
+  return candidates.slice().sort((a, b) => (a.device.priority ?? 999) - (b.device.priority ?? 999));
 }
 
 export function getOnDevices(

@@ -5,6 +5,7 @@ import {
   getInactiveReason,
   getOffDevices,
   getOnDevices,
+  getRestoreCandidates,
   isRestoreLiveEligibleDevice,
   getSteppedRestoreCandidates,
   markOffDevicesStayOff,
@@ -58,6 +59,49 @@ describe('plan restore device helpers', () => {
       [makeDevice({ id: 'temp', currentState: 'on', currentTarget: 20, plannedTarget: 20 })],
       () => ({ action: 'set_temperature', temperature: 20 }),
     )).toEqual([]);
+  });
+
+  it('orders mixed binary and stepped restore candidates by priority', () => {
+    const devices = [
+      makeDevice({ id: 'binary-lower-priority', priority: 5, currentState: 'off' }),
+      makeDevice({
+        id: 'stepped-higher-priority',
+        priority: 1,
+        currentState: 'off',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1250 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'off',
+      }),
+      makeDevice({
+        id: 'stepped-lower-priority',
+        priority: 8,
+        currentState: 'on',
+        controlModel: 'stepped_load',
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1250 },
+            { id: 'max', planningPowerW: 3000 },
+          ],
+        },
+        selectedStepId: 'low',
+      }),
+      makeDevice({ id: 'binary-higher-priority', priority: 2, currentState: 'off' }),
+    ];
+
+    expect(getRestoreCandidates(devices).map((candidate) => [candidate.kind, candidate.device.id])).toEqual([
+      ['stepped', 'stepped-higher-priority'],
+      ['binary', 'binary-higher-priority'],
+      ['binary', 'binary-lower-priority'],
+    ]);
   });
 
   it('ignores stale observations when selecting restore and swap candidates', () => {

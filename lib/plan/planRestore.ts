@@ -28,8 +28,12 @@ import {
   getInactiveReason,
   getOffDevices,
   getOnDevices,
+  getRestoreCandidates,
   getSteppedRestoreCandidates,
+  isBinaryRestoreCandidate,
+  isOffSteppedRestoreCandidate,
   markOffDevicesStayOff,
+  type RestoreCandidate,
 } from './planRestoreDevices';
 import {
   blockRestoreForRecentActivationSetback,
@@ -87,6 +91,11 @@ type RestoreBatchState = {
   admittedNeedKw: number;
 };
 
+type RestoreLoopState = {
+  availableHeadroom: number;
+  restoredOneThisCycle: boolean;
+};
+
 export type RestorePlanResult = {
   planDevices: DevicePlanDevice[];
   stateUpdates: RestorePlanState;
@@ -108,7 +117,6 @@ export type RestorePlanResult = {
   lastRestoreCooldownBumpMs: number | null;
 };
 
-/* eslint-disable-next-line complexity -- restore gating branches stay together at the top level. */
 export function applyRestorePlan(params: {
   planDevices: DevicePlanDevice[];
   context: PlanContext;
@@ -158,27 +166,8 @@ export function applyRestorePlan(params: {
     });
   } else if (shouldPlanRestores(context.headroomRaw, sheddingActive, effectiveTiming)) {
     const snapshot = Array.from(deviceMap.values());
-    const offDevices = getOffDevices(snapshot);
+    const restoreCandidates = getRestoreCandidates(snapshot);
     const onDevices = getOnDevices(snapshot, deps.getShedBehavior);
-    for (const dev of offDevices) {
-      const result = planRestoreForDevice({
-        dev,
-        deviceMap,
-        onDevices,
-        swapState,
-        state,
-        timing: effectiveTiming,
-        availableHeadroom,
-        restoredThisCycle,
-        restoredOneThisCycle,
-        batchState,
-        deps,
-      });
-      availableHeadroom = result.availableHeadroom;
-      restoredOneThisCycle = result.restoredOneThisCycle;
-    }
-
-    const steppedDevices = getSteppedRestoreCandidates(Array.from(deviceMap.values()));
     const steppedSwapExecutor = buildSteppedSwapExecutor({
       deviceMap,
       onDevices,
@@ -188,7 +177,23 @@ export function applyRestorePlan(params: {
       restoredThisCycle,
       deps,
     });
-    for (const dev of steppedDevices) {
+    ({ availableHeadroom, restoredOneThisCycle } = applyRestoreCandidates({
+      restoreCandidates,
+      deviceMap,
+      onDevices,
+      swapState,
+      state,
+      timing: effectiveTiming,
+      availableHeadroom,
+      restoredThisCycle,
+      restoredOneThisCycle,
+      batchState,
+      deps,
+      steppedSwapExecutor,
+    }));
+    const activeSteppedDevices = getSteppedRestoreCandidates(Array.from(deviceMap.values()))
+      .filter((dev) => resolveEffectiveCurrentOn(dev) === true);
+    for (const dev of activeSteppedDevices) {
       const result = planRestoreForSteppedDevice({
         dev,
         deviceMap,
@@ -232,6 +237,92 @@ export function applyRestorePlan(params: {
     restoredOneThisCycle,
     ...effectiveTiming,
   };
+}
+
+function applyRestoreCandidates(params: {
+  restoreCandidates: RestoreCandidate[];
+  deviceMap: Map<string, DevicePlanDevice>;
+  onDevices: DevicePlanDevice[];
+  swapState: SwapState;
+  state: PlanEngineState;
+  timing: Parameters<typeof planRestoreForDevice>[0]['timing'];
+  availableHeadroom: number;
+  restoredThisCycle: Set<string>;
+  restoredOneThisCycle: boolean;
+  batchState: RestoreBatchState;
+  deps: RestoreDeps;
+  steppedSwapExecutor: SteppedSwapExecutor;
+}): RestoreLoopState {
+  let { availableHeadroom, restoredOneThisCycle } = params;
+  for (const candidate of params.restoreCandidates) {
+    const result = applyRestoreCandidate({
+      candidate,
+      deviceMap: params.deviceMap,
+      onDevices: params.onDevices,
+      swapState: params.swapState,
+      state: params.state,
+      timing: params.timing,
+      availableHeadroom,
+      restoredThisCycle: params.restoredThisCycle,
+      restoredOneThisCycle,
+      batchState: params.batchState,
+      deps: params.deps,
+      steppedSwapExecutor: params.steppedSwapExecutor,
+    });
+    availableHeadroom = result.availableHeadroom;
+    restoredOneThisCycle = result.restoredOneThisCycle;
+  }
+  return { availableHeadroom, restoredOneThisCycle };
+}
+
+function applyRestoreCandidate(params: {
+  candidate: RestoreCandidate;
+  deviceMap: Map<string, DevicePlanDevice>;
+  onDevices: DevicePlanDevice[];
+  swapState: SwapState;
+  state: PlanEngineState;
+  timing: Parameters<typeof planRestoreForDevice>[0]['timing'];
+  availableHeadroom: number;
+  restoredThisCycle: Set<string>;
+  restoredOneThisCycle: boolean;
+  batchState: RestoreBatchState;
+  deps: RestoreDeps;
+  steppedSwapExecutor: SteppedSwapExecutor;
+}): RestoreLoopState {
+  const dev = params.deviceMap.get(params.candidate.device.id);
+  const currentState = {
+    availableHeadroom: params.availableHeadroom,
+    restoredOneThisCycle: params.restoredOneThisCycle,
+  };
+  if (!dev) return currentState;
+  if (params.candidate.kind === 'binary' && isBinaryRestoreCandidate(dev)) {
+    return planRestoreForDevice({
+      dev,
+      deviceMap: params.deviceMap,
+      onDevices: params.onDevices,
+      swapState: params.swapState,
+      state: params.state,
+      timing: params.timing,
+      availableHeadroom: params.availableHeadroom,
+      restoredThisCycle: params.restoredThisCycle,
+      restoredOneThisCycle: params.restoredOneThisCycle,
+      batchState: params.batchState,
+      deps: params.deps,
+    });
+  }
+  if (params.candidate.kind === 'stepped' && isOffSteppedRestoreCandidate(dev)) {
+    return planRestoreForSteppedDevice({
+      dev,
+      deviceMap: params.deviceMap,
+      state: params.state,
+      timing: params.timing,
+      availableHeadroom: params.availableHeadroom,
+      restoredOneThisCycle: params.restoredOneThisCycle,
+      debugStructured: params.deps.debugStructured,
+      swapExecutor: params.steppedSwapExecutor,
+    });
+  }
+  return currentState;
 }
 
 function buildSteppedSwapExecutor(params: {

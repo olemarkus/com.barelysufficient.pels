@@ -3437,6 +3437,51 @@ describe('stepped-load shed invariant', () => {
     expect(debugStructured).toHaveBeenCalledTimes(3);
   });
 
+  it('logs stepped restore rejection when an off stepped device is held by meter settling', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 10_000;
+    const steppedDev = steppedPlanDevice({
+      id: 'dev-step',
+      name: 'Tank',
+      currentState: 'off',
+      currentOn: false,
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: undefined,
+    });
+    const deviceMap = new Map([['dev-step', steppedDev]]);
+    const debugStructured = vi.fn();
+
+    planRestoreForSteppedDevice({
+      dev: deviceMap.get('dev-step')!,
+      deviceMap,
+      state,
+      timing: {
+        ...makeShedTiming(),
+        inRestoreCooldown: true,
+        restoreCooldownRemainingSec: 50,
+        measurementTs: now,
+        nowTs: now,
+      },
+      availableHeadroom: 5,
+      restoredOneThisCycle: true,
+      logDebug: vi.fn(),
+      debugStructured,
+    });
+
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_stepped_rejected',
+      deviceId: 'dev-step',
+      deviceName: 'Tank',
+      currentStepId: 'off',
+      requestedStepId: 'low',
+      decision: 'rejected',
+      rejectionReason: 'meter_settling',
+    }));
+  });
+
   it('upward step action is never emitted while shed devices exist (end-to-end via applyRestorePlan)', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
@@ -3472,6 +3517,132 @@ describe('stepped-load shed invariant', () => {
     // desiredStepId must not have been upgraded to 'max' — binary-shed device is still shed
     expect(steppedDev?.desiredStepId).toBe('medium');
     expect(reasonText(steppedDev?.reason)).toMatch(/shed invariant/);
+  });
+
+  it('restores a higher-priority off stepped load before lower-priority binary devices', () => {
+    const state = createPlanEngineState();
+    state.lastDeviceShedMs['binary-low-priority'] = 123;
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'binary-low-priority',
+          name: 'Lower priority thermostat',
+          priority: 5,
+          currentState: 'off',
+          plannedState: 'keep',
+          controllable: true,
+          powerKw: 0.1,
+        }),
+        steppedPlanDevice({
+          id: 'stepped-high-priority',
+          name: 'Priority tank',
+          priority: 1,
+          currentState: 'off',
+          currentOn: false,
+          plannedState: 'keep',
+          selectedStepId: 'off',
+          desiredStepId: undefined,
+          measuredPowerKw: 0,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 1.975, headroom: 1.975, powerFreshnessState: 'fresh' }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const steppedDev = result.planDevices.find((d) => d.id === 'stepped-high-priority');
+    const binaryDev = result.planDevices.find((d) => d.id === 'binary-low-priority');
+    expect(steppedDev?.plannedState).toBe('keep');
+    expect(steppedDev?.desiredStepId).toBe('low');
+    expect(steppedDev?.reason?.code).toBe(PLAN_REASON_CODES.restoreNeed);
+    expect(binaryDev?.plannedState).toBe('shed');
+  });
+
+  it('keeps higher-priority binary restores ahead of lower-priority off stepped loads', () => {
+    const state = createPlanEngineState();
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'binary-high-priority',
+          name: 'Priority thermostat',
+          priority: 1,
+          currentState: 'off',
+          plannedState: 'keep',
+          controllable: true,
+          powerKw: 0.1,
+        }),
+        steppedPlanDevice({
+          id: 'stepped-low-priority',
+          name: 'Lower priority tank',
+          priority: 5,
+          currentState: 'off',
+          currentOn: false,
+          plannedState: 'keep',
+          selectedStepId: 'off',
+          desiredStepId: undefined,
+          measuredPowerKw: 0,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 1.975, headroom: 1.975, powerFreshnessState: 'fresh' }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const binaryDev = result.planDevices.find((d) => d.id === 'binary-high-priority');
+    const steppedDev = result.planDevices.find((d) => d.id === 'stepped-low-priority');
+    expect(binaryDev?.plannedState).toBe('keep');
+    expect(steppedDev?.plannedState).toBe('shed');
+    expect(steppedDev?.desiredStepId).toBe('off');
+  });
+
+  it('does not step up an active stepped load before lower-priority off devices are handled', () => {
+    const state = createPlanEngineState();
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'stepped-high-priority',
+          name: 'Priority tank',
+          priority: 1,
+          currentState: 'on',
+          currentOn: true,
+          plannedState: 'keep',
+          selectedStepId: 'low',
+          desiredStepId: undefined,
+        }),
+        buildPlanDevice({
+          id: 'binary-low-priority',
+          name: 'Lower priority thermostat',
+          priority: 5,
+          currentState: 'off',
+          plannedState: 'keep',
+          controllable: true,
+          powerKw: 0.1,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 1, headroom: 1, powerFreshnessState: 'fresh' }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const binaryDev = result.planDevices.find((d) => d.id === 'binary-low-priority');
+    const steppedDev = result.planDevices.find((d) => d.id === 'stepped-high-priority');
+    expect(binaryDev?.plannedState).toBe('keep');
+    expect(steppedDev?.desiredStepId).not.toBe('medium');
   });
 
   it('allows an off stepped restore to swap out a lower-priority active device', () => {
