@@ -343,5 +343,8 @@
   },
   "2.5.0": {
     "en": "Added Temperature Boost for supported stepped devices. PELS can now give these devices extra heating when they get too cold, and the Overview shows when this boost is active.\n\nDaily budget settings are now easier to understand and adjust, with clearer choices instead of raw numbers. The Budget view also explains when your current limits are too tight to use the full daily budget.\n\nThis release includes several improvements that make budgeting and stepped-device control more stable."
+  },
+  "2.5.1": {
+    "en": "Fixed an issue where a stepped load device would be prioritised behind a binary device."
   }
 }
