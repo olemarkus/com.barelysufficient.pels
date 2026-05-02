@@ -3,13 +3,13 @@ import { expect, test } from './fixtures/test';
 test.describe('Settings UI (smoke)', () => {
   test('loads control center', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('heading', { name: 'Control center' })).toBeVisible();
+    await expect(page.getByRole('tablist')).toBeVisible();
     await expect(page.locator('#overview-panel')).toBeVisible();
   });
 
   test('can navigate core tabs and render device/mode data', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('heading', { name: 'Control center' })).toBeVisible();
+    await expect(page.getByRole('tablist')).toBeVisible();
 
     await page.getByRole('tab', { name: 'Devices' }).click();
     await expect(page.locator('#devices-panel')).toBeVisible();
@@ -38,7 +38,7 @@ test.describe('Settings UI (smoke)', () => {
     await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
 
     await page.getByRole('tab', { name: 'Devices' }).click();
-    await expect(page.locator('#device-list')).not.toContainText('EV Charger');
+    await expect(page.locator('#device-list')).not.toContainText('Generic EV Charger');
 
     await page.getByRole('tab', { name: 'Advanced' }).click();
     const evToggle = page.locator('#advanced-ev-support-enabled');
@@ -48,14 +48,14 @@ test.describe('Settings UI (smoke)', () => {
     await expect(page.locator('#toast')).toContainText('EV charger support enabled.');
 
     await page.getByRole('tab', { name: 'Devices' }).click();
-    await expect(page.locator('#device-list')).toContainText('EV Charger');
+    await expect(page.locator('#device-list')).toContainText('Generic EV Charger');
 
     await page.getByRole('tab', { name: 'Advanced' }).click();
     await evToggle.uncheck();
     await expect(page.locator('#toast')).toContainText('Managed EV chargers were set to unmanaged.');
 
     await page.getByRole('tab', { name: 'Devices' }).click();
-    await expect(page.locator('#device-list')).not.toContainText('EV Charger');
+    await expect(page.locator('#device-list')).not.toContainText('Generic EV Charger');
 
     const managedMap = await page.evaluate(async () => {
       const homey = (window as unknown as {
