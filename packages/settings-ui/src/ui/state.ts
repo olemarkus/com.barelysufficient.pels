@@ -1,5 +1,6 @@
 import type {
   DeviceControlProfiles,
+  EvBoostSettings,
   TargetDeviceSnapshot,
   TemperatureBoostSettings,
 } from '../../../contracts/src/types.ts';
@@ -35,6 +36,7 @@ export type UiState = {
   modeAliases: Record<string, string>;
   shedBehaviors: Record<string, ShedBehavior>;
   temperatureBoostSettings: TemperatureBoostSettings;
+  evBoostSettings: EvBoostSettings;
   priceOptimizationSettings: Record<string, PriceOptimizationConfig>;
 };
 
@@ -62,6 +64,7 @@ export const state: UiState = {
   modeAliases: {},
   shedBehaviors: {},
   temperatureBoostSettings: {},
+  evBoostSettings: {},
   priceOptimizationSettings: {},
 };
 

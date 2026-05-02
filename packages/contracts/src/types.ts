@@ -37,6 +37,13 @@ export type TemperatureBoostConfig = {
 
 export type TemperatureBoostSettings = Record<string, TemperatureBoostConfig>;
 
+export type EvBoostConfig = {
+    enabled: boolean;
+    boostBelowPercent: number;
+};
+
+export type EvBoostSettings = Record<string, EvBoostConfig>;
+
 export type DeviceControlAdapterSnapshot = {
     kind: 'capability_adapter';
     activationAvailable?: boolean;
@@ -93,6 +100,7 @@ export type TargetDeviceSnapshot = {
     stateOfCharge?: DeviceStateOfChargeSnapshot;
     currentTemperature?: number;
     temperatureBoost?: TemperatureBoostConfig;
+    evBoost?: EvBoostConfig;
     measuredPowerKw?: number;
     reportedStepId?: string;
     targetStepId?: string;

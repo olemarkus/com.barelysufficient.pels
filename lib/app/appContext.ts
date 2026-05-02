@@ -16,6 +16,8 @@ import type { PriceOptimizationSettings } from '../price/priceOptimizer';
 import type { DebugLoggingTopic } from '../utils/debugLogging';
 import type {
   DeviceControlProfiles,
+  EvBoostConfig,
+  EvBoostSettings,
   TargetDeviceSnapshot,
   TemperatureBoostConfig,
   TemperatureBoostSettings,
@@ -102,6 +104,7 @@ export type AppContext = {
   isCapacityControlEnabled: (deviceId: string) => boolean;
   isBudgetExempt: (deviceId: string) => boolean;
   getTemperatureBoostConfig: (deviceId: string) => TemperatureBoostConfig | undefined;
+  getEvBoostConfig: (deviceId: string) => EvBoostConfig | undefined;
   getShedBehavior: (deviceId: string) => {
     action: ShedAction;
     temperature: number | null;
@@ -148,6 +151,8 @@ export type AppContext = {
   set budgetExemptDevices(value: Record<string, boolean>);
   get temperatureBoostSettings(): TemperatureBoostSettings;
   set temperatureBoostSettings(value: TemperatureBoostSettings);
+  get evBoostSettings(): EvBoostSettings;
+  set evBoostSettings(value: EvBoostSettings);
   get deviceDriverOverrides(): Record<string, string>;
   set deviceDriverOverrides(value: Record<string, string>);
   get deviceControlProfiles(): DeviceControlProfiles;

@@ -18,6 +18,7 @@ import {
   DAILY_BUDGET_PRICE_FLEX_SHARE,
   DAILY_BUDGET_RESET,
   DEBUG_LOGGING_TOPICS,
+  EV_BOOST_SETTINGS,
   EXPERIMENTAL_EV_SUPPORT_ENABLED,
   FLOW_PRICES_TODAY,
   FLOW_PRICES_TOMORROW,
@@ -301,6 +302,10 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
     [TEMPERATURE_BOOST_SETTINGS]: async () => {
       deps.loadCapacitySettings();
       await rebuildPlanFromSettings(deps, TEMPERATURE_BOOST_SETTINGS);
+    },
+    [EV_BOOST_SETTINGS]: async () => {
+      deps.loadCapacitySettings();
+      await rebuildPlanFromSettings(deps, EV_BOOST_SETTINGS);
     },
     [EXPERIMENTAL_EV_SUPPORT_ENABLED]: async () => {
       deps.loadCapacitySettings();

@@ -212,6 +212,15 @@ const buildTemperatureBoostChip = () => {
   return chip;
 };
 
+const buildEvBoostChip = () => {
+  const chip = document.createElement('span');
+  chip.className = 'chip chip--boost plan-row__chip';
+  chip.textContent = 'Boost';
+  chip.setAttribute('aria-label', 'Charge boost active');
+  setTooltip(chip, 'Charge boost active');
+  return chip;
+};
+
 const buildPlanRow = (plan: PlanSnapshot | null, dev: PlanDeviceSnapshot, renderedAtMs: number, nowMs: number) => {
   const displayDev = resolveDisplayPlanDeviceSnapshot(plan, dev, renderedAtMs, nowMs);
   const overview = formatDeviceOverview(displayDev);
@@ -230,6 +239,9 @@ const buildPlanRow = (plan: PlanSnapshot | null, dev: PlanDeviceSnapshot, render
   }
   if (dev.temperatureBoostActive === true) {
     name.appendChild(buildTemperatureBoostChip());
+  }
+  if (dev.evBoostActive === true) {
+    name.appendChild(buildEvBoostChip());
   }
 
   const metaWrap = document.createElement('div');

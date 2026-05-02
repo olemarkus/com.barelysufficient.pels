@@ -137,6 +137,8 @@ export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
   budgetExempt?: boolean;
   temperatureBoost?: TargetDeviceSnapshot['temperatureBoost'];
   temperatureBoostActive?: boolean;
+  evBoost?: TargetDeviceSnapshot['evBoost'];
+  evBoostActive?: boolean;
   currentTemperature?: number;
   stateKind?: string;
   stateTone?: string;

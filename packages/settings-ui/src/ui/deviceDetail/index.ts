@@ -65,6 +65,11 @@ import {
   updateSetStepOptionLabel,
 } from './steppedLoadDraft.ts';
 import {
+  initEvBoostHandlers,
+  loadEvBoostSettings,
+  renderEvBoostSettings,
+} from './evBoost.ts';
+import {
   initTemperatureBoostHandlers,
   loadTemperatureBoostSettings,
   renderTemperatureBoostSettings,
@@ -230,6 +235,7 @@ const refreshOpenDeviceDetail = () => {
   });
   renderSteppedLoadDraft(device);
   renderTemperatureBoostSettings(device);
+  renderEvBoostSettings(device);
   setDeviceDetailDeltaValues(currentDetailDeviceId);
   renderDeviceDetailModes(device);
   updateDeltaSectionVisibility({
@@ -262,6 +268,7 @@ export const openDeviceDetail = (deviceId: string) => {
   });
   renderSteppedLoadDraft(device);
   renderTemperatureBoostSettings(device);
+  renderEvBoostSettings(device);
   renderDeviceDetailModes(device);
   setDeviceDetailDeltaValues(deviceId);
   updateDeltaSectionVisibility({
@@ -476,7 +483,7 @@ const initDeviceDetailRefreshHandlers = () => {
   });
 };
 
-export { loadShedBehaviors, loadTemperatureBoostSettings };
+export { loadEvBoostSettings, loadShedBehaviors, loadTemperatureBoostSettings };
 
 export const initDeviceDetailHandlers = () => {
   initDeviceDetailCloseHandlers();
@@ -504,6 +511,11 @@ export const initDeviceDetailHandlers = () => {
     getCurrentDetailDeviceId,
     getDeviceById,
     persistDeviceControlProfile,
+    refreshOpenDeviceDetail,
+  });
+  initEvBoostHandlers({
+    getCurrentDetailDeviceId,
+    getDeviceById,
     refreshOpenDeviceDetail,
   });
   initTemperatureBoostHandlers({

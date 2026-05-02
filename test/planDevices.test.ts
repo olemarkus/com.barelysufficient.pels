@@ -176,6 +176,33 @@ describe('buildInitialPlanDevices', () => {
     expect(reasonText(planDevice.reason)).toBe('keep');
   });
 
+  it('tracks EV boost on stepped EV chargers without changing budget exemption', () => {
+    const state = createPlanEngineState();
+
+    const [planDevice] = buildInitialPlanDevices({
+      context: buildContext([steppedInputDevice({
+        id: 'charger',
+        name: 'Driveway charger',
+        deviceClass: 'evcharger',
+        deviceType: 'onoff',
+        targets: [],
+        budgetExempt: false,
+        evChargingState: 'plugged_in_charging',
+        stateOfCharge: { percent: 32, status: 'fresh' },
+        evBoost: { enabled: true, boostBelowPercent: 40 },
+      })]),
+      state,
+      shedSet: new Set(),
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      deps: defaultDeps,
+    });
+
+    expect(planDevice.evBoostActive).toBe(true);
+    expect(planDevice.budgetExempt).toBe(false);
+    expect(state.evBoostActiveByDevice.charger).toBe(true);
+  });
+
   it('keeps stepped loads on temperature shedding when that is the chosen shed behavior', () => {
     const steppedDevice = steppedInputDevice({
       id: 'dev-1',

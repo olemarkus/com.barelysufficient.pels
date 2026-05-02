@@ -4,6 +4,8 @@ import type {
   DeviceControlModel,
   DeviceControlAdapterSnapshot,
   BinaryControlObservation,
+  DeviceStateOfChargeSnapshot,
+  EvBoostConfig,
   SteppedLoadActualStepSource,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
@@ -88,6 +90,9 @@ export type DevicePlanDevice = {
   currentTemperature?: number;
   temperatureBoost?: TemperatureBoostConfig;
   temperatureBoostActive?: boolean;
+  evBoost?: EvBoostConfig;
+  evBoostActive?: boolean;
+  stateOfCharge?: DeviceStateOfChargeSnapshot;
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
   binaryCommandPending?: boolean;
@@ -206,6 +211,8 @@ export type PlanInputDevice = {
   measuredPowerKw?: number;
   currentTemperature?: number;
   temperatureBoost?: TemperatureBoostConfig;
+  evBoost?: EvBoostConfig;
+  stateOfCharge?: DeviceStateOfChargeSnapshot;
   controllable?: boolean;
   managed?: boolean;
   budgetExempt?: boolean;

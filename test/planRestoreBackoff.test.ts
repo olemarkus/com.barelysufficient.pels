@@ -3806,6 +3806,51 @@ describe('stepped-load shed invariant', () => {
     }));
   });
 
+  it('allows an EV-boosted active stepped upgrade to swap out lower-priority load', () => {
+    const state = createPlanEngineState();
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Priority charger',
+          priority: 1,
+          currentState: 'on',
+          plannedState: 'keep',
+          selectedStepId: 'medium',
+          desiredStepId: 'medium',
+          evBoostActive: true,
+        }),
+        buildPlanDevice({
+          id: 'lower-priority',
+          name: 'Lower priority heater',
+          priority: 5,
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          powerKw: 2,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 0.8, headroom: 0.8 }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
+    const lowerPriority = result.planDevices.find((d) => d.id === 'lower-priority');
+    expect(steppedDev?.plannedState).toBe('keep');
+    expect(steppedDev?.desiredStepId).toBe('max');
+    expect(lowerPriority?.plannedState).toBe('shed');
+    expect(lowerPriority?.reason).toMatchObject({
+      code: PLAN_REASON_CODES.swappedOut,
+      targetName: 'Priority charger',
+    });
+  });
+
   it('keeps a temperature-boosted active stepped upgrade on during pending swap rebuilds', () => {
     const state = createPlanEngineState();
     const first = applyRestorePlan({

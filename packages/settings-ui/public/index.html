@@ -843,6 +843,24 @@
                 </div>
               </div>
 
+              <div class="detail-control-list detail-stepped-boost" id="device-detail-ev-boost" hidden>
+                <div class="device-row device-detail-row device-detail-row--toggle">
+                  <div class="device-row__name device-detail-row__name">
+                    <label class="device-row__title" for="device-detail-ev-boost-enabled">Charge boost</label>
+                    <small class="device-detail-row__hint">Step this charger up while the car stays below the minimum battery level, using only lower-priority devices if room must be made.</small>
+                  </div>
+                  <input type="checkbox" id="device-detail-ev-boost-enabled">
+                </div>
+                <div class="device-row device-detail-row" id="device-detail-ev-boost-below-row">
+                  <div class="device-row__name device-detail-row__name">
+                    <label class="device-row__title" for="device-detail-ev-boost-below">Boost below (%)</label>
+                    <small class="device-detail-row__hint">Boost stops as soon as the reported battery level reaches this value.</small>
+                  </div>
+                  <input type="number" id="device-detail-ev-boost-below" step="1" min="0" max="100">
+                </div>
+                <p class="muted" id="device-detail-ev-boost-status"></p>
+              </div>
+
               <p class="muted">When a shed stepped-load device is restored, PELS starts from the lowest active step and only climbs higher when there is room for it.</p>
             </div>
           </details>

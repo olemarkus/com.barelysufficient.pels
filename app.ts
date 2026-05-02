@@ -183,6 +183,7 @@ class PelsApp extends Homey.App {
   private managedDevices: Record<string, boolean> = {};
   private budgetExemptDevices: Record<string, boolean> = {};
   private temperatureBoostSettings: import('./lib/utils/types').TemperatureBoostSettings = {};
+  private evBoostSettings: import('./lib/utils/types').EvBoostSettings = {};
   private nativeEvWiringDevices: Record<string, boolean> = {};
   private deviceDriverOverrides: Record<string, string> = {};
   private flowReportedCapabilities: FlowReportedCapabilitiesByDevice = {};
@@ -517,6 +518,7 @@ class PelsApp extends Homey.App {
       isCapacityControlEnabled: (deviceId) => app.isCapacityControlEnabled(deviceId),
       isBudgetExempt: (deviceId) => app.isBudgetExempt(deviceId),
       getTemperatureBoostConfig: (deviceId) => app.getTemperatureBoostConfig(deviceId),
+      getEvBoostConfig: (deviceId) => app.getEvBoostConfig(deviceId),
       getShedBehavior: (deviceId) => app.getShedBehavior(deviceId),
       computeDynamicSoftLimit: () => app.computeDynamicSoftLimit(),
       getDynamicSoftLimitOverride: () => app.getDynamicSoftLimitOverride(),
@@ -557,6 +559,8 @@ class PelsApp extends Homey.App {
       set budgetExemptDevices(value) { appRef.budgetExemptDevices = value; },
       get temperatureBoostSettings() { return app.temperatureBoostSettings; },
       set temperatureBoostSettings(value) { appRef.temperatureBoostSettings = value; },
+      get evBoostSettings() { return app.evBoostSettings; },
+      set evBoostSettings(value) { appRef.evBoostSettings = value; },
       get deviceDriverOverrides() { return app.deviceDriverOverrides; },
       set deviceDriverOverrides(value) { appRef.deviceDriverOverrides = value; },
       get deviceControlProfiles() { return app.deviceControlProfiles; },
@@ -1053,6 +1057,7 @@ class PelsApp extends Homey.App {
         managedDevices: this.managedDevices,
         budgetExemptDevices: this.budgetExemptDevices,
         temperatureBoostSettings: this.temperatureBoostSettings,
+        evBoostSettings: this.evBoostSettings,
         nativeEvWiringDevices: this.nativeEvWiringDevices,
         deviceDriverOverrides: this.deviceDriverOverrides,
         deviceControlProfiles: this.deviceControlProfiles,
@@ -1071,6 +1076,7 @@ class PelsApp extends Homey.App {
     this.managedDevices = next.managedDevices;
     this.budgetExemptDevices = next.budgetExemptDevices;
     this.temperatureBoostSettings = next.temperatureBoostSettings;
+    this.evBoostSettings = next.evBoostSettings;
     this.nativeEvWiringDevices = next.nativeEvWiringDevices;
     this.deviceDriverOverrides = next.deviceDriverOverrides;
     this.deviceControlProfiles = normalizeStoredDeviceControlProfiles(next.deviceControlProfiles) ?? {};
@@ -1378,6 +1384,7 @@ class PelsApp extends Homey.App {
   );
   private isBudgetExempt = (deviceId: string) => this.budgetExemptDevices[deviceId] === true;
   private getTemperatureBoostConfig = (deviceId: string) => this.temperatureBoostSettings[deviceId];
+  private getEvBoostConfig = (deviceId: string) => this.evBoostSettings[deviceId];
   private getShedBehavior = (deviceId: string) => getShedBehaviorHelper(deviceId, this.shedBehaviors);
   private computeDynamicSoftLimit = () => this.planService.computeDynamicSoftLimit();
   private computeShortfallThreshold = () => this.planService.computeShortfallThreshold();

@@ -45,6 +45,12 @@ const buildDom = () => {
             <div id="device-detail-temperature-boost-below-row"></div>
             <input id="device-detail-temperature-boost-below" type="number">
           </div>
+          <div id="device-detail-ev-boost" hidden>
+            <input id="device-detail-ev-boost-enabled" type="checkbox">
+            <div id="device-detail-ev-boost-below-row"></div>
+            <input id="device-detail-ev-boost-below" type="number">
+            <div id="device-detail-ev-boost-status"></div>
+          </div>
           <button id="device-detail-stepped-add-step" type="button"></button>
           <button id="device-detail-stepped-save" type="button"></button>
           <button id="device-detail-stepped-reset" type="button"></button>
@@ -1091,5 +1097,228 @@ describe('device detail managed state saves', () => {
 
     const boostSection = document.querySelector('#device-detail-temperature-boost') as HTMLElement | null;
     expect(boostSection?.hidden).toBe(true);
+  });
+
+  it('shows and saves EV boost settings for stepped EV chargers', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      settings: {
+        ev_boost_settings: {},
+      },
+    });
+    homeyModule.setHomeyClient(homey);
+
+    const {
+      initDeviceDetailHandlers,
+      loadEvBoostSettings,
+      openDeviceDetail,
+    } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [buildDevice('charger-1', 'Driveway charger', {
+      deviceClass: 'evcharger',
+      deviceType: 'onoff',
+      controlModel: 'stepped_load',
+      targets: [],
+      evChargingState: 'plugged_in_charging',
+      stateOfCharge: {
+        percent: 32,
+        status: 'fresh',
+        source: 'flow',
+      },
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1250 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+    })];
+    state.managedMap = { 'charger-1': true };
+    state.controllableMap = { 'charger-1': true };
+    state.budgetExemptMap = {};
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'charger-1': 1 } };
+    state.modeTargets = { Home: {} };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    await loadEvBoostSettings();
+    initDeviceDetailHandlers();
+    openDeviceDetail('charger-1');
+    await flushPromises();
+
+    const boostSection = document.querySelector('#device-detail-ev-boost') as HTMLElement | null;
+    const boostEnabled = document.querySelector('#device-detail-ev-boost-enabled') as HTMLInputElement | null;
+    const boostBelow = document.querySelector('#device-detail-ev-boost-below') as HTMLInputElement | null;
+
+    expect(boostSection?.hidden).toBe(false);
+    expect(boostEnabled?.checked).toBe(false);
+    expect(boostBelow?.value).toBe('40');
+
+    boostBelow!.value = '35';
+    boostEnabled!.checked = true;
+    boostEnabled!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+    await flushPromises();
+
+    expect(homey.__settingsStore.ev_boost_settings).toEqual({
+      'charger-1': { enabled: true, boostBelowPercent: 35 },
+    });
+  });
+
+  it('hides EV boost for non-EV stepped loads', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      settings: {
+        ev_boost_settings: {
+          'tank-1': { enabled: true, boostBelowPercent: 40 },
+        },
+      },
+    });
+    homeyModule.setHomeyClient(homey);
+
+    const {
+      initDeviceDetailHandlers,
+      loadEvBoostSettings,
+      openDeviceDetail,
+    } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [buildDevice('tank-1', 'Water tank', {
+      controlModel: 'stepped_load',
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1250 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+    })];
+    state.managedMap = { 'tank-1': true };
+    state.controllableMap = { 'tank-1': true };
+    state.budgetExemptMap = {};
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'tank-1': 1 } };
+    state.modeTargets = { Home: { 'tank-1': 65 } };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    await loadEvBoostSettings();
+    initDeviceDetailHandlers();
+    openDeviceDetail('tank-1');
+    await flushPromises();
+
+    const boostSection = document.querySelector('#device-detail-ev-boost') as HTMLElement | null;
+    expect(boostSection?.hidden).toBe(true);
+  });
+
+  it('shows EV boost status from the charger SoC state', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      settings: {
+        ev_boost_settings: {
+          'charger-1': { enabled: true, boostBelowPercent: 40 },
+        },
+      },
+    });
+    homeyModule.setHomeyClient(homey);
+
+    const {
+      initDeviceDetailHandlers,
+      loadEvBoostSettings,
+      openDeviceDetail,
+    } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [buildDevice('charger-1', 'Driveway charger', {
+      deviceClass: 'evcharger',
+      deviceType: 'onoff',
+      controlModel: 'stepped_load',
+      targets: [],
+      evChargingState: 'plugged_in_paused',
+      stateOfCharge: {
+        percent: 32,
+        status: 'stale',
+        source: 'flow',
+      },
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1250 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+    })];
+    state.managedMap = { 'charger-1': true };
+    state.controllableMap = { 'charger-1': true };
+    state.budgetExemptMap = {};
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'charger-1': 1 } };
+    state.modeTargets = { Home: {} };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    await loadEvBoostSettings();
+    initDeviceDetailHandlers();
+    openDeviceDetail('charger-1');
+    await flushPromises();
+
+    const status = document.querySelector('#device-detail-ev-boost-status') as HTMLElement | null;
+    expect(status?.textContent).toBe('Battery level is stale. Boost will not activate.');
   });
 });
