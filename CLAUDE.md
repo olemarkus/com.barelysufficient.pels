@@ -156,6 +156,7 @@ Key timing:
 | Flow card design | `docs/flow-cards.md` |
 | Architecture boundaries | `docs/architecture.md` |
 | Open work and known issues | `TODO.md` |
+| **UI labels, status strings, tab names** | `notes/ui-terminology.md` |
 
 ---
 
