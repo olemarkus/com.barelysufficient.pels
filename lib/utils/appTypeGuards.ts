@@ -4,11 +4,11 @@ import type {
   EvBoostSettings,
   TemperatureBoostSettings,
 } from '../../packages/contracts/src/types';
-import { normalizeEvBoostSettings as normalizeEvBoostSettingsContract } from '../../packages/contracts/src/evBoost';
 import {
   normalizeTemperatureBoostSettings as normalizeTemperatureBoostSettingsContract,
 } from './temperatureBoost';
 import { normalizeDeviceControlProfiles } from './deviceControlProfiles';
+import { normalizeEvBoostSettings as normalizeEvBoostSettingsRuntime } from './evBoost';
 
 export function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
@@ -60,7 +60,7 @@ export function normalizeTemperatureBoostSettings(value: unknown): TemperatureBo
 }
 
 export function normalizeEvBoostSettings(value: unknown): EvBoostSettings {
-  return normalizeEvBoostSettingsContract(value);
+  return normalizeEvBoostSettingsRuntime(value);
 }
 
 export function isPowerTrackerState(value: unknown): value is PowerTrackerState {
