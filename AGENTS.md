@@ -10,3 +10,40 @@ Repo-wide instructions only:
 - When `.homeycompose` changes, `homey app validate` updates root `app.json`; include that generated change.
 - Runtime logging is structured (pino, `lib/logging/`). New logs go through `logger.info/warn/error/debug()` with stable field names. Legacy `this.log()` / `this.logDebug()` calls exist but must not be added to. Debug topics in `lib/utils/debugLogging.ts` gate whether debug events fire.
 - Internal engineering notes for Homey state trust, freshness, and drift/reconcile pitfalls live under `notes/`. Read those before changing snapshot/realtime merge logic.
+- **Before writing any UI label, status string, tab name, help text, or doc:** read `notes/ui-terminology.md`. It defines the canonical user-facing vocabulary for all of PELS.
+
+## UI terminology (short rules)
+
+Say what happens, not what the planner does internally.
+
+| Avoid | Use instead |
+|---|---|
+| shed | limited / paused / turned down / lowered |
+| restore | resume |
+| headroom | available power |
+| controlled/uncontrolled load | managed / background usage |
+| daily budget | daily energy target |
+| capacity limit | hourly power limit |
+| soft margin | safety margin |
+| PELS limit / soft limit | safety threshold (or daily energy pace — see below) |
+| hard cap | hourly power limit |
+
+**Do NOT rename internal code identifiers, test fixtures, or log strings** — only user-visible text changes.
+
+### Power bar tick labels
+
+The tick showing where PELS starts reacting has two sources — distinguish them:
+
+- `softLimitSource = capacity` → **Safety threshold** (tooltip: hourly power limit minus safety margin)
+- `softLimitSource = daily_budget` → **Daily energy pace** (tooltip: slowing to stay on today's energy target)
+- User-configured ceiling (`hardLimitKw`) → always **Hourly power limit**
+
+### Chips vs reason lines
+
+Chips must be one or two words: `Limited`, `Resuming`, `Running`.
+Reason lines (below chip or in tooltip) may be a short sentence: `staying under hourly power limit`.
+Do not put multi-word sentences in chips.
+
+### Terms that stay internal (do not surface in normal UI)
+
+`shed`, `restore`, `headroom`, `shortfall`, `backoff`, `invariant`, `soft limit`, `capacity`, `controlled`, `uncontrolled`
