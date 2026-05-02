@@ -661,7 +661,7 @@ function blockSteppedRestoreForShedInvariant(params: {
   restoreDebugKey: string;
 }): boolean {
   const { dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, debugStructured, restoreDebugKey } = params;
-  if (dev.temperatureBoostActive === true) return false;
+  if (dev.temperatureBoostActive === true || dev.evBoostActive === true) return false;
   if (!lowestNonZeroStep || nextStep.planningPowerW <= lowestNonZeroStep.planningPowerW) return false;
   const shedDeviceCount = countShedDevices(deviceMap, dev.id);
   if (shedDeviceCount === 0) return false;
@@ -732,7 +732,7 @@ function canUseSwapForSteppedRestore(params: {
   const { dev, nextStep, lowestNonZeroStep } = params;
   if (lowestNonZeroStep === null) return false;
   if (resolveEffectiveCurrentOn(dev) === false && nextStep.id === lowestNonZeroStep.id) return true;
-  return dev.temperatureBoostActive === true;
+  return dev.temperatureBoostActive === true || dev.evBoostActive === true;
 }
 
 function rejectSteppedRestoreForInsufficientHeadroom(params: {

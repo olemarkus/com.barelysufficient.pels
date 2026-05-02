@@ -1,6 +1,6 @@
 import type Homey from 'homey';
 import type { ShedBehavior } from '../plan/planTypes';
-import type { DeviceControlProfiles, TemperatureBoostSettings } from '../utils/types';
+import type { DeviceControlProfiles, EvBoostSettings, TemperatureBoostSettings } from '../utils/types';
 import {
   normalizeShedBehaviors as normalizeShedBehaviorsHelper,
   resolveModeName as resolveModeNameHelper,
@@ -14,6 +14,7 @@ import {
   isModeDeviceTargets,
   isPrioritySettings,
   isStringMap,
+  normalizeEvBoostSettings,
   normalizeTemperatureBoostSettings,
 } from '../utils/appTypeGuards';
 import {
@@ -24,6 +25,7 @@ import {
   DEVICE_CONTROL_PROFILES,
   DEVICE_COMMUNICATION_MODELS,
   DEVICE_DRIVER_OVERRIDES,
+  EV_BOOST_SETTINGS,
   EXPERIMENTAL_EV_SUPPORT_ENABLED,
   NATIVE_EV_WIRING_DEVICES,
   CONTROLLABLE_DEVICES,
@@ -47,6 +49,7 @@ export type CapacitySettingsSnapshot = {
   managedDevices: Record<string, boolean>;
   budgetExemptDevices: Record<string, boolean>;
   temperatureBoostSettings: TemperatureBoostSettings;
+  evBoostSettings: EvBoostSettings;
   nativeEvWiringDevices: Record<string, boolean>;
   deviceDriverOverrides: Record<string, string>;
   deviceControlProfiles: DeviceControlProfiles;
@@ -74,6 +77,7 @@ export function buildCapacitySettingsSnapshot(params: {
   const experimentalEvSupportEnabled = settings.get(EXPERIMENTAL_EV_SUPPORT_ENABLED) as unknown;
   const rawShedBehaviors = settings.get(OVERSHOOT_BEHAVIORS) as unknown;
   const rawTemperatureBoostSettings = settings.get(TEMPERATURE_BOOST_SETTINGS) as unknown;
+  const rawEvBoostSettings = settings.get(EV_BOOST_SETTINGS) as unknown;
 
   const nextCapacity = {
     limitKw: isFiniteNumber(limit) ? limit : current.capacitySettings.limitKw,
@@ -109,6 +113,7 @@ export function buildCapacitySettingsSnapshot(params: {
     managedDevices: deviceFlags.managedDevices,
     budgetExemptDevices: deviceFlags.budgetExemptDevices,
     temperatureBoostSettings: normalizeTemperatureBoostSettings(rawTemperatureBoostSettings),
+    evBoostSettings: normalizeEvBoostSettings(rawEvBoostSettings),
     nativeEvWiringDevices: nativeEvSettings.nativeEvWiringDevices,
     deviceDriverOverrides: deviceOverrides.deviceDriverOverrides,
     deviceControlProfiles: deviceSettings.deviceControlProfiles,

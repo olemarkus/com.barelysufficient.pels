@@ -115,6 +115,7 @@ export type PlanEngineState = {
   lastPlanBuiltAtMs: number | null;
   lastPlanDevicesById: Record<string, OvershootTrackedPlanDevice>;
   temperatureBoostActiveByDevice: Record<string, boolean>;
+  evBoostActiveByDevice: Record<string, boolean>;
   lastOvershootSummarySignature: string | null;
   steppedRestoreRejectedByDevice: Record<string, {
     requestedStepId: string;
@@ -163,6 +164,7 @@ export function createPlanEngineState(nowTs = Date.now()): PlanEngineState {
     lastPlanBuiltAtMs: null,
     lastPlanDevicesById: {},
     temperatureBoostActiveByDevice: {},
+    evBoostActiveByDevice: {},
     lastOvershootSummarySignature: null,
     steppedRestoreRejectedByDevice: {},
     keepInvariantShedBlockedByDevice: {},

@@ -1,5 +1,10 @@
 import type { PowerTrackerState } from '../core/powerTracker';
-import type { DeviceControlProfiles, TemperatureBoostSettings } from '../../packages/contracts/src/types';
+import type {
+  DeviceControlProfiles,
+  EvBoostSettings,
+  TemperatureBoostSettings,
+} from '../../packages/contracts/src/types';
+import { normalizeEvBoostSettings as normalizeEvBoostSettingsContract } from '../../packages/contracts/src/evBoost';
 import {
   normalizeTemperatureBoostSettings as normalizeTemperatureBoostSettingsContract,
 } from './temperatureBoost';
@@ -52,6 +57,10 @@ export function isDeviceControlProfiles(value: unknown): value is DeviceControlP
 
 export function normalizeTemperatureBoostSettings(value: unknown): TemperatureBoostSettings {
   return normalizeTemperatureBoostSettingsContract(value);
+}
+
+export function normalizeEvBoostSettings(value: unknown): EvBoostSettings {
+  return normalizeEvBoostSettingsContract(value);
 }
 
 export function isPowerTrackerState(value: unknown): value is PowerTrackerState {

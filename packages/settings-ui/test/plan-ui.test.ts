@@ -927,6 +927,27 @@ describe('plan device state', () => {
     expect(normalChip).toBeNull();
   });
 
+  it('shows a boost chip when EV boost is active', async () => {
+    await renderPlanSnapshot({
+      devices: [
+        {
+          id: 'dev-boost',
+          name: 'Boosted charger',
+          controlModel: 'stepped_load',
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          evBoostActive: true,
+        },
+      ],
+    });
+
+    const boostChip = document.querySelector('[data-device-id="dev-boost"] .chip--boost') as HTMLElement | null;
+    expect(boostChip?.textContent?.trim()).toBe('Boost');
+    expect(boostChip?.getAttribute('data-tooltip')).toBe('Charge boost active');
+    expect(boostChip?.getAttribute('aria-label')).toBe('Charge boost active');
+  });
+
   it('uses the shared tooltip hook for the plan state badge', async () => {
     await renderPlanSnapshot({
       devices: [

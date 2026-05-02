@@ -15,6 +15,7 @@ import {
   BUDGET_EXEMPT_DEVICES,
   DEVICE_CONTROL_PROFILES,
   DEVICE_DRIVER_OVERRIDES,
+  EV_BOOST_SETTINGS,
   NATIVE_EV_WIRING_DEVICES,
   DAILY_BUDGET_BREAKDOWN_ENABLED,
   DAILY_BUDGET_CONTROLLED_WEIGHT,
@@ -50,7 +51,7 @@ import {
 import { loadDailyBudgetTuningSettings } from './dailyBudgetTuning.ts';
 import { parsePlanSnapshot, refreshPlan, renderPlan, type PlanSnapshot } from './plan.ts';
 import { refreshAdvancedDeviceCleanup } from './advanced.ts';
-import { loadShedBehaviors, loadTemperatureBoostSettings } from './deviceDetail/index.ts';
+import { loadEvBoostSettings, loadShedBehaviors, loadTemperatureBoostSettings } from './deviceDetail/index.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
 import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
 import { state } from './state.ts';
@@ -267,6 +268,9 @@ const createSettingsSetHandler = () => (key: string) => {
   }
   if (key === TEMPERATURE_BOOST_SETTINGS) {
     runLoggedTask(loadTemperatureBoostSettings(), 'Failed to load temperature boost settings', 'settings.set');
+  }
+  if (key === EV_BOOST_SETTINGS) {
+    runLoggedTask(loadEvBoostSettings(), 'Failed to load EV boost settings', 'settings.set');
   }
   if (key === DEVICE_CONTROL_PROFILES) {
     runLoggedTask(loadDeviceControlProfiles(), 'Failed to load device control profiles', 'settings.set');

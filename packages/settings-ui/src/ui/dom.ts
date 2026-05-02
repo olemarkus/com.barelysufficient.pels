@@ -176,6 +176,15 @@ export const deviceDetailTemperatureBoostBelowRow = qs('#device-detail-temperatu
 export const deviceDetailTemperatureBoostBelow = document.querySelector(
   '#device-detail-temperature-boost-below',
 ) as HTMLInputElement;
+export const deviceDetailEvBoost = qs('#device-detail-ev-boost');
+export const deviceDetailEvBoostEnabled = document.querySelector(
+  '#device-detail-ev-boost-enabled',
+) as HTMLInputElement;
+export const deviceDetailEvBoostBelowRow = qs('#device-detail-ev-boost-below-row');
+export const deviceDetailEvBoostBelow = document.querySelector(
+  '#device-detail-ev-boost-below',
+) as HTMLInputElement;
+export const deviceDetailEvBoostStatus = qs('#device-detail-ev-boost-status');
 export const deviceDetailSteppedAddStep = document.querySelector(
   '#device-detail-stepped-add-step',
 ) as HTMLButtonElement;
