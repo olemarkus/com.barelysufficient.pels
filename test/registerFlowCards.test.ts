@@ -186,6 +186,7 @@ describe('registerFlowCards', () => {
 
     expect(actionListeners.report_flow_backed_device_onoff).toBeUndefined();
     expect(actionListeners.report_flow_backed_device_evcharger_charging).toBeUndefined();
+    expect(actionListeners.report_evcharger_battery_level).toBeUndefined();
     expect(triggerListeners.flow_backed_device_turn_on_requested).toBeUndefined();
     expect(triggerListeners.flow_backed_device_refresh_requested).toBeUndefined();
     expect(actionListeners.report_stepped_load_actual_step).toEqual(expect.any(Function));
@@ -346,6 +347,36 @@ describe('registerFlowCards', () => {
       device: 'ev-1',
       battery_percent: 'abc',
     })).rejects.toThrow('Battery level must be a number between 0 and 100.');
+  });
+
+  it('accepts EV charger battery reports when the post-report snapshot lookup fails', async () => {
+    const { deps, actionListeners, structuredInfo } = buildDeps({
+      getSnapshot: vi.fn()
+        .mockResolvedValueOnce([
+          { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', currentOn: false, targets: [] },
+        ])
+        .mockRejectedValueOnce(new Error('snapshot unavailable')),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_evcharger_battery_level({
+      device: 'ev-1',
+      battery_percent: 42,
+      source_label: 'Tesla Flow',
+    })).resolves.toBe(true);
+
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'ev_soc_reported',
+      chargerDeviceId: 'ev-1',
+      chargerName: 'Zaptec Go',
+      percent: 42,
+      sourceLabel: 'Tesla Flow',
+      status: 'unknown',
+    }));
+    expect(deps.logDebug).toHaveBeenCalledWith(
+      expect.stringContaining("failed to reload EV charger snapshot for 'ev-1'"),
+    );
   });
 
   it('accepts a stepped-load actual step report when snapshot lookup fails', async () => {
