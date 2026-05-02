@@ -13,6 +13,8 @@ const ZAPTEC_NATIVE_REQUIRED_CAPABILITIES = [
 const ZAPTEC_NATIVE_DRIVER_IDS = new Set([
   'homey:app:com.zaptec:go',
   'homey:app:com.zaptec:go2',
+  'homey:app:com.zaptec:home',
+  'homey:app:com.zaptec:pro',
 ]);
 
 const hasCapability = (capabilities: readonly string[], capabilityId: string): boolean => (

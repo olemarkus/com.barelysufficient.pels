@@ -155,6 +155,11 @@ export const deviceDetailBudgetExempt = document.querySelector('#device-detail-b
 export const deviceDetailSocRow = qs('#device-detail-soc-row');
 export const deviceDetailSocValue = qs('#device-detail-soc-value');
 export const deviceDetailSocUpdated = qs('#device-detail-soc-updated');
+export const deviceDetailNativeSteppedStatusRow = document.getElementById('device-detail-native-stepped-status-row');
+export const deviceDetailNativeSteppedStatusValue = document.getElementById(
+  'device-detail-native-stepped-status-value',
+);
+export const deviceDetailNativeSteppedStatusHint = document.getElementById('device-detail-native-stepped-status-hint');
 export const deviceDetailControlModelRow = qs('#device-detail-control-model-row');
 export const deviceDetailControlModel = document.querySelector('#device-detail-control-model') as HTMLSelectElement;
 export const deviceDetailModes = qs('#device-detail-modes');

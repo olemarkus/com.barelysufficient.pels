@@ -51,6 +51,18 @@ export type DeviceControlAdapterSnapshot = {
     activationEnabled: boolean;
 };
 
+export type NativeSteppedLoadBlockReasonCode =
+    | 'zaptec_stepped_blocked_shared_installation'
+    | 'zaptec_stepped_blocked_power_mismatch';
+
+export type NativeSteppedLoadStatusSnapshot = {
+    provider: 'zaptec';
+    modelLabel: string;
+    currentStepLabel?: string;
+    blockedReasonCode?: NativeSteppedLoadBlockReasonCode;
+    blockedMessage?: string;
+};
+
 export type DeviceStateOfChargeSnapshot = {
     percent: number;
     observedAtMs?: number;
@@ -84,6 +96,7 @@ export type TargetDeviceSnapshot = {
     controlAdapter?: DeviceControlAdapterSnapshot;
     controlWriteCapabilityId?: string;
     controlObservationCapabilityId?: string;
+    nativeSteppedLoadStatus?: NativeSteppedLoadStatusSnapshot;
     suggestedSteppedLoadProfile?: SteppedLoadProfile;
     powerKw?: number;
     expectedPowerKw?: number;

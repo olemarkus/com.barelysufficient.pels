@@ -475,6 +475,17 @@ export const mockHomeyInstance = {
       }
       throw new Error(`Mock API PUT not implemented for: ${path}`);
     },
+    post: async (path: string, body?: any) => {
+      const flowMatch = path.match(/^manager\/flow\/flowcardaction\/(.+?)\/(.+?)\/run$/);
+      if (flowMatch) {
+        return {
+          ok: true,
+          path,
+          body,
+        };
+      }
+      throw new Error(`Mock API POST not implemented for: ${path}`);
+    },
     getApi: (uri: string) => {
       if (uri === 'homey:manager:devices') {
         return mockSdkDevicesApiEmitter;

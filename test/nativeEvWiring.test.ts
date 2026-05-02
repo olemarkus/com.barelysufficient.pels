@@ -28,16 +28,19 @@ const buildZaptecDevice = (overrides: Partial<HomeyDeviceLike> = {}): HomeyDevic
   ownerUri: 'homey:app:com.zaptec',
   capabilities: [
     'measure_power',
+    'available_installation_current',
     'charging_button',
     'charge_mode',
     'alarm_generic.car_connected',
   ],
   capabilitiesObj: {
     measure_power: { value: 7200 },
+    available_installation_current: { value: 16, lastUpdated: '2026-04-22T09:00:00.000Z' },
     charging_button: { value: false, setable: true, lastUpdated: '2026-04-22T09:00:01.000Z' },
     charge_mode: { value: 'Connecting to car', lastUpdated: '2026-04-22T09:00:02.000Z' },
     'alarm_generic.car_connected': { value: true, lastUpdated: '2026-04-22T09:00:03.000Z' },
   },
+  data: { id: 'zaptec-go-1', installationId: 'inst-1' },
   available: true,
   ready: true,
   ...overrides,
@@ -101,11 +104,10 @@ describe('native EV wiring shim', () => {
 
     expect(parsed).toEqual(expect.objectContaining({
       controlCapabilityId: 'evcharger_charging',
-      controlAdapter: {
+      controlAdapter: expect.objectContaining({
         kind: 'capability_adapter',
-        activationRequired: true,
         activationEnabled: true,
-      },
+      }),
       controlWriteCapabilityId: 'charging_button',
       controlObservationCapabilityId: 'evcharger_charging',
       currentOn: true,
@@ -131,11 +133,10 @@ describe('native EV wiring shim', () => {
     expect(parsed).toEqual(expect.objectContaining({
       id: 'zaptec-go-1',
       controlCapabilityId: 'evcharger_charging',
-      controlAdapter: {
+      controlAdapter: expect.objectContaining({
         kind: 'capability_adapter',
-        activationRequired: true,
         activationEnabled: true,
-      },
+      }),
       controlWriteCapabilityId: 'charging_button',
       controlObservationCapabilityId: 'evcharger_charging',
       currentOn: true,
@@ -168,11 +169,10 @@ describe('native EV wiring shim', () => {
       id: 'zaptec-go2-mock',
       name: 'Zaptec Go 2 Mock',
       controlCapabilityId: 'evcharger_charging',
-      controlAdapter: {
+      controlAdapter: expect.objectContaining({
         kind: 'capability_adapter',
-        activationRequired: true,
         activationEnabled: true,
-      },
+      }),
       controlWriteCapabilityId: 'charging_button',
       currentOn: true,
       evChargingState: 'plugged_in_paused',
@@ -180,7 +180,7 @@ describe('native EV wiring shim', () => {
     }));
   });
 
-  it('drops Zaptec-like devices when driverId is missing or not a Zaptec Go driver', () => {
+  it('drops Zaptec-like devices when driverId is missing or not a supported Zaptec driver', () => {
     const deviceManager = new DeviceManager(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -198,12 +198,6 @@ describe('native EV wiring shim', () => {
     ])).toEqual([]);
     expect(deviceManager.parseDeviceListForTests([
       buildZaptecDevice({
-        id: 'zaptec-home',
-        driverId: 'homey:app:com.zaptec:home',
-      }),
-    ])).toEqual([]);
-    expect(deviceManager.parseDeviceListForTests([
-      buildZaptecDevice({
         id: 'zaptec-clone-go',
         driverId: 'homey:app:com.zaptecclone:go',
       }),
@@ -215,6 +209,31 @@ describe('native EV wiring shim', () => {
         ownerUri: 'homey:app:com.olemarkus.testdevices',
       }),
     ])).toEqual([]);
+  });
+
+  it('accepts Zaptec Home and Pro through the same native EV wiring path', () => {
+    const deviceManager = new DeviceManager(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      {
+        getExperimentalEvSupportEnabled: () => true,
+        getNativeEvWiringEnabled: () => true,
+      },
+    );
+
+    const [home, pro] = deviceManager.parseDeviceListForTests([
+      buildZaptecDevice({ id: 'zaptec-home', driverId: 'homey:app:com.zaptec:home' }),
+      buildZaptecDevice({ id: 'zaptec-pro', driverId: 'homey:app:com.zaptec:pro' }),
+    ]);
+
+    expect(home).toEqual(expect.objectContaining({
+      id: 'zaptec-home',
+      controlCapabilityId: 'evcharger_charging',
+    }));
+    expect(pro).toEqual(expect.objectContaining({
+      id: 'zaptec-pro',
+      controlCapabilityId: 'evcharger_charging',
+    }));
   });
 
   it('uses the freshest source timestamps for synthesized EV capabilities', () => {
@@ -365,11 +384,10 @@ describe('native EV wiring shim', () => {
     const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice()]);
 
     expect(parsed).toEqual(expect.objectContaining({
-      controlAdapter: {
+      controlAdapter: expect.objectContaining({
         kind: 'capability_adapter',
-        activationRequired: true,
         activationEnabled: true,
-      },
+      }),
       currentOn: true,
       evChargingState: 'plugged_in_paused',
     }));

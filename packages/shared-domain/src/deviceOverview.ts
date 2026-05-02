@@ -29,6 +29,11 @@ export type DeviceOverviewSnapshot = {
   actualStepSource?: 'reported' | 'assumed' | 'profile_default';
   binaryCommandPending?: boolean;
   observationStale?: boolean;
+  nativeSteppedLoadStatus?: {
+    modelLabel: string;
+    currentStepLabel?: string;
+    blockedMessage?: string;
+  };
   stateOfCharge?: {
     percent: number;
     status: 'unknown' | 'fresh' | 'stale' | 'invalid';
@@ -240,6 +245,14 @@ const formatEvSocStatus = (
   return `EV battery: ${stateOfCharge.percent} %${sourceLabel}${staleSuffix}`;
 };
 
+const formatNativeSteppedStatus = (
+  nativeSteppedLoadStatus: DeviceOverviewSnapshot['nativeSteppedLoadStatus'],
+): string | null => {
+  if (!nativeSteppedLoadStatus) return null;
+  if (nativeSteppedLoadStatus.blockedMessage) return nativeSteppedLoadStatus.blockedMessage;
+  return nativeSteppedLoadStatus.currentStepLabel ?? nativeSteppedLoadStatus.modelLabel;
+};
+
 const formatUsageText = (params: {
   measuredKw?: number;
   expectedKw?: number;
@@ -258,6 +271,11 @@ const formatUsageText = (params: {
 export const getDeviceOverviewExpectedPowerKw = (device: DeviceOverviewSnapshot): number | undefined => (
   isSteppedLoadDevice(device) ? (device.planningPowerKw ?? device.expectedPowerKw) : device.expectedPowerKw
 );
+
+const appendOverviewStatus = (statusMsg: string, extraStatus: string | null): string => {
+  if (!extraStatus) return statusMsg;
+  return statusMsg === 'Waiting for headroom' ? extraStatus : `${statusMsg} - ${extraStatus}`;
+};
 
 export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOverviewStrings => {
   const currentPowerRaw = normalizeState(device.currentState) || 'unknown';
@@ -283,10 +301,8 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
       ? formatOverviewStatus(device.reason)
       : formatDeviceReason(device.reason);
   }
-  const evSocStatus = formatEvSocStatus(device.stateOfCharge);
-  if (evSocStatus) {
-    statusMsg = statusMsg === 'Waiting for headroom' ? evSocStatus : `${statusMsg} - ${evSocStatus}`;
-  }
+  statusMsg = appendOverviewStatus(statusMsg, formatEvSocStatus(device.stateOfCharge));
+  statusMsg = appendOverviewStatus(statusMsg, formatNativeSteppedStatus(device.nativeSteppedLoadStatus));
 
   return {
     powerMsg,
