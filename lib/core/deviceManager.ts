@@ -87,6 +87,7 @@ import {
     observeNativeSteppedLoadCapabilityUpdate,
     observeNativeSteppedLoadCommandAdapter,
     resolveObservedNativeSteppedLoadReportedStepId,
+    resolveObservedNativeSteppedLoadStatus,
     syncNativeSteppedLoadCommandAdapters,
 } from './deviceManagerNativeSteppedCommand';
 import { applyFreshnessOnlyCapabilityUpdate } from './deviceManagerFreshness';
@@ -223,10 +224,13 @@ export class DeviceManager extends EventEmitter {
         const profile = snapshot.suggestedSteppedLoadProfile;
         if (profile?.model !== 'stepped_load') return false;
 
-        const nativeCapabilityId = resolveNativeSteppedLoadCapabilityId([capabilityId]);
-        const isNativePowerStepUpdate = nativeCapabilityId !== undefined;
-        const isNativeBinaryUpdate = capabilityId === snapshot.controlCapabilityId && typeof value === 'boolean';
-        if (!isNativePowerStepUpdate && !isNativeBinaryUpdate) return false;
+        const updateKind = this.resolveNativeSteppedCapabilityUpdateKind({
+            capabilityId,
+            value,
+            snapshot,
+        });
+        if (!updateKind) return false;
+        const { isNativePowerStepUpdate, isZaptecAdapterObservation } = updateKind;
 
         const normalizedValue = this.normalizeRealtimeCapabilityEventValue(capabilityId, value);
         if (this.hasMatchingRecentLocalWrite(deviceId, capabilityId, normalizedValue)) {
@@ -238,6 +242,7 @@ export class DeviceManager extends EventEmitter {
             deviceId,
             capabilityId,
             value,
+            logger: this.logger,
         });
 
         const fallbackReportedStepId = value === false ? resolveNativeSteppedLoadReportedStepId({
@@ -253,20 +258,13 @@ export class DeviceManager extends EventEmitter {
             profile,
         }) ?? fallbackReportedStepId;
 
-        const currentSnapshot = this.latestSnapshot[snapshotIndex];
-        const previousReportedStepId = currentSnapshot.reportedStepId;
-        if (nextReportedStepId) currentSnapshot.reportedStepId = nextReportedStepId;
-        else delete currentSnapshot.reportedStepId;
-        currentSnapshot.lastFreshDataMs = Date.now();
-        currentSnapshot.lastUpdated = currentSnapshot.lastFreshDataMs;
-        if (previousReportedStepId !== nextReportedStepId) {
-            this.emitNativeSteppedLoadReportedStepChanged({
-                deviceId,
-                deviceName: currentSnapshot.name,
-                previousReportedStepId,
-                nextReportedStepId,
-            });
-        }
+        this.applyNativeSteppedLoadSnapshotUpdate({
+            snapshotIndex,
+            deviceId,
+            nextReportedStepId,
+            isNativePowerStepUpdate,
+            isZaptecAdapterObservation,
+        });
         return isNativePowerStepUpdate;
     }
 
@@ -506,6 +504,68 @@ export class DeviceManager extends EventEmitter {
         return value;
     }
 
+    private resolveNativeSteppedCapabilityUpdateKind(params: {
+        capabilityId: string;
+        value: unknown;
+        snapshot: TargetDeviceSnapshot;
+    }): {
+        isNativePowerStepUpdate: boolean;
+        isZaptecAdapterObservation: boolean;
+    } | null {
+        const { capabilityId, value, snapshot } = params;
+        const nativeCapabilityId = resolveNativeSteppedLoadCapabilityId([capabilityId]);
+        const isNativePowerStepUpdate = nativeCapabilityId !== undefined;
+        const isNativeBinaryUpdate = capabilityId === snapshot.controlCapabilityId && typeof value === 'boolean';
+        const isZaptecAdapterObservation = capabilityId === 'available_installation_current'
+            || capabilityId === 'measure_power';
+        if (!isNativePowerStepUpdate && !isNativeBinaryUpdate && !isZaptecAdapterObservation) {
+            return null;
+        }
+        return {
+            isNativePowerStepUpdate,
+            isZaptecAdapterObservation,
+        };
+    }
+
+    private applyNativeSteppedLoadSnapshotUpdate(params: {
+        snapshotIndex: number;
+        deviceId: string;
+        nextReportedStepId: string | undefined;
+        isNativePowerStepUpdate: boolean;
+        isZaptecAdapterObservation: boolean;
+    }): void {
+        const {
+            snapshotIndex,
+            deviceId,
+            nextReportedStepId,
+            isNativePowerStepUpdate,
+            isZaptecAdapterObservation,
+        } = params;
+        const currentSnapshot = this.latestSnapshot[snapshotIndex];
+        currentSnapshot.nativeSteppedLoadStatus = resolveObservedNativeSteppedLoadStatus({
+            owner: this,
+            deviceId,
+        });
+        if (currentSnapshot.nativeSteppedLoadStatus?.blockedReasonCode) {
+            delete currentSnapshot.suggestedSteppedLoadProfile;
+        }
+        const previousReportedStepId = currentSnapshot.reportedStepId;
+        if (nextReportedStepId) currentSnapshot.reportedStepId = nextReportedStepId;
+        else delete currentSnapshot.reportedStepId;
+        if (isNativePowerStepUpdate || isZaptecAdapterObservation) {
+            currentSnapshot.lastFreshDataMs = Date.now();
+            currentSnapshot.lastUpdated = currentSnapshot.lastFreshDataMs;
+        }
+        if (previousReportedStepId !== nextReportedStepId) {
+            this.emitNativeSteppedLoadReportedStepChanged({
+                deviceId,
+                deviceName: currentSnapshot.name,
+                previousReportedStepId,
+                nextReportedStepId,
+            });
+        }
+    }
+
     private emitCapabilityEventReceived(deviceId: string, capabilityId: string, normalizedValue: unknown): void {
         if (!this.debugStructured) return;
         const key = JSON.stringify([deviceId, capabilityId, normalizedValue]);
@@ -696,6 +756,9 @@ export class DeviceManager extends EventEmitter {
                 deviceId,
                 device: binarySafeDevice,
                 clearWhenUnavailable: true,
+                logger: this.logger,
+                sharedInstallationBlocked: previousSnapshot?.nativeSteppedLoadStatus?.blockedReasonCode
+                    === 'zaptec_stepped_blocked_shared_installation',
             });
         }
         const observedDevice = buildNativeEvObservationDevice({
@@ -1296,8 +1359,6 @@ export class DeviceManager extends EventEmitter {
                 : await this.fetchLivePowerReport();
             this.updateHomePowerFromReport(livePowerReport);
             const effectiveList = list.map((device) => this.applyDeviceDriverOverride(device));
-            syncNativeSteppedLoadCommandAdapters({ owner: this, devices: effectiveList,
-                shouldTrackDevice: (deviceId) => this.shouldTrackRealtimeDevice(deviceId) });
             const snapshot = this.parseDeviceList(effectiveList, livePowerReport.byDeviceId);
             mergeFresherCapabilityObservations({
                 state: this.observationState,
@@ -1614,6 +1675,12 @@ export class DeviceManager extends EventEmitter {
         list: HomeyDeviceLike[],
         livePowerWByDeviceId: LiveDevicePowerWatts = {},
     ): TargetDeviceSnapshot[] {
+        syncNativeSteppedLoadCommandAdapters({
+            owner: this,
+            devices: list.map((device) => this.applyDeviceDriverOverride(device)),
+            shouldTrackDevice: (deviceId) => this.shouldTrackRealtimeDevice(deviceId),
+            logger: this.logger,
+        });
         return parseDeviceList({
             list,
             livePowerWByDeviceId,
@@ -1639,7 +1706,13 @@ export class DeviceManager extends EventEmitter {
     private getParseDeviceDeps() {
         return {
             logger: this.logger,
-            providers: this.providers,
+            providers: {
+                ...this.providers,
+                getNativeSteppedLoadStatus: (deviceId: string) => resolveObservedNativeSteppedLoadStatus({
+                    owner: this,
+                    deviceId,
+                }),
+            },
             debugStructured: this.debugStructured,
             powerState: this.powerState,
             measuredPowerResolver: this.measuredPowerResolver,

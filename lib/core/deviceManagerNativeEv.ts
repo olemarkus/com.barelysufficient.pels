@@ -1,5 +1,11 @@
 import { shouldEmitOnChange } from '../logging/logDedupe';
-import type { DeviceControlAdapterSnapshot, HomeyDeviceLike, Logger, SteppedLoadProfile } from '../utils/types';
+import type {
+  DeviceControlAdapterSnapshot,
+  HomeyDeviceLike,
+  Logger,
+  NativeSteppedLoadStatusSnapshot,
+  SteppedLoadProfile,
+} from '../utils/types';
 import {
   augmentCapabilitiesWithFlowReports,
   getFlowEffectiveRequiredCapabilitiesForType,
@@ -22,6 +28,11 @@ import {
   resolveNativeSteppedLoadReportedStepId,
   stripNativeSteppedLoadControlCapabilities,
 } from './nativeSteppedLoadWiring';
+import {
+  isZaptecNativeSteppedLoadWiringCandidate,
+  resolveZaptecNativeSteppedLoadProfileSuggestion,
+  resolveZaptecNativeSteppedLoadReportedStepId,
+} from './zaptecNativeSteppedLoad';
 
 export type FlowEffectiveRequiredCapabilityId =
   'onoff'
@@ -54,6 +65,7 @@ export function resolveFlowCapabilityOverlay(params: {
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
   reportedStepId?: string;
   reportedStepObservedAtMs?: number;
+  nativeSteppedLoadStatus?: NativeSteppedLoadStatusSnapshot;
   suggestedSteppedLoadProfile?: SteppedLoadProfile;
   allReportedCapabilities: FlowReportedCapabilitiesForDevice;
 } {
@@ -116,11 +128,15 @@ export function resolveFlowCapabilityOverlay(params: {
     capabilityObj: overlayCapabilityObj,
     reportedCapabilities,
   });
+  const controlAdapter = nativeEvOverlay.controlAdapter?.activationRequired === true
+    && nativeEvOverlay.controlAdapter.activationEnabled !== true
+    ? nativeEvOverlay.controlAdapter
+    : (nativeSteppedOverlay.controlAdapter ?? nativeEvOverlay.controlAdapter);
 
   return {
     capabilities: stripNativeSteppedLoadControlCapabilities({ device, capabilities }),
     capabilityObj,
-    controlAdapter: nativeSteppedOverlay.controlAdapter ?? nativeEvOverlay.controlAdapter,
+    controlAdapter,
     controlWriteCapabilityId: nativeEvOverlay.controlWriteCapabilityId,
     controlObservationCapabilityId: nativeEvOverlay.controlObservationCapabilityId,
     flowAugmentedDeviceType,
@@ -129,6 +145,7 @@ export function resolveFlowCapabilityOverlay(params: {
     reportedCapabilities,
     reportedStepId: nativeSteppedOverlay.reportedStepId,
     reportedStepObservedAtMs: nativeSteppedOverlay.reportedStepObservedAtMs,
+    nativeSteppedLoadStatus: nativeSteppedOverlay.nativeSteppedLoadStatus,
     suggestedSteppedLoadProfile: nativeSteppedOverlay.suggestedSteppedLoadProfile,
     allReportedCapabilities,
   };
@@ -144,6 +161,7 @@ function resolveNativeSteppedLoadOverlay(params: {
   controlAdapter?: DeviceControlAdapterSnapshot;
   reportedStepId?: string;
   reportedStepObservedAtMs?: number;
+  nativeSteppedLoadStatus?: NativeSteppedLoadStatusSnapshot;
   suggestedSteppedLoadProfile?: SteppedLoadProfile;
 } {
   const {
@@ -153,34 +171,47 @@ function resolveNativeSteppedLoadOverlay(params: {
     capabilityObj,
     providers,
   } = params;
-  const suggestedSteppedLoadProfile = resolveNativeSteppedLoadProfileSuggestion({ device, capabilities });
-  if (!suggestedSteppedLoadProfile) return {};
-
-  const nativeSteppedCandidate = isNativeSteppedLoadWiringCandidate({ device, capabilities });
-  if (!nativeSteppedCandidate) return { suggestedSteppedLoadProfile };
+  const nativeSteppedLoadStatus = providers.getNativeSteppedLoadStatus?.(deviceId);
+  const zaptecSteppedCandidate = isZaptecNativeSteppedLoadWiringCandidate({ device, capabilities });
+  const nativeSteppedCandidate = zaptecSteppedCandidate || isNativeSteppedLoadWiringCandidate({ device, capabilities });
+  const suggestedSteppedLoadProfile = zaptecSteppedCandidate
+    ? resolveZaptecNativeSteppedLoadProfileSuggestion({ device, capabilities })
+    : resolveNativeSteppedLoadProfileSuggestion({ device, capabilities });
+  if (!nativeSteppedCandidate && !nativeSteppedLoadStatus) return {};
+  if (!suggestedSteppedLoadProfile || nativeSteppedLoadStatus?.blockedReasonCode) {
+    return { nativeSteppedLoadStatus };
+  }
 
   const nativeSteppedEnabled = providers.getNativeEvWiringEnabled?.(deviceId) === true;
-  const reportedStepId = nativeSteppedEnabled
-    ? resolveNativeSteppedLoadReportedStepId({
-      profile: suggestedSteppedLoadProfile,
-      capabilities,
-      capabilityObj,
-    })
-    : undefined;
+  let reportedStepId: string | undefined;
+  if (nativeSteppedEnabled) {
+    reportedStepId = zaptecSteppedCandidate
+      ? resolveZaptecNativeSteppedLoadReportedStepId({ capabilityObj })
+      : resolveNativeSteppedLoadReportedStepId({
+        profile: suggestedSteppedLoadProfile,
+        capabilities,
+        capabilityObj,
+      });
+  }
   return {
     controlAdapter: buildNativeSteppedLoadControlAdapter({ nativeWiringEnabled: nativeSteppedEnabled }),
     reportedStepId,
     reportedStepObservedAtMs: reportedStepId
-      ? resolveNativeSteppedLoadObservedAtMs({ capabilities, capabilityObj })
+      ? resolveNativeSteppedLoadObservedAtMs({ device, capabilities, capabilityObj })
       : undefined,
+    nativeSteppedLoadStatus,
     suggestedSteppedLoadProfile,
   };
 }
 
 function resolveNativeSteppedLoadObservedAtMs(params: {
+  device: HomeyDeviceLike;
   capabilities: readonly string[];
   capabilityObj: DeviceCapabilityMap;
 }): number | undefined {
+  if (isZaptecNativeSteppedLoadWiringCandidate({ device: params.device, capabilities: params.capabilities })) {
+    return toCapabilityTimestampMs(params.capabilityObj.available_installation_current?.lastUpdated);
+  }
   const nativeCapabilityId = resolveNativeSteppedLoadCapabilityId(params.capabilities);
   return toCapabilityTimestampMs(
     nativeCapabilityId ? params.capabilityObj[nativeCapabilityId]?.lastUpdated : undefined,

@@ -81,6 +81,7 @@ import {
   retainPendingNativeWiringEnable,
   setDeviceDetailNativeWiringState,
 } from './nativeWiring.ts';
+import { setDeviceDetailNativeSteppedStatus } from './nativeSteppedStatus.ts';
 
 let currentDetailDeviceId: string | null = null;
 let pendingOpenDeviceId: string | null = null;
@@ -157,6 +158,7 @@ const setDeviceDetailControlStates = (deviceId: string) => {
 
   setDeviceDetailBudgetExemptState(device);
   setDeviceDetailSocState(device);
+  setDeviceDetailNativeSteppedStatus(device);
   if (deviceDetailControlModel && deviceDetailControlModelRow) {
     const effectiveControlModel = device ? getEffectiveControlModel(device) : 'temperature_target';
     const nativeSteppedLoadLocked = isNativeSteppedLoadProfileActive(device);

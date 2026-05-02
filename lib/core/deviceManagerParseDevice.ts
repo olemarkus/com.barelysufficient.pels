@@ -2,6 +2,7 @@ import type {
     DeviceControlProfile,
     HomeyDeviceLike,
     Logger,
+    NativeSteppedLoadStatusSnapshot,
     TargetDeviceSnapshot,
 } from '../utils/types';
 import {
@@ -63,6 +64,7 @@ export type DeviceManagerParseProviders = {
     getDeviceDriverIdOverride?: (deviceId: string) => string | undefined;
     getExperimentalEvSupportEnabled?: () => boolean;
     getNativeEvWiringEnabled?: (deviceId: string) => boolean;
+    getNativeSteppedLoadStatus?: (deviceId: string) => NativeSteppedLoadStatusSnapshot | undefined;
     getDeviceControlProfile?: (deviceId: string) => DeviceControlProfile | undefined;
     getFlowReportedCapabilities?: (deviceId: string) => FlowReportedCapabilitiesForDevice;
 };
@@ -144,6 +146,7 @@ export function parseDevice(params: {
         reportedCapabilities,
         reportedStepId,
         reportedStepObservedAtMs,
+        nativeSteppedLoadStatus,
         suggestedSteppedLoadProfile,
     } = resolveFlowCapabilityOverlay({
         device: effectiveDevice,
@@ -239,6 +242,7 @@ export function parseDevice(params: {
         controlAdapter,
         controlWriteCapabilityId,
         controlObservationCapabilityId,
+        nativeSteppedLoadStatus,
         canSetControl,
         binaryControlObservation: resolveBinaryControlObservation(
             { capabilityObj, controlCapabilityId, controlObservationCapabilityId },
@@ -309,6 +313,7 @@ function buildParsedDeviceSnapshot(params: {
     controlAdapter?: TargetDeviceSnapshot['controlAdapter'];
     controlWriteCapabilityId?: string;
     controlObservationCapabilityId?: string;
+    nativeSteppedLoadStatus?: TargetDeviceSnapshot['nativeSteppedLoadStatus'];
     canSetControl: boolean | undefined;
     binaryControlObservation: TargetDeviceSnapshot['binaryControlObservation'];
     available: boolean;
@@ -337,6 +342,7 @@ function buildParsedDeviceSnapshot(params: {
         controlAdapter,
         controlWriteCapabilityId,
         controlObservationCapabilityId,
+        nativeSteppedLoadStatus,
         canSetControl,
         binaryControlObservation,
         available,
@@ -370,6 +376,7 @@ function buildParsedDeviceSnapshot(params: {
         controlAdapter,
         controlWriteCapabilityId,
         controlObservationCapabilityId,
+        nativeSteppedLoadStatus,
         binaryControlObservation,
         reportedStepId,
         suggestedSteppedLoadProfile,

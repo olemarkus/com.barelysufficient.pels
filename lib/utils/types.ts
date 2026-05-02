@@ -4,6 +4,8 @@ import type {
     BinaryControlObservation,
     DeviceControlProfile,
     DeviceControlProfiles,
+    NativeSteppedLoadBlockReasonCode,
+    NativeSteppedLoadStatusSnapshot,
     DeviceStateOfChargeSnapshot,
     EvBoostConfig,
     EvBoostSettings,
@@ -23,6 +25,8 @@ export type {
     BinaryControlObservation,
     DeviceControlProfile,
     DeviceControlProfiles,
+    NativeSteppedLoadBlockReasonCode,
+    NativeSteppedLoadStatusSnapshot,
     DeviceStateOfChargeSnapshot,
     EvBoostConfig,
     EvBoostSettings,
@@ -110,6 +114,7 @@ export type HomeyDeviceLike = {
     data?: {
         id?: string;
         driverId?: string;
+        installationId?: string;
     };
     virtualClass?: string;
     capabilities?: string[];
@@ -118,7 +123,10 @@ export type HomeyDeviceLike = {
         measure_power?: CapabilityValue<number>;
         meter_power?: CapabilityValue<number>;
         onoff?: CapabilityValue<boolean>;
+        available_installation_current?: CapabilityValue<number>;
         'alarm_generic.car_connected'?: CapabilityValue<boolean>;
+        charging_button?: CapabilityValue<boolean>;
+        charge_mode?: CapabilityValue<string>;
         evcharger_charging?: CapabilityValue<boolean>;
         evcharger_charging_state?: CapabilityValue<string>;
         measure_battery?: CapabilityValue<number>;

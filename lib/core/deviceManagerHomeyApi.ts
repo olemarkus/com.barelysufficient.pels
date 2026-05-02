@@ -11,6 +11,7 @@ const HTTP_TIMEOUT_MS = 30_000;
 
 export type RestClient = {
   get: (path: string) => Promise<unknown>;
+  post?: (path: string, body: unknown) => Promise<unknown>;
   put: (path: string, body: unknown) => Promise<unknown>;
 };
 
@@ -48,6 +49,7 @@ export async function initHomeyHttpClient(homey: Homey.App): Promise<void> {
 
   restClient = {
     get: (path) => homeyHttpGet(baseUrl, token, `/api/${path}`),
+    post: (path, body) => homeyHttpPost(baseUrl, token, `/api/${path}`, body),
     put: (path, body) => homeyHttpPut(baseUrl, token, `/api/${path}`, body),
   };
 }
@@ -98,6 +100,23 @@ export async function setRawCapabilityValue(
   }
 }
 
+export async function runRawFlowCardAction(params: {
+  uri: string;
+  id: string;
+  args?: Record<string, unknown>;
+}): Promise<unknown> {
+  if (!restClient?.post) throw new Error('REST client flow POST not initialized');
+  const path = `manager/flow/flowcardaction/${encodeURIComponent(params.uri)}/${encodeURIComponent(params.id)}/run`;
+  try {
+    return await restClient.post(path, {
+      args: params.args ?? {},
+    });
+  } catch (error) {
+    writeErrorToStderr(`runRawFlowCardAction POST '${path}' failed`, error);
+    throw error;
+  }
+}
+
 export function hasRestClient(): boolean {
   return restClient !== null;
 }
@@ -139,6 +158,10 @@ function isHomeyAppWrapper(value: unknown): value is { homey: Homey.App['homey']
 
 function homeyHttpGet(baseUrl: string, token: string, urlPath: string): Promise<unknown> {
   return homeyHttpRequest('GET', baseUrl, token, urlPath);
+}
+
+function homeyHttpPost(baseUrl: string, token: string, urlPath: string, body: unknown): Promise<unknown> {
+  return homeyHttpRequest('POST', baseUrl, token, urlPath, body);
 }
 
 function homeyHttpPut(baseUrl: string, token: string, urlPath: string, body: unknown): Promise<unknown> {
