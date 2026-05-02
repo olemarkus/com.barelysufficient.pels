@@ -158,8 +158,8 @@ export function registerFlowCards(deps: FlowCardDeps): void {
 
     registerHeadroomForDeviceCard(deps);
     registerCapacityAndModeCards(deps);
-    registerEvSocCard(deps);
     if (deps.areFlowBackedCardsAvailable?.() !== false) {
+      registerEvSocCard(deps);
       registerFlowBackedDeviceCards(deps);
     }
     registerSteppedLoadCards(deps);
@@ -856,7 +856,7 @@ async function handleEvSocCardRun(deps: FlowCardDeps, args: unknown): Promise<bo
     await deps.refreshSnapshot({ emitFlowBackedRefresh: false });
   }
 
-  const updatedCharger = await getDeviceSnapshotById(deps, chargerDeviceId);
+  const updatedCharger = await getBestEffortEvChargerSnapshot(deps, chargerDeviceId);
   deps.getStructuredLogger('devices')?.info(buildEvSocLogPayload({
     charger,
     chargerDeviceId,
@@ -867,6 +867,22 @@ async function handleEvSocCardRun(deps: FlowCardDeps, args: unknown): Promise<bo
   }));
 
   return true;
+}
+
+async function getBestEffortEvChargerSnapshot(
+  deps: FlowCardDeps,
+  chargerDeviceId: string,
+): Promise<TargetDeviceSnapshot | undefined> {
+  try {
+    return await getDeviceSnapshotById(deps, chargerDeviceId);
+  } catch (error: unknown) {
+    const normalizedError = normalizeError(error);
+    deps.logDebug(
+      `Flow: failed to reload EV charger snapshot for '${chargerDeviceId}' after reporting SoC: `
+      + normalizedError.message,
+    );
+    return undefined;
+  }
 }
 
 function parseEvSocCardArgs(args: unknown): {

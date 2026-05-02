@@ -228,7 +228,11 @@ function resolveStateOfChargeCandidate(params: {
         : 'capability',
       capabilityId,
     };
-    if (typeof reportedCapabilities.measure_battery?.sourceLabel === 'string') {
+    if (
+      candidate.source === 'flow'
+      && capabilityId === EV_SOC_CAPABILITY_ID
+      && typeof reportedCapabilities.measure_battery?.sourceLabel === 'string'
+    ) {
       candidate.sourceLabel = reportedCapabilities.measure_battery.sourceLabel;
     }
     return candidate;

@@ -88,6 +88,13 @@ file.
       `packages/settings-ui/src/ui/deviceUtils.ts`,
       `packages/settings-ui/src/ui/planLegacy.ts`,
       `packages/contracts/src/settingsUiApi.ts`.
+- [ ] Tighten EV SoC layer boundaries before expanding EV objectives.
+      Keep synthetic/report-source metadata (`source`, `sourceLabel`, and any future flow-only SoC
+      markers) in the observation layer unless another layer has a concrete behavioral need, and
+      decide whether a synthetic SoC input should move to a `pels_`-prefixed capability instead of
+      reusing Homey/native-looking capability ids.
+      Files: `lib/core/deviceStateOfCharge.ts`, `lib/core/deviceManagerObservation.ts`,
+      `lib/core/flowReportedCapabilities.ts`, EV SoC contracts/UI surfaces.
 
 ## P1 Type-safety and state-boundary follow-ups
 
