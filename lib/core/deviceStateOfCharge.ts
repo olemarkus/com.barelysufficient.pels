@@ -22,6 +22,7 @@ type StateOfChargeCandidate = {
   observedAtMs?: number;
   source: StateOfChargeSource;
   capabilityId: string;
+  sourceLabel?: string;
 };
 
 export function resolveStateOfChargeSnapshot(params: {
@@ -43,6 +44,7 @@ export function resolveStateOfChargeSnapshot(params: {
   const candidate = resolveStateOfChargeCandidate({
     capabilityObj,
     flowBackedCapabilityIds,
+    reportedCapabilities,
   });
   if (!candidate) return undefined;
 
@@ -50,6 +52,7 @@ export function resolveStateOfChargeSnapshot(params: {
     percent: candidate.percent,
     observedAtMs: candidate.observedAtMs,
     source: candidate.source,
+    sourceLabel: candidate.sourceLabel,
     capabilityId: candidate.capabilityId,
     capabilityObj,
     reportedCapabilities,
@@ -210,13 +213,14 @@ function shouldStartNewSession(
 function resolveStateOfChargeCandidate(params: {
   capabilityObj: DeviceCapabilityMap;
   flowBackedCapabilityIds: readonly FlowReportedCapabilityId[];
+  reportedCapabilities: FlowReportedCapabilitiesForDevice;
 }): StateOfChargeCandidate | null {
-  const { capabilityObj, flowBackedCapabilityIds } = params;
+  const { capabilityObj, flowBackedCapabilityIds, reportedCapabilities } = params;
   for (const capabilityId of EV_SOC_NATIVE_CAPABILITY_IDS) {
     const capability = capabilityObj[capabilityId];
     const percent = normalizeStateOfChargePercent(capability?.value);
     if (percent === undefined) continue;
-    return {
+    const candidate: StateOfChargeCandidate = {
       percent,
       observedAtMs: getCapabilityLastUpdatedMs(capabilityObj, capabilityId),
       source: flowBackedCapabilityIds.includes(capabilityId as FlowReportedCapabilityId)
@@ -224,6 +228,10 @@ function resolveStateOfChargeCandidate(params: {
         : 'capability',
       capabilityId,
     };
+    if (typeof reportedCapabilities.measure_battery?.sourceLabel === 'string') {
+      candidate.sourceLabel = reportedCapabilities.measure_battery.sourceLabel;
+    }
+    return candidate;
   }
   return null;
 }
@@ -232,6 +240,7 @@ function buildStateOfChargeSnapshot(params: {
   percent: number;
   observedAtMs?: number;
   source: StateOfChargeSource;
+  sourceLabel?: string;
   capabilityId: string;
   capabilityObj: DeviceCapabilityMap;
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
@@ -241,6 +250,7 @@ function buildStateOfChargeSnapshot(params: {
     percent,
     observedAtMs,
     source,
+    sourceLabel,
     capabilityId,
     capabilityObj,
     reportedCapabilities,
@@ -258,6 +268,7 @@ function buildStateOfChargeSnapshot(params: {
     ...(observedAtMs ? { observedAtMs } : {}),
     status,
     source,
+    ...(sourceLabel ? { sourceLabel } : {}),
     capabilityId,
     ...(session.sessionStartedAtMs ? { sessionStartedAtMs: session.sessionStartedAtMs } : {}),
     ...(session.invalidatedAtMs ? { invalidatedAtMs: session.invalidatedAtMs } : {}),
@@ -284,7 +295,7 @@ function resolveStateOfChargeStatus(params: {
     || (invalidatedAtMs !== undefined && invalidatedAtMs >= observedAtMs)
     || (sessionStartedAtMs !== undefined && sessionStartedAtMs > observedAtMs)
   ) {
-    return 'invalid_session';
+    return 'stale';
   }
   return nowMs - observedAtMs >= EV_SOC_STALE_MS ? 'stale' : 'fresh';
 }

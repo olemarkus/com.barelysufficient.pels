@@ -20,6 +20,9 @@ const buildDom = () => {
         <input id="device-detail-controllable" type="checkbox">
         <input id="device-detail-price-opt" type="checkbox">
         <input id="device-detail-budget-exempt" type="checkbox">
+        <div id="device-detail-soc-row" hidden></div>
+        <div id="device-detail-soc-updated"></div>
+        <div id="device-detail-soc-value"></div>
         <div id="device-detail-control-model-row">
           <select id="device-detail-control-model"></select>
         </div>
@@ -347,6 +350,61 @@ describe('device detail managed state saves', () => {
     );
     expect(state.managedMap['zaptec-1']).toBe(false);
     expect(confirmRow?.hidden).toBe(true);
+  });
+
+  it('shows EV SoC details for charger device detail', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    homeyModule.setHomeyClient(createHomeyMock({ settings: { managed_devices: { 'ev-1': true } } }));
+
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+    state.latestDevices = [buildDevice('ev-1', 'Driveway Charger', {
+      deviceClass: 'evcharger',
+      deviceType: 'onoff',
+      targets: [],
+      stateOfCharge: {
+        percent: 42,
+        observedAtMs: Date.parse('2026-03-11T10:00:00Z'),
+        status: 'stale',
+        source: 'flow',
+        sourceLabel: 'Tesla Flow',
+      },
+    })];
+    state.managedMap = { 'ev-1': true };
+    state.controllableMap = { 'ev-1': true };
+    state.budgetExemptMap = {};
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'ev-1': 1 } };
+    state.modeTargets = { Home: {} };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+    openDeviceDetail('ev-1');
+    await flushPromises();
+
+    expect((document.querySelector('#device-detail-soc-row') as HTMLElement | null)?.hidden).toBe(false);
+    expect((document.querySelector('#device-detail-soc-value') as HTMLElement | null)?.textContent)
+      .toBe('42 % from Tesla Flow - stale');
+    expect((document.querySelector('#device-detail-soc-updated') as HTMLElement | null)?.textContent)
+      .toContain('Status: stale');
   });
 
   it('restores the controllable checkbox when saving fails', async () => {

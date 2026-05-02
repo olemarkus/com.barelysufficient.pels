@@ -138,14 +138,15 @@ const isDevicePlanForUiSerialization = (value: unknown): value is DevicePlan => 
 );
 
 function resolveFlowBackedCapabilityReportOutcome(update: {
+  stateChanged: boolean;
   valueChanged: boolean;
   freshnessAdvanced: boolean;
   capabilityId: FlowReportedCapabilityId;
 }): FlowBackedCapabilityReportOutcome {
-  if (update.valueChanged) {
+  if (update.stateChanged) {
     return {
       kind: 'state_changed',
-      valueChanged: true,
+      valueChanged: update.valueChanged,
       freshnessAdvanced: update.freshnessAdvanced,
       refreshSnapshot: true,
       rebuildPlan: update.capabilityId !== EV_SOC_CAPABILITY_ID,
@@ -321,6 +322,7 @@ class PelsApp extends Homey.App {
     capabilityId: FlowReportedCapabilityId;
     value: boolean | number | string;
     reportedAt?: number;
+    sourceLabel?: string;
   }): FlowBackedCapabilityReportOutcome {
     if (!this.areFlowBackedCardsAvailable()) {
       return {
@@ -337,11 +339,12 @@ class PelsApp extends Homey.App {
       capabilityId: params.capabilityId,
       value: params.value,
       reportedAt: params.reportedAt,
+      sourceLabel: params.sourceLabel,
     });
-    if (update.valueChanged || (params.capabilityId === EV_SOC_CAPABILITY_ID && update.freshnessAdvanced)) {
+    if (update.stateChanged || (params.capabilityId === EV_SOC_CAPABILITY_ID && update.freshnessAdvanced)) {
       this.homey.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, this.flowReportedCapabilities);
     }
-    if (!update.valueChanged && update.freshnessAdvanced) {
+    if (!update.stateChanged && update.freshnessAdvanced) {
       this.syncFlowBackedObservationFreshness({
         deviceId: params.deviceId,
         capabilityId: params.capabilityId,

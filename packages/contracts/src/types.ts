@@ -47,8 +47,9 @@ export type DeviceControlAdapterSnapshot = {
 export type DeviceStateOfChargeSnapshot = {
     percent: number;
     observedAtMs?: number;
-    status: 'unknown' | 'fresh' | 'stale' | 'invalid_session';
+    status: 'unknown' | 'fresh' | 'stale' | 'invalid';
     source: 'capability' | 'flow';
+    sourceLabel?: string;
     capabilityId?: string;
     sessionStartedAtMs?: number;
     invalidatedAtMs?: number;
