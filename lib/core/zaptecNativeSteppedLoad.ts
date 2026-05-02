@@ -85,6 +85,7 @@ export function resolveZaptecNativeSteppedLoadReportedStepId(params: {
   capabilityObj: DeviceCapabilityMap;
 }): string | undefined {
   const { capabilityObj } = params;
+  if (capabilityObj.evcharger_charging_state?.value === 'plugged_out') return 'off';
   if (capabilityObj['alarm_generic.car_connected']?.value === false) return 'off';
   if (capabilityObj.charging_button?.value === false) return 'off';
   return resolveZaptecStepIdFromCurrent(capabilityObj.available_installation_current?.value);

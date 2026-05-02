@@ -89,6 +89,14 @@ const buildZaptecDevice = (overrides: Partial<HomeyDeviceLike> = {}): HomeyDevic
   ...overrides,
 });
 
+const restoreMockRestClient = () => {
+  setRestClient({
+    get: (path) => mockHomeyInstance.api.get(path),
+    post: (path, body) => mockHomeyInstance.api.post(path, body),
+    put: (path, body) => mockHomeyInstance.api.put(path, body),
+  });
+};
+
 describe('native stepped-load wiring', () => {
   it('maps Høiax max_power values to the configured stepped-load profile', () => {
     expect(resolveNativeSteppedLoadReportedStepId({
@@ -591,10 +599,7 @@ describe('native stepped-load wiring', () => {
         { value: '2' },
       );
     } finally {
-      setRestClient({
-        get: (path) => mockHomeyInstance.api.get(path),
-        put: (path, body) => mockHomeyInstance.api.put(path, body),
-      });
+      restoreMockRestClient();
     }
   });
 
@@ -644,10 +649,7 @@ describe('native stepped-load wiring', () => {
       expect(liveStateObserved).not.toHaveBeenCalled();
       expect(realtimeReconcile).not.toHaveBeenCalled();
     } finally {
-      setRestClient({
-        get: (path) => mockHomeyInstance.api.get(path),
-        put: (path, body) => mockHomeyInstance.api.put(path, body),
-      });
+      restoreMockRestClient();
     }
   });
 
@@ -699,10 +701,7 @@ describe('native stepped-load wiring', () => {
         }],
       });
     } finally {
-      setRestClient({
-        get: (path) => mockHomeyInstance.api.get(path),
-        put: (path, body) => mockHomeyInstance.api.put(path, body),
-      });
+      restoreMockRestClient();
     }
   });
 
@@ -892,10 +891,152 @@ describe('native stepped-load wiring', () => {
         }),
       }));
     } finally {
-      setRestClient({
-        get: (path) => mockHomeyInstance.api.get(path),
-        put: (path, body) => mockHomeyInstance.api.put(path, body),
-      });
+      restoreMockRestClient();
     }
+  });
+
+  it('clears a Zaptec power-mismatch block on normalized disconnect updates', async () => {
+    const get = vi.fn(async (path: string) => {
+      if (path === 'manager/devices/device') return { 'zaptec-go-1': buildZaptecDevice() };
+      throw new Error(`unexpected device fetch: ${path}`);
+    });
+    setRestClient({ get, post: vi.fn().mockResolvedValue({ ok: true }), put: vi.fn().mockResolvedValue(undefined) });
+    try {
+      const deviceManager = new DeviceManager(
+        mockHomeyInstance as unknown as Homey.App,
+        createLogger(),
+        {
+          getExperimentalEvSupportEnabled: () => true,
+          getNativeEvWiringEnabled: () => true,
+        },
+      );
+
+      await deviceManager.refreshSnapshot({ includeLivePower: false });
+      deviceManager.injectCapabilityUpdateForTest('zaptec-go-1', 'available_installation_current', 6);
+      deviceManager.injectCapabilityUpdateForTest('zaptec-go-1', 'measure_power', 2500);
+      deviceManager.injectCapabilityUpdateForTest('zaptec-go-1', 'measure_power', 2600);
+      deviceManager.injectCapabilityUpdateForTest('zaptec-go-1', 'alarm_generic.car_connected', false);
+
+      expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+        suggestedSteppedLoadProfile: ZAPTEC_NATIVE_STEPPED_LOAD_PROFILE,
+        nativeSteppedLoadStatus: expect.objectContaining({
+          blockedReasonCode: undefined,
+        }),
+        reportedStepId: 'off',
+      }));
+    } finally {
+      restoreMockRestClient();
+    }
+  });
+
+  it('does not block Zaptec mismatch validation while a higher step is still pending confirmation', async () => {
+    const get = vi.fn(async (path: string) => {
+      if (path === 'manager/devices/device') {
+        return {
+          'zaptec-go-1': buildZaptecDevice({
+            capabilitiesObj: {
+              measure_power: { value: 1380, lastUpdated: '2026-04-22T09:00:00.000Z' },
+              available_installation_current: { value: 6, lastUpdated: '2026-04-22T09:00:01.000Z' },
+              charging_button: { value: true, setable: true, lastUpdated: '2026-04-22T09:00:02.000Z' },
+              charge_mode: { value: 'Charging', lastUpdated: '2026-04-22T09:00:03.000Z' },
+              'alarm_generic.car_connected': { value: true, lastUpdated: '2026-04-22T09:00:04.000Z' },
+            },
+          }),
+        };
+      }
+      throw new Error(`unexpected device fetch: ${path}`);
+    });
+    const post = vi.fn().mockResolvedValue({ ok: true });
+    setRestClient({ get, post, put: vi.fn().mockResolvedValue(undefined) });
+    try {
+      const deviceManager = new DeviceManager(
+        mockHomeyInstance as unknown as Homey.App,
+        createLogger(),
+        {
+          getExperimentalEvSupportEnabled: () => true,
+          getNativeEvWiringEnabled: () => true,
+        },
+      );
+
+      await deviceManager.refreshSnapshot({ includeLivePower: false });
+      await setObservedNativeSteppedLoadStep({
+        owner: deviceManager,
+        deviceId: 'zaptec-go-1',
+        profile: ZAPTEC_NATIVE_STEPPED_LOAD_PROFILE,
+        desiredStepId: '20a',
+        setCapability: (capabilityId, value) => deviceManager.setCapability('zaptec-go-1', capabilityId, value),
+      });
+
+      deviceManager.injectCapabilityUpdateForTest('zaptec-go-1', 'measure_power', 2500);
+      deviceManager.injectCapabilityUpdateForTest('zaptec-go-1', 'measure_power', 2600);
+
+      expect(post).toHaveBeenCalled();
+      expect(deviceManager.getSnapshot()[0].nativeSteppedLoadStatus?.blockedReasonCode).toBeUndefined();
+    } finally {
+      restoreMockRestClient();
+    }
+  });
+
+  it('rebuilds the stepped adapter when a realtime device update switches provider kind', () => {
+    const deviceManager = new DeviceManager(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      {
+        getExperimentalEvSupportEnabled: () => true,
+        getNativeEvWiringEnabled: () => true,
+      },
+    );
+
+    deviceManager.parseDeviceListForTests([
+      { ...buildHoiaxDevice(), id: 'switch-device' },
+    ]);
+
+    deviceManager.injectDeviceUpdateForTest(buildZaptecDevice({
+      id: 'switch-device',
+      data: {
+        id: 'switch-device',
+        installationId: 'inst-switch',
+      },
+    }));
+
+    expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+      id: 'switch-device',
+      suggestedSteppedLoadProfile: ZAPTEC_NATIVE_STEPPED_LOAD_PROFILE,
+      nativeSteppedLoadStatus: expect.objectContaining({
+        provider: 'zaptec',
+      }),
+    }));
+  });
+
+  it('recomputes shared-installation blocking from current realtime topology', () => {
+    const deviceManager = new DeviceManager(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      {
+        getExperimentalEvSupportEnabled: () => true,
+        getNativeEvWiringEnabled: () => true,
+      },
+    );
+
+    deviceManager.parseDeviceListForTests([
+      buildZaptecDevice({ id: 'zaptec-a', data: { id: 'zaptec-a', installationId: 'inst-a' } }),
+      buildZaptecDevice({ id: 'zaptec-b', data: { id: 'zaptec-b', installationId: 'inst-b' } }),
+    ]);
+
+    deviceManager.injectDeviceUpdateForTest(buildZaptecDevice({
+      id: 'zaptec-b',
+      data: {
+        id: 'zaptec-b',
+        installationId: 'inst-a',
+      },
+    }));
+
+    const snapshotById = new Map(deviceManager.getSnapshot().map((device) => [device.id, device]));
+    expect(snapshotById.get('zaptec-b')).toEqual(expect.objectContaining({
+      suggestedSteppedLoadProfile: undefined,
+      nativeSteppedLoadStatus: expect.objectContaining({
+        blockedReasonCode: 'zaptec_stepped_blocked_shared_installation',
+      }),
+    }));
   });
 });
