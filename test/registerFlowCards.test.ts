@@ -237,6 +237,117 @@ describe('registerFlowCards', () => {
     }));
   });
 
+  it('reports EV charger battery level with a trimmed source label', async () => {
+    const { deps, actionListeners, structuredInfo } = buildDeps({
+      getSnapshot: vi.fn()
+        .mockResolvedValueOnce([
+          { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', currentOn: false, targets: [] },
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: 'ev-1',
+            name: 'Zaptec Go',
+            deviceClass: 'evcharger',
+            currentOn: false,
+            targets: [],
+            stateOfCharge: {
+              percent: 42,
+              observedAtMs: Date.parse('2026-03-11T10:00:00Z'),
+              status: 'fresh',
+              source: 'flow',
+              sourceLabel: 'Tesla Flow',
+            },
+          },
+        ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_evcharger_battery_level({
+      device: 'ev-1',
+      battery_percent: 42,
+      source_label: '  Tesla Flow  ',
+    })).resolves.toBe(true);
+
+    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith({
+      deviceId: 'ev-1',
+      capabilityId: 'measure_battery',
+      value: 42,
+      sourceLabel: 'Tesla Flow',
+    });
+    expect(deps.refreshSnapshot).toHaveBeenCalledWith({ emitFlowBackedRefresh: false });
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'ev_soc_reported',
+      chargerDeviceId: 'ev-1',
+      chargerName: 'Zaptec Go',
+      percent: 42,
+      sourceLabel: 'Tesla Flow',
+      status: 'fresh',
+    }));
+  });
+
+  it('defaults EV charger battery source label to Flow', async () => {
+    const { deps, actionListeners } = buildDeps({
+      getSnapshot: vi.fn()
+        .mockResolvedValueOnce([
+          { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', currentOn: false, targets: [] },
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: 'ev-1',
+            name: 'Zaptec Go',
+            deviceClass: 'evcharger',
+            currentOn: false,
+            targets: [],
+            stateOfCharge: {
+              percent: 42,
+              observedAtMs: Date.parse('2026-03-11T10:00:00Z'),
+              status: 'fresh',
+              source: 'flow',
+              sourceLabel: 'Flow',
+            },
+          },
+        ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_evcharger_battery_level({
+      device: 'ev-1',
+      battery_percent: 42,
+    })).resolves.toBe(true);
+
+    expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith({
+      deviceId: 'ev-1',
+      capabilityId: 'measure_battery',
+      value: 42,
+      sourceLabel: 'Flow',
+    });
+  });
+
+  it('rejects EV charger battery reports outside 0-100 or non-numeric input', async () => {
+    const { deps, actionListeners } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([
+        { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', currentOn: false, targets: [] },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_evcharger_battery_level({
+      device: 'ev-1',
+      battery_percent: -1,
+    })).rejects.toThrow('Battery level must be between 0 and 100.');
+    await expect(actionListeners.report_evcharger_battery_level({
+      device: 'ev-1',
+      battery_percent: 101,
+    })).rejects.toThrow('Battery level must be between 0 and 100.');
+    await expect(actionListeners.report_evcharger_battery_level({
+      device: 'ev-1',
+      battery_percent: 'abc',
+    })).rejects.toThrow('Battery level must be a number between 0 and 100.');
+  });
+
   it('accepts a stepped-load actual step report when snapshot lookup fails', async () => {
     const { deps, actionListeners, structuredInfo } = buildDeps({
       getSnapshot: vi.fn().mockRejectedValue(new Error('snapshot unavailable')),

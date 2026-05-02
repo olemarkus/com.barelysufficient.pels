@@ -55,6 +55,7 @@ import {
   setDeviceDetailShedBehavior,
   updateShedFieldVisibility,
 } from './shedBehavior.ts';
+import { setDeviceDetailSocState } from './socState.ts';
 import {
   closeSteppedLoadDraft,
   initSteppedLoadDraftHandlers,
@@ -150,6 +151,7 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   }
 
   setDeviceDetailBudgetExemptState(device);
+  setDeviceDetailSocState(device);
   if (deviceDetailControlModel && deviceDetailControlModelRow) {
     const effectiveControlModel = device ? getEffectiveControlModel(device) : 'temperature_target';
     const nativeSteppedLoadLocked = isNativeSteppedLoadProfileActive(device);

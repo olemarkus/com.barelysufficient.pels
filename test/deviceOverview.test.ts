@@ -51,6 +51,34 @@ describe('device overview formatter', () => {
     });
   });
 
+  it('adds EV battery SoC details to status text without changing control state', () => {
+    expect(formatDeviceOverview({
+      currentState: 'on',
+      plannedState: 'keep',
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_in_charging',
+      stateOfCharge: {
+        percent: 42,
+        status: 'fresh',
+        sourceLabel: 'Tesla Flow',
+      },
+      reason: r('keep'),
+    }).statusMsg).toBe('keep - EV battery: 42 % from Tesla Flow');
+
+    expect(formatDeviceOverview({
+      currentState: 'off',
+      plannedState: 'inactive',
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_out',
+      stateOfCharge: {
+        percent: 42,
+        status: 'stale',
+        sourceLabel: 'Tesla Flow',
+      },
+      reason: r('inactive'),
+    }).statusMsg).toBe('inactive - EV battery: 42 % from Tesla Flow, stale');
+  });
+
   it('formats legacy keep devices blocked by meter settling without inventing shed state', () => {
     expect(formatDeviceOverview({
       currentState: 'off',

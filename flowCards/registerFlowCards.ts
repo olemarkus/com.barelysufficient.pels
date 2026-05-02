@@ -57,6 +57,7 @@ export type FlowCardDeps = {
     deviceId: string;
     capabilityId: FlowReportedCapabilityId;
     value: boolean | number | string;
+    sourceLabel?: string;
   }) => FlowBackedCapabilityReportOutcome;
   reportSteppedLoadActualStep: (
     deviceId: string,
@@ -157,6 +158,7 @@ export function registerFlowCards(deps: FlowCardDeps): void {
 
     registerHeadroomForDeviceCard(deps);
     registerCapacityAndModeCards(deps);
+    registerEvSocCard(deps);
     if (deps.areFlowBackedCardsAvailable?.() !== false) {
       registerFlowBackedDeviceCards(deps);
     }
@@ -824,6 +826,86 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
   ));
 }
 
+function registerEvSocCard(deps: FlowCardDeps): void {
+  const cardId = 'report_evcharger_battery_level';
+  const card = deps.homey.flow.getActionCard(cardId);
+  card.registerRunListener(async (args: unknown) => handleEvSocCardRun(deps, args));
+  card.registerArgumentAutocompleteListener('device', async (query: string) => (
+    getEvChargerDeviceOptions(deps, query)
+  ));
+}
+
+type EvSocCardArgs = {
+  device?: DeviceArg;
+  battery_percent?: unknown;
+  source_label?: unknown;
+} | null;
+
+async function handleEvSocCardRun(deps: FlowCardDeps, args: unknown): Promise<boolean> {
+  const { chargerDeviceId, percent, sourceLabel } = parseEvSocCardArgs(args);
+  const charger = await requireEvChargerSnapshot(deps, chargerDeviceId);
+  const observedAtMs = Date.now();
+  const reportOutcome = deps.reportFlowBackedCapability({
+    deviceId: chargerDeviceId,
+    capabilityId: 'measure_battery',
+    value: percent,
+    sourceLabel,
+  });
+
+  if (reportOutcome.refreshSnapshot) {
+    await deps.refreshSnapshot({ emitFlowBackedRefresh: false });
+  }
+
+  const updatedCharger = await getDeviceSnapshotById(deps, chargerDeviceId);
+  deps.getStructuredLogger('devices')?.info(buildEvSocLogPayload({
+    charger,
+    chargerDeviceId,
+    updatedCharger,
+    percent,
+    sourceLabel,
+    observedAtMs,
+  }));
+
+  return true;
+}
+
+function parseEvSocCardArgs(args: unknown): {
+  chargerDeviceId: string;
+  percent: number;
+  sourceLabel: string;
+} {
+  const payload = args as EvSocCardArgs;
+  const chargerDeviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
+  if (!chargerDeviceId) {
+    throw new Error('Charger device must be provided.');
+  }
+  return {
+    chargerDeviceId,
+    percent: parseEvSocPercent(payload?.battery_percent),
+    sourceLabel: parseEvSocSourceLabel(payload?.source_label),
+  };
+}
+
+function buildEvSocLogPayload(params: {
+  charger: TargetDeviceSnapshot;
+  chargerDeviceId: string;
+  updatedCharger: TargetDeviceSnapshot | undefined;
+  percent: number;
+  sourceLabel: string;
+  observedAtMs: number;
+}) {
+  const { charger, chargerDeviceId, updatedCharger, percent, sourceLabel, observedAtMs } = params;
+  return {
+    event: 'ev_soc_reported',
+    chargerDeviceId,
+    chargerName: updatedCharger?.name ?? charger.name,
+    percent,
+    sourceLabel: updatedCharger?.stateOfCharge?.sourceLabel ?? sourceLabel,
+    observedAtMs: updatedCharger?.stateOfCharge?.observedAtMs ?? observedAtMs,
+    status: updatedCharger?.stateOfCharge?.status ?? 'unknown',
+  };
+}
+
 function getModeOptions(deps: FlowCardDeps, query: string): Array<{ id: string; name: string }> {
   const q = (query || '').toLowerCase();
   return Array.from(deps.getAllModes())
@@ -850,6 +932,69 @@ async function getSteppedLoadDeviceOptions(
     )),
     query,
   );
+}
+
+async function getEvChargerDeviceOptions(
+  deps: FlowCardDeps,
+  query: string,
+): Promise<Array<{ id: string; name: string }>> {
+  const snapshot = await deps.getSnapshot();
+  return buildDeviceAutocompleteOptions(
+    snapshot.filter((device) => device.deviceClass === 'evcharger'),
+    query,
+  );
+}
+
+async function getDeviceSnapshotById(
+  deps: FlowCardDeps,
+  deviceId: string,
+): Promise<TargetDeviceSnapshot | undefined> {
+  const snapshot = await deps.getSnapshot();
+  return snapshot.find((entry) => entry.id === deviceId);
+}
+
+async function requireEvChargerSnapshot(
+  deps: FlowCardDeps,
+  chargerDeviceId: string,
+): Promise<TargetDeviceSnapshot> {
+  const snapshot = await deps.getSnapshot();
+  const charger = snapshot.find((entry) => entry.id === chargerDeviceId);
+  if (!charger) {
+    throw new Error(`Charger '${chargerDeviceId}' was not found in the snapshot.`);
+  }
+  if (charger.deviceClass !== 'evcharger') {
+    throw new Error(`Device '${charger.name.trim()}' is not an EV charger.`);
+  }
+  return charger;
+}
+
+function parseEvSocPercent(rawValue: unknown): number {
+  if (typeof rawValue === 'string' && rawValue.trim() === '') {
+    throw new Error('Battery level must be a number between 0 and 100.');
+  }
+  const percent = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+  if (!Number.isFinite(percent)) {
+    throw new Error('Battery level must be a number between 0 and 100.');
+  }
+  if (percent < 0 || percent > 100) {
+    throw new Error('Battery level must be between 0 and 100.');
+  }
+  return Math.round(percent * 10) / 10;
+}
+
+function parseEvSocSourceLabel(rawValue: unknown): string {
+  if (typeof rawValue === 'string') {
+    const normalized = rawValue.trim();
+    return normalized || 'Flow';
+  }
+  if (typeof rawValue === 'object' && rawValue !== null && 'id' in rawValue) {
+    const rawId = (rawValue as { id?: unknown }).id;
+    if (typeof rawId === 'string') {
+      const normalized = rawId.trim();
+      return normalized || 'Flow';
+    }
+  }
+  return 'Flow';
 }
 
 function getDeviceIdFromArg(arg: DeviceArg): string {

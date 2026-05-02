@@ -3029,6 +3029,7 @@ describe('periodic snapshot refresh scheduling', () => {
       capabilityId: 'measure_battery',
       value: 63,
       reportedAt,
+      sourceLabel: 'Tesla Flow',
     });
 
     expect(result).toEqual({
@@ -3038,6 +3039,66 @@ describe('periodic snapshot refresh scheduling', () => {
       refreshSnapshot: true,
       rebuildPlan: false,
     });
+  });
+
+  it('stores EV state of charge under the charger id with a default source label', async () => {
+    const app = createApp();
+    const reportedAt = Date.parse('2026-03-20T09:05:00Z');
+    (app as any).flowReportedCapabilities = {};
+
+    (app as any).reportFlowBackedCapability({
+      deviceId: 'ev-1',
+      capabilityId: 'measure_battery',
+      value: 62.04,
+      reportedAt,
+    });
+
+    expect((app as any).flowReportedCapabilities).toEqual({
+      'ev-1': {
+        measure_battery: { value: 62.04, reportedAt, source: 'flow', sourceLabel: 'Flow' },
+      },
+    });
+  });
+
+  it('updates EV state of charge source label when the value is unchanged', async () => {
+    const app = createApp();
+    const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+    const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
+    const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
+    (app as any).flowReportedCapabilities = {
+      'ev-1': {
+        measure_battery: { value: 62, reportedAt: initialReportedAt, source: 'flow', sourceLabel: 'Flow' },
+      },
+    };
+
+    const result = (app as any).reportFlowBackedCapability({
+      deviceId: 'ev-1',
+      capabilityId: 'measure_battery',
+      value: 62,
+      reportedAt: nextReportedAt,
+      sourceLabel: '  Tesla Flow  ',
+    });
+
+    expect(result).toEqual({
+      kind: 'state_changed',
+      valueChanged: false,
+      freshnessAdvanced: true,
+      refreshSnapshot: true,
+      rebuildPlan: false,
+    });
+    expect((app as any).flowReportedCapabilities).toEqual({
+      'ev-1': {
+        measure_battery: { value: 62, reportedAt: nextReportedAt, source: 'flow', sourceLabel: 'Tesla Flow' },
+      },
+    });
+    expect(settingsSetSpy).toHaveBeenCalledWith(
+      FLOW_REPORTED_DEVICE_CAPABILITIES,
+      {
+        'ev-1': {
+          measure_battery: { value: 62, reportedAt: nextReportedAt, source: 'flow', sourceLabel: 'Tesla Flow' },
+        },
+      },
+    );
   });
 
   it('persists same-value flow-backed EV state of charge freshness advances', async () => {
@@ -3069,7 +3130,7 @@ describe('periodic snapshot refresh scheduling', () => {
       'flow_reported_device_capabilities',
       {
         'ev-1': {
-          measure_battery: { value: 62, reportedAt: nextReportedAt, source: 'flow' },
+          measure_battery: { value: 62, reportedAt: nextReportedAt, source: 'flow', sourceLabel: 'Flow' },
         },
       },
     );

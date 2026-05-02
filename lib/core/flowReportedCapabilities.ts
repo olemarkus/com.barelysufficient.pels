@@ -17,6 +17,7 @@ export type FlowReportedCapabilityEntry = {
   value: boolean | number | string;
   reportedAt: number;
   source: 'flow';
+  sourceLabel?: string;
 };
 
 export type FlowReportedCapabilitiesByDevice = Partial<
@@ -88,6 +89,7 @@ export function upsertFlowReportedCapability(params: {
   capabilityId: FlowReportedCapabilityId;
   value: boolean | number | string;
   reportedAt?: number;
+  sourceLabel?: string;
 }): FlowReportedCapabilityUpdateResult {
   const {
     state,
@@ -95,13 +97,19 @@ export function upsertFlowReportedCapability(params: {
     capabilityId,
     value,
     reportedAt = Date.now(),
+    sourceLabel,
   } = params;
   const current = state[deviceId]?.[capabilityId];
+  const normalizedSourceLabel = normalizeFlowReportedSourceLabel({
+    capabilityId,
+    sourceLabel,
+  });
   if (!current) {
     const entry: FlowReportedCapabilityEntry = {
       value,
       reportedAt,
       source: 'flow',
+      ...(normalizedSourceLabel ? { sourceLabel: normalizedSourceLabel } : {}),
     };
     state[deviceId] = {
       ...(state[deviceId] ?? {}),
@@ -116,10 +124,15 @@ export function upsertFlowReportedCapability(params: {
   }
 
   const valueChanged = !Object.is(current.value, value);
+  const currentSourceLabel = normalizeFlowReportedSourceLabel({
+    capabilityId,
+    sourceLabel: current.sourceLabel,
+  });
+  const sourceLabelChanged = currentSourceLabel !== normalizedSourceLabel;
   const nextReportedAt = Math.max(current.reportedAt, reportedAt);
   const freshnessAdvanced = nextReportedAt > current.reportedAt;
 
-  if (!valueChanged && !freshnessAdvanced) {
+  if (!valueChanged && !freshnessAdvanced && !sourceLabelChanged) {
     return {
       valueChanged: false,
       freshnessAdvanced: false,
@@ -132,6 +145,7 @@ export function upsertFlowReportedCapability(params: {
     value,
     reportedAt: nextReportedAt,
     source: 'flow',
+    ...(normalizedSourceLabel ? { sourceLabel: normalizedSourceLabel } : {}),
   };
   state[deviceId] = {
     ...(state[deviceId] ?? {}),
@@ -141,7 +155,7 @@ export function upsertFlowReportedCapability(params: {
   return {
     valueChanged,
     freshnessAdvanced,
-    stateChanged: true,
+    stateChanged: valueChanged || sourceLabelChanged,
     entry,
   };
 }
@@ -451,6 +465,7 @@ function parseFlowReportedEntry(
     value: rawEntry.value,
     reportedAt,
     source: 'flow',
+    ...resolveParsedFlowReportedSourceLabel(capabilityId, rawEntry.sourceLabel),
   };
 }
 
@@ -462,4 +477,25 @@ function isValidFlowReportedValue(
     return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100;
   }
   return typeof value === 'boolean';
+}
+
+function normalizeFlowReportedSourceLabel(params: {
+  capabilityId: FlowReportedCapabilityId;
+  sourceLabel?: string;
+}): string | undefined {
+  const { capabilityId, sourceLabel } = params;
+  if (capabilityId !== 'measure_battery') return undefined;
+  const normalized = sourceLabel?.trim();
+  return normalized || 'Flow';
+}
+
+function resolveParsedFlowReportedSourceLabel(
+  capabilityId: FlowReportedCapabilityId,
+  value: unknown,
+): { sourceLabel?: string } {
+  const normalized = normalizeFlowReportedSourceLabel({
+    capabilityId,
+    sourceLabel: typeof value === 'string' ? value : undefined,
+  });
+  return normalized ? { sourceLabel: normalized } : {};
 }

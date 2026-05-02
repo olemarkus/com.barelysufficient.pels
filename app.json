@@ -688,6 +688,51 @@
       },
       {
         "title": {
+          "en": "Report battery level for charger"
+        },
+        "titleFormatted": {
+          "en": "Report battery level for [[device]] as [[battery_percent]] % from [[source_label]]"
+        },
+        "hint": {
+          "en": "Store battery percentage for a managed charger without requiring the charger itself to expose a battery capability."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Charger device"
+            },
+            "placeholder": {
+              "en": "Select EV charger"
+            }
+          },
+          {
+            "name": "battery_percent",
+            "type": "number",
+            "title": {
+              "en": "Battery level (%)"
+            },
+            "min": 0,
+            "max": 100,
+            "step": 0.1
+          },
+          {
+            "name": "source_label",
+            "type": "text",
+            "optional": true,
+            "title": {
+              "en": "Source label"
+            },
+            "placeholder": {
+              "en": "Flow"
+            }
+          }
+        ],
+        "id": "report_evcharger_battery_level"
+      },
+      {
+        "title": {
           "en": "Report power usage"
         },
         "titleFormatted": {

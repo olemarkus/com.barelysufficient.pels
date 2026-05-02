@@ -29,6 +29,11 @@ export type DeviceOverviewSnapshot = {
   actualStepSource?: 'reported' | 'assumed' | 'profile_default';
   binaryCommandPending?: boolean;
   observationStale?: boolean;
+  stateOfCharge?: {
+    percent: number;
+    status: 'unknown' | 'fresh' | 'stale' | 'invalid';
+    sourceLabel?: string;
+  };
 };
 
 export type DeviceOverviewStrings = {
@@ -224,6 +229,17 @@ export const formatOverviewStatus = (reason: DeviceReason): string => {
   }
 };
 
+const formatEvSocStatus = (
+  stateOfCharge: DeviceOverviewSnapshot['stateOfCharge'],
+): string | null => {
+  if (!stateOfCharge || stateOfCharge.status === 'unknown' || stateOfCharge.status === 'invalid') {
+    return null;
+  }
+  const sourceLabel = stateOfCharge.sourceLabel ? ` from ${stateOfCharge.sourceLabel}` : '';
+  const staleSuffix = stateOfCharge.status === 'stale' ? ', stale' : '';
+  return `EV battery: ${stateOfCharge.percent} %${sourceLabel}${staleSuffix}`;
+};
+
 const formatUsageText = (params: {
   measuredKw?: number;
   expectedKw?: number;
@@ -266,6 +282,10 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
     statusMsg = device.plannedState === 'keep' || device.reason.code === PLAN_REASON_CODES.meterSettling
       ? formatOverviewStatus(device.reason)
       : formatDeviceReason(device.reason);
+  }
+  const evSocStatus = formatEvSocStatus(device.stateOfCharge);
+  if (evSocStatus) {
+    statusMsg = statusMsg === 'Waiting for headroom' ? evSocStatus : `${statusMsg} - ${evSocStatus}`;
   }
 
   return {
