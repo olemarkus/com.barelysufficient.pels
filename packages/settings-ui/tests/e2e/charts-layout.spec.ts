@@ -63,7 +63,7 @@ const collectLayoutIssues = async (
 test.describe('Settings UI chart layout', () => {
   const assertChartsWithinPanel = async (page: Page) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('heading', { name: 'Control center' })).toBeVisible();
+    await expect(page.getByRole('tablist')).toBeVisible();
 
     await page.getByRole('tab', { name: 'Budget' }).click();
     await expect(page.locator('#budget-panel')).toBeVisible();
