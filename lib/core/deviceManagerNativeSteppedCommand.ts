@@ -20,6 +20,7 @@ import { getDeviceId } from './deviceManagerHelpers';
 import { buildZaptecNativeSteppedLoadCommandAdapter } from './zaptecNativeSteppedCommandAdapter';
 
 export type NativeSteppedLoadCommandAdapter = {
+  kind: 'capability' | 'zaptec';
   syncDevice: (params: {
     device: HomeyDeviceLike;
     sharedInstallationBlocked: boolean;
@@ -41,7 +42,7 @@ export type NativeSteppedLoadCommandAdapter = {
     value: unknown;
     logger?: Logger;
   }) => boolean;
-  getReportedStepId: (profile: SteppedLoadProfile) => string | undefined;
+  getReportedStepId: (profile?: SteppedLoadProfile) => string | undefined;
   getStatus: () => NativeSteppedLoadStatusSnapshot | undefined;
 };
 
@@ -64,6 +65,15 @@ export function buildNativeSteppedLoadCommandAdapter(
   if (isNativeSteppedLoadWiringCandidate({ device, capabilities })) {
     return buildCapabilityNativeSteppedLoadCommandAdapter(device);
   }
+  return null;
+}
+
+function resolveNativeSteppedLoadCommandAdapterKind(
+  device: HomeyDeviceLike,
+): NativeSteppedLoadCommandAdapter['kind'] | null {
+  const capabilities = Array.isArray(device.capabilities) ? device.capabilities : [];
+  if (isZaptecNativeSteppedLoadWiringCandidate({ device, capabilities })) return 'zaptec';
+  if (isNativeSteppedLoadWiringCandidate({ device, capabilities })) return 'capability';
   return null;
 }
 
@@ -90,7 +100,8 @@ export function observeNativeSteppedLoadCommandAdapter(params: {
   }
 
   const existing = adapters.get(deviceId);
-  if (existing) {
+  const nextKind = resolveNativeSteppedLoadCommandAdapterKind(device);
+  if (existing && existing.kind === nextKind) {
     existing.syncDevice({ device, sharedInstallationBlocked, logger });
     return;
   }
@@ -183,7 +194,7 @@ export function observeNativeSteppedLoadCapabilityUpdate(params: {
 export function resolveObservedNativeSteppedLoadReportedStepId(params: {
   owner: object;
   deviceId: string;
-  profile: SteppedLoadProfile;
+  profile?: SteppedLoadProfile;
 }): string | undefined {
   const {
     owner,
@@ -208,6 +219,7 @@ function buildCapabilityNativeSteppedLoadCommandAdapter(
   let capabilities = Array.isArray(device.capabilities) ? [...device.capabilities] : [];
   let capabilityObj = getCapabilityObj(device);
   return {
+    kind: 'capability',
     syncDevice({ device: nextDevice }) {
       capabilities = Array.isArray(nextDevice.capabilities) ? [...nextDevice.capabilities] : [];
       capabilityObj = getCapabilityObj(nextDevice);
@@ -232,6 +244,7 @@ function buildCapabilityNativeSteppedLoadCommandAdapter(
       return true;
     },
     getReportedStepId(profile) {
+      if (!profile) return undefined;
       return resolveNativeSteppedLoadReportedStepId({
         profile,
         capabilities,

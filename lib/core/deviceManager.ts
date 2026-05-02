@@ -85,7 +85,6 @@ import {
 } from './nativeEvWiring';
 import {
     observeNativeSteppedLoadCapabilityUpdate,
-    observeNativeSteppedLoadCommandAdapter,
     resolveObservedNativeSteppedLoadReportedStepId,
     resolveObservedNativeSteppedLoadStatus,
     syncNativeSteppedLoadCommandAdapters,
@@ -98,6 +97,7 @@ import {
 } from './nativeSteppedLoadWiring';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from './steppedLoadSyntheticCapabilities';
 import { isStateOfChargeCapabilityId } from './deviceStateOfCharge';
+import { ZAPTEC_NATIVE_STEPPED_LOAD_PROFILE } from './zaptecNativeSteppedLoad';
 
 const MIN_SIGNIFICANT_POWER_W = 5;
 const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
@@ -127,6 +127,7 @@ export class DeviceManager extends EventEmitter {
     private homey: Homey.App;
     private latestSnapshot: TargetDeviceSnapshot[] = [];
     private latestSnapshotById: Map<string, TargetDeviceSnapshot> = new Map();
+    private latestTrackedDevicesById: Map<string, HomeyDeviceLike> = new Map();
     private latestHomePowerW: number | null = null;
     private powerState: Required<PowerEstimateState>;
     private measuredPowerResolver: DeviceMeasuredPowerResolver;
@@ -221,8 +222,10 @@ export class DeviceManager extends EventEmitter {
             snapshot,
         } = params;
         if (!isNativeSteppedLoadControlEnabled(snapshot)) return false;
+        const isZaptecAdapter = snapshot.nativeSteppedLoadStatus?.provider === 'zaptec';
         const profile = snapshot.suggestedSteppedLoadProfile;
-        if (profile?.model !== 'stepped_load') return false;
+        if (profile?.model !== 'stepped_load' && !isZaptecAdapter) return false;
+        if (profile && profile.model !== 'stepped_load') return false;
 
         const updateKind = this.resolveNativeSteppedCapabilityUpdateKind({
             capabilityId,
@@ -245,13 +248,15 @@ export class DeviceManager extends EventEmitter {
             logger: this.logger,
         });
 
-        const fallbackReportedStepId = value === false ? resolveNativeSteppedLoadReportedStepId({
-            profile,
-            capabilities: [],
-            capabilityObj: {
-                onoff: { value: false },
-            },
-        }) : undefined;
+        const fallbackReportedStepId = profile && value === false
+            ? resolveNativeSteppedLoadReportedStepId({
+                profile,
+                capabilities: [],
+                capabilityObj: {
+                    onoff: { value: false },
+                },
+            })
+            : undefined;
         const nextReportedStepId = resolveObservedNativeSteppedLoadReportedStepId({
             owner: this,
             deviceId,
@@ -516,8 +521,13 @@ export class DeviceManager extends EventEmitter {
         const nativeCapabilityId = resolveNativeSteppedLoadCapabilityId([capabilityId]);
         const isNativePowerStepUpdate = nativeCapabilityId !== undefined;
         const isNativeBinaryUpdate = capabilityId === snapshot.controlCapabilityId && typeof value === 'boolean';
-        const isZaptecAdapterObservation = capabilityId === 'available_installation_current'
-            || capabilityId === 'measure_power';
+        const isZaptecAdapter = snapshot.nativeSteppedLoadStatus?.provider === 'zaptec';
+        const isZaptecAdapterObservation = isZaptecAdapter
+            && (
+                capabilityId === 'available_installation_current'
+                || capabilityId === 'measure_power'
+                || capabilityId === 'evcharger_charging_state'
+            );
         if (!isNativePowerStepUpdate && !isNativeBinaryUpdate && !isZaptecAdapterObservation) {
             return null;
         }
@@ -548,6 +558,11 @@ export class DeviceManager extends EventEmitter {
         });
         if (currentSnapshot.nativeSteppedLoadStatus?.blockedReasonCode) {
             delete currentSnapshot.suggestedSteppedLoadProfile;
+        } else if (
+            currentSnapshot.nativeSteppedLoadStatus?.provider === 'zaptec'
+            && currentSnapshot.suggestedSteppedLoadProfile === undefined
+        ) {
+            currentSnapshot.suggestedSteppedLoadProfile = ZAPTEC_NATIVE_STEPPED_LOAD_PROFILE;
         }
         const previousReportedStepId = currentSnapshot.reportedStepId;
         if (nextReportedStepId) currentSnapshot.reportedStepId = nextReportedStepId;
@@ -743,6 +758,7 @@ export class DeviceManager extends EventEmitter {
         const deviceId = getDeviceId(device);
         if (deviceId && !this.shouldTrackRealtimeDevice(deviceId)) {
             this.clearBinarySettleEvidence(deviceId);
+            this.latestTrackedDevicesById.delete(deviceId);
         }
         const effectiveDevice = this.applyDeviceDriverOverride(device);
         const previousSnapshot = this.latestSnapshotById.get(deviceId);
@@ -751,15 +767,8 @@ export class DeviceManager extends EventEmitter {
             : { device: effectiveDevice, hadInvalidBinaryControlPayload: false };
         const { device: binarySafeDevice, hadInvalidBinaryControlPayload } = binarySafeUpdate;
         if (deviceId && this.shouldTrackRealtimeDevice(deviceId)) {
-            observeNativeSteppedLoadCommandAdapter({
-                owner: this,
-                deviceId,
-                device: binarySafeDevice,
-                clearWhenUnavailable: true,
-                logger: this.logger,
-                sharedInstallationBlocked: previousSnapshot?.nativeSteppedLoadStatus?.blockedReasonCode
-                    === 'zaptec_stepped_blocked_shared_installation',
-            });
+            this.latestTrackedDevicesById.set(deviceId, binarySafeDevice);
+            this.syncTrackedNativeSteppedLoadAdapters();
         }
         const observedDevice = buildNativeEvObservationDevice({
             device: binarySafeDevice,
@@ -1668,6 +1677,7 @@ export class DeviceManager extends EventEmitter {
         this.liveFeed = null;
         clearAllPendingBinarySettleWindows(this.binarySettleState);
         this.latestBinarySettleEvidenceByDeviceId.clear();
+        this.latestTrackedDevicesById.clear();
         this.removeAllListeners();
     }
 
@@ -1675,12 +1685,13 @@ export class DeviceManager extends EventEmitter {
         list: HomeyDeviceLike[],
         livePowerWByDeviceId: LiveDevicePowerWatts = {},
     ): TargetDeviceSnapshot[] {
-        syncNativeSteppedLoadCommandAdapters({
-            owner: this,
-            devices: list.map((device) => this.applyDeviceDriverOverride(device)),
-            shouldTrackDevice: (deviceId) => this.shouldTrackRealtimeDevice(deviceId),
-            logger: this.logger,
-        });
+        const effectiveDevices = list.map((device) => this.applyDeviceDriverOverride(device));
+        this.latestTrackedDevicesById = new Map(
+            effectiveDevices
+                .map((device) => [getDeviceId(device), device] as const)
+                .filter(([deviceId]) => Boolean(deviceId) && this.shouldTrackRealtimeDevice(deviceId)),
+        );
+        this.syncTrackedNativeSteppedLoadAdapters();
         return parseDeviceList({
             list,
             livePowerWByDeviceId,
@@ -1744,6 +1755,15 @@ export class DeviceManager extends EventEmitter {
         return device.capabilitiesObj && typeof device.capabilitiesObj === 'object'
             ? device.capabilitiesObj as DeviceCapabilityMap
             : {};
+    }
+
+    private syncTrackedNativeSteppedLoadAdapters(): void {
+        syncNativeSteppedLoadCommandAdapters({
+            owner: this,
+            devices: [...this.latestTrackedDevicesById.values()],
+            shouldTrackDevice: (deviceId) => this.shouldTrackRealtimeDevice(deviceId),
+            logger: this.logger,
+        });
     }
 }
 

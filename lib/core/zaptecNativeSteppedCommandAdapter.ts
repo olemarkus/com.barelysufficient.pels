@@ -1,4 +1,8 @@
-import type { HomeyDeviceLike, Logger } from '../utils/types';
+import type {
+  HomeyDeviceLike,
+  Logger,
+  NativeSteppedLoadBlockReasonCode,
+} from '../utils/types';
 import type { DeviceCapabilityMap } from './deviceManagerControl';
 import type { NativeSteppedLoadCommandAdapter } from './deviceManagerNativeSteppedCommand';
 import {
@@ -16,15 +20,14 @@ const ZAPTEC_OBSERVABLE_CAPABILITY_IDS = new Set([
   'available_installation_current',
   'measure_power',
   'evcharger_charging',
+  'evcharger_charging_state',
 ]);
-
-type ZaptecBlockedReason = 'zaptec_stepped_blocked_shared_installation' | 'zaptec_stepped_blocked_power_mismatch';
 
 type ZaptecAdapterState = {
   currentDevice: HomeyDeviceLike;
   capabilityObj: DeviceCapabilityMap;
   sharedInstallationBlocked: boolean;
-  blockedReasonCode?: ZaptecBlockedReason;
+  blockedReasonCode?: NativeSteppedLoadBlockReasonCode;
   pendingStepId?: string;
   pendingIssuedAtMs?: number;
   lastConfirmedStepId?: string;
@@ -48,6 +51,7 @@ export function buildZaptecNativeSteppedLoadCommandAdapter(
   refreshZaptecRuntimeState(state, logger);
 
   return {
+    kind: 'zaptec',
     syncDevice({ device: nextDevice, sharedInstallationBlocked: nextSharedBlocked, logger: nextLogger }) {
       state.currentDevice = nextDevice;
       state.capabilityObj = getCapabilityObj(nextDevice);
@@ -135,7 +139,8 @@ function syncZaptecSharedInstallationBlock(state: ZaptecAdapterState, logger?: L
 }
 
 function isZaptecDisconnected(state: ZaptecAdapterState): boolean {
-  return state.capabilityObj['alarm_generic.car_connected']?.value === false;
+  return state.capabilityObj['alarm_generic.car_connected']?.value === false
+    || state.capabilityObj.evcharger_charging_state?.value === 'plugged_out';
 }
 
 function resetZaptecDisconnectedState(state: ZaptecAdapterState, logger?: Logger): void {
@@ -188,14 +193,8 @@ function applyZaptecPowerMismatchGuard(
   logger?: Logger,
 ): void {
   const nextState = state;
-  if (
-    !nextState.lastConfirmedStepId
-    || reportedStepId !== nextState.lastConfirmedStepId
-    || nextState.lastConfirmedStepId === 'off'
-  ) {
-    if (nextState.blockedReasonCode !== 'zaptec_stepped_blocked_power_mismatch') {
-      nextState.mismatchSampleCount = 0;
-    }
+  if (!shouldEvaluateZaptecPowerMismatch(nextState, reportedStepId)) {
+    resetZaptecMismatchSamples(nextState);
     return;
   }
   if (!isZaptecPowerMismatch({
@@ -232,6 +231,22 @@ function applyZaptecPowerMismatchGuard(
     deviceName: nextState.currentDevice.name,
     reasonCode: nextState.blockedReasonCode,
   });
+}
+
+function shouldEvaluateZaptecPowerMismatch(
+  state: ZaptecAdapterState,
+  reportedStepId: string | undefined,
+): state is ZaptecAdapterState & { lastConfirmedStepId: string } {
+  if (state.pendingStepId) return false;
+  return Boolean(state.lastConfirmedStepId)
+    && reportedStepId === state.lastConfirmedStepId
+    && state.lastConfirmedStepId !== 'off';
+}
+
+function resetZaptecMismatchSamples(state: ZaptecAdapterState): void {
+  const nextState = state;
+  if (nextState.blockedReasonCode === 'zaptec_stepped_blocked_power_mismatch') return;
+  nextState.mismatchSampleCount = 0;
 }
 
 function expireZaptecPendingStep(state: ZaptecAdapterState): void {
@@ -348,6 +363,11 @@ function observeZaptecCapabilityUpdate(
   if (capabilityId === 'evcharger_charging') {
     nextState.capabilityObj.charging_button = {
       ...nextState.capabilityObj.charging_button,
+      value,
+    };
+  } else if (capabilityId === 'evcharger_charging_state') {
+    nextState.capabilityObj.evcharger_charging_state = {
+      ...nextState.capabilityObj.evcharger_charging_state,
       value,
     };
   } else {
