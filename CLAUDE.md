@@ -157,6 +157,7 @@ Key timing:
 | Architecture boundaries | `docs/architecture.md` |
 | Open work and known issues | `TODO.md` |
 | **UI labels, status strings, tab names** | `notes/ui-terminology.md` |
+| **Overview hero design spec** | `notes/overview-hero-spec.md` |
 
 ---
 
