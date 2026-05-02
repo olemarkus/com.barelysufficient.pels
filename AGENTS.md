@@ -14,36 +14,43 @@ Repo-wide instructions only:
 
 ## UI terminology (short rules)
 
-Say what happens, not what the planner does internally.
+Say what happens, not what the planner does internally. See `notes/ui-terminology.md` for the full reference.
+
+**Change these** — they are jargon:
 
 | Avoid | Use instead |
 |---|---|
-| shed | limited / paused / turned down / lowered |
+| shed | limited / paused / lowered / turned off |
 | restore | resume |
 | headroom | available power |
 | controlled/uncontrolled load | managed / background usage |
-| daily budget | daily energy target |
-| capacity limit | hourly power limit |
 | soft margin | safety margin |
-| PELS limit / soft limit | safety threshold (or daily energy pace — see below) |
-| hard cap | hourly power limit |
+
+**Leave these alone** — they are established with users:
+
+`budget`, `daily budget`, `capacity` (in settings context), `managed`, `priority`, `mode`
 
 **Do NOT rename internal code identifiers, test fixtures, or log strings** — only user-visible text changes.
 
-### Power bar tick labels
+### Hero bar labels
 
-The tick showing where PELS starts reacting has two sources — distinguish them:
+| Concept | Label |
+|---|---|
+| Current instantaneous draw | Power now |
+| Dynamic kW threshold (either source) | Safe pace now |
+| Fixed user-configured ceiling | Hard cap |
+| kWh used so far this hour | Energy used this hour |
+| kWh allowed for this hour | Budget this hour |
+| Projected end-of-hour kWh | Projected this hour |
 
-- `softLimitSource = capacity` → **Safety threshold** (tooltip: hourly power limit minus safety margin)
-- `softLimitSource = daily_budget` → **Daily energy pace** (tooltip: slowing to stay on today's energy target)
-- User-configured ceiling (`hardLimitKw`) → always **Hourly power limit**
+The "Safe pace now" tick uses a single label regardless of whether the binding constraint is capacity-based or daily-budget-based. The tooltip explains the source.
 
 ### Chips vs reason lines
 
 Chips must be one or two words: `Limited`, `Resuming`, `Running`.
-Reason lines (below chip or in tooltip) may be a short sentence: `staying under hourly power limit`.
+Reason lines (below chip or in tooltip) may be a short sentence: `staying within today's budget`.
 Do not put multi-word sentences in chips.
 
 ### Terms that stay internal (do not surface in normal UI)
 
-`shed`, `restore`, `headroom`, `shortfall`, `backoff`, `invariant`, `soft limit`, `capacity`, `controlled`, `uncontrolled`
+`shed`, `restore`, `headroom`, `shortfall`, `backoff`, `invariant`, `soft limit`, `controlled`, `uncontrolled`
