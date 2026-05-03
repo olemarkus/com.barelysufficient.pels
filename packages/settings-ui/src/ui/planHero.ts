@@ -68,33 +68,38 @@ const HERO_STATUS_DATA_TONE: Record<HeroStatus, string> = {
 
 const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
 
+type DecisionResult = { text: string; positive: boolean };
+
 const buildDecisionSentence = (
   headline: NonNullable<ReturnType<typeof formatHeroHeadline>>,
   devices: PlanDeviceSnapshot[],
   freshnessState: FreshnessState | undefined,
   dryRun: boolean,
-): string => {
+): DecisionResult => {
   if (freshnessState === 'stale_fail_closed') {
-    return 'No live power data — keeping devices limited until readings return.';
+    return { text: 'No live power data — keeping devices limited until readings return.', positive: false };
   }
   if (headline.overHardLimit) {
-    return 'Hard cap exceeded — limiting devices now.';
+    return { text: 'Hard cap exceeded — limiting devices now.', positive: false };
   }
   const limitedCount = devices.filter((d) => d.stateKind === 'held').length;
   if (dryRun && limitedCount > 0) {
-    return `Would limit ${plural(limitedCount, 'device')} — dry-run is enabled.`;
+    return { text: `Would limit ${plural(limitedCount, 'device')} — dry-run is enabled.`, positive: false };
   }
   if (headline.overSoftLimit) {
     if (limitedCount > 0) {
-      return `Limiting ${plural(limitedCount, 'device')} — current power is above the safe pace.`;
+      return { text: `Limiting ${plural(limitedCount, 'device')} — power is above the safe pace.`, positive: false };
     }
-    return 'Current power is above the safe pace — limiting devices.';
+    return { text: 'Power is above the safe pace — limiting devices.', positive: false };
   }
   const restoringCount = devices.filter((d) => d.stateKind === 'resuming').length;
   if (restoringCount > 0) {
-    return `Resuming ${plural(restoringCount, 'device')} — power has stayed below the safe pace.`;
+    return {
+      text: `Resuming ${plural(restoringCount, 'device')} — power has stayed below the safe pace.`,
+      positive: true,
+    };
   }
-  return 'No action needed — this hour is on track.';
+  return { text: 'No action needed — this hour is on track.', positive: true };
 };
 
 // ─── Chip row ─────────────────────────────────────────────────────────────────
@@ -134,7 +139,7 @@ const buildChipRow = (
   row.appendChild(buildChip(HERO_STATUS_LABEL[heroStatus], HERO_STATUS_CHIP_TONE[heroStatus]));
 
   if (activeMode) {
-    row.appendChild(buildChip(`${activeMode} mode`, 'muted'));
+    row.appendChild(buildChip(`Mode: ${activeMode}`, 'muted'));
   }
 
   const freshness = formatFreshnessChip(freshnessState);
@@ -250,13 +255,24 @@ const buildPowerBar = (scale: BarScale): HTMLDivElement => {
 const buildPowerSupportText = (scale: BarScale): HTMLDivElement => {
   const el = document.createElement('div');
   el.className = 'plan-hero__legend';
+
   const managedLabel = scale.controlled > 0
     ? `Managed ${scale.controlled.toFixed(1)} kW`
     : 'No managed load active';
-  const text = document.createElement('span');
-  text.className = 'plan-hero__energy-support';
-  text.textContent = `${managedLabel} · Background ${scale.uncontrolled.toFixed(1)} kW`;
-  el.appendChild(text);
+  const loadLine = document.createElement('span');
+  loadLine.className = 'plan-hero__energy-support';
+  loadLine.textContent = `${managedLabel} · Other load ${scale.uncontrolled.toFixed(1)} kW`;
+  el.appendChild(loadLine);
+
+  const markerLine = document.createElement('span');
+  markerLine.className = 'plan-hero__energy-support';
+  let markerText = `Safe pace ${scale.safePaceKw.toFixed(1)} kW`;
+  if (scale.hardCapKw !== null && scale.hardCapKw > scale.safePaceKw) {
+    markerText += ` · Hard cap ${scale.hardCapKw.toFixed(1)} kW`;
+  }
+  markerLine.textContent = markerText;
+  el.appendChild(markerLine);
+
   return el;
 };
 
@@ -281,10 +297,10 @@ const buildPowerSection = (
   sublineEl.className = 'plan-hero__subline';
   if (headline.overSoftLimit) {
     const aboveKw = Math.max(0, -headline.headroomKw);
-    sublineEl.textContent = `${aboveKw.toFixed(1)} kW above safe pace`;
+    sublineEl.textContent = `${aboveKw.toFixed(1)} kW above the safe pace`;
     sublineEl.dataset.tone = 'warn';
   } else {
-    sublineEl.textContent = `Safe pace right now: ${headline.softLimitKw.toFixed(1)} kW`;
+    sublineEl.textContent = `OK up to ${headline.softLimitKw.toFixed(1)} kW for the rest of this hour`;
   }
 
   section.append(sectionLabel, headlineEl, sublineEl);
@@ -448,9 +464,11 @@ export const renderPlanHero = (
   const energySection = buildEnergySection(meta);
   if (energySection) planHero.appendChild(energySection);
 
+  const { text: decisionText, positive } = buildDecisionSentence(headline, devices, freshnessState, dryRun);
   const decision = document.createElement('p');
   decision.className = 'plan-hero__decision';
-  decision.textContent = buildDecisionSentence(headline, devices, freshnessState, dryRun);
+  decision.textContent = positive ? `✓ ${decisionText}` : decisionText;
+  if (positive) decision.dataset.positive = '';
   planHero.appendChild(decision);
 };
 

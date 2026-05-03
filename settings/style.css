@@ -883,8 +883,8 @@ input:focus-visible {
 
 .plan-hero__legend {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-3);
+  flex-direction: column;
+  gap: var(--spacing-1);
   margin-top: var(--spacing-2);
   color: var(--text-secondary);
   font-size: var(--font-size-xs);
@@ -1043,7 +1043,10 @@ input:focus-visible {
   margin: 0;
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
-  font-style: italic;
+}
+
+.plan-hero__decision[data-positive] {
+  color: var(--color-state-positive-text);
 }
 
 

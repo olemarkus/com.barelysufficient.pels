@@ -1621,11 +1621,13 @@ describe('Redesign plan UI', () => {
       const headlines = Array.from(document.querySelectorAll('#plan-hero .plan-hero__headline'))
         .map((el) => el.textContent?.trim());
       expect(headlines).toContain('5.2 kW now');
-      // Power bar support text shows managed and background load
-      const supportText = (document.querySelector('#plan-hero .plan-hero__energy-support') as HTMLElement | null)
-        ?.textContent?.trim();
-      expect(supportText).toContain('Managed 3.1 kW');
-      expect(supportText).toContain('Background 2.1 kW');
+      // Power bar support text shows managed and other load breakdown + marker labels
+      const supportLines = Array.from(document.querySelectorAll('#plan-hero .plan-hero__energy-support'))
+        .map((el) => el.textContent?.trim());
+      expect(supportLines[0]).toContain('Managed 3.1 kW');
+      expect(supportLines[0]).toContain('Other load 2.1 kW');
+      expect(supportLines[1]).toContain('Safe pace 11.0 kW');
+      expect(supportLines[1]).toContain('Hard cap 14.0 kW');
       // Energy section shows hourly usage with projection
       expect(headlines.some((h) => h?.includes('4.20 of 12.0 kWh used'))).toBe(true);
       // Status chip shows on-track when below safe pace and data is fresh
