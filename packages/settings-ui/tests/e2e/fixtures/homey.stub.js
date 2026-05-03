@@ -6,6 +6,12 @@
     ? window.__PELS_HOMEY_STUB__
     : {};
   const hasInitialDailyBudgetPayload = Object.prototype.hasOwnProperty.call(initialOverrides, 'dailyBudgetPayload');
+
+  // Default to redesign in the local preview unless the test stub explicitly disables it.
+  if (initialOverrides.overviewRedesignEnabled !== false) {
+    try { localStorage.setItem('pels.settingsUi.overviewRedesignEnabled', 'true'); } catch (e) { void e; }
+  }
+
   const runtimeOverrides = {
     apiHandlers: Object.create(null),
     apiCallCounts: Object.create(null),
@@ -216,6 +222,7 @@
           targetStepId: '6a',
           desiredStepId: '6a',
           actualStepSource: 'reported',
+          binaryCommandPending: true,
           nativeSteppedLoadStatus: {
             modelLabel: 'Zaptec Go',
             currentStepLabel: '16a · 3.68 kW',
@@ -231,19 +238,20 @@
           controlModel: 'stepped_load',
           priority: 5,
           controllable: true,
-          expectedPowerKw: 1.5,
-          measuredPowerKw: 0.7,
+          currentTemperature: 49.2,
+          plannedTarget: 50,
+          expectedPowerKw: 2.0,
+          measuredPowerKw: 1.5,
           planningPowerKw: 1.5,
           actualStepId: 'medium',
           reportedStepId: 'medium',
-          targetStepId: 'high',
           desiredStepId: 'high',
           actualStepSource: 'reported',
           nativeSteppedLoadStatus: {
             modelLabel: 'Connected 300',
-            currentStepLabel: 'Medium · 0.7 kW',
+            currentStepLabel: 'Medium · 1.5 kW',
           },
-          reason: { code: 'restore_need', needKw: 0.8, headroomKw: 0.4, fromTarget: 'medium', toTarget: 'high' },
+          reason: { code: 'shortfall', needKw: 2.0, headroomKw: 1.5 },
           shedAction: 'set_step',
         },
         {
@@ -479,8 +487,10 @@
         deviceType: 'onoff',
         controlModel: 'stepped_load',
         currentOn: true,
-        measuredPowerKw: 0.7,
-        expectedPowerKw: 1.5,
+        currentTemperature: 49.2,
+        plannedTarget: 50,
+        measuredPowerKw: 1.5,
+        expectedPowerKw: 2.0,
         capabilities: ['onoff'],
         steppedLoadProfile: {
           model: 'stepped_load',
@@ -494,11 +504,11 @@
         nativeSteppedLoadStatus: {
           provider: 'connected300',
           modelLabel: 'Connected 300',
-          currentStepLabel: 'Medium · 0.7 kW',
+          currentStepLabel: 'Medium · 1.5 kW',
         },
         actualStepId: 'medium',
         reportedStepId: 'medium',
-        targetStepId: 'high',
+        desiredStepId: 'high',
         actualStepSource: 'reported',
       },
     ],

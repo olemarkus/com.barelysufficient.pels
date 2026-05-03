@@ -27,6 +27,7 @@ import { setTooltip } from './tooltips.ts';
 import { getStoredDeviceControlProfile } from './deviceControlProfiles.ts';
 import { resolveDisplayPlanDeviceSnapshot } from './planLiveData.ts';
 import { formatReasonSummary } from './planReasonSummary.ts';
+import { buildSteppedPlanCard } from './planSteppedCard.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot, PlanStatusBinding } from './planTypes.ts';
 import type { DeviceReason } from '../../../shared-domain/src/planReasonSemanticsCore.ts';
 
@@ -452,7 +453,7 @@ const buildHeader = (dev: PlanDeviceSnapshot): {
   return { el: header, chip: stateChip.chipEl, cooldownProgress: stateChip.progressEl };
 };
 
-export const buildPlanCard = (
+const buildGenericPlanCard = (
   plan: PlanSnapshot | null,
   dev: PlanDeviceSnapshot,
   renderedAtMs: number,
@@ -504,3 +505,14 @@ export const buildPlanCard = (
     },
   };
 };
+
+export const buildPlanCard = (
+  plan: PlanSnapshot | null,
+  dev: PlanDeviceSnapshot,
+  renderedAtMs: number,
+  nowMs: number,
+): { el: HTMLElement; statusBinding: PlanStatusBinding } => (
+  dev.controlModel === 'stepped_load'
+    ? buildSteppedPlanCard(plan, dev, renderedAtMs, nowMs)
+    : buildGenericPlanCard(plan, dev, renderedAtMs, nowMs)
+);
