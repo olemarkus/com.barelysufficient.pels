@@ -264,15 +264,6 @@ const buildPowerSupportText = (scale: BarScale): HTMLDivElement => {
   loadLine.textContent = `${managedLabel} · Other load ${scale.uncontrolled.toFixed(1)} kW`;
   el.appendChild(loadLine);
 
-  const markerLine = document.createElement('span');
-  markerLine.className = 'plan-hero__energy-support';
-  let markerText = `Safe pace ${scale.safePaceKw.toFixed(1)} kW`;
-  if (scale.hardCapKw !== null && scale.hardCapKw > scale.safePaceKw) {
-    markerText += ` · Hard cap ${scale.hardCapKw.toFixed(1)} kW`;
-  }
-  markerLine.textContent = markerText;
-  el.appendChild(markerLine);
-
   return el;
 };
 
@@ -281,6 +272,7 @@ const buildPowerSupportText = (scale: BarScale): HTMLDivElement => {
 const buildPowerSection = (
   headline: NonNullable<ReturnType<typeof formatHeroHeadline>>,
   meta: PlanMetaSnapshot,
+  hasHeldDevices: boolean,
 ): HTMLDivElement => {
   const section = document.createElement('div');
   section.className = 'plan-hero__section';
@@ -293,17 +285,21 @@ const buildPowerSection = (
   headlineEl.className = 'plan-hero__headline';
   headlineEl.textContent = `${headline.totalKw.toFixed(1)} kW now`;
 
-  const sublineEl = document.createElement('div');
-  sublineEl.className = 'plan-hero__subline';
+  section.append(sectionLabel, headlineEl);
+
   if (headline.overSoftLimit) {
     const aboveKw = Math.max(0, -headline.headroomKw);
-    sublineEl.textContent = `${aboveKw.toFixed(1)} kW above the safe pace`;
+    const sublineEl = document.createElement('div');
+    sublineEl.className = 'plan-hero__subline';
+    sublineEl.textContent = `${aboveKw.toFixed(1)} kW above safe pace`;
     sublineEl.dataset.tone = 'warn';
-  } else {
-    sublineEl.textContent = `OK up to ${headline.softLimitKw.toFixed(1)} kW for the rest of this hour`;
+    section.appendChild(sublineEl);
+  } else if (hasHeldDevices) {
+    const sublineEl = document.createElement('div');
+    sublineEl.className = 'plan-hero__subline';
+    sublineEl.textContent = `Safe pace ${headline.softLimitKw.toFixed(1)} kW`;
+    section.appendChild(sublineEl);
   }
-
-  section.append(sectionLabel, headlineEl, sublineEl);
 
   const scale = computePowerBarScale(headline, meta);
   if (scale) {
@@ -458,8 +454,10 @@ export const renderPlanHero = (
 
   planHero.dataset.tone = HERO_STATUS_DATA_TONE[heroStatus];
 
+  const hasHeldDevices = devices.some((d) => d.stateKind === 'held');
+
   planHero.appendChild(buildChipRow(heroStatus, activeMode, freshnessState, headline.ageText));
-  planHero.appendChild(buildPowerSection(headline, meta));
+  planHero.appendChild(buildPowerSection(headline, meta, hasHeldDevices));
 
   const energySection = buildEnergySection(meta);
   if (energySection) planHero.appendChild(energySection);
