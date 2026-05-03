@@ -883,7 +883,7 @@ input:focus-visible {
 
 .plan-hero__legend {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: var(--spacing-1);
   margin-top: var(--spacing-2);
   color: var(--text-secondary);
