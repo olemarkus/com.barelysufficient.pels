@@ -23,6 +23,7 @@ export type UiState = {
   initialLoadComplete: boolean;
   devicesLoaded: boolean;
   devicesLoading: boolean;
+  dryRun: boolean;
   capacityPriorities: Record<string, Record<string, number>>;
   activeMode: string;
   editingMode: string;
@@ -51,6 +52,7 @@ export const state: UiState = {
   initialLoadComplete: false,
   devicesLoaded: false,
   devicesLoading: false,
+  dryRun: false,
   capacityPriorities: {},
   activeMode: 'Home',
   editingMode: 'Home',

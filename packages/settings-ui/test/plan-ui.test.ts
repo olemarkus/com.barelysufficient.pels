@@ -1617,22 +1617,22 @@ describe('Redesign plan UI', () => {
         ],
       });
 
-      // Power bar header shows current total kW
-      expect((document.querySelector('.plan-hero__bar-value') as HTMLElement | null)?.textContent?.trim())
-        .toBe('5.2 kW');
-      // Legend shows managed, other, and PELS limit swatches
-      const legendItems = Array.from(document.querySelectorAll('.plan-hero__legend-item span:last-child'))
+      // Power now headline shows current total kW
+      const headlines = Array.from(document.querySelectorAll('#plan-hero .plan-hero__headline'))
         .map((el) => el.textContent?.trim());
-      expect(legendItems).toContain('Managed 3.1 kW');
-      expect(legendItems).toContain('Other 2.1 kW');
-      expect(legendItems).toContain('PELS limit 11.0 kW');
-      expect(legendItems).toContain('Hard cap 14.0 kW');
-      // Energy bar header shows this-hour usage
-      const barValues = Array.from(document.querySelectorAll('.plan-hero__bar-value'))
-        .map((el) => el.textContent?.trim());
-      expect(barValues).toContain('4.20 of 12.0 kWh');
-      // No freshness chip when state is fresh
-      expect(document.querySelector('#plan-hero .plan-chip')).toBeNull();
+      expect(headlines).toContain('5.2 kW now');
+      // Power bar support text shows managed and background load
+      const supportText = (document.querySelector('#plan-hero .plan-hero__energy-support') as HTMLElement | null)
+        ?.textContent?.trim();
+      expect(supportText).toContain('Managed 3.1 kW');
+      expect(supportText).toContain('Background 2.1 kW');
+      // Energy section shows hourly usage with projection
+      expect(headlines.some((h) => h?.includes('4.20 of 12.0 kWh used'))).toBe(true);
+      // Status chip shows on-track when below safe pace and data is fresh
+      expect((document.querySelector('#plan-hero .plan-chip--ok') as HTMLElement | null)?.textContent?.trim())
+        .toBe('On track');
+      // No stale-data chip when power is fresh
+      expect(document.querySelector('#plan-hero .plan-chip--alert')).toBeNull();
 
       const deviceNames = Array.from(document.querySelectorAll('.plan-card__title'))
         .map((el) => el.textContent?.trim());
@@ -1716,8 +1716,7 @@ describe('Redesign plan UI', () => {
         .map((el) => el.textContent?.trim());
       expect(badgeTexts).toContain('Starved 23m');
       expect(getReasonText('dev-starved')).toBe('Waiting for room to reopen — 23 min below target');
-      expect((document.querySelector('#plan-hero .plan-chip--muted') as HTMLElement | null)?.textContent?.trim())
-        .toBe('1 device below target');
+      // Starvation summary is shown on device card, not in hero
     });
   
     it('updates countdown-based reasons during live ticks', async () => {
@@ -1780,15 +1779,13 @@ describe('Redesign plan UI', () => {
       ) as (HTMLElement & { value?: number }) | null;
       expect(getReasonText('dev-restore-cooldown')).toBe('Waiting before switching again (1s)');
       expect(timer?.hidden).toBe(false);
-      expect((document.querySelector('#plan-hero .plan-chip--muted') as HTMLElement | null)?.textContent?.trim())
-        .toBe('1 cooling down');
+      // Cooldown summary is shown on device card, not as a hero chip
 
       vi.advanceTimersByTime(1_000);
       await Promise.resolve();
 
       expect(getReasonText('dev-restore-cooldown')).toBe('');
       expect(timer?.hidden).toBe(true);
-      expect(document.querySelector('#plan-hero .plan-chip--muted')).toBeNull();
     });
 
     it('does not show an already-expired cooldown timer on initial render', async () => {
@@ -1817,7 +1814,7 @@ describe('Redesign plan UI', () => {
       ) as HTMLElement | null;
       expect(getReasonText('dev-expired-cooldown')).toBe('');
       expect(timer?.hidden).toBe(true);
-      expect(document.querySelector('#plan-hero .plan-chip--muted')).toBeNull();
+      // Cooldown summary lives on device card, not as a hero chip
     });
   
     it('adds dim and dashed treatments from the structured state kind', async () => {

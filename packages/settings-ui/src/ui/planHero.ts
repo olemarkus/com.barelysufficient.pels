@@ -3,13 +3,19 @@ import {
   formatFreshnessChip,
   formatHeroHeadline,
 } from '../../../shared-domain/src/planHeroSummary.ts';
-import { summarizeStarvation } from '../../../shared-domain/src/planStarvation.ts';
-import { summarizeCooldowns } from '../../../shared-domain/src/planCooldown.ts';
 import { setTooltip } from './tooltips.ts';
 import type { SettingsUiPowerStatus } from '../../../contracts/src/settingsUiApi.ts';
 import type { PlanDeviceSnapshot, PlanMetaSnapshot } from './planTypes.ts';
 
 type FreshnessState = NonNullable<SettingsUiPowerStatus['powerFreshnessState']>;
+type HeroStatus = 'on-track' | 'above-safe-pace' | 'over-hard-cap' | 'dry-run' | 'no-data';
+
+export type HeroContext = {
+  activeMode: string;
+  dryRun: boolean;
+};
+
+// ─── Status resolution ────────────────────────────────────────────────────────
 
 const resolveFreshnessState = (
   powerStatus: SettingsUiPowerStatus | null | undefined,
@@ -20,21 +26,136 @@ const resolveFreshnessState = (
   return meta.powerFreshnessState;
 };
 
-const buildHeroPlaceholder = (): HTMLParagraphElement => {
-  const placeholder = document.createElement('p');
-  placeholder.className = 'plan-hero__placeholder muted';
-  placeholder.textContent = 'Awaiting data…';
-  return placeholder;
+const resolveHeroStatus = (
+  headline: NonNullable<ReturnType<typeof formatHeroHeadline>>,
+  devices: PlanDeviceSnapshot[],
+  freshnessState: FreshnessState | undefined,
+  dryRun: boolean,
+): HeroStatus => {
+  if (freshnessState === 'stale_fail_closed') return 'no-data';
+  if (headline.overHardLimit) return 'over-hard-cap';
+  const limitedCount = devices.filter((d) => d.stateKind === 'held').length;
+  if (dryRun && limitedCount > 0) return 'dry-run';
+  if (headline.overSoftLimit) return 'above-safe-pace';
+  return 'on-track';
 };
 
-// ─── Bar scale ────────────────────────────────────────────────────────────────
+const HERO_STATUS_LABEL: Record<HeroStatus, string> = {
+  'on-track': 'On track',
+  'above-safe-pace': 'Above safe pace',
+  'over-hard-cap': 'Over hard cap',
+  'dry-run': 'Dry-run',
+  'no-data': 'No data',
+};
+
+const HERO_STATUS_CHIP_TONE: Record<HeroStatus, string> = {
+  'on-track': 'ok',
+  'above-safe-pace': 'warn',
+  'over-hard-cap': 'alert',
+  'dry-run': 'warn',
+  'no-data': 'alert',
+};
+
+const HERO_STATUS_DATA_TONE: Record<HeroStatus, string> = {
+  'on-track': 'ok',
+  'above-safe-pace': 'warn',
+  'over-hard-cap': 'alert',
+  'dry-run': 'warn',
+  'no-data': 'alert',
+};
+
+// ─── Decision sentence ────────────────────────────────────────────────────────
+
+const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+const buildDecisionSentence = (
+  headline: NonNullable<ReturnType<typeof formatHeroHeadline>>,
+  devices: PlanDeviceSnapshot[],
+  freshnessState: FreshnessState | undefined,
+  dryRun: boolean,
+): string => {
+  if (freshnessState === 'stale_fail_closed') {
+    return 'No live power data — keeping devices limited until readings return.';
+  }
+  if (headline.overHardLimit) {
+    return 'Hard cap exceeded — limiting devices now.';
+  }
+  const limitedCount = devices.filter((d) => d.stateKind === 'held').length;
+  if (dryRun && limitedCount > 0) {
+    return `Would limit ${plural(limitedCount, 'device')} — dry-run is enabled.`;
+  }
+  if (headline.overSoftLimit) {
+    if (limitedCount > 0) {
+      return `Limiting ${plural(limitedCount, 'device')} — current power is above the safe pace.`;
+    }
+    return 'Current power is above the safe pace — limiting devices.';
+  }
+  const restoringCount = devices.filter((d) => d.stateKind === 'resuming').length;
+  if (restoringCount > 0) {
+    return `Resuming ${plural(restoringCount, 'device')} — power has stayed below the safe pace.`;
+  }
+  return 'No action needed — this hour is on track.';
+};
+
+// ─── Chip row ─────────────────────────────────────────────────────────────────
+
+const buildChip = (label: string, tone: string): HTMLSpanElement => {
+  const chip = document.createElement('span');
+  chip.className = `plan-chip plan-chip--${tone}`;
+  chip.textContent = label;
+  return chip;
+};
+
+const buildInfoButton = (): HTMLButtonElement => {
+  const tooltip = [
+    'Power now is measured in kW — how fast electricity is being used right now.',
+    'Energy this hour is measured in kWh — how much has been used so far this hour.',
+    'Safe pace is the highest power rate that keeps this hour on track for the energy budget.',
+    'kW is speed. kWh is distance.',
+  ].join(' ');
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'plan-hero__info';
+  btn.textContent = 'ⓘ';
+  btn.setAttribute('aria-label', 'Hero legend');
+  setTooltip(btn, tooltip);
+  return btn;
+};
+
+const buildChipRow = (
+  heroStatus: HeroStatus,
+  activeMode: string,
+  freshnessState: FreshnessState | undefined,
+  ageText: string | null,
+): HTMLDivElement => {
+  const row = document.createElement('div');
+  row.className = 'plan-hero__chips';
+
+  row.appendChild(buildChip(HERO_STATUS_LABEL[heroStatus], HERO_STATUS_CHIP_TONE[heroStatus]));
+
+  if (activeMode) {
+    row.appendChild(buildChip(`${activeMode} mode`, 'muted'));
+  }
+
+  const freshness = formatFreshnessChip(freshnessState);
+  if (freshness && freshness.kind !== 'fresh') {
+    const chip = buildChip(freshness.label, freshness.tone);
+    if (ageText) setTooltip(chip, `Power reading updated ${ageText}`);
+    row.appendChild(chip);
+  }
+
+  row.appendChild(buildInfoButton());
+  return row;
+};
+
+// ─── Power bar ────────────────────────────────────────────────────────────────
 
 type BarScale = {
   total: number;
   controlled: number;
   uncontrolled: number;
-  pelsKw: number;
-  gridKw: number | null;
+  safePaceKw: number;
+  hardCapKw: number | null;
   scaleKw: number;
 };
 
@@ -42,14 +163,14 @@ const computePowerBarScale = (
   headline: NonNullable<ReturnType<typeof formatHeroHeadline>>,
   meta: PlanMetaSnapshot,
 ): BarScale | null => {
-  const pelsKw = meta.softLimitKw ?? meta.capacitySoftLimitKw ?? 0;
-  if (pelsKw <= 0) return null;
+  const safePaceKw = meta.softLimitKw ?? meta.capacitySoftLimitKw ?? 0;
+  if (safePaceKw <= 0) return null;
   const total = Math.max(0, headline.totalKw ?? 0);
   const controlled = Math.max(0, headline.controlledKw ?? 0);
   const uncontrolled = Math.max(0, headline.uncontrolledKw ?? 0);
-  const gridKw = headline.hardLimitKw ?? null;
-  const scaleKw = Math.max(pelsKw * 1.2, gridKw ?? 0, total * 1.05);
-  return { total, controlled, uncontrolled, pelsKw, gridKw, scaleKw };
+  const hardCapKw = headline.hardLimitKw ?? null;
+  const scaleKw = Math.max(safePaceKw * 1.2, hardCapKw ?? 0, total * 1.05);
+  return { total, controlled, uncontrolled, safePaceKw, hardCapKw, scaleKw };
 };
 
 const pctOf = (kw: number, scaleKw: number): number =>
@@ -60,8 +181,6 @@ const resolveCellCount = (scaleKw: number): number => {
   return Math.max(2, Math.round(scaleKw / step));
 };
 
-// ─── Power bar ────────────────────────────────────────────────────────────────
-
 const appendSegment = (container: HTMLElement, variant: string, widthPct: number): void => {
   if (widthPct <= 0) return;
   const seg = document.createElement('span');
@@ -70,12 +189,7 @@ const appendSegment = (container: HTMLElement, variant: string, widthPct: number
   container.appendChild(seg);
 };
 
-const appendTick = (
-  bar: HTMLElement,
-  variant: string,
-  offsetPct: number,
-  tooltip: string,
-): void => {
+const appendTick = (bar: HTMLElement, variant: string, offsetPct: number, tooltip: string): void => {
   const tick = document.createElement('span');
   tick.className = `plan-hero__tick plan-hero__tick--${variant}`;
   tick.style.left = `${offsetPct}%`;
@@ -92,7 +206,7 @@ const buildPowerBarSegments = (scale: BarScale): HTMLDivElement => {
     Math.min(scale.uncontrolled, Math.max(scale.total - scale.controlled, 0)),
     scale.scaleKw,
   );
-  const freePct = pctOf(Math.max(scale.pelsKw - scale.total, 0), scale.scaleKw);
+  const freePct = pctOf(Math.max(scale.safePaceKw - scale.total, 0), scale.scaleKw);
   const fillerPct = Math.max(0, 100 - managedPct - otherPct - freePct);
   appendSegment(segments, 'managed', managedPct);
   appendSegment(segments, 'other', otherPct);
@@ -102,8 +216,8 @@ const buildPowerBarSegments = (scale: BarScale): HTMLDivElement => {
 };
 
 const appendOverOverlay = (bar: HTMLElement, scale: BarScale): void => {
-  if (scale.total <= scale.pelsKw) return;
-  const startPct = pctOf(scale.pelsKw, scale.scaleKw);
+  if (scale.total <= scale.safePaceKw) return;
+  const startPct = pctOf(scale.safePaceKw, scale.scaleKw);
   const endPct = pctOf(scale.total, scale.scaleKw);
   const widthPct = Math.max(endPct - startPct, 0.5);
   const over = document.createElement('span');
@@ -118,111 +232,72 @@ const buildPowerBar = (scale: BarScale): HTMLDivElement => {
   bar.className = 'plan-hero__bar';
   bar.appendChild(buildPowerBarSegments(scale));
   appendOverOverlay(bar, scale);
-  appendTick(
-    bar,
-    'pels',
-    pctOf(scale.pelsKw, scale.scaleKw),
-    `PELS limit ${scale.pelsKw.toFixed(1)} kW — PELS sheds managed devices above this threshold`,
-  );
-  if (scale.gridKw !== null && scale.gridKw > scale.pelsKw) {
-    appendTick(
-      bar,
-      'grid',
-      pctOf(scale.gridKw, scale.scaleKw),
-      `Hard cap ${scale.gridKw.toFixed(1)} kW — your configured maximum capacity`,
-    );
+  const safePaceTooltip = [
+    `Safe pace ${scale.safePaceKw.toFixed(1)} kW —`,
+    'PELS limits managed devices above this threshold.',
+  ].join(' ');
+  appendTick(bar, 'safe-pace', pctOf(scale.safePaceKw, scale.scaleKw), safePaceTooltip);
+  if (scale.hardCapKw !== null && scale.hardCapKw > scale.safePaceKw) {
+    const hardCapTooltip = [
+      `Hard cap ${scale.hardCapKw.toFixed(1)} kW —`,
+      'your configured maximum capacity.',
+    ].join(' ');
+    appendTick(bar, 'hard-cap', pctOf(scale.hardCapKw, scale.scaleKw), hardCapTooltip);
   }
   return bar;
 };
 
-const buildPowerInfoButton = (scale: BarScale): HTMLButtonElement => {
-  const managedText = [
-    'Managed load — devices PELS controls (heaters, EV chargers, water tanks).',
-    `Currently ${scale.controlled.toFixed(1)} kW.`,
-  ].join(' ');
-  const otherText = [
-    'Other load — household usage PELS cannot shed (always-on appliances, lights, cooking, etc.).',
-    `Currently ${scale.uncontrolled.toFixed(1)} kW.`,
-  ].join(' ');
-  const pelsText = [
-    'PELS limit — where PELS starts shedding',
-    '(your capacity limit minus margin, adjusted for energy used so far this hour).',
-    `Currently ${scale.pelsKw.toFixed(1)} kW.`,
-  ].join(' ');
-  const gridText = scale.gridKw !== null
-    ? [
-        ' Hard cap — your configured maximum capacity',
-        `(${scale.gridKw.toFixed(1)} kW).`,
-        'Exceeding this may trigger tariff penalties or trip breakers.',
-      ].join(' ')
-    : '';
-  const tooltip = `${managedText} ${otherText} ${pelsText}${gridText}`;
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'plan-hero__info';
-  btn.textContent = 'ⓘ';
-  btn.setAttribute('aria-label', 'Power bar legend');
-  setTooltip(btn, tooltip);
-  return btn;
+const buildPowerSupportText = (scale: BarScale): HTMLDivElement => {
+  const el = document.createElement('div');
+  el.className = 'plan-hero__legend';
+  const managedLabel = scale.controlled > 0
+    ? `Managed ${scale.controlled.toFixed(1)} kW`
+    : 'No managed load active';
+  const text = document.createElement('span');
+  text.className = 'plan-hero__energy-support';
+  text.textContent = `${managedLabel} · Background ${scale.uncontrolled.toFixed(1)} kW`;
+  el.appendChild(text);
+  return el;
 };
 
-const buildPowerLegend = (scale: BarScale): HTMLDivElement => {
-  const legend = document.createElement('div');
-  legend.className = 'plan-hero__legend';
-  const items: Array<{ variant: string; label: string }> = [
-    { variant: 'managed', label: `Managed ${scale.controlled.toFixed(1)} kW` },
-    { variant: 'other', label: `Other ${scale.uncontrolled.toFixed(1)} kW` },
-    { variant: 'pels', label: `PELS limit ${scale.pelsKw.toFixed(1)} kW` },
-  ];
-  if (scale.gridKw !== null) {
-    items.push({ variant: 'grid', label: `Hard cap ${scale.gridKw.toFixed(1)} kW` });
-  }
-  for (const item of items) {
-    const wrap = document.createElement('span');
-    wrap.className = 'plan-hero__legend-item';
-    const swatch = document.createElement('span');
-    swatch.className = `plan-hero__legend-swatch plan-hero__legend-swatch--${item.variant}`;
-    const text = document.createElement('span');
-    text.textContent = item.label;
-    wrap.append(swatch, text);
-    legend.appendChild(wrap);
-  }
-  return legend;
-};
+// ─── Power now section ────────────────────────────────────────────────────────
 
-const buildBarHeader = (
-  eyebrow: string,
-  value: string,
-  infoButton?: HTMLElement,
-): HTMLDivElement => {
-  const header = document.createElement('div');
-  header.className = 'plan-hero__bar-header';
-  const eyebrowEl = document.createElement('span');
-  eyebrowEl.className = 'plan-hero__bar-eyebrow';
-  eyebrowEl.textContent = eyebrow;
-  const valueEl = document.createElement('span');
-  valueEl.className = 'plan-hero__bar-value';
-  valueEl.textContent = value;
-  header.append(eyebrowEl, valueEl);
-  if (infoButton) header.appendChild(infoButton);
-  return header;
-};
-
-const buildPowerBarGroup = (
+const buildPowerSection = (
   headline: NonNullable<ReturnType<typeof formatHeroHeadline>>,
   meta: PlanMetaSnapshot,
-): HTMLDivElement | null => {
+): HTMLDivElement => {
+  const section = document.createElement('div');
+  section.className = 'plan-hero__section';
+
+  const sectionLabel = document.createElement('span');
+  sectionLabel.className = 'plan-hero__section-label';
+  sectionLabel.textContent = 'Power now';
+
+  const headlineEl = document.createElement('div');
+  headlineEl.className = 'plan-hero__headline';
+  headlineEl.textContent = `${headline.totalKw.toFixed(1)} kW now`;
+
+  const sublineEl = document.createElement('div');
+  sublineEl.className = 'plan-hero__subline';
+  if (headline.overSoftLimit) {
+    const aboveKw = Math.max(0, -headline.headroomKw);
+    sublineEl.textContent = `${aboveKw.toFixed(1)} kW above safe pace`;
+    sublineEl.dataset.tone = 'warn';
+  } else {
+    sublineEl.textContent = `Safe pace right now: ${headline.softLimitKw.toFixed(1)} kW`;
+  }
+
+  section.append(sectionLabel, headlineEl, sublineEl);
+
   const scale = computePowerBarScale(headline, meta);
-  if (!scale) return null;
-  const group = document.createElement('div');
-  group.className = 'plan-hero__bar-group';
-  const header = buildBarHeader(
-    'Now',
-    `${headline.totalKw.toFixed(1)} kW`,
-    buildPowerInfoButton(scale),
-  );
-  group.append(header, buildPowerBar(scale), buildPowerLegend(scale));
-  return group;
+  if (scale) {
+    const barGroup = document.createElement('div');
+    barGroup.className = 'plan-hero__bar-group';
+    barGroup.append(buildPowerBar(scale), buildPowerSupportText(scale));
+    section.appendChild(barGroup);
+  }
+
+  return section;
 };
 
 // ─── Energy bar ───────────────────────────────────────────────────────────────
@@ -232,20 +307,23 @@ type EnergyBarScale = {
   budgetKWh: number;
   controlledKWh: number;
   uncontrolledKWh: number;
+  projectedKWh: number | null;
 };
 
 const computeEnergyBarScale = (meta: PlanMetaSnapshot): EnergyBarScale | null => {
   const { usedKWh, budgetKWh, hourControlledKWh, hourUncontrolledKWh } = meta;
-  if (
-    typeof usedKWh !== 'number'
-    || typeof budgetKWh !== 'number'
-    || budgetKWh <= 0
-  ) return null;
+  if (typeof usedKWh !== 'number' || typeof budgetKWh !== 'number' || budgetKWh <= 0) return null;
+  const totalKw = typeof meta.totalKw === 'number' ? meta.totalKw : null;
+  const minutesRemaining = typeof meta.minutesRemaining === 'number' ? meta.minutesRemaining : null;
+  const projectedKWh = totalKw !== null && minutesRemaining !== null
+    ? usedKWh + (totalKw * minutesRemaining / 60)
+    : null;
   return {
     usedKWh,
     budgetKWh,
     controlledKWh: typeof hourControlledKWh === 'number' ? Math.max(0, hourControlledKWh) : 0,
     uncontrolledKWh: typeof hourUncontrolledKWh === 'number' ? Math.max(0, hourUncontrolledKWh) : 0,
+    projectedKWh,
   };
 };
 
@@ -278,56 +356,66 @@ const buildEnergyBar = (scale: EnergyBarScale): HTMLDivElement => {
     over.style.width = '1%';
     bar.appendChild(over);
   }
+  if (scale.projectedKWh !== null) {
+    const projectedPct = Math.min(99, (scale.projectedKWh / scale.budgetKWh) * 100);
+    const isOverBudget = scale.projectedKWh > scale.budgetKWh;
+    const tooltip = isOverBudget
+      ? `Projected ${scale.projectedKWh.toFixed(2)} kWh — above the hourly budget`
+      : `Projected ${scale.projectedKWh.toFixed(2)} kWh this hour`;
+    appendTick(bar, isOverBudget ? 'projected-over' : 'projected', projectedPct, tooltip);
+  }
   return bar;
 };
 
-const buildEnergyBarGroup = (meta: PlanMetaSnapshot): HTMLDivElement | null => {
+// ─── Energy this hour section ─────────────────────────────────────────────────
+
+const buildEnergySection = (meta: PlanMetaSnapshot): HTMLDivElement | null => {
   const scale = computeEnergyBarScale(meta);
   if (!scale) return null;
-  const group = document.createElement('div');
-  group.className = 'plan-hero__bar-group';
-  const valueText = `${scale.usedKWh.toFixed(2)} of ${scale.budgetKWh.toFixed(1)} kWh`;
-  group.append(buildBarHeader('This hour', valueText), buildEnergyBar(scale));
-  return group;
+
+  const section = document.createElement('div');
+  section.className = 'plan-hero__section';
+
+  const sectionLabel = document.createElement('span');
+  sectionLabel.className = 'plan-hero__section-label';
+  sectionLabel.textContent = 'Energy this hour';
+
+  const usedText = `${scale.usedKWh.toFixed(2)} of ${scale.budgetKWh.toFixed(1)} kWh used`;
+  let headlineText = usedText;
+  if (scale.projectedKWh !== null) {
+    const overWarning = scale.projectedKWh > scale.budgetKWh ? ' ⚠' : '';
+    headlineText = `${usedText} · projected ${scale.projectedKWh.toFixed(2)} kWh${overWarning}`;
+  }
+
+  const headlineEl = document.createElement('div');
+  headlineEl.className = 'plan-hero__headline plan-hero__headline--sm';
+  headlineEl.textContent = headlineText;
+
+  section.append(sectionLabel, headlineEl);
+
+  const minutesRemaining = typeof meta.minutesRemaining === 'number' ? meta.minutesRemaining : null;
+  if (minutesRemaining !== null) {
+    const sublineEl = document.createElement('div');
+    sublineEl.className = 'plan-hero__subline plan-hero__subline--muted';
+    sublineEl.textContent = `${Math.round(minutesRemaining)} min left`;
+    section.appendChild(sublineEl);
+  }
+
+  const barGroup = document.createElement('div');
+  barGroup.className = 'plan-hero__bar-group';
+  barGroup.appendChild(buildEnergyBar(scale));
+  section.appendChild(barGroup);
+
+  return section;
 };
 
-// ─── Status chips ─────────────────────────────────────────────────────────────
+// ─── Placeholder ──────────────────────────────────────────────────────────────
 
-const buildStatusBlock = (
-  headline: NonNullable<ReturnType<typeof formatHeroHeadline>>,
-  meta: PlanMetaSnapshot,
-  devices: PlanDeviceSnapshot[],
-  powerStatus: SettingsUiPowerStatus | null | undefined,
-): HTMLDivElement | null => {
-  const status = document.createElement('div');
-  status.className = 'plan-hero__status';
-
-  const freshness = formatFreshnessChip(resolveFreshnessState(powerStatus, meta));
-  if (freshness && freshness.kind !== 'fresh') {
-    const chip = document.createElement('span');
-    chip.className = `plan-chip plan-chip--${freshness.tone}`;
-    chip.textContent = freshness.label;
-    if (headline.ageText) setTooltip(chip, `Power reading updated ${headline.ageText}`);
-    status.appendChild(chip);
-  }
-
-  const starvationLabel = summarizeStarvation(devices);
-  if (starvationLabel) {
-    const chip = document.createElement('span');
-    chip.className = 'plan-chip plan-chip--muted';
-    chip.textContent = starvationLabel;
-    status.appendChild(chip);
-  }
-
-  const cooldownLabel = summarizeCooldowns(devices);
-  if (cooldownLabel) {
-    const chip = document.createElement('span');
-    chip.className = 'plan-chip plan-chip--muted';
-    chip.textContent = cooldownLabel;
-    status.appendChild(chip);
-  }
-
-  return status.childElementCount > 0 ? status : null;
+const buildHeroPlaceholder = (): HTMLParagraphElement => {
+  const placeholder = document.createElement('p');
+  placeholder.className = 'plan-hero__placeholder muted';
+  placeholder.textContent = 'Awaiting data…';
+  return placeholder;
 };
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -336,8 +424,10 @@ export const renderPlanHero = (
   meta: PlanMetaSnapshot | undefined,
   devices: PlanDeviceSnapshot[],
   powerStatus: SettingsUiPowerStatus | null | undefined,
+  context: HeroContext,
   nowMs: number,
 ): void => {
+  const { activeMode, dryRun } = context;
   planHero.replaceChildren();
   planHero.removeAttribute('data-tone');
 
@@ -347,19 +437,23 @@ export const renderPlanHero = (
     return;
   }
 
-  planHero.dataset.tone = headline.tone;
+  const freshnessState = resolveFreshnessState(powerStatus, meta);
+  const heroStatus = resolveHeroStatus(headline, devices, freshnessState, dryRun);
 
-  const powerBarGroup = buildPowerBarGroup(headline, meta);
-  if (powerBarGroup) planHero.appendChild(powerBarGroup);
+  planHero.dataset.tone = HERO_STATUS_DATA_TONE[heroStatus];
 
-  const energyBarGroup = buildEnergyBarGroup(meta);
-  if (energyBarGroup) planHero.appendChild(energyBarGroup);
+  planHero.appendChild(buildChipRow(heroStatus, activeMode, freshnessState, headline.ageText));
+  planHero.appendChild(buildPowerSection(headline, meta));
 
-  const status = buildStatusBlock(headline, meta, devices, powerStatus);
-  if (status) planHero.appendChild(status);
+  const energySection = buildEnergySection(meta);
+  if (energySection) planHero.appendChild(energySection);
+
+  const decision = document.createElement('p');
+  decision.className = 'plan-hero__decision';
+  decision.textContent = buildDecisionSentence(headline, devices, freshnessState, dryRun);
+  planHero.appendChild(decision);
 };
 
 export const renderPlanHourStrip = (_meta: PlanMetaSnapshot | undefined): void => {
-  // Hour strip consolidated into the hero; keep element hidden.
   planHourStrip.hidden = true;
 };

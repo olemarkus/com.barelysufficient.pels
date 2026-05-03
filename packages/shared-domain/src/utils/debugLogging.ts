@@ -2,6 +2,11 @@ export const DEBUG_LOGGING_TOPICS = [
   { id: 'plan', label: 'Plan engine', description: 'Shedding, restore, and soft-limit decisions.' },
   { id: 'overview', label: 'Overview', description: 'UI-visible per-device overview transition logging.' },
   {
+    id: 'overview2',
+    label: 'Overview hero',
+    description: 'Hero, device summary, and card render history for the redesigned overview.',
+  },
+  {
     id: 'diagnostics',
     label: 'Device diagnostics',
     description: 'Per-device starvation, hysteresis, penalty, and diagnostics persistence.',
