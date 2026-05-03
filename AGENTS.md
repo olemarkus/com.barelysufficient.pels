@@ -10,3 +10,47 @@ Repo-wide instructions only:
 - When `.homeycompose` changes, `homey app validate` updates root `app.json`; include that generated change.
 - Runtime logging is structured (pino, `lib/logging/`). New logs go through `logger.info/warn/error/debug()` with stable field names. Legacy `this.log()` / `this.logDebug()` calls exist but must not be added to. Debug topics in `lib/utils/debugLogging.ts` gate whether debug events fire.
 - Internal engineering notes for Homey state trust, freshness, and drift/reconcile pitfalls live under `notes/`. Read those before changing snapshot/realtime merge logic.
+- **Before writing any UI label, status string, tab name, help text, or doc:** read `notes/ui-terminology.md`. It defines the canonical user-facing vocabulary for all of PELS.
+
+## UI terminology (short rules)
+
+Say what happens, not what the planner does internally. See `notes/ui-terminology.md` for the full reference.
+
+**Change these** — they are jargon:
+
+| Avoid | Use instead |
+|---|---|
+| shed | limited / paused / lowered / turned off |
+| restore | resume |
+| headroom | available power |
+| controlled/uncontrolled load | managed / background usage |
+| soft margin | safety margin |
+
+**Leave these alone** — they are established with users:
+
+`budget`, `daily budget`, `capacity` (in settings context), `managed`, `priority`, `mode`
+
+**Do NOT rename internal code identifiers, test fixtures, or log strings** — only user-visible text changes.
+
+### Hero bar labels
+
+| Concept | Label |
+|---|---|
+| Current instantaneous draw | Power now |
+| Dynamic kW threshold (either source) | Safe pace now |
+| Fixed user-configured ceiling | Hard cap |
+| kWh used so far this hour | Energy used this hour |
+| kWh allowed for this hour | Budget this hour |
+| Projected end-of-hour kWh | Projected this hour |
+
+The "Safe pace now" tick uses a single label regardless of whether the binding constraint is capacity-based or daily-budget-based. The tooltip explains the source.
+
+### Chips vs reason lines
+
+Chips must be one or two words: `Limited`, `Resuming`, `Running`.
+Reason lines (below chip or in tooltip) may be a short sentence: `staying within today's budget`.
+Do not put multi-word sentences in chips.
+
+### Terms that stay internal (do not surface in normal UI)
+
+`shed`, `restore`, `headroom`, `shortfall`, `backoff`, `invariant`, `soft limit`, `controlled`, `uncontrolled`

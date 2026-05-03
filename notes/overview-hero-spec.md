@@ -1,0 +1,256 @@
+# Overview Hero Spec
+
+## Purpose
+
+The hero answers three questions at a glance:
+
+1. Are we on track?
+2. How much power is being used right now?
+3. Is this hour heading toward the hourly energy limit?
+
+Mental model: **kW is speed. kWh is distance.**
+
+Do not present both as identical `x / y` progress bars. The power bar is a threshold gauge; the energy bar is a progress bar.
+
+---
+
+## Card structure
+
+One elevated Material 3 card with tonal background that shifts with state.
+
+```
+┌──────────────────────────────────────────────┐
+│ [On track] [Home mode] [Live]            ⓘ  │
+│                                              │
+│ Power now                                    │
+│ 7.0 kW now                                  │
+│ Safe pace right now: 12.0 kW                │
+│                                              │
+│ [managed][other][free.................]      │
+│                  ↑ 12.0            ↑ Hard   │
+│ Managed 3.2 kW · Background 3.8 kW          │
+│                                              │
+│ Energy this hour                             │
+│ 1.0 of 5.0 kWh used · projected 4.4 kWh    │
+│ 38 min left                                  │
+│ [====used====|projected|...............]     │
+│                                              │
+│ No action needed — this hour is on track.   │
+└──────────────────────────────────────────────┘
+```
+
+---
+
+## Chip row
+
+Three chips, left-to-right: status · mode · freshness.
+
+### Status chip
+
+| Condition | Label | Tone |
+|---|---|---|
+| Power below safe pace, projected hour below budget | `On track` | success |
+| Power above safe pace, hard cap not breached | `Above safe pace` | warning |
+| Power above hard cap | `Over hard cap` | error |
+| Dry-run enabled and PELS would act | `Dry-run` | warning |
+| Power data stale or fail-closed | `No data` | error |
+
+### Mode chip
+
+Label: `[Home mode]`, `[Away mode]`, `[Night mode]`, etc.
+
+The word "mode" is required — `[Home]` alone is ambiguous to a new user.
+
+Mode must be fetched via an API endpoint (bootstrap or dedicated), not by reading a setting key directly in the UI. See design principles below.
+
+### Freshness chip
+
+Show only when not `fresh`. Hide when live data is current.
+
+### Info button
+
+Small Material icon button (`info`) at top-right. Tooltip / dialog:
+
+```
+Power now is measured in kW — how fast electricity is being used right now.
+Energy this hour is measured in kWh — how much has been used so far this hour.
+Safe pace is the highest power rate that keeps this hour on track for the energy budget.
+kW is speed. kWh is distance.
+```
+
+---
+
+## Section 1: Power now
+
+### Text
+
+Normal / on track:
+```
+Power now
+7.0 kW now
+Safe pace right now: 12.0 kW
+```
+
+Above safe pace:
+```
+Power now
+13.5 kW now
+1.5 kW above safe pace
+```
+
+Over hard cap:
+```
+Power now
+13.5 kW now
+0.5 kW over hard cap (5.0 kW)
+```
+
+"Safe pace right now" is intentionally dynamic phrasing — it changes as the hour progresses and energy accumulates. Do not say "OK up to X kW for the rest of this hour", which implies stability.
+
+### Power bar
+
+Threshold gauge, not a progress bar. Scale anchored to hard cap or a rounded max above it — never to the dynamic safe pace.
+
+```
+[ managed ][ background ][ free ........... ]
+                          ↑ safe pace      ↑ hard cap
+```
+
+Segments:
+
+| Segment | Meaning |
+|---|---|
+| Managed | Load PELS controls |
+| Background | Household load PELS cannot control |
+| Free | Remaining room before safe pace |
+| Overflow | Amount above safe pace or hard cap (error tone) |
+
+Marker labels: show inline where space allows; collapse to info tooltip on narrow screens.
+
+Supporting text:
+```
+Managed 3.2 kW · Background 3.8 kW
+```
+
+When no managed load:
+```
+Background 0.7 kW · No managed load active
+```
+
+---
+
+## Section 2: Energy this hour
+
+### Text
+
+Normal:
+```
+Energy this hour
+1.0 of 5.0 kWh used · projected 4.4 kWh
+38 min left
+```
+
+Projected over budget:
+```
+Energy this hour
+1.0 of 5.0 kWh used · projected 5.4 kWh ⚠
+38 min left
+```
+
+No projection available:
+```
+Energy this hour
+1.0 of 5.0 kWh used
+38 min left
+```
+
+Projection formula: `projectedKWh = usedKWh + (currentKw × minutesRemaining / 60)`
+
+### Energy bar
+
+Standard Material linear progress bar with a projected-end marker.
+
+```
+[ used ====== ][ remaining budget ........ ]
+                ↑ projected end
+```
+
+- Filled = kWh used
+- Empty = remaining budget
+- Projected marker: warning tone if beyond budget
+
+---
+
+## Decision sentence
+
+Required. One plain-language conclusion at the bottom of the card.
+
+Priority order (first matching condition wins):
+
+1. No data: `No live power data — keeping devices limited until readings return.`
+2. Over hard cap: `Hard cap exceeded — limiting devices now.`
+3. Dry-run would act: `Would limit 2 devices — dry-run is enabled.`
+4. Actively limiting: `Limiting 2 devices — current power is above the safe pace.`
+5. Restoring: `Resuming 1 device — power has stayed below the safe pace.`
+6. On track: `No action needed — this hour is on track.`
+
+Dry-run wording must be hypothetical throughout:
+- `Would limit 2 devices — dry-run is enabled.`
+- Not: `Limiting 2 devices` (implies PELS acted when it did not)
+
+---
+
+## Device summary card (separate from hero)
+
+Cooldown details and per-device status belong in a separate summary card below the hero, not in the hero itself. The hero only shows aggregate counts in the decision sentence.
+
+Summary card shows counts: running · limited · resuming · starved · boosted.
+
+Individual device cards show cooldown timers, reason text, and step details.
+
+---
+
+## Data requirements
+
+All live state must come through API endpoints, not settings reads. Settings are only for persisting user configuration.
+
+Values needed for the hero:
+
+```
+currentPowerKw          meta.totalKw
+managedPowerKw          meta.controlledKw
+backgroundPowerKw       meta.uncontrolledKw
+safePaceKw              meta.softLimitKw
+softLimitSource         meta.softLimitSource  (capacity | daily_budget)
+hardCapKw               meta.hardCapLimitKw
+hourUsedKWh             meta.usedKWh
+hourBudgetKWh           meta.budgetKWh
+minutesRemaining        meta.minutesRemaining
+projectedHourKWh        computed: usedKWh + (currentKw × minutesRemaining / 60)
+activeModeName          needs API exposure (currently settings-only)
+freshnessState          powerStatus.powerFreshnessState
+dryRunEnabled           bootstrap settings
+limitedDeviceCount      count plan devices where currentState=shed
+restoringDeviceCount    count plan devices where plannedState=restore
+wouldLimitCount         dry-run only: count where plannedState=shed and currentState≠shed
+```
+
+`activeModeName` is currently only available via settings. It should be added to the bootstrap or plan API response so the UI does not need to read settings for live state.
+
+---
+
+## Debug logging
+
+The overview redesign should have its own debug topic (e.g. `overview2`) separate from any existing overview topic. This enables viewing the history of hero, device summary, and device card changes independently without noise from other subsystems.
+
+Log on every render cycle: hero inputs, computed values (projected kWh, safe pace source), decision sentence chosen, device counts.
+
+---
+
+## Design principles (apply to all overview work)
+
+1. **API endpoints only** for frontend–backend communication. Never read a setting to display live state. Settings are for persisting user configuration; API responses carry live state.
+2. **One card, one question.** Hero = are we on track? Summary card = what is each device doing?
+3. **Dry-run is hypothetical.** If PELS did not send a command, the UI must not imply it did.
+4. **Colour never carries meaning alone.** Chip label and decision sentence must be readable without colour context.
+5. **Safe pace is dynamic.** Never phrase it as a fixed allowance for the rest of the hour.
