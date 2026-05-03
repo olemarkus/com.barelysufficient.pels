@@ -911,12 +911,12 @@ input:focus-visible {
   background: #64748b;
 }
 
-.plan-hero__legend-swatch--pels {
+.plan-hero__legend-swatch--safe-pace {
   background: color-mix(in srgb, var(--text) 85%, transparent);
   border-radius: 50%;
 }
 
-.plan-hero__legend-swatch--grid {
+.plan-hero__legend-swatch--hard-cap {
   background: var(--warning);
   border-radius: 50%;
 }
@@ -947,12 +947,30 @@ input:focus-visible {
   inset: -8px;
 }
 
-.plan-hero__tick--pels {
+.plan-hero__tick--safe-pace {
   background: color-mix(in srgb, var(--text) 92%, transparent);
 }
 
-.plan-hero__tick--grid {
+.plan-hero__tick--hard-cap {
   background: var(--warning);
+}
+
+.plan-hero__tick--projected {
+  background: var(--accent);
+  width: 3px;
+  border-radius: 2px;
+  height: 14px;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.plan-hero__tick--projected-over {
+  background: var(--warning);
+  width: 3px;
+  border-radius: 2px;
+  height: 14px;
+  top: 50%;
+  transform: translate(-50%, -50%);
 }
 
 .plan-hero__note {
@@ -966,6 +984,66 @@ input:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--spacing-2);
+}
+
+.plan-hero__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.plan-hero__chips .plan-hero__info {
+  margin-left: auto;
+}
+
+.plan-hero__section {
+  display: grid;
+  gap: var(--spacing-1);
+}
+
+.plan-hero__section-label {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.plan-hero__headline {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.2;
+}
+
+.plan-hero__headline--sm {
+  font-size: var(--font-size-sm);
+}
+
+.plan-hero__subline {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.plan-hero__subline[data-tone="warn"] {
+  color: var(--color-state-warning-text);
+}
+
+.plan-hero__subline--muted {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.plan-hero__energy-support {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.plan-hero__decision {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-style: italic;
 }
 
 

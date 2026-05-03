@@ -10,6 +10,7 @@ import {
   staleDataBannerText,
 } from './dom.ts';
 import { getSetting } from './homey.ts';
+import { state } from './state.ts';
 import { getPowerReadModel } from './power.ts';
 import {
   CAPACITY_DRY_RUN,
@@ -109,6 +110,7 @@ export const loadCapacitySettings = async () => {
   if (powerSourceSelect) {
     powerSourceSelect.value = normalizePowerSource(powerSource);
   }
+  state.dryRun = isDryRun;
   updateDryRunBanner(isDryRun);
 };
 
@@ -141,6 +143,7 @@ export const saveCapacitySettings = async () => {
   if (writes.length > 0) {
     await Promise.all(writes);
   }
+  state.dryRun = dryRun;
   updateDryRunBanner(dryRun);
   await showToast('Capacity settings saved.', 'ok');
 };

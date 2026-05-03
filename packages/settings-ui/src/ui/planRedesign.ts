@@ -13,6 +13,7 @@ import { planNeedsLiveUpdates, resolveDisplayPlanDevices } from './planLiveData.
 import { renderPlanHero } from './planHero.ts';
 import { buildPlanCard, updatePlanCardBinding } from './planDeviceCard.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot, PlanStatusBinding } from './planTypes.ts';
+import { state } from './state.ts';
 
 let liveStatusBindings: PlanStatusBinding[] = [];
 let cachedOverviewPanel: Element | null = null;
@@ -86,7 +87,10 @@ const updateLivePlanAt = (plan: PlanSnapshot | null, renderedAtMs: number, nowMs
   lastRenderedAtMs = renderedAtMs;
   const devices = Array.isArray(plan?.devices) ? plan.devices : [];
   const displayDevices = resolveDisplayPlanDevices(plan, devices, renderedAtMs, nowMs);
-  renderPlanHero(plan?.meta, displayDevices, cachedPowerStatus, nowMs);
+  renderPlanHero(
+    plan?.meta, displayDevices, cachedPowerStatus,
+    { activeMode: state.activeMode, dryRun: state.dryRun }, nowMs,
+  );
   for (let i = 0; i < liveStatusBindings.length; i += 1) {
     updatePlanCardBinding(liveStatusBindings[i], plan, renderedAtMs, nowMs);
   }
@@ -98,7 +102,7 @@ const renderPlanAt = (plan: PlanSnapshot | null, renderedAtMs: number, nowMs: nu
   resetLiveBindings();
   planCards.replaceChildren();
   if (!plan) {
-    renderPlanHero(undefined, [], cachedPowerStatus, nowMs);
+    renderPlanHero(undefined, [], cachedPowerStatus, { activeMode: state.activeMode, dryRun: state.dryRun }, nowMs);
     planEmpty.hidden = false;
     planEmpty.textContent = 'No plan available yet. Send power data or refresh devices.';
     return;
@@ -107,7 +111,10 @@ const renderPlanAt = (plan: PlanSnapshot | null, renderedAtMs: number, nowMs: nu
   const devices = Array.isArray(plan.devices) ? plan.devices : [];
   const sortedDevices = [...devices].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
   const displayDevices = resolveDisplayPlanDevices(plan, sortedDevices, renderedAtMs, nowMs);
-  renderPlanHero(plan.meta, displayDevices, cachedPowerStatus, nowMs);
+  renderPlanHero(
+    plan.meta, displayDevices, cachedPowerStatus,
+    { activeMode: state.activeMode, dryRun: state.dryRun }, nowMs,
+  );
   if (devices.length === 0) {
     planEmpty.hidden = false;
     planEmpty.textContent = 'No managed devices.';
@@ -144,7 +151,10 @@ export const updatePlanPower = (power: SettingsUiPowerStatus | null): void => {
   const devices = Array.isArray(lastRenderedPlan.devices) ? lastRenderedPlan.devices : [];
   const sortedDevices = [...devices].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
   const displayDevices = resolveDisplayPlanDevices(lastRenderedPlan, sortedDevices, lastRenderedAtMs || nowMs, nowMs);
-  renderPlanHero(lastRenderedPlan.meta, displayDevices, cachedPowerStatus, nowMs);
+  renderPlanHero(
+    lastRenderedPlan.meta, displayDevices, cachedPowerStatus,
+    { activeMode: state.activeMode, dryRun: state.dryRun }, nowMs,
+  );
 };
 
 export const refreshPlan = async () => {
