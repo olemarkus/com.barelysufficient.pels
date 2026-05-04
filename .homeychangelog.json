@@ -346,5 +346,8 @@
   },
   "2.5.1": {
     "en": "Fixed an issue where a stepped load device would be prioritised behind a binary device."
+  },
+  "2.6.0": {
+    "en": "Support stepped load for zaptec devices (still requires a flow). Support boost mode for EV chargers. Support passing in battery as state-of-charge to chargers."
   }
 }
