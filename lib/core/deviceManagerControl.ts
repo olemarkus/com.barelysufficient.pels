@@ -6,6 +6,8 @@ export type DeviceCapabilityValue = {
   min?: number;
   max?: number;
   step?: number;
+  excludeMin?: number;
+  excludeMax?: number;
   setable?: boolean;
   lastUpdated?: string | number | Date | null;
 };

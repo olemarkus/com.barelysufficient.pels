@@ -1055,6 +1055,8 @@ describe('PlanExecutor stepped loads', () => {
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
       step_id: 'max',
       planning_power_w: 3000,
+      planning_current_1p_a: 3000 / 230,
+      planning_current_3p_a: 3000 / (230 * 3),
       previous_step_id: 'low',
     }, {
       deviceId: 'dev-1',
@@ -1231,6 +1233,8 @@ describe('PlanExecutor stepped loads', () => {
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
       step_id: 'max',
       planning_power_w: 3000,
+      planning_current_1p_a: 3000 / 230,
+      planning_current_3p_a: 3000 / (230 * 3),
       previous_step_id: 'low',
     }, {
       deviceId: 'dev-1',
@@ -1302,6 +1306,8 @@ describe('PlanExecutor stepped loads', () => {
       expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
         step_id: 'max',
         planning_power_w: 3000,
+        planning_current_1p_a: 3000 / 230,
+        planning_current_3p_a: 3000 / (230 * 3),
         previous_step_id: 'low',
       }, {
         deviceId: 'dev-1',
@@ -1339,6 +1345,8 @@ describe('PlanExecutor stepped loads', () => {
       expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
         step_id: 'max',
         planning_power_w: 3000,
+        planning_current_1p_a: 3000 / 230,
+        planning_current_3p_a: 3000 / (230 * 3),
         previous_step_id: 'max',
       }, {
         deviceId: 'dev-1',

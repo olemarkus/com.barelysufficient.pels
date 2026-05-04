@@ -116,6 +116,78 @@ describe('native EV wiring shim', () => {
     }));
   });
 
+  it('maps Zaptec available installation current into EV preset stepped-load observations', () => {
+    const deviceManager = new DeviceManager(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      {
+        getExperimentalEvSupportEnabled: () => true,
+        getNativeEvWiringEnabled: () => true,
+        getDeviceTargetPowerConfig: (deviceId) => (
+          deviceId === 'zaptec-go-1'
+            ? { enabled: true, preset: 'ev_charger_3_phase' }
+            : undefined
+        ),
+      },
+    );
+
+    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice()]);
+
+    expect(parsed).toEqual(expect.objectContaining({
+      id: 'zaptec-go-1',
+      controlCapabilityId: 'evcharger_charging',
+      controlWriteCapabilityId: 'charging_button',
+      controlAdapter: expect.objectContaining({
+        kind: 'capability_adapter',
+        activationRequired: true,
+        activationEnabled: true,
+      }),
+      controlModel: 'stepped_load',
+      reportedStepId: '16a',
+      steppedLoadProfile: expect.objectContaining({
+        model: 'stepped_load',
+        steps: expect.arrayContaining([
+          { id: '6a', planningPowerW: 4140 },
+          { id: '16a', planningPowerW: 11040 },
+        ]),
+      }),
+      targetPowerConfig: { enabled: true, preset: 'ev_charger_3_phase' },
+    }));
+    expect(parsed.capabilities).toContain('target_power');
+  });
+
+  it('updates EV preset stepped-load observation from realtime available installation current', async () => {
+    const get = vi.fn(async (path: string) => {
+      if (path === 'manager/devices/device') return { 'zaptec-go-1': buildZaptecDevice() };
+      throw new Error(`unexpected device fetch: ${path}`);
+    });
+    setRestClient({ get, put: vi.fn().mockResolvedValue(undefined) });
+    const deviceManager = new DeviceManager(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      {
+        getExperimentalEvSupportEnabled: () => true,
+        getNativeEvWiringEnabled: () => true,
+        getDeviceTargetPowerConfig: (deviceId) => (
+          deviceId === 'zaptec-go-1'
+            ? { enabled: true, preset: 'ev_charger_3_phase' }
+            : undefined
+        ),
+      },
+    );
+
+    await deviceManager.refreshSnapshot({ includeLivePower: false });
+    expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+      reportedStepId: '16a',
+    }));
+
+    deviceManager.injectCapabilityUpdateForTest('zaptec-go-1', 'available_installation_current', 10);
+
+    expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+      reportedStepId: '10a',
+    }));
+  });
+
   it('accepts the real Zaptec app when Homey reports the full driver URI', () => {
     const deviceManager = new DeviceManager(
       mockHomeyInstance as unknown as Homey.App,
@@ -174,6 +246,41 @@ describe('native EV wiring shim', () => {
         activationEnabled: true,
       }),
       controlWriteCapabilityId: 'charging_button',
+      currentOn: true,
+      evChargingState: 'plugged_in_paused',
+      canSetControl: true,
+    }));
+  });
+
+  it('uses compatibility settings to classify a test-device mock as the real driver', () => {
+    const deviceManager = new DeviceManager(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      {
+        getExperimentalEvSupportEnabled: () => true,
+        getNativeEvWiringEnabled: () => true,
+      },
+    );
+
+    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice({
+      id: 'zaptec-go2-compat-mock',
+      name: 'Zaptec Go 2 compatibility mock',
+      driverId: 'homey:app:com.olemarkus.testdevices:go2',
+      ownerUri: 'homey:app:com.olemarkus.testdevices',
+      settings: {
+        pelsCompatibilityOwnerUri: 'homey:app:com.zaptec',
+        pelsCompatibilityDriverId: 'homey:app:com.zaptec:go2',
+      },
+    })]);
+
+    expect(parsed).toEqual(expect.objectContaining({
+      id: 'zaptec-go2-compat-mock',
+      name: 'Zaptec Go 2 compatibility mock',
+      controlCapabilityId: 'evcharger_charging',
+      controlAdapter: expect.objectContaining({
+        kind: 'capability_adapter',
+        activationEnabled: true,
+      }),
       currentOn: true,
       evChargingState: 'plugged_in_paused',
       canSetControl: true,

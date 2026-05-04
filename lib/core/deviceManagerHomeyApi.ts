@@ -100,23 +100,6 @@ export async function setRawCapabilityValue(
   }
 }
 
-export async function runRawFlowCardAction(params: {
-  uri: string;
-  id: string;
-  args?: Record<string, unknown>;
-}): Promise<unknown> {
-  if (!restClient?.post) throw new Error('REST client flow POST not initialized');
-  const path = `manager/flow/flowcardaction/${encodeURIComponent(params.uri)}/${encodeURIComponent(params.id)}/run`;
-  try {
-    return await restClient.post(path, {
-      args: params.args ?? {},
-    });
-  } catch (error) {
-    writeErrorToStderr(`runRawFlowCardAction POST '${path}' failed`, error);
-    throw error;
-  }
-}
-
 export function hasRestClient(): boolean {
   return restClient !== null;
 }

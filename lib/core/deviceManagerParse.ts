@@ -93,11 +93,22 @@ export function buildTargets(
       id: capId,
       ...(resolvedValue !== undefined ? { value: resolvedValue } : {}),
       unit: capability?.units || '°C',
-      ...(typeof capability?.min === 'number' && Number.isFinite(capability.min) ? { min: capability.min } : {}),
-      ...(typeof capability?.max === 'number' && Number.isFinite(capability.max) ? { max: capability.max } : {}),
-      ...(typeof capability?.step === 'number' && Number.isFinite(capability.step) ? { step: capability.step } : {}),
+      ...finiteCapabilityNumber('min', capability?.min),
+      ...finiteCapabilityNumber('max', capability?.max),
+      ...finiteCapabilityNumber('step', capability?.step),
+      ...finiteCapabilityNumber('excludeMin', capability?.excludeMin),
+      ...finiteCapabilityNumber('excludeMax', capability?.excludeMax),
     };
   });
+}
+
+function finiteCapabilityNumber<T extends 'min' | 'max' | 'step' | 'excludeMin' | 'excludeMax'>(
+  key: T,
+  value: unknown,
+): Partial<Record<T, number>> {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? { [key]: value } as Partial<Record<T, number>>
+    : {};
 }
 
 function resolveTargetCapabilityValue(params: {

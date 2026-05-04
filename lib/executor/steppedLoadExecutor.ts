@@ -628,6 +628,8 @@ const executeSteppedLoadCommand = async (
     const triggerPromise = triggerCard.trigger({
       step_id: desiredStep.id,
       planning_power_w: planningPowerW,
+      planning_current_1p_a: planningPowerW / 230,
+      planning_current_3p_a: planningPowerW / (230 * 3),
       previous_step_id: previousStepId ?? '',
     }, {
       deviceId: action.id,

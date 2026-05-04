@@ -5,10 +5,12 @@ import {
 } from '../../../contracts/src/deviceControlProfiles.ts';
 import type {
   DeviceControlModel,
+  DeviceTargetPowerConfigs,
   SteppedLoadProfile,
+  TargetPowerSteppedLoadConfig,
   TargetDeviceSnapshot,
 } from '../../../contracts/src/types.ts';
-import { DEVICE_CONTROL_PROFILES } from '../../../contracts/src/settingsKeys.ts';
+import { DEVICE_CONTROL_PROFILES, DEVICE_TARGET_POWER_CONFIGS } from '../../../contracts/src/settingsKeys.ts';
 import { getSetting, setSetting } from './homey.ts';
 import { state } from './state.ts';
 import { supportsTemperatureDevice } from './deviceUtils.ts';
@@ -52,6 +54,7 @@ export const createDefaultSteppedLoadProfile = (device: TargetDeviceSnapshot): S
 };
 
 export const getStoredDeviceControlProfile = (deviceId: string) => state.deviceControlProfiles[deviceId] ?? null;
+export const getStoredTargetPowerConfig = (deviceId: string) => state.deviceTargetPowerConfigs[deviceId] ?? null;
 
 export const isNativeSteppedLoadProfileActive = (device?: TargetDeviceSnapshot | null): boolean => (
   device?.controlAdapter?.kind === 'capability_adapter'
@@ -64,20 +67,28 @@ export const getEffectiveControlModel = (device: TargetDeviceSnapshot): DeviceCo
   if (device.controlModel) return device.controlModel;
   const storedProfile = getStoredDeviceControlProfile(device.id);
   if (storedProfile?.model === 'stepped_load') return 'stepped_load';
+  const storedTargetPowerConfig = getStoredTargetPowerConfig(device.id);
+  if (storedTargetPowerConfig && storedTargetPowerConfig.enabled !== false) return 'stepped_load';
   return supportsTemperatureDevice(device) ? 'temperature_target' : 'binary_power';
 };
 
 export const loadDeviceControlProfiles = async (): Promise<void> => {
   try {
     state.deviceControlProfiles = normalizeDeviceControlProfiles(await getSetting(DEVICE_CONTROL_PROFILES)) ?? {};
+    state.deviceTargetPowerConfigs = normalizeDeviceTargetPowerConfigs(await getSetting(DEVICE_TARGET_POWER_CONFIGS));
   } catch (error) {
     state.deviceControlProfiles = {};
+    state.deviceTargetPowerConfigs = {};
     await logSettingsError('Failed to load device control profiles', error, 'loadDeviceControlProfiles');
   }
 };
 
 export const saveDeviceControlProfiles = async (): Promise<void> => {
   await setSetting(DEVICE_CONTROL_PROFILES, state.deviceControlProfiles);
+};
+
+export const saveDeviceTargetPowerConfigs = async (): Promise<void> => {
+  await setSetting(DEVICE_TARGET_POWER_CONFIGS, state.deviceTargetPowerConfigs);
 };
 
 export const applyLocalDeviceControlProfile = (
@@ -109,3 +120,46 @@ export const applyLocalDeviceControlProfile = (
   device.selectedStepId = selectedStepId;
   device.planningPowerKw = resolveSteppedLoadPlanningPowerKw(profile, selectedStepId);
 };
+
+export const normalizeDeviceTargetPowerConfigs = (value: unknown): DeviceTargetPowerConfigs => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).flatMap(([deviceId, entry]) => {
+      const config = normalizeTargetPowerConfig(entry);
+      return config ? [[deviceId, config]] : [];
+    }),
+  );
+};
+
+export const normalizeTargetPowerConfig = (value: unknown): TargetPowerSteppedLoadConfig | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const preset = record.preset === 'ev_charger_1_phase' || record.preset === 'ev_charger_3_phase'
+    ? record.preset
+    : undefined;
+  const pickNumber = (key: string) => (
+    typeof record[key] === 'number' && Number.isFinite(record[key])
+      ? record[key] as number
+      : undefined
+  );
+  const config: TargetPowerSteppedLoadConfig = {
+    ...(typeof record.enabled === 'boolean' ? { enabled: record.enabled } : {}),
+    ...(preset ? { preset } : {}),
+    ...numberProp('min', pickNumber('min')),
+    ...numberProp('max', pickNumber('max')),
+    ...numberProp('step', pickNumber('step')),
+    ...numberProp('excludeMin', pickNumber('excludeMin')),
+    ...numberProp('excludeMax', pickNumber('excludeMax')),
+  };
+  if (Object.keys(config).length === 0) return null;
+  if (config.enabled === false) return config;
+  if (config.preset || (config.max !== undefined && config.step !== undefined)) return config;
+  return null;
+};
+
+function numberProp<T extends 'min' | 'max' | 'step' | 'excludeMin' | 'excludeMax'>(
+  key: T,
+  value: number | undefined,
+): Partial<Record<T, number>> {
+  return value !== undefined ? { [key]: value } as Partial<Record<T, number>> : {};
+}

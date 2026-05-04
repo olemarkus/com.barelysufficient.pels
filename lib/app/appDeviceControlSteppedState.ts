@@ -43,6 +43,12 @@ export const resolveNativeSteppedLoadProfile = (snapshot: TargetDeviceSnapshot):
     : null
 );
 
+export const resolveSnapshotSteppedLoadProfile = (snapshot: TargetDeviceSnapshot): SteppedLoadProfile | null => (
+  snapshot.controlModel === 'stepped_load' && snapshot.steppedLoadProfile?.model === 'stepped_load'
+    ? snapshot.steppedLoadProfile
+    : null
+);
+
 export const resolveSteppedLoadCurrentOn = (params: {
   snapshot: TargetDeviceSnapshot;
   profile: SteppedLoadProfile;

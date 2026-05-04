@@ -3,8 +3,8 @@ import type {
   DeviceControlAdapterSnapshot,
   HomeyDeviceLike,
   Logger,
-  NativeSteppedLoadStatusSnapshot,
   SteppedLoadProfile,
+  TargetDeviceSnapshot,
 } from '../utils/types';
 import {
   augmentCapabilitiesWithFlowReports,
@@ -22,17 +22,18 @@ import { resolveDeviceCapabilities } from './deviceManagerParse';
 import type { DeviceManagerParseProviders } from './deviceManagerParseDevice';
 import {
   buildNativeSteppedLoadControlAdapter,
+  buildSyntheticTargetPowerCapabilityMap,
+  hasTargetPowerCapability,
   isNativeSteppedLoadWiringCandidate,
-  resolveNativeSteppedLoadCapabilityId,
+  isTargetPowerSteppedLoadWiringCandidate,
+  resolveNativeSteppedLoadObservationCapabilityId,
   resolveNativeSteppedLoadProfileSuggestion,
   resolveNativeSteppedLoadReportedStepId,
+  resolveTargetPowerReportedStepId,
+  resolveTargetPowerSteppedLoadProfileFromConfig,
   stripNativeSteppedLoadControlCapabilities,
 } from './nativeSteppedLoadWiring';
-import {
-  isZaptecNativeSteppedLoadWiringCandidate,
-  resolveZaptecNativeSteppedLoadProfileSuggestion,
-  resolveZaptecNativeSteppedLoadReportedStepId,
-} from './zaptecNativeSteppedLoad';
+import { resolveDeviceCompatibilityTargetPowerConfig } from './deviceCompatibility';
 
 export type FlowEffectiveRequiredCapabilityId =
   'onoff'
@@ -65,8 +66,10 @@ export function resolveFlowCapabilityOverlay(params: {
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
   reportedStepId?: string;
   reportedStepObservedAtMs?: number;
-  nativeSteppedLoadStatus?: NativeSteppedLoadStatusSnapshot;
   suggestedSteppedLoadProfile?: SteppedLoadProfile;
+  controlModel?: 'stepped_load';
+  steppedLoadProfile?: SteppedLoadProfile;
+  targetPowerConfig?: TargetDeviceSnapshot['targetPowerConfig'];
   allReportedCapabilities: FlowReportedCapabilitiesForDevice;
 } {
   const {
@@ -92,14 +95,23 @@ export function resolveFlowCapabilityOverlay(params: {
 
   const overlayCapabilities = nativeEvOverlay.capabilities;
   const overlayCapabilityObj = nativeEvOverlay.capabilityObj;
-  const nativeSteppedOverlay = resolveNativeSteppedLoadOverlay({
+  const targetPowerOverlay = applySyntheticTargetPowerOverlay({
     device,
     deviceId,
     capabilities: overlayCapabilities,
     capabilityObj: overlayCapabilityObj,
+    evPresetOnly: isNativeEvControlAdapterActive(nativeEvOverlay),
     providers,
   });
-  const targetCapabilityIds = overlayCapabilities.filter(
+  const nativeSteppedOverlay = resolveNativeSteppedLoadOverlay({
+    device,
+    deviceId,
+    capabilities: targetPowerOverlay.capabilities,
+    capabilityObj: targetPowerOverlay.capabilityObj,
+    profileOverride: targetPowerOverlay.steppedLoadProfile,
+    providers,
+  });
+  const targetCapabilityIds = targetPowerOverlay.capabilities.filter(
     (capabilityId) => capabilityId.startsWith('target_temperature'),
   );
   const flowAugmentedDeviceType = resolveFlowAugmentedDeviceType({
@@ -107,15 +119,12 @@ export function resolveFlowCapabilityOverlay(params: {
     targetCapabilityIds,
   });
   const requiredFlowCapabilityIds = getFlowEffectiveRequiredCapabilitiesForType(flowAugmentedDeviceType);
-  const hasNativeEvCapabilities = hasOfficialEvChargerCapabilities(rawCapabilities);
-  const shouldIgnoreFlowReports = hasNativeEvCapabilities
-    || nativeEvOverlay.controlAdapter?.activationEnabled === true
-    || (
-    nativeEvOverlay.controlAdapter?.activationRequired === true
-    && providers.getManaged?.(deviceId) !== true
-  );
   const allReportedCapabilities = providers.getFlowReportedCapabilities?.(deviceId) ?? {};
-  const reportedCapabilities = shouldIgnoreFlowReports
+  const reportedCapabilities = shouldIgnoreFlowReports({
+    rawCapabilities,
+    controlAdapter: nativeEvOverlay.controlAdapter,
+    managed: providers.getManaged?.(deviceId) === true,
+  })
     ? pickSupplementalFlowReports(allReportedCapabilities)
     : allReportedCapabilities;
   const {
@@ -124,17 +133,19 @@ export function resolveFlowCapabilityOverlay(params: {
     flowBackedCapabilityIds,
   } = augmentCapabilitiesWithFlowReports({
     deviceType: flowAugmentedDeviceType,
-    capabilities: overlayCapabilities,
-    capabilityObj: overlayCapabilityObj,
+    capabilities: targetPowerOverlay.capabilities,
+    capabilityObj: targetPowerOverlay.capabilityObj,
     reportedCapabilities,
   });
-  const controlAdapter = nativeEvOverlay.controlAdapter?.activationRequired === true
-    && nativeEvOverlay.controlAdapter.activationEnabled !== true
-    ? nativeEvOverlay.controlAdapter
-    : (nativeSteppedOverlay.controlAdapter ?? nativeEvOverlay.controlAdapter);
+  const controlAdapter = resolveOverlayControlAdapter({
+    nativeEvControlAdapter: nativeEvOverlay.controlAdapter,
+    nativeSteppedControlAdapter: nativeSteppedOverlay.controlAdapter,
+  });
+  const activeNativeSteppedProfile = resolveActiveNativeSteppedProfile(nativeSteppedOverlay);
+  const steppedLoadProfile = targetPowerOverlay.steppedLoadProfile ?? activeNativeSteppedProfile;
 
   return {
-    capabilities: stripNativeSteppedLoadControlCapabilities({ device, capabilities }),
+    capabilities: stripNativeSteppedLoadControlCapabilities({ device, capabilities, capabilityObj }),
     capabilityObj,
     controlAdapter,
     controlWriteCapabilityId: nativeEvOverlay.controlWriteCapabilityId,
@@ -143,11 +154,132 @@ export function resolveFlowCapabilityOverlay(params: {
     flowBackedCapabilityIds,
     requiredFlowCapabilityIds,
     reportedCapabilities,
-    reportedStepId: nativeSteppedOverlay.reportedStepId,
-    reportedStepObservedAtMs: nativeSteppedOverlay.reportedStepObservedAtMs,
-    nativeSteppedLoadStatus: nativeSteppedOverlay.nativeSteppedLoadStatus,
+    reportedStepId: nativeSteppedOverlay.reportedStepId ?? targetPowerOverlay.reportedStepId,
+    reportedStepObservedAtMs: nativeSteppedOverlay.reportedStepObservedAtMs
+      ?? targetPowerOverlay.reportedStepObservedAtMs,
     suggestedSteppedLoadProfile: nativeSteppedOverlay.suggestedSteppedLoadProfile,
+    controlModel: steppedLoadProfile ? 'stepped_load' : undefined,
+    steppedLoadProfile,
+    targetPowerConfig: targetPowerOverlay.targetPowerConfig,
     allReportedCapabilities,
+  };
+}
+
+function shouldIgnoreFlowReports(params: {
+  rawCapabilities: readonly string[];
+  controlAdapter?: DeviceControlAdapterSnapshot;
+  managed: boolean;
+}): boolean {
+  const { rawCapabilities, controlAdapter, managed } = params;
+  return hasOfficialEvChargerCapabilities(rawCapabilities)
+    || controlAdapter?.activationEnabled === true
+    || (controlAdapter?.activationRequired === true && !managed);
+}
+
+function resolveOverlayControlAdapter(params: {
+  nativeEvControlAdapter?: DeviceControlAdapterSnapshot;
+  nativeSteppedControlAdapter?: DeviceControlAdapterSnapshot;
+}): DeviceControlAdapterSnapshot | undefined {
+  if (params.nativeEvControlAdapter?.activationEnabled === true) return params.nativeEvControlAdapter;
+  const { nativeEvControlAdapter, nativeSteppedControlAdapter } = params;
+  return nativeEvControlAdapter?.activationRequired === true
+    && nativeEvControlAdapter.activationEnabled !== true
+    ? nativeEvControlAdapter
+    : (nativeSteppedControlAdapter ?? nativeEvControlAdapter);
+}
+
+function isNativeEvControlAdapterActive(params: {
+  controlAdapter?: DeviceControlAdapterSnapshot;
+  controlWriteCapabilityId?: string;
+}): boolean {
+  return params.controlAdapter?.kind === 'capability_adapter'
+    && params.controlAdapter.activationEnabled === true
+    && params.controlWriteCapabilityId === 'charging_button';
+}
+
+function resolveActiveNativeSteppedProfile(params: {
+  controlAdapter?: DeviceControlAdapterSnapshot;
+  suggestedSteppedLoadProfile?: SteppedLoadProfile;
+}): SteppedLoadProfile | undefined {
+  return params.controlAdapter?.activationEnabled === true
+    ? params.suggestedSteppedLoadProfile
+    : undefined;
+}
+
+function applySyntheticTargetPowerOverlay(params: {
+  device: HomeyDeviceLike;
+  deviceId: string;
+  capabilities: string[];
+  capabilityObj: DeviceCapabilityMap;
+  evPresetOnly?: boolean;
+  providers: DeviceManagerParseProviders;
+}): {
+  capabilities: string[];
+  capabilityObj: DeviceCapabilityMap;
+  steppedLoadProfile?: SteppedLoadProfile;
+  reportedStepId?: string;
+  reportedStepObservedAtMs?: number;
+  targetPowerConfig?: TargetDeviceSnapshot['targetPowerConfig'];
+} {
+  const config = params.providers.getDeviceTargetPowerConfig?.(params.deviceId)
+    ?? resolveDeviceCompatibilityTargetPowerConfig(params.device);
+  if (params.evPresetOnly === true && !isEvTargetPowerPresetConfig(config)) {
+    return {
+      capabilities: params.capabilities,
+      capabilityObj: params.capabilityObj,
+    };
+  }
+  const steppedLoadProfile = resolveTargetPowerSteppedLoadProfileFromConfig(config);
+  if (!config || !steppedLoadProfile) {
+    return {
+      capabilities: params.capabilities,
+      capabilityObj: params.capabilityObj,
+    };
+  }
+  const capabilities = hasTargetPowerCapability(params.capabilities)
+    ? params.capabilities
+    : [...params.capabilities, 'target_power'];
+  const observedTargetPower = resolveAvailableInstallationTargetPowerObservation({
+    config,
+    capabilityObj: params.capabilityObj,
+  });
+  const capabilityObj = buildSyntheticTargetPowerCapabilityMap({
+    capabilityObj: params.capabilityObj,
+    config,
+    observedValue: observedTargetPower?.value,
+    observedAt: observedTargetPower?.observedAt,
+  });
+  return {
+    capabilities,
+    capabilityObj,
+    steppedLoadProfile,
+    reportedStepId: resolveTargetPowerReportedStepId({ profile: steppedLoadProfile, capabilityObj }),
+    reportedStepObservedAtMs: toCapabilityTimestampMs(capabilityObj.target_power?.lastUpdated),
+    targetPowerConfig: config,
+  };
+}
+
+function isEvTargetPowerPresetConfig(
+  config: TargetDeviceSnapshot['targetPowerConfig'] | undefined,
+): boolean {
+  return config?.preset === 'ev_charger_1_phase' || config?.preset === 'ev_charger_3_phase';
+}
+
+function resolveAvailableInstallationTargetPowerObservation(params: {
+  config: TargetDeviceSnapshot['targetPowerConfig'];
+  capabilityObj: DeviceCapabilityMap;
+}): { value: number; observedAt?: DeviceCapabilityMap[string]['lastUpdated'] } | undefined {
+  let phaseCount: number | undefined;
+  if (params.config?.preset === 'ev_charger_1_phase') {
+    phaseCount = 1;
+  } else if (params.config?.preset === 'ev_charger_3_phase') {
+    phaseCount = 3;
+  }
+  const availableCurrent = params.capabilityObj.available_installation_current?.value;
+  if (!phaseCount || typeof availableCurrent !== 'number' || !Number.isFinite(availableCurrent)) return undefined;
+  return {
+    value: Math.round(availableCurrent * 230 * phaseCount),
+    observedAt: params.capabilityObj.available_installation_current?.lastUpdated,
   };
 }
 
@@ -156,12 +288,12 @@ function resolveNativeSteppedLoadOverlay(params: {
   deviceId: string;
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
+  profileOverride?: SteppedLoadProfile;
   providers: DeviceManagerParseProviders;
 }): {
   controlAdapter?: DeviceControlAdapterSnapshot;
   reportedStepId?: string;
   reportedStepObservedAtMs?: number;
-  nativeSteppedLoadStatus?: NativeSteppedLoadStatusSnapshot;
   suggestedSteppedLoadProfile?: SteppedLoadProfile;
 } {
   const {
@@ -169,37 +301,40 @@ function resolveNativeSteppedLoadOverlay(params: {
     deviceId,
     capabilities,
     capabilityObj,
+    profileOverride,
     providers,
   } = params;
-  const nativeSteppedLoadStatus = providers.getNativeSteppedLoadStatus?.(deviceId);
-  const zaptecSteppedCandidate = isZaptecNativeSteppedLoadWiringCandidate({ device, capabilities });
-  const nativeSteppedCandidate = zaptecSteppedCandidate || isNativeSteppedLoadWiringCandidate({ device, capabilities });
-  const suggestedSteppedLoadProfile = zaptecSteppedCandidate
-    ? resolveZaptecNativeSteppedLoadProfileSuggestion({ device, capabilities })
-    : resolveNativeSteppedLoadProfileSuggestion({ device, capabilities });
-  if (!nativeSteppedCandidate && !nativeSteppedLoadStatus) return {};
-  if (!suggestedSteppedLoadProfile || nativeSteppedLoadStatus?.blockedReasonCode) {
-    return { nativeSteppedLoadStatus };
-  }
+  const targetPowerSteppedCandidate = isTargetPowerSteppedLoadWiringCandidate({ capabilities, capabilityObj });
+  const nativeSteppedCandidate = isNativeSteppedLoadWiringCandidate({
+    device,
+    capabilities,
+    capabilityObj,
+  });
+  const suggestedSteppedLoadProfile = profileOverride ?? resolveNativeSteppedLoadProfileSuggestion({
+    device,
+    capabilities,
+    capabilityObj,
+  });
+  if (!nativeSteppedCandidate || !suggestedSteppedLoadProfile) return {};
 
-  const nativeSteppedEnabled = providers.getNativeEvWiringEnabled?.(deviceId) === true;
+  const nativeSteppedEnabled = targetPowerSteppedCandidate || providers.getNativeEvWiringEnabled?.(deviceId) === true;
   let reportedStepId: string | undefined;
   if (nativeSteppedEnabled) {
-    reportedStepId = zaptecSteppedCandidate
-      ? resolveZaptecNativeSteppedLoadReportedStepId({ capabilityObj })
-      : resolveNativeSteppedLoadReportedStepId({
-        profile: suggestedSteppedLoadProfile,
-        capabilities,
-        capabilityObj,
-      });
+    reportedStepId = resolveNativeSteppedLoadReportedStepId({
+      profile: suggestedSteppedLoadProfile,
+      capabilities,
+      capabilityObj,
+    });
   }
   return {
-    controlAdapter: buildNativeSteppedLoadControlAdapter({ nativeWiringEnabled: nativeSteppedEnabled }),
+    controlAdapter: buildNativeSteppedLoadControlAdapter({
+      nativeWiringEnabled: nativeSteppedEnabled,
+      activationAvailable: !targetPowerSteppedCandidate,
+    }),
     reportedStepId,
     reportedStepObservedAtMs: reportedStepId
       ? resolveNativeSteppedLoadObservedAtMs({ device, capabilities, capabilityObj })
       : undefined,
-    nativeSteppedLoadStatus,
     suggestedSteppedLoadProfile,
   };
 }
@@ -209,10 +344,11 @@ function resolveNativeSteppedLoadObservedAtMs(params: {
   capabilities: readonly string[];
   capabilityObj: DeviceCapabilityMap;
 }): number | undefined {
-  if (isZaptecNativeSteppedLoadWiringCandidate({ device: params.device, capabilities: params.capabilities })) {
-    return toCapabilityTimestampMs(params.capabilityObj.available_installation_current?.lastUpdated);
-  }
-  const nativeCapabilityId = resolveNativeSteppedLoadCapabilityId(params.capabilities);
+  void params.device;
+  const nativeCapabilityId = resolveNativeSteppedLoadObservationCapabilityId({
+    capabilities: params.capabilities,
+    capabilityObj: params.capabilityObj,
+  });
   return toCapabilityTimestampMs(
     nativeCapabilityId ? params.capabilityObj[nativeCapabilityId]?.lastUpdated : undefined,
   );
@@ -232,6 +368,7 @@ export function resolveCandidateCapabilities(params: {
   deviceLabel: string;
   capabilities: string[];
   controlAdapter?: DeviceControlAdapterSnapshot;
+  steppedLoadProfile?: SteppedLoadProfile;
   logDebug: (...args: unknown[]) => void;
 }): { targetCaps: string[]; hasPower: boolean } | null {
   const {
@@ -240,12 +377,18 @@ export function resolveCandidateCapabilities(params: {
     deviceLabel,
     capabilities,
     controlAdapter,
+    steppedLoadProfile,
     logDebug,
   } = params;
+  if (deviceClassKey === 'evcharger' && steppedLoadProfile?.model === 'stepped_load') {
+    return {
+      targetCaps: [],
+      hasPower: hasAnyPowerCapability(capabilities),
+    };
+  }
   if (
     deviceClassKey === 'evcharger'
-    && controlAdapter?.activationRequired === true
-    && controlAdapter.activationEnabled !== true
+    && isCapabilityAdapterEvCandidate(controlAdapter)
     && !capabilities.includes('evcharger_charging')
   ) {
     return {
@@ -260,6 +403,16 @@ export function resolveCandidateCapabilities(params: {
     capabilities,
     logDebug,
   });
+}
+
+function isCapabilityAdapterEvCandidate(
+  controlAdapter?: DeviceControlAdapterSnapshot,
+): boolean {
+  return controlAdapter?.activationAvailable === true
+    || (
+      controlAdapter?.activationRequired === true
+      && controlAdapter.activationEnabled !== true
+    );
 }
 
 function hasAnyPowerCapability(capabilities: readonly string[]): boolean {

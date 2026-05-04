@@ -5,7 +5,11 @@ import {
 } from '../lib/app/appSettingsHelpers';
 import type { AppContext } from '../lib/app/appContext';
 import { TimerRegistry } from '../lib/app/timerRegistry';
-import { CAPACITY_LIMIT_KW, DEVICE_DRIVER_OVERRIDES } from '../lib/utils/settingsKeys';
+import {
+  CAPACITY_LIMIT_KW,
+  DEVICE_DRIVER_OVERRIDES,
+  DEVICE_TARGET_POWER_CONFIGS,
+} from '../lib/utils/settingsKeys';
 
 const buildCapacitySnapshot = (
   overrides: Partial<CapacitySettingsSnapshot> = {},
@@ -24,6 +28,7 @@ const buildCapacitySnapshot = (
   nativeEvWiringDevices: {},
   deviceDriverOverrides: {},
   deviceControlProfiles: {},
+  deviceTargetPowerConfigs: {},
   deviceCommunicationModels: {},
   experimentalEvSupportEnabled: false,
   shedBehaviors: {},
@@ -123,6 +128,8 @@ const buildContext = (): AppContext => {
     set deviceDriverOverrides(_value) {},
     get deviceControlProfiles() { return {}; },
     set deviceControlProfiles(_value) {},
+    get deviceTargetPowerConfigs() { return {}; },
+    set deviceTargetPowerConfigs(_value) {},
     get deviceCommunicationModels() { return {}; },
     set deviceCommunicationModels(_value) {},
     get experimentalEvSupportEnabled() { return false; },
@@ -252,6 +259,41 @@ describe('buildCapacitySettingsSnapshot', () => {
 
     expect(next.deviceDriverOverrides).toEqual({
       device: 'homey:app:com.zaptec:go2',
+    });
+  });
+
+  it('loads normalized target power configs from settings', () => {
+    const settings = {
+      get: vi.fn((key: string) => (
+        key === DEVICE_TARGET_POWER_CONFIGS
+          ? {
+            ' device-a ': JSON.stringify({
+              preset: 'ev_charger_1_phase',
+              min: 0,
+              max: 7360,
+              step: 460,
+              excludeMin: 1,
+              excludeMax: 1380,
+            }),
+          }
+          : undefined
+      )),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot(),
+    });
+
+    expect(next.deviceTargetPowerConfigs).toEqual({
+      'device-a': {
+        preset: 'ev_charger_1_phase',
+        min: 0,
+        max: 7360,
+        step: 460,
+        excludeMin: 1,
+        excludeMax: 1380,
+      },
     });
   });
 });

@@ -9,6 +9,7 @@ import type { Logger as PinoLogger } from '../logging/logger';
 import type { DevicePlan } from '../plan/planTypes';
 import type {
   DeviceControlModel,
+  DeviceControlProfile,
   DeviceControlProfiles,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
@@ -23,12 +24,12 @@ import {
 import {
   buildSteppedLoadSnapshotStepFields,
   resolveNativeSteppedLoadProfile,
+  resolveSnapshotSteppedLoadProfile,
   resolveSteppedLoadCurrentOn,
   shouldSuppressSteppedLoadFlowReport,
 } from './appDeviceControlSteppedState';
-
+import { emitSteppedFeedbackLog } from './appDeviceControlFeedback';
 export const STEPPED_LOAD_COMMAND_STALE_MS = LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS;
-
 export type SteppedLoadDesiredRuntimeState = {
   capabilityId: typeof PELS_TARGET_STEP_CAPABILITY_ID;
   stepId: string;
@@ -41,7 +42,6 @@ export type SteppedLoadDesiredRuntimeState = {
   pending: boolean;
   status: SteppedLoadCommandStatus;
 };
-
 export type SteppedLoadReportedRuntimeState = {
   capabilityId: typeof PELS_MEASURE_STEP_CAPABILITY_ID;
   stepId: string;
@@ -53,9 +53,7 @@ export type DeviceControlRuntimeState = {
   steppedLoadDesiredByDeviceId: Record<string, SteppedLoadDesiredRuntimeState>;
   steppedLoadReportedByDeviceId: Record<string, SteppedLoadReportedRuntimeState>;
 };
-
 export type ReportSteppedLoadActualStepResult = 'changed' | 'unchanged' | 'invalid';
-
 export type MarkSteppedLoadDesiredStepIssuedParams = {
   deviceId: string;
   desiredStepId: string;
@@ -63,14 +61,11 @@ export type MarkSteppedLoadDesiredStepIssuedParams = {
   issuedAtMs?: number;
   pendingWindowMs?: number;
 };
-
 export const createDeviceControlRuntimeState = (): DeviceControlRuntimeState => ({
   steppedLoadDesiredByDeviceId: {},
   steppedLoadReportedByDeviceId: {},
 });
-
 export const normalizeStoredDeviceControlProfiles = normalizeDeviceControlProfiles;
-
 export const resolveDefaultControlModel = (device: TargetDeviceSnapshot): DeviceControlModel => {
   if (device.controlModel) return device.controlModel;
   if (device.deviceType === 'temperature') return 'temperature_target';
@@ -89,7 +84,9 @@ export const decorateSnapshotWithDeviceControl = (params: {
   const { snapshot, profiles, runtimeState, nowMs = Date.now() } = params;
   const nativeProfile = resolveNativeSteppedLoadProfile(snapshot);
   const storedProfile = profiles[snapshot.id];
-  const profile = nativeProfile ?? (storedProfile?.model === 'stepped_load' ? storedProfile : null);
+  const profile = nativeProfile
+    ?? resolveSnapshotSteppedLoadProfile(snapshot)
+    ?? (storedProfile?.model === 'stepped_load' ? storedProfile : null);
   if (!profile) {
     return {
       ...snapshot,
@@ -102,14 +99,14 @@ export const decorateSnapshotWithDeviceControl = (params: {
   const desired = runtimeState.steppedLoadDesiredByDeviceId[snapshot.id];
   const reported = runtimeState.steppedLoadReportedByDeviceId[snapshot.id];
   const nativeSteppedControlEnabled = nativeProfile !== null;
-  const nativeReportedStepId = nativeSteppedControlEnabled
-    ? getSteppedLoadStep(profile, snapshot.reportedStepId)?.id
-    : undefined;
+  const snapshotReportedStepId = getSteppedLoadStep(profile, snapshot.reportedStepId)?.id;
+  const nativeReportedStepId = nativeSteppedControlEnabled ? snapshotReportedStepId : undefined;
   if (nativeSteppedControlEnabled && reported) {
     /* eslint-disable-next-line functional/immutable-data -- Shared stepped-load runtime cache update. */
     delete runtimeState.steppedLoadReportedByDeviceId[snapshot.id];
   }
-  if (nativeReportedStepId && desired?.stepId === nativeReportedStepId) {
+  const confirmedReportedStepId = nativeReportedStepId ?? snapshotReportedStepId;
+  if (confirmedReportedStepId && desired?.stepId === confirmedReportedStepId) {
     /* eslint-disable-next-line functional/immutable-data -- Shared stepped-load runtime cache update. */
     runtimeState.steppedLoadDesiredByDeviceId[snapshot.id] = {
       ...desired,
@@ -119,6 +116,7 @@ export const decorateSnapshotWithDeviceControl = (params: {
       status: 'success',
     };
   }
+  const currentDesired = runtimeState.steppedLoadDesiredByDeviceId[snapshot.id];
   const fallbackStepId = getSteppedLoadLowestActiveStep(profile)?.id;
   const legacyStepFields = buildSteppedLoadSnapshotStepFields({
     profile,
@@ -126,11 +124,14 @@ export const decorateSnapshotWithDeviceControl = (params: {
     currentOn: snapshot.currentOn,
     nativeSteppedControlEnabled,
     nativeReportedStep: { stepId: nativeReportedStepId, observedAtMs: snapshot.lastUpdated },
-    flowReportedStep: { stepId: reported?.stepId, observedAtMs: reported?.updatedAtMs },
+    flowReportedStep: {
+      stepId: reported?.stepId ?? (nativeSteppedControlEnabled ? undefined : snapshotReportedStepId),
+      observedAtMs: reported?.updatedAtMs ?? snapshot.lastUpdated,
+    },
     targetStep: {
-      stepId: desired?.stepId,
-      changedAtMs: desired?.changedAtMs,
-      status: desired?.status,
+      stepId: currentDesired?.stepId,
+      changedAtMs: currentDesired?.changedAtMs,
+      status: currentDesired?.status,
     },
     fallbackStepId,
   });
@@ -145,21 +146,18 @@ export const decorateSnapshotWithDeviceControl = (params: {
     targetStepId: legacyStepFields.targetStepId,
     selectedStepId,
     desiredStepId: legacyStepFields.desiredStepId,
-    previousStepId: desired?.previousStepId,
+    previousStepId: currentDesired?.previousStepId,
     actualStepId: legacyStepFields.actualStepId,
     assumedStepId: legacyStepFields.assumedStepId,
     actualStepSource: legacyStepFields.actualStepSource,
     planningPowerKw,
-    // Preserve an explicit off state from the raw onoff capability for stepped devices. A device
-    // at a non-zero step but with onoff=false is genuinely off — the step is configuration, not
-    // power state. An explicit on state may still be overridden by an off-step selection.
     currentOn: resolveSteppedLoadCurrentOn({ snapshot, profile, selectedStepId }),
-    lastDesiredStepChangeAt: desired?.changedAtMs,
-    lastStepCommandIssuedAt: desired?.lastIssuedAtMs,
-    stepCommandRetryCount: desired?.retryCount,
-    nextStepCommandRetryAtMs: desired?.nextRetryAtMs,
-    stepCommandPending: desired?.pending ?? false,
-    stepCommandStatus: desired?.status ?? 'idle',
+    lastDesiredStepChangeAt: currentDesired?.changedAtMs,
+    lastStepCommandIssuedAt: currentDesired?.lastIssuedAtMs,
+    stepCommandRetryCount: currentDesired?.retryCount,
+    nextStepCommandRetryAtMs: currentDesired?.nextRetryAtMs,
+    stepCommandPending: currentDesired?.pending ?? false,
+    stepCommandStatus: currentDesired?.status ?? 'idle',
   };
 };
 /* eslint-enable complexity */
@@ -363,7 +361,8 @@ export class AppDeviceControlHelpers {
       this.deps.logDebug('devices', `Stepped load feedback ignored for ${deviceName}: native wiring is enabled`);
       return 'unchanged';
     }
-    const profile = this.deps.getProfiles()[deviceId];
+    const storedProfiles = this.deps.getProfiles();
+    const profile = this.resolveSteppedLoadFeedbackProfile(deviceId, snapshot, storedProfiles);
     if (!profile || profile.model !== 'stepped_load' || !getSteppedLoadStep(profile, stepId)) {
       this.deps.logDebug('devices', `Stepped load feedback ignored for ${deviceName}: invalid step '${stepId}'`);
       return 'invalid';
@@ -386,7 +385,10 @@ export class AppDeviceControlHelpers {
     const plannedDesiredStepId = latestPlanDesiredStepId ?? previousDesiredStepId;
     const changed = reportSteppedLoadActualStep({
       runtimeState: this.runtimeState,
-      profiles: this.deps.getProfiles(),
+      profiles: {
+        ...storedProfiles,
+        [deviceId]: profile,
+      },
       deviceId,
       stepId,
     });
@@ -412,7 +414,8 @@ export class AppDeviceControlHelpers {
       return changed;
     }
 
-    this.emitSteppedFeedbackLog({
+    emitSteppedFeedbackLog({
+      log: this.deps.getStructuredLogger('devices'),
       deviceId,
       deviceName,
       stepId,
@@ -427,88 +430,14 @@ export class AppDeviceControlHelpers {
     return this.runtimeState;
   }
 
-  /* eslint-disable-next-line complexity -- Feedback logging maps mutually exclusive runtime states to stable events. */
-  private emitSteppedFeedbackLog(params: {
-    deviceId: string;
-    deviceName: string;
-    stepId: string;
-    previousReportedStepId: string | undefined;
-    previousDesired: SteppedLoadDesiredRuntimeState | undefined;
-    plannedDesiredStepId: string | undefined;
-  }): void {
-    const {
-      deviceId,
-      deviceName,
-      stepId,
-      previousReportedStepId,
-      previousDesired,
-      plannedDesiredStepId,
-    } = params;
-    const log = this.deps.getStructuredLogger('devices');
-    if (previousDesired?.stepId === stepId) {
-      log?.info({
-        event: 'stepped_feedback_confirmed',
-        deviceId,
-        deviceName,
-        measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-        targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
-        reportedStepId: stepId,
-        desiredStepId: previousDesired.stepId,
-        pending: previousDesired.pending,
-        stale: previousDesired.status === 'stale',
-      });
-    } else if (plannedDesiredStepId === stepId) {
-      log?.info({
-        event: 'stepped_feedback_confirmed',
-        deviceId,
-        deviceName,
-        measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-        targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
-        reportedStepId: stepId,
-        desiredStepId: plannedDesiredStepId,
-        pending: previousDesired?.pending ?? false,
-        stale: previousDesired?.status === 'stale',
-      });
-    } else if (plannedDesiredStepId && plannedDesiredStepId !== stepId) {
-      log?.info({
-        event: 'stepped_feedback_mismatch',
-        deviceId,
-        deviceName,
-        measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-        targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
-        reportedStepId: stepId,
-        desiredStepId: plannedDesiredStepId,
-      });
-    } else if (previousReportedStepId && previousReportedStepId !== stepId) {
-      log?.info({
-        event: 'stepped_feedback_external_change',
-        deviceId,
-        deviceName,
-        measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-        targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
-        previousStepId: previousReportedStepId,
-        newStepId: stepId,
-        desiredStepId: previousDesired?.stepId ?? null,
-      });
-    } else if (previousDesired?.stepId && previousDesired.stepId !== stepId) {
-      log?.info({
-        event: 'stepped_feedback_mismatch',
-        deviceId,
-        deviceName,
-        measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-        targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
-        reportedStepId: stepId,
-        desiredStepId: previousDesired.stepId,
-      });
-    } else {
-      log?.info({
-        event: 'stepped_feedback_reported',
-        deviceId,
-        deviceName,
-        measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-        reportedStepId: stepId,
-      });
-    }
+  private resolveSteppedLoadFeedbackProfile(
+    deviceId: string,
+    snapshot: TargetDeviceSnapshot | undefined,
+    storedProfiles: DeviceControlProfiles,
+  ): DeviceControlProfile | undefined {
+    return storedProfiles[deviceId]
+      ?? snapshot?.steppedLoadProfile
+      ?? snapshot?.suggestedSteppedLoadProfile;
   }
 
   private resolvePlannedDesiredStepToPreserve(params: {
