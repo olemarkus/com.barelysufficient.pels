@@ -7,6 +7,21 @@ const flushPromises = () => new Promise<void>((resolve) => {
 
 const buildDom = () => {
   document.body.innerHTML = `
+    <style>
+      .detail-control-list,
+      .detail-mode-list,
+      .detail-stepped-list,
+      .detail-deltas {
+        display: block;
+      }
+
+      .detail-control-list[hidden],
+      .detail-mode-list[hidden],
+      .detail-stepped-list[hidden],
+      .detail-deltas[hidden] {
+        display: none !important;
+      }
+    </style>
     <div id="toast"></div>
     <div id="device-detail-overlay" hidden>
       <div id="device-detail-panel">
@@ -40,13 +55,13 @@ const buildDom = () => {
         <div id="device-detail-overshoot-step-row"></div>
         <select id="device-detail-overshoot-step"></select>
         <section id="device-detail-stepped-section" hidden>
-          <div id="device-detail-stepped-steps"></div>
-          <div id="device-detail-temperature-boost">
+          <div id="device-detail-stepped-steps" class="detail-stepped-list"></div>
+          <div id="device-detail-temperature-boost" class="detail-control-list detail-stepped-boost" hidden>
             <input id="device-detail-temperature-boost-enabled" type="checkbox">
             <div id="device-detail-temperature-boost-below-row"></div>
             <input id="device-detail-temperature-boost-below" type="number">
           </div>
-          <div id="device-detail-ev-boost" hidden>
+          <div id="device-detail-ev-boost" class="detail-control-list detail-stepped-boost" hidden>
             <input id="device-detail-ev-boost-enabled" type="checkbox">
             <div id="device-detail-ev-boost-below-row"></div>
             <input id="device-detail-ev-boost-below" type="number">
@@ -1299,6 +1314,7 @@ describe('device detail managed state saves', () => {
 
     const boostSection = document.querySelector('#device-detail-temperature-boost') as HTMLElement | null;
     expect(boostSection?.hidden).toBe(true);
+    expect(boostSection ? getComputedStyle(boostSection).display : null).toBe('none');
   });
 
   it('shows and saves EV boost settings for stepped EV chargers', async () => {

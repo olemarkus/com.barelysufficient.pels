@@ -2765,6 +2765,13 @@ input[type="text"]:focus {
   display: block;
 }
 
+.detail-control-list[hidden],
+.detail-mode-list[hidden],
+.detail-stepped-list[hidden],
+.detail-deltas[hidden] {
+  display: none !important;
+}
+
 .device-detail-row,
 .detail-mode-row,
 .detail-stepped-row {
