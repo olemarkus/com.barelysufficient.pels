@@ -1,8 +1,10 @@
 import {
   capitalizeStepLabel,
   isSteppedTransit,
+  resolveEvChargingStateLabel,
   resolveSteppedActiveStepId,
   resolveSteppedChip,
+  resolveSteppedPowerText,
   resolveSteppedStateLabel,
   resolveSteppedStatusLine,
   resolveSteppedTemperatureText,
@@ -128,15 +130,26 @@ const buildStateRow = (dev: PlanDeviceSnapshot): HTMLDivElement => {
   label.textContent = resolveSteppedStateLabel(dev);
   row.appendChild(label);
 
-  const tempText = resolveSteppedTemperatureText(dev);
-  if (tempText) {
-    const temp = document.createElement('span');
-    temp.className = 'plan-card__temp-inline';
-    temp.textContent = tempText;
-    row.appendChild(temp);
+  const powerText = resolveSteppedPowerText(dev);
+  if (powerText) {
+    const power = document.createElement('span');
+    power.className = 'plan-card__state-power';
+    power.textContent = powerText;
+    row.appendChild(power);
   }
 
   return row;
+};
+
+const buildSecondaryLine = (dev: PlanDeviceSnapshot): HTMLElement => {
+  const el = document.createElement('span');
+  el.className = 'plan-card__secondary-line';
+  const evState = resolveEvChargingStateLabel(dev);
+  const tempText = resolveSteppedTemperatureText(dev);
+  const text = evState ?? tempText ?? null;
+  el.textContent = text ?? '';
+  el.style.visibility = text === null ? 'hidden' : '';
+  return el;
 };
 
 const buildSteppedBody = (dev: PlanDeviceSnapshot, profile: SteppedLoadProfile, nowMs: number): {
@@ -147,6 +160,7 @@ const buildSteppedBody = (dev: PlanDeviceSnapshot, profile: SteppedLoadProfile, 
   body.className = 'plan-card__stepped-body';
 
   body.appendChild(buildStateRow(dev));
+  body.appendChild(buildSecondaryLine(dev));
 
   const statusLine = document.createElement('p');
   statusLine.className = 'plan-card__status-line';
