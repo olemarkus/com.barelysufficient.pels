@@ -8,10 +8,6 @@ type TemperatureDevice = DeviceOverviewSnapshot & {
   plannedTarget?: number | null;
 };
 
-// ─── Chip ─────────────────────────────────────────────────────────────────────
-
-export type TemperatureChip = { label: string; tone: string };
-
 const isWaitingReason = (code: string): boolean => (
   code === PLAN_REASON_CODES.insufficientHeadroom
   || code === PLAN_REASON_CODES.shortfall
@@ -37,46 +33,6 @@ const isLimitedReason = (code: string): boolean => (
 const isHeating = (device: TemperatureDevice): boolean => (
   typeof device.measuredPowerKw === 'number' && device.measuredPowerKw > 0.05
 );
-
-const isAboveTarget = (device: TemperatureDevice): boolean => {
-  if (typeof device.currentTemperature !== 'number') return false;
-  const target = device.plannedTarget ?? null;
-  if (typeof target !== 'number') return false;
-  return device.currentTemperature > target + 0.4;
-};
-
-const isAtTarget = (device: TemperatureDevice): boolean => {
-  if (typeof device.currentTemperature !== 'number') return false;
-  const target = device.plannedTarget ?? null;
-  if (typeof target !== 'number') return false;
-  return Math.abs(device.currentTemperature - target) <= 0.4;
-};
-
-const resolveConstrainedChip = (reasonCode: string, idleFallback: TemperatureChip): TemperatureChip => {
-  if (isWaitingReason(reasonCode)) return { label: 'Waiting', tone: 'held' };
-  if (isLimitedReason(reasonCode)) return { label: 'Limited', tone: 'held' };
-  return idleFallback;
-};
-
-const resolveActiveChip = (device: TemperatureDevice): TemperatureChip => {
-  if (isHeating(device)) return { label: 'Heating', tone: 'active' };
-  if (isAboveTarget(device)) return { label: 'Above target', tone: 'idle' };
-  if (isAtTarget(device)) return { label: 'At target', tone: 'idle' };
-  return { label: 'Idle', tone: 'idle' };
-};
-
-export const resolveTemperatureChip = (device: TemperatureDevice): TemperatureChip => {
-  const kind = resolvePlanStateKind(device);
-  const reasonCode = (device.reason as { code?: string } | undefined)?.code ?? '';
-
-  if (kind === 'held') return resolveConstrainedChip(reasonCode, { label: 'Paused', tone: 'held' });
-  if (kind === 'idle') return resolveConstrainedChip(reasonCode, { label: 'Idle', tone: 'idle' });
-  if (kind === 'resuming') return { label: 'Waiting', tone: 'resuming' };
-  if (kind === 'manual') return { label: 'Manual', tone: 'neutral' };
-  if (kind === 'unavailable') return { label: 'Unavailable', tone: 'warning' };
-  if (kind === 'unknown') return { label: 'Unknown', tone: 'neutral' };
-  return resolveActiveChip(device);
-};
 
 // ─── Output state ─────────────────────────────────────────────────────────────
 
