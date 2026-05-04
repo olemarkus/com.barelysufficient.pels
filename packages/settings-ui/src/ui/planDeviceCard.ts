@@ -12,19 +12,16 @@ import {
   formatStarvationReason,
 } from '../../../shared-domain/src/planStarvation.ts';
 import {
+  resolveTemperatureChip,
+  resolveTemperatureOutputState,
+  resolveTemperatureLine,
+  resolveTemperatureReasonLine,
+} from '../../../shared-domain/src/planTemperatureCardText.ts';
+import {
   resolveCooldownBaseSec,
   resolveCooldownRemainingSec,
 } from '../../../shared-domain/src/planCooldown.ts';
-import {
-  resolveTemperatureBar,
-  type PlanTemperatureBarView,
-} from '../../../shared-domain/src/planTemperatureBar.ts';
-import {
-  resolveSteppedBar,
-  type PlanSteppedBarView,
-} from '../../../shared-domain/src/planSteppedBar.ts';
 import { setTooltip } from './tooltips.ts';
-import { getStoredDeviceControlProfile } from './deviceControlProfiles.ts';
 import { resolveDisplayPlanDeviceSnapshot } from './planLiveData.ts';
 import { formatReasonSummary } from './planReasonSummary.ts';
 import { buildSteppedPlanCard } from './planSteppedCard.ts';
@@ -147,109 +144,6 @@ const resolveReasonText = (dev: PlanDeviceSnapshot): string => {
   return formatDeviceOverview(dev).statusMsg;
 };
 
-const buildTemperatureTrack = (view: PlanTemperatureBarView): HTMLDivElement => {
-  const track = document.createElement('div');
-  track.className = 'plan-card__metric-track';
-  track.setAttribute(
-    'aria-label',
-    `Temperature relative to ${view.targetLabel}; scale ${view.rangeLabel}`,
-  );
-  setTooltip(track, `Centered on ${view.targetLabel}; scale ${view.rangeLabel}`);
-
-  const fill = document.createElement('span');
-  fill.className = 'plan-card__metric-fill';
-  fill.style.left = `${view.fillLeftPct}%`;
-  fill.style.width = `${view.fillWidthPct}%`;
-  track.appendChild(fill);
-  return track;
-};
-
-const appendTemperatureSetbackTick = (track: HTMLElement, view: PlanTemperatureBarView): void => {
-  if (view.setbackPct !== null) {
-    const setback = document.createElement('span');
-    setback.className = 'plan-card__metric-tick plan-card__metric-tick--setback';
-    setback.style.left = `${view.setbackPct}%`;
-    setTooltip(setback, 'Setback temperature — held here while shedding');
-    track.appendChild(setback);
-  }
-};
-
-const appendTemperatureTargetTick = (track: HTMLElement, view: PlanTemperatureBarView): void => {
-  const target = document.createElement('span');
-  target.className = 'plan-card__metric-tick plan-card__metric-tick--target';
-  target.style.left = `${view.targetPct}%`;
-  setTooltip(target, view.targetLabel);
-  track.appendChild(target);
-};
-
-const appendTemperatureCurrentMarker = (track: HTMLElement, view: PlanTemperatureBarView): void => {
-  const current = document.createElement('span');
-  current.className = 'plan-card__metric-marker plan-card__metric-marker--current';
-  current.style.left = `${view.currentPct}%`;
-  setTooltip(current, view.label);
-  track.appendChild(current);
-};
-
-const buildTemperatureScale = (): HTMLDivElement => {
-  const scale = document.createElement('div');
-  scale.className = 'plan-card__metric-scale';
-
-  const below = document.createElement('span');
-  below.textContent = '';
-  const center = document.createElement('span');
-  center.textContent = 'target';
-  const above = document.createElement('span');
-  above.textContent = '';
-  scale.append(below, center, above);
-  return scale;
-};
-
-const buildTemperatureTrackWrap = (view: PlanTemperatureBarView): HTMLDivElement => {
-  const trackWrap = document.createElement('div');
-  trackWrap.className = 'plan-card__metric-track-wrap';
-  const track = buildTemperatureTrack(view);
-
-  appendTemperatureSetbackTick(track, view);
-  appendTemperatureTargetTick(track, view);
-  appendTemperatureCurrentMarker(track, view);
-
-  trackWrap.append(track, buildTemperatureScale());
-  return trackWrap;
-};
-
-const buildTemperatureRow = (view: PlanTemperatureBarView, dev: PlanDeviceSnapshot): HTMLElement => {
-  const row = document.createElement('div');
-  row.className = 'plan-card__metric plan-card__metric--temp';
-  row.dataset.tone = view.progressTone;
-  const trackWrap = buildTemperatureTrackWrap(view);
-  row.append(trackWrap, buildTemperatureReadout(view, dev));
-  return row;
-};
-
-const buildTemperatureReadout = (view: PlanTemperatureBarView, dev: PlanDeviceSnapshot): HTMLElement => {
-  const readout = document.createElement('div');
-  readout.className = 'plan-card__metric-readout';
-
-  const label = document.createElement('span');
-  label.className = 'plan-card__metric-label';
-  label.textContent = view.label;
-  readout.append(label);
-
-  const target = document.createElement('span');
-  target.className = 'plan-card__metric-aside plan-card__metric-aside--target';
-  target.textContent = view.targetLabel;
-  readout.append(target);
-
-  if (isDrawing(dev)) {
-    const power = document.createElement('span');
-    power.className = 'plan-card__metric-aside';
-    power.textContent = `${formatKw(dev.measuredPowerKw)} kW`;
-    setTooltip(power, 'Live power draw');
-    readout.append(power);
-  }
-  return readout;
-};
-
 type PowerReadout = { text: string; variant: 'live' | 'expected' };
 
 const isDrawing = (dev: PlanDeviceSnapshot): boolean => (
@@ -290,87 +184,7 @@ const buildPowerRow = (dev: PlanDeviceSnapshot): HTMLElement | null => {
   return row;
 };
 
-const buildSteppedDirectionGlyph = (view: PlanSteppedBarView): HTMLSpanElement | null => {
-  if (view.direction === 'none' || !view.targetLabel) return null;
-  const glyph = document.createElement('span');
-  glyph.className = 'plan-card__stepped-direction';
-  glyph.dataset.direction = view.direction;
-  glyph.textContent = view.direction === 'up' ? '▲' : '▼';
-  const label = `Stepping ${view.direction} to ${view.targetLabel}`;
-  glyph.setAttribute('aria-label', label);
-  setTooltip(glyph, label);
-  return glyph;
-};
-
-const buildSteppedTrackWrap = (track: HTMLElement, view: PlanSteppedBarView): HTMLDivElement => {
-  const wrap = document.createElement('div');
-  wrap.className = 'plan-card__stepped-track-wrap';
-  wrap.appendChild(track);
-  const glyph = buildSteppedDirectionGlyph(view);
-  if (glyph) wrap.appendChild(glyph);
-  return wrap;
-};
-
-const buildSteppedRow = (view: PlanSteppedBarView): HTMLElement => {
-  const row = document.createElement('div');
-  row.className = 'plan-card__metric plan-card__metric--stepped';
-  row.dataset.direction = view.direction;
-
-  const track = document.createElement('div');
-  track.className = 'plan-card__stepped-track';
-  track.dataset.segmentCount = String(view.segments.length);
-  view.segments.forEach((seg, idx) => {
-    const cell = document.createElement('span');
-    cell.className = 'plan-card__stepped-seg';
-    cell.dataset.filled = seg.filled ? 'true' : 'false';
-    if (seg.isActive) cell.dataset.active = 'true';
-    if (seg.isTarget) cell.dataset.target = 'true';
-    if (seg.pulse) cell.dataset.pulse = 'true';
-    cell.style.flexBasis = `${100 / view.segments.length}%`;
-    setTooltip(cell, `${seg.id} · ${seg.planningPowerKw.toFixed(2)} kW`);
-    track.appendChild(cell);
-    void idx;
-  });
-
-  row.appendChild(buildSteppedTrackWrap(track, view));
-
-  const readout = document.createElement('div');
-  readout.className = 'plan-card__metric-readout';
-
-  const label = document.createElement('span');
-  label.className = 'plan-card__metric-label';
-  if (view.targetLabel && view.direction !== 'none') {
-    label.textContent = `${view.activeLabel} → ${view.targetLabel}`;
-  } else {
-    label.textContent = view.activeLabel;
-  }
-  readout.appendChild(label);
-
-  const aside = document.createElement('span');
-  aside.className = 'plan-card__metric-aside';
-  if (view.measuredKw !== null && view.measuredKw > 0.05) {
-    aside.textContent = `${view.measuredKw.toFixed(1)} kW`;
-    setTooltip(aside, 'Live power draw');
-  } else if (view.expectedKw && view.expectedKw > 0.05) {
-    aside.textContent = `~${view.expectedKw.toFixed(1)} kW`;
-    setTooltip(aside, 'Expected when at this step');
-  }
-  if (aside.textContent) readout.appendChild(aside);
-
-  row.appendChild(readout);
-  return row;
-};
-
-const buildMetricRow = (dev: PlanDeviceSnapshot): HTMLElement | null => {
-  const tempView = resolveTemperatureBar(dev);
-  if (tempView) return buildTemperatureRow(tempView, dev);
-  if (dev.controlModel === 'stepped_load') {
-    const profile = getStoredDeviceControlProfile(dev.id);
-    const steppedView = resolveSteppedBar(dev, profile);
-    if (steppedView) return buildSteppedRow(steppedView);
-  }
-  return buildPowerRow(dev);
-};
+const buildMetricRow = (dev: PlanDeviceSnapshot): HTMLElement | null => buildPowerRow(dev);
 
 const dispatchOpenDeviceDetail = (deviceId: string): void => {
   document.dispatchEvent(new CustomEvent('open-device-detail', { detail: { deviceId } }));
@@ -409,9 +223,15 @@ export const updatePlanCardBinding = (
   const remainingSec = resolveCooldownRemainingSec(displayDev);
   const baseSec = resolveCooldownBaseSec(displayDev);
   if (binding.chipEl) {
-    const presentation = resolveStatePresentation(displayDev);
-    // eslint-disable-next-line no-param-reassign
-    binding.chipEl.textContent = presentation.label;
+    if (binding.device.controlModel === 'temperature_target') {
+      const chip = resolveTemperatureChip(displayDev);
+      // eslint-disable-next-line no-param-reassign
+      binding.chipEl.textContent = chip.label;
+    } else {
+      const presentation = resolveStatePresentation(displayDev);
+      // eslint-disable-next-line no-param-reassign
+      binding.chipEl.textContent = presentation.label;
+    }
   }
   if (binding.cooldownProgressEl) {
     applyCooldownProgress(binding.cooldownProgressEl as CooldownProgressElement, remainingSec, baseSec);
@@ -506,13 +326,105 @@ const buildGenericPlanCard = (
   };
 };
 
+// ─── Temperature card ─────────────────────────────────────────────────────────
+
+const buildHidableText = (className: string, text: string | null): HTMLElement => {
+  const el = document.createElement('p');
+  el.className = className;
+  el.textContent = text ?? '';
+  el.style.visibility = text === null ? 'hidden' : '';
+  return el;
+};
+
+const buildTemperatureOutputRow = (dev: PlanDeviceSnapshot): HTMLElement => {
+  const row = document.createElement('div');
+  row.className = 'plan-card__output-row';
+  const state = document.createElement('span');
+  state.className = 'plan-card__output-state';
+  state.textContent = resolveTemperatureOutputState(dev);
+  const power = document.createElement('span');
+  power.className = 'plan-card__output-power';
+  power.textContent = `${formatKw(dev.measuredPowerKw)} kW`;
+  row.append(state, power);
+  return row;
+};
+
+const buildTemperatureHeader = (dev: PlanDeviceSnapshot): {
+  el: HTMLElement; chip: HTMLElement; cooldownProgress: HTMLElement;
+} => {
+  const header = document.createElement('div');
+  header.className = 'plan-card__header';
+  const nameWrap = document.createElement('div');
+  nameWrap.className = 'plan-card__title-wrap';
+  const title = document.createElement('h3');
+  title.className = 'plan-card__title';
+  title.textContent = dev.name;
+  nameWrap.appendChild(title);
+  header.appendChild(nameWrap);
+
+  const chips = document.createElement('div');
+  chips.className = 'plan-card__chips';
+  const tempChip = resolveTemperatureChip(dev);
+  const wrap = document.createElement('span');
+  wrap.className = 'plan-state-chip-wrap';
+  const chip = document.createElement('span');
+  chip.className = `plan-state-chip plan-state-chip--${tempChip.tone}`;
+  chip.textContent = tempChip.label;
+  chip.setAttribute('role', 'img');
+  chip.setAttribute('aria-label', tempChip.label);
+  const progress = buildCooldownProgress(tempChip.tone);
+  applyCooldownProgress(progress, resolveCooldownRemainingSec(dev), resolveCooldownBaseSec(dev));
+  wrap.append(chip, progress);
+  chips.appendChild(wrap);
+  if (dev.budgetExempt === true) chips.appendChild(buildInlineChip('plan-chip plan-chip--muted', 'Always on'));
+  header.appendChild(chips);
+  return { el: header, chip, cooldownProgress: progress };
+};
+
+const buildTemperatureCard = (
+  plan: PlanSnapshot | null, dev: PlanDeviceSnapshot, renderedAtMs: number, nowMs: number,
+): { el: HTMLElement; statusBinding: PlanStatusBinding } => {
+  const displayDev = resolveDisplayPlanDeviceSnapshot(plan, dev, renderedAtMs, nowMs);
+  const tempChip = resolveTemperatureChip(displayDev);
+  const kind = resolvePlanStateKind(displayDev) as PlanStateKind;
+
+  const card = document.createElement('article');
+  card.className = 'device-row plan-card plan-card--temperature clickable';
+  card.dataset.deviceId = dev.id;
+  card.dataset.stateKind = kind;
+  card.tabIndex = 0;
+  card.setAttribute('role', 'button');
+  card.setAttribute('aria-label', `Open device details for ${dev.name}`);
+  if (tempChip.tone === 'idle') card.classList.add('plan-card--dim');
+  if (kind === 'unavailable') card.classList.add('plan-card--unavailable');
+  const elevation = document.createElement('md-elevation');
+  elevation.setAttribute('aria-hidden', 'true');
+  const ripple = document.createElement('md-ripple');
+  ripple.setAttribute('aria-hidden', 'true');
+  card.append(elevation, ripple);
+
+  const header = buildTemperatureHeader(displayDev);
+  const reasonEl = buildHidableText('plan-card__temp-reason', resolveTemperatureReasonLine(displayDev));
+  card.append(
+    header.el,
+    buildTemperatureOutputRow(displayDev),
+    buildHidableText('plan-card__temp-line', resolveTemperatureLine(displayDev)),
+    reasonEl,
+  );
+  attachCardActivation(card, dev.id);
+  return {
+    el: card,
+    statusBinding: { device: dev, reasonEl, chipEl: header.chip, cooldownProgressEl: header.cooldownProgress },
+  };
+};
+
 export const buildPlanCard = (
   plan: PlanSnapshot | null,
   dev: PlanDeviceSnapshot,
   renderedAtMs: number,
   nowMs: number,
-): { el: HTMLElement; statusBinding: PlanStatusBinding } => (
-  dev.controlModel === 'stepped_load'
-    ? buildSteppedPlanCard(plan, dev, renderedAtMs, nowMs)
-    : buildGenericPlanCard(plan, dev, renderedAtMs, nowMs)
-);
+): { el: HTMLElement; statusBinding: PlanStatusBinding } => {
+  if (dev.controlModel === 'stepped_load') return buildSteppedPlanCard(plan, dev, renderedAtMs, nowMs);
+  if (dev.controlModel === 'temperature_target') return buildTemperatureCard(plan, dev, renderedAtMs, nowMs);
+  return buildGenericPlanCard(plan, dev, renderedAtMs, nowMs);
+};
