@@ -21,6 +21,7 @@ import {
 import { logSettingsError } from '../logging.ts';
 import { state } from '../state.ts';
 import { showToastError } from '../toast.ts';
+import { hasEvTargetPowerPreset } from './controlMode.ts';
 import { writeShedBehaviors } from './shedBehavior.ts';
 
 let currentSteppedLoadDraft: SteppedLoadProfile | null = null;
@@ -47,6 +48,8 @@ const getDraftProfileFromCurrentDevice = (device: TargetDeviceSnapshot): Stepped
       ?? resolveSavedSteppedLoadProfile(device)
       ?? createDefaultSteppedLoadProfile(device)
 );
+
+const canEditSteppedLoadProfile = (device: TargetDeviceSnapshot): boolean => !hasEvTargetPowerPreset(device);
 
 const collectSteppedLoadDraftFromDom = (): SteppedLoadProfile | null => {
   if (!deviceDetailSteppedSteps) return null;
@@ -146,7 +149,7 @@ export const updateSetStepOptionLabel = (
 export const renderSteppedLoadDraft = (device: TargetDeviceSnapshot) => {
   if (!deviceDetailSteppedSection || !deviceDetailSteppedSteps) return;
 
-  const steppedEnabled = isSteppedLoadControlModel(device);
+  const steppedEnabled = isSteppedLoadControlModel(device) && canEditSteppedLoadProfile(device);
   deviceDetailSteppedSection.hidden = !steppedEnabled;
   if (!steppedEnabled) {
     currentSteppedLoadDraft = null;
@@ -199,6 +202,7 @@ export const initSteppedLoadDraftHandlers = (params: {
 
     const device = params.getDeviceById(deviceId);
     if (!device) return;
+    if (!canEditSteppedLoadProfile(device)) return;
     if (isNativeSteppedLoadProfileActive(device)) return;
 
     const profile = collectSteppedLoadDraftFromDom()
@@ -229,6 +233,7 @@ export const initSteppedLoadDraftHandlers = (params: {
 
     const device = params.getDeviceById(deviceId);
     if (!device) return;
+    if (!canEditSteppedLoadProfile(device)) return;
     if (isNativeSteppedLoadProfileActive(device)) return;
 
     currentSteppedLoadDraft = resolveSavedSteppedLoadProfile(device) ?? createDefaultSteppedLoadProfile(device);
@@ -241,6 +246,7 @@ export const initSteppedLoadDraftHandlers = (params: {
 
     const device = params.getDeviceById(deviceId);
     if (!device) return;
+    if (!canEditSteppedLoadProfile(device)) return;
     if (isNativeSteppedLoadProfileActive(device)) return;
 
     const profile = collectSteppedLoadDraftFromDom();

@@ -4,7 +4,6 @@ import type {
   DeviceControlModel,
   DeviceControlAdapterSnapshot,
   BinaryControlObservation,
-  NativeSteppedLoadStatusSnapshot,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
   SteppedLoadActualStepSource,
@@ -74,7 +73,6 @@ export type DevicePlanDevice = {
   hasBinaryControl?: boolean;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
   controlAdapter?: DeviceControlAdapterSnapshot;
-  nativeSteppedLoadStatus?: NativeSteppedLoadStatusSnapshot;
   evChargingState?: string;
   priority?: number;
   powerKw?: number;
@@ -201,7 +199,6 @@ export type PlanInputDevice = {
   hasBinaryControl?: boolean;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
   controlAdapter?: DeviceControlAdapterSnapshot;
-  nativeSteppedLoadStatus?: NativeSteppedLoadStatusSnapshot;
   priority?: number;
   // Raw observed binary snapshot input. Planner decisions should resolve through currentState helpers.
   currentOn: boolean;

@@ -14,6 +14,7 @@ import {
   COMBINED_PRICES,
   BUDGET_EXEMPT_DEVICES,
   DEVICE_CONTROL_PROFILES,
+  DEVICE_TARGET_POWER_CONFIGS,
   DEVICE_DRIVER_OVERRIDES,
   EV_BOOST_SETTINGS,
   NATIVE_EV_WIRING_DEVICES,
@@ -108,6 +109,7 @@ const DEVICE_CONTROL_KEYS = new Set([
   NATIVE_EV_WIRING_DEVICES,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_CONTROL_PROFILES,
+  DEVICE_TARGET_POWER_CONFIGS,
   TEMPERATURE_BOOST_SETTINGS,
 ]);
 const PLAN_REFRESH_KEYS = new Set([
@@ -272,7 +274,7 @@ const createSettingsSetHandler = () => (key: string) => {
   if (key === EV_BOOST_SETTINGS) {
     runLoggedTask(loadEvBoostSettings(), 'Failed to load EV boost settings', 'settings.set');
   }
-  if (key === DEVICE_CONTROL_PROFILES) {
+  if (key === DEVICE_CONTROL_PROFILES || key === DEVICE_TARGET_POWER_CONFIGS) {
     runLoggedTask(loadDeviceControlProfiles(), 'Failed to load device control profiles', 'settings.set');
   }
   if (DEVICE_CONTROL_KEYS.has(key)) {

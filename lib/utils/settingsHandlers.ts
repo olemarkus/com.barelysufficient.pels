@@ -11,6 +11,7 @@ import {
   DEVICE_CONTROL_PROFILES,
   DEVICE_COMMUNICATION_MODELS,
   DEVICE_DRIVER_OVERRIDES,
+  DEVICE_TARGET_POWER_CONFIGS,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
@@ -83,6 +84,7 @@ const DEDUPED_CAPACITY_KEYS = [
   DEVICE_DRIVER_OVERRIDES,
   BUDGET_EXEMPT_DEVICES,
   DEVICE_CONTROL_PROFILES,
+  DEVICE_TARGET_POWER_CONFIGS,
   DEVICE_COMMUNICATION_MODELS,
   EXPERIMENTAL_EV_SUPPORT_ENABLED,
   CAPACITY_LIMIT_KW,
@@ -287,6 +289,11 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'Failed to refresh devices after control profile change');
       await rebuildPlanFromSettings(deps, DEVICE_CONTROL_PROFILES);
+    },
+    [DEVICE_TARGET_POWER_CONFIGS]: async () => {
+      deps.loadCapacitySettings();
+      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after target power model change');
+      await rebuildPlanFromSettings(deps, DEVICE_TARGET_POWER_CONFIGS);
     },
     [DEVICE_COMMUNICATION_MODELS]: async () => {
       deps.loadCapacitySettings();

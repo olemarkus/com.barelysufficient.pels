@@ -761,22 +761,17 @@
                   <div class="device-row__meta" id="device-detail-soc-value">Not reported</div>
                 </div>
 
-                <div class="device-row device-detail-row" id="device-detail-native-stepped-status-row" hidden>
-                  <div class="device-row__name device-detail-row__name">
-                    <span class="device-row__title">Built-in stepped control</span>
-                    <small class="device-detail-row__hint" id="device-detail-native-stepped-status-hint"></small>
-                  </div>
-                  <div class="device-row__meta" id="device-detail-native-stepped-status-value"></div>
-                </div>
-
                 <div class="device-row device-detail-row" id="device-detail-control-model-row">
                   <div class="device-row__name device-detail-row__name">
                     <label class="device-row__title" for="device-detail-control-model">Control model</label>
-                    <small class="device-detail-row__hint">Use stepped load for devices with discrete power levels such as off/low/max.</small>
+                    <small class="device-detail-row__hint">Choose the control shape PELS should plan with for this device.</small>
                   </div>
                   <select id="device-detail-control-model">
-                    <option value="temperature_target">Temperature target / default</option>
+                    <option value="default">Default</option>
                     <option value="stepped_load">Stepped load</option>
+                    <option value="continuous">Continuous</option>
+                    <option value="ev_charger_1_phase">EV 1-phase</option>
+                    <option value="ev_charger_3_phase">EV 3-phase</option>
                   </select>
                 </div>
 
@@ -830,7 +825,36 @@
               <span class="section-hint">Steps and planning power</span>
             </summary>
             <div class="collapse-content">
-              <p class="muted">Selected step, measured power, and planning power are treated separately. Planning power reserves future heating capacity; it does not need to match live draw exactly.</p>
+              <p class="muted">Selected step, measured power, and planning power are treated separately. Planning power reserves future capacity; it does not need to match live draw exactly.</p>
+
+              <div class="target-power-config" id="device-detail-target-power-config">
+                <div class="form-grid target-power-grid" id="device-detail-target-power-fields">
+                  <label class="field">
+                    <span class="field__label">Min W</span>
+                    <input id="device-detail-target-power-min" type="number" step="1" min="0" inputmode="numeric">
+                  </label>
+                  <label class="field">
+                    <span class="field__label">Max W</span>
+                    <input id="device-detail-target-power-max" type="number" step="1" min="0" inputmode="numeric">
+                  </label>
+                  <label class="field">
+                    <span class="field__label">Step W</span>
+                    <input id="device-detail-target-power-step" type="number" step="1" min="1" inputmode="numeric">
+                  </label>
+                  <label class="field">
+                    <span class="field__label">Exclude min W</span>
+                    <input id="device-detail-target-power-exclude-min" type="number" step="1" min="0" inputmode="numeric">
+                  </label>
+                  <label class="field">
+                    <span class="field__label">Exclude max W</span>
+                    <input id="device-detail-target-power-exclude-max" type="number" step="1" min="0" inputmode="numeric">
+                  </label>
+                </div>
+                <div class="detail-stepped-actions">
+                  <button type="button" class="btn primary" id="device-detail-target-power-save">Save range</button>
+                  <button type="button" class="btn ghost" id="device-detail-target-power-clear">Clear range</button>
+                </div>
+              </div>
 
               <div class="detail-stepped-actions">
                 <button type="button" class="btn secondary" id="device-detail-stepped-add-step">Add step</button>

@@ -20,18 +20,11 @@ import { renderDevices } from '../devices.ts';
 import {
   applyLocalDeviceControlProfile,
   createDefaultSteppedLoadProfile,
-  getEffectiveControlModel,
   isNativeSteppedLoadProfileActive,
 } from '../deviceControlProfiles.ts';
-import {
-  requiresNativeWiringForActivation,
-  supportsManagedDevice,
-  supportsPowerDevice,
-  supportsTemperatureDevice,
-} from '../deviceUtils.ts';
 import { renderPriorities } from '../modes.ts';
 import { renderPriceOptimization } from '../priceOptimization.ts';
-import { resolveManagedState, state } from '../state.ts';
+import { state } from '../state.ts';
 import { renderDeviceDetailModes } from './modes.ts';
 import {
   BUDGET_EXEMPT_DEVICES,
@@ -81,7 +74,20 @@ import {
   retainPendingNativeWiringEnable,
   setDeviceDetailNativeWiringState,
 } from './nativeWiring.ts';
-import { setDeviceDetailNativeSteppedStatus } from './nativeSteppedStatus.ts';
+import {
+  initTargetPowerConfigHandlers,
+  persistTargetPowerConfig,
+  renderTargetPowerConfig,
+} from './targetPowerConfig.ts';
+import {
+  isControlModeAllowedForDevice,
+  normalizeDeviceDetailControlMode,
+  resolveDeviceDetailControlMode,
+  resolveTargetPowerConfigForControlMode,
+  syncDeviceDetailControlModeOptions,
+} from './controlMode.ts';
+import { resolveDeviceDetailControlState } from './controlState.ts';
+import { initDeviceDetailManagedControlHandlers } from './managedControl.ts';
 
 let currentDetailDeviceId: string | null = null;
 let pendingOpenDeviceId: string | null = null;
@@ -158,28 +164,14 @@ const setDeviceDetailControlStates = (deviceId: string) => {
 
   setDeviceDetailBudgetExemptState(device);
   setDeviceDetailSocState(device);
-  setDeviceDetailNativeSteppedStatus(device);
   if (deviceDetailControlModel && deviceDetailControlModelRow) {
-    const effectiveControlModel = device ? getEffectiveControlModel(device) : 'temperature_target';
+    const effectiveControlMode = device ? resolveDeviceDetailControlMode(device) : 'default';
     const nativeSteppedLoadLocked = isNativeSteppedLoadProfileActive(device);
-    deviceDetailControlModel.value = effectiveControlModel === 'stepped_load' ? 'stepped_load' : 'temperature_target';
+    syncDeviceDetailControlModeOptions(deviceDetailControlModel, device);
+    deviceDetailControlModel.value = effectiveControlMode;
     deviceDetailControlModel.disabled = !controlState.canManageDevice || nativeSteppedLoadLocked;
     deviceDetailControlModelRow.hidden = !controlState.canManageDevice;
   }
-};
-
-const resolveDeviceDetailControlState = (device: TargetDeviceSnapshot | null, deviceId: string) => {
-  const supportsTemperature = supportsTemperatureDevice(device);
-  const supportsPower = supportsPowerDevice(device);
-  const supportsManage = supportsManagedDevice(supportsPower, supportsTemperature);
-  const nativeWiringRequired = requiresNativeWiringForActivation(device);
-  const canManageDevice = supportsManage && !nativeWiringRequired;
-  return {
-    supportsTemperature,
-    supportsPower,
-    canManageDevice,
-    isManaged: canManageDevice && resolveManagedState(deviceId),
-  };
 };
 
 const persistDeviceControlProfile = async (deviceId: string, profile: SteppedLoadProfile | null): Promise<boolean> => (
@@ -236,6 +228,7 @@ const refreshOpenDeviceDetail = () => {
     updateSetStepOptionLabel,
   });
   renderSteppedLoadDraft(device);
+  renderTargetPowerConfig(device);
   renderTemperatureBoostSettings(device);
   renderEvBoostSettings(device);
   setDeviceDetailDeltaValues(currentDetailDeviceId);
@@ -269,6 +262,7 @@ export const openDeviceDetail = (deviceId: string) => {
     updateSetStepOptionLabel,
   });
   renderSteppedLoadDraft(device);
+  renderTargetPowerConfig(device);
   renderTemperatureBoostSettings(device);
   renderEvBoostSettings(device);
   renderDeviceDetailModes(device);
@@ -307,59 +301,6 @@ const initDeviceDetailCloseHandlers = () => {
   });
 };
 
-const initDeviceDetailControllableHandler = () => {
-  deviceDetailControllable?.addEventListener('change', async () => {
-    const deviceId = currentDetailDeviceId;
-    if (!deviceId || !deviceDetailControllable) return;
-
-    const nextChecked = deviceDetailControllable.checked;
-    await writeFreshSetting<Record<string, boolean>>({
-      key: 'controllable_devices',
-      context: 'device detail',
-      logMessage: 'Failed to update controllable device',
-      toastMessage: 'Failed to update controllable device.',
-      fallbackValue: {},
-      readFresh: readRecordSetting<boolean>,
-      mutate: (currentMap) => ({
-        ...currentMap,
-        [deviceId]: nextChecked,
-      }),
-      commit: (nextMap) => {
-        state.controllableMap = nextMap;
-        renderDevices(state.latestDevices);
-      },
-      rollback: refreshCurrentDeviceControlStates,
-    });
-  });
-};
-
-const initDeviceDetailManagedHandler = () => {
-  deviceDetailManaged?.addEventListener('change', async () => {
-    const deviceId = currentDetailDeviceId;
-    if (!deviceId || !deviceDetailManaged) return;
-
-    const nextChecked = deviceDetailManaged.checked;
-    await writeFreshSetting<Record<string, boolean>>({
-      key: 'managed_devices',
-      context: 'device detail',
-      logMessage: 'Failed to update managed device',
-      toastMessage: 'Failed to update managed device.',
-      fallbackValue: {},
-      readFresh: readRecordSetting<boolean>,
-      mutate: (currentMap) => ({
-        ...currentMap,
-        [deviceId]: nextChecked,
-      }),
-      commit: (nextMap) => {
-        state.managedMap = nextMap;
-        refreshSharedDeviceViews();
-        refreshCurrentDeviceControlStates();
-      },
-      rollback: refreshCurrentDeviceControlStates,
-    });
-  });
-};
-
 const initDeviceDetailControlModelHandler = () => {
   deviceDetailControlModel?.addEventListener('change', async () => {
     const deviceId = currentDetailDeviceId;
@@ -372,11 +313,23 @@ const initDeviceDetailControlModelHandler = () => {
       return;
     }
 
-    const nextProfile = deviceDetailControlModel.value === 'stepped_load'
+    const controlMode = normalizeDeviceDetailControlMode(deviceDetailControlModel.value);
+    if (!controlMode || !isControlModeAllowedForDevice(controlMode, device)) {
+      refreshOpenDeviceDetail();
+      return;
+    }
+    const nextTargetPowerConfig = resolveTargetPowerConfigForControlMode(controlMode, device);
+    const nextProfile = controlMode === 'stepped_load'
       ? resolveSavedSteppedLoadProfile(device) ?? createDefaultSteppedLoadProfile(device)
       : null;
     const didPersist = await persistDeviceControlProfile(deviceId, nextProfile);
-    if (didPersist) {
+    if (!didPersist) return;
+    await persistTargetPowerConfig({
+      deviceId,
+      config: nextTargetPowerConfig,
+      refreshOpenDeviceDetail,
+    });
+    if (controlMode === 'default' || controlMode === 'stepped_load') {
       refreshOpenDeviceDetail();
     }
   });
@@ -496,8 +449,11 @@ export const initDeviceDetailHandlers = () => {
     refreshOpenDeviceDetail,
     refreshSharedDeviceViews,
   });
-  initDeviceDetailManagedHandler();
-  initDeviceDetailControllableHandler();
+  initDeviceDetailManagedControlHandlers({
+    getCurrentDetailDeviceId,
+    refreshCurrentDeviceControlStates,
+    refreshSharedDeviceViews,
+  });
   initDeviceDetailControlModelHandler();
   initDeviceDetailPriceOptHandlers({
     getCurrentDetailDeviceId,
@@ -513,6 +469,10 @@ export const initDeviceDetailHandlers = () => {
     getCurrentDetailDeviceId,
     getDeviceById,
     persistDeviceControlProfile,
+    refreshOpenDeviceDetail,
+  });
+  initTargetPowerConfigHandlers({
+    getCurrentDetailDeviceId,
     refreshOpenDeviceDetail,
   });
   initEvBoostHandlers({

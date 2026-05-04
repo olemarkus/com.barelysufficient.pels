@@ -4,8 +4,7 @@ import type {
     BinaryControlObservation,
     DeviceControlProfile,
     DeviceControlProfiles,
-    NativeSteppedLoadBlockReasonCode,
-    NativeSteppedLoadStatusSnapshot,
+    DeviceTargetPowerConfigs,
     DeviceStateOfChargeSnapshot,
     EvBoostConfig,
     EvBoostSettings,
@@ -17,6 +16,8 @@ import type {
     TemperatureBoostSettings,
     TargetCapabilitySnapshot,
     TargetDeviceSnapshot,
+    TargetPowerSteppedLoadConfig,
+    TargetPowerSteppedLoadPreset,
 } from '../../packages/contracts/src/types';
 
 export type {
@@ -25,8 +26,7 @@ export type {
     BinaryControlObservation,
     DeviceControlProfile,
     DeviceControlProfiles,
-    NativeSteppedLoadBlockReasonCode,
-    NativeSteppedLoadStatusSnapshot,
+    DeviceTargetPowerConfigs,
     DeviceStateOfChargeSnapshot,
     EvBoostConfig,
     EvBoostSettings,
@@ -38,6 +38,8 @@ export type {
     TemperatureBoostSettings,
     TargetCapabilitySnapshot,
     TargetDeviceSnapshot,
+    TargetPowerSteppedLoadConfig,
+    TargetPowerSteppedLoadPreset,
 };
 
 export type Logger = {
@@ -88,6 +90,8 @@ export type CapabilityValue<T> = {
     min?: number;
     max?: number;
     step?: number;
+    excludeMin?: number;
+    excludeMax?: number;
     setable?: boolean;
     lastUpdated?: string | number | Date | null;
 };
@@ -133,11 +137,16 @@ export type HomeyDeviceLike = {
         measure_soc_level?: CapabilityValue<number>;
         measure_soc_usable?: CapabilityValue<number>;
         target_temperature?: CapabilityValue<number>;
+        target_power?: CapabilityValue<number>;
     };
     settings?: Record<string, unknown> & {
         load?: number;
         energy_value_on?: number | null;
         energy_value_off?: number | null;
+        pelsCompatibilityOwnerUri?: string;
+        pelsCompatibilityDriverId?: string;
+        pelsCompatibilityTargetPower?: string | TargetPowerSteppedLoadConfig;
+        pelsCompatibilityTargetPowerPreset?: TargetPowerSteppedLoadPreset;
     };
     energy?: Record<string, unknown> | null;
     energyObj?: Record<string, unknown> | null;

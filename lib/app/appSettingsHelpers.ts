@@ -1,6 +1,11 @@
 import type Homey from 'homey';
 import type { ShedBehavior } from '../plan/planTypes';
-import type { DeviceControlProfiles, EvBoostSettings, TemperatureBoostSettings } from '../utils/types';
+import type {
+  DeviceControlProfiles,
+  DeviceTargetPowerConfigs,
+  EvBoostSettings,
+  TemperatureBoostSettings,
+} from '../utils/types';
 import {
   normalizeShedBehaviors as normalizeShedBehaviorsHelper,
   resolveModeName as resolveModeNameHelper,
@@ -10,6 +15,7 @@ import {
   isDeviceControlProfiles,
   isBooleanMap,
   isCommunicationModelMap,
+  isDeviceTargetPowerConfigs,
   isFiniteNumber,
   isModeDeviceTargets,
   isPrioritySettings,
@@ -17,6 +23,7 @@ import {
   normalizeEvBoostSettings,
   normalizeTemperatureBoostSettings,
 } from '../utils/appTypeGuards';
+import { normalizeDeviceTargetPowerConfigs } from '../utils/targetPowerConfig';
 import {
   BUDGET_EXEMPT_DEVICES,
   CAPACITY_DRY_RUN,
@@ -25,6 +32,7 @@ import {
   DEVICE_CONTROL_PROFILES,
   DEVICE_COMMUNICATION_MODELS,
   DEVICE_DRIVER_OVERRIDES,
+  DEVICE_TARGET_POWER_CONFIGS,
   EV_BOOST_SETTINGS,
   EXPERIMENTAL_EV_SUPPORT_ENABLED,
   NATIVE_EV_WIRING_DEVICES,
@@ -53,6 +61,7 @@ export type CapacitySettingsSnapshot = {
   nativeEvWiringDevices: Record<string, boolean>;
   deviceDriverOverrides: Record<string, string>;
   deviceControlProfiles: DeviceControlProfiles;
+  deviceTargetPowerConfigs: DeviceTargetPowerConfigs;
   deviceCommunicationModels: Record<string, 'local' | 'cloud'>;
   experimentalEvSupportEnabled: boolean;
   shedBehaviors: Record<string, ShedBehavior>;
@@ -117,6 +126,7 @@ export function buildCapacitySettingsSnapshot(params: {
     nativeEvWiringDevices: nativeEvSettings.nativeEvWiringDevices,
     deviceDriverOverrides: deviceOverrides.deviceDriverOverrides,
     deviceControlProfiles: deviceSettings.deviceControlProfiles,
+    deviceTargetPowerConfigs: deviceSettings.deviceTargetPowerConfigs,
     deviceCommunicationModels: deviceSettings.deviceCommunicationModels,
     experimentalEvSupportEnabled: nextExperimentalEvSupportEnabled,
     shedBehaviors: nextBehaviors,
@@ -178,15 +188,19 @@ function readDeviceControlSettings(params: {
   current: CapacitySettingsSnapshot;
 }): Pick<
   CapacitySettingsSnapshot,
-  'deviceControlProfiles' | 'deviceCommunicationModels'
+  'deviceControlProfiles' | 'deviceTargetPowerConfigs' | 'deviceCommunicationModels'
 > {
   const { settings, current } = params;
   const deviceControlProfiles = settings.get(DEVICE_CONTROL_PROFILES) as unknown;
+  const deviceTargetPowerConfigs = settings.get(DEVICE_TARGET_POWER_CONFIGS) as unknown;
   const deviceCommunicationModels = settings.get(DEVICE_COMMUNICATION_MODELS) as unknown;
   return {
     deviceControlProfiles: isDeviceControlProfiles(deviceControlProfiles)
       ? deviceControlProfiles
       : current.deviceControlProfiles,
+    deviceTargetPowerConfigs: isDeviceTargetPowerConfigs(deviceTargetPowerConfigs)
+      ? normalizeDeviceTargetPowerConfigs(deviceTargetPowerConfigs)
+      : current.deviceTargetPowerConfigs,
     deviceCommunicationModels: isCommunicationModelMap(deviceCommunicationModels)
       ? deviceCommunicationModels
       : current.deviceCommunicationModels,

@@ -3,6 +3,7 @@ import type {
   HomeyDeviceLike,
   SteppedLoadProfile,
   SteppedLoadStep,
+  TargetPowerSteppedLoadConfig,
 } from '../utils/types';
 import {
   getSteppedLoadStep,
@@ -19,8 +20,17 @@ export const NATIVE_STEPPED_LOAD_CAPABILITY_IDS = [
 
 export type NativeSteppedLoadCapabilityId = (typeof NATIVE_STEPPED_LOAD_CAPABILITY_IDS)[number];
 type NativeStepRank = 'off' | 'low' | 'medium' | 'high';
+type TargetPowerPreset = 'ev_charger_1_phase' | 'ev_charger_3_phase';
 
 const NATIVE_STEPPED_LOAD_CAPABILITY_SET = new Set<string>(NATIVE_STEPPED_LOAD_CAPABILITY_IDS);
+export const TARGET_POWER_CAPABILITY_ID = 'target_power';
+const NOMINAL_PHASE_VOLTAGE = 230;
+const EV_CHARGER_AMPS = [6, 8, 10, 12, 14, 16, 20, 24, 28, 32] as const;
+const TARGET_POWER_MAX_GENERATED_STEPS = 128;
+const TARGET_POWER_PRESET_SETTING_KEYS = [
+  'pelsTargetPowerPreset',
+  'pels_target_power_preset',
+] as const;
 const HOIAX_OWNER_URIS = new Set(['homey:app:no.hoiax']);
 const HOIAX_DRIVER_ID_PREFIXES = [
   'homey:app:no.hoiax:',
@@ -72,37 +82,88 @@ export function resolveNativeSteppedLoadCapabilityId(
 export function isNativeSteppedLoadWiringCandidate(params: {
   device: HomeyDeviceLike;
   capabilities: readonly string[];
+  capabilityObj?: DeviceCapabilityMap;
 }): boolean {
-  const { device, capabilities } = params;
-  return isHoiaxDevice(device) && resolveNativeSteppedLoadCapabilityId(capabilities) !== undefined;
+  const { device, capabilities, capabilityObj } = params;
+  if (isHoiaxDevice(device) && resolveNativeSteppedLoadCapabilityId(capabilities) !== undefined) return true;
+  return isTargetPowerSteppedLoadCandidate({ capabilities, capabilityObj });
+}
+
+export function isTargetPowerSteppedLoadWiringCandidate(params: {
+  capabilities: readonly string[];
+  capabilityObj?: DeviceCapabilityMap;
+}): boolean {
+  return isTargetPowerSteppedLoadCandidate(params);
+}
+
+export function hasTargetPowerCapability(capabilities: readonly string[]): boolean {
+  return capabilities.includes(TARGET_POWER_CAPABILITY_ID);
 }
 
 export function resolveNativeSteppedLoadProfileSuggestion(params: {
   device: HomeyDeviceLike;
   capabilities: readonly string[];
+  capabilityObj?: DeviceCapabilityMap;
 }): SteppedLoadProfile | undefined {
   if (!isNativeSteppedLoadWiringCandidate(params)) return undefined;
   if (params.capabilities.includes('max_power_3000')) return CONNECTED_300_STEPPED_LOAD_PROFILE;
   if (params.capabilities.includes('max_power_2000') || params.capabilities.includes('max_power')) {
     return CONNECTED_200_STEPPED_LOAD_PROFILE;
   }
-  return undefined;
+  return resolveTargetPowerSteppedLoadProfileSuggestion(params);
+}
+
+export function resolveTargetPowerSteppedLoadProfileFromConfig(
+  config: TargetPowerSteppedLoadConfig | undefined,
+): SteppedLoadProfile | undefined {
+  if (!config || config.enabled === false) return undefined;
+  if (config.preset === 'ev_charger_1_phase') return buildEvTargetPowerSteppedLoadProfile(1);
+  if (config.preset === 'ev_charger_3_phase') return buildEvTargetPowerSteppedLoadProfile(3);
+  return buildCapabilityTargetPowerSteppedLoadProfile(config);
+}
+
+export function buildSyntheticTargetPowerCapabilityMap(params: {
+  capabilityObj: DeviceCapabilityMap;
+  config: TargetPowerSteppedLoadConfig;
+  observedValue?: number;
+  observedAt?: DeviceCapabilityMap[string]['lastUpdated'];
+}): DeviceCapabilityMap {
+  const currentTargetPower = params.capabilityObj[TARGET_POWER_CAPABILITY_ID];
+  return {
+    ...params.capabilityObj,
+    [TARGET_POWER_CAPABILITY_ID]: {
+      ...currentTargetPower,
+      min: params.config.min,
+      max: params.config.max,
+      step: params.config.step,
+      excludeMin: params.config.excludeMin,
+      excludeMax: params.config.excludeMax,
+      setable: currentTargetPower?.setable === true,
+      value: params.observedValue ?? currentTargetPower?.value,
+      lastUpdated: params.observedAt ?? currentTargetPower?.lastUpdated,
+      units: 'W',
+    },
+  };
 }
 
 export function stripNativeSteppedLoadControlCapabilities(params: {
   device: HomeyDeviceLike;
   capabilities: readonly string[];
+  capabilityObj?: DeviceCapabilityMap;
 }): string[] {
-  if (!isHoiaxDevice(params.device)) return [...params.capabilities];
-  return params.capabilities.filter((capabilityId) => !NATIVE_STEPPED_LOAD_CAPABILITY_SET.has(capabilityId));
+  return params.capabilities.filter((capabilityId) => {
+    if (isHoiaxDevice(params.device) && NATIVE_STEPPED_LOAD_CAPABILITY_SET.has(capabilityId)) return false;
+    return !(capabilityId === TARGET_POWER_CAPABILITY_ID && isTargetPowerSteppedLoadCandidate(params));
+  });
 }
 
 export function buildNativeSteppedLoadControlAdapter(params: {
   nativeWiringEnabled: boolean;
+  activationAvailable?: boolean;
 }): DeviceControlAdapterSnapshot {
   return {
     kind: 'capability_adapter',
-    activationAvailable: true,
+    activationAvailable: params.activationAvailable ?? true,
     activationRequired: false,
     activationEnabled: params.nativeWiringEnabled,
   };
@@ -119,6 +180,9 @@ export function resolveNativeSteppedLoadReportedStepId(params: {
     capabilityObj,
   } = params;
   const capabilityId = resolveNativeSteppedLoadCapabilityId(capabilities);
+  if (!capabilityId && isTargetPowerSteppedLoadCandidate({ capabilities, capabilityObj })) {
+    return resolveTargetPowerReportedStepId({ profile, capabilityObj });
+  }
   const rank = capabilityId
     ? normalizeNativeStepRank(capabilityObj[capabilityId]?.value)
     : undefined;
@@ -143,6 +207,13 @@ export function resolveNativeSteppedLoadCommand(params: {
   const desiredStep = getSteppedLoadStep(profile, desiredStepId);
   if (!desiredStep) return null;
 
+  if (isTargetPowerSteppedLoadCandidate(params)) {
+    return {
+      capabilityId: TARGET_POWER_CAPABILITY_ID,
+      value: Math.round(desiredStep.planningPowerW),
+    };
+  }
+
   if (isSteppedLoadOffStep(profile, desiredStep.id)) {
     return capabilities.includes('onoff') ? { capabilityId: 'onoff', value: false } : null;
   }
@@ -160,8 +231,31 @@ export function resolveNativeSteppedLoadCommand(params: {
 export function isNativeSteppedLoadControlEnabled(snapshot: {
   controlAdapter?: DeviceControlAdapterSnapshot;
 }): boolean {
-  return snapshot.controlAdapter?.activationAvailable === true
+  return snapshot.controlAdapter?.kind === 'capability_adapter'
+    && snapshot.controlAdapter.activationAvailable !== undefined
     && snapshot.controlAdapter.activationEnabled === true;
+}
+
+export function isNativeSteppedLoadControlCapabilityId(params: {
+  capabilityId: string;
+  capabilities: readonly string[];
+  capabilityObj?: DeviceCapabilityMap;
+}): boolean {
+  if (resolveNativeSteppedLoadCapabilityId([params.capabilityId]) !== undefined) return true;
+  return params.capabilityId === TARGET_POWER_CAPABILITY_ID
+    && isTargetPowerSteppedLoadCandidate(params);
+}
+
+export function resolveNativeSteppedLoadObservationCapabilityId(params: {
+  capabilities: readonly string[];
+  capabilityObj?: DeviceCapabilityMap;
+}): string | undefined {
+  return resolveNativeSteppedLoadCapabilityId(params.capabilities)
+    ?? (
+      isTargetPowerSteppedLoadCandidate(params)
+        ? TARGET_POWER_CAPABILITY_ID
+        : undefined
+    );
 }
 
 function isHoiaxDevice(device: HomeyDeviceLike): boolean {
@@ -172,6 +266,111 @@ function isHoiaxDevice(device: HomeyDeviceLike): boolean {
   const driverId = normalizeText(device.driverId ?? device.driver?.id);
   return HOIAX_DRIVER_IDS.has(driverId)
     || HOIAX_DRIVER_ID_PREFIXES.some((prefix) => driverId.startsWith(prefix));
+}
+
+function isTargetPowerSteppedLoadCandidate(params: {
+  capabilities: readonly string[];
+  capabilityObj?: DeviceCapabilityMap;
+}): boolean {
+  const targetPower = params.capabilityObj?.[TARGET_POWER_CAPABILITY_ID];
+  return params.capabilities.includes(TARGET_POWER_CAPABILITY_ID)
+    && targetPower?.setable === true;
+}
+
+function resolveTargetPowerSteppedLoadProfileSuggestion(params: {
+  device: HomeyDeviceLike;
+  capabilities: readonly string[];
+  capabilityObj?: DeviceCapabilityMap;
+}): SteppedLoadProfile | undefined {
+  if (!isTargetPowerSteppedLoadCandidate(params)) return undefined;
+  const preset = resolveTargetPowerPreset(params.device);
+  if (preset === 'ev_charger_1_phase') return buildEvTargetPowerSteppedLoadProfile(1);
+  if (preset === 'ev_charger_3_phase') return buildEvTargetPowerSteppedLoadProfile(3);
+  return buildCapabilityTargetPowerSteppedLoadProfile(params.capabilityObj?.target_power);
+}
+
+function resolveTargetPowerPreset(device: HomeyDeviceLike): TargetPowerPreset | undefined {
+  const settings = device.settings;
+  if (!settings) return undefined;
+  for (const key of TARGET_POWER_PRESET_SETTING_KEYS) {
+    const value = settings[key];
+    if (value === 'ev_charger_1_phase' || value === 'ev_charger_3_phase') return value;
+  }
+  return undefined;
+}
+
+function buildEvTargetPowerSteppedLoadProfile(phaseCount: 1 | 3): SteppedLoadProfile {
+  return {
+    model: 'stepped_load',
+    steps: [
+      { id: 'off', planningPowerW: 0 },
+      ...EV_CHARGER_AMPS.map((amps) => ({
+        id: `${amps}a`,
+        planningPowerW: amps * NOMINAL_PHASE_VOLTAGE * phaseCount,
+      })),
+    ],
+  };
+}
+
+function buildCapabilityTargetPowerSteppedLoadProfile(
+  capability: Pick<DeviceCapabilityMap[string], 'min' | 'max' | 'step' | 'excludeMax'> | undefined,
+): SteppedLoadProfile | undefined {
+  const maxW = finitePositiveNumber(capability?.max);
+  const stepW = finitePositiveNumber(capability?.step);
+  if (!maxW || !stepW) return undefined;
+  const minW = resolveTargetPowerActiveMinW(capability, stepW);
+  if (minW > maxW) return undefined;
+  const stepCount = Math.floor((maxW - minW) / stepW) + 1;
+  if (stepCount < 1 || stepCount > TARGET_POWER_MAX_GENERATED_STEPS) return undefined;
+
+  const steps: SteppedLoadStep[] = [{ id: 'off', planningPowerW: 0 }];
+  for (let value = minW; value <= maxW + Number.EPSILON; value += stepW) {
+    const roundedValue = Math.round(value);
+    steps.push({
+      id: `${roundedValue}w`,
+      planningPowerW: roundedValue,
+    });
+  }
+  return { model: 'stepped_load', steps };
+}
+
+function resolveTargetPowerActiveMinW(
+  capability: Pick<DeviceCapabilityMap[string], 'min' | 'excludeMax'> | undefined,
+  stepW: number,
+): number {
+  const excludeMax = finitePositiveNumber(capability?.excludeMax);
+  if (excludeMax) return excludeMax;
+  const min = finitePositiveNumber(capability?.min);
+  if (min) return min;
+  return stepW;
+}
+
+export function resolveTargetPowerReportedStepId(params: {
+  profile: SteppedLoadProfile;
+  capabilityObj: DeviceCapabilityMap;
+}): string | undefined {
+  const targetPowerValue = params.capabilityObj.target_power?.value;
+  if (typeof targetPowerValue !== 'number' || !Number.isFinite(targetPowerValue)) return undefined;
+  const sortedSteps = sortSteppedLoadSteps(params.profile.steps);
+  if (targetPowerValue <= 0) {
+    return sortedSteps.find((step) => isSteppedLoadOffStep(params.profile, step.id))?.id;
+  }
+  let nearestStep: SteppedLoadStep | undefined;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (const step of sortedSteps) {
+    const distance = Math.abs(step.planningPowerW - targetPowerValue);
+    if (distance < nearestDistance) {
+      nearestStep = step;
+      nearestDistance = distance;
+    }
+  }
+  return nearestStep?.id;
+}
+
+function finitePositiveNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : undefined;
 }
 
 function normalizeText(value: unknown): string {

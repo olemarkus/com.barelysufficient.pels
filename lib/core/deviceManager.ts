@@ -73,12 +73,12 @@ import {
     type DeviceManagerObservationState,
 } from './deviceManagerObservation';
 import {
-    applyDeviceDriverOverride,
     isDevicePowerCapable,
     parseDevice,
     parseDeviceList,
     type DeviceManagerParseProviders,
 } from './deviceManagerParseDevice';
+import { applyDeviceDriverOverride } from './deviceManagerParseIdentity';
 import {
     buildNativeEvObservationDevice,
     normalizeNativeEvCapabilityUpdate,
@@ -86,18 +86,18 @@ import {
 import {
     observeNativeSteppedLoadCapabilityUpdate,
     resolveObservedNativeSteppedLoadReportedStepId,
-    resolveObservedNativeSteppedLoadStatus,
     syncNativeSteppedLoadCommandAdapters,
 } from './deviceManagerNativeSteppedCommand';
 import { applyFreshnessOnlyCapabilityUpdate } from './deviceManagerFreshness';
 import {
     isNativeSteppedLoadControlEnabled,
-    resolveNativeSteppedLoadCapabilityId,
+    isNativeSteppedLoadControlCapabilityId,
     resolveNativeSteppedLoadReportedStepId,
+    resolveTargetPowerReportedStepId,
 } from './nativeSteppedLoadWiring';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from './steppedLoadSyntheticCapabilities';
 import { isStateOfChargeCapabilityId } from './deviceStateOfCharge';
-import { ZAPTEC_NATIVE_STEPPED_LOAD_PROFILE } from './zaptecNativeSteppedLoad';
+import { applyDeviceCompatibilityMetadata } from './deviceCompatibility';
 
 const MIN_SIGNIFICANT_POWER_W = 5;
 const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
@@ -162,6 +162,14 @@ export class DeviceManager extends EventEmitter {
                 snapshot,
             });
             if (handledNativeSteppedLoadUpdate) continue;
+            const handledTargetPowerSourceUpdate = this.handleTargetPowerSourceCapabilityUpdate({
+                snapshotIndex,
+                deviceId,
+                capabilityId: normalizedEvent.capabilityId,
+                value: normalizedEvent.value,
+                snapshot,
+            });
+            if (handledTargetPowerSourceUpdate) continue;
 
             const resolvedEvent = this.resolveRealtimeCapabilityEvent(
                 snapshot,
@@ -222,10 +230,8 @@ export class DeviceManager extends EventEmitter {
             snapshot,
         } = params;
         if (!isNativeSteppedLoadControlEnabled(snapshot)) return false;
-        const isZaptecAdapter = snapshot.nativeSteppedLoadStatus?.provider === 'zaptec';
         const profile = snapshot.suggestedSteppedLoadProfile;
-        if (profile?.model !== 'stepped_load' && !isZaptecAdapter) return false;
-        if (profile && profile.model !== 'stepped_load') return false;
+        if (profile?.model !== 'stepped_load') return false;
 
         const updateKind = this.resolveNativeSteppedCapabilityUpdateKind({
             capabilityId,
@@ -233,7 +239,7 @@ export class DeviceManager extends EventEmitter {
             snapshot,
         });
         if (!updateKind) return false;
-        const { isNativePowerStepUpdate, isZaptecAdapterObservation } = updateKind;
+        const { isNativePowerStepUpdate } = updateKind;
 
         const normalizedValue = this.normalizeRealtimeCapabilityEventValue(capabilityId, value);
         if (this.hasMatchingRecentLocalWrite(deviceId, capabilityId, normalizedValue)) {
@@ -268,9 +274,51 @@ export class DeviceManager extends EventEmitter {
             deviceId,
             nextReportedStepId,
             isNativePowerStepUpdate,
-            isZaptecAdapterObservation,
         });
         return isNativePowerStepUpdate;
+    }
+
+    private handleTargetPowerSourceCapabilityUpdate(params: {
+        snapshotIndex: number;
+        deviceId: string;
+        capabilityId: string;
+        value: unknown;
+        snapshot: TargetDeviceSnapshot;
+    }): boolean {
+        const {
+            snapshotIndex,
+            deviceId,
+            capabilityId,
+            value,
+            snapshot,
+        } = params;
+        if (capabilityId !== 'available_installation_current') return false;
+        const phaseCount = resolveTargetPowerPresetPhaseCount(snapshot.targetPowerConfig?.preset);
+        if (!phaseCount || typeof value !== 'number' || !Number.isFinite(value)) return false;
+        const profile = snapshot.suggestedSteppedLoadProfile ?? snapshot.steppedLoadProfile;
+        if (profile?.model !== 'stepped_load') return false;
+        const targetPowerW = Math.round(value * 230 * phaseCount);
+        const nextReportedStepId = resolveTargetPowerReportedStepId({
+            profile,
+            capabilityObj: {
+                target_power: { value: targetPowerW },
+            },
+        });
+        recordCapabilityObservation({
+            state: this.observationState,
+            latestSnapshot: this.latestSnapshot,
+            deviceId,
+            capabilityId,
+            value,
+            source: 'realtime_capability',
+        });
+        this.applyNativeSteppedLoadSnapshotUpdate({
+            snapshotIndex,
+            deviceId,
+            nextReportedStepId,
+            isNativePowerStepUpdate: true,
+        });
+        return true;
     }
 
     private emitNativeSteppedLoadReportedStepChanged(params: {
@@ -515,25 +563,23 @@ export class DeviceManager extends EventEmitter {
         snapshot: TargetDeviceSnapshot;
     }): {
         isNativePowerStepUpdate: boolean;
-        isZaptecAdapterObservation: boolean;
     } | null {
         const { capabilityId, value, snapshot } = params;
-        const nativeCapabilityId = resolveNativeSteppedLoadCapabilityId([capabilityId]);
-        const isNativePowerStepUpdate = nativeCapabilityId !== undefined;
+        const isNativePowerStepUpdate = capabilityId === 'target_power'
+            ? true
+            : isNativeSteppedLoadControlCapabilityId({
+                capabilityId,
+                capabilities: snapshot.capabilities ?? [],
+                capabilityObj: {
+                    [capabilityId]: { value },
+                },
+            });
         const isNativeBinaryUpdate = capabilityId === snapshot.controlCapabilityId && typeof value === 'boolean';
-        const isZaptecAdapter = snapshot.nativeSteppedLoadStatus?.provider === 'zaptec';
-        const isZaptecAdapterObservation = isZaptecAdapter
-            && (
-                capabilityId === 'available_installation_current'
-                || capabilityId === 'measure_power'
-                || capabilityId === 'evcharger_charging_state'
-            );
-        if (!isNativePowerStepUpdate && !isNativeBinaryUpdate && !isZaptecAdapterObservation) {
+        if (!isNativePowerStepUpdate && !isNativeBinaryUpdate) {
             return null;
         }
         return {
             isNativePowerStepUpdate,
-            isZaptecAdapterObservation,
         };
     }
 
@@ -542,32 +588,18 @@ export class DeviceManager extends EventEmitter {
         deviceId: string;
         nextReportedStepId: string | undefined;
         isNativePowerStepUpdate: boolean;
-        isZaptecAdapterObservation: boolean;
     }): void {
         const {
             snapshotIndex,
             deviceId,
             nextReportedStepId,
             isNativePowerStepUpdate,
-            isZaptecAdapterObservation,
         } = params;
         const currentSnapshot = this.latestSnapshot[snapshotIndex];
-        currentSnapshot.nativeSteppedLoadStatus = resolveObservedNativeSteppedLoadStatus({
-            owner: this,
-            deviceId,
-        });
-        if (currentSnapshot.nativeSteppedLoadStatus?.blockedReasonCode) {
-            delete currentSnapshot.suggestedSteppedLoadProfile;
-        } else if (
-            currentSnapshot.nativeSteppedLoadStatus?.provider === 'zaptec'
-            && currentSnapshot.suggestedSteppedLoadProfile === undefined
-        ) {
-            currentSnapshot.suggestedSteppedLoadProfile = ZAPTEC_NATIVE_STEPPED_LOAD_PROFILE;
-        }
         const previousReportedStepId = currentSnapshot.reportedStepId;
         if (nextReportedStepId) currentSnapshot.reportedStepId = nextReportedStepId;
         else delete currentSnapshot.reportedStepId;
-        if (isNativePowerStepUpdate || isZaptecAdapterObservation) {
+        if (isNativePowerStepUpdate) {
             currentSnapshot.lastFreshDataMs = Date.now();
             currentSnapshot.lastUpdated = currentSnapshot.lastFreshDataMs;
         }
@@ -1666,8 +1698,9 @@ export class DeviceManager extends EventEmitter {
     }
 
     private applyDeviceDriverOverride(device: HomeyDeviceLike): HomeyDeviceLike {
+        const compatibleDevice = applyDeviceCompatibilityMetadata(device);
         return applyDeviceDriverOverride(
-            device,
+            compatibleDevice,
             this.providers.getDeviceDriverIdOverride?.(getDeviceId(device)),
         );
     }
@@ -1717,13 +1750,7 @@ export class DeviceManager extends EventEmitter {
     private getParseDeviceDeps() {
         return {
             logger: this.logger,
-            providers: {
-                ...this.providers,
-                getNativeSteppedLoadStatus: (deviceId: string) => resolveObservedNativeSteppedLoadStatus({
-                    owner: this,
-                    deviceId,
-                }),
-            },
+            providers: this.providers,
             debugStructured: this.debugStructured,
             powerState: this.powerState,
             measuredPowerResolver: this.measuredPowerResolver,
@@ -1772,6 +1799,14 @@ function isRawBinarySettlementEvidenceAllowed(
     capabilityId: string,
 ): boolean {
     return capabilityId !== 'evcharger_charging' || snapshot.evChargingState === undefined;
+}
+
+function resolveTargetPowerPresetPhaseCount(
+    preset: string | undefined,
+): number | undefined {
+    if (preset === 'ev_charger_1_phase') return 1;
+    if (preset === 'ev_charger_3_phase') return 3;
+    return undefined;
 }
 
 function summarizeSnapshotRefreshMetrics(snapshot: TargetDeviceSnapshot[]): SnapshotRefreshMetrics {

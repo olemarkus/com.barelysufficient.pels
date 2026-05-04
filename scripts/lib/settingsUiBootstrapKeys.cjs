@@ -12,6 +12,7 @@ const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'controllable_devices',
   'managed_devices',
   'device_control_profiles',
+  'device_target_power_configs',
   'budget_exempt_devices',
   'temperature_boost_settings',
   'native_ev_wiring_devices',
