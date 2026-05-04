@@ -207,4 +207,29 @@ export const resolveSteppedTemperatureText = (device: {
   return `${currentTemperature.toFixed(1)}° → ${plannedTarget.toFixed(0)}°`;
 };
 
+export const resolveSteppedPowerText = (device: {
+  measuredPowerKw?: number;
+}): string | null => {
+  const { measuredPowerKw } = device;
+  if (typeof measuredPowerKw !== 'number') return null;
+  return `${measuredPowerKw.toFixed(1)} kW`;
+};
+
+const EV_CHARGING_STATE_LABELS: Record<string, string> = {
+  plugged_in_charging: 'Charging',
+  plugged_in_paused: 'Paused',
+  plugged_in: 'Waiting for car',
+  plugged_in_discharging: 'Discharging',
+  plugged_out: 'Unplugged',
+};
+
+export const resolveEvChargingStateLabel = (device: {
+  evChargingState?: string;
+  controlCapabilityId?: string;
+}): string | null => {
+  if (device.controlCapabilityId !== 'evcharger_charging') return null;
+  const state = (device.evChargingState ?? '').trim().toLowerCase();
+  return EV_CHARGING_STATE_LABELS[state] ?? null;
+};
+
 export { capitalize as capitalizeStepLabel };

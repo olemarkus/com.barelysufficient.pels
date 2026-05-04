@@ -1499,6 +1499,20 @@ input:focus-visible {
   flex-shrink: 0;
 }
 
+.plan-card__state-power {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.plan-card__secondary-line {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.4;
+  min-height: 1.4em;
+}
+
 .plan-card__status-line {
   margin: 0;
   font-size: var(--font-size-sm);
