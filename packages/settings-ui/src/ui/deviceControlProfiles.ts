@@ -62,6 +62,26 @@ export const isNativeSteppedLoadProfileActive = (device?: TargetDeviceSnapshot |
   && device.suggestedSteppedLoadProfile?.model === 'stepped_load'
 );
 
+const hasSteppedLoadProfileState = (device: TargetDeviceSnapshot): boolean => (
+  device.steppedLoadProfile?.model === 'stepped_load'
+  || device.suggestedSteppedLoadProfile?.model === 'stepped_load'
+  || getStoredDeviceControlProfile(device.id)?.model === 'stepped_load'
+);
+
+const hasEnabledEvTargetPowerPreset = (device: TargetDeviceSnapshot): boolean => {
+  const targetPowerConfig = getStoredTargetPowerConfig(device.id) ?? device.targetPowerConfig;
+  return targetPowerConfig?.enabled !== false
+    && (targetPowerConfig?.preset === 'ev_charger_1_phase' || targetPowerConfig?.preset === 'ev_charger_3_phase');
+};
+
+export const hasSteppedLoadSupport = (device?: TargetDeviceSnapshot | null): boolean => {
+  if (!device) return false;
+  if (isNativeSteppedLoadProfileActive(device)) return true;
+  if (hasSteppedLoadProfileState(device)) return true;
+  if (hasEnabledEvTargetPowerPreset(device)) return true;
+  return false;
+};
+
 export const getEffectiveControlModel = (device: TargetDeviceSnapshot): DeviceControlModel => {
   if (isNativeSteppedLoadProfileActive(device)) return 'stepped_load';
   if (device.controlModel) return device.controlModel;

@@ -401,12 +401,12 @@ export function finalizePreviousDayLearning(params: {
     observedUncontrolledSampleCounts,
   });
 
-  const sourceLabel = bucketUsage.usedControlledData ? 'split' : 'total';
+  const usageKindLabel = bucketUsage.usedControlledData ? 'split' : 'total';
   return {
     nextState,
     shouldMarkDirty: true,
     logMessage: `Daily budget: finalized ${previousDateKey} `
-      + `(${totalKWh.toFixed(2)} kWh ${sourceLabel}, window buckets ${windowBucketCount})`,
+      + `(${totalKWh.toFixed(2)} kWh ${usageKindLabel}, window buckets ${windowBucketCount})`,
   };
 }
 

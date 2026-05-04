@@ -32,7 +32,6 @@ export type DeviceOverviewSnapshot = {
   stateOfCharge?: {
     percent: number;
     status: 'unknown' | 'fresh' | 'stale' | 'invalid';
-    sourceLabel?: string;
   };
 };
 
@@ -235,9 +234,8 @@ const formatEvSocStatus = (
   if (!stateOfCharge || stateOfCharge.status === 'unknown' || stateOfCharge.status === 'invalid') {
     return null;
   }
-  const sourceLabel = stateOfCharge.sourceLabel ? ` from ${stateOfCharge.sourceLabel}` : '';
   const staleSuffix = stateOfCharge.status === 'stale' ? ', stale' : '';
-  return `EV battery: ${stateOfCharge.percent} %${sourceLabel}${staleSuffix}`;
+  return `EV battery: ${stateOfCharge.percent} %${staleSuffix}`;
 };
 
 const formatUsageText = (params: {

@@ -60,10 +60,9 @@ describe('device overview formatter', () => {
       stateOfCharge: {
         percent: 42,
         status: 'fresh',
-        sourceLabel: 'Tesla Flow',
       },
       reason: r('keep'),
-    }).statusMsg).toBe('keep - EV battery: 42 % from Tesla Flow');
+    }).statusMsg).toBe('keep - EV battery: 42 %');
 
     expect(formatDeviceOverview({
       currentState: 'off',
@@ -73,10 +72,9 @@ describe('device overview formatter', () => {
       stateOfCharge: {
         percent: 42,
         status: 'stale',
-        sourceLabel: 'Tesla Flow',
       },
       reason: r('inactive'),
-    }).statusMsg).toBe('inactive - EV battery: 42 % from Tesla Flow, stale');
+    }).statusMsg).toBe('inactive - EV battery: 42 %, stale');
   });
 
   it('formats legacy keep devices blocked by meter settling without inventing shed state', () => {

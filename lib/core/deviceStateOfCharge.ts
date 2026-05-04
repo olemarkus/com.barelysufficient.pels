@@ -22,7 +22,6 @@ type StateOfChargeCandidate = {
   observedAtMs?: number;
   source: StateOfChargeSource;
   capabilityId: string;
-  sourceLabel?: string;
 };
 
 export function resolveStateOfChargeSnapshot(params: {
@@ -52,7 +51,6 @@ export function resolveStateOfChargeSnapshot(params: {
     percent: candidate.percent,
     observedAtMs: candidate.observedAtMs,
     source: candidate.source,
-    sourceLabel: candidate.sourceLabel,
     capabilityId: candidate.capabilityId,
     capabilityObj,
     reportedCapabilities,
@@ -215,7 +213,7 @@ function resolveStateOfChargeCandidate(params: {
   flowBackedCapabilityIds: readonly FlowReportedCapabilityId[];
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
 }): StateOfChargeCandidate | null {
-  const { capabilityObj, flowBackedCapabilityIds, reportedCapabilities } = params;
+  const { capabilityObj, flowBackedCapabilityIds } = params;
   for (const capabilityId of EV_SOC_NATIVE_CAPABILITY_IDS) {
     const capability = capabilityObj[capabilityId];
     const percent = normalizeStateOfChargePercent(capability?.value);
@@ -228,13 +226,6 @@ function resolveStateOfChargeCandidate(params: {
         : 'capability',
       capabilityId,
     };
-    if (
-      candidate.source === 'flow'
-      && capabilityId === EV_SOC_CAPABILITY_ID
-      && typeof reportedCapabilities.measure_battery?.sourceLabel === 'string'
-    ) {
-      candidate.sourceLabel = reportedCapabilities.measure_battery.sourceLabel;
-    }
     return candidate;
   }
   return null;
@@ -244,7 +235,6 @@ function buildStateOfChargeSnapshot(params: {
   percent: number;
   observedAtMs?: number;
   source: StateOfChargeSource;
-  sourceLabel?: string;
   capabilityId: string;
   capabilityObj: DeviceCapabilityMap;
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
@@ -254,7 +244,6 @@ function buildStateOfChargeSnapshot(params: {
     percent,
     observedAtMs,
     source,
-    sourceLabel,
     capabilityId,
     capabilityObj,
     reportedCapabilities,
@@ -272,7 +261,6 @@ function buildStateOfChargeSnapshot(params: {
     ...(observedAtMs ? { observedAtMs } : {}),
     status,
     source,
-    ...(sourceLabel ? { sourceLabel } : {}),
     capabilityId,
     ...(session.sessionStartedAtMs ? { sessionStartedAtMs: session.sessionStartedAtMs } : {}),
     ...(session.invalidatedAtMs ? { invalidatedAtMs: session.invalidatedAtMs } : {}),

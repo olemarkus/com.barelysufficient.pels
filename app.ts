@@ -293,30 +293,26 @@ class PelsApp extends Homey.App {
     const parsed = parseFlowReportedCapabilities(
       this.homey.settings.get(FLOW_REPORTED_DEVICE_CAPABILITIES) as unknown,
     );
-    if (this.areFlowBackedCardsAvailable()) {
-      this.flowReportedCapabilities = parsed;
+    const filtered = this.filterAvailableFlowReportedCapabilities(parsed);
+    this.flowReportedCapabilities = filtered;
+    if (JSON.stringify(parsed) === JSON.stringify(filtered)) {
       return;
     }
-    this.flowReportedCapabilities = {};
-    if (Object.keys(parsed).length === 0) return;
-    this.homey.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, {});
+    this.homey.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, filtered);
     this.getStructuredLogger('devices')?.info({
       event: 'flow_backed_state_cleared',
       reasonCode: 'cards_unavailable',
-      deviceCount: Object.keys(parsed).length,
+      previousDeviceCount: Object.keys(parsed).length,
+      remainingDeviceCount: Object.keys(filtered).length,
     });
   }
 
   private getFlowReportedCapabilitiesForDevice = (deviceId: string): FlowReportedCapabilitiesForDevice => (
-    this.areFlowBackedCardsAvailable()
-      ? (this.flowReportedCapabilities[deviceId] ?? {})
-      : {}
+    this.flowReportedCapabilities[deviceId] ?? {}
   );
 
   private getFlowReportedDeviceIds = (): string[] => (
-    this.areFlowBackedCardsAvailable()
-      ? getFlowReportedDeviceIds(this.flowReportedCapabilities)
-      : []
+    getFlowReportedDeviceIds(this.flowReportedCapabilities)
   );
 
   private reportFlowBackedCapability(params: {
@@ -324,9 +320,8 @@ class PelsApp extends Homey.App {
     capabilityId: FlowReportedCapabilityId;
     value: boolean | number | string;
     reportedAt?: number;
-    sourceLabel?: string;
   }): FlowBackedCapabilityReportOutcome {
-    if (!this.areFlowBackedCardsAvailable()) {
+    if (!this.isFlowReportedCapabilityAvailable(params.capabilityId)) {
       return {
         kind: 'noop',
         valueChanged: false,
@@ -341,7 +336,6 @@ class PelsApp extends Homey.App {
       capabilityId: params.capabilityId,
       value: params.value,
       reportedAt: params.reportedAt,
-      sourceLabel: params.sourceLabel,
     });
     if (update.stateChanged || (params.capabilityId === EV_SOC_CAPABILITY_ID && update.freshnessAdvanced)) {
       this.homey.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, this.flowReportedCapabilities);
@@ -1046,6 +1040,28 @@ class PelsApp extends Homey.App {
     } catch {
       return false;
     }
+  }
+  private isFlowReportedCapabilityAvailable(capabilityId: FlowReportedCapabilityId): boolean {
+    if (capabilityId === EV_SOC_CAPABILITY_ID) {
+      return this.canAccessFlowCard('action', 'report_evcharger_battery_level');
+    }
+    return this.areFlowBackedCardsAvailable();
+  }
+  private filterAvailableFlowReportedCapabilities(
+    state: FlowReportedCapabilitiesByDevice,
+  ): FlowReportedCapabilitiesByDevice {
+    const next: FlowReportedCapabilitiesByDevice = {};
+    for (const [deviceId, entries] of Object.entries(state)) {
+      const filteredEntries = Object.fromEntries(
+        Object.entries(entries ?? {}).filter(([capabilityId]) => (
+          this.isFlowReportedCapabilityAvailable(capabilityId as FlowReportedCapabilityId)
+        )),
+      ) as FlowReportedCapabilitiesForDevice;
+      if (Object.keys(filteredEntries).length > 0) {
+        next[deviceId] = filteredEntries;
+      }
+    }
+    return next;
   }
   private loadCapacitySettings(): void {
     const next = loadCapacitySettingsFromHomey({

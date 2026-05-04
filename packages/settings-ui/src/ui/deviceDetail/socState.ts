@@ -23,15 +23,14 @@ export function setDeviceDetailSocState(device: TargetDeviceSnapshot | null): vo
     return;
   }
 
-  const sourceLabel = soc.sourceLabel ? ` from ${soc.sourceLabel}` : '';
   if (soc.status === 'unknown') {
     deviceDetailSocValue.textContent = 'Not reported';
   } else if (soc.status === 'invalid') {
     deviceDetailSocValue.textContent = 'Invalid report';
   } else if (soc.status === 'stale') {
-    deviceDetailSocValue.textContent = `${soc.percent} %${sourceLabel} - stale`;
+    deviceDetailSocValue.textContent = `${soc.percent} % - stale`;
   } else {
-    deviceDetailSocValue.textContent = `${soc.percent} %${sourceLabel}`;
+    deviceDetailSocValue.textContent = `${soc.percent} %`;
   }
 
   if (typeof soc.observedAtMs === 'number' && Number.isFinite(soc.observedAtMs)) {

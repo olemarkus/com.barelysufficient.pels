@@ -177,7 +177,7 @@ describe('registerFlowCards', () => {
     expect(deps.rebuildPlan).not.toHaveBeenCalled();
   });
 
-  it('skips flow-backed card registration when flow-backed cards are unavailable', () => {
+  it('keeps EV SoC card registration when generic flow-backed cards are unavailable', () => {
     const { deps, actionListeners, triggerListeners } = buildDeps({
       areFlowBackedCardsAvailable: () => false,
     });
@@ -186,7 +186,7 @@ describe('registerFlowCards', () => {
 
     expect(actionListeners.report_flow_backed_device_onoff).toBeUndefined();
     expect(actionListeners.report_flow_backed_device_evcharger_charging).toBeUndefined();
-    expect(actionListeners.report_evcharger_battery_level).toBeUndefined();
+    expect(actionListeners.report_evcharger_battery_level).toEqual(expect.any(Function));
     expect(triggerListeners.flow_backed_device_turn_on_requested).toBeUndefined();
     expect(triggerListeners.flow_backed_device_refresh_requested).toBeUndefined();
     expect(actionListeners.report_stepped_load_actual_step).toEqual(expect.any(Function));
@@ -238,7 +238,7 @@ describe('registerFlowCards', () => {
     }));
   });
 
-  it('reports EV charger battery level with a trimmed source label', async () => {
+  it('reports EV charger battery level', async () => {
     const { deps, actionListeners, structuredInfo } = buildDeps({
       getSnapshot: vi.fn()
         .mockResolvedValueOnce([
@@ -256,7 +256,6 @@ describe('registerFlowCards', () => {
               observedAtMs: Date.parse('2026-03-11T10:00:00Z'),
               status: 'fresh',
               source: 'flow',
-              sourceLabel: 'Tesla Flow',
             },
           },
         ]),
@@ -267,14 +266,12 @@ describe('registerFlowCards', () => {
     await expect(actionListeners.report_evcharger_battery_level({
       device: 'ev-1',
       battery_percent: 42,
-      source_label: '  Tesla Flow  ',
     })).resolves.toBe(true);
 
     expect(deps.reportFlowBackedCapability).toHaveBeenCalledWith({
       deviceId: 'ev-1',
       capabilityId: 'measure_battery',
       value: 42,
-      sourceLabel: 'Tesla Flow',
     });
     expect(deps.refreshSnapshot).toHaveBeenCalledWith({ emitFlowBackedRefresh: false });
     expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
@@ -282,13 +279,13 @@ describe('registerFlowCards', () => {
       chargerDeviceId: 'ev-1',
       chargerName: 'Zaptec Go',
       percent: 42,
-      sourceLabel: 'Tesla Flow',
       status: 'fresh',
     }));
   });
 
-  it('defaults EV charger battery source label to Flow', async () => {
+  it('keeps EV SoC reports available when generic flow-backed cards are unavailable', async () => {
     const { deps, actionListeners } = buildDeps({
+      areFlowBackedCardsAvailable: () => false,
       getSnapshot: vi.fn()
         .mockResolvedValueOnce([
           { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', currentOn: false, targets: [] },
@@ -305,7 +302,6 @@ describe('registerFlowCards', () => {
               observedAtMs: Date.parse('2026-03-11T10:00:00Z'),
               status: 'fresh',
               source: 'flow',
-              sourceLabel: 'Flow',
             },
           },
         ]),
@@ -322,7 +318,6 @@ describe('registerFlowCards', () => {
       deviceId: 'ev-1',
       capabilityId: 'measure_battery',
       value: 42,
-      sourceLabel: 'Flow',
     });
   });
 
@@ -363,7 +358,6 @@ describe('registerFlowCards', () => {
     await expect(actionListeners.report_evcharger_battery_level({
       device: 'ev-1',
       battery_percent: 42,
-      source_label: 'Tesla Flow',
     })).resolves.toBe(true);
 
     expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
@@ -371,7 +365,6 @@ describe('registerFlowCards', () => {
       chargerDeviceId: 'ev-1',
       chargerName: 'Zaptec Go',
       percent: 42,
-      sourceLabel: 'Tesla Flow',
       status: 'unknown',
     }));
     expect(deps.logDebug).toHaveBeenCalledWith(

@@ -93,7 +93,6 @@ export type AppContext = {
     deviceId: string;
     capabilityId: FlowReportedCapabilityId;
     value: boolean | number | string;
-    sourceLabel?: string;
   }) => FlowBackedCapabilityReportOutcome;
   getHomeyDevicesForFlow: () => Promise<HomeyDeviceLike[]>;
   emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
