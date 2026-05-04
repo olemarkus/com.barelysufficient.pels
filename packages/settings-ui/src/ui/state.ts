@@ -1,5 +1,6 @@
 import type {
   DeviceControlProfiles,
+  DeviceTargetPowerConfigs,
   EvBoostSettings,
   TargetDeviceSnapshot,
   TemperatureBoostSettings,
@@ -34,6 +35,7 @@ export type UiState = {
   budgetExemptMap: Record<string, boolean>;
   nativeWiringMap: Record<string, boolean>;
   deviceControlProfiles: DeviceControlProfiles;
+  deviceTargetPowerConfigs: DeviceTargetPowerConfigs;
   modeAliases: Record<string, string>;
   shedBehaviors: Record<string, ShedBehavior>;
   temperatureBoostSettings: TemperatureBoostSettings;
@@ -63,6 +65,7 @@ export const state: UiState = {
   budgetExemptMap: {},
   nativeWiringMap: {},
   deviceControlProfiles: {},
+  deviceTargetPowerConfigs: {},
   modeAliases: {},
   shedBehaviors: {},
   temperatureBoostSettings: {},

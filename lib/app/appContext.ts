@@ -16,6 +16,7 @@ import type { PriceOptimizationSettings } from '../price/priceOptimizer';
 import type { DebugLoggingTopic } from '../utils/debugLogging';
 import type {
   DeviceControlProfiles,
+  DeviceTargetPowerConfigs,
   EvBoostConfig,
   EvBoostSettings,
   TargetDeviceSnapshot,
@@ -157,6 +158,8 @@ export type AppContext = {
   set deviceDriverOverrides(value: Record<string, string>);
   get deviceControlProfiles(): DeviceControlProfiles;
   set deviceControlProfiles(value: DeviceControlProfiles);
+  get deviceTargetPowerConfigs(): DeviceTargetPowerConfigs;
+  set deviceTargetPowerConfigs(value: DeviceTargetPowerConfigs);
   get deviceCommunicationModels(): Record<string, 'local' | 'cloud'>;
   set deviceCommunicationModels(value: Record<string, 'local' | 'cloud'>);
   get experimentalEvSupportEnabled(): boolean;

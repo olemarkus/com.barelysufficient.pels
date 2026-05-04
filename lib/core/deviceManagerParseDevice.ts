@@ -2,15 +2,12 @@ import type {
     DeviceControlProfile,
     HomeyDeviceLike,
     Logger,
-    NativeSteppedLoadStatusSnapshot,
     TargetDeviceSnapshot,
 } from '../utils/types';
 import {
     getCapabilities,
     getDeviceId,
     getIsAvailable,
-    resolveDeviceClassKey,
-    resolveDeviceLabel,
     resolveZoneLabel,
 } from './deviceManagerHelpers';
 import { estimatePower, type PowerEstimateState } from './powerEstimate';
@@ -49,6 +46,7 @@ import {
 import { resolveStateOfChargeSnapshot } from './deviceStateOfCharge';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { resolveDeviceParsedControlState } from './deviceManagerParsedControlState';
+import { resolveParseDeviceIdentity } from './deviceManagerParseIdentity';
 
 type ParsedDeviceSettings = Pick<
     TargetDeviceSnapshot,
@@ -64,8 +62,8 @@ export type DeviceManagerParseProviders = {
     getDeviceDriverIdOverride?: (deviceId: string) => string | undefined;
     getExperimentalEvSupportEnabled?: () => boolean;
     getNativeEvWiringEnabled?: (deviceId: string) => boolean;
-    getNativeSteppedLoadStatus?: (deviceId: string) => NativeSteppedLoadStatusSnapshot | undefined;
     getDeviceControlProfile?: (deviceId: string) => DeviceControlProfile | undefined;
+    getDeviceTargetPowerConfig?: (deviceId: string) => TargetDeviceSnapshot['targetPowerConfig'];
     getFlowReportedCapabilities?: (deviceId: string) => FlowReportedCapabilitiesForDevice;
 };
 
@@ -121,17 +119,14 @@ export function parseDevice(params: {
         resolveLatestLocalWriteMs,
     } = deps;
 
-    const deviceId = getDeviceId(device);
-    const effectiveDevice = applyDeviceDriverOverride(
-        device,
-        providers.getDeviceDriverIdOverride?.(deviceId),
-    );
-    const deviceClassKey = resolveDeviceClassKey({
-        device: effectiveDevice,
-        experimentalEvSupportEnabled: providers.getExperimentalEvSupportEnabled?.() === true,
-    });
-    if (!deviceClassKey) return null;
-    const deviceLabel = resolveDeviceLabel(effectiveDevice, deviceId);
+    const identity = resolveParseDeviceIdentity({ device, providers });
+    if (!identity) return null;
+    const {
+        deviceId,
+        effectiveDevice,
+        deviceClassKey,
+        deviceLabel,
+    } = identity;
     const rawCapabilities = getCapabilities(effectiveDevice);
     const rawCapabilityObj = getCapabilityObj(effectiveDevice);
     const {
@@ -146,8 +141,10 @@ export function parseDevice(params: {
         reportedCapabilities,
         reportedStepId,
         reportedStepObservedAtMs,
-        nativeSteppedLoadStatus,
         suggestedSteppedLoadProfile,
+        controlModel,
+        steppedLoadProfile,
+        targetPowerConfig,
     } = resolveFlowCapabilityOverlay({
         device: effectiveDevice,
         deviceClassKey,
@@ -163,6 +160,7 @@ export function parseDevice(params: {
         deviceLabel,
         capabilities,
         controlAdapter,
+        steppedLoadProfile,
         logDebug: (...args: unknown[]) => logger.debug(...args),
     });
     if (!capsStatus) return null;
@@ -212,13 +210,9 @@ export function parseDevice(params: {
     })) {
         return null;
     }
-    const lastFreshDataMs = resolveLastFreshDataMs({
-        capabilityObj,
-        controlCapabilityId: observedCurrentOn !== undefined ? controlCapabilityId : undefined,
-        includeEvChargingState: evChargingState === undefined
-            || resolveEvChargingStateBinaryEvidence(evChargingState) !== undefined,
-        targetCaps,
-        observedCapabilityAtMs: reportedStepObservedAtMs, measuredPowerObservedAtMs: measuredPower.observedAtMs,
+    const lastFreshDataMs = resolveParsedLastFreshDataMs({
+        capabilityObj, controlCapabilityId, observedCurrentOn, evChargingState,
+        targetCaps, reportedStepObservedAtMs, measuredPowerObservedAtMs: measuredPower.observedAtMs,
     });
     return buildParsedDeviceSnapshot({
         device: effectiveDevice,
@@ -242,7 +236,9 @@ export function parseDevice(params: {
         controlAdapter,
         controlWriteCapabilityId,
         controlObservationCapabilityId,
-        nativeSteppedLoadStatus,
+        controlModel,
+        steppedLoadProfile,
+        targetPowerConfig,
         canSetControl,
         binaryControlObservation: resolveBinaryControlObservation(
             { capabilityObj, controlCapabilityId, controlObservationCapabilityId },
@@ -255,22 +251,28 @@ export function parseDevice(params: {
     });
 }
 
-export function applyDeviceDriverOverride(
-    device: HomeyDeviceLike,
-    driverIdOverride: string | undefined,
-): HomeyDeviceLike {
-    const driverId = normalizeDriverIdOverride(driverIdOverride);
-    if (!driverId || driverId === device.driverId) return device;
-    return {
-        ...device,
-        driverId,
-        realDriverId: device.realDriverId ?? device.driverId,
-    };
-}
-
-function normalizeDriverIdOverride(value: string | undefined): string | undefined {
-    const normalized = value?.trim();
-    return normalized || undefined;
+function resolveParsedLastFreshDataMs(params: {
+    capabilityObj: DeviceCapabilityMap;
+    controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+    observedCurrentOn?: boolean;
+    evChargingState: TargetDeviceSnapshot['evChargingState'];
+    targetCaps: readonly string[];
+    reportedStepObservedAtMs?: number;
+    measuredPowerObservedAtMs?: number;
+}): number | undefined {
+    const {
+        capabilityObj, controlCapabilityId, observedCurrentOn, evChargingState,
+        targetCaps, reportedStepObservedAtMs, measuredPowerObservedAtMs,
+    } = params;
+    return resolveLastFreshDataMs({
+        capabilityObj,
+        controlCapabilityId: observedCurrentOn !== undefined ? controlCapabilityId : undefined,
+        includeEvChargingState: evChargingState === undefined
+            || resolveEvChargingStateBinaryEvidence(evChargingState) !== undefined,
+        targetCaps,
+        observedCapabilityAtMs: reportedStepObservedAtMs,
+        measuredPowerObservedAtMs,
+    });
 }
 
 function resolveTargetDeviceType(targetCaps: readonly string[]): TargetDeviceSnapshot['deviceType'] {
@@ -313,7 +315,9 @@ function buildParsedDeviceSnapshot(params: {
     controlAdapter?: TargetDeviceSnapshot['controlAdapter'];
     controlWriteCapabilityId?: string;
     controlObservationCapabilityId?: string;
-    nativeSteppedLoadStatus?: TargetDeviceSnapshot['nativeSteppedLoadStatus'];
+    controlModel?: TargetDeviceSnapshot['controlModel'];
+    steppedLoadProfile?: TargetDeviceSnapshot['steppedLoadProfile'];
+    targetPowerConfig?: TargetDeviceSnapshot['targetPowerConfig'];
     canSetControl: boolean | undefined;
     binaryControlObservation: TargetDeviceSnapshot['binaryControlObservation'];
     available: boolean;
@@ -342,7 +346,9 @@ function buildParsedDeviceSnapshot(params: {
         controlAdapter,
         controlWriteCapabilityId,
         controlObservationCapabilityId,
-        nativeSteppedLoadStatus,
+        controlModel,
+        steppedLoadProfile,
+        targetPowerConfig,
         canSetControl,
         binaryControlObservation,
         available,
@@ -359,6 +365,9 @@ function buildParsedDeviceSnapshot(params: {
         deviceClass: deviceClassKey,
         deviceType: resolveTargetDeviceType(targetCaps),
         ...resolveParsedDeviceSettings(deviceId, providers),
+        controlModel,
+        steppedLoadProfile,
+        targetPowerConfig,
         controlCapabilityId,
         powerKw: powerEstimate.powerKw,
         expectedPowerKw: powerEstimate.expectedPowerKw,
@@ -376,7 +385,6 @@ function buildParsedDeviceSnapshot(params: {
         controlAdapter,
         controlWriteCapabilityId,
         controlObservationCapabilityId,
-        nativeSteppedLoadStatus,
         binaryControlObservation,
         reportedStepId,
         suggestedSteppedLoadProfile,

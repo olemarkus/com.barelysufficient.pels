@@ -11,6 +11,7 @@ export const EV_BOOST_SETTINGS = 'ev_boost_settings';
 export const NATIVE_EV_WIRING_DEVICES = 'native_ev_wiring_devices';
 export const DEVICE_DRIVER_OVERRIDES = 'device_driver_overrides';
 export const DEVICE_CONTROL_PROFILES = 'device_control_profiles';
+export const DEVICE_TARGET_POWER_CONFIGS = 'device_target_power_configs';
 export const EXPERIMENTAL_EV_SUPPORT_ENABLED = 'experimental_ev_support_enabled';
 export const OVERSHOOT_BEHAVIORS = 'overshoot_behaviors';
 export const PRICE_OPTIMIZATION_SETTINGS = 'price_optimization_settings';

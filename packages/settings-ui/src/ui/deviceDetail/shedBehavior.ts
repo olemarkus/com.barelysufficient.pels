@@ -25,6 +25,7 @@ import {
   normalizeShedTemperature,
 } from '../../../../shared-domain/src/utils/airtreatmentShedTemperature.ts';
 import { createSerializedAsyncRunner, readRecordSetting, writeFreshSetting } from './settingsWrite.ts';
+import { hasEvTargetPowerPreset } from './controlMode.ts';
 
 export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 
@@ -113,11 +114,13 @@ const isShedActionOptionVisible = (action: ShedAction): boolean => {
 
 const resolveShedActionValue = (params: {
   canConfigure: boolean;
+  forceTurnOffOnly: boolean;
   forceTemperatureOnly: boolean;
   forceStepOnly: boolean;
   configuredAction: ShedAction | undefined;
 }): ShedAction => {
   if (!params.canConfigure) return 'turn_off';
+  if (params.forceTurnOffOnly) return 'turn_off';
   if (params.forceTemperatureOnly) return 'set_temperature';
   if (params.forceStepOnly) return 'set_step';
   if (params.configuredAction === 'set_step') return 'set_step';
@@ -230,6 +233,29 @@ const resolveVisibleShedAction = (params: {
   return null;
 };
 
+const resolveShedControlCapabilities = (params: {
+  device: TargetDeviceSnapshot | null;
+  isSteppedLoadControlModel: (device: TargetDeviceSnapshot | null) => boolean;
+}) => {
+  const { device } = params;
+  const supportsTemperature = supportsTemperatureDevice(device);
+  const supportsPower = supportsPowerDevice(device);
+  const forceTurnOffOnly = hasEvTargetPowerPreset(device);
+  const supportsStep = params.isSteppedLoadControlModel(device) && !forceTurnOffOnly;
+  const canConfigure = supportsPower && (forceTurnOffOnly || supportsTemperature || supportsStep);
+  const forceTemperatureOnly = canConfigure && !supportsStep && isTemperatureDeviceWithoutOnOff(device);
+  const hasBinaryControl = device?.capabilities?.includes('onoff') === true
+    || device?.controlCapabilityId === 'evcharger_charging';
+  return {
+    supportsTemperature,
+    supportsStep,
+    canConfigure,
+    forceTurnOffOnly,
+    forceTemperatureOnly,
+    forceStepOnly: supportsStep && !hasBinaryControl,
+  };
+};
+
 export const loadShedBehaviors = async () => {
   try {
     const behaviors = await getSetting(OVERSHOOT_BEHAVIORS);
@@ -248,30 +274,29 @@ export const setDeviceDetailShedBehavior = (params: {
   const device = params.getDeviceById(params.deviceId);
   params.updateSetStepOptionLabel(device);
 
-  const supportsTemperature = supportsTemperatureDevice(device);
-  const supportsPower = supportsPowerDevice(device);
-  const supportsStep = params.isSteppedLoadControlModel(device);
-  const canConfigure = supportsPower && (supportsTemperature || supportsStep);
-  const forceTemperatureOnly = canConfigure && !supportsStep && isTemperatureDeviceWithoutOnOff(device);
-  const forceStepOnly = supportsStep && !device?.capabilities?.includes('onoff');
+  const shedControls = resolveShedControlCapabilities({
+    device,
+    isSteppedLoadControlModel: params.isSteppedLoadControlModel,
+  });
   const shedConfig = state.shedBehaviors[params.deviceId];
 
   updateShedActionOptions({
-    canConfigure,
-    forceTemperatureOnly,
-    forceStepOnly,
-    supportsTemperature,
-    supportsStep,
+    canConfigure: shedControls.canConfigure,
+    forceTemperatureOnly: shedControls.forceTemperatureOnly,
+    forceStepOnly: shedControls.forceStepOnly,
+    supportsTemperature: shedControls.supportsTemperature,
+    supportsStep: shedControls.supportsStep,
   });
 
   if (deviceDetailShedAction) {
     const nextAction = resolveShedActionValue({
-      canConfigure,
-      forceTemperatureOnly,
-      forceStepOnly,
+      canConfigure: shedControls.canConfigure,
+      forceTurnOffOnly: shedControls.forceTurnOffOnly,
+      forceTemperatureOnly: shedControls.forceTemperatureOnly,
+      forceStepOnly: shedControls.forceStepOnly,
       configuredAction: shedConfig?.action,
     });
-    deviceDetailShedAction.value = nextAction === 'set_step' && !supportsStep ? 'turn_off' : nextAction;
+    deviceDetailShedAction.value = nextAction === 'set_step' && !shedControls.supportsStep ? 'turn_off' : nextAction;
   }
 
   if (deviceDetailShedStep) {
@@ -281,12 +306,12 @@ export const setDeviceDetailShedBehavior = (params: {
 
   if (deviceDetailShedTemp) {
     deviceDetailShedTemp.value = resolveShedTemperatureValue({
-      canConfigure,
-      forceTemperatureOnly,
+      canConfigure: shedControls.canConfigure,
+      forceTemperatureOnly: shedControls.forceTemperatureOnly,
       configuredTemperature: shedConfig?.temperature,
       fallbackTemperature: getShedDefaultTemp(params.deviceId, params.getDeviceById),
     });
-    deviceDetailShedTemp.disabled = !canConfigure;
+    deviceDetailShedTemp.disabled = !shedControls.canConfigure;
   }
 };
 
@@ -330,7 +355,11 @@ const saveShedBehavior = async (params: {
   let nextBehavior: PersistedShedBehavior = { action: 'turn_off' };
 
   if (supportsPowerDevice(device)) {
-    if (params.isSteppedLoadControlModel(device) && deviceDetailShedAction?.value === 'set_step') {
+    if (
+      params.isSteppedLoadControlModel(device)
+      && !hasEvTargetPowerPreset(device)
+      && deviceDetailShedAction?.value === 'set_step'
+    ) {
       nextBehavior = { action: 'set_step' };
     } else if (supportsTemperatureDevice(device)) {
       const { behavior, updateTempInput } = resolveTemperatureShedBehavior({

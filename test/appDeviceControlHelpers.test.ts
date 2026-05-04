@@ -202,6 +202,38 @@ describe('appDeviceControlHelpers', () => {
     expect(decorated.currentOn).toBe(false);
   });
 
+  it('uses parsed target-power step observations as reported stepped-load truth', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+    markSteppedLoadDesiredStepIssued({
+      runtimeState,
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      previousStepId: 'low',
+      issuedAtMs: 1_000,
+    });
+
+    const decorated = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({
+        currentOn: true,
+        reportedStepId: 'max',
+        lastUpdated: 1_500,
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfiles['dev-1'],
+        targetPowerConfig: { enabled: true, preset: 'ev_charger_1_phase' },
+      }),
+      profiles: {},
+      runtimeState,
+      nowMs: 2_000,
+    });
+
+    expect(decorated.reportedStepId).toBe('max');
+    expect(decorated.selectedStepId).toBe('max');
+    expect(decorated.actualStepId).toBe('max');
+    expect(decorated.actualStepSource).toBe('reported');
+    expect(decorated.targetStepId).toBe('max');
+    expect(decorated.stepCommandStatus).toBe('success');
+  });
+
   it('preserves snapshot power source and currentOn when a stepped profile cannot resolve any step', () => {
     const runtimeState = createDeviceControlRuntimeState();
     const emptyProfiles = {
@@ -470,6 +502,27 @@ describe('appDeviceControlHelpers', () => {
       reportedStepId: 'max',
       desiredStepId: 'low',
     }));
+  });
+
+  it('accepts flow feedback for snapshot-derived stepped-load profiles', () => {
+    const structuredLogger = { info: vi.fn() };
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => ({}),
+      getDeviceSnapshots: () => [baseSnapshot({
+        currentOn: true,
+        steppedLoadProfile: steppedProfiles['dev-1'],
+      })],
+      getLatestPlanSnapshot: () => ({ devices: [] } as never),
+      getStructuredLogger: () => structuredLogger as never,
+      logDebug: vi.fn(),
+    });
+
+    expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
+    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId['dev-1']).toMatchObject({
+      capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+      source: 'flow',
+      stepId: 'max',
+    });
   });
 
   it('replaces a stale desired step with the latest plan target when feedback catches up', () => {

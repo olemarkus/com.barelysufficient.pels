@@ -5,6 +5,8 @@ export type TargetCapabilitySnapshot = {
   min?: number;
   max?: number;
   step?: number;
+  excludeMin?: number;
+  excludeMax?: number;
 };
 
 export type DeviceControlModel = 'temperature_target' | 'binary_power' | 'stepped_load';
@@ -30,6 +32,20 @@ export type DeviceControlProfile = SteppedLoadProfile;
 
 export type DeviceControlProfiles = Record<string, DeviceControlProfile>;
 
+export type TargetPowerSteppedLoadPreset = 'ev_charger_1_phase' | 'ev_charger_3_phase';
+
+export type TargetPowerSteppedLoadConfig = {
+    enabled?: boolean;
+    preset?: TargetPowerSteppedLoadPreset;
+    min?: number;
+    max?: number;
+    step?: number;
+    excludeMin?: number;
+    excludeMax?: number;
+};
+
+export type DeviceTargetPowerConfigs = Record<string, TargetPowerSteppedLoadConfig>;
+
 export type TemperatureBoostConfig = {
     enabled: boolean;
     boostBelowC: number;
@@ -49,18 +65,6 @@ export type DeviceControlAdapterSnapshot = {
     activationAvailable?: boolean;
     activationRequired: boolean;
     activationEnabled: boolean;
-};
-
-export type NativeSteppedLoadBlockReasonCode =
-    | 'zaptec_stepped_blocked_shared_installation'
-    | 'zaptec_stepped_blocked_power_mismatch';
-
-export type NativeSteppedLoadStatusSnapshot = {
-    provider: 'zaptec';
-    modelLabel: string;
-    currentStepLabel?: string;
-    blockedReasonCode?: NativeSteppedLoadBlockReasonCode;
-    blockedMessage?: string;
 };
 
 export type DeviceStateOfChargeSnapshot = {
@@ -96,8 +100,8 @@ export type TargetDeviceSnapshot = {
     controlAdapter?: DeviceControlAdapterSnapshot;
     controlWriteCapabilityId?: string;
     controlObservationCapabilityId?: string;
-    nativeSteppedLoadStatus?: NativeSteppedLoadStatusSnapshot;
     suggestedSteppedLoadProfile?: SteppedLoadProfile;
+    targetPowerConfig?: TargetPowerSteppedLoadConfig;
     powerKw?: number;
     expectedPowerKw?: number;
     planningPowerKw?: number;

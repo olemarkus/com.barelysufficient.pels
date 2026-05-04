@@ -15,6 +15,7 @@ import { logSettingsError } from './logging.ts';
 import { state } from './state.ts';
 import {
   DEVICE_CONTROL_PROFILES,
+  DEVICE_TARGET_POWER_CONFIGS,
   EV_BOOST_SETTINGS,
   OVERSHOOT_BEHAVIORS,
   TEMPERATURE_BOOST_SETTINGS,
@@ -36,6 +37,7 @@ const collectDeviceIdsFromSettings = (): Set<string> => {
     ...Object.keys(state.controllableMap),
     ...Object.keys(state.managedMap),
     ...Object.keys(state.deviceControlProfiles),
+    ...Object.keys(state.deviceTargetPowerConfigs),
     ...Object.keys(state.shedBehaviors),
     ...Object.keys(state.temperatureBoostSettings),
     ...Object.keys(state.evBoostSettings),
@@ -135,6 +137,7 @@ const clearDeviceSettings = async (deviceId: string) => {
   const nextControllableMap = { ...state.controllableMap };
   const nextManagedMap = { ...state.managedMap };
   const nextDeviceControlProfiles = { ...state.deviceControlProfiles };
+  const nextDeviceTargetPowerConfigs = { ...state.deviceTargetPowerConfigs };
   const nextShedBehaviors = { ...state.shedBehaviors };
   const nextTemperatureBoost = { ...state.temperatureBoostSettings };
   const nextEvBoost = { ...state.evBoostSettings };
@@ -142,6 +145,7 @@ const clearDeviceSettings = async (deviceId: string) => {
   delete nextControllableMap[deviceId];
   delete nextManagedMap[deviceId];
   delete nextDeviceControlProfiles[deviceId];
+  delete nextDeviceTargetPowerConfigs[deviceId];
   delete nextShedBehaviors[deviceId];
   delete nextTemperatureBoost[deviceId];
   delete nextEvBoost[deviceId];
@@ -153,6 +157,7 @@ const clearDeviceSettings = async (deviceId: string) => {
     setSetting('controllable_devices', nextControllableMap),
     setSetting('managed_devices', nextManagedMap),
     setSetting(DEVICE_CONTROL_PROFILES, nextDeviceControlProfiles),
+    setSetting(DEVICE_TARGET_POWER_CONFIGS, nextDeviceTargetPowerConfigs),
     setSetting(OVERSHOOT_BEHAVIORS, nextShedBehaviors),
     setSetting(TEMPERATURE_BOOST_SETTINGS, nextTemperatureBoost),
     setSetting(EV_BOOST_SETTINGS, nextEvBoost),
@@ -164,6 +169,7 @@ const clearDeviceSettings = async (deviceId: string) => {
   state.controllableMap = nextControllableMap;
   state.managedMap = nextManagedMap;
   state.deviceControlProfiles = nextDeviceControlProfiles;
+  state.deviceTargetPowerConfigs = nextDeviceTargetPowerConfigs;
   state.shedBehaviors = nextShedBehaviors;
   state.temperatureBoostSettings = nextTemperatureBoost;
   state.evBoostSettings = nextEvBoost;
@@ -177,6 +183,7 @@ const clearMultipleDeviceSettings = async (deviceIds: string[]) => {
   const nextControllableMap = { ...state.controllableMap };
   const nextManagedMap = { ...state.managedMap };
   const nextDeviceControlProfiles = { ...state.deviceControlProfiles };
+  const nextDeviceTargetPowerConfigs = { ...state.deviceTargetPowerConfigs };
   const nextShedBehaviors = { ...state.shedBehaviors };
   const nextTemperatureBoost = { ...state.temperatureBoostSettings };
   const nextEvBoost = { ...state.evBoostSettings };
@@ -185,6 +192,7 @@ const clearMultipleDeviceSettings = async (deviceIds: string[]) => {
     delete nextControllableMap[deviceId];
     delete nextManagedMap[deviceId];
     delete nextDeviceControlProfiles[deviceId];
+    delete nextDeviceTargetPowerConfigs[deviceId];
     delete nextShedBehaviors[deviceId];
     delete nextTemperatureBoost[deviceId];
     delete nextEvBoost[deviceId];
@@ -197,6 +205,7 @@ const clearMultipleDeviceSettings = async (deviceIds: string[]) => {
     setSetting('controllable_devices', nextControllableMap),
     setSetting('managed_devices', nextManagedMap),
     setSetting(DEVICE_CONTROL_PROFILES, nextDeviceControlProfiles),
+    setSetting(DEVICE_TARGET_POWER_CONFIGS, nextDeviceTargetPowerConfigs),
     setSetting(OVERSHOOT_BEHAVIORS, nextShedBehaviors),
     setSetting(TEMPERATURE_BOOST_SETTINGS, nextTemperatureBoost),
     setSetting(EV_BOOST_SETTINGS, nextEvBoost),
@@ -208,6 +217,7 @@ const clearMultipleDeviceSettings = async (deviceIds: string[]) => {
   state.controllableMap = nextControllableMap;
   state.managedMap = nextManagedMap;
   state.deviceControlProfiles = nextDeviceControlProfiles;
+  state.deviceTargetPowerConfigs = nextDeviceTargetPowerConfigs;
   state.shedBehaviors = nextShedBehaviors;
   state.temperatureBoostSettings = nextTemperatureBoost;
   state.evBoostSettings = nextEvBoost;

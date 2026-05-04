@@ -11,7 +11,7 @@ import { DevicePlan, ShedBehavior } from './lib/plan/planTypes';
 import { PlanService } from './lib/plan/planService';
 import { isPlanActivelyConverging } from './lib/plan/planStateHelpers';
 import { buildPlanCapacityStateSummary } from './lib/plan/planLogging';
-import { HomeyDeviceLike, TargetDeviceSnapshot } from './lib/utils/types';
+import { HomeyDeviceLike, TargetDeviceSnapshot, type DeviceTargetPowerConfigs } from './lib/utils/types';
 import { PriceCoordinator } from './lib/price/priceCoordinator';
 import { PowerTrackerState } from './lib/core/powerTracker';
 import { PriceLevel } from './lib/price/priceLevels';
@@ -191,6 +191,7 @@ class PelsApp extends Homey.App {
   private flowDeviceAutocompleteCache?: { devices: HomeyDeviceLike[]; fetchedAtMs: number };
   private flowDeviceAutocompleteRequest?: Promise<HomeyDeviceLike[]>;
   private deviceControlProfiles: DeviceControlProfiles = {};
+  private deviceTargetPowerConfigs: DeviceTargetPowerConfigs = {};
   private deviceCommunicationModels: Record<string, 'local' | 'cloud'> = {};
   private experimentalEvSupportEnabled = false;
   private shedBehaviors: Record<string, ShedBehavior> = {};
@@ -565,6 +566,8 @@ class PelsApp extends Homey.App {
       set deviceDriverOverrides(value) { appRef.deviceDriverOverrides = value; },
       get deviceControlProfiles() { return app.deviceControlProfiles; },
       set deviceControlProfiles(value) { appRef.deviceControlProfiles = value; },
+      get deviceTargetPowerConfigs() { return app.deviceTargetPowerConfigs; },
+      set deviceTargetPowerConfigs(value) { appRef.deviceTargetPowerConfigs = value; },
       get deviceCommunicationModels() { return app.deviceCommunicationModels; },
       set deviceCommunicationModels(value) { appRef.deviceCommunicationModels = value; },
       get experimentalEvSupportEnabled() { return app.experimentalEvSupportEnabled; },
@@ -712,6 +715,7 @@ class PelsApp extends Homey.App {
       getNativeEvWiringEnabled: (id) => this.nativeEvWiringDevices[id] === true,
       getDeviceDriverIdOverride: (id) => this.getDeviceDriverIdOverride(id),
       getDeviceControlProfile: (id) => this.deviceControlProfiles[id],
+      getDeviceTargetPowerConfig: (id) => this.deviceTargetPowerConfigs[id],
       getFlowReportedCapabilities: (deviceId) => this.getFlowReportedCapabilitiesForDevice(deviceId),
     }, {
       expectedPowerKwOverrides: this.expectedPowerKwOverrides,
@@ -1061,6 +1065,7 @@ class PelsApp extends Homey.App {
         nativeEvWiringDevices: this.nativeEvWiringDevices,
         deviceDriverOverrides: this.deviceDriverOverrides,
         deviceControlProfiles: this.deviceControlProfiles,
+        deviceTargetPowerConfigs: this.deviceTargetPowerConfigs,
         deviceCommunicationModels: this.deviceCommunicationModels,
         experimentalEvSupportEnabled: this.experimentalEvSupportEnabled,
         shedBehaviors: this.shedBehaviors,
@@ -1080,6 +1085,7 @@ class PelsApp extends Homey.App {
     this.nativeEvWiringDevices = next.nativeEvWiringDevices;
     this.deviceDriverOverrides = next.deviceDriverOverrides;
     this.deviceControlProfiles = normalizeStoredDeviceControlProfiles(next.deviceControlProfiles) ?? {};
+    this.deviceTargetPowerConfigs = next.deviceTargetPowerConfigs;
     this.deviceCommunicationModels = next.deviceCommunicationModels;
     this.experimentalEvSupportEnabled = next.experimentalEvSupportEnabled;
     this.shedBehaviors = next.shedBehaviors;

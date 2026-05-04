@@ -33,6 +33,7 @@ const buildDom = () => {
         <select id="device-detail-overshoot">
           <option value="turn_off">Turn off</option>
           <option value="set_temperature">Set to temperature</option>
+          <option value="set_step">Set to step</option>
         </select>
         <div id="device-detail-overshoot-temp-row"></div>
         <input id="device-detail-overshoot-temp">
@@ -651,14 +652,14 @@ describe('device detail managed state saves', () => {
     openDeviceDetail('heater-1');
     await flushPromises();
 
-    expect(controlModelInput?.value).toBe('temperature_target');
+    expect(controlModelInput?.value).toBe('default');
 
     controlModelInput!.value = 'stepped_load';
     controlModelInput!.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
     await flushPromises();
 
-    expect(controlModelInput?.value).toBe('temperature_target');
+    expect(controlModelInput?.value).toBe('default');
     expect(state.deviceControlProfiles['heater-1']).toBeUndefined();
     expect(homey.__settingsStore.device_control_profiles).toEqual({});
   });
@@ -851,13 +852,106 @@ describe('device detail managed state saves', () => {
     expect(saveButton?.disabled).toBe(true);
 
     saveButton?.dispatchEvent(new Event('click', { bubbles: true }));
-    controlModelInput!.value = 'temperature_target';
+    controlModelInput!.value = 'default';
     controlModelInput!.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
     await flushPromises();
 
     expect(homey.set).not.toHaveBeenCalledWith('device_control_profiles', expect.anything(), expect.any(Function));
     expect(controlModelInput?.value).toBe('stepped_load');
+  });
+
+  it('limits native EV wiring control modes to default and EV presets', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      settings: {
+        device_control_profiles: {},
+        device_target_power_configs: {},
+      },
+    });
+    homeyModule.setHomeyClient(homey);
+
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [buildDevice('zaptec-1', 'Driveway Zaptec', {
+      deviceClass: 'evcharger',
+      deviceType: 'onoff',
+      targets: [],
+      controlAdapter: {
+        kind: 'capability_adapter',
+        activationRequired: true,
+        activationEnabled: true,
+      },
+      controlCapabilityId: 'evcharger_charging',
+      controlWriteCapabilityId: 'charging_button',
+      capabilities: ['measure_power', 'evcharger_charging', 'available_installation_current', 'charging_button'],
+      currentOn: true,
+    })];
+    state.managedMap = { 'zaptec-1': true };
+    state.controllableMap = { 'zaptec-1': true };
+    state.budgetExemptMap = {};
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'zaptec-1': 1 } };
+    state.modeTargets = { Home: {} };
+    state.deviceControlProfiles = {};
+    state.deviceTargetPowerConfigs = {};
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+    openDeviceDetail('zaptec-1');
+    await flushPromises();
+
+    const controlModelInput = document.querySelector('#device-detail-control-model') as HTMLSelectElement | null;
+    const shedActionInput = document.querySelector('#device-detail-overshoot') as HTMLSelectElement | null;
+    const steppedSection = document.querySelector('#device-detail-stepped-section') as HTMLElement | null;
+    expect(Array.from(controlModelInput?.options ?? []).map((option) => option.value)).toEqual([
+      'default',
+      'ev_charger_1_phase',
+      'ev_charger_3_phase',
+    ]);
+    expect(controlModelInput?.value).toBe('default');
+
+    controlModelInput!.value = 'ev_charger_1_phase';
+    controlModelInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+    await flushPromises();
+
+    expect(homey.__settingsStore.device_control_profiles).toEqual({});
+    expect(homey.__settingsStore.device_target_power_configs).toEqual({
+      'zaptec-1': {
+        enabled: true,
+        preset: 'ev_charger_1_phase',
+        min: 0,
+        max: 7360,
+        step: 460,
+        excludeMin: 1,
+        excludeMax: 1380,
+      },
+    });
+    expect(controlModelInput?.value).toBe('ev_charger_1_phase');
+    expect(steppedSection?.hidden).toBe(true);
+    expect(shedActionInput?.value).toBe('turn_off');
+    expect(shedActionInput?.disabled).toBe(false);
+    expect(shedActionInput?.querySelector<HTMLOptionElement>('option[value="set_step"]')?.hidden).toBe(true);
   });
 
   it('serializes control-model saves so concurrent devices do not lose earlier updates', async () => {

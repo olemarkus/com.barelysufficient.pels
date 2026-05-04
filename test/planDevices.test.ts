@@ -203,35 +203,6 @@ describe('buildInitialPlanDevices', () => {
     expect(state.evBoostActiveByDevice.charger).toBe(true);
   });
 
-  it('preserves native stepped-load status on plan devices for overview rendering', () => {
-    const [planDevice] = buildInitialPlanDevices({
-      context: buildContext([steppedInputDevice({
-        id: 'charger',
-        name: 'Driveway charger',
-        deviceClass: 'evcharger',
-        deviceType: 'onoff',
-        targets: [],
-        evChargingState: 'plugged_in_charging',
-        nativeSteppedLoadStatus: {
-          provider: 'zaptec',
-          modelLabel: 'Zaptec stepped current: 1-phase default model',
-          currentStepLabel: 'Current stepped model: 16a / 3.68 kW',
-        },
-      })]),
-      state: createPlanEngineState(),
-      shedSet: new Set(),
-      shedReasons: new Map(),
-      guardInShortfall: false,
-      deps: defaultDeps,
-    });
-
-    expect(planDevice.nativeSteppedLoadStatus).toEqual({
-      provider: 'zaptec',
-      modelLabel: 'Zaptec stepped current: 1-phase default model',
-      currentStepLabel: 'Current stepped model: 16a / 3.68 kW',
-    });
-  });
-
   it('keeps stepped loads on temperature shedding when that is the chosen shed behavior', () => {
     const steppedDevice = steppedInputDevice({
       id: 'dev-1',

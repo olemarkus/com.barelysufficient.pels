@@ -161,11 +161,6 @@ export const deviceDetailBudgetExempt = document.querySelector('#device-detail-b
 export const deviceDetailSocRow = qs('#device-detail-soc-row');
 export const deviceDetailSocValue = qs('#device-detail-soc-value');
 export const deviceDetailSocUpdated = qs('#device-detail-soc-updated');
-export const deviceDetailNativeSteppedStatusRow = document.getElementById('device-detail-native-stepped-status-row');
-export const deviceDetailNativeSteppedStatusValue = document.getElementById(
-  'device-detail-native-stepped-status-value',
-);
-export const deviceDetailNativeSteppedStatusHint = document.getElementById('device-detail-native-stepped-status-hint');
 export const deviceDetailControlModelRow = qs('#device-detail-control-model-row');
 export const deviceDetailControlModel = document.querySelector('#device-detail-control-model') as HTMLSelectElement;
 export const deviceDetailModes = qs('#device-detail-modes');
@@ -179,6 +174,25 @@ export const deviceDetailShedStepRow = qs('#device-detail-overshoot-step-row');
 export const deviceDetailShedStep = document.querySelector('#device-detail-overshoot-step') as HTMLSelectElement;
 export const deviceDetailSteppedSection = qs('#device-detail-stepped-section');
 export const deviceDetailSteppedSteps = qs('#device-detail-stepped-steps');
+export const deviceDetailTargetPowerConfig = qs('#device-detail-target-power-config');
+export const deviceDetailTargetPowerFields = qs('#device-detail-target-power-fields');
+export const deviceDetailTargetPowerMin = document.querySelector('#device-detail-target-power-min') as HTMLInputElement;
+export const deviceDetailTargetPowerMax = document.querySelector('#device-detail-target-power-max') as HTMLInputElement;
+export const deviceDetailTargetPowerStep = document.querySelector(
+  '#device-detail-target-power-step',
+) as HTMLInputElement;
+export const deviceDetailTargetPowerExcludeMin = document.querySelector(
+  '#device-detail-target-power-exclude-min',
+) as HTMLInputElement;
+export const deviceDetailTargetPowerExcludeMax = document.querySelector(
+  '#device-detail-target-power-exclude-max',
+) as HTMLInputElement;
+export const deviceDetailTargetPowerSave = document.querySelector(
+  '#device-detail-target-power-save',
+) as HTMLButtonElement;
+export const deviceDetailTargetPowerClear = document.querySelector(
+  '#device-detail-target-power-clear',
+) as HTMLButtonElement;
 export const deviceDetailTemperatureBoost = qs('#device-detail-temperature-boost');
 export const deviceDetailTemperatureBoostEnabled = document.querySelector(
   '#device-detail-temperature-boost-enabled',

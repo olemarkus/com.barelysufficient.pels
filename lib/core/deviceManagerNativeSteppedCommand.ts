@@ -1,40 +1,26 @@
 import type {
   HomeyDeviceLike,
   Logger,
-  NativeSteppedLoadStatusSnapshot,
   SteppedLoadProfile,
 } from '../utils/types';
 import type { DeviceCapabilityMap } from './deviceManagerControl';
-import { runRawFlowCardAction } from './deviceManagerHomeyApi';
 import {
   isNativeSteppedLoadWiringCandidate,
   resolveNativeSteppedLoadCommand,
   resolveNativeSteppedLoadReportedStepId,
 } from './nativeSteppedLoadWiring';
-import {
-  buildZaptecSharedInstallationBlockSet,
-  isZaptecNativeSteppedLoadWiringCandidate,
-  resolveZaptecInstallationId,
-} from './zaptecNativeSteppedLoad';
 import { getDeviceId } from './deviceManagerHelpers';
-import { buildZaptecNativeSteppedLoadCommandAdapter } from './zaptecNativeSteppedCommandAdapter';
 
 export type NativeSteppedLoadCommandAdapter = {
-  kind: 'capability' | 'zaptec';
+  kind: 'capability';
   syncDevice: (params: {
     device: HomeyDeviceLike;
-    sharedInstallationBlocked: boolean;
     logger?: Logger;
   }) => void;
   setStep: (params: {
     profile: SteppedLoadProfile;
     desiredStepId: string;
     setCapability: (capabilityId: string, value: unknown) => Promise<unknown>;
-    runFlowCardAction: (params: {
-      uri: string;
-      id: string;
-      args?: Record<string, unknown>;
-    }) => Promise<unknown>;
     logger?: Logger;
   }) => Promise<boolean>;
   observeCapabilityUpdate: (params: {
@@ -43,7 +29,6 @@ export type NativeSteppedLoadCommandAdapter = {
     logger?: Logger;
   }) => boolean;
   getReportedStepId: (profile?: SteppedLoadProfile) => string | undefined;
-  getStatus: () => NativeSteppedLoadStatusSnapshot | undefined;
 };
 
 const adapterStore = new WeakMap<object, Map<string, NativeSteppedLoadCommandAdapter>>();
@@ -51,18 +36,11 @@ const adapterStore = new WeakMap<object, Map<string, NativeSteppedLoadCommandAda
 export function buildNativeSteppedLoadCommandAdapter(
   device: HomeyDeviceLike,
   logger?: Logger,
-  sharedInstallationBlocked = false,
 ): NativeSteppedLoadCommandAdapter | null {
+  void logger;
   const capabilities = Array.isArray(device.capabilities) ? device.capabilities : [];
-  if (isZaptecNativeSteppedLoadWiringCandidate({ device, capabilities })) {
-    return buildZaptecNativeSteppedLoadCommandAdapter(
-      device,
-      sharedInstallationBlocked,
-      getCapabilityObj,
-      logger,
-    );
-  }
-  if (isNativeSteppedLoadWiringCandidate({ device, capabilities })) {
+  const capabilityObj = getCapabilityObj(device);
+  if (isNativeSteppedLoadWiringCandidate({ device, capabilities, capabilityObj })) {
     return buildCapabilityNativeSteppedLoadCommandAdapter(device);
   }
   return null;
@@ -72,8 +50,8 @@ function resolveNativeSteppedLoadCommandAdapterKind(
   device: HomeyDeviceLike,
 ): NativeSteppedLoadCommandAdapter['kind'] | null {
   const capabilities = Array.isArray(device.capabilities) ? device.capabilities : [];
-  if (isZaptecNativeSteppedLoadWiringCandidate({ device, capabilities })) return 'zaptec';
-  if (isNativeSteppedLoadWiringCandidate({ device, capabilities })) return 'capability';
+  const capabilityObj = getCapabilityObj(device);
+  if (isNativeSteppedLoadWiringCandidate({ device, capabilities, capabilityObj })) return 'capability';
   return null;
 }
 
@@ -83,7 +61,6 @@ export function observeNativeSteppedLoadCommandAdapter(params: {
   device: HomeyDeviceLike;
   clearWhenUnavailable: boolean;
   logger?: Logger;
-  sharedInstallationBlocked: boolean;
 }): void {
   const {
     owner,
@@ -91,7 +68,6 @@ export function observeNativeSteppedLoadCommandAdapter(params: {
     device,
     clearWhenUnavailable,
     logger,
-    sharedInstallationBlocked,
   } = params;
   const adapters = getAdapterStore(owner);
   if (!Array.isArray(device.capabilities)) {
@@ -102,11 +78,11 @@ export function observeNativeSteppedLoadCommandAdapter(params: {
   const existing = adapters.get(deviceId);
   const nextKind = resolveNativeSteppedLoadCommandAdapterKind(device);
   if (existing && existing.kind === nextKind) {
-    existing.syncDevice({ device, sharedInstallationBlocked, logger });
+    existing.syncDevice({ device, logger });
     return;
   }
 
-  const adapter = buildNativeSteppedLoadCommandAdapter(device, logger, sharedInstallationBlocked);
+  const adapter = buildNativeSteppedLoadCommandAdapter(device, logger);
   if (adapter) adapters.set(deviceId, adapter);
   else adapters.delete(deviceId);
 }
@@ -120,19 +96,16 @@ export function syncNativeSteppedLoadCommandAdapters(params: {
   const { owner, devices, shouldTrackDevice, logger } = params;
   const adapters = getAdapterStore(owner);
   const observedDeviceIds = new Set<string>();
-  const sharedInstallations = buildZaptecSharedInstallationBlockSet(devices);
   for (const device of devices) {
     const deviceId = getDeviceId(device);
     if (!deviceId || !shouldTrackDevice(deviceId)) continue;
     observedDeviceIds.add(deviceId);
-    const installationId = resolveZaptecInstallationId(device);
     observeNativeSteppedLoadCommandAdapter({
       owner,
       deviceId,
       device,
       clearWhenUnavailable: true,
       logger,
-      sharedInstallationBlocked: installationId ? sharedInstallations.has(installationId) : false,
     });
   }
   for (const deviceId of adapters.keys()) {
@@ -146,11 +119,6 @@ export async function setObservedNativeSteppedLoadStep(params: {
   profile: SteppedLoadProfile;
   desiredStepId: string;
   setCapability: (capabilityId: string, value: unknown) => Promise<unknown>;
-  runFlowCardAction?: (params: {
-    uri: string;
-    id: string;
-    args?: Record<string, unknown>;
-  }) => Promise<unknown>;
   logger?: Logger;
 }): Promise<boolean> {
   const {
@@ -159,7 +127,6 @@ export async function setObservedNativeSteppedLoadStep(params: {
     profile,
     desiredStepId,
     setCapability,
-    runFlowCardAction = runRawFlowCardAction,
     logger,
   } = params;
   const adapter = getAdapterStore(owner).get(deviceId);
@@ -168,7 +135,6 @@ export async function setObservedNativeSteppedLoadStep(params: {
     profile,
     desiredStepId,
     setCapability,
-    runFlowCardAction,
     logger,
   });
 }
@@ -203,14 +169,6 @@ export function resolveObservedNativeSteppedLoadReportedStepId(params: {
   } = params;
   const adapter = getAdapterStore(owner).get(deviceId);
   return adapter?.getReportedStepId(profile);
-}
-
-export function resolveObservedNativeSteppedLoadStatus(params: {
-  owner: object;
-  deviceId: string;
-}): NativeSteppedLoadStatusSnapshot | undefined {
-  const adapter = getAdapterStore(params.owner).get(params.deviceId);
-  return adapter?.getStatus();
 }
 
 function buildCapabilityNativeSteppedLoadCommandAdapter(
@@ -250,9 +208,6 @@ function buildCapabilityNativeSteppedLoadCommandAdapter(
         capabilities,
         capabilityObj,
       });
-    },
-    getStatus() {
-      return undefined;
     },
   };
 }

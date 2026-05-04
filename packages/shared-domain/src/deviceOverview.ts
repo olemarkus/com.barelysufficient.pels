@@ -29,11 +29,6 @@ export type DeviceOverviewSnapshot = {
   actualStepSource?: 'reported' | 'assumed' | 'profile_default';
   binaryCommandPending?: boolean;
   observationStale?: boolean;
-  nativeSteppedLoadStatus?: {
-    modelLabel: string;
-    currentStepLabel?: string;
-    blockedMessage?: string;
-  };
   stateOfCharge?: {
     percent: number;
     status: 'unknown' | 'fresh' | 'stale' | 'invalid';
@@ -245,14 +240,6 @@ const formatEvSocStatus = (
   return `EV battery: ${stateOfCharge.percent} %${sourceLabel}${staleSuffix}`;
 };
 
-const formatNativeSteppedStatus = (
-  nativeSteppedLoadStatus: DeviceOverviewSnapshot['nativeSteppedLoadStatus'],
-): string | null => {
-  if (!nativeSteppedLoadStatus) return null;
-  if (nativeSteppedLoadStatus.blockedMessage) return nativeSteppedLoadStatus.blockedMessage;
-  return nativeSteppedLoadStatus.currentStepLabel ?? nativeSteppedLoadStatus.modelLabel;
-};
-
 const formatUsageText = (params: {
   measuredKw?: number;
   expectedKw?: number;
@@ -302,7 +289,6 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
       : formatDeviceReason(device.reason);
   }
   statusMsg = appendOverviewStatus(statusMsg, formatEvSocStatus(device.stateOfCharge));
-  statusMsg = appendOverviewStatus(statusMsg, formatNativeSteppedStatus(device.nativeSteppedLoadStatus));
 
   return {
     powerMsg,
