@@ -1469,6 +1469,50 @@ input:focus-visible {
   line-height: 1.45;
 }
 
+/* ── Temperature card (binary thermostats, heat pumps, water heaters) ────────── */
+
+.plan-card--temperature .plan-card__output-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--spacing-2);
+  position: relative;
+  z-index: 1;
+}
+
+.plan-card--temperature .plan-card__output-state {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text);
+}
+
+.plan-card--temperature .plan-card__output-power {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.plan-card--temperature .plan-card__temp-line {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.4;
+  min-height: 1.4em;
+  position: relative;
+  z-index: 1;
+}
+
+.plan-card--temperature .plan-card__temp-reason {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.4;
+  min-height: 1.4em;
+  position: relative;
+  z-index: 1;
+}
+
 /* ── Stepped card (Connected 300 and other stepped load devices) ────────────── */
 
 .plan-card--stepped .plan-card__stepped-body {
