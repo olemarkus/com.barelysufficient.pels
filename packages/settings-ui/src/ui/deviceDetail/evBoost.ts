@@ -1,6 +1,7 @@
 import type { TargetDeviceSnapshot, EvBoostSettings } from '../../../../contracts/src/types.ts';
 import { EV_BOOST_SETTINGS } from '../../../../contracts/src/settingsKeys.ts';
 import { normalizeEvBoostSettings } from '../../../../contracts/src/evBoost.ts';
+import { hasSteppedLoadSupport } from '../deviceControlProfiles.ts';
 import {
   deviceDetailEvBoost,
   deviceDetailEvBoostBelow,
@@ -20,8 +21,8 @@ const normalizeBoostBelowPercent = (value: number, fallback: number): number => 
   Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : fallback
 );
 
-const supportsEvBoostDevice = (device: TargetDeviceSnapshot | null | undefined): boolean => (
-  device?.deviceClass === 'evcharger' && device.controlModel === 'stepped_load'
+export const supportsEvBoostDevice = (device: TargetDeviceSnapshot | null | undefined): boolean => (
+  device?.deviceClass === 'evcharger' && hasSteppedLoadSupport(device)
 );
 
 type EvBoostHandlerDeps = {

@@ -57,7 +57,6 @@ export type FlowCardDeps = {
     deviceId: string;
     capabilityId: FlowReportedCapabilityId;
     value: boolean | number | string;
-    sourceLabel?: string;
   }) => FlowBackedCapabilityReportOutcome;
   reportSteppedLoadActualStep: (
     deviceId: string,
@@ -158,8 +157,8 @@ export function registerFlowCards(deps: FlowCardDeps): void {
 
     registerHeadroomForDeviceCard(deps);
     registerCapacityAndModeCards(deps);
+    registerEvSocCard(deps);
     if (deps.areFlowBackedCardsAvailable?.() !== false) {
-      registerEvSocCard(deps);
       registerFlowBackedDeviceCards(deps);
     }
     registerSteppedLoadCards(deps);
@@ -838,18 +837,16 @@ function registerEvSocCard(deps: FlowCardDeps): void {
 type EvSocCardArgs = {
   device?: DeviceArg;
   battery_percent?: unknown;
-  source_label?: unknown;
 } | null;
 
 async function handleEvSocCardRun(deps: FlowCardDeps, args: unknown): Promise<boolean> {
-  const { chargerDeviceId, percent, sourceLabel } = parseEvSocCardArgs(args);
+  const { chargerDeviceId, percent } = parseEvSocCardArgs(args);
   const charger = await requireEvChargerSnapshot(deps, chargerDeviceId);
   const observedAtMs = Date.now();
   const reportOutcome = deps.reportFlowBackedCapability({
     deviceId: chargerDeviceId,
     capabilityId: 'measure_battery',
     value: percent,
-    sourceLabel,
   });
 
   if (reportOutcome.refreshSnapshot) {
@@ -862,7 +859,6 @@ async function handleEvSocCardRun(deps: FlowCardDeps, args: unknown): Promise<bo
     chargerDeviceId,
     updatedCharger,
     percent,
-    sourceLabel,
     observedAtMs,
   }));
 
@@ -888,7 +884,6 @@ async function getBestEffortEvChargerSnapshot(
 function parseEvSocCardArgs(args: unknown): {
   chargerDeviceId: string;
   percent: number;
-  sourceLabel: string;
 } {
   const payload = args as EvSocCardArgs;
   const chargerDeviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
@@ -898,7 +893,6 @@ function parseEvSocCardArgs(args: unknown): {
   return {
     chargerDeviceId,
     percent: parseEvSocPercent(payload?.battery_percent),
-    sourceLabel: parseEvSocSourceLabel(payload?.source_label),
   };
 }
 
@@ -907,16 +901,14 @@ function buildEvSocLogPayload(params: {
   chargerDeviceId: string;
   updatedCharger: TargetDeviceSnapshot | undefined;
   percent: number;
-  sourceLabel: string;
   observedAtMs: number;
 }) {
-  const { charger, chargerDeviceId, updatedCharger, percent, sourceLabel, observedAtMs } = params;
+  const { charger, chargerDeviceId, updatedCharger, percent, observedAtMs } = params;
   return {
     event: 'ev_soc_reported',
     chargerDeviceId,
     chargerName: updatedCharger?.name ?? charger.name,
     percent,
-    sourceLabel: updatedCharger?.stateOfCharge?.sourceLabel ?? sourceLabel,
     observedAtMs: updatedCharger?.stateOfCharge?.observedAtMs ?? observedAtMs,
     status: updatedCharger?.stateOfCharge?.status ?? 'unknown',
   };
@@ -996,21 +988,6 @@ function parseEvSocPercent(rawValue: unknown): number {
     throw new Error('Battery level must be between 0 and 100.');
   }
   return Math.round(percent * 10) / 10;
-}
-
-function parseEvSocSourceLabel(rawValue: unknown): string {
-  if (typeof rawValue === 'string') {
-    const normalized = rawValue.trim();
-    return normalized || 'Flow';
-  }
-  if (typeof rawValue === 'object' && rawValue !== null && 'id' in rawValue) {
-    const rawId = (rawValue as { id?: unknown }).id;
-    if (typeof rawId === 'string') {
-      const normalized = rawId.trim();
-      return normalized || 'Flow';
-    }
-  }
-  return 'Flow';
 }
 
 function getDeviceIdFromArg(arg: DeviceArg): string {

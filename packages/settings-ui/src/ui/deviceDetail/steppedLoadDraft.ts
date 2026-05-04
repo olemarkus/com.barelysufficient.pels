@@ -14,14 +14,17 @@ import {
 } from '../dom.ts';
 import {
   createDefaultSteppedLoadProfile,
-  getEffectiveControlModel,
   getStoredDeviceControlProfile,
   isNativeSteppedLoadProfileActive,
 } from '../deviceControlProfiles.ts';
 import { logSettingsError } from '../logging.ts';
 import { state } from '../state.ts';
 import { showToastError } from '../toast.ts';
-import { hasEvTargetPowerPreset } from './controlMode.ts';
+import {
+  hasEvTargetPowerPreset,
+  resolveDeviceDetailControlMode,
+} from './controlMode.ts';
+import { supportsEvBoostDevice } from './evBoost.ts';
 import { writeShedBehaviors } from './shedBehavior.ts';
 
 let currentSteppedLoadDraft: SteppedLoadProfile | null = null;
@@ -116,7 +119,7 @@ const buildSteppedLoadStepRow = (params: {
 };
 
 export const isSteppedLoadControlModel = (device: TargetDeviceSnapshot | null): boolean => (
-  Boolean(device && getEffectiveControlModel(device) === 'stepped_load')
+  Boolean(device && resolveDeviceDetailControlMode(device) === 'stepped_load')
 );
 
 export const resolveSavedSteppedLoadProfile = (device: TargetDeviceSnapshot): SteppedLoadProfile | null => {
@@ -149,22 +152,31 @@ export const updateSetStepOptionLabel = (
 export const renderSteppedLoadDraft = (device: TargetDeviceSnapshot) => {
   if (!deviceDetailSteppedSection || !deviceDetailSteppedSteps) return;
 
-  const steppedEnabled = isSteppedLoadControlModel(device) && canEditSteppedLoadProfile(device);
-  deviceDetailSteppedSection.hidden = !steppedEnabled;
-  if (!steppedEnabled) {
+  const showStepEditor = isSteppedLoadControlModel(device);
+  const showBoostOnlySection = supportsEvBoostDevice(device);
+  const setEditorVisibility = (hidden: boolean) => {
+    deviceDetailSteppedSteps.hidden = hidden;
+    if (deviceDetailSteppedAddStep) deviceDetailSteppedAddStep.hidden = hidden;
+    if (deviceDetailSteppedReset) deviceDetailSteppedReset.hidden = hidden;
+    if (deviceDetailSteppedSave) deviceDetailSteppedSave.hidden = hidden;
+  };
+  const setEditorDisabled = (disabled: boolean) => {
+    if (deviceDetailSteppedAddStep) deviceDetailSteppedAddStep.disabled = disabled;
+    if (deviceDetailSteppedReset) deviceDetailSteppedReset.disabled = disabled;
+    if (deviceDetailSteppedSave) deviceDetailSteppedSave.disabled = disabled;
+  };
+  deviceDetailSteppedSection.hidden = !showStepEditor && !showBoostOnlySection;
+  setEditorVisibility(!showStepEditor);
+  if (!showStepEditor) {
     currentSteppedLoadDraft = null;
     deviceDetailSteppedSteps.replaceChildren();
-    if (deviceDetailSteppedAddStep) deviceDetailSteppedAddStep.disabled = false;
-    if (deviceDetailSteppedReset) deviceDetailSteppedReset.disabled = false;
-    if (deviceDetailSteppedSave) deviceDetailSteppedSave.disabled = false;
+    setEditorDisabled(false);
     updateSetStepOptionLabel(device, null);
     return;
   }
 
   const nativeProfileLocked = isNativeSteppedLoadProfileActive(device);
-  if (deviceDetailSteppedAddStep) deviceDetailSteppedAddStep.disabled = nativeProfileLocked;
-  if (deviceDetailSteppedReset) deviceDetailSteppedReset.disabled = nativeProfileLocked;
-  if (deviceDetailSteppedSave) deviceDetailSteppedSave.disabled = nativeProfileLocked;
+  setEditorDisabled(nativeProfileLocked);
 
   const syncSteppedLoadDraftState = () => {
     if (nativeProfileLocked) return;

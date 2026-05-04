@@ -1,7 +1,7 @@
 import { resolveStateOfChargeSnapshot } from '../lib/core/deviceStateOfCharge';
 
 describe('resolveStateOfChargeSnapshot', () => {
-  it('does not attach a flow source label to native SoC capabilities', () => {
+  it('prefers native SoC capabilities over flow-backed battery reports', () => {
     const snapshot = resolveStateOfChargeSnapshot({
       deviceClassKey: 'evcharger',
       nowMs: Date.parse('2026-03-20T06:00:02.000Z'),
@@ -23,7 +23,6 @@ describe('resolveStateOfChargeSnapshot', () => {
           value: 42,
           reportedAt: Date.parse('2026-03-20T05:58:00.000Z'),
           source: 'flow',
-          sourceLabel: 'Tesla Flow',
         },
       },
     });
@@ -34,6 +33,5 @@ describe('resolveStateOfChargeSnapshot', () => {
       capabilityId: 'measure_soc_level',
       status: 'fresh',
     }));
-    expect(snapshot?.sourceLabel).toBeUndefined();
   });
 });

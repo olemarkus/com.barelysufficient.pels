@@ -72,7 +72,6 @@ export type DeviceStateOfChargeSnapshot = {
     observedAtMs?: number;
     status: 'unknown' | 'fresh' | 'stale' | 'invalid';
     source: 'capability' | 'flow';
-    sourceLabel?: string;
     capabilityId?: string;
     sessionStartedAtMs?: number;
     invalidatedAtMs?: number;
