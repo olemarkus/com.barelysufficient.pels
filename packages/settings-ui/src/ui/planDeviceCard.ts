@@ -12,7 +12,6 @@ import {
   formatStarvationReason,
 } from '../../../shared-domain/src/planStarvation.ts';
 import {
-  resolveTemperatureChip,
   resolveTemperatureOutputState,
   resolveTemperatureLine,
   resolveTemperatureReasonLine,
@@ -223,15 +222,9 @@ export const updatePlanCardBinding = (
   const remainingSec = resolveCooldownRemainingSec(displayDev);
   const baseSec = resolveCooldownBaseSec(displayDev);
   if (binding.chipEl) {
-    if (binding.device.controlModel === 'temperature_target') {
-      const chip = resolveTemperatureChip(displayDev);
-      // eslint-disable-next-line no-param-reassign
-      binding.chipEl.textContent = chip.label;
-    } else {
-      const presentation = resolveStatePresentation(displayDev);
-      // eslint-disable-next-line no-param-reassign
-      binding.chipEl.textContent = presentation.label;
-    }
+    const presentation = resolveStatePresentation(displayDev);
+    // eslint-disable-next-line no-param-reassign
+    binding.chipEl.textContent = presentation.label;
   }
   if (binding.cooldownProgressEl) {
     applyCooldownProgress(binding.cooldownProgressEl as CooldownProgressElement, remainingSec, baseSec);
@@ -349,9 +342,7 @@ const buildTemperatureOutputRow = (dev: PlanDeviceSnapshot): HTMLElement => {
   return row;
 };
 
-const buildTemperatureHeader = (dev: PlanDeviceSnapshot): {
-  el: HTMLElement; chip: HTMLElement; cooldownProgress: HTMLElement;
-} => {
+const buildTemperatureHeader = (dev: PlanDeviceSnapshot): HTMLElement => {
   const header = document.createElement('div');
   header.className = 'plan-card__header';
   const nameWrap = document.createElement('div');
@@ -364,28 +355,25 @@ const buildTemperatureHeader = (dev: PlanDeviceSnapshot): {
 
   const chips = document.createElement('div');
   chips.className = 'plan-card__chips';
-  const tempChip = resolveTemperatureChip(dev);
-  const wrap = document.createElement('span');
-  wrap.className = 'plan-state-chip-wrap';
-  const chip = document.createElement('span');
-  chip.className = `plan-state-chip plan-state-chip--${tempChip.tone}`;
-  chip.textContent = tempChip.label;
-  chip.setAttribute('role', 'img');
-  chip.setAttribute('aria-label', tempChip.label);
-  const progress = buildCooldownProgress(tempChip.tone);
-  applyCooldownProgress(progress, resolveCooldownRemainingSec(dev), resolveCooldownBaseSec(dev));
-  wrap.append(chip, progress);
-  chips.appendChild(wrap);
-  if (dev.budgetExempt === true) chips.appendChild(buildInlineChip('plan-chip plan-chip--muted', 'Always on'));
+  if (dev.temperatureBoostActive === true) {
+    chips.appendChild(buildInlineChip('plan-chip plan-chip--ok', 'Boost', 'Temperature boost is active'));
+  }
+  const starvationBadge = formatStarvationBadge(dev.starvation);
+  if (starvationBadge) {
+    chips.appendChild(buildInlineChip(
+      `plan-chip plan-chip--${starvationBadge.tone}`,
+      starvationBadge.label,
+      starvationBadge.tooltip,
+    ));
+  }
   header.appendChild(chips);
-  return { el: header, chip, cooldownProgress: progress };
+  return header;
 };
 
 const buildTemperatureCard = (
   plan: PlanSnapshot | null, dev: PlanDeviceSnapshot, renderedAtMs: number, nowMs: number,
 ): { el: HTMLElement; statusBinding: PlanStatusBinding } => {
   const displayDev = resolveDisplayPlanDeviceSnapshot(plan, dev, renderedAtMs, nowMs);
-  const tempChip = resolveTemperatureChip(displayDev);
   const kind = resolvePlanStateKind(displayDev) as PlanStateKind;
 
   const card = document.createElement('article');
@@ -395,7 +383,7 @@ const buildTemperatureCard = (
   card.tabIndex = 0;
   card.setAttribute('role', 'button');
   card.setAttribute('aria-label', `Open device details for ${dev.name}`);
-  if (tempChip.tone === 'idle') card.classList.add('plan-card--dim');
+  if (kind === 'idle') card.classList.add('plan-card--dim');
   if (kind === 'unavailable') card.classList.add('plan-card--unavailable');
   const elevation = document.createElement('md-elevation');
   elevation.setAttribute('aria-hidden', 'true');
@@ -403,10 +391,9 @@ const buildTemperatureCard = (
   ripple.setAttribute('aria-hidden', 'true');
   card.append(elevation, ripple);
 
-  const header = buildTemperatureHeader(displayDev);
   const reasonEl = buildHidableText('plan-card__temp-reason', resolveTemperatureReasonLine(displayDev));
   card.append(
-    header.el,
+    buildTemperatureHeader(displayDev),
     buildTemperatureOutputRow(displayDev),
     buildHidableText('plan-card__temp-line', resolveTemperatureLine(displayDev)),
     reasonEl,
@@ -414,7 +401,7 @@ const buildTemperatureCard = (
   attachCardActivation(card, dev.id);
   return {
     el: card,
-    statusBinding: { device: dev, reasonEl, chipEl: header.chip, cooldownProgressEl: header.cooldownProgress },
+    statusBinding: { device: dev, reasonEl, chipEl: null, cooldownProgressEl: null },
   };
 };
 
