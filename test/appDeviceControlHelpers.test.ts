@@ -6,6 +6,7 @@ import {
   markSteppedLoadDesiredStepIssued,
   normalizeStoredDeviceControlProfiles,
   pruneStaleSteppedLoadCommandStates,
+  resolveEffectiveSteppedLoadProfile,
   reportSteppedLoadActualStep,
   resolveDefaultControlModel,
 } from '../lib/app/appDeviceControlHelpers';
@@ -75,6 +76,81 @@ describe('appDeviceControlHelpers', () => {
     expect(resolveDefaultControlModel(baseSnapshot({ controlModel: 'stepped_load' }))).toBe('stepped_load');
     expect(resolveDefaultControlModel(baseSnapshot({ deviceType: 'temperature', controlModel: undefined }))).toBe('temperature_target');
     expect(resolveDefaultControlModel(baseSnapshot({ deviceType: 'onoff', controlModel: undefined }))).toBe('binary_power');
+  });
+
+  it('resolves effective stepped-load profiles with native, stored, snapshot, then suggested precedence', () => {
+    const snapshotProfile = {
+      model: 'stepped_load',
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: 'snapshot', planningPowerW: 1800 },
+      ],
+    } as const;
+    const suggestedProfile = {
+      model: 'stepped_load',
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: 'suggested', planningPowerW: 2200 },
+      ],
+    } as const;
+
+    expect(resolveEffectiveSteppedLoadProfile({
+      snapshot: baseSnapshot({
+        controlModel: 'stepped_load',
+        steppedLoadProfile: snapshotProfile,
+        suggestedSteppedLoadProfile: suggestedProfile,
+      }),
+      profiles: {},
+      deviceId: 'dev-1',
+    })).toBe(snapshotProfile);
+
+    expect(resolveEffectiveSteppedLoadProfile({
+      snapshot: baseSnapshot({
+        controlModel: 'stepped_load',
+        steppedLoadProfile: snapshotProfile,
+      }),
+      profiles: steppedProfiles,
+      deviceId: 'dev-1',
+    })).toBe(steppedProfiles['dev-1']);
+
+    expect(resolveEffectiveSteppedLoadProfile({
+      snapshot: baseSnapshot({
+        controlModel: 'stepped_load',
+        steppedLoadProfile: snapshotProfile,
+        targetPowerConfig: { enabled: true, max: 3000, step: 1500 },
+      }),
+      profiles: steppedProfiles,
+      deviceId: 'dev-1',
+    })).toBe(snapshotProfile);
+
+    expect(resolveEffectiveSteppedLoadProfile({
+      snapshot: baseSnapshot({
+        controlAdapter: {
+          kind: 'capability_adapter',
+          activationAvailable: true,
+          activationEnabled: true,
+          activationRequired: false,
+        },
+        suggestedSteppedLoadProfile: suggestedProfile,
+      }),
+      profiles: steppedProfiles,
+      deviceId: 'dev-1',
+    })).toBe(suggestedProfile);
+
+    expect(resolveEffectiveSteppedLoadProfile({
+      snapshot: baseSnapshot({ suggestedSteppedLoadProfile: suggestedProfile }),
+      profiles: {},
+      deviceId: 'dev-1',
+    })).toBeNull();
+
+    expect(resolveEffectiveSteppedLoadProfile({
+      snapshot: baseSnapshot({
+        controlModel: 'stepped_load',
+        suggestedSteppedLoadProfile: suggestedProfile,
+      }),
+      profiles: {},
+      deviceId: 'dev-1',
+    })).toBe(suggestedProfile);
   });
 
   it('decorates non-stepped devices with their default control model only', () => {
@@ -232,6 +308,39 @@ describe('appDeviceControlHelpers', () => {
     expect(decorated.actualStepSource).toBe('reported');
     expect(decorated.targetStepId).toBe('max');
     expect(decorated.stepCommandStatus).toBe('success');
+  });
+
+  it('uses target-power snapshot profiles for reported step decoration even when a stored profile exists', () => {
+    const runtimeState = createDeviceControlRuntimeState();
+    const snapshotProfile = {
+      model: 'stepped_load',
+      steps: [
+        { id: '0w', planningPowerW: 0 },
+        { id: '1500w', planningPowerW: 1500 },
+        { id: '3000w', planningPowerW: 3000 },
+      ],
+    } as const;
+
+    const decorated = decorateSnapshotWithDeviceControl({
+      snapshot: baseSnapshot({
+        currentOn: true,
+        reportedStepId: '1500w',
+        lastUpdated: 1_500,
+        controlModel: 'stepped_load',
+        steppedLoadProfile: snapshotProfile,
+        targetPowerConfig: { enabled: true, max: 3000, step: 1500 },
+      }),
+      profiles: steppedProfiles,
+      runtimeState,
+      nowMs: 2_000,
+    });
+
+    expect(decorated.steppedLoadProfile).toBe(snapshotProfile);
+    expect(decorated.reportedStepId).toBe('1500w');
+    expect(decorated.selectedStepId).toBe('1500w');
+    expect(decorated.actualStepId).toBe('1500w');
+    expect(decorated.actualStepSource).toBe('reported');
+    expect(decorated.planningPowerKw).toBe(1.5);
   });
 
   it('preserves snapshot power source and currentOn when a stepped profile cannot resolve any step', () => {
@@ -523,6 +632,77 @@ describe('appDeviceControlHelpers', () => {
       source: 'flow',
       stepId: 'max',
     });
+  });
+
+  it('returns snapshot-defined stepped-load profiles when no stored profile exists', () => {
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => ({}),
+      getDeviceSnapshots: () => [baseSnapshot({
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfiles['dev-1'],
+      })],
+      getStructuredLogger: () => undefined,
+      logDebug: vi.fn(),
+    });
+
+    expect(helpers.getSteppedLoadProfile('dev-1')).toBe(steppedProfiles['dev-1']);
+  });
+
+  it('does not treat inactive native suggestions as effective stepped-load profiles', () => {
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => ({}),
+      getDeviceSnapshots: () => [baseSnapshot({
+        controlAdapter: {
+          kind: 'capability_adapter',
+          activationAvailable: true,
+          activationEnabled: false,
+          activationRequired: false,
+        },
+        suggestedSteppedLoadProfile: steppedProfiles['dev-1'],
+      })],
+      getStructuredLogger: () => undefined,
+      logDebug: vi.fn(),
+    });
+
+    expect(helpers.getSteppedLoadProfile('dev-1')).toBeNull();
+  });
+
+  it('preserves latest plan targets for snapshot-only stepped-load feedback', () => {
+    const structuredLogger = { info: vi.fn() };
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => ({}),
+      getDeviceSnapshots: () => [baseSnapshot({
+        currentOn: true,
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfiles['dev-1'],
+      })],
+      getLatestPlanSnapshot: () => ({
+        devices: [{
+          id: 'dev-1',
+          targetStepId: 'low',
+          desiredStepId: 'low',
+        }],
+      } as never),
+      getStructuredLogger: () => structuredLogger as never,
+      logDebug: vi.fn(),
+    });
+
+    expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
+
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+      capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+      stepId: 'low',
+      previousStepId: 'max',
+      retryCount: 0,
+      pending: false,
+      status: 'idle',
+    });
+    expect(structuredLogger.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_feedback_mismatch',
+      deviceId: 'dev-1',
+      reportedStepId: 'max',
+      desiredStepId: 'low',
+    }));
   });
 
   it('replaces a stale desired step with the latest plan target when feedback catches up', () => {
