@@ -501,7 +501,7 @@ describe('DeviceDiagnosticsService', () => {
     });
   });
 
-  it('pauses and resumes starvation accumulation without counting paused time', () => {
+  it('continues starvation accumulation through held suppression states', () => {
     const { service } = createDeps();
     const start = Date.now();
 
@@ -536,10 +536,44 @@ describe('DeviceDiagnosticsService', () => {
 
     const starvation = getStarvationState(service);
     expect(starvation?.isStarved).toBe(true);
-    expect(starvation?.starvedAccumulatedMs).toBe(7 * 60 * 1000);
+    expect(starvation?.starvedAccumulatedMs).toBe(12 * 60 * 1000);
     expect(starvation?.starvationCause).toBe('capacity');
     expect(starvation?.starvationPauseReason).toBeNull();
-    expect(starvation?.starvationLastResumedAt).toBe(start + (25 * 60 * 1000));
+    expect(starvation?.starvationLastResumedAt).toBe(start + (15 * 60 * 1000));
+  });
+
+  it('enters starvation when cooldown follows active suppression before the entry delay completes', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    service.observePlanSample({
+      nowTs: start,
+      observations: [buildObservation()],
+    });
+    service.observePlanSample({
+      nowTs: start + (9 * 60 * 1000),
+      observations: [buildObservation({
+        suppressionState: 'paused',
+        countingCause: null,
+        pauseReason: 'cooldown',
+      })],
+    });
+    service.observePlanSample({
+      nowTs: start + (16 * 60 * 1000),
+      observations: [buildObservation({
+        suppressionState: 'paused',
+        countingCause: null,
+        pauseReason: 'cooldown',
+      })],
+    });
+
+    const starvation = getStarvationState(service);
+    expect(starvation?.isStarved).toBe(true);
+    expect(starvation?.starvationEpisodeStartedAt).toBe(start + (15 * 60 * 1000));
+    expect(starvation?.starvedAccumulatedMs).toBe(60 * 1000);
+    expect(starvation?.starvationCause).toBeNull();
+    expect(starvation?.starvationPauseReason).toBe('cooldown');
+    expect(starvation?.starvationLastResumedAt).toBe(start + (15 * 60 * 1000));
   });
 
   it('keeps starvation latched across sample gaps but pauses accumulation', () => {
@@ -787,27 +821,11 @@ describe('DeviceDiagnosticsService', () => {
         starvedDurationMs: 60 * 1000,
       })],
       [expect.objectContaining({
-        event: 'device_starvation_paused',
-        deviceId: 'heater-1',
-        deviceName: 'Hall Heater',
-        pauseReason: 'keep',
-        transitionAtMs: start + (20 * 60 * 1000),
-        starvedDurationMs: 5 * 60 * 1000,
-      })],
-      [expect.objectContaining({
-        event: 'device_starvation_resumed',
-        deviceId: 'heater-1',
-        deviceName: 'Hall Heater',
-        cause: 'capacity',
-        transitionAtMs: start + (25 * 60 * 1000),
-        starvedDurationMs: 5 * 60 * 1000,
-      })],
-      [expect.objectContaining({
         event: 'device_starvation_cleared',
         deviceId: 'heater-1',
         deviceName: 'Hall Heater',
         transitionAtMs: start + (40 * 60 * 1000),
-        starvedDurationMs: 10 * 60 * 1000,
+        starvedDurationMs: 15 * 60 * 1000,
       })],
     ]);
   });

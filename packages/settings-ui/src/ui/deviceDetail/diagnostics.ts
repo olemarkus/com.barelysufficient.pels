@@ -122,13 +122,13 @@ const formatStarvationTemperatureTarget = (starvation: DeviceDiagnosticsStarvati
 
 const formatCurrentStarvationStatus = (params: {
   isStarved: boolean;
-  recentStarvedMs: number;
+  starvedMs: number;
 }): string => {
-  const recentDuration = formatStarvationDuration(params.recentStarvedMs);
+  const duration = formatStarvationDuration(params.starvedMs);
   if (params.isStarved) {
-    return params.recentStarvedMs > 0 ? `Starved for ${recentDuration} in the last day` : 'Starved';
+    return params.starvedMs > 0 ? `Starved for ${duration}` : 'Starved';
   }
-  return params.recentStarvedMs > 0 ? `Not currently starved (${recentDuration} in the last day)` : 'Not starved';
+  return 'Not starved';
 };
 
 const createDiagnosticsMetric = (label: string, value: string) => {
@@ -156,10 +156,9 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
     return;
   }
   const starvation = summary.starvation ?? createEmptyStarvationSummary();
-  const recentStarvedMs = summary.windows['1d']?.unmetDemandMs ?? 0;
   const starvationStatus = formatCurrentStarvationStatus({
     isStarved: starvation.isStarved,
-    recentStarvedMs,
+    starvedMs: starvation.starvedAccumulatedMs,
   });
   const starvationContext = formatStarvationContext(starvation);
   if (deviceDetailDiagnosticsStatus) {
@@ -187,7 +186,7 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
     const list = document.createElement('dl');
     list.className = 'detail-diagnostics-list';
     list.append(
-      createDiagnosticsMetric('Starved for', formatHours(windowSummary.unmetDemandMs)),
+      createDiagnosticsMetric('Time not served', formatHours(windowSummary.unmetDemandMs)),
       createDiagnosticsMetric('Time away from target', formatHours(windowSummary.targetDeficitMs)),
       createDiagnosticsMetric('Available power wait', formatHours(windowSummary.blockedByHeadroomMs)),
       createDiagnosticsMetric('Retry wait', formatHours(windowSummary.blockedByCooldownBackoffMs)),
@@ -213,7 +212,7 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
   starvationList.className = 'detail-diagnostics-list';
   starvationList.append(
     createDiagnosticsMetric('State', starvationStatus),
-    createDiagnosticsMetric('Counted suppression', formatStarvationDuration(starvation.starvedAccumulatedMs)),
+    createDiagnosticsMetric('Starved time', formatStarvationDuration(starvation.starvedAccumulatedMs)),
     createDiagnosticsMetric('Temperature / target', formatStarvationTemperatureTarget(starvation)),
     createDiagnosticsMetric(
       'Current reason',
