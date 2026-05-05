@@ -321,6 +321,40 @@ describe('registerFlowCards', () => {
     });
   });
 
+  it('rebuilds the plan after an EV charger battery report when the report outcome requests it', async () => {
+    const { deps, actionListeners } = buildDeps({
+      reportFlowBackedCapability: vi.fn(() => stateChangedOutcome({ rebuildPlan: true })),
+      getSnapshot: vi.fn()
+        .mockResolvedValueOnce([
+          { id: 'ev-1', name: 'Zaptec Go', deviceClass: 'evcharger', currentOn: false, targets: [] },
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: 'ev-1',
+            name: 'Zaptec Go',
+            deviceClass: 'evcharger',
+            currentOn: false,
+            targets: [],
+            stateOfCharge: {
+              percent: 39,
+              observedAtMs: Date.parse('2026-03-11T10:00:00Z'),
+              status: 'fresh',
+              source: 'flow',
+            },
+          },
+        ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_evcharger_battery_level({
+      device: 'ev-1',
+      battery_percent: 39,
+    })).resolves.toBe(true);
+
+    expect(deps.rebuildPlan).toHaveBeenCalledWith('report_evcharger_battery_level');
+  });
+
   it('rejects EV charger battery reports outside 0-100 or non-numeric input', async () => {
     const { deps, actionListeners } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([

@@ -5,6 +5,7 @@ import {
   reconcileRealtimeDeviceUpdate,
   type RealtimeDeviceReconcileChange,
 } from './deviceManagerRuntime';
+import { isStateOfChargeCapabilityId } from './deviceStateOfCharge';
 
 export type PlanRealtimeUpdateEvent = {
   deviceId: string;
@@ -21,6 +22,7 @@ export type ObservedDeviceStateEvent = {
   observationSeq?: number;
   observedAtMs?: number;
   capabilityId?: string;
+  observedCapabilityIds?: string[];
   measurePowerBecameSignificantlyPositive?: boolean;
 };
 
@@ -171,6 +173,7 @@ export function handleRealtimeDeviceUpdate(params: {
     deviceId,
     label,
     changes: filteredChanges,
+    observedCapabilityIds: result.observedCapabilityIds,
     cursor: settleResult.cursor,
     measurePowerBecameSignificantlyPositive,
     createObservationCursor,
@@ -201,6 +204,7 @@ function emitDeviceObservationEvents(params: {
   deviceId: string;
   label?: string;
   changes: RealtimeDeviceReconcileChange[];
+  observedCapabilityIds: string[];
   cursor?: DeviceObservationCursor;
   measurePowerBecameSignificantlyPositive: boolean;
   createObservationCursor?: (deviceId: string) => DeviceObservationCursor;
@@ -213,18 +217,23 @@ function emitDeviceObservationEvents(params: {
     deviceId,
     label,
     changes,
+    observedCapabilityIds,
     cursor,
     measurePowerBecameSignificantlyPositive,
     createObservationCursor,
     emitObservedState,
     emitPlanReconcile,
   } = params;
-  if (!hadChanges) return;
+  const observedStateOfCharge = observedCapabilityIds.some((capabilityId) => (
+    isStateOfChargeCapabilityId(capabilityId)
+  ));
+  if (!hadChanges && !observedStateOfCharge) return;
   const eventCursor = cursor ?? createObservationCursor?.(deviceId) ?? {};
   emitObservedState({
     source: 'device_update',
     deviceId,
     ...eventCursor,
+    observedCapabilityIds,
     measurePowerBecameSignificantlyPositive,
   });
   if (!shouldReconcilePlan) return;
