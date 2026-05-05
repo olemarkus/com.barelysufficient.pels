@@ -1,5 +1,4 @@
 import './materialWeb.ts';
-import { planCards, planEmpty } from './dom.ts';
 import {
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
@@ -8,19 +7,18 @@ import {
   type SettingsUiPowerStatus,
 } from '../../../contracts/src/settingsUiApi.ts';
 import { getApiReadModel } from './homey.ts';
-import { createLivePlanController } from './planLive.ts';
-import { planNeedsLiveUpdates, resolveDisplayPlanDevices } from './planLiveData.ts';
-import { renderPlanHero } from './planHero.ts';
-import { buildPlanCard, updatePlanCardBinding } from './planDeviceCard.ts';
-import type { PlanDeviceSnapshot, PlanSnapshot, PlanStatusBinding } from './planTypes.ts';
+import { mountPlanOverview, renderPlanOverview } from './PlanOverview.tsx';
+import { planNeedsLiveUpdates } from './planLiveData.ts';
 import { state } from './state.ts';
+import type { PlanDeviceSnapshot, PlanSnapshot } from './planTypes.ts';
 
-let liveStatusBindings: PlanStatusBinding[] = [];
-let cachedOverviewPanel: Element | null = null;
-let hasCachedOverviewPanel = false;
-let lastRenderedPlan: PlanSnapshot | null = null;
-let lastRenderedAtMs = 0;
 let cachedPowerStatus: SettingsUiPowerStatus | null = null;
+let currentPlan: PlanSnapshot | null = null;
+let currentRenderedAtMs = 0;
+let liveTickInterval: ReturnType<typeof setInterval> | null = null;
+
+// Mount the Preact root into #plan-redesign-surface (no-op if not found).
+mountPlanOverview();
 
 const hasStructuredReason = (value: unknown): boolean => (
   Boolean(value)
@@ -66,101 +64,40 @@ const readPowerStatusForPlanRefresh = async (): Promise<SettingsUiPowerStatus | 
   }
 };
 
-const resetLiveBindings = () => {
-  liveStatusBindings = [];
-};
-
-const isOverviewVisible = (): boolean => {
-  if (typeof document === 'undefined') return true;
-  if (typeof document.hidden === 'boolean' && document.hidden) return false;
-  if (!hasCachedOverviewPanel || cachedOverviewPanel === null) {
-    cachedOverviewPanel = document.querySelector('#overview-panel');
-    hasCachedOverviewPanel = cachedOverviewPanel !== null;
-  }
-  const overviewPanel = cachedOverviewPanel;
-  if (!overviewPanel) return true;
-  return !overviewPanel.classList.contains('hidden');
-};
-
-const updateLivePlanAt = (plan: PlanSnapshot | null, renderedAtMs: number, nowMs: number) => {
-  lastRenderedPlan = plan;
-  lastRenderedAtMs = renderedAtMs;
-  const devices = Array.isArray(plan?.devices) ? plan.devices : [];
-  const displayDevices = resolveDisplayPlanDevices(plan, devices, renderedAtMs, nowMs);
-  renderPlanHero(
-    plan?.meta, displayDevices, cachedPowerStatus,
-    { activeMode: state.activeMode, dryRun: state.dryRun }, nowMs,
-  );
-  for (let i = 0; i < liveStatusBindings.length; i += 1) {
-    updatePlanCardBinding(liveStatusBindings[i], plan, renderedAtMs, nowMs);
-  }
-};
-
-const renderPlanAt = (plan: PlanSnapshot | null, renderedAtMs: number, nowMs: number) => {
-  lastRenderedPlan = plan;
-  lastRenderedAtMs = renderedAtMs;
-  resetLiveBindings();
-  planCards.replaceChildren();
-  if (!plan) {
-    renderPlanHero(undefined, [], cachedPowerStatus, { activeMode: state.activeMode, dryRun: state.dryRun }, nowMs);
-    planEmpty.hidden = false;
-    planEmpty.textContent = 'No plan available yet. Send power data or refresh devices.';
-    return;
-  }
-
-  const devices = Array.isArray(plan.devices) ? plan.devices : [];
-  const sortedDevices = [...devices].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
-  const displayDevices = resolveDisplayPlanDevices(plan, sortedDevices, renderedAtMs, nowMs);
-  renderPlanHero(
-    plan.meta, displayDevices, cachedPowerStatus,
-    { activeMode: state.activeMode, dryRun: state.dryRun }, nowMs,
-  );
-  if (devices.length === 0) {
-    planEmpty.hidden = false;
-    planEmpty.textContent = 'No managed devices.';
-    return;
-  }
-
-  planEmpty.hidden = true;
-  sortedDevices.forEach((dev) => {
-    const { el, statusBinding } = buildPlanCard(plan, dev, renderedAtMs, nowMs);
-    liveStatusBindings.push(statusBinding);
-    planCards.appendChild(el);
+const doRender = () => {
+  const now = Date.now();
+  renderPlanOverview({
+    plan: currentPlan,
+    power: cachedPowerStatus,
+    context: { activeMode: state.activeMode, dryRun: state.dryRun },
+    renderedAtMs: currentRenderedAtMs,
+    nowMs: now,
   });
+  const needsLive = planNeedsLiveUpdates(currentPlan, currentRenderedAtMs, now);
+  if (needsLive && liveTickInterval === null) {
+    liveTickInterval = setInterval(doRender, 1000);
+  } else if (!needsLive && liveTickInterval !== null) {
+    clearInterval(liveTickInterval);
+    liveTickInterval = null;
+  }
 };
-
-const livePlanController = createLivePlanController<PlanSnapshot>({
-  hasLiveUpdates: (plan, renderedAtMs, nowMs) => planNeedsLiveUpdates(plan, renderedAtMs, nowMs),
-  isVisible: isOverviewVisible,
-  render: (plan, renderedAtMs, nowMs) => {
-    renderPlanAt(plan, renderedAtMs, nowMs);
-  },
-  update: (plan, renderedAtMs, nowMs) => {
-    updateLivePlanAt(plan, renderedAtMs, nowMs);
-  },
-});
 
 export const renderPlan = (plan: PlanSnapshot | null) => {
-  livePlanController.renderPlan(plan);
+  currentPlan = plan;
+  currentRenderedAtMs = Date.now();
+  doRender();
 };
 
 export const updatePlanPower = (power: SettingsUiPowerStatus | null): void => {
   cachedPowerStatus = power;
-  if (!lastRenderedPlan) return;
-  const nowMs = Date.now();
-  const devices = Array.isArray(lastRenderedPlan.devices) ? lastRenderedPlan.devices : [];
-  const sortedDevices = [...devices].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
-  const displayDevices = resolveDisplayPlanDevices(lastRenderedPlan, sortedDevices, lastRenderedAtMs || nowMs, nowMs);
-  renderPlanHero(
-    lastRenderedPlan.meta, displayDevices, cachedPowerStatus,
-    { activeMode: state.activeMode, dryRun: state.dryRun }, nowMs,
-  );
+  doRender();
 };
 
 export const refreshPlan = async () => {
-  const planPromise: Promise<PlanSnapshot | null> = getPlanSnapshot();
-  const powerPromise: Promise<SettingsUiPowerStatus | null> = readPowerStatusForPlanRefresh();
-  const [plan, power] = await Promise.all([planPromise, powerPromise]);
+  const [plan, power] = await Promise.all([
+    getPlanSnapshot(),
+    readPowerStatusForPlanRefresh(),
+  ]);
   cachedPowerStatus = power;
   renderPlan(plan);
 };

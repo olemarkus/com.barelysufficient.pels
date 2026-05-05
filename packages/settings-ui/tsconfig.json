@@ -12,10 +12,13 @@
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "types": ["node", "vitest/globals"],
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact"
   },
   "include": [
     "src/**/*.ts",
+    "src/**/*.tsx",
     "test/**/*.ts",
     "tests/**/*.ts",
     "../contracts/src/**/*.ts",
