@@ -4,7 +4,6 @@ import {
   isCooldownBlockedReason,
   isRestoreAdmissionHoldReason,
   isShedInvariantBlockedReason,
-  isShedWindowHoldReason,
   resolveStarvationSuppressionSemantics,
 } from '../lib/planContract/planDecisionSemantics';
 import { PLAN_REASON_CODES, type DeviceReason } from '../packages/shared-domain/src/planReasonSemantics';
@@ -12,14 +11,10 @@ import { PLAN_REASON_CODES, type DeviceReason } from '../packages/shared-domain/
 const reason = (code: DeviceReason['code']): DeviceReason => ({ code } as DeviceReason);
 
 describe('plan decision semantics', () => {
-  it('classifies restore and shed hold reasons for executor materialization', () => {
+  it('classifies restore hold reasons for projection materialization', () => {
     expect(isRestoreAdmissionHoldReason(reason(PLAN_REASON_CODES.meterSettling))).toBe(true);
     expect(isRestoreAdmissionHoldReason(reason(PLAN_REASON_CODES.cooldownRestore))).toBe(true);
     expect(isRestoreAdmissionHoldReason(reason(PLAN_REASON_CODES.cooldownShedding))).toBe(false);
-
-    expect(isShedWindowHoldReason(reason(PLAN_REASON_CODES.cooldownShedding))).toBe(true);
-    expect(isShedWindowHoldReason(reason(PLAN_REASON_CODES.startupStabilization))).toBe(true);
-    expect(isShedWindowHoldReason(reason(PLAN_REASON_CODES.meterSettling))).toBe(false);
   });
 
   it('classifies stepped keep invariant restore allow reasons', () => {
