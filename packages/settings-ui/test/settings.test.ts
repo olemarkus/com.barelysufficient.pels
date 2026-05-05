@@ -2585,7 +2585,7 @@ describe('Plan sorting', () => {
     expect(banner.hidden).toBe(true);
   });
 
-  it('shows the heartbeat warning even when tracker data is fresh', async () => {
+  it('ignores stale heartbeat values when tracker data is fresh', async () => {
     const now = Date.now();
     global.Homey.__uiState.power = {
       tracker: { lastTimestamp: now - 5_000 },
@@ -2596,12 +2596,10 @@ describe('Plan sorting', () => {
     await loadSettingsScript();
 
     const banner = document.querySelector('#stale-data-banner') as HTMLDivElement;
-    const bannerText = document.querySelector('#stale-data-text') as HTMLSpanElement;
-    expect(banner.hidden).toBe(false);
-    expect(bannerText.textContent).toBe('App heartbeat missing. PELS may not be running.');
+    expect(banner.hidden).toBe(true);
   });
 
-  it('self-corrects the stale-data banner from power_updated without refetching /ui_power', async () => {
+  it('self-corrects the stale-data banner from slim power_updated without refetching /ui_power', async () => {
     const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
     const stalePower = {
       tracker: { lastTimestamp: Date.now() - 2 * 60_000 },
@@ -2623,15 +2621,84 @@ describe('Plan sorting', () => {
 
     (global.Homey.api as ReturnType<typeof vi.fn>).mockClear();
     const freshPower = {
-      tracker: { lastTimestamp: Date.now() - 5_000 },
-      status: { lastPowerUpdate: Date.now() - 2 * 60_000, priceLevel: 'cheap' },
-      heartbeat: Date.now(),
+      tracker: null,
+      status: { lastPowerUpdate: Date.now() - 5_000, priceLevel: 'cheap' },
+      heartbeat: null,
     };
     const powerCallbacks = listeners.power_updated || [];
     powerCallbacks.forEach((cb) => cb(freshPower));
     await flushPromises();
 
     expect(banner.hidden).toBe(true);
+    const powerGetCalls = (global.Homey.api as ReturnType<typeof vi.fn>).mock.calls
+      .filter((call) => call[0] === 'GET' && call[1] === '/ui_power');
+    expect(powerGetCalls).toHaveLength(0);
+  });
+
+  it('keeps slim power_updated cache entries shaped like /ui_power payloads', async () => {
+    const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
+    global.Homey.on = vi.fn((event, cb) => {
+      if (!listeners[event]) listeners[event] = [];
+      listeners[event].push(cb);
+    });
+    global.Homey.api = buildHomeyApiMock(global.Homey);
+
+    await loadSettingsScript();
+
+    const { getApiReadModel, invalidateApiCache } = await import('../src/ui/homey.ts');
+    invalidateApiCache('/ui_power');
+
+    const freshPower = {
+      tracker: null,
+      status: { lastPowerUpdate: Date.now() - 5_000, priceLevel: 'cheap' },
+      heartbeat: null,
+    };
+    (listeners.power_updated || []).forEach((cb) => cb(freshPower));
+    await flushPromises();
+
+    await expect(getApiReadModel('/ui_power')).resolves.toEqual(freshPower);
+    const powerGetCalls = (global.Homey.api as ReturnType<typeof vi.fn>).mock.calls
+      .filter((call) => call[0] === 'GET' && call[1] === '/ui_power');
+    expect(powerGetCalls).toHaveLength(0);
+  });
+
+  it('does not turn rapid slim power_updated events into repeated /ui_power fetches while Usage is visible', async () => {
+    const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
+    global.Homey.__uiState = {
+      power: {
+        tracker: { hourly: {}, daily: {}, lastTimestamp: Date.now() },
+        status: { lastPowerUpdate: Date.now(), priceLevel: 'cheap' },
+        heartbeat: null,
+      },
+    };
+    global.Homey.on = vi.fn((event, cb) => {
+      if (!listeners[event]) listeners[event] = [];
+      listeners[event].push(cb);
+    });
+    global.Homey.api = buildHomeyApiMock(global.Homey);
+
+    await loadSettingsScript();
+    const { showTab } = await import('../src/ui/realtime.ts');
+    showTab('usage');
+    await flushPromises();
+
+    (global.Homey.api as ReturnType<typeof vi.fn>).mockClear();
+    const freshPower = {
+      tracker: null,
+      status: { lastPowerUpdate: Date.now(), priceLevel: 'cheap' },
+      heartbeat: null,
+    };
+    (listeners.power_updated || []).forEach((cb) => cb(freshPower));
+    (listeners.power_updated || []).forEach((cb) => cb({
+      ...freshPower,
+      status: { lastPowerUpdate: Date.now() + 2_000, priceLevel: 'cheap' },
+    }));
+    (listeners.power_updated || []).forEach((cb) => cb({
+      ...freshPower,
+      status: { lastPowerUpdate: Date.now() + 4_000, priceLevel: 'cheap' },
+    }));
+    await flushPromises();
+
     const powerGetCalls = (global.Homey.api as ReturnType<typeof vi.fn>).mock.calls
       .filter((call) => call[0] === 'GET' && call[1] === '/ui_power');
     expect(powerGetCalls).toHaveLength(0);

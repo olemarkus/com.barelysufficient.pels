@@ -135,6 +135,7 @@ export class DeviceManager extends EventEmitter {
     private latestBinarySettleEvidenceByDeviceId: Map<string, BinaryControlObservation> = new Map();
     private binarySettleState: DeviceManagerBinarySettleState = createBinarySettleState();
     private observationState: DeviceManagerObservationState = createObservationState();
+    private observationSeqByDeviceId: Map<string, number> = new Map();
     private recentRealtimeCapabilityEventLogByKey: Map<string, number> = new Map();
     private lastSnapshotRefreshMetricsKey: string | null = null;
     private providers: DeviceManagerParseProviders = {};
@@ -343,6 +344,7 @@ export class DeviceManager extends EventEmitter {
             PELS_MEASURE_STEP_CAPABILITY_ID,
             nextReportedStepId ?? 'unknown',
         );
+        const cursor = this.nextObservationCursor(deviceId);
         this.logger.structuredLog?.info({
             event: 'realtime_capability_drift',
             deviceId,
@@ -352,10 +354,12 @@ export class DeviceManager extends EventEmitter {
         this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, {
             source: 'realtime_capability',
             deviceId,
+            ...cursor,
             capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
         } satisfies ObservedDeviceStateEvent);
         this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, {
             deviceId,
+            ...cursor,
             name: deviceName,
             changes: [change],
         } satisfies PlanRealtimeUpdateEvent);
@@ -392,9 +396,11 @@ export class DeviceManager extends EventEmitter {
             value: result.normalizedValue,
             source: 'realtime_capability',
         });
+        const cursor = this.nextObservationCursor(deviceId);
         this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, {
             source: 'realtime_capability',
             deviceId,
+            ...cursor,
             capabilityId,
             measurePowerBecameSignificantlyPositive: capabilityId === 'measure_power'
                 && didMeasurePowerBecomeSignificantlyPositive(
@@ -412,6 +418,7 @@ export class DeviceManager extends EventEmitter {
             });
             this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, {
                 deviceId,
+                ...cursor,
                 name: snapshot.name,
                 changes: [reconcileChange],
             } satisfies PlanRealtimeUpdateEvent);
@@ -488,9 +495,17 @@ export class DeviceManager extends EventEmitter {
             deviceId,
             eventCapabilityId: capabilityId,
             observedCapabilityIds: [capabilityId],
-        });
+        }, changes.length > 0);
+        const cursor = this.nextObservationCursor(deviceId);
+        this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, {
+            source: 'realtime_capability',
+            deviceId,
+            ...cursor,
+            capabilityId,
+        } satisfies ObservedDeviceStateEvent);
         this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, {
             deviceId,
+            ...cursor,
             name: snapshot.name,
             changes,
         } satisfies PlanRealtimeUpdateEvent);
@@ -633,6 +648,25 @@ export class DeviceManager extends EventEmitter {
         });
     }
 
+    private nextObservationCursor(deviceId: string): Pick<ObservedDeviceStateEvent, 'observationSeq' | 'observedAtMs'> {
+        const observationSeq = (this.observationSeqByDeviceId.get(deviceId) ?? 0) + 1;
+        this.observationSeqByDeviceId.set(deviceId, observationSeq);
+        return {
+            observationSeq,
+            observedAtMs: Date.now(),
+        };
+    }
+
+    private emitPlanReconcileEvent(event: PlanRealtimeUpdateEvent): void {
+        const cursor = event.observationSeq === undefined || event.observedAtMs === undefined
+            ? this.nextObservationCursor(event.deviceId)
+            : {};
+        this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, {
+            ...event,
+            ...cursor,
+        } satisfies PlanRealtimeUpdateEvent);
+    }
+
     /** Returns true if the change was handled by the binary settle window. */
     private applyBinaryCapabilityUpdate(
         snapshotIndex: number,
@@ -664,6 +698,11 @@ export class DeviceManager extends EventEmitter {
             });
             return true;
         }
+        let settleCursor: Pick<ObservedDeviceStateEvent, 'observationSeq' | 'observedAtMs'> | undefined;
+        const ensureSettleCursor = (): Pick<ObservedDeviceStateEvent, 'observationSeq' | 'observedAtMs'> => {
+            settleCursor ??= this.nextObservationCursor(deviceId);
+            return settleCursor;
+        };
         const settleOutcome = isSettlementEvidence
             ? notePendingBinarySettleObservation({
                 state: this.binarySettleState,
@@ -672,6 +711,7 @@ export class DeviceManager extends EventEmitter {
                 capabilityId,
                 value,
                 source: 'realtime_capability',
+                ensureEventFields: ensureSettleCursor,
             })
             : 'none';
         if (settleOutcome !== 'none') {
@@ -680,7 +720,7 @@ export class DeviceManager extends EventEmitter {
                 deviceId,
                 eventCapabilityId: capabilityId,
                 observedCapabilityIds: [capabilityId],
-            });
+            }, false, ensureSettleCursor());
             return true; // reconcile already emitted by settle window on drift; none needed on settle
         }
 
@@ -700,7 +740,7 @@ export class DeviceManager extends EventEmitter {
         deviceId: string;
         eventCapabilityId: string;
         observedCapabilityIds: string[];
-    }): void {
+    }, deferObservedEvent = false, cursor?: Pick<ObservedDeviceStateEvent, 'observationSeq' | 'observedAtMs'>): void {
         const { deviceId, eventCapabilityId, observedCapabilityIds } = params;
         recordSnapshotCapabilityObservations({
             state: this.observationState,
@@ -709,9 +749,11 @@ export class DeviceManager extends EventEmitter {
             source: 'realtime_capability',
             capabilityIds: observedCapabilityIds,
         });
+        if (deferObservedEvent) return;
         this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, {
             source: 'realtime_capability',
             deviceId,
+            ...(cursor ?? this.nextObservationCursor(deviceId)),
             capabilityId: eventCapabilityId,
         } satisfies ObservedDeviceStateEvent);
     }
@@ -769,6 +811,11 @@ export class DeviceManager extends EventEmitter {
             }
             return false;
         }
+        let settleCursor: Pick<ObservedDeviceStateEvent, 'observationSeq' | 'observedAtMs'> | undefined;
+        const ensureSettleCursor = (): Pick<ObservedDeviceStateEvent, 'observationSeq' | 'observedAtMs'> => {
+            settleCursor ??= this.nextObservationCursor(deviceId);
+            return settleCursor;
+        };
         const settleOutcome = notePendingBinarySettleObservation({
             state: this.binarySettleState,
             deps: this.getBinarySettleDeps(),
@@ -776,13 +823,14 @@ export class DeviceManager extends EventEmitter {
             capabilityId: acceptedObservation.capabilityId,
             value: acceptedObservation.observedValue,
             source: 'realtime_capability',
+            ensureEventFields: ensureSettleCursor,
         });
         if (settleOutcome === 'none') return false;
         this.recordRealtimeCapabilityObservation({
             deviceId,
             eventCapabilityId,
             observedCapabilityIds: acceptedObservation.observedCapabilityIds,
-        });
+        }, false, ensureSettleCursor());
         return true;
     }
 
@@ -822,7 +870,7 @@ export class DeviceManager extends EventEmitter {
                     capabilityIds,
                 });
             },
-            notePendingBinarySettleObservation: (nextDeviceId, capabilityId, value, source) => (
+            notePendingBinarySettleObservation: (nextDeviceId, capabilityId, value, source, ensureEventFields) => (
                 notePendingBinarySettleObservation({
                     state: this.binarySettleState,
                     deps: this.getBinarySettleDeps(),
@@ -830,13 +878,15 @@ export class DeviceManager extends EventEmitter {
                     capabilityId,
                     value,
                     source,
+                    ensureEventFields,
                 })
             ),
             hasPendingBinarySettleWindow: (nextDeviceId, capabilityId) => (
                 hasPendingBinarySettleWindow(this.binarySettleState, nextDeviceId, capabilityId)
             ),
             emitDeviceUpdateProcessed: (event) => this.debugStructured?.(event),
-            emitPlanReconcile: (event) => this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event),
+            createObservationCursor: (nextDeviceId) => this.nextObservationCursor(nextDeviceId),
+            emitPlanReconcile: (event) => this.emitPlanReconcileEvent(event),
             emitObservedState: (event: ObservedDeviceStateEvent) => this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, event),
         });
         const currentSnapshot = deviceId
@@ -1771,9 +1821,7 @@ export class DeviceManager extends EventEmitter {
             isLiveFeedHealthy: () => this.liveFeed?.isHealthy() === true,
             shouldTrackRealtimeDevice: (deviceId: string) => this.shouldTrackRealtimeDevice(deviceId),
             getSnapshotById: (deviceId: string) => this.latestSnapshotById.get(deviceId),
-            emitPlanReconcile: (event: PlanRealtimeUpdateEvent) => (
-                this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event)
-            ),
+            emitPlanReconcile: (event: PlanRealtimeUpdateEvent) => this.emitPlanReconcileEvent(event),
         }; }
     private syncLatestSnapshotIndex(): void { this.latestSnapshotById
         = new Map(this.latestSnapshot.map((device) => [device.id, device])); }

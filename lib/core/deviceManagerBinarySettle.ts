@@ -108,6 +108,7 @@ export function notePendingBinarySettleObservation(params: {
     capabilityId: string;
     value: boolean;
     source: 'realtime_capability' | 'device_update';
+    ensureEventFields?: () => Pick<PlanRealtimeUpdateEvent, 'observationSeq' | 'observedAtMs'>;
 }): 'settled' | 'drift' | 'none' {
     const {
         state,
@@ -116,6 +117,7 @@ export function notePendingBinarySettleObservation(params: {
         capabilityId,
         value,
         source,
+        ensureEventFields,
     } = params;
     const key = buildPendingBinarySettleKey(deviceId, capabilityId);
     const pending = state.pendingBinarySettleWindows.get(key);
@@ -145,6 +147,7 @@ export function notePendingBinarySettleObservation(params: {
     if (outcome === 'drift') {
         deps.emitPlanReconcile({
             deviceId,
+            ...ensureEventFields?.(),
             name: pending.deviceName,
             capabilityId,
             changes: [{

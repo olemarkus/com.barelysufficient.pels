@@ -149,11 +149,10 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
     hasLivePowerSample?: boolean;
     powerFreshnessState?: 'fresh' | 'stale_hold' | 'stale_fail_closed';
   } | null;
-  const heartbeat = homey.settings.get('app_heartbeat') as unknown;
   return {
     tracker: tracker && typeof tracker === 'object' ? tracker : null,
     status: status && typeof status === 'object' ? status : null,
-    heartbeat: typeof heartbeat === 'number' ? heartbeat : null,
+    heartbeat: null,
   };
 };
 

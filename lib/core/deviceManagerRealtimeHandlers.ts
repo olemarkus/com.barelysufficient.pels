@@ -8,6 +8,8 @@ import {
 
 export type PlanRealtimeUpdateEvent = {
   deviceId: string;
+  observationSeq?: number;
+  observedAtMs?: number;
   name?: string;
   capabilityId?: string;
   changes?: RealtimeDeviceReconcileChange[];
@@ -16,9 +18,13 @@ export type PlanRealtimeUpdateEvent = {
 export type ObservedDeviceStateEvent = {
   source: 'realtime_capability' | 'device_update';
   deviceId: string;
+  observationSeq?: number;
+  observedAtMs?: number;
   capabilityId?: string;
   measurePowerBecameSignificantlyPositive?: boolean;
 };
+
+export type DeviceObservationCursor = Pick<ObservedDeviceStateEvent, 'observationSeq' | 'observedAtMs'>;
 
 export type DeviceUpdateProcessedDebugEvent = {
   event: 'device_update_processed';
@@ -63,6 +69,7 @@ type PendingBinarySettleObservationRecorder = (
   capabilityId: string,
   value: boolean,
   source: 'realtime_capability' | 'device_update',
+  ensureEventFields?: () => DeviceObservationCursor,
 ) => BinarySettleOutcome;
 
 export function handleRealtimeDeviceUpdate(params: {
@@ -76,6 +83,7 @@ export function handleRealtimeDeviceUpdate(params: {
   notePendingBinarySettleObservation?: PendingBinarySettleObservationRecorder;
   hasPendingBinarySettleWindow?: (deviceId: string, capabilityId: string) => boolean;
   emitDeviceUpdateProcessed?: (event: DeviceUpdateProcessedDebugEvent) => void;
+  createObservationCursor?: (deviceId: string) => DeviceObservationCursor;
   emitPlanReconcile: (event: PlanRealtimeUpdateEvent) => void;
   emitObservedState: (event: ObservedDeviceStateEvent) => void;
 }): HandleRealtimeDeviceUpdateResult {
@@ -90,6 +98,7 @@ export function handleRealtimeDeviceUpdate(params: {
     notePendingBinarySettleObservation,
     hasPendingBinarySettleWindow,
     emitDeviceUpdateProcessed,
+    createObservationCursor,
     emitPlanReconcile,
     emitObservedState,
   } = params;
@@ -109,14 +118,8 @@ export function handleRealtimeDeviceUpdate(params: {
   // receives the observed value rather than a preserved snapshot value.
   const priorSnapshot = latestSnapshot.find((s) => s.id === deviceId);
   const controlCapabilityId = priorSnapshot?.controlObservationCapabilityId ?? priorSnapshot?.controlCapabilityId;
-  const rawBinaryValue = extractRawBinaryValue(
-    device,
-    controlCapabilityId,
-  );
-  const binaryEvidence = extractBinarySettleEvidence(
-    device,
-    priorSnapshot,
-  );
+  const rawBinaryValue = extractRawBinaryValue(device, controlCapabilityId);
+  const binaryEvidence = extractBinarySettleEvidence(device, priorSnapshot);
 
   const result = reconcileRealtimeDeviceUpdate({
     latestSnapshot,
@@ -131,6 +134,7 @@ export function handleRealtimeDeviceUpdate(params: {
     binaryEvidence,
     notePendingBinarySettleObservation,
     hasPendingBinarySettleWindow,
+    createObservationCursor,
   });
   const filteredChanges = settleResult.changes;
   const shouldReconcilePlan = filteredChanges.length > 0;
@@ -161,13 +165,18 @@ export function handleRealtimeDeviceUpdate(params: {
     observedCapabilityIds: result.observedCapabilityIds,
     measurePowerBecameSignificantlyPositive,
   }));
-  if (hadChanges) {
-    emitObservedState({
-      source: 'device_update',
-      deviceId,
-      measurePowerBecameSignificantlyPositive,
-    });
-  }
+  emitDeviceObservationEvents({
+    hadChanges,
+    shouldReconcilePlan,
+    deviceId,
+    label,
+    changes: filteredChanges,
+    cursor: settleResult.cursor,
+    measurePowerBecameSignificantlyPositive,
+    createObservationCursor,
+    emitObservedState,
+    emitPlanReconcile,
+  });
   if (!shouldReconcilePlan) {
     return {
       hadChanges,
@@ -177,11 +186,6 @@ export function handleRealtimeDeviceUpdate(params: {
       currentSnapshot: result.currentSnapshot,
     };
   }
-  emitPlanReconcile({
-    deviceId,
-    name: label,
-    changes: filteredChanges,
-  });
   return {
     hadChanges,
     shouldReconcilePlan: true,
@@ -189,6 +193,47 @@ export function handleRealtimeDeviceUpdate(params: {
     observedCapabilityIds: result.observedCapabilityIds,
     currentSnapshot: result.currentSnapshot,
   };
+}
+
+function emitDeviceObservationEvents(params: {
+  hadChanges: boolean;
+  shouldReconcilePlan: boolean;
+  deviceId: string;
+  label?: string;
+  changes: RealtimeDeviceReconcileChange[];
+  cursor?: DeviceObservationCursor;
+  measurePowerBecameSignificantlyPositive: boolean;
+  createObservationCursor?: (deviceId: string) => DeviceObservationCursor;
+  emitPlanReconcile: (event: PlanRealtimeUpdateEvent) => void;
+  emitObservedState: (event: ObservedDeviceStateEvent) => void;
+}): void {
+  const {
+    hadChanges,
+    shouldReconcilePlan,
+    deviceId,
+    label,
+    changes,
+    cursor,
+    measurePowerBecameSignificantlyPositive,
+    createObservationCursor,
+    emitObservedState,
+    emitPlanReconcile,
+  } = params;
+  if (!hadChanges) return;
+  const eventCursor = cursor ?? createObservationCursor?.(deviceId) ?? {};
+  emitObservedState({
+    source: 'device_update',
+    deviceId,
+    ...eventCursor,
+    measurePowerBecameSignificantlyPositive,
+  });
+  if (!shouldReconcilePlan) return;
+  emitPlanReconcile({
+    deviceId,
+    ...eventCursor,
+    name: label,
+    changes,
+  });
 }
 
 export function didMeasurePowerBecomeSignificantlyPositive(
@@ -208,9 +253,11 @@ function applyPendingBinarySettleToDeviceUpdate(params: {
   binaryEvidence: BinarySettleEvidence;
   notePendingBinarySettleObservation?: PendingBinarySettleObservationRecorder;
   hasPendingBinarySettleWindow?: (deviceId: string, capabilityId: string) => boolean;
+  createObservationCursor?: (deviceId: string) => DeviceObservationCursor;
 }): {
   changes: RealtimeDeviceReconcileChange[];
   binarySettleOutcome: BinarySettleOutcome;
+  cursor?: DeviceObservationCursor;
 } {
   const {
     currentSnapshot,
@@ -218,6 +265,7 @@ function applyPendingBinarySettleToDeviceUpdate(params: {
     binaryEvidence,
     notePendingBinarySettleObservation,
     hasPendingBinarySettleWindow,
+    createObservationCursor,
   } = params;
   const deviceId = currentSnapshot?.id;
   const binaryCapabilityId = currentSnapshot?.controlCapabilityId;
@@ -245,18 +293,24 @@ function applyPendingBinarySettleToDeviceUpdate(params: {
     return { changes, binarySettleOutcome: 'none' };
   }
 
+  let cursor: DeviceObservationCursor | undefined;
+  const ensureCursor = (): DeviceObservationCursor => {
+    cursor ??= createObservationCursor?.(applicableEvidence.deviceId) ?? {};
+    return cursor;
+  };
   const outcome = notePendingBinarySettleObservation(
     applicableEvidence.deviceId,
     applicableEvidence.binaryCapabilityId,
     applicableEvidence.value,
     'device_update',
+    ensureCursor,
   );
 
   if (outcome === 'settled' || outcome === 'drift') {
     // Binary change handled by settle window (reconcile already emitted on drift).
     // Filter it out to prevent a duplicate reconcile from this path.
     const filteredChanges = changes.filter((change) => change.capabilityId !== applicableEvidence.binaryCapabilityId);
-    return { changes: filteredChanges, binarySettleOutcome: outcome };
+    return { changes: filteredChanges, binarySettleOutcome: outcome, cursor: ensureCursor() };
   }
 
   return { changes, binarySettleOutcome: 'none' };
