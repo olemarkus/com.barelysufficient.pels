@@ -8,7 +8,7 @@ import {
   OPERATING_MODE_SETTING,
 } from '../lib/utils/settingsKeys';
 import { getLatestPlanSnapshotForTests, MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from './mocks/homey';
-import { cleanupApps, createApp } from './utils/appTestUtils';
+import { cleanupApps, createApp, getLatestTargetSnapshotForTests } from './utils/appTestUtils';
 import { reasonText } from './utils/deviceReasonTestUtils';
 
 type EaseeChargingState =
@@ -433,7 +433,7 @@ async function rebuildPlan(
 async function refreshSnapshot(app: InternalApp): Promise<SnapshotEntry[]> {
   await app.refreshTargetDevicesSnapshot({ fast: false });
   await flushPromises();
-  return mockHomeyInstance.settings.get('target_devices_snapshot') as SnapshotEntry[];
+  return getLatestTargetSnapshotForTests() as SnapshotEntry[];
 }
 
 function getSnapshotEntry(snapshot: SnapshotEntry[], deviceId: string): SnapshotEntry | undefined {

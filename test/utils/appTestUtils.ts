@@ -3,6 +3,7 @@
 // Static import goes through Vitest's esbuild transform, which handles `export =`.
 import MyApp from '../../app.ts';
 import { mockHomeyInstance } from '../mocks/homey';
+import type { TargetDeviceSnapshot } from '../../lib/utils/types';
 
 let appInstances: any[] = [];
 
@@ -26,6 +27,11 @@ export function createApp(options: CreateAppOptions = {}): any {
   }
   appInstances.push(app);
   return app;
+}
+
+export function getLatestTargetSnapshotForTests(): TargetDeviceSnapshot[] {
+  const app = mockHomeyInstance.app as { latestTargetSnapshot?: unknown } | null;
+  return Array.isArray(app?.latestTargetSnapshot) ? app.latestTargetSnapshot as TargetDeviceSnapshot[] : [];
 }
 
 /**

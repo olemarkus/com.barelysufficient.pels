@@ -36,6 +36,7 @@ describe('appSnapshotHelpers', () => {
       disableUnsupportedDevices: vi.fn(),
       getFlowReportedDeviceIds: vi.fn(() => []),
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
+      emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
     });
 
@@ -83,6 +84,7 @@ describe('appSnapshotHelpers', () => {
       disableUnsupportedDevices: vi.fn(),
       getFlowReportedDeviceIds: vi.fn(() => []),
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
+      emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
     });
 
@@ -123,6 +125,7 @@ describe('appSnapshotHelpers', () => {
       disableUnsupportedDevices: vi.fn(),
       getFlowReportedDeviceIds: vi.fn(() => ['dev-1']),
       emitFlowBackedRefreshRequests,
+      emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
     });
     helperRef.current = helper;
@@ -167,6 +170,7 @@ describe('appSnapshotHelpers', () => {
       disableUnsupportedDevices: vi.fn(),
       getFlowReportedDeviceIds: vi.fn(() => []),
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
+      emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
     });
     (helper as any).staleObservationRefreshStopped = false;
