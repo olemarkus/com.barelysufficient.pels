@@ -32,6 +32,7 @@ import { parseFlowPowerInput, registerFlowBackedDeviceCards } from './flowBacked
 
 const STEPPED_LOAD_POWER_CEILING_MARGIN_RATIO = 0.05;
 const STEPPED_LOAD_POWER_CEILING_MARGIN_MAX_W = 150;
+const EV_SOC_CARD_ID = 'report_evcharger_battery_level';
 
 type DeviceArg = RawFlowDeviceArg;
 
@@ -826,8 +827,7 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
 }
 
 function registerEvSocCard(deps: FlowCardDeps): void {
-  const cardId = 'report_evcharger_battery_level';
-  const card = deps.homey.flow.getActionCard(cardId);
+  const card = deps.homey.flow.getActionCard(EV_SOC_CARD_ID);
   card.registerRunListener(async (args: unknown) => handleEvSocCardRun(deps, args));
   card.registerArgumentAutocompleteListener('device', async (query: string) => (
     getEvChargerDeviceOptions(deps, query)
@@ -851,6 +851,9 @@ async function handleEvSocCardRun(deps: FlowCardDeps, args: unknown): Promise<bo
 
   if (reportOutcome.refreshSnapshot) {
     await deps.refreshSnapshot({ emitFlowBackedRefresh: false });
+  }
+  if (reportOutcome.rebuildPlan) {
+    requestPlanRebuildFromFlow(deps, EV_SOC_CARD_ID);
   }
 
   const updatedCharger = await getBestEffortEvChargerSnapshot(deps, chargerDeviceId);

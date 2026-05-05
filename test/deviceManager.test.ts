@@ -3801,6 +3801,92 @@ describe('DeviceManager', () => {
             }
         });
 
+        it('emits observed state for device.update EV state of charge changes without plan reconcile changes', async () => {
+            vi.useFakeTimers();
+            try {
+                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                    getExperimentalEvSupportEnabled: () => true,
+                });
+                await evDeviceManager.init();
+                vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
+                mockApiGet.mockResolvedValue({
+                    ev1: {
+                        id: 'ev1',
+                        name: 'Easee',
+                        class: 'evcharger',
+                        capabilities: [
+                            'evcharger_charging',
+                            'evcharger_charging_state',
+                            'measure_power',
+                            'measure_battery',
+                        ],
+                        capabilitiesObj: {
+                            evcharger_charging: { id: 'evcharger_charging', setable: true },
+                            evcharger_charging_state: {
+                                value: 'plugged_in_charging',
+                                id: 'evcharger_charging_state',
+                            },
+                            measure_battery: {
+                                id: 'measure_battery',
+                                value: 51,
+                                lastUpdated: '2026-03-20T06:00:00.000Z',
+                            },
+                            measure_power: { value: 0, id: 'measure_power' },
+                        },
+                    },
+                });
+
+                await evDeviceManager.refreshSnapshot();
+                vi.setSystemTime(new Date('2026-03-20T06:05:00.000Z'));
+                const liveStateListener = vi.fn();
+                const reconcileListener = vi.fn();
+                evDeviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
+                evDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcileListener);
+
+                evDeviceManager.injectDeviceUpdateForTest({
+                    id: 'ev1',
+                    name: 'Easee',
+                    class: 'evcharger',
+                    capabilities: [
+                        'evcharger_charging',
+                        'evcharger_charging_state',
+                        'measure_power',
+                        'measure_battery',
+                    ],
+                    capabilitiesObj: {
+                        evcharger_charging: { id: 'evcharger_charging', setable: true },
+                        evcharger_charging_state: {
+                            value: 'plugged_in_charging',
+                            id: 'evcharger_charging_state',
+                        },
+                        measure_battery: {
+                            id: 'measure_battery',
+                            value: 52,
+                            lastUpdated: '2026-03-20T06:05:00.000Z',
+                        },
+                        measure_power: { value: 0, id: 'measure_power' },
+                    },
+                });
+
+                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                    percent: 52,
+                    status: 'fresh',
+                    capabilityId: 'measure_battery',
+                }));
+                expect(liveStateListener).toHaveBeenCalledOnce();
+                expect(liveStateListener).toHaveBeenCalledWith(expect.objectContaining({
+                    source: 'device_update',
+                    deviceId: 'ev1',
+                    observedCapabilityIds: ['measure_battery'],
+                }));
+                expect(reconcileListener).not.toHaveBeenCalled();
+
+                evDeviceManager.destroy();
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
         it('ignores realtime state of charge capability updates for non-EV devices', () => {
             deviceManager.setSnapshotForTests([{
                 id: 'sensor1',
