@@ -129,7 +129,7 @@ type DeviceObjectiveEvaluation = {
 
 ```ts
 type ObjectiveRateEstimate = {
-  kw: number;
+  nominalKw: number;
   deratedKw: number;
   kind:
     | 'direct_remaining_time'
@@ -503,7 +503,7 @@ It must still respect:
 Hard deadline should use hard-cap headroom:
 
 ```ts
-hardHeadroomKw = capacitySoftLimitKw - totalPowerKw;
+hardHeadroomKw = capacitySoftLimitKw - totalKw;
 ```
 
 not the effective `softLimitKw` when daily budget has lowered it.
@@ -657,7 +657,7 @@ Inputs:
 - device snapshots
 - objective state
 - current time
-- total power and freshness
+- totalKw and freshness
 - capacity soft limit
 - effective soft limit
 - hard-cap headroom
