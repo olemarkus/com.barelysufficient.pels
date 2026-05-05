@@ -38,11 +38,6 @@ const STEPPED_KEEP_INVARIANT_RESTORE_REASON_CODES = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.restoreNeed,
 ]);
 
-const SHED_WINDOW_HOLD_REASON_CODES = new Set<PlanReasonCode>([
-  PLAN_REASON_CODES.cooldownShedding,
-  PLAN_REASON_CODES.startupStabilization,
-]);
-
 const COOLDOWN_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.cooldownShedding,
   PLAN_REASON_CODES.cooldownRestore,
@@ -80,10 +75,6 @@ export const isRestoreAdmissionHoldReason = (reason: DeviceReason): boolean => (
 
 export const allowsSteppedLoadKeepInvariantRestore = (reason: DeviceReason): boolean => (
   STEPPED_KEEP_INVARIANT_RESTORE_REASON_CODES.has(reason.code)
-);
-
-export const isShedWindowHoldReason = (reason: DeviceReason): boolean => (
-  SHED_WINDOW_HOLD_REASON_CODES.has(reason.code)
 );
 
 export const isCooldownBlockedReason = (reason: DeviceReason): boolean => (
