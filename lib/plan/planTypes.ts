@@ -148,7 +148,6 @@ export type PlanChangeSet = {
   metaChanged: boolean;
 };
 
-export type PlanSnapshotWriteReason = 'action_changed' | 'detail_changed' | 'meta_only';
 export type PelsStatusWriteReason = 'initial' | 'action_changed' | 'throttle';
 
 export type StatusPlanChanges = Pick<
@@ -160,7 +159,6 @@ export type PlanRebuildOutcome = {
   buildMs: number;
   changeMs: number;
   snapshotMs: number;
-  snapshotWriteMs: number;
   statusMs: number;
   statusWriteMs: number;
   applyMs: number;

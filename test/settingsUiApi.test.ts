@@ -27,14 +27,11 @@ describe('settingsUiApi', () => {
     options: {
       cloudHomeyId?: string;
       latestPlanSnapshot?: Record<string, unknown> | null;
-      persistedPlanSerializer?: (plan: Record<string, unknown>) => Record<string, unknown> | null;
+      settings?: Record<string, unknown>;
     } = {},
   ) => {
     const store = new Map<string, unknown>([
       ['target_devices_snapshot', [{ id: 'dev-1', name: 'Heater' }]],
-      ['device_plan_snapshot', {
-        devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
-      }],
       ['combined_prices', { prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] }],
       ['power_tracker_state', { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } }],
       ['pels_status', { lastPowerUpdate: 123, priceLevel: 'cheap' }],
@@ -45,10 +42,14 @@ describe('settingsUiApi', () => {
       ['flow_prices_tomorrow', { dateKey: '2026-03-04', pricesByHour: { '0': 2 }, updatedAt: '2026-03-03T12:00:00.000Z' }],
       ['nettleie_data', [{ dateKey: '2026-03-03', energyFeeIncVat: 0.5 }]],
       ['price_area', 'NO1'],
+      ...Object.entries(options.settings ?? {}),
     ]);
 
     const log = vi.fn();
     const error = vi.fn();
+    const defaultPlanSnapshot = {
+      devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
+    };
     let latestDevices = [{ id: 'dev-1', name: 'Heater' }];
     let powerTracker: Record<string, unknown> = { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } };
     const refreshTargetDevicesSnapshot = vi.fn().mockImplementation(async () => {
@@ -157,21 +158,11 @@ describe('settingsUiApi', () => {
         powerTracker = value;
       },
     };
-    if (Object.prototype.hasOwnProperty.call(options, 'latestPlanSnapshot')) {
-      (app as typeof app & { getLatestPlanSnapshotForUi?: () => Record<string, unknown> | null }).getLatestPlanSnapshotForUi = () => (
-        options.latestPlanSnapshot ?? null
-      );
-    }
-    if (options.persistedPlanSerializer) {
-      (
-        app as typeof app & {
-          getPlanSnapshotForUiFromPersistedPlan?: (
-            plan: Record<string, unknown>
-          ) => Record<string, unknown> | null;
-        }
-      ).getPlanSnapshotForUiFromPersistedPlan = options.persistedPlanSerializer;
-    }
-
+    (app as typeof app & { getLatestPlanSnapshotForUi?: () => Record<string, unknown> | null }).getLatestPlanSnapshotForUi = () => (
+      Object.prototype.hasOwnProperty.call(options, 'latestPlanSnapshot')
+        ? options.latestPlanSnapshot ?? null
+        : defaultPlanSnapshot
+    );
     return {
       settings: {
         get: (key: string) => store.get(key),
@@ -508,65 +499,7 @@ describe('settingsUiApi', () => {
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({ plan: enrichedPlan });
   });
 
-  it('serializes persisted plan fallbacks for redesign consumers', () => {
-    const enrichedPlan = {
-      generatedAtMs: 123456789,
-      meta: {
-        totalKw: 6.2,
-        softLimitKw: 5,
-        headroomKw: -1.2,
-        hardCapLimitKw: 7,
-        hardCapHeadroomKw: 0.8,
-      },
-      devices: [{
-        id: 'dev-1',
-        name: 'Heater',
-        priority: 1,
-        plannedState: 'keep',
-        stateKind: 'normal',
-        stateTone: 'ok',
-        starvation: {
-          isStarved: true,
-          accumulatedMs: 1_800_000,
-          cause: 'external',
-          startedAtMs: 1234,
-        },
-        reason: buildComparablePlanReason('keep'),
-      }],
-    };
-    const persistedPlanSerializer = vi.fn(() => enrichedPlan);
-    const homey = createHomey({
-      latestPlanSnapshot: null,
-      persistedPlanSerializer,
-    });
-
-    expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({ plan: enrichedPlan });
-    expect(persistedPlanSerializer).toHaveBeenCalledWith({
-      devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
-    });
-  });
-
-  it('falls back to the persisted plan when persisted plan serialization fails', () => {
-    const persistedPlanSerializer = vi.fn(() => {
-      throw new Error('missing plan meta');
-    });
-    const homey = createHomey({
-      latestPlanSnapshot: null,
-      persistedPlanSerializer,
-    });
-
-    expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
-      plan: {
-        devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
-      },
-    });
-    expect(homey.error).toHaveBeenCalledWith(
-      'Failed to serialize persisted settings UI plan snapshot',
-      expect.any(Error),
-    );
-  });
-
-  it('falls back to the persisted plan snapshot when the in-memory app snapshot is invalid', async () => {
+  it('drops invalid in-memory app snapshots instead of falling back to settings', async () => {
     const homey = createHomey({
       latestPlanSnapshot: {
         generatedAtMs: 123456789,
@@ -575,33 +508,29 @@ describe('settingsUiApi', () => {
     });
 
     await expect(buildSettingsUiBootstrap({ homey: homey as never })).resolves.toMatchObject({
-      plan: {
-        devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
-      },
+      plan: null,
     });
-    expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
-      plan: {
-        devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
-      },
-    });
+    expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({ plan: null });
     expect(homey.error).toHaveBeenCalledWith(
       'Ignoring invalid settings UI app plan snapshot: finalized devices must include structured reason',
     );
   });
 
-  it('drops invalid persisted plan snapshots instead of normalizing missing reasons', async () => {
-    const homey = createHomey();
-    const settingsGet = homey.settings.get;
-    homey.settings.get = ((key: string) => {
-      if (key === 'device_plan_snapshot') return { devices: [{ id: 'dev-1', name: 'Heater', priority: 1 }] };
-      return settingsGet(key);
-    }) as typeof homey.settings.get;
+  it('ignores stale legacy persisted plan snapshots when no in-memory plan is available', async () => {
+    const stalePersistedPlanKey = ['device', 'plan', 'snapshot'].join('_');
+    const homey = createHomey({
+      latestPlanSnapshot: null,
+      settings: {
+        [stalePersistedPlanKey]: {
+          devices: [{ id: 'legacy-dev', name: 'Legacy Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
+        },
+      },
+    });
 
+    await expect(buildSettingsUiBootstrap({ homey: homey as never })).resolves.toMatchObject({
+      plan: null,
+    });
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({ plan: null });
-    await expect(buildSettingsUiBootstrap({ homey: homey as never })).resolves.toMatchObject({ plan: null });
-    expect(homey.error).toHaveBeenCalledWith(
-      'Ignoring invalid persisted settings UI plan snapshot: finalized devices must include structured reason',
-    );
   });
 
   it('throws when refresh or reset functionality is unavailable', async () => {

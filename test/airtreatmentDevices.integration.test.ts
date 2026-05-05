@@ -1,4 +1,5 @@
 import {
+  getLatestPlanSnapshotForTests,
   mockHomeyInstance,
   setMockDrivers,
 } from './mocks/homey';
@@ -268,7 +269,7 @@ describe('Airtreatment device integration', () => {
       await (app as any).recordPowerSample(samplePowerW);
       vi.advanceTimersByTime(100);
       await flushPromises();
-      return mockHomeyInstance.settings.get('device_plan_snapshot') as {
+      return getLatestPlanSnapshotForTests() as {
         devices: Array<{ id: string; reason?: string; plannedState: string }>;
       };
     };

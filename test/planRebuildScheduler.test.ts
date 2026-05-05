@@ -18,10 +18,10 @@ const createHarness = () => {
       timers.delete((handle as TimerHandle).id);
     },
     resolveDueAtMs: (intent, state) => {
-      if (intent.kind === 'flow') return state.nowMs;
+      if (intent.kind === 'flow') return state.pendingDueMs ?? (state.nowMs + 30_000);
       if (intent.kind === 'signal') return state.nowMs;
       if (intent.kind === 'hardCap') return state.nowMs;
-      return state.pendingDueMs ?? (state.nowMs + 30_000);
+      return Number.POSITIVE_INFINITY;
     },
     executeIntent: async (intent) => {
       executed.push(intent);
@@ -72,19 +72,19 @@ const createDeferred = () => {
 };
 
 describe('PlanRebuildScheduler', () => {
-  it('coalesces flow, signal, and snapshot requests down to the highest-priority reason', async () => {
+  it('coalesces flow and signal requests down to the highest-priority reason', async () => {
     const harness = createHarness();
 
     harness.scheduler.request({ kind: 'flow', reason: 'flow_card:first' });
     harness.scheduler.request({ kind: 'signal', reason: 'headroom_tight' });
-    harness.scheduler.request({ kind: 'snapshot', reason: 'meta_only' });
+    harness.scheduler.request({ kind: 'flow', reason: 'flow_card:ignored' });
 
     expect(harness.executed).toEqual([{ kind: 'signal', reason: 'headroom_tight' }]);
     expect(harness.replacedEvents).toEqual([{
       previous: { kind: 'flow', reason: 'flow_card:first' },
       next: { kind: 'signal', reason: 'headroom_tight' },
     }]);
-    expect(harness.scheduler.now().pendingIntent).toEqual({ kind: 'snapshot', reason: 'meta_only' });
+    expect(harness.scheduler.now().pendingIntent).toEqual({ kind: 'flow', reason: 'flow_card:ignored' });
     expect(harness.droppedEvents).toEqual([]);
     expect(harness.timers.size).toBe(0);
 
@@ -92,17 +92,18 @@ describe('PlanRebuildScheduler', () => {
     expect(harness.executed).toEqual([{ kind: 'signal', reason: 'headroom_tight' }]);
   });
 
-  it('keeps exactly one timer armed while higher-priority intents replace lower ones', () => {
+  it('clears a lower-priority timer when an immediate higher-priority intent replaces it', () => {
     const harness = createHarness();
-
-    harness.scheduler.request({ kind: 'snapshot', reason: 'meta_only' });
-    expect(harness.timers.size).toBe(1);
 
     harness.scheduler.request({ kind: 'flow', reason: 'flow_card:first' });
     expect(harness.timers.size).toBe(1);
 
-    harness.scheduler.request({ kind: 'snapshot', reason: 'meta_only_ignored' });
-    expect(harness.timers.size).toBe(1);
+    harness.scheduler.request({ kind: 'signal', reason: 'headroom_tight' });
+    expect(harness.timers.size).toBe(0);
+
+    harness.scheduler.request({ kind: 'flow', reason: 'flow_card:ignored' });
+    expect(harness.timers.size).toBe(0);
+    expect(harness.scheduler.now().pendingIntent).toEqual({ kind: 'flow', reason: 'flow_card:ignored' });
   });
 
   it('coalesces within a kind and keeps the latest reason', async () => {
@@ -116,7 +117,7 @@ describe('PlanRebuildScheduler', () => {
       next: { kind: 'flow', reason: 'flow_card:latest' },
     }]);
 
-    await harness.advance(0);
+    await harness.advance(30_000);
 
     expect(harness.executed).toEqual([{ kind: 'flow', reason: 'flow_card:latest' }]);
   });
@@ -124,14 +125,14 @@ describe('PlanRebuildScheduler', () => {
   it('cancels the pending timer and reports the cancelled intent', () => {
     const harness = createHarness();
 
-    harness.scheduler.request({ kind: 'snapshot', reason: 'meta_only' });
+    harness.scheduler.request({ kind: 'flow', reason: 'flow_card:first' });
     expect(harness.timers.size).toBe(1);
 
     harness.scheduler.cancelAll('app_uninit');
 
     expect(harness.timers.size).toBe(0);
     expect(harness.cancelledEvents).toEqual([{
-      intent: { kind: 'snapshot', reason: 'meta_only' },
+      intent: { kind: 'flow', reason: 'flow_card:first' },
       reason: 'app_uninit',
     }]);
   });
@@ -140,16 +141,16 @@ describe('PlanRebuildScheduler', () => {
     const harness = createHarness();
     const dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => 123456789);
 
-    harness.scheduler.request({ kind: 'snapshot', reason: 'meta_only' });
+    harness.scheduler.request({ kind: 'flow', reason: 'flow_card:first' });
     expect(harness.scheduler.now().pendingDueMs).toBe(harness.getNowMs() + 30_000);
 
     await harness.advance(30_000);
 
-    expect(harness.executed).toEqual([{ kind: 'snapshot', reason: 'meta_only' }]);
+    expect(harness.executed).toEqual([{ kind: 'flow', reason: 'flow_card:first' }]);
     dateNowSpy.mockRestore();
   });
 
-  it('queues a deferred snapshot intent behind an active rebuild', async () => {
+  it('queues a deferred flow intent behind an active rebuild', async () => {
     const deferred = createDeferred();
     let nowMs = 0;
     let nextId = 1;
@@ -166,7 +167,7 @@ describe('PlanRebuildScheduler', () => {
         timers.delete((handle as TimerHandle).id);
       },
       resolveDueAtMs: (intent, state) => {
-        if (intent.kind === 'snapshot') return state.pendingDueMs ?? (state.nowMs + 30_000);
+        if (intent.kind === 'flow') return state.pendingDueMs ?? (state.nowMs + 30_000);
         return state.nowMs;
       },
       executeIntent: async (intent) => {
@@ -181,9 +182,9 @@ describe('PlanRebuildScheduler', () => {
     scheduler.request({ kind: 'hardCap', reason: 'limit_exceeded' });
     expect(executed).toEqual([{ kind: 'hardCap', reason: 'limit_exceeded' }]);
 
-    scheduler.request({ kind: 'snapshot', reason: 'meta_only' });
+    scheduler.request({ kind: 'flow', reason: 'flow_card:first' });
 
-    expect(scheduler.now().pendingIntent).toEqual({ kind: 'snapshot', reason: 'meta_only' });
+    expect(scheduler.now().pendingIntent).toEqual({ kind: 'flow', reason: 'flow_card:first' });
     expect(timers.size).toBe(0);
 
     deferred.resolve();
@@ -204,7 +205,7 @@ describe('PlanRebuildScheduler', () => {
 
     expect(executed).toEqual([
       { kind: 'hardCap', reason: 'limit_exceeded' },
-      { kind: 'snapshot', reason: 'meta_only' },
+      { kind: 'flow', reason: 'flow_card:first' },
     ]);
   });
 
@@ -263,7 +264,7 @@ describe('PlanRebuildScheduler', () => {
   });
 
   it('clears a pending intent when its recomputed due time becomes non-finite', async () => {
-    let allowSnapshot = true;
+    let allowFlow = true;
     const harness = createHarness();
     const scheduler = new PlanRebuildScheduler({
       getNowMs: harness.getNowMs,
@@ -275,16 +276,16 @@ describe('PlanRebuildScheduler', () => {
       clearTimeoutFn: (handle) => {
         harness.timers.delete((handle as TimerHandle).id);
       },
-      resolveDueAtMs: (_intent, state) => (allowSnapshot ? state.nowMs + 100 : Number.POSITIVE_INFINITY),
+      resolveDueAtMs: (_intent, state) => (allowFlow ? state.nowMs + 100 : Number.POSITIVE_INFINITY),
       executeIntent: async (intent) => {
         harness.executed.push(intent);
       },
     });
 
-    scheduler.request({ kind: 'snapshot', reason: 'meta_only' });
+    scheduler.request({ kind: 'flow', reason: 'flow_card:first' });
     expect(harness.timers.size).toBe(1);
 
-    allowSnapshot = false;
+    allowFlow = false;
     await harness.advance(100);
 
     expect(harness.executed).toEqual([]);

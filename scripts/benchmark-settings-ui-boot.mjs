@@ -132,7 +132,7 @@ const buildFixture = () => {
       dev_waterheater: true,
     },
     mode_aliases: { home: 'Home', away: 'Away' },
-    device_plan_snapshot: {
+    plan_snapshot: {
       meta: {
         totalKw: 5.3,
         softLimitKw: 6,
@@ -299,7 +299,7 @@ const buildFixture = () => {
       dailyBudget,
       featureAccess: { canToggleOverviewRedesign: false },
       devices: settings.target_devices_snapshot,
-      plan: settings.device_plan_snapshot,
+      plan: settings.plan_snapshot,
       power: {
         tracker: settings.power_tracker_state,
         status: {
@@ -324,7 +324,7 @@ const buildFixture = () => {
       devices: settings.target_devices_snapshot,
     },
     'GET /ui_plan': {
-      plan: settings.device_plan_snapshot,
+      plan: settings.plan_snapshot,
     },
     'GET /ui_power': {
       tracker: settings.power_tracker_state,

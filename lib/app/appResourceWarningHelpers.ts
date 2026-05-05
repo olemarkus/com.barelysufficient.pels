@@ -85,7 +85,6 @@ const buildWarningPerfPayload = (nowMs: number) => {
       planRebuildBuild: summarizeDuration(snapshot.durations, 'plan_rebuild_build_ms'),
       planRebuildChange: summarizeDuration(snapshot.durations, 'plan_rebuild_change_ms'),
       planRebuildSnapshot: summarizeDuration(snapshot.durations, 'plan_rebuild_snapshot_ms'),
-      planRebuildSnapshotWrite: summarizeDuration(snapshot.durations, 'plan_rebuild_snapshot_write_ms'),
       planRebuildStatus: summarizeDuration(snapshot.durations, 'plan_rebuild_status_ms'),
       planRebuildStatusWrite: summarizeDuration(snapshot.durations, 'plan_rebuild_status_write_ms'),
       planRebuildApply: summarizeDuration(snapshot.durations, 'plan_rebuild_apply_ms'),

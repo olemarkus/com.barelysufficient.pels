@@ -154,8 +154,8 @@ file.
       remove a recurring source of state/reason coupling bugs.
       Files: `lib/plan/planRestore.ts`, `lib/plan/planReasons.ts`, plan/executor/rendering
       boundaries.
-- [ ] Extract rebuild-metrics/tracing helpers out of `planService.ts` now that snapshot
-      persistence lives in `planSnapshotWriter.ts`. Fold or delete the remaining tiny
+- [ ] Extract rebuild-metrics/tracing helpers out of `planService.ts` now that plan snapshots
+      are in-memory/realtime only. Fold or delete the remaining tiny
       `planServiceInternals.ts` helper surface if it no longer pays for itself.
       Why P1: `planService.ts` no longer owns the throttled snapshot timer/write path, but it
       still mixes rebuild orchestration with perf aggregation, trace recording, and completion

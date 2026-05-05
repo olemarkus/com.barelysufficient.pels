@@ -1,5 +1,5 @@
 
-import { mockHomeyInstance, setMockDrivers, MockDriver, MockDevice } from './mocks/homey';
+import { getLatestPlanSnapshotForTests, mockHomeyInstance, setMockDrivers, MockDriver, MockDevice } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
 import { reasonText } from './utils/deviceReasonTestUtils';
 
@@ -95,7 +95,7 @@ describe('Mixed Type Restoration Throttling', () => {
         (app as any).computeDynamicSoftLimit = () => 0.5; // Very low limit
         await (app as any).recordPowerSample(5000);
 
-        let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+        let plan = getLatestPlanSnapshotForTests();
         const d1 = plan.devices.find((d: any) => d.id === 'dev-1');
         const d2 = plan.devices.find((d: any) => d.id === 'dev-2');
 
@@ -122,7 +122,7 @@ describe('Mixed Type Restoration Throttling', () => {
 
         // Record sample to trigger restore plan
         await (app as any).recordPowerSample(5000);
-        plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+        plan = getLatestPlanSnapshotForTests();
 
         const d1Codes = plan.devices.find((d: any) => d.id === 'dev-1');
         const d2Codes = plan.devices.find((d: any) => d.id === 'dev-2');
@@ -149,7 +149,7 @@ describe('Mixed Type Restoration Throttling', () => {
         // Should NOT restore the other one due to Cooldown
         currentTime += 5000; // +5s
         await (app as any).recordPowerSample(5000);
-        plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+        plan = getLatestPlanSnapshotForTests();
 
         const d1Cycles2 = plan.devices.find((d: any) => d.id === 'dev-1');
         const d2Cycles2 = plan.devices.find((d: any) => d.id === 'dev-2');
@@ -170,7 +170,7 @@ describe('Mixed Type Restoration Throttling', () => {
         // 4. After Cooldown (60s)
         currentTime += 35000; // +35s (Total 40s from first restore)
         await (app as any).recordPowerSample(5000);
-        plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+        plan = getLatestPlanSnapshotForTests();
 
         // Still in restore cooldown globally, but the still-shed peer keeps its own capacity reason.
         const d1Cycles3 = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -187,7 +187,7 @@ describe('Mixed Type Restoration Throttling', () => {
         // 5. After restore cooldown window
         currentTime += 90000; // +90s (Total 130s from first restore)
         await (app as any).recordPowerSample(5000);
-        plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+        plan = getLatestPlanSnapshotForTests();
 
         const d1Cycles4 = plan.devices.find((d: any) => d.id === 'dev-1');
         const d2Cycles4 = plan.devices.find((d: any) => d.id === 'dev-2');
