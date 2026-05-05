@@ -13,6 +13,11 @@ type OverviewProps = {
   nowMs: number;
 };
 
+const isTemperatureCard = (dev: PlanDeviceSnapshot): boolean => (
+  dev.controlModel === 'temperature_target'
+  || typeof dev.plannedTarget === 'number'
+);
+
 const PlanCard = ({
   dev,
   plan,
@@ -27,7 +32,7 @@ const PlanCard = ({
   if (dev.controlModel === 'stepped_load') {
     return <PlanSteppedCard dev={dev} plan={plan} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
   }
-  if (dev.controlModel === 'temperature_target') {
+  if (isTemperatureCard(dev)) {
     return <PlanTemperatureCard dev={dev} plan={plan} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
   }
   return <PlanGenericCard dev={dev} plan={plan} renderedAtMs={renderedAtMs} nowMs={nowMs} />;

@@ -47,7 +47,9 @@ const StepRail = ({ dev, profile }: { dev: PlanDeviceSnapshot; profile: SteppedL
     ? profile.steps
     : [{ id: 'off', planningPowerW: 0 }, ...profile.steps];
   const n = steps.length;
-  const activeIdx = steps.findIndex((s) => s.id === activeStepId);
+  const normActive = activeStepId?.toLowerCase() ?? null;
+  const normTarget = targetStepId?.toLowerCase() ?? null;
+  const activeIdx = normActive === null ? -1 : steps.findIndex((s) => s.id.toLowerCase() === normActive);
   const filledPct = n <= 1 || activeIdx < 0 ? 0 : (activeIdx / (n - 1)) * 100;
 
   return (
@@ -66,8 +68,9 @@ const StepRail = ({ dev, profile }: { dev: PlanDeviceSnapshot; profile: SteppedL
         <div class="plan-card__step-filled" style={{ width: `${filledPct}%` }} />
         {steps.map((step, i) => {
           const pct = n <= 1 ? 0 : (i / (n - 1)) * 100;
-          const isActive = step.id === activeStepId;
-          const isTarget = step.id === targetStepId && !isActive;
+          const normId = step.id.toLowerCase();
+          const isActive = normActive !== null && normId === normActive;
+          const isTarget = normTarget !== null && normId === normTarget && !isActive;
           const isFilled = activeIdx >= 0 && i < activeIdx;
           return (
             <div

@@ -103,6 +103,13 @@ describe('resolveSteppedChip', () => {
     })).toEqual({ label: 'Settling', tone: 'warn' });
   });
 
+  it('returns Limited chip for shedInvariant reason', () => {
+    expect(resolveSteppedChip({
+      ...baseDevice,
+      reason: { code: 'shed_invariant', fromStep: 'low', toStep: 'medium', shedDeviceCount: 2, maxStep: 'low' },
+    })).toEqual({ label: 'Limited', tone: 'warn' });
+  });
+
   it('returns Limited chip for insufficientHeadroom reason', () => {
     expect(resolveSteppedChip({
       ...baseDevice,
@@ -320,6 +327,32 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       )).toBe('Off to stay within budget');
+    });
+
+    it('returns shed invariant status with count and max step', () => {
+      expect(resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'on',
+          reportedStepId: 'low',
+          reason: { code: 'shed_invariant', fromStep: 'low', toStep: 'medium', shedDeviceCount: 1, maxStep: 'low' },
+        },
+        profile,
+        NOW_MS,
+      )).toBe('Capped at Low — 1 device still recovering');
+    });
+
+    it('returns shed invariant status with plural device count', () => {
+      expect(resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'on',
+          reportedStepId: 'low',
+          reason: { code: 'shed_invariant', fromStep: 'low', toStep: 'medium', shedDeviceCount: 3, maxStep: 'low' },
+        },
+        profile,
+        NOW_MS,
+      )).toBe('Capped at Low — 3 devices still recovering');
     });
 
     it('returns null when desired step is lower (being shed down, chip covers it)', () => {
