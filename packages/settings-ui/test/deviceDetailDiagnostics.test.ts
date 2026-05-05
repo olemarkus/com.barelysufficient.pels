@@ -185,11 +185,14 @@ describe('device detail diagnostics', () => {
       expect.arrayContaining(['GET', '/ui_device_diagnostics']),
     ]));
     expect(document.getElementById('device-detail-diagnostics-status')?.textContent).toContain('Current penalty level: L2');
-    expect(document.getElementById('device-detail-diagnostics-status')?.textContent).toContain('Starvation: Starved 23m');
+    expect(document.getElementById('device-detail-diagnostics-status')?.textContent)
+      .toContain('Status: Starved for 2.0h in the last day - Waiting for available power');
     expect(document.getElementById('device-detail-diagnostics-cards')?.children).toHaveLength(4);
+    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Starved for2.0h');
+    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Counted suppression23m');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Failed activations');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Penalty history');
-    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Starvation');
+    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Starvation details');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('18.2C / 22.0C');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('2026-04-20 11:00:00');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('2026-04-20 11:15:00');

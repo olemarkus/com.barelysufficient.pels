@@ -83,12 +83,34 @@ const formatStarvationTimestamp = (timestamp: number | null): string => {
   ].join(' ');
 };
 
+const STARVATION_REASON_LABELS: Record<string, string> = {
+  capacity: 'Waiting for available power',
+  daily_budget: 'Daily budget is limiting service',
+  hourly_budget: 'Hourly budget is limiting service',
+  shortfall: 'Hard cap may be exceeded',
+  swap_pending: 'Waiting for higher-priority device',
+  swapped_out: 'Waiting for higher-priority device',
+  insufficient_headroom: 'Waiting for available power',
+  shedding_active: 'PELS is limiting devices',
+  cooldown: 'Waiting before retrying',
+  headroom_cooldown: 'Waiting for power reading to stabilise',
+  restore_throttled: 'Delaying restart after recent failed attempt',
+  activation_backoff: 'Delaying restart after recent failed attempt',
+  inactive: 'No active service block',
+  keep: 'No active service block',
+  restore: 'Resume pending',
+  suppression_none: 'No active service block',
+  invalid_observation: 'Observation invalid',
+  sample_gap: 'Fresh observation missing',
+  unknown_suppression_reason: 'Service reason unknown',
+};
+
 const formatStarvationReason = (value: string | null): string => (
-  value ? value.split('_').join(' ') : 'None'
+  value ? STARVATION_REASON_LABELS[value] ?? value.split('_').join(' ') : 'None'
 );
 
 const formatStarvationContext = (starvation: DeviceDiagnosticsStarvationSummary): string | null => {
-  if (starvation.starvationPauseReason) return `paused: ${formatStarvationReason(starvation.starvationPauseReason)}`;
+  if (starvation.starvationPauseReason) return formatStarvationReason(starvation.starvationPauseReason);
   if (starvation.starvationCause) return formatStarvationReason(starvation.starvationCause);
   return null;
 };
@@ -96,6 +118,17 @@ const formatStarvationContext = (starvation: DeviceDiagnosticsStarvationSummary)
 const formatStarvationTemperatureTarget = (starvation: DeviceDiagnosticsStarvationSummary): string => {
   if (starvation.currentTemperatureC === null || starvation.intendedNormalTargetC === null) return 'Unavailable';
   return `${starvation.currentTemperatureC.toFixed(1)}C / ${starvation.intendedNormalTargetC.toFixed(1)}C`;
+};
+
+const formatCurrentStarvationStatus = (params: {
+  isStarved: boolean;
+  recentStarvedMs: number;
+}): string => {
+  const recentDuration = formatStarvationDuration(params.recentStarvedMs);
+  if (params.isStarved) {
+    return params.recentStarvedMs > 0 ? `Starved for ${recentDuration} in the last day` : 'Starved';
+  }
+  return params.recentStarvedMs > 0 ? `Not currently starved (${recentDuration} in the last day)` : 'Not starved';
 };
 
 const createDiagnosticsMetric = (label: string, value: string) => {
@@ -123,14 +156,16 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
     return;
   }
   const starvation = summary.starvation ?? createEmptyStarvationSummary();
-  const starvationStatus = starvation.isStarved
-    ? `Starved ${formatStarvationDuration(starvation.starvedAccumulatedMs)}`
-    : 'Not starved';
+  const recentStarvedMs = summary.windows['1d']?.unmetDemandMs ?? 0;
+  const starvationStatus = formatCurrentStarvationStatus({
+    isStarved: starvation.isStarved,
+    recentStarvedMs,
+  });
   const starvationContext = formatStarvationContext(starvation);
   if (deviceDetailDiagnosticsStatus) {
     deviceDetailDiagnosticsStatus.textContent = [
       `Current penalty level: L${summary.currentPenaltyLevel}.`,
-      `Starvation: ${starvationStatus}${starvationContext ? ` (${starvationContext})` : ''}.`,
+      `Status: ${starvationStatus}${starvationContext ? ` - ${starvationContext}` : ''}.`,
     ].join(' ');
   }
   if (!deviceDetailDiagnosticsCards) return;
@@ -138,13 +173,6 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
   deviceDetailDiagnosticsCards.innerHTML = '';
   (Object.keys(DIAGNOSTICS_WINDOW_LABELS) as DeviceDiagnosticsWindowKey[]).forEach((windowKey) => {
     const windowSummary = summary.windows[windowKey];
-    const blockedMs = windowSummary.blockedByHeadroomMs + windowSummary.blockedByCooldownBackoffMs;
-    const blockedPercent = windowSummary.unmetDemandMs > 0
-      ? Math.round((blockedMs / windowSummary.unmetDemandMs) * 100)
-      : null;
-    const blockedLabel = windowSummary.unmetDemandMs > 0
-      ? `${formatHours(blockedMs)} (${blockedPercent}% of unmet demand)`
-      : 'No unmet demand';
     const restoreToSetbackLabel = [
       formatCycleDuration(windowSummary.avgRestoreToSetbackMs),
       formatCycleDuration(windowSummary.minRestoreToSetbackMs),
@@ -159,12 +187,13 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
     const list = document.createElement('dl');
     list.className = 'detail-diagnostics-list';
     list.append(
-      createDiagnosticsMetric('Blocked time', blockedLabel),
-      createDiagnosticsMetric('Headroom block', formatHours(windowSummary.blockedByHeadroomMs)),
-      createDiagnosticsMetric('Cooldown/backoff', formatHours(windowSummary.blockedByCooldownBackoffMs)),
+      createDiagnosticsMetric('Starved for', formatHours(windowSummary.unmetDemandMs)),
+      createDiagnosticsMetric('Time away from target', formatHours(windowSummary.targetDeficitMs)),
+      createDiagnosticsMetric('Available power wait', formatHours(windowSummary.blockedByHeadroomMs)),
+      createDiagnosticsMetric('Retry wait', formatHours(windowSummary.blockedByCooldownBackoffMs)),
       createDiagnosticsMetric('Failed activations', `${windowSummary.failedActivationCount}`),
-      createDiagnosticsMetric('Avg shed -> restore', formatCycleDuration(windowSummary.avgShedToRestoreMs)),
-      createDiagnosticsMetric('Avg / shortest restore -> setback', restoreToSetbackLabel),
+      createDiagnosticsMetric('Avg limit -> resume', formatCycleDuration(windowSummary.avgShedToRestoreMs)),
+      createDiagnosticsMetric('Avg / shortest resume -> limited', restoreToSetbackLabel),
       createDiagnosticsMetric(
         'Penalty history',
         `Max L${windowSummary.maxPenaltyLevelSeen} · bumps ${windowSummary.penaltyBumpCount}`,
@@ -178,16 +207,16 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
   starvationCard.className = 'detail-diagnostics-card';
 
   const starvationTitle = document.createElement('h4');
-  starvationTitle.textContent = 'Starvation';
+  starvationTitle.textContent = 'Starvation details';
 
   const starvationList = document.createElement('dl');
   starvationList.className = 'detail-diagnostics-list';
   starvationList.append(
     createDiagnosticsMetric('State', starvationStatus),
-    createDiagnosticsMetric('Accumulated', formatStarvationDuration(starvation.starvedAccumulatedMs)),
+    createDiagnosticsMetric('Counted suppression', formatStarvationDuration(starvation.starvedAccumulatedMs)),
     createDiagnosticsMetric('Temperature / target', formatStarvationTemperatureTarget(starvation)),
     createDiagnosticsMetric(
-      'Cause / pause',
+      'Current reason',
       starvation.starvationCause
         ? formatStarvationReason(starvation.starvationCause)
         : formatStarvationReason(starvation.starvationPauseReason),
