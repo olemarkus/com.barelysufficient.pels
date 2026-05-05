@@ -3,12 +3,13 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@material/web": "^2.3.0"
+    "@material/web": "^2.3.0",
+    "preact": "^10.29.1"
   },
   "scripts": {
     "clean": "rm -rf dist",
     "build": "npm run clean && npm run build:script && npm run build:tokens && npm run copy:public",
-    "build:script": "esbuild src/script.ts --bundle --outfile=dist/script.js --format=iife --target=es2020 --minify",
+    "build:script": "esbuild src/script.ts --bundle --outfile=dist/script.js --format=iife --target=es2020 --minify --jsx=automatic --jsx-import-source=preact",
     "build:tokens": "style-dictionary build --config style-dictionary.config.mjs",
     "copy:public": "node scripts/copy-public.mjs",
     "lint": "eslint src test tests ../contracts/src ../shared-domain/src --max-warnings=0",

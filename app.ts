@@ -68,7 +68,7 @@ import {
   disableUnsupportedDevices as disableUnsupportedDevicesHelper,
 } from './lib/app/appDeviceSupport';
 import { runStartupStep, startAppServices } from './lib/app/appLifecycleHelpers';
-import { addPerfDuration, incPerfCounter } from './lib/utils/perfCounters';
+import { addPerfDuration, incPerfCounter, incPerfCounters } from './lib/utils/perfCounters';
 import { startPerfLogger } from './lib/app/perfLogging';
 import { VOLATILE_WRITE_THROTTLE_MS } from './lib/utils/timingConstants';
 import { getHourBucketKey } from './lib/utils/dateUtils';
@@ -107,7 +107,11 @@ import {
   type FlowReportedCapabilitiesByDevice,
   type FlowReportedCapabilitiesForDevice,
 } from './lib/core/flowReportedCapabilities';
-import { EV_SOC_CAPABILITY_ID, updateStateOfChargeObservationFreshness } from './lib/core/deviceStateOfCharge';
+import {
+  EV_SOC_CAPABILITY_ID,
+  isStateOfChargeCapabilityId,
+  updateStateOfChargeObservationFreshness,
+} from './lib/core/deviceStateOfCharge';
 import type { FlowBackedCapabilityReportOutcome } from './lib/app/appContext';
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 // Let non-urgent power deltas settle before rebuilding the full plan again.
@@ -161,6 +165,7 @@ function resolveFlowBackedCapabilityReportOutcome(update: {
   valueChanged: boolean;
   freshnessAdvanced: boolean;
   capabilityId: FlowReportedCapabilityId;
+  evSocRebuildPlan?: boolean;
 }): FlowBackedCapabilityReportOutcome {
   if (update.stateChanged) {
     return {
@@ -168,7 +173,9 @@ function resolveFlowBackedCapabilityReportOutcome(update: {
       valueChanged: update.valueChanged,
       freshnessAdvanced: update.freshnessAdvanced,
       refreshSnapshot: true,
-      rebuildPlan: update.capabilityId !== EV_SOC_CAPABILITY_ID,
+      rebuildPlan: update.capabilityId === EV_SOC_CAPABILITY_ID
+        ? update.evSocRebuildPlan === true
+        : true,
     };
   }
   if (update.freshnessAdvanced) {
@@ -177,7 +184,7 @@ function resolveFlowBackedCapabilityReportOutcome(update: {
       valueChanged: false,
       freshnessAdvanced: true,
       refreshSnapshot: false,
-      rebuildPlan: false,
+      rebuildPlan: update.capabilityId === EV_SOC_CAPABILITY_ID && update.evSocRebuildPlan === true,
     };
   }
   return {
@@ -359,6 +366,11 @@ class PelsApp extends Homey.App {
     if (update.stateChanged || (params.capabilityId === EV_SOC_CAPABILITY_ID && update.freshnessAdvanced)) {
       this.homey.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, this.flowReportedCapabilities);
     }
+    const evSocRebuildPlan = this.shouldRebuildPlanForFlowEvSocReport({
+      deviceId: params.deviceId,
+      capabilityId: params.capabilityId,
+      update,
+    });
     if (!update.stateChanged && update.freshnessAdvanced) {
       this.syncFlowBackedObservationFreshness({
         deviceId: params.deviceId,
@@ -369,7 +381,46 @@ class PelsApp extends Homey.App {
     return resolveFlowBackedCapabilityReportOutcome({
       ...update,
       capabilityId: params.capabilityId,
+      evSocRebuildPlan,
     });
+  }
+
+  private shouldRebuildPlanForFlowEvSocReport(params: {
+    deviceId: string;
+    capabilityId: FlowReportedCapabilityId;
+    update: {
+      valueChanged: boolean;
+      freshnessAdvanced: boolean;
+      entry: { reportedAt: number };
+    };
+  }): boolean {
+    const { deviceId, capabilityId, update } = params;
+    if (capabilityId !== EV_SOC_CAPABILITY_ID) return false;
+    const device = this.getSnapshotDevice(deviceId);
+    if (!this.hasEnabledEvBoostForSnapshot(device)) return false;
+    if (!device?.flowBackedCapabilityIds?.includes(EV_SOC_CAPABILITY_ID)) return false;
+    if (update.valueChanged) return true;
+    if (!update.freshnessAdvanced) return false;
+    return this.canEvSocFreshnessBecomeFreshForBoost(device, update.entry.reportedAt);
+  }
+
+  private canEvSocFreshnessBecomeFreshForBoost(
+    device: TargetDeviceSnapshot | undefined,
+    reportedAt: number,
+  ): boolean {
+    const stateOfCharge = device?.stateOfCharge;
+    if (!device || !stateOfCharge || stateOfCharge.status === 'fresh') return false;
+    const nextDevice: TargetDeviceSnapshot = {
+      ...device,
+      targets: [...device.targets],
+      stateOfCharge: { ...stateOfCharge },
+    };
+    updateStateOfChargeObservationFreshness({
+      snapshot: nextDevice,
+      reportedAt,
+      nowMs: Date.now(),
+    });
+    return nextDevice.stateOfCharge?.status === 'fresh';
   }
 
   private syncFlowBackedObservationFreshness(params: {
@@ -385,6 +436,7 @@ class PelsApp extends Homey.App {
       return;
     }
     if (params.capabilityId === EV_SOC_CAPABILITY_ID) {
+      if (!device.flowBackedCapabilityIds?.includes(params.capabilityId)) return;
       updateStateOfChargeObservationFreshness({
         snapshot: device,
         reportedAt: params.reportedAt,
@@ -747,6 +799,17 @@ class PelsApp extends Homey.App {
     this.deviceManager.on(
       PLAN_LIVE_STATE_OBSERVED_EVENT,
       (event: ObservedDeviceStateEvent) => {
+        if (this.shouldRebuildPlanForRealtimeEvSocObservation(event)) {
+          incPerfCounters([
+            'plan_rebuild_requested_total',
+            'plan_rebuild_requested.flow_total',
+            'plan_rebuild_requested.flow.realtime_ev_soc_total',
+          ]);
+          this.planRebuildScheduler.request({
+            kind: 'flow',
+            reason: 'realtime_ev_soc',
+          });
+        }
         if (
           event.measurePowerBecameSignificantlyPositive === true
           && this.isCapacityControlEnabled(event.deviceId)
@@ -759,6 +822,25 @@ class PelsApp extends Homey.App {
         void this.planService?.syncLivePlanState(event.source);
       },
     );
+  }
+
+  private shouldRebuildPlanForRealtimeEvSocObservation(event: ObservedDeviceStateEvent): boolean {
+    const capabilityIds = [
+      ...(event.capabilityId ? [event.capabilityId] : []),
+      ...(event.observedCapabilityIds ?? []),
+    ];
+    if (!capabilityIds.some((capabilityId) => isStateOfChargeCapabilityId(capabilityId))) return false;
+    return this.hasEnabledEvBoostForSnapshot(this.getSnapshotDevice(event.deviceId));
+  }
+
+  private getSnapshotDevice(deviceId: string): TargetDeviceSnapshot | undefined {
+    return this.deviceManager?.getSnapshot()?.find((entry) => entry.id === deviceId);
+  }
+
+  private hasEnabledEvBoostForSnapshot(device: TargetDeviceSnapshot | undefined): boolean {
+    if (!device || device.deviceClass !== 'evcharger') return false;
+    const config = this.getEvBoostConfig(device.id);
+    return config?.enabled === true && Number.isFinite(config.boostBelowPercent);
   }
   private initCapacityGuard(): void {
     this.capacityGuard = new CapacityGuard({

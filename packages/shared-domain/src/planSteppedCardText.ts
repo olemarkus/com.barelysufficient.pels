@@ -54,7 +54,7 @@ export const resolveSteppedActiveStepId = (
 ): string | null => {
   if (isOffLikeState(device.currentState)) {
     const offStep = profile.steps.find((s) => s.id.toLowerCase() === 'off');
-    return offStep ? offStep.id : null;
+    return offStep?.id ?? 'off';
   }
   return resolveCurrentStepId(device);
 };

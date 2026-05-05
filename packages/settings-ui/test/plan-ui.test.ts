@@ -1538,10 +1538,7 @@ describe('Redesign plan UI', () => {
   const setupPlanDom = () => {
     document.body.innerHTML = `
       <section id="overview-panel">
-        <div id="plan-hero"></div>
-        <div id="plan-hour-strip"></div>
-        <div id="plan-cards"></div>
-        <div id="plan-empty"></div>
+        <div id="plan-redesign-surface"></div>
       </section>
     `;
   };
@@ -1618,24 +1615,24 @@ describe('Redesign plan UI', () => {
       });
 
       // Power now headline shows current total kW
-      const headlines = Array.from(document.querySelectorAll('#plan-hero .plan-hero__headline'))
+      const headlines = Array.from(document.querySelectorAll('.plan-hero .plan-hero__headline'))
         .map((el) => el.textContent?.trim());
       expect(headlines).toContain('5.2 kW now');
       // Power bar support text shows managed and other load breakdown only
-      const supportLines = Array.from(document.querySelectorAll('#plan-hero .plan-hero__energy-support'))
+      const supportLines = Array.from(document.querySelectorAll('.plan-hero .plan-hero__energy-support'))
         .map((el) => el.textContent?.trim());
       expect(supportLines[0]).toContain('Managed 3.1 kW');
       expect(supportLines[0]).toContain('Other load 2.1 kW');
       expect(supportLines).toHaveLength(1);
       // No power subline in calm on-track state with no held devices
-      expect(document.querySelector('#plan-hero .plan-hero__subline:not(.plan-hero__subline--muted)')).toBeNull();
+      expect(document.querySelector('.plan-hero .plan-hero__subline:not(.plan-hero__subline--muted)')).toBeNull();
       // Energy section shows hourly usage with projection
       expect(headlines.some((h) => h?.includes('4.20 of 12.0 kWh used'))).toBe(true);
       // Status chip shows on-track when below safe pace and data is fresh
-      expect((document.querySelector('#plan-hero .plan-chip--ok') as HTMLElement | null)?.textContent?.trim())
+      expect((document.querySelector('.plan-hero .plan-chip--ok') as HTMLElement | null)?.textContent?.trim())
         .toBe('On track');
       // No stale-data chip when power is fresh
-      expect(document.querySelector('#plan-hero .plan-chip--alert')).toBeNull();
+      expect(document.querySelector('.plan-hero .plan-chip--alert')).toBeNull();
 
       const deviceNames = Array.from(document.querySelectorAll('.plan-card__title'))
         .map((el) => el.textContent?.trim());
@@ -1695,7 +1692,7 @@ describe('Redesign plan UI', () => {
       expect(chip?.textContent?.trim()).toBe('Limited');
       expect(chip?.className).toContain('plan-state-chip--held');
       // Safe pace subline shown when devices are held
-      const subline = document.querySelector('#plan-hero .plan-hero__subline') as HTMLElement | null;
+      const subline = document.querySelector('.plan-hero .plan-hero__subline') as HTMLElement | null;
       expect(subline?.textContent?.trim()).toBe('Safe pace 5.0 kW');
     });
   
@@ -1951,7 +1948,7 @@ describe('Redesign plan UI', () => {
 
       await refreshPlan();
 
-      expect((document.querySelector('#plan-hero .plan-chip') as HTMLElement | null)?.textContent?.trim())
+      expect((document.querySelector('.plan-hero .plan-chip') as HTMLElement | null)?.textContent?.trim())
         .toBe('No data');
     });
   });

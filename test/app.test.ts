@@ -37,6 +37,8 @@ import {
   DAILY_BUDGET_KWH,
   DEVICE_CONTROL_PROFILES,
   DEVICE_LAST_CONTROLLED_MS,
+  EV_BOOST_SETTINGS,
+  EXPERIMENTAL_EV_SUPPORT_ENABLED,
   FLOW_REPORTED_DEVICE_CAPABILITIES,
   OPERATING_MODE_SETTING,
 } from '../lib/utils/settingsKeys';
@@ -1231,6 +1233,51 @@ describe('MyApp initialization', () => {
     expect(rebuildSpy).not.toHaveBeenCalled();
     expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
       targets: [expect.objectContaining({ id: 'target_temperature', value: 18 })],
+    });
+  });
+
+  it('schedules a plan rebuild when native EV state of charge changes and EV boost is configured', async () => {
+    mockHomeyInstance.settings.set(EV_BOOST_SETTINGS, {
+      'ev-1': { enabled: true, boostBelowPercent: 40 },
+    });
+    mockHomeyInstance.settings.set(EXPERIMENTAL_EV_SUPPORT_ENABLED, true);
+    mockHomeyInstance.settings.set('managed_devices', { 'ev-1': true });
+
+    const app = createApp();
+    await initApp(app);
+    (app as any).deviceManager.setSnapshotForTests([
+      {
+        id: 'ev-1',
+        name: 'Garage Charger',
+        deviceClass: 'evcharger',
+        targets: [],
+        stateOfCharge: {
+          percent: 42,
+          observedAtMs: Date.now(),
+          status: 'fresh',
+          source: 'capability',
+          capabilityId: 'measure_battery',
+        },
+      },
+    ]);
+    const requestSpy = vi.spyOn((app as any).planRebuildScheduler, 'request');
+
+    (app as any).deviceManager.injectDeviceUpdateForTest({
+      id: 'ev-1',
+      name: 'Garage Charger',
+      class: 'evcharger',
+      capabilities: ['measure_battery', 'measure_power', 'evcharger_charging', 'evcharger_charging_state'],
+      capabilitiesObj: {
+        measure_battery: { id: 'measure_battery', value: 35 },
+        measure_power: { id: 'measure_power', value: 0 },
+        evcharger_charging: { id: 'evcharger_charging', value: true },
+        evcharger_charging_state: { id: 'evcharger_charging_state', value: 'plugged_in_charging' },
+      },
+    });
+
+    expect(requestSpy).toHaveBeenCalledWith({
+      kind: 'flow',
+      reason: 'realtime_ev_soc',
     });
   });
 
@@ -3112,6 +3159,194 @@ describe('periodic snapshot refresh scheduling', () => {
     });
   });
 
+  it.each([
+    { name: 'below', previousPercent: 42, nextPercent: 39 },
+    { name: 'above or equal', previousPercent: 39, nextPercent: 40 },
+  ])(
+    'requests plan rebuild when flow-backed EV state of charge changes for EV boost ($name threshold case)',
+    async ({ previousPercent, nextPercent }) => {
+      const app = createApp();
+      const reportedAt = Date.parse('2026-03-20T09:05:00Z');
+      (app as any).evBoostSettings = {
+        'ev-1': { enabled: true, boostBelowPercent: 40 },
+      };
+      (app as any).deviceManager = {
+        getSnapshot: () => [
+          {
+            id: 'ev-1',
+            name: 'Garage Charger',
+            deviceClass: 'evcharger',
+            flowBacked: true,
+            flowBackedCapabilityIds: ['measure_battery'],
+            targets: [],
+            stateOfCharge: {
+              percent: previousPercent,
+              observedAtMs: Date.parse('2026-03-20T09:00:00Z'),
+              status: 'fresh',
+              source: 'flow',
+            },
+          },
+        ],
+      };
+      (app as any).flowReportedCapabilities = {
+        'ev-1': {
+          measure_battery: {
+            value: previousPercent,
+            reportedAt: Date.parse('2026-03-20T09:00:00Z'),
+            source: 'flow',
+          },
+        },
+      };
+
+      const result = (app as any).reportFlowBackedCapability({
+        deviceId: 'ev-1',
+        capabilityId: 'measure_battery',
+        value: nextPercent,
+        reportedAt,
+      });
+
+      expect(result).toEqual({
+        kind: 'state_changed',
+        valueChanged: true,
+        freshnessAdvanced: true,
+        refreshSnapshot: true,
+        rebuildPlan: true,
+      });
+    },
+  );
+
+  it('does not request plan rebuild when changed EV state of charge is not flow-backed for the snapshot', async () => {
+    const app = createApp();
+    const reportedAt = Date.parse('2026-03-20T09:05:00Z');
+    (app as any).evBoostSettings = {
+      'ev-1': { enabled: true, boostBelowPercent: 40 },
+    };
+    (app as any).deviceManager = {
+      getSnapshot: () => [
+        {
+          id: 'ev-1',
+          name: 'Garage Charger',
+          deviceClass: 'evcharger',
+          flowBacked: true,
+          flowBackedCapabilityIds: ['evcharger_charging'],
+          targets: [],
+          stateOfCharge: {
+            percent: 42,
+            observedAtMs: Date.parse('2026-03-20T09:00:00Z'),
+            status: 'fresh',
+            source: 'capability',
+            capabilityId: 'measure_battery',
+          },
+        },
+      ],
+    };
+    (app as any).flowReportedCapabilities = {
+      'ev-1': {
+        measure_battery: { value: 42, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
+      },
+    };
+
+    const result = (app as any).reportFlowBackedCapability({
+      deviceId: 'ev-1',
+      capabilityId: 'measure_battery',
+      value: 39,
+      reportedAt,
+    });
+
+    expect(result).toEqual({
+      kind: 'state_changed',
+      valueChanged: true,
+      freshnessAdvanced: true,
+      refreshSnapshot: true,
+      rebuildPlan: false,
+    });
+  });
+
+  it('does not request plan rebuild when EV state of charge changes without EV boost config', async () => {
+    const app = createApp();
+    const reportedAt = Date.parse('2026-03-20T09:05:00Z');
+    (app as any).deviceManager = {
+      getSnapshot: () => [
+        {
+          id: 'ev-1',
+          name: 'Garage Charger',
+          deviceClass: 'evcharger',
+          targets: [],
+          stateOfCharge: {
+            percent: 42,
+            observedAtMs: Date.parse('2026-03-20T09:00:00Z'),
+            status: 'fresh',
+            source: 'flow',
+          },
+        },
+      ],
+    };
+    (app as any).flowReportedCapabilities = {
+      'ev-1': {
+        measure_battery: { value: 42, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
+      },
+    };
+
+    const result = (app as any).reportFlowBackedCapability({
+      deviceId: 'ev-1',
+      capabilityId: 'measure_battery',
+      value: 39,
+      reportedAt,
+    });
+
+    expect(result).toEqual({
+      kind: 'state_changed',
+      valueChanged: true,
+      freshnessAdvanced: true,
+      refreshSnapshot: true,
+      rebuildPlan: false,
+    });
+  });
+
+  it('does not request plan rebuild for non-EV battery reports', async () => {
+    const app = createApp();
+    const reportedAt = Date.parse('2026-03-20T09:05:00Z');
+    (app as any).evBoostSettings = {
+      'battery-1': { enabled: true, boostBelowPercent: 40 },
+    };
+    (app as any).deviceManager = {
+      getSnapshot: () => [
+        {
+          id: 'battery-1',
+          name: 'Battery Sensor',
+          deviceClass: 'sensor',
+          targets: [],
+          stateOfCharge: {
+            percent: 42,
+            observedAtMs: Date.parse('2026-03-20T09:00:00Z'),
+            status: 'fresh',
+            source: 'flow',
+          },
+        },
+      ],
+    };
+    (app as any).flowReportedCapabilities = {
+      'battery-1': {
+        measure_battery: { value: 42, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
+      },
+    };
+
+    const result = (app as any).reportFlowBackedCapability({
+      deviceId: 'battery-1',
+      capabilityId: 'measure_battery',
+      value: 39,
+      reportedAt,
+    });
+
+    expect(result).toEqual({
+      kind: 'state_changed',
+      valueChanged: true,
+      freshnessAdvanced: true,
+      refreshSnapshot: true,
+      rebuildPlan: false,
+    });
+  });
+
   it('stores EV state of charge under the charger id', async () => {
     const app = createApp();
     const reportedAt = Date.parse('2026-03-20T09:05:00Z');
@@ -3164,6 +3399,106 @@ describe('periodic snapshot refresh scheduling', () => {
         },
       },
     );
+  });
+
+  it('requests plan rebuild when same-value EV state of charge freshness can become fresh for EV boost', async () => {
+    const app = createApp();
+    const previousReportedAt = Date.now() - 60 * 60 * 1000;
+    const nextReportedAt = Date.now();
+    (app as any).evBoostSettings = {
+      'ev-1': { enabled: true, boostBelowPercent: 40 },
+    };
+    const snapshot = [{
+      id: 'ev-1',
+      name: 'Garage Charger',
+      deviceClass: 'evcharger',
+      flowBacked: true,
+      flowBackedCapabilityIds: ['measure_battery'],
+      targets: [],
+      stateOfCharge: {
+        percent: 32,
+        observedAtMs: previousReportedAt,
+        status: 'stale',
+        source: 'flow',
+      },
+    }];
+    (app as any).deviceManager = {
+      getSnapshot: () => snapshot,
+    };
+    (app as any).flowReportedCapabilities = {
+      'ev-1': {
+        measure_battery: { value: 32, reportedAt: previousReportedAt, source: 'flow' },
+      },
+    };
+
+    const result = (app as any).reportFlowBackedCapability({
+      deviceId: 'ev-1',
+      capabilityId: 'measure_battery',
+      value: 32,
+      reportedAt: nextReportedAt,
+    });
+
+    expect(result).toEqual({
+      kind: 'freshness_only',
+      valueChanged: false,
+      freshnessAdvanced: true,
+      refreshSnapshot: false,
+      rebuildPlan: true,
+    });
+    expect(snapshot[0].stateOfCharge).toEqual(expect.objectContaining({
+      observedAtMs: nextReportedAt,
+      status: 'fresh',
+    }));
+  });
+
+  it('does not request same-value EV state of charge rebuild when native snapshot freshness cannot be advanced', async () => {
+    const app = createApp();
+    const previousReportedAt = Date.now() - 60 * 60 * 1000;
+    const nextReportedAt = Date.now();
+    (app as any).evBoostSettings = {
+      'ev-1': { enabled: true, boostBelowPercent: 40 },
+    };
+    const snapshot = [{
+      id: 'ev-1',
+      name: 'Garage Charger',
+      deviceClass: 'evcharger',
+      flowBacked: true,
+      flowBackedCapabilityIds: ['evcharger_charging'],
+      targets: [],
+      stateOfCharge: {
+        percent: 32,
+        observedAtMs: previousReportedAt,
+        status: 'stale',
+        source: 'native',
+      },
+    }];
+    (app as any).deviceManager = {
+      getSnapshot: () => snapshot,
+    };
+    (app as any).flowReportedCapabilities = {
+      'ev-1': {
+        measure_battery: { value: 32, reportedAt: previousReportedAt, source: 'flow' },
+      },
+    };
+
+    const result = (app as any).reportFlowBackedCapability({
+      deviceId: 'ev-1',
+      capabilityId: 'measure_battery',
+      value: 32,
+      reportedAt: nextReportedAt,
+    });
+
+    expect(result).toEqual({
+      kind: 'freshness_only',
+      valueChanged: false,
+      freshnessAdvanced: true,
+      refreshSnapshot: false,
+      rebuildPlan: false,
+    });
+    expect(snapshot[0].stateOfCharge).toEqual(expect.objectContaining({
+      observedAtMs: previousReportedAt,
+      status: 'stale',
+    }));
   });
 
   it('advances runtime freshness for same-value flow-backed reports without rewriting settings', async () => {
