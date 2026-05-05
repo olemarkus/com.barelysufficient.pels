@@ -3694,7 +3694,12 @@ describe('stepped-load shed invariant', () => {
     });
     expect(result.restoredOneThisCycle).toBe(true);
     expect(result.stateUpdates.swapByDevice['lower-priority']).toMatchObject({ swappedOutFor: 'dev-step' });
-    expect(result.stateUpdates.swapByDevice['dev-step']).toMatchObject({ pendingTarget: true });
+    expect(result.stateUpdates.swapByDevice['dev-step']).toMatchObject({
+      pendingTarget: true,
+      lastPlanMeasurementTs: 123,
+      requestedTargetStepId: 'low',
+      requestedDesiredStepId: 'low',
+    });
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_swap_approved',
       deviceId: 'dev-step',
@@ -3799,6 +3804,12 @@ describe('stepped-load shed invariant', () => {
     });
     expect(result.restoredOneThisCycle).toBe(true);
     expect(result.stateUpdates.swapByDevice['lower-priority']).toMatchObject({ swappedOutFor: 'dev-step' });
+    expect(result.stateUpdates.swapByDevice['dev-step']).toMatchObject({
+      pendingTarget: true,
+      lastPlanMeasurementTs: 123,
+      requestedTargetStepId: 'max',
+      requestedDesiredStepId: 'max',
+    });
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_swap_approved',
       deviceId: 'dev-step',

@@ -1,7 +1,6 @@
 /* eslint-disable max-lines -- Restore helper decisions and their countdown metadata are kept together. */
 import type { DevicePlanDevice } from './planTypes';
 import type { RestoreTiming } from './planRestoreTiming';
-import type { SwapState } from './planSwapState';
 import type { PlanEngineState } from './planState';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import {
@@ -142,73 +141,6 @@ export function markSteppedDevicesStayAtCurrentLevel(params: {
       currentOff ? { plannedState: currentOffPlannedState, reason } : { reason },
     );
   }
-}
-
-/**
- * Returns true if this device should be held back from restoring because a swap is still
- * in progress. Checks both whether this device was explicitly swapped out for a specific
- * higher-priority target (`swappedOutFor`), and whether any other higher-priority target
- * in `pendingSwapTargets` is still off. Also cleans up stale swap state.
- */
-export function isBlockedBySwapState(
-  dev: DevicePlanDevice,
-  deviceMap: Map<string, DevicePlanDevice>,
-  swapState: SwapState,
-): boolean {
-  if (isBlockedByDirectSwap(dev, deviceMap, swapState)) return true;
-  return isBlockedByPendingSwapTarget(dev, deviceMap, swapState);
-}
-
-function isBlockedByDirectSwap(
-  dev: DevicePlanDevice,
-  deviceMap: Map<string, DevicePlanDevice>,
-  swapState: SwapState,
-): boolean {
-  const swappedFor = swapState.swappedOutFor.get(dev.id);
-  if (!swappedFor) return false;
-  const higherPriDev = deviceMap.get(swappedFor);
-  if (higherPriDev && higherPriDev.currentState === 'off') {
-    setRestorePlanDevice(deviceMap, dev.id, {
-      plannedState: 'shed',
-      reason: { code: PLAN_REASON_CODES.swapPending, targetName: higherPriDev.name },
-    });
-    return true;
-  }
-  swapState.swappedOutFor.delete(dev.id);
-  swapState.pendingSwapTargets.delete(swappedFor);
-  swapState.pendingSwapTimestamps.delete(swappedFor);
-  return false;
-}
-
-function isBlockedByPendingSwapTarget(
-  dev: DevicePlanDevice,
-  deviceMap: Map<string, DevicePlanDevice>,
-  swapState: SwapState,
-): boolean {
-  if (swapState.pendingSwapTargets.size === 0 || swapState.pendingSwapTargets.has(dev.id)) return false;
-  const devPriority = dev.priority ?? 100;
-  for (const swapTargetId of swapState.pendingSwapTargets) {
-    if (swapTargetId === dev.id) continue;
-    const swapTargetDev = deviceMap.get(swapTargetId);
-    if (!swapTargetDev) {
-      swapState.pendingSwapTargets.delete(swapTargetId);
-      swapState.pendingSwapTimestamps.delete(swapTargetId);
-      continue;
-    }
-    const swapTargetPriority = swapTargetDev.priority ?? 100;
-    if (swapTargetPriority <= devPriority && swapTargetDev.currentState === 'off') {
-      setRestorePlanDevice(deviceMap, dev.id, {
-        plannedState: 'shed',
-        reason: { code: PLAN_REASON_CODES.swapPending, targetName: swapTargetDev.name },
-      });
-      return true;
-    }
-    if (swapTargetDev.currentState === 'on') {
-      swapState.pendingSwapTargets.delete(swapTargetId);
-      swapState.pendingSwapTimestamps.delete(swapTargetId);
-    }
-  }
-  return false;
 }
 
 export function blockRestoreForRecentActivationSetback(params: {

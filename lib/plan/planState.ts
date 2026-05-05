@@ -45,6 +45,8 @@ export type SwapEntry = {
   pendingTarget?: boolean;
   timestamp?: number;
   lastPlanMeasurementTs?: number;
+  requestedTargetStepId?: string;
+  requestedDesiredStepId?: string;
 };
 
 export type OvershootTrackedPlanDevice = Pick<

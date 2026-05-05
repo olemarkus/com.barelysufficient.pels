@@ -364,7 +364,7 @@ describe('PlanExecutor restore logging', () => {
       startedMs: expect.any(Number),
       source: 'pels_restore',
     });
-    expect(state.swapByDevice['dev-1']).toBeUndefined();
+    expect(state.swapByDevice['dev-1']).toMatchObject({ pendingTarget: true });
   });
 
   it('records flow-backed shed actuation only after confirmation', async () => {
