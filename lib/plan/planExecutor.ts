@@ -43,12 +43,15 @@ import {
   type PlanExecutorTargetContext,
 } from '../executor/targetExecutor';
 import {
-  allowsSteppedLoadKeepInvariantRestore,
   applySteppedLoadCommand,
   applySteppedLoadRestore,
   applySteppedLoadShedOff,
   type PlanExecutorSteppedContext,
 } from '../executor/steppedLoadExecutor';
+import {
+  allowsSteppedLoadKeepInvariantRestore,
+  isRestoreAdmissionHoldReason,
+} from '../planContract/planDecisionSemantics';
 import { buildExecutablePlan, buildExecutablePlanDevice } from './planExecutablePlan';
 import { buildExecutableShedTemperatureCommand, buildExecutableTargetUpdate } from './planExecutableTarget';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
@@ -1070,6 +1073,5 @@ function resolveFlowBackedBinaryTriggerCardId(
 }
 
 function isRestoreHoldReason(reason: DeviceReason): boolean {
-  return reason.code === PLAN_REASON_CODES.meterSettling
-    || reason.code === PLAN_REASON_CODES.cooldownRestore;
+  return isRestoreAdmissionHoldReason(reason);
 }
