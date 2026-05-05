@@ -88,8 +88,9 @@ Post-release executor boundary rollout:
   fields remain in planner snapshots.
 - Broad `DevicePlanDevice` inputs at executor dispatch boundaries are transitional. Target-command
   projection now narrows target update and shed-temperature writes before they reach the target
-  executor. The next narrowing step is dispatching over projected executable device concepts
-  instead of repeatedly unwrapping planner devices.
+  executor, and binary command execution now lives under `lib/executor`. The next narrowing step
+  is dispatching over projected executable device concepts instead of repeatedly unwrapping
+  planner devices.
 - Behavioral cleanups, including the stepped-load non-executable hold model, should stay separate
   from move-only or projection-only PRs.
 

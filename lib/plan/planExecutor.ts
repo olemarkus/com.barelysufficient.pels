@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- Plan actuation stays centralized in this module. */
 import Homey from 'homey';
 import CapacityGuard from '../core/capacityGuard';
 import { DeviceManager } from '../core/deviceManager';
@@ -15,19 +14,10 @@ import type { PlanActuationMode } from '../executor/executorTypes';
 import type { PlanEngineState } from './planState';
 import { DEVICE_LAST_CONTROLLED_MS } from '../utils/settingsKeys';
 import { incPerfCounter } from '../utils/perfCounters';
-import {
-  formatEvSnapshot,
-  getBinaryControlPlan,
-  getEvRestoreBlockReason,
-  isFlowBackedBinaryControl,
-  setBinaryControl,
-} from './planBinaryControl';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import {
-  canTurnOnDevice,
   closeActivationAttemptForShedActuation,
   recordActivationAttemptStarted,
-  recordActivationSetbackForDevice,
   recordDiagnosticsRestore,
   recordDiagnosticsShed,
   resolveShedTemperaturePlan,
@@ -52,6 +42,12 @@ import {
   allowsSteppedLoadKeepInvariantRestore,
   isRestoreAdmissionHoldReason,
 } from '../planContract/planDecisionSemantics';
+import {
+  applyBinaryRestore,
+  applyBinarySheddingToDevice,
+  applyUncontrolledBinaryRestore,
+  type PlanExecutorBinaryContext,
+} from '../executor/binaryExecutor';
 import { buildExecutablePlan, buildExecutablePlanDevice } from './planExecutablePlan';
 import { buildExecutableShedTemperatureCommand, buildExecutableTargetUpdate } from './planExecutableTarget';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
@@ -163,6 +159,7 @@ export class PlanExecutor {
 
   private targetExecutorContext?: PlanExecutorTargetContext;
   private steppedExecutorContext?: PlanExecutorSteppedContext;
+  private binaryExecutorContext?: PlanExecutorBinaryContext;
 
   private get deviceManager(): DeviceManager {
     return this.deps.deviceManager;
@@ -397,6 +394,32 @@ export class PlanExecutor {
     return this.steppedExecutorContext;
   }
 
+  private buildBinaryExecutorContext(): PlanExecutorBinaryContext {
+    if (!this.binaryExecutorContext) {
+      this.binaryExecutorContext = {
+        state: this.state,
+        deviceManager: this.deviceManager,
+        capacityDryRun: this.capacityDryRun,
+        structuredLog: this.deps.structuredLog,
+        debugStructured: this.deps.debugStructured,
+        logDebug: this.boundLogDebug,
+        error: this.boundError,
+        buildBinaryControlDeps: this.boundBuildBinaryControlDeps,
+        getRestoreLogSource: this.boundGetRestoreLogSource,
+        recordShedActuation: this.boundRecordShedActuation,
+        recordRestoreActuation: this.boundRecordRestoreActuation,
+        deviceDiagnostics: this.deps.deviceDiagnostics,
+      };
+    }
+
+    this.binaryExecutorContext.state = this.state;
+    this.binaryExecutorContext.capacityDryRun = this.capacityDryRun;
+    this.binaryExecutorContext.structuredLog = this.deps.structuredLog;
+    this.binaryExecutorContext.debugStructured = this.deps.debugStructured;
+    this.binaryExecutorContext.deviceDiagnostics = this.deps.deviceDiagnostics;
+    return this.binaryExecutorContext;
+  }
+
   private async applyShedAction(
     dev: DevicePlan['devices'][number],
     snapshot?: TargetDeviceSnapshot,
@@ -409,6 +432,25 @@ export class PlanExecutor {
       return this.applyShedTemperature(dev);
     }
     return this.applyShedOff(dev, snapshot);
+  }
+
+  private async applyShedOff(
+    dev: DevicePlan['devices'][number],
+    snapshot?: TargetDeviceSnapshot,
+  ): Promise<PlanActionHandleResult> {
+    const currentOn = snapshot?.currentOn ?? resolveEffectiveCurrentOn(dev);
+    if (currentOn === false) return { handled: true, wrote: false };
+    const reason = dev.reason;
+    if (isRestoreHoldReason(reason)) return { handled: true, wrote: false };
+    const isSwap = reason?.code === PLAN_REASON_CODES.swappedOut;
+    return {
+      handled: true,
+      wrote: await this.applySheddingToDevice(
+        dev.id,
+        dev.name,
+        isSwap && reason ? formatDeviceReason(reason) : undefined,
+      ),
+    };
   }
 
   private async applyShedTemperature(dev: DevicePlan['devices'][number]): Promise<PlanActionHandleResult> {
@@ -435,29 +477,6 @@ export class PlanExecutor {
     );
   }
 
-  private async applyShedOff(
-    dev: DevicePlan['devices'][number],
-    snapshot?: TargetDeviceSnapshot,
-  ): Promise<PlanActionHandleResult> {
-    const currentOn = snapshot?.currentOn ?? resolveEffectiveCurrentOn(dev);
-    if (currentOn === false) return { handled: true, wrote: false };
-    const reason = dev.reason;
-    if (isRestoreHoldReason(reason)) return { handled: true, wrote: false };
-    const isSwap = reason.code === PLAN_REASON_CODES.swappedOut;
-    return {
-      handled: true,
-      wrote: await this.applySheddingToDevice(
-        dev.id,
-        dev.name,
-        isSwap ? formatDeviceReason(reason) : undefined,
-      ),
-    };
-  }
-
-  /* eslint-disable complexity, sonarjs/cognitive-complexity, max-statements --
-   * Restore actuation still owns the end-to-end binary restore gate and
-   * bookkeeping path.
-   */
   private async applyRestorePower(
     dev: DevicePlan['devices'][number],
     mode: PlanActuationMode,
@@ -466,109 +485,8 @@ export class PlanExecutor {
     if (dev.plannedState !== 'keep' || resolveEffectiveCurrentOn(dev) !== false) return false;
     if (isSwapTargetPendingReason(dev.reason)) return false;
     if (isRestoreHoldReason(dev.reason)) return false;
-    const snapshot = this.latestTargetSnapshot.find((d) => d.id === dev.id);
-    if (snapshot?.deviceClass === 'evcharger') {
-      this.logDebug(`Capacity: evaluating EV restore for ${dev.name} (${formatEvSnapshot(snapshot)})`);
-    }
-    if (!snapshot) {
-      this.deps.debugStructured?.({
-        event: 'restore_command_skipped',
-        reasonCode: 'missing_snapshot',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        logContext: 'capacity',
-        actuationMode: mode,
-      });
-      this.logDebug(`Capacity: skip restoring ${dev.name}, no snapshot available`);
-      return false;
-    }
-    if (!canTurnOnDevice(snapshot)) {
-      const evReason = getEvRestoreBlockReason(snapshot);
-      const suffix = evReason ? ` (${evReason})` : '';
-      this.deps.debugStructured?.({
-        event: 'restore_command_skipped',
-        reasonCode: 'not_setable',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        logContext: 'capacity',
-        actuationMode: mode,
-      });
-      this.logDebug(`Capacity: skip restoring ${dev.name}, cannot turn on from current snapshot${suffix}`);
-      return false;
-    }
-    const name = dev.name;
-    // Check if this device is already being restored (in-flight)
-    if (this.state.pendingRestores.has(dev.id)) {
-      this.deps.debugStructured?.({
-        event: 'restore_command_skipped',
-        reasonCode: 'already_in_progress',
-        deviceId: dev.id,
-        deviceName: name,
-        logContext: 'capacity',
-        actuationMode: mode,
-      });
-      this.logDebug(`Capacity: skip restoring ${name}, already in progress`);
-      return false;
-    }
-    // Mark as pending before async operation
-    this.state.pendingRestores.add(dev.id);
-    try {
-      try {
-        const applied = await setBinaryControl({
-          ...this.buildBinaryControlDeps(),
-          deviceId: dev.id,
-          name,
-          desired: true,
-          snapshot,
-          logContext: 'capacity',
-          restoreSource: this.getRestoreLogSource(dev.id),
-          actuationMode: mode,
-        });
-        if (!applied) return false;
-        const flowBackedControl = isFlowBackedBinaryControl(
-          snapshot,
-          snapshot?.controlCapabilityId ?? 'onoff',
-        );
-        if (!flowBackedControl) {
-          this.deps.structuredLog?.info({
-            event: 'binary_command_applied',
-            deviceId: dev.id,
-            deviceName: name,
-            capabilityId: snapshot?.controlCapabilityId ?? 'onoff',
-            desired: true,
-            mode,
-            reasonCode: mode === 'reconcile' ? 'reconcile_restore' : this.getRestoreLogSource(dev.id),
-          });
-          if (mode === 'plan') {
-            const now = Date.now();
-            this.recordRestoreActuation(dev.id, name, now);
-            recordActivationAttemptStarted({
-              state: this.state,
-              diagnostics: this.deps.deviceDiagnostics,
-              deviceId: dev.id,
-              name,
-              nowTs: now,
-            });
-          } else if (mode === 'reconcile') {
-            recordActivationSetbackForDevice({
-              state: this.state,
-              diagnostics: this.deps.deviceDiagnostics,
-              deviceId: dev.id,
-              name,
-              nowTs: Date.now(),
-            });
-          }
-        }
-        return true;
-      } catch (error) {
-        this.error(`Failed to turn on ${name} via DeviceManager`, error);
-        return false;
-      }
-    } finally {
-      this.state.pendingRestores.delete(dev.id);
-    }
+    return applyBinaryRestore(this.buildBinaryExecutorContext(), dev, mode);
   }
-  /* eslint-enable complexity, sonarjs/cognitive-complexity, max-statements */
 
   private async applyTargetUpdate(
     dev: DevicePlan['devices'][number],
@@ -590,83 +508,13 @@ export class PlanExecutor {
     );
   }
 
-  /* eslint-disable complexity --
-   * Capacity-control-off restore still evaluates snapshot, availability, and
-   * actuation in one local path.
-   */
   private async applyUncontrolledRestore(
     dev: DevicePlan['devices'][number],
     snapshot?: TargetDeviceSnapshot,
   ): Promise<boolean> {
-    if (dev.plannedState !== 'keep') return false;
-    if (resolveEffectiveCurrentOn(dev) !== false) return false;
     if (isRestoreHoldReason(dev.reason)) return false;
-    const lastShed = this.state.lastDeviceShedMs[dev.id];
-    if (!lastShed) return false;
-    const name = dev.name;
-    const entry = snapshot ?? this.latestTargetSnapshot.find((d) => d.id === dev.id);
-    if (entry?.deviceClass === 'evcharger') {
-      this.logDebug(
-        `Capacity control off: evaluating EV restore for ${name} `
-        + `(${formatEvSnapshot(entry)})`,
-      );
-    }
-    if (!entry) {
-      this.deps.debugStructured?.({
-        event: 'restore_command_skipped',
-        reasonCode: 'missing_snapshot',
-        deviceId: dev.id,
-        deviceName: name,
-        logContext: 'capacity_control_off',
-        actuationMode: 'plan',
-      });
-      return false;
-    }
-    if (!canTurnOnDevice(entry)) {
-      this.deps.debugStructured?.({
-        event: 'restore_command_skipped',
-        reasonCode: 'not_setable',
-        deviceId: dev.id,
-        deviceName: name,
-        logContext: 'capacity_control_off',
-        actuationMode: 'plan',
-      });
-      return false;
-    }
-    try {
-      const applied = await setBinaryControl({
-        ...this.buildBinaryControlDeps(),
-        deviceId: dev.id,
-        name,
-        desired: true,
-        snapshot: entry,
-        logContext: 'capacity_control_off',
-        actuationMode: 'plan',
-      });
-      if (!applied) return false;
-      const flowBackedControl = isFlowBackedBinaryControl(
-        entry,
-        entry?.controlCapabilityId ?? 'onoff',
-      );
-      if (!flowBackedControl) {
-        this.deps.structuredLog?.info({
-          event: 'binary_command_applied',
-          deviceId: dev.id,
-          deviceName: name,
-          capabilityId: entry?.controlCapabilityId ?? 'onoff',
-          desired: true,
-          mode: 'plan',
-          reasonCode: 'capacity_control_off_restore',
-        });
-        delete this.state.lastDeviceShedMs[dev.id];
-      }
-      return true;
-    } catch (error) {
-      this.error(`Failed to restore ${name} via DeviceManager`, error);
-      return false;
-    }
+    return applyUncontrolledBinaryRestore(this.buildBinaryExecutorContext(), dev, snapshot);
   }
-  /* eslint-enable complexity */
 
   private async applySteppedLoadCommand(
     action: ExecutableSteppedLoadDevice | null,
@@ -732,7 +580,13 @@ export class PlanExecutor {
           canSetShedTemp,
         });
         if (!shedTemperatureResult.handled) {
-          return this.turnOffDevice(deviceId, name, reason);
+          return applyBinarySheddingToDevice(this.buildBinaryExecutorContext(), {
+            deviceId,
+            deviceName: name,
+            reason,
+            skipPrecheck: true,
+            trackPendingShed: false,
+          });
         }
         return shedTemperatureResult.wrote;
       } finally {
@@ -759,86 +613,6 @@ export class PlanExecutor {
   }): Promise<PlanActionHandleResult> {
     return trySetShedTemperature(this.buildTargetExecutorContext(), params);
   }
-
-  /* eslint-disable complexity --
-   * Binary shed handling still combines capability discovery, skip diagnostics,
-   * and actuation logging in one path.
-   */
-  private async turnOffDevice(deviceId: string, name: string, reason?: string): Promise<boolean> {
-    const snapshotEntry = this.latestTargetSnapshot.find((entry) => entry.id === deviceId);
-    const controlPlan = getBinaryControlPlan(snapshotEntry);
-    if (snapshotEntry?.deviceClass === 'evcharger') {
-      this.logDebug(`Capacity: preparing EV shed for ${name} (${formatEvSnapshot(snapshotEntry)})`);
-    }
-    if (!controlPlan) {
-      const hasTarget = Array.isArray(snapshotEntry?.targets) && snapshotEntry.targets.length > 0;
-      const now = Date.now();
-      this.state.lastDeviceShedMs[deviceId] = now;
-      if (!hasTarget) {
-        this.deps.debugStructured?.({
-          event: 'binary_command_skipped',
-          reasonCode: 'missing_control_targets',
-          deviceId,
-          deviceName: name,
-          desired: false,
-          logContext: 'capacity',
-          actuationMode: 'plan',
-          hasTargets: false,
-          capabilityId: snapshotEntry?.controlCapabilityId ?? null,
-        });
-        this.logDebug(`Capacity: skip turn_off for ${name}, device has no onoff or temperature target`);
-        return false;
-      }
-      this.deps.debugStructured?.({
-        event: 'binary_command_skipped',
-        reasonCode: 'missing_onoff_capability',
-        deviceId,
-        deviceName: name,
-        desired: false,
-        logContext: 'capacity',
-        actuationMode: 'plan',
-        hasTargets: true,
-        capabilityId: snapshotEntry?.controlCapabilityId ?? null,
-      });
-      this.logDebug(`Capacity: skip turn_off for ${name}, device has no onoff capability`);
-      return false;
-    }
-    const now = Date.now();
-    try {
-      const applied = await setBinaryControl({
-        ...this.buildBinaryControlDeps(),
-        deviceId,
-        name,
-        desired: false,
-        snapshot: snapshotEntry,
-        logContext: 'capacity',
-        reason,
-        actuationMode: 'plan',
-      });
-      if (!applied) return false;
-      const flowBackedControl = isFlowBackedBinaryControl(
-        snapshotEntry,
-        snapshotEntry?.controlCapabilityId ?? controlPlan.capabilityId,
-      );
-      if (!flowBackedControl) {
-        this.deps.structuredLog?.info({
-          event: 'binary_command_applied',
-          deviceId,
-          deviceName: name,
-          capabilityId: snapshotEntry?.controlCapabilityId ?? controlPlan.capabilityId,
-          desired: false,
-          mode: 'plan',
-          reasonCode: reason ? 'shed_with_reason' : 'shedding',
-        });
-        this.recordShedActuation(deviceId, name, now);
-      }
-      return true;
-    } catch (error) {
-      this.error(`Failed to turn off ${name} via DeviceManager`, error);
-      return false;
-    }
-  }
-  /* eslint-enable complexity */
 
   public async handleShortfall(deficitKw: number): Promise<void> {
     if (this.state.inShortfall) return; // Already in shortfall state
@@ -1056,8 +830,8 @@ function resolveFlowBackedBinaryTriggerCardId(
     : 'flow_backed_device_turn_off_requested';
 }
 
-function isRestoreHoldReason(reason: DeviceReason): boolean {
-  return isRestoreAdmissionHoldReason(reason);
+function isRestoreHoldReason(reason: DeviceReason | undefined): boolean {
+  return reason ? isRestoreAdmissionHoldReason(reason) : false;
 }
 
 function isSwapTargetPendingReason(reason: DeviceReason | undefined): boolean {
