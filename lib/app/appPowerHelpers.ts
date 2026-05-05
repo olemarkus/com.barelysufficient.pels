@@ -7,6 +7,7 @@ export {
 } from './appPowerRebuildScheduler';
 export {
   persistPowerTrackerStateForApp,
+  type PowerTrackerPersistReason,
   prunePowerTrackerHistoryForApp,
   recordDailyBudgetCap,
   recordPowerSampleForApp,

@@ -7,6 +7,14 @@ import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from '../plan/plan
 import type { TargetDeviceSnapshot } from '../utils/types';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 
+export type PowerTrackerPersistReason =
+  | 'scheduled'
+  | 'hour_rollover'
+  | 'prune'
+  | 'ui_replace'
+  | 'uninit'
+  | 'write';
+
 export function recordDailyBudgetCap(params: {
   powerTracker: PowerTrackerState;
   snapshot: DailyBudgetUiPayload | null;
@@ -75,14 +83,16 @@ export async function recordPowerSampleForApp(params: {
 export function persistPowerTrackerStateForApp(params: {
   homey: Homey.App['homey'];
   powerTracker: PowerTrackerState;
+  reason?: PowerTrackerPersistReason;
   error: (msg: string, err: Error) => void;
 }): void {
-  const { homey, powerTracker, error } = params;
+  const { homey, powerTracker, reason, error } = params;
   const writeStart = Date.now();
   try {
     homey.settings.set('power_tracker_state', powerTracker);
     addPerfDuration('settings_write_ms', Date.now() - writeStart);
     incPerfCounter('settings_set.power_tracker_state');
+    if (reason) incPerfCounter(`settings_set.power_tracker_state_reason.${reason}_total`);
   } catch (err) {
     error('Failed to persist power tracker', err as Error);
   }
