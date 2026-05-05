@@ -33,7 +33,6 @@ Two waiver mechanisms are in use today, with no consistent policy for choosing b
 | `lib/plan/planBuilder.ts` | 888 |
 | `lib/plan/planService.ts` | 763 |
 | `lib/plan/planReasons.ts` | 683 |
-| `lib/plan/shedding/buildSheddingPlan.ts` | 676 |
 | `lib/plan/planRestore.ts` | 505 (currently at threshold; no pragma) |
 | `lib/plan/planRestoreHelpers.ts` | 492 (at threshold; no pragma) |
 | `lib/dailyBudget/dailyBudgetManager.ts` | 504 (at threshold; no pragma) |
@@ -102,7 +101,6 @@ file can be split before accepting the override.
 | `lib/app/appPowerHelpers.ts` | 898 | Phase 8 (split into three focused modules). |
 | `lib/plan/planService.ts` | 763 | Phase 5 (snapshot-write extraction landed; rebuild-metrics remains). |
 | `lib/plan/planBuilder.ts` | 888 | Extract phase helpers (context/shedding/restore/overshoot) so builder becomes orchestrator at ~300. |
-| `lib/plan/shedding/buildSheddingPlan.ts` | 676 | Candidate split by shed-action kind now that planner output no longer includes actuation target projection. |
 | `lib/plan/planReasons.ts` | 683 | Phase 2 (decision/presentation split) plus category split (shedding / restore / price). |
 | `lib/plan/planRestore.ts` | 505 | Phase 6 (collapse redundant gates) will bring this under 500. |
 | `lib/plan/planRestoreHelpers.ts` | 492 | Already at threshold. Do not merge `planRestoreSupport.ts` into it; route that into `planRestoreSwap.ts` instead. |
