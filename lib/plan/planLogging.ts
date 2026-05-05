@@ -13,6 +13,11 @@ import {
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
 import {
+  isActivationPenaltyBlockedReason,
+  isCooldownBlockedReason,
+  isShedInvariantBlockedReason,
+} from '../planContract/planDecisionSemantics';
+import {
   isCapacityBreached,
   resolveRemainingSheddableLoadKw,
   toPlanRemainingSheddableDevice,
@@ -252,19 +257,15 @@ function hasPendingInputCommand(device: PlanInputDevice): boolean {
 }
 
 function isBlockedByCooldown(device: DevicePlanDevice): boolean {
-  return device.reason.code === PLAN_REASON_CODES.cooldownShedding
-    || device.reason.code === PLAN_REASON_CODES.cooldownRestore
-    || device.reason.code === PLAN_REASON_CODES.meterSettling
-    || device.reason.code === PLAN_REASON_CODES.headroomCooldown
-    || device.reason.code === PLAN_REASON_CODES.restorePending;
+  return isCooldownBlockedReason(device.reason);
 }
 
 function isBlockedByPenalty(device: DevicePlanDevice): boolean {
-  return device.reason.code === PLAN_REASON_CODES.activationBackoff;
+  return isActivationPenaltyBlockedReason(device.reason);
 }
 
 function isBlockedByInvariant(device: DevicePlanDevice): boolean {
-  return device.reason.code === PLAN_REASON_CODES.shedInvariant;
+  return isShedInvariantBlockedReason(device.reason);
 }
 
 export function buildPlanDetailSignature(plan: DevicePlan): string {

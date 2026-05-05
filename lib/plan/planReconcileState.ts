@@ -1,14 +1,14 @@
 import type { DevicePlan, PlanInputDevice } from './planTypes';
-import { getSteppedLoadStep, isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
+import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import type { SteppedLoadProfile } from '../utils/types';
 import { resolveEffectiveCurrentOn, resolveObservedCurrentState } from './planCurrentState';
-import { resolveSteppedLoadTransition } from './planSteppedLoad';
 import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
 import {
   normalizeSteppedLoadStepStateFromLegacyFields,
   resolveKnownEffectiveStepId,
   serializeLegacyStepFields,
 } from './planSteppedLoadState';
+import { hasPlanDeviceExecutionDrift } from '../executor/planExecutionDrift';
 
 export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevice[]): DevicePlan {
   const liveById = new Map(liveDevices.map((device) => [device.id, device]));
@@ -140,34 +140,6 @@ export function canRefreshPlanSnapshotFromLiveState(
   }
   return true;
 }
-export function hasPlanExecutionDriftForDevice(
-  previousPlan: DevicePlan,
-  liveDevices: PlanInputDevice[],
-  deviceId: string,
-): boolean {
-  const previous = previousPlan.devices.find((device) => device.id === deviceId);
-  if (!previous) return false;
-
-  const live = liveDevices.find((device) => device.id === deviceId);
-  if (!live) return false;
-  if (live.observationStale === true) return false;
-
-  const liveCurrentState = resolveCurrentStateFromPlanInput(previous, live);
-  const liveCurrentTarget = getPrimaryTargetCapability(live.targets)?.value ?? null;
-
-  return hasRealtimeBinaryExecutionDrift(previous, {
-    ...previous,
-    currentState: liveCurrentState,
-    selectedStepId: live.selectedStepId ?? previous.selectedStepId,
-    binaryCommandPending: live.binaryCommandPending,
-    stepCommandPending: live.stepCommandPending,
-    observationStale: live.observationStale,
-  }) || hasRelevantTargetExecutionDrift(previous, {
-    ...previous,
-    currentTarget: liveCurrentTarget,
-  });
-}
-
 export function hasPlanExecutionDriftAgainstIntent(
   previousPlan: DevicePlan,
   liveDevices: PlanInputDevice[],
@@ -176,29 +148,9 @@ export function hasPlanExecutionDriftAgainstIntent(
   for (const previous of previousPlan.devices) {
     const live = liveById.get(previous.id);
     if (!live) continue;
-    if (hasRealtimeExecutionDriftForLiveDevice(previous, live)) return true;
+    if (hasPlanDeviceExecutionDrift({ planDevice: previous, liveDevice: live })) return true;
   }
   return false;
-}
-
-function hasRealtimeExecutionDriftForLiveDevice(
-  previousDevice: DevicePlan['devices'][number],
-  liveDevice: PlanInputDevice,
-): boolean {
-  if (liveDevice.observationStale === true) return false;
-  const liveCurrentState = resolveCurrentStateFromPlanInput(previousDevice, liveDevice);
-  const liveSelectedStepId = liveDevice.selectedStepId ?? previousDevice.selectedStepId;
-  if (hasRealtimeBinaryExecutionDrift(previousDevice, {
-    currentState: liveCurrentState,
-    selectedStepId: liveSelectedStepId,
-    binaryCommandPending: liveDevice.binaryCommandPending,
-    stepCommandPending: liveDevice.stepCommandPending,
-    observationStale: liveDevice.observationStale,
-  })) {
-    return true;
-  }
-  const liveCurrentTarget = getPrimaryTargetCapability(liveDevice.targets)?.value ?? null;
-  return hasRelevantTargetExecutionDrift(previousDevice, { currentTarget: liveCurrentTarget });
 }
 
 function resolveCurrentStateFromPlanInput(
@@ -280,80 +232,6 @@ function hasRelevantTargetExecutionDrift(
 ): boolean {
   if (!tracksTargetForExecution(previousDevice)) return false;
   return previousDevice.currentTarget !== liveDevice.currentTarget;
-}
-
-function hasRealtimeBinaryExecutionDrift(
-  previousDevice: DevicePlan['devices'][number],
-  liveDevice: Pick<DevicePlan['devices'][number], 'currentState' | 'selectedStepId'> & {
-    binaryCommandPending?: boolean;
-    stepCommandPending?: boolean;
-    observationStale?: boolean;
-  },
-): boolean {
-  if (liveDevice.observationStale === true) return false;
-  if (previousDevice.controlModel === 'stepped_load' && isSteppedBinaryTransitionInFlight(previousDevice, liveDevice)) {
-    return false;
-  }
-  const expectedBinaryState = resolveExpectedBinaryStateForPlan(previousDevice);
-  const binaryStateDrift = liveDevice.binaryCommandPending !== true
-    && liveDevice.currentState !== 'unknown'
-    && liveDevice.currentState !== (expectedBinaryState ?? previousDevice.currentState);
-  if (previousDevice.controlModel === 'stepped_load') {
-    return previousDevice.selectedStepId !== liveDevice.selectedStepId || binaryStateDrift;
-  }
-  return binaryStateDrift;
-}
-
-function resolveExpectedBinaryStateForPlan(device: DevicePlan['devices'][number]): 'on' | 'off' | undefined {
-  if (device.currentState === 'not_applicable') return undefined;
-  if (device.controllable === false) return undefined;
-  if (device.plannedState === 'keep') return 'on';
-  if (device.plannedState !== 'shed') return undefined;
-  if (device.shedAction === 'set_temperature') return undefined;
-  if (device.shedAction !== 'set_step') return 'off';
-  return resolveSteppedShedBinaryState(device);
-}
-
-function resolveSteppedShedBinaryState(device: DevicePlan['devices'][number]): 'on' | 'off' {
-  const stepId = device.desiredStepId ?? device.selectedStepId;
-  if (device.steppedLoadProfile && stepId) {
-    return isSteppedLoadOffStep(device.steppedLoadProfile, stepId) ? 'off' : 'on';
-  }
-  return 'on';
-}
-
-function isSteppedBinaryTransitionInFlight(
-  previousDevice: DevicePlan['devices'][number],
-  liveDevice: Pick<DevicePlan['devices'][number], 'currentState' | 'selectedStepId'> & {
-    binaryCommandPending?: boolean;
-    stepCommandPending?: boolean;
-  },
-): boolean {
-  const transition = resolveSteppedLoadTransition(previousDevice, previousDevice.desiredStepId);
-  if (!transition || transition.binaryTarget === null) return false;
-  if (liveDevice.binaryCommandPending !== true && liveDevice.stepCommandPending !== true) return false;
-  const previousStepId = previousDevice.selectedStepId;
-  if (
-    transition.transitionPhase === 'binary_transition'
-    && (!transition.commandStepId || liveDevice.selectedStepId !== transition.commandStepId)
-  ) {
-    return false;
-  }
-  if (transition.transitionPhase === 'step_preparation') {
-    const expectedStepIds = new Set(
-      [previousStepId, transition.commandStepId].filter((stepId): stepId is string => typeof stepId === 'string'),
-    );
-    if (expectedStepIds.size > 0 && !expectedStepIds.has(liveDevice.selectedStepId ?? '')) {
-      return false;
-    }
-  }
-  if (transition.effectiveTransition === 'restore_from_off_at_low') {
-    return liveDevice.currentState === 'off';
-  }
-  if (transition.effectiveTransition === 'full_shed_to_off') {
-    return liveDevice.currentState === 'on';
-  }
-  return false;
 }
 
 function tracksTargetForExecution(device: DevicePlan['devices'][number]): boolean {

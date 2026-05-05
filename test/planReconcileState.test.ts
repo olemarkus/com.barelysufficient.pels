@@ -3,9 +3,9 @@ import type { PlanInputDevice } from '../lib/plan/planTypes';
 import {
   canRefreshPlanSnapshotFromLiveState,
   hasPlanExecutionDrift,
-  hasPlanExecutionDriftForDevice,
   buildLiveStatePlan,
 } from '../lib/plan/planReconcileState';
+import { hasPlanExecutionDriftForDevice as hasExecutorPlanExecutionDriftForDevice } from '../lib/executor/planExecutionDrift';
 
 const steppedProfile = {
   model: 'stepped_load' as const,
@@ -50,6 +50,12 @@ const buildPlan = (devices: DevicePlan['devices']): DevicePlan => ({
   meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
   devices,
 });
+
+const hasPlanExecutionDriftForDevice = (
+  plan: DevicePlan,
+  liveDevices: PlanInputDevice[],
+  deviceId: string,
+): boolean => hasExecutorPlanExecutionDriftForDevice({ plan, liveDevices, deviceId });
 
 describe('planReconcileState stepped device drift', () => {
   describe('hasPlanExecutionDrift', () => {

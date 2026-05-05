@@ -28,22 +28,12 @@ import type { DeviceManager } from '../core/deviceManager';
 import { PELS_TARGET_STEP_CAPABILITY_ID } from '../core/steppedLoadSyntheticCapabilities';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
-import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
-
-export const allowsSteppedLoadKeepInvariantRestore = (reason: DeviceReason): boolean => (
-  reason.code === PLAN_REASON_CODES.keep
-  || reason.code === PLAN_REASON_CODES.restoreNeed
-);
-
-const isSteppedRestoreAdmissionHoldReason = (reason: DeviceReason): boolean => (
-  reason.code === PLAN_REASON_CODES.meterSettling
-  || reason.code === PLAN_REASON_CODES.cooldownRestore
-);
-
-const isSteppedShedWindowHoldReason = (reason: DeviceReason): boolean => (
-  reason.code === PLAN_REASON_CODES.cooldownShedding
-  || reason.code === PLAN_REASON_CODES.startupStabilization
-);
+import {
+  allowsSteppedLoadKeepInvariantRestore,
+  isRestoreAdmissionHoldReason,
+  isShedWindowHoldReason,
+} from '../planContract/planDecisionSemantics';
+import type { PlanReasonCode } from '../../packages/shared-domain/src/planReasonSemantics';
 
 const isShedSteppedNonExecutableHoldForSnapshot = (
   action: ExecutableSteppedLoadDevice,
@@ -51,8 +41,8 @@ const isShedSteppedNonExecutableHoldForSnapshot = (
 ): boolean => (
   action.plannedState === 'shed'
   && (
-    isSteppedRestoreAdmissionHoldReason(action.reason)
-    || (isSteppedShedWindowHoldReason(action.reason)
+    isRestoreAdmissionHoldReason(action.reason)
+    || (isShedWindowHoldReason(action.reason)
       && (snapshot?.currentOn ?? action.effectiveCurrentOn) === false)
   )
 );
@@ -726,7 +716,7 @@ const logSteppedLoadRestoreSkip = (
     skipDetailCode?:
       | 'pre_restore_step_pending_confirmation'
       | 'pre_restore_step_command_not_issued';
-    blockedByPlanReasonCode?: DeviceReason['code'];
+    blockedByPlanReasonCode?: PlanReasonCode;
     desiredStepId?: string;
   },
 ): false => {
