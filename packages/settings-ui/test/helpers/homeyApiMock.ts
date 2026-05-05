@@ -201,7 +201,7 @@ export const normalizeUiTestPlanSnapshot = (plan: unknown): unknown => {
 const buildUiPlan = async (homey: MockHomeyClient) => {
   const override = getUiOverride(homey, 'plan');
   if (override !== undefined) return normalizeUiTestPlanSnapshot(override);
-  return normalizeUiTestPlanSnapshot(await getHomeySetting(homey, 'device_plan_snapshot')) || null;
+  return null;
 };
 
 const buildUiPower = async (homey: MockHomeyClient) => {

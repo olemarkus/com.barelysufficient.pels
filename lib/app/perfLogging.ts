@@ -43,7 +43,6 @@ const VALUE_DURATION_KEYS = new Set([
   'plan_rebuild_build_ms',
   'plan_rebuild_change_ms',
   'plan_rebuild_snapshot_ms',
-  'plan_rebuild_snapshot_write_ms',
   'plan_rebuild_status_ms',
   'plan_rebuild_status_write_ms',
   'plan_rebuild_apply_ms',

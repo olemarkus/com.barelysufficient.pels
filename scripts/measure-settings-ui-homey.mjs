@@ -321,12 +321,11 @@ const createHomeyContext = async ({ appId, homeyId }) => {
     const settings = Object.fromEntries(
       SETTINGS_UI_BOOTSTRAP_KEYS.map((key) => [key, allSettings[key]]),
     );
-    const plan = allSettings.device_plan_snapshot;
     return {
       dailyBudget,
       featureAccess: getFeatureAccess(selectedHomeyId),
       devices: getArraySetting(allSettings, 'target_devices_snapshot'),
-      plan: plan && typeof plan === 'object' ? plan : null,
+      plan: null,
       power: buildPowerPayload(allSettings),
       prices: buildPricesPayload(allSettings),
       settings,
@@ -342,16 +341,18 @@ const createHomeyContext = async ({ appId, homeyId }) => {
     handleAppApi: async (method, uri, body) => {
       const normalizedMethod = String(method).toUpperCase();
       if (normalizedMethod === 'GET' && uri === '/ui_bootstrap') {
-        return buildUiBootstrap();
+        try {
+          return await callInstalledAppApi('GET', '/ui_bootstrap');
+        } catch {
+          return buildUiBootstrap();
+        }
       }
       if (normalizedMethod === 'GET' && uri === '/ui_devices') {
         const allSettings = await getAllSettings();
         return { devices: getArraySetting(allSettings, 'target_devices_snapshot') };
       }
       if (normalizedMethod === 'GET' && uri === '/ui_plan') {
-        const allSettings = await getAllSettings();
-        const plan = allSettings.device_plan_snapshot;
-        return { plan: plan && typeof plan === 'object' ? plan : null };
+        return callInstalledAppApi('GET', '/ui_plan');
       }
       if (normalizedMethod === 'GET' && uri === '/ui_power') {
         const allSettings = await getAllSettings();

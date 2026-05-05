@@ -7,7 +7,7 @@ import {
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
 } from '../lib/utils/settingsKeys';
-import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from './mocks/homey';
+import { getLatestPlanSnapshotForTests, MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from './mocks/homey';
 import { cleanupApps, createApp } from './utils/appTestUtils';
 import { reasonText } from './utils/deviceReasonTestUtils';
 
@@ -427,7 +427,7 @@ async function rebuildPlan(
   appState.powerTracker.lastTimestamp = currentTimeMs;
   await appState.planService.rebuildPlanFromCache('ev_integration_test');
   await flushPromises();
-  return mockHomeyInstance.settings.get('device_plan_snapshot') as { devices: PlanDeviceEntry[] };
+  return getLatestPlanSnapshotForTests() as { devices: PlanDeviceEntry[] };
 }
 
 async function refreshSnapshot(app: InternalApp): Promise<SnapshotEntry[]> {

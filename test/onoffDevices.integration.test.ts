@@ -1,4 +1,5 @@
 import {
+  getLatestPlanSnapshotForTests,
   mockHomeyInstance,
   setMockDrivers,
   MockDevice,
@@ -623,7 +624,7 @@ describe('On/off device integration', () => {
     vi.advanceTimersByTime(100);
     await flushPromises();
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const planDevice = plan.devices.find((entry: any) => entry.id === 'device-a');
     expect(planDevice?.shedAction).toBe('turn_off');
     expect(planDevice?.plannedTarget).toBeNull();

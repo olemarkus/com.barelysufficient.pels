@@ -3,8 +3,7 @@ export type RebuildReason = string;
 export type RebuildIntent =
   | { kind: 'hardCap'; reason: RebuildReason }
   | { kind: 'signal'; reason: RebuildReason }
-  | { kind: 'flow'; reason: RebuildReason }
-  | { kind: 'snapshot'; reason: RebuildReason };
+  | { kind: 'flow'; reason: RebuildReason };
 
 type RebuildIntentKind = RebuildIntent['kind'];
 
@@ -14,7 +13,6 @@ const priorityByKind: Record<RebuildIntentKind, number> = {
   hardCap: 0,
   signal: 1,
   flow: 2,
-  snapshot: 3,
 };
 
 export type SchedulerState = {

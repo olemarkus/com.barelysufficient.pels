@@ -27,7 +27,6 @@ import type { HomeyDeviceLike } from '../utils/types';
 import type { AppDeviceControlHelpers } from './appDeviceControlHelpers';
 import type { AppHomeyEnergyHelpers } from './appHomeyEnergyHelpers';
 import type { PowerSampleRebuildState } from './appPowerHelpers';
-import type { PlanRebuildScheduler } from './planRebuildScheduler';
 import type { RefreshTargetDevicesSnapshotOptions, AppSnapshotHelpers } from './appSnapshotHelpers';
 import type { TimerRegistry } from './timerRegistry';
 import type { FlowReportedCapabilitiesForDevice, FlowReportedCapabilityId } from '../core/flowReportedCapabilities';
@@ -186,7 +185,6 @@ export type AppContext = {
   deviceManager?: DeviceManager;
   planEngine?: PlanEngine;
   planService?: PlanService;
-  readonly planRebuildScheduler: PlanRebuildScheduler;
   readonly snapshotHelpers: AppSnapshotHelpers;
   readonly homeyEnergyHelpers: AppHomeyEnergyHelpers;
   readonly deviceControlHelpers: AppDeviceControlHelpers;

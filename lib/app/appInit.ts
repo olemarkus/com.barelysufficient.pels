@@ -96,7 +96,6 @@ export function createPlanService(ctx: AppContext): PlanService {
   return new PlanService({
     homey: ctx.homey,
     planEngine: requirePlanEngine(ctx),
-    scheduler: ctx.planRebuildScheduler,
     getPlanDevices: () => ctx.latestTargetSnapshot
       .map((device) => toPlanDevice(ctx, device))
       .filter((device) => device.managed !== false),
