@@ -1,11 +1,24 @@
 # Deferred Load Objectives
 
 This note defines the intended model for deadline-aware loads. It is design guidance for future
-implementation work, not current shipped behavior.
+implementation work. Some supporting pieces already exist, but the deadline objective behavior
+described here is not current shipped behavior.
 
 The first concrete target is a Connected 300-style water heater because it is available for
 real-world validation. The abstractions must still serve EV charging later without making the
 planner EV-percent-centric.
+
+## Current Baseline
+
+As of this note, PELS already has internal/native EV state-of-charge plumbing:
+
+- native EV SoC capabilities can appear on snapshots as `stateOfCharge`
+- SoC carries freshness and EV session validity
+- stale or invalid SoC is available for diagnostics but must not drive planning
+- no public objective or SoC flow-card UX is exposed yet
+
+Deadline objectives should build on that internal state, not reopen SoC as a user-facing feature
+before the broader objective UX is ready.
 
 ## Goal
 
@@ -140,10 +153,12 @@ PELS needs two integration modes.
 
 ### Generic Flow-Backed Objectives
 
-Flow-backed devices must provide their own objective data through PELS flow cards or PELS user
-configuration. PELS should not inspect arbitrary app-specific settings for generic devices.
+Flow-backed objectives are a later exposure layer, not the first public surface. Generic devices
+must eventually provide objective data through explicit PELS flow cards, PELS user configuration,
+or a purpose-built integration. PELS should not inspect arbitrary app-specific settings for generic
+devices.
 
-Supported generic inputs should include:
+Future generic inputs may include:
 
 - report progress percent
 - report current stored energy in kWh
@@ -157,8 +172,10 @@ Supported generic inputs should include:
 - set hard deadline
 - clear objective
 
-If a flow reports only percent without capacity, remaining energy, or a direct time estimate, PELS
-may display the progress but must not produce optimistic deadline planning.
+These cards should not be exposed until objective planning, diagnostics, and user-facing semantics
+are ready enough that the feature can be explained and supported end to end. If a flow later
+reports only percent without capacity, remaining energy, or a direct time estimate, PELS may
+display the progress but must not produce optimistic deadline planning.
 
 ### Native Adapters
 
@@ -172,8 +189,8 @@ Every inferred value must carry provenance such as `capability`, `settings`, `na
 Native adapters own device-specific translation. Examples:
 
 - A water-heater adapter can translate temperature and mode into usable stored energy.
-- An EV adapter can translate SoC and capacity into energy needed, and can apply EV session
-  invalidation rules.
+- The existing EV SoC snapshot support can become an EV objective input once target/capacity or
+  direct remaining-energy semantics exist.
 - A future learned model can estimate net gain rate by step or charge rate by SoC band.
 
 ## Connected 300 First
@@ -290,7 +307,9 @@ This changes the old broad stepped-load invariant. The long-term invariant shoul
 
 ## EV Semantics
 
-EV support should use the same objective model but different adapter semantics.
+EV deadline support should use the same objective model but different adapter semantics. Internal
+SoC observation already exists; deadline planning is the future layer that adds target, capacity or
+remaining-energy semantics, conservative rate, and deadline evaluation.
 
 User-facing EV inputs are normally:
 
@@ -318,8 +337,8 @@ EV progress belongs to the charger session:
 - stale or invalid SoC must not drive scheduling
 - previous raw SoC may remain visible only for diagnostics
 
-For v1 EV actuation remains pause/resume unless a stepped/current profile exists. Do not add
-phase/current control without a separate design and PR.
+For the first EV objective implementation, actuation should remain pause/resume unless a
+stepped/current profile exists. Do not add phase/current control without a separate design and PR.
 
 ## Energy Calculation
 
@@ -441,7 +460,11 @@ use rules such as:
 
 ## Soft and Hard Deadlines
 
-Soft deadline is advisory pressure within normal PELS behavior. It must respect:
+Soft and hard deadlines are the same objective model with different admission authority. Both may
+request the minimum required boost, step, or mode needed to stay on plan.
+
+Soft objective means budget-aware boost. It may request boost or step-up behavior, but admission of
+that request remains inside normal PELS policy. It must respect:
 
 - effective soft limit
 - daily budget soft limit
@@ -453,13 +476,18 @@ Soft deadline is advisory pressure within normal PELS behavior. It must respect:
 - pending command confirmation and backoff
 - existing safety/freshness rules
 
-For the first implementation, soft objective pressure may be diagnostics-only. If it affects
-behavior, it should only improve ordering among otherwise eligible restore candidates.
+Soft objective can use existing boost behavior. If that behavior sheds lower-priority devices to
+make room for a step-up, the objective may benefit from it. Soft objective must not shed a
+higher-priority device solely to meet the deadline.
 
-Hard deadline is urgent admission. It may bypass:
+Hard objective means deadline-first boost. It may request the same minimum required boost, step, or
+mode as soft objective, but can use stronger admission rules when the deadline is at risk. It may
+bypass:
 
-- daily soft-limit blocking
+- daily budget blocking
 - effective soft-limit blocking
+- normal priority ordering, if a future hard-boost lane explicitly allows shedding higher-priority
+  eligible devices
 
 It must still respect:
 
@@ -480,15 +508,72 @@ hardHeadroomKw = capacitySoftLimitKw - totalPowerKw;
 
 not the effective `softLimitKw` when daily budget has lowered it.
 
-Long term, hard objective mode may create hard-cap-safe headroom by rebalancing lower-priority or
-more flexible devices. That rebalancing must:
+Long term, hard objective mode may create hard-cap-safe headroom by rebalancing flexible devices.
+That rebalancing must:
 
 - protect only `requestedMinimumStepId`
 - preserve hard capacity safety
 - prefer keeping devices active where possible
-- shed or keep shed lower-priority/flexible devices when needed
+- shed or keep shed eligible flexible devices when needed
+- avoid shedding devices protected by equal or higher hard objectives
 - drop back once the objective is safe again
 - never skip configured stepped-load progression
+
+Hard objective is not a whole-home energy cap. The target remains device readiness:
+
+```text
+device X should reach state Y by time Z
+```
+
+The hard-mode difference is that budget and normal priority policy may yield to the device
+deadline. The hard capacity cap never yields.
+
+## Planning Horizon and Milestones
+
+Every deferred objective creates a planning horizon:
+
+```text
+now -> deadline
+```
+
+Within that horizon, PELS should try to place the required useful energy in the best available
+windows while preserving enough margin to meet the deadline.
+
+For soft objectives, "best" means normal PELS policy: daily budget state, expected price/budget
+pressure, device priority, and existing boost rules. Price is not a separate primitive here; it
+enters through the budget/price policy PELS already uses to decide when spending energy is
+acceptable. Soft objective should prefer cheap or budget-friendly windows when that does not create
+deadline risk.
+
+For hard objectives, the same horizon exists, but deadline feasibility outranks budget and normal
+priority policy. Hard objective should still prefer cheaper or budget-friendly windows when there
+is enough margin, but it should not miss the deadline merely because the remaining feasible window
+is expensive.
+
+The horizon plan should produce derived milestones. Milestones should be energy-based where
+possible, not arbitrary wall-clock percentages:
+
+```text
+by 01:00: planned useful energy added >= 0.5 kWh
+by 03:00: planned useful energy added >= 1.0 kWh
+by 05:00: planned useful energy added >= 4.5 kWh
+by 07:00: planned useful energy added >= 6.0 kWh
+```
+
+This allows soft mode to intentionally wait through expensive periods without being falsely marked
+behind, while still detecting when the plan has fallen behind enough to request a higher step.
+
+For v1, the horizon scheduler can be conservative and simple:
+
+1. Build coarse time buckets from now to the deadline.
+2. Estimate useful energy available per bucket for each configured step.
+3. Prefer buckets that normal policy already considers cheap or budget-friendly.
+4. Keep a confidence margin or fallback reserve near the end.
+5. Output the requested minimum step for the current bucket.
+6. Recompute on every relevant plan cycle.
+
+Required-average kW remains useful as a diagnostic, but horizon scheduling is the mechanism that
+makes soft objectives budget-aware instead of just "boost immediately."
 
 ## Planner Integration
 
@@ -588,23 +673,31 @@ Initial codes:
 - `objective_target_met`
 - `objective_deadline_missed`
 
-## First PR Shape
+## Implementation Shape
+
+This should be phased. The first implementation target is Connected 300-style thermal storage,
+not a generic public flow-card objective surface.
 
 Recommended implementation order:
 
 1. Add generic objective state/evaluation types and pure evaluator tests.
-2. Add generic flow reporting for percent, stored energy, remaining energy, target, capacity, and
-   deadlines.
-3. Add Connected 300-oriented thermal objective support using stepped-load profiles, temperature
-   input, target temperature, and requested minimum step.
-4. Add freshness and invalidation rules.
-5. Surface objective diagnostics and reason codes.
-6. Integrate soft objective as diagnostics or restore ordering only.
+2. Add Connected 300-oriented thermal objective support using stepped-load profiles, temperature
+   input, target temperature, mode constraints, and requested minimum step.
+3. Add freshness rules for thermal objective inputs.
+4. Add a simple horizon scheduler that can place required energy in budget-friendly buckets and
+   emit current-bucket milestones.
+5. Surface objective diagnostics and reason codes without a full Settings editor.
+6. Integrate soft objective through existing boost/step-up behavior while preserving normal budget
+   and priority policy.
 7. Add hard admission for already available hard-cap headroom.
-8. Add hard rebalancing as a follow-up if it touches shed planning deeply.
+8. Add hard-boost rebalancing as a follow-up if it touches shed planning deeply.
+9. Expose public flow-backed objective cards only after the planner behavior and UX contract are
+   ready.
+10. Add EV deadline objectives later by reusing existing native SoC snapshot state plus target,
+   capacity or remaining-energy inputs.
 
 The first Connected 300 implementation should focus on temperature-by-deadline UX, thermal energy
-mapping, per-step rate estimates, and requested minimum step selection.
+mapping, per-step rate estimates, requested minimum step selection, and diagnostics.
 
 Out of scope unless explicitly included:
 
@@ -615,19 +708,19 @@ Out of scope unless explicitly included:
 - automatic battery capacity learning
 - thermal temperature-to-energy learning
 - charge curves by SoC band
+- public generic objective flow cards
 - multi-device global optimization across objectives
 
 ## Acceptance Criteria
 
-Core objective:
+Core objective v1:
 
-- A flow can report percent progress for a managed objective device.
-- A flow can report current stored energy in kWh.
-- A flow can report remaining objective energy in kWh.
-- A flow or native adapter can set target temperature for a thermal storage objective.
+- Objective state and evaluation are separate types or modules.
+- A native or semi-native adapter can set target temperature for a thermal storage objective.
 - Progress, energy, temperature, targets, deadlines, and freshness appear on snapshot/plan
   diagnostics.
 - Missing or stale inputs produce `unknown`, not optimistic planning.
+- Public flow cards are not required for v1.
 
 Connected 300-style behavior:
 
@@ -636,6 +729,7 @@ Connected 300-style behavior:
 - Mode-dependent max temperature and usable capacity are accounted for.
 - Mode override is disabled by default for soft deadlines.
 - Hard deadline can request the minimum safe mode when override is explicitly allowed.
+- The horizon scheduler can choose budget-friendly buckets while maintaining deadline margin.
 - Stepped loads compute `requestedMinimumStepId`.
 - Stepped loads still ramp one configured step at a time.
 - Objective urgency protects only the requested minimum step.
@@ -654,12 +748,14 @@ Deadline behavior:
 
 - Status is computed from energy needed, conservative net gain, confidence-adjusted margin, and
   deadline.
-- Soft deadline does not bypass effective soft limit, daily budget, priority, cooldowns, or stepped
-  rules.
+- Soft deadline may request boost/step-up, but does not bypass effective soft limit, daily budget,
+  priority, cooldowns, or stepped rules.
 - Hard deadline may bypass effective soft limit and daily budget soft limit.
 - Hard deadline never bypasses hard-cap safety.
 - Hard objective mode can eventually preserve or create hard-cap-safe headroom for the requested
   minimum step.
+- Hard objective may eventually use a hard-boost lane that can shed higher-priority eligible
+  devices, but only when needed for the protected minimum step.
 
 Diagnostics and triggers:
 
@@ -683,6 +779,8 @@ Objective evaluator tests:
 - projected completion inside margin returns `at_risk`
 - projected completion after deadline at max rate returns `cannot_be_met`
 - medium/low confidence increases effective margin
+- horizon plan prefers budget-friendly buckets while maintaining deadline margin
+- horizon milestones allow intentional delay without marking the objective behind
 
 Connected 300-style tests:
 
@@ -697,6 +795,8 @@ Connected 300-style tests:
 - objective met returns no requested step
 - hard mode does not skip configured step progression
 - hard mode does not exceed planning power for target step
+- soft objective requests boost through normal stepped-load policy
+- hard objective protects only the minimum requested step, not max
 
 EV tests:
 
@@ -714,6 +814,8 @@ Planner/admission tests:
 - hard objective uses `capacitySoftLimitKw` rather than daily-budget-lowered `softLimitKw`
 - hard objective is blocked when hard-cap headroom cannot be made safe
 - hard objective may keep or shed a lower-priority device to allow requested storage step
+- hard objective can use hard-boost policy to shed a higher-priority eligible device when
+  explicitly allowed
 - objective urgency protects only `requestedMinimumStepId`
 - higher-than-requested step remains opportunistic
 
