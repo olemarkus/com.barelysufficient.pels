@@ -355,7 +355,7 @@ describe('plan diagnostics observations', () => {
     expect(observation.currentTemperatureC).toBe(18);
   });
 
-  it('treats unknown shed reasons as non-counting instead of silently counting starvation', () => {
+  it('keeps unknown shed reasons explicitly attributed instead of mapping them to a known cause', () => {
     const observation = buildObservation({
       inputDevice: {
         id: 'heater-1',

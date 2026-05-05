@@ -174,6 +174,7 @@ type LiveStarvationObservation = {
 
 type StarvationEvaluation = {
   validObservation: boolean;
+  suppressed: boolean;
   counting: boolean;
   entryQualified: boolean;
   belowExitThreshold: boolean;
@@ -394,6 +395,7 @@ const evaluateStarvationObservation = (
   const currentTemperatureC = observation.currentTemperatureC ?? Number.NaN;
   const thresholds = observation.thresholds;
   const counting = isCountingStarvationObservation(observation);
+  const suppressed = validObservation && observation.suppressionState !== 'none';
   const pauseReason = !validObservation
     ? 'invalid_observation'
     : observation.pauseReason ?? (
@@ -401,8 +403,9 @@ const evaluateStarvationObservation = (
     );
   return {
     validObservation,
+    suppressed,
     counting,
-    entryQualified: counting && thresholds !== null && currentTemperatureC <= thresholds.entryThresholdC,
+    entryQualified: suppressed && thresholds !== null && currentTemperatureC <= thresholds.entryThresholdC,
     belowExitThreshold: validObservation
       && thresholds !== null
       && currentTemperatureC < thresholds.exitThresholdC,
@@ -702,8 +705,8 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       this.applyStarvationClearProgress(deviceId, observation, evaluation, { startTs, endTs });
       return;
     }
-    if (evaluation.counting && evaluation.belowExitThreshold) {
-      this.applyStarvationCountingProgress(deviceId, observation, startTs, endTs);
+    if (evaluation.suppressed && evaluation.belowExitThreshold) {
+      this.applyStarvationAccumulationProgress(deviceId, observation, evaluation, startTs, endTs);
       return;
     }
     this.pauseStarvation(deviceId, evaluation.pauseReason, startTs);
@@ -774,10 +777,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       ? live.starvation.pendingEntryStartedAt
       : startTs;
     const entryAt = pendingEntryStartedAt + DEVICE_DIAGNOSTICS_STARVATION_ENTRY_MS;
-    live.starvation = {
-      ...live.starvation,
-      pendingEntryStartedAt,
-    };
+    live.starvation = { ...live.starvation, pendingEntryStartedAt };
     if (endTs < entryAt) return;
 
     const accumulatedMs = endTs > entryAt && evaluation.belowExitThreshold
@@ -790,20 +790,20 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       starvedAccumulatedMs: accumulatedMs,
       starvationEpisodeStartedAt: entryAt,
       starvationLastResumedAt: entryAt,
-      starvationCause: observation.countingCause,
-      starvationPauseReason: null,
+      starvationCause: evaluation.counting ? observation.countingCause : null,
+      starvationPauseReason: evaluation.counting ? null : evaluation.pauseReason,
     };
     this.deps.structuredLog?.info({
       event: 'device_starvation_started',
       deviceId,
       deviceName: live.name,
-      cause: observation.countingCause,
+      cause: observation.countingCause ?? evaluation.pauseReason,
       starvationEpisodeStartedAtMs: entryAt,
       starvedDurationMs: accumulatedMs,
     });
     this.deps.logDebug(
       `Diagnostics: starvation started ${formatDeviceRef(deviceId, live.name)} `
-      + `cause=${observation.countingCause ?? 'unknown'} at=${new Date(entryAt).toISOString()}`,
+      + `cause=${observation.countingCause ?? evaluation.pauseReason} at=${new Date(entryAt).toISOString()}`,
     );
   }
 
@@ -841,9 +841,10 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     this.resetStarvationState(deviceId);
   }
 
-  private applyStarvationCountingProgress(
+  private applyStarvationAccumulationProgress(
     deviceId: string,
     observation: LiveStarvationObservation,
+    evaluation: StarvationEvaluation,
     startTs: number,
     endTs: number,
   ): void {
@@ -853,13 +854,13 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
         event: 'device_starvation_resumed',
         deviceId,
         deviceName: live.name,
-        cause: observation.countingCause,
+        cause: observation.countingCause ?? evaluation.pauseReason,
         transitionAtMs: startTs,
         starvedDurationMs: live.starvation.starvedAccumulatedMs,
       });
       this.deps.logDebug(
         `Diagnostics: starvation resumed ${formatDeviceRef(deviceId, live.name)} `
-        + `cause=${observation.countingCause ?? 'unknown'} at=${new Date(startTs).toISOString()}`,
+        + `cause=${observation.countingCause ?? evaluation.pauseReason} at=${new Date(startTs).toISOString()}`,
       );
     }
     live.starvation = {
@@ -869,8 +870,8 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
         ? live.starvation.starvationLastResumedAt
         : startTs,
       starvedAccumulatedMs: live.starvation.starvedAccumulatedMs + Math.max(0, endTs - startTs),
-      starvationCause: observation.countingCause,
-      starvationPauseReason: null,
+      starvationCause: evaluation.counting ? observation.countingCause : null,
+      starvationPauseReason: evaluation.counting ? null : evaluation.pauseReason,
     };
   }
 

@@ -43,16 +43,11 @@ vendor-specific diagnostic quirks.
 A device is starved only when both are true:
 
 1. it is thermally under-served relative to its intended normal target
-2. PELS is actively suppressing it for a counting cause
+2. PELS is actively suppressing, holding, or retry-delaying service
 
-A device must not become starved merely because it is below target while the planner is in
-`keep`.
-
-Examples that must not create starvation:
-
-- target change `15 -> 21` while in `keep`
-- target change `55 -> 80` while in `keep`
-- price-optimization preheat target that is not reached while the device is otherwise in `keep`
+Cooldown, retry/backoff, restore holds, and other PELS-created hold states are still part of the
+starvation episode. They affect attribution, but they do not pause the user-visible starvation
+duration.
 
 Starvation is orthogonal metadata, not a new planner state:
 
@@ -109,8 +104,9 @@ Each eligible plan sample must normalize into:
 - `sample_gap`
 - `unknown_suppression_reason`
 
-Unknown or newly introduced planner reasons must not silently count as starvation time.
-They must normalize to a non-counting state until explicitly mapped.
+Unknown or newly introduced planner reasons should keep explicit `unknown_suppression_reason`
+attribution when the device is otherwise held by PELS, rather than disappearing from the starvation
+episode.
 
 ## Target Used For Evaluation
 
@@ -207,20 +203,20 @@ across valid contiguous samples:
 - eligible managed temperature device
 - fresh valid observation
 - `currentTemperatureC <= entryThresholdC`
-- `suppressionState === 'counting'`
+- `suppressionState !== 'none'`
 
 The entry timer resets on any of:
 
 - `currentTemperatureC > entryThresholdC`
-- `suppressionState !== 'counting'`
+- `suppressionState === 'none'`
 - invalid observation
 - sample gap longer than `10 minutes`
 - intended normal target change
 - hard reset
 
-## Counting Suppression Causes
+## Suppression Attribution
 
-These add starvation time after entry:
+These attribute starvation time after entry:
 
 - `capacity`
 - `daily_budget`
@@ -243,9 +239,10 @@ Current planner-text examples that should normalize to these causes:
 - `insufficient headroom (...)` -> `insufficient_headroom`
 - `shedding active` -> `shedding_active`
 
-## Non-Counting States
+## Hold / Retry Attribution
 
-These do not add starvation time:
+These also add starvation time after entry, but are attributed as hold/retry reasons rather than
+counting causes:
 
 - `cooldown (...)`
 - `headroom cooldown (...)`
@@ -255,14 +252,15 @@ These do not add starvation time:
 - `keep`
 - `keep (recently restored)`
 - `restore (...)`
-- invalid observation
-- sample gap longer than `10 minutes`
 - unknown or unmapped suppression reason
 
-Behavior in non-counting states:
+Behavior in these states:
 
-- if not yet starved: do not start starvation
-- if already starved: keep the starved state latched, but pause accumulation
+- if not yet starved: continue the entry timer while the device remains under-served
+- if already starved: keep adding starvation time while the device remains under-served
+
+Invalid observations and sample gaps still pause accumulation because the UI cannot know whether
+the device recovered.
 
 ## Exit Threshold
 
@@ -309,12 +307,13 @@ Add starvation time only while all are true:
 
 - device is already starved
 - sample is valid
-- `suppressionState === 'counting'`
+- `suppressionState !== 'none'`
 - `currentTemperatureC < exitThresholdC`
 
 ### Pause accumulation
 
-Pause starvation accumulation while in a non-counting or invalid state.
+Pause starvation accumulation only while the sample is invalid, stale/missing, or there is no PELS
+suppression/hold state.
 
 ### Clear
 
@@ -342,7 +341,8 @@ V1 restart limitation:
 
 Track accumulated starvation time explicitly.
 
-Do not rely on only a single start timestamp, because paused periods must not count.
+Do not rely on only a single start timestamp, because stale observations and long sample gaps must
+not count.
 
 Entry-qualification time before the starved state begins does not count toward
 `starvedAccumulatedMs`.
@@ -400,9 +400,8 @@ For each starved device:
 
 - show a `Starved` badge/chip
 - do not append `starvedAccumulatedMs` to the primary badge or status text
-- show total user-visible starvation duration in detail diagnostics where broader unmet-demand
-  counters are available
-- keep `starvedAccumulatedMs` available as an advanced counted-suppression diagnostic
+- show the current starvation duration in detail diagnostics
+- show broader unmet-demand window counters as time not served, not as the live starvation duration
 
 Example:
 
@@ -451,8 +450,8 @@ Logs should include:
 - entry and exit thresholds respect the device temperature step
 - starvation enters only after `15 minutes` of continuous qualifying suppression
 - invalid observations and sample gaps do not backfill or count as continuous qualification
-- non-counting states pause accumulation rather than add time
-- unknown suppression reasons do not silently count as starvation
+- cooldown/backoff/restore-hold states continue starvation while the device remains under-served
+- unknown suppression reasons remain explicitly attributed when they count
 - `capacity control off` clears and resets starvation
 - starvation clears only after temperature has remained above the exit threshold for `10 minutes`
 - enabling starvation detection does not change planner decisions

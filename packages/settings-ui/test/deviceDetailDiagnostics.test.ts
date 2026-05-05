@@ -186,10 +186,10 @@ describe('device detail diagnostics', () => {
     ]));
     expect(document.getElementById('device-detail-diagnostics-status')?.textContent).toContain('Current penalty level: L2');
     expect(document.getElementById('device-detail-diagnostics-status')?.textContent)
-      .toContain('Status: Starved for 2.0h in the last day - Waiting for available power');
+      .toContain('Status: Starved for 23m - Waiting for available power');
     expect(document.getElementById('device-detail-diagnostics-cards')?.children).toHaveLength(4);
-    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Starved for2.0h');
-    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Counted suppression23m');
+    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Time not served2.0h');
+    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Starved time23m');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Failed activations');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Penalty history');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Starvation details');
