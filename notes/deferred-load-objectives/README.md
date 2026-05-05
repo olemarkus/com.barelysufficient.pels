@@ -118,10 +118,10 @@ type DeviceObjectiveEvaluation = {
   rateEstimate?: ObjectiveRateEstimate;
 
   requestedMinimumStepId?: string;
-  requestedStepReason?: string;
+  requestedStepReasonCode?: ObjectiveReasonCode;
 
   requestedModeId?: string;
-  requestedModeReason?: 'target_temperature_requires_mode' | 'deadline_requires_rate';
+  requestedModeReasonCode?: ObjectiveReasonCode;
 
   reasonCode?: ObjectiveReasonCode;
 };
@@ -267,7 +267,7 @@ Mode request is part of objective evaluation:
 
 ```ts
 requestedModeId?: string;
-requestedModeReason?: 'target_temperature_requires_mode' | 'deadline_requires_rate';
+requestedModeReasonCode?: ObjectiveReasonCode;
 ```
 
 ### Step Selection
@@ -500,13 +500,15 @@ It must still respect:
 - pending-command confirmation and backoff
 - stale power failsafe
 
-Hard deadline should use hard-cap headroom:
+Hard deadline admission should use margin-adjusted capacity-soft-limit headroom:
 
 ```ts
-hardHeadroomKw = capacitySoftLimitKw - totalKw;
+hardObjectiveAdmissionHeadroomKw = capacitySoftLimitKw - totalKw;
 ```
 
-not the effective `softLimitKw` when daily budget has lowered it.
+not the effective `softLimitKw` when daily budget has lowered it. Do not confuse this with the
+existing physical `hardCapHeadroomKw` concept, which is based on the absolute hard limit rather
+than the margin-adjusted capacity soft limit.
 
 Long term, hard objective mode may create hard-cap-safe headroom by rebalancing flexible devices.
 That rebalancing must:
@@ -660,7 +662,7 @@ Inputs:
 - totalKw and freshness
 - capacity soft limit
 - effective soft limit
-- hard-cap headroom
+- hard objective admission headroom
 - expected/planning power
 - stepped profile
 - native adapter state, if present
@@ -762,7 +764,7 @@ Recommended implementation order:
 5. Surface objective diagnostics and reason codes without a full Settings editor.
 6. Integrate soft objective through existing boost/step-up behavior while preserving normal budget
    and priority policy.
-7. Add hard admission for already available hard-cap headroom.
+7. Add hard admission for already available hard objective admission headroom.
 8. Add hard-boost rebalancing as a follow-up if it touches shed planning deeply.
 9. Expose public flow-backed objective cards only after the planner behavior and UX contract are
    ready.
@@ -887,7 +889,7 @@ Planner/admission tests:
 - soft objective does not bypass daily budget soft limit
 - hard objective bypasses effective soft limit when hard-cap safe
 - hard objective uses `capacitySoftLimitKw` rather than daily-budget-lowered `softLimitKw`
-- hard objective is blocked when hard-cap headroom cannot be made safe
+- hard objective is blocked when hard objective admission headroom cannot be made safe
 - hard objective may keep or shed a lower-priority device to allow requested storage step
 - hard objective can use hard-boost policy to shed a higher-priority eligible device when
   explicitly allowed
