@@ -957,9 +957,9 @@ class PelsApp extends Homey.App {
     }
   }
   private startHeartbeat(): void {
-    const updateHeartbeat = () => this.homey.settings.set('app_heartbeat', Date.now());
-    updateHeartbeat();
-    this.timers.registerInterval('heartbeat', setInterval(updateHeartbeat, 30 * 1000));
+    // No-op retained for startup wiring compatibility. The settings UI is only
+    // available while the app runtime is alive, so a persistent heartbeat setting
+    // only creates write churn without adding useful liveness signal.
   }
   private startPriceLowestTriggerChecker(): void {
     if (this.stopPriceLowestTriggerChecker) this.stopPriceLowestTriggerChecker();

@@ -31,12 +31,18 @@ import {
   PRICE_SCHEME,
 } from '../../../contracts/src/settingsKeys.ts';
 import { getTargetDevices, renderDevices } from './devices.ts';
-import { loadAdvancedSettings, loadCapacitySettings, loadStaleDataStatus } from './capacity.ts';
+import {
+  loadAdvancedSettings,
+  loadCapacitySettings,
+  loadStaleDataStatus,
+  updateStaleDataStatusFromPowerPayload,
+} from './capacity.ts';
 import {
   getHomeyClient,
   invalidateApiCache,
   invalidateSettingCache,
   primeApiCache,
+  updateApiCache,
 } from './homey.ts';
 import {
   loadModeAndPriorities,
@@ -71,6 +77,8 @@ const DAILY_BUDGET_REFRESH_KEYS = new Set([
   DAILY_BUDGET_PRICE_FLEX_SHARE,
   DAILY_BUDGET_BREAKDOWN_ENABLED,
 ]);
+
+const POWER_USAGE_REALTIME_REFRESH_MIN_INTERVAL_MS = 30 * 1000;
 
 const DAILY_BUDGET_SETTINGS_KEYS = new Set([
   'daily_budget_enabled',
@@ -125,6 +133,8 @@ const runLoggedTask = (task: Promise<unknown>, message: string, context: string)
   });
 };
 
+let lastPowerUsageRefreshStartedAt = 0;
+
 const isPanelVisible = (selector: string): boolean => {
   const panel = document.querySelector(selector);
   return Boolean(panel && !panel.classList.contains('hidden'));
@@ -150,13 +160,24 @@ const refreshStaleDataStatus = (context: string) => {
 };
 
 export const refreshPowerData = async () => {
+  lastPowerUsageRefreshStartedAt = Date.now();
   const usage = await getPowerUsage();
   renderPowerUsage(usage);
   await renderPowerStats();
 };
 
-const refreshPowerDataIfVisible = (context: string) => {
+const refreshPowerDataIfVisible = (
+  context: string,
+  options: { force?: boolean; invalidateBeforeRefresh?: boolean } = {},
+) => {
   if (!isPanelVisible('#usage-panel')) return;
+  const now = Date.now();
+  if (!options.force && now - lastPowerUsageRefreshStartedAt < POWER_USAGE_REALTIME_REFRESH_MIN_INTERVAL_MS) {
+    return;
+  }
+  if (options.invalidateBeforeRefresh) {
+    invalidateApiCache(SETTINGS_UI_POWER_PATH);
+  }
   runLoggedTask(refreshPowerData(), 'Failed to refresh power data', context);
 };
 
@@ -237,7 +258,7 @@ const refreshPowerSettings = (key: string) => {
     refreshDailyBudgetIfVisible('settings.set');
     return;
   }
-  if (key !== 'pels_status' && key !== 'app_heartbeat') return;
+  if (key !== 'pels_status') return;
   invalidateApiCache(SETTINGS_UI_POWER_PATH);
   refreshStaleDataStatus('settings.set');
 };
@@ -310,10 +331,22 @@ const handlePricesUpdated = () => {
 
 const handlePowerUpdated = (power: unknown) => {
   const payload = power as SettingsUiPowerPayload;
-  primeApiCache(SETTINGS_UI_POWER_PATH, payload);
+  const hasFullTracker = Boolean(payload?.tracker && typeof payload.tracker === 'object');
+  if (hasFullTracker) {
+    primeApiCache(SETTINGS_UI_POWER_PATH, payload);
+  } else {
+    updateApiCache(SETTINGS_UI_POWER_PATH, {
+      tracker: null,
+      status: payload?.status ?? null,
+      heartbeat: payload?.heartbeat ?? null,
+    });
+  }
   updatePlanPower(payload?.status ?? null);
-  refreshStaleDataStatus('realtime power_updated');
-  refreshPowerDataIfVisible('realtime power_updated');
+  updateStaleDataStatusFromPowerPayload(payload ?? null);
+  refreshPowerDataIfVisible('realtime power_updated', {
+    force: hasFullTracker,
+    invalidateBeforeRefresh: !hasFullTracker,
+  });
 };
 
 export const showTab = (tabId: string) => {
@@ -333,6 +366,7 @@ export const showTab = (tabId: string) => {
     runLoggedTask(refreshPrices(), 'Failed to refresh prices', 'showTab');
   }
   if (tabId === 'usage') {
+    invalidateApiCache(SETTINGS_UI_POWER_PATH);
     runLoggedTask(refreshPowerData(), 'Failed to refresh power data', 'showTab');
   }
   if (tabId === 'budget') {
