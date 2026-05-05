@@ -47,7 +47,6 @@ import {
   prunePowerTrackerHistoryForApp,
   updateDailyBudgetAndRecordCapForApp,
   PowerSampleRebuildState,
-  type PowerTrackerPersistReason,
   recordPowerSampleForApp,
   schedulePlanRebuildFromSignal,
 } from './lib/app/appPowerHelpers';
@@ -71,7 +70,6 @@ import { runStartupStep, startAppServices } from './lib/app/appLifecycleHelpers'
 import { addPerfDuration, incPerfCounter } from './lib/utils/perfCounters';
 import { startPerfLogger } from './lib/app/perfLogging';
 import { VOLATILE_WRITE_THROTTLE_MS } from './lib/utils/timingConstants';
-import { getHourBucketKey } from './lib/utils/dateUtils';
 import { startResourceWarningListeners as startResourceWarnings } from './lib/app/appResourceWarningHelpers';
 import { migrateManagedDevices as migrateManagedDevicesHelper } from './lib/app/appManagedDeviceMigration';
 import { restoreCachedTargetSnapshotForApp } from './lib/app/appStartupHelpers';
@@ -128,23 +126,6 @@ const getAppPlanRebuildNowMs = (): number => (
     ? Date.now()
     : performance.now()
 );
-
-const shouldForcePersistPowerTracker = (
-  previousState: PowerTrackerState,
-  nextState: PowerTrackerState,
-): boolean => {
-  const previousTimestamp = previousState.lastTimestamp;
-  const nextTimestamp = nextState.lastTimestamp;
-  if (
-    typeof previousTimestamp !== 'number'
-    || typeof nextTimestamp !== 'number'
-    || !Number.isFinite(previousTimestamp)
-    || !Number.isFinite(nextTimestamp)
-  ) {
-    return false;
-  }
-  return getHourBucketKey(previousTimestamp) !== getHourBucketKey(nextTimestamp);
-};
 
 const isDevicePlanForUiSerialization = (value: unknown): value is DevicePlan => (
   Boolean(value)
@@ -925,7 +906,7 @@ class PelsApp extends Homey.App {
   }
   private clearUninitTimers(): void {
     if (this.timers.has('powerTrackerSave')) {
-      this.persistPowerTrackerState('uninit');
+      this.persistPowerTrackerState();
     }
     this.timers.clearAll();
     this.snapshotHelpers.stop();
@@ -1167,12 +1148,11 @@ class PelsApp extends Homey.App {
       this.error('Failed to create/update capacity_overhead token', error as Error);
     }
   }
-  private persistPowerTrackerState(reason: PowerTrackerPersistReason = 'write'): void {
+  private persistPowerTrackerState(): void {
     this.timers.clear('powerTrackerSave');
     persistPowerTrackerStateForApp({
       homey: this.homey,
       powerTracker: this.powerTracker,
-      reason,
       error: (msg, err) => this.error(msg, err),
     });
   }
@@ -1182,7 +1162,7 @@ class PelsApp extends Homey.App {
       logDebug: (msg) => this.logDebug('perf', msg),
       error: (msg, err) => this.error(msg, err),
     });
-    this.persistPowerTrackerState('prune');
+    this.persistPowerTrackerState();
   }
   private startPowerTrackerPruning(): void {
     this.timers.registerTimeout('powerTrackerPruneInitial', setTimeout(() => {
@@ -1194,29 +1174,20 @@ class PelsApp extends Homey.App {
       POWER_TRACKER_PRUNE_INTERVAL_MS,
     ));
   }
-  private savePowerTracker(nextState: PowerTrackerState): void {
+  private savePowerTracker(nextState: PowerTrackerState = this.powerTracker): void {
     const stateStart = Date.now();
-    const previousState = this.powerTracker;
     this.powerTracker = nextState;
-    const forcePersist = shouldForcePersistPowerTracker(previousState, nextState);
+    if (!this.timers.has('powerTrackerSave')) {
+      this.timers.registerTimeout(
+        'powerTrackerSave',
+        setTimeout(() => this.persistPowerTrackerState(), POWER_TRACKER_PERSIST_DELAY_MS),
+      );
+    }
     addPerfDuration('power_sample_state_ms', Date.now() - stateStart);
 
     const budgetStart = Date.now();
     this.updateDailyBudgetAndRecordCap({ nowMs: nextState.lastTimestamp ?? Date.now() });
     addPerfDuration('power_sample_budget_ms', Date.now() - budgetStart);
-
-    if (forcePersist) {
-      incPerfCounter('settings_set.power_tracker_state_forced_hour_rollover_total');
-      this.persistPowerTrackerState('hour_rollover');
-    } else if (!this.timers.has('powerTrackerSave')) {
-      incPerfCounter('settings_set.power_tracker_state_scheduled_total');
-      this.timers.registerTimeout(
-        'powerTrackerSave',
-        setTimeout(() => this.persistPowerTrackerState('scheduled'), POWER_TRACKER_PERSIST_DELAY_MS),
-      );
-    } else {
-      incPerfCounter('settings_set.power_tracker_state_skipped_pending_total');
-    }
 
     const uiStart = Date.now();
     emitSettingsUiPowerUpdatedForApp(this.homey, this.powerTracker, (message, error) => this.error(message, error));
@@ -1226,7 +1197,7 @@ class PelsApp extends Homey.App {
     this.powerTracker = nextState;
     this.updateDailyBudgetAndRecordCap({ nowMs: nextState.lastTimestamp ?? Date.now(), forcePlanRebuild: true });
     emitSettingsUiPowerUpdatedForApp(this.homey, this.powerTracker, (message, error) => this.error(message, error));
-    this.persistPowerTrackerState('ui_replace');
+    this.persistPowerTrackerState();
   }
   private updateDailyBudgetAndRecordCap(options?: { nowMs?: number; forcePlanRebuild?: boolean }): void {
     this.powerTracker = updateDailyBudgetAndRecordCapForApp({

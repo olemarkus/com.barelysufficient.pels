@@ -9,6 +9,7 @@ import type { Logger as PinoLogger } from '../logging/logger';
 import type { DevicePlan } from '../plan/planTypes';
 import type {
   DeviceControlModel,
+  DeviceControlProfile,
   DeviceControlProfiles,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
@@ -23,6 +24,7 @@ import {
 import {
   buildSteppedLoadSnapshotStepFields,
   resolveNativeSteppedLoadProfile,
+  resolveSnapshotSteppedLoadProfile,
   resolveSteppedLoadCurrentOn,
   shouldSuppressSteppedLoadFlowReport,
 } from './appDeviceControlSteppedState';
@@ -70,38 +72,6 @@ export const resolveDefaultControlModel = (device: TargetDeviceSnapshot): Device
   return 'binary_power';
 };
 
-const asSteppedLoadProfile = (
-  profile: SteppedLoadProfile | undefined,
-): SteppedLoadProfile | null => (
-  profile?.model === 'stepped_load' ? profile : null
-);
-
-const resolveSuggestedSteppedLoadProfile = (
-  snapshot: TargetDeviceSnapshot | undefined,
-): SteppedLoadProfile | null => (
-  snapshot?.controlModel === 'stepped_load'
-    ? asSteppedLoadProfile(snapshot.suggestedSteppedLoadProfile)
-    : null
-);
-
-export const resolveEffectiveSteppedLoadProfile = (params: {
-  snapshot?: TargetDeviceSnapshot;
-  profiles: DeviceControlProfiles;
-  deviceId: string;
-}): SteppedLoadProfile | null => {
-  const { snapshot, profiles, deviceId } = params;
-  const nativeProfile = snapshot ? resolveNativeSteppedLoadProfile(snapshot) : null;
-  const storedProfile = asSteppedLoadProfile(profiles[deviceId]);
-  const snapshotProfile = snapshot?.steppedLoadProfile?.model === 'stepped_load'
-    ? snapshot.steppedLoadProfile
-    : null;
-  if (nativeProfile) return nativeProfile;
-  if (snapshot?.targetPowerConfig && snapshotProfile) return snapshotProfile;
-  if (storedProfile) return storedProfile;
-  if (snapshotProfile) return snapshotProfile;
-  return resolveSuggestedSteppedLoadProfile(snapshot);
-};
-
 /* eslint-disable complexity --
  * Decoration resolves reported step state plus legacy planner fallback in one place.
  */
@@ -113,11 +83,10 @@ export const decorateSnapshotWithDeviceControl = (params: {
 }): TargetDeviceSnapshot => {
   const { snapshot, profiles, runtimeState, nowMs = Date.now() } = params;
   const nativeProfile = resolveNativeSteppedLoadProfile(snapshot);
-  const profile = resolveEffectiveSteppedLoadProfile({
-    snapshot,
-    profiles,
-    deviceId: snapshot.id,
-  });
+  const storedProfile = profiles[snapshot.id];
+  const profile = nativeProfile
+    ?? resolveSnapshotSteppedLoadProfile(snapshot)
+    ?? (storedProfile?.model === 'stepped_load' ? storedProfile : null);
   if (!profile) {
     return {
       ...snapshot,
@@ -353,11 +322,12 @@ export class AppDeviceControlHelpers {
 
   getSteppedLoadProfile(deviceId: string): SteppedLoadProfile | null {
     const snapshot = this.deps.getDeviceSnapshots().find((device) => device.id === deviceId);
-    return resolveEffectiveSteppedLoadProfile({
-      snapshot,
-      profiles: this.deps.getProfiles(),
-      deviceId,
-    });
+    if (snapshot) {
+      const nativeProfile = resolveNativeSteppedLoadProfile(snapshot);
+      if (nativeProfile) return nativeProfile;
+    }
+    const profile = this.deps.getProfiles()[deviceId];
+    return profile?.model === 'stepped_load' ? profile : null;
   }
 
   decorateTargetSnapshotList(snapshot: TargetDeviceSnapshot[]): TargetDeviceSnapshot[] {
@@ -410,8 +380,8 @@ export class AppDeviceControlHelpers {
     }
     const previousReportedStepId = this.runtimeState.steppedLoadReportedByDeviceId[deviceId]?.stepId;
     const previousDesired = this.runtimeState.steppedLoadDesiredByDeviceId[deviceId];
-    const previousDesiredStepId = this.resolvePreviousDesiredStepId(profile, previousDesired);
-    const latestPlanDesiredStepId = this.resolveLatestPlanDesiredStepId(deviceId, profile);
+    const previousDesiredStepId = this.resolvePreviousDesiredStepId(deviceId, previousDesired);
+    const latestPlanDesiredStepId = this.resolveLatestPlanDesiredStepId(deviceId);
     const plannedDesiredStepId = latestPlanDesiredStepId ?? previousDesiredStepId;
     const changed = reportSteppedLoadActualStep({
       runtimeState: this.runtimeState,
@@ -464,12 +434,10 @@ export class AppDeviceControlHelpers {
     deviceId: string,
     snapshot: TargetDeviceSnapshot | undefined,
     storedProfiles: DeviceControlProfiles,
-  ): SteppedLoadProfile | null {
-    return resolveEffectiveSteppedLoadProfile({
-      snapshot,
-      profiles: storedProfiles,
-      deviceId,
-    });
+  ): DeviceControlProfile | undefined {
+    return storedProfiles[deviceId]
+      ?? snapshot?.steppedLoadProfile
+      ?? snapshot?.suggestedSteppedLoadProfile;
   }
 
   private resolvePlannedDesiredStepToPreserve(params: {
@@ -494,13 +462,19 @@ export class AppDeviceControlHelpers {
   }
 
   private resolvePreviousDesiredStepId(
-    profile: SteppedLoadProfile,
+    deviceId: string,
     previousDesired: SteppedLoadDesiredRuntimeState | undefined,
   ): string | undefined {
+    const profile = this.deps.getProfiles()[deviceId];
+    if (!profile || profile.model !== 'stepped_load') return undefined;
+
     return getSteppedLoadStep(profile, previousDesired?.stepId)?.id;
   }
 
-  private resolveLatestPlanDesiredStepId(deviceId: string, profile: SteppedLoadProfile): string | undefined {
+  private resolveLatestPlanDesiredStepId(deviceId: string): string | undefined {
+    const profile = this.deps.getProfiles()[deviceId];
+    if (!profile || profile.model !== 'stepped_load') return undefined;
+
     const plannedDevice = this.deps.getLatestPlanSnapshot?.()?.devices.find((device) => device.id === deviceId);
     return getSteppedLoadStep(
       profile,

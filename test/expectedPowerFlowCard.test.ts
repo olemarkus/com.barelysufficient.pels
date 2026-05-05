@@ -133,32 +133,6 @@ describe('Expected power flow card', () => {
     await expect(actionAutocomplete?.('missing')).resolves.toEqual([]);
   });
 
-  it('rejects expected-power overrides for snapshot-only stepped-load devices', async () => {
-    const device = new MockDevice('dev-target-power', 'Target Power Heater', ['onoff', 'measure_power']);
-
-    setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
-    mockHomeyInstance.settings.set('device_target_power_configs', {
-      'dev-target-power': {
-        enabled: true,
-        max: 3000,
-        step: 1500,
-      },
-    });
-    mockHomeyInstance.settings.set('controllable_devices', { 'dev-target-power': true });
-    mockHomeyInstance.settings.set('managed_devices', { 'dev-target-power': true });
-
-    const app = createApp();
-    await app.onInit();
-
-    const snapshot = (app as any).latestTargetSnapshot as Array<{ id: string; steppedLoadProfile?: unknown }>;
-    expect(snapshot.find((entry) => entry.id === 'dev-target-power')?.steppedLoadProfile).toBeDefined();
-
-    const runAction = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
-    await expect(runAction({ device: { id: 'dev-target-power' }, power_w: 1000 })).rejects.toThrow(
-      'Stepped load devices use configured planning power per step',
-    );
-  });
-
   it('uses settings.load before overrides or measurements, then newest override/measurement, else 1kW', async () => {
     const device = new MockDevice('dev-3', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     device.setSettings({ load: 700 });
