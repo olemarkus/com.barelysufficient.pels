@@ -775,6 +775,7 @@ class PelsApp extends Homey.App {
       lastPositiveMeasuredPowerKw: this.lastPositiveMeasuredPowerKw,
     }, {
       debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
+      getFlowTriggerCard: (cardId) => this.homey.flow?.getTriggerCard?.(cardId),
     });
     await this.deviceManager.init();
     this.deviceManager.on(

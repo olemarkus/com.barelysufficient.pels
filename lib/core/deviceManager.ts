@@ -1,7 +1,13 @@
 /* eslint-disable max-lines -- Device manager coordinates SDK setup, snapshots, realtime updates, and command writes. */
 import Homey from 'homey';
 import { EventEmitter } from 'events';
-import { BinaryControlObservation, HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
+import {
+    BinaryControlObservation,
+    HomeyDeviceLike,
+    Logger,
+    SteppedLoadProfile,
+    TargetDeviceSnapshot,
+} from '../utils/types';
 import { getDeviceId } from './deviceManagerHelpers';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { estimatePower, type PowerEstimateState } from './powerEstimate';
@@ -86,6 +92,7 @@ import {
 import {
     observeNativeSteppedLoadCapabilityUpdate,
     resolveObservedNativeSteppedLoadReportedStepId,
+    setObservedNativeSteppedLoadStep,
     syncNativeSteppedLoadCommandAdapters,
 } from './deviceManagerNativeSteppedCommand';
 import { applyFreshnessOnlyCapabilityUpdate } from './deviceManagerFreshness';
@@ -120,6 +127,21 @@ export type SnapshotRefreshMetrics = {
     unavailableDevices: number;
 };
 
+export type SteppedLoadStepRequestTransport = 'native_capability' | 'flow';
+
+export type SteppedLoadStepRequestResult =
+    | { requested: false }
+    | { requested: true; transport: SteppedLoadStepRequestTransport };
+
+type SteppedLoadFlowTriggerCard = {
+    trigger: (tokens?: object, state?: object) => Promise<unknown> | unknown;
+};
+
+type DeviceManagerOptions = {
+    debugStructured?: StructuredDebugEmitter;
+    getFlowTriggerCard?: (cardId: string) => SteppedLoadFlowTriggerCard | undefined;
+};
+
 export class DeviceManager extends EventEmitter {
     private sdkReady = false;
     private liveFeed: DeviceLiveFeed | null = null;
@@ -139,6 +161,7 @@ export class DeviceManager extends EventEmitter {
     private recentRealtimeCapabilityEventLogByKey: Map<string, number> = new Map();
     private lastSnapshotRefreshMetricsKey: string | null = null;
     private providers: DeviceManagerParseProviders = {};
+    private getFlowTriggerCard: DeviceManagerOptions['getFlowTriggerCard'] | undefined;
     private readonly handleRealtimeCapabilityUpdate = (
         deviceId: string,
         capabilityId: string,
@@ -1319,12 +1342,13 @@ export class DeviceManager extends EventEmitter {
         logger: Logger,
         providers?: DeviceManagerParseProviders,
         powerState?: DeviceManagerPowerState,
-        options?: { debugStructured?: StructuredDebugEmitter },
+        options?: DeviceManagerOptions,
     ) {
         super();
         this.homey = homey;
         this.logger = logger;
         this.debugStructured = options?.debugStructured;
+        this.getFlowTriggerCard = options?.getFlowTriggerCard;
         if (providers) this.providers = providers;
         this.powerState = {
             expectedPowerKwOverrides: powerState?.expectedPowerKwOverrides ?? {},
@@ -1632,6 +1656,73 @@ export class DeviceManager extends EventEmitter {
             value: normalizedValue,
         });
         return normalizedValue;
+    }
+
+    async requestSteppedLoadStep(params: {
+        deviceId: string;
+        profile: SteppedLoadProfile;
+        desiredStepId: string;
+        planningPowerW: number;
+        planningCurrentA: number;
+        actuationMode?: 'plan' | 'reconcile';
+        previousStepId?: string;
+    }): Promise<SteppedLoadStepRequestResult> {
+        const {
+            deviceId,
+            profile,
+            desiredStepId,
+            planningPowerW,
+            planningCurrentA,
+            actuationMode,
+            previousStepId,
+        } = params;
+        const snapshot = this.latestSnapshotById.get(deviceId);
+        if (snapshot && isNativeSteppedLoadControlEnabled(snapshot)) {
+            const nativeRequested = await setObservedNativeSteppedLoadStep({
+                owner: this,
+                deviceId,
+                profile,
+                desiredStepId,
+                setCapability: (capabilityId, value) => this.setCapability(deviceId, capabilityId, value),
+                logger: this.logger,
+            });
+            return nativeRequested ? { requested: true, transport: 'native_capability' } : { requested: false };
+        }
+
+        const triggerCard = this.resolveSteppedLoadFlowTriggerCard();
+        if (!triggerCard?.trigger) return { requested: false };
+
+        const triggerPromise = triggerCard.trigger({
+            step_id: desiredStepId,
+            planning_power_w: planningPowerW,
+            planning_current_a: planningCurrentA,
+            previous_step_id: previousStepId ?? '',
+        }, {
+            deviceId,
+        });
+        void Promise.resolve(triggerPromise).catch((error: unknown) => {
+            const normalizedError = normalizeError(error);
+            this.logger.structuredLog?.error({
+                event: 'stepped_load_command_failed',
+                reasonCode: 'flow_trigger_failed',
+                deviceId,
+                deviceName: snapshot?.name,
+                desiredStepId,
+                planningPowerW,
+                commandTransport: 'flow',
+                ...(actuationMode ? { mode: actuationMode } : {}),
+                err: normalizedError,
+            });
+            this.logger.error(
+                `Failed to trigger stepped-load command for device ${deviceId}`,
+                normalizedError,
+            );
+        });
+        return { requested: true, transport: 'flow' };
+    }
+
+    private resolveSteppedLoadFlowTriggerCard(): SteppedLoadFlowTriggerCard | undefined {
+        return this.getFlowTriggerCard?.('desired_stepped_load_changed');
     }
 
     private emitCapabilityWriteDebug(params: {

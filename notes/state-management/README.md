@@ -82,14 +82,24 @@ Layer ownership:
 
 Post-release executor boundary rollout:
 
-- `lib/executor` owns actuation concepts: command intent, materialization, retry/wait/skip
-  decisions, and executor-facing action types.
+- `lib/plan` owns desired state, planner reasons, and admission decisions. A finalized plan should
+  say what state PELS wants for each device; it should not encode whether the command is native,
+  flow-backed, or otherwise transported.
+- `DeviceManager` owns observed current state and device-specific actuation transport. Native
+  stepped-load capabilities, stepped-load flow requests, synthetic capability reporting, and Homey
+  write details belong behind that boundary. Flow-backed binary control is still transitional in
+  plan/executor code until that boundary moves separately.
+- `lib/executor` owns desired-state execution: compare observed current state with desired state,
+  issue the needed request through `DeviceManager`, and handle pending, retry, wait, skip, and
+  materialization behavior.
 - `lib/plan` may still adapt broad planner devices into executor actions while compatibility
-  fields remain in planner snapshots.
+  fields remain in planner snapshots, but those adapters should project only identity, current
+  observation, desired state, and execution metadata needed for the command path.
 - Broad `DevicePlanDevice` inputs at executor dispatch boundaries are transitional. Target-command
   projection now narrows target update and shed-temperature writes before they reach the target
-  executor, and binary command execution now lives under `lib/executor`. The next narrowing step
-  is dispatching over projected executable device concepts instead of repeatedly unwrapping
+  executor, binary command execution now lives under `lib/executor`, and stepped-load step
+  transport is requested through `DeviceManager`. The next narrowing step is dispatching over
+  projected executable device concepts instead of repeatedly unwrapping
   planner devices.
 - Behavioral cleanups, including the stepped-load non-executable hold model, should stay separate
   from move-only or projection-only PRs.

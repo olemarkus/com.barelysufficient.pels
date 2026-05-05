@@ -712,7 +712,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('writes native capability instead of triggering the stepped-load flow when enabled', async () => {
-    const setNativeSteppedLoadStep = vi.fn(async () => true);
+    const requestSteppedLoadStep = vi.fn(async () => ({ requested: true, transport: 'native_capability' as const }));
     const trigger = vi.fn(async () => undefined);
     const structuredLog = { info: vi.fn(), error: vi.fn() };
     const ctx = {
@@ -720,13 +720,12 @@ describe('native stepped-load wiring', () => {
       logDebug: vi.fn(),
       error: vi.fn(),
       structuredLog,
-      buildBinaryControlDeps: () => ({ deviceManager: { setNativeSteppedLoadStep } }),
+      buildBinaryControlDeps: () => ({ deviceManager: { requestSteppedLoadStep } }),
       markSteppedLoadDesiredStepIssued: vi.fn(),
       recordShedActuation: vi.fn(),
       recordRestoreActuation: vi.fn(),
       getRestoreLogSource: () => 'current_plan',
-      getDesiredSteppedLoadTrigger: () => ({ trigger }),
-      setNativeSteppedLoadStep,
+      requestSteppedLoadStep,
     } as unknown as PlanExecutorSteppedContext;
 
     const action = buildExecutableSteppedLoadDevice({
@@ -755,7 +754,15 @@ describe('native stepped-load wiring', () => {
     const wrote = await applySteppedLoadCommand(ctx, action!, 'plan');
 
     expect(wrote).toBe(true);
-    expect(setNativeSteppedLoadStep).toHaveBeenCalledWith('hoiax-1', steppedProfile, 'medium');
+    expect(requestSteppedLoadStep).toHaveBeenCalledWith({
+      deviceId: 'hoiax-1',
+      profile: steppedProfile,
+      desiredStepId: 'medium',
+      planningPowerW: 1750,
+      planningCurrentA: 0,
+      actuationMode: 'plan',
+      previousStepId: 'max',
+    });
     expect(trigger).not.toHaveBeenCalled();
     expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_load_command_requested',
@@ -767,21 +774,36 @@ describe('native stepped-load wiring', () => {
   });
 
   it('triggers the stepped-load flow for configured target_power models without native capability support', async () => {
-    const setNativeSteppedLoadStep = vi.fn(async () => true);
     const trigger = vi.fn(async () => undefined);
+    const requestSteppedLoadStep = vi.fn(async (params: {
+      deviceId: string;
+      desiredStepId: string;
+      planningPowerW: number;
+      planningCurrentA: number;
+      previousStepId?: string;
+    }) => {
+      await trigger({
+        step_id: params.desiredStepId,
+        planning_power_w: params.planningPowerW,
+        planning_current_a: params.planningCurrentA,
+        previous_step_id: params.previousStepId ?? '',
+      }, {
+        deviceId: params.deviceId,
+      });
+      return { requested: true, transport: 'flow' as const };
+    });
     const structuredLog = { info: vi.fn(), error: vi.fn() };
     const ctx = {
       state: {},
       logDebug: vi.fn(),
       error: vi.fn(),
       structuredLog,
-      buildBinaryControlDeps: () => ({ deviceManager: { setNativeSteppedLoadStep } }),
+      buildBinaryControlDeps: () => ({ deviceManager: { requestSteppedLoadStep } }),
       markSteppedLoadDesiredStepIssued: vi.fn(),
       recordShedActuation: vi.fn(),
       recordRestoreActuation: vi.fn(),
       getRestoreLogSource: () => 'current_plan',
-      getDesiredSteppedLoadTrigger: () => ({ trigger }),
-      setNativeSteppedLoadStep,
+      requestSteppedLoadStep,
     } as unknown as PlanExecutorSteppedContext;
 
     const action = buildExecutableSteppedLoadDevice({
@@ -811,7 +833,15 @@ describe('native stepped-load wiring', () => {
     const wrote = await applySteppedLoadCommand(ctx, action!, 'plan');
 
     expect(wrote).toBe(true);
-    expect(setNativeSteppedLoadStep).not.toHaveBeenCalled();
+    expect(requestSteppedLoadStep).toHaveBeenCalledWith({
+      deviceId: 'synthetic-target-power-1',
+      profile: action!.steppedLoadProfile,
+      desiredStepId: '6a',
+      planningPowerW: 1380,
+      planningCurrentA: 0,
+      actuationMode: 'plan',
+      previousStepId: '8a',
+    });
     expect(trigger).toHaveBeenCalledWith({
       step_id: '6a',
       planning_power_w: 1380,
@@ -829,21 +859,36 @@ describe('native stepped-load wiring', () => {
   });
 
   it('triggers the stepped-load flow for EV target-power presets with native EV wiring', async () => {
-    const setNativeSteppedLoadStep = vi.fn(async () => true);
     const trigger = vi.fn(async () => undefined);
+    const requestSteppedLoadStep = vi.fn(async (params: {
+      deviceId: string;
+      desiredStepId: string;
+      planningPowerW: number;
+      planningCurrentA: number;
+      previousStepId?: string;
+    }) => {
+      await trigger({
+        step_id: params.desiredStepId,
+        planning_power_w: params.planningPowerW,
+        planning_current_a: params.planningCurrentA,
+        previous_step_id: params.previousStepId ?? '',
+      }, {
+        deviceId: params.deviceId,
+      });
+      return { requested: true, transport: 'flow' as const };
+    });
     const structuredLog = { info: vi.fn(), error: vi.fn() };
     const ctx = {
       state: {},
       logDebug: vi.fn(),
       error: vi.fn(),
       structuredLog,
-      buildBinaryControlDeps: () => ({ deviceManager: { setNativeSteppedLoadStep } }),
+      buildBinaryControlDeps: () => ({ deviceManager: { requestSteppedLoadStep } }),
       markSteppedLoadDesiredStepIssued: vi.fn(),
       recordShedActuation: vi.fn(),
       recordRestoreActuation: vi.fn(),
       getRestoreLogSource: () => 'current_plan',
-      getDesiredSteppedLoadTrigger: () => ({ trigger }),
-      setNativeSteppedLoadStep,
+      requestSteppedLoadStep,
     } as unknown as PlanExecutorSteppedContext;
 
     const action = buildExecutableSteppedLoadDevice({
@@ -880,7 +925,15 @@ describe('native stepped-load wiring', () => {
     const wrote = await applySteppedLoadCommand(ctx, action!, 'plan');
 
     expect(wrote).toBe(true);
-    expect(setNativeSteppedLoadStep).not.toHaveBeenCalled();
+    expect(requestSteppedLoadStep).toHaveBeenCalledWith({
+      deviceId: 'zaptec-go-1',
+      profile: action!.steppedLoadProfile,
+      desiredStepId: '6a',
+      planningPowerW: 4140,
+      planningCurrentA: 4140 / (230 * 3),
+      actuationMode: 'plan',
+      previousStepId: '16a',
+    });
     expect(trigger).toHaveBeenCalledWith({
       step_id: '6a',
       planning_power_w: 4140,
@@ -921,14 +974,14 @@ describe('native stepped-load wiring', () => {
       expect(get).toHaveBeenCalledTimes(1);
       get.mockRejectedValue(new Error('command path must not fetch devices'));
 
-      await expect(setObservedNativeSteppedLoadStep({
-        owner: deviceManager,
+      await expect(deviceManager.requestSteppedLoadStep({
         deviceId: 'hoiax-1',
         profile: steppedProfile,
         desiredStepId: 'medium',
-        setCapability: (capabilityId, value) => deviceManager.setCapability('hoiax-1', capabilityId, value),
+        planningPowerW: 1750,
+        planningCurrentA: 0,
       }))
-        .resolves.toBe(true);
+        .resolves.toEqual({ requested: true, transport: 'native_capability' });
 
       expect(get).toHaveBeenCalledTimes(1);
       expect(put).toHaveBeenCalledWith(
@@ -964,14 +1017,14 @@ describe('native stepped-load wiring', () => {
         },
       });
 
-      await expect(setObservedNativeSteppedLoadStep({
-        owner: deviceManager,
+      await expect(deviceManager.requestSteppedLoadStep({
         deviceId: 'hoiax-1',
         profile: steppedProfile,
         desiredStepId: 'medium',
-        setCapability: (capabilityId, value) => deviceManager.setCapability('hoiax-1', capabilityId, value),
+        planningPowerW: 1750,
+        planningCurrentA: 0,
       }))
-        .resolves.toBe(true);
+        .resolves.toEqual({ requested: true, transport: 'native_capability' });
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
@@ -1007,14 +1060,14 @@ describe('native stepped-load wiring', () => {
       }));
 
       put.mockClear();
-      await expect(setObservedNativeSteppedLoadStep({
-        owner: deviceManager,
+      await expect(deviceManager.requestSteppedLoadStep({
         deviceId: 'hoiax-1',
         profile: steppedProfile,
         desiredStepId: 'medium',
-        setCapability: (capabilityId, value) => deviceManager.setCapability('hoiax-1', capabilityId, value),
+        planningPowerW: 1750,
+        planningCurrentA: 0,
       }))
-        .resolves.toBe(true);
+        .resolves.toEqual({ requested: true, transport: 'native_capability' });
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
@@ -1023,6 +1076,158 @@ describe('native stepped-load wiring', () => {
     } finally {
       restoreMockRestClient();
     }
+  });
+
+  it('uses DeviceManager flow transport for non-native stepped-load commands', async () => {
+    mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed = [];
+    const deviceManager = new DeviceManager(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      undefined,
+      undefined,
+      { getFlowTriggerCard: (cardId) => mockHomeyInstance.flow.getTriggerCard(cardId) },
+    );
+    deviceManager.setSnapshotForTests([{
+      id: 'flow-step-1',
+      name: 'Flow backed charger',
+      currentOn: true,
+      controlModel: 'stepped_load',
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: '6a', planningPowerW: 1380 },
+          { id: '8a', planningPowerW: 1840 },
+        ],
+      },
+    } as TargetDeviceSnapshot]);
+
+    await expect(deviceManager.requestSteppedLoadStep({
+      deviceId: 'flow-step-1',
+      profile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: '6a', planningPowerW: 1380 },
+          { id: '8a', planningPowerW: 1840 },
+        ],
+      },
+      desiredStepId: '6a',
+      planningPowerW: 1380,
+      planningCurrentA: 0,
+      previousStepId: '8a',
+      actuationMode: 'plan',
+    }))
+      .resolves.toEqual({ requested: true, transport: 'flow' });
+
+    expect(mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed).toEqual([{
+      tokens: {
+        step_id: '6a',
+        planning_power_w: 1380,
+        planning_current_a: 0,
+        previous_step_id: '8a',
+      },
+      state: { deviceId: 'flow-step-1' },
+    }]);
+  });
+
+  it('does not use native stepped-load transport when native activation is disabled', async () => {
+    const get = vi.fn(async (path: string) => {
+      if (path === 'manager/devices/device') return { 'hoiax-1': buildHoiaxDevice() };
+      throw new Error(`unexpected device fetch: ${path}`);
+    });
+    const put = vi.fn().mockResolvedValue(undefined);
+    setRestClient({ get, put });
+    mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed = [];
+    try {
+      const deviceManager = new DeviceManager(
+        mockHomeyInstance as unknown as Homey.App,
+        createLogger(),
+        {
+          getNativeEvWiringEnabled: () => false,
+          getDeviceControlProfile: () => steppedProfile,
+        },
+        undefined,
+        { getFlowTriggerCard: (cardId) => mockHomeyInstance.flow.getTriggerCard(cardId) },
+      );
+
+      await deviceManager.refreshSnapshot({ includeLivePower: false });
+
+      await expect(deviceManager.requestSteppedLoadStep({
+        deviceId: 'hoiax-1',
+        profile: steppedProfile,
+        desiredStepId: 'medium',
+        planningPowerW: 1750,
+        planningCurrentA: 0,
+        previousStepId: 'low',
+        actuationMode: 'plan',
+      }))
+        .resolves.toEqual({ requested: true, transport: 'flow' });
+
+      expect(put).not.toHaveBeenCalled();
+      expect(mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed).toEqual([{
+        tokens: {
+          step_id: 'medium',
+          planning_power_w: 1750,
+          planning_current_a: 0,
+          previous_step_id: 'low',
+        },
+        state: { deviceId: 'hoiax-1' },
+      }]);
+    } finally {
+      restoreMockRestClient();
+    }
+  });
+
+  it('logs async stepped-load flow trigger failures with execution context', async () => {
+    const logger = createLogger();
+    const failure = new Error('trigger failed');
+    const homey = {
+      flow: {
+        getTriggerCard: () => ({
+          trigger: () => Promise.reject(failure),
+        }),
+      },
+    } as unknown as Homey.App;
+    const deviceManager = new DeviceManager(
+      homey,
+      logger,
+      undefined,
+      undefined,
+      { getFlowTriggerCard: () => ({ trigger: () => Promise.reject(failure) }) },
+    );
+    deviceManager.setSnapshotForTests([{
+      id: 'flow-step-1',
+      name: 'Flow backed charger',
+      currentOn: true,
+      controlModel: 'stepped_load',
+      steppedLoadProfile: steppedProfile,
+    } as TargetDeviceSnapshot]);
+
+    await expect(deviceManager.requestSteppedLoadStep({
+      deviceId: 'flow-step-1',
+      profile: steppedProfile,
+      desiredStepId: 'medium',
+      planningPowerW: 1750,
+      planningCurrentA: 0,
+      actuationMode: 'reconcile',
+    }))
+      .resolves.toEqual({ requested: true, transport: 'flow' });
+    await Promise.resolve();
+
+    expect(logger.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_command_failed',
+      reasonCode: 'flow_trigger_failed',
+      deviceId: 'flow-step-1',
+      deviceName: 'Flow backed charger',
+      desiredStepId: 'medium',
+      planningPowerW: 1750,
+      commandTransport: 'flow',
+      mode: 'reconcile',
+      err: expect.objectContaining({
+        message: 'trigger failed',
+      }),
+    }));
   });
 
   it('ignores native stepped-load local write echoes as reported step feedback', async () => {

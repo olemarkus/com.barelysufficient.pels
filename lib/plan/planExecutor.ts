@@ -8,7 +8,7 @@ import {
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
 import type { PendingTargetObservationSource } from './planTypes';
-import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../utils/types';
 import type { ExecutableSteppedLoadDevice, ExecutableTargetUpdate } from '../executor/executablePlan';
 import type { PlanActuationMode } from '../executor/executorTypes';
 import type { PlanEngineState } from './planState';
@@ -51,7 +51,6 @@ import {
 import { buildExecutablePlan, buildExecutablePlanDevice } from './planExecutablePlan';
 import { buildExecutableShedTemperatureCommand, buildExecutableTargetUpdate } from './planExecutableTarget';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
-import { setObservedNativeSteppedLoadStep } from '../core/deviceManagerNativeSteppedCommand';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 
 export type PlanExecutorDeps = {
@@ -142,21 +141,6 @@ export class PlanExecutor {
   private readonly boundGetRestoreLogSource = (deviceId: string): 'shed_state' | 'current_plan' => (
     this.getRestoreLogSource(deviceId)
   );
-  private readonly boundGetDesiredSteppedLoadTrigger = () => (
-    this.deps.homey.flow?.getTriggerCard?.('desired_stepped_load_changed')
-  );
-  private readonly boundSetNativeSteppedLoadStep = (
-    deviceId: string,
-    profile: SteppedLoadProfile,
-    desiredStepId: string,
-  ) => setObservedNativeSteppedLoadStep({
-    owner: this.deviceManager,
-    deviceId,
-    profile,
-    desiredStepId,
-    setCapability: (capabilityId, value) => this.deviceManager.setCapability(deviceId, capabilityId, value),
-  });
-
   private targetExecutorContext?: PlanExecutorTargetContext;
   private steppedExecutorContext?: PlanExecutorSteppedContext;
   private binaryExecutorContext?: PlanExecutorBinaryContext;
@@ -381,8 +365,7 @@ export class PlanExecutor {
         recordShedActuation: this.boundRecordShedActuation,
         recordRestoreActuation: this.boundRecordRestoreActuation,
         getRestoreLogSource: this.boundGetRestoreLogSource,
-        getDesiredSteppedLoadTrigger: this.boundGetDesiredSteppedLoadTrigger,
-        setNativeSteppedLoadStep: this.boundSetNativeSteppedLoadStep,
+        requestSteppedLoadStep: (params) => this.deviceManager.requestSteppedLoadStep(params),
         deviceDiagnostics: this.deps.deviceDiagnostics,
       };
     }
