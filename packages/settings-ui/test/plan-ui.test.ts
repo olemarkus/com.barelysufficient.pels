@@ -1787,7 +1787,7 @@ describe('Redesign plan UI', () => {
       vi.advanceTimersByTime(1_000);
       await Promise.resolve();
 
-      expect(getReasonText('dev-restore-cooldown')).toBe('');
+      expect(getReasonText('dev-restore-cooldown')).toBeFalsy();
       expect(timer?.hidden).toBe(true);
     });
 
@@ -1815,7 +1815,7 @@ describe('Redesign plan UI', () => {
       const timer = document.querySelector(
         '[data-device-id="dev-expired-cooldown"] .plan-state-chip__timer',
       ) as HTMLElement | null;
-      expect(getReasonText('dev-expired-cooldown')).toBe('');
+      expect(getReasonText('dev-expired-cooldown')).toBeFalsy();
       expect(timer?.hidden).toBe(true);
       // Cooldown summary lives on device card, not as a hero chip
     });

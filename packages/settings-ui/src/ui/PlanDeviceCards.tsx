@@ -207,9 +207,7 @@ export const PlanGenericCard = ({
         </div>
       )}
 
-      <p class="plan-card__reason" style={{ visibility: reasonText === '' ? 'hidden' : '' }}>
-        {reasonText}
-      </p>
+      {reasonText !== '' && <p class="plan-card__reason">{reasonText}</p>}
     </article>
   );
 };
@@ -274,13 +272,8 @@ export const PlanTemperatureCard = ({
         <span class="plan-card__output-power">{formatKw(displayDev.measuredPowerKw)} kW</span>
       </div>
 
-      <p class="plan-card__temp-line" style={{ visibility: temperatureLine === null ? 'hidden' : '' }}>
-        {temperatureLine ?? ''}
-      </p>
-
-      <p class="plan-card__temp-reason" style={{ visibility: reasonLine === null ? 'hidden' : '' }}>
-        {reasonLine ?? ''}
-      </p>
+      {temperatureLine !== null && <p class="plan-card__temp-line">{temperatureLine}</p>}
+      {reasonLine !== null && <p class="plan-card__temp-reason">{reasonLine}</p>}
     </article>
   );
 };

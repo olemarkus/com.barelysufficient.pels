@@ -309,7 +309,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(result).toBe('Needs 0.3 kW more to turn on');
     });
 
-    it('returns null when held but reason has no gap info', () => {
+    it('returns budget text when held off with capacity reason and no gap info', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
@@ -319,7 +319,7 @@ describe('resolveSteppedStatusLine', () => {
         },
         profile,
         NOW_MS,
-      )).toBeNull();
+      )).toBe('Off to stay within budget');
     });
 
     it('returns null when desired step is lower (being shed down, chip covers it)', () => {
