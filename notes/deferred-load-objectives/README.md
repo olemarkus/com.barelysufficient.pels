@@ -575,6 +575,79 @@ For v1, the horizon scheduler can be conservative and simple:
 Required-average kW remains useful as a diagnostic, but horizon scheduling is the mechanism that
 makes soft objectives budget-aware instead of just "boost immediately."
 
+## Logging and Diagnostics
+
+Add a separate debug topic for deferred objectives before exposing a broad UI. The topic should
+allow detailed objective logging without making normal runtime logs noisy.
+
+Suggested topic:
+
+```ts
+deferred_objectives
+```
+
+Use structured logs with stable field names. Logs should make it possible to answer:
+
+- What target is this device trying to reach?
+- What horizon was evaluated?
+- Which energy buckets or milestones were planned?
+- Is the device on track, at risk, or impossible to finish?
+- What step/mode is being requested now, and why?
+- Did the device reach the target?
+- Did stale/missing input prevent planning?
+
+Initial log events:
+
+- `deferred_objective_evaluated`
+- `deferred_objective_horizon_planned`
+- `deferred_objective_milestone_status`
+- `deferred_objective_step_requested`
+- `deferred_objective_mode_requested`
+- `deferred_objective_goal_met`
+- `deferred_objective_deadline_missed`
+- `deferred_objective_unknown`
+
+Useful fields:
+
+- `deviceId`
+- `deviceName`
+- `objectiveKind`
+- `activeMode`
+- `status`
+- `stableStatus`
+- `reasonCode`
+- `targetTemperatureC`
+- `targetPercent`
+- `targetEnergyKwh`
+- `currentEnergyKwh`
+- `energyNeededKwh`
+- `deadlineAtMs`
+- `horizonStartMs`
+- `horizonEndMs`
+- `horizonBucketCount`
+- `currentBucketStartMs`
+- `currentBucketEndMs`
+- `plannedEnergyByNowKwh`
+- `actualEnergyByNowKwh`
+- `plannedEnergyAtDeadlineKwh`
+- `requiredAverageKw`
+- `conservativeNetGainKw`
+- `rateConfidence`
+- `deadlineMarginMs`
+- `projectedCompletionAtMs`
+- `requestedMinimumStepId`
+- `requestedModeId`
+- `milestoneStatus`
+
+Log the full bucket plan only when the debug topic is enabled. Normal structured info logs should
+be limited to lifecycle events such as target met, deadline missed, or a stable transition to
+`at_risk`/`cannot_be_met`.
+
+Goal achievement should be explicit and deduplicated. Once an objective crosses its target, emit a
+single `deferred_objective_goal_met` event for that objective instance with the achieved state,
+target, and deadline. If the deadline passes before the target is reached, emit
+`deferred_objective_deadline_missed` with the final measured state and reason code.
+
 ## Planner Integration
 
 Add an objective evaluator before restore/shed planning.
@@ -763,6 +836,8 @@ Diagnostics and triggers:
   session events.
 - Logs/diagnostics include reason codes for unknown, blocked, hard deadline restore, hard deadline
   rebalancing, requested step selection, and requested mode selection.
+- A dedicated deferred-objectives debug topic exposes horizon buckets, milestones, goal
+  achievement, and risk evaluation details without noisy default logs.
 
 ## Test Plan
 
