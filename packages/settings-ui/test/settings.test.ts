@@ -253,25 +253,32 @@ const loadSettingsScript = async () => {
 
 const OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY = 'pels.settingsUi.overviewRedesignEnabled';
 
-const buildSettingsHomeyState = (settings: Record<string, unknown> = {}) => ({
-  target_devices_snapshot: [
-    {
-      id: 'dev-1',
-      name: 'Heater',
-      targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
-    },
-  ],
-  operating_mode: 'Home',
-  capacity_priorities: {},
-  mode_device_targets: {},
-  controllable_devices: {},
-  managed_devices: {},
-  price_optimization_settings: {},
-  ...settings,
-});
+const buildSettingsHomeyState = (settings: Record<string, unknown> = {}) => {
+  const homeySettings = { ...settings };
+  delete homeySettings.planSnapshot;
+  return {
+    target_devices_snapshot: [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      },
+    ],
+    operating_mode: 'Home',
+    capacity_priorities: {},
+    mode_device_targets: {},
+    controllable_devices: {},
+    managed_devices: {},
+    price_optimization_settings: {},
+    ...homeySettings,
+  };
+};
 
 const installSettingsHomeyMock = (settings: Record<string, unknown> = {}) => installHomeyMock({
   settings: buildSettingsHomeyState(settings),
+  uiState: {
+    plan: settings.planSnapshot,
+  },
 });
 
 const enableOverviewRedesignForBrowser = () => {
@@ -282,6 +289,7 @@ const installSettingsHomeyMockWithOverviewToggle = (settings: Record<string, unk
   settings: buildSettingsHomeyState(settings),
   uiState: {
     featureAccess: { canToggleOverviewRedesign: true },
+    plan: settings.planSnapshot,
   },
 });
 
@@ -291,6 +299,7 @@ const installOverviewRedesignHomeyMock = (settings: Record<string, unknown> = {}
     settings: buildSettingsHomeyState(settings),
     uiState: {
       featureAccess: { canToggleOverviewRedesign: true },
+      plan: settings.planSnapshot,
     },
   });
 };
@@ -299,6 +308,7 @@ const installSettingsHomeyMockWithoutOverviewToggle = (settings: Record<string, 
   settings: buildSettingsHomeyState(settings),
   uiState: {
     featureAccess: { canToggleOverviewRedesign: false },
+    plan: settings.planSnapshot,
   },
 });
 
@@ -2276,14 +2286,14 @@ describe('Plan sorting', () => {
     vi.resetModules();
     buildDom();
     installSettingsHomeyMock({
-      device_plan_snapshot: null,
+      planSnapshot: null,
       target_devices_snapshot: [],
     });
   });
 
   const setupPlanHomeyMock = (planSnapshot: any) => {
     installOverviewRedesignHomeyMock({
-      device_plan_snapshot: planSnapshot,
+      planSnapshot: planSnapshot,
       target_devices_snapshot: [],
     });
   };
@@ -2454,7 +2464,7 @@ describe('Plan sorting', () => {
     };
 
     installOverviewRedesignHomeyMock({
-      device_plan_snapshot: planSnapshot,
+      planSnapshot: planSnapshot,
       target_devices_snapshot: [],
     });
 
@@ -2471,7 +2481,7 @@ describe('Plan sorting', () => {
 
   it('keeps the last rendered plan when a realtime plan update is malformed', async () => {
     const homey = installOverviewRedesignHomeyMock({
-      device_plan_snapshot: {
+      planSnapshot: {
         meta: {
           totalKw: 2.0,
           softLimitKw: 9.0,
@@ -2522,15 +2532,9 @@ describe('Plan sorting', () => {
     expect(document.querySelector('#plan-cards .plan-card__title')?.textContent).toContain('Heater');
   });
 
-  it('refreshes plan when capacity priorities change via settings event', async () => {
+  it('does not read a persisted plan when capacity priorities change via settings event', async () => {
     const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
     const getSpy = vi.fn((key, cb) => {
-      if (key === 'device_plan_snapshot') {
-        return cb(null, {
-          meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
-          devices: [],
-        });
-      }
       if (key === 'target_devices_snapshot') return cb(null, []);
       if (key === 'capacity_priorities') return cb(null, { Home: {} });
       if (key === 'mode_device_targets') return cb(null, { Home: {} });
@@ -2542,7 +2546,7 @@ describe('Plan sorting', () => {
     });
 
     installOverviewRedesignHomeyMock({
-      device_plan_snapshot: {
+      planSnapshot: {
         meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
         devices: [],
       },
@@ -2562,13 +2566,13 @@ describe('Plan sorting', () => {
     overviewTab?.click();
     await flushPromises();
 
-    const before = getSpy.mock.calls.filter((call) => call[0] === 'device_plan_snapshot').length;
+    const before = getSpy.mock.calls.filter((call) => call[0] === 'planSnapshot').length;
     const settingsCallbacks = listeners['settings.set'] || [];
     settingsCallbacks.forEach((cb) => cb('capacity_priorities'));
     await flushPromises();
 
-    const after = getSpy.mock.calls.filter((call) => call[0] === 'device_plan_snapshot').length;
-    expect(after).toBeGreaterThan(before);
+    const after = getSpy.mock.calls.filter((call) => call[0] === 'planSnapshot').length;
+    expect(after).toBe(before);
   });
 
   it('keeps the stale-data banner hidden when tracker data is fresh even if status is stale', async () => {

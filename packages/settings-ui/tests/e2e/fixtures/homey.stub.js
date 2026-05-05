@@ -634,8 +634,8 @@
     daily_budget_price_flex_share: 0.3,
     daily_budget_breakdown_enabled: false,
 
-    // Plan snapshot
-    device_plan_snapshot: buildSamplePlanSnapshot(),
+    // In-memory plan snapshot
+    plan_snapshot: buildSamplePlanSnapshot(),
 
     // Grid tariff settings
     nettleie_fylke: '03',
@@ -678,26 +678,26 @@
 
   const syncExperimentalEvSupportState = () => {
     const hasEvDevice = settings.target_devices_snapshot.some((device) => device.id === evDeviceSnapshot.id);
-    const hasEvPlanDevice = Array.isArray(settings.device_plan_snapshot?.devices)
-      && settings.device_plan_snapshot.devices.some((device) => device.id === evPlanDevice.id);
+    const hasEvPlanDevice = Array.isArray(settings.plan_snapshot?.devices)
+      && settings.plan_snapshot.devices.some((device) => device.id === evPlanDevice.id);
 
     if (settings.experimental_ev_support_enabled === true) {
       if (!hasEvDevice) {
         settings.target_devices_snapshot = [...settings.target_devices_snapshot, { ...evDeviceSnapshot }];
       }
       if (!hasEvPlanDevice) {
-        settings.device_plan_snapshot = {
-          ...settings.device_plan_snapshot,
-          devices: [...(settings.device_plan_snapshot?.devices ?? []), { ...evPlanDevice }],
+        settings.plan_snapshot = {
+          ...settings.plan_snapshot,
+          devices: [...(settings.plan_snapshot?.devices ?? []), { ...evPlanDevice }],
         };
       }
       return;
     }
 
     settings.target_devices_snapshot = settings.target_devices_snapshot.filter((device) => device.id !== evDeviceSnapshot.id);
-    settings.device_plan_snapshot = {
-      ...settings.device_plan_snapshot,
-      devices: (settings.device_plan_snapshot?.devices ?? []).filter((device) => device.id !== evPlanDevice.id),
+    settings.plan_snapshot = {
+      ...settings.plan_snapshot,
+      devices: (settings.plan_snapshot?.devices ?? []).filter((device) => device.id !== evPlanDevice.id),
     };
     settings.managed_devices = {
       ...settings.managed_devices,
@@ -783,7 +783,7 @@
       dailyBudget: resolveDailyBudgetPayload(),
       featureAccess: initialOverrides.featureAccess ?? { canToggleOverviewRedesign: true },
       devices: settings.target_devices_snapshot,
-      plan: settings.device_plan_snapshot,
+      plan: settings.plan_snapshot,
       power: buildPowerPayload(),
       prices: buildPricesPayload(),
     }),
@@ -791,7 +791,7 @@
       devices: settings.target_devices_snapshot,
     }),
     'GET /ui_plan': () => ({
-      plan: settings.device_plan_snapshot,
+      plan: settings.plan_snapshot,
     }),
     'GET /ui_power': () => buildPowerPayload(),
     'GET /ui_prices': () => buildPricesPayload(),
@@ -842,7 +842,7 @@
       const followUpKeys = [];
       if (key === 'experimental_ev_support_enabled') {
         syncExperimentalEvSupportState();
-        followUpKeys.push('managed_devices', 'target_devices_snapshot', 'device_plan_snapshot');
+        followUpKeys.push('managed_devices', 'target_devices_snapshot');
       }
       setTimeout(() => {
         cb(null);

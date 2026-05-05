@@ -1,4 +1,5 @@
 import {
+    getLatestPlanSnapshotForTests,
     mockHomeyInstance,
     setMockDrivers,
     MockDevice,
@@ -226,7 +227,7 @@ describe('Heatpump device integration', () => {
         vi.advanceTimersByTime(100);
         await flushPromises();
 
-        const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+        const plan = getLatestPlanSnapshotForTests();
         const planDevice = plan.devices.find((entry: any) => entry.id === 'heatpump-a');
         expect(planDevice?.shedAction).toBe('set_temperature');
         expect(planDevice?.shedTemperature).toBe(15);

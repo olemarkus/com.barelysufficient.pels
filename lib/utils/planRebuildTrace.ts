@@ -6,7 +6,6 @@ export type PlanRebuildTrace = {
   buildMs: number;
   changeMs: number;
   snapshotMs: number;
-  snapshotWriteMs: number;
   statusMs: number;
   statusWriteMs: number;
   applyMs: number;
@@ -34,7 +33,6 @@ export type PlanRebuildTraceSummary = {
   maxBuildMs: number;
   maxChangeMs: number;
   maxSnapshotMs: number;
-  maxSnapshotWriteMs: number;
   maxStatusMs: number;
   maxStatusWriteMs: number;
   maxApplyMs: number;
@@ -73,7 +71,6 @@ export const recordPlanRebuildTrace = (
       buildMs: roundMs(trace.buildMs),
       changeMs: roundMs(trace.changeMs),
       snapshotMs: roundMs(trace.snapshotMs),
-      snapshotWriteMs: roundMs(trace.snapshotWriteMs),
       statusMs: roundMs(trace.statusMs),
       statusWriteMs: roundMs(trace.statusWriteMs),
       applyMs: roundMs(trace.applyMs),
@@ -121,7 +118,6 @@ export const summarizeRecentPlanRebuildTraces = (
       maxBuildMs: 0,
       maxChangeMs: 0,
       maxSnapshotMs: 0,
-      maxSnapshotWriteMs: 0,
       maxStatusMs: 0,
       maxStatusWriteMs: 0,
       maxApplyMs: 0,
@@ -141,7 +137,6 @@ export const summarizeRecentPlanRebuildTraces = (
     maxBuildMs: 0,
     maxChangeMs: 0,
     maxSnapshotMs: 0,
-    maxSnapshotWriteMs: 0,
     maxStatusMs: 0,
     maxStatusWriteMs: 0,
     maxApplyMs: 0,
@@ -162,7 +157,6 @@ export const summarizeRecentPlanRebuildTraces = (
       maxBuildMs: Math.max(totals.maxBuildMs, trace.buildMs),
       maxChangeMs: Math.max(totals.maxChangeMs, trace.changeMs),
       maxSnapshotMs: Math.max(totals.maxSnapshotMs, trace.snapshotMs),
-      maxSnapshotWriteMs: Math.max(totals.maxSnapshotWriteMs, trace.snapshotWriteMs),
       maxStatusMs: Math.max(totals.maxStatusMs, trace.statusMs),
       maxStatusWriteMs: Math.max(totals.maxStatusWriteMs, trace.statusWriteMs),
       maxApplyMs: Math.max(totals.maxApplyMs, trace.applyMs),
@@ -186,7 +180,6 @@ export const summarizeRecentPlanRebuildTraces = (
     maxBuildMs: totals.maxBuildMs,
     maxChangeMs: totals.maxChangeMs,
     maxSnapshotMs: totals.maxSnapshotMs,
-    maxSnapshotWriteMs: totals.maxSnapshotWriteMs,
     maxStatusMs: totals.maxStatusMs,
     maxStatusWriteMs: totals.maxStatusWriteMs,
     maxApplyMs: totals.maxApplyMs,

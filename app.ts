@@ -150,16 +150,6 @@ const shouldForcePersistPowerTracker = (
   return getHourBucketKey(previousTimestamp) !== getHourBucketKey(nextTimestamp);
 };
 
-const isDevicePlanForUiSerialization = (value: unknown): value is DevicePlan => (
-  Boolean(value)
-  && typeof value === 'object'
-  && !Array.isArray(value)
-  && Boolean((value as { meta?: unknown }).meta)
-  && typeof (value as { meta?: unknown }).meta === 'object'
-  && !Array.isArray((value as { meta?: unknown }).meta)
-  && Array.isArray((value as { devices?: unknown }).devices)
-);
-
 function resolveFlowBackedCapabilityReportOutcome(update: {
   stateChanged: boolean;
   valueChanged: boolean;
@@ -667,7 +657,6 @@ class PelsApp extends Homey.App {
       set planEngine(value) { appRef.planEngine = value; },
       get planService() { return app.planService; },
       set planService(value) { appRef.planService = value; },
-      planRebuildScheduler: app.planRebuildScheduler,
       snapshotHelpers: app.snapshotHelpers,
       homeyEnergyHelpers: app.homeyEnergyHelpers,
       deviceControlHelpers: app.deviceControlHelpers,
@@ -890,10 +879,7 @@ class PelsApp extends Homey.App {
       const lastCompletedAtMs = state.lastCompletedAtMsByKind.flow ?? Number.NEGATIVE_INFINITY;
       return Math.max(nowMs, lastCompletedAtMs + FLOW_REBUILD_COOLDOWN_MS);
     }
-    return this.planService?.getPendingSnapshotDueMs({
-      nowMs,
-      activeIntent: state.activeIntent,
-    }) ?? Number.POSITIVE_INFINITY;
+    return Number.POSITIVE_INFINITY;
   }
   private executePlanRebuildIntent(intent: RebuildIntent): Promise<void> {
     if (intent.kind === 'signal' || intent.kind === 'hardCap') {
@@ -905,10 +891,6 @@ class PelsApp extends Homey.App {
         getNowMs: () => this.getPlanRebuildNowMs(),
         rebuildPlanFromCache: (reason?: string) => this.planService.rebuildPlanFromCache(reason),
       });
-    }
-    if (intent.kind === 'snapshot') {
-      this.planService?.flushPendingNonActionSnapshotFromScheduler(this.getPlanRebuildNowMs());
-      return Promise.resolve();
     }
     return this.planService.rebuildPlanFromCache(intent.reason).then(() => undefined);
   }
@@ -960,9 +942,7 @@ class PelsApp extends Homey.App {
     }
     if (intent.kind === 'signal' || intent.kind === 'hardCap') {
       this.error('PowerTracker: Failed to rebuild plan after power sample:', error);
-      return;
     }
-    this.error('Plan rebuild scheduler failed to flush pending snapshot', error);
   }
   private emitRateLimitedPlanRebuildSchedulerDebug(key: string, payload: Record<string, unknown>): void {
     if (!this.structuredLogger || !this.debugLoggingTopics.has('plan')) return;
@@ -1001,7 +981,6 @@ class PelsApp extends Homey.App {
     this.stopUninitServices();
     this.planRebuildScheduler.cancelAll('app_uninit');
     this.deviceDiagnosticsService?.destroy();
-    this.planService?.destroy();
     this.priceCoordinator.stop();
     this.deviceManager?.destroy();
   }
@@ -1229,10 +1208,6 @@ class PelsApp extends Homey.App {
   }
   public getLatestPlanSnapshotForUi(): SettingsUiPlanSnapshot | null {
     return this.planService?.getLatestPlanSnapshotForUi() ?? null;
-  }
-  public getPlanSnapshotForUiFromPersistedPlan(plan: unknown): SettingsUiPlanSnapshot | null {
-    if (!isDevicePlanForUiSerialization(plan)) return null;
-    return this.planService?.serializePlanSnapshotForUi(plan) ?? null;
   }
   private async updateOverheadToken(value?: number): Promise<void> {
     const overhead = Number.isFinite(value) ? Number(value) : this.capacitySettings.marginKw;

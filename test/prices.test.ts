@@ -1,5 +1,6 @@
 import https from 'https';
 import {
+  getLatestPlanSnapshotForTests,
   mockHomeyInstance,
   setMockDrivers,
   MockDevice,
@@ -1949,7 +1950,7 @@ describe('Price optimization', () => {
       await flushPromises();
 
       // Get the plan from settings
-      const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+      const plan = getLatestPlanSnapshotForTests();
       expect(plan).toBeDefined();
       expect(plan.devices).toBeDefined();
 
@@ -2026,7 +2027,7 @@ describe('Price optimization', () => {
       await flushPromises();
 
       // Get the plan from settings
-      const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+      const plan = getLatestPlanSnapshotForTests();
       expect(plan).toBeDefined();
       expect(plan.devices).toBeDefined();
 
@@ -2104,7 +2105,7 @@ describe('Price optimization', () => {
       await flushPromises();
 
       // Get the plan from settings
-      const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+      const plan = getLatestPlanSnapshotForTests();
       expect(plan).toBeDefined();
       expect(plan.devices).toBeDefined();
 
@@ -2182,7 +2183,7 @@ describe('Price optimization', () => {
       await flushPromises();
 
       // Get the plan from settings
-      const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+      const plan = getLatestPlanSnapshotForTests();
       expect(plan).toBeDefined();
       expect(plan.devices).toBeDefined();
 

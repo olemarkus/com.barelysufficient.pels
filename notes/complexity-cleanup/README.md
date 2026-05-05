@@ -97,11 +97,11 @@ after the current helper layout has settled.
 
 **Current size:** ~894 LOC after the landed extractions.
 
-### 6. `planService.ts` — 763 LOC after snapshot-write extraction
+### 6. `planService.ts`
 
 Rebuild orchestration still owns change detection, status updates, actuation, and rebuild metrics,
-but the throttled `device_plan_snapshot` persistence path now lives in `planSnapshotWriter.ts`.
-The shared `planServiceInternals.ts` types also moved into `planTypes.ts`.
+but `device_plan_snapshot` is no longer persisted to settings. The shared
+`planServiceInternals.ts` types also moved into `planTypes.ts`.
 
 **Remaining simplification:** Extract rebuild-metrics helpers (~120 LOC) into their own module so
 `planService.ts` is left with orchestration and state transitions instead of also aggregating perf,
@@ -142,12 +142,11 @@ the cross-file rebuild-scheduler unification work described below.
 
 ### 9. Triple plan-rebuild coalescer — cross-file race window
 
-Three distinct debouncers gate plan rebuilds and snapshot writes with different contracts:
+Two distinct debouncers gate plan rebuilds with different contracts:
 
 - `lib/app/appFlowRebuildScheduler.ts` (FLOW_REBUILD_COOLDOWN_MS=1000) — flow-card-driven.
 - `schedulePlanRebuildFromSignal` in `appPowerHelpers.ts` — power-sample-driven with tight-noop
   exponential backoff.
-- `planSnapshotWriter.pendingNonActionSnapshotTimer` — non-action snapshot writes.
 
 They never coordinate. A flow rebuild and a signal rebuild can race, and each has its own
 cancellation and priority story.
@@ -300,7 +299,7 @@ Items from the original refactoring spec that are deferred or dropped:
       TimerRegistry / AppContext landing
 
 ### Phase 5: Split planService
-- [x] Extract snapshot-write subsystem into planSnapshotWriter.ts
+- [x] Remove settings-backed plan snapshot persistence
 - [ ] Extract rebuild-metrics into planRebuildMetrics.ts
 
 ### Phase 6: Collapse planRestore gates
@@ -317,7 +316,6 @@ Items from the original refactoring spec that are deferred or dropped:
 - [ ] Design sign-off against `notes/complexity-cleanup/rebuild-scheduler-unification.md`
 - [ ] Three-coalescer race regression test before any code changes
 - [ ] Fold `appFlowRebuildScheduler.ts` contract into the unified scheduler
-- [ ] Fold `planSnapshotWriter.pendingNonActionSnapshotTimer` into the unified scheduler
 - [ ] Remove the old per-concern debouncers
 
 ### Phase 10: TimerRegistry

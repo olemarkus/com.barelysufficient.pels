@@ -6,7 +6,6 @@ export const createPlanRebuildOutcome = (isDryRun: boolean): PlanRebuildOutcome 
   buildMs: 0,
   changeMs: 0,
   snapshotMs: 0,
-  snapshotWriteMs: 0,
   statusMs: 0,
   statusWriteMs: 0,
   applyMs: 0,

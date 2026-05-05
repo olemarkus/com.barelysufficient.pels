@@ -1,4 +1,5 @@
 import {
+  getLatestPlanSnapshotForTests,
   mockHomeyInstance,
   setMockDrivers,
   MockDevice,
@@ -327,7 +328,7 @@ describe('MyApp initialization', () => {
     (app as any).structuredLogger = { child };
     (app as any).debugLoggingTopics = new Set(['plan']);
 
-    const previous = { kind: 'snapshot', reason: 'meta_only' };
+    const previous = { kind: 'flow', reason: 'flow_card:first' };
     const next = { kind: 'hardCap', reason: 'shortfall' };
     (app as any).onPlanRebuildPendingIntentReplaced(previous, next);
     (app as any).onPlanRebuildPendingIntentReplaced(previous, next);
@@ -336,8 +337,8 @@ describe('MyApp initialization', () => {
     expect(childLogger.debug).toHaveBeenCalledTimes(1);
     expect(childLogger.debug).toHaveBeenCalledWith({
       event: 'plan_rebuild_scheduler_intent_replaced',
-      previousKind: 'snapshot',
-      previousReason: 'meta_only',
+      previousKind: 'flow',
+      previousReason: 'flow_card:first',
       nextKind: 'hardCap',
       nextReason: 'shortfall',
       debugTopic: 'plan',
@@ -353,19 +354,19 @@ describe('MyApp initialization', () => {
     (app as any).debugLoggingTopics = new Set(['plan']);
 
     (app as any).onPlanRebuildPendingIntentReplaced(
-      { kind: 'snapshot', reason: 'meta_only' },
+      { kind: 'flow', reason: 'flow_card:first' },
       { kind: 'hardCap', reason: 'shortfall' },
     );
     (app as any).onPlanRebuildPendingIntentReplaced(
-      { kind: 'snapshot', reason: 'non_action_details' },
+      { kind: 'flow', reason: 'flow_card:second' },
       { kind: 'hardCap', reason: 'shortfall' },
     );
 
     expect(childLogger.debug).toHaveBeenCalledTimes(2);
     expect(childLogger.debug).toHaveBeenLastCalledWith(expect.objectContaining({
       event: 'plan_rebuild_scheduler_intent_replaced',
-      previousKind: 'snapshot',
-      previousReason: 'non_action_details',
+      previousKind: 'flow',
+      previousReason: 'flow_card:second',
       nextKind: 'hardCap',
       nextReason: 'shortfall',
       debugTopic: 'plan',
@@ -380,7 +381,7 @@ describe('MyApp initialization', () => {
     (app as any).structuredLogger = { child };
     (app as any).debugLoggingTopics = new Set(['plan']);
 
-    const dropped = { kind: 'snapshot', reason: 'meta_only' };
+    const dropped = { kind: 'flow', reason: 'flow_card:first' };
     const kept = { kind: 'hardCap', reason: 'shortfall' };
     (app as any).onPlanRebuildIntentDropped(dropped, kept);
     (app as any).onPlanRebuildIntentDropped(dropped, kept);
@@ -388,8 +389,8 @@ describe('MyApp initialization', () => {
     expect(childLogger.debug).toHaveBeenCalledTimes(1);
     expect(childLogger.debug).toHaveBeenCalledWith({
       event: 'plan_rebuild_scheduler_intent_dropped',
-      droppedKind: 'snapshot',
-      droppedReason: 'meta_only',
+      droppedKind: 'flow',
+      droppedReason: 'flow_card:first',
       keptKind: 'hardCap',
       keptReason: 'shortfall',
       debugTopic: 'plan',
@@ -408,7 +409,7 @@ describe('MyApp initialization', () => {
     (app as any).structuredLogger = { child };
     (app as any).debugLoggingTopics = new Set(['plan']);
 
-    const dropped = { kind: 'snapshot', reason: 'meta_only' };
+    const dropped = { kind: 'flow', reason: 'flow_card:first' };
     const kept = { kind: 'hardCap', reason: 'shortfall' };
     (app as any).onPlanRebuildIntentDropped(dropped, kept);
     expect(map.size).toBe(1);
@@ -417,7 +418,7 @@ describe('MyApp initialization', () => {
 
     expect(childLogger.debug).toHaveBeenCalledTimes(2);
     expect(map.size).toBe(1);
-    expect(map.get('dropped:snapshot:meta_only:hardCap:shortfall')).toBe(60_000);
+    expect(map.get('dropped:flow:flow_card:first:hardCap:shortfall')).toBe(60_000);
   });
 
   it('keeps devices disabled by default when no settings exist', async () => {
@@ -869,20 +870,20 @@ describe('MyApp initialization', () => {
 
     void (app as any).recordPowerSample(2000, now);
     await waitFor(() => {
-      const planSnapshot = mockHomeyInstance.settings.get('device_plan_snapshot');
+      const planSnapshot = getLatestPlanSnapshotForTests();
       return Boolean(planSnapshot?.devices?.length);
     });
-    let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    let plan = getLatestPlanSnapshotForTests();
     let devPlanState = getPlanDeviceState(plan, 'dev-1');
     expect(devPlanState).toBe('keep');
 
     const setLimitListener = mockHomeyInstance.flow._actionCardListeners['set_capacity_limit'];
     void setLimitListener({ limit_kw: 1.5 });
     await waitFor(() => (
-      getPlanDeviceState(mockHomeyInstance.settings.get('device_plan_snapshot'), 'dev-1') === 'shed'
+      getPlanDeviceState(getLatestPlanSnapshotForTests(), 'dev-1') === 'shed'
     ));
 
-    plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    plan = getLatestPlanSnapshotForTests();
     devPlanState = getPlanDeviceState(plan, 'dev-1');
     expect(devPlanState).toBe('shed');
 
@@ -893,10 +894,10 @@ describe('MyApp initialization', () => {
 
     void setLimitListener({ limit_kw: 4 });
     await waitFor(() => (
-      getPlanDeviceState(mockHomeyInstance.settings.get('device_plan_snapshot'), 'dev-1') === 'keep'
+      getPlanDeviceState(getLatestPlanSnapshotForTests(), 'dev-1') === 'keep'
     ));
 
-    plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    plan = getLatestPlanSnapshotForTests();
     devPlanState = getPlanDeviceState(plan, 'dev-1');
     expect(devPlanState).toBe('keep');
   });
@@ -2089,7 +2090,7 @@ describe('MyApp initialization', () => {
       }
       await (app as any).recordPowerSample(3000, baseNow);
       await waitFor(() => (
-        getPlanDeviceState(mockHomeyInstance.settings.get('device_plan_snapshot'), 'dev-1') === 'shed'
+        getPlanDeviceState(getLatestPlanSnapshotForTests(), 'dev-1') === 'shed'
       ));
       expect(heater.getActualCapabilityValue('onoff')).toBe(false);
 
@@ -2111,7 +2112,7 @@ describe('MyApp initialization', () => {
       // The device should still be planned as 'shed' because the recovery
       // cooldown (lastRecoveryMs) has just started.
       expect(
-        getPlanDeviceState(mockHomeyInstance.settings.get('device_plan_snapshot'), 'dev-1'),
+        getPlanDeviceState(getLatestPlanSnapshotForTests(), 'dev-1'),
       ).toBe('shed');
 
       // --- Phase 4: after cooldown expires, the device is restored ---
@@ -2119,11 +2120,11 @@ describe('MyApp initialization', () => {
       nowSpy.mockReturnValue(afterCooldown);
       await (app as any).recordPowerSample(500, afterCooldown);
       await waitFor(() => (
-        getPlanDeviceState(mockHomeyInstance.settings.get('device_plan_snapshot'), 'dev-1') !== 'shed'
+        getPlanDeviceState(getLatestPlanSnapshotForTests(), 'dev-1') !== 'shed'
       ), 3000);
 
       expect(
-        getPlanDeviceState(mockHomeyInstance.settings.get('device_plan_snapshot'), 'dev-1'),
+        getPlanDeviceState(getLatestPlanSnapshotForTests(), 'dev-1'),
       ).toBe('keep');
     } finally {
       nowSpy.mockRestore();
@@ -2405,7 +2406,7 @@ describe('computeDynamicSoftLimit', () => {
     await initApp(app);
 
     // Plan should be built
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     expect(plan).toBeDefined();
     expect(plan.devices).toBeDefined();
     expect(plan.devices.length).toBeGreaterThan(0);

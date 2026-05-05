@@ -400,6 +400,7 @@ export const mockHomeyInstance = {
     return mockHomeyInstance;
   },
   settings: new MockSettings(),
+  app: null as any,
   platform: 'local',
   platformVersion: 2,
   version: '1.0.0',
@@ -576,8 +577,16 @@ export const setMockDrivers = (drivers: Record<string, MockDriver>) => {
   }
 };
 
+export const getLatestPlanSnapshotForTests = () => (
+  mockHomeyInstance.app?.planService?.getLatestPlanSnapshot?.() ?? null
+);
+
 class MockApp {
   homey = mockHomeyInstance;
+
+  constructor() {
+    mockHomeyInstance.app = this;
+  }
 
   log(...args: any[]) {
     /* istanbul ignore next */

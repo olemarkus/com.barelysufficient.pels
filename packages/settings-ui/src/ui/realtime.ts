@@ -272,10 +272,6 @@ const createSettingsSetHandler = () => (key: string) => {
   if (ADVANCED_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadAdvancedSettings(), 'Failed to load advanced settings', 'settings.set');
   }
-  if (key === 'device_plan_snapshot') {
-    invalidateApiCache(SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH);
-    refreshPlanForUi('settings.set');
-  }
   if (key === 'target_devices_snapshot') {
     invalidateApiCache(SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH);
     refreshDevicesForUi();

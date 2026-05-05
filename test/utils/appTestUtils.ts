@@ -2,6 +2,7 @@
 // Use explicit .ts extension to avoid resolving app.json instead of app.ts.
 // Static import goes through Vitest's esbuild transform, which handles `export =`.
 import MyApp from '../../app.ts';
+import { mockHomeyInstance } from '../mocks/homey';
 
 let appInstances: any[] = [];
 
@@ -42,4 +43,5 @@ export async function cleanupApps(): Promise<void> {
     }
   }
   appInstances = [];
+  mockHomeyInstance.app = null;
 }

@@ -37,17 +37,11 @@ import type {
 } from '../../packages/contracts/src/settingsUiApi';
 import { normalizePlanMeta } from './planStatusHelpers';
 import { PlanStatusWriter } from './planStatusWriter';
-import { PlanSnapshotWriter } from './planSnapshotWriter';
 import {
   buildLiveStatePlan,
   canRefreshPlanSnapshotFromLiveState,
   hasPlanExecutionDriftAgainstIntent,
 } from './planReconcileState';
-import type {
-  PlanRebuildIntent,
-  PlanRebuildSchedulerLike,
-  PlanRebuildSchedulerState,
-} from './planRebuildSchedulerContract';
 import type { PlanEngine } from './planEngine';
 import type {
   DevicePlan,
@@ -172,98 +166,6 @@ function buildOverviewBatchEvent(
   };
 }
 
-const createPlanSnapshotFallbackScheduler = (deps: {
-  getNowMs: () => number;
-  resolveDueAtMs: (state: PlanRebuildSchedulerState) => number;
-  executeSnapshot: (nowMs: number) => void;
-}): PlanRebuildSchedulerLike => {
-  let activeIntent: PlanRebuildIntent | null = null;
-  let pendingIntent: PlanRebuildIntent | null = null;
-  let pendingDueMs: number | null = null;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const lastCompletedAtMsByKind: PlanRebuildSchedulerState['lastCompletedAtMsByKind'] = {};
-
-  const clearTimer = (): void => {
-    if (!timer) return;
-    clearTimeout(timer);
-    timer = undefined;
-  };
-
-  const buildState = (nowMs: number): PlanRebuildSchedulerState => ({
-    nowMs,
-    activeIntent,
-    pendingIntent,
-    pendingDueMs,
-    hasTimer: timer !== undefined,
-    lastCompletedAtMsByKind: { ...lastCompletedAtMsByKind },
-  });
-
-  const dispatchPendingIntent = (): void => {
-    if (!pendingIntent || activeIntent) return;
-    const nowMs = deps.getNowMs();
-    const dueMs = deps.resolveDueAtMs(buildState(nowMs));
-    pendingDueMs = dueMs;
-    if (!Number.isFinite(dueMs)) {
-      pendingIntent = null;
-      pendingDueMs = null;
-      return;
-    }
-    if (Number.isFinite(dueMs) && dueMs > nowMs) {
-      timer = setTimeout(() => {
-        timer = undefined;
-        dispatchPendingIntent();
-      }, Math.max(0, dueMs - nowMs));
-      return;
-    }
-    pendingIntent = null;
-    pendingDueMs = null;
-    activeIntent = { kind: 'snapshot', reason: 'meta_only' };
-    deps.executeSnapshot(nowMs);
-    lastCompletedAtMsByKind.snapshot = deps.getNowMs();
-    activeIntent = null;
-  };
-
-  const refreshPendingSchedule = (): void => {
-    if (!pendingIntent || activeIntent) {
-      clearTimer();
-      return;
-    }
-    const nowMs = deps.getNowMs();
-    const dueMs = deps.resolveDueAtMs(buildState(nowMs));
-    pendingDueMs = dueMs;
-    if (!Number.isFinite(dueMs)) {
-      clearTimer();
-      return;
-    }
-    if (dueMs <= nowMs) {
-      clearTimer();
-      dispatchPendingIntent();
-      return;
-    }
-    clearTimer();
-    timer = setTimeout(() => {
-      timer = undefined;
-      dispatchPendingIntent();
-    }, Math.max(0, dueMs - nowMs));
-  };
-
-  return {
-    request(intent): void {
-      if (intent.kind !== 'snapshot') return;
-      pendingIntent = intent;
-      refreshPendingSchedule();
-    },
-    cancelAll(): void {
-      clearTimer();
-      pendingIntent = null;
-      pendingDueMs = null;
-    },
-    now(): PlanRebuildSchedulerState {
-      return buildState(deps.getNowMs());
-    },
-  };
-};
-
 const buildPlanHeadroomLogFields = (plan: DevicePlan | null): Record<string, number | boolean | null> => {
   const meta = plan?.meta;
   if (!meta) return {};
@@ -295,7 +197,6 @@ export type PlanServiceDeps = {
   isCurrentHourExpensive: () => boolean;
   getCombinedPrices: () => unknown;
   getLastPowerUpdate: () => number | null;
-  scheduler?: PlanRebuildSchedulerLike;
   schedulePostActuationRefresh?: () => void;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
@@ -323,25 +224,8 @@ export class PlanService {
   private queuedRebuilds = 0;
   private currentBuildReason: string | null = null;
   private planStatusWriter: PlanStatusWriter;
-  private planSnapshotWriter: PlanSnapshotWriter;
-  private readonly scheduler: PlanRebuildSchedulerLike;
-  private readonly ownsScheduler: boolean;
 
   constructor(private deps: PlanServiceDeps) {
-    let snapshotWriterForScheduler: PlanSnapshotWriter | null = null;
-    this.ownsScheduler = !deps.scheduler;
-    this.scheduler = deps.scheduler ?? createPlanSnapshotFallbackScheduler({
-      getNowMs: () => Date.now(),
-      resolveDueAtMs: (state) => (
-        snapshotWriterForScheduler?.getPendingSnapshotDueMs({
-          nowMs: state.nowMs,
-          activeIntent: state.activeIntent,
-        }) ?? Number.POSITIVE_INFINITY
-      ),
-      executeSnapshot: (nowMs) => {
-        snapshotWriterForScheduler?.flushPendingNonActionSnapshotFromScheduler(nowMs);
-      },
-    });
     this.planStatusWriter = new PlanStatusWriter({
       homey: deps.homey,
       getCombinedPrices: deps.getCombinedPrices,
@@ -350,15 +234,6 @@ export class PlanService {
       getLastPowerUpdate: deps.getLastPowerUpdate,
       error: deps.error,
     });
-    this.planSnapshotWriter = new PlanSnapshotWriter({
-      homey: deps.homey,
-      error: deps.error,
-      getNowMs: () => this.scheduler.now().nowMs,
-      scheduler: this.scheduler,
-      structuredLog: deps.structuredLog,
-      debugStructured: deps.debugStructured,
-    });
-    snapshotWriterForScheduler = this.planSnapshotWriter;
   }
 
   buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
@@ -676,15 +551,13 @@ export class PlanService {
     };
   }
 
-  private updatePlanSnapshot(plan: DevicePlan, changes: PlanChangeSet): number {
+  private updatePlanSnapshot(plan: DevicePlan, changes: PlanChangeSet): void {
     const changed = changes.actionChanged || changes.detailChanged || changes.metaChanged;
-    const writeMs = this.planSnapshotWriter.update(plan, changes);
     if (changed) {
       this.emitPlanUpdated(plan);
     } else {
       this.emitOverviewTransitions(plan);
     }
-    return writeMs;
   }
 
   private emitPlanUpdated(plan: DevicePlan): void {
@@ -792,7 +665,7 @@ export class PlanService {
     this.latestPlanSnapshot = stampedPlan;
     this.latestPlanSnapshotUpdatedAtMs = nowMs;
     const { changes, changeMs } = this.measurePlanChanges(stampedPlan);
-    const { snapshotMs, snapshotWriteMs } = this.measureSnapshotUpdate(stampedPlan, changes);
+    const { snapshotMs } = this.measureSnapshotUpdate(stampedPlan, changes);
     const { statusMs, statusWriteMs } = this.measureStatusUpdate(stampedPlan, changes);
     const hadShedding = hasShedding(stampedPlan);
 
@@ -812,7 +685,6 @@ export class PlanService {
       buildMs,
       changeMs,
       snapshotMs,
-      snapshotWriteMs,
       statusMs,
       statusWriteMs,
       applyMs,
@@ -872,13 +744,11 @@ export class PlanService {
     changes: PlanChangeSet,
   ): {
     snapshotMs: number;
-    snapshotWriteMs: number;
   } {
     const snapshotStart = Date.now();
-    const snapshotWriteMs = this.updatePlanSnapshot(plan, changes);
+    this.updatePlanSnapshot(plan, changes);
     return {
       snapshotMs: Date.now() - snapshotStart,
-      snapshotWriteMs,
     };
   }
 
@@ -948,7 +818,6 @@ export class PlanService {
     addPerfDuration('plan_rebuild_build_ms', outcome.buildMs);
     addPerfDuration('plan_rebuild_change_ms', outcome.changeMs);
     addPerfDuration('plan_rebuild_snapshot_ms', outcome.snapshotMs);
-    addPerfDuration('plan_rebuild_snapshot_write_ms', outcome.snapshotWriteMs);
     addPerfDuration('plan_rebuild_status_ms', outcome.statusMs);
     addPerfDuration('plan_rebuild_status_write_ms', outcome.statusWriteMs);
     addPerfDuration('plan_rebuild_apply_ms', outcome.applyMs);
@@ -960,7 +829,6 @@ export class PlanService {
       buildMs: outcome.buildMs,
       changeMs: outcome.changeMs,
       snapshotMs: outcome.snapshotMs,
-      snapshotWriteMs: outcome.snapshotWriteMs,
       statusMs: outcome.statusMs,
       statusWriteMs: outcome.statusWriteMs,
       applyMs: outcome.applyMs,
@@ -1013,23 +881,6 @@ export class PlanService {
     return this.deps.planEngine.decoratePlanWithPendingTargetCommands?.(plan) ?? plan;
   }
 
-  destroy(): void {
-    this.planSnapshotWriter.destroy();
-    if (this.ownsScheduler) {
-      this.scheduler.cancelAll('plan_service_destroy');
-    }
-  }
-
-  getPendingSnapshotDueMs(params: {
-    nowMs: number;
-    activeIntent: PlanRebuildIntent | null;
-  }): number {
-    return this.planSnapshotWriter.getPendingSnapshotDueMs(params);
-  }
-
-  flushPendingNonActionSnapshotFromScheduler(nowMs: number): number {
-    return this.planSnapshotWriter.flushPendingNonActionSnapshotFromScheduler(nowMs);
-  }
 }
 
 function sanitizeActuationCount(value: unknown): number {

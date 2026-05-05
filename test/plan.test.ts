@@ -2,6 +2,7 @@
  * @vitest-environment node
  */
 import {
+  getLatestPlanSnapshotForTests,
   mockHomeyInstance,
   setMockDrivers,
   MockDevice,
@@ -143,7 +144,7 @@ describe('Device plan snapshot', () => {
     await (app as any).recordPowerSample(12000);
     await flushPromises();
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     expect(plan).toBeTruthy();
 
     // dev-2 (priority 10, less important) should be shed
@@ -181,7 +182,7 @@ describe('Device plan snapshot', () => {
     await (app as any).recordPowerSample(12000);
     await flushPromises();
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     expect(plan).toBeTruthy();
     // dev-2 (priority 10, less important) should be shed first
     const dev2Plan = plan.devices.find((d: any) => d.id === 'dev-2');
@@ -215,7 +216,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(5000);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.shedAction).toBe('set_temperature');
     expect(devPlan?.plannedTarget).toBe(15);
@@ -733,7 +734,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(5000);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(reasonText(devPlan?.reason)).toContain('shed');
   });
@@ -762,7 +763,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(1000); // force overshoot (will try to shed but already at min temp)
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(reasonText(devPlan?.reason)).toContain('shed due to capacity');
@@ -796,7 +797,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(1800); // total 1.8 kW -> shed both
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const minPlan = plan.devices.find((d: any) => d.id === 'dev-min');
     const offPlan = plan.devices.find((d: any) => d.id === 'dev-off');
 
@@ -835,7 +836,7 @@ describe('Device plan snapshot', () => {
     }
     await (app as any).recordPowerSample(1200);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(devPlan?.shedAction).toBe('set_temperature');
@@ -879,7 +880,7 @@ describe('Device plan snapshot', () => {
     }
     await (app as any).recordPowerSample(500);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(devPlan?.plannedTarget).toBe(16);
@@ -923,7 +924,7 @@ describe('Device plan snapshot', () => {
     await (app as any).recordPowerSample(500);
 
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(devPlan?.plannedTarget).toBe(16);
@@ -961,7 +962,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(500);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(devPlan?.shedAction).toBe('set_temperature');
@@ -1004,7 +1005,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).planService.rebuildPlanFromCache();
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('keep');
     expect(devPlan?.plannedTarget).toBe(20);
@@ -1040,7 +1041,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).planService.rebuildPlanFromCache();
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('keep');
     expect(await dev1.getCapabilityValue('onoff')).toBe(true);
@@ -1074,7 +1075,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).planService.rebuildPlanFromCache();
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('keep');
     expect(await dev1.getCapabilityValue('onoff')).toBe(false);
@@ -1160,7 +1161,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(500);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('keep');
     expect(devPlan?.plannedTarget).toBe(21);
@@ -1201,7 +1202,7 @@ describe('Device plan snapshot', () => {
     await (app as any).planService.rebuildPlanFromCache('headroom_step_down_test');
     await flushPromises();
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('keep');
     expect(reasonText(devPlan?.reason)).toBe('keep');
@@ -1230,7 +1231,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(1000);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(reasonText(devPlan?.reason)).toContain('cooldown (shedding');
@@ -1346,7 +1347,7 @@ describe('Device plan snapshot', () => {
     }
     await (app as any).recordPowerSample(1000);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const highPlan = plan.devices.find((d: any) => d.id === 'dev-high');
     const minPlan = plan.devices.find((d: any) => d.id === 'dev-min');
 
@@ -1375,7 +1376,7 @@ describe('Device plan snapshot', () => {
     }
     await (app as any).recordPowerSample(5000); // 5 kW total, over limit
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const ctlPlan = plan.devices.find((d: any) => d.id === 'dev-ctl');
     const nonCtlPlan = plan.devices.find((d: any) => d.id === 'dev-non');
 
@@ -1395,7 +1396,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan).toBeUndefined();
   });
@@ -1414,7 +1415,7 @@ describe('Device plan snapshot', () => {
 
     // Ensure plan exists for Home.
     await (app as any).recordPowerSample(1000);
-    let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    let plan = getLatestPlanSnapshotForTests();
     const homePlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(homePlan?.plannedTarget).toBe(19);
 
@@ -1422,7 +1423,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('operating_mode', 'Comfort');
     await flushPromises();
 
-    plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    plan = getLatestPlanSnapshotForTests();
     const comfortPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(comfortPlan?.plannedTarget).toBe(21);
   });
@@ -1455,7 +1456,7 @@ describe('Device plan snapshot', () => {
     }
 
     await (app as any).recordPowerSample(1000); // 1kW total, 500W limit => -500W headroom
-    let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    let plan = getLatestPlanSnapshotForTests();
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
 
     // Step 2: Small positive headroom (below restore margin) - device should STAY shed
@@ -1478,7 +1479,7 @@ describe('Device plan snapshot', () => {
     }
 
     await (app as any).recordPowerSample(500); // 500W with device off
-    plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    plan = getLatestPlanSnapshotForTests();
     // Device should stay shed because headroom (0.2kW) < device power (1kW) + margin (0.2kW)
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
 
@@ -1499,7 +1500,7 @@ describe('Device plan snapshot', () => {
     // Force the periodic max-interval rebuild path for this restore check.
     (app as any).powerSampleRebuildState.lastMs = (app as any).getPlanRebuildNowMs() - 200;
     await (app as any).recordPowerSample(500);
-    plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    plan = getLatestPlanSnapshotForTests();
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('keep');
   });
 
@@ -1562,7 +1563,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 2);
     }
     await (app as any).recordPowerSample(2100);
-    let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    let plan = getLatestPlanSnapshotForTests();
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
 
     // Simulate device now off, but headroom still below need (2.5 + margin).
@@ -1638,7 +1639,7 @@ describe('Device plan snapshot', () => {
     await (app as any).recordPowerSample(2000);
 
     expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined);
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const planned = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(planned?.plannedState).toBe('shed');
   });
@@ -1674,7 +1675,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(5630); // 5.63 kW total
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const shedIds = plan.devices.filter((d: any) => d.plannedState === 'shed').map((d: any) => d.id);
     expect(shedIds).toEqual(expect.arrayContaining(['dev-1', 'dev-2']));
     expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined);
@@ -1717,7 +1718,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(2000, 1000);
 
-    let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    let plan = getLatestPlanSnapshotForTests();
     const initialShed = plan.devices.filter((d: any) => d.plannedState === 'shed').map((d: any) => d.id);
     expect(initialShed).toEqual(['dev-2']);
 
@@ -1745,7 +1746,7 @@ describe('Device plan snapshot', () => {
 
     (app as any).planEngine.state.lastRestoreMs = Date.now() - 60000;
     await (app as any).planService.rebuildPlanFromCache();
-    plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    plan = getLatestPlanSnapshotForTests();
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(dev1Plan?.plannedState).toBe('keep');
   });
@@ -1810,7 +1811,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(2000, 2000);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(dev1Plan?.plannedState).toBe('shed');
   });
@@ -1904,7 +1905,7 @@ describe('Device plan snapshot', () => {
     }
 
     await (app as any).recordPowerSample(250);
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.currentState).toBe('not_applicable');
     expect(reasonText(devPlan?.reason)).not.toContain('restore');
@@ -2400,7 +2401,7 @@ describe('Device plan snapshot', () => {
     ]);
     await (app as any).planService.rebuildPlanFromCache();
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'hoiax-1');
     expect(devPlan?.plannedTarget).toBe(45);
 
@@ -2456,7 +2457,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(3000); // 3 kW total
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
     const lowPriPlan = plan.devices.find((d: any) => d.id === 'dev-low');
 
@@ -2499,7 +2500,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(2500);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
     const high2Plan = plan.devices.find((d: any) => d.id === 'dev-high2');
 
@@ -2546,7 +2547,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(3000);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
     const lowPriPlan = plan.devices.find((d: any) => d.id === 'dev-low');
 
@@ -2600,7 +2601,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(3000);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
     const low1Plan = plan.devices.find((d: any) => d.id === 'dev-low1');
     const low2Plan = plan.devices.find((d: any) => d.id === 'dev-low2');
@@ -2667,7 +2668,7 @@ describe('Device plan snapshot', () => {
     // But enough for lower priority (0.7 kW needed)
     await (app as any).recordPowerSample(1200); // 1.2 kW total
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const swapTargetPlan = plan.devices.find((d: any) => d.id === 'dev-swap-target');
     const lowerPriPlan = plan.devices.find((d: any) => d.id === 'dev-lower');
 
@@ -2715,7 +2716,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(300);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const pendingLowPlan = plan.devices.find((d: any) => d.id === 'dev-pending-low');
     const higherPriorityPlan = plan.devices.find((d: any) => d.id === 'dev-high');
 
@@ -2773,7 +2774,7 @@ describe('Device plan snapshot', () => {
     // Record power - only 1.5kW headroom (not enough for swap target 2.4kW, but enough for swapped 0.9kW)
     await (app as any).recordPowerSample(1500);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const swappedPlan = plan.devices.find((d: any) => d.id === 'dev-swapped');
     const targetPlan = plan.devices.find((d: any) => d.id === 'dev-target');
 
@@ -2813,7 +2814,7 @@ describe('Device plan snapshot', () => {
     // Trigger a power sample to generate a plan
     await (app as any).recordPowerSample(1000);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     expect(plan).toBeTruthy();
     expect(plan.devices.length).toBe(3);
 
@@ -3008,7 +3009,7 @@ describe('Device plan snapshot', () => {
 
     await (app as any).recordPowerSample(3000, 1000);
 
-    let plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    let plan = getLatestPlanSnapshotForTests();
     expect(plan.devices.find((d: any) => d.id === 'dev-low')?.plannedState).toBe('shed');
 
     // Simulate swap state being cleared without a new measurement.
@@ -3025,7 +3026,7 @@ describe('Device plan snapshot', () => {
     }
 
     await (app as any).planService.rebuildPlanFromCache();
-    plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    plan = getLatestPlanSnapshotForTests();
     expect(plan.devices.find((d: any) => d.id === 'dev-low')?.plannedState).toBe('keep');
   });
 
@@ -3070,7 +3071,7 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.state.lastRestoreMs = Date.now() - 120000;
     await (app as any).recordPowerSample(3000, 2000);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     expect(plan.devices.find((d: any) => d.id === 'dev-low')?.plannedState).toBe('shed');
   });
 });
@@ -3307,7 +3308,7 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.plannedTarget).toBe(22);
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(20);
@@ -3477,7 +3478,7 @@ describe('Dry run mode', () => {
     ]);
     await (app as any).planService.rebuildPlanFromCache();
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan.plannedTarget).toBe(50);
   });
@@ -3581,7 +3582,7 @@ describe('Dry run mode', () => {
     ]);
 
     await (app as any).planService.rebuildPlanFromCache();
-    const preShedPlan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const preShedPlan = getLatestPlanSnapshotForTests();
     const preShedDevice = preShedPlan.devices.find((d: any) => d.id === 'dev-1');
     expect(preShedDevice.plannedTarget).toBe(65);
 
@@ -3592,7 +3593,7 @@ describe('Dry run mode', () => {
 
     await (app as any).recordPowerSample(4000);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan.plannedState).toBe('shed');
     expect(devPlan.shedAction).toBe('set_temperature');
@@ -3631,7 +3632,7 @@ describe('Dry run mode', () => {
     // Report low power - plenty of headroom mathematically, but we're in shortfall.
     await (app as any).recordPowerSample(2000); // 2 kW, headroom = 6 kW
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(dev1Plan).toBeTruthy();
     expect(dev1Plan.currentState).toBe('off');
@@ -3686,7 +3687,7 @@ describe('Dry run mode', () => {
     // Report 4.3 kW power - gives 2.2 kW headroom (6.5 - 4.3 = 2.2)
     await (app as any).recordPowerSample(4300);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(dev1Plan).toBeTruthy();
     expect(dev1Plan.currentState).toBe('off');
@@ -3740,7 +3741,7 @@ describe('Dry run mode', () => {
 
     await (app as any).recordPowerSample(1000); // 1.0 kW total -> headroomRaw 1.8 kW (meets floor)
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(dev1Plan?.plannedState).toBe('keep');
 
@@ -3790,7 +3791,7 @@ describe('Dry run mode', () => {
     await (app as any).recordPowerSample(2000);
 
     // Identify the shed device (could be dev-1 or dev-2 depending on ordering).
-    const plan1 = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan1 = getLatestPlanSnapshotForTests();
     const shedDevice = plan1.devices.find((d: any) => d.plannedState === 'shed');
     expect(shedDevice).toBeTruthy();
     // Manually update the shed device to reflect it reached 15C.
@@ -3835,7 +3836,7 @@ describe('Dry run mode', () => {
     // Expectations:
     // dev-1 is already at shed temp (15C). It should NOT be shed again.
     // dev-2 is at normal temp (20C). It SHOULD be shed.
-    const plan2 = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan2 = getLatestPlanSnapshotForTests();
     const dev1Plan = plan2.devices.find((d: any) => d.id === 'dev-1');
     const dev2Plan = plan2.devices.find((d: any) => d.id === 'dev-2');
     expect(dev1Plan.plannedState).toBe('shed');
@@ -3886,7 +3887,7 @@ describe('Dry run mode', () => {
 
     await (app as any).recordPowerSample(1000);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const sheds = plan.devices.filter((d: any) => d.plannedState === 'shed');
 
     // Expectation: No shedding because we are under the limit (0.1 kW free).
@@ -3942,7 +3943,7 @@ describe('Dry run mode', () => {
       await (app as any).recordPowerSample(2000);
 
       // Verify both are shed to 10C
-      const plan1 = mockHomeyInstance.settings.get('device_plan_snapshot');
+      const plan1 = getLatestPlanSnapshotForTests();
       const shedCount = plan1.devices.filter((d: any) => d.plannedState === 'shed').length;
       expect(shedCount).toBe(2);
 
@@ -3971,7 +3972,7 @@ describe('Dry run mode', () => {
 
       await (app as any).recordPowerSample(2000);
 
-      const plan2 = mockHomeyInstance.settings.get('device_plan_snapshot');
+      const plan2 = getLatestPlanSnapshotForTests();
 
       // Check how many devices are still planned as 'shed'
       // Ideally, only one should be restored, so one should still be 'shed'.
@@ -4282,7 +4283,7 @@ describe('Dry run mode', () => {
     // thermostat (spotter needs ~0.25kW but the combined reserve+floor of 0.50kW makes direct fail).
     await (app as any).recordPowerSample(200);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const spotterPlan = plan.devices.find((d: any) => d.id === 'spotter');
     const lowTempPlan = plan.devices.find((d: any) => d.id === 'low-temp');
 
@@ -4351,7 +4352,7 @@ describe('Dry run mode', () => {
 
     await (app as any).recordPowerSample(200);
 
-    const plan = mockHomeyInstance.settings.get('device_plan_snapshot');
+    const plan = getLatestPlanSnapshotForTests();
     const spotterPlan = plan.devices.find((d: any) => d.id === 'spotter');
     const lowTempPlan = plan.devices.find((d: any) => d.id === 'low-temp-no-onoff');
 
