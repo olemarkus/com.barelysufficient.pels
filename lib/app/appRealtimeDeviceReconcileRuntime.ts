@@ -5,7 +5,7 @@ import {
   type RealtimeDeviceReconcileEvent,
   type RealtimeDeviceReconcileState,
 } from './appRealtimeDeviceReconcile';
-import { hasPlanExecutionDriftForDevice } from '../plan/planReconcileState';
+import { hasPlanExecutionDriftForDevice } from '../executor/planExecutionDrift';
 import type { DevicePlan, PlanInputDevice } from '../plan/planTypes';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 
@@ -20,7 +20,11 @@ export function hasRealtimeDeviceReconcileDrift(params: {
     liveDevices,
   } = params;
   if (!latestPlanSnapshot) return true;
-  return hasPlanExecutionDriftForDevice(latestPlanSnapshot, liveDevices, event.deviceId);
+  return hasPlanExecutionDriftForDevice({
+    plan: latestPlanSnapshot,
+    liveDevices,
+    deviceId: event.deviceId,
+  });
 }
 
 export function shouldQueueRealtimeDeviceReconcile(params: {
