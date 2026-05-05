@@ -36,6 +36,13 @@ const waitFor = async (predicate: () => boolean, timeoutMs = 1000) => {
   }
 };
 
+const getDiagnosticsMetricValue = (label: string): string | null => {
+  const cards = document.querySelector('#device-detail-diagnostics-cards');
+  const labels = Array.from(cards?.querySelectorAll('dt') ?? []);
+  const labelNode = labels.find((node) => node.textContent === label);
+  return labelNode?.nextElementSibling?.textContent ?? null;
+};
+
 /**
  * Basic render test for the settings UI with Homey mocked.
  */
@@ -2251,8 +2258,8 @@ describe('settings script', () => {
     ]));
     expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Failed activations');
     expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Penalty history');
-    expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Time not served2.0h');
-    expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Starved time23m');
+    expect(getDiagnosticsMetricValue('Time not served')).toBe('2.0h');
+    expect(getDiagnosticsMetricValue('Starved time')).toBe('23m');
   });
 
   it('shows a diagnostics unavailable state when the Homey API route fails', async () => {

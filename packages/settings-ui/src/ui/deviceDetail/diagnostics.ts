@@ -1,7 +1,10 @@
 import type {
   DeviceDiagnosticsSummary,
+  DeviceDiagnosticsStarvationCountingCause,
+  DeviceDiagnosticsStarvationPauseReason,
   DeviceDiagnosticsStarvationSummary,
   DeviceDiagnosticsWindowKey,
+  DeviceDiagnosticsWindowSummary,
   SettingsUiDeviceDiagnosticsPayload,
 } from '../../../../contracts/src/deviceDiagnosticsTypes.ts';
 import { SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH } from '../../../../contracts/src/settingsUiApi.ts';
@@ -51,6 +54,23 @@ const createEmptyStarvationSummary = (): DeviceDiagnosticsStarvationSummary => (
   starvationPauseReason: null,
 });
 
+const createEmptyWindowSummary = (): DeviceDiagnosticsWindowSummary => ({
+  unmetDemandMs: 0,
+  blockedByHeadroomMs: 0,
+  blockedByCooldownBackoffMs: 0,
+  targetDeficitMs: 0,
+  shedCount: 0,
+  restoreCount: 0,
+  failedActivationCount: 0,
+  stableActivationCount: 0,
+  penaltyBumpCount: 0,
+  maxPenaltyLevelSeen: 0,
+  avgShedToRestoreMs: null,
+  avgRestoreToSetbackMs: null,
+  minRestoreToSetbackMs: null,
+  maxRestoreToSetbackMs: null,
+});
+
 const getDateTimePart = (partsByType: Record<string, string>, type: string): string => partsByType[type] ?? '00';
 
 const formatStarvationTimestamp = (timestamp: number | null): string => {
@@ -83,7 +103,9 @@ const formatStarvationTimestamp = (timestamp: number | null): string => {
   ].join(' ');
 };
 
-const STARVATION_REASON_LABELS: Record<string, string> = {
+type StarvationReason = DeviceDiagnosticsStarvationCountingCause | DeviceDiagnosticsStarvationPauseReason;
+
+const STARVATION_REASON_LABELS: Record<StarvationReason, string> = {
   capacity: 'Waiting for available power',
   daily_budget: 'Daily budget is limiting service',
   hourly_budget: 'Hourly budget is limiting service',
@@ -105,8 +127,8 @@ const STARVATION_REASON_LABELS: Record<string, string> = {
   unknown_suppression_reason: 'Service reason unknown',
 };
 
-const formatStarvationReason = (value: string | null): string => (
-  value ? STARVATION_REASON_LABELS[value] ?? value.split('_').join(' ') : 'None'
+const formatStarvationReason = (value: StarvationReason | null): string => (
+  value ? STARVATION_REASON_LABELS[value] : 'None'
 );
 
 const formatStarvationContext = (starvation: DeviceDiagnosticsStarvationSummary): string | null => {
@@ -171,7 +193,7 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
 
   deviceDetailDiagnosticsCards.innerHTML = '';
   (Object.keys(DIAGNOSTICS_WINDOW_LABELS) as DeviceDiagnosticsWindowKey[]).forEach((windowKey) => {
-    const windowSummary = summary.windows[windowKey];
+    const windowSummary = summary.windows[windowKey] ?? createEmptyWindowSummary();
     const restoreToSetbackLabel = [
       formatCycleDuration(windowSummary.avgRestoreToSetbackMs),
       formatCycleDuration(windowSummary.minRestoreToSetbackMs),
