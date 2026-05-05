@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildExecutablePlan, buildExecutablePlanDevice } from '../lib/plan/planExecutablePlan';
-import { buildExecutableTargetUpdate } from '../lib/plan/planExecutableTarget';
+import { buildExecutablePlan, buildExecutablePlanDevice } from '../lib/executor/executablePlanProjection';
+import { buildExecutableTargetUpdate } from '../lib/executor/executableTargetProjection';
 import type { DevicePlan } from '../lib/plan/planTypes';
 import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
 
