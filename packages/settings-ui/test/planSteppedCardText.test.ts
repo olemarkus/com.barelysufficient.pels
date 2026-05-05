@@ -1,5 +1,6 @@
 import {
   isSteppedTransit,
+  resolveSteppedActiveStepId,
   resolveSteppedChip,
   resolveSteppedStateLabel,
   resolveSteppedStatusLine,
@@ -429,5 +430,27 @@ describe('resolveSteppedTemperatureText', () => {
   it('rounds target temperature to integer', () => {
     expect(resolveSteppedTemperatureText({ currentTemperature: 37.2, plannedTarget: 49.8 }))
       .toBe('37.2° → 50°');
+  });
+});
+
+describe('resolveSteppedActiveStepId', () => {
+  it('returns the off step id when state is off and profile has an explicit off step', () => {
+    const device = { ...baseDevice, currentState: 'off', reportedStepId: 'low' };
+    expect(resolveSteppedActiveStepId(device, profileWithOff)).toBe('off');
+  });
+
+  it('returns synthetic "off" id when state is off-like but profile has no off step', () => {
+    const device = { ...baseDevice, currentState: 'off', reportedStepId: 'low' };
+    expect(resolveSteppedActiveStepId(device, profile)).toBe('off');
+  });
+
+  it('returns synthetic "off" id for empty currentState with no off step', () => {
+    const device = { ...baseDevice, currentState: '', reportedStepId: 'medium' };
+    expect(resolveSteppedActiveStepId(device, profile)).toBe('off');
+  });
+
+  it('returns reportedStepId when state is not off-like', () => {
+    const device = { ...baseDevice, currentState: 'not_applicable', reportedStepId: 'medium' };
+    expect(resolveSteppedActiveStepId(device, profile)).toBe('medium');
   });
 });
