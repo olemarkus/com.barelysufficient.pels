@@ -12,6 +12,19 @@ file.
       data, which can hide stale state in control paths.
       Files: `lib/core/deviceManagerObservation.ts`, `lib/core/deviceManager.ts`,
       `lib/plan/planObservationPolicy.ts`, freshness/reconcile tests.
+- [ ] Make stepped-load execution drift source-aware when binary and step observations disagree.
+      A fresh binary observation should not be masked by a stale stepped-load identity. For example,
+      if a plan expects a stepped device to be off, stale `selectedStepId = off` should not override
+      fresh `currentOn = true` when deciding whether reconcile needs to reapply control.
+      Files: `lib/executor/planExecutionDrift.ts`, `lib/plan/planCurrentState.ts`,
+      realtime/reconcile drift tests.
+- [ ] Make binary pending-command drift suppression desired-state aware.
+      Reconcile should suppress binary drift only when the active pending command's desired value
+      matches the current plan's expected binary state. Today some paths expose only "a pending
+      binary command exists", which can briefly hide a conflicting restore/limit decision until the
+      15s local or 75s cloud pending window expires.
+      Files: `lib/executor/planExecutionDrift.ts`, `lib/app/appInit.ts`,
+      `lib/plan/planDevices.ts`, binary pending/reconcile tests.
 - [ ] Ensure snapshot refresh ordering cannot persist pre-enforcement state. Unsupported-device
       enforcement should complete before the refreshed snapshot is synced and persisted.
       Why P0: persisting before enforcement can expose a snapshot that briefly disagrees with the
@@ -95,6 +108,21 @@ file.
       reusing Homey/native-looking capability ids.
       Files: `lib/core/deviceStateOfCharge.ts`, `lib/core/deviceManagerObservation.ts`,
       `lib/core/flowReportedCapabilities.ts`, EV SoC contracts/UI surfaces.
+- [ ] Clamp stale EV boost stepped-load intent after boost deactivates.
+      When EV boost admits a higher charger step and a later SoC update turns boost off, the next
+      plan can briefly carry the old higher `desiredStepId` even when the shed-invariant reason says
+      the step-up should not be admitted while other devices are still limited. This is expected to
+      self-correct on later step/power observations, but the planner should eventually clamp the
+      desired/target step to the currently allowed step when the boost exemption no longer applies.
+      Files: `lib/plan/planRestoreHelpers.ts`, `lib/plan/planDevices.ts`,
+      EV boost / stepped restore tests.
+- [ ] Harden target-power stepped-load contract validation.
+      Homey's `target_power` contract requires the range to include `0`; minimum operating power
+      should be modeled with `excludeMin` / `excludeMax`, and `0` means idle. Keep mapping the off
+      step to `target_power = 0`, but validate manual/synthetic profiles and warn or ignore invalid
+      target-power metadata instead of letting malformed capability options look like normal input.
+      Files: `lib/core/nativeSteppedLoadWiring.ts`, `lib/core/deviceManagerNativeEv.ts`,
+      target-power/EV stepped-load tests.
 
 ## P1 Type-safety and state-boundary follow-ups
 
