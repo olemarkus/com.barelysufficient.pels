@@ -69,6 +69,7 @@ export type PlanBuilderDeps = {
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
+  deferredObjectiveDebugStructured?: StructuredDebugEmitter;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
 };
@@ -440,6 +441,7 @@ export class PlanBuilder {
         getPriceOptimizationEnabled: () => this.priceOptimizationEnabled,
         getPriceOptimizationSettings: () => this.priceOptimizationSettings,
         debugStructured: this.deps.debugStructured,
+        deferredObjectiveDebugStructured: this.deps.deferredObjectiveDebugStructured,
       },
     }));
   }

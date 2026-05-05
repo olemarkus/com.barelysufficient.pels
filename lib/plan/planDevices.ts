@@ -36,6 +36,7 @@ import {
 } from './planEvBoost';
 import {
   emitTemperatureBoostStateChange,
+  emitTemperatureBoostObjectiveEvaluation,
   resolveTemperatureBoostActive,
   supportsTemperatureBoostDevice,
 } from './planTemperatureBoost';
@@ -50,6 +51,7 @@ export type PlanDevicesDeps = {
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
   debugStructured?: StructuredDebugEmitter;
+  deferredObjectiveDebugStructured?: StructuredDebugEmitter;
 };
 const supportsTemperatureDevice = (device: PlanInputDevice): boolean => {
   return supportsTemperatureBoostDevice(device);
@@ -90,6 +92,11 @@ export function buildInitialPlanDevices(params: {
     const previousActive = state.temperatureBoostActiveByDevice[dev.id] === true;
     const active = resolveTemperatureBoostActive({ dev, previousActive });
     emitTemperatureBoostStateChange({ dev, previousActive, active, debugStructured: deps.debugStructured });
+    emitTemperatureBoostObjectiveEvaluation({
+      dev,
+      active,
+      debugStructured: deps.deferredObjectiveDebugStructured,
+    });
     const previousEvBoostActive = state.evBoostActiveByDevice[dev.id] === true;
     const evBoostActive = resolveEvBoostActive({ dev, previousActive: previousEvBoostActive });
     emitEvBoostStateChange({

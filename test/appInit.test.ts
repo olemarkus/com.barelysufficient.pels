@@ -70,6 +70,21 @@ describe('app init plan service wiring', () => {
     expect(logDebug).toHaveBeenCalledWith('plan', 'debug payload', 123);
   });
 
+  it('wires deferred objective debug logging through its own topic', () => {
+    const deferredDebugStructured = vi.fn();
+    capturedPlanEngineDeps.current = null;
+    createPlanEngine(createAppContextMock({
+      deviceManager: {} as AppContext['deviceManager'],
+      getStructuredDebugEmitter: vi.fn((component: string, topic: string) => (
+        component === 'deferred_objectives' && topic === 'deferred_objectives'
+          ? deferredDebugStructured
+          : vi.fn()
+      )),
+    }));
+
+    expect(capturedPlanEngineDeps.current?.deferredObjectiveDebugStructured).toBe(deferredDebugStructured);
+  });
+
   it('derives binary control from legacy snapshot capabilities when controlCapabilityId is missing', () => {
     const service = createPlanService(createAppContextMock({
       planEngine: {} as AppContext['planEngine'],

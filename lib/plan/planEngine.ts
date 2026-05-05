@@ -58,6 +58,7 @@ export type PlanEngineDeps = {
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
+  deferredObjectiveDebugStructured?: StructuredDebugEmitter;
   markSteppedLoadDesiredStepIssued: (params: {
     deviceId: string;
     desiredStepId: string;
@@ -103,6 +104,7 @@ export class PlanEngine {
       deviceDiagnostics: deps.deviceDiagnostics,
       structuredLog: deps.structuredLog,
       debugStructured: deps.debugStructured,
+      deferredObjectiveDebugStructured: deps.deferredObjectiveDebugStructured,
       log: deps.log,
       logDebug: deps.logDebug,
     };

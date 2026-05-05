@@ -8,6 +8,11 @@ export const DEBUG_LOGGING_TOPICS = [
   },
   { id: 'price', label: 'Price optimization', description: 'Spot prices, tariffs, and price shaping.' },
   { id: 'daily_budget', label: 'Daily budget', description: 'Daily plan and rollover.' },
+  {
+    id: 'deferred_objectives',
+    label: 'Deferred objectives',
+    description: 'Deadline goal, risk, and active boost evaluation details.',
+  },
   { id: 'devices', label: 'Devices', description: 'Device snapshots and Homey API interactions.' },
   {
     id: 'settings',

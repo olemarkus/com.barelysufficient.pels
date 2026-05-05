@@ -2,6 +2,10 @@ import type { PlanInputDevice } from './planTypes';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
 import type { StructuredDebugEmitter } from '../logging/logger';
+import {
+  buildDeferredObjectiveDebugPayload,
+  evaluateThermalStorageObjective,
+} from '../core/deferredObjectives';
 
 export const TEMPERATURE_BOOST_EXIT_MARGIN_C = 2;
 
@@ -49,5 +53,36 @@ export function emitTemperatureBoostStateChange(params: {
     boostBelowC: typeof boostBelowC === 'number' ? boostBelowC : null,
     exitThresholdC: typeof boostBelowC === 'number' ? boostBelowC + TEMPERATURE_BOOST_EXIT_MARGIN_C : null,
     observationStale: dev.observationStale === true,
+  });
+}
+
+export function emitTemperatureBoostObjectiveEvaluation(params: {
+  dev: PlanInputDevice;
+  active: boolean;
+  debugStructured?: StructuredDebugEmitter;
+}): void {
+  const { dev, active, debugStructured } = params;
+  const config = dev.temperatureBoost;
+  if (!debugStructured || config?.enabled !== true || !active) return;
+  if (!isSteppedLoadDevice(dev) || !dev.steppedLoadProfile) return;
+  const exitThresholdC = config.boostBelowC + TEMPERATURE_BOOST_EXIT_MARGIN_C;
+  const evaluation = evaluateThermalStorageObjective({
+    nowMs: Date.now(),
+    profile: dev.steppedLoadProfile,
+    measuredTemperatureC: dev.currentTemperature,
+    measuredTemperatureObservedAtMs: dev.lastFreshDataMs,
+    targetTemperatureC: exitThresholdC,
+    rateConfidence: 'low',
+  });
+  debugStructured({
+    ...buildDeferredObjectiveDebugPayload({
+      deviceId: dev.id,
+      deviceName: dev.name,
+      evaluation,
+    }),
+    event: 'temperature_boost_objective_evaluated',
+    boostActive: active,
+    boostBelowC: config.boostBelowC,
+    exitThresholdC,
   });
 }

@@ -125,6 +125,56 @@ describe('buildInitialPlanDevices', () => {
     });
   });
 
+  it('emits deferred objective diagnostics for active temperature boost', () => {
+    const deferredObjectiveDebugStructured = vi.fn();
+    const nowMs = Date.UTC(2026, 0, 1, 0, 0, 0);
+    vi.useFakeTimers();
+    vi.setSystemTime(nowMs);
+    try {
+      buildInitialPlanDevices({
+        context: buildContext([steppedInputDevice({
+          id: 'tank',
+          name: 'Water tank',
+          deviceType: 'temperature',
+          currentTemperature: 54,
+          lastFreshDataMs: nowMs,
+          temperatureBoost: { enabled: true, boostBelowC: 55 },
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            tankVolumeL: 300,
+            minComfortTempC: 50,
+            maxStorageTempC: 75,
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1250 },
+            ],
+          },
+        })]),
+        state: createPlanEngineState(),
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deps: { ...defaultDeps, deferredObjectiveDebugStructured },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(deferredObjectiveDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'temperature_boost_objective_evaluated',
+      deviceId: 'tank',
+      deviceName: 'Water tank',
+      objectiveKind: 'thermal_storage',
+      status: 'unknown',
+      reasonCode: 'objective_missing_deadline',
+      boostActive: true,
+      boostBelowC: 55,
+      exitThresholdC: 57,
+      targetTemperatureC: 57,
+      energyNeededKwh: expect.any(Number),
+    }));
+  });
+
   it('emits a structured debug event when temperature boost ends', () => {
     const debugStructured = vi.fn();
     const state = createPlanEngineState();

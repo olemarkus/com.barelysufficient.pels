@@ -86,6 +86,7 @@ export function createPlanEngine(ctx: AppContext) {
     deviceDiagnostics: ctx.deviceDiagnosticsService as DeviceDiagnosticsRecorder | undefined,
     structuredLog: ctx.getStructuredLogger('plan'),
     debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
+    deferredObjectiveDebugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
     log: (...args: unknown[]) => ctx.log(...args),
     logDebug: (...args: unknown[]) => ctx.logDebug('plan', ...args),
     error: (...args: unknown[]) => ctx.error(...args),
