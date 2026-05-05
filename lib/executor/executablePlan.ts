@@ -1,4 +1,8 @@
-import type { DeviceControlAdapterSnapshot, SteppedLoadProfile } from '../utils/types';
+import type {
+  DeviceControlAdapterSnapshot,
+  SteppedLoadProfile,
+  TargetPowerSteppedLoadConfig,
+} from '../utils/types';
 import type { SteppedStepActuationState } from './steppedLoadActuation';
 
 export type ExecutablePlanDevice<TPlanDevice = unknown> = {
@@ -67,6 +71,7 @@ export type ExecutableSteppedLoadDevice = {
   steppedLoadProfile: SteppedLoadProfile;
   communicationModel?: 'local' | 'cloud';
   controlAdapter?: DeviceControlAdapterSnapshot;
+  targetPowerConfig?: TargetPowerSteppedLoadConfig;
   shedAction?: 'turn_off' | 'set_temperature' | 'set_step';
   current: ExecutableSteppedLoadCurrentState;
   desired: ExecutableSteppedLoadDesiredState;

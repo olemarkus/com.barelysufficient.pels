@@ -1055,8 +1055,7 @@ describe('PlanExecutor stepped loads', () => {
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
       step_id: 'max',
       planning_power_w: 3000,
-      planning_current_1p_a: 3000 / 230,
-      planning_current_3p_a: 3000 / (230 * 3),
+      planning_current_a: 0,
       previous_step_id: 'low',
     }, {
       deviceId: 'dev-1',
@@ -1075,6 +1074,46 @@ describe('PlanExecutor stepped loads', () => {
       desiredStepId: 'max',
     }));
     expect(state.lastRestoreMs).toEqual(expect.any(Number));
+  });
+
+  it('passes phase-aware EV charger current for stepped-load flow commands', async () => {
+    const { executor, desiredSteppedTrigger } = buildExecutor();
+
+    await expect(executor.applyPlanActions(steppedPlan({
+      targetPowerConfig: { enabled: true, preset: 'ev_charger_1_phase' },
+    }))).resolves.toEqual({
+      deviceWriteCount: 0,
+      commandRequestCount: 1,
+    });
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
+      step_id: 'max',
+      planning_power_w: 3000,
+      planning_current_a: 3000 / 230,
+      previous_step_id: 'low',
+    }, {
+      deviceId: 'dev-1',
+    });
+  });
+
+  it('does not emit EV charger current when the EV target-power config is disabled', async () => {
+    const { executor, desiredSteppedTrigger } = buildExecutor();
+
+    await expect(executor.applyPlanActions(steppedPlan({
+      targetPowerConfig: { enabled: false, preset: 'ev_charger_1_phase' },
+    }))).resolves.toEqual({
+      deviceWriteCount: 0,
+      commandRequestCount: 1,
+    });
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
+      step_id: 'max',
+      planning_power_w: 3000,
+      planning_current_a: 0,
+      previous_step_id: 'low',
+    }, {
+      deviceId: 'dev-1',
+    });
   });
 
   it('projects target updates after awaited stepped-load work in the same cycle', async () => {
@@ -1233,8 +1272,7 @@ describe('PlanExecutor stepped loads', () => {
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
       step_id: 'max',
       planning_power_w: 3000,
-      planning_current_1p_a: 3000 / 230,
-      planning_current_3p_a: 3000 / (230 * 3),
+      planning_current_a: 0,
       previous_step_id: 'low',
     }, {
       deviceId: 'dev-1',
@@ -1306,8 +1344,7 @@ describe('PlanExecutor stepped loads', () => {
       expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
         step_id: 'max',
         planning_power_w: 3000,
-        planning_current_1p_a: 3000 / 230,
-        planning_current_3p_a: 3000 / (230 * 3),
+        planning_current_a: 0,
         previous_step_id: 'low',
       }, {
         deviceId: 'dev-1',
@@ -1345,8 +1382,7 @@ describe('PlanExecutor stepped loads', () => {
       expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
         step_id: 'max',
         planning_power_w: 3000,
-        planning_current_1p_a: 3000 / 230,
-        planning_current_3p_a: 3000 / (230 * 3),
+        planning_current_a: 0,
         previous_step_id: 'max',
       }, {
         deviceId: 'dev-1',

@@ -61,6 +61,7 @@ export function buildExecutableSteppedLoadDevice(dev: PlanDevice): ExecutableSte
     steppedLoadProfile: dev.steppedLoadProfile,
     communicationModel: dev.communicationModel,
     controlAdapter: dev.controlAdapter,
+    targetPowerConfig: dev.targetPowerConfig,
     shedAction: dev.shedAction,
     current,
     desired,

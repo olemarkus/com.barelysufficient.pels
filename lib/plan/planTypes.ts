@@ -11,6 +11,7 @@ import type {
   SteppedLoadProfile,
   TemperatureBoostConfig,
   TargetCapabilitySnapshot,
+  TargetPowerSteppedLoadConfig,
 } from '../utils/types';
 
 export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
@@ -73,6 +74,7 @@ export type DevicePlanDevice = {
   hasBinaryControl?: boolean;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
   controlAdapter?: DeviceControlAdapterSnapshot;
+  targetPowerConfig?: TargetPowerSteppedLoadConfig;
   evChargingState?: string;
   priority?: number;
   powerKw?: number;
@@ -197,6 +199,7 @@ export type PlanInputDevice = {
   hasBinaryControl?: boolean;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
   controlAdapter?: DeviceControlAdapterSnapshot;
+  targetPowerConfig?: TargetPowerSteppedLoadConfig;
   priority?: number;
   // Raw observed binary snapshot input. Planner decisions should resolve through currentState helpers.
   currentOn: boolean;
