@@ -2,7 +2,7 @@ import type Homey from 'homey';
 import type CapacityGuard from '../core/capacityGuard';
 import type { PowerTrackerState } from '../core/powerTracker';
 import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from '../core/powerTracker';
-import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
+import type { DailyBudgetUiPayload, DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
 import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from '../plan/planUsage';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
@@ -120,10 +120,10 @@ export function prunePowerTrackerHistoryForApp(params: {
 export function updateDailyBudgetAndRecordCapForApp(params: {
   powerTracker: PowerTrackerState;
   dailyBudgetService: {
-    updateState: (options?: { forcePlanRebuild?: boolean; nowMs?: number }) => void;
+    updateState: (options?: DailyBudgetUpdateStateOptions) => void;
     getSnapshot: () => DailyBudgetUiPayload | null;
   };
-  options?: { nowMs?: number; forcePlanRebuild?: boolean };
+  options?: DailyBudgetUpdateStateOptions;
 }): PowerTrackerState {
   const { powerTracker, dailyBudgetService, options } = params;
   dailyBudgetService.updateState(options);

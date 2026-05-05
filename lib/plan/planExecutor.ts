@@ -912,8 +912,8 @@ export class PlanExecutor {
             continue;
           }
           if (isSteppedLoadDevice(dev) && dev.plannedState === 'keep' && resolveEffectiveCurrentOn(dev) === false) {
-            if (isRestoreHoldReason(dev.reason)) continue;
-            if (!allowsSteppedLoadKeepInvariantRestore(dev.reason)) {
+            if (projectedDevice.steppedLoad?.desired.on !== true) {
+              if (isRestoreAdmissionHoldReason(dev.reason)) continue;
               if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
               continue;
             }

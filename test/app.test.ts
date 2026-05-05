@@ -29,7 +29,7 @@ vi.mock('../lib/core/deviceLiveFeed', () => {
     })),
   };
 });
-import { createApp, cleanupApps } from './utils/appTestUtils';
+import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from './utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -75,7 +75,7 @@ const waitFor = async (predicate: () => boolean, timeoutMs = 1000) => {
 };
 
 const waitForSnapshot = async (timeoutMs = 1000) => {
-  await waitFor(() => Array.isArray(mockHomeyInstance.settings.get('target_devices_snapshot')), timeoutMs);
+  await waitFor(() => getLatestTargetSnapshotForTests().length > 0, timeoutMs);
 };
 
 const createDeferred = () => {
@@ -174,14 +174,13 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot');
-    expect(Array.isArray(snapshot)).toBe(true);
+    const snapshot = getLatestTargetSnapshotForTests();
     expect(snapshot[0]).toMatchObject({
       name: 'Heater',
     });
   });
 
-  it('does not rewrite target snapshot when refresh returns unchanged devices', async () => {
+  it('does not persist target snapshot when devices refresh', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -195,7 +194,7 @@ describe('MyApp initialization', () => {
     await (app as any).refreshTargetDevicesSnapshot();
 
     const snapshotWrites = setSpy.mock.calls.filter(([key]) => key === 'target_devices_snapshot');
-    expect(snapshotWrites).toHaveLength(1);
+    expect(snapshotWrites).toHaveLength(0);
   });
 
   it('clears persisted flow-backed state when flow-backed cards are unavailable', () => {
@@ -236,7 +235,7 @@ describe('MyApp initialization', () => {
     }
   });
 
-  it('emits structured logs for snapshot writes and unchanged snapshot skips', async () => {
+  it('emits realtime UI invalidation when devices refresh', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -245,31 +244,12 @@ describe('MyApp initialization', () => {
     const app = createApp();
     await initApp(app);
 
-    const childLogger = {
-      info: vi.fn(),
-      debug: vi.fn(),
-      error: vi.fn(),
-    };
-    const child = vi.fn().mockReturnValue(childLogger);
-    (app as any).structuredLogger = { child };
-
     await heater.setCapabilityValue('measure_power', 1500);
     await (app as any).refreshTargetDevicesSnapshot();
 
-    expect(childLogger.info).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'target_devices_snapshot_written',
-      reasonCode: 'snapshot_refresh',
-      deviceCount: 1,
-      targetedRefresh: false,
-    }));
-
-    await (app as any).refreshTargetDevicesSnapshot();
-
-    expect(childLogger.debug).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'target_devices_snapshot_write_skipped',
-      reasonCode: 'unchanged',
-      deviceCount: 1,
-      targetedRefresh: false,
+    expect(mockHomeyInstance.api._realtimeEvents).toContainEqual(expect.objectContaining({
+      event: 'devices_updated',
+      data: null,
     }));
   });
 
@@ -432,11 +412,7 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
-      id: string;
-      managed?: boolean;
-      controllable?: boolean;
-    }>;
+    const snapshot = getLatestTargetSnapshotForTests();
     const entry = snapshot.find((device) => device.id === 'dev-1');
 
     expect(entry?.managed).toBe(false);

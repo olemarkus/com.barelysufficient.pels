@@ -37,8 +37,12 @@ describe('planExecutablePlan', () => {
       planDevice: steppedDevice,
       steppedLoad: {
         id: 'step-1',
-        requestedStepId: 'max',
-        currentStepId: 'low',
+        current: {
+          stepId: 'low',
+        },
+        desired: {
+          stepId: 'max',
+        },
       },
     });
     expect(buildExecutablePlanDevice(binaryDevice)).toEqual({

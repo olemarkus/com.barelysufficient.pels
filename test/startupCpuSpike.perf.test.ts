@@ -41,24 +41,6 @@ const buildHeavyDriverFixture = (count: number): Record<string, MockDriver> => {
   };
 };
 
-const buildLargeCachedSnapshot = (count: number): unknown[] => (
-  Array.from({ length: count }, (_, index) => ({
-    id: `cached-${index}`,
-    name: `Cached Device ${index}`,
-    priority: (index % 7) + 1,
-    controllable: true,
-    managed: true,
-    caps: ['target_temperature', 'measure_power'],
-    targets: [{ id: 'target_temperature', value: 20 + (index % 4), unit: 'C' }],
-    measuredPowerKw: (index % 10) / 10,
-    expectedPowerKw: ((index + 3) % 10) / 10,
-    meta: {
-      zone: `zone-${index % 12}`,
-      aliases: Array.from({ length: 4 }, (__, entryIndex) => `alias-${index}-${entryIndex}`),
-    },
-  }))
-);
-
 const buildPowerTrackerHistory = (hours: number): {
   lastTimestamp: number;
   lastPowerW: number;
@@ -119,7 +101,6 @@ const captureStartupMetrics = async (params: {
   mockHomeyInstance.settings.set('daily_budget_enabled', true);
   mockHomeyInstance.settings.set('daily_budget_kwh', 120);
   mockHomeyInstance.settings.set('daily_budget_price_shaping_enabled', true);
-  mockHomeyInstance.settings.set('target_devices_snapshot', buildLargeCachedSnapshot(deviceCount));
   mockHomeyInstance.settings.set('power_tracker_state', buildPowerTrackerHistory(historyHours));
 
   const cpuSamples: Array<{ cpuPct: number; wallMs: number }> = [];
@@ -205,7 +186,6 @@ describe('startup cpu spike perf reproduction', () => {
     const deviceCount = 1800;
     setMockDrivers(buildHeavyDriverFixture(deviceCount));
     mockHomeyInstance.settings.set('price_scheme', 'flow');
-    mockHomeyInstance.settings.set('target_devices_snapshot', buildLargeCachedSnapshot(deviceCount));
 
     const app = createApp();
     await app.onInit();

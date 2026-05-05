@@ -18,6 +18,8 @@ const flushMicrotasks = async () => {
   await Promise.resolve();
 };
 
+const expectedForcedDailyBudgetPersist = { forcePlanRebuild: true, persistReason: 'manual' };
+
 const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandlerDeps => {
   const homey = {
     settings: {
@@ -113,7 +115,7 @@ describe('createSettingsHandler', () => {
     expect(guard.setLimit).toHaveBeenCalledWith(12);
     expect(guard.setSoftMargin).toHaveBeenCalledWith(0.5);
     expect(deps.updateOverheadToken).toHaveBeenCalledWith(0.5);
-    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith({ forcePlanRebuild: true });
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith(expectedForcedDailyBudgetPersist);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
   });
 
@@ -246,7 +248,7 @@ describe('createSettingsHandler', () => {
     await handler('price_threshold_percent');
 
     expect(deps.priceService.updateCombinedPrices).toHaveBeenCalled();
-    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith({ forcePlanRebuild: true });
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith(expectedForcedDailyBudgetPersist);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
   });
 
@@ -257,7 +259,7 @@ describe('createSettingsHandler', () => {
     await handler('price_min_diff_ore');
 
     expect(deps.priceService.updateCombinedPrices).toHaveBeenCalled();
-    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith({ forcePlanRebuild: true });
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith(expectedForcedDailyBudgetPersist);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
   });
 
@@ -268,7 +270,7 @@ describe('createSettingsHandler', () => {
     await handler('provider_surcharge');
 
     expect(deps.priceService.updateCombinedPrices).toHaveBeenCalled();
-    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith({ forcePlanRebuild: true });
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith(expectedForcedDailyBudgetPersist);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
   });
 
@@ -315,7 +317,7 @@ describe('createSettingsHandler', () => {
     await Promise.resolve();
 
     expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
-    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith({ forcePlanRebuild: true });
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith(expectedForcedDailyBudgetPersist);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
 
@@ -391,7 +393,7 @@ describe('createSettingsHandler', () => {
 
     expect(deps.loadDailyBudgetSettings).toHaveBeenCalledTimes(1);
     expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
-    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith({ forcePlanRebuild: true });
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith(expectedForcedDailyBudgetPersist);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith('settings:daily_budget_settings');
   });
@@ -511,7 +513,7 @@ describe('createSettingsHandler', () => {
 
     expect(deps.loadCapacitySettings).toHaveBeenCalled();
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
-    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith();
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith(expectedForcedDailyBudgetPersist);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(`settings:${BUDGET_EXEMPT_DEVICES}`);
   });
 
@@ -534,7 +536,7 @@ describe('createSettingsHandler', () => {
     await handler(DAILY_BUDGET_RESET);
 
     expect(deps.resetDailyBudgetLearning).toHaveBeenCalled();
-    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith({ forcePlanRebuild: true });
+    expect(deps.updateDailyBudgetState).toHaveBeenCalledWith(expectedForcedDailyBudgetPersist);
     expect(deps.homey.settings.set).toHaveBeenCalledWith(DAILY_BUDGET_RESET, null);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
   });

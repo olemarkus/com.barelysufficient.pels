@@ -9,7 +9,7 @@ import {
   MockDriver,
   setAutoEnableMockDevices,
 } from './mocks/homey';
-import { createApp, cleanupApps } from './utils/appTestUtils';
+import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from './utils/appTestUtils';
 import { legacyDeviceReason, reasonText } from './utils/deviceReasonTestUtils';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
@@ -2301,7 +2301,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot');
+    const snapshot = getLatestTargetSnapshotForTests();
     const device = snapshot.find((d: any) => d.id === 'dev-1');
     expect(device.powerKw).toBeCloseTo(1.2, 3);
   });
@@ -2318,7 +2318,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot');
+    const snapshot = getLatestTargetSnapshotForTests();
     expect(snapshot).toHaveLength(1);
     expect(snapshot[0]).toMatchObject({
       id: 'hoiax-1',

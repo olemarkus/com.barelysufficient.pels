@@ -1,6 +1,7 @@
 import { DailyBudgetService } from '../lib/dailyBudget/dailyBudgetService';
 import type { ConfidenceDebug, DailyBudgetDayPayload } from '../lib/dailyBudget/dailyBudgetTypes';
 import { DEBUG_LOGGING_TOPICS } from '../lib/utils/settingsKeys';
+import { getPerfSnapshot } from '../lib/utils/perfCounters';
 
 const TZ = 'Europe/Oslo';
 const NOW_MS = new Date('2025-03-15T12:00:00Z').getTime();
@@ -81,6 +82,12 @@ function buildService(): DailyBudgetService {
   });
 }
 
+const dailyBudgetStateSetCount = (set: ReturnType<typeof vi.fn>): number => (
+  set.mock.calls.filter(([key]) => key === 'daily_budget_state').length
+);
+
+const perfCount = (key: string): number => getPerfSnapshot().counts[key] ?? 0;
+
 describe('DailyBudgetService', () => {
   it('applies the same overall confidence to adjacent day payloads', () => {
     const service = buildService();
@@ -122,7 +129,7 @@ describe('DailyBudgetService', () => {
         confidence: 0.72,
         confidenceDebug: buildConfidenceDebug(),
       }),
-      shouldPersist: false,
+      persistReason: null,
     }));
     (service as any).deps.homey.settings.get = vi.fn((key: string) => (
       key === 'debug_logging_enabled' ? true : null
@@ -145,7 +152,7 @@ describe('DailyBudgetService', () => {
         confidence: 0.72,
         confidenceDebug: buildConfidenceDebug(),
       }),
-      shouldPersist: false,
+      persistReason: null,
     }));
     (service as any).deps.homey.settings.get = vi.fn((key: string) => (
       key === DEBUG_LOGGING_TOPICS ? ['plan'] : null
@@ -168,7 +175,7 @@ describe('DailyBudgetService', () => {
         confidence: 0.72,
         confidenceDebug: buildConfidenceDebug(),
       }),
-      shouldPersist: false,
+      persistReason: null,
     }));
     (service as any).deps.homey.settings.get = vi.fn((key: string) => (
       key === DEBUG_LOGGING_TOPICS ? { plan: true, daily_budget: true } : null
@@ -213,7 +220,7 @@ describe('DailyBudgetService', () => {
     });
     const updateSpy = vi.fn(() => ({
       snapshot: today,
-      shouldPersist: false,
+      persistReason: null,
     }));
     (service as any).manager.update = updateSpy;
 
@@ -328,7 +335,7 @@ describe('DailyBudgetService', () => {
         confidence: 0.72,
         confidenceDebug: buildConfidenceDebug(),
       }),
-      shouldPersist: false,
+      persistReason: null,
     }));
 
     const fields = service.getPeriodicStatusFields();
@@ -374,7 +381,7 @@ describe('DailyBudgetService', () => {
         confidence: 0.72,
         confidenceDebug: buildConfidenceDebug(),
       }),
-      shouldPersist: false,
+      persistReason: null,
     }));
 
     service.updateState();
@@ -414,7 +421,7 @@ describe('DailyBudgetService', () => {
         confidence: 0.72,
         confidenceDebug: buildConfidenceDebug(),
       }),
-      shouldPersist: false,
+      persistReason: null,
     }));
 
     service.updateState();
@@ -467,8 +474,8 @@ describe('DailyBudgetService', () => {
     ];
     (service as any).manager.update = vi
       .fn()
-      .mockReturnValueOnce({ snapshot: snapshots[0], shouldPersist: false })
-      .mockReturnValueOnce({ snapshot: snapshots[1], shouldPersist: false });
+      .mockReturnValueOnce({ snapshot: snapshots[0], persistReason: null })
+      .mockReturnValueOnce({ snapshot: snapshots[1], persistReason: null });
 
     service.updateState();
     service.updateState();
@@ -504,7 +511,7 @@ describe('DailyBudgetService', () => {
         confidence: 0.72,
         confidenceDebug: buildConfidenceDebug(),
       }),
-      shouldPersist: false,
+      persistReason: null,
     }));
     (service as any).manager.update = updateSpy;
 
@@ -513,5 +520,122 @@ describe('DailyBudgetService', () => {
     expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
       capacityBudgetKWh: 4,
     }));
+  });
+
+  it('throttles low-priority daily budget state writes from frequent updates', () => {
+    const skippedBefore = perfCount('settings_set.daily_budget_state_skipped_throttle_total');
+    const service = buildService();
+    const set = (service as any).deps.homey.settings.set as ReturnType<typeof vi.fn>;
+    const updateSpy = vi.fn(() => ({
+      snapshot: buildDayPayload({
+        dateKey: '2025-03-15',
+        confidence: 0.72,
+        confidenceDebug: buildConfidenceDebug(),
+      }),
+      persistReason: 'runtime',
+    }));
+    let exportIndex = 0;
+    (service as any).manager.update = updateSpy;
+    (service as any).manager.exportState = vi.fn(() => ({ lastUsedNowKWh: exportIndex++ }));
+
+    service.updateState({ nowMs: NOW_MS });
+    service.updateState({ nowMs: NOW_MS + 60_000 });
+    service.updateState({ nowMs: NOW_MS + 2 * 60_000 });
+    service.updateState({ nowMs: NOW_MS + 10 * 60_000 });
+
+    expect(dailyBudgetStateSetCount(set)).toBe(2);
+    expect(set).toHaveBeenNthCalledWith(1, 'daily_budget_state', { lastUsedNowKWh: 0 });
+    expect(set).toHaveBeenLastCalledWith('daily_budget_state', { lastUsedNowKWh: 3 });
+    expect(perfCount('settings_set.daily_budget_state_skipped_throttle_total')).toBe(skippedBefore + 2);
+  });
+
+  it('skips daily budget state writes when exported state is unchanged', () => {
+    const skippedBefore = perfCount('settings_set.daily_budget_state_skipped_unchanged_total');
+    const service = buildService();
+    const set = (service as any).deps.homey.settings.set as ReturnType<typeof vi.fn>;
+    (service as any).manager.update = vi.fn(() => ({
+      snapshot: buildDayPayload({
+        dateKey: '2025-03-15',
+        confidence: 0.72,
+        confidenceDebug: buildConfidenceDebug(),
+      }),
+      persistReason: 'manual',
+    }));
+    (service as any).manager.exportState = vi.fn(() => ({ plannedKWh: [10] }));
+
+    service.updateState({ nowMs: NOW_MS });
+    service.updateState({ nowMs: NOW_MS + 1_000 });
+
+    expect(dailyBudgetStateSetCount(set)).toBe(1);
+    expect(perfCount('settings_set.daily_budget_state_skipped_unchanged_total')).toBe(skippedBefore + 1);
+  });
+
+  it('persists manual and rollover daily budget state changes despite low-priority throttling', () => {
+    const service = buildService();
+    const set = (service as any).deps.homey.settings.set as ReturnType<typeof vi.fn>;
+    const reasons = ['runtime', 'manual', 'rollover'];
+    let exportIndex = 0;
+    (service as any).manager.update = vi.fn(() => ({
+      snapshot: buildDayPayload({
+        dateKey: '2025-03-15',
+        confidence: 0.72,
+        confidenceDebug: buildConfidenceDebug(),
+      }),
+      persistReason: reasons.shift(),
+    }));
+    (service as any).manager.exportState = vi.fn(() => ({ revision: exportIndex++ }));
+
+    service.updateState({ nowMs: NOW_MS });
+    service.updateState({ nowMs: NOW_MS + 1_000 });
+    service.updateState({ nowMs: NOW_MS + 2_000 });
+
+    expect(dailyBudgetStateSetCount(set)).toBe(3);
+    expect(set).toHaveBeenNthCalledWith(1, 'daily_budget_state', { revision: 0 });
+    expect(set).toHaveBeenNthCalledWith(2, 'daily_budget_state', { revision: 1 });
+    expect(set).toHaveBeenNthCalledWith(3, 'daily_budget_state', { revision: 2 });
+  });
+
+  it('throttles low-priority writes after a recent high-priority persist', () => {
+    const skippedBefore = perfCount('settings_set.daily_budget_state_skipped_throttle_total');
+    const service = buildService();
+    const set = (service as any).deps.homey.settings.set as ReturnType<typeof vi.fn>;
+    const reasons = ['manual', 'runtime'];
+    let exportIndex = 0;
+    (service as any).manager.update = vi.fn(() => ({
+      snapshot: buildDayPayload({
+        dateKey: '2025-03-15',
+        confidence: 0.72,
+        confidenceDebug: buildConfidenceDebug(),
+      }),
+      persistReason: reasons.shift(),
+    }));
+    (service as any).manager.exportState = vi.fn(() => ({ revision: exportIndex++ }));
+
+    service.updateState({ nowMs: NOW_MS });
+    service.updateState({ nowMs: NOW_MS + 1_000 });
+
+    expect(dailyBudgetStateSetCount(set)).toBe(1);
+    expect(perfCount('settings_set.daily_budget_state_skipped_throttle_total')).toBe(skippedBefore + 1);
+  });
+
+  it('persists reset learning immediately with a reset reason counter', () => {
+    const reasonBefore = perfCount('settings_set.daily_budget_state_reason.reset_total');
+    const service = buildService();
+    const set = (service as any).deps.homey.settings.set as ReturnType<typeof vi.fn>;
+
+    service.resetLearning();
+
+    expect(dailyBudgetStateSetCount(set)).toBe(1);
+    expect(perfCount('settings_set.daily_budget_state_reason.reset_total')).toBe(reasonBefore + 1);
+  });
+
+  it('does not carry reset persistence reason into the next update', () => {
+    const reasonBefore = perfCount('settings_set.daily_budget_state_reason.reset_total');
+    const service = buildService();
+
+    service.resetLearning();
+    service.updateState({ nowMs: NOW_MS });
+
+    expect(perfCount('settings_set.daily_budget_state_reason.reset_total')).toBe(reasonBefore + 1);
   });
 });

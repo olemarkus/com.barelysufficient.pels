@@ -16,6 +16,7 @@ import type {
   DailyBudgetDayPayload,
   DailyBudgetSettings,
   DailyBudgetState,
+  DailyBudgetStatePersistReason,
   DailyBudgetUpdate,
 } from './dailyBudgetTypes';
 import {
@@ -43,15 +44,14 @@ import {
   resolveConfidence,
 } from './dailyBudgetConfidence';
 import { logUncontrolledReserveDebug as logReserveDebug } from './dailyBudgetReserveLogging';
+import { resolveDailyBudgetPersistReason } from './dailyBudgetStatePersistence';
 
 const DEFAULT_PROFILE = buildDefaultProfile();
 
 export class DailyBudgetManager {
-  private static readonly STATE_PERSIST_INTERVAL_MS = 60 * 1000;
   private state: DailyBudgetState = {};
   private snapshot: DailyBudgetDayPayload | null = null;
-  private dirty = false;
-  private lastPersistMs = 0;
+  private persistReasons = new Set<DailyBudgetStatePersistReason>();
   private lastPlanRebuildMs = 0;
   private confidenceCache: ConfidenceCache = createConfidenceCache();
 
@@ -80,7 +80,6 @@ export class DailyBudgetManager {
     this.state.profileObservedUncontrolledSampleCounts = Array.from({ length: 24 }, () => 0);
     this.state.profile = undefined;
     this.state.frozen = false;
-    this.markDirty();
   }
   update(params: DailyBudgetUpdateParams): DailyBudgetUpdate {
     const {
@@ -96,11 +95,13 @@ export class DailyBudgetManager {
       refreshConfidence = false,
       includeConfidenceBootstrapDebug = false,
       recomputeFrozenPlan = false,
+      persistReason,
     } = params;
 
     const context = buildDayContext({ nowMs, timeZone, powerTracker });
+    if (persistReason) this.markDirty(persistReason);
     const profileResult = ensureDailyBudgetProfile(this.state, DEFAULT_PROFILE);
-    if (profileResult.changed) this.markDirty();
+    if (profileResult.changed) this.markDirty('manual');
     this.state = profileResult.state;
     if (refreshObservedStats) this.maybeUpdateObservedStats(powerTracker, timeZone, context.nowMs);
     this.handleRollover({ context, settings, powerTracker });
@@ -207,13 +208,9 @@ export class DailyBudgetManager {
     });
     logReserveDebug({ plan, reserveMode: settings.controlledUsageWeight, structuredDebug: this.deps.structuredDebug });
 
-    this.state.dateKey = context.dateKey;
-    this.state.dayStartUtcMs = context.dayStartUtcMs;
-    this.state.lastUsedNowKWh = context.budgetControlUsedNowKWh;
-    this.markDirty();
+    this.recordRuntimeState(context);
 
-    const shouldPersist = this.shouldPersist(context.nowMs);
-    return { snapshot, shouldPersist };
+    return { snapshot, persistReason: this.consumePersistReason() };
   }
 
   private handleRollover(params: {
@@ -233,7 +230,7 @@ export class DailyBudgetManager {
       nowMs: context.nowMs,
     });
     if (result.logMessage) this.deps.logDebug(result.logMessage);
-    if (result.shouldMarkDirty) this.markDirty(true);
+    if (result.shouldMarkDirty) this.markDirty('rollover');
     this.state = result.nextState;
   }
 
@@ -241,7 +238,7 @@ export class DailyBudgetManager {
   private syncEnabledState(enabled: boolean): void {
     if (!enabled && this.state.frozen) {
       this.state.frozen = false;
-      this.markDirty();
+      this.markDirty('frozen');
     }
     if (!enabled) this.clearStoredPlanBreakdown();
   }
@@ -253,7 +250,7 @@ export class DailyBudgetManager {
       this.state.lastPlanBucketStartUtcMs = currentBucketStartUtcMs;
     }
     this.state.frozen = false;
-    this.markDirty(true);
+    this.markDirty('manual');
     this.deps.logDebug('Daily budget: recompute requested, clearing frozen plan state');
   }
 
@@ -271,11 +268,12 @@ export class DailyBudgetManager {
       this.state.frozen = false;
       this.state.lastPlanBucketStartUtcMs = null;
       this.clearStoredPlanBreakdown();
+      this.markDirty('plan');
     }
     const planState = planStateResult.planState;
     if (enabled && planState.existingPlan && !this.state.frozen && planState.deviationExisting > 0) {
       this.state.frozen = true;
-      this.markDirty(true);
+      this.markDirty('frozen');
       this.deps.logDebug(`Daily budget: freeze plan (deviation ${planState.deviationExisting.toFixed(2)} kWh)`);
     }
     return planState;
@@ -383,10 +381,11 @@ export class DailyBudgetManager {
     this.state.plannedKWh = buildResult.plannedKWh;
     this.state.plannedUncontrolledKWh = buildResult.plannedUncontrolledKWh.slice();
     this.state.plannedControlledKWh = buildResult.plannedControlledKWh.slice();
+    const previousPlanBucketStartUtcMs = this.state.lastPlanBucketStartUtcMs;
     this.state.lastPlanBucketStartUtcMs = lockState.currentBucketStartUtcMs;
     this.state.dayStartUtcMs = context.dayStartUtcMs;
     this.lastPlanRebuildMs = context.nowMs;
-    this.markDirty();
+    this.markDirty(previousPlanBucketStartUtcMs === lockState.currentBucketStartUtcMs ? 'plan' : 'bucket');
     return {
       plannedKWh: buildResult.plannedKWh,
       plannedUncontrolledKWh: buildResult.plannedUncontrolledKWh,
@@ -447,14 +446,14 @@ export class DailyBudgetManager {
     const result = ensureObservedHourlyStats({ state: this.state, powerTracker, timeZone, nowMs });
     if (result.changed) {
       this.state = result.nextState;
-      this.markDirty(true);
+      this.markDirty('observed_stats');
       if (result.logMessage) this.deps.logDebug(result.logMessage);
     }
   }
 
   private maybeFreezeFromDeviation(enabled: boolean, deviationKWh: number): void {
     if (!enabled || deviationKWh <= 0 || this.state.frozen) return;
-    this.state.frozen = true; this.markDirty(true);
+    this.state.frozen = true; this.markDirty('frozen');
     this.deps.logDebug(`Daily budget: freeze plan (deviation ${deviationKWh.toFixed(2)} kWh)`);
   }
 
@@ -462,18 +461,20 @@ export class DailyBudgetManager {
     if (!enabled || deviationKWh > 0 || !this.state.frozen) return;
     this.state.frozen = false;
     this.state.lastPlanBucketStartUtcMs = null;
-    this.markDirty(true);
+    this.markDirty('frozen');
     this.deps.logDebug(`Daily budget: unfreeze plan (deviation ${deviationKWh.toFixed(2)} kWh)`);
   }
 
-  private shouldPersist(nowMs: number): boolean {
-    const shouldPersist = this.dirty
-      && (nowMs - this.lastPersistMs >= DailyBudgetManager.STATE_PERSIST_INTERVAL_MS);
-    if (shouldPersist) {
-      this.lastPersistMs = nowMs;
-      this.dirty = false;
-    }
-    return shouldPersist;
+  private consumePersistReason(): DailyBudgetStatePersistReason | null {
+    const reason = resolveDailyBudgetPersistReason(this.persistReasons);
+    this.persistReasons.clear(); return reason;
+  }
+
+  private recordRuntimeState(context: DayContext): void {
+    this.state.dateKey = context.dateKey;
+    this.state.dayStartUtcMs = context.dayStartUtcMs;
+    this.state.lastUsedNowKWh = context.budgetControlUsedNowKWh;
+    this.markDirty('runtime');
   }
 
   getSnapshot(): DailyBudgetDayPayload | null {
@@ -503,7 +504,7 @@ export class DailyBudgetManager {
     capacityBudgetKWh?: number;
   }): DailyBudgetDayPayload {
     const profileResult = ensureDailyBudgetProfile(this.state, DEFAULT_PROFILE);
-    if (profileResult.changed) this.markDirty();
+    if (profileResult.changed) this.markDirty('manual');
     this.state = profileResult.state;
     const { settings } = params;
     const enabled = this.isEnabled(settings);
@@ -527,7 +528,7 @@ export class DailyBudgetManager {
     });
   }
 
-  private markDirty(force = false): void { this.dirty = true; if (force) this.lastPersistMs = 0; }
+  private markDirty(reason: DailyBudgetStatePersistReason): void { this.persistReasons.add(reason); }
 }
 
 export { buildDefaultProfile, buildPlan, buildPriceDebugData } from './dailyBudgetMath';

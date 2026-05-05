@@ -15,8 +15,15 @@ describe('planExecutableSteppedLoad', () => {
     }));
 
     expect(action).toMatchObject({
-      requestedStepId: 'low',
-      commandStepId: 'low',
+      current: {
+        on: false,
+        stepId: 'low',
+      },
+      desired: {
+        on: true,
+        stepId: 'low',
+        plannedStepId: 'low',
+      },
       previousStepId: 'low',
       transition: {
         effectiveTransition: 'restore_from_off_at_low',
@@ -57,11 +64,35 @@ describe('planExecutableSteppedLoad', () => {
       measuredPowerKw: 3,
     }));
 
-    expect(action?.currentStepForShed).toEqual({
+    expect(action?.current.stepForShed).toEqual({
       stepId: 'unknown',
       planningPowerW: 3000,
     });
-    expect(action?.commandStepId).toBe('low');
+    expect(action?.desired.stepId).toBe('low');
+  });
+
+  it('projects planner restore holds as no desired executor state change', () => {
+    const action = buildExecutableSteppedLoadDevice(steppedPlanDevice({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+      reason: { code: 'meterSettling', remainingSec: 30 },
+    }));
+
+    expect(action).toMatchObject({
+      current: {
+        on: false,
+        stepId: 'low',
+      },
+      desired: {
+        on: false,
+        stepId: 'low',
+        plannedStepId: 'low',
+      },
+      transition: null,
+    });
+    expect(action).not.toHaveProperty('reason');
   });
 
   it('returns null for non stepped-load devices', () => {

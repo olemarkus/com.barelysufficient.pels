@@ -125,13 +125,8 @@ const asDailyBudgetModelSettings = (value: unknown): Partial<DailyBudgetModelSet
   };
 };
 
-const getArraySetting = <T>(homey: Homey.App['homey'], key: string): T[] => {
-  const value = homey.settings.get(key) as unknown;
-  return Array.isArray(value) ? value as T[] : [];
-};
-
 const getSettingsUiDevices = ({ homey }: ApiContext): TargetDeviceSnapshot[] => {
-  return getLatestDevicesForUiFromApp(homey) ?? getArraySetting<TargetDeviceSnapshot>(homey, 'target_devices_snapshot');
+  return getLatestDevicesForUiFromApp(homey) ?? [];
 };
 
 const getSettingsUiPlan = ({ homey }: ApiContext): SettingsUiPlanSnapshot | null => (

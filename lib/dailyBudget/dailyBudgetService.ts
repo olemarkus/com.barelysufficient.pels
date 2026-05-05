@@ -30,11 +30,17 @@ import {
 } from './dailyBudgetConstants';
 import { DailyBudgetManager } from './dailyBudgetManager';
 import type { CombinedPriceData } from './dailyBudgetManager';
+import {
+  DailyBudgetStatePersistencePolicy,
+  maybePersistDailyBudgetState,
+  persistDailyBudgetState,
+} from './dailyBudgetStatePersistence';
 import type {
   DailyBudgetDayPayload,
   DailyBudgetModelPreviewResponse,
   DailyBudgetSettings,
   DailyBudgetSettingsInput,
+  DailyBudgetStatePersistReason,
   DailyBudgetUiPayload,
 } from './dailyBudgetTypes';
 import { incPerfCounter, addPerfDuration } from '../utils/perfCounters';
@@ -97,6 +103,7 @@ export class DailyBudgetService {
   private snapshot: DailyBudgetUiPayload | null = null;
   private daySnapshots: Record<string, DailyBudgetDayPayload> = {};
   private lastBudgetLogState: BudgetLogState | null = null;
+  private persistencePolicy = new DailyBudgetStatePersistencePolicy();
 
   constructor(private deps: DailyBudgetServiceDeps) {
     this.manager = new DailyBudgetManager({
@@ -127,6 +134,7 @@ export class DailyBudgetService {
 
   loadState(): void {
     this.manager.loadState(this.deps.homey.settings.get(DAILY_BUDGET_STATE));
+    this.persistencePolicy.initialize(this.manager.exportState());
   }
 
   private logError(message: string, error: unknown): void {
@@ -198,6 +206,7 @@ export class DailyBudgetService {
     includeConfidenceBootstrapDebug?: boolean;
     emitStructuredEvent?: boolean;
     recomputeFrozenPlan?: boolean;
+    persistReason?: DailyBudgetStatePersistReason;
   } = {}): void {
     const stopSpan = startRuntimeSpan('daily_budget_update');
     const start = Date.now();
@@ -222,6 +231,7 @@ export class DailyBudgetService {
         refreshConfidence: params.refreshConfidence,
         includeConfidenceBootstrapDebug: params.includeConfidenceBootstrapDebug,
         recomputeFrozenPlan: params.recomputeFrozenPlan,
+        persistReason: params.persistReason,
       });
       incPerfCounter('daily_budget_compute_total');
       addPerfDuration('daily_budget_compute_ms', Date.now() - computeStart);
@@ -236,13 +246,7 @@ export class DailyBudgetService {
           exceeded: snap.state.exceeded,
         });
       }
-      if (update.shouldPersist) {
-        const persistStart = Date.now();
-        this.persistState();
-        const persistMs = Date.now() - persistStart;
-        incPerfCounter('daily_budget_persist_total');
-        addPerfDuration('daily_budget_persist_ms', persistMs);
-      }
+      if (update.persistReason) this.maybePersistState(update.persistReason, nowMs);
     } catch (error) {
       this.logError('Daily budget: failed to update state', error);
     } finally {
@@ -252,15 +256,21 @@ export class DailyBudgetService {
     }
   }
 
-  persistState(): void {
-    this.deps.homey.settings.set(DAILY_BUDGET_STATE, this.manager.exportState());
-    incPerfCounter('settings_set.daily_budget_state');
+  private maybePersistState(reason: DailyBudgetStatePersistReason, nowMs: number): void {
+    maybePersistDailyBudgetState({
+      settings: this.deps.homey.settings, policy: this.persistencePolicy,
+      state: this.manager.exportState(), reason, nowMs,
+    });
   }
 
-  resetLearning(): void {
-    this.manager.resetLearning();
-    this.persistState();
+  persistState(reason: DailyBudgetStatePersistReason = 'manual', nowMs = Date.now()): void {
+    persistDailyBudgetState({
+      settings: this.deps.homey.settings, policy: this.persistencePolicy,
+      state: this.manager.exportState(), reason, nowMs,
+    });
   }
+
+  resetLearning(): void { this.manager.resetLearning(); this.persistState('reset'); }
 
   private buildTomorrowPreview(
     nowMs: number,
@@ -323,9 +333,7 @@ export class DailyBudgetService {
     }
   }
 
-  getSnapshot(): DailyBudgetUiPayload | null {
-    return this.snapshot;
-  }
+  getSnapshot(): DailyBudgetUiPayload | null { return this.snapshot; }
 
   private shouldEmitBudgetRecomputed(snapshot: DailyBudgetDayPayload): boolean {
     const nextState: BudgetLogState = {
@@ -422,6 +430,7 @@ export class DailyBudgetService {
       includeAdjacentDays: true,
       refreshConfidence: true,
       includeConfidenceBootstrapDebug: this.shouldIncludeConfidenceBootstrapDebug(),
+      persistReason: 'manual',
     });
     return this.snapshot;
   }
