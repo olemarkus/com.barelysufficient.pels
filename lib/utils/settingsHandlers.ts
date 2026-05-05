@@ -1,5 +1,6 @@
 import Homey from 'homey';
 import CapacityGuard from '../core/capacityGuard';
+import type { DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
 import type { SettingsUiLogEntry } from './types';
 import {
   BUDGET_EXEMPT_DEVICES,
@@ -60,7 +61,7 @@ export type SettingsHandlerDeps = {
   getCapacityDryRun: () => boolean;
   loadPriceOptimizationSettings: () => void;
   loadDailyBudgetSettings: () => void;
-  updateDailyBudgetState: (options?: { forcePlanRebuild?: boolean }) => void;
+  updateDailyBudgetState: (options?: DailyBudgetUpdateStateOptions) => void;
   resetDailyBudgetLearning: () => void;
   priceService: PriceServiceLike;
   updatePriceOptimizationEnabled: (logChange?: boolean) => void;
@@ -126,6 +127,10 @@ const DEDUPED_WRITE_KEYS = new Set<string>([
 ]);
 const DAILY_BUDGET_PRICE_REBUILD_DEBOUNCE_MS = 1000;
 const DAILY_BUDGET_SETTINGS_REBUILD_DEBOUNCE_MS = 500;
+const FORCE_DAILY_BUDGET_STATE_PERSIST: DailyBudgetUpdateStateOptions = {
+  forcePlanRebuild: true,
+  persistReason: 'manual',
+};
 
 export type SettingsHandler = ((key: string) => Promise<void>) & {
   stop: () => void;
@@ -135,7 +140,7 @@ const createDailyBudgetPriceSyncScheduler = (deps: SettingsHandlerDeps): Debounc
   createDebouncedSyncScheduler({
     debounceMs: DAILY_BUDGET_PRICE_REBUILD_DEBOUNCE_MS,
     run: async () => {
-      deps.updateDailyBudgetState({ forcePlanRebuild: true });
+      deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
       await rebuildPlanFromSettings(deps, 'daily_budget_price');
     },
     onError: (error) => deps.errorLog('Failed to sync daily budget state after combined price update', error),
@@ -148,7 +153,7 @@ const createDailyBudgetSettingsSyncScheduler = (deps: SettingsHandlerDeps): Debo
     rerunAfterRun: 'immediate',
     run: async () => {
       deps.loadDailyBudgetSettings();
-      deps.updateDailyBudgetState({ forcePlanRebuild: true });
+      deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
       await rebuildPlanFromSettings(deps, 'daily_budget_settings');
     },
     onError: (error) => deps.errorLog('Failed to sync daily budget settings', error),
@@ -303,7 +308,7 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
     [BUDGET_EXEMPT_DEVICES]: async () => {
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'Failed to refresh devices after budget exemption change');
-      deps.updateDailyBudgetState();
+      deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
       await rebuildPlanFromSettings(deps, BUDGET_EXEMPT_DEVICES);
     },
     [TEMPERATURE_BOOST_SETTINGS]: async () => {
@@ -393,7 +398,7 @@ function buildPriceSettingsHandlers(
     [POWER_SOURCE]: async () => handlePowerSourceChange(deps),
     [PRICE_OPTIMIZATION_ENABLED]: async () => {
       deps.updatePriceOptimizationEnabled(true);
-      deps.updateDailyBudgetState({ forcePlanRebuild: true });
+      deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
       await rebuildPlanFromSettings(deps, 'price_optimization_enabled');
     },
   };
@@ -403,7 +408,7 @@ function buildMiscSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMa
   return {
     [DAILY_BUDGET_RESET]: async () => {
       deps.resetDailyBudgetLearning();
-      deps.updateDailyBudgetState({ forcePlanRebuild: true });
+      deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
       deps.homey.settings.set(DAILY_BUDGET_RESET, null);
       await rebuildPlanFromSettings(deps, 'daily_budget_reset');
     },
@@ -455,12 +460,12 @@ async function handleCapacityLimitChange(deps: SettingsHandlerDeps): Promise<voi
   guard?.setLimit(limitKw);
   guard?.setSoftMargin(marginKw);
   await deps.updateOverheadToken(marginKw);
-  deps.updateDailyBudgetState({ forcePlanRebuild: true });
+  deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
   await rebuildPlanFromSettings(deps, 'capacity_limit_or_margin');
 }
 
 async function handleDailyBudgetPriceChange(deps: SettingsHandlerDeps): Promise<void> {
-  deps.updateDailyBudgetState({ forcePlanRebuild: true });
+  deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
   await rebuildPlanFromSettings(deps, 'daily_budget_price');
 }
 

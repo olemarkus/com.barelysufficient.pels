@@ -111,7 +111,23 @@ export type DailyBudgetModelPreviewResponse = {
   settings: DailyBudgetSettings;
 };
 
+export type DailyBudgetStatePersistReason =
+  | 'runtime'
+  | 'plan'
+  | 'bucket'
+  | 'frozen'
+  | 'rollover'
+  | 'observed_stats'
+  | 'reset'
+  | 'manual';
+
+export type DailyBudgetUpdateStateOptions = {
+  nowMs?: number;
+  forcePlanRebuild?: boolean;
+  persistReason?: DailyBudgetStatePersistReason;
+};
+
 export type DailyBudgetUpdate = {
   snapshot: DailyBudgetDayPayload;
-  shouldPersist: boolean;
+  persistReason: DailyBudgetStatePersistReason | null;
 };

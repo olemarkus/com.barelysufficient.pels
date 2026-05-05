@@ -3,7 +3,7 @@ import type CapacityGuard from '../core/capacityGuard';
 import type { DeviceManager } from '../core/deviceManager';
 import type { PowerTrackerState } from '../core/powerTracker';
 import type { DailyBudgetService } from '../dailyBudget/dailyBudgetService';
-import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
+import type { DailyBudgetUiPayload, DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
 import type { DeviceDiagnosticsService } from '../diagnostics/deviceDiagnosticsService';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import type { HeadroomForDeviceDecision } from '../plan/planHeadroomDevice';
@@ -83,7 +83,7 @@ export type AppContext = {
     missingHours: number[];
   };
   loadDailyBudgetSettings: () => void;
-  updateDailyBudgetState: (options?: { nowMs?: number; forcePlanRebuild?: boolean }) => void;
+  updateDailyBudgetState: (options?: DailyBudgetUpdateStateOptions) => void;
   disableManagedEvDevices: () => void;
   requestFlowPlanRebuild: (source: string) => void;
   getFlowReportedCapabilitiesForDevice: (deviceId: string) => FlowReportedCapabilitiesForDevice;

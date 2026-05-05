@@ -3,6 +3,7 @@ import type { CombinedPriceData } from './dailyBudgetMath';
 import type { UncontrolledReservePlanDiagnostics } from './dailyBudgetPlanCaps';
 import type { PriceData } from './dailyBudgetState';
 import type { DailyBudgetSettings, DailyBudgetState } from './dailyBudgetTypes';
+import type { DailyBudgetStatePersistReason } from './dailyBudgetTypes';
 
 export type DailyBudgetManagerDeps = {
   log: (...args: unknown[]) => void;
@@ -36,6 +37,7 @@ export type DailyBudgetUpdateParams = {
   refreshConfidence?: boolean;
   includeConfidenceBootstrapDebug?: boolean;
   recomputeFrozenPlan?: boolean;
+  persistReason?: DailyBudgetStatePersistReason;
 };
 
 export type PlanResult = {

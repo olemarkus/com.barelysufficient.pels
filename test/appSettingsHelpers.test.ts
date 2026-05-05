@@ -181,7 +181,10 @@ describe('initSettingsHandlerForApp', () => {
     const { handle } = initSettingsHandlerForApp(ctx);
     await handle(CAPACITY_LIMIT_KW);
 
-    expect(ctx.updateDailyBudgetState).toHaveBeenCalledWith({ forcePlanRebuild: true });
+    expect(ctx.updateDailyBudgetState).toHaveBeenCalledWith({
+      forcePlanRebuild: true,
+      persistReason: 'manual',
+    });
     expect(ctx.dailyBudgetService?.updateState).not.toHaveBeenCalled();
   });
 
