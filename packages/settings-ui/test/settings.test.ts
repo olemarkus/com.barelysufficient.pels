@@ -2251,7 +2251,8 @@ describe('settings script', () => {
     ]));
     expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Failed activations');
     expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Penalty history');
-    expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Starved 23m');
+    expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Starved for2.0h');
+    expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Counted suppression23m');
   });
 
   it('shows a diagnostics unavailable state when the Homey API route fails', async () => {

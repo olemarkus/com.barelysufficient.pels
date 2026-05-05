@@ -164,13 +164,13 @@ Runtime has the data (`lib/diagnostics/deviceDiagnosticsService.ts:198-202`,
 3. **Shared-domain helpers** —
    `packages/shared-domain/src/planStarvation.ts`:
    - `formatStarvationBadge(starvation)` →
-     `{ label: 'Starved 23m', tone: 'warn'|'info'|'muted', tooltip }`.
+     `{ label: 'Starved', tone: 'warn'|'info'|'muted', tooltip }`.
      Tone from cause: `capacity`→warn, `budget`→info, `manual|external`→muted.
    - `formatStarvationReason(starvation)` →
-     `'Waiting for room to reopen — 23 min below target'` (replaces the
-     normal reason line when `isStarved && cause === 'capacity'`).
-   - `summarizeStarvation(devices)` → `'1 device below target'` | `null`
-     for the hero subline (count only capacity-caused starvation).
+     `'Starved while waiting for available power'` (replaces the normal
+     reason line when `isStarved && cause === 'capacity'`).
+   - `summarizeStarvation(devices)` → `'1 device starved'` | `null`
+     for the hero subline.
    Tests in `test/planStarvation.test.ts`.
 
 4. **UI integration** —

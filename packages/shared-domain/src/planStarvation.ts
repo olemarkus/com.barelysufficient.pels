@@ -11,12 +11,6 @@ export type PlanStarvationBadgeView = {
   tooltip: string;
 };
 
-const resolveStarvationMinutes = (accumulatedMs: number): number => (
-  Math.max(1, Math.floor(accumulatedMs / 60_000))
-);
-
-const resolveDurationLabel = (accumulatedMs: number): string => `${resolveStarvationMinutes(accumulatedMs)}m`;
-
 const resolveTone = (cause: SettingsUiPlanDeviceStarvation['cause']): PlanStarvationTone => {
   if (cause === 'capacity') return 'warn';
   if (cause === 'budget') return 'info';
@@ -24,17 +18,16 @@ const resolveTone = (cause: SettingsUiPlanDeviceStarvation['cause']): PlanStarva
 };
 
 const resolveTooltip = (starvation: SettingsUiPlanDeviceStarvation): string => {
-  const duration = resolveStarvationMinutes(starvation.accumulatedMs);
   if (starvation.cause === 'capacity') {
-    return `Below target for ${duration} min while waiting for room to reopen`;
+    return 'Starved while waiting for available power';
   }
   if (starvation.cause === 'budget') {
-    return `Below target for ${duration} min while today's budget is limiting restores`;
+    return "Starved while today's budget is limiting service";
   }
   if (starvation.cause === 'manual') {
-    return `Below target for ${duration} min while manual control is holding the device`;
+    return 'Starved while manual control is holding the device';
   }
-  return `Below target for ${duration} min while waiting on external recovery`;
+  return 'Starved while waiting on external service';
 };
 
 export const formatStarvationBadge = (
@@ -42,7 +35,7 @@ export const formatStarvationBadge = (
 ): PlanStarvationBadgeView | null => {
   if (!starvation?.isStarved) return null;
   return {
-    label: `Starved ${resolveDurationLabel(starvation.accumulatedMs)}`,
+    label: 'Starved',
     tone: resolveTone(starvation.cause),
     tooltip: resolveTooltip(starvation),
   };
@@ -52,17 +45,16 @@ export const formatStarvationReason = (
   starvation: SettingsUiPlanDeviceStarvation | null | undefined,
 ): string | null => {
   if (!starvation?.isStarved) return null;
-  const duration = resolveStarvationMinutes(starvation.accumulatedMs);
   if (starvation.cause === 'capacity') {
-    return `Waiting for room to reopen — ${duration} min below target`;
+    return 'Starved while waiting for available power';
   }
   if (starvation.cause === 'budget') {
-    return `Today's budget is still holding restores — ${duration} min below target`;
+    return "Starved while today's budget is limiting service";
   }
   if (starvation.cause === 'manual') {
-    return `Manual control is holding this device — ${duration} min below target`;
+    return 'Starved while manual control is holding this device';
   }
-  return `External recovery is still pending — ${duration} min below target`;
+  return 'Starved while waiting on external service';
 };
 
 export const summarizeStarvation = (
@@ -72,9 +64,9 @@ export const summarizeStarvation = (
   const count = devices
     .map((device) => device.starvation)
     .filter((starvation): starvation is SettingsUiPlanDeviceStarvation => (
-      Boolean(starvation?.isStarved && starvation.cause === 'capacity')
+      Boolean(starvation?.isStarved)
     ))
     .length;
   if (count === 0) return null;
-  return count === 1 ? '1 device below target' : `${count} devices below target`;
+  return count === 1 ? '1 device starved' : `${count} devices starved`;
 };

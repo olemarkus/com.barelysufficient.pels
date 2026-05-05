@@ -399,13 +399,15 @@ Do not add a top-level overview count.
 For each starved device:
 
 - show a `Starved` badge/chip
-- append starvation duration to the existing status text
-- when accumulation is paused, keep the badge visible and keep the displayed duration static
+- do not append `starvedAccumulatedMs` to the primary badge or status text
+- show total user-visible starvation duration in detail diagnostics where broader unmet-demand
+  counters are available
+- keep `starvedAccumulatedMs` available as an advanced counted-suppression diagnostic
 
 Example:
 
 ```text
-insufficient headroom (...) · starved 26m
+Starved · waiting for available power
 ```
 
 ## Insights, Diagnostics, And Logs
