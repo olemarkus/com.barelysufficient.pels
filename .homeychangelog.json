@@ -349,5 +349,8 @@
   },
   "2.6.0": {
     "en": "Support stepped load for zaptec devices (still requires a flow). Support boost mode for EV chargers. Support passing in battery as state-of-charge to chargers."
+  },
+  "2.6.1": {
+    "en": "Various stability and performance fixes."
   }
 }
