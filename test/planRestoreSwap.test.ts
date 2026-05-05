@@ -1,6 +1,6 @@
 import {
   buildSwapCandidates,
-} from '../lib/plan/planRestoreSwap';
+} from '../lib/plan/swap';
 import {
   buildInsufficientHeadroomUpdate,
   computePendingRestorePowerKw,

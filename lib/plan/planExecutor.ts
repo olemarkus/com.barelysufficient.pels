@@ -319,14 +319,6 @@ export class PlanExecutor {
         });
       }
 
-      const swapEntry = this.state.swapByDevice[deviceId];
-      if (swapEntry) {
-        delete swapEntry.pendingTarget;
-        delete swapEntry.timestamp;
-        if (!swapEntry.swappedOutFor && swapEntry.lastPlanMeasurementTs === undefined) {
-          delete this.state.swapByDevice[deviceId];
-        }
-      }
     } else {
       this.recordShedActuation(deviceId, liveDevice.name, now);
     }
@@ -562,17 +554,6 @@ export class PlanExecutor {
               name,
               nowTs: Date.now(),
             });
-          }
-        }
-        if (!flowBackedControl) {
-          // Clear this device from pending swap targets if it was one.
-          const swapEntry = this.state.swapByDevice[dev.id];
-          if (swapEntry) {
-            delete swapEntry.pendingTarget;
-            delete swapEntry.timestamp;
-            if (!swapEntry.swappedOutFor && swapEntry.lastPlanMeasurementTs === undefined) {
-              delete this.state.swapByDevice[dev.id];
-            }
           }
         }
         return true;

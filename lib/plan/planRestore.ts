@@ -14,11 +14,24 @@ import {
   RESTORE_BATCH_HEADROOM_FRACTION,
   RESTORE_BATCH_MAX_DEVICES,
 } from './planConstants';
-import { SwapState, SwapStateSnapshot, buildSwapState, cleanupStaleSwaps, exportSwapState } from './planSwapState';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from './planDebugDedupe';
 import {
+  buildRequestedTargetFromDeviceUpdate,
   buildSwapCandidates,
-} from './planRestoreSwap';
+  buildSwapState,
+  cleanupCompletedSwaps,
+  cleanupStaleSwaps,
+  exportSwapState,
+  isBlockedBySwapState,
+  markDeviceSwappedOutFor,
+  markSwapTargetPending,
+  recordRequestedTarget,
+  recordSwapPlanMeasurement,
+  shouldDeferSwapAdmissionForMeasurement,
+  shouldKeepSwapTargetPending,
+  type SwapState,
+  type SwapStateSnapshot,
+} from './swap';
 import {
   buildInsufficientHeadroomUpdate,
   computeBaseRestoreNeed,
@@ -37,7 +50,6 @@ import {
 } from './planRestoreDevices';
 import {
   blockRestoreForRecentActivationSetback,
-  isBlockedBySwapState,
   buildOffSteppedRestoreShedUpdate,
   markSteppedDevicesStayAtCurrentLevel,
   planRestoreForSteppedDevice,
@@ -133,12 +145,13 @@ export function applyRestorePlan(params: {
   const effectiveTiming = capacityStartupStabilization
     ? timing
     : {
-      ...timing,
-      inStartupStabilization: false as const,
-      startupStabilizationRemainingSec: null,
-      inShedWindow: timing.inCooldown || timing.activeOvershoot || timing.inRestoreCooldown,
-    };
+        ...timing,
+        inStartupStabilization: false as const,
+        startupStabilizationRemainingSec: null,
+        inShedWindow: timing.inCooldown || timing.activeOvershoot || timing.inRestoreCooldown,
+      };
   cleanupStaleSwaps(swapState, deps.structuredLog);
+  cleanupCompletedSwaps(swapState, deviceMap);
 
   const restoredThisCycle = new Set<string>();
   let availableHeadroom = guardInShortfall
@@ -958,14 +971,27 @@ function attemptSwapRestore(params: {
     rejectedDeviceUpdate,
   } = params;
 
-  if (measurementTs !== null && swapState.lastSwapPlanMeasurementTs.get(dev.id) === measurementTs) {
+  if (shouldKeepSwapTargetPending({ swapState, deviceId: dev.id, measurementTs })) {
     setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
     return { availableHeadroom, restoredOneThisCycle: false };
   }
-
-  if (swapState.pendingSwapTargets.has(dev.id)) {
-    setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
-    return { availableHeadroom, restoredOneThisCycle: false };
+  if (shouldDeferSwapAdmissionForMeasurement({ swapState, deviceId: dev.id, measurementTs })) {
+    return rejectSwapRestoreUntilFreshMeasurement({
+      dev,
+      deviceMap,
+      availableHeadroom,
+      restoreNeed,
+      rejectedDeviceUpdate,
+    });
+  }
+  if (measurementTs === null) {
+    return rejectSwapRestoreWithoutMeasurement({
+      dev,
+      deviceMap,
+      availableHeadroom,
+      restoreNeed,
+      rejectedDeviceUpdate,
+    });
   }
 
   const swap = buildSwapCandidates({
@@ -977,36 +1003,105 @@ function attemptSwapRestore(params: {
     restoredThisCycle,
   });
   if (!swap.ready) {
-    setDevice(deviceMap, dev.id, buildRejectedSwapUpdate({
+    return rejectSwapRestoreWithCandidates({
+      dev,
+      deviceMap,
+      phase,
       availableHeadroom,
       restoreNeed,
       swap,
       rejectedDeviceUpdate,
-    }));
-    deps.debugStructured?.({
-      event: 'restore_rejected',
-      restoreType: 'swap',
-      deviceId: dev.id,
-      deviceName: dev.name,
-      phase,
-      reason: formatDeviceReason(swap.reason),
-      estimatedPowerKw: restoreNeed.devPower,
-      powerSource: resolveRestorePowerSource(dev),
-      neededKw: restoreNeed.needed,
-      availableKw: availableHeadroom,
-      effectiveAvailableKw: swap.effectiveHeadroom,
-      ...buildRestoreAdmissionLogFields(swap.admission),
-      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
-      swapReserveKw: swap.reserveKw,
-      decision: 'rejected',
-      rejectionReason: 'insufficient_headroom',
-      decisionReason: formatDeviceReason(swap.reason),
-      penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
-      penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+      deps,
     });
-    return { availableHeadroom, restoredOneThisCycle: false };
   }
 
+  emitSwapApprovedDebug({ dev, phase, restoreNeed, swap, deps });
+  markApprovedSwapTarget({ swapState, dev, measurementTs, admittedDeviceUpdate });
+  const nextHeadroom = swap.effectiveHeadroom;
+  for (const shedDev of swap.toShed) {
+    setDevice(deviceMap, shedDev.id, {
+      plannedState: 'shed',
+      reason: { code: PLAN_REASON_CODES.swappedOut, targetName: dev.name },
+    });
+    deps.debugStructured?.({
+      event: 'restore_swap_shed',
+      shedDeviceId: shedDev.id,
+      shedDeviceName: shedDev.name,
+      forDeviceId: dev.id,
+      forDeviceName: dev.name,
+    });
+    markDeviceSwappedOutFor(swapState, shedDev.id, dev.id);
+  }
+  restoredThisCycle.add(dev.id);
+  setDevice(deviceMap, dev.id, { plannedState: 'keep', ...admittedDeviceUpdate });
+  return { availableHeadroom: nextHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
+}
+
+function markApprovedSwapTarget(params: {
+  swapState: SwapState;
+  dev: DevicePlanDevice;
+  measurementTs: number;
+  admittedDeviceUpdate?: Partial<DevicePlanDevice>;
+}): void {
+  const { swapState, dev, measurementTs, admittedDeviceUpdate } = params;
+  markSwapTargetPending(swapState, dev.id);
+  recordSwapPlanMeasurement(swapState, dev.id, measurementTs);
+  recordRequestedTarget(
+    swapState,
+    dev.id,
+    buildRequestedTargetFromDeviceUpdate(admittedDeviceUpdate),
+  );
+}
+
+function rejectSwapRestoreWithCandidates(params: {
+  dev: DevicePlanDevice;
+  deviceMap: Map<string, DevicePlanDevice>;
+  phase: 'startup' | 'runtime';
+  availableHeadroom: number;
+  restoreNeed: { needed: number; devPower: number; penaltyLevel: number; penaltyExtraKw: number };
+  swap: ReturnType<typeof buildSwapCandidates>;
+  rejectedDeviceUpdate?: Partial<DevicePlanDevice>;
+  deps: RestoreDeps;
+}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
+  const { dev, deviceMap, phase, availableHeadroom, restoreNeed, swap, rejectedDeviceUpdate, deps } = params;
+  setDevice(deviceMap, dev.id, buildRejectedSwapUpdate({
+    availableHeadroom,
+    restoreNeed,
+    swap,
+    rejectedDeviceUpdate,
+  }));
+  deps.debugStructured?.({
+    event: 'restore_rejected',
+    restoreType: 'swap',
+    deviceId: dev.id,
+    deviceName: dev.name,
+    phase,
+    reason: formatDeviceReason(swap.reason),
+    estimatedPowerKw: restoreNeed.devPower,
+    powerSource: resolveRestorePowerSource(dev),
+    neededKw: restoreNeed.needed,
+    availableKw: availableHeadroom,
+    effectiveAvailableKw: swap.effectiveHeadroom,
+    ...buildRestoreAdmissionLogFields(swap.admission),
+    minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+    swapReserveKw: swap.reserveKw,
+    decision: 'rejected',
+    rejectionReason: 'insufficient_headroom',
+    decisionReason: formatDeviceReason(swap.reason),
+    penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+    penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+  });
+  return { availableHeadroom, restoredOneThisCycle: false };
+}
+
+function emitSwapApprovedDebug(params: {
+  dev: DevicePlanDevice;
+  phase: 'startup' | 'runtime';
+  restoreNeed: { needed: number; devPower: number; penaltyLevel: number; penaltyExtraKw: number };
+  swap: ReturnType<typeof buildSwapCandidates>;
+  deps: RestoreDeps;
+}): void {
+  const { dev, phase, restoreNeed, swap, deps } = params;
   deps.debugStructured?.({
     event: 'restore_swap_approved',
     restoreType: 'swap',
@@ -1025,29 +1120,32 @@ function attemptSwapRestore(params: {
     penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
     penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
   });
-  swapState.pendingSwapTargets.add(dev.id);
-  swapState.pendingSwapTimestamps.set(dev.id, Date.now());
-  if (measurementTs !== null) {
-    swapState.lastSwapPlanMeasurementTs.set(dev.id, measurementTs);
-  }
-  const nextHeadroom = swap.effectiveHeadroom;
-  for (const shedDev of swap.toShed) {
-    setDevice(deviceMap, shedDev.id, {
-      plannedState: 'shed',
-      reason: { code: PLAN_REASON_CODES.swappedOut, targetName: dev.name },
-    });
-    deps.debugStructured?.({
-      event: 'restore_swap_shed',
-      shedDeviceId: shedDev.id,
-      shedDeviceName: shedDev.name,
-      forDeviceId: dev.id,
-      forDeviceName: dev.name,
-    });
-    swapState.swappedOutFor.set(shedDev.id, dev.id);
-  }
-  restoredThisCycle.add(dev.id);
-  setDevice(deviceMap, dev.id, { plannedState: 'keep', ...admittedDeviceUpdate });
-  return { availableHeadroom: nextHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
+}
+
+function rejectSwapRestoreWithoutMeasurement(params: {
+  dev: DevicePlanDevice;
+  deviceMap: Map<string, DevicePlanDevice>;
+  availableHeadroom: number;
+  restoreNeed: { needed: number; penaltyExtraKw: number };
+  rejectedDeviceUpdate?: Partial<DevicePlanDevice>;
+}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
+  const { dev, deviceMap, availableHeadroom, restoreNeed, rejectedDeviceUpdate } = params;
+  setDevice(deviceMap, dev.id, buildRejectedSwapUpdate({
+    availableHeadroom,
+    restoreNeed,
+    rejectedDeviceUpdate,
+  }));
+  return { availableHeadroom, restoredOneThisCycle: false };
+}
+
+function rejectSwapRestoreUntilFreshMeasurement(params: {
+  dev: DevicePlanDevice;
+  deviceMap: Map<string, DevicePlanDevice>;
+  availableHeadroom: number;
+  restoreNeed: { needed: number; penaltyExtraKw: number };
+  rejectedDeviceUpdate?: Partial<DevicePlanDevice>;
+}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
+  return rejectSwapRestoreWithoutMeasurement(params);
 }
 
 function buildSwapPendingTargetUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {
@@ -1061,7 +1159,7 @@ function buildSwapPendingTargetUpdate(dev: DevicePlanDevice): Partial<DevicePlan
 function buildRejectedSwapUpdate(params: {
   availableHeadroom: number;
   restoreNeed: { needed: number; penaltyExtraKw: number };
-  swap: ReturnType<typeof buildSwapCandidates>;
+  swap?: ReturnType<typeof buildSwapCandidates>;
   rejectedDeviceUpdate?: Partial<DevicePlanDevice>;
 }): Partial<DevicePlanDevice> {
   const { availableHeadroom, restoreNeed, swap, rejectedDeviceUpdate } = params;
@@ -1069,18 +1167,18 @@ function buildRejectedSwapUpdate(params: {
     availableKw: availableHeadroom,
     neededKw: restoreNeed.needed,
   });
-  const shouldDescribeSwapReserve = swap.toShed.length > 0;
+  const shouldDescribeSwapReserve = (swap?.toShed.length ?? 0) > 0;
   return {
     ...buildInsufficientHeadroomUpdate({
       neededKw: restoreNeed.needed,
-      availableKw: shouldDescribeSwapReserve ? swap.potentialHeadroom : availableHeadroom,
+      availableKw: shouldDescribeSwapReserve ? swap?.potentialHeadroom ?? availableHeadroom : availableHeadroom,
       postReserveMarginKw: shouldDescribeSwapReserve
-        ? swap.admission.postReserveMarginKw
+        ? swap?.admission.postReserveMarginKw ?? directAdmission.postReserveMarginKw
         : directAdmission.postReserveMarginKw,
       minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
       penaltyExtraKw: restoreNeed.penaltyExtraKw,
-      swapReserveKw: shouldDescribeSwapReserve ? swap.reserveKw : undefined,
-      effectiveAvailableKw: shouldDescribeSwapReserve ? swap.effectiveHeadroom : undefined,
+      swapReserveKw: shouldDescribeSwapReserve ? swap?.reserveKw : undefined,
+      effectiveAvailableKw: shouldDescribeSwapReserve ? swap?.effectiveHeadroom : undefined,
     }),
     ...rejectedDeviceUpdate,
   };
