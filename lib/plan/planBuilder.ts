@@ -2,7 +2,8 @@
 import Homey from 'homey';
 import CapacityGuard from '../core/capacityGuard';
 import type { PowerTrackerState } from '../core/powerTracker';
-import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
+import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
+import { isCooldownBlockedReason } from '../planContract/planDecisionSemantics';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
 import type { OvershootTrackedPlanDevice, PlanEngineState } from './planState';
 import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
@@ -990,11 +991,7 @@ function isCooldownBlocked(
 }
 
 function isCooldownReason(reason: DeviceReason): boolean {
-  return reason.code === PLAN_REASON_CODES.cooldownShedding
-    || reason.code === PLAN_REASON_CODES.cooldownRestore
-    || reason.code === PLAN_REASON_CODES.meterSettling
-    || reason.code === PLAN_REASON_CODES.headroomCooldown
-    || reason.code === PLAN_REASON_CODES.restorePending;
+  return isCooldownBlockedReason(reason);
 }
 
 function resolveFiniteNumber(value: unknown): number | null {
