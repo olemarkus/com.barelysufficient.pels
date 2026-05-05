@@ -25,19 +25,26 @@ const resolveTargetStepId = (device: DeviceOverviewSnapshot): string | null => (
   device.targetStepId ?? device.desiredStepId ?? null
 );
 
-const findStepIndex = (profile: SteppedLoadProfile, stepId: string | null): number => (
-  stepId === null ? -1 : profile.steps.findIndex((s) => s.id === stepId)
+const normalizeStepId = (id: string | null): string | null => (
+  id === null ? null : id.toLowerCase()
 );
 
+const findStepIndex = (profile: SteppedLoadProfile, stepId: string | null): number => {
+  const norm = normalizeStepId(stepId);
+  return norm === null ? -1 : profile.steps.findIndex((s) => s.id.toLowerCase() === norm);
+};
+
 const findStepLabel = (profile: SteppedLoadProfile, stepId: string | null): string | null => {
-  if (!stepId) return null;
-  const step = profile.steps.find((s) => s.id === stepId);
+  const norm = normalizeStepId(stepId);
+  if (!norm) return null;
+  const step = profile.steps.find((s) => s.id.toLowerCase() === norm);
   return step ? capitalize(step.id) : null;
 };
 
 const isPoweredStep = (profile: SteppedLoadProfile, stepId: string | null): boolean => {
   if (!stepId || isOffLikeId(stepId)) return false;
-  const step = profile.steps.find((s) => s.id === stepId);
+  const norm = normalizeStepId(stepId);
+  const step = profile.steps.find((s) => s.id.toLowerCase() === norm);
   return step !== undefined && step.planningPowerW > 0;
 };
 
@@ -77,7 +84,6 @@ const isSettlingReason = (code: string): boolean => (
   || code === PLAN_REASON_CODES.cooldownShedding
   || code === PLAN_REASON_CODES.activationBackoff
   || code === PLAN_REASON_CODES.restorePending
-  || code === PLAN_REASON_CODES.shedInvariant
   || code === PLAN_REASON_CODES.neutralStartupHold
   || code === PLAN_REASON_CODES.startupStabilization
 );
@@ -93,6 +99,7 @@ const isWaitingReason = (code: string): boolean => (
 
 const isLimitedReason = (code: string): boolean => (
   isWaitingReason(code)
+  || code === PLAN_REASON_CODES.shedInvariant
   || code === PLAN_REASON_CODES.capacity
   || code === PLAN_REASON_CODES.hourlyBudget
   || code === PLAN_REASON_CODES.dailyBudget
@@ -192,6 +199,11 @@ export const resolveSteppedStatusLine = (
 ): string | null => {
   if (isSteppedTransit(device)) return resolveTransitStatusLine(device, profile);
   if (isSettlingReason(device.reason.code)) return resolveSettlingStatusLine(device.reason, nowMs);
+  if (device.reason.code === PLAN_REASON_CODES.shedInvariant) {
+    const r = device.reason;
+    const n = r.shedDeviceCount;
+    return `Capped at ${capitalize(r.maxStep)} — ${n} ${n === 1 ? 'device' : 'devices'} still recovering`;
+  }
   const blocked = resolveBlockedStatusLine(device, profile);
   if (blocked !== null) return blocked;
   if (isOffLikeState(device.currentState)) {

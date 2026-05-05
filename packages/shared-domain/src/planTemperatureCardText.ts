@@ -64,7 +64,6 @@ const resolveDeltaText = (delta: number): string => {
 const resolveReasonSuffix = (
   kind: string,
   reasonCode: string,
-  delta: number,
 ): string | null => {
   if (kind === 'held') {
     if (isWaitingReason(reasonCode)) return 'waiting for headroom';
@@ -77,7 +76,7 @@ const resolveReasonSuffix = (
     return null;
   }
   if (kind === 'resuming') return 'restoring';
-  if (kind === 'active') return delta > 0.2 ? 'PELS allows heating' : 'no heating needed';
+  if (kind === 'active') return null;
   return null;
 };
 
@@ -89,7 +88,7 @@ export const resolveTemperatureReasonLine = (device: TemperatureDevice): string 
   const reasonCode = (device.reason as { code?: string } | undefined)?.code ?? '';
   const kind = resolvePlanStateKind(device);
   const deltaText = resolveDeltaText(delta);
-  const suffix = resolveReasonSuffix(kind, reasonCode, delta);
+  const suffix = resolveReasonSuffix(kind, reasonCode);
 
   return suffix !== null ? `${deltaText} · ${suffix}` : deltaText;
 };
