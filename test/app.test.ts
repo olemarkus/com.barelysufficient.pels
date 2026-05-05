@@ -1419,6 +1419,75 @@ describe('MyApp initialization', () => {
     expect(mockHomeyInstance.settings.get('power_tracker_state')).toMatchObject(nextState);
   });
 
+  it('coalesces same-hour power tracker settings persistence while a save is pending', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    vi.setSystemTime(new Date('2026-03-03T10:05:00.000Z'));
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp();
+    await initApp(app);
+    const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+    const beforeCounts = getPerfSnapshot().counts;
+    const start = new Date('2026-03-03T10:05:00.000Z').getTime();
+    (app as any).powerTracker = { lastPowerW: 1000, lastTimestamp: start };
+    settingsSetSpy.mockClear();
+
+    (app as any).savePowerTracker({ lastPowerW: 1100, lastTimestamp: start + 1000 });
+    (app as any).savePowerTracker({ lastPowerW: 1200, lastTimestamp: start + 2000 });
+    (app as any).savePowerTracker({ lastPowerW: 1300, lastTimestamp: start + 3000 });
+
+    expect(settingsSetSpy.mock.calls.filter(([key]) => key === 'power_tracker_state')).toHaveLength(0);
+    expect((app as any).timers.has('powerTrackerSave')).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(60 * 1000);
+
+    const powerTrackerWrites = settingsSetSpy.mock.calls.filter(([key]) => key === 'power_tracker_state');
+    expect(powerTrackerWrites).toHaveLength(1);
+    expect(powerTrackerWrites[0][1]).toMatchObject({ lastPowerW: 1300, lastTimestamp: start + 3000 });
+    const afterCounts = getPerfSnapshot().counts;
+    expect((afterCounts['settings_set.power_tracker_state_scheduled_total'] || 0)
+      - (beforeCounts['settings_set.power_tracker_state_scheduled_total'] || 0)).toBe(1);
+    expect((afterCounts['settings_set.power_tracker_state_skipped_pending_total'] || 0)
+      - (beforeCounts['settings_set.power_tracker_state_skipped_pending_total'] || 0)).toBe(2);
+    expect((afterCounts['settings_set.power_tracker_state_reason.scheduled_total'] || 0)
+      - (beforeCounts['settings_set.power_tracker_state_reason.scheduled_total'] || 0)).toBe(1);
+  });
+
+  it('flushes pending power tracker persistence when samples cross a UTC hour boundary', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    vi.setSystemTime(new Date('2026-03-03T10:59:58.000Z'));
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp();
+    await initApp(app);
+    const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+    const beforeCounts = getPerfSnapshot().counts;
+    const start = new Date('2026-03-03T10:59:58.000Z').getTime();
+    (app as any).powerTracker = { lastPowerW: 1000, lastTimestamp: start };
+    settingsSetSpy.mockClear();
+
+    (app as any).savePowerTracker({ lastPowerW: 1100, lastTimestamp: start + 1000 });
+    expect((app as any).timers.has('powerTrackerSave')).toBe(true);
+
+    (app as any).savePowerTracker({ lastPowerW: 1200, lastTimestamp: start + 3000 });
+
+    const powerTrackerWrites = settingsSetSpy.mock.calls.filter(([key]) => key === 'power_tracker_state');
+    expect(powerTrackerWrites).toHaveLength(1);
+    expect(powerTrackerWrites[0][1]).toMatchObject({ lastPowerW: 1200, lastTimestamp: start + 3000 });
+    expect((app as any).timers.has('powerTrackerSave')).toBe(false);
+    const afterCounts = getPerfSnapshot().counts;
+    expect((afterCounts['settings_set.power_tracker_state_forced_hour_rollover_total'] || 0)
+      - (beforeCounts['settings_set.power_tracker_state_forced_hour_rollover_total'] || 0)).toBe(1);
+    expect((afterCounts['settings_set.power_tracker_state_reason.hour_rollover_total'] || 0)
+      - (beforeCounts['settings_set.power_tracker_state_reason.hour_rollover_total'] || 0)).toBe(1);
+  });
+
   it('set_capacity_mode flow card handles autocomplete object format', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
