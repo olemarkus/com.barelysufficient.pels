@@ -815,8 +815,7 @@ describe('native stepped-load wiring', () => {
     expect(trigger).toHaveBeenCalledWith({
       step_id: '6a',
       planning_power_w: 1380,
-      planning_current_1p_a: 1380 / 230,
-      planning_current_3p_a: 1380 / (230 * 3),
+      planning_current_a: 0,
       previous_step_id: '8a',
     }, {
       deviceId: 'synthetic-target-power-1',
@@ -872,6 +871,7 @@ describe('native stepped-load wiring', () => {
         activationRequired: true,
         activationEnabled: true,
       },
+      targetPowerConfig: { enabled: true, preset: 'ev_charger_3_phase' },
       shedAction: 'set_step',
       reason: { code: 'overCapacity', label: 'over capacity' },
     });
@@ -884,8 +884,7 @@ describe('native stepped-load wiring', () => {
     expect(trigger).toHaveBeenCalledWith({
       step_id: '6a',
       planning_power_w: 4140,
-      planning_current_1p_a: 4140 / 230,
-      planning_current_3p_a: 4140 / (230 * 3),
+      planning_current_a: 4140 / (230 * 3),
       previous_step_id: '16a',
     }, {
       deviceId: 'zaptec-go-1',

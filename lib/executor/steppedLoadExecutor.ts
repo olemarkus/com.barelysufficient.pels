@@ -573,12 +573,12 @@ const executeSteppedLoadCommand = async (
     });
   }
   const planningPowerW = desiredStep.planningPowerW;
+  const planningCurrentA = resolvePlanningCurrentA(action, planningPowerW);
   try {
     const triggerPromise = triggerCard.trigger({
       step_id: desiredStep.id,
       planning_power_w: planningPowerW,
-      planning_current_1p_a: planningPowerW / 230,
-      planning_current_3p_a: planningPowerW / (230 * 3),
+      planning_current_a: planningCurrentA,
       previous_step_id: previousStepId ?? '',
     }, {
       deviceId: action.id,
@@ -610,6 +610,16 @@ const executeSteppedLoadCommand = async (
     ctx.error(`Failed to trigger stepped-load command for ${action.name}`, error);
     return false;
   }
+};
+
+const resolvePlanningCurrentA = (
+  action: ExecutableSteppedLoadDevice,
+  planningPowerW: number,
+): number => {
+  if (action.targetPowerConfig?.enabled === false) return 0;
+  if (action.targetPowerConfig?.preset === 'ev_charger_1_phase') return planningPowerW / 230;
+  if (action.targetPowerConfig?.preset === 'ev_charger_3_phase') return planningPowerW / (230 * 3);
+  return 0;
 };
 
 const executeNativeSteppedLoadCommand = async (

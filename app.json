@@ -179,17 +179,10 @@
             }
           },
           {
-            "name": "planning_current_1p_a",
+            "name": "planning_current_a",
             "type": "number",
             "title": {
-              "en": "1-phase current (A)"
-            }
-          },
-          {
-            "name": "planning_current_3p_a",
-            "type": "number",
-            "title": {
-              "en": "3-phase current (A)"
+              "en": "EV charger current (A)"
             }
           },
           {

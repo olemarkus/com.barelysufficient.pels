@@ -329,6 +329,7 @@ function buildBasePlanDevice(params: {
     measuredPowerKw: dev.measuredPowerKw,
     controlCapabilityId: dev.controlCapabilityId,
     controlAdapter: dev.controlAdapter,
+    targetPowerConfig: dev.targetPowerConfig,
     evChargingState: dev.evChargingState,
     reason: baseReason,
     zone: dev.zone || 'Unknown',
