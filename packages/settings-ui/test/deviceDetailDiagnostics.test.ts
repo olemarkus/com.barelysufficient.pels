@@ -48,6 +48,13 @@ const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDevic
   ...overrides,
 });
 
+const getDiagnosticsMetricValue = (label: string): string | null => {
+  const cards = document.getElementById('device-detail-diagnostics-cards');
+  const labels = Array.from(cards?.querySelectorAll('dt') ?? []);
+  const labelNode = labels.find((node) => node.textContent === label);
+  return labelNode?.nextElementSibling?.textContent ?? null;
+};
+
 describe('device detail diagnostics', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -130,6 +137,9 @@ describe('device detail diagnostics', () => {
         },
       },
     };
+    delete (diagnosticsPayload.diagnosticsByDeviceId['heater-1'].windows as Partial<
+      typeof diagnosticsPayload.diagnosticsByDeviceId['heater-1']['windows']
+    >)['21d'];
     vi.doMock('../src/ui/devices.ts', () => ({
       renderDevices: vi.fn(),
     }));
@@ -188,8 +198,9 @@ describe('device detail diagnostics', () => {
     expect(document.getElementById('device-detail-diagnostics-status')?.textContent)
       .toContain('Status: Starved for 23m - Waiting for available power');
     expect(document.getElementById('device-detail-diagnostics-cards')?.children).toHaveLength(4);
-    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Time not served2.0h');
-    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Starved time23m');
+    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('21 days');
+    expect(getDiagnosticsMetricValue('Time not served')).toBe('2.0h');
+    expect(getDiagnosticsMetricValue('Starved time')).toBe('23m');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Failed activations');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Penalty history');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Starvation details');

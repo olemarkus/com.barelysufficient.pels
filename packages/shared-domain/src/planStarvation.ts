@@ -18,14 +18,21 @@ const resolveTone = (cause: SettingsUiPlanDeviceStarvation['cause']): PlanStarva
 };
 
 const resolveTooltip = (starvation: SettingsUiPlanDeviceStarvation): string => {
-  if (starvation.cause === 'capacity') {
+  return resolveStarvationMessage(starvation.cause, { manualSubject: 'the device' });
+};
+
+const resolveStarvationMessage = (
+  cause: SettingsUiPlanDeviceStarvation['cause'],
+  options: { manualSubject: 'the device' | 'this device' },
+): string => {
+  if (cause === 'capacity') {
     return 'Starved while waiting for available power';
   }
-  if (starvation.cause === 'budget') {
+  if (cause === 'budget') {
     return "Starved while today's budget is limiting service";
   }
-  if (starvation.cause === 'manual') {
-    return 'Starved while manual control is holding the device';
+  if (cause === 'manual') {
+    return `Starved while manual control is holding ${options.manualSubject}`;
   }
   return 'Starved while waiting on external service';
 };
@@ -45,16 +52,7 @@ export const formatStarvationReason = (
   starvation: SettingsUiPlanDeviceStarvation | null | undefined,
 ): string | null => {
   if (!starvation?.isStarved) return null;
-  if (starvation.cause === 'capacity') {
-    return 'Starved while waiting for available power';
-  }
-  if (starvation.cause === 'budget') {
-    return "Starved while today's budget is limiting service";
-  }
-  if (starvation.cause === 'manual') {
-    return 'Starved while manual control is holding this device';
-  }
-  return 'Starved while waiting on external service';
+  return resolveStarvationMessage(starvation.cause, { manualSubject: 'this device' });
 };
 
 export const summarizeStarvation = (
