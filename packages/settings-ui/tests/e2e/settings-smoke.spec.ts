@@ -38,7 +38,8 @@ test.describe('Settings UI (smoke)', () => {
     await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
 
     await page.getByRole('tab', { name: 'Devices' }).click();
-    await expect(page.locator('#device-list')).not.toContainText('Generic EV Charger');
+    const genericEvDeviceRow = page.locator('[data-device-id="dev_evcharger"]');
+    await expect(genericEvDeviceRow).toHaveCount(0);
 
     await page.getByRole('tab', { name: 'Advanced' }).click();
     const evToggle = page.locator('#advanced-ev-support-enabled');
@@ -48,14 +49,14 @@ test.describe('Settings UI (smoke)', () => {
     await expect(page.locator('#toast')).toContainText('EV charger support enabled.');
 
     await page.getByRole('tab', { name: 'Devices' }).click();
-    await expect(page.locator('#device-list')).toContainText('Generic EV Charger');
+    await expect(genericEvDeviceRow).toBeVisible();
 
     await page.getByRole('tab', { name: 'Advanced' }).click();
     await evToggle.uncheck();
     await expect(page.locator('#toast')).toContainText('Managed EV chargers were set to unmanaged.');
 
     await page.getByRole('tab', { name: 'Devices' }).click();
-    await expect(page.locator('#device-list')).not.toContainText('Generic EV Charger');
+    await expect(genericEvDeviceRow).toHaveCount(0);
 
     const managedMap = await page.evaluate(async () => {
       const homey = (window as unknown as {

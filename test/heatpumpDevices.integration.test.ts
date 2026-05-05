@@ -5,14 +5,12 @@ import {
     MockDevice,
     MockDriver,
 } from './mocks/homey';
-import { createApp, cleanupApps } from './utils/appTestUtils';
+import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from './utils/appTestUtils';
 import {
     CAPACITY_DRY_RUN,
     CAPACITY_LIMIT_KW,
     CAPACITY_MARGIN_KW,
 } from '../lib/utils/settingsKeys';
-import type { TargetDeviceSnapshot } from '../lib/utils/types';
-
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
@@ -108,7 +106,7 @@ describe('Heatpump device integration', () => {
         const app = createApp();
         await app.onInit();
 
-        const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as TargetDeviceSnapshot[];
+        const snapshot = getLatestTargetSnapshotForTests();
         const entry = snapshot.find((snap) => snap.id === device.idValue);
 
         expect(entry).toBeDefined();
@@ -127,7 +125,7 @@ describe('Heatpump device integration', () => {
         const app = createApp();
         await app.onInit();
 
-        const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as TargetDeviceSnapshot[];
+        const snapshot = getLatestTargetSnapshotForTests();
         const entry = snapshot.find((snap) => snap.id === device.idValue);
 
         expect(entry?.targets).toBeDefined();
@@ -246,7 +244,7 @@ describe('Heatpump device integration', () => {
 
         await (app as any).refreshTargetDevicesSnapshot();
 
-        const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{ id: string; powerCapable?: boolean }>;
+        const snapshot = getLatestTargetSnapshotForTests() as Array<{ id: string; powerCapable?: boolean }>;
         const entry = snapshot.find((device) => device.id === 'heatpump-a');
         expect(entry).toBeDefined();
         expect(entry?.powerCapable).toBe(false);

@@ -272,10 +272,6 @@ const createSettingsSetHandler = () => (key: string) => {
   if (ADVANCED_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadAdvancedSettings(), 'Failed to load advanced settings', 'settings.set');
   }
-  if (key === 'target_devices_snapshot') {
-    invalidateApiCache(SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH);
-    refreshDevicesForUi();
-  }
   if (key === OPERATING_MODE_SETTING) {
     runLoggedTask(refreshActiveMode(), 'Failed to refresh active mode', 'settings.set');
   }
@@ -323,6 +319,10 @@ const handlePlanUpdated = (plan: unknown) => {
 const handlePricesUpdated = () => {
   invalidateApiCache(SETTINGS_UI_PRICES_PATH);
   refreshPricesIfVisible('realtime prices_updated');
+};
+
+const handleDevicesUpdated = () => {
+  refreshDevicesForUi();
 };
 
 const handlePowerUpdated = (power: unknown) => {
@@ -381,6 +381,7 @@ export const initRealtimeListeners = () => {
 
   homey.on('plan_updated', handlePlanUpdated);
   homey.on('prices_updated', handlePricesUpdated);
+  homey.on('devices_updated', handleDevicesUpdated);
   homey.on('power_updated', handlePowerUpdated);
   homey.on('settings.set', createSettingsSetHandler());
 
