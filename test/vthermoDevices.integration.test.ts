@@ -2,8 +2,7 @@ import {
   mockHomeyInstance,
   setMockDrivers,
 } from './mocks/homey';
-import { createApp, cleanupApps } from './utils/appTestUtils';
-import type { TargetDeviceSnapshot } from '../lib/utils/types';
+import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from './utils/appTestUtils';
 import { CAPACITY_DRY_RUN } from '../lib/utils/settingsKeys';
 
 vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
@@ -84,7 +83,7 @@ describe('VThermo device integration', () => {
 
     await (app as any).refreshTargetDevicesSnapshot();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as TargetDeviceSnapshot[];
+    const snapshot = getLatestTargetSnapshotForTests();
     const entry = snapshot.find((device) => device.id === 'vthermo-1');
     expect(entry).toBeDefined();
     expect(entry?.deviceClass).toBe('thermostat');

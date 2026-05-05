@@ -2,9 +2,7 @@ import {
     mockHomeyInstance,
     setMockDrivers,
 } from './mocks/homey';
-import { createApp, cleanupApps } from './utils/appTestUtils';
-import type { TargetDeviceSnapshot } from '../lib/utils/types';
-
+import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from './utils/appTestUtils';
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
 vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
 
@@ -65,7 +63,7 @@ describe('Unsupported device handling', () => {
 
         await (app as any).refreshTargetDevicesSnapshot();
 
-        const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as TargetDeviceSnapshot[];
+        const snapshot = getLatestTargetSnapshotForTests();
         const entry = snapshot.find((device) => device.id === 'vent-1');
         expect(entry).toBeUndefined();
 
@@ -102,7 +100,7 @@ describe('Unsupported device handling', () => {
 
         await (app as any).refreshTargetDevicesSnapshot();
 
-        const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as TargetDeviceSnapshot[];
+        const snapshot = getLatestTargetSnapshotForTests();
         const entry = snapshot.find((device) => device.id === 'vent-1');
         expect(entry).toBeDefined();
         expect(entry?.powerCapable).toBe(true);

@@ -1,4 +1,4 @@
-import { createApp, cleanupApps } from './utils/appTestUtils';
+import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from './utils/appTestUtils';
 import { mockHomeyInstance, setMockDrivers } from './mocks/homey';
 import type { TargetDeviceSnapshot } from '../lib/utils/types';
 import { EXPERIMENTAL_EV_SUPPORT_ENABLED, FLOW_REPORTED_DEVICE_CAPABILITIES } from '../lib/utils/settingsKeys';
@@ -73,7 +73,21 @@ const buildEvApiDevice = (overrides?: Partial<{
 });
 
 function getSnapshot(): TargetDeviceSnapshot[] {
-  return (mockHomeyInstance.settings.get('target_devices_snapshot') as TargetDeviceSnapshot[]) ?? [];
+  return (getLatestTargetSnapshotForTests()) ?? [];
+}
+
+function withoutSnapshotFreshness(snapshot: TargetDeviceSnapshot[]): Array<Omit<
+TargetDeviceSnapshot,
+'lastFreshDataMs' | 'lastUpdated'
+>> {
+  return snapshot.map((entry) => {
+    const {
+      lastFreshDataMs: _lastFreshDataMs,
+      lastUpdated: _lastUpdated,
+      ...rest
+    } = entry;
+    return rest;
+  });
 }
 
 async function runAction(cardId: string, args: Record<string, unknown>): Promise<void> {
@@ -393,7 +407,7 @@ describe('Flow-backed device support', () => {
     const beforeStore = structuredClone(
       mockHomeyInstance.settings.get(FLOW_REPORTED_DEVICE_CAPABILITIES) as Record<string, unknown>,
     );
-    const beforeSnapshot = structuredClone(getSnapshot());
+    const beforeSnapshot = structuredClone(withoutSnapshotFreshness(getSnapshot()));
 
     await (app as any).refreshTargetDevicesSnapshot({ targeted: true });
 
@@ -401,7 +415,7 @@ describe('Flow-backed device support', () => {
       { tokens: {}, state: { deviceId: 'binary-1' } },
     ]);
     expect(mockHomeyInstance.settings.get(FLOW_REPORTED_DEVICE_CAPABILITIES)).toEqual(beforeStore);
-    expect(getSnapshot()).toEqual(beforeSnapshot);
+    expect(withoutSnapshotFreshness(getSnapshot())).toEqual(beforeSnapshot);
   });
 
   it('does not emit flow-backed refresh requests for reports that duplicate native capabilities', async () => {

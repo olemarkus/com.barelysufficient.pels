@@ -91,6 +91,17 @@ export const getPowerTrackerForUiFromApp = (homey: Homey.App['homey']): PowerTra
   return tracker && typeof tracker === 'object' ? tracker : null;
 };
 
+export const emitSettingsUiDevicesUpdatedForApp = (
+  homey: Homey.App['homey'],
+  onError: (message: string, error: Error) => void,
+): void => {
+  const api = homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
+  const realtime = api?.realtime;
+  if (typeof realtime !== 'function') return;
+  realtime.call(api, 'devices_updated', null)
+    .catch((error: unknown) => onError('Failed to emit devices_updated event', error as Error));
+};
+
 export const emitSettingsUiPowerUpdatedForApp = (
   homey: Homey.App['homey'],
   powerTracker: PowerTrackerState,

@@ -840,14 +840,17 @@
     set: (key, value, cb) => {
       settings[key] = value;
       const followUpKeys = [];
+      let emitDevicesUpdated = false;
       if (key === 'experimental_ev_support_enabled') {
         syncExperimentalEvSupportState();
-        followUpKeys.push('managed_devices', 'target_devices_snapshot');
+        followUpKeys.push('managed_devices');
+        emitDevicesUpdated = true;
       }
       setTimeout(() => {
         cb(null);
         emit('settings.set', key);
         followUpKeys.forEach((nextKey) => emit('settings.set', nextKey));
+        if (emitDevicesUpdated) emit('devices_updated', null);
       }, 5);
     },
 

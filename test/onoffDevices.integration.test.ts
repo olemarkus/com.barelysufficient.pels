@@ -6,7 +6,7 @@ import {
   MockDriver,
 } from './mocks/homey';
 import * as homeyApi from '../lib/core/deviceManagerHomeyApi';
-import { createApp, cleanupApps } from './utils/appTestUtils';
+import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from './utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -86,7 +86,7 @@ describe('On/off device integration', () => {
     const app = createApp();
     await app.onInit();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+    const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
       deviceType?: string;
       deviceClass?: string;
@@ -139,7 +139,7 @@ describe('On/off device integration', () => {
 
     await (app as any).refreshTargetDevicesSnapshot();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{ id: string; powerCapable?: boolean }>;
+    const snapshot = getLatestTargetSnapshotForTests() as Array<{ id: string; powerCapable?: boolean }>;
     const entry = snapshot.find((device) => device.id === 'device-a');
     expect(entry).toBeUndefined();
   });
@@ -163,7 +163,7 @@ describe('On/off device integration', () => {
 
     await (app as any).refreshTargetDevicesSnapshot();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+    const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
       powerCapable?: boolean;
       powerKw?: number;
@@ -202,7 +202,7 @@ describe('On/off device integration', () => {
 
     await (app as any).refreshTargetDevicesSnapshot();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+    const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
       powerCapable?: boolean;
       powerKw?: number;
@@ -241,7 +241,7 @@ describe('On/off device integration', () => {
 
     await (app as any).refreshTargetDevicesSnapshot();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+    const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
       powerCapable?: boolean;
       powerKw?: number;
@@ -276,7 +276,7 @@ describe('On/off device integration', () => {
 
     await (app as any).refreshTargetDevicesSnapshot();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+    const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
       powerCapable?: boolean;
       powerKw?: number;
@@ -311,7 +311,7 @@ describe('On/off device integration', () => {
 
     await (app as any).refreshTargetDevicesSnapshot();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+    const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
       powerCapable?: boolean;
       powerKw?: number;
@@ -343,7 +343,7 @@ describe('On/off device integration', () => {
 
     await (app as any).refreshTargetDevicesSnapshot();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+    const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
       powerCapable?: boolean;
       powerKw?: number;
@@ -374,7 +374,7 @@ describe('On/off device integration', () => {
 
     await (app as any).refreshTargetDevicesSnapshot();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+    const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
       powerCapable?: boolean;
       expectedPowerSource?: string;
@@ -424,7 +424,7 @@ describe('On/off device integration', () => {
     await flushPromises();
     await flushPromises();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+    const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
       powerCapable?: boolean;
       expectedPowerSource?: string;
@@ -485,7 +485,7 @@ describe('On/off device integration', () => {
     await flushPromises();
     await flushPromises();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{
+    const snapshot = getLatestTargetSnapshotForTests() as Array<{
       id: string;
       powerCapable?: boolean;
       expectedPowerSource?: string;
@@ -518,7 +518,7 @@ describe('On/off device integration', () => {
 
     await (app as any).refreshTargetDevicesSnapshot();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{ id: string }>;
+    const snapshot = getLatestTargetSnapshotForTests() as Array<{ id: string }>;
     expect(snapshot.find((entry) => entry.id === 'device-a')).toBeUndefined();
   });
 
@@ -535,7 +535,7 @@ describe('On/off device integration', () => {
 
     await (app as any).refreshTargetDevicesSnapshot();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{ id: string }>;
+    const snapshot = getLatestTargetSnapshotForTests() as Array<{ id: string }>;
     expect(snapshot.find((entry) => entry.id === 'device-a')).toBeUndefined();
   });
 
@@ -556,7 +556,7 @@ describe('On/off device integration', () => {
 
     await (app as any).refreshTargetDevicesSnapshot();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as Array<{ id: string }>;
+    const snapshot = getLatestTargetSnapshotForTests() as Array<{ id: string }>;
     expect(snapshot.find((entry) => entry.id === 'device-a')).toBeUndefined();
   });
 

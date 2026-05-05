@@ -6,7 +6,6 @@ import { TARGET_CONFIRMATION_STUCK_POLL_MS } from '../plan/planConstants';
 import { getLatestDeviceObservationMs, isDeviceObservationStale } from '../plan/planObservationPolicy';
 import type { PlanService } from '../plan/planService';
 import type { TargetDeviceSnapshot } from '../utils/types';
-import { toStableFingerprint } from '../utils/stableFingerprint';
 import type { TimerRegistry } from './timerRegistry';
 
 const SNAPSHOT_REFRESH_MINUTE_INTERVALS = [25, 55];
@@ -20,20 +19,6 @@ export type RefreshTargetDevicesSnapshotOptions = {
   recordHomeyEnergySample?: boolean;
   emitFlowBackedRefresh?: boolean;
 };
-
-function toPersistedTargetSnapshotFingerprint(value: unknown): string {
-  if (!Array.isArray(value)) return toStableFingerprint(value);
-  return toStableFingerprint(value.map((entry) => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;
-    const {
-      lastFreshDataMs: _lastFreshDataMs,
-      lastUpdated: _lastUpdated,
-      lastLocalWriteMs: _lastLocalWriteMs,
-      ...rest
-    } = entry as Record<string, unknown>;
-    return rest;
-  }));
-}
 
 export class AppSnapshotHelpers {
   private snapshotRefreshTimer?: ReturnType<typeof setTimeout>;
@@ -62,6 +47,7 @@ export class AppSnapshotHelpers {
     disableUnsupportedDevices: (snapshot: TargetDeviceSnapshot[]) => void;
     getFlowReportedDeviceIds: () => string[];
     emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
+    emitSettingsUiDevicesUpdated: () => void;
     recordPowerSample: (powerW: number) => Promise<void>;
   }) {}
 
@@ -274,37 +260,15 @@ export class AppSnapshotHelpers {
       cleanupMissingDevices: true,
       reconciliationContext: 'snapshot_refresh',
     });
-    this.persistTargetSnapshot(snapshot, options);
     this.deps.disableUnsupportedDevices(snapshot);
-    await this.recordImplicitHomeyEnergySample(deviceManager, options);
-  }
-
-  private persistTargetSnapshot(
-    snapshot: TargetDeviceSnapshot[],
-    options: RefreshTargetDevicesSnapshotOptions,
-  ): void {
-    const existingSnapshot = this.deps.homey.settings.get('target_devices_snapshot') as unknown;
-    if (
-      toPersistedTargetSnapshotFingerprint(existingSnapshot)
-      !== toPersistedTargetSnapshotFingerprint(snapshot)
-    ) {
-      this.deps.homey.settings.set('target_devices_snapshot', snapshot);
-      this.deps.getStructuredLogger('devices')?.info({
-        event: 'target_devices_snapshot_written',
-        reasonCode: options.targeted === true ? 'targeted_refresh' : 'snapshot_refresh',
-        deviceCount: snapshot.length,
-        targetedRefresh: options.targeted === true,
-      });
-      return;
-    }
-
     this.deps.getStructuredLogger('devices')?.debug({
-      event: 'target_devices_snapshot_write_skipped',
-      reasonCode: 'unchanged',
+      event: 'target_devices_refreshed',
+      reasonCode: options.targeted === true ? 'targeted_refresh' : 'snapshot_refresh',
       deviceCount: snapshot.length,
       targetedRefresh: options.targeted === true,
     });
-    this.deps.logDebug('devices', 'Target devices snapshot unchanged, skipping settings write');
+    this.deps.emitSettingsUiDevicesUpdated();
+    await this.recordImplicitHomeyEnergySample(deviceManager, options);
   }
 
   private async recordImplicitHomeyEnergySample(

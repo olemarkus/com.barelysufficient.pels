@@ -75,7 +75,6 @@ import { VOLATILE_WRITE_THROTTLE_MS } from './lib/utils/timingConstants';
 import { getHourBucketKey } from './lib/utils/dateUtils';
 import { startResourceWarningListeners as startResourceWarnings } from './lib/app/appResourceWarningHelpers';
 import { migrateManagedDevices as migrateManagedDevicesHelper } from './lib/app/appManagedDeviceMigration';
-import { restoreCachedTargetSnapshotForApp } from './lib/app/appStartupHelpers';
 import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './lib/app/appPriceLowestTrigger';
 import * as realtimeReconcile from './lib/app/appRealtimeDeviceReconcile';
 import {
@@ -88,7 +87,10 @@ import { normalizeError } from './lib/utils/errorUtils';
 import { scheduleAppRealtimeDeviceReconcile } from './lib/app/appRealtimeDeviceReconcileRuntime';
 import { logHomeyDeviceComparisonForDebugFromApp } from './lib/app/appDebugHelpers';
 import type { ObservedDeviceStateEvent } from './lib/core/deviceManagerRealtimeHandlers';
-import { emitSettingsUiPowerUpdatedForApp } from './lib/app/settingsUiAppRuntime';
+import {
+  emitSettingsUiDevicesUpdatedForApp,
+  emitSettingsUiPowerUpdatedForApp,
+} from './lib/app/settingsUiAppRuntime';
 import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';
 import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/src/deviceDiagnosticsTypes';
 import type { DeviceControlProfiles } from './lib/utils/types';
@@ -268,6 +270,10 @@ class PelsApp extends Homey.App {
     }),
     getFlowReportedDeviceIds: () => this.getFlowReportedDeviceIds(),
     emitFlowBackedRefreshRequests: async (deviceIds) => this.emitFlowBackedRefreshRequests(deviceIds),
+    emitSettingsUiDevicesUpdated: () => emitSettingsUiDevicesUpdatedForApp(
+      this.homey,
+      (message, error) => this.error(message, error),
+    ),
     recordPowerSample: async (powerW) => this.recordPowerSample(powerW),
   });
   private readonly homeyEnergyHelpers = new AppHomeyEnergyHelpers({
@@ -697,18 +703,9 @@ class PelsApp extends Homey.App {
       logStartupStepFailure,
     );
     await runStartupStep('initDeviceManager', () => this.initDeviceManager(), logStartupStepFailure);
-    const hasCachedTargetSnapshot = restoreCachedTargetSnapshotForApp({
-      homey: this.homey,
-      deviceManager: this.deviceManager,
-      logDebug: (...args: unknown[]) => this.logDebug('devices', ...args),
-      filterEntry: (entry) => (
-        (this.experimentalEvSupportEnabled || entry.deviceClass !== 'evcharger')
-        && (this.areFlowBackedCardsAvailable() || entry.flowBacked !== true)
-      ),
-    });
     let snapshotPlanBootstrapDelayMs = 0;
     if (deferStartupBootstrap) {
-      snapshotPlanBootstrapDelayMs = hasCachedTargetSnapshot ? 300 : 1200;
+      snapshotPlanBootstrapDelayMs = 1200;
     }
     const startupBootstrap: StartupBootstrapConfig = {
       snapshotPlanBootstrapDelayMs,

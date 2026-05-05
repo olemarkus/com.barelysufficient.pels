@@ -3,14 +3,12 @@ import {
   mockHomeyInstance,
   setMockDrivers,
 } from './mocks/homey';
-import { createApp, cleanupApps } from './utils/appTestUtils';
+import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from './utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
 } from '../lib/utils/settingsKeys';
-import type { TargetDeviceSnapshot } from '../lib/utils/types';
-
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
@@ -98,7 +96,7 @@ describe('Airtreatment device integration', () => {
 
     await (app as any).refreshTargetDevicesSnapshot();
 
-    const snapshot = mockHomeyInstance.settings.get('target_devices_snapshot') as TargetDeviceSnapshot[];
+    const snapshot = getLatestTargetSnapshotForTests();
     const entry = snapshot.find((device) => device.id === 'airtreatment-1');
 
     expect(entry).toBeDefined();

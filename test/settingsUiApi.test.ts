@@ -31,7 +31,6 @@ describe('settingsUiApi', () => {
     } = {},
   ) => {
     const store = new Map<string, unknown>([
-      ['target_devices_snapshot', [{ id: 'dev-1', name: 'Heater' }]],
       ['combined_prices', { prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] }],
       ['power_tracker_state', { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } }],
       ['pels_status', { lastPowerUpdate: 123, priceLevel: 'cheap' }],
