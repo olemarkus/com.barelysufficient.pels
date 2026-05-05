@@ -63,15 +63,18 @@ separate scope instead of broadening the `planReasons.ts` cleanup PR.
 **Current size:** ~696 LOC. `planReasonStrings.ts` is ~260 LOC and stays separate for now because
 it now owns shared reason classification and rendering across multiple plan modules.
 
-### 3. `planExecutor.ts` — partially landed
+### 3. `planExecutor.ts` — largely landed
 
 The control-type split has already landed via PR #396. `planExecutor.ts` remains a hotspot, but
-the target-command and stepped-load pipelines no longer live in the file.
+the target-command, stepped-load, and binary command execution pipelines no longer live in the
+file.
 
-**Remaining simplification:** decide whether the remaining binary-control path should stay local or
-be extracted further once the post-split shape has settled.
+**Remaining simplification:** keep shrinking the dispatcher boundary so `PlanExecutor` works from
+projected executable device concepts instead of broad planner devices and callback-heavy context
+objects.
 
-**Current size:** ~782 LOC after the landed split.
+**Current size:** ~835 LOC after the binary extraction; remaining dispatcher code includes
+reconcile/stability helpers and the public app-facing execution hooks.
 
 ### 4. `app.ts` — partially landed, still active
 
@@ -218,7 +221,7 @@ Phases are ordered by: standalone value, risk, and dependency.
 |-------|--------|-------------|------|
 | 1 | planActivationBackoff.ts | Landed via PR #401 | Low |
 | 2 | planReasons.ts + merges | Separate decision logic from presentation | Low |
-| 3 | planExecutor.ts | Largely landed via PR #396; binary-path follow-up remains | Medium |
+| 3 | planExecutor.ts | Control-type execution split landed; dispatcher narrowing remains | Medium |
 | 4 | app.ts | Helper extractions landed via PRs #397/#398; wiring cleanup remains | Medium |
 | 5 | planService.ts | Separate persistence from orchestration | Medium |
 | 6 | planRestore.ts | Collapse redundant gates | Low-medium |
