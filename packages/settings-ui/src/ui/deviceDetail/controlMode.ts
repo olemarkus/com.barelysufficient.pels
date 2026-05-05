@@ -37,10 +37,12 @@ export function getDeviceDetailControlModeOptions(
     );
   }
 
-  options.push(
-    { value: 'ev_charger_1_phase', label: 'EV 1-phase' },
-    { value: 'ev_charger_3_phase', label: 'EV 3-phase' },
-  );
+  if (canUseEvTargetPowerPreset(device)) {
+    options.push(
+      { value: 'ev_charger_1_phase', label: 'EV 1-phase' },
+      { value: 'ev_charger_3_phase', label: 'EV 3-phase' },
+    );
+  }
   return options;
 }
 
@@ -60,9 +62,11 @@ export function syncDeviceDetailControlModeOptions(
 
 export function resolveDeviceDetailControlMode(device: TargetDeviceSnapshot): DeviceDetailControlMode {
   const targetPowerConfig = getStoredTargetPowerConfig(device.id) ?? device.targetPowerConfig;
-  if (targetPowerConfig?.preset === 'ev_charger_1_phase') return 'ev_charger_1_phase';
-  if (targetPowerConfig?.preset === 'ev_charger_3_phase') return 'ev_charger_3_phase';
-  if (targetPowerConfig) return isNativeEvWiringActive(device) ? 'default' : 'continuous';
+  if (targetPowerConfig?.enabled !== false) {
+    if (targetPowerConfig?.preset === 'ev_charger_1_phase') return 'ev_charger_1_phase';
+    if (targetPowerConfig?.preset === 'ev_charger_3_phase') return 'ev_charger_3_phase';
+    if (targetPowerConfig) return isNativeEvWiringActive(device) ? 'default' : 'continuous';
+  }
   if (getEffectiveControlModel(device) === 'stepped_load') return 'stepped_load';
   return 'default';
 }
@@ -75,8 +79,19 @@ export function isNativeEvWiringActive(device: TargetDeviceSnapshot | null | und
 
 export function hasEvTargetPowerPreset(device: TargetDeviceSnapshot | null | undefined): boolean {
   const targetPowerConfig = device ? getStoredTargetPowerConfig(device.id) ?? device.targetPowerConfig : undefined;
-  return targetPowerConfig?.preset === 'ev_charger_1_phase'
-    || targetPowerConfig?.preset === 'ev_charger_3_phase';
+  return targetPowerConfig?.enabled !== false
+    && (
+      targetPowerConfig?.preset === 'ev_charger_1_phase'
+      || targetPowerConfig?.preset === 'ev_charger_3_phase'
+    );
+}
+
+function isEvChargerDevice(device: TargetDeviceSnapshot | null | undefined): boolean {
+  return device?.deviceClass === 'evcharger';
+}
+
+function canUseEvTargetPowerPreset(device: TargetDeviceSnapshot | null | undefined): boolean {
+  return isEvChargerDevice(device) || hasEvTargetPowerPreset(device);
 }
 
 export function normalizeDeviceDetailControlMode(value: string): DeviceDetailControlMode | null {
@@ -94,10 +109,10 @@ export function isControlModeAllowedForDevice(
   controlMode: DeviceDetailControlMode,
   device: TargetDeviceSnapshot,
 ): boolean {
+  const isEvPreset = controlMode === 'ev_charger_1_phase' || controlMode === 'ev_charger_3_phase';
+  if (isEvPreset) return canUseEvTargetPowerPreset(device);
   if (!isNativeEvWiringActive(device)) return true;
-  return controlMode === 'default'
-    || controlMode === 'ev_charger_1_phase'
-    || controlMode === 'ev_charger_3_phase';
+  return controlMode === 'default';
 }
 
 export function resolveTargetPowerConfigForControlMode(
