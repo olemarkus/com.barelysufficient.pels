@@ -988,20 +988,24 @@ describe('native stepped-load wiring', () => {
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
         reportedStepId: 'max',
       }));
-      expect(liveStateObserved).toHaveBeenCalledWith({
+      expect(liveStateObserved).toHaveBeenCalledWith(expect.objectContaining({
         source: 'realtime_capability',
         deviceId: 'hoiax-1',
+        observationSeq: 1,
+        observedAtMs: expect.any(Number),
         capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-      });
-      expect(realtimeReconcile).toHaveBeenCalledWith({
+      }));
+      expect(realtimeReconcile).toHaveBeenCalledWith(expect.objectContaining({
         deviceId: 'hoiax-1',
+        observationSeq: 1,
+        observedAtMs: expect.any(Number),
         name: 'Connected 300',
         changes: [{
           capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
           previousValue: 'medium',
           nextValue: 'max',
         }],
-      });
+      }));
 
       put.mockClear();
       await expect(setObservedNativeSteppedLoadStep({
@@ -1110,7 +1114,7 @@ describe('native stepped-load wiring', () => {
         currentOn: true,
       }));
       expect(deviceManager.getSnapshot()[0]).not.toHaveProperty('reportedStepId');
-      expect(realtimeReconcile).toHaveBeenCalledWith({
+      expect(realtimeReconcile).toHaveBeenCalledWith(expect.objectContaining({
         deviceId: 'hoiax-1',
         name: 'Connected 300',
         changes: [{
@@ -1118,7 +1122,7 @@ describe('native stepped-load wiring', () => {
           previousValue: 'off',
           nextValue: 'unknown',
         }],
-      });
+      }));
     } finally {
       restoreMockRestClient();
     }

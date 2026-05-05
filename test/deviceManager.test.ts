@@ -2032,15 +2032,17 @@ describe('DeviceManager', () => {
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 currentOn: false,
             }));
-            expect(realtimeListener).toHaveBeenCalledWith({
+            expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
                 deviceId: 'dev1',
+                observationSeq: 1,
+                observedAtMs: expect.any(Number),
                 name: 'Heater',
                 changes: [{
                     capabilityId: 'onoff',
                     previousValue: 'on',
                     nextValue: 'off',
                 }],
-            });
+            }));
             expect(debugStructuredMock).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_update_processed',
                 source: 'device_update',
@@ -2156,7 +2158,9 @@ describe('DeviceManager', () => {
             });
 
             await deviceManager.refreshSnapshot();
+            const liveStateListener = vi.fn();
             const realtimeListener = vi.fn();
+            deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
             await deviceManager.setCapability('dev1', 'onoff', false);
@@ -2179,6 +2183,13 @@ describe('DeviceManager', () => {
             expect(driftEvent).toEqual(expect.objectContaining({
                 deviceId: 'dev1',
                 changes: [{ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' }],
+            }));
+            expect(liveStateListener).toHaveBeenCalledOnce();
+            expect(liveStateListener.mock.calls[0][0]).toEqual(expect.objectContaining({
+                source: 'device_update',
+                deviceId: 'dev1',
+                observationSeq: driftEvent.observationSeq,
+                observedAtMs: driftEvent.observedAtMs,
             }));
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 currentOn: true,
@@ -2203,9 +2214,11 @@ describe('DeviceManager', () => {
             await deviceManager.setCapability('dev1', 'onoff', false);
 
             const currentOnAtReconcile: unknown[] = [];
+            const liveStateListener = vi.fn();
             const realtimeListener = vi.fn(() => {
                 currentOnAtReconcile.push(deviceManager.getSnapshot()[0]?.currentOn);
             });
+            deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
             deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', true);
@@ -2216,6 +2229,14 @@ describe('DeviceManager', () => {
                 name: 'Heater',
                 capabilityId: 'onoff',
                 changes: [{ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' }],
+            }));
+            const driftEvent = realtimeListener.mock.calls[0][0];
+            expect(liveStateListener).toHaveBeenCalledOnce();
+            expect(liveStateListener.mock.calls[0][0]).toEqual(expect.objectContaining({
+                source: 'realtime_capability',
+                deviceId: 'dev1',
+                observationSeq: driftEvent.observationSeq,
+                observedAtMs: driftEvent.observedAtMs,
             }));
             expect(currentOnAtReconcile).toEqual([true]);
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
@@ -2689,6 +2710,71 @@ describe('DeviceManager', () => {
                 }
             });
 
+            it('shares cursor for EV charging-state drift during binary settle', async () => {
+                vi.useFakeTimers();
+                try {
+                    const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                        getExperimentalEvSupportEnabled: () => true,
+                    });
+                    await evDeviceManager.init();
+                    mockApiGet.mockResolvedValue({
+                        ev1: {
+                            id: 'ev1',
+                            name: 'Easee',
+                            class: 'evcharger',
+                            capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+                            capabilitiesObj: {
+                                evcharger_charging: { value: false, id: 'evcharger_charging', setable: true },
+                                evcharger_charging_state: {
+                                    value: 'plugged_in_paused',
+                                    id: 'evcharger_charging_state',
+                                    lastUpdated: '2026-04-01T12:00:00.000Z',
+                                },
+                                measure_power: { value: 0, id: 'measure_power' },
+                            },
+                        },
+                    });
+                    await evDeviceManager.refreshSnapshot();
+                    const liveStateListener = vi.fn();
+                    const realtimeListener = vi.fn();
+                    evDeviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
+                    evDeviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+                    await evDeviceManager.setCapability('ev1', 'evcharger_charging', true);
+                    vi.setSystemTime(new Date('2026-04-01T12:00:01.000Z'));
+                    evDeviceManager.injectCapabilityUpdateForTest('ev1', 'evcharger_charging_state', 'plugged_out');
+
+                    expect(realtimeListener).toHaveBeenCalledOnce();
+                    const driftEvent = realtimeListener.mock.calls[0][0];
+                    expect(driftEvent).toEqual(expect.objectContaining({
+                        deviceId: 'ev1',
+                        capabilityId: 'evcharger_charging',
+                        observationSeq: 1,
+                        changes: [expect.objectContaining({
+                            capabilityId: 'evcharger_charging',
+                            previousValue: 'on',
+                            nextValue: 'off',
+                        })],
+                    }));
+                    expect(liveStateListener).toHaveBeenCalledOnce();
+                    expect(liveStateListener.mock.calls[0][0]).toEqual(expect.objectContaining({
+                        source: 'realtime_capability',
+                        deviceId: 'ev1',
+                        capabilityId: 'evcharger_charging_state',
+                        observationSeq: driftEvent.observationSeq,
+                        observedAtMs: driftEvent.observedAtMs,
+                    }));
+                    expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                        currentOn: false,
+                        evChargingState: 'plugged_out',
+                    }));
+
+                    evDeviceManager.destroy();
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
+
             it('pending binary write + no observation before timeout => timeout path runs, reconcile if state differs', async () => {
                 vi.useFakeTimers();
                 try {
@@ -2879,15 +2965,17 @@ describe('DeviceManager', () => {
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 targets: [expect.objectContaining({ id: 'target_temperature', value: 18 })],
             }));
-            expect(realtimeListener).toHaveBeenCalledWith({
+            expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
                 deviceId: 'dev1',
+                observationSeq: 1,
+                observedAtMs: expect.any(Number),
                 name: 'Heater',
                 changes: [{
                     capabilityId: 'target_temperature',
                     previousValue: '20°C',
                     nextValue: '18°C',
                 }],
-            });
+            }));
         });
 
         it('applies target temperature from device.update and snapshot refresh uses latest API value', async () => {
@@ -3311,15 +3399,17 @@ describe('DeviceManager', () => {
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 targets: [expect.objectContaining({ id: 'target_temperature', value: 18 })],
             }));
-            expect(realtimeListener).toHaveBeenCalledWith({
+            expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
                 deviceId: 'dev1',
+                observationSeq: 1,
+                observedAtMs: expect.any(Number),
                 name: 'Heater',
                 changes: [{
                     capabilityId: 'target_temperature',
                     previousValue: '20°C',
                     nextValue: '18°C',
                 }],
-            });
+            }));
 
             // Subsequent device.update with same value does not trigger reconcile
             realtimeListener.mockClear();
