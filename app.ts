@@ -22,6 +22,7 @@ import type {
   DailyBudgetModelPreviewResponse,
   DailyBudgetSettingsInput,
   DailyBudgetUiPayload,
+  DailyBudgetUpdateStateOptions,
 } from './lib/dailyBudget/dailyBudgetTypes';
 import type { SettingsUiPlanSnapshot } from './packages/contracts/src/settingsUiApi';
 import { type DebugLoggingTopic } from './lib/utils/debugLogging';
@@ -1281,11 +1282,15 @@ class PelsApp extends Homey.App {
   }
   public replacePowerTrackerForUi(nextState: PowerTrackerState): void {
     this.powerTracker = nextState;
-    this.updateDailyBudgetAndRecordCap({ nowMs: nextState.lastTimestamp ?? Date.now(), forcePlanRebuild: true });
+    this.updateDailyBudgetAndRecordCap({
+      nowMs: nextState.lastTimestamp ?? Date.now(),
+      forcePlanRebuild: true,
+      persistReason: 'manual',
+    });
     emitSettingsUiPowerUpdatedForApp(this.homey, this.powerTracker, (message, error) => this.error(message, error));
     this.persistPowerTrackerState('ui_replace');
   }
-  private updateDailyBudgetAndRecordCap(options?: { nowMs?: number; forcePlanRebuild?: boolean }): void {
+  private updateDailyBudgetAndRecordCap(options?: DailyBudgetUpdateStateOptions): void {
     this.powerTracker = updateDailyBudgetAndRecordCapForApp({
       powerTracker: this.powerTracker,
       dailyBudgetService: this.dailyBudgetService,

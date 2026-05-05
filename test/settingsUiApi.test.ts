@@ -64,6 +64,7 @@ describe('settingsUiApi', () => {
       updateDailyBudgetAndRecordCap({
         nowMs: Date.now(),
         forcePlanRebuild: true,
+        persistReason: 'manual',
       });
       persistPowerTrackerState();
     });
@@ -331,6 +332,7 @@ describe('settingsUiApi', () => {
     expect(homey.updateDailyBudgetAndRecordCap).toHaveBeenCalledWith({
       nowMs: expect.any(Number),
       forcePlanRebuild: true,
+      persistReason: 'manual',
     });
     expect(homey.persistPowerTrackerState).toHaveBeenCalledTimes(1);
     expect(result.power.tracker).toEqual({

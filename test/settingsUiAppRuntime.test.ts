@@ -101,6 +101,7 @@ describe('settings UI app runtime helpers', () => {
     expect(updateDailyBudgetAndRecordCap).toHaveBeenCalledWith({
       nowMs: nowMs - 5_000,
       forcePlanRebuild: true,
+      persistReason: 'manual',
     });
     expect(persistPowerTrackerState).toHaveBeenCalledTimes(1);
   });
