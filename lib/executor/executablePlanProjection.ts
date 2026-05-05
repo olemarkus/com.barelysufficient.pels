@@ -1,6 +1,6 @@
-import type { ExecutablePlan, ProjectedExecutablePlanDevice } from '../executor/executablePlan';
-import { buildExecutableSteppedLoadDevice } from './planExecutableSteppedLoad';
-import type { DevicePlan, DevicePlanDevice } from './planTypes';
+import type { DevicePlan, DevicePlanDevice } from '../plan/planTypes';
+import type { ExecutablePlan, ProjectedExecutablePlanDevice } from './executablePlan';
+import { buildExecutableSteppedLoadDevice } from './executableSteppedLoadProjection';
 
 export function buildExecutablePlan(plan: DevicePlan): ExecutablePlan<DevicePlanDevice> {
   return {
