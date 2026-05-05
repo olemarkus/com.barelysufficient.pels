@@ -1,4 +1,3 @@
-import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DeviceControlAdapterSnapshot, SteppedLoadProfile } from '../utils/types';
 import type { SteppedStepActuationState } from './steppedLoadActuation';
 
@@ -45,25 +44,33 @@ export type ExecutableSteppedLoadRestoreAttempt = {
   requestedStepId: string;
 } | null;
 
+export type ExecutableSteppedLoadState = {
+  on: boolean | null;
+  stepId?: string;
+};
+
+export type ExecutableSteppedLoadCurrentState = ExecutableSteppedLoadState & {
+  stepForShed?: {
+    stepId: string;
+    planningPowerW: number;
+  };
+  stepIsOffStep: boolean;
+};
+
+export type ExecutableSteppedLoadDesiredState = ExecutableSteppedLoadState & {
+  plannedStepId?: string;
+};
+
 export type ExecutableSteppedLoadDevice = {
   id: string;
   name: string;
-  plannedState: string;
-  reason: DeviceReason;
   steppedLoadProfile: SteppedLoadProfile;
   communicationModel?: 'local' | 'cloud';
   controlAdapter?: DeviceControlAdapterSnapshot;
   shedAction?: 'turn_off' | 'set_temperature' | 'set_step';
-  effectiveCurrentOn: boolean | null;
-  requestedStepId?: string;
-  commandStepId?: string;
+  current: ExecutableSteppedLoadCurrentState;
+  desired: ExecutableSteppedLoadDesiredState;
   previousStepId?: string;
-  currentStepId?: string;
-  currentStepForShed?: {
-    stepId: string;
-    planningPowerW: number;
-  };
-  currentStepIsOffStep: boolean;
   transition: ExecutableSteppedLoadTransition | null;
   stepActuation: SteppedStepActuationState;
   commandStepActuation: SteppedStepActuationState;

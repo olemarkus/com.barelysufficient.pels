@@ -15,46 +15,56 @@ import {
   resolveSteppedLoadTransition,
 } from './planSteppedLoad';
 import { resolveSteppedRestoreAttemptState } from './planSteppedRestorePending';
+import {
+  allowsSteppedLoadKeepInvariantRestore,
+  isRestoreAdmissionHoldReason,
+} from '../planContract/planDecisionSemantics';
 
 type PlanDevice = DevicePlan['devices'][number];
 
 export function buildExecutableSteppedLoadDevice(dev: PlanDevice): ExecutableSteppedLoadDevice | null {
   if (!isSteppedLoadDevice(dev) || !dev.steppedLoadProfile) return null;
-  const requestedStepId = resolveSteppedKeepDesiredStepId(dev);
-  const transition = resolveSteppedLoadTransition(dev, requestedStepId);
-  const commandStepId = transition?.commandStepId ?? requestedStepId;
+  const current = {
+    on: resolveEffectiveCurrentOn(dev),
+    stepId: dev.selectedStepId,
+    stepForShed: resolveCurrentStepForShed(dev),
+    stepIsOffStep: dev.selectedStepId
+      ? isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId)
+      : false,
+  };
+  const plannedStepId = resolveSteppedKeepDesiredStepId(dev);
+  const plannedTransition = resolveSteppedLoadTransition(dev, plannedStepId);
+  const desired = resolveDesiredState({
+    dev,
+    current,
+    plannedStepId,
+    plannedTransition,
+  });
+  const transition = desiredMatchesTransition(desired, plannedTransition) ? plannedTransition : null;
   const stepActuation = resolveSteppedStepActuationState({
-    step: toExecutableSteppedStepState(dev, requestedStepId),
+    step: toExecutableSteppedStepState(dev, desired.stepId),
   });
   const commandStepActuation = resolveSteppedStepActuationState({
-    step: toExecutableSteppedStepState(dev, commandStepId),
+    step: toExecutableSteppedStepState(dev, desired.stepId),
   });
-  const matchingRestoreAttempt = requestedStepId !== undefined
-    ? resolveSteppedRestoreAttemptState(dev, requestedStepId)
+  const matchingRestoreAttempt = desired.stepId !== undefined
+    ? resolveSteppedRestoreAttemptState(dev, desired.stepId)
     : null;
-  const matchingCommandAttempt = commandStepId !== undefined
-    ? resolveSteppedRestoreAttemptState(dev, commandStepId)
+  const matchingCommandAttempt = desired.stepId !== undefined
+    ? resolveSteppedRestoreAttemptState(dev, desired.stepId)
     : null;
-  const desiredIsNonOff = requestedStepId
-    && !isSteppedLoadOffStep(dev.steppedLoadProfile, requestedStepId);
+  const desiredIsNonOff = desired.stepId
+    && !isSteppedLoadOffStep(dev.steppedLoadProfile, desired.stepId);
   return {
     id: dev.id,
     name: dev.name,
-    plannedState: dev.plannedState,
-    reason: dev.reason,
     steppedLoadProfile: dev.steppedLoadProfile,
     communicationModel: dev.communicationModel,
     controlAdapter: dev.controlAdapter,
     shedAction: dev.shedAction,
-    effectiveCurrentOn: resolveEffectiveCurrentOn(dev),
-    requestedStepId,
-    commandStepId,
+    current,
+    desired,
     previousStepId: dev.selectedStepId ?? dev.lastDesiredStepId,
-    currentStepId: dev.selectedStepId,
-    currentStepForShed: resolveCurrentStepForShed(dev),
-    currentStepIsOffStep: dev.selectedStepId
-      ? isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId)
-      : false,
     transition,
     stepActuation,
     commandStepActuation,
@@ -77,9 +87,89 @@ const toExecutableSteppedStepState = (dev: PlanDevice, requestedStepId?: string)
   };
 };
 
+const resolveDesiredState = (params: {
+  dev: PlanDevice;
+  current: ExecutableSteppedLoadDevice['current'];
+  plannedStepId?: string;
+  plannedTransition: ReturnType<typeof resolveSteppedLoadTransition>;
+}): ExecutableSteppedLoadDevice['desired'] => {
+  const {
+    dev,
+    current,
+    plannedStepId,
+    plannedTransition,
+  } = params;
+  if (shouldHoldCurrentState(dev)) {
+    return {
+      on: current.on,
+      stepId: current.stepId,
+      plannedStepId,
+    };
+  }
+  const desiredStepId = resolveDesiredStepId({
+    dev,
+    current,
+    plannedStepId,
+    plannedTransition,
+  });
+  return {
+    on: resolveDesiredOn({ dev, current, plannedTransition }),
+    stepId: desiredStepId,
+    plannedStepId,
+  };
+};
+
+const resolveDesiredStepId = (params: {
+  dev: PlanDevice;
+  current: ExecutableSteppedLoadDevice['current'];
+  plannedStepId?: string;
+  plannedTransition: ReturnType<typeof resolveSteppedLoadTransition>;
+}): string | undefined => {
+  const {
+    dev,
+    current,
+    plannedStepId,
+    plannedTransition,
+  } = params;
+  const desiredStepId = plannedTransition?.commandStepId ?? plannedStepId;
+  if (dev.plannedState !== 'shed' || !desiredStepId || !dev.steppedLoadProfile) return desiredStepId;
+
+  const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, desiredStepId);
+  const currentPowerW = current.stepForShed?.planningPowerW ?? 0;
+  if (!desiredStep || desiredStep.planningPowerW <= currentPowerW) return desiredStepId;
+  return current.stepId;
+};
+
+const desiredMatchesTransition = (
+  desired: ExecutableSteppedLoadDevice['desired'],
+  transition: ReturnType<typeof resolveSteppedLoadTransition>,
+): boolean => {
+  if (!transition) return false;
+  if (desired.stepId !== transition.commandStepId) return false;
+  return transition.binaryTarget === null || desired.on === transition.binaryTarget;
+};
+
+const resolveDesiredOn = (params: {
+  dev: PlanDevice;
+  current: ExecutableSteppedLoadDevice['current'];
+  plannedTransition: ReturnType<typeof resolveSteppedLoadTransition>;
+}): boolean | null => {
+  const { dev, current, plannedTransition } = params;
+  if (plannedTransition?.binaryTarget !== null && plannedTransition?.binaryTarget !== undefined) {
+    return plannedTransition.binaryTarget;
+  }
+  if (dev.plannedState === 'shed' && current.stepIsOffStep) return false;
+  return current.on;
+};
+
+const shouldHoldCurrentState = (dev: PlanDevice): boolean => (
+  isRestoreAdmissionHoldReason(dev.reason)
+  || (dev.plannedState === 'keep' && !allowsSteppedLoadKeepInvariantRestore(dev.reason))
+);
+
 const resolveCurrentStepForShed = (
   dev: PlanDevice,
-): ExecutableSteppedLoadDevice['currentStepForShed'] => {
+): ExecutableSteppedLoadDevice['current']['stepForShed'] => {
   if (!dev.steppedLoadProfile) return undefined;
   if (!dev.selectedStepId) return resolveMeasuredCurrentStepForShed(dev);
   const currentStep = getSteppedLoadStep(dev.steppedLoadProfile, dev.selectedStepId);
@@ -91,7 +181,7 @@ const resolveCurrentStepForShed = (
 
 const resolveMeasuredCurrentStepForShed = (
   dev: PlanDevice,
-): ExecutableSteppedLoadDevice['currentStepForShed'] => {
+): ExecutableSteppedLoadDevice['current']['stepForShed'] => {
   if (dev.plannedState !== 'shed' || dev.shedAction !== 'set_step') return undefined;
   if (typeof dev.measuredPowerKw !== 'number' || !Number.isFinite(dev.measuredPowerKw) || dev.measuredPowerKw <= 0) {
     return undefined;

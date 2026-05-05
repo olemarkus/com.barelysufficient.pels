@@ -2634,7 +2634,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
 
-  it('logs the plan reason when stepped restore is not admitted', async () => {
+  it('does not pass planner restore holds into stepped executor logging', async () => {
     const snapshot = buildSnapshot({ currentOn: true });
     const { executor, deviceManager, debugStructured } = buildExecutor(undefined, snapshot);
 
@@ -2647,13 +2647,34 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     }));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'restore_not_admitted',
-      blockedByPlanReasonCode: PLAN_REASON_CODES.meterSettling,
-      deviceId: 'dev-1',
-      actuationMode: 'plan',
     }));
+    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+      blockedByPlanReasonCode: expect.anything(),
+    }));
+  });
+
+  it('does not apply target updates while a stepped restore is held by planner admission', async () => {
+    const snapshot = buildSnapshot({
+      currentOn: true,
+      targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+    });
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+      currentTarget: 18,
+      plannedTarget: 23,
+      reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
+    }));
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
   });
 
   it('detects step drift and re-issues shed step when external actor raises step', async () => {

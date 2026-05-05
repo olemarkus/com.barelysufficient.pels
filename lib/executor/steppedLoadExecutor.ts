@@ -28,24 +28,6 @@ import type { DeviceManager } from '../core/deviceManager';
 import { PELS_TARGET_STEP_CAPABILITY_ID } from '../core/steppedLoadSyntheticCapabilities';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
-import {
-  allowsSteppedLoadKeepInvariantRestore,
-  isRestoreAdmissionHoldReason,
-  isShedWindowHoldReason,
-} from '../planContract/planDecisionSemantics';
-import type { PlanReasonCode } from '../../packages/shared-domain/src/planReasonSemantics';
-
-const isShedSteppedNonExecutableHoldForSnapshot = (
-  action: ExecutableSteppedLoadDevice,
-  snapshot?: TargetDeviceSnapshot,
-): boolean => (
-  action.plannedState === 'shed'
-  && (
-    isRestoreAdmissionHoldReason(action.reason)
-    || (isShedWindowHoldReason(action.reason)
-      && (snapshot?.currentOn ?? action.effectiveCurrentOn) === false)
-  )
-);
 
 export type PlanExecutorSteppedContext = {
   state: PlanEngineState;
@@ -86,6 +68,11 @@ export type PlanExecutorSteppedContext = {
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
 };
 
+const resolveCurrentOn = (
+  action: ExecutableSteppedLoadDevice,
+  snapshot?: TargetDeviceSnapshot,
+): boolean | null => snapshot?.currentOn ?? action.current.on;
+
 /* eslint-disable complexity --
  * Command dispatch still combines step validation, retry gating, and
  * restore/shed transitions in one path.
@@ -97,16 +84,17 @@ export const applySteppedLoadCommand = async (
   snapshot?: TargetDeviceSnapshot,
   options: { recordPlanActuation?: boolean } = {},
 ): Promise<boolean> => {
-  if (isShedSteppedNonExecutableHoldForSnapshot(action, snapshot)) return false;
   const profile = action.steppedLoadProfile;
-  const commandStepId = action.commandStepId;
+  const commandStepId = action.desired.stepId;
+  const currentOn = resolveCurrentOn(action, snapshot);
+  if (currentOn === false && action.desired.on === false) return false;
   const needsStepPreparation = action.transition?.transitionPhase === 'step_preparation'
     && action.transition.commandStepId === commandStepId;
   const restoreStepNeedsMaterialization = action.transition?.effectiveTransition === 'restore_from_off_at_low'
     && !isRequestedStepMaterialized(action.commandStepActuation);
   if (!commandStepId) return false;
   if (
-    commandStepId === action.currentStepId
+    commandStepId === action.current.stepId
     && !needsStepPreparation
     && !restoreStepNeedsMaterialization
   ) return false;
@@ -118,22 +106,8 @@ export const applySteppedLoadCommand = async (
       reasonCode: 'missing_step',
       logMessage: `Capacity: skip stepped-load command for ${action.name}, `
         + `desired step ${commandStepId} is not in profile`,
-      fields: { desiredStepId: commandStepId, plannedDesiredStepId: action.requestedStepId ?? null },
+      fields: { desiredStepId: commandStepId, plannedDesiredStepId: action.desired.plannedStepId ?? null },
     });
-  }
-  if (action.plannedState === 'shed') {
-    const selectedPowerW = action.currentStepForShed?.planningPowerW ?? 0;
-    if (desiredStep.planningPowerW > selectedPowerW) {
-      return logSteppedLoadCommandSkip(ctx, {
-        action,
-        mode,
-        reasonCode: 'step_up_blocked',
-        logMessage: `Capacity: skip step command for ${action.name}, shed device has upward`
-          + ` desiredStepId=${commandStepId} vs currentStepId=${action.currentStepForShed?.stepId ?? 'unknown'}`
-          + ` (power ${selectedPowerW}W)`,
-        fields: { desiredStepId: commandStepId, currentStepId: action.currentStepForShed?.stepId ?? null },
-      });
-    }
   }
   const now = Date.now();
   const previousStepId = action.previousStepId;
@@ -145,7 +119,7 @@ export const applySteppedLoadCommand = async (
       reasonCode: 'waiting_for_confirmation',
       logMessage: `Capacity: skip stepped-load command for ${action.name}, `
         + `awaiting confirmation of ${commandStepId}`,
-      fields: { desiredStepId: commandStepId, plannedDesiredStepId: action.requestedStepId ?? null },
+      fields: { desiredStepId: commandStepId, plannedDesiredStepId: action.desired.plannedStepId ?? null },
     });
   }
   if (sameDesiredStepPendingState?.status === 'retry_backoff') {
@@ -180,9 +154,9 @@ const logSteppedLoadStepViolation = (
   name: string,
   desiredStepId?: string,
 ): void => {
-  const stepDetail = action.currentStepIsOffStep
-    ? `${action.currentStepForShed?.stepId ?? 'unknown'} (off-step)`
-    : `${action.currentStepForShed?.stepId ?? 'unknown'} -> ${desiredStepId ?? 'unknown'}`;
+  const stepDetail = action.current.stepIsOffStep
+    ? `${action.current.stepForShed?.stepId ?? 'unknown'} (off-step)`
+    : `${action.current.stepForShed?.stepId ?? 'unknown'} -> ${desiredStepId ?? 'unknown'}`;
   ctx.logDebug(`Capacity: ${name} violates keep invariant: step=${stepDetail}`);
 };
 
@@ -315,28 +289,14 @@ export const applySteppedLoadRestore = async (
   options: { preRestoreStepIssued?: boolean } = {},
 ): Promise<boolean> => {
   const name = action.name;
-  if (action.plannedState !== 'keep') {
-    return logSteppedLoadRestoreSkip(ctx, {
-      action,
-      mode,
-      reasonCode: 'planned_state',
-    });
-  }
-  if (!allowsSteppedLoadKeepInvariantRestore(action.reason)) {
-    return logSteppedLoadRestoreSkip(ctx, {
-      action,
-      mode,
-      reasonCode: 'restore_not_admitted',
-      blockedByPlanReasonCode: action.reason.code,
-    });
-  }
+  if (action.desired.on !== true) return false;
   const {
-    effectiveCurrentOn,
-    requestedStepId,
     stepActuation,
     matchingRestoreAttempt,
     stepNeedsAdjustment,
   } = action;
+  const effectiveCurrentOn = action.current.on;
+  const requestedStepId = action.desired.stepId;
   const shouldDeferRestoreForAttempt = stepNeedsAdjustment && matchingRestoreAttempt
     && (effectiveCurrentOn === true || matchingRestoreAttempt.status === 'retry_backoff');
   if (shouldDeferRestoreForAttempt) {
@@ -396,8 +356,8 @@ export const applySteppedLoadShedOff = async (
   snapshot: TargetDeviceSnapshot | undefined,
   mode: PlanActuationMode,
 ): Promise<boolean> => {
-  if (action.plannedState !== 'shed' || isShedSteppedNonExecutableHoldForSnapshot(action, snapshot)) return false;
-  const atOffStep = action.currentStepIsOffStep;
+  if (action.desired.on !== false) return false;
+  const atOffStep = action.current.stepIsOffStep;
   if (action.shedAction !== 'turn_off' && !atOffStep) return false;
   if (!snapshot) return false;
   const name = action.name;
@@ -450,7 +410,6 @@ const logSteppedLoadCommandSkip = (
     mode: PlanActuationMode;
     reasonCode:
       | 'missing_step'
-      | 'step_up_blocked'
       | 'waiting_for_confirmation'
       | 'retry_backoff'
       | 'missing_native_command'
@@ -704,9 +663,7 @@ const logSteppedLoadRestoreSkip = (
     action: ExecutableSteppedLoadDevice;
     mode: PlanActuationMode;
     reasonCode:
-      | 'planned_state'
       | 'no_keep_violation'
-      | 'restore_not_admitted'
       | 'waiting_for_confirmation'
       | 'retry_backoff'
       | 'missing_snapshot'
@@ -716,7 +673,6 @@ const logSteppedLoadRestoreSkip = (
     skipDetailCode?:
       | 'pre_restore_step_pending_confirmation'
       | 'pre_restore_step_command_not_issued';
-    blockedByPlanReasonCode?: PlanReasonCode;
     desiredStepId?: string;
   },
 ): false => {
@@ -725,14 +681,12 @@ const logSteppedLoadRestoreSkip = (
     mode,
     reasonCode,
     skipDetailCode,
-    blockedByPlanReasonCode,
     desiredStepId,
   } = params;
   ctx.debugStructured?.({
     event: 'restore_command_skipped',
     reasonCode,
     ...(skipDetailCode ? { skipDetailCode } : {}),
-    ...(blockedByPlanReasonCode ? { blockedByPlanReasonCode } : {}),
     ...(desiredStepId ? { desiredStepId } : {}),
     deviceId: action.id,
     deviceName: action.name,
