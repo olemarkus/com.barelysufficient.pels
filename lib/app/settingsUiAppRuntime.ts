@@ -30,6 +30,20 @@ type PelsStatus = {
   powerFreshnessState?: 'fresh' | 'stale_hold' | 'stale_fail_closed';
 };
 
+const resolveRealtimePowerStatus = (
+  status: PelsStatus | null,
+  powerTracker: PowerTrackerState,
+): PelsStatus | null => {
+  const lastTimestamp = powerTracker.lastTimestamp;
+  if (typeof lastTimestamp !== 'number' || !Number.isFinite(lastTimestamp)) {
+    return status && typeof status === 'object' ? status : null;
+  }
+  return {
+    ...(status && typeof status === 'object' ? status : {}),
+    lastPowerUpdate: lastTimestamp,
+  };
+};
+
 const getRuntimeApp = (homey: Homey.App['homey']): SettingsUiRuntimeApp | null => {
   if (!homey || typeof homey !== 'object') return null;
   return homey.app as SettingsUiRuntimeApp;
@@ -115,11 +129,10 @@ export const emitSettingsUiPowerUpdatedForApp = (
   const realtime = api?.realtime;
   if (typeof realtime !== 'function') return;
   const status = homey.settings.get('pels_status') as PelsStatus | null;
-  const heartbeat = homey.settings.get('app_heartbeat') as unknown;
   realtime.call(api, 'power_updated', {
-    tracker: powerTracker,
-    status: status && typeof status === 'object' ? status : null,
-    heartbeat: typeof heartbeat === 'number' ? heartbeat : null,
+    tracker: null,
+    status: resolveRealtimePowerStatus(status, powerTracker),
+    heartbeat: null,
   })
     .catch((error: unknown) => onError('Failed to emit power_updated event', error as Error));
 };

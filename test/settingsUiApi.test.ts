@@ -38,7 +38,6 @@ describe('settingsUiApi', () => {
       ['combined_prices', { prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] }],
       ['power_tracker_state', { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } }],
       ['pels_status', { lastPowerUpdate: 123, priceLevel: 'cheap' }],
-      ['app_heartbeat', 456],
       ['homey_prices_currency', 'NOK'],
       ['homey_prices_today', { dateKey: '2026-03-03', pricesByHour: { '0': 1 }, updatedAt: '2026-03-03T00:00:00.000Z' }],
       ['homey_prices_tomorrow', { dateKey: '2026-03-04', pricesByHour: { '0': 2 }, updatedAt: '2026-03-03T12:00:00.000Z' }],
@@ -214,7 +213,7 @@ describe('settingsUiApi', () => {
     expect(result.power).toEqual({
       tracker: { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
       status: { lastPowerUpdate: 123, priceLevel: 'cheap' },
-      heartbeat: 456,
+      heartbeat: null,
     });
     expect(result.prices.combinedPrices).toEqual({ prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] });
     expect(result.prices.homeyCurrency).toBe('NOK');
@@ -408,7 +407,7 @@ describe('settingsUiApi', () => {
     expect(getSettingsUiPowerPayload({ homey: homey as never })).toEqual({
       tracker: { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
       status: { lastPowerUpdate: 123, priceLevel: 'cheap' },
-      heartbeat: 456,
+      heartbeat: null,
     });
     expect(getSettingsUiPricesPayload({ homey: homey as never })).toEqual({
       combinedPrices: { prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] },

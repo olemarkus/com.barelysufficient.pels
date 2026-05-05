@@ -30,7 +30,6 @@ import type { SettingsUiPowerPayload } from '../../../contracts/src/settingsUiAp
 import { showToast } from './toast.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import { resolveOverviewRedesignPreference } from './uiVariant.ts';
-const HEARTBEAT_THRESHOLD_MS = 90 * 1000;
 
 type PowerSource = 'flow' | 'homey_energy';
 
@@ -56,16 +55,9 @@ const updateDryRunBanner = (isDryRun: boolean) => {
   }
 };
 
-const updateStaleDataBanner = (lastPowerUpdate: number | null, lastHeartbeat: number | null) => {
+const updateStaleDataBanner = (lastPowerUpdate: number | null) => {
   if (!staleDataBanner) return;
   const now = Date.now();
-  if (typeof lastHeartbeat === 'number' && (now - lastHeartbeat) > HEARTBEAT_THRESHOLD_MS) {
-    staleDataBanner.hidden = false;
-    if (staleDataBannerText) {
-      staleDataBannerText.textContent = 'App heartbeat missing. PELS may not be running.';
-    }
-    return;
-  }
   if (lastPowerUpdate === null) {
     staleDataBanner.hidden = false;
     if (staleDataBannerText) {
@@ -91,7 +83,11 @@ const resolveLastPowerUpdate = (power: SettingsUiPowerPayload): number | null =>
 
 export const loadStaleDataStatus = async () => {
   const power = await getPowerReadModel();
-  updateStaleDataBanner(resolveLastPowerUpdate(power), power.heartbeat);
+  updateStaleDataBanner(resolveLastPowerUpdate(power));
+};
+
+export const updateStaleDataStatusFromPowerPayload = (power: SettingsUiPowerPayload | null) => {
+  updateStaleDataBanner(power ? resolveLastPowerUpdate(power) : null);
 };
 
 export const loadCapacitySettings = async () => {

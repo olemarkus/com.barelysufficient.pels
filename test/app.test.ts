@@ -916,9 +916,9 @@ describe('MyApp initialization', () => {
     const powerEvents = mockHomeyInstance.api._realtimeEvents.filter((event) => event.event === 'power_updated');
     expect(powerEvents).toHaveLength(1);
     expect(powerEvents[0].data).toMatchObject({
-      tracker: expect.objectContaining({
-        lastPowerW: 2000,
-        lastTimestamp: now,
+      tracker: null,
+      status: expect.objectContaining({
+        lastPowerUpdate: now,
       }),
     });
   });
@@ -1411,7 +1411,10 @@ describe('MyApp initialization', () => {
     const powerEvents = mockHomeyInstance.api._realtimeEvents.filter((event) => event.event === 'power_updated');
     expect(powerEvents).toHaveLength(1);
     expect(powerEvents[0].data).toMatchObject({
-      tracker: expect.objectContaining(nextState),
+      tracker: null,
+      status: expect.objectContaining({
+        lastPowerUpdate: now,
+      }),
     });
     expect(mockHomeyInstance.settings.get('power_tracker_state')).toMatchObject(nextState);
   });
