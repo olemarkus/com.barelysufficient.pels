@@ -150,13 +150,12 @@ export const PlanSteppedCard = ({
           {powerText && <span class="plan-card__state-power">{powerText}</span>}
         </div>
 
-        <span class="plan-card__secondary-line" style={{ visibility: secondaryText === null ? 'hidden' : '' }}>
-          {secondaryText ?? ''}
-        </span>
-
-        <p class="plan-card__status-line" style={{ visibility: statusText === null ? 'hidden' : '' }}>
-          {statusText ?? ''}
-        </p>
+        {secondaryText !== null && (
+          <span class="plan-card__secondary-line">{secondaryText}</span>
+        )}
+        {statusText !== null && (
+          <p class="plan-card__status-line">{statusText}</p>
+        )}
 
         {profile && <StepRail dev={displayDev} profile={profile} />}
       </div>

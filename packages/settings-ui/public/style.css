@@ -1498,7 +1498,6 @@ input:focus-visible {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
   line-height: 1.4;
-  min-height: 1.4em;
   position: relative;
   z-index: 1;
 }
@@ -1508,7 +1507,6 @@ input:focus-visible {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
   line-height: 1.4;
-  min-height: 1.4em;
   position: relative;
   z-index: 1;
 }
@@ -1554,7 +1552,6 @@ input:focus-visible {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
   line-height: 1.4;
-  min-height: 1.4em;
 }
 
 .plan-card__status-line {
@@ -1574,6 +1571,7 @@ input:focus-visible {
 .plan-card__step-labels {
   position: relative;
   height: 1em;
+  margin-inline: 8px;
 }
 
 .plan-card__step-label {
@@ -1598,7 +1596,7 @@ input:focus-visible {
   height: 4px;
   background: color-mix(in srgb, var(--text) 12%, transparent);
   border-radius: 2px;
-  margin: 7px 0;
+  margin: 7px 8px;
 }
 
 .plan-card__step-filled {

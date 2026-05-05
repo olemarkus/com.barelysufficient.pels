@@ -82,16 +82,20 @@ const isSettlingReason = (code: string): boolean => (
   || code === PLAN_REASON_CODES.startupStabilization
 );
 
-const isLimitedReason = (code: string): boolean => (
+const isWaitingReason = (code: string): boolean => (
   code === PLAN_REASON_CODES.insufficientHeadroom
   || code === PLAN_REASON_CODES.shortfall
+  || code === PLAN_REASON_CODES.waitingForOtherDevices
+  || code === PLAN_REASON_CODES.restoreThrottled
+  || code === PLAN_REASON_CODES.swapPending
+  || code === PLAN_REASON_CODES.swappedOut
+);
+
+const isLimitedReason = (code: string): boolean => (
+  isWaitingReason(code)
   || code === PLAN_REASON_CODES.capacity
   || code === PLAN_REASON_CODES.hourlyBudget
   || code === PLAN_REASON_CODES.dailyBudget
-  || code === PLAN_REASON_CODES.swappedOut
-  || code === PLAN_REASON_CODES.swapPending
-  || code === PLAN_REASON_CODES.waitingForOtherDevices
-  || code === PLAN_REASON_CODES.restoreThrottled
 );
 
 type SteppedDevice = DeviceOverviewSnapshot & { binaryCommandPending?: boolean; pendingTargetCommand?: unknown };
@@ -190,7 +194,10 @@ export const resolveSteppedStatusLine = (
   if (isSettlingReason(device.reason.code)) return resolveSettlingStatusLine(device.reason, nowMs);
   const blocked = resolveBlockedStatusLine(device, profile);
   if (blocked !== null) return blocked;
-  if (!isOffLikeState(device.currentState)) {
+  if (isOffLikeState(device.currentState)) {
+    if (isWaitingReason(device.reason.code)) return 'Waiting for headroom';
+    if (isLimitedReason(device.reason.code)) return 'Off to stay within budget';
+  } else {
     const stepId = resolveCurrentStepId(device);
     if (stepId && !isOffLikeId(stepId)) return 'Maintaining level';
   }
