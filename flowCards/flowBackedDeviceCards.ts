@@ -411,23 +411,6 @@ function isCapabilityProvidedNatively(params: {
   return capabilities.includes(capabilityId);
 }
 
-export function parseFlowPowerInput(rawPower: unknown): number | null {
-  if (typeof rawPower === 'number' && Number.isFinite(rawPower)) {
-    return Math.round(rawPower);
-  }
-
-  const normalized = String(rawPower ?? '').trim();
-  if (!normalized) return null;
-
-  const match = normalized.match(/^(-?\d+(?:[.,]\d+)?)\s*[Ww]?$/);
-  if (!match) return null;
-
-  const parsed = Number.parseFloat(match[1].replace(',', '.'));
-  if (!Number.isFinite(parsed)) return null;
-
-  return Math.round(parsed);
-}
-
 function requestPlanRebuildFromFlow(deps: FlowCardDeps, source: string): void {
   incPerfCounters([
     'plan_rebuild_requested_total',
