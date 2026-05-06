@@ -15,7 +15,6 @@ import {
   type PlanStateKind,
 } from '../../../shared-domain/src/planStateLabels.ts';
 import { resolveDisplayPlanDeviceSnapshot } from './planLiveData.ts';
-import { getStoredDeviceControlProfile } from './deviceControlProfiles.ts';
 import { cardActivationProps } from './cardActivation.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot } from './planTypes.ts';
 import type { SteppedLoadProfile } from '../../../contracts/src/types.ts';
@@ -39,7 +38,7 @@ const resolveStateKind = (dev: PlanDeviceSnapshot): PlanStateKind => (
 const StepRail = ({ dev, profile }: { dev: PlanDeviceSnapshot; profile: SteppedLoadProfile }) => {
   const transit = isSteppedTransit(dev);
   const activeStepId = resolveSteppedActiveStepId(dev, profile);
-  const targetStepId = transit ? (dev.targetStepId ?? dev.desiredStepId ?? null) : null;
+  const targetStepId = transit ? (dev.steppedLoad?.targetStepId ?? null) : null;
 
   const hasExplicitOff = profile.steps.some((s) => s.id.toLowerCase() === 'off');
   const hasBinaryOff = dev.currentState !== 'not_applicable';
@@ -103,7 +102,7 @@ export const PlanSteppedCard = ({
 }) => {
   const displayDev = resolveDisplayPlanDeviceSnapshot(plan, dev, renderedAtMs, nowMs) as PlanDeviceSnapshot;
   const stateKind = resolveStateKind(displayDev);
-  const profile = getStoredDeviceControlProfile(dev.id);
+  const profile = displayDev.steppedLoad?.profile;
 
   const chip = resolveSteppedChip(displayDev);
   const stateLabel = resolveSteppedStateLabel(displayDev);

@@ -36,6 +36,7 @@ import type {
   SettingsUiPlanSnapshot,
 } from '../../packages/contracts/src/settingsUiApi';
 import { normalizePlanMeta } from './planStatusHelpers';
+import { buildSettingsOverviewReadModel } from './settingsOverviewReadModel';
 import { PlanStatusWriter } from './planStatusWriter';
 import {
   buildLiveStatePlan,
@@ -61,61 +62,13 @@ import type { PlanActuationResult } from './planExecutor';
 
 const SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS = 1500;
 
-const serializePlanDeviceForUi = (
-  device: DevicePlan['devices'][number],
-  deps: PlanServiceDeps,
-): SettingsUiPlanDeviceSnapshot => ({
-  id: device.id,
-  name: device.name,
-  deviceClass: device.deviceClass,
-  priority: device.priority,
-  zone: device.zone,
-  controllable: device.controllable,
-  available: device.available,
-  currentState: device.currentState,
-  plannedState: device.plannedState,
-  controlModel: device.controlModel,
-  controlCapabilityId: device.controlCapabilityId,
-  evChargingState: device.evChargingState,
-  currentTarget: device.currentTarget,
-  plannedTarget: device.plannedTarget,
-  currentTemperature: device.currentTemperature,
-  measuredPowerKw: device.measuredPowerKw,
-  expectedPowerKw: device.expectedPowerKw,
-  planningPowerKw: device.planningPowerKw,
-  budgetExempt: device.budgetExempt,
-  temperatureBoost: device.temperatureBoost,
-  temperatureBoostActive: device.temperatureBoostActive,
-  evBoost: device.evBoost,
-  evBoostActive: device.evBoostActive,
-  observationStale: device.observationStale,
-  shedAction: device.shedAction,
-  shedTemperature: device.shedTemperature,
-  selectedStepId: device.selectedStepId,
-  desiredStepId: device.desiredStepId,
-  reportedStepId: device.reportedStepId,
-  targetStepId: device.targetStepId,
-  actualStepId: device.actualStepId,
-  assumedStepId: device.assumedStepId,
-  actualStepSource: device.actualStepSource,
-  binaryCommandPending: device.binaryCommandPending,
-  pendingTargetCommand: device.pendingTargetCommand,
-  stateKind: resolvePlanStateKind(device),
-  stateTone: resolvePlanStateTone(device),
-  reason: device.reason,
-  starvation: deps.deviceDiagnostics?.getOverviewStarvation?.(device.id) ?? undefined,
-});
-
 const serializePlanForUi = (
   plan: DevicePlan | null,
   deps: PlanServiceDeps,
 ): SettingsUiPlanSnapshot | null => {
-  if (!plan) return null;
-  return {
-    generatedAtMs: plan.generatedAtMs,
-    meta: normalizePlanMeta(plan.meta),
-    devices: plan.devices.map((device) => serializePlanDeviceForUi(device, deps)),
-  };
+  return buildSettingsOverviewReadModel(plan, {
+    getOverviewStarvation: (deviceId) => deps.deviceDiagnostics?.getOverviewStarvation?.(deviceId),
+  });
 };
 
 function resolveOverviewTargetStepId(device: DevicePlan['devices'][number]): string | null {

@@ -17,12 +17,22 @@ const isOffLikeState = (state: string | undefined): boolean => {
   return n === '' || n === 'off' || n === 'unknown' || n === 'disappeared';
 };
 
-const resolveCurrentStepId = (device: DeviceOverviewSnapshot): string | null => (
-  device.reportedStepId ?? device.actualStepId ?? device.assumedStepId ?? device.selectedStepId ?? null
+type SteppedLoadCardState = {
+  reportedStepId: string | null;
+  targetStepId: string | null;
+  commandPending: boolean;
+};
+
+type SteppedCardDevice = DeviceOverviewSnapshot & {
+  steppedLoad?: SteppedLoadCardState;
+};
+
+const resolveCurrentStepId = (device: SteppedCardDevice): string | null => (
+  device.steppedLoad?.reportedStepId ?? null
 );
 
-const resolveTargetStepId = (device: DeviceOverviewSnapshot): string | null => (
-  device.targetStepId ?? device.desiredStepId ?? null
+const resolveTargetStepId = (device: SteppedCardDevice): string | null => (
+  device.steppedLoad?.targetStepId ?? null
 );
 
 const normalizeStepId = (id: string | null): string | null => (
@@ -48,15 +58,16 @@ const isPoweredStep = (profile: SteppedLoadProfile, stepId: string | null): bool
   return step !== undefined && step.planningPowerW > 0;
 };
 
-export const resolveSteppedStateLabel = (device: DeviceOverviewSnapshot): string => {
+export const resolveSteppedStateLabel = (device: SteppedCardDevice): string => {
   if (isOffLikeState(device.currentState)) return 'Off now';
   const stepId = resolveCurrentStepId(device);
-  if (!stepId || isOffLikeId(stepId)) return 'Off now';
+  if (!stepId) return 'Level unknown';
+  if (isOffLikeId(stepId)) return 'Off now';
   return `Level: ${capitalize(stepId)}`;
 };
 
 export const resolveSteppedActiveStepId = (
-  device: DeviceOverviewSnapshot,
+  device: SteppedCardDevice,
   profile: SteppedLoadProfile,
 ): string | null => {
   if (isOffLikeState(device.currentState)) {
@@ -67,10 +78,9 @@ export const resolveSteppedActiveStepId = (
 };
 
 export const isSteppedTransit = (device: {
-  binaryCommandPending?: boolean;
-  pendingTargetCommand?: unknown;
+  steppedLoad?: Pick<SteppedLoadCardState, 'commandPending'>;
 }): boolean => (
-  device.binaryCommandPending === true || device.pendingTargetCommand != null
+  device.steppedLoad?.commandPending === true
 );
 
 // ─── Chip resolution ──────────────────────────────────────────────────────────
@@ -105,7 +115,7 @@ const isLimitedReason = (code: string): boolean => (
   || code === PLAN_REASON_CODES.dailyBudget
 );
 
-type SteppedDevice = DeviceOverviewSnapshot & { binaryCommandPending?: boolean; pendingTargetCommand?: unknown };
+type SteppedDevice = SteppedCardDevice;
 
 export const resolveSteppedChip = (device: SteppedDevice): SteppedChip | null => {
   if (isSteppedTransit(device)) return { label: 'Applying', tone: 'ok' };
@@ -142,13 +152,13 @@ const resolveSettlingStatusLine = (reason: DeviceReason, nowMs: number): string 
   if (reason.code === PLAN_REASON_CODES.headroomCooldown) {
     if (reason.kind === 'recent_pels_restore') {
       const ago = resolveElapsedAgoText(reason.countdownStartedAtMs, nowMs);
-      return `Restored ${ago} — confirming no overshoot`;
+      return `Resumed ${ago} — confirming no overshoot`;
     }
     return `Recently reduced · can increase in ${formatSec(reason.remainingSec)}`;
   }
   if (reason.code === PLAN_REASON_CODES.cooldownRestore) {
     const ago = resolveElapsedAgoText(reason.countdownStartedAtMs, nowMs);
-    return `Restored ${ago} — confirming no overshoot`;
+    return `Resumed ${ago} — confirming no overshoot`;
   }
   if (reason.code === PLAN_REASON_CODES.cooldownShedding) {
     return `Recently reduced · can increase in ${formatSec(reason.remainingSec)}`;

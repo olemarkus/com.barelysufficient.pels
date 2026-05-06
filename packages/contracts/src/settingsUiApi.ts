@@ -1,7 +1,7 @@
 import type { DailyBudgetUiPayload } from './dailyBudgetTypes.js';
 import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsTypes.js';
 import type { PowerTrackerState } from './powerTrackerTypes.js';
-import type { SettingsUiLogEntry, TargetDeviceSnapshot } from './types.js';
+import type { SettingsUiLogEntry, SteppedLoadProfile, TargetDeviceSnapshot } from './types.js';
 import type { DeviceOverviewSnapshot } from '../../shared-domain/src/deviceOverview.js';
 
 export const SETTINGS_UI_BOOTSTRAP_PATH = '/ui_bootstrap';
@@ -96,6 +96,13 @@ export type SettingsUiPlanDeviceStarvation = {
   startedAtMs: number | null;
 };
 
+export type SettingsUiPlanSteppedLoadState = {
+  profile: SteppedLoadProfile;
+  reportedStepId: string | null;
+  targetStepId: string | null;
+  commandPending: boolean;
+};
+
 export type SettingsUiPlanMetaSnapshot = {
   [key: string]: unknown;
   totalKw?: number | null;
@@ -146,6 +153,7 @@ export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
   stateTone?: string;
   starvation?: SettingsUiPlanDeviceStarvation;
   pendingTargetCommand?: SettingsUiPlanPendingTargetCommand;
+  steppedLoad?: SettingsUiPlanSteppedLoadState;
 };
 
 export type SettingsUiPlanDevice = SettingsUiPlanDeviceSnapshot;
