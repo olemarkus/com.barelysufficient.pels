@@ -7,6 +7,7 @@ import {
 } from '../../packages/shared-domain/src/planStateLabels';
 import type {
   SettingsUiPlanDeviceSnapshot,
+  SettingsUiPlanMetaSnapshot,
   SettingsUiPlanDeviceStarvation,
   SettingsUiPlanSnapshot,
   SettingsUiPlanSteppedLoadState,
@@ -17,6 +18,31 @@ import type { DevicePlan } from './planTypes';
 export type SettingsOverviewReadModelDeps = {
   getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceStarvation | null | undefined;
 };
+
+function resolveFiniteKWh(value: number | undefined): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function resolveHourBudgetKWh(params: {
+  capacityHourBudgetKWh: number | undefined;
+  dailyBudgetHourKWh: number | undefined;
+}): number | undefined {
+  const budgets = [params.capacityHourBudgetKWh, params.dailyBudgetHourKWh]
+    .filter((value): value is number => typeof value === 'number');
+  if (!budgets.length) return undefined;
+  return Math.min(...budgets);
+}
+
+function buildSettingsOverviewMetaReadModel(meta: DevicePlan['meta']): SettingsUiPlanMetaSnapshot {
+  const normalizedMeta = normalizePlanMeta(meta);
+  const capacityHourBudgetKWh = resolveFiniteKWh(normalizedMeta.budgetKWh);
+  const dailyBudgetHourKWh = resolveFiniteKWh(normalizedMeta.dailyBudgetHourKWh);
+  return {
+    ...normalizedMeta,
+    capacityHourBudgetKWh,
+    hourBudgetKWh: resolveHourBudgetKWh({ capacityHourBudgetKWh, dailyBudgetHourKWh }),
+  };
+}
 
 function resolveOverviewTargetStepId(device: DevicePlan['devices'][number]): string | null {
   return device.targetStepId ?? device.desiredStepId ?? null;
@@ -93,7 +119,7 @@ export function buildSettingsOverviewReadModel(
   if (!plan) return null;
   return {
     generatedAtMs: plan.generatedAtMs,
-    meta: normalizePlanMeta(plan.meta),
+    meta: buildSettingsOverviewMetaReadModel(plan.meta),
     devices: plan.devices.map((device) => buildSettingsOverviewDeviceReadModel(device, deps)),
   };
 }

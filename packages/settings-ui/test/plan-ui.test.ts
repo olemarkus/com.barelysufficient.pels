@@ -1605,7 +1605,10 @@ describe('Redesign plan UI', () => {
           powerFreshnessState: 'fresh',
           usedKWh: 4.2,
           budgetKWh: 12,
-          softLimitSource: 'capacity',
+          capacityHourBudgetKWh: 12,
+          dailyBudgetHourKWh: 11,
+          hourBudgetKWh: 11,
+          softLimitSource: 'daily',
           minutesRemaining: 8,
         },
         devices: [
@@ -1626,8 +1629,8 @@ describe('Redesign plan UI', () => {
       expect(supportLines).toHaveLength(1);
       expect((document.querySelector('.plan-hero .plan-hero__subline:not(.plan-hero__subline--muted)') as HTMLElement | null)
         ?.textContent?.trim()).toBe('Safe pace now 11.0 kW');
-      // Energy section shows hourly usage with projection
-      expect(headlines.some((h) => h?.includes('4.20 / 12.0 kWh'))).toBe(true);
+      // Energy section shows the explicit backend-provided hour budget, not legacy budget fields.
+      expect(headlines.some((h) => h?.includes('4.20 / 11.0 kWh'))).toBe(true);
       expect(document.querySelectorAll('.plan-hero .pels-meter-track')).toHaveLength(2);
       // Status chip stays quiet when below safe pace and data is fresh
       expect(document.querySelector('.plan-hero .plan-chip:not(.plan-chip--muted)')).toBeNull();
@@ -1639,6 +1642,52 @@ describe('Redesign plan UI', () => {
       const deviceNames = Array.from(document.querySelectorAll('.plan-card__title'))
         .map((el) => el.textContent?.trim());
       expect(deviceNames).toEqual(['First', 'Second']);
+    });
+
+    it('uses only the explicit backend hour budget for the energy hero', async () => {
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 0.6,
+          softLimitKw: 4.5,
+          headroomKw: 3.9,
+          usedKWh: 0.02,
+          budgetKWh: 9.5,
+          capacityHourBudgetKWh: 9.5,
+          capacityLimitKw: 5,
+          dailyBudgetHourKWh: 12,
+          hourBudgetKWh: 4.5,
+          minutesRemaining: 58,
+        },
+        devices: [],
+      });
+
+      const headlines = Array.from(document.querySelectorAll('.plan-hero .plan-hero__headline'))
+        .map((el) => el.textContent?.trim());
+      expect(headlines.some((h) => h?.includes('0.02 / 4.5 kWh'))).toBe(true);
+      expect(headlines.some((h) => h?.includes('0.02 / 5.0 kWh'))).toBe(false);
+      expect(headlines.some((h) => h?.includes('0.02 / 9.5 kWh'))).toBe(false);
+      expect(headlines.some((h) => h?.includes('0.02 / 12.0 kWh'))).toBe(false);
+    });
+
+    it('does not fall back to legacy hour budget fields in the hero', async () => {
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 0.6,
+          softLimitKw: 4.5,
+          headroomKw: 3.9,
+          usedKWh: 0.02,
+          budgetKWh: 9.5,
+          capacityHourBudgetKWh: 4.5,
+          capacityLimitKw: 5,
+          dailyBudgetHourKWh: 12,
+          minutesRemaining: 58,
+        },
+        devices: [],
+      });
+
+      const headlines = Array.from(document.querySelectorAll('.plan-hero .plan-hero__headline'))
+        .map((el) => el.textContent?.trim());
+      expect(headlines).toEqual(['0.6 kW']);
     });
   
     it('renders three-row cards with state chip, load bar, and real reason text', async () => {
