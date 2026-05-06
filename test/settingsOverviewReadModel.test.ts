@@ -1,8 +1,64 @@
-import { buildSettingsOverviewDeviceReadModel } from '../lib/plan/settingsOverviewReadModel';
+import {
+  buildSettingsOverviewDeviceReadModel,
+  buildSettingsOverviewReadModel,
+} from '../lib/plan/settingsOverviewReadModel';
 import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
 
 describe('settingsOverviewReadModel', () => {
+  it('projects capacity and effective hour budgets for settings overview', () => {
+    const device = buildPlanDevice({
+      reason: { code: PLAN_REASON_CODES.none },
+    });
+
+    const readModel = buildSettingsOverviewReadModel({
+      meta: {
+        totalKw: 0.6,
+        softLimitKw: 4.54,
+        headroomKw: 3.94,
+        usedKWh: 0.02,
+        budgetKWh: 9.5,
+        capacityLimitKw: 5,
+        dailyBudgetHourKWh: 12,
+      },
+      devices: [device],
+    });
+
+    expect(readModel?.meta).toMatchObject({
+      softLimitKw: 4.5,
+      budgetKWh: 9.5,
+      capacityHourBudgetKWh: 9.5,
+      capacityLimitKw: 5,
+      dailyBudgetHourKWh: 12,
+      hourBudgetKWh: 9.5,
+    });
+  });
+
+  it('uses daily budget allocation as the effective hour budget when tighter', () => {
+    const device = buildPlanDevice({
+      reason: { code: PLAN_REASON_CODES.none },
+    });
+
+    const readModel = buildSettingsOverviewReadModel({
+      meta: {
+        totalKw: 0.6,
+        softLimitKw: 4.54,
+        headroomKw: 3.94,
+        usedKWh: 0.02,
+        budgetKWh: 9.5,
+        capacityLimitKw: 5,
+        dailyBudgetHourKWh: 4.25,
+      },
+      devices: [device],
+    });
+
+    expect(readModel?.meta).toMatchObject({
+      capacityHourBudgetKWh: 9.5,
+      dailyBudgetHourKWh: 4.25,
+      hourBudgetKWh: 4.25,
+    });
+  });
+
   it('projects stepped-load overview state from reported evidence and target intent', () => {
     const device = steppedPlanDevice({
       id: 'step-1',

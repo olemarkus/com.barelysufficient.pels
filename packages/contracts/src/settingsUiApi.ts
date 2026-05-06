@@ -123,6 +123,8 @@ export type SettingsUiPlanMetaSnapshot = {
   hourlyBudgetExhausted?: boolean;
   usedKWh?: number;
   budgetKWh?: number;
+  capacityHourBudgetKWh?: number;
+  hourBudgetKWh?: number;
   capacityLimitKw?: number;
   minutesRemaining?: number;
   controlledKw?: number;
