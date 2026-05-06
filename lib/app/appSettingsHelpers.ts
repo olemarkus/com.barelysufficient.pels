@@ -15,7 +15,6 @@ import {
   isDeviceControlProfiles,
   isBooleanMap,
   isCommunicationModelMap,
-  isDeviceTargetPowerConfigs,
   isFiniteNumber,
   isModeDeviceTargets,
   isPrioritySettings,
@@ -194,17 +193,35 @@ function readDeviceControlSettings(params: {
   const deviceControlProfiles = settings.get(DEVICE_CONTROL_PROFILES) as unknown;
   const deviceTargetPowerConfigs = settings.get(DEVICE_TARGET_POWER_CONFIGS) as unknown;
   const deviceCommunicationModels = settings.get(DEVICE_COMMUNICATION_MODELS) as unknown;
+  const targetPowerConfigSetting = parseRecordSetting(deviceTargetPowerConfigs);
   return {
     deviceControlProfiles: isDeviceControlProfiles(deviceControlProfiles)
       ? deviceControlProfiles
       : current.deviceControlProfiles,
-    deviceTargetPowerConfigs: isDeviceTargetPowerConfigs(deviceTargetPowerConfigs)
-      ? normalizeDeviceTargetPowerConfigs(deviceTargetPowerConfigs)
+    deviceTargetPowerConfigs: targetPowerConfigSetting
+      ? normalizeDeviceTargetPowerConfigs(targetPowerConfigSetting)
       : current.deviceTargetPowerConfigs,
     deviceCommunicationModels: isCommunicationModelMap(deviceCommunicationModels)
       ? deviceCommunicationModels
       : current.deviceCommunicationModels,
   };
+}
+
+function parseRecordSetting(value: unknown): Record<string, unknown> | undefined {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function normalizeStringMap(value: Record<string, string>): Record<string, string> {

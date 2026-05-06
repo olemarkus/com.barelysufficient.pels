@@ -192,6 +192,47 @@ describe('registerFlowCards', () => {
     expect(actionListeners.report_stepped_load_actual_step).toEqual(expect.any(Function));
   });
 
+  it('lists EV target-power devices in desired stepped-load autocomplete', async () => {
+    const { deps, triggerAutocompleteListeners } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([
+        nativeSteppedSnapshot({
+          id: 'ev-1',
+          name: 'My Easee Charger',
+          deviceClass: 'evcharger',
+          deviceType: 'onoff',
+          controlCapabilityId: 'evcharger_charging',
+          capabilities: ['measure_power', 'evcharger_charging', 'target_power'],
+          controlAdapter: undefined,
+          suggestedSteppedLoadProfile: undefined,
+          targetPowerConfig: { enabled: true, preset: 'ev_charger_3_phase' },
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: '6a', planningPowerW: 4140 },
+              { id: '16a', planningPowerW: 11040 },
+            ],
+          },
+        }),
+        {
+          id: 'binary-1',
+          name: 'Binary Charger',
+          targets: [],
+          currentOn: false,
+          controlModel: 'binary_power',
+        },
+      ] as TargetDeviceSnapshot[]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(
+      triggerAutocompleteListeners.desired_stepped_load_changed.device('easee'),
+    ).resolves.toEqual([
+      { id: 'ev-1', name: 'My Easee Charger' },
+    ]);
+  });
+
   it('reports stepped-load actual step and requests a snapshot refresh plus plan rebuild', async () => {
     const { deps, actionListeners, structuredInfo } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([

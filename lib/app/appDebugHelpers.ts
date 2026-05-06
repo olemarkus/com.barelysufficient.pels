@@ -64,10 +64,13 @@ type PelsTargetSnapshotSummary = {
   id: string;
   name: string;
   deviceType?: string;
+  controlModel?: TargetDeviceSnapshot['controlModel'];
   controlCapabilityId?: string;
   controlAdapter?: TargetDeviceSnapshot['controlAdapter'];
   capabilities?: string[];
+  steppedLoadProfile?: TargetDeviceSnapshot['steppedLoadProfile'];
   suggestedSteppedLoadProfile?: TargetDeviceSnapshot['suggestedSteppedLoadProfile'];
+  targetPowerConfig?: TargetDeviceSnapshot['targetPowerConfig'];
   currentOn: boolean;
   currentTemperature?: number;
   targets: Array<{ id: string; value?: unknown; unit: string }>;
@@ -421,10 +424,13 @@ const compactPelsTargetSnapshot = (
     id: snapshot.id,
     name: snapshot.name,
     deviceType: snapshot.deviceType,
+    controlModel: snapshot.controlModel,
     controlCapabilityId: snapshot.controlCapabilityId,
     controlAdapter: snapshot.controlAdapter,
     capabilities: snapshot.capabilities,
+    steppedLoadProfile: snapshot.steppedLoadProfile,
     suggestedSteppedLoadProfile: snapshot.suggestedSteppedLoadProfile,
+    targetPowerConfig: snapshot.targetPowerConfig,
     currentOn: snapshot.currentOn,
     currentTemperature: snapshot.currentTemperature,
     targets: snapshot.targets,

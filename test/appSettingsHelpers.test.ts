@@ -299,4 +299,59 @@ describe('buildCapacitySettingsSnapshot', () => {
       },
     });
   });
+
+  it('keeps valid target power configs when stale entries are present', () => {
+    const settings = {
+      get: vi.fn((key: string) => (
+        key === DEVICE_TARGET_POWER_CONFIGS
+          ? {
+            charger: {
+              enabled: true,
+              preset: 'ev_charger_3_phase',
+            },
+            stale: null,
+          }
+          : undefined
+      )),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot({
+        deviceTargetPowerConfigs: {
+          old: { enabled: true, preset: 'ev_charger_1_phase' },
+        },
+      }),
+    });
+
+    expect(next.deviceTargetPowerConfigs).toEqual({
+      charger: {
+        enabled: true,
+        preset: 'ev_charger_3_phase',
+      },
+    });
+  });
+
+  it('keeps current target power configs when persisted payload is malformed JSON', () => {
+    const settings = {
+      get: vi.fn((key: string) => (
+        key === DEVICE_TARGET_POWER_CONFIGS
+          ? '{"charger":{"enabled":true,"preset":"ev_charger_3_phase"'
+          : undefined
+      )),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot({
+        deviceTargetPowerConfigs: {
+          charger: { enabled: true, preset: 'ev_charger_1_phase' },
+        },
+      }),
+    });
+
+    expect(next.deviceTargetPowerConfigs).toEqual({
+      charger: { enabled: true, preset: 'ev_charger_1_phase' },
+    });
+  });
 });

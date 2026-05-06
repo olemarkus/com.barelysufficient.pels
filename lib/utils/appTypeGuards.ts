@@ -1,7 +1,6 @@
 import type { PowerTrackerState } from '../core/powerTracker';
 import type {
   DeviceControlProfiles,
-  DeviceTargetPowerConfigs,
   EvBoostSettings,
   TemperatureBoostSettings,
 } from '../../packages/contracts/src/types';
@@ -10,7 +9,6 @@ import {
 } from './temperatureBoost';
 import { normalizeDeviceControlProfiles } from './deviceControlProfiles';
 import { normalizeEvBoostSettings as normalizeEvBoostSettingsRuntime } from './evBoost';
-import { normalizeDeviceTargetPowerConfigs } from './targetPowerConfig';
 
 export function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
@@ -54,12 +52,6 @@ export function isDeviceControlProfiles(value: unknown): value is DeviceControlP
   if (!value || typeof value !== 'object') return false;
   const normalized = normalizeDeviceControlProfiles(value);
   if (!normalized) return false;
-  return Object.keys(normalized).length === Object.keys(value as Record<string, unknown>).length;
-}
-
-export function isDeviceTargetPowerConfigs(value: unknown): value is DeviceTargetPowerConfigs {
-  if (!value || typeof value !== 'object') return false;
-  const normalized = normalizeDeviceTargetPowerConfigs(value);
   return Object.keys(normalized).length === Object.keys(value as Record<string, unknown>).length;
 }
 
