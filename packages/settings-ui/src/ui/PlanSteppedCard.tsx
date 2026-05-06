@@ -110,7 +110,8 @@ export const PlanSteppedCard = ({
   const evState = resolveEvChargingStateLabel(displayDev);
   const tempText = resolveSteppedTemperatureText(displayDev);
   const secondaryText = evState ?? tempText ?? null;
-  const statusText = profile ? resolveSteppedStatusLine(displayDev, profile, nowMs) : null;
+  const resolvedStatusText = profile ? resolveSteppedStatusLine(displayDev, profile, nowMs) : null;
+  const statusText = resolvedStatusText ?? (stateKind === 'held' ? 'Limited · staying under the hard cap' : null);
 
   const cardClasses = [
     'device-row plan-card plan-card--stepped clickable',

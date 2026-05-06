@@ -2,7 +2,6 @@ import {
   emptyState,
   tabs,
   refreshButton,
-  planRefreshButton,
   priceSettingsForm,
   priceSchemeSelect,
   norwayPriceModelSelect,
@@ -146,11 +145,6 @@ const initCapacityHandlers = () => {
   });
   refreshButton.addEventListener('click', () => {
     void refreshDevices();
-  });
-  planRefreshButton?.addEventListener('click', () => {
-    void refreshPlan().catch((error) => {
-      void logSettingsError('Failed to refresh plan', error, 'planRefreshButton');
-    });
   });
   /* 2-step confirmation logic */
   const resetStatsBtn = document.getElementById('reset-stats-button') as HTMLButtonElement;

@@ -42,10 +42,10 @@ The overview hero uses a specific vocabulary to make the power/energy distinctio
 
 | Concept | Label | Avoid |
 |---|---|---|
-| Current instantaneous draw | **Power now** | Consumption now, Current load |
+| Current instantaneous draw | **Power being used now** | Power consumed currently, Power consumed now, Current load |
 | Dynamic kW threshold (see below) | **Safe pace now** | PELS limit, Soft limit, Reaction limit |
-| Fixed user-configured ceiling | **Hard cap** | Hourly power limit, Grid cap |
-| kWh used so far this hour | **Energy used this hour** | Usage now, Consumed |
+| Fixed user-configured ceiling | **Hard cap** | Power limit, Grid cap |
+| kWh used so far this hour | **Energy used so far this hour** | Usage now, Consumed |
 | kWh allowed for this hour | **Budget this hour** | Hourly energy budget, Hourly target |
 | Projected end-of-hour kWh | **Projected this hour** | Estimate, Forecast, Planner result |
 
@@ -66,6 +66,35 @@ The **hard cap** tick (user-configured ceiling, `hardLimitKw`) always shows as *
 
 ```
 Managed 3.2 kW  ·  Background 2.9 kW  ·  Safe pace now 6.0 kW  ·  Hard cap 8.0 kW
+```
+
+The value line should not repeat the time meaning already carried by the label:
+use `1.2 kW`, not `1.2 kW now`.
+
+Use read-only meter tracks for overview power and energy. Marker grammar:
+
+| Marker | Meaning |
+|---|---|
+| Solid dot | Actual/current value |
+| Hollow dot | Projected/forecast value |
+| Thin tick | Threshold/target |
+| End stop | Hard limit/cap |
+
+Overview status chips are hidden when everything is normal. Show short exception chips only:
+
+| Condition | Chip |
+|---|---|
+| Current power is above the dynamic threshold | `Above safe pace` |
+| Projected hourly energy is above budget | `Above budget` |
+| Current power is above the configured ceiling | `Above hard cap` |
+
+The hero has one dedicated status line. It should combine aggregate device action and budget projection, for example:
+
+```
+Projected on target · 1.09 / 2.8 kWh · 34 min left
+Limiting 2 devices · projected on target · 2.23 / 2.8 kWh · 29 min left
+Above safe pace · limiting 2 devices · projected slightly over budget
+Above hard cap of 5.0 kW · limiting 2 devices now
 ```
 
 ## Device states (Overview)

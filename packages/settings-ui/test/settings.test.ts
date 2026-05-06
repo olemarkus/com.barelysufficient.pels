@@ -85,7 +85,6 @@ const buildDom = () => {
         <div id="plan-cards"></div>
       </div>
       <p id="plan-empty" hidden></p>
-      <button id="plan-refresh-button"></button>
     </section>
     <section class="panel" data-panel="devices">
       <form id="targets-form">
@@ -545,6 +544,9 @@ describe('settings script', () => {
     expect(window.localStorage.getItem(OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY)).toBe('true');
     expect(homey.set).not.toHaveBeenCalledWith('overview_redesign_enabled', expect.anything(), expect.any(Function));
     expect(document.body.dataset.uiVariant).toBe('redesign');
+    expect((document.querySelector('#legacy-shell-copy') as HTMLElement | null)?.hidden).toBe(true);
+    expect((document.querySelector('#plan-legacy-surface') as HTMLElement | null)?.hidden).toBe(true);
+    expect((document.querySelector('#plan-redesign-surface') as HTMLElement | null)?.hidden).toBe(false);
   });
 
   it('ignores overview redesign toggle changes when feature access is disallowed', async () => {
@@ -2354,7 +2356,7 @@ describe('Plan sorting', () => {
     ]);
   });
 
-  it('shows held devices with the new state chip text', async () => {
+  it('marks held devices without repeating the limited state chip', async () => {
     const planSnapshot = {
       meta: {
         totalKw: 5.1,
@@ -2382,9 +2384,9 @@ describe('Plan sorting', () => {
     );
     expect(deviceNames).toEqual(['Bravo One', 'Alpha One', 'Alpha Two']); // priority order
 
-    const stateValues = Array.from(document.querySelectorAll('#plan-cards .plan-state-chip'))
-      .map((line) => line.textContent?.trim());
-    expect(stateValues).toContain('Limited');
+    const heldCard = document.querySelector('#plan-cards [data-device-id="b1"]') as HTMLElement | null;
+    expect(heldCard?.dataset.stateKind).toBe('held');
+    expect(heldCard?.querySelector('.plan-state-chip')).toBeNull();
   });
 
   it('shows measured and expected power in usage line when available', async () => {
@@ -2764,13 +2766,9 @@ describe('Plan sorting', () => {
 
     const devicesTab = document.querySelector('[data-tab="devices"]') as HTMLButtonElement;
     const overviewTab = document.querySelector('[data-tab="overview"]') as HTMLButtonElement;
-    const refreshPlanButton = document.querySelector('#plan-refresh-button') as HTMLButtonElement;
-
     devicesTab.click();
     await flushPromises();
     overviewTab.click();
-    await flushPromises();
-    refreshPlanButton.click();
     await flushPromises();
 
     const planGetCalls = (global.Homey.api as ReturnType<typeof vi.fn>).mock.calls

@@ -73,8 +73,12 @@ const resolveReasonText = (dev: PlanDeviceSnapshot): string => {
     const override = formatStarvationReason(dev.starvation);
     if (override) return override;
   }
-  if (isTrivialReason(dev.reason)) return '';
+  const kind = isPlanStateKind(dev.stateKind) ? dev.stateKind : resolvePlanStateKind(dev);
+  if (isTrivialReason(dev.reason)) {
+    return kind === 'held' ? 'Limited · staying under the hard cap' : '';
+  }
   if (isDeviceReason(dev.reason)) return formatReasonSummary(dev.reason);
+  if (kind === 'held') return 'Limited · staying under the hard cap';
   return formatDeviceOverview(dev).statusMsg;
 };
 
@@ -90,6 +94,10 @@ const resolveExpectedKw = (dev: PlanDeviceSnapshot): number | null => {
   }
   return null;
 };
+
+const shouldShowStateChip = (kind: PlanStateKind, hasTimer: boolean): boolean => (
+  (kind !== 'held' && kind !== 'idle') || hasTimer
+);
 
 
 // ─── Cooldown progress ────────────────────────────────────────────────────────
@@ -148,6 +156,7 @@ export const PlanGenericCard = ({
 
   const remainingSec = resolveCooldownRemainingSec(displayDev);
   const baseSec = resolveCooldownBaseSec(displayDev);
+  const hasTimer = baseSec !== null && remainingSec !== null && remainingSec > 0;
   const reasonText = resolveReasonText(displayDev);
 
   let powerReadout: { text: string; variant: 'live' | 'expected' } | null = null;
@@ -178,18 +187,20 @@ export const PlanGenericCard = ({
           <h3 class="plan-card__title">{dev.name}</h3>
         </div>
         <div class="plan-card__chips">
-          <span class="plan-state-chip-wrap">
-            <span
-              class={`plan-state-chip plan-state-chip--${presentation.tone}`}
-              data-state-kind={presentation.kind}
-              role="img"
-              aria-label={presentation.label}
-              data-tooltip={presentation.label}
-            >
-              {presentation.label}
+          {shouldShowStateChip(presentation.kind, hasTimer) && (
+            <span class="plan-state-chip-wrap">
+              <span
+                class={`plan-state-chip plan-state-chip--${presentation.tone}`}
+                data-state-kind={presentation.kind}
+                role="img"
+                aria-label={presentation.label}
+                data-tooltip={presentation.label}
+              >
+                {presentation.label}
+              </span>
+              <CooldownProgress remainingSec={remainingSec} baseSec={baseSec} tone={presentation.tone} />
             </span>
-            <CooldownProgress remainingSec={remainingSec} baseSec={baseSec} tone={presentation.tone} />
-          </span>
+          )}
           {dev.budgetExempt === true && (
             <span class="plan-chip plan-chip--muted">Always on</span>
           )}

@@ -152,19 +152,19 @@ const resolveSettlingStatusLine = (reason: DeviceReason, nowMs: number): string 
   if (reason.code === PLAN_REASON_CODES.headroomCooldown) {
     if (reason.kind === 'recent_pels_restore') {
       const ago = resolveElapsedAgoText(reason.countdownStartedAtMs, nowMs);
-      return `Resumed ${ago} — confirming no overshoot`;
+      return `Resumed ${ago} · checking power reading`;
     }
-    return `Recently reduced · can increase in ${formatSec(reason.remainingSec)}`;
+    return `Limited · will try to resume in ${formatSec(reason.remainingSec)} if power is available`;
   }
   if (reason.code === PLAN_REASON_CODES.cooldownRestore) {
     const ago = resolveElapsedAgoText(reason.countdownStartedAtMs, nowMs);
-    return `Resumed ${ago} — confirming no overshoot`;
+    return `Resumed ${ago} · checking power reading`;
   }
   if (reason.code === PLAN_REASON_CODES.cooldownShedding) {
-    return `Recently reduced · can increase in ${formatSec(reason.remainingSec)}`;
+    return `Limited · will try to resume in ${formatSec(reason.remainingSec)} if power is available`;
   }
   if (reason.code === PLAN_REASON_CODES.meterSettling) {
-    return `Waiting for meter reading (${formatSec(reason.remainingSec)})`;
+    return `Waiting for power meter to stabilise · ${formatSec(reason.remainingSec)}`;
   }
   return null;
 };
@@ -189,14 +189,14 @@ const resolveBlockedStatusLine = (device: SteppedDevice, profile: SteppedLoadPro
   if (!targetId || !isPoweredStep(profile, targetId)) return null;
   if (isOffLikeState(device.currentState)) {
     const gap = resolveHeadroomGapKw(device.reason);
-    return gap !== null ? `Needs ${gap.toFixed(1)} kW more to turn on` : null;
+    return gap !== null ? `Waiting to resume · ${gap.toFixed(1)} kW more needed` : null;
   }
   const currentId = resolveCurrentStepId(device);
   const currentIdx = findStepIndex(profile, currentId);
   const targetIdx = findStepIndex(profile, targetId);
   if (currentIdx >= 0 && targetIdx > currentIdx) {
     const gap = resolveHeadroomGapKw(device.reason);
-    return gap !== null ? `Needs ${gap.toFixed(1)} kW more to increase` : null;
+    return gap !== null ? `Waiting to increase · ${gap.toFixed(1)} kW more needed` : null;
   }
   return null;
 };
@@ -204,9 +204,11 @@ const resolveBlockedStatusLine = (device: SteppedDevice, profile: SteppedLoadPro
 const resolveOffStatusLine = (device: SteppedDevice): string | null => {
   if (isWaitingReason(device.reason.code)) {
     const gap = resolveHeadroomGapKw(device.reason);
-    return gap !== null ? `Needs ${gap.toFixed(1)} kW more to turn on` : 'Waiting for headroom';
+    return gap !== null ? `Waiting to resume · ${gap.toFixed(1)} kW more needed` : 'Waiting for available power';
   }
-  if (isLimitedReason(device.reason.code)) return 'Off to stay within budget';
+  if (device.reason.code === PLAN_REASON_CODES.dailyBudget) return "Limited · staying within today's budget";
+  if (device.reason.code === PLAN_REASON_CODES.hourlyBudget) return "Limited · this hour is near the hard cap";
+  if (isLimitedReason(device.reason.code)) return 'Limited · staying under the hard cap';
   return null;
 };
 
@@ -220,7 +222,7 @@ export const resolveSteppedStatusLine = (
   if (device.reason.code === PLAN_REASON_CODES.shedInvariant) {
     const r = device.reason;
     const n = r.shedDeviceCount;
-    return `Capped at ${capitalize(r.maxStep)} — ${n} ${n === 1 ? 'device' : 'devices'} still shed`;
+    return `Limited to ${capitalize(r.maxStep)} · ${n} ${n === 1 ? 'device' : 'devices'} still limited`;
   }
   const blocked = resolveBlockedStatusLine(device, profile);
   if (blocked !== null) return blocked;

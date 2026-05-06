@@ -78,7 +78,6 @@ export const planHero = qs('#plan-hero');
 export const planHourStrip = qs('#plan-hour-strip');
 export const planCards = qs('#plan-cards');
 export const planEmpty = qs('#plan-empty');
-export const planRefreshButton = document.querySelector('#plan-refresh-button') as HTMLButtonElement;
 export const resetStatsButton = document.querySelector('#reset-stats-button') as HTMLButtonElement;
 export const modeSelect = document.querySelector('#mode-select') as HTMLSelectElement;
 export const modeNewInput = document.querySelector('#mode-new') as HTMLInputElement;

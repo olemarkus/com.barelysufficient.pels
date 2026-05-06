@@ -52,8 +52,8 @@ const resolveMessage = (params: {
   capacityShortfall: boolean;
 }): string => {
   const { headroomKw, overSoftLimit, overHardLimit, capacityShortfall } = params;
-  if (overHardLimit) return 'Over the hard limit';
-  if (overSoftLimit) return 'Over the power limit';
+  if (overHardLimit) return 'Above hard cap';
+  if (overSoftLimit) return 'Above safe pace';
   if (capacityShortfall) return 'Keeping power under the limit';
   const spare = Math.max(0, headroomKw);
   return `${spare.toFixed(1)} kW to spare`;
