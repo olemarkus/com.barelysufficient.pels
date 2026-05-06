@@ -352,5 +352,8 @@
   },
   "2.6.1": {
     "en": "Various stability and performance fixes."
+  },
+  "2.6.2": {
+    "en": "Improve EV charger UX by consolidating amp tags."
   }
 }
