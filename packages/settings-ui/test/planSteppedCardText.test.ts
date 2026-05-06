@@ -33,6 +33,15 @@ const baseDevice = {
   reason: { code: 'none' as const },
 };
 
+const steppedLoad = (
+  overrides: Partial<{ reportedStepId: string | null; targetStepId: string | null; commandPending: boolean }> = {},
+) => ({
+  reportedStepId: null,
+  targetStepId: null,
+  commandPending: false,
+  ...overrides,
+});
+
 describe('resolveSteppedStateLabel', () => {
   it('returns "Off now" when currentState is off', () => {
     expect(resolveSteppedStateLabel({ ...baseDevice, currentState: 'off' })).toBe('Off now');
@@ -48,19 +57,19 @@ describe('resolveSteppedStateLabel', () => {
 
   it('returns "Level: Low" when at low step', () => {
     expect(resolveSteppedStateLabel({
-      ...baseDevice, currentState: 'on', reportedStepId: 'low',
+      ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ reportedStepId: 'low' }),
     })).toBe('Level: Low');
   });
 
-  it('returns "Level: Medium" from actualStepId when no reportedStepId', () => {
+  it('does not use actualStepId as observed UI truth', () => {
     expect(resolveSteppedStateLabel({
       ...baseDevice, currentState: 'on', actualStepId: 'medium',
-    })).toBe('Level: Medium');
+    })).toBe('Level unknown');
   });
 
   it('capitalizes step id', () => {
     expect(resolveSteppedStateLabel({
-      ...baseDevice, currentState: 'on', reportedStepId: 'max',
+      ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ reportedStepId: 'max' }),
     })).toBe('Level: Max');
   });
 });
@@ -70,22 +79,18 @@ describe('isSteppedTransit', () => {
     expect(isSteppedTransit({})).toBe(false);
   });
 
-  it('returns true when binaryCommandPending is true', () => {
-    expect(isSteppedTransit({ binaryCommandPending: true })).toBe(true);
+  it('returns true when stepped-load command is pending', () => {
+    expect(isSteppedTransit({ steppedLoad: steppedLoad({ commandPending: true }) })).toBe(true);
   });
 
-  it('returns true when pendingTargetCommand is set', () => {
-    expect(isSteppedTransit({ pendingTargetCommand: { desired: 1, retryCount: 0 } })).toBe(true);
-  });
-
-  it('returns false when binaryCommandPending is false', () => {
-    expect(isSteppedTransit({ binaryCommandPending: false })).toBe(false);
+  it('returns false when commandPending is false', () => {
+    expect(isSteppedTransit({ steppedLoad: steppedLoad({ commandPending: false }) })).toBe(false);
   });
 });
 
 describe('resolveSteppedChip', () => {
   it('returns Applying chip when in transit', () => {
-    expect(resolveSteppedChip({ ...baseDevice, binaryCommandPending: true }))
+    expect(resolveSteppedChip({ ...baseDevice, steppedLoad: steppedLoad({ commandPending: true }) }))
       .toEqual({ label: 'Applying', tone: 'ok' });
   });
 
@@ -143,7 +148,7 @@ describe('resolveSteppedStatusLine', () => {
   describe('stable — no status line', () => {
     it('returns "Maintaining level" when on track with no target', () => {
       expect(resolveSteppedStatusLine(
-        { ...baseDevice, currentState: 'on', reportedStepId: 'low' },
+        { ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ reportedStepId: 'low' }) },
         profile,
         NOW_MS,
       )).toBe('Maintaining level');
@@ -151,7 +156,11 @@ describe('resolveSteppedStatusLine', () => {
 
     it('returns "Maintaining level" when target matches current step', () => {
       expect(resolveSteppedStatusLine(
-        { ...baseDevice, currentState: 'on', reportedStepId: 'low', desiredStepId: 'low' },
+        {
+          ...baseDevice,
+          currentState: 'on',
+          steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'low' }),
+        },
         profile,
         NOW_MS,
       )).toBe('Maintaining level');
@@ -172,7 +181,7 @@ describe('resolveSteppedStatusLine', () => {
         {
           ...baseDevice,
           currentState: 'on',
-          reportedStepId: 'low',
+          steppedLoad: steppedLoad({ reportedStepId: 'low' }),
           reason: {
             code: 'headroom_cooldown',
             kind: 'recent_pels_restore',
@@ -185,7 +194,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Restored 10s ago — confirming no overshoot');
+      expect(result).toBe('Resumed 10s ago — confirming no overshoot');
     });
 
     it('returns countdown for recent_pels_shed kind', () => {
@@ -193,7 +202,7 @@ describe('resolveSteppedStatusLine', () => {
         {
           ...baseDevice,
           currentState: 'on',
-          reportedStepId: 'low',
+          steppedLoad: steppedLoad({ reportedStepId: 'low' }),
           reason: {
             code: 'headroom_cooldown',
             kind: 'recent_pels_shed',
@@ -214,13 +223,13 @@ describe('resolveSteppedStatusLine', () => {
         {
           ...baseDevice,
           currentState: 'on',
-          reportedStepId: 'low',
+          steppedLoad: steppedLoad({ reportedStepId: 'low' }),
           reason: { code: 'cooldown_restore', remainingSec: 20, countdownStartedAtMs: NOW_MS - 7_000 },
         },
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Restored 7s ago — confirming no overshoot');
+      expect(result).toBe('Resumed 7s ago — confirming no overshoot');
     });
 
     it('returns countdown for cooldownShedding reason', () => {
@@ -228,7 +237,7 @@ describe('resolveSteppedStatusLine', () => {
         {
           ...baseDevice,
           currentState: 'on',
-          reportedStepId: 'low',
+          steppedLoad: steppedLoad({ reportedStepId: 'low' }),
           reason: { code: 'cooldown_shedding', remainingSec: 15 },
         },
         profile,
@@ -242,7 +251,7 @@ describe('resolveSteppedStatusLine', () => {
         {
           ...baseDevice,
           currentState: 'on',
-          reportedStepId: 'low',
+          steppedLoad: steppedLoad({ reportedStepId: 'low' }),
           reason: { code: 'meter_settling', remainingSec: 8 },
         },
         profile,
@@ -258,7 +267,7 @@ describe('resolveSteppedStatusLine', () => {
         {
           ...baseDevice,
           currentState: 'off',
-          desiredStepId: 'low',
+          steppedLoad: steppedLoad({ targetStepId: 'low' }),
           reason: {
             code: 'insufficient_headroom',
             needKw: 1.25,
@@ -282,8 +291,7 @@ describe('resolveSteppedStatusLine', () => {
         {
           ...baseDevice,
           currentState: 'on',
-          reportedStepId: 'low',
-          desiredStepId: 'medium',
+          steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'medium' }),
           reason: {
             code: 'insufficient_headroom',
             needKw: 1.75,
@@ -307,7 +315,7 @@ describe('resolveSteppedStatusLine', () => {
         {
           ...baseDevice,
           currentState: 'off',
-          desiredStepId: 'low',
+          steppedLoad: steppedLoad({ targetStepId: 'low' }),
           reason: { code: 'shortfall', needKw: 1.25, headroomKw: 0.95 },
         },
         profile,
@@ -321,7 +329,7 @@ describe('resolveSteppedStatusLine', () => {
         {
           ...baseDevice,
           currentState: 'off',
-          desiredStepId: 'low',
+          steppedLoad: steppedLoad({ targetStepId: 'low' }),
           reason: { code: 'capacity', detail: null },
         },
         profile,
@@ -360,8 +368,7 @@ describe('resolveSteppedStatusLine', () => {
         {
           ...baseDevice,
           currentState: 'on',
-          reportedStepId: 'max',
-          desiredStepId: 'low',
+          steppedLoad: steppedLoad({ reportedStepId: 'max', targetStepId: 'low' }),
           reason: { code: 'none' },
         },
         profile,
@@ -376,8 +383,7 @@ describe('resolveSteppedStatusLine', () => {
         {
           ...baseDevice,
           currentState: 'off',
-          targetStepId: 'low',
-          binaryCommandPending: true,
+          steppedLoad: steppedLoad({ targetStepId: 'low', commandPending: true }),
         },
         profile,
         NOW_MS,
@@ -389,9 +395,7 @@ describe('resolveSteppedStatusLine', () => {
         {
           ...baseDevice,
           currentState: 'on',
-          reportedStepId: 'low',
-          targetStepId: 'medium',
-          binaryCommandPending: true,
+          steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'medium', commandPending: true }),
         },
         profile,
         NOW_MS,
@@ -403,9 +407,7 @@ describe('resolveSteppedStatusLine', () => {
         {
           ...baseDevice,
           currentState: 'on',
-          reportedStepId: 'max',
-          targetStepId: 'low',
-          pendingTargetCommand: { desired: 1, retryCount: 0, nextRetryAtMs: 0, status: 'waiting_confirmation' as const },
+          steppedLoad: steppedLoad({ reportedStepId: 'max', targetStepId: 'low', commandPending: true }),
         },
         profile,
         NOW_MS,
@@ -417,9 +419,7 @@ describe('resolveSteppedStatusLine', () => {
         {
           ...baseDevice,
           currentState: 'on',
-          reportedStepId: 'low',
-          targetStepId: 'off',
-          binaryCommandPending: true,
+          steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'off', commandPending: true }),
         },
         profileWithOff,
         NOW_MS,
@@ -431,8 +431,7 @@ describe('resolveSteppedStatusLine', () => {
         {
           ...baseDevice,
           currentState: 'off',
-          targetStepId: 'low',
-          binaryCommandPending: true,
+          steppedLoad: steppedLoad({ targetStepId: 'low', commandPending: true }),
         },
         profileWithOff,
         NOW_MS,
@@ -468,22 +467,26 @@ describe('resolveSteppedTemperatureText', () => {
 
 describe('resolveSteppedActiveStepId', () => {
   it('returns the off step id when state is off and profile has an explicit off step', () => {
-    const device = { ...baseDevice, currentState: 'off', reportedStepId: 'low' };
+    const device = { ...baseDevice, currentState: 'off', steppedLoad: steppedLoad({ reportedStepId: 'low' }) };
     expect(resolveSteppedActiveStepId(device, profileWithOff)).toBe('off');
   });
 
   it('returns synthetic "off" id when state is off-like but profile has no off step', () => {
-    const device = { ...baseDevice, currentState: 'off', reportedStepId: 'low' };
+    const device = { ...baseDevice, currentState: 'off', steppedLoad: steppedLoad({ reportedStepId: 'low' }) };
     expect(resolveSteppedActiveStepId(device, profile)).toBe('off');
   });
 
   it('returns synthetic "off" id for empty currentState with no off step', () => {
-    const device = { ...baseDevice, currentState: '', reportedStepId: 'medium' };
+    const device = { ...baseDevice, currentState: '', steppedLoad: steppedLoad({ reportedStepId: 'medium' }) };
     expect(resolveSteppedActiveStepId(device, profile)).toBe('off');
   });
 
   it('returns reportedStepId when state is not off-like', () => {
-    const device = { ...baseDevice, currentState: 'not_applicable', reportedStepId: 'medium' };
+    const device = {
+      ...baseDevice,
+      currentState: 'not_applicable',
+      steppedLoad: steppedLoad({ reportedStepId: 'medium' }),
+    };
     expect(resolveSteppedActiveStepId(device, profile)).toBe('medium');
   });
 });
