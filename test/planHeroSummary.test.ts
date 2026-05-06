@@ -45,7 +45,7 @@ describe('formatHeroHeadline', () => {
       hardCapHeadroomKw: 2,
     }), NOW);
     expect(headline?.tone).toBe('warn');
-    expect(headline?.message).toBe('Over the power limit');
+    expect(headline?.message).toBe('Above safe pace');
     expect(headline?.overSoftLimit).toBe(true);
     expect(headline?.overHardLimit).toBe(false);
   });
@@ -58,7 +58,7 @@ describe('formatHeroHeadline', () => {
       hardCapHeadroomKw: -1,
     }), NOW);
     expect(headline?.tone).toBe('alert');
-    expect(headline?.message).toBe('Over the hard limit');
+    expect(headline?.message).toBe('Above hard cap');
     expect(headline?.overHardLimit).toBe(true);
     expect(headline?.hardLimitKw).toBe(14);
   });

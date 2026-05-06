@@ -194,7 +194,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Resumed 10s ago — confirming no overshoot');
+      expect(result).toBe('Resumed 10s ago · checking power reading');
     });
 
     it('returns countdown for recent_pels_shed kind', () => {
@@ -215,7 +215,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Recently reduced · can increase in 42s');
+      expect(result).toBe('Limited · will try to resume in 42s if power is available');
     });
 
     it('returns elapsed text for cooldownRestore reason', () => {
@@ -229,7 +229,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Resumed 7s ago — confirming no overshoot');
+      expect(result).toBe('Resumed 7s ago · checking power reading');
     });
 
     it('returns countdown for cooldownShedding reason', () => {
@@ -243,7 +243,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Recently reduced · can increase in 15s');
+      expect(result).toBe('Limited · will try to resume in 15s if power is available');
     });
 
     it('returns meter wait text for meterSettling reason', () => {
@@ -257,12 +257,12 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Waiting for meter reading (8s)');
+      expect(result).toBe('Waiting for power meter to stabilise · 8s');
     });
   });
 
   describe('blocked — not in transit', () => {
-    it('returns "Needs X kW more to turn on" when off and blocked by insufficient headroom', () => {
+    it('returns waiting-to-resume text when off and blocked by insufficient available power', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
@@ -283,10 +283,10 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Needs 0.4 kW more to turn on');
+      expect(result).toBe('Waiting to resume · 0.4 kW more needed');
     });
 
-    it('returns "Needs X kW more to increase" when on at low and blocked from medium', () => {
+    it('returns waiting-to-increase text when on at low and blocked from medium', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
@@ -307,7 +307,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Needs 0.5 kW more to increase');
+      expect(result).toBe('Waiting to increase · 0.5 kW more needed');
     });
 
     it('uses shortfall reason headroomKw to compute gap', () => {
@@ -321,7 +321,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Needs 0.3 kW more to turn on');
+      expect(result).toBe('Waiting to resume · 0.3 kW more needed');
     });
 
     it('returns budget text when held off with capacity reason and no gap info', () => {
@@ -334,7 +334,7 @@ describe('resolveSteppedStatusLine', () => {
         },
         profile,
         NOW_MS,
-      )).toBe('Off to stay within budget');
+      )).toBe('Limited · staying under the hard cap');
     });
 
     it('returns shed invariant status with count and max step', () => {
@@ -347,7 +347,7 @@ describe('resolveSteppedStatusLine', () => {
         },
         profile,
         NOW_MS,
-      )).toBe('Capped at Low — 1 device still shed');
+      )).toBe('Limited to Low · 1 device still limited');
     });
 
     it('returns shed invariant status with plural device count', () => {
@@ -360,7 +360,7 @@ describe('resolveSteppedStatusLine', () => {
         },
         profile,
         NOW_MS,
-      )).toBe('Capped at Low — 3 devices still shed');
+      )).toBe('Limited to Low · 3 devices still limited');
     });
 
     it('returns null when desired step is lower (being shed down, chip covers it)', () => {

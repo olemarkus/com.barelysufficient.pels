@@ -240,7 +240,7 @@ describe('plan meta usage summary', () => {
     });
 
     const metaLines = getPlanMetaText();
-    expect(metaLines.some((line) => line === 'Hard cap breached by 1.2kW')).toBe(true);
+    expect(metaLines.some((line) => line === 'Hard cap exceeded by 1.2kW')).toBe(true);
     expect(metaLines.some((line) => line === 'Shortfall threshold 6.0kW (hourly budget-derived)')).toBe(true);
     expect(metaLines.some((line) => line === '2.4kW over soft limit')).toBe(false);
   });
@@ -258,10 +258,10 @@ describe('plan meta usage summary', () => {
 
     const metaLines = getPlanMetaText();
     expect(metaLines.some((line) => line === '0.4kW over soft limit')).toBe(true);
-    expect(metaLines.some((line) => line.startsWith('Hard cap breached'))).toBe(false);
+    expect(metaLines.some((line) => line.startsWith('Hard cap exceeded'))).toBe(false);
   });
 
-  it('shows remaining hard-cap headroom while above soft limit', async () => {
+  it('shows remaining hard-cap room while above soft limit', async () => {
     await renderPlanSnapshot({
       meta: {
         totalKw: 5.2,
@@ -296,7 +296,7 @@ describe('plan meta usage summary', () => {
     });
 
     const metaLines = getPlanMetaText();
-    expect(metaLines.some((line) => line === 'Hard cap breached by 2.6kW')).toBe(true);
+    expect(metaLines.some((line) => line === 'Hard cap exceeded by 2.6kW')).toBe(true);
     expect(metaLines.some((line) => line === 'Shortfall threshold 4.8kW (hourly budget-derived)')).toBe(true);
     expect(metaLines.some((line) => line === '2.6kW over soft limit')).toBe(false);
   });
@@ -1614,23 +1614,25 @@ describe('Redesign plan UI', () => {
         ],
       });
 
-      // Power now headline shows current total kW
+      // Power headline shows current total kW without repeating "now"
       const headlines = Array.from(document.querySelectorAll('.plan-hero .plan-hero__headline'))
         .map((el) => el.textContent?.trim());
-      expect(headlines).toContain('5.2 kW now');
+      expect(headlines).toContain('5.2 kW');
       // Power bar support text shows managed and other load breakdown only
       const supportLines = Array.from(document.querySelectorAll('.plan-hero .plan-hero__energy-support'))
         .map((el) => el.textContent?.trim());
       expect(supportLines[0]).toContain('Managed 3.1 kW');
-      expect(supportLines[0]).toContain('Other load 2.1 kW');
+      expect(supportLines[0]).toContain('Background 2.1 kW');
       expect(supportLines).toHaveLength(1);
-      // No power subline in calm on-track state with no held devices
-      expect(document.querySelector('.plan-hero .plan-hero__subline:not(.plan-hero__subline--muted)')).toBeNull();
+      expect((document.querySelector('.plan-hero .plan-hero__subline:not(.plan-hero__subline--muted)') as HTMLElement | null)
+        ?.textContent?.trim()).toBe('Safe pace now 11.0 kW');
       // Energy section shows hourly usage with projection
-      expect(headlines.some((h) => h?.includes('4.20 of 12.0 kWh used'))).toBe(true);
-      // Status chip shows on-track when below safe pace and data is fresh
-      expect((document.querySelector('.plan-hero .plan-chip--ok') as HTMLElement | null)?.textContent?.trim())
-        .toBe('On track');
+      expect(headlines.some((h) => h?.includes('4.20 / 12.0 kWh'))).toBe(true);
+      expect(document.querySelectorAll('.plan-hero .pels-meter-track')).toHaveLength(2);
+      // Status chip stays quiet when below safe pace and data is fresh
+      expect(document.querySelector('.plan-hero .plan-chip:not(.plan-chip--muted)')).toBeNull();
+      expect((document.querySelector('.plan-hero .plan-chip--muted') as HTMLElement | null)?.textContent?.trim())
+        .toBe('Mode: Home');
       // No stale-data chip when power is fresh
       expect(document.querySelector('.plan-hero .plan-chip--alert')).toBeNull();
 
@@ -1689,11 +1691,10 @@ describe('Redesign plan UI', () => {
       });
   
       const chip = document.querySelector('[data-device-id="dev-held"] .plan-state-chip') as HTMLElement | null;
-      expect(chip?.textContent?.trim()).toBe('Limited');
-      expect(chip?.className).toContain('plan-state-chip--held');
+      expect(chip).toBeNull();
       // Safe pace subline shown when devices are held
       const subline = document.querySelector('.plan-hero .plan-hero__subline') as HTMLElement | null;
-      expect(subline?.textContent?.trim()).toBe('Safe pace 5.0 kW');
+      expect(subline?.textContent?.trim()).toBe('Safe pace now 5.0 kW');
     });
   
     it('surfaces starvation badges and overrides the reason line for capacity starvation', async () => {
@@ -1788,7 +1789,10 @@ describe('Redesign plan UI', () => {
       await Promise.resolve();
 
       expect(getReasonText('dev-restore-cooldown')).toBeFalsy();
-      expect(timer?.hidden).toBe(true);
+      const expiredTimer = document.querySelector(
+        '[data-device-id="dev-restore-cooldown"] .plan-state-chip__timer',
+      ) as HTMLElement | null;
+      expect(expiredTimer === null || expiredTimer.hidden).toBe(true);
     });
 
     it('does not show an already-expired cooldown timer on initial render', async () => {
@@ -1816,7 +1820,7 @@ describe('Redesign plan UI', () => {
         '[data-device-id="dev-expired-cooldown"] .plan-state-chip__timer',
       ) as HTMLElement | null;
       expect(getReasonText('dev-expired-cooldown')).toBeFalsy();
-      expect(timer?.hidden).toBe(true);
+      expect(timer === null || timer.hidden).toBe(true);
       // Cooldown summary lives on device card, not as a hero chip
     });
   

@@ -5,6 +5,7 @@ import type { DeviceOverviewSnapshot } from './deviceOverview.js';
 type TemperatureDevice = DeviceOverviewSnapshot & {
   measuredPowerKw?: number;
   currentTemperature?: number;
+  currentTarget?: unknown;
   plannedTarget?: number | null;
 };
 
@@ -41,10 +42,13 @@ export const resolveTemperatureOutputState = (device: TemperatureDevice): string
 // ─── Temperature line ─────────────────────────────────────────────────────────
 
 export const resolveTemperatureLine = (device: TemperatureDevice): string | null => {
-  const { currentTemperature, plannedTarget } = device;
+  const { currentTemperature, currentTarget, plannedTarget } = device;
   if (typeof currentTemperature !== 'number') return null;
   if (typeof plannedTarget !== 'number') return null;
-  return `${currentTemperature.toFixed(1)}° · target ${plannedTarget.toFixed(0)}°`;
+  const targetText = typeof currentTarget === 'number' && currentTarget !== plannedTarget
+    ? `${currentTarget.toFixed(0)}° → ${plannedTarget.toFixed(0)}°`
+    : `${plannedTarget.toFixed(0)}°`;
+  return `${currentTemperature.toFixed(1)}° · target ${targetText}`;
 };
 
 // ─── Reason line ─────────────────────────────────────────────────────────────
@@ -70,7 +74,7 @@ const resolveHeadroomGapKw = (reason: unknown): number | null => {
 
 const resolveWaitingText = (reason: unknown): string => {
   const gap = resolveHeadroomGapKw(reason);
-  return gap !== null ? `Needs ${gap.toFixed(1)} kW more` : 'Waiting for headroom';
+  return gap !== null ? `Waiting to resume · ${gap.toFixed(1)} kW more needed` : 'Waiting for available power';
 };
 
 export const resolveTemperatureReasonLine = (device: TemperatureDevice): string | null => {
@@ -81,8 +85,11 @@ export const resolveTemperatureReasonLine = (device: TemperatureDevice): string 
   const kind = resolvePlanStateKind(device);
 
   if (kind !== 'held' && kind !== 'idle' && kind !== 'resuming') return null;
-  if (kind === 'resuming') return 'Restoring';
+  if (kind === 'idle') return null;
+  if (kind === 'resuming') return 'Resuming';
   if (isWaitingReason(reasonCode)) return resolveWaitingText(device.reason);
-  if (isLimitedReason(reasonCode)) return 'Limited by capacity';
+  if (reasonCode === PLAN_REASON_CODES.dailyBudget) return "Limited · staying within today's budget";
+  if (reasonCode === PLAN_REASON_CODES.hourlyBudget) return "Limited · this hour is near the hard cap";
+  if (isLimitedReason(reasonCode)) return 'Limited · staying under the hard cap';
   return kind === 'held' ? 'Paused by PELS' : null;
 };

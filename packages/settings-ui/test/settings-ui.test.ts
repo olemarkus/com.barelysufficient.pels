@@ -648,13 +648,10 @@ describe('Settings UI', () => {
               '  <div class="plan-hero__status"><span class="plan-chip plan-chip--ok">Live</span><span class="plan-hero__age">10s ago</span></div>',
               '</div>',
               '<div class="plan-hero__bar-wrap">',
-              '  <div class="plan-hero__bar">',
-              '    <div class="plan-hero__segments">',
-              '      <span class="plan-hero__seg plan-hero__seg--managed" style="flex-basis:44%"></span>',
-              '      <span class="plan-hero__seg plan-hero__seg--other" style="flex-basis:12%"></span>',
-              '      <span class="plan-hero__seg plan-hero__seg--free" style="flex-basis:44%"></span>',
-              '    </div>',
-              '    <span class="plan-hero__tick plan-hero__tick--soft" style="left:100%"></span>',
+              '  <div class="pels-meter-track" data-tone="good" style="--meter-value:44%">',
+              '    <span class="pels-meter-track__fill"></span>',
+              '    <span class="pels-meter-track__marker pels-meter-track__marker--actual" style="left:44%"></span>',
+              '    <span class="pels-meter-track__marker pels-meter-track__marker--target" style="left:100%"></span>',
               '  </div>',
               '</div>',
             ].join('');
@@ -703,7 +700,7 @@ describe('Settings UI', () => {
         },
       ]);
 
-      expect(await page.locator('.plan-hero__segments .plan-hero__seg').count()).toBe(3);
+      expect(await page.locator('.pels-meter-track .pels-meter-track__marker').count()).toBe(2);
       expect(await page.locator('.plan-card').count()).toBe(1);
       expect(await page.textContent('.plan-card__title')).toContain('Bathroom Floor');
       expect(await page.textContent('.plan-card__load-label')).toContain('0.2 / 1.4 kW');

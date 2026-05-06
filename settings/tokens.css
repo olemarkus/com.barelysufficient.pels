@@ -94,4 +94,20 @@
   --color-state-negative-text: var(--color-base-danger-dark);
   --color-state-warning-text: var(--color-base-warning-default);
   --color-state-info-text: var(--color-base-info-default);
+  --pels-status-good: var(--color-base-accent-default);
+  --pels-status-on-good: var(--color-base-accent-light);
+  --pels-status-good-container: var(--color-state-positive-bg-muted);
+  --pels-status-good-border: var(--color-state-positive-border);
+  --pels-status-warning: var(--color-base-warning-default);
+  --pels-status-on-warning: var(--color-base-warning-default);
+  --pels-status-warning-container: var(--color-state-warning-bg-muted);
+  --pels-status-warning-border: var(--color-state-warning-border-muted);
+  --pels-status-limited: var(--color-base-danger-default);
+  --pels-status-on-limited: var(--color-base-danger-dark);
+  --pels-status-limited-container: var(--color-state-negative-bg);
+  --pels-status-limited-border: var(--color-state-negative-border);
+  --pels-status-critical: var(--color-base-danger-dark);
+  --pels-status-on-critical: var(--color-base-danger-dark);
+  --pels-status-critical-container: var(--color-state-negative-bg);
+  --pels-status-critical-border: var(--color-state-negative-border);
 }

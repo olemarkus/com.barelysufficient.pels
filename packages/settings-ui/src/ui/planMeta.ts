@@ -100,7 +100,7 @@ const buildHardCapDisplay = (meta: ValidatedMeta): HardCapDisplay => {
     const breachKw = Math.abs(Math.min(0, hardCapHeadroomKw));
     return {
       breached: true,
-      breachText: `Hard cap breached by ${breachKw.toFixed(1)}kW`,
+      breachText: `Hard cap exceeded by ${breachKw.toFixed(1)}kW`,
       remainingText: null,
     };
   }

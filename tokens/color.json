@@ -96,5 +96,25 @@
       "accent-radial": { "value": "rgba(16, 185, 129, 0.12)" },
       "accent-radial-blue": { "value": "rgba(116, 145, 255, 0.1)" }
     }
+  },
+  "pels": {
+    "status": {
+      "good": { "value": "{color.base.accent.default}" },
+      "on-good": { "value": "{color.base.accent.light}" },
+      "good-container": { "value": "{color.state.positive.bg-muted}" },
+      "good-border": { "value": "{color.state.positive.border}" },
+      "warning": { "value": "{color.base.warning.default}" },
+      "on-warning": { "value": "{color.base.warning.default}" },
+      "warning-container": { "value": "{color.state.warning.bg-muted}" },
+      "warning-border": { "value": "{color.state.warning.border-muted}" },
+      "limited": { "value": "{color.base.danger.default}" },
+      "on-limited": { "value": "{color.base.danger.dark}" },
+      "limited-container": { "value": "{color.state.negative.bg}" },
+      "limited-border": { "value": "{color.state.negative.border}" },
+      "critical": { "value": "{color.base.danger.dark}" },
+      "on-critical": { "value": "{color.base.danger.dark}" },
+      "critical-container": { "value": "{color.state.negative.bg}" },
+      "critical-border": { "value": "{color.state.negative.border}" }
+    }
   }
 }
