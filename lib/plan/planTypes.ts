@@ -128,6 +128,7 @@ export type DevicePlan = {
     hourlyBudgetExhausted?: boolean;
     usedKWh?: number;
     budgetKWh?: number;
+    capacityLimitKw?: number;
     minutesRemaining?: number;
     controlledKw?: number;
     uncontrolledKw?: number;

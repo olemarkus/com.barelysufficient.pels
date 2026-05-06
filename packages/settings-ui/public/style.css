@@ -1109,7 +1109,7 @@ input:focus-visible {
 }
 
 .plan-card[data-state-kind="held"]::before {
-  background: var(--warning);
+  background: var(--danger);
 }
 
 .plan-card[data-state-kind="resuming"]::before {

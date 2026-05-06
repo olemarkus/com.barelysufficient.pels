@@ -132,7 +132,8 @@ type EnergyBarScale = {
 };
 
 const computeEnergyBarScale = (meta: PlanMetaSnapshot): EnergyBarScale | null => {
-  const { usedKWh, budgetKWh, hourControlledKWh, hourUncontrolledKWh } = meta;
+  const { usedKWh, hourControlledKWh, hourUncontrolledKWh } = meta;
+  const budgetKWh = meta.dailyBudgetHourKWh ?? meta.capacityLimitKw ?? meta.budgetKWh;
   if (typeof usedKWh !== 'number' || typeof budgetKWh !== 'number' || budgetKWh <= 0) return null;
   const totalKw = typeof meta.totalKw === 'number' ? meta.totalKw : null;
   const minutesRemaining = typeof meta.minutesRemaining === 'number' ? meta.minutesRemaining : null;

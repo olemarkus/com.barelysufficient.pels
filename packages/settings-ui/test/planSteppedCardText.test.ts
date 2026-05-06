@@ -103,14 +103,14 @@ describe('resolveSteppedChip', () => {
     })).toEqual({ label: 'Settling', tone: 'warn' });
   });
 
-  it('returns Limited chip for shedInvariant reason', () => {
+  it('returns null for shedInvariant reason (bar colour covers it)', () => {
     expect(resolveSteppedChip({
       ...baseDevice,
       reason: { code: 'shed_invariant', fromStep: 'low', toStep: 'medium', shedDeviceCount: 2, maxStep: 'low' },
-    })).toEqual({ label: 'Limited', tone: 'warn' });
+    })).toBeNull();
   });
 
-  it('returns Limited chip for insufficientHeadroom reason', () => {
+  it('returns null for insufficientHeadroom reason (bar colour covers it)', () => {
     expect(resolveSteppedChip({
       ...baseDevice,
       reason: {
@@ -124,14 +124,14 @@ describe('resolveSteppedChip', () => {
         swapReserveKw: null,
         swapTargetName: null,
       },
-    })).toEqual({ label: 'Limited', tone: 'warn' });
+    })).toBeNull();
   });
 
-  it('returns Limited chip for capacity reason', () => {
+  it('returns null for capacity reason (bar colour covers it)', () => {
     expect(resolveSteppedChip({
       ...baseDevice,
       reason: { code: 'capacity', detail: null },
-    })).toEqual({ label: 'Limited', tone: 'warn' });
+    })).toBeNull();
   });
 
   it('returns null when stable with no constraints', () => {
@@ -339,7 +339,7 @@ describe('resolveSteppedStatusLine', () => {
         },
         profile,
         NOW_MS,
-      )).toBe('Capped at Low — 1 device still recovering');
+      )).toBe('Capped at Low — 1 device still shed');
     });
 
     it('returns shed invariant status with plural device count', () => {
@@ -352,7 +352,7 @@ describe('resolveSteppedStatusLine', () => {
         },
         profile,
         NOW_MS,
-      )).toBe('Capped at Low — 3 devices still recovering');
+      )).toBe('Capped at Low — 3 devices still shed');
     });
 
     it('returns null when desired step is lower (being shed down, chip covers it)', () => {

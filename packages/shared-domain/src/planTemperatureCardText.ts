@@ -30,16 +30,11 @@ const isLimitedReason = (code: string): boolean => (
   || code === PLAN_REASON_CODES.swapPending
 );
 
-const isHeating = (device: TemperatureDevice): boolean => (
-  typeof device.measuredPowerKw === 'number' && device.measuredPowerKw > 0.05
-);
-
 // ─── Output state ─────────────────────────────────────────────────────────────
 
 export const resolveTemperatureOutputState = (device: TemperatureDevice): string => {
   const state = (device.currentState ?? '').trim().toLowerCase();
   if (!state || state === 'off' || state === 'unknown' || state === 'disappeared') return 'Off';
-  if (!isHeating(device)) return 'On · idle';
   return 'On';
 };
 
@@ -52,43 +47,42 @@ export const resolveTemperatureLine = (device: TemperatureDevice): string | null
   return `${currentTemperature.toFixed(1)}° · target ${plannedTarget.toFixed(0)}°`;
 };
 
-// ─── Delta / reason line ──────────────────────────────────────────────────────
+// ─── Reason line ─────────────────────────────────────────────────────────────
 
-const resolveDeltaText = (delta: number): string => {
-  const abs = Math.abs(delta);
-  if (abs < 0.2) return 'At target';
-  if (delta > 0) return `${delta.toFixed(1)}° below target`;
-  return `${abs.toFixed(1)}° above target`;
+const resolveHeadroomGapKw = (reason: unknown): number | null => {
+  if (!reason || typeof reason !== 'object') return null;
+  const r = reason as Record<string, unknown>;
+  const code = r['code'];
+  if (code === PLAN_REASON_CODES.insufficientHeadroom) {
+    const avail = (r['effectiveAvailableKw'] ?? r['availableKw'] ?? 0) as number;
+    const need = (r['needKw'] ?? 0) as number;
+    const gap = need - avail;
+    return gap > 0.01 ? gap : null;
+  }
+  if (code === PLAN_REASON_CODES.shortfall) {
+    const need = (r['needKw'] ?? 0) as number;
+    const avail = (r['headroomKw'] ?? 0) as number;
+    const gap = need - avail;
+    return gap > 0.01 ? gap : null;
+  }
+  return null;
 };
 
-const resolveReasonSuffix = (
-  kind: string,
-  reasonCode: string,
-): string | null => {
-  if (kind === 'held') {
-    if (isWaitingReason(reasonCode)) return 'waiting for headroom';
-    if (isLimitedReason(reasonCode)) return 'limited by capacity';
-    return 'paused by PELS';
-  }
-  if (kind === 'idle') {
-    if (isWaitingReason(reasonCode)) return 'waiting for headroom';
-    if (isLimitedReason(reasonCode)) return 'limited by capacity';
-    return null;
-  }
-  if (kind === 'resuming') return 'restoring';
-  if (kind === 'active') return null;
-  return null;
+const resolveWaitingText = (reason: unknown): string => {
+  const gap = resolveHeadroomGapKw(reason);
+  return gap !== null ? `Needs ${gap.toFixed(1)} kW more` : 'Waiting for headroom';
 };
 
 export const resolveTemperatureReasonLine = (device: TemperatureDevice): string | null => {
   const { currentTemperature, plannedTarget } = device;
   if (typeof currentTemperature !== 'number' || typeof plannedTarget !== 'number') return null;
 
-  const delta = plannedTarget - currentTemperature;
   const reasonCode = (device.reason as { code?: string } | undefined)?.code ?? '';
   const kind = resolvePlanStateKind(device);
-  const deltaText = resolveDeltaText(delta);
-  const suffix = resolveReasonSuffix(kind, reasonCode);
 
-  return suffix !== null ? `${deltaText} · ${suffix}` : deltaText;
+  if (kind !== 'held' && kind !== 'idle' && kind !== 'resuming') return null;
+  if (kind === 'resuming') return 'Restoring';
+  if (isWaitingReason(reasonCode)) return resolveWaitingText(device.reason);
+  if (isLimitedReason(reasonCode)) return 'Limited by capacity';
+  return kind === 'held' ? 'Paused by PELS' : null;
 };

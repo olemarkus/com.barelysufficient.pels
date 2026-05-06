@@ -52,6 +52,7 @@ export const normalizePlanMeta = (meta: DevicePlan['meta']): DevicePlan['meta'] 
   hardCapHeadroomKw: roundOptionalNullable(meta.hardCapHeadroomKw, PLAN_META_KW_STEP),
   usedKWh: roundOptional(meta.usedKWh, PLAN_META_KWH_STEP),
   budgetKWh: roundOptional(meta.budgetKWh, PLAN_META_KWH_STEP),
+  capacityLimitKw: roundOptional(meta.capacityLimitKw, PLAN_META_KW_STEP),
   minutesRemaining: normalizeMinutesRemaining(meta.minutesRemaining),
   controlledKw: roundOptional(meta.controlledKw, PLAN_META_KW_STEP),
   uncontrolledKw: roundOptional(meta.uncontrolledKw, PLAN_META_KW_STEP),

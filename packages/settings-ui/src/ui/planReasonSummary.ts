@@ -30,16 +30,17 @@ const formatRestoreNeedReason: ReasonFormatter<typeof PLAN_REASON_CODES.restoreN
 
 const formatShortfallReason: ReasonFormatter<typeof PLAN_REASON_CODES.shortfall> = (reason) => {
   if (reason.needKw !== null && reason.headroomKw !== null) {
-    return `Waiting for room: needs ${reason.needKw.toFixed(1)} kW, ${reason.headroomKw.toFixed(1)} kW free`;
+    const gap = reason.needKw - reason.headroomKw;
+    if (gap > 0.01) return `Needs ${gap.toFixed(1)} kW more`;
   }
-  return 'Waiting for enough room to turn on';
+  return 'Waiting for headroom';
 };
 
 const formatInsufficientHeadroomReason: ReasonFormatter<typeof PLAN_REASON_CODES.insufficientHeadroom> = (reason) => {
-  if (reason.availableKw !== null) {
-    return `Waiting for room: needs ${reason.needKw.toFixed(1)} kW, ${reason.availableKw.toFixed(1)} kW free`;
-  }
-  return `Waiting for room: needs ${reason.needKw.toFixed(1)} kW`;
+  const avail = reason.effectiveAvailableKw ?? reason.availableKw ?? 0;
+  const gap = reason.needKw - avail;
+  if (gap > 0.01) return `Needs ${gap.toFixed(1)} kW more`;
+  return 'Waiting for headroom';
 };
 
 const formatSwitchDelayReason = (reason: DeviceReason): string => {

@@ -110,7 +110,6 @@ type SteppedDevice = DeviceOverviewSnapshot & { binaryCommandPending?: boolean; 
 export const resolveSteppedChip = (device: SteppedDevice): SteppedChip | null => {
   if (isSteppedTransit(device)) return { label: 'Applying', tone: 'ok' };
   if (isSettlingReason(device.reason.code)) return { label: 'Settling', tone: 'warn' };
-  if (isLimitedReason(device.reason.code)) return { label: 'Limited', tone: 'warn' };
   return null;
 };
 
@@ -192,6 +191,15 @@ const resolveBlockedStatusLine = (device: SteppedDevice, profile: SteppedLoadPro
   return null;
 };
 
+const resolveOffStatusLine = (device: SteppedDevice): string | null => {
+  if (isWaitingReason(device.reason.code)) {
+    const gap = resolveHeadroomGapKw(device.reason);
+    return gap !== null ? `Needs ${gap.toFixed(1)} kW more to turn on` : 'Waiting for headroom';
+  }
+  if (isLimitedReason(device.reason.code)) return 'Off to stay within budget';
+  return null;
+};
+
 export const resolveSteppedStatusLine = (
   device: SteppedDevice,
   profile: SteppedLoadProfile,
@@ -202,18 +210,13 @@ export const resolveSteppedStatusLine = (
   if (device.reason.code === PLAN_REASON_CODES.shedInvariant) {
     const r = device.reason;
     const n = r.shedDeviceCount;
-    return `Capped at ${capitalize(r.maxStep)} — ${n} ${n === 1 ? 'device' : 'devices'} still recovering`;
+    return `Capped at ${capitalize(r.maxStep)} — ${n} ${n === 1 ? 'device' : 'devices'} still shed`;
   }
   const blocked = resolveBlockedStatusLine(device, profile);
   if (blocked !== null) return blocked;
-  if (isOffLikeState(device.currentState)) {
-    if (isWaitingReason(device.reason.code)) return 'Waiting for headroom';
-    if (isLimitedReason(device.reason.code)) return 'Off to stay within budget';
-  } else {
-    const stepId = resolveCurrentStepId(device);
-    if (stepId && !isOffLikeId(stepId)) return 'Maintaining level';
-  }
-  return null;
+  if (isOffLikeState(device.currentState)) return resolveOffStatusLine(device);
+  const stepId = resolveCurrentStepId(device);
+  return stepId && !isOffLikeId(stepId) ? 'Maintaining level' : null;
 };
 
 export const resolveSteppedTemperatureText = (device: {
