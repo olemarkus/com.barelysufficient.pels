@@ -5,6 +5,13 @@ file.
 
 ## P0 Correctness and control integrity
 
+- [ ] Flush throttled daily-budget state on shutdown. Low-priority `runtime` / `plan`
+      daily-budget writes can be skipped by the 10-minute throttle without retaining a pending
+      flush, while `onUninit()` only forces `power_tracker_state` persistence. Keep the latest
+      throttled daily-budget state pending and write it during app shutdown so restart/upgrade
+      does not reload stale `lastUsedNowKWh` or same-bucket plan state.
+      Files: `lib/dailyBudget/dailyBudgetStatePersistence.ts`,
+      `lib/dailyBudget/dailyBudgetService.ts`, `app.ts`, daily-budget persistence tests.
 - [ ] Make observation freshness source-aware. Targeted snapshot refreshes and same-value
       realtime updates should only advance freshness when the value source proves the capability
       was observed, and stale / missing freshness should not be silently considered safe.
@@ -65,6 +72,18 @@ file.
 
 ## P1 UI and product follow-ups
 
+- [ ] Make Settings UI device refresh await in-flight snapshot refreshes. `/ui_refresh_devices`
+      currently calls `refreshTargetDevicesSnapshot()` and then returns the current in-memory
+      device snapshot, but overlapping refresh calls only queue another refresh and return
+      immediately. After removing persisted target snapshots, this can return stale or empty
+      device data during startup or overlapping refreshes.
+      Files: `lib/app/appSnapshotHelpers.ts`, `lib/app/settingsUiAppRuntime.ts`,
+      `lib/app/settingsUiApi.ts`, settings UI API/runtime tests.
+- [ ] Update the Settings UI Homey API mock to stop serving devices from
+      `target_devices_snapshot`. Production now serves `/ui_devices` and `/ui_refresh_devices`
+      from runtime app state, so the mock should model live device data explicitly and avoid
+      masking runtime-backed device API regressions.
+      Files: `packages/settings-ui/test/helpers/homeyApiMock.ts`, settings UI tests.
 - [ ] Add a device-log view in the Settings UI, and reuse the shared device overview formatter so
       the visible device-log wording matches backend overview transition logs exactly.
       Files: settings UI advanced/device-log surface, `packages/shared-domain/src/deviceOverview.ts`.
@@ -118,6 +137,20 @@ file.
 
 ## P1 Type-safety and state-boundary follow-ups
 
+- [ ] Add missing swap lifecycle coverage from the pre-release review. Cover completed stepped
+      swap cleanup with a stepped target and requested step, assert approved stepped swaps persist
+      the stale-cleanup timestamp, and add an `applyRestorePlan()` integration test for orphan
+      measurement deferral before a fresh power sample.
+      Files: `test/swapLifecycle.test.ts`, `test/planRestoreBackoff.test.ts`,
+      `lib/plan/planRestore.ts`.
+- [ ] Make stepped swap completion use confirmed step evidence instead of planner-effective
+      `selectedStepId`. `cleanupCompletedSwaps()` currently treats a pending stepped swap target
+      as complete when `selectedStepId` is at or above the requested step, but that field can be
+      an observer-resolved planning fallback rather than materialized/reported state. Post-release,
+      move this completion check to reported/materialized step evidence so lower-priority swapped
+      devices are not released before the target step is actually confirmed.
+      Files: `lib/plan/swap/completion.ts`, `lib/plan/swap/lifecycle.ts`,
+      `lib/plan/planRestore.ts`, stepped swap lifecycle tests.
 - [ ] Remove legacy stepped-load optional fields from persisted/API contracts after the release
       cut. Planner and executor semantics should stay behind typed stepped-state adapters; the
       remaining compatibility fields (`selectedStepId`, `actualStepId`, `assumedStepId`, and
