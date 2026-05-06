@@ -402,6 +402,8 @@ export class PlanExecutor {
     snapshot?: TargetDeviceSnapshot,
   ): Promise<PlanActionHandleResult> {
     if (dev.plannedState !== 'shed') return { handled: false, wrote: false };
+    const reason = dev.reason;
+    if (isSwapTargetPendingReason(reason)) return { handled: true, wrote: false };
     const shedAction = dev.shedAction ?? 'turn_off';
     if (shedAction === 'set_temperature') {
       return this.applyShedTemperature(dev);
@@ -462,6 +464,7 @@ export class PlanExecutor {
   ): Promise<boolean> {
     if (isSteppedLoadDevice(dev)) return false;
     if (dev.plannedState !== 'keep' || resolveEffectiveCurrentOn(dev) !== false) return false;
+    if (isSwapTargetPendingReason(dev.reason)) return false;
     if (isRestoreHoldReason(dev.reason)) return false;
     const snapshot = this.latestTargetSnapshot.find((d) => d.id === dev.id);
     if (snapshot?.deviceClass === 'evcharger') {
@@ -1055,4 +1058,8 @@ function resolveFlowBackedBinaryTriggerCardId(
 
 function isRestoreHoldReason(reason: DeviceReason): boolean {
   return isRestoreAdmissionHoldReason(reason);
+}
+
+function isSwapTargetPendingReason(reason: DeviceReason | undefined): boolean {
+  return reason?.code === PLAN_REASON_CODES.swapPending && reason.targetName === null;
 }
