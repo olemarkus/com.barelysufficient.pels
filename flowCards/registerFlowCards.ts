@@ -28,10 +28,11 @@ import {
   registerManagedDeviceCondition,
 } from './deviceSettingsCards';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
-import { parseFlowPowerInput, registerFlowBackedDeviceCards } from './flowBackedDeviceCards';
+import { registerFlowBackedDeviceCards } from './flowBackedDeviceCards';
 
 const STEPPED_LOAD_POWER_CEILING_MARGIN_RATIO = 0.05;
 const STEPPED_LOAD_POWER_CEILING_MARGIN_MAX_W = 150;
+const EV_CHARGER_NOMINAL_VOLTAGE = 230;
 const EV_SOC_CARD_ID = 'report_evcharger_battery_level';
 
 type DeviceArg = RawFlowDeviceArg;
@@ -399,14 +400,17 @@ async function resolveSteppedLoadStepIdFromPowerInput(params: {
   rawPower: unknown;
 }): Promise<{ stepId: string; deviceName: string; parsedPowerW: number }> {
   const { deps, deviceId, rawPower } = params;
-  const powerW = parseFlowPowerInput(rawPower);
+  const device = await getSteppedLoadDeviceSnapshot(deps, deviceId);
+  const powerW = parseSteppedLoadPowerInput({
+    rawPower,
+    device,
+  });
   if (powerW === null) {
     throw createSteppedLoadReportError(
       'invalid_power_input',
-      'Power must be provided as a number or text like "1750 W".',
+      'Power must be provided as a number or text like "1750 W" or "6 A".',
     );
   }
-  const device = await getSteppedLoadDeviceSnapshot(deps, deviceId);
   const steps = device?.steppedLoadProfile?.steps ?? [];
   const resolvedStep = resolveSteppedLoadStepFromPower(steps, powerW);
   if (!resolvedStep) {
@@ -426,6 +430,48 @@ async function resolveSteppedLoadStepIdFromPowerInput(params: {
     deviceName: device.name.trim(),
     parsedPowerW: powerW,
   };
+}
+
+function parseSteppedLoadPowerInput(params: {
+  rawPower: unknown;
+  device: TargetDeviceSnapshot;
+}): number | null {
+  const { rawPower, device } = params;
+  if (typeof rawPower === 'number' && Number.isFinite(rawPower)) {
+    return Math.round(rawPower);
+  }
+
+  const normalized = String(rawPower ?? '').trim();
+  if (!normalized) return null;
+
+  const match = normalized.match(/^(-?\d+(?:[.,]\d+)?)\s*([WwAa])?$/);
+  if (!match) return null;
+
+  const value = Number.parseFloat(match[1].replace(',', '.'));
+  if (!Number.isFinite(value)) return null;
+
+  const unit = match[2]?.toLowerCase();
+  if (unit === 'a') {
+    const phaseCount = resolveEvTargetPowerPhaseCount(device.targetPowerConfig);
+    if (!phaseCount) {
+      throw createSteppedLoadReportError(
+        'invalid_power_input',
+        'Amp reports are only supported for EV charger target-power presets.',
+      );
+    }
+    return Math.round(value * EV_CHARGER_NOMINAL_VOLTAGE * phaseCount);
+  }
+
+  return Math.round(value);
+}
+
+function resolveEvTargetPowerPhaseCount(
+  config: TargetDeviceSnapshot['targetPowerConfig'],
+): 1 | 3 | null {
+  if (!config || config.enabled === false) return null;
+  if (config.preset === 'ev_charger_1_phase') return 1;
+  if (config.preset === 'ev_charger_3_phase') return 3;
+  return null;
 }
 
 function resolveSteppedLoadStepFromPower(

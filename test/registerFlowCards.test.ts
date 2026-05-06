@@ -720,6 +720,110 @@ describe('registerFlowCards', () => {
     }));
   });
 
+  it('maps EV charger amp reports to matching stepped-load power for 3-phase target-power presets', async () => {
+    const { deps, actionListeners, structuredInfo } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'ev-1',
+          name: 'Garage Charger',
+          controlModel: 'stepped_load',
+          targetPowerConfig: { enabled: true, preset: 'ev_charger_3_phase' },
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: '6a', planningPowerW: 4140 },
+              { id: '10a', planningPowerW: 6900 },
+            ],
+          },
+        },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_power({
+      device: 'ev-1',
+      power_w: '6 A',
+    })).resolves.toBe(true);
+
+    expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('ev-1', '6a');
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_resolved',
+      sourceCardId: 'report_stepped_load_power',
+      deviceId: 'ev-1',
+      deviceName: 'Garage Charger',
+      resolvedStepId: '6a',
+      parsedPowerW: 4140,
+      outcome: 'accepted',
+    }));
+  });
+
+  it('maps compact EV charger amp reports for 1-phase target-power presets', async () => {
+    const { deps, actionListeners } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'ev-1',
+          name: 'Garage Charger',
+          controlModel: 'stepped_load',
+          targetPowerConfig: { enabled: true, preset: 'ev_charger_1_phase' },
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: '10a', planningPowerW: 2300 },
+            ],
+          },
+        },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_power({
+      device: 'ev-1',
+      power_w: '10a',
+    })).resolves.toBe(true);
+
+    expect(deps.reportSteppedLoadActualStep).toHaveBeenCalledWith('ev-1', '10a');
+  });
+
+  it('rejects amp reports for stepped-load devices without an EV target-power preset', async () => {
+    const { deps, actionListeners, structuredWarn } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlModel: 'stepped_load',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1750 },
+            ],
+          },
+        },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_power({
+      device: 'dev-1',
+      power_w: '6 A',
+    })).rejects.toThrow('Amp reports are only supported for EV charger target-power presets.');
+
+    expect(deps.reportSteppedLoadActualStep).not.toHaveBeenCalled();
+    expect(structuredWarn).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_rejected',
+      sourceCardId: 'report_stepped_load_power',
+      deviceId: 'dev-1',
+      rawPowerInput: '6 A',
+      reasonCode: 'invalid_power_input',
+      errorMessage: 'Amp reports are only supported for EV charger target-power presets.',
+    }));
+  });
+
   it('maps nearby lower power reports to the nearest configured upward step within margin', async () => {
     const { deps, actionListeners } = buildDeps({
       getSnapshot: vi.fn().mockResolvedValue([
