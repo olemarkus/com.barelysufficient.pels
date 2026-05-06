@@ -156,7 +156,8 @@ describe('restore cooldown backoff', () => {
 
     const offDevice = result.planDevices.find((device) => device.id === 'dev-off');
     const onDevice = result.planDevices.find((device) => device.id === 'dev-on');
-    expect(offDevice?.plannedState).toBe('keep');
+    expect(offDevice?.plannedState).toBe('shed');
+    expect(reasonText(offDevice?.reason)).toBe('swap pending');
     expect(onDevice?.plannedState).toBe('shed');
     expect(reasonText(onDevice?.reason)).toBe('swapped out for Off');
     expect(result.stateUpdates.swapByDevice['stale-target']?.pendingTarget).toBeFalsy();
@@ -201,7 +202,8 @@ describe('restore cooldown backoff', () => {
 
     const offDevice = result.planDevices.find((device) => device.id === 'dev-off');
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
-    expect(offDevice?.plannedState).toBe('keep');
+    expect(offDevice?.plannedState).toBe('shed');
+    expect(reasonText(offDevice?.reason)).toBe('swap pending');
     expect(steppedDevice?.plannedState).toBe('shed');
     expect(steppedDevice?.shedAction).toBe('turn_off');
     expect(reasonText(steppedDevice?.reason)).toBe('swapped out for Priority heater');
@@ -2164,14 +2166,84 @@ describe('restore admission — headroom and penalty gates', () => {
       deps: freshBatchDeps(now),
     });
 
-    expect(result.restoredThisCycle).toEqual(new Set(['swap-target']));
-    expect(result.planDevices.find((d) => d.id === 'swap-target')?.plannedState).toBe('keep');
+    expect(result.restoredThisCycle).toEqual(new Set());
+    const swapTarget = result.planDevices.find((d) => d.id === 'swap-target');
+    expect(swapTarget?.plannedState).toBe('shed');
+    expect(reasonText(swapTarget?.reason)).toBe('swap pending');
     const swapSource = result.planDevices.find((d) => d.id === 'swap-source');
     expect(swapSource?.plannedState).toBe('shed');
     expect(reasonText(swapSource?.reason)).toBe('swapped out for swap-target');
     const laterRestore = result.planDevices.find((d) => d.id === 'later-restore');
     expect(laterRestore?.plannedState).toBe('shed');
-    expect(reasonText(laterRestore?.reason)).toBe('meter settling (60s remaining)');
+    expect(reasonText(laterRestore?.reason)).toBe('swap pending (swap-target)');
+  });
+
+  it('admits a pending swap target after swapped-out source is confirmed off with fresh power', () => {
+    const state = createPlanEngineState();
+    state.swapByDevice = {
+      'swap-target': { pendingTarget: true, timestamp: Date.now(), lastPlanMeasurementTs: 123 },
+      'swap-source': { swappedOutFor: 'swap-target' },
+    };
+
+    const result = applyRestorePlan({
+      planDevices: [
+        batchDevice('swap-target', 10, 1),
+        buildPlanDevice({
+          id: 'swap-source',
+          name: 'swap-source',
+          priority: 90,
+          currentState: 'off',
+          currentOn: false,
+          expectedPowerKw: 2,
+          measuredPowerKw: 0,
+          powerKw: 2,
+        }),
+      ],
+      context: freshBatchContext(3),
+      state,
+      sheddingActive: false,
+      deps: freshBatchDeps(124),
+    });
+
+    const swapTarget = result.planDevices.find((d) => d.id === 'swap-target');
+    const swapSource = result.planDevices.find((d) => d.id === 'swap-source');
+    expect(swapTarget?.plannedState).toBe('keep');
+    expect(result.restoredThisCycle).toEqual(new Set(['swap-target']));
+    expect(swapSource?.plannedState).toBe('shed');
+    expect(reasonText(swapSource?.reason)).toBe('swap pending (swap-target)');
+  });
+
+  it('keeps a pending swap target held even when raw headroom would admit it before source confirmation', () => {
+    const state = createPlanEngineState();
+    state.swapByDevice = {
+      'swap-target': { pendingTarget: true, timestamp: Date.now(), lastPlanMeasurementTs: 123 },
+      'swap-source': { swappedOutFor: 'swap-target' },
+    };
+
+    const result = applyRestorePlan({
+      planDevices: [
+        batchDevice('swap-target', 10, 1),
+        buildPlanDevice({
+          id: 'swap-source',
+          name: 'swap-source',
+          priority: 90,
+          currentState: 'on',
+          currentOn: true,
+          expectedPowerKw: 2,
+          measuredPowerKw: 2,
+          powerKw: 2,
+        }),
+      ],
+      context: freshBatchContext(3),
+      state,
+      sheddingActive: false,
+      deps: freshBatchDeps(124),
+    });
+
+    const swapTarget = result.planDevices.find((d) => d.id === 'swap-target');
+    expect(swapTarget?.plannedState).toBe('shed');
+    expect(reasonText(swapTarget?.reason)).toBe('swap pending');
+    expect(result.restoredThisCycle).toEqual(new Set());
   });
 
   it('admits device when headroom exactly meets base need plus admission reserve plus floor', () => {
@@ -3683,16 +3755,16 @@ describe('stepped-load shed invariant', () => {
 
     const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
     const swappedOut = result.planDevices.find((d) => d.id === 'lower-priority');
-    expect(steppedDev?.plannedState).toBe('keep');
-    expect(steppedDev?.desiredStepId).toBe('low');
-    expect(steppedDev?.targetStepId).toBe('low');
-    expect(steppedDev?.reason?.code).toBe(PLAN_REASON_CODES.restoreNeed);
+    expect(steppedDev?.plannedState).toBe('shed');
+    expect(steppedDev?.desiredStepId).toBeUndefined();
+    expect(steppedDev?.targetStepId).toBeUndefined();
+    expect(steppedDev?.reason?.code).toBe(PLAN_REASON_CODES.swapPending);
     expect(swappedOut?.plannedState).toBe('shed');
     expect(swappedOut?.reason).toMatchObject({
       code: PLAN_REASON_CODES.swappedOut,
       targetName: 'Priority tank',
     });
-    expect(result.restoredOneThisCycle).toBe(true);
+    expect(result.restoredOneThisCycle).toBe(false);
     expect(result.stateUpdates.swapByDevice['lower-priority']).toMatchObject({ swappedOutFor: 'dev-step' });
     expect(result.stateUpdates.swapByDevice['dev-step']).toMatchObject({
       pendingTarget: true,
@@ -3794,15 +3866,15 @@ describe('stepped-load shed invariant', () => {
     const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
     const lowerPriority = result.planDevices.find((d) => d.id === 'lower-priority');
     expect(steppedDev?.plannedState).toBe('keep');
-    expect(steppedDev?.desiredStepId).toBe('max');
-    expect(steppedDev?.targetStepId).toBe('max');
-    expect(steppedDev?.reason?.code).toBe(PLAN_REASON_CODES.restoreNeed);
+    expect(steppedDev?.desiredStepId).toBe('medium');
+    expect(steppedDev?.targetStepId).toBeUndefined();
+    expect(steppedDev?.reason?.code).toBe(PLAN_REASON_CODES.swapPending);
     expect(lowerPriority?.plannedState).toBe('shed');
     expect(lowerPriority?.reason).toMatchObject({
       code: PLAN_REASON_CODES.swappedOut,
       targetName: 'Priority tank',
     });
-    expect(result.restoredOneThisCycle).toBe(true);
+    expect(result.restoredOneThisCycle).toBe(false);
     expect(result.stateUpdates.swapByDevice['lower-priority']).toMatchObject({ swappedOutFor: 'dev-step' });
     expect(result.stateUpdates.swapByDevice['dev-step']).toMatchObject({
       pendingTarget: true,
@@ -3854,7 +3926,8 @@ describe('stepped-load shed invariant', () => {
     const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
     const lowerPriority = result.planDevices.find((d) => d.id === 'lower-priority');
     expect(steppedDev?.plannedState).toBe('keep');
-    expect(steppedDev?.desiredStepId).toBe('max');
+    expect(steppedDev?.desiredStepId).toBe('medium');
+    expect(steppedDev?.reason?.code).toBe(PLAN_REASON_CODES.swapPending);
     expect(lowerPriority?.plannedState).toBe('shed');
     expect(lowerPriority?.reason).toMatchObject({
       code: PLAN_REASON_CODES.swappedOut,

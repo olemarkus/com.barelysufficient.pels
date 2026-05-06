@@ -165,6 +165,15 @@ file.
 
 ## P1 Simplification follow-ups
 
+- [ ] Unify stepped restore admission wrappers so pending-swap source-off holds and stepped swap
+      executor context are applied consistently across normal restore planning, restore cooldown,
+      meter-settling, and active stepped upgrade paths.
+      Why P1: the two-phase swap contract is currently enforced by branch-local calls in
+      `planRestore.ts`, which makes narrow bypasses easy when a new restore branch calls
+      `planRestoreForSteppedDevice()` directly. Include a regression for an active stepped
+      pending swap target during restore cooldown while its swapped-out source is still on.
+      Files: `lib/plan/planRestore.ts`, `lib/plan/planRestoreHelpers.ts`,
+      stepped swap / restore-cooldown tests.
 - [ ] Split planner state from render-only explanation data so keep/shed/inactive decisions no
       longer depend on UI-facing `reason` objects. The stepped restore admission path now keeps
       rejected off restores explicit in the plan, and cooldown / meter-settling restore blocks now

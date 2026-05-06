@@ -2461,11 +2461,12 @@ describe('Device plan snapshot', () => {
     const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
     const lowPriPlan = plan.devices.find((d: any) => d.id === 'dev-low');
 
-    // High priority device should be planned for restoration (keep)
-    // Low priority device should be planned for shedding (swap)
+    // Swap phase 1 makes room first; the high-priority target stays pending until
+    // the lower-priority source is confirmed off.
     expect(lowPriPlan?.plannedState).toBe('shed');
     expect(reasonText(lowPriPlan?.reason)).toContain('swapped out');
-    expect(highPriPlan?.plannedState).toBe('keep');
+    expect(highPriPlan?.plannedState).toBe('shed');
+    expect(reasonText(highPriPlan?.reason)).toBe('swap pending');
   });
 
   it('does not swap when there are no lower-priority devices to shed', async () => {
@@ -2606,8 +2607,10 @@ describe('Device plan snapshot', () => {
     const low1Plan = plan.devices.find((d: any) => d.id === 'dev-low1');
     const low2Plan = plan.devices.find((d: any) => d.id === 'dev-low2');
 
-    // High priority should be restored (swap successful)
-    expect(highPriPlan?.plannedState).toBe('keep');
+    // Swap phase 1 makes room first; the high-priority target is not restored
+    // until the lower-priority sources are confirmed off.
+    expect(highPriPlan?.plannedState).toBe('shed');
+    expect(reasonText(highPriPlan?.reason)).toBe('swap pending');
 
     // Both low priority devices should be shed for the swap
     expect(low1Plan?.plannedState).toBe('shed');
@@ -4287,7 +4290,8 @@ describe('Dry run mode', () => {
     const spotterPlan = plan.devices.find((d: any) => d.id === 'spotter');
     const lowTempPlan = plan.devices.find((d: any) => d.id === 'low-temp');
 
-    expect(spotterPlan?.plannedState).toBe('keep');
+    expect(spotterPlan?.plannedState).toBe('shed');
+    expect(reasonText(spotterPlan?.reason)).toBe('swap pending');
     expect(lowTempPlan?.plannedState).toBe('shed');
     expect(reasonText(lowTempPlan?.reason)).toContain('swapped out for');
   });
@@ -4356,7 +4360,8 @@ describe('Dry run mode', () => {
     const spotterPlan = plan.devices.find((d: any) => d.id === 'spotter');
     const lowTempPlan = plan.devices.find((d: any) => d.id === 'low-temp-no-onoff');
 
-    expect(spotterPlan?.plannedState).toBe('keep');
+    expect(spotterPlan?.plannedState).toBe('shed');
+    expect(reasonText(spotterPlan?.reason)).toBe('swap pending');
     expect(lowTempPlan?.plannedState).toBe('shed');
     expect(reasonText(lowTempPlan?.reason)).toContain('swapped out for');
   });

@@ -219,6 +219,106 @@ describe('PlanExecutor restore logging', () => {
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
   });
 
+  it('does not turn off a pending swap target that is already observed on', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 1,
+        softLimitKw: 5,
+        headroomKw: 4,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater',
+          currentState: 'off',
+          plannedState: 'shed',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: true,
+          reason: { code: PLAN_REASON_CODES.swapPending, targetName: null },
+        },
+      ],
+    });
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it('does not lower a pending swap target temperature', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 1,
+        softLimitKw: 5,
+        headroomKw: 4,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater',
+          currentState: 'on',
+          plannedState: 'shed',
+          currentTarget: 21,
+          plannedTarget: 16,
+          controllable: true,
+          shedAction: 'set_temperature',
+          reason: { code: PLAN_REASON_CODES.swapPending, targetName: null },
+        },
+      ],
+    });
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it('does not restore a pending swap target even if it has keep intent', async () => {
+    const { executor, deviceManager } = buildExecutor();
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 1,
+        softLimitKw: 5,
+        headroomKw: 4,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater',
+          currentState: 'off',
+          plannedState: 'keep',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: true,
+          reason: { code: PLAN_REASON_CODES.swapPending, targetName: null },
+        },
+      ],
+    });
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
   it('logs restore from shed state when the device has not been restored since the last shed', async () => {
     const state = createPlanEngineState();
     state.lastDeviceShedMs['dev-1'] = Date.now() - 10_000;

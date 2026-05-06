@@ -204,22 +204,16 @@ export function applyRestorePlan(params: {
       deps,
       steppedSwapExecutor,
     }));
-    const activeSteppedDevices = getSteppedRestoreCandidates(Array.from(deviceMap.values()))
-      .filter((dev) => resolveEffectiveCurrentOn(dev) === true);
-    for (const dev of activeSteppedDevices) {
-      const result = planRestoreForSteppedDevice({
-        dev,
-        deviceMap,
-        state,
-        timing: effectiveTiming,
-        availableHeadroom,
-        restoredOneThisCycle,
-        debugStructured: deps.debugStructured,
-        swapExecutor: steppedSwapExecutor,
-      });
-      availableHeadroom = result.availableHeadroom;
-      restoredOneThisCycle = result.restoredOneThisCycle;
-    }
+    ({ availableHeadroom, restoredOneThisCycle } = applyActiveSteppedRestoreCandidates({
+      deviceMap,
+      swapState,
+      state,
+      timing: effectiveTiming,
+      availableHeadroom,
+      restoredOneThisCycle,
+      debugStructured: deps.debugStructured,
+      steppedSwapExecutor,
+    }));
   } else if (
     sheddingActive
     || timing.inCooldown
@@ -288,6 +282,41 @@ function applyRestoreCandidates(params: {
   return { availableHeadroom, restoredOneThisCycle };
 }
 
+function applyActiveSteppedRestoreCandidates(params: {
+  deviceMap: Map<string, DevicePlanDevice>;
+  swapState: SwapState;
+  state: PlanEngineState;
+  timing: Parameters<typeof planRestoreForSteppedDevice>[0]['timing'];
+  availableHeadroom: number;
+  restoredOneThisCycle: boolean;
+  debugStructured: RestoreDeps['debugStructured'];
+  steppedSwapExecutor: SteppedSwapExecutor;
+}): RestoreLoopState {
+  let { availableHeadroom, restoredOneThisCycle } = params;
+  const activeSteppedDevices = getSteppedRestoreCandidates(Array.from(params.deviceMap.values()))
+    .filter((dev) => resolveEffectiveCurrentOn(dev) === true);
+  for (const dev of activeSteppedDevices) {
+    if (holdPendingSwapTargetUntilSourcesAreOff({
+      swapState: params.swapState,
+      targetDevice: dev,
+      deviceMap: params.deviceMap,
+    })) continue;
+    const result = planRestoreForSteppedDevice({
+      dev,
+      deviceMap: params.deviceMap,
+      state: params.state,
+      timing: params.timing,
+      availableHeadroom,
+      restoredOneThisCycle,
+      debugStructured: params.debugStructured,
+      swapExecutor: params.steppedSwapExecutor,
+    });
+    availableHeadroom = result.availableHeadroom;
+    restoredOneThisCycle = result.restoredOneThisCycle;
+  }
+  return { availableHeadroom, restoredOneThisCycle };
+}
+
 function applyRestoreCandidate(params: {
   candidate: RestoreCandidate;
   deviceMap: Map<string, DevicePlanDevice>;
@@ -308,6 +337,11 @@ function applyRestoreCandidate(params: {
     restoredOneThisCycle: params.restoredOneThisCycle,
   };
   if (!dev) return currentState;
+  if (holdPendingSwapTargetUntilSourcesAreOff({
+    swapState: params.swapState,
+    targetDevice: dev,
+    deviceMap: params.deviceMap,
+  })) return currentState;
   if (params.candidate.kind === 'binary' && isBinaryRestoreCandidate(dev)) {
     return planRestoreForDevice({
       dev,
@@ -971,6 +1005,10 @@ function attemptSwapRestore(params: {
     rejectedDeviceUpdate,
   } = params;
 
+  if (hasPendingSwapSourcesStillOn({ swapState, targetDeviceId: dev.id, deviceMap })) {
+    setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
+    return { availableHeadroom, restoredOneThisCycle: false };
+  }
   if (shouldKeepSwapTargetPending({ swapState, deviceId: dev.id, measurementTs })) {
     setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
     return { availableHeadroom, restoredOneThisCycle: false };
@@ -1017,7 +1055,6 @@ function attemptSwapRestore(params: {
 
   emitSwapApprovedDebug({ dev, phase, restoreNeed, swap, deps });
   markApprovedSwapTarget({ swapState, dev, measurementTs, admittedDeviceUpdate });
-  const nextHeadroom = swap.effectiveHeadroom;
   for (const shedDev of swap.toShed) {
     setDevice(deviceMap, shedDev.id, {
       plannedState: 'shed',
@@ -1032,9 +1069,33 @@ function attemptSwapRestore(params: {
     });
     markDeviceSwappedOutFor(swapState, shedDev.id, dev.id);
   }
-  restoredThisCycle.add(dev.id);
-  setDevice(deviceMap, dev.id, { plannedState: 'keep', ...admittedDeviceUpdate });
-  return { availableHeadroom: nextHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
+  setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
+  return { availableHeadroom, restoredOneThisCycle: false };
+}
+
+function hasPendingSwapSourcesStillOn(params: {
+  swapState: SwapState;
+  targetDeviceId: string;
+  deviceMap: ReadonlyMap<string, DevicePlanDevice>;
+}): boolean {
+  const { swapState, targetDeviceId, deviceMap } = params;
+  for (const [deviceId, swappedOutFor] of swapState.swappedOutFor) {
+    if (swappedOutFor !== targetDeviceId) continue;
+    const sourceDevice = deviceMap.get(deviceId);
+    if (!sourceDevice || resolveEffectiveCurrentOn(sourceDevice) !== false) return true;
+  }
+  return false;
+}
+
+function holdPendingSwapTargetUntilSourcesAreOff(params: {
+  swapState: SwapState;
+  targetDevice: DevicePlanDevice;
+  deviceMap: Map<string, DevicePlanDevice>;
+}): boolean {
+  const { swapState, targetDevice, deviceMap } = params;
+  if (!hasPendingSwapSourcesStillOn({ swapState, targetDeviceId: targetDevice.id, deviceMap })) return false;
+  setDevice(deviceMap, targetDevice.id, buildSwapPendingTargetUpdate(targetDevice));
+  return true;
 }
 
 function markApprovedSwapTarget(params: {
