@@ -655,6 +655,7 @@ export class PlanBuilder {
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
       usedKWh: context.usedKWh,
       budgetKWh: context.budgetKWh,
+      capacityLimitKw: this.capacitySettings.limitKw,
       minutesRemaining: context.minutesRemaining,
       controlledKw: controlledKw ?? undefined,
       uncontrolledKw: uncontrolledKw ?? undefined,
