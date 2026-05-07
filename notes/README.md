@@ -11,6 +11,11 @@ Current notes:
   on them.
 - `logging/README.md`: structured logging policy, current event inventory, ALS context, and
   migration guidance away from prose runtime logs.
+- `settings-ui-reorganization.md`: target product/navigation ownership model for reorganizing the
+  Settings UI around Overview, Budget, Usage, and Settings while preserving canonical owners for
+  limits, devices, modes, price, simulation mode, and advanced diagnostics.
+- `ui-terminology.md`: canonical user-facing vocabulary for UI labels, status strings, tab names,
+  and help text.
 - `restore-eagerness/README.md`: the narrowed remaining restore-admission concern after the larger
   restore-stability fixes landed.
 - `state-management/README.md`: Homey state-source trust, stale-data risks, reconcile pitfalls, and guidance for pending/observed state work.

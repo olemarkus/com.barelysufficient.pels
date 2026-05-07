@@ -72,6 +72,12 @@ file.
 
 ## P1 UI and product follow-ups
 
+- [ ] Deliver the Settings UI reorganization program from
+      `notes/settings-ui-reorganization.md` as stacked reviewable PRs. Preserve the ownership
+      boundaries from that note: Overview for current state, Budget for daily planning and preview,
+      Usage for history, and Settings as the navigation container for limits, devices, modes,
+      price, simulation mode, and advanced diagnostics.
+      Files: `packages/settings-ui/**`, generated `settings/`, relevant settings UI tests.
 - [ ] Make Settings UI device refresh await in-flight snapshot refreshes. `/ui_refresh_devices`
       currently calls `refreshTargetDevicesSnapshot()` and then returns the current in-memory
       device snapshot, but overlapping refresh calls only queue another refresh and return
