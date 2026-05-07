@@ -172,10 +172,24 @@ Show:
 - day selector: `Yesterday`, `Today`, `Tomorrow`
 - current budget status for the selected day
 - selected-day metrics
-- main actual-vs-budget chart
-- optional price shading when reliable price data exists
+- chart card with local views: `Progress` and `Hourly plan`
 - plain next-action sentence
 - action to adjust the daily budget
+
+`Progress` answers whether the selected day is on track. Use cumulative actual use, cumulative
+plan/budget, and a projected end marker or ghost line for today only when that projection is
+reliable.
+
+`Hourly plan` answers how the selected day's budget or forecast is distributed across the day.
+Use per-hour planned budget / expected usage, optional actuals for elapsed hours, and subtle price
+background context when reliable price data exists.
+
+Do not make actual usage vs price the primary Budget chart. Actual usage includes background load
+and manual behavior that PELS cannot control, so that analysis belongs in `Usage` if it is ever
+shown.
+
+Avoid dual-axis charts. Do not use one axis for kWh and another for price on the narrow Homey
+viewport.
 
 The next-action sentence should be framed as plan impact, not a duplicate of the full live
 Overview story.
@@ -245,7 +259,8 @@ Expanded fields:
 - `Background usage reserve`
 - `Managed device flexibility`
 
-`Preview changes` appears only when settings are dirty.
+The full `Preview changes` / `Apply changes` / `Discard` workflow belongs to `Budget > Review
+Changes`. Do not show those actions in an unfinished new-UI Adjust surface.
 
 `Budget > Adjust` may show the current hard cap and safety margin when explaining the plan, but
 editing the global safety/source controls belongs in `Settings > Limits & safety`.
@@ -424,10 +439,15 @@ first-screen content.
 Primary target: 320-480px Homey webview. Treat wider browser widths as preview convenience only,
 not as a design target.
 
+Use Material Design as the interaction and layout language, not as a requirement to adopt MUI.
+The Settings UI should stay Preact plus PELS CSS tokens, with ECharts isolated behind focused
+chart wrappers for the Budget progress and hourly-plan charts.
+
 Use:
 
 - stacked cards
 - single-column layout
+- segmented buttons for local choices such as `Plan | Adjust`, day selection, and chart view
 - compact comparison tables
 - short chip labels
 - reduced chart axis labels

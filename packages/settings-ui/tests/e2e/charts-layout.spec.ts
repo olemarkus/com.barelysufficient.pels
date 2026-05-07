@@ -67,13 +67,13 @@ test.describe('Settings UI chart layout', () => {
 
     await page.getByRole('tab', { name: 'Budget' }).click();
     await expect(page.locator('#budget-panel')).toBeVisible();
-    await expect(page.locator('#daily-budget-chart')).toBeVisible();
-    await expect(page.locator('#daily-budget-bars')).toBeVisible();
+    await expect(page.locator('#budget-redesign-chart')).toBeVisible();
+    await expect(page.locator('#budget-redesign-chart svg')).toBeVisible();
 
     const budgetIssues = await collectLayoutIssues(page, '#budget-panel', [
-      '#daily-budget-chart',
-      '#daily-budget-bars',
-      '#daily-budget-labels',
+      '#budget-redesign-chart',
+      '#budget-redesign-metrics',
+      '#budget-redesign-chart svg',
     ]);
     expect(
       budgetIssues,
