@@ -116,7 +116,7 @@ Each of these lives in `planHero.ts` or `planDeviceCard.ts` from phase 1.
    - Row 2: measured/expected load bar, tiny tick for `expectedKw`
    - Row 3: single reason line from `formatOverviewStatus` (the real one,
      not the e2e stub).
-   Full-opacity when Held/Resuming/Active; 70% when Idle/Manual; dashed
+   Full-opacity when Limited/Resuming/Active; 70% when Idle/Manual; dashed
    outline when Unavailable.
 
 4. **Real reasons from `formatOverviewStatus`.** The e2e stub at
@@ -184,7 +184,7 @@ Runtime has the data (`lib/diagnostics/deviceDiagnosticsService.ts:198-202`,
    human-readable message, switch to `formatStarvationBadge(...).label`
    so logs and UI stay word-for-word identical.
 
-### Phase 4 — Terminology sweep ("cap" → "capacity"/"limit")
+### Phase 4 — Terminology sweep (ambiguous "cap" wording)
 
 User explicitly rejected "capacity cap". Hunt remaining instances:
 
@@ -192,9 +192,10 @@ User explicitly rejected "capacity cap". Hunt remaining instances:
   `'Holding load below the cap'` → `'Holding load below the limit'`.
 - `packages/settings-ui/tests/e2e/fixtures/homey.stub.js` — fixture
   strings containing "cap" (only if they're visible on-screen).
-- `git grep -n 'capacity cap'` and `git grep -n 'hard cap'` across
-  `packages/**`, `settings/**`, `lib/**`, `test/**`. Each hit needs
-  review: user-facing → rename; internal identifier → leave alone.
+- `git grep -n 'capacity cap'` and review visible bare `cap` wording across
+  `packages/**`, `settings/**`, `lib/**`, `test/**`. Rename ambiguous user-facing
+  hits to `limit` or `capacity` as appropriate. Do not rename canonical `Hard cap`
+  labels; see `notes/ui-terminology.md`.
 - Update test fixture assertions that depend on old wording.
 
 ### Phase 5 — Verification
@@ -216,7 +217,7 @@ Runs top-to-bottom per original plan's section 9:
 7. `TODO.md` scan — line 68 tracks `deviceOverview.ts` wording. Fold in
    or explicitly defer.
 8. PR description — flag that plan-state log phrasing changed (e.g.
-   "Shed" → "Held") for anyone parsing logs downstream.
+   "Shed" → "Limited") for anyone parsing logs downstream.
 
 ## Handy references
 

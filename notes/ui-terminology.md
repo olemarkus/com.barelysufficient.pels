@@ -42,10 +42,10 @@ The overview hero uses a specific vocabulary to make the power/energy distinctio
 
 | Concept | Label | Avoid |
 |---|---|---|
-| Current instantaneous draw | **Power being used now** | Power consumed currently, Power consumed now, Current load |
+| Current instantaneous draw | **Power now** | Power consumed currently, Power consumed now, Current load |
 | Dynamic kW threshold (see below) | **Safe pace now** | PELS limit, Soft limit, Reaction limit |
 | Fixed user-configured ceiling | **Hard cap** | Power limit, Grid cap |
-| kWh used so far this hour | **Energy used so far this hour** | Usage now, Consumed |
+| kWh used so far this hour | **Energy used this hour** | Usage now, Consumed |
 | kWh allowed for this hour | **Budget this hour** | Hourly energy budget, Hourly target |
 | Projected end-of-hour kWh | **Projected this hour** | Estimate, Forecast, Planner result |
 
@@ -58,9 +58,23 @@ The dynamic tick on the power bar shows where PELS starts reacting. It can come 
 | Source (`meta.softLimitSource`) | Tick label | Tooltip |
 |---|---|---|
 | `capacity` | **Safe pace now** | Hourly power limit minus safety margin — PELS starts reacting here |
-| `daily_budget` | **Safe pace now** | Slowed to stay within today's budget — daily pacing is the tighter constraint right now |
+| `daily` | **Safe pace now** | Slowed to stay within today's budget — daily pacing is the tighter constraint right now |
+| `both` | **Safe pace now** | Both capacity and daily pacing are constraining PELS right now |
 
 The **hard cap** tick (user-configured ceiling, `hardLimitKw`) always shows as **Hard cap** with tooltip: `Your configured maximum — staying under this avoids tariff steps or breaker trips`.
+
+### Safe pace, hard cap, and safety margin
+
+Keep these three concepts distinct in normal UI:
+
+| Term | Meaning |
+|---|---|
+| **Safe pace** | Dynamic planning pace to stay on track. |
+| **Hard cap** | Configured upper boundary PELS tries not to exceed. |
+| **Safety margin** | Buffer below the configured capacity/tariff limit. |
+
+Do not use `power limit` as a casual threshold label where it could blur the distinction between
+`Safe pace` and `Hard cap`.
 
 ### Hero legend
 
