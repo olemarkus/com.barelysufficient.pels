@@ -57,10 +57,11 @@ import {
   UNMANAGED_RESERVE_MODE,
 } from '../../../contracts/src/dailyBudgetConstants.ts';
 import { priceFlexModeValue, reserveModeValue } from './dailyBudgetTuningValues.ts';
+import { initBudgetRedesignHandlers, renderBudgetRedesign, type BudgetDayView } from './budgetRedesign.ts';
 const DEFAULT_COST_UNIT = 'kr';
 const DEFAULT_COST_DIVISOR = 100;
 
-type DailyBudgetView = 'today' | 'tomorrow' | 'yesterday';
+type DailyBudgetView = BudgetDayView;
 let currentDailyBudgetView: DailyBudgetView = 'today';
 let latestDailyBudgetPayload: DailyBudgetUiPayload | null = null;
 let latestActiveDailyBudgetPayload: DailyBudgetUiPayload | null = null;
@@ -249,6 +250,7 @@ const renderDailyBudget = (payload: DailyBudgetUiPayload | null) => {
   if (!dailyBudgetChart || !dailyBudgetEmpty) return;
   latestDailyBudgetPayload = payload;
   setDailyBudgetToggleActive(currentDailyBudgetView);
+  renderBudgetRedesign(payload, currentDailyBudgetView, costDisplay);
   if (!payload) {
     renderDailyBudgetEmptyState();
     return;
@@ -505,6 +507,7 @@ const setDailyBudgetView = (view: DailyBudgetView) => {
 };
 
 export const initDailyBudgetHandlers = () => {
+  initBudgetRedesignHandlers(setDailyBudgetView);
   dailyBudgetEnabledInput?.addEventListener('change', markDailyBudgetModelDraftChanged);
   dailyBudgetKwhInput?.addEventListener('change', markDailyBudgetModelDraftChanged);
   dailyBudgetPriceShapingInput?.addEventListener('change', markDailyBudgetModelDraftChanged);

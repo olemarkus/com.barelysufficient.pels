@@ -141,6 +141,7 @@ const installDailyBudgetStub = async (page: Page, payload: DailyBudgetUiPayload)
   const today = payload.days[payload.todayKey];
   await page.addInitScript((params) => {
     (window as StubbedHomeyWindow).__PELS_HOMEY_STUB__ = {
+      overviewRedesignEnabled: false,
       settings: params.settings,
       dailyBudgetPayload: params.payload,
     };
@@ -171,6 +172,7 @@ type BucketGeometry = {
 
 type StubbedHomeyWindow = Window & {
   __PELS_HOMEY_STUB__?: {
+    overviewRedesignEnabled?: boolean;
     settings: Record<string, unknown>;
     dailyBudgetPayload: DailyBudgetUiPayload;
   };

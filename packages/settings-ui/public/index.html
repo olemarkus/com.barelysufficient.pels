@@ -136,100 +136,231 @@
           </h2>
         </div>
       </div>
-      <details class="settings-collapse legacy-budget-capacity-settings" open>
-        <summary>
-          <h3 class="section-title">Capacity</h3>
-          <span class="section-hint">Hourly kW cap</span>
-        </summary>
-        <div class="collapse-content">
-          <form id="capacity-form" class="form-grid">
-            <label class="field">
-              <span class="field__label">Capacity limit (kW)</span>
-              <input id="capacity-limit" name="capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required>
-            </label>
-            <label class="field">
-              <span class="field__label">Soft margin (kW)</span>
-              <input id="capacity-margin" name="capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required>
-              <small class="field__hint">Soft limit = limit - margin.</small>
-            </label>
-          </form>
+      <div class="legacy-budget-surface">
+        <details class="settings-collapse legacy-budget-capacity-settings" open>
+          <summary>
+            <h3 class="section-title">Capacity</h3>
+            <span class="section-hint">Hourly kW cap</span>
+          </summary>
+          <div class="collapse-content">
+            <form id="capacity-form" class="form-grid">
+              <label class="field">
+                <span class="field__label">Capacity limit (kW)</span>
+                <input id="capacity-limit" name="capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required>
+              </label>
+              <label class="field">
+                <span class="field__label">Soft margin (kW)</span>
+                <input id="capacity-margin" name="capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required>
+                <small class="field__hint">Soft limit = limit - margin.</small>
+              </label>
+            </form>
+          </div>
+        </details>
+
+        <details class="settings-collapse" open>
+          <summary>
+            <h3 class="section-title">Daily budget</h3>
+            <span class="section-hint">
+              <span class="legacy-ui-copy">Soft kWh/day guide</span>
+              <span class="redesign-ui-copy">Daily kWh plan</span>
+            </span>
+          </summary>
+          <div class="collapse-content">
+            <form id="daily-budget-form" class="form-grid">
+              <label class="field checkbox-field">
+                <input id="daily-budget-enabled" name="daily_budget_enabled" type="checkbox">
+                <span class="field__label">Enable daily energy budget</span>
+              </label>
+              <label class="field">
+                <span class="field__label">Daily budget (kWh)</span>
+                <input id="daily-budget-kwh" name="daily_budget_kwh" type="number" step="0.1" inputmode="decimal" autocomplete="off">
+                <small class="field__hint">Daily energy target used to build the plan.</small>
+              </label>
+              <label class="field checkbox-field">
+                <input id="daily-budget-price-shaping" name="daily_budget_price_shaping_enabled" type="checkbox" checked>
+                <span class="field__label">Price-shape today plan</span>
+              </label>
+            </form>
+
+            <div class="daily-budget-header day-view-header">
+              <div>
+                <h4 id="daily-budget-title">Today plan</h4>
+                <p class="muted" id="daily-budget-day">--</p>
+              </div>
+              <div class="daily-budget-actions day-view-actions">
+                <button type="button" class="btn secondary" id="daily-budget-recompute">Preview changes</button>
+                <button type="button" class="btn primary" id="daily-budget-apply" hidden>Apply changes</button>
+                <button type="button" class="btn ghost" id="daily-budget-discard" hidden>Discard preview</button>
+                <div id="daily-budget-toggle-mount"></div>
+                <div class="pill" id="daily-budget-status-pill">No data</div>
+              </div>
+            </div>
+
+            <div class="usage-summary daily-budget-summary">
+              <div class="summary-card">
+                <span class="summary-label">Remaining</span>
+                <span class="summary-value" id="daily-budget-remaining">-- kWh</span>
+              </div>
+              <div class="summary-card">
+                <span class="summary-label">Deviation</span>
+                <span class="summary-value" id="daily-budget-deviation">-- kWh</span>
+              </div>
+              <div class="summary-card">
+                <span class="summary-label" id="daily-budget-cost-label">Estimated cost</span>
+                <span class="summary-value" id="daily-budget-cost">-- kr</span>
+              </div>
+            </div>
+
+            <div id="daily-budget-chart" class="daily-budget-chart day-view-chart">
+              <div class="daily-budget-bars-wrap day-view-bars-wrap">
+                <div id="daily-budget-bars" class="daily-budget-bars day-view-bars"></div>
+              </div>
+              <div id="daily-budget-labels" class="daily-budget-labels day-view-labels"></div>
+            </div>
+
+            <p id="daily-budget-empty" class="muted" hidden>Daily budget data not available yet.</p>
+
+            <div id="daily-budget-meta" class="daily-budget-meta">
+              <div id="daily-budget-confidence" class="chip" hidden>Confidence --</div>
+            </div>
+
+            <div id="daily-budget-allocation-warning" class="banner banner--warning daily-budget-warning" hidden>
+              <span class="banner__text"></span>
+            </div>
+
+            <p class="muted">Refreshes every 60s. Uses local day boundaries.</p>
+          </div>
+        </details>
+      </div>
+
+      <div class="budget-redesign-surface" id="budget-redesign-surface">
+        <div id="budget-redesign-view-toggle-mount" class="budget-toggle-mount"></div>
+
+        <div id="budget-redesign-plan-view" class="budget-redesign-view">
+          <section class="budget-redesign-card budget-plan-status-card">
+            <div class="budget-card-header">
+              <div>
+                <p class="eyebrow">Plan</p>
+                <h3 id="budget-redesign-plan-title">Today's plan</h3>
+                <p class="muted" id="budget-redesign-plan-day">--</p>
+              </div>
+              <span class="chip budget-status-chip" id="budget-redesign-status-chip" hidden>No plan</span>
+            </div>
+            <div id="budget-redesign-day-toggle-mount" class="budget-toggle-mount"></div>
+          </section>
+
+          <section class="budget-redesign-card">
+            <h3 class="section-title">Metrics</h3>
+            <div class="budget-metric-grid" id="budget-redesign-metrics">
+              <div class="budget-metric-card" data-budget-metric-slot="0">
+                <span class="summary-label" data-budget-metric-label>Remaining</span>
+                <span class="summary-value" data-budget-metric-value>-- kWh</span>
+              </div>
+              <div class="budget-metric-card" data-budget-metric-slot="1">
+                <span class="summary-label" data-budget-metric-label>Projected use</span>
+                <span class="summary-value" data-budget-metric-value>-- kWh</span>
+              </div>
+              <div class="budget-metric-card" data-budget-metric-slot="2">
+                <span class="summary-label" data-budget-metric-label>Daily budget</span>
+                <span class="summary-value" data-budget-metric-value>-- kWh</span>
+              </div>
+              <div class="budget-metric-card" data-budget-metric-slot="3">
+                <span class="summary-label" data-budget-metric-label>Price estimate</span>
+                <span class="summary-value" data-budget-metric-value>--</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="budget-redesign-card budget-chart-card">
+            <div class="budget-card-header">
+              <div>
+                <h3 class="section-title" id="budget-redesign-chart-title">Progress</h3>
+                <p class="muted" id="budget-redesign-chart-subtitle">Cumulative use against the plan.</p>
+              </div>
+              <div id="budget-redesign-chart-toggle-mount" class="budget-toggle-mount"></div>
+            </div>
+            <div class="budget-chart-legend" id="budget-redesign-chart-legend"></div>
+            <div class="budget-redesign-chart" id="budget-redesign-chart"></div>
+            <p class="muted budget-chart-caveat" id="budget-redesign-chart-caveat" hidden></p>
+          </section>
+
+          <p class="budget-next-action" id="budget-redesign-next-action">Daily budget data not available yet.</p>
         </div>
-      </details>
 
-      <details class="settings-collapse" open>
-        <summary>
-          <h3 class="section-title">Daily budget</h3>
-          <span class="section-hint">
-            <span class="legacy-ui-copy">Soft kWh/day guide</span>
-            <span class="redesign-ui-copy">Daily kWh plan</span>
-          </span>
-        </summary>
-        <div class="collapse-content">
-          <form id="daily-budget-form" class="form-grid">
-            <label class="field checkbox-field">
-              <input id="daily-budget-enabled" name="daily_budget_enabled" type="checkbox">
-              <span class="field__label">Enable daily energy budget</span>
-            </label>
-            <label class="field">
-              <span class="field__label">Daily budget (kWh)</span>
-              <input id="daily-budget-kwh" name="daily_budget_kwh" type="number" step="0.1" inputmode="decimal" autocomplete="off">
-              <small class="field__hint">Daily energy target used to build the plan.</small>
-            </label>
-            <label class="field checkbox-field">
-              <input id="daily-budget-price-shaping" name="daily_budget_price_shaping_enabled" type="checkbox" checked>
-              <span class="field__label">Price-shape today plan</span>
-            </label>
-          </form>
-
-          <div class="daily-budget-header day-view-header">
-            <div>
-              <h4 id="daily-budget-title">Today plan</h4>
-              <p class="muted" id="daily-budget-day">--</p>
+        <div id="budget-redesign-adjust-view" class="budget-redesign-view" hidden>
+          <section class="budget-redesign-card">
+            <h3 class="section-title">Daily energy</h3>
+            <div class="budget-settings-list">
+              <div class="budget-setting-row">
+                <span>
+                  <span class="budget-setting-row__label">Enable daily budget</span>
+                  <small class="field__hint">Use a daily energy budget to shape the plan.</small>
+                </span>
+                <span class="budget-setting-row__value" id="budget-adjust-enabled">--</span>
+              </div>
+              <div class="budget-setting-row">
+                <span>
+                  <span class="budget-setting-row__label">Daily budget</span>
+                  <small class="field__hint">The selected day's energy plan.</small>
+                </span>
+                <span class="budget-setting-row__value" id="budget-adjust-daily-budget">-- kWh</span>
+              </div>
+              <div class="budget-setting-row">
+                <span>
+                  <span class="budget-setting-row__label">Use cheaper hours</span>
+                  <small class="field__hint">Shape managed usage toward cheaper hours when prices are usable.</small>
+                </span>
+                <span class="budget-setting-row__value" id="budget-adjust-cheaper-hours">--</span>
+              </div>
             </div>
-            <div class="daily-budget-actions day-view-actions">
-              <button type="button" class="btn secondary" id="daily-budget-recompute">Preview changes</button>
-              <button type="button" class="btn primary" id="daily-budget-apply" hidden>Apply changes</button>
-              <button type="button" class="btn ghost" id="daily-budget-discard" hidden>Discard preview</button>
-              <div id="daily-budget-toggle-mount"></div>
-              <div class="pill" id="daily-budget-status-pill">No data</div>
+          </section>
+
+          <details class="budget-redesign-card budget-planning-behavior">
+            <summary class="budget-planning-behavior__summary">
+              <span class="budget-planning-behavior__heading">
+                <span class="section-title">Planning behavior</span>
+                <small class="section-hint" id="budget-adjust-planning-summary">--</small>
+              </span>
+            </summary>
+            <div class="budget-settings-list">
+              <div class="budget-setting-row">
+                <span>
+                  <span class="budget-setting-row__label">Background usage reserve</span>
+                  <small class="field__hint">Daily budget held back for household usage PELS cannot move.</small>
+                </span>
+                <span class="budget-setting-row__value" id="budget-adjust-background-reserve">--</span>
+              </div>
+              <div class="budget-setting-row">
+                <span>
+                  <span class="budget-setting-row__label">Managed device flexibility</span>
+                  <small class="field__hint">How freely PELS may shift managed-device usage toward cheaper hours.</small>
+                </span>
+                <span class="budget-setting-row__value" id="budget-adjust-managed-flexibility">--</span>
+              </div>
             </div>
-          </div>
+          </details>
 
-          <div class="usage-summary daily-budget-summary">
-            <div class="summary-card">
-              <span class="summary-label">Remaining</span>
-              <span class="summary-value" id="daily-budget-remaining">-- kWh</span>
+          <section class="budget-redesign-card">
+            <div class="budget-card-header">
+              <div>
+                <h3 class="section-title">Limits context</h3>
+                <p class="muted" id="budget-adjust-reaction">PELS reacts before reaching the hard cap.</p>
+              </div>
+              <button type="button" class="btn secondary" data-settings-target="limits">Open Limits &amp; safety</button>
             </div>
-            <div class="summary-card">
-              <span class="summary-label">Deviation</span>
-              <span class="summary-value" id="daily-budget-deviation">-- kWh</span>
+            <div class="budget-settings-list budget-settings-list--compact">
+              <div class="budget-setting-row">
+                <span class="budget-setting-row__label">Hard cap</span>
+                <span class="budget-setting-row__value" id="budget-adjust-hard-cap">-- kW</span>
+              </div>
+              <div class="budget-setting-row">
+                <span class="budget-setting-row__label">Safety margin</span>
+                <span class="budget-setting-row__value" id="budget-adjust-safety-margin">-- kW</span>
+              </div>
             </div>
-            <div class="summary-card">
-              <span class="summary-label" id="daily-budget-cost-label">Estimated cost</span>
-              <span class="summary-value" id="daily-budget-cost">-- kr</span>
-            </div>
-          </div>
-
-          <div id="daily-budget-chart" class="daily-budget-chart day-view-chart">
-            <div class="daily-budget-bars-wrap day-view-bars-wrap">
-              <div id="daily-budget-bars" class="daily-budget-bars day-view-bars"></div>
-            </div>
-            <div id="daily-budget-labels" class="daily-budget-labels day-view-labels"></div>
-          </div>
-
-          <p id="daily-budget-empty" class="muted" hidden>Daily budget data not available yet.</p>
-
-          <div id="daily-budget-meta" class="daily-budget-meta">
-            <div id="daily-budget-confidence" class="chip" hidden>Confidence --</div>
-          </div>
-
-          <div id="daily-budget-allocation-warning" class="banner banner--warning daily-budget-warning" hidden>
-            <span class="banner__text"></span>
-          </div>
-
-          <p class="muted">Refreshes every 60s. Uses local day boundaries.</p>
+          </section>
         </div>
-      </details>
+      </div>
     </section>
 
     <section class="card panel hidden" id="usage-panel" data-panel="usage">

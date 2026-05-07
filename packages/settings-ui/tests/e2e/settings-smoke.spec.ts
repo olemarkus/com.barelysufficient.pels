@@ -103,6 +103,47 @@ test.describe('Settings UI (smoke)', () => {
     expect(stored).toBe(false);
   });
 
+  test('shows the new Budget Plan and Adjust surfaces behind the new UI', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    await page.getByRole('tab', { name: 'Budget' }).click();
+    await expect(page.locator('#budget-panel')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Plan', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Adjust', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Preview changes' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Apply changes' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Discard preview' })).toHaveCount(0);
+
+    await expect(page.locator('#budget-redesign-plan-title')).toContainText("Today's plan");
+    await expect(page.locator('#budget-redesign-metrics')).toContainText('Remaining');
+    await expect(page.locator('#budget-redesign-metrics')).toContainText('Projected use');
+    await expect(page.locator('#budget-redesign-metrics')).toContainText('Daily budget');
+    await expect(page.locator('#budget-redesign-chart')).toBeVisible();
+    await expect(page.locator('#budget-redesign-chart svg')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Hourly plan' }).click();
+    await expect(page.locator('#budget-redesign-chart-title')).toHaveText('Hourly plan');
+    await expect(page.locator('#budget-redesign-chart-subtitle')).toContainText('price alignment');
+
+    await page.getByRole('button', { name: 'Tomorrow' }).click();
+    await expect(page.locator('#budget-redesign-plan-title')).toContainText("Tomorrow's plan");
+    await expect(page.locator('#budget-redesign-metrics')).not.toContainText('Remaining');
+
+    await page.getByRole('button', { name: 'Yesterday' }).click();
+    await expect(page.locator('#budget-redesign-plan-title')).toContainText("Yesterday's result");
+    await expect(page.locator('#budget-redesign-metrics')).toContainText('Used');
+    await expect(page.locator('#budget-redesign-metrics')).toContainText('Result');
+
+    await page.getByRole('button', { name: 'Adjust', exact: true }).click();
+    await expect(page.locator('#budget-redesign-adjust-view')).toBeVisible();
+    await expect(page.locator('#budget-redesign-adjust-view')).toContainText('Daily energy');
+    await expect(page.locator('#budget-redesign-adjust-view')).toContainText('Planning behavior');
+    await expect(page.locator('#budget-redesign-adjust-view')).toContainText('Limits context');
+
+    await page.getByRole('button', { name: 'Open Limits & safety' }).click();
+    await expect(page.locator('#limits-panel')).toBeVisible();
+  });
+
   test('advanced EV toggle controls EV visibility in the device list', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');

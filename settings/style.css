@@ -335,6 +335,19 @@ body[data-ui-variant="redesign"] .redesign-ui-copy {
   display: inline;
 }
 
+.budget-redesign-surface {
+  display: none;
+}
+
+body[data-ui-variant="redesign"] .legacy-budget-surface {
+  display: none;
+}
+
+body[data-ui-variant="redesign"] .budget-redesign-surface {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
 .card {
   background: var(--panel);
   border: 1px solid var(--panel-border);
@@ -3176,6 +3189,228 @@ input[type="text"]:focus {
   color: var(--muted);
 }
 
+.budget-redesign-view {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+.budget-redesign-card {
+  min-width: 0;
+  padding: var(--spacing-4);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  box-shadow: var(--shadow-md);
+}
+
+.budget-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+  min-width: 0;
+}
+
+.budget-card-header h3,
+.budget-card-header .section-title {
+  margin-top: 0;
+}
+
+.budget-plan-status-card {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+.budget-toggle-mount {
+  min-width: 0;
+}
+
+.budget-status-chip {
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-4);
+}
+
+.budget-status-chip.is-warning {
+  color: var(--pels-status-warning);
+  border-color: var(--color-state-warning-border);
+  background: var(--color-state-warning-bg-muted);
+}
+
+.budget-status-chip.is-critical {
+  color: var(--pels-status-critical);
+  border-color: var(--color-state-negative-border);
+  background: var(--color-state-negative-bg);
+}
+
+.budget-status-chip.is-muted {
+  color: var(--muted);
+}
+
+.budget-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-2);
+}
+
+.budget-metric-card {
+  min-width: 0;
+  padding: var(--spacing-3);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-3);
+}
+
+.budget-metric-card .summary-value {
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-lg);
+  line-height: var(--font-line-height-tight);
+}
+
+.budget-chart-card {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+.budget-chart-card .budget-card-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.budget-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-3);
+  align-items: center;
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+}
+
+.budget-chart-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+.budget-chart-legend__swatch {
+  width: 12px;
+  height: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--pels-chart-plan);
+}
+
+.budget-chart-legend__swatch--actual {
+  height: 2px;
+  background: var(--pels-chart-actual);
+}
+
+.budget-chart-legend__swatch--forecast {
+  height: 2px;
+  border-top: 2px dashed var(--pels-chart-forecast);
+  background: transparent;
+}
+
+.budget-chart-legend__swatch--price {
+  background: linear-gradient(90deg, var(--pels-chart-price-cheap), var(--pels-chart-price-expensive));
+}
+
+.budget-redesign-chart {
+  width: 100%;
+  height: 210px;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+}
+
+.budget-chart-caveat,
+.budget-next-action {
+  margin: 0;
+}
+
+.budget-next-action {
+  padding: var(--spacing-3) var(--spacing-4);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  color: var(--text-secondary);
+}
+
+.budget-settings-list {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.budget-settings-list--compact {
+  margin-top: var(--spacing-3);
+}
+
+.budget-setting-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--spacing-3);
+  align-items: center;
+  min-width: 0;
+  padding: var(--spacing-3);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-3);
+}
+
+.budget-setting-row__label {
+  display: block;
+  color: var(--text);
+  font-weight: var(--font-weight-semibold);
+}
+
+.budget-setting-row__value {
+  justify-self: end;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: var(--font-weight-semibold);
+}
+
+.budget-planning-behavior {
+  padding: 0;
+}
+
+.budget-planning-behavior__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+  padding: var(--spacing-4);
+  cursor: pointer;
+}
+
+.budget-planning-behavior__heading {
+  display: grid;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.budget-planning-behavior__summary::-webkit-details-marker {
+  display: none;
+}
+
+.budget-planning-behavior__summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  color: var(--muted);
+  transform: rotate(45deg);
+  transition: transform var(--transition-fast);
+}
+
+.budget-planning-behavior[open] .budget-planning-behavior__summary::after {
+  transform: rotate(225deg);
+}
+
+.budget-planning-behavior > .budget-settings-list {
+  padding: 0 var(--spacing-4) var(--spacing-4);
+}
+
 /* Day view foundation */
 .day-view-header,
 .daily-budget-header {
@@ -3241,6 +3476,21 @@ input[type="text"]:focus {
   cursor: not-allowed;
 }
 
+.budget-redesign-surface .day-view-toggle {
+  width: 100%;
+  justify-content: stretch;
+}
+
+.budget-redesign-surface .day-view-toggle__button {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.budget-chart-card .budget-card-header .day-view-toggle {
+  max-width: 190px;
+  justify-self: start;
+}
+
 .usage-history-actions {
   margin: 0 0 var(--spacing-3);
   justify-content: flex-end;
@@ -3251,6 +3501,14 @@ input[type="text"]:focus {
 }
 
 #budget-panel {
+  --pels-status-good: var(--color-base-accent-default);
+  --pels-status-warning: var(--color-base-warning-default);
+  --pels-status-critical: var(--color-base-danger-default);
+  --pels-chart-actual: var(--color-base-gray-50);
+  --pels-chart-plan: var(--color-base-accent-default);
+  --pels-chart-forecast: var(--color-base-info-default);
+  --pels-chart-price-cheap: var(--color-state-positive-bg-muted);
+  --pels-chart-price-expensive: var(--color-state-negative-bg);
   --day-view-color-primary: var(--color-base-accent-default);
   --day-view-color-planned: var(--color-base-accent-default);
   --day-view-color-uncontrolled: var(--color-base-info-default);
