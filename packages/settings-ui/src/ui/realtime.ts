@@ -63,6 +63,7 @@ import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
 import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
 import { state } from './state.ts';
 import { logSettingsError, logSettingsWarn } from './logging.ts';
+import { getCurrentSettingsUiVariant } from './uiVariant.ts';
 
 const DAILY_BUDGET_REFRESH_KEYS = new Set([
   'daily_budget_enabled',
@@ -79,6 +80,8 @@ const DAILY_BUDGET_REFRESH_KEYS = new Set([
 ]);
 
 const POWER_USAGE_REALTIME_REFRESH_MIN_INTERVAL_MS = 30 * 1000;
+
+const REDESIGN_SETTINGS_SECTIONS = new Set(['limits', 'devices', 'modes', 'price', 'simulation', 'advanced']);
 
 const DAILY_BUDGET_SETTINGS_KEYS = new Set([
   'daily_budget_enabled',
@@ -346,8 +349,13 @@ const handlePowerUpdated = (power: unknown) => {
 };
 
 export const showTab = (tabId: string) => {
+  const activeTopLevelTab = (
+    getCurrentSettingsUiVariant() === 'redesign' && REDESIGN_SETTINGS_SECTIONS.has(tabId)
+  )
+    ? 'settings'
+    : tabId;
   tabs.forEach((tab) => {
-    const isActive = tab.dataset.tab === tabId;
+    const isActive = tab.dataset.tab === activeTopLevelTab;
     tab.classList.toggle('active', isActive);
     tab.setAttribute('aria-selected', String(isActive));
   });
@@ -367,6 +375,9 @@ export const showTab = (tabId: string) => {
   }
   if (tabId === 'budget') {
     runLoggedTask(refreshDailyBudgetPlan(), 'Failed to refresh daily budget', 'showTab');
+  }
+  if (tabId === 'limits' || tabId === 'simulation') {
+    runLoggedTask(loadCapacitySettings(), 'Failed to load limits and simulation settings', 'showTab');
   }
   if (tabId === 'devices' || tabId === 'modes' || tabId === 'price' || tabId === 'advanced') {
     if (!state.devicesLoaded && !state.devicesLoading) {

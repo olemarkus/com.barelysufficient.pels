@@ -22,6 +22,11 @@ const prepPage = async (page: import('@playwright/test').Page) => {
   await page.waitForTimeout(200);
 };
 
+const openSettingsSection = async (page: import('@playwright/test').Page, section: string) => {
+  await page.getByRole('tab', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: new RegExp(section) }).click();
+};
+
 test('overview', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(800);
@@ -36,7 +41,7 @@ test('overview', async ({ page }) => {
 test('devices', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(600);
-  await page.getByRole('tab', { name: 'Devices' }).click();
+  await openSettingsSection(page, 'Devices');
   await page.waitForTimeout(800);
   await prepPage(page);
 
@@ -66,7 +71,7 @@ test('usage', async ({ page }) => {
 test('price', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(600);
-  await page.getByRole('tab', { name: 'Price' }).click();
+  await openSettingsSection(page, 'Price');
   await page.waitForTimeout(800);
   await prepPage(page);
 

@@ -24,6 +24,11 @@ import {
   capacityMarginInput,
   capacityDryRunInput,
   powerSourceSelect,
+  settingsLimitsForm,
+  settingsCapacityLimitInput,
+  settingsCapacityMarginInput,
+  settingsPowerSourceSelect,
+  settingsSimulationModeInput,
   priorityForm,
 } from './dom.ts';
 import {
@@ -46,7 +51,14 @@ import {
 import { showToast, showToastError } from './toast.ts';
 import { refreshDevices, renderDevices } from './devices.ts';
 import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
-import { loadCapacitySettings, loadAdvancedSettings, loadStaleDataStatus, saveCapacitySettings } from './capacity.ts';
+import {
+  loadCapacitySettings,
+  loadAdvancedSettings,
+  loadStaleDataStatus,
+  saveCapacitySettings,
+  saveSettingsLimitsSettings,
+  saveSimulationModeSettings,
+} from './capacity.ts';
 import {
   DEBUG_LOGGING_TOPICS as DEBUG_LOGGING_TOPICS_SETTING,
   EXPERIMENTAL_EV_SUPPORT_ENABLED,
@@ -124,6 +136,14 @@ const initTabHandlers = () => {
   tabs.forEach((tab) => {
     tab.addEventListener('click', () => showTab((tab as HTMLElement).dataset.tab || 'devices'));
   });
+  document.querySelectorAll<HTMLElement>('[data-settings-target]').forEach((trigger) => {
+    trigger.addEventListener('click', () => {
+      const target = trigger.dataset.settingsTarget;
+      if (target) {
+        showTab(target);
+      }
+    });
+  });
 };
 
 const initCapacityHandlers = () => {
@@ -140,6 +160,26 @@ const initCapacityHandlers = () => {
   capacityDryRunInput?.addEventListener('change', autoSaveCapacity);
   powerSourceSelect?.addEventListener('change', autoSaveCapacity);
   capacityForm.addEventListener('submit', (event) => event.preventDefault());
+  const autoSaveSettingsLimits = async () => {
+    try {
+      await saveSettingsLimitsSettings();
+    } catch (error) {
+      await logSettingsError('Failed to save limits and safety settings', error, 'autoSaveSettingsLimits');
+      await showToastError(error, 'Failed to save limits and safety settings.');
+    }
+  };
+  settingsCapacityLimitInput?.addEventListener('change', autoSaveSettingsLimits);
+  settingsCapacityMarginInput?.addEventListener('change', autoSaveSettingsLimits);
+  settingsPowerSourceSelect?.addEventListener('change', autoSaveSettingsLimits);
+  settingsLimitsForm?.addEventListener('submit', (event) => event.preventDefault());
+  settingsSimulationModeInput?.addEventListener('change', async () => {
+    try {
+      await saveSimulationModeSettings();
+    } catch (error) {
+      await logSettingsError('Failed to save simulation mode setting', error, 'settingsSimulationModeInput');
+      await showToastError(error, 'Failed to save simulation mode setting.');
+    }
+  });
   priorityForm?.addEventListener('submit', (event) => {
     event.preventDefault();
   });
@@ -289,18 +329,19 @@ const initAdvancedHandlers = () => {
       const enabled = advancedOverviewRedesignEnabledInput.checked;
       setStoredOverviewRedesignPreference(enabled);
       applySettingsUiVariant(enabled ? 'redesign' : 'legacy');
+      showTab('advanced');
       await refreshPlan();
       await showToast(
-        enabled ? 'Overview redesign enabled.' : 'Overview redesign disabled.',
+        enabled ? 'New UI enabled.' : 'New UI disabled.',
         'ok',
       );
     } catch (error) {
       await logSettingsError(
-        'Failed to update Overview redesign preference',
+        'Failed to update new UI preference',
         error,
         'advancedOverviewRedesignEnabledInput',
       );
-      await showToastError(error, 'Failed to update Overview redesign preference.');
+      await showToastError(error, 'Failed to update new UI preference.');
     }
   });
 
