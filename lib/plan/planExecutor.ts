@@ -48,8 +48,11 @@ import {
   applyUncontrolledBinaryRestore,
   type PlanExecutorBinaryContext,
 } from '../executor/binaryExecutor';
-import { buildExecutablePlan, buildExecutablePlanDevice } from './planExecutablePlan';
-import { buildExecutableShedTemperatureCommand, buildExecutableTargetUpdate } from './planExecutableTarget';
+import { buildExecutablePlan, buildExecutablePlanDevice } from '../executor/executablePlanProjection';
+import {
+  buildExecutableShedTemperatureCommand,
+  buildExecutableTargetUpdate,
+} from '../executor/executableTargetProjection';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 

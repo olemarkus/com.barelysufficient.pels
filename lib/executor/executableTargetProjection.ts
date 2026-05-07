@@ -1,6 +1,6 @@
-import type { ExecutableTargetCommand, ExecutableTargetUpdate } from '../executor/executablePlan';
+import type { DevicePlan, ShedAction } from '../plan/planTypes';
 import type { TargetDeviceSnapshot } from '../utils/types';
-import type { DevicePlan, ShedAction } from './planTypes';
+import type { ExecutableTargetCommand, ExecutableTargetUpdate } from './executablePlan';
 
 type PlanDevice = DevicePlan['devices'][number];
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildExecutableSteppedLoadDevice } from '../lib/plan/planExecutableSteppedLoad';
+import { buildExecutableSteppedLoadDevice } from '../lib/executor/executableSteppedLoadProjection';
 import { steppedPlanDevice } from './utils/planTestUtils';
 
 describe('planExecutableSteppedLoad', () => {
