@@ -355,5 +355,8 @@
   },
   "2.6.2": {
     "en": "Improve EV charger UX by consolidating amp tags."
+  },
+  "2.6.3": {
+    "en": "Set step matching-card now supports value in Amps."
   }
 }
