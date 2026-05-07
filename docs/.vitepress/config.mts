@@ -80,6 +80,8 @@ export default defineConfig({
             text: 'Wire a Stepped Load Device',
             link: '/how-to-headroom-expected-power-flow-control',
           },
+          { text: 'Configure an EV Charger', link: '/ev-charger' },
+          { text: 'Configure a Zaptec EV Charger', link: '/zaptec-ev-charger' },
           { text: 'Daily Energy Budget', link: '/daily-budget' },
         ],
       },

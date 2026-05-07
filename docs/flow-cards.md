@@ -16,7 +16,7 @@ If you only build one Flow, make it **Report power usage**. Everything else depe
 Use the **Report power usage** action whenever your power meter updates.
 
 - Input is current power in **watts**
-- This is the data PELS uses to track hourly usage, calculate headroom, and decide whether devices should be shed or restored
+- This is the data PELS uses to track hourly usage, calculate available power, and decide whether devices should be limited or resumed
 
 Without this action, the planner cannot behave correctly.
 
@@ -24,22 +24,22 @@ Without this action, the planner cannot behave correctly.
 
 | Card | What it does |
 | --- | --- |
-| **Capacity guard: manual action needed** | Fires when PELS projects that your hourly hard-cap budget will be breached at the current run rate and no controllable devices are left to shed. |
+| **Capacity guard: manual action needed** | Fires when PELS projects that your hourly hard-cap budget will be breached at the current run rate and no more devices can be limited. |
 | **Operating mode changed to...** | Fires when the current PELS operating mode changes to the selected mode. |
 | **Price level changed to...** | Fires when the price level changes between Cheap, Normal, Expensive, or Unknown. |
 
-Use the shortfall trigger for urgent notifications, not for normal daily pacing.
+Use **Capacity guard: manual action needed** for urgent notifications, not for normal daily pacing.
 
 ## Conditions
 
 | Card | What it does |
 | --- | --- |
-| **Is there enough headroom?** | Checks if the current headroom can fit a specified extra load in kW. |
-| **Is there headroom for device?** | Checks if current headroom plus the device's estimated draw can fit an extra load. Useful for stepped devices. |
+| **Is there enough headroom?** | Checks if the current available power can fit a specified extra load in kW. |
+| **Is there headroom for device?** | Checks if current available power can fit the device's estimated draw plus a specified extra load. Useful for stepped devices. |
 | **Operating mode is...** | Checks which mode is active. |
 | **Price level is...** | Checks the current price bucket. |
 
-The device-aware headroom condition already includes built-in hysteresis after recent shed or restore events on the same device.
+The device-aware condition already includes built-in hysteresis after recent limiting or resume events on the same device.
 
 ## Actions
 
@@ -62,13 +62,15 @@ Use **Set operating mode** from schedules or presence events to move between com
 
 ### Stepped load control
 
-For EV chargers, water heaters, and similar devices using the built-in stepped-load model:
+For water heaters and similar non-EV devices using the built-in stepped-load model:
 
 1. Configure the step list in the PELS device settings.
 2. Use **Desired stepped load changed for [device]** to map PELS intent to vendor actions.
 3. Report the resulting step back through one of the stepped-load feedback cards.
 
 The full worked example lives in [Wire a stepped load device](/how-to-headroom-expected-power-flow-control).
+
+For EV chargers, prefer the EV charger control mode and wire the **EV charger current (A)** tag directly to the charger app's available-current action. See [Configure an EV Charger](/ev-charger). Zaptec-specific notes live in [Configure a Zaptec EV Charger](/zaptec-ev-charger).
 
 ### Price feed import
 
@@ -80,7 +82,7 @@ If you use an external price provider:
 
 ## Units to keep straight
 
-- Headroom checks use **kW**
+- Available-power checks use **kW**
 - Expected power overrides use **W**
 - Hourly and daily budget values use **kWh**
 

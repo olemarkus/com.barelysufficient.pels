@@ -17,16 +17,16 @@ The Devices tab shows temperature devices, on-off devices, and optionally suppor
 
 | Setting | What it does |
 | --- | --- |
-| **Managed by PELS** | Includes the device in modes and price optimization. Unmanaged devices stay out of the Overview plan and are treated as uncontrolled load. |
-| **Capacity-based control** | Allows PELS to shed and restore the device for capacity. Requires a usable power estimate. |
+| **Managed by PELS** | Includes the device in modes and price optimization. Unmanaged devices stay out of the Overview plan and are treated as background usage. |
+| **Capacity-based control** | Allows PELS to turn the device down or off, then resume it when there is room again. Requires a usable power estimate. |
 | **Price optimization** | Applies cheap-hour or expensive-hour temperature deltas on managed temperature devices. |
-| **When shedding** | Chooses whether PELS turns the device off or drops it to a configured minimum temperature. |
+| **When shedding** | Chooses whether PELS turns the device off or drops it to a configured minimum temperature when limiting it. |
 
 Notes:
 
 - Only managed devices appear in the Modes tab and price-optimization list.
 - If expected usage looks wrong, check **Device -> Advanced Settings -> Energy** in Homey and verify the configured power usage values.
-- EV charger support is currently limited to official Homey EV chargers exposing `evcharger_charging` and `evcharger_charging_state`.
+- For EV current-control setup, see [Configure an EV Charger](/ev-charger).
 
 ## Modes tab
 
@@ -39,7 +39,7 @@ For each managed device in a mode:
 | Setting | What it does |
 | --- | --- |
 | **Desired deg C** | Target temperature for the mode |
-| **Priority** | Lower number means higher priority. These devices stay on longer and restore first. |
+| **Priority** | Lower number means higher priority. These devices stay on longer and resume first. |
 
 Typical approach:
 
@@ -81,7 +81,7 @@ This is where the core capacity logic lives.
 Important:
 
 - The hourly capacity limit is the only real emergency limit.
-- The **Capacity guard: manual action needed** trigger only fires when PELS projects an hourly hard-cap breach and cannot shed any more load.
+- The **Capacity guard: manual action needed** trigger only fires when PELS projects an hourly hard-cap breach and cannot limit any more load.
 
 ### Daily budget
 
@@ -89,7 +89,7 @@ The daily budget is a soft pacing layer on top of hourly control.
 
 - It never replaces the hourly hard cap.
 - It never triggers shortfall alarms by itself.
-- It can reduce restores earlier in the day if you are already over plan.
+- It can delay resumes earlier in the day if you are already over plan.
 
 Read [Daily Energy Budget](/daily-budget) before changing the advanced tuning values.
 
@@ -143,7 +143,7 @@ The Advanced tab is for optional capabilities and expert tuning.
 
 | Setting | What it does |
 | --- | --- |
-| **Enable EV charger support** | Shows supported EV chargers and allows pause-resume control through EV capabilities. |
+| **Enable EV charger support** | Shows supported EV chargers and EV current-control options. |
 | **Debug logging topics** | Chooses which internal topics emit debug logs. |
 | **Unmanaged usage reserve** | Tunes how much daily budget PELS holds back for household usage it cannot move. |
 | **Managed device flexibility** | Tunes how freely PELS may shift managed-device usage toward cheaper feasible hours. |
@@ -160,3 +160,5 @@ For the exact formulas, see [Daily Budget Weighting Math](/daily-budget-weights)
 3. Tune priorities and capacity settings.
 4. Add price optimization.
 5. Add daily budget pacing if you want softer whole-day guidance.
+
+For EV charging, add [EV charger current control](/ev-charger) after the meter Flow and capacity settings are working.

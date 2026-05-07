@@ -51,9 +51,11 @@ Once the behavior matches your expectations, expand the managed device set.
 | PELS is not controlling devices | Verify **Managed by PELS** is on, **Capacity-based control** is enabled, and **Dry run** is off. |
 | Expected power looks wrong | Check the device Energy settings in Homey or set a more accurate load in the device settings. |
 | No price data | Confirm the configured source is correct and external Flow payloads contain full-day JSON. |
+| EV charger current does not change | Check the EV control mode, the **EV charger current (A)** Flow tag, and the charger app action that sets available current. |
 
 ## When to dive deeper
 
 - Use [Daily Energy Budget](/daily-budget) if you want to understand whole-day pacing.
+- Use [Configure an EV Charger](/ev-charger) if PELS should manage charging current.
 - Use [Technical Reference](/technical) if you want exact planner rules.
 - Use [Plan States](/plan-states) when the Overview tab wording needs interpretation.
