@@ -1,20 +1,74 @@
 import type {
   DeviceControlAdapterSnapshot,
+  SteppedLoadActualStepSource,
   SteppedLoadProfile,
   TargetPowerSteppedLoadConfig,
 } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../utils/types';
 import type { SteppedStepActuationState } from './steppedLoadActuation';
 
-export type ExecutablePlanDevice<TPlanDevice = unknown> = {
-  planDevice: TPlanDevice;
+export type ExecutablePlan = {
+  devices: ExecutableDeviceIntent[];
 };
 
-export type ExecutablePlan<TPlanDevice = unknown> = {
-  devices: ExecutablePlanDevice<TPlanDevice>[];
+export type ExecutableDeviceIntent = {
+  id: string;
+  name: string;
+  controllable: boolean;
+  target: ExecutableTargetIntent | null;
+  binary: ExecutableBinaryIntent | null;
+  steppedLoad: ExecutableSteppedLoadIntent | null;
+  projectionError?: unknown;
 };
 
-export type ProjectedExecutablePlanDevice<TPlanDevice = unknown> = ExecutablePlanDevice<TPlanDevice> & {
-  steppedLoad: ExecutableSteppedLoadDevice | null;
+export type ExecutableObservedState = {
+  devices: ExecutableObservedDeviceState[];
+};
+
+export type ExecutableObservedDeviceState = {
+  id: string;
+  name: string;
+  snapshot: TargetDeviceSnapshot;
+  available: boolean | null;
+  currentOn: boolean;
+  target: ExecutableObservedTargetState | null;
+  steppedLoad: ExecutableObservedSteppedLoadState | null;
+};
+
+export type ExecutableObservedTargetState = {
+  targetCap: string;
+  observedValue: unknown;
+};
+
+export type ExecutableObservedSteppedLoadState = {
+  on: boolean | null;
+  stepId?: string;
+  reportedStepId?: string;
+  actualStepId?: string;
+  actualStepSource?: SteppedLoadActualStepSource;
+  assumedStepId?: string;
+  measuredPowerKw?: number;
+};
+
+export type ExecutableBinaryIntent =
+  | {
+    kind: 'shed';
+    deviceId: string;
+    name: string;
+    reason?: string;
+  }
+  | {
+    kind: 'restore';
+    deviceId: string;
+    name: string;
+    source: 'controlled' | 'uncontrolled';
+  };
+
+export type ExecutableTargetIntent = {
+  deviceId: string;
+  name: string;
+  desired: number;
+  purpose: 'target_update' | 'shed_temperature';
 };
 
 export type ExecutableTargetCommand = {
@@ -65,9 +119,30 @@ export type ExecutableSteppedLoadDesiredState = ExecutableSteppedLoadState & {
   plannedStepId?: string;
 };
 
+export type ExecutableSteppedLoadIntent = {
+  id: string;
+  name: string;
+  purpose: 'keep' | 'shed';
+  steppedLoadProfile: SteppedLoadProfile;
+  communicationModel?: 'local' | 'cloud';
+  controlAdapter?: DeviceControlAdapterSnapshot;
+  targetPowerConfig?: TargetPowerSteppedLoadConfig;
+  shedAction?: 'turn_off' | 'set_temperature' | 'set_step';
+  desired: ExecutableSteppedLoadDesiredState;
+  planningCurrentOn: boolean | null;
+  planningCurrentStepId?: string;
+  previousStepId?: string;
+  transition: ExecutableSteppedLoadTransition | null;
+  matchingRestoreAttempt: ExecutableSteppedLoadRestoreAttempt;
+  matchingCommandAttempt: ExecutableSteppedLoadRestoreAttempt;
+  stepCommandRetryCount: number;
+  nextStepCommandRetryAtMs?: number;
+};
+
 export type ExecutableSteppedLoadDevice = {
   id: string;
   name: string;
+  purpose: 'keep' | 'shed';
   steppedLoadProfile: SteppedLoadProfile;
   communicationModel?: 'local' | 'cloud';
   controlAdapter?: DeviceControlAdapterSnapshot;

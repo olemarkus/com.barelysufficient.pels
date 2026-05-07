@@ -11,8 +11,13 @@ import {
 } from '../lib/core/nativeSteppedLoadWiring';
 import { setObservedNativeSteppedLoadStep } from '../lib/core/deviceManagerNativeSteppedCommand';
 import { applySteppedLoadCommand, type PlanExecutorSteppedContext } from '../lib/executor/steppedLoadExecutor';
-import { buildExecutableSteppedLoadDevice } from '../lib/executor/executableSteppedLoadProjection';
+import { buildExecutableObservedDeviceState } from '../lib/executor/executablePlanProjection';
+import {
+  buildExecutableSteppedLoadDevice,
+  buildExecutableSteppedLoadIntent,
+} from '../lib/executor/executableSteppedLoadProjection';
 import { AppDeviceControlHelpers } from '../lib/app/appDeviceControlHelpers';
+import type { DevicePlanDevice } from '../lib/plan/planTypes';
 import type { HomeyDeviceLike, Logger, SteppedLoadProfile, TargetDeviceSnapshot } from '../lib/utils/types';
 import { mockHomeyInstance } from './mocks/homey';
 import { setRestClient } from '../lib/core/deviceManagerHomeyApi';
@@ -30,6 +35,24 @@ const steppedProfile: SteppedLoadProfile = {
     { id: 'max', planningPowerW: 3000 },
   ],
 };
+
+const buildSteppedAction = (device: DevicePlanDevice) => buildExecutableSteppedLoadDevice(
+  buildExecutableSteppedLoadIntent(device),
+  buildExecutableObservedDeviceState({
+    id: device.id,
+    name: device.name,
+    currentOn: device.currentOn,
+    targets: [],
+    controlModel: device.controlModel,
+    steppedLoadProfile: device.steppedLoadProfile,
+    selectedStepId: device.selectedStepId,
+    reportedStepId: device.reportedStepId,
+    actualStepId: device.actualStepId,
+    actualStepSource: device.actualStepSource,
+    assumedStepId: device.assumedStepId,
+    measuredPowerKw: device.measuredPowerKw,
+  }),
+);
 
 const createLogger = () => ({
   log: vi.fn(),
@@ -728,7 +751,7 @@ describe('native stepped-load wiring', () => {
       requestSteppedLoadStep,
     } as unknown as PlanExecutorSteppedContext;
 
-    const action = buildExecutableSteppedLoadDevice({
+    const action = buildSteppedAction({
       id: 'hoiax-1',
       name: 'Connected 300',
       currentOn: true,
@@ -806,7 +829,7 @@ describe('native stepped-load wiring', () => {
       requestSteppedLoadStep,
     } as unknown as PlanExecutorSteppedContext;
 
-    const action = buildExecutableSteppedLoadDevice({
+    const action = buildSteppedAction({
       id: 'synthetic-target-power-1',
       name: 'Configured charger',
       currentOn: true,
@@ -891,7 +914,7 @@ describe('native stepped-load wiring', () => {
       requestSteppedLoadStep,
     } as unknown as PlanExecutorSteppedContext;
 
-    const action = buildExecutableSteppedLoadDevice({
+    const action = buildSteppedAction({
       id: 'zaptec-go-1',
       name: 'Zaptec Go',
       currentOn: true,

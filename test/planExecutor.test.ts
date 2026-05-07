@@ -13,6 +13,7 @@ import type {
   DevicePlanDevice,
   PlanInputDevice,
 } from '../lib/plan/planTypes';
+import type { TargetDeviceSnapshot } from '../lib/utils/types';
 import { buildLiveStatePlan, hasPlanExecutionDrift } from '../lib/plan/planReconcileState';
 import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
@@ -347,6 +348,80 @@ describe('PlanExecutor restore logging', () => {
     });
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it('does not emit EV restore evaluation logs for controlled EVs already observed on', async () => {
+    const { executor, deps, deviceManager } = buildExecutor(undefined, [{
+      id: 'dev-1',
+      name: 'EV Charger',
+      deviceClass: 'evcharger',
+      controlCapabilityId: 'evcharger_charging',
+      canSetControl: true,
+      available: true,
+      currentOn: true,
+      evChargingState: 'plugged_in_charging',
+    }]);
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 1,
+        softLimitKw: 5,
+        headroomKw: 4,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'EV Charger',
+          currentState: 'off',
+          plannedState: 'keep',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: true,
+          reason: KEEP_REASON,
+        },
+      ],
+    });
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', true);
+    expect(deps.logDebug).not.toHaveBeenCalledWith(expect.stringContaining('evaluating EV restore'));
+  });
+
+  it('does not emit EV restore evaluation logs for uncontrolled EVs already observed on', async () => {
+    const state = createPlanEngineState();
+    state.lastDeviceShedMs['dev-1'] = Date.now() - 10_000;
+    const { executor, deps, deviceManager } = buildExecutor(state, [{
+      id: 'dev-1',
+      name: 'EV Charger',
+      deviceClass: 'evcharger',
+      controlCapabilityId: 'evcharger_charging',
+      canSetControl: true,
+      available: true,
+      currentOn: true,
+      evChargingState: 'plugged_in_charging',
+    }]);
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 1,
+        softLimitKw: 5,
+        headroomKw: 4,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'EV Charger',
+          currentState: 'off',
+          plannedState: 'keep',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: false,
+          reason: KEEP_REASON,
+        },
+      ],
+    });
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', true);
+    expect(deps.logDebug).not.toHaveBeenCalledWith(expect.stringContaining('evaluating EV restore'));
   });
 
   it('logs restore from shed state when the device has not been restored since the last shed', async () => {
@@ -1149,6 +1224,19 @@ describe('PlanExecutor stepped loads', () => {
     ],
   };
 
+  const steppedSnapshot = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot[] => [{
+    id: 'dev-1',
+    name: 'Tank',
+    controlCapabilityId: 'onoff',
+    canSetControl: true,
+    available: true,
+    currentOn: true,
+    targets: [],
+    controlModel: 'stepped_load',
+    steppedLoadProfile: steppedProfile,
+    ...overrides,
+  }];
+
   const steppedPlan = (overrides: Record<string, unknown> = {}): DevicePlan => ({
     meta: {
       totalKw: 1,
@@ -1175,7 +1263,10 @@ describe('PlanExecutor stepped loads', () => {
   });
 
   it('triggers desired stepped-load change and records the issued command', async () => {
-    const { executor, deps, deviceManager, desiredSteppedTrigger, state } = buildExecutor();
+    const { executor, deps, deviceManager, desiredSteppedTrigger, state } = buildExecutor(
+      undefined,
+      steppedSnapshot(),
+    );
 
     await expect(executor.applyPlanActions(steppedPlan())).resolves.toEqual({
       deviceWriteCount: 0,
@@ -1388,7 +1479,10 @@ describe('PlanExecutor stepped loads', () => {
   });
 
   it('does not wait for stepped-load flow execution before completing apply', async () => {
-    const { executor, desiredSteppedTrigger, deps, state } = buildExecutor();
+    const { executor, desiredSteppedTrigger, deps, state } = buildExecutor(
+      undefined,
+      steppedSnapshot(),
+    );
     desiredSteppedTrigger.trigger.mockImplementation(() => new Promise<void>(() => {}));
 
     const outcome = await Promise.race([
@@ -1530,16 +1624,13 @@ describe('PlanExecutor stepped loads', () => {
   });
 
   it('restores a stepped device to on when it has keep intent but currentOn is false', async () => {
-    const snapshot = [
-      {
-        id: 'dev-1',
-        name: 'Tank',
-        controlCapabilityId: 'onoff',
-        canSetControl: true,
-        available: true,
-        currentOn: false,
-      },
-    ];
+    const snapshot = steppedSnapshot({
+      currentOn: false,
+      selectedStepId: 'low',
+      reportedStepId: 'low',
+      actualStepId: 'low',
+      actualStepSource: 'reported',
+    });
     const { executor, deviceManager, deps } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
@@ -2371,13 +2462,16 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     ...overrides,
   }];
 
-  const buildSnapshot = (overrides: { currentOn: boolean } = { currentOn: false }) => [{
+  const buildSnapshot = (overrides: Partial<TargetDeviceSnapshot> = { currentOn: false }): TargetDeviceSnapshot[] => [{
     id: 'dev-1',
     name: 'Tank',
     controlCapabilityId: 'onoff' as const,
     canSetControl: true,
     available: true,
     currentOn: false,
+    targets: [],
+    controlModel: 'stepped_load' as const,
+    steppedLoadProfile: steppedProfile,
     ...overrides,
   }];
 
@@ -2395,7 +2489,13 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
     expect(livePlan.devices[0].currentState).toBe('off');
 
-    const { executor, deviceManager } = buildExecutor(undefined, buildSnapshot({ currentOn: false }));
+    const { executor, deviceManager } = buildExecutor(undefined, buildSnapshot({
+      currentOn: false,
+      selectedStepId: 'low',
+      reportedStepId: 'low',
+      actualStepId: 'low',
+      actualStepSource: 'reported',
+    }));
     await executor.applyPlanActions(livePlan, 'reconcile');
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
@@ -2503,7 +2603,10 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   });
 
   it('does not use the keep invariant to restore a stepped load rejected for headroom', async () => {
-    const snapshot = buildSnapshot({ currentOn: false });
+    const snapshot = buildSnapshot({
+      currentOn: false,
+      selectedStepId: 'off',
+    });
     const { executor, deviceManager, desiredSteppedTrigger, debugStructured } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
@@ -2694,7 +2797,10 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   it('issues the pre-restore step and defers binary restore when both onoff and step are violated', async () => {
     // Both violations: raw snapshot has currentOn=false AND selectedStepId='off'
     // while desiredStepId='low'. Both onoffViolated and stepViolated should be true.
-    const snapshot = buildSnapshot({ currentOn: false });
+    const snapshot = buildSnapshot({
+      currentOn: false,
+      selectedStepId: 'off',
+    });
     const { executor, deviceManager, desiredSteppedTrigger, deps } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
@@ -2724,7 +2830,12 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   });
 
   it('re-issues the low-step command and defers binary restore when low is only assumed', async () => {
-    const snapshot = buildSnapshot({ currentOn: false });
+    const snapshot = buildSnapshot({
+      currentOn: false,
+      selectedStepId: 'low',
+      assumedStepId: 'low',
+      actualStepSource: 'assumed',
+    });
     const { executor, deviceManager, desiredSteppedTrigger, debugStructured } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
@@ -2754,7 +2865,10 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   });
 
   it('does not use selectedStepId alone as restore preparation proof', async () => {
-    const snapshot = buildSnapshot({ currentOn: false });
+    const snapshot = buildSnapshot({
+      currentOn: false,
+      selectedStepId: 'low',
+    });
     const { executor, deviceManager, desiredSteppedTrigger, debugStructured } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
@@ -2782,7 +2896,13 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   });
 
   it('uses reported step evidence as restore preparation proof', async () => {
-    const snapshot = buildSnapshot({ currentOn: false });
+    const snapshot = buildSnapshot({
+      currentOn: false,
+      selectedStepId: 'low',
+      reportedStepId: 'low',
+      actualStepId: 'low',
+      actualStepSource: 'reported',
+    });
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
@@ -3180,16 +3300,13 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     // Test 3.1: device has a non-zero step but onoff is false — only binary on needed,
     // no step change. The step is already non-zero so it must not be overwritten.
     it('sends onoff=true without changing step when step is already non-zero', async () => {
-      const snapshot = [
-        {
-          id: 'dev-1',
-          name: 'Tank',
-          controlCapabilityId: 'onoff',
-          canSetControl: true,
-          available: true,
-          currentOn: false,
-        },
-      ];
+      const snapshot = buildSnapshot({
+        currentOn: false,
+        selectedStepId: 'low',
+        reportedStepId: 'low',
+        actualStepId: 'low',
+        actualStepSource: 'reported',
+      });
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
       await executor.applyPlanActions(steppedPlan({
@@ -3214,16 +3331,10 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     // Note: this passes because desiredStepId is explicitly set to 'low' here.
     // The companion planDevices test (it.fails) covers the normalization gap.
     it('issues step command when desiredStepId is pre-normalized to lowest non-zero and step is at off-step', async () => {
-      const snapshot = [
-        {
-          id: 'dev-1',
-          name: 'Tank',
-          controlCapabilityId: 'onoff',
-          canSetControl: true,
-          available: true,
-          currentOn: false,
-        },
-      ];
+      const snapshot = buildSnapshot({
+        currentOn: false,
+        selectedStepId: 'off',
+      });
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
       await executor.applyPlanActions(steppedPlan({
@@ -3245,16 +3356,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     // Restore must re-enter at the lowest non-zero step rather than trusting a stale
     // desiredStepId, so the load becomes deterministic again.
     it('normalizes unknown-step restore to the lowest non-zero step before binary restore', async () => {
-      const snapshot = [
-        {
-          id: 'dev-1',
-          name: 'Tank',
-          controlCapabilityId: 'onoff',
-          canSetControl: true,
-          available: true,
-          currentOn: false,
-        },
-      ];
+      const snapshot = buildSnapshot({ currentOn: false });
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
       await executor.applyPlanActions(steppedPlan({
@@ -3273,16 +3375,13 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     });
 
     it('does not issue a forced normalization step when the current non-zero step is already known', async () => {
-      const snapshot = [
-        {
-          id: 'dev-1',
-          name: 'Tank',
-          controlCapabilityId: 'onoff',
-          canSetControl: true,
-          available: true,
-          currentOn: false,
-        },
-      ];
+      const snapshot = buildSnapshot({
+        currentOn: false,
+        selectedStepId: 'low',
+        reportedStepId: 'low',
+        actualStepId: 'low',
+        actualStepSource: 'reported',
+      });
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
       await executor.applyPlanActions(steppedPlan({

@@ -1,57 +1,73 @@
+import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
+import { isRestoreAdmissionHoldReason } from '../planContract/planDecisionSemantics';
 import type { DevicePlan, ShedAction } from '../plan/planTypes';
-import type { TargetDeviceSnapshot } from '../utils/types';
-import type { ExecutableTargetCommand, ExecutableTargetUpdate } from './executablePlan';
+import type {
+  ExecutableObservedDeviceState,
+  ExecutableTargetCommand,
+  ExecutableTargetIntent,
+  ExecutableTargetUpdate,
+} from './executablePlan';
 
 type PlanDevice = DevicePlan['devices'][number];
 
-export function buildExecutableTargetUpdate(
-  dev: PlanDevice,
-  snapshot: TargetDeviceSnapshot | undefined,
-  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null },
-  getCurrentSnapshot?: (deviceId: string) => TargetDeviceSnapshot | undefined,
-): ExecutableTargetUpdate | null {
-  if (typeof dev.plannedTarget !== 'number' || dev.plannedTarget === dev.currentTarget) return null;
-  const targetCap = (snapshot ?? getCurrentSnapshot?.(dev.id))?.targets?.[0]?.id;
-  if (!targetCap) return null;
-
+export function buildExecutableTargetIntent(dev: PlanDevice): ExecutableTargetIntent | null {
+  if (typeof dev.plannedTarget !== 'number') return null;
+  if (dev.reason?.code === PLAN_REASON_CODES.swapPending && dev.reason.targetName === null) return null;
+  if (dev.reason && isRestoreAdmissionHoldReason(dev.reason)) return null;
   return {
     deviceId: dev.id,
     name: dev.name,
-    targetCap,
     desired: dev.plannedTarget,
-    observedValue: dev.currentTarget,
+    purpose: dev.plannedState === 'shed' && dev.shedAction === 'set_temperature'
+      ? 'shed_temperature'
+      : 'target_update',
+  };
+}
+
+export function buildExecutableTargetUpdate(
+  intent: ExecutableTargetIntent | null,
+  observed: ExecutableObservedDeviceState | undefined,
+  getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null },
+): ExecutableTargetUpdate | null {
+  if (!intent) return null;
+  const command = buildExecutableTargetCommand(intent, observed);
+  if (!command) return null;
+  if (Object.is(command.observedValue, command.desired)) return null;
+
+  return {
+    ...command,
     isRestoring: isTargetRestore({
-      dev,
-      plannedTarget: dev.plannedTarget,
+      intent,
+      observedValue: command.observedValue,
       getShedBehavior,
     }),
   };
 }
 
-export function buildExecutableShedTemperatureCommand(
-  dev: PlanDevice,
-  targetCap: string,
-  plannedTarget: number,
-): ExecutableTargetCommand {
+export function buildExecutableTargetCommand(
+  intent: ExecutableTargetIntent | null,
+  observed: ExecutableObservedDeviceState | undefined,
+): ExecutableTargetCommand | null {
+  if (!intent || !observed?.target) return null;
   return {
-    deviceId: dev.id,
-    name: dev.name,
-    targetCap,
-    desired: plannedTarget,
-    observedValue: dev.currentTarget,
+    deviceId: intent.deviceId,
+    name: intent.name,
+    targetCap: observed.target.targetCap,
+    desired: intent.desired,
+    observedValue: observed.target.observedValue,
   };
 }
 
 const isTargetRestore = (params: {
-  dev: PlanDevice;
-  plannedTarget: number;
+  intent: ExecutableTargetIntent;
+  observedValue: unknown;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
 }): boolean => {
-  const { dev, plannedTarget, getShedBehavior } = params;
-  if (typeof dev.currentTarget !== 'number') return false;
-  const shedBehavior = getShedBehavior(dev.id);
+  const { intent, observedValue, getShedBehavior } = params;
+  if (typeof observedValue !== 'number') return false;
+  const shedBehavior = getShedBehavior(intent.deviceId);
   return shedBehavior.action === 'set_temperature'
     && shedBehavior.temperature !== null
-    && dev.currentTarget === shedBehavior.temperature
-    && plannedTarget > dev.currentTarget;
+    && observedValue === shedBehavior.temperature
+    && intent.desired > observedValue;
 };

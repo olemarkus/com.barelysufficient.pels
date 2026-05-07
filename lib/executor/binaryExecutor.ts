@@ -14,13 +14,13 @@ import {
   isFlowBackedBinaryControl,
   setBinaryControl,
 } from '../plan/planBinaryControl';
-import { resolveEffectiveCurrentOn } from '../plan/planCurrentState';
 import type { PlanEngineState } from '../plan/planState';
-import type { DevicePlan } from '../plan/planTypes';
 import type { TargetDeviceSnapshot } from '../utils/types';
+import type {
+  ExecutableBinaryIntent,
+  ExecutableObservedDeviceState,
+} from './executablePlan';
 import type { PlanActuationMode } from './executorTypes';
-
-type PlanDevice = DevicePlan['devices'][number];
 
 export type PlanExecutorBinaryContext = {
   state: PlanEngineState;
@@ -55,24 +55,36 @@ export type PlanExecutorBinaryContext = {
 
 export const applyBinaryRestore = async (
   ctx: PlanExecutorBinaryContext,
-  dev: PlanDevice,
+  intent: ExecutableBinaryIntent | null,
+  observed: ExecutableObservedDeviceState | undefined,
   mode: PlanActuationMode,
 ): Promise<boolean> => {
-  if (dev.plannedState !== 'keep' || resolveEffectiveCurrentOn(dev) !== false) return false;
-  const snapshot = ctx.deviceManager.getSnapshot().find((d) => d.id === dev.id);
-  if (snapshot?.deviceClass === 'evcharger') {
-    ctx.logDebug(`Capacity: evaluating EV restore for ${dev.name} (${formatEvSnapshot(snapshot)})`);
+  if (!intent || intent.kind !== 'restore' || intent.source !== 'controlled') return false;
+  const snapshot = ctx.deviceManager.getSnapshot().find((d) => d.id === intent.deviceId) ?? observed?.snapshot;
+  if (!snapshot) {
+    canApplyRestoreSnapshot(ctx, {
+      snapshot,
+      deviceId: intent.deviceId,
+      name: intent.name,
+      logContext: 'capacity',
+      mode,
+    });
+    return false;
+  }
+  if (snapshot.currentOn !== false) return false;
+  if (snapshot.deviceClass === 'evcharger') {
+    ctx.logDebug(`Capacity: evaluating EV restore for ${intent.name} (${formatEvSnapshot(snapshot)})`);
   }
   if (!canApplyRestoreSnapshot(ctx, {
     snapshot,
-    deviceId: dev.id,
-    name: dev.name,
+    deviceId: intent.deviceId,
+    name: intent.name,
     logContext: 'capacity',
     mode,
   })) return false;
   return applyBinaryRestoreWithSnapshot(ctx, {
-    deviceId: dev.id,
-    name: dev.name,
+    deviceId: intent.deviceId,
+    name: intent.name,
     snapshot: snapshot as TargetDeviceSnapshot,
     logContext: 'capacity',
     mode,
@@ -81,30 +93,40 @@ export const applyBinaryRestore = async (
 
 export const applyUncontrolledBinaryRestore = async (
   ctx: PlanExecutorBinaryContext,
-  dev: PlanDevice,
-  snapshot?: TargetDeviceSnapshot,
+  intent: ExecutableBinaryIntent | null,
+  observed: ExecutableObservedDeviceState | undefined,
 ): Promise<boolean> => {
-  if (dev.plannedState !== 'keep') return false;
-  if (resolveEffectiveCurrentOn(dev) !== false) return false;
-  const lastShed = ctx.state.lastDeviceShedMs[dev.id];
+  if (!intent || intent.kind !== 'restore' || intent.source !== 'uncontrolled') return false;
+  const lastShed = ctx.state.lastDeviceShedMs[intent.deviceId];
   if (!lastShed) return false;
-  const entry = snapshot ?? ctx.deviceManager.getSnapshot().find((d) => d.id === dev.id);
-  if (entry?.deviceClass === 'evcharger') {
+  const entry = ctx.deviceManager.getSnapshot().find((d) => d.id === intent.deviceId) ?? observed?.snapshot;
+  if (!entry) {
+    canApplyRestoreSnapshot(ctx, {
+      snapshot: entry,
+      deviceId: intent.deviceId,
+      name: intent.name,
+      logContext: 'capacity_control_off',
+      mode: 'plan',
+    });
+    return false;
+  }
+  if (entry.currentOn !== false) return false;
+  if (entry.deviceClass === 'evcharger') {
     ctx.logDebug(
-      `Capacity control off: evaluating EV restore for ${dev.name} `
+      `Capacity control off: evaluating EV restore for ${intent.name} `
       + `(${formatEvSnapshot(entry)})`,
     );
   }
   if (!canApplyRestoreSnapshot(ctx, {
     snapshot: entry,
-    deviceId: dev.id,
-    name: dev.name,
+    deviceId: intent.deviceId,
+    name: intent.name,
     logContext: 'capacity_control_off',
     mode: 'plan',
   })) return false;
   return applyCapacityControlOffRestoreWithSnapshot(ctx, {
-    deviceId: dev.id,
-    name: dev.name,
+    deviceId: intent.deviceId,
+    name: intent.name,
     snapshot: entry as TargetDeviceSnapshot,
   });
 };

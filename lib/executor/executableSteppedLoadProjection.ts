@@ -14,7 +14,13 @@ import {
   resolveSteppedStepActuationState,
   type ExecutableSteppedStepState,
 } from './steppedLoadActuation';
-import type { ExecutableSteppedLoadDevice } from './executablePlan';
+import type {
+  ExecutableObservedDeviceState,
+  ExecutableObservedSteppedLoadState,
+  ExecutableSteppedLoadCurrentState,
+  ExecutableSteppedLoadDevice,
+  ExecutableSteppedLoadIntent,
+} from './executablePlan';
 import {
   getSteppedLoadStep,
   isSteppedLoadOffStep,
@@ -22,9 +28,10 @@ import {
 
 type PlanDevice = DevicePlan['devices'][number];
 
-export function buildExecutableSteppedLoadDevice(dev: PlanDevice): ExecutableSteppedLoadDevice | null {
+export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSteppedLoadIntent | null {
   if (!isSteppedLoadDevice(dev) || !dev.steppedLoadProfile) return null;
-  const current = {
+  if (shouldHoldCurrentState(dev)) return null;
+  const planningCurrent = {
     on: resolveEffectiveCurrentOn(dev),
     stepId: dev.selectedStepId,
     stepForShed: resolveCurrentStepForShed(dev),
@@ -36,55 +43,89 @@ export function buildExecutableSteppedLoadDevice(dev: PlanDevice): ExecutableSte
   const plannedTransition = resolveSteppedLoadTransition(dev, plannedStepId);
   const desired = resolveDesiredState({
     dev,
-    current,
+    current: planningCurrent,
     plannedStepId,
     plannedTransition,
   });
   const transition = desiredMatchesTransition(desired, plannedTransition) ? plannedTransition : null;
-  const stepActuation = resolveSteppedStepActuationState({
-    step: toExecutableSteppedStepState(dev, desired.stepId),
-  });
-  const commandStepActuation = resolveSteppedStepActuationState({
-    step: toExecutableSteppedStepState(dev, desired.stepId),
-  });
   const matchingRestoreAttempt = desired.stepId !== undefined
     ? resolveSteppedRestoreAttemptState(dev, desired.stepId)
     : null;
   const matchingCommandAttempt = desired.stepId !== undefined
     ? resolveSteppedRestoreAttemptState(dev, desired.stepId)
     : null;
-  const desiredIsNonOff = desired.stepId
-    && !isSteppedLoadOffStep(dev.steppedLoadProfile, desired.stepId);
   return {
     id: dev.id,
     name: dev.name,
+    purpose: dev.plannedState === 'shed' ? 'shed' : 'keep',
     steppedLoadProfile: dev.steppedLoadProfile,
     communicationModel: dev.communicationModel,
     controlAdapter: dev.controlAdapter,
     targetPowerConfig: dev.targetPowerConfig,
     shedAction: dev.shedAction,
-    current,
     desired,
+    planningCurrentOn: planningCurrent.on,
+    planningCurrentStepId: dev.selectedStepId,
     previousStepId: dev.selectedStepId ?? dev.lastDesiredStepId,
     transition,
-    stepActuation,
-    commandStepActuation,
     matchingRestoreAttempt,
     matchingCommandAttempt,
-    stepNeedsAdjustment: Boolean(desiredIsNonOff && stepActuation.materialization.kind !== 'materialized'),
     stepCommandRetryCount: dev.stepCommandRetryCount ?? 0,
     nextStepCommandRetryAtMs: dev.nextStepCommandRetryAtMs,
   };
 }
 
-const toExecutableSteppedStepState = (dev: PlanDevice, requestedStepId?: string): ExecutableSteppedStepState => {
-  const observedStepId = dev.actualStepSource === 'reported' && dev.actualStepId
-    ? dev.actualStepId
-    : dev.reportedStepId;
+export function buildExecutableSteppedLoadDevice(
+  intent: ExecutableSteppedLoadIntent | null,
+  observed: ExecutableObservedDeviceState | undefined,
+): ExecutableSteppedLoadDevice | null {
+  if (!intent) return null;
+  const current = buildCurrentState(intent, observed);
+  const stepActuation = resolveSteppedStepActuationState({
+    step: toExecutableSteppedStepState(observed?.steppedLoad, intent.desired.stepId),
+  });
+  const commandStepActuation = resolveSteppedStepActuationState({
+    step: toExecutableSteppedStepState(observed?.steppedLoad, intent.desired.stepId),
+  });
+  const desiredIsNonOff = intent.desired.stepId
+    && !isSteppedLoadOffStep(intent.steppedLoadProfile, intent.desired.stepId);
+  return {
+    ...intent,
+    current,
+    previousStepId: current.stepId ?? intent.previousStepId,
+    stepActuation,
+    commandStepActuation,
+    stepNeedsAdjustment: Boolean(desiredIsNonOff && stepActuation.materialization.kind !== 'materialized'),
+  };
+}
+
+const buildCurrentState = (
+  intent: ExecutableSteppedLoadIntent,
+  observedDevice: ExecutableObservedDeviceState | undefined,
+): ExecutableSteppedLoadCurrentState => {
+  const observed = observedDevice?.steppedLoad;
+  const stepId = observed?.stepId ?? intent.planningCurrentStepId;
+  return {
+    on: observed?.on ?? observedDevice?.currentOn ?? intent.planningCurrentOn,
+    stepId,
+    stepForShed: resolveObservedStepForShed(intent, observed, stepId),
+    stepIsOffStep: stepId
+      ? isSteppedLoadOffStep(intent.steppedLoadProfile, stepId)
+      : false,
+  };
+};
+
+const toExecutableSteppedStepState = (
+  observed: ExecutableObservedSteppedLoadState | null | undefined,
+  requestedStepId?: string,
+): ExecutableSteppedStepState => {
+  const observedStepId = observed?.actualStepSource === 'reported' && observed.actualStepId
+    ? observed.actualStepId
+    : observed?.reportedStepId;
   return {
     requestedStepId,
     observedStep: observedStepId ? { kind: 'reported', stepId: observedStepId } : { kind: 'unknown' },
-    fallbackStepId: dev.assumedStepId,
+    fallbackStepId: observed?.assumedStepId,
   };
 };
 
@@ -164,8 +205,8 @@ const resolveDesiredOn = (params: {
 };
 
 const shouldHoldCurrentState = (dev: PlanDevice): boolean => (
-  isRestoreAdmissionHoldReason(dev.reason)
-  || (dev.plannedState === 'keep' && !allowsSteppedLoadKeepInvariantRestore(dev.reason))
+  Boolean(dev.reason && isRestoreAdmissionHoldReason(dev.reason))
+  || Boolean(dev.reason && dev.plannedState === 'keep' && !allowsSteppedLoadKeepInvariantRestore(dev.reason))
 );
 
 const resolveCurrentStepForShed = (
@@ -190,5 +231,31 @@ const resolveMeasuredCurrentStepForShed = (
   return {
     stepId: 'unknown',
     planningPowerW: Math.round(dev.measuredPowerKw * 1000),
+  };
+};
+
+const resolveObservedStepForShed = (
+  intent: ExecutableSteppedLoadIntent,
+  observed: ExecutableObservedSteppedLoadState | null | undefined,
+  stepId: string | undefined,
+): ExecutableSteppedLoadCurrentState['stepForShed'] => {
+  if (stepId) {
+    const currentStep = getSteppedLoadStep(intent.steppedLoadProfile, stepId);
+    return currentStep ? {
+      stepId: currentStep.id,
+      planningPowerW: currentStep.planningPowerW,
+    } : undefined;
+  }
+  if (intent.shedAction !== 'set_step') return undefined;
+  if (
+    typeof observed?.measuredPowerKw !== 'number'
+    || !Number.isFinite(observed.measuredPowerKw)
+    || observed.measuredPowerKw <= 0
+  ) {
+    return undefined;
+  }
+  return {
+    stepId: 'unknown',
+    planningPowerW: Math.round(observed.measuredPowerKw * 1000),
   };
 };
