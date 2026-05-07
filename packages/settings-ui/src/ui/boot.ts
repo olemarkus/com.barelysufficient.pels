@@ -29,6 +29,7 @@ import {
   settingsCapacityMarginInput,
   settingsPowerSourceSelect,
   settingsSimulationModeInput,
+  simulationDisableButton,
   priorityForm,
 } from './dom.ts';
 import {
@@ -178,6 +179,14 @@ const initCapacityHandlers = () => {
     } catch (error) {
       await logSettingsError('Failed to save simulation mode setting', error, 'settingsSimulationModeInput');
       await showToastError(error, 'Failed to save simulation mode setting.');
+    }
+  });
+  simulationDisableButton?.addEventListener('click', async () => {
+    try {
+      await saveSimulationModeSettings(false);
+    } catch (error) {
+      await logSettingsError('Failed to turn off simulation mode', error, 'simulationDisableButton');
+      await showToastError(error, 'Failed to turn off simulation mode.');
     }
   });
   priorityForm?.addEventListener('submit', (event) => {

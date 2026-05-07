@@ -51,6 +51,7 @@ const buildDom = () => {
     <div id="toast"></div>
     <div id="status-badge"></div>
     <div id="dry-run-banner" hidden></div>
+    <button id="simulation-disable-button"></button>
     <div id="stale-data-banner" hidden>
       <span id="stale-data-text"></span>
     </div>

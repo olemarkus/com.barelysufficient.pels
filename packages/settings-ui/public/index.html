@@ -40,6 +40,7 @@
       <span class="banner__icon">⚠️</span>
       <span class="banner__text dry-run-banner__legacy">Dry-run mode is enabled. Devices will not be switched automatically.</span>
       <span class="banner__text dry-run-banner__redesign">Simulation mode is enabled. Devices will not be switched automatically.</span>
+      <button type="button" class="btn secondary dry-run-banner__redesign dry-run-banner__action" id="simulation-disable-button">Turn off simulation</button>
     </div>
 
     <div id="stale-data-banner" class="banner banner--warning" hidden>
@@ -372,7 +373,6 @@
       <div class="settings-nav-list">
         <button type="button" class="settings-nav-card" data-settings-target="limits">
           <md-ripple></md-ripple>
-          <span class="settings-nav-card__icon" aria-hidden="true">kW</span>
           <span class="settings-nav-card__content">
             <span class="settings-nav-card__title">Limits &amp; safety</span>
             <span class="settings-nav-card__description">Hard cap, safety margin, power source</span>
@@ -381,7 +381,6 @@
         </button>
         <button type="button" class="settings-nav-card" data-settings-target="devices">
           <md-ripple></md-ripple>
-          <span class="settings-nav-card__icon" aria-hidden="true">D</span>
           <span class="settings-nav-card__content">
             <span class="settings-nav-card__title">Devices</span>
             <span class="settings-nav-card__description">Managed devices and per-device behavior</span>
@@ -390,7 +389,6 @@
         </button>
         <button type="button" class="settings-nav-card" data-settings-target="modes">
           <md-ripple></md-ripple>
-          <span class="settings-nav-card__icon" aria-hidden="true">M</span>
           <span class="settings-nav-card__content">
             <span class="settings-nav-card__title">Modes</span>
             <span class="settings-nav-card__description">Mode behavior and priorities</span>
@@ -399,16 +397,14 @@
         </button>
         <button type="button" class="settings-nav-card" data-settings-target="price">
           <md-ripple></md-ripple>
-          <span class="settings-nav-card__icon" aria-hidden="true">kr</span>
           <span class="settings-nav-card__content">
             <span class="settings-nav-card__title">Price</span>
-            <span class="settings-nav-card__description">Source, area, tariffs, cheap hours</span>
+            <span class="settings-nav-card__description">Source, area, tariffs, cheap/expensive hours</span>
           </span>
           <span class="settings-nav-card__chevron" aria-hidden="true">›</span>
         </button>
         <button type="button" class="settings-nav-card" data-settings-target="simulation">
           <md-ripple></md-ripple>
-          <span class="settings-nav-card__icon" aria-hidden="true">Sim</span>
           <span class="settings-nav-card__content">
             <span class="settings-nav-card__title">Simulation mode</span>
             <span class="settings-nav-card__description">Test behavior without switching devices</span>
@@ -417,7 +413,6 @@
         </button>
         <button type="button" class="settings-nav-card settings-nav-card--quiet" data-settings-target="advanced">
           <md-ripple></md-ripple>
-          <span class="settings-nav-card__icon" aria-hidden="true">!</span>
           <span class="settings-nav-card__content">
             <span class="settings-nav-card__title">Advanced</span>
             <span class="settings-nav-card__description">Diagnostics, cleanup, logs, experiments</span>

@@ -168,11 +168,11 @@ body[data-ui-variant="redesign"] .hero h1 {
 .redesign-shell-nav {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
+  gap: var(--spacing-1);
   margin-top: 0;
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--color-surface-2) 88%, black);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--panel-border) 72%, transparent);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-2);
+  box-shadow: inset 0 0 0 1px var(--panel-border);
 }
 
 /* Table header for device lists */
@@ -243,7 +243,7 @@ body[data-ui-variant="redesign"] .hero h1 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 32px;
+  min-height: var(--spacing-8);
   line-height: 1;
 }
 
@@ -311,6 +311,20 @@ body[data-ui-variant="redesign"] .dry-run-banner__redesign {
   display: inline;
 }
 
+body[data-ui-variant="redesign"] #dry-run-banner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+}
+
+body[data-ui-variant="redesign"] .dry-run-banner__action {
+  display: inline-flex;
+  grid-column: 2;
+  justify-self: start;
+  flex: 0 0 auto;
+  padding: var(--spacing-2) var(--spacing-3) !important;
+}
+
 body[data-ui-variant="redesign"] .legacy-ui-copy,
 body[data-ui-variant="redesign"] .legacy-device-settings,
 body[data-ui-variant="redesign"] .legacy-budget-capacity-settings {
@@ -344,19 +358,19 @@ body[data-ui-variant="redesign"] #overview-panel {
 }
 
 .settings-home-hero {
-  padding: 18px;
+  padding: var(--spacing-4);
   border: 1px solid var(--panel-border);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, transparent), transparent 42%),
-    color-mix(in srgb, var(--color-surface-2) 94%, black);
+    linear-gradient(135deg, var(--color-state-positive-bg-muted), transparent 42%),
+    var(--color-surface-2);
   box-shadow: var(--shadow-card);
 }
 
 .settings-home-hero h2 {
   margin: 0 0 var(--spacing-2) 0;
-  font-size: 24px;
-  line-height: 1.12;
+  font-size: var(--font-size-lg);
+  line-height: var(--font-line-height-tight);
   letter-spacing: 0;
 }
 
@@ -372,17 +386,16 @@ body[data-ui-variant="redesign"] #overview-panel {
 .settings-nav-card {
   position: relative;
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 20px;
-  gap: var(--spacing-3);
+  grid-template-columns: minmax(0, 1fr) var(--spacing-6);
+  gap: var(--spacing-4);
   align-items: center;
   width: 100%;
-  min-height: 74px;
-  padding: var(--spacing-3);
+  min-height: var(--spacing-8);
+  padding: var(--spacing-3) var(--spacing-4);
   border: 1px solid var(--panel-border) !important;
-  border-radius: 10px !important;
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--color-surface-3) 80%, transparent), var(--color-surface-2)) !important;
-  box-shadow: 0 12px 30px color-mix(in srgb, black 18%, transparent);
+  border-radius: var(--radius-md) !important;
+  background: var(--color-surface-2) !important;
+  box-shadow: var(--shadow-md);
   text-align: left;
   cursor: pointer;
   overflow: hidden;
@@ -390,9 +403,8 @@ body[data-ui-variant="redesign"] #overview-panel {
 
 .settings-nav-card:hover,
 .settings-nav-card:focus-visible {
-  border-color: color-mix(in srgb, var(--accent) 72%, white) !important;
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, var(--color-surface-3)), var(--color-surface-2)) !important;
+  border-color: var(--accent) !important;
+  background: var(--color-surface-3) !important;
 }
 
 .settings-nav-card:focus-visible {
@@ -404,23 +416,10 @@ body[data-ui-variant="redesign"] #overview-panel {
   opacity: 0.86;
 }
 
-.settings-nav-card__icon {
-  display: inline-grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--accent) 18%, var(--color-surface-4));
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: var(--font-weight-bold);
-  letter-spacing: 0;
-}
-
 .settings-nav-card__content {
   display: grid;
   min-width: 0;
-  gap: 2px;
+  gap: var(--spacing-1);
 }
 
 .settings-nav-card__title {
@@ -439,7 +438,7 @@ body[data-ui-variant="redesign"] #overview-panel {
 .settings-nav-card__chevron {
   justify-self: end;
   color: var(--muted);
-  font-size: 28px;
+  font-size: var(--spacing-6);
   line-height: 1;
 }
 
@@ -464,8 +463,8 @@ body[data-ui-variant="redesign"] .settings-back-button--redesign-only {
 .settings-form-card {
   padding: var(--spacing-3);
   border: 1px solid var(--panel-border);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--color-surface-3) 74%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-3);
 }
 
 .card__header {
@@ -2615,9 +2614,10 @@ input[type="text"]:focus {
 .banner {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  border-radius: 10px;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3) var(--spacing-4);
+  border-radius: var(--radius-md);
   font-size: var(--font-size-sm);
 }
 
