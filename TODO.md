@@ -72,11 +72,13 @@ file.
 
 ## P1 UI and product follow-ups
 
-- [ ] Deliver the Settings UI reorganization program from
-      `notes/settings-ui-reorganization.md` as stacked reviewable PRs. Preserve the ownership
-      boundaries from that note: Overview for current state, Budget for daily planning and preview,
-      Usage for history, and Settings as the navigation container for limits, devices, modes,
-      price, simulation mode, and advanced diagnostics.
+- [ ] Continue the Settings UI reorganization program from
+      `notes/settings-ui-reorganization.md` as stacked reviewable PRs. After the new-UI navigation
+      shell, remaining work is the Budget Plan/Adjust/Review split, Usage history cleanup,
+      per-device price behavior ownership, and final narrow-viewport polish. Preserve the
+      ownership boundaries from that note: Overview for current state, Budget for daily planning
+      and preview, Usage for history, and Settings as the navigation container for limits, devices,
+      modes, price, simulation mode, and advanced diagnostics.
       Files: `packages/settings-ui/**`, generated `settings/`, relevant settings UI tests.
 - [ ] Make Settings UI device refresh await in-flight snapshot refreshes. `/ui_refresh_devices`
       currently calls `refreshTargetDevicesSnapshot()` and then returns the current in-memory

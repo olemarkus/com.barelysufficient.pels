@@ -19,7 +19,7 @@
         <h1>Control center</h1>
         <p class="lede">Manage devices, modes, budgets, and usage.</p>
       </div>
-      <div class="tabs" role="tablist">
+      <div class="tabs" id="legacy-shell-nav" role="tablist" aria-label="PELS settings sections">
         <button type="button" class="tab active" data-tab="overview" role="tab" aria-selected="true">Overview</button>
         <button type="button" class="tab" data-tab="devices" role="tab" aria-selected="false">Devices</button>
         <button type="button" class="tab" data-tab="modes" role="tab" aria-selected="false">Modes</button>
@@ -28,11 +28,19 @@
         <button type="button" class="tab" data-tab="price" role="tab" aria-selected="false">Price</button>
         <button type="button" class="tab" data-tab="advanced" role="tab" aria-selected="false">Advanced</button>
       </div>
+      <div class="tabs redesign-shell-nav" id="redesign-shell-nav" role="tablist" aria-label="PELS settings sections" hidden>
+        <button type="button" class="tab active" data-tab="overview" role="tab" aria-selected="true">Overview</button>
+        <button type="button" class="tab" data-tab="budget" role="tab" aria-selected="false">Budget</button>
+        <button type="button" class="tab" data-tab="usage" role="tab" aria-selected="false">Usage</button>
+        <button type="button" class="tab" data-tab="settings" role="tab" aria-selected="false">Settings</button>
+      </div>
     </header>
 
     <div id="dry-run-banner" class="banner banner--warning" hidden>
       <span class="banner__icon">⚠️</span>
-      <span class="banner__text">Dry-run mode is enabled. Devices will not be switched automatically.</span>
+      <span class="banner__text dry-run-banner__legacy">Dry-run mode is enabled. Devices will not be switched automatically.</span>
+      <span class="banner__text dry-run-banner__redesign">Simulation mode is enabled. Devices will not be switched automatically.</span>
+      <button type="button" class="btn secondary dry-run-banner__redesign dry-run-banner__action" id="simulation-disable-button">Turn off simulation</button>
     </div>
 
     <div id="stale-data-banner" class="banner banner--warning" hidden>
@@ -41,20 +49,21 @@
     </div>
 
     <section class="card panel hidden" id="devices-panel" data-panel="devices">
+      <button type="button" class="btn ghost settings-back-button settings-back-button--redesign-only" data-settings-target="settings">‹ Settings</button>
       <div class="card__header">
         <div>
           <p class="eyebrow">Devices</p>
           <h2>Device control</h2>
         </div>
       </div>
-      <div class="toggle-row">
+      <div class="toggle-row legacy-device-settings">
         <label class="toggle-label">
           <input id="capacity-dry-run" name="capacity_dry_run" type="checkbox" checked>
           <span>Disable device control (dry run)</span>
         </label>
         <small class="field__hint">PELS will only monitor devices while this is enabled.</small>
       </div>
-      <form class="form-grid">
+      <form class="form-grid legacy-device-settings">
         <label class="field">
           <span class="field__label">Power source</span>
           <select id="power-source" name="power_source">
@@ -67,18 +76,25 @@
       <div class="device-table-header">
         <span>Device</span>
         <span data-tooltip="Managed by PELS">Managed</span>
-        <span data-tooltip="Capacity-based control">Cap</span>
+        <span data-tooltip="Capacity-based control">
+          <span class="legacy-ui-copy">Cap</span>
+          <span class="redesign-ui-copy">Limit</span>
+        </span>
         <span data-tooltip="Price-based control">Price</span>
       </div>
       <ul id="device-list" class="device-list"></ul>
       <p id="empty-state" class="muted" hidden>No compatible devices found. PELS requires devices with power measurement and either temperature control or on/off capability.</p>
       <div class="list__footer">
         <button type="button" class="btn secondary" id="refresh-button">Refresh</button>
-        <p class="muted">Managed devices participate in modes and optimization. Temperature &amp; priority live in the Modes tab.</p>
+        <p class="muted">
+          <span class="legacy-ui-copy">Managed devices participate in modes and optimization. Temperature &amp; priority live in the Modes tab.</span>
+          <span class="redesign-ui-copy">Managed devices participate in modes and optimization. Temperature and priority live in Settings.</span>
+        </p>
       </div>
     </section>
 
     <section class="card panel hidden" id="modes-panel" data-panel="modes">
+      <button type="button" class="btn ghost settings-back-button settings-back-button--redesign-only" data-settings-target="settings">‹ Settings</button>
       <div class="card__header">
         <div>
           <p class="eyebrow">Modes</p>
@@ -114,10 +130,13 @@
       <div class="card__header">
         <div>
           <p class="eyebrow">Budget</p>
-          <h2>Capacity &amp; daily budget</h2>
+          <h2>
+            <span class="legacy-ui-copy">Capacity &amp; daily budget</span>
+            <span class="redesign-ui-copy">Daily budget</span>
+          </h2>
         </div>
       </div>
-      <details class="settings-collapse" open>
+      <details class="settings-collapse legacy-budget-capacity-settings" open>
         <summary>
           <h3 class="section-title">Capacity</h3>
           <span class="section-hint">Hourly kW cap</span>
@@ -140,7 +159,10 @@
       <details class="settings-collapse" open>
         <summary>
           <h3 class="section-title">Daily budget</h3>
-          <span class="section-hint">Soft kWh/day guide</span>
+          <span class="section-hint">
+            <span class="legacy-ui-copy">Soft kWh/day guide</span>
+            <span class="redesign-ui-copy">Daily kWh plan</span>
+          </span>
         </summary>
         <div class="collapse-content">
           <form id="daily-budget-form" class="form-grid">
@@ -342,6 +364,111 @@
       </div>
     </section>
 
+    <section class="panel hidden settings-home-panel" id="settings-panel" data-panel="settings" aria-labelledby="settings-title">
+      <div class="settings-home-hero">
+        <p class="eyebrow">Settings</p>
+        <h2 id="settings-title">Configure PELS</h2>
+        <p class="muted">Choose what to adjust. Everyday planning stays in Budget; rare recovery tools stay in Advanced.</p>
+      </div>
+      <div class="settings-nav-list">
+        <button type="button" class="settings-nav-card" data-settings-target="limits">
+          <md-ripple></md-ripple>
+          <span class="settings-nav-card__content">
+            <span class="settings-nav-card__title">Limits &amp; safety</span>
+            <span class="settings-nav-card__description">Hard cap, safety margin, power source</span>
+          </span>
+          <span class="settings-nav-card__chevron" aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="settings-nav-card" data-settings-target="devices">
+          <md-ripple></md-ripple>
+          <span class="settings-nav-card__content">
+            <span class="settings-nav-card__title">Devices</span>
+            <span class="settings-nav-card__description">Managed devices and per-device behavior</span>
+          </span>
+          <span class="settings-nav-card__chevron" aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="settings-nav-card" data-settings-target="modes">
+          <md-ripple></md-ripple>
+          <span class="settings-nav-card__content">
+            <span class="settings-nav-card__title">Modes</span>
+            <span class="settings-nav-card__description">Mode behavior and priorities</span>
+          </span>
+          <span class="settings-nav-card__chevron" aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="settings-nav-card" data-settings-target="price">
+          <md-ripple></md-ripple>
+          <span class="settings-nav-card__content">
+            <span class="settings-nav-card__title">Price</span>
+            <span class="settings-nav-card__description">Source, area, tariffs, cheap/expensive hours</span>
+          </span>
+          <span class="settings-nav-card__chevron" aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="settings-nav-card" data-settings-target="simulation">
+          <md-ripple></md-ripple>
+          <span class="settings-nav-card__content">
+            <span class="settings-nav-card__title">Simulation mode</span>
+            <span class="settings-nav-card__description">Test behavior without switching devices</span>
+          </span>
+          <span class="settings-nav-card__chevron" aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="settings-nav-card settings-nav-card--quiet" data-settings-target="advanced">
+          <md-ripple></md-ripple>
+          <span class="settings-nav-card__content">
+            <span class="settings-nav-card__title">Advanced</span>
+            <span class="settings-nav-card__description">Diagnostics, cleanup, logs, experiments</span>
+          </span>
+          <span class="settings-nav-card__chevron" aria-hidden="true">›</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="card panel hidden settings-detail-panel" id="limits-panel" data-panel="limits" aria-labelledby="limits-title">
+      <button type="button" class="btn ghost settings-back-button" data-settings-target="settings">‹ Settings</button>
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Limits &amp; safety</p>
+          <h2 id="limits-title">Hard cap and safety margin</h2>
+        </div>
+      </div>
+      <form id="settings-limits-form" class="form-grid settings-form-card">
+        <label class="field">
+          <span class="field__label">Hard cap (kW)</span>
+          <input id="settings-capacity-limit" name="settings_capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required>
+          <small class="field__hint">The upper boundary PELS tries not to exceed.</small>
+        </label>
+        <label class="field">
+          <span class="field__label">Safety margin (kW)</span>
+          <input id="settings-capacity-margin" name="settings_capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required>
+          <small class="field__hint" id="settings-capacity-reaction">PELS reacts before reaching the hard cap.</small>
+        </label>
+        <label class="field">
+          <span class="field__label">Power source</span>
+          <select id="settings-power-source" name="settings_power_source">
+            <option value="flow">Flow card</option>
+            <option value="homey_energy">Homey Energy</option>
+          </select>
+          <small class="field__hint">Where whole-home power readings come from.</small>
+        </label>
+      </form>
+    </section>
+
+    <section class="card panel hidden settings-detail-panel" id="simulation-panel" data-panel="simulation" aria-labelledby="simulation-title">
+      <button type="button" class="btn ghost settings-back-button" data-settings-target="settings">‹ Settings</button>
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Simulation mode</p>
+          <h2 id="simulation-title">Test without switching devices</h2>
+        </div>
+      </div>
+      <label class="field checkbox-field settings-form-card">
+        <input id="settings-simulation-mode" name="settings_simulation_mode" type="checkbox">
+        <span class="checkbox-field__content">
+          <span class="field__label">Simulation mode</span>
+          <small class="field__hint">PELS shows what it would do, but devices are not switched automatically.</small>
+        </span>
+      </label>
+    </section>
+
     <section class="card panel" id="overview-panel" data-panel="overview">
       <div id="plan-legacy-surface">
         <div class="card__header">
@@ -369,6 +496,7 @@
     </section>
 
     <section class="card panel hidden" id="advanced-panel" data-panel="advanced">
+      <button type="button" class="btn ghost settings-back-button settings-back-button--redesign-only" data-settings-target="settings">‹ Settings</button>
       <div class="card__header">
         <div>
           <p class="eyebrow">Advanced</p>
@@ -385,8 +513,8 @@
             <label class="field checkbox-field" id="advanced-overview-redesign-row" hidden>
               <input id="advanced-overview-redesign-enabled" type="checkbox">
               <span class="checkbox-field__content">
-                <span class="field__label">Enable Overview redesign</span>
-                <small class="field__hint">Opt into the new Overview dashboard in this browser.</small>
+                <span class="field__label">Enable new UI</span>
+                <small class="field__hint">Opt into the new Overview dashboard and Settings navigation in this browser.</small>
               </span>
             </label>
             <label class="field checkbox-field">
@@ -486,6 +614,7 @@
     </section>
 
     <section class="card panel hidden" id="price-panel" data-panel="price">
+      <button type="button" class="btn ghost settings-back-button settings-back-button--redesign-only" data-settings-target="settings">‹ Settings</button>
       <div class="card__header">
         <div>
           <p class="eyebrow">Price</p>

@@ -3,6 +3,11 @@ import {
   capacityMarginInput,
   capacityDryRunInput,
   powerSourceSelect,
+  settingsCapacityLimitInput,
+  settingsCapacityMarginInput,
+  settingsCapacityReactionHint,
+  settingsPowerSourceSelect,
+  settingsSimulationModeInput,
   advancedEvSupportEnabledInput,
   advancedOverviewRedesignEnabledInput,
   dryRunBanner,
@@ -33,6 +38,27 @@ import { resolveOverviewRedesignPreference } from './uiVariant.ts';
 
 type PowerSource = 'flow' | 'homey_energy';
 
+type CapacitySettingsPatch = {
+  limit?: number;
+  margin?: number;
+  dryRun?: boolean;
+  powerSource?: PowerSource;
+};
+
+type CurrentCapacitySettings = {
+  limit: unknown;
+  margin: unknown;
+  dryRun: unknown;
+  powerSource: unknown;
+};
+
+type ResolvedCapacitySettings = {
+  limit: number;
+  margin: number;
+  dryRun: boolean;
+  powerSource: PowerSource;
+};
+
 const normalizePowerSource = (raw: unknown): PowerSource => (
   raw === 'homey_energy' ? 'homey_energy' : 'flow'
 );
@@ -53,6 +79,77 @@ const updateDryRunBanner = (isDryRun: boolean) => {
   if (dryRunBanner) {
     dryRunBanner.hidden = !isDryRun;
   }
+};
+
+const updateCapacityReactionHint = (limit: number, margin: number) => {
+  if (!settingsCapacityReactionHint) return;
+  const reactionAt = Math.max(0, limit - margin);
+  settingsCapacityReactionHint.textContent = `PELS reacts at ${reactionAt.toFixed(1)} kW.`;
+};
+
+const syncCapacityControls = (
+  limit: number,
+  margin: number,
+  isDryRun: boolean,
+  powerSource: PowerSource,
+) => {
+  capacityLimitInput.value = limit.toString();
+  capacityMarginInput.value = margin.toString();
+  if (capacityDryRunInput) {
+    capacityDryRunInput.checked = isDryRun;
+  }
+  if (powerSourceSelect) {
+    powerSourceSelect.value = powerSource;
+  }
+  if (settingsCapacityLimitInput) {
+    settingsCapacityLimitInput.value = limit.toString();
+  }
+  if (settingsCapacityMarginInput) {
+    settingsCapacityMarginInput.value = margin.toString();
+  }
+  if (settingsPowerSourceSelect) {
+    settingsPowerSourceSelect.value = powerSource;
+  }
+  if (settingsSimulationModeInput) {
+    settingsSimulationModeInput.checked = isDryRun;
+  }
+  updateCapacityReactionHint(limit, margin);
+};
+
+const readNumberInput = (input: HTMLInputElement | null, label: string): number => {
+  const value = parseFloat(input?.value ?? '');
+  if (!Number.isFinite(value)) throw new Error(`${label} must be a number.`);
+  return value;
+};
+
+const readCurrentCapacitySettings = async (): Promise<CurrentCapacitySettings> => {
+  const [limit, margin, dryRun, powerSource] = await Promise.all([
+    getSetting(CAPACITY_LIMIT_KW),
+    getSetting(CAPACITY_MARGIN_KW),
+    getSetting(CAPACITY_DRY_RUN),
+    getSetting(POWER_SOURCE),
+  ]);
+  return { limit, margin, dryRun, powerSource };
+};
+
+const resolveCapacitySettings = (
+  current: CurrentCapacitySettings,
+  patch: CapacitySettingsPatch,
+): ResolvedCapacitySettings => ({
+  limit: patch.limit ?? (typeof current.limit === 'number' ? current.limit : 10),
+  margin: patch.margin ?? (typeof current.margin === 'number' ? current.margin : 0.2),
+  dryRun: patch.dryRun ?? (typeof current.dryRun === 'boolean' ? current.dryRun : true),
+  powerSource: patch.powerSource ?? normalizePowerSource(current.powerSource),
+});
+
+const validateCapacitySettings = ({ limit, margin }: ResolvedCapacitySettings) => {
+  // Validate limit: must be a finite positive number within reasonable bounds.
+  if (!Number.isFinite(limit) || limit <= 0) throw new Error('Limit must be positive.');
+  if (limit > 1000) throw new Error('Limit cannot exceed 1000 kW.');
+
+  // Validate margin: must be a finite non-negative number within reasonable bounds.
+  if (!Number.isFinite(margin) || margin < 0) throw new Error('Margin must be non-negative.');
+  if (margin > limit) throw new Error('Margin cannot exceed the limit.');
 };
 
 const updateStaleDataBanner = (lastPowerUpdate: number | null) => {
@@ -97,51 +194,60 @@ export const loadCapacitySettings = async () => {
   const powerSource = await getSetting(POWER_SOURCE);
   const fallbackLimit = 10;
   const fallbackMargin = 0.2;
-  capacityLimitInput.value = typeof limit === 'number' ? limit.toString() : fallbackLimit.toString();
-  capacityMarginInput.value = typeof margin === 'number' ? margin.toString() : fallbackMargin.toString();
+  const normalizedLimit = typeof limit === 'number' ? limit : fallbackLimit;
+  const normalizedMargin = typeof margin === 'number' ? margin : fallbackMargin;
   const isDryRun = typeof dryRun === 'boolean' ? dryRun : true;
-  if (capacityDryRunInput) {
-    capacityDryRunInput.checked = isDryRun;
-  }
-  if (powerSourceSelect) {
-    powerSourceSelect.value = normalizePowerSource(powerSource);
-  }
+  const normalizedPowerSource = normalizePowerSource(powerSource);
+  syncCapacityControls(normalizedLimit, normalizedMargin, isDryRun, normalizedPowerSource);
   state.dryRun = isDryRun;
   updateDryRunBanner(isDryRun);
 };
 
-export const saveCapacitySettings = async () => {
-  const limit = parseFloat(capacityLimitInput.value);
-  const margin = parseFloat(capacityMarginInput.value);
-  const dryRun = capacityDryRunInput ? capacityDryRunInput.checked : true;
-  const powerSource = normalizePowerSource(powerSourceSelect?.value);
-
-  // Validate limit: must be a finite positive number within reasonable bounds
-  if (!Number.isFinite(limit) || limit <= 0) throw new Error('Limit must be positive.');
-  if (limit > 1000) throw new Error('Limit cannot exceed 1000 kW.');
-
-  // Validate margin: must be a finite non-negative number within reasonable bounds
-  if (!Number.isFinite(margin) || margin < 0) throw new Error('Margin must be non-negative.');
-  if (margin > limit) throw new Error('Margin cannot exceed the limit.');
-
-  const [currentLimit, currentMargin, currentDryRun, currentPowerSource] = await Promise.all([
-    getSetting(CAPACITY_LIMIT_KW),
-    getSetting(CAPACITY_MARGIN_KW),
-    getSetting(CAPACITY_DRY_RUN),
-    getSetting(POWER_SOURCE),
-  ]);
+const saveCapacitySettingsPatch = async (
+  patch: CapacitySettingsPatch,
+  successMessage = 'Capacity settings saved.',
+) => {
+  const current = await readCurrentCapacitySettings();
+  const { limit, margin, dryRun, powerSource } = resolveCapacitySettings(current, patch);
+  validateCapacitySettings({ limit, margin, dryRun, powerSource });
 
   const writes: Array<Promise<void>> = [];
-  pushSettingWriteIfChanged(writes, CAPACITY_LIMIT_KW, currentLimit, limit);
-  pushSettingWriteIfChanged(writes, CAPACITY_MARGIN_KW, currentMargin, margin);
-  pushSettingWriteIfChanged(writes, CAPACITY_DRY_RUN, currentDryRun, dryRun);
-  pushSettingWriteIfChanged(writes, POWER_SOURCE, currentPowerSource, powerSource);
+  pushSettingWriteIfChanged(writes, CAPACITY_LIMIT_KW, current.limit, limit);
+  pushSettingWriteIfChanged(writes, CAPACITY_MARGIN_KW, current.margin, margin);
+  pushSettingWriteIfChanged(writes, CAPACITY_DRY_RUN, current.dryRun, dryRun);
+  pushSettingWriteIfChanged(writes, POWER_SOURCE, current.powerSource, powerSource);
   if (writes.length > 0) {
     await Promise.all(writes);
   }
   state.dryRun = dryRun;
+  syncCapacityControls(limit, margin, dryRun, powerSource);
   updateDryRunBanner(dryRun);
-  await showToast('Capacity settings saved.', 'ok');
+  await showToast(successMessage, 'ok');
+};
+
+export const saveCapacitySettings = async () => {
+  await saveCapacitySettingsPatch({
+    limit: readNumberInput(capacityLimitInput, 'Limit'),
+    margin: readNumberInput(capacityMarginInput, 'Margin'),
+    dryRun: capacityDryRunInput ? capacityDryRunInput.checked : true,
+    powerSource: normalizePowerSource(powerSourceSelect?.value),
+  });
+};
+
+export const saveSettingsLimitsSettings = async () => {
+  await saveCapacitySettingsPatch({
+    limit: readNumberInput(settingsCapacityLimitInput, 'Hard cap'),
+    margin: readNumberInput(settingsCapacityMarginInput, 'Safety margin'),
+    powerSource: normalizePowerSource(settingsPowerSourceSelect?.value),
+  }, 'Limits & safety saved.');
+};
+
+export const saveSimulationModeSettings = async (
+  enabled = settingsSimulationModeInput ? settingsSimulationModeInput.checked : true,
+) => {
+  await saveCapacitySettingsPatch({
+    dryRun: enabled,
+  }, 'Simulation mode updated.');
 };
 
 export const loadAdvancedSettings = async () => {

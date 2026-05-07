@@ -1,11 +1,17 @@
-import { expect, test } from './fixtures/test';
+import { expect, test, type Page } from './fixtures/test';
+
+const openLimitsAndSafety = async (page: Page) => {
+  await page.getByRole('tab', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: /Limits & safety/ }).click();
+  await expect(page.locator('#limits-panel')).toBeVisible();
+};
 
 test.describe('Power source setting', () => {
   test('defaults to "Flow card" when no setting is stored', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.getByRole('tab', { name: 'Devices' }).click();
+    await openLimitsAndSafety(page);
 
-    const select = page.locator('#power-source');
+    const select = page.locator('#settings-power-source');
     await expect(select).toBeVisible();
     await expect(select).toHaveValue('flow');
   });
@@ -17,20 +23,20 @@ test.describe('Power source setting', () => {
       };
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.getByRole('tab', { name: 'Devices' }).click();
+    await openLimitsAndSafety(page);
 
-    await expect(page.locator('#power-source')).toHaveValue('homey_energy');
+    await expect(page.locator('#settings-power-source')).toHaveValue('homey_energy');
   });
 
   test('saves power source change and shows toast', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.getByRole('tab', { name: 'Devices' }).click();
+    await openLimitsAndSafety(page);
 
-    const select = page.locator('#power-source');
+    const select = page.locator('#settings-power-source');
     await expect(select).toHaveValue('flow');
 
     await select.selectOption('homey_energy');
-    await expect(page.locator('#toast')).toContainText('Capacity settings saved');
+    await expect(page.locator('#toast')).toContainText('Limits & safety saved');
 
     // Verify the setting was persisted in the Homey stub
     const stored = await page.evaluate(() => {
@@ -54,13 +60,13 @@ test.describe('Power source setting', () => {
       };
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.getByRole('tab', { name: 'Devices' }).click();
+    await openLimitsAndSafety(page);
 
-    const select = page.locator('#power-source');
+    const select = page.locator('#settings-power-source');
     await expect(select).toHaveValue('homey_energy');
 
     await select.selectOption('flow');
-    await expect(page.locator('#toast')).toContainText('Capacity settings saved');
+    await expect(page.locator('#toast')).toContainText('Limits & safety saved');
 
     const stored = await page.evaluate(() => {
       return new Promise<unknown>((resolve, reject) => {
@@ -78,7 +84,7 @@ test.describe('Power source setting', () => {
 
   test('stale data banner adapts hint text to power source', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.getByRole('tab', { name: 'Devices' }).click();
+    await openLimitsAndSafety(page);
 
     // Force stale power data but keep heartbeat fresh so the banner shows
     // the power-specific message rather than the heartbeat-missing message
@@ -95,7 +101,7 @@ test.describe('Power source setting', () => {
     await expect(banner).toContainText('Flow');
 
     // Switch to homey_energy
-    await page.locator('#power-source').selectOption('homey_energy');
+    await page.locator('#settings-power-source').selectOption('homey_energy');
 
     // Re-trigger stale banner refresh so the hint text updates
     await page.evaluate(() => {

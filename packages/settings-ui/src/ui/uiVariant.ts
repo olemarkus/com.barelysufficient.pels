@@ -1,4 +1,10 @@
-import { legacyShellCopy, planLegacySurface, planRedesignSurface } from './dom.ts';
+import {
+  legacyShellCopy,
+  legacyShellNav,
+  planLegacySurface,
+  planRedesignSurface,
+  redesignShellNav,
+} from './dom.ts';
 
 export type SettingsUiVariant = 'legacy' | 'redesign';
 
@@ -27,6 +33,12 @@ const syncSettingsUiVariantVisibility = () => {
   const redesignEnabled = currentSettingsUiVariant === 'redesign';
   if (legacyShellCopy) {
     legacyShellCopy.hidden = redesignEnabled;
+  }
+  if (legacyShellNav) {
+    legacyShellNav.hidden = redesignEnabled;
+  }
+  if (redesignShellNav) {
+    redesignShellNav.hidden = !redesignEnabled;
   }
   if (planLegacySurface) {
     planLegacySurface.hidden = redesignEnabled;

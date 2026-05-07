@@ -30,6 +30,8 @@ export const usageDayLabels = qs('#usage-day-labels');
 export const usageDayEmpty = qs('#usage-day-empty');
 export const usageDayMeta = qs('#usage-day-meta');
 export const legacyShellCopy = document.querySelector('#legacy-shell-copy') as HTMLElement | null;
+export const legacyShellNav = document.querySelector('#legacy-shell-nav') as HTMLElement | null;
+export const redesignShellNav = document.querySelector('#redesign-shell-nav') as HTMLElement | null;
 export const tabs = Array.from(document.querySelectorAll<HTMLElement>('.tab'));
 export const panels = Array.from(document.querySelectorAll<HTMLElement>('.panel'));
 export const capacityForm = document.querySelector('#capacity-form') as HTMLFormElement;
@@ -37,6 +39,16 @@ export const capacityLimitInput = document.querySelector('#capacity-limit') as H
 export const capacityMarginInput = document.querySelector('#capacity-margin') as HTMLInputElement;
 export const capacityDryRunInput = document.querySelector('#capacity-dry-run') as HTMLInputElement;
 export const powerSourceSelect = document.querySelector('#power-source') as HTMLSelectElement;
+export const settingsLimitsForm = document.querySelector('#settings-limits-form') as HTMLFormElement | null;
+export const settingsCapacityLimitInput = document.querySelector('#settings-capacity-limit') as HTMLInputElement | null;
+export const settingsCapacityMarginInput = document.querySelector(
+  '#settings-capacity-margin',
+) as HTMLInputElement | null;
+export const settingsCapacityReactionHint = document.querySelector('#settings-capacity-reaction') as HTMLElement | null;
+export const settingsPowerSourceSelect = document.querySelector('#settings-power-source') as HTMLSelectElement | null;
+export const settingsSimulationModeInput = document.querySelector(
+  '#settings-simulation-mode',
+) as HTMLInputElement | null;
 export const dailyBudgetForm = document.querySelector('#daily-budget-form') as HTMLFormElement;
 export const dailyBudgetEnabledInput = document.querySelector('#daily-budget-enabled') as HTMLInputElement;
 export const dailyBudgetKwhInput = document.querySelector('#daily-budget-kwh') as HTMLInputElement;
@@ -68,6 +80,7 @@ export const dailyBudgetRecomputeButton = document.querySelector('#daily-budget-
 export const dailyBudgetApplyButton = document.querySelector('#daily-budget-apply') as HTMLButtonElement;
 export const dailyBudgetDiscardButton = document.querySelector('#daily-budget-discard') as HTMLButtonElement;
 export const dryRunBanner = qs('#dry-run-banner');
+export const simulationDisableButton = document.querySelector('#simulation-disable-button') as HTMLButtonElement | null;
 export const staleDataBanner = qs('#stale-data-banner');
 export const staleDataBannerText = qs('#stale-data-text');
 export const planLegacySurface = document.querySelector('#plan-legacy-surface') as HTMLElement | null;
