@@ -59,7 +59,7 @@ const buildDom = () => {
       <h1>Control center</h1>
       <p class="lede">Manage devices, modes, budgets, and usage.</p>
     </div>
-    <div class="tabs">
+    <div class="tabs" id="legacy-shell-nav">
       <button class="tab active" data-tab="overview"></button>
       <button class="tab" data-tab="devices"></button>
       <button class="tab" data-tab="modes"></button>
@@ -68,6 +68,34 @@ const buildDom = () => {
       <button class="tab" data-tab="price"></button>
       <button class="tab" data-tab="advanced"></button>
     </div>
+    <div class="tabs" id="redesign-shell-nav" hidden>
+      <button class="tab active" data-tab="overview"></button>
+      <button class="tab" data-tab="budget"></button>
+      <button class="tab" data-tab="usage"></button>
+      <button class="tab" data-tab="settings"></button>
+    </div>
+    <section class="panel hidden" id="settings-panel" data-panel="settings">
+      <button data-settings-target="limits"></button>
+      <button data-settings-target="devices"></button>
+      <button data-settings-target="modes"></button>
+      <button data-settings-target="price"></button>
+      <button data-settings-target="simulation"></button>
+      <button data-settings-target="advanced"></button>
+    </section>
+    <section class="panel hidden" id="limits-panel" data-panel="limits">
+      <form id="settings-limits-form">
+        <input id="settings-capacity-limit">
+        <input id="settings-capacity-margin">
+        <span id="settings-capacity-reaction"></span>
+        <select id="settings-power-source">
+          <option value="flow">Flow card</option>
+          <option value="homey_energy">Homey Energy</option>
+        </select>
+      </form>
+    </section>
+    <section class="panel hidden" id="simulation-panel" data-panel="simulation">
+      <input id="settings-simulation-mode" type="checkbox">
+    </section>
     <section class="panel hidden" id="overview-panel" data-panel="overview">
       <div id="plan-legacy-surface">
         <div class="card__header">
@@ -420,6 +448,8 @@ describe('settings script', () => {
     expect(document.querySelector('#advanced-overview-redesign-row')?.hasAttribute('hidden')).toBe(true);
     expect(document.body.dataset.uiVariant).toBe('legacy');
     expect((document.querySelector('#legacy-shell-copy') as HTMLElement | null)?.hidden).toBe(false);
+    expect((document.querySelector('#legacy-shell-nav') as HTMLElement | null)?.hidden).toBe(false);
+    expect((document.querySelector('#redesign-shell-nav') as HTMLElement | null)?.hidden).toBe(true);
     expect(document.querySelector('#plan-legacy-surface .card__header h2')?.textContent).toBe('Planned device states');
   });
 
@@ -495,6 +525,8 @@ describe('settings script', () => {
     expect((document.querySelector('#advanced-overview-redesign-enabled') as HTMLInputElement | null)?.checked).toBe(true);
     expect(document.body.dataset.uiVariant).toBe('redesign');
     expect((document.querySelector('#legacy-shell-copy') as HTMLElement | null)?.hidden).toBe(true);
+    expect((document.querySelector('#legacy-shell-nav') as HTMLElement | null)?.hidden).toBe(true);
+    expect((document.querySelector('#redesign-shell-nav') as HTMLElement | null)?.hidden).toBe(false);
     expect((document.querySelector('#plan-legacy-surface') as HTMLElement | null)?.hidden).toBe(true);
     expect((document.querySelector('#plan-redesign-surface') as HTMLElement | null)?.hidden).toBe(false);
   });
@@ -545,6 +577,8 @@ describe('settings script', () => {
     expect(homey.set).not.toHaveBeenCalledWith('overview_redesign_enabled', expect.anything(), expect.any(Function));
     expect(document.body.dataset.uiVariant).toBe('redesign');
     expect((document.querySelector('#legacy-shell-copy') as HTMLElement | null)?.hidden).toBe(true);
+    expect((document.querySelector('#legacy-shell-nav') as HTMLElement | null)?.hidden).toBe(true);
+    expect((document.querySelector('#redesign-shell-nav') as HTMLElement | null)?.hidden).toBe(false);
     expect((document.querySelector('#plan-legacy-surface') as HTMLElement | null)?.hidden).toBe(true);
     expect((document.querySelector('#plan-redesign-surface') as HTMLElement | null)?.hidden).toBe(false);
   });
