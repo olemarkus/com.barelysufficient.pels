@@ -88,6 +88,31 @@ describe('planExecutablePlan', () => {
     });
   });
 
+  it('does not project binary intent for target-only devices', () => {
+    const targetOnly = buildPlanDevice({
+      id: 'target-only-1',
+      name: 'Target only',
+      currentState: 'not_applicable',
+      plannedState: 'keep',
+      hasBinaryControl: false,
+      currentTarget: 19,
+      plannedTarget: 21,
+    });
+
+    const executablePlan = buildExecutablePlan(planWithDevices([targetOnly]));
+
+    expect(executablePlan.devices[0]).toMatchObject({
+      id: 'target-only-1',
+      binary: null,
+      steppedLoad: null,
+      target: {
+        deviceId: 'target-only-1',
+        desired: 21,
+        purpose: 'target_update',
+      },
+    });
+  });
+
   it('uses observed state when projecting target updates', () => {
     const thermostat = buildPlanDevice({
       id: 'thermostat-1',

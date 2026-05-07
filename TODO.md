@@ -19,19 +19,6 @@ file.
       data, which can hide stale state in control paths.
       Files: `lib/core/deviceManagerObservation.ts`, `lib/core/deviceManager.ts`,
       `lib/plan/planObservationPolicy.ts`, freshness/reconcile tests.
-- [ ] Make stepped-load execution drift source-aware when binary and step observations disagree.
-      A fresh binary observation should not be masked by a stale stepped-load identity. For example,
-      if a plan expects a stepped device to be off, stale `selectedStepId = off` should not override
-      fresh `currentOn = true` when deciding whether reconcile needs to reapply control.
-      Files: `lib/executor/planExecutionDrift.ts`, `lib/plan/planCurrentState.ts`,
-      realtime/reconcile drift tests.
-- [ ] Make binary pending-command drift suppression desired-state aware.
-      Reconcile should suppress binary drift only when the active pending command's desired value
-      matches the current plan's expected binary state. Today some paths expose only "a pending
-      binary command exists", which can briefly hide a conflicting restore/limit decision until the
-      15s local or 75s cloud pending window expires.
-      Files: `lib/executor/planExecutionDrift.ts`, `lib/app/appInit.ts`,
-      `lib/plan/planDevices.ts`, binary pending/reconcile tests.
 - [ ] Ensure snapshot refresh ordering cannot persist pre-enforcement state. Unsupported-device
       enforcement should complete before the refreshed snapshot is synced and persisted.
       Why P0: persisting before enforcement can expose a snapshot that briefly disagrees with the
@@ -164,11 +151,25 @@ file.
       observed current state and own native / flow / capability transport; executor should compare
       current with desired and handle sequencing, pending commands, retries, and materialization.
       `ExecutablePlan` now carries executor intent and `ExecutableObservedState` carries
-      snapshot-built observer truth at the dispatch boundary. Remaining work is to move the last
-      flow-backed binary transport details fully behind `DeviceManager` and make drift detection
-      consume the same intent/observed split.
-      Files: `lib/executor/**`, `lib/core/deviceManager.ts`,
-      `lib/executor/planExecutionDrift.ts`, stepped-load executor/reconcile tests.
+      snapshot-built observer truth at the dispatch and drift-detection boundaries. Remaining work
+      is to move the last flow-backed binary transport details fully behind `DeviceManager`.
+      Files: `lib/executor/**`, `lib/core/deviceManager.ts`, binary transport tests.
+- [ ] Tighten the planner-to-executor projection so executable stepped-load intents cannot be
+      underspecified. The desired end state is an `input snapshots -> ExecutablePlan` boundary
+      where only core planning/admission sees both current and desired state; executable intents
+      contain commandable desired state only, and observed current state comes separately from
+      `ExecutableObservedState`. In particular, stepped `set_step` limiting should either carry a
+      concrete requested step or be represented as non-executable before drift/dispatch code sees
+      it.
+      Files: `lib/executor/executableSteppedLoadProjection.ts`, `lib/executor/executablePlan.ts`,
+      `lib/executor/planExecutionDrift.ts`, stepped executable projection/drift tests.
+- [ ] Define the binary operating precondition for temperature-lowered devices.
+      `set_temperature` limiting currently lowers the target only. For devices that also expose
+      binary control, decide whether an observed off state should be treated as drift and turned
+      back on so the lowered target can take effect, then encode that as executable intent instead
+      of special-casing drift detection.
+      Files: `lib/executor/executablePlanProjection.ts`, `lib/executor/planExecutor.ts`,
+      `lib/executor/planExecutionDrift.ts`, temperature-lowered executor/drift tests.
 - [ ] Remove legacy stepped-load optional fields from persisted/API contracts after the release
       cut. Planner and executor semantics should stay behind typed stepped-state adapters; the
       remaining compatibility fields (`selectedStepId`, `actualStepId`, `assumedStepId`, and

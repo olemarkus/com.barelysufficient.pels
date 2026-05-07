@@ -217,14 +217,13 @@ export class PlanEngine {
     return Object.keys(this.state.pendingBinaryCommands).length > 0;
   }
 
-  public isBinaryCommandPendingForDevice(
+  public getPendingBinaryCommandForDevice(
     deviceId: string,
     communicationModel?: 'local' | 'cloud',
-  ): boolean {
-    return isPendingBinaryCommandActive({
-      pending: this.state.pendingBinaryCommands[deviceId],
-      communicationModel,
-    });
+  ): { desired: boolean } | null {
+    const pending = this.state.pendingBinaryCommands[deviceId];
+    if (!isPendingBinaryCommandActive({ pending, communicationModel })) return null;
+    return { desired: pending.desired };
   }
 
   public evaluateHeadroomForDevice(params: {
