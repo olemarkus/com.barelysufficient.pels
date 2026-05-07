@@ -92,15 +92,16 @@ Post-release executor boundary rollout:
 - `lib/executor` owns desired-state execution: compare observed current state with desired state,
   issue the needed request through `DeviceManager`, and handle pending, retry, wait, skip, and
   materialization behavior.
-- `lib/plan` may still adapt broad planner devices into executor actions while compatibility
-  fields remain in planner snapshots, but those adapters should project only identity, current
-  observation, desired state, and execution metadata needed for the command path.
-- Broad `DevicePlanDevice` inputs at executor dispatch boundaries are transitional. Target-command
-  projection now narrows target update and shed-temperature writes before they reach the target
-  executor, binary command execution now lives under `lib/executor`, and stepped-load step
-  transport is requested through `DeviceManager`. The next narrowing step is dispatching over
-  projected executable device concepts instead of repeatedly unwrapping
-  planner devices.
+- `ExecutablePlan` is the executor-facing intent set. It contains `ExecutableDeviceIntent`
+  entries, not broad `DevicePlanDevice` wrappers and not current observed state.
+- `ExecutableObservedState` is the executor-facing observed-state set. It is built from
+  `DeviceManager` snapshots, not planner-carried current fields.
+- Executor dispatch reconciles `ExecutableDeviceIntent` with `ExecutableObservedDeviceState`.
+  Re-reading observer state after awaited work is valid; carrying old current fields forward in
+  executable intent is not.
+- Transitional stepped-load action adapters may still use planner-effective step fields as command
+  baselines, such as a previous step id for request metadata. Materialization and binary restore
+  readiness must still come from reported/admitted snapshot evidence.
 - Behavioral cleanups, including the stepped-load non-executable hold model, should stay separate
   from move-only or projection-only PRs.
 

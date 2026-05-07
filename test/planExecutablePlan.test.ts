@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildExecutablePlan, buildExecutablePlanDevice } from '../lib/executor/executablePlanProjection';
-import { buildExecutableTargetUpdate } from '../lib/executor/executableTargetProjection';
+import {
+  buildExecutableObservedDeviceState,
+  buildExecutablePlan,
+} from '../lib/executor/executablePlanProjection';
+import {
+  buildExecutableTargetIntent,
+  buildExecutableTargetUpdate,
+} from '../lib/executor/executableTargetProjection';
 import type { DevicePlan } from '../lib/plan/planTypes';
 import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
 
@@ -14,7 +20,7 @@ const planWithDevices = (devices: DevicePlan['devices']): DevicePlan => ({
 });
 
 describe('planExecutablePlan', () => {
-  it('projects stepped-load actions once at the executor boundary', () => {
+  it('projects executable plan devices as intent, not planner-device wrappers', () => {
     const steppedDevice = steppedPlanDevice({
       id: 'step-1',
       selectedStepId: 'low',
@@ -28,26 +34,28 @@ describe('planExecutablePlan', () => {
 
     const executablePlan = buildExecutablePlan(planWithDevices([steppedDevice, binaryDevice]));
 
-    expect(executablePlan.devices).toEqual([
-      { planDevice: steppedDevice },
-      { planDevice: binaryDevice },
-    ]);
-
-    expect(buildExecutablePlanDevice(steppedDevice)).toMatchObject({
-      planDevice: steppedDevice,
+    expect(executablePlan.devices).toHaveLength(2);
+    expect(executablePlan.devices[0]).toMatchObject({
+      id: 'step-1',
+      name: steppedDevice.name,
+      controllable: true,
+      binary: null,
       steppedLoad: {
         id: 'step-1',
-        current: {
-          stepId: 'low',
-        },
         desired: {
           stepId: 'max',
         },
       },
     });
-    expect(buildExecutablePlanDevice(binaryDevice)).toEqual({
-      planDevice: binaryDevice,
+    expect(executablePlan.devices[0]).not.toHaveProperty('planDevice');
+    expect(executablePlan.devices[0]?.steppedLoad).not.toHaveProperty('current');
+    expect(executablePlan.devices[1]).toMatchObject({
+      id: 'binary-1',
       steppedLoad: null,
+      binary: {
+        kind: 'restore',
+        source: 'controlled',
+      },
     });
   });
 
@@ -58,44 +66,47 @@ describe('planExecutablePlan', () => {
       currentTarget: 16,
       plannedTarget: 21,
     });
+    const intent = buildExecutableTargetIntent(thermostat);
+    const observed = buildExecutableObservedDeviceState({
+      id: 'thermostat-1',
+      name: 'Thermostat',
+      currentOn: true,
+      targets: [{ id: 'target_temperature', value: 16 }],
+    });
 
     expect(buildExecutableTargetUpdate(
-      thermostat,
-      {
-        id: 'thermostat-1',
-        name: 'Thermostat',
-        currentOn: true,
-        targets: [{ id: 'target_temperature', value: 16 }],
-      },
+      intent,
+      observed,
       () => ({ action: 'set_temperature', temperature: 16, stepId: null }),
     )).toEqual({
-        deviceId: 'thermostat-1',
-        name: 'Thermostat',
-        targetCap: 'target_temperature',
-        desired: 21,
-        observedValue: 16,
-        isRestoring: true,
+      deviceId: 'thermostat-1',
+      name: 'Thermostat',
+      targetCap: 'target_temperature',
+      desired: 21,
+      observedValue: 16,
+      isRestoring: true,
     });
   });
 
-  it('uses the current snapshot fallback when projecting target updates', () => {
+  it('uses observed state when projecting target updates', () => {
     const thermostat = buildPlanDevice({
       id: 'thermostat-1',
       name: 'Thermostat',
       currentTarget: 18,
       plannedTarget: 20,
     });
+    const intent = buildExecutableTargetIntent(thermostat);
+    const observed = buildExecutableObservedDeviceState({
+      id: 'thermostat-1',
+      name: 'Thermostat',
+      currentOn: true,
+      targets: [{ id: 'target_temperature', value: 18 }],
+    });
 
     expect(buildExecutableTargetUpdate(
-      thermostat,
-      undefined,
+      intent,
+      observed,
       () => ({ action: 'turn_off', temperature: null, stepId: null }),
-      () => ({
-        id: 'thermostat-1',
-        name: 'Thermostat',
-        currentOn: true,
-        targets: [{ id: 'target_temperature', value: 18 }],
-      }),
     )).toEqual({
       deviceId: 'thermostat-1',
       name: 'Thermostat',

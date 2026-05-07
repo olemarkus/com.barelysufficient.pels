@@ -1,10 +1,43 @@
 import { describe, expect, it } from 'vitest';
-import { buildExecutableSteppedLoadDevice } from '../lib/executor/executableSteppedLoadProjection';
+import { buildExecutableObservedDeviceState } from '../lib/executor/executablePlanProjection';
+import {
+  buildExecutableSteppedLoadDevice,
+  buildExecutableSteppedLoadIntent,
+} from '../lib/executor/executableSteppedLoadProjection';
+import type { DevicePlanDevice } from '../lib/plan/planTypes';
+import type { TargetDeviceSnapshot } from '../lib/utils/types';
 import { steppedPlanDevice } from './utils/planTestUtils';
+
+const buildObservedState = (
+  device: DevicePlanDevice,
+  overrides: Partial<TargetDeviceSnapshot> = {},
+) => buildExecutableObservedDeviceState({
+  id: device.id,
+  name: device.name,
+  currentOn: device.currentOn ?? device.currentState === 'on',
+  targets: [],
+  controlModel: device.controlModel,
+  steppedLoadProfile: device.steppedLoadProfile,
+  selectedStepId: device.selectedStepId,
+  reportedStepId: device.reportedStepId,
+  actualStepId: device.actualStepId,
+  actualStepSource: device.actualStepSource,
+  assumedStepId: device.assumedStepId,
+  measuredPowerKw: device.measuredPowerKw,
+  ...overrides,
+});
+
+const buildAction = (
+  device: DevicePlanDevice,
+  observedOverrides: Partial<TargetDeviceSnapshot> = {},
+) => buildExecutableSteppedLoadDevice(
+  buildExecutableSteppedLoadIntent(device),
+  buildObservedState(device, observedOverrides),
+);
 
 describe('planExecutableSteppedLoad', () => {
   it('projects legacy step evidence into executor requested-step materialization', () => {
-    const action = buildExecutableSteppedLoadDevice(steppedPlanDevice({
+    const action = buildAction(steppedPlanDevice({
       currentState: 'off',
       plannedState: 'keep',
       selectedStepId: 'low',
@@ -38,7 +71,7 @@ describe('planExecutableSteppedLoad', () => {
   });
 
   it('keeps fallback-only step evidence out of executor materialization', () => {
-    const action = buildExecutableSteppedLoadDevice(steppedPlanDevice({
+    const action = buildAction(steppedPlanDevice({
       currentState: 'off',
       plannedState: 'keep',
       selectedStepId: 'low',
@@ -56,7 +89,7 @@ describe('planExecutableSteppedLoad', () => {
   });
 
   it('uses measured power as shed baseline when current stepped position is unknown', () => {
-    const action = buildExecutableSteppedLoadDevice(steppedPlanDevice({
+    const action = buildAction(steppedPlanDevice({
       plannedState: 'shed',
       shedAction: 'set_step',
       selectedStepId: undefined,
@@ -72,7 +105,7 @@ describe('planExecutableSteppedLoad', () => {
   });
 
   it('projects planner restore holds as no desired executor state change', () => {
-    const action = buildExecutableSteppedLoadDevice(steppedPlanDevice({
+    const intent = buildExecutableSteppedLoadIntent(steppedPlanDevice({
       currentState: 'off',
       plannedState: 'keep',
       selectedStepId: 'low',
@@ -80,23 +113,11 @@ describe('planExecutableSteppedLoad', () => {
       reason: { code: 'meterSettling', remainingSec: 30 },
     }));
 
-    expect(action).toMatchObject({
-      current: {
-        on: false,
-        stepId: 'low',
-      },
-      desired: {
-        on: false,
-        stepId: 'low',
-        plannedStepId: 'low',
-      },
-      transition: null,
-    });
-    expect(action).not.toHaveProperty('reason');
+    expect(intent).toBeNull();
   });
 
   it('returns null for non stepped-load devices', () => {
-    expect(buildExecutableSteppedLoadDevice(steppedPlanDevice({
+    expect(buildExecutableSteppedLoadIntent(steppedPlanDevice({
       controlModel: 'binary_power',
       steppedLoadProfile: undefined,
     }))).toBeNull();

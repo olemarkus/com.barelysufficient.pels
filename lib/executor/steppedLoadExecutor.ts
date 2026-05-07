@@ -528,6 +528,7 @@ const recordAcceptedSteppedLoadPlanActuation = (
   if (
     transition?.effectiveTransition !== 'step_up_while_on'
     && transition?.effectiveTransition !== 'restore_from_off_at_low'
+    && !isSteppedLoadRestoreStepIncrease(action, params.desiredStep.id, params.previousStepId)
   ) return;
   ctx.recordRestoreActuation(action.id, action.name, now);
   recordActivationAttemptStarted({
@@ -538,6 +539,17 @@ const recordAcceptedSteppedLoadPlanActuation = (
     nowTs: now,
     source: 'pels_restore',
   });
+};
+
+const isSteppedLoadRestoreStepIncrease = (
+  action: ExecutableSteppedLoadDevice,
+  desiredStepId: string,
+  previousStepId: string | undefined,
+): boolean => {
+  if (action.purpose !== 'keep' || !previousStepId) return false;
+  const previousStep = getSteppedLoadStep(action.steppedLoadProfile, previousStepId);
+  const desiredStep = getSteppedLoadStep(action.steppedLoadProfile, desiredStepId);
+  return Boolean(previousStep && desiredStep && desiredStep.planningPowerW > previousStep.planningPowerW);
 };
 
 const recordAcceptedSteppedLoadCommand = (

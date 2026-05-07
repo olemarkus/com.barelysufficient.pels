@@ -1,4 +1,3 @@
-import type { DevicePlan } from './planTypes';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import type { PlanEngineState } from './planState';
 import {
@@ -13,16 +12,6 @@ import {
   recordActivationSetback,
 } from './planActivationBackoff';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
-
-type PlanDevice = DevicePlan['devices'][number];
-
-const getCurrentShedTemperature = (
-  dev: PlanDevice,
-  snapshot: TargetDeviceSnapshot | undefined,
-): number | null => {
-  return getPrimaryTargetCapability(snapshot?.targets)?.value ?? dev.currentTarget;
-};
 
 const isShedThrottled = (params: {
   state: Pick<PlanEngineState, 'lastDeviceShedMs'>;
@@ -34,70 +23,6 @@ const isShedThrottled = (params: {
   if (!lastForDevice) return null;
   const elapsedMs = params.nowTs - lastForDevice;
   return elapsedMs < throttleMs ? elapsedMs : null;
-};
-
-const shouldSkipShedTemperature = (params: {
-  dev: PlanDevice;
-  targetCap: string | undefined;
-  currentTarget: number | null;
-  capacityDryRun: boolean;
-  log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
-}): boolean => {
-  const {
-    dev,
-    targetCap,
-    currentTarget,
-    capacityDryRun,
-    log,
-    logDebug,
-  } = params;
-  if (capacityDryRun) {
-    log(
-      `Capacity (dry run): would set ${targetCap || 'target'} `
-      + `for ${dev.name} to ${dev.plannedTarget ?? '–'}°C (shedding)`,
-    );
-    return true;
-  }
-  if (!targetCap || typeof dev.plannedTarget !== 'number') return true;
-  if (currentTarget === dev.plannedTarget) {
-    logDebug(
-      `Capacity: skip setting ${targetCap || 'target'} `
-      + `for ${dev.name}, already at ${dev.plannedTarget}°C`,
-    );
-    return true;
-  }
-  return false;
-};
-
-export const resolveShedTemperaturePlan = (params: {
-  dev: PlanDevice;
-  snapshot: TargetDeviceSnapshot | undefined;
-  capacityDryRun: boolean;
-  log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
-}): { targetCap: string; plannedTarget: number } | null => {
-  const {
-    dev,
-    snapshot,
-    capacityDryRun,
-    log,
-    logDebug,
-  } = params;
-  const targetCap = snapshot?.targets?.[0]?.id;
-  const currentTarget = getCurrentShedTemperature(dev, snapshot);
-  if (shouldSkipShedTemperature({
-    dev,
-    targetCap,
-    currentTarget,
-    capacityDryRun,
-    log,
-    logDebug,
-  })) {
-    return null;
-  }
-  if (!targetCap || typeof dev.plannedTarget !== 'number') return null;
-  return { targetCap, plannedTarget: dev.plannedTarget };
 };
 
 export const canTurnOnDevice = (snapshot?: TargetDeviceSnapshot): boolean => {

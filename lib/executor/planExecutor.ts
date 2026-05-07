@@ -2,14 +2,19 @@ import Homey from 'homey';
 import CapacityGuard from '../core/capacityGuard';
 import { DeviceManager } from '../core/deviceManager';
 import {
-  formatDeviceReason,
-  PLAN_REASON_CODES,
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlan, PlanInputDevice, ShedAction } from '../plan/planTypes';
 import type { PendingTargetObservationSource } from '../plan/planTypes';
 import type { TargetDeviceSnapshot } from '../utils/types';
-import type { ExecutableSteppedLoadDevice, ExecutableTargetUpdate } from './executablePlan';
+import type {
+  ExecutableBinaryIntent,
+  ExecutableObservedDeviceState,
+  ExecutableSteppedLoadDevice,
+  ExecutableSteppedLoadIntent,
+  ExecutableTargetIntent,
+  ExecutableTargetUpdate,
+} from './executablePlan';
 import type { PlanActuationMode } from './executorTypes';
 import type { PlanEngineState } from '../plan/planState';
 import { DEVICE_LAST_CONTROLLED_MS } from '../utils/settingsKeys';
@@ -20,7 +25,6 @@ import {
   recordActivationAttemptStarted,
   recordDiagnosticsRestore,
   recordDiagnosticsShed,
-  resolveShedTemperaturePlan,
   shouldSkipShedding,
   shouldSkipUnavailable,
 } from '../plan/planExecutorSupport';
@@ -48,9 +52,15 @@ import {
   applyUncontrolledBinaryRestore,
   type PlanExecutorBinaryContext,
 } from './binaryExecutor';
-import { buildExecutablePlan, buildExecutablePlanDevice } from './executablePlanProjection';
 import {
-  buildExecutableShedTemperatureCommand,
+  buildExecutableObservedDeviceState,
+  buildExecutableObservedState,
+  buildExecutablePlan,
+  hasExecutableShedIntent,
+} from './executablePlanProjection';
+import { buildExecutableSteppedLoadDevice } from './executableSteppedLoadProjection';
+import {
+  buildExecutableTargetCommand,
   buildExecutableTargetUpdate,
 } from './executableTargetProjection';
 import { resolveEffectiveCurrentOn } from '../plan/planCurrentState';
@@ -406,100 +416,84 @@ export class PlanExecutor {
     return this.binaryExecutorContext;
   }
 
-  private async applyShedAction(
-    dev: DevicePlan['devices'][number],
-    snapshot?: TargetDeviceSnapshot,
-  ): Promise<PlanActionHandleResult> {
-    if (dev.plannedState !== 'shed') return { handled: false, wrote: false };
-    const reason = dev.reason;
-    if (isSwapTargetPendingReason(reason)) return { handled: true, wrote: false };
-    const shedAction = dev.shedAction ?? 'turn_off';
-    if (shedAction === 'set_temperature') {
-      return this.applyShedTemperature(dev);
+  private async applyBinaryRestoreIntent(
+    intent: ExecutableBinaryIntent | null,
+    observed: ExecutableObservedDeviceState | undefined,
+    mode: PlanActuationMode,
+  ): Promise<boolean> {
+    return applyBinaryRestore(this.buildBinaryExecutorContext(), intent, observed, mode);
+  }
+
+  private async applyTargetIntent(
+    intent: ExecutableTargetIntent | null,
+    observed: ExecutableObservedDeviceState | undefined,
+    mode: PlanActuationMode,
+  ): Promise<boolean> {
+    if (!intent) return false;
+    const latestObserved = this.resolveLatestObservedDevice(intent.deviceId, observed);
+    if (intent.purpose === 'shed_temperature') {
+      return this.applyShedTemperatureIntent(intent, latestObserved);
     }
-    return this.applyShedOff(dev, snapshot);
-  }
-
-  private async applyShedOff(
-    dev: DevicePlan['devices'][number],
-    snapshot?: TargetDeviceSnapshot,
-  ): Promise<PlanActionHandleResult> {
-    const currentOn = snapshot?.currentOn ?? resolveEffectiveCurrentOn(dev);
-    if (currentOn === false) return { handled: true, wrote: false };
-    const reason = dev.reason;
-    if (isRestoreHoldReason(reason)) return { handled: true, wrote: false };
-    const isSwap = reason?.code === PLAN_REASON_CODES.swappedOut;
-    return {
-      handled: true,
-      wrote: await this.applySheddingToDevice(
-        dev.id,
-        dev.name,
-        isSwap && reason ? formatDeviceReason(reason) : undefined,
-      ),
-    };
-  }
-
-  private async applyShedTemperature(dev: DevicePlan['devices'][number]): Promise<PlanActionHandleResult> {
-    const snapshot = this.latestTargetSnapshot.find((entry) => entry.id === dev.id);
-    const plan = resolveShedTemperaturePlan({
-      dev,
-      snapshot,
-      capacityDryRun: this.capacityDryRun,
-      log: (...args: unknown[]) => this.log(...args),
-      logDebug: (...args: unknown[]) => this.logDebug(...args),
-    });
-    if (!plan) return { handled: true, wrote: false };
-    return this.applyShedTemperaturePlan(dev, plan.targetCap, plan.plannedTarget);
-  }
-
-  private async applyShedTemperaturePlan(
-    dev: DevicePlan['devices'][number],
-    targetCap: string,
-    plannedTarget: number,
-  ): Promise<PlanActionHandleResult> {
-    return applyShedTemperaturePlan(
+    return applyTargetUpdate(
       this.buildTargetExecutorContext(),
-      buildExecutableShedTemperatureCommand(dev, targetCap, plannedTarget),
+      this.buildTargetUpdateAction(intent, latestObserved),
+      mode,
     );
   }
 
-  private async applyRestorePower(
-    dev: DevicePlan['devices'][number],
-    mode: PlanActuationMode,
-  ): Promise<boolean> {
-    if (isSteppedLoadDevice(dev)) return false;
-    if (dev.plannedState !== 'keep' || resolveEffectiveCurrentOn(dev) !== false) return false;
-    if (isSwapTargetPendingReason(dev.reason)) return false;
-    if (isRestoreHoldReason(dev.reason)) return false;
-    return applyBinaryRestore(this.buildBinaryExecutorContext(), dev, mode);
-  }
-
-  private async applyTargetUpdate(
-    dev: DevicePlan['devices'][number],
-    snapshot: TargetDeviceSnapshot | undefined,
-    mode: PlanActuationMode,
-  ): Promise<boolean> {
-    return applyTargetUpdate(this.buildTargetExecutorContext(), this.buildTargetUpdateAction(dev, snapshot), mode);
+  private resolveLatestObservedDevice(
+    deviceId: string,
+    observed: ExecutableObservedDeviceState | undefined,
+  ): ExecutableObservedDeviceState | undefined {
+    const snapshot = this.latestTargetSnapshot.find((entry) => entry.id === deviceId);
+    return snapshot ? buildExecutableObservedDeviceState(snapshot) : observed;
   }
 
   private buildTargetUpdateAction(
-    dev: DevicePlan['devices'][number],
-    snapshot: TargetDeviceSnapshot | undefined,
+    intent: ExecutableTargetIntent | null,
+    observed: ExecutableObservedDeviceState | undefined,
   ): ExecutableTargetUpdate | null {
     return buildExecutableTargetUpdate(
-      dev,
-      snapshot,
+      intent,
+      observed,
       this.boundGetShedBehavior,
-      (deviceId) => this.latestTargetSnapshot.find((entry) => entry.id === deviceId),
     );
   }
 
-  private async applyUncontrolledRestore(
-    dev: DevicePlan['devices'][number],
-    snapshot?: TargetDeviceSnapshot,
+  private async applyShedTemperatureIntent(
+    intent: ExecutableTargetIntent,
+    observed: ExecutableObservedDeviceState | undefined,
   ): Promise<boolean> {
-    if (isRestoreHoldReason(dev.reason)) return false;
-    return applyUncontrolledBinaryRestore(this.buildBinaryExecutorContext(), dev, snapshot);
+    const command = buildExecutableTargetCommand(intent, observed);
+    if (this.capacityDryRun) {
+      this.log(
+        `Capacity (dry run): would set ${command?.targetCap || 'target'} `
+        + `for ${intent.name} to ${intent.desired}°C (shedding)`,
+      );
+      return false;
+    }
+    if (!command) return false;
+    if (Object.is(command.observedValue, command.desired)) {
+      this.logDebug(
+        `Capacity: skip setting ${command.targetCap || 'target'} `
+        + `for ${intent.name}, already at ${intent.desired}°C`,
+      );
+      return false;
+    }
+    const result = await applyShedTemperaturePlan(this.buildTargetExecutorContext(), command);
+    return result.wrote;
+  }
+
+  private async applyUncontrolledRestore(
+    intent: ExecutableBinaryIntent | null,
+    observed: ExecutableObservedDeviceState | undefined,
+  ): Promise<boolean> {
+    return applyUncontrolledBinaryRestore(this.buildBinaryExecutorContext(), intent, observed);
+  }
+
+  private async applyBinaryShedIntent(intent: ExecutableBinaryIntent | null): Promise<boolean> {
+    if (!intent || intent.kind !== 'shed') return false;
+    return this.applySheddingToDevice(intent.deviceId, intent.name, intent.reason);
   }
 
   private async applySteppedLoadCommand(
@@ -648,42 +642,43 @@ export class PlanExecutor {
     this.controlPersistenceBatchDepth += 1;
     try {
       const executablePlan = buildExecutablePlan(plan);
-      const snapshotMap = new Map(this.latestTargetSnapshot.map((entry) => [entry.id, entry]));
+      const observedState = buildExecutableObservedState(this.latestTargetSnapshot);
+      const observedMap = new Map(observedState.devices.map((entry) => [entry.id, entry]));
       const logCapacityDebug = (...args: unknown[]) => this.logDebug(...args);
-      const anyShedDevices = executablePlan.devices.some(({ planDevice }) => planDevice.plannedState === 'shed');
+      const anyShedDevices = executablePlan.devices.some(hasExecutableShedIntent);
       let deviceWriteCount = 0;
       let commandRequestCount = 0;
-      for (const executableDevice of executablePlan.devices) {
-        const dev = executableDevice.planDevice;
-        const snapshot = snapshotMap.get(dev.id);
+      for (const intent of executablePlan.devices) {
+        const observed = observedMap.get(intent.id);
+        const snapshot = observed?.snapshot;
         try {
+          if (intent.projectionError) throw intent.projectionError;
+          const steppedAction = buildExecutableSteppedLoadDevice(intent.steppedLoad, observed);
           if (shouldSkipUnavailable({
             snapshot,
-            name: dev.name,
+            name: intent.name,
             operation: 'actuation',
             logDebug: logCapacityDebug,
           })) {
             continue;
           }
-          const projectedDevice = buildExecutablePlanDevice(dev);
-          if (dev.controllable === false) {
-            if (await this.applySteppedLoadCommand(projectedDevice.steppedLoad, mode, snapshot)) {
+          if (intent.controllable === false) {
+            if (await this.applySteppedLoadCommand(steppedAction, mode, snapshot)) {
               commandRequestCount += 1;
             }
-            if (await this.applyUncontrolledRestore(dev, snapshot)) deviceWriteCount += 1;
-            if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
+            if (await this.applyUncontrolledRestore(intent.binary, observed)) deviceWriteCount += 1;
+            if (await this.applyTargetIntent(intent.target, observed, mode)) deviceWriteCount += 1;
             continue;
           }
-          if (isSteppedLoadDevice(dev) && dev.plannedState === 'keep' && resolveEffectiveCurrentOn(dev) === false) {
-            if (projectedDevice.steppedLoad?.desired.on !== true) {
-              if (isRestoreAdmissionHoldReason(dev.reason)) continue;
-              if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
+          if (isSteppedLoadRestoreFromOff(intent.steppedLoad, steppedAction)) {
+            if (steppedAction?.desired.on !== true) {
+              if (await this.applyTargetIntent(intent.target, observed, mode)) deviceWriteCount += 1;
               continue;
             }
             const onoffViolated = snapshot?.currentOn === false;
             const preRestoreStepIssued = onoffViolated
               ? await this.applySteppedLoadCommand(
-                projectedDevice.steppedLoad,
+                steppedAction,
                 mode,
                 snapshot,
                 { recordPlanActuation: false },
@@ -691,7 +686,7 @@ export class PlanExecutor {
               : false;
             if (preRestoreStepIssued) commandRequestCount += 1;
             const stepRestoreReady = await this.applySteppedLoadRestore(
-              projectedDevice.steppedLoad,
+              steppedAction,
               snapshot,
               mode,
               anyShedDevices,
@@ -700,33 +695,36 @@ export class PlanExecutor {
             if (
               stepRestoreReady
               && !onoffViolated
-              && await this.applySteppedLoadCommand(projectedDevice.steppedLoad, mode, snapshot)
+              && await this.applySteppedLoadCommand(steppedAction, mode, snapshot)
             ) commandRequestCount += 1;
             if (stepRestoreReady && onoffViolated) deviceWriteCount += 1;
-            if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
+            if (await this.applyTargetIntent(intent.target, observed, mode)) deviceWriteCount += 1;
             continue;
           }
-          if (isSteppedLoadDevice(dev)) {
-            if (await this.applySteppedLoadCommand(projectedDevice.steppedLoad, mode, snapshot)) {
+          if (intent.steppedLoad) {
+            if (await this.applySteppedLoadCommand(steppedAction, mode, snapshot)) {
               commandRequestCount += 1;
             }
-            if (await this.applySteppedLoadShedOff(projectedDevice.steppedLoad, snapshot, mode)) {
+            if (await this.applySteppedLoadShedOff(steppedAction, snapshot, mode)) {
               deviceWriteCount += 1;
             }
-            await this.applySteppedLoadRestore(projectedDevice.steppedLoad, snapshot, mode, anyShedDevices);
-            if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
+            await this.applySteppedLoadRestore(steppedAction, snapshot, mode, anyShedDevices);
+            if (await this.applyTargetIntent(intent.target, observed, mode)) deviceWriteCount += 1;
             continue;
           }
-          const shedResult = await this.applyShedAction(dev, snapshot);
-          if (shedResult.handled) {
-            if (shedResult.wrote) deviceWriteCount += 1;
+          if (intent.target?.purpose === 'shed_temperature') {
+            if (await this.applyTargetIntent(intent.target, observed, mode)) deviceWriteCount += 1;
             continue;
           }
-          if (await this.applyRestorePower(dev, mode)) deviceWriteCount += 1;
-          if (await this.applyTargetUpdate(dev, snapshot, mode)) deviceWriteCount += 1;
+          if (intent.binary?.kind === 'shed') {
+            if (await this.applyBinaryShedIntent(intent.binary)) deviceWriteCount += 1;
+            continue;
+          }
+          if (await this.applyBinaryRestoreIntent(intent.binary, observed, mode)) deviceWriteCount += 1;
+          if (await this.applyTargetIntent(intent.target, observed, mode)) deviceWriteCount += 1;
         } catch (error) {
           this.error(
-            `Failed to apply action for ${dev.name}; continuing with remaining devices`,
+            `Failed to apply action for ${intent.name}; continuing with remaining devices`,
             error,
           );
         }
@@ -770,6 +768,13 @@ function hasStableUncontrolledRestoreActuation(
     && dev.plannedState === 'keep'
     && resolveEffectiveCurrentOn(dev) === false
     && Boolean(state.lastDeviceShedMs[dev.id]);
+}
+
+function isSteppedLoadRestoreFromOff(
+  intent: ExecutableSteppedLoadIntent | null,
+  action: ExecutableSteppedLoadDevice | null,
+): boolean {
+  return Boolean(intent?.purpose === 'keep' && action?.current.on === false);
 }
 
 function hasStableSteppedLoadStepActuation(dev: DevicePlan['devices'][number]): boolean {
@@ -818,8 +823,4 @@ function resolveFlowBackedBinaryTriggerCardId(
 
 function isRestoreHoldReason(reason: DeviceReason | undefined): boolean {
   return reason ? isRestoreAdmissionHoldReason(reason) : false;
-}
-
-function isSwapTargetPendingReason(reason: DeviceReason | undefined): boolean {
-  return reason?.code === PLAN_REASON_CODES.swapPending && reason.targetName === null;
 }
