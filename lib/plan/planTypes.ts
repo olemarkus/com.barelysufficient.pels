@@ -225,5 +225,6 @@ export type PlanInputDevice = {
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
   binaryCommandPending?: boolean;
+  binaryCommandPendingDesired?: boolean;
   binaryControlObservation?: BinaryControlObservation;
 };

@@ -82,6 +82,10 @@ Layer ownership:
 
 Post-release executor boundary rollout:
 
+- Target shape: planner construction should become a narrow `input snapshots -> ExecutablePlan`
+  pipeline. Only the core planning/admission step should need both observed current state and
+  desired future state at the same time. After that point, current state belongs to
+  `ExecutableObservedState`, not to planner output carried into execution.
 - `lib/plan` owns desired state, planner reasons, and admission decisions. A finalized plan should
   say what state PELS wants for each device; it should not encode whether the command is native,
   flow-backed, or otherwise transported.
@@ -94,11 +98,16 @@ Post-release executor boundary rollout:
   materialization behavior.
 - `ExecutablePlan` is the executor-facing intent set. It contains `ExecutableDeviceIntent`
   entries, not broad `DevicePlanDevice` wrappers and not current observed state.
+- Executable intents should be commandable, not partially inferred planner snapshots. For example,
+  a stepped `set_step` intent should carry a concrete requested step or be represented as
+  non-executable / blocked before it reaches drift or dispatch code.
 - `ExecutableObservedState` is the executor-facing observed-state set. It is built from
   `DeviceManager` snapshots, not planner-carried current fields.
 - Executor dispatch reconciles `ExecutableDeviceIntent` with `ExecutableObservedDeviceState`.
   Re-reading observer state after awaited work is valid; carrying old current fields forward in
   executable intent is not.
+- Realtime drift detection uses the same executor-facing intent/observed split. Pending binary
+  commands suppress drift only when their requested value matches the expected binary state.
 - Transitional stepped-load action adapters may still use planner-effective step fields as command
   baselines, such as a previous step id for request metadata. Materialization and binary restore
   readiness must still come from reported/admitted snapshot evidence.

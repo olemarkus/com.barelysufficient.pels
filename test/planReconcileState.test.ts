@@ -112,6 +112,44 @@ describe('planReconcileState stepped device drift', () => {
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
     });
 
+    it('does not treat target-only keep devices as binary drift', () => {
+      const plan = buildPlan([buildBinaryDevice({
+        currentState: 'not_applicable',
+        plannedState: 'keep',
+        hasBinaryControl: false,
+        currentTarget: 21,
+        plannedTarget: 21,
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-2',
+        name: 'Heater',
+        currentOn: false,
+        hasBinaryControl: false,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);
+    });
+
+    it('still detects target drift for target-only keep devices', () => {
+      const plan = buildPlan([buildBinaryDevice({
+        currentState: 'not_applicable',
+        plannedState: 'keep',
+        hasBinaryControl: false,
+        currentTarget: 21,
+        plannedTarget: 21,
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-2',
+        name: 'Heater',
+        currentOn: false,
+        hasBinaryControl: false,
+        targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
+    });
+
     it('does not treat a keep device as drift while a matching binary command is still pending', () => {
       const plan = buildPlan([buildBinaryDevice({
         currentState: 'off',
@@ -123,10 +161,29 @@ describe('planReconcileState stepped device drift', () => {
         currentOn: false,
         hasBinaryControl: true,
         binaryCommandPending: true,
+        binaryCommandPendingDesired: true,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       }];
 
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);
+    });
+
+    it('treats a mismatched pending binary command as drift', () => {
+      const plan = buildPlan([buildBinaryDevice({
+        currentState: 'off',
+        plannedState: 'keep',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-2',
+        name: 'Heater',
+        currentOn: false,
+        hasBinaryControl: true,
+        binaryCommandPending: true,
+        binaryCommandPendingDesired: false,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
     });
 
     it('treats fresh off binary state as keep-plan drift', () => {
@@ -143,6 +200,24 @@ describe('planReconcileState stepped device drift', () => {
       }];
 
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
+    });
+
+    it('does not treat capacity-control-off keep state as drift without executor restore context', () => {
+      const plan = buildPlan([buildBinaryDevice({
+        currentState: 'off',
+        plannedState: 'keep',
+        controllable: false,
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-2',
+        name: 'Heater',
+        currentOn: false,
+        hasBinaryControl: true,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+        controllable: false,
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);
     });
 
     it('does not treat stale live binary observations as drift', () => {
@@ -225,6 +300,7 @@ describe('planReconcileState stepped device drift', () => {
         steppedLoadProfile: steppedProfile,
         stepCommandPending: true,
         binaryCommandPending: true,
+        binaryCommandPendingDesired: true,
       }];
 
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(false);
@@ -251,6 +327,28 @@ describe('planReconcileState stepped device drift', () => {
       }];
 
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(false);
+    });
+
+    it('does not let a stale off-step identity mask fresh binary on drift', () => {
+      const plan = buildPlan([buildSteppedDevice({
+        currentState: 'off',
+        plannedState: 'shed',
+        shedAction: 'turn_off',
+        selectedStepId: 'off',
+        desiredStepId: 'off',
+        controlCapabilityId: 'onoff',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-1',
+        name: 'Tank',
+        currentOn: true,
+        selectedStepId: 'off',
+        targets: [],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(true);
     });
 
     it('treats restore preparation as drift when the pending step jumps to an unexpected value', () => {
@@ -295,6 +393,34 @@ describe('planReconcileState stepped device drift', () => {
       }];
 
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(false);
+    });
+
+    it('ignores target drift for stepped set_step shedding but still checks binary state', () => {
+      const plan = buildPlan([buildSteppedDevice({
+        currentState: 'on',
+        plannedState: 'shed',
+        shedAction: 'set_step',
+        selectedStepId: 'low',
+        desiredStepId: 'low',
+        currentTarget: 21,
+        plannedTarget: 21,
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-1',
+        name: 'Tank',
+        currentOn: true,
+        selectedStepId: 'low',
+        targets: [{ id: 'target_temperature', value: 23, unit: '°C' }],
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(false);
+      expect(hasPlanExecutionDriftForDevice(
+        plan,
+        [{ ...liveDevices[0], currentOn: false }],
+        'dev-1',
+      )).toBe(true);
     });
 
     it('does not treat stepped set_step shedding as drift when the stored snapshot is stale off but the live device is on at the shed step', () => {

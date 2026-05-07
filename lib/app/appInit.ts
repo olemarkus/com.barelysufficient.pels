@@ -178,6 +178,10 @@ function resolveHasBinaryControl(device: TargetDeviceSnapshot): boolean {
 }
 
 function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
+  const pendingBinaryCommand = ctx.planEngine?.getPendingBinaryCommandForDevice?.(
+    device.id,
+    device.communicationModel,
+  );
   return {
     ...device,
     hasBinaryControl: resolveHasBinaryControl(device),
@@ -187,8 +191,7 @@ function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
     budgetExempt: ctx.isBudgetExempt(device.id),
     temperatureBoost: ctx.getTemperatureBoostConfig?.(device.id),
     evBoost: ctx.getEvBoostConfig?.(device.id),
-    binaryCommandPending: (
-      ctx.planEngine?.isBinaryCommandPendingForDevice?.(device.id, device.communicationModel) ?? false
-    ),
+    binaryCommandPending: pendingBinaryCommand !== null && pendingBinaryCommand !== undefined,
+    binaryCommandPendingDesired: pendingBinaryCommand?.desired,
   };
 }

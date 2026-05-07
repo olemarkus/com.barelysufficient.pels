@@ -178,6 +178,7 @@ describe('appRealtimeDeviceReconcile', () => {
         currentOn: false,
         hasBinaryControl: true,
         binaryCommandPending: true,
+        binaryCommandPendingDesired: true,
         currentTemperature: 21,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
       }],

@@ -107,6 +107,7 @@ export const hasExecutableShedIntent = (device: ExecutableDeviceIntent): boolean
 
 const buildExecutableBinaryIntent = (dev: PlanDevice): ExecutableBinaryIntent | null => {
   if (dev.controlModel === 'stepped_load') return null;
+  if (dev.hasBinaryControl === false) return null;
   if (dev.controllable === false) {
     return dev.plannedState === 'keep'
       ? { kind: 'restore', deviceId: dev.id, name: dev.name, source: 'uncontrolled' }
