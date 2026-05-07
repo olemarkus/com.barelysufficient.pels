@@ -38,7 +38,25 @@ const allowedOrphans = new Set([
   'packages/settings-ui/src/script.ts',
   'drivers/pels_insights/device.ts',
   'drivers/pels_insights/driver.ts',
+  // Pure scheduler entrypoint for the deferred-objective planner; runtime integration follows separately.
+  'lib/plan/deferredObjectives/index.ts',
 ]);
+
+const deferredObjectiveBarrelExports = [
+  'planDeferredObjectiveHorizon',
+  'DeferredObjective',
+  'DeferredObjectiveBucketPreference',
+  'DeferredObjectiveCurrentBucketPlan',
+  'DeferredObjectiveEnforcement',
+  'DeferredObjectiveHorizonBucket',
+  'DeferredObjectiveHorizonInput',
+  'DeferredObjectiveHorizonPlan',
+  'DeferredObjectiveHorizonStatus',
+  'DeferredObjectiveHorizonStatusDetail',
+  'DeferredObjectiveKind',
+  'DeferredObjectivePlannedBucket',
+  'DeferredObjectiveStep',
+].join('|');
 
 const allowedUnusedExportPatterns = [
   /:Infinity - prototype$/,
@@ -70,6 +88,8 @@ const allowedUnusedExportPatterns = [
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH$/,
   /^packages\/contracts\/src\/targetCapabilities\.ts:\d+ - getTargetCapabilityStep$/,
   /^lib\/app\/smapsRollup\.ts:\d+ - _resetSmapsCacheForTests$/,
+  // Pure scheduler barrel kept intentionally until planner integration consumes it.
+  new RegExp(`^lib\\/plan\\/deferredObjectives\\/index\\.ts:\\d+ - (${deferredObjectiveBarrelExports})$`),
   // Consumed by packages/settings-ui/src/ui/planDeviceCard.ts via cross-package relative import; ts-prune doesn't follow these.
   /^packages\/shared-domain\/src\/planStateLabels\.ts:\d+ - PLAN_STATE_LABEL$/,
 ];
