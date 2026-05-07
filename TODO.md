@@ -157,6 +157,14 @@ file.
       devices are not released before the target step is actually confirmed.
       Files: `lib/plan/swap/completion.ts`, `lib/plan/swap/lifecycle.ts`,
       `lib/plan/planRestore.ts`, stepped swap lifecycle tests.
+- [ ] Finish the planner/executor/device-manager state boundary split.
+      Planner output should carry desired state and planner reasons; `DeviceManager` should provide
+      observed current state and own native / flow / capability transport; executor should compare
+      current with desired and handle sequencing, pending commands, retries, and materialization.
+      The stepped-load step command path now routes transport through `DeviceManager`, but
+      executable stepped-load projection still derives `current` from broad planner fields.
+      Files: `lib/plan/planExecutablePlan.ts`, `lib/plan/planExecutableSteppedLoad.ts`,
+      `lib/executor/**`, `lib/core/deviceManager.ts`, stepped-load executor/reconcile tests.
 - [ ] Remove legacy stepped-load optional fields from persisted/API contracts after the release
       cut. Planner and executor semantics should stay behind typed stepped-state adapters; the
       remaining compatibility fields (`selectedStepId`, `actualStepId`, `assumedStepId`, and

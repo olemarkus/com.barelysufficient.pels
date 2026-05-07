@@ -2,7 +2,10 @@ import type Homey from 'homey';
 import { PlanExecutor, type PlanExecutorDeps } from '../lib/plan/planExecutor';
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../lib/plan/planConstants';
 import { createPlanEngineState } from '../lib/plan/planState';
-import { observeNativeSteppedLoadCommandAdapter } from '../lib/core/deviceManagerNativeSteppedCommand';
+import {
+  observeNativeSteppedLoadCommandAdapter,
+  setObservedNativeSteppedLoadStep,
+} from '../lib/core/deviceManagerNativeSteppedCommand';
 import { DEVICE_LAST_CONTROLLED_MS } from '../lib/utils/settingsKeys';
 import { PELS_TARGET_STEP_CAPABILITY_ID } from '../lib/core/steppedLoadSyntheticCapabilities';
 import type {
@@ -82,6 +85,33 @@ const buildExecutor = (
   const deviceManager = {
     getSnapshot: vi.fn().mockReturnValue(snapshot),
     setCapability: vi.fn().mockResolvedValue(undefined),
+    requestSteppedLoadStep: vi.fn(async (params: {
+      deviceId: string;
+      profile: Parameters<typeof setObservedNativeSteppedLoadStep>[0]['profile'];
+      desiredStepId: string;
+      planningPowerW: number;
+      planningCurrentA: number;
+      previousStepId?: string;
+    }) => {
+      const nativeRequested = await setObservedNativeSteppedLoadStep({
+        owner: deviceManager,
+        deviceId: params.deviceId,
+        profile: params.profile,
+        desiredStepId: params.desiredStepId,
+        setCapability: (capabilityId, value) => deviceManager.setCapability(params.deviceId, capabilityId, value),
+      });
+      if (nativeRequested) return { requested: true, transport: 'native_capability' as const };
+      const triggerPromise = triggerCards.desired_stepped_load_changed.trigger({
+        step_id: params.desiredStepId,
+        planning_power_w: params.planningPowerW,
+        planning_current_a: params.planningCurrentA,
+        previous_step_id: params.previousStepId ?? '',
+      }, {
+        deviceId: params.deviceId,
+      });
+      void Promise.resolve(triggerPromise);
+      return { requested: true, transport: 'flow' as const };
+    }),
   };
   const deps: PlanExecutorDeps = {
     homey: {
@@ -1920,6 +1950,7 @@ describe('PlanExecutor stepped loads', () => {
         flow: { getTriggerCard: vi.fn(() => null) },
       } as unknown as Homey.App['homey'],
     });
+    deviceManager.requestSteppedLoadStep.mockResolvedValueOnce({ requested: false });
 
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',

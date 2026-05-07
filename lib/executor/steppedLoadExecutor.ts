@@ -19,12 +19,13 @@ import {
   type SteppedStepActuationState,
 } from './steppedLoadActuation';
 import type { ExecutableSteppedLoadDevice, ExecutableSteppedLoadTransition } from './executablePlan';
-import {
-  isNativeSteppedLoadControlEnabled,
-} from '../core/nativeSteppedLoadWiring';
 import type { PlanActuationMode } from './executorTypes';
 import type { PlanEngineState } from '../plan/planState';
-import type { DeviceManager } from '../core/deviceManager';
+import type {
+  DeviceManager,
+  SteppedLoadStepRequestResult,
+  SteppedLoadStepRequestTransport,
+} from '../core/deviceManager';
 import { PELS_TARGET_STEP_CAPABILITY_ID } from '../core/steppedLoadSyntheticCapabilities';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
@@ -47,11 +48,15 @@ export type PlanExecutorSteppedContext = {
     structuredLog?: PinoLogger;
     debugStructured?: StructuredDebugEmitter;
   };
-  setNativeSteppedLoadStep: (
-    deviceId: string,
-    profile: SteppedLoadProfile,
-    desiredStepId: string,
-  ) => Promise<boolean>;
+  requestSteppedLoadStep: (params: {
+    deviceId: string;
+    profile: SteppedLoadProfile;
+    desiredStepId: string;
+    planningPowerW: number;
+    planningCurrentA: number;
+    actuationMode?: PlanActuationMode;
+    previousStepId?: string;
+  }) => Promise<SteppedLoadStepRequestResult>;
   markSteppedLoadDesiredStepIssued: (params: {
     deviceId: string;
     desiredStepId: string;
@@ -62,9 +67,6 @@ export type PlanExecutorSteppedContext = {
   recordShedActuation: (deviceId: string, name: string, now: number) => void;
   recordRestoreActuation: (deviceId: string, name: string, now: number) => void;
   getRestoreLogSource: (deviceId: string) => 'shed_state' | 'current_plan';
-  getDesiredSteppedLoadTrigger: () => {
-    trigger: (tokens?: object, state?: object) => Promise<unknown>;
-  } | undefined;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
 };
 
@@ -412,8 +414,7 @@ const logSteppedLoadCommandSkip = (
       | 'missing_step'
       | 'waiting_for_confirmation'
       | 'retry_backoff'
-      | 'missing_native_command'
-      | 'missing_trigger';
+      | 'command_unavailable';
     logMessage: string;
     fields: Record<string, unknown>;
   },
@@ -444,7 +445,7 @@ type ExecuteSteppedLoadCommandParams = {
 };
 
 type AcceptedSteppedLoadCommandParams = ExecuteSteppedLoadCommandParams & {
-  commandTransport?: 'native_capability';
+  commandTransport?: SteppedLoadStepRequestTransport;
 };
 
 const markAcceptedSteppedLoadCommand = (
@@ -559,55 +560,43 @@ const executeSteppedLoadCommand = async (
     desiredStep,
     previousStepId,
   } = params;
-  if (isNativeSteppedLoadControlEnabled(action)) {
-    return executeNativeSteppedLoadCommand(ctx, params);
-  }
-  const triggerCard = ctx.getDesiredSteppedLoadTrigger();
-  if (!triggerCard?.trigger) {
-    return logSteppedLoadCommandSkip(ctx, {
-      action,
-      mode,
-      reasonCode: 'missing_trigger',
-      logMessage: 'Capacity: desired_stepped_load_changed trigger is unavailable; cannot issue stepped-load command',
-      fields: { desiredStepId: desiredStep.id },
-    });
-  }
   const planningPowerW = desiredStep.planningPowerW;
   const planningCurrentA = resolvePlanningCurrentA(action, planningPowerW);
   try {
-    const triggerPromise = triggerCard.trigger({
-      step_id: desiredStep.id,
-      planning_power_w: planningPowerW,
-      planning_current_a: planningCurrentA,
-      previous_step_id: previousStepId ?? '',
-    }, {
+    const result = await ctx.requestSteppedLoadStep({
       deviceId: action.id,
+      profile: action.steppedLoadProfile,
+      desiredStepId: desiredStep.id,
+      planningPowerW,
+      planningCurrentA,
+      actuationMode: mode,
+      previousStepId,
     });
-    recordAcceptedSteppedLoadCommand(ctx, params);
-    void Promise.resolve(triggerPromise).catch((error) => {
-      ctx.structuredLog?.error({
-        event: 'stepped_load_command_failed',
-        reasonCode: 'flow_trigger_failed',
-        deviceId: action.id,
-        deviceName: action.name,
-        desiredStepId: desiredStep.id,
-        planningPowerW,
+    if (!result.requested) {
+      return logSteppedLoadCommandSkip(ctx, {
+        action,
         mode,
+        reasonCode: 'command_unavailable',
+        logMessage: `Capacity: skip stepped-load command for ${action.name}, `
+          + `no command transport for desired step ${desiredStep.id}`,
+        fields: { desiredStepId: desiredStep.id },
       });
-      ctx.error(`Failed to trigger stepped-load command for ${action.name}`, error);
+    }
+    return recordAcceptedSteppedLoadCommand(ctx, {
+      ...params,
+      commandTransport: result.transport,
     });
-    return true;
   } catch (error) {
     ctx.structuredLog?.error({
       event: 'stepped_load_command_failed',
-      reasonCode: 'flow_trigger_failed',
+      reasonCode: 'command_failed',
       deviceId: action.id,
       deviceName: action.name,
       desiredStepId: desiredStep.id,
-      planningPowerW,
+      planningPowerW: desiredStep.planningPowerW,
       mode,
     });
-    ctx.error(`Failed to trigger stepped-load command for ${action.name}`, error);
+    ctx.error(`Failed to request stepped-load command for ${action.name}`, error);
     return false;
   }
 };
@@ -620,51 +609,6 @@ const resolvePlanningCurrentA = (
   if (action.targetPowerConfig?.preset === 'ev_charger_1_phase') return planningPowerW / 230;
   if (action.targetPowerConfig?.preset === 'ev_charger_3_phase') return planningPowerW / (230 * 3);
   return 0;
-};
-
-const executeNativeSteppedLoadCommand = async (
-  ctx: PlanExecutorSteppedContext,
-  params: ExecuteSteppedLoadCommandParams,
-): Promise<boolean> => {
-  const {
-    action,
-    mode,
-    desiredStep,
-  } = params;
-
-  try {
-    const applied = await ctx.setNativeSteppedLoadStep(
-      action.id,
-      action.steppedLoadProfile,
-      desiredStep.id,
-    );
-    if (!applied) {
-      return logSteppedLoadCommandSkip(ctx, {
-        action,
-        mode,
-        reasonCode: 'missing_native_command',
-        logMessage: `Capacity: skip native stepped-load command for ${action.name}, `
-          + `no native command for desired step ${desiredStep.id}`,
-        fields: { desiredStepId: desiredStep.id },
-      });
-    }
-    return recordAcceptedSteppedLoadCommand(ctx, {
-      ...params,
-      commandTransport: 'native_capability',
-    });
-  } catch (error) {
-    ctx.structuredLog?.error({
-      event: 'stepped_load_command_failed',
-      reasonCode: 'native_capability_failed',
-      deviceId: action.id,
-      deviceName: action.name,
-      desiredStepId: desiredStep.id,
-      planningPowerW: desiredStep.planningPowerW,
-      mode,
-    });
-    ctx.error(`Failed to set native stepped-load command for ${action.name}`, error);
-    return false;
-  }
 };
 
 const logSteppedLoadRestoreSkip = (
