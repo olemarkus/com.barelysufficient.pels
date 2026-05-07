@@ -246,7 +246,7 @@ file.
       direct settings writes to the executor.
       Why P1: batching fixed the immediate write-burst concern, but `PlanExecutor` should not
       become a second persistence hub alongside the plan snapshot/status writers.
-      Files: `lib/plan/planExecutor.ts`.
+      Files: `lib/executor/planExecutor.ts`.
 - [ ] Finish the last `app.ts` shrink after the `TimerRegistry` / `AppContext` refactor. The
       remaining cleanup is to decide whether the now-thin `lib/app/appInit.ts` adapter should be
       deleted, move `resolveHasBinaryControl` to a better long-term home if it stays shared, and

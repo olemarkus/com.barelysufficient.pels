@@ -77,7 +77,7 @@ block in `eslint.config.mjs`, e.g.:
   // creates >=15 files sharing executor context, which is worse to navigate than the single
   // dispatch table. Target: <=800 after shared-helper extraction (see complexity-cleanup
   // Phase 3).
-  files: ['lib/plan/planExecutor.ts'],
+  files: ['lib/executor/planExecutor.ts'],
   rules: { 'max-lines': ['warn', { max: 800, skipBlankLines: true, skipComments: true }] },
 },
 ```
@@ -112,7 +112,7 @@ file can be split before accepting the override.
 
 | File | Current | Target ceiling | Structural reason |
 |------|---------|----------------|-------------------|
-| `lib/plan/planExecutor.ts` | 782 | 800 | The control-type split has landed, but the remaining binary-control dispatch remains a single cohesive table to avoid the cognitive load of splitting into >=10 action files. |
+| `lib/executor/planExecutor.ts` | 782 | 800 | The control-type split has landed, but the remaining binary-control dispatch remains a single cohesive table to avoid the cognitive load of splitting into >=10 action files. |
 | `lib/core/deviceManager.ts` | 894 | 800 | Parsing / observation / settle extraction has already landed. Re-measure after follow-up cleanup to decide whether the override should target 800 or be dropped. |
 | `lib/diagnostics/deviceDiagnosticsService.ts` | 1135 | 1200 | Stateful starvation diagnostics orchestration. Revisit after the `notes/starvation/` rollout finishes the remaining flow/insights/UI follow-up, which may split this naturally. |
 | `flowCards/registerFlowCards.ts` | 608 | 600 | Procedural flow-card registration remains a single low-churn app-surface module; keep one central registry unless it starts accumulating deeper behavioral branches. |

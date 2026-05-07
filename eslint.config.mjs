@@ -406,7 +406,7 @@ export default tseslint.config(
     // planExecutor keeps the remaining binary-control dispatch table local so the actuation path
     // stays navigable in one place after the control-type split. Target: <=800 after the shared
     // helper extraction from complexity-cleanup Phase 3 settles.
-    files: ['lib/plan/planExecutor.ts'],
+    files: ['lib/executor/planExecutor.ts'],
     rules: {
       'max-lines': ['warn', { max: 800, skipBlankLines: true, skipComments: true }],
     },
