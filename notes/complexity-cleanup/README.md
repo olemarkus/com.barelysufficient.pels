@@ -63,9 +63,9 @@ separate scope instead of broadening the `planReasons.ts` cleanup PR.
 **Current size:** ~696 LOC. `planReasonStrings.ts` is ~260 LOC and stays separate for now because
 it now owns shared reason classification and rendering across multiple plan modules.
 
-### 3. `planExecutor.ts` — largely landed
+### 3. `executor/planExecutor.ts` — largely landed
 
-The control-type split has already landed via PR #396. `planExecutor.ts` remains a hotspot, but
+The control-type split has already landed via PR #396. `executor/planExecutor.ts` remains a hotspot, but
 the target-command, stepped-load, and binary command execution pipelines no longer live in the
 file.
 
@@ -221,7 +221,7 @@ Phases are ordered by: standalone value, risk, and dependency.
 |-------|--------|-------------|------|
 | 1 | planActivationBackoff.ts | Landed via PR #401 | Low |
 | 2 | planReasons.ts + merges | Separate decision logic from presentation | Low |
-| 3 | planExecutor.ts | Control-type execution split landed; dispatcher narrowing remains | Medium |
+| 3 | executor/planExecutor.ts | Control-type execution split landed; dispatcher narrowing remains | Medium |
 | 4 | app.ts | Helper extractions landed via PRs #397/#398; wiring cleanup remains | Medium |
 | 5 | planService.ts | Separate persistence from orchestration | Medium |
 | 6 | planRestore.ts | Collapse redundant gates | Low-medium |

@@ -1,6 +1,6 @@
 import { recordPowerSampleForApp } from '../lib/app/appPowerHelpers';
 import type CapacityGuard from '../lib/core/capacityGuard';
-import { PlanExecutor, type PlanExecutorDeps } from '../lib/plan/planExecutor';
+import { PlanExecutor, type PlanExecutorDeps } from '../lib/executor/planExecutor';
 import { buildInitialPlanDevices } from '../lib/plan/planDevices';
 import { resolveLiveUsagePowerKw } from '../lib/plan/planPowerResolution';
 import { getOffDevices, getSteppedRestoreCandidates } from '../lib/plan/planRestoreDevices';

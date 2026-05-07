@@ -6,12 +6,12 @@ import {
   PLAN_REASON_CODES,
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
-import type { PendingTargetObservationSource } from './planTypes';
+import type { DevicePlan, PlanInputDevice, ShedAction } from '../plan/planTypes';
+import type { PendingTargetObservationSource } from '../plan/planTypes';
 import type { TargetDeviceSnapshot } from '../utils/types';
-import type { ExecutableSteppedLoadDevice, ExecutableTargetUpdate } from '../executor/executablePlan';
-import type { PlanActuationMode } from '../executor/executorTypes';
-import type { PlanEngineState } from './planState';
+import type { ExecutableSteppedLoadDevice, ExecutableTargetUpdate } from './executablePlan';
+import type { PlanActuationMode } from './executorTypes';
+import type { PlanEngineState } from '../plan/planState';
 import { DEVICE_LAST_CONTROLLED_MS } from '../utils/settingsKeys';
 import { incPerfCounter } from '../utils/perfCounters';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
@@ -23,21 +23,21 @@ import {
   resolveShedTemperaturePlan,
   shouldSkipShedding,
   shouldSkipUnavailable,
-} from './planExecutorSupport';
-import { isSteppedLoadDevice, resolveSteppedKeepDesiredStepId } from './planSteppedLoad';
+} from '../plan/planExecutorSupport';
+import { isSteppedLoadDevice, resolveSteppedKeepDesiredStepId } from '../plan/planSteppedLoad';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import {
   applyShedTemperaturePlan,
   applyTargetUpdate,
   trySetShedTemperature,
   type PlanExecutorTargetContext,
-} from '../executor/targetExecutor';
+} from './targetExecutor';
 import {
   applySteppedLoadCommand,
   applySteppedLoadRestore,
   applySteppedLoadShedOff,
   type PlanExecutorSteppedContext,
-} from '../executor/steppedLoadExecutor';
+} from './steppedLoadExecutor';
 import {
   allowsSteppedLoadKeepInvariantRestore,
   isRestoreAdmissionHoldReason,
@@ -47,13 +47,13 @@ import {
   applyBinarySheddingToDevice,
   applyUncontrolledBinaryRestore,
   type PlanExecutorBinaryContext,
-} from '../executor/binaryExecutor';
-import { buildExecutablePlan, buildExecutablePlanDevice } from '../executor/executablePlanProjection';
+} from './binaryExecutor';
+import { buildExecutablePlan, buildExecutablePlanDevice } from './executablePlanProjection';
 import {
   buildExecutableShedTemperatureCommand,
   buildExecutableTargetUpdate,
-} from '../executor/executableTargetProjection';
-import { resolveEffectiveCurrentOn } from './planCurrentState';
+} from './executableTargetProjection';
+import { resolveEffectiveCurrentOn } from '../plan/planCurrentState';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 
 export type PlanExecutorDeps = {

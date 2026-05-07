@@ -1,5 +1,5 @@
 import type Homey from 'homey';
-import { PlanExecutor, type PlanExecutorDeps } from '../lib/plan/planExecutor';
+import { PlanExecutor, type PlanExecutorDeps } from '../lib/executor/planExecutor';
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../lib/plan/planConstants';
 import { createPlanEngineState } from '../lib/plan/planState';
 import {
