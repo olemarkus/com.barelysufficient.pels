@@ -80,6 +80,7 @@ export const dailyBudgetRecomputeButton = document.querySelector('#daily-budget-
 export const dailyBudgetApplyButton = document.querySelector('#daily-budget-apply') as HTMLButtonElement;
 export const dailyBudgetDiscardButton = document.querySelector('#daily-budget-discard') as HTMLButtonElement;
 export const dryRunBanner = qs('#dry-run-banner');
+export const simulationDisableButton = document.querySelector('#simulation-disable-button') as HTMLButtonElement | null;
 export const staleDataBanner = qs('#stale-data-banner');
 export const staleDataBannerText = qs('#stale-data-text');
 export const planLegacySurface = document.querySelector('#plan-legacy-surface') as HTMLElement | null;

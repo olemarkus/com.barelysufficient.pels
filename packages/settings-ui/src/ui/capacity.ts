@@ -242,9 +242,11 @@ export const saveSettingsLimitsSettings = async () => {
   }, 'Limits & safety saved.');
 };
 
-export const saveSimulationModeSettings = async () => {
+export const saveSimulationModeSettings = async (
+  enabled = settingsSimulationModeInput ? settingsSimulationModeInput.checked : true,
+) => {
   await saveCapacitySettingsPatch({
-    dryRun: settingsSimulationModeInput ? settingsSimulationModeInput.checked : true,
+    dryRun: enabled,
   }, 'Simulation mode updated.');
 };
 

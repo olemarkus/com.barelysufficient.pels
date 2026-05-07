@@ -81,6 +81,28 @@ test.describe('Settings UI (smoke)', () => {
     await expect(page.locator('#advanced-panel')).toBeVisible();
   });
 
+  test('lets users turn off simulation mode from the warning banner', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('#dry-run-banner')).toContainText('Simulation mode is enabled');
+    await page.getByRole('button', { name: 'Turn off simulation' }).click();
+
+    await expect(page.locator('#toast')).toContainText('Simulation mode updated.');
+    await expect(page.locator('#dry-run-banner')).toBeHidden();
+
+    await page.getByRole('tab', { name: 'Settings' }).click();
+    await page.getByRole('button', { name: /Simulation mode/ }).click();
+    await expect(page.locator('#settings-simulation-mode')).not.toBeChecked();
+
+    const stored = await page.evaluate(() => new Promise<unknown>((resolve, reject) => {
+      (window as any).Homey.get('capacity_dry_run', (error: Error | null, value?: unknown) => {
+        if (error) reject(error);
+        else resolve(value);
+      });
+    }));
+    expect(stored).toBe(false);
+  });
+
   test('advanced EV toggle controls EV visibility in the device list', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
