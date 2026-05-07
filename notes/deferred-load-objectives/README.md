@@ -340,6 +340,19 @@ EV progress belongs to the charger session:
 For the first EV objective implementation, actuation should remain pause/resume unless a
 stepped/current profile exists. Do not add phase/current control without a separate design and PR.
 
+EV deadline control must distinguish deadline charging from normal managed charging. A deadline
+objective may start, resume, or step up charging only while that action is needed to meet the
+target. When the target is met, PELS removes the deadline charging request. What happens next
+depends on the per-device Power-limit control setting:
+
+- Power-limit control on: normal managed charging may continue after deadline pressure ends. This
+  matters when the deadline target is below 100% and the charger would otherwise keep charging;
+  PELS may continue to manage it through normal capacity, priority, budget, and price policy.
+- Power-limit control off: PELS leaves the charger alone for normal capacity, budget, and price
+  work. If the deadline objective was the reason PELS allowed charging, meeting the target removes
+  that allowance and PELS should pause charging. It should not restart charging unless a new or
+  changed deadline target, boost, or manual/user action asks for it.
+
 ## Energy Calculation
 
 Use the strongest available energy model.
@@ -462,6 +475,13 @@ use rules such as:
 
 Soft and hard deadlines are the same objective model with different admission authority. Both may
 request the minimum required boost, step, or mode needed to stay on plan.
+
+Deadline authority is separate from per-device Power-limit control. With no active objective,
+Power-limit control off means PELS leaves the device alone for normal capacity, budget, and price
+work: it should not start, resume, limit, or step the device just because normal policy has budget
+or available power. An active deadline objective is an explicit temporary exception for the minimum
+action needed to keep the objective on plan. When that objective is met, missed, cleared, stale, or
+invalid, the temporary authority ends.
 
 Soft objective means budget-aware boost. It may request boost or step-up behavior, but admission of
 that request remains inside normal PELS policy. It must respect:
@@ -818,11 +838,19 @@ EV behavior:
 - Stale or invalid EV progress is not used for planning.
 - EV planning stays `unknown` when percent is available but capacity, remaining energy, or direct
   remaining-time estimate is missing.
+- When the EV deadline target is met, PELS removes the deadline charging request.
+- If Power-limit control is on, normal managed charging may continue after the deadline target is
+  met, especially when the target is below 100%.
+- If Power-limit control is off, meeting the deadline target pauses charging if the objective was
+  the reason PELS allowed charging and no new deadline target, boost, or manual action grants
+  authority.
 
 Deadline behavior:
 
 - Status is computed from energy needed, conservative net gain, confidence-adjusted margin, and
   deadline.
+- Power-limit control off leaves the device alone for normal capacity, budget, and price work
+  unless an active objective grants temporary deadline authority.
 - Soft deadline may request boost/step-up, but does not bypass effective soft limit, daily budget,
   priority, cooldowns, or stepped rules.
 - Hard deadline may bypass effective soft limit and daily budget soft limit.
