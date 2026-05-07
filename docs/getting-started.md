@@ -135,5 +135,6 @@ Once you have worked through the steps above, verify:
 - [Configuration](/configuration) for the full settings reference
 - [Flow Cards](/flow-cards) for all available Homey automation cards
 - [PELS Insights](/insights-device) for dashboards and quick status
+- [Configure an EV Charger](/ev-charger) for current-controlled EV charging
 - [Tips and Best Practices](/tips-and-best-practices) for tuning advice
 - [Daily Energy Budget](/daily-budget) for daily pacing and budget control
