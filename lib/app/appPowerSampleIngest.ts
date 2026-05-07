@@ -1,8 +1,10 @@
 import type Homey from 'homey';
 import type CapacityGuard from '../core/capacityGuard';
+import { updateObjectiveProfilesFromSnapshot } from '../core/objectiveProfiles';
 import type { PowerTrackerState } from '../core/powerTracker';
 import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from '../core/powerTracker';
 import type { DailyBudgetUiPayload, DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
+import type { StructuredDebugEmitter } from '../logging/logger';
 import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from '../plan/planUsage';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
@@ -43,6 +45,7 @@ export async function recordPowerSampleForApp(params: {
   capacityGuard?: CapacityGuard;
   schedulePlanRebuild: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
+  objectiveProfileDebugStructured?: StructuredDebugEmitter;
 }): Promise<void> {
   const snapshotStart = Date.now();
   const {
@@ -54,6 +57,7 @@ export async function recordPowerSampleForApp(params: {
     capacityGuard,
     schedulePlanRebuild,
     saveState,
+    objectiveProfileDebugStructured,
   } = params;
   const hourBudgetKWh = Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
   const snapshot = getLatestTargetSnapshot();
@@ -66,9 +70,15 @@ export async function recordPowerSampleForApp(params: {
   const exemptKw = snapshot.length ? sumBudgetExemptLiveUsageKw(snapshot) : null;
   const controlledPowerW = controlledKw !== null ? Math.max(0, controlledKw * 1000) : undefined;
   const exemptPowerW = exemptKw !== null ? Math.max(0, exemptKw * 1000) : undefined;
+  const profilingState = updateObjectiveProfilesFromSnapshot({
+    state: powerTracker,
+    devices: snapshot,
+    nowMs,
+    debugStructured: objectiveProfileDebugStructured,
+  });
   addPerfDuration('power_sample_snapshot_ms', Date.now() - snapshotStart);
   await recordPowerSampleCore({
-    state: powerTracker,
+    state: profilingState,
     currentPowerW,
     controlledPowerW,
     exemptPowerW,
