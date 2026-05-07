@@ -193,6 +193,44 @@ Native adapters own device-specific translation. Examples:
   direct remaining-energy semantics exist.
 - A future learned model can estimate net gain rate by step or charge rate by SoC band.
 
+## Learned Profiling First
+
+The first implementation step is profiling, not deadline control. PELS should learn compact
+per-device conversion and rate facts from observed behavior before it tries to decide whether a
+deadline can be met.
+
+For temperature devices, the useful learned unit is energy per degree:
+
+```text
+kWh per 1 C temperature increase
+```
+
+For EVs, the equivalent is energy per percent:
+
+```text
+kWh per 1% SoC increase
+```
+
+These profiles must be compact and bounded. Store aggregate statistics and the latest accepted
+sample per device, not raw history. The profile should carry confidence and provenance, and it
+must remain diagnostic until enough valid observations exist to support planner decisions.
+
+Temperature-device profiling should not require tank volume or static thermal capacity. Real
+devices may change mode, set temperature, usable capacity, and heat-loss behavior. Until a native
+adapter or user setting supplies trusted capacity facts, PELS should learn from observed
+temperature changes and credible energy evidence instead.
+
+Credible energy evidence can come from:
+
+- measured device power
+- a confirmed stepped-load step with configured planning power, at lower confidence
+- native EV charging power/current evidence, where available
+
+Whole-home power and broad controlled-load attribution are not enough by themselves to create
+high-confidence per-device energy conversion. If credible energy evidence is missing, PELS may
+still learn progress rate such as `C/hour` or `%/hour`, but should not derive `kWh/degree` or
+`kWh/%` from it.
+
 ## Connected 300 First
 
 The first implementation should be native or semi-native around the existing stepped-load model,
@@ -211,6 +249,10 @@ Those may exist internally or diagnostically, but users will expect "hit tempera
 
 For thermal storage, `currentEnergyKwh` means usable stored energy relative to an adapter-defined
 baseline, not vague total heat content.
+
+For Connected 300-style v1 diagnostics, prefer learned energy-per-degree over theoretical tank
+volume math. Tank volume based conversion is valid only for a native adapter or explicit user
+configuration that owns those assumptions.
 
 For example:
 

@@ -1,4 +1,5 @@
-import type { DeviceObjectiveProfile } from './objectiveProfileTypes.js';
+import type CapacityGuard from './capacityGuard';
+import type { DeviceObjectiveProfile } from './objectiveProfileTypes';
 
 export type PowerTrackerState = {
   lastPowerW?: number;
@@ -23,4 +24,16 @@ export type PowerTrackerState = {
   exemptHourlyAverages?: Record<string, { sum: number; count: number }>;
   unreliablePeriods?: Array<{ start: number; end: number }>;
   objectiveProfiles?: Record<string, DeviceObjectiveProfile>;
+};
+
+export type RecordPowerSampleParams = {
+  state: PowerTrackerState;
+  currentPowerW: number;
+  controlledPowerW?: number;
+  exemptPowerW?: number;
+  nowMs?: number;
+  capacityGuard?: CapacityGuard;
+  hourBudgetKWh?: number;
+  rebuildPlanFromCache: (reason?: string) => Promise<void>;
+  saveState: (state: PowerTrackerState) => void;
 };

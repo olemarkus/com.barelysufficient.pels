@@ -1922,4 +1922,60 @@ describe('recordPowerSampleForApp', () => {
     expect(tracker.lastControlledPowerW).toBeUndefined();
     expect(tracker.lastUncontrolledPowerW).toBeUndefined();
   });
+
+  it('updates objective profiles from compact device samples during power ingestion', async () => {
+    let tracker: PowerTrackerState = {};
+    const debugStructured = vi.fn();
+    const start = Date.UTC(2025, 0, 1, 0, 0, 0);
+    let currentTemperature = 50;
+    let observedAtMs = start;
+    const getLatestTargetSnapshot = () => ([
+      {
+        id: 'heater-objective',
+        name: 'Objective heater',
+        targets: [],
+        deviceType: 'temperature' as const,
+        currentOn: true,
+        currentTemperature,
+        lastFreshDataMs: observedAtMs,
+        measuredPowerKw: 2,
+      },
+    ]);
+
+    await recordPowerSampleForApp({
+      currentPowerW: 2000,
+      nowMs: start,
+      capacitySettings: { limitKw: 10, marginKw: 0.2 },
+      getLatestTargetSnapshot,
+      powerTracker: tracker,
+      objectiveProfileDebugStructured: debugStructured,
+      schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
+      saveState: (nextState) => {
+        tracker = nextState;
+      },
+    });
+
+    currentTemperature = 52;
+    observedAtMs = start + 60 * 60 * 1000;
+    await recordPowerSampleForApp({
+      currentPowerW: 2000,
+      nowMs: observedAtMs,
+      capacitySettings: { limitKw: 10, marginKw: 0.2 },
+      getLatestTargetSnapshot,
+      powerTracker: tracker,
+      objectiveProfileDebugStructured: debugStructured,
+      schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
+      saveState: (nextState) => {
+        tracker = nextState;
+      },
+    });
+
+    const profile = tracker.objectiveProfiles?.['heater-objective'];
+    expect(profile?.kwhPerUnit?.mean).toBeCloseTo(1, 3);
+    expect(profile?.unitPerHour?.mean).toBeCloseTo(2, 3);
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'objective_profile_sample_recorded',
+      deviceId: 'heater-objective',
+    }));
+  });
 });

@@ -1,43 +1,10 @@
-import CapacityGuard from './capacityGuard';
+import type CapacityGuard from './capacityGuard';
+import type { PowerTrackerState, RecordPowerSampleParams } from './powerTrackerTypes';
 import { truncateToUtcHour, getHourBucketKey } from '../utils/dateUtils';
 import { addPerfDuration } from '../utils/perfCounters';
 export const HOURLY_RETENTION_DAYS = 30;
 export const DAILY_RETENTION_DAYS = 365;
-export type PowerTrackerState = {
-  lastPowerW?: number;
-  lastControlledPowerW?: number;
-  lastUncontrolledPowerW?: number;
-  lastExemptPowerW?: number;
-  lastTimestamp?: number;
-  buckets?: Record<string, number>; // Hourly data (ISO timestamp -> kWh)
-  hourlySampleCounts?: Record<string, number>; // Hourly sample counts (ISO timestamp -> samples)
-  hourlyBudgets?: Record<string, number>; // Hourly budget snapshot (ISO timestamp -> kWh)
-  dailyBudgetCaps?: Record<string, number>; // Daily budget plan per hour (ISO timestamp -> kWh)
-  dailyTotals?: Record<string, number>; // Daily totals (YYYY-MM-DD -> kWh)
-  hourlyAverages?: Record<string, { sum: number; count: number }>; // day-hour pattern (0-6_0-23 -> { sum, count })
-  controlledBuckets?: Record<string, number>;
-  uncontrolledBuckets?: Record<string, number>;
-  exemptBuckets?: Record<string, number>;
-  controlledDailyTotals?: Record<string, number>;
-  uncontrolledDailyTotals?: Record<string, number>;
-  exemptDailyTotals?: Record<string, number>;
-  controlledHourlyAverages?: Record<string, { sum: number; count: number }>;
-  uncontrolledHourlyAverages?: Record<string, { sum: number; count: number }>;
-  exemptHourlyAverages?: Record<string, { sum: number; count: number }>;
-  unreliablePeriods?: Array<{ start: number; end: number }>; // Periods where data is missing/unreliable
-};
-
-export type RecordPowerSampleParams = {
-  state: PowerTrackerState;
-  currentPowerW: number;
-  controlledPowerW?: number;
-  exemptPowerW?: number;
-  nowMs?: number;
-  capacityGuard?: CapacityGuard;
-  hourBudgetKWh?: number;
-  rebuildPlanFromCache: (reason?: string) => Promise<void>;
-  saveState: (state: PowerTrackerState) => void;
-};
+export type { PowerTrackerState, RecordPowerSampleParams } from './powerTrackerTypes';
 const MIN_VALID_TIMESTAMP_MS = 100000000000, MAX_SAMPLE_GAP_MS = 48 * 60 * 60 * 1000;
 const ZERO_HOURS = Array.from({ length: 24 }, () => 0);
 

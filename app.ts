@@ -1319,6 +1319,7 @@ class PelsApp extends Homey.App {
         getLatestTargetSnapshot: () => this.latestTargetSnapshot,
         powerTracker: this.powerTracker,
         capacityGuard: this.capacityGuard,
+        objectiveProfileDebugStructured: this.getStructuredDebugEmitter('objective_profiles', 'objective_profiles'),
         schedulePlanRebuild: async () => {
           await schedulePlanRebuildFromSignal({
             scheduler: this.planRebuildScheduler,

@@ -77,6 +77,7 @@ export function isPowerTrackerState(value: unknown): value is PowerTrackerState 
     isOptionalRecord(state.controlledBuckets),
     isOptionalRecord(state.uncontrolledBuckets),
     isOptionalRecord(state.exemptBuckets),
+    isOptionalRecord(state.objectiveProfiles),
     isOptionalRecord(state.controlledDailyTotals),
     isOptionalRecord(state.uncontrolledDailyTotals),
     isOptionalRecord(state.exemptDailyTotals),
