@@ -23,8 +23,8 @@ One elevated Material 3 card with tonal background that shifts with state.
 │ [On track] [Home mode] [Live]            ⓘ  │
 │                                              │
 │ Power now                                    │
-│ 7.0 kW now                                  │
-│ Safe pace right now: 12.0 kW                │
+│ 7.0 kW                                      │
+│ Safe pace now: 12.0 kW                      │
 │                                              │
 │ [managed][other][free.................]      │
 │                  ↑ 12.0            ↑ Hard   │
@@ -51,8 +51,8 @@ Three chips, left-to-right: status · mode · freshness.
 |---|---|---|
 | Power below safe pace, projected hour below budget | `On track` | success |
 | Power above safe pace, hard cap not breached | `Above safe pace` | warning |
-| Power above hard cap | `Over hard cap` | error |
-| Dry-run enabled and PELS would act | `Dry-run` | warning |
+| Power above hard cap | `Above hard cap` | error |
+| Simulation mode enabled and PELS would act | `Simulation mode` | warning |
 | Power data stale or fail-closed | `No data` | error |
 
 ### Mode chip
@@ -87,25 +87,25 @@ kW is speed. kWh is distance.
 Normal / on track:
 ```
 Power now
-7.0 kW now
-Safe pace right now: 12.0 kW
+7.0 kW
+Safe pace now: 12.0 kW
 ```
 
 Above safe pace:
 ```
 Power now
-13.5 kW now
+13.5 kW
 1.5 kW above safe pace
 ```
 
-Over hard cap:
+Above hard cap:
 ```
 Power now
-13.5 kW now
-0.5 kW over hard cap (5.0 kW)
+13.5 kW
+0.5 kW above hard cap (5.0 kW)
 ```
 
-"Safe pace right now" is intentionally dynamic phrasing — it changes as the hour progresses and energy accumulates. Do not say "OK up to X kW for the rest of this hour", which implies stability.
+"Safe pace now" is intentionally dynamic phrasing — it changes as the hour progresses and energy accumulates. Do not say "OK up to X kW for the rest of this hour", which implies stability.
 
 ### Power bar
 
@@ -188,14 +188,14 @@ Required. One plain-language conclusion at the bottom of the card.
 Priority order (first matching condition wins):
 
 1. No data: `No live power data — keeping devices limited until readings return.`
-2. Over hard cap: `Hard cap exceeded — limiting devices now.`
-3. Dry-run would act: `Would limit 2 devices — dry-run is enabled.`
+2. Above hard cap: `Hard cap exceeded — limiting devices now.`
+3. Simulation mode would act: `Would limit 2 devices — simulation mode is enabled.`
 4. Actively limiting: `Limiting 2 devices — current power is above the safe pace.`
 5. Restoring: `Resuming 1 device — power has stayed below the safe pace.`
 6. On track: `No action needed — this hour is on track.`
 
-Dry-run wording must be hypothetical throughout:
-- `Would limit 2 devices — dry-run is enabled.`
+Simulation mode wording must be hypothetical throughout:
+- `Would limit 2 devices — simulation mode is enabled.`
 - Not: `Limiting 2 devices` (implies PELS acted when it did not)
 
 ---
@@ -221,7 +221,7 @@ currentPowerKw          meta.totalKw
 managedPowerKw          meta.controlledKw
 backgroundPowerKw       meta.uncontrolledKw
 safePaceKw              meta.softLimitKw
-softLimitSource         meta.softLimitSource  (capacity | daily_budget)
+softLimitSource         meta.softLimitSource  (capacity | daily | both)
 hardCapKw               meta.hardCapLimitKw
 hourUsedKWh             meta.usedKWh
 hourBudgetKWh           meta.budgetKWh
@@ -229,10 +229,10 @@ minutesRemaining        meta.minutesRemaining
 projectedHourKWh        computed: usedKWh + (currentKw × minutesRemaining / 60)
 activeModeName          needs API exposure (currently settings-only)
 freshnessState          powerStatus.powerFreshnessState
-dryRunEnabled           bootstrap settings
+dryRunEnabled           bootstrap setting `capacity_dry_run`; show as `Simulation mode` in UI copy
 limitedDeviceCount      count plan devices where currentState=shed
 restoringDeviceCount    count plan devices where plannedState=restore
-wouldLimitCount         dry-run only: count where plannedState=shed and currentState≠shed
+wouldLimitCount         simulation mode only: count where plannedState=shed and currentState≠shed
 ```
 
 `activeModeName` is currently only available via settings. It should be added to the bootstrap or plan API response so the UI does not need to read settings for live state.
@@ -251,6 +251,6 @@ Log on every render cycle: hero inputs, computed values (projected kWh, safe pac
 
 1. **API endpoints only** for frontend–backend communication. Never read a setting to display live state. Settings are for persisting user configuration; API responses carry live state.
 2. **One card, one question.** Hero = are we on track? Summary card = what is each device doing?
-3. **Dry-run is hypothetical.** If PELS did not send a command, the UI must not imply it did.
+3. **Simulation mode is hypothetical.** If PELS did not send a command, the UI must not imply it did.
 4. **Colour never carries meaning alone.** Chip label and decision sentence must be readable without colour context.
 5. **Safe pace is dynamic.** Never phrase it as a fixed allowance for the rest of the hour.
