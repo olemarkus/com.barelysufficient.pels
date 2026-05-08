@@ -130,6 +130,10 @@ import {
   getStoredOverviewRedesignPreference,
   setStoredOverviewRedesignPreference,
 } from './uiVariant.ts';
+import {
+  isDeadlinePlanMockupPage,
+  mountDeadlinePlanMockup,
+} from './deadlinePlanMockup.ts';
 
 let canToggleOverviewRedesign = false;
 
@@ -488,6 +492,17 @@ export const boot = async () => {
   resetSettingsUiPerf();
   markSettingsUi('boot:start');
   try {
+    if (isDeadlinePlanMockupPage()) {
+      const found = await waitForHomey(200, 100);
+      if (found) {
+        await found.ready();
+        await flushSettingsLogs();
+      }
+      await mountDeadlinePlanMockup();
+      markSettingsUiReady();
+      return;
+    }
+
     const hasHomey = await prepareHomeySdk();
     if (!hasHomey) {
       return;

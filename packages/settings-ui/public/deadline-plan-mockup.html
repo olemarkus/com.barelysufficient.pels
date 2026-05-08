@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PELS Deadline Plan Mockup</title>
+  <link rel="stylesheet" href="./style.css">
+  <script>
+    window.__PELS_HOMEY_READY__ = new Promise(function(resolve) {
+      window.onHomeyReady = resolve;
+    });
+  </script>
+  <script src="/homey.js" data-origin="settings"></script>
+  <script src="./script.js" defer></script>
+</head>
+<body data-ui-variant="redesign">
+  <main class="screen budget-redesign-view" id="deadline-plan-mockup-root" aria-live="polite">
+    <section class="pels-surface-card budget-redesign-card">
+      <h1 class="plan-card__title">Loading deadline plan</h1>
+      <p class="pels-card-supporting">Preparing the mockup.</p>
+    </section>
+  </main>
+</body>
+</html>
