@@ -343,9 +343,9 @@
         cum += kwh;
         allowedCumKWh.push(Number(cum.toFixed(3)));
 
-        // Rough price shape in "kr" units for the budget view.
-        const p = 0.8 + 0.35 * Math.sin((i / 24) * Math.PI * 2 - Math.PI / 2);
-        price.push(Number(p.toFixed(3)));
+        // Rough Norway price shape in raw "øre/kWh" units for the budget view.
+        const p = 80 + 35 * Math.sin((i / 24) * Math.PI * 2 - Math.PI / 2);
+        price.push(Number(p.toFixed(1)));
       }
 
       const dateKey = dateKeyUtc(dayStartMs);

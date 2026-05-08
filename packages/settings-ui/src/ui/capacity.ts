@@ -144,12 +144,12 @@ const resolveCapacitySettings = (
 
 const validateCapacitySettings = ({ limit, margin }: ResolvedCapacitySettings) => {
   // Validate limit: must be a finite positive number within reasonable bounds.
-  if (!Number.isFinite(limit) || limit <= 0) throw new Error('Limit must be positive.');
-  if (limit > 1000) throw new Error('Limit cannot exceed 1000 kW.');
+  if (!Number.isFinite(limit) || limit <= 0) throw new Error('Hard cap must be positive.');
+  if (limit > 1000) throw new Error('Hard cap cannot exceed 1000 kW.');
 
   // Validate margin: must be a finite non-negative number within reasonable bounds.
-  if (!Number.isFinite(margin) || margin < 0) throw new Error('Margin must be non-negative.');
-  if (margin > limit) throw new Error('Margin cannot exceed the limit.');
+  if (!Number.isFinite(margin) || margin < 0) throw new Error('Safety margin must be non-negative.');
+  if (margin > limit) throw new Error('Safety margin cannot exceed the hard cap.');
 };
 
 const updateStaleDataBanner = (lastPowerUpdate: number | null) => {

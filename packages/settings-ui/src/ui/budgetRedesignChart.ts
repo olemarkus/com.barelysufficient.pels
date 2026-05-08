@@ -1,5 +1,6 @@
 import type { DailyBudgetDayPayload } from '../../../contracts/src/dailyBudgetTypes.ts';
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType, type SeriesOption } from './echartsRegistry.ts';
+import type { CostDisplay } from './dailyBudgetCost.ts';
 import { formatKWh } from './dailyBudgetFormat.ts';
 import { formatHourAxisLabel, resolveLabelEvery } from './dayViewChart.ts';
 
@@ -10,8 +11,8 @@ type BudgetChartPalette = {
   actual: string;
   plan: string;
   forecast: string;
-  priceCheap: string;
-  priceExpensive: string;
+  priceLine: string;
+  priceFill: string;
   muted: string;
   grid: string;
   tooltipBackground: string;
@@ -25,6 +26,7 @@ type BudgetRedesignChartParams = {
   mode: BudgetRedesignChartMode;
   view: BudgetRedesignDayView;
   priceReliable: boolean;
+  costDisplay: CostDisplay;
 };
 
 let chart: EChartsType | null = null;
@@ -90,8 +92,8 @@ const resolvePalette = (container: HTMLElement): BudgetChartPalette => ({
   actual: resolveCssColor(container, '--pels-chart-actual', '#e6ecf5'),
   plan: resolveCssColor(container, '--pels-chart-plan', '#10b981'),
   forecast: resolveCssColor(container, '--pels-chart-forecast', '#64b5f6'),
-  priceCheap: resolveCssColor(container, '--pels-chart-price-cheap', 'rgba(16, 185, 129, 0.10)'),
-  priceExpensive: resolveCssColor(container, '--pels-chart-price-expensive', 'rgba(242, 107, 107, 0.15)'),
+  priceLine: resolveCssColor(container, '--pels-chart-price-line', '#f59e0b'),
+  priceFill: resolveCssColor(container, '--pels-chart-price-fill', 'rgba(245, 158, 11, 0.14)'),
   muted: resolveCssColor(container, '--muted', '#9fb2a7'),
   grid: resolveCssColor(container, '--color-border-strong', 'rgba(255, 255, 255, 0.20)'),
   tooltipBackground: resolveCssColor(container, '--color-overlay-toast', 'rgba(12, 17, 27, 0.92)'),
@@ -125,7 +127,7 @@ const buildActualCumulative = (
   });
 };
 
-const buildProjectionCumulative = (params: {
+export const buildProjectionCumulative = (params: {
   planned: number[];
   actualCumulative: Array<number | null>;
   actualUpToIndex: number;
@@ -136,7 +138,11 @@ const buildProjectionCumulative = (params: {
   if (view !== 'today' || actualUpToIndex < 0 || actualUpToIndex >= planned.length) return projection;
   const startValue = actualCumulative[actualUpToIndex];
   if (!Number.isFinite(startValue)) return projection;
-  let total = startValue as number;
+  const previousActualTotal = actualUpToIndex > 0 ? actualCumulative[actualUpToIndex - 1] : 0;
+  if (!Number.isFinite(previousActualTotal)) return projection;
+  const currentActual = Math.max(0, (startValue as number) - (previousActualTotal as number));
+  const currentPlanned = Number.isFinite(planned[actualUpToIndex]) ? planned[actualUpToIndex] : 0;
+  let total = (startValue as number) + Math.max(0, (currentPlanned as number) - currentActual);
   projection[actualUpToIndex] = Number(total.toFixed(3));
   for (let index = actualUpToIndex + 1; index < planned.length; index += 1) {
     total += Number.isFinite(planned[index]) ? planned[index] : 0;
@@ -145,13 +151,102 @@ const buildProjectionCumulative = (params: {
   return projection;
 };
 
+type ChartScaleKind = 'progress' | 'hourly';
+
+const resolveYAxisScale = (dataMax: number, kind: ChartScaleKind): { max: number; interval: number } => {
+  const safeMax = Number.isFinite(dataMax) && dataMax > 0 ? dataMax : 0;
+  if (kind === 'hourly') {
+    const interval = safeMax <= 1.2 ? 0.3 : 0.5;
+    const max = Math.max(interval, Math.ceil(safeMax / interval) * interval);
+    return {
+      max: Number(max.toFixed(1)),
+      interval,
+    };
+  }
+  const interval = safeMax <= 20 ? 5 : 10;
+  return {
+    max: Math.max(interval, Math.ceil(safeMax / interval) * interval),
+    interval,
+  };
+};
+
+const resolvePriceYAxisScale = (prices: number[]): { max: number; interval: number } => {
+  const dataMax = Math.max(0, ...prices);
+  const interval = dataMax <= 1.2 ? 0.3 : 0.5;
+  const max = Math.max(interval, Math.ceil(dataMax / interval) * interval);
+  return {
+    max: Number(max.toFixed(1)),
+    interval,
+  };
+};
+
+const resolvePriceAxisUnit = (display: CostDisplay): string => {
+  const unit = display.unit.trim();
+  if (!unit) return 'Price';
+  return unit.toLowerCase().includes('/kwh') ? unit : `${unit}/kWh`;
+};
+
+const normalizePriceValues = (
+  prices: Array<number | null> | undefined,
+  length: number,
+  display: CostDisplay,
+): number[] => {
+  const divisor = Math.max(1, display.divisor);
+  return (prices || [])
+    .slice(0, length)
+    .filter((value): value is number => Number.isFinite(value))
+    .map((value) => Number((value / divisor).toFixed(4)));
+};
+
+const readTooltipValue = (value: unknown): number | null => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (Array.isArray(value)) {
+    const values = value as readonly unknown[];
+    for (let index = values.length - 1; index >= 0; index -= 1) {
+      const candidate = values[index];
+      if (typeof candidate === 'number' && Number.isFinite(candidate)) return candidate;
+    }
+  }
+  return null;
+};
+
+export const formatBudgetChartTooltip = (
+  rawParams: unknown,
+  priceAxisUnit?: string | null,
+): string => {
+  const paramsArray = Array.isArray(rawParams) ? rawParams : [rawParams];
+  return paramsArray
+    .filter((item): item is { seriesName?: string; value?: unknown } => (
+      Boolean(item) && typeof item === 'object'
+    ))
+    .flatMap((item) => {
+      const value = readTooltipValue(item.value);
+      if (value === null) return [];
+      const name = item.seriesName ?? '';
+      const formatted = name === 'Price'
+        ? `${value.toFixed(2)} ${priceAxisUnit ?? 'price'}`
+        : formatKWh(value);
+      return `${encodeHtml(name)}: ${formatted}`;
+    })
+    .join('<br/>');
+};
+
 const buildBaseOption = (params: {
   labels: string[];
   palette: BudgetChartPalette;
   dataMax: number;
+  scaleKind: ChartScaleKind;
+  priceAxisUnit?: string | null;
 }): EChartsOption => {
-  const { labels, palette, dataMax } = params;
+  const {
+    labels,
+    palette,
+    dataMax,
+    scaleKind,
+    priceAxisUnit,
+  } = params;
   const labelEvery = resolveLabelEvery(labels.length);
+  const yScale = resolveYAxisScale(dataMax, scaleKind);
   return {
     animation: false,
     stateAnimation: { duration: 0 },
@@ -165,13 +260,7 @@ const buildBaseOption = (params: {
       padding: [8, 10],
       textStyle: { color: palette.tooltipText, fontSize: 12, fontWeight: 500 },
       formatter: (rawParams: unknown) => {
-        const paramsArray = Array.isArray(rawParams) ? rawParams : [rawParams];
-        return paramsArray
-          .filter((item): item is { seriesName?: string; value?: number } => (
-            Boolean(item) && typeof item === 'object'
-          ))
-          .map((item) => `${encodeHtml(item.seriesName ?? '')}: ${formatKWh(Number(item.value ?? 0))}`)
-          .join('<br/>');
+        return formatBudgetChartTooltip(rawParams, priceAxisUnit);
       },
     },
     xAxis: {
@@ -191,14 +280,16 @@ const buildBaseOption = (params: {
     yAxis: {
       type: 'value',
       min: 0,
-      max: Math.max(1, dataMax) * 1.08,
-      splitNumber: 3,
+      max: yScale.max,
+      interval: yScale.interval,
       axisTick: { show: false },
       axisLine: { show: false },
       axisLabel: {
         color: palette.muted,
         fontSize: 11,
-        formatter: (value: number) => formatKWh(value).replace(' kWh', ''),
+        formatter: (value: number) => (
+          scaleKind === 'hourly' ? value.toFixed(1) : String(Math.round(value))
+        ),
       },
       splitLine: { lineStyle: { color: palette.grid, width: 1 } },
     },
@@ -222,7 +313,12 @@ const buildProgressOption = (
     ...actualCumulative.filter((value): value is number => Number.isFinite(value)),
     ...projection.filter((value): value is number => Number.isFinite(value)),
   ];
-  const option = buildBaseOption({ labels, palette, dataMax: Math.max(...values, payload.budget.dailyBudgetKWh) });
+  const option = buildBaseOption({
+    labels,
+    palette,
+    dataMax: Math.max(...values, payload.budget.dailyBudgetKWh),
+    scaleKind: 'progress',
+  });
   const series: SeriesOption[] = [
     {
       type: 'line',
@@ -255,45 +351,11 @@ const buildProgressOption = (
       showSymbol: false,
       smooth: true,
       connectNulls: false,
-      lineStyle: { color: palette.forecast, width: 2, type: 'dashed' },
+      lineStyle: { color: palette.forecast, width: 2, type: 'dashed', opacity: 0.7 },
       emphasis: { disabled: true },
     });
   }
   return { ...option, series };
-};
-
-const buildPriceAreas = (
-  labels: string[],
-  prices: Array<number | null> | undefined,
-  palette: BudgetChartPalette,
-) => {
-  if (!prices || prices.length < labels.length || !prices.every((price) => Number.isFinite(price))) return [];
-  const sorted = [...prices].sort((a, b) => (a as number) - (b as number));
-  const cheapThreshold = sorted[Math.floor(sorted.length * 0.25)] as number;
-  const expensiveThreshold = sorted[Math.ceil(sorted.length * 0.75) - 1] as number;
-  const tones = prices.map((price) => {
-    if ((price as number) <= cheapThreshold) return 'cheap';
-    if ((price as number) >= expensiveThreshold) return 'expensive';
-    return 'normal';
-  });
-  const areas: unknown[] = [];
-  let start = 0;
-  while (start < tones.length) {
-    const tone = tones[start];
-    if (tone === 'normal') {
-      start += 1;
-      continue;
-    }
-    let end = start;
-    while (end + 1 < tones.length && tones[end + 1] === tone) end += 1;
-    const color = tone === 'cheap' ? palette.priceCheap : palette.priceExpensive;
-    areas.push([
-      { xAxis: labels[start], itemStyle: { color } },
-      { xAxis: labels[end] },
-    ]);
-    start = end + 1;
-  }
-  return areas;
 };
 
 const buildHourlyOption = (
@@ -301,6 +363,7 @@ const buildHourlyOption = (
   view: BudgetRedesignDayView,
   palette: BudgetChartPalette,
   priceReliable: boolean,
+  costDisplay: CostDisplay,
 ): EChartsOption => {
   const planned = payload.buckets.plannedKWh || [];
   const actual = payload.buckets.actualKWh || [];
@@ -310,24 +373,73 @@ const buildHourlyOption = (
     index <= actualUpToIndex && Number.isFinite(value) ? value : null
   ));
   const allActual = actualVisible.filter((value): value is number => Number.isFinite(value));
-  const option = buildBaseOption({ labels, palette, dataMax: Math.max(...planned, ...allActual) });
-  const priceAreas = priceReliable ? buildPriceAreas(labels, payload.buckets.price, palette) : [];
+  const priceAxisUnit = resolvePriceAxisUnit(costDisplay);
+  const option = buildBaseOption({
+    labels,
+    palette,
+    dataMax: Math.max(...planned, ...allActual),
+    scaleKind: 'hourly',
+    priceAxisUnit,
+  });
+  const priceValues = priceReliable
+    ? normalizePriceValues(payload.buckets.price, labels.length, costDisplay)
+    : [];
+  if (priceValues.length === labels.length) {
+    const priceScale = resolvePriceYAxisScale(priceValues);
+    option.grid = { ...(option.grid as Record<string, unknown>), right: 48, top: 26 };
+    option.yAxis = [
+      option.yAxis,
+      {
+        type: 'value',
+        min: 0,
+        max: priceScale.max,
+        interval: priceScale.interval,
+        name: priceAxisUnit,
+        nameGap: 8,
+        nameTextStyle: { color: palette.muted, fontSize: 10, padding: [0, 0, 4, 0] },
+        axisTick: { show: false },
+        axisLine: { show: false },
+        axisLabel: {
+          color: palette.muted,
+          fontSize: 11,
+          formatter: (value: number) => value.toFixed(1),
+        },
+        splitLine: { show: false },
+      },
+    ];
+  }
   const series: SeriesOption[] = [
     {
       type: 'bar',
       name: 'Plan',
       data: planned,
+      z: 2,
       barMaxWidth: 10,
       itemStyle: { color: palette.plan, borderRadius: [4, 4, 0, 0] },
       emphasis: { disabled: true },
-      markArea: priceAreas.length > 0 ? { silent: true, data: priceAreas } : undefined,
     },
   ];
+  if (priceValues.length === labels.length) {
+    series.push({
+      type: 'line',
+      name: 'Price',
+      data: priceValues,
+      yAxisIndex: 1,
+      z: 3,
+      showSymbol: false,
+      smooth: false,
+      step: 'middle',
+      lineStyle: { color: palette.priceLine, width: 2 },
+      areaStyle: { color: palette.priceFill },
+      emphasis: { disabled: true },
+    });
+  }
   if (view !== 'tomorrow') {
     series.push({
       type: 'line',
       name: 'Actual',
       data: actualVisible,
+      z: 4,
       showSymbol: false,
       connectNulls: false,
       lineStyle: { color: palette.actual, width: 2 },
@@ -344,10 +456,11 @@ export const renderBudgetRedesignChart = (params: BudgetRedesignChartParams) => 
     mode,
     view,
     priceReliable,
+    costDisplay,
   } = params;
   const palette = resolvePalette(container);
   const option = mode === 'progress'
     ? buildProgressOption(payload, view, palette)
-    : buildHourlyOption(payload, view, palette, priceReliable);
+    : buildHourlyOption(payload, view, palette, priceReliable, costDisplay);
   ensureChart(container).setOption(option, { notMerge: true });
 };

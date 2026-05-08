@@ -115,24 +115,25 @@ test.describe('Settings UI (smoke)', () => {
     await expect(page.getByRole('button', { name: 'Discard preview' })).toHaveCount(0);
 
     await expect(page.locator('#budget-redesign-plan-title')).toContainText("Today's plan");
-    await expect(page.locator('#budget-redesign-metrics')).toContainText('Remaining');
-    await expect(page.locator('#budget-redesign-metrics')).toContainText('Projected use');
-    await expect(page.locator('#budget-redesign-metrics')).toContainText('Daily budget');
+    await expect(page.locator('#budget-plan-summary')).toContainText('Projected');
+    await expect(page.locator('#budget-plan-summary')).toContainText("left in today's budget");
     await expect(page.locator('#budget-redesign-chart')).toBeVisible();
     await expect(page.locator('#budget-redesign-chart svg')).toBeVisible();
 
     await page.getByRole('button', { name: 'Hourly plan' }).click();
     await expect(page.locator('#budget-redesign-chart-title')).toHaveText('Hourly plan');
-    await expect(page.locator('#budget-redesign-chart-subtitle')).toContainText('price alignment');
+    await expect(page.locator('#budget-redesign-chart-subtitle')).toContainText('Budget follows cheaper hours');
+    await expect(page.locator('#budget-redesign-chart svg')).toContainText('kr/kWh');
 
     await page.getByRole('button', { name: 'Tomorrow' }).click();
     await expect(page.locator('#budget-redesign-plan-title')).toContainText("Tomorrow's plan");
-    await expect(page.locator('#budget-redesign-metrics')).not.toContainText('Remaining');
+    await expect(page.locator('#budget-plan-summary')).not.toContainText('remaining');
+    await expect(page.locator('#budget-plan-summary')).toContainText('planned');
 
     await page.getByRole('button', { name: 'Yesterday' }).click();
     await expect(page.locator('#budget-redesign-plan-title')).toContainText("Yesterday's result");
-    await expect(page.locator('#budget-redesign-metrics')).toContainText('Used');
-    await expect(page.locator('#budget-redesign-metrics')).toContainText('Result');
+    await expect(page.locator('#budget-plan-summary')).toContainText('used');
+    await expect(page.locator('#budget-plan-summary')).toContainText('budget');
 
     await page.getByRole('button', { name: 'Adjust', exact: true }).click();
     await expect(page.locator('#budget-redesign-adjust-view')).toBeVisible();

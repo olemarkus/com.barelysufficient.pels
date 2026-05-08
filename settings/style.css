@@ -76,13 +76,13 @@ hr {
 :root {
   /* Semantic aliases - map to design tokens for backward compatibility */
   --bg: var(--color-semantic-bg);
-  --panel: var(--color-surface-2);
-  --panel-border: var(--color-border-default);
+  --panel: var(--pels-surface-container-low);
+  --panel-border: var(--pels-surface-outline);
   --accent: var(--color-semantic-accent);
   --accent-strong: var(--color-semantic-accent-strong);
-  --text: var(--color-semantic-text-primary);
-  --muted: var(--color-semantic-text-muted);
-  --text-secondary: var(--color-semantic-text-secondary);
+  --text: var(--pels-text-primary);
+  --muted: var(--pels-text-muted);
+  --text-secondary: var(--pels-text-secondary);
   --danger: var(--color-semantic-danger);
   --warning: var(--color-semantic-warning);
   --info: var(--color-semantic-info);
@@ -904,14 +904,14 @@ input:focus-visible {
 
 .plan-hero {
   display: grid;
-  gap: 0;
-  padding: var(--spacing-3);
-  border: 1px solid var(--panel-border);
+  gap: var(--pels-hero-gap);
+  padding: var(--pels-hero-padding);
+  border: 1px solid var(--pels-surface-outline);
   border-radius: var(--radius-lg);
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--color-surface-4) 86%, transparent),
-    color-mix(in srgb, var(--color-surface-3) 96%, transparent)
+    color-mix(in srgb, var(--pels-surface-container-high) 86%, transparent),
+    color-mix(in srgb, var(--pels-surface-container) 96%, transparent)
   );
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-base-white) 10%, transparent);
 }
@@ -939,8 +939,8 @@ input:focus-visible {
   align-items: center;
   padding: var(--chip-padding-block) var(--chip-padding-inline);
   border-radius: var(--chip-radius);
-  border: var(--chip-border-width) solid var(--panel-border);
-  background: var(--color-surface-4);
+  border: var(--chip-border-width) solid var(--pels-surface-outline);
+  background: var(--pels-surface-container-high);
   font-size: var(--chip-font-size);
   font-weight: var(--chip-font-weight);
   line-height: var(--chip-line-height);
@@ -978,9 +978,9 @@ input:focus-visible {
 }
 
 .plan-chip--muted {
-  background: var(--color-surface-4);
-  border-color: var(--panel-border);
-  color: var(--text-secondary);
+  background: var(--pels-surface-container-high);
+  border-color: var(--pels-surface-outline);
+  color: var(--pels-text-secondary);
 }
 
 .plan-hero__bar-group {
@@ -1099,9 +1099,9 @@ input:focus-visible {
 
 .plan-hero__meta {
   min-width: 0;
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  line-height: var(--font-line-height-tight);
+  color: var(--pels-text-supporting-color);
+  font-size: var(--pels-text-supporting-font-size);
+  line-height: var(--pels-text-supporting-font-line-height);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1125,7 +1125,7 @@ input:focus-visible {
 
 .plan-hero__section {
   display: grid;
-  gap: var(--spacing-1);
+  gap: var(--pels-hero-section-gap);
 }
 
 .plan-hero__section + .plan-hero__section {
@@ -1133,16 +1133,17 @@ input:focus-visible {
 }
 
 .plan-hero__section-label {
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--font-line-height-tight);
+  color: var(--pels-text-section-label-color);
+  font-size: var(--pels-text-section-label-font-size);
+  font-weight: var(--pels-text-section-label-font-weight);
+  line-height: var(--pels-text-section-label-font-line-height);
 }
 
 .plan-hero__headline {
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--font-line-height-tight);
+  color: var(--pels-text-answer-color);
+  font-size: var(--pels-text-answer-font-size);
+  font-weight: var(--pels-text-answer-font-weight);
+  line-height: var(--pels-text-answer-font-line-height);
 }
 
 .plan-hero__headline[data-tone="good"] {
@@ -1158,9 +1159,9 @@ input:focus-visible {
 }
 
 .plan-hero__subline {
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  line-height: var(--font-line-height-tight);
+  color: var(--pels-text-supporting-color);
+  font-size: var(--pels-text-supporting-font-size);
+  line-height: var(--pels-text-supporting-font-line-height);
 }
 
 .plan-hero__subline[data-tone="warn"] {
@@ -1172,12 +1173,12 @@ input:focus-visible {
 }
 
 .plan-hero__subline--muted {
-  color: var(--text-secondary);
+  color: var(--pels-text-supporting-color);
 }
 
 .plan-hero__projection-value {
   color: inherit;
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--pels-text-section-label-font-weight);
 }
 
 .plan-hero__projection-value[data-tone="warning"] {
@@ -1189,20 +1190,20 @@ input:focus-visible {
 }
 
 .plan-hero__energy-support {
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  line-height: var(--font-line-height-tight);
+  color: var(--pels-text-supporting-color);
+  font-size: var(--pels-text-supporting-font-size);
+  line-height: var(--pels-text-supporting-font-line-height);
 }
 
 .plan-hero__decision {
   margin: calc(var(--spacing-4) + var(--spacing-1)) 0 0;
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  line-height: var(--font-line-height-normal);
+  color: var(--pels-text-status-line-color);
+  font-size: var(--pels-text-status-line-font-size);
+  line-height: var(--pels-text-status-line-font-line-height);
 }
 
 .plan-hero__decision[data-positive] {
-  color: var(--pels-status-on-good);
+  color: var(--pels-text-status-line-positive-color);
 }
 
 
@@ -1212,7 +1213,8 @@ input:focus-visible {
   margin-top: var(--spacing-2);
 }
 
-.plan-card {
+.plan-card,
+.pels-surface-card {
   --md-elevation-level: 1;
   --md-ripple-hover-color: var(--pels-status-good);
   --md-ripple-pressed-color: var(--pels-status-good);
@@ -1220,15 +1222,22 @@ input:focus-visible {
   --md-ripple-pressed-opacity: 0.1;
   position: relative;
   display: grid;
-  gap: var(--spacing-2);
-  padding: var(--spacing-3);
-  padding-left: calc(var(--spacing-4) + (var(--chip-border-width) * 2));
+  gap: var(--pels-card-gap);
+  padding: var(--pels-card-padding);
   overflow: hidden;
   isolation: isolate;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-4) 96%, transparent), var(--color-surface-3));
+  border: 1px solid var(--pels-surface-outline);
+  border-radius: var(--pels-card-radius);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--pels-surface-container-high) 96%, transparent),
+    var(--pels-surface-container)
+  );
   transition: --md-elevation-level 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.plan-card {
+  padding-left: calc(var(--spacing-4) + (var(--chip-border-width) * 2));
 }
 
 .plan-card:hover,
@@ -1241,7 +1250,8 @@ input:focus-visible {
 }
 
 .plan-card > md-elevation,
-.plan-card > md-ripple {
+.plan-card > md-ripple,
+.pels-surface-card > md-elevation {
   border-radius: inherit;
 }
 
@@ -1311,8 +1321,17 @@ input:focus-visible {
 .plan-card__title {
   margin: 0;
   min-width: 0;
-  font-size: var(--font-size-lg);
-  line-height: 1.2;
+  color: var(--pels-text-card-title-color);
+  font-size: var(--pels-text-card-title-font-size);
+  font-weight: var(--pels-text-card-title-font-weight);
+  line-height: var(--pels-text-card-title-font-line-height);
+}
+
+.pels-card-supporting {
+  margin: 0;
+  color: var(--pels-text-card-supporting-color);
+  font-size: var(--pels-text-card-supporting-font-size);
+  line-height: var(--pels-text-card-supporting-font-line-height);
 }
 
 .plan-card__title-wrap {
@@ -1816,8 +1835,8 @@ input:focus-visible {
   }
 
   body[data-ui-variant="redesign"] .plan-hero {
-    gap: var(--spacing-3);
-    padding: var(--spacing-3);
+    gap: var(--pels-hero-gap);
+    padding: var(--pels-hero-padding);
   }
 
   body[data-ui-variant="redesign"] .plan-card__title {
@@ -1842,7 +1861,8 @@ input:focus-visible {
     padding: var(--spacing-3);
   }
 
-  body[data-ui-variant="redesign"] #overview-panel {
+  body[data-ui-variant="redesign"] #overview-panel,
+  body[data-ui-variant="redesign"] #budget-panel {
     padding: 0;
   }
 
@@ -3196,11 +3216,6 @@ input[type="text"]:focus {
 
 .budget-redesign-card {
   min-width: 0;
-  padding: var(--spacing-4);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-2);
-  box-shadow: var(--shadow-md);
 }
 
 .budget-card-header {
@@ -3216,60 +3231,13 @@ input[type="text"]:focus {
   margin-top: 0;
 }
 
-.budget-plan-status-card {
-  display: grid;
-  gap: var(--spacing-3);
-}
-
 .budget-toggle-mount {
   min-width: 0;
 }
 
-.budget-status-chip {
-  flex: 0 0 auto;
-  border: 1px solid var(--color-border-strong);
-  background: var(--color-surface-4);
-}
-
-.budget-status-chip.is-warning {
-  color: var(--pels-status-warning);
-  border-color: var(--color-state-warning-border);
-  background: var(--color-state-warning-bg-muted);
-}
-
-.budget-status-chip.is-critical {
-  color: var(--pels-status-critical);
-  border-color: var(--color-state-negative-border);
-  background: var(--color-state-negative-bg);
-}
-
-.budget-status-chip.is-muted {
-  color: var(--muted);
-}
-
-.budget-metric-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--spacing-2);
-}
-
-.budget-metric-card {
-  min-width: 0;
-  padding: var(--spacing-3);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-3);
-}
-
-.budget-metric-card .summary-value {
-  overflow-wrap: anywhere;
-  font-size: var(--font-size-lg);
-  line-height: var(--font-line-height-tight);
-}
-
 .budget-chart-card {
   display: grid;
-  gap: var(--spacing-3);
+  gap: var(--pels-card-gap);
 }
 
 .budget-chart-card .budget-card-header {
@@ -3282,7 +3250,7 @@ input[type="text"]:focus {
   flex-wrap: wrap;
   gap: var(--spacing-3);
   align-items: center;
-  color: var(--muted);
+  color: var(--pels-text-muted);
   font-size: var(--font-size-xs);
 }
 
@@ -3311,7 +3279,9 @@ input[type="text"]:focus {
 }
 
 .budget-chart-legend__swatch--price {
-  background: linear-gradient(90deg, var(--pels-chart-price-cheap), var(--pels-chart-price-expensive));
+  height: 2px;
+  border-top: 2px solid var(--pels-chart-price-line);
+  background: transparent;
 }
 
 .budget-redesign-chart {
@@ -3337,7 +3307,8 @@ input[type="text"]:focus {
 
 .budget-settings-list {
   display: grid;
-  gap: var(--spacing-2);
+  gap: 0;
+  border-top: 1px solid color-mix(in srgb, var(--pels-surface-outline) 72%, transparent);
 }
 
 .budget-settings-list--compact {
@@ -3347,26 +3318,39 @@ input[type="text"]:focus {
 .budget-setting-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--spacing-3);
+  gap: var(--spacing-1) var(--spacing-3);
   align-items: center;
   min-width: 0;
-  padding: var(--spacing-3);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-3);
+  padding: var(--spacing-3) 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--pels-surface-outline) 72%, transparent);
+  background: transparent;
+}
+
+.budget-setting-row > span:first-child {
+  min-width: 0;
 }
 
 .budget-setting-row__label {
   display: block;
-  color: var(--text);
-  font-weight: var(--font-weight-semibold);
+  color: var(--pels-text-settings-label-color);
+  font-weight: var(--pels-text-settings-label-font-weight);
 }
 
 .budget-setting-row__value {
   justify-self: end;
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px var(--spacing-2);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--pels-surface-container-highest) 62%, transparent);
   white-space: nowrap;
-  color: var(--text);
-  font-weight: var(--font-weight-semibold);
+  color: var(--pels-text-settings-trailing-color);
+  font-weight: var(--pels-text-settings-trailing-font-weight);
+  cursor: default;
+}
+
+.budget-settings-list--compact .budget-setting-row {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .budget-planning-behavior {
@@ -3409,6 +3393,13 @@ input[type="text"]:focus {
 
 .budget-planning-behavior > .budget-settings-list {
   padding: 0 var(--spacing-4) var(--spacing-4);
+}
+
+.budget-context-action {
+  width: 100%;
+  justify-self: stretch;
+  background: var(--pels-surface-container-high) !important;
+  border-color: var(--pels-surface-outline) !important;
 }
 
 /* Day view foundation */
@@ -3479,16 +3470,27 @@ input[type="text"]:focus {
 .budget-redesign-surface .day-view-toggle {
   width: 100%;
   justify-content: stretch;
+  padding: 3px;
+  border-color: var(--pels-segmented-container-border);
+  background: color-mix(in srgb, var(--pels-segmented-container-background) 72%, transparent);
 }
 
 .budget-redesign-surface .day-view-toggle__button {
   flex: 1 1 0;
   min-width: 0;
+  color: var(--pels-segmented-label-color) !important;
+  font-weight: var(--pels-segmented-label-font-weight);
 }
 
 .budget-chart-card .budget-card-header .day-view-toggle {
   max-width: 190px;
   justify-self: start;
+}
+
+.budget-redesign-surface .day-view-toggle__button.is-active {
+  background-color: var(--pels-segmented-selected-background) !important;
+  color: var(--pels-segmented-selected-text) !important;
+  box-shadow: inset 0 0 0 1px var(--pels-segmented-selected-outline);
 }
 
 .usage-history-actions {
@@ -3501,25 +3503,34 @@ input[type="text"]:focus {
 }
 
 #budget-panel {
-  --pels-status-good: var(--color-base-accent-default);
-  --pels-status-warning: var(--color-base-warning-default);
-  --pels-status-critical: var(--color-base-danger-default);
-  --pels-chart-actual: var(--color-base-gray-50);
-  --pels-chart-plan: var(--color-base-accent-default);
-  --pels-chart-forecast: var(--color-base-info-default);
-  --pels-chart-price-cheap: var(--color-state-positive-bg-muted);
-  --pels-chart-price-expensive: var(--color-state-negative-bg);
-  --day-view-color-primary: var(--color-base-accent-default);
-  --day-view-color-planned: var(--color-base-accent-default);
-  --day-view-color-uncontrolled: var(--color-base-info-default);
-  --day-view-color-controlled: var(--color-base-warning-default);
-  --day-view-color-actual: var(--color-base-gray-50);
-  --day-view-color-budget: var(--color-base-info-default);
-  --day-view-color-warn: var(--color-base-warning-default);
-  --day-view-color-cheap: var(--color-base-accent-default);
+  --pels-chart-actual: var(--text);
+  --pels-chart-plan: var(--pels-status-good);
+  --pels-chart-forecast: var(--info);
+  --pels-chart-price-line: var(--warning);
+  --pels-chart-price-fill: rgba(245, 158, 11, 0.14);
+  --day-view-color-primary: var(--pels-status-good);
+  --day-view-color-planned: var(--pels-status-good);
+  --day-view-color-uncontrolled: var(--info);
+  --day-view-color-controlled: var(--warning);
+  --day-view-color-actual: var(--text);
+  --day-view-color-budget: var(--info);
+  --day-view-color-warn: var(--pels-status-warning);
+  --day-view-color-cheap: var(--pels-status-good);
   --day-view-color-normal: var(--color-surface-5);
-  --day-view-color-expensive: var(--color-base-danger-default);
+  --day-view-color-expensive: var(--pels-status-critical);
   --day-view-color-now: var(--color-state-info-border);
+}
+
+body[data-ui-variant="redesign"] #budget-panel {
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+body[data-ui-variant="redesign"] #budget-panel > .card__header {
+  display: none;
 }
 
 #usage-panel {

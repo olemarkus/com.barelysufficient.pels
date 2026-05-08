@@ -13,7 +13,7 @@ const HERO_STATUS_LABEL: Partial<Record<HeroStatus, string>> = {
   'above-safe-pace': 'Above safe pace',
   'projected-over-budget': 'Above budget',
   'over-hard-cap': 'Above hard cap',
-  'dry-run': 'Dry-run',
+  'dry-run': 'Simulation mode',
   'no-data': 'No data',
 };
 
@@ -115,7 +115,7 @@ const buildHeroStatusLine = (
     return { text: `${hardCapText} · ${limitingText}`, positive: false };
   }
   if (dryRun && limitedCount > 0) {
-    return { text: appendProjectionSummary(`Would limit ${plural(limitedCount, 'device')} · dry-run is enabled`), positive: false };
+    return { text: appendProjectionSummary(`Would limit ${plural(limitedCount, 'device')} · simulation mode is enabled`), positive: false };
   }
   if (headline.overSoftLimit) {
     if (limitedCount > 0) {
