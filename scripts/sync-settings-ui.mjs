@@ -6,7 +6,13 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(scriptDir, '..');
 const sourceDir = path.join(rootDir, 'packages', 'settings-ui', 'dist');
 const targetDir = path.join(rootDir, 'settings');
-const files = ['index.html', 'script.js', 'style.css', 'tokens.css'];
+const files = [
+  'index.html',
+  'deadline-plan-mockup.html',
+  'script.js',
+  'style.css',
+  'tokens.css',
+];
 
 await fs.mkdir(targetDir, { recursive: true });
 

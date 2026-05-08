@@ -35,4 +35,5 @@ export const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'daily_budget_breakdown_enabled',
   'debug_logging_topics',
   'debug_logging_enabled',
+  'deferred_objective_preview',
 ] as const;

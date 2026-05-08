@@ -163,6 +163,11 @@ Recommended local Budget views:
 Price is not a Budget sub-page in the target navigation because price can be used without daily
 budget. Budget may still show price context when price affects the plan.
 
+Deadline objectives are per-device readiness plans, not daily-budget settings. Their detailed plan
+view should live with the device that owns the objective. Budget may later summarize aggregate
+impact, such as EV deadline charging reserving cheap hours tonight, but should not become the
+primary editor or explanation surface for a specific charger's target.
+
 ### Budget > Plan
 
 Default Budget view.

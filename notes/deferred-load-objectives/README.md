@@ -698,6 +698,31 @@ For v1, the horizon scheduler can be conservative and simple:
 Required-average kW remains useful as a diagnostic, but horizon scheduling is the mechanism that
 makes soft objectives budget-aware instead of just "boost immediately."
 
+## Deadline Plan Visibility
+
+The user-facing deadline plan should be inspectable before actuation is exposed broadly. The first
+mockup lives as a standalone Settings UI page so the visual model can be reviewed before deciding
+where the page belongs in navigation.
+
+For EV chargers, the page should make the plan answer concrete questions from issue 147:
+
+- how much energy remains to reach the target SoC
+- how many charging hours are expected
+- which hours are planned because they are cheap
+- which hours are kept as backup because charging may be blocked
+- where planning-window milestones sit before the final deadline
+- what assumptions affect backup hours and confidence
+
+The hourly strip should use price as the background layer and charging intent as the foreground
+layer. Planned charging hours, backup hours, planning windows, and the final deadline must be
+visible together. This keeps the behavior recognizable as cheapest-hour EV planning while showing
+the PELS difference: priority and background usage risk widen the plan or add backup hours, but
+they do not make expensive hours look cheap.
+
+The durable product home is expected to be per-device, because the deadline objective belongs to
+one charger or storage device. Budget may later show aggregate impact, but it should not own the
+full per-device objective plan.
+
 ## Logging and Diagnostics
 
 Add a separate debug topic for deferred objectives before exposing a broad UI. The topic should

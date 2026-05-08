@@ -3402,6 +3402,214 @@ input[type="text"]:focus {
   border-color: var(--pels-surface-outline) !important;
 }
 
+.deadline-swatch,
+.deadline-plan-mark {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.deadline-swatch--cheap {
+  background: rgba(16, 185, 129, 0.34);
+  border: 1px solid rgba(16, 185, 129, 0.7);
+}
+
+.deadline-swatch--normal {
+  background: var(--color-surface-4);
+  border: 1px solid var(--color-border-strong);
+}
+
+.deadline-swatch--expensive {
+  background: rgba(245, 158, 11, 0.26);
+  border: 1px solid rgba(245, 158, 11, 0.72);
+}
+
+.deadline-plan-mark--charge {
+  background: var(--color-base-accent-default);
+}
+
+.deadline-plan-mark--fallback {
+  background: transparent;
+  border: 2px dashed var(--color-base-info-default);
+}
+
+.deadline-plan-mark--other-load {
+  background: color-mix(in srgb, var(--pels-text-supporting-color) 34%, var(--color-surface-5));
+  border: 1px solid color-mix(in srgb, var(--pels-text-supporting-color) 36%, transparent);
+}
+
+.deadline-plan-mark--charger {
+  background: color-mix(in srgb, var(--color-base-accent-default) 82%, transparent);
+}
+
+.deadline-horizon-card {
+  gap: var(--spacing-3);
+}
+
+.deadline-horizon-legend {
+  row-gap: var(--spacing-2);
+}
+
+.deadline-horizon {
+  position: relative;
+  display: grid;
+  gap: var(--spacing-2);
+  min-width: 0;
+  padding-top: var(--spacing-7);
+}
+
+.deadline-horizon__row {
+  display: grid;
+  grid-template-columns: minmax(64px, 72px) minmax(0, 1fr);
+  align-items: end;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.deadline-horizon__row-label {
+  align-self: center;
+  color: var(--text);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+}
+
+.deadline-horizon__grid,
+.deadline-horizon__axis {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.deadline-horizon__grid {
+  align-items: end;
+  min-height: 42px;
+}
+
+.deadline-horizon-price,
+.deadline-load-bar,
+.deadline-horizon-plan,
+.deadline-progress-step {
+  position: relative;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+}
+
+.deadline-horizon-price {
+  align-self: end;
+  height: var(--price-height, 40%);
+  min-height: 12px;
+  max-height: 52px;
+  color: transparent;
+  font-size: 0;
+}
+
+.deadline-horizon-price--cheap {
+  background: color-mix(in srgb, var(--color-base-accent-default) 62%, var(--color-surface-4));
+}
+
+.deadline-horizon-price--normal {
+  background: var(--color-surface-5);
+}
+
+.deadline-horizon-price--expensive {
+  background: color-mix(in srgb, var(--color-base-warning-default) 68%, var(--color-surface-5));
+}
+
+.deadline-load-bar {
+  height: 44px;
+  border: 1px solid color-mix(in srgb, var(--pels-surface-outline) 62%, transparent);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--pels-surface-container-highest) 38%, transparent);
+}
+
+.deadline-load-bar__other,
+.deadline-load-bar__device {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: block;
+  border-radius: 0;
+}
+
+.deadline-load-bar__other {
+  height: var(--other-load-height, 0%);
+  background: color-mix(in srgb, var(--pels-text-supporting-color) 34%, var(--color-surface-5));
+}
+
+.deadline-load-bar__device {
+  bottom: var(--other-load-height, 0%);
+  height: var(--device-load-height, 0%);
+  background: color-mix(in srgb, var(--color-base-accent-default) 82%, transparent);
+}
+
+.deadline-horizon-plan {
+  height: 24px;
+  border: 1px solid color-mix(in srgb, var(--pels-surface-outline) 62%, transparent);
+  background: color-mix(in srgb, var(--pels-surface-container-highest) 32%, transparent);
+}
+
+.deadline-horizon-plan--charge {
+  border-color: transparent;
+  background: var(--color-base-accent-default);
+}
+
+.deadline-horizon-plan--fallback {
+  border: 1px dashed var(--color-base-info-default);
+  background: transparent;
+}
+
+.deadline-horizon__grid--progress {
+  min-height: 56px;
+  border-bottom: 1px solid color-mix(in srgb, var(--pels-surface-outline) 78%, transparent);
+}
+
+.deadline-progress-step {
+  align-self: stretch;
+  background: linear-gradient(
+    to top,
+    transparent 49%,
+    color-mix(in srgb, var(--pels-surface-outline) 52%, transparent) 49%,
+    color-mix(in srgb, var(--pels-surface-outline) 52%, transparent) 51%,
+    transparent 51%
+  );
+}
+
+.deadline-progress-step__line,
+.deadline-progress-step__rise {
+  position: absolute;
+  display: block;
+  background: var(--color-base-info-default);
+}
+
+.deadline-progress-step__line {
+  right: 0;
+  left: 0;
+  height: 2px;
+}
+
+.deadline-progress-step__rise {
+  left: 0;
+  width: 2px;
+}
+
+.deadline-horizon__axis {
+  grid-template-columns: 72px minmax(0, 1fr);
+  padding-left: calc(72px + var(--spacing-2));
+  color: var(--pels-text-supporting-color);
+  font-size: 9px;
+  line-height: 1;
+}
+
+.deadline-horizon__axis > span:not([data-major="true"]) {
+  opacity: 0;
+}
+
 /* Day view foundation */
 .day-view-header,
 .daily-budget-header {
