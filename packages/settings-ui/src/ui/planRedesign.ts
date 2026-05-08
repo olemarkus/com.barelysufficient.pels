@@ -7,7 +7,7 @@ import {
   type SettingsUiPowerStatus,
 } from '../../../contracts/src/settingsUiApi.ts';
 import { getApiReadModel } from './homey.ts';
-import { mountPlanOverview, renderPlanOverview } from './views/PlanOverview.tsx';
+import { renderPlanOverview } from './views/PlanOverview.tsx';
 import { planNeedsLiveUpdates } from './planLiveData.ts';
 import { state } from './state.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot } from './planTypes.ts';
@@ -16,9 +16,11 @@ let cachedPowerStatus: SettingsUiPowerStatus | null = null;
 let currentPlan: PlanSnapshot | null = null;
 let currentRenderedAtMs = 0;
 let liveTickInterval: ReturnType<typeof setInterval> | null = null;
+let planSurface: HTMLElement | null = null;
 
-// Mount the Preact root into #plan-redesign-surface (no-op if not found).
-mountPlanOverview();
+const getPlanSurface = (): HTMLElement | null => (
+  planSurface ??= document.getElementById('plan-redesign-surface')
+);
 
 const hasStructuredReason = (value: unknown): boolean => (
   Boolean(value)
@@ -65,8 +67,10 @@ const readPowerStatusForPlanRefresh = async (): Promise<SettingsUiPowerStatus | 
 };
 
 const doRender = () => {
+  const surface = getPlanSurface();
+  if (!surface) return;
   const now = Date.now();
-  renderPlanOverview({
+  renderPlanOverview(surface, {
     plan: currentPlan,
     power: cachedPowerStatus,
     context: { activeMode: state.activeMode, dryRun: state.dryRun },
