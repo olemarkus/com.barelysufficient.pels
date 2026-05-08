@@ -287,7 +287,7 @@ export const applySteppedLoadRestore = async (
   action: ExecutableSteppedLoadDevice,
   snapshot: TargetDeviceSnapshot | undefined,
   mode: PlanActuationMode,
-  anyShedDevices: boolean,
+  hasPlannerShedDevices: boolean,
   options: { preRestoreStepIssued?: boolean } = {},
 ): Promise<boolean> => {
   const name = action.name;
@@ -325,7 +325,7 @@ export const applySteppedLoadRestore = async (
   if (snapshot?.currentOn === false) {
     ctx.logDebug(`Capacity: ${name} violates keep invariant: onoff=${snapshot?.currentOn}`);
   }
-  if (applyKeepInvariantShedBlock(ctx, action, name, anyShedDevices, requestedStepId)) return false;
+  if (applyKeepInvariantShedBlock(ctx, action, name, hasPlannerShedDevices, requestedStepId)) return false;
   // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
   delete ctx.state.keepInvariantShedBlockedByDevice[action.id];
   const binaryRestoreSkip = maybeSkipSteppedLoadRestoreBinary(ctx, {
@@ -739,10 +739,10 @@ const applyKeepInvariantShedBlock = (
   ctx: PlanExecutorSteppedContext,
   action: ExecutableSteppedLoadDevice,
   name: string,
-  anyShedDevices: boolean,
+  hasPlannerShedDevices: boolean,
   desiredStepId?: string,
 ): boolean => {
-  if (!anyShedDevices || !desiredStepId) return false;
+  if (!hasPlannerShedDevices || !desiredStepId) return false;
   const lowestNonZeroStep = getSteppedLoadLowestActiveStep(action.steppedLoadProfile);
   const desiredStep = getSteppedLoadStep(action.steppedLoadProfile, desiredStepId);
   if (!lowestNonZeroStep || !desiredStep || desiredStep.planningPowerW <= lowestNonZeroStep.planningPowerW) {
