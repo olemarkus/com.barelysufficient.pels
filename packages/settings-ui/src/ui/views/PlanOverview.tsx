@@ -63,16 +63,6 @@ const PlanOverviewRoot = ({ plan, power, context, renderedAtMs, nowMs }: Overvie
 
 // ─── Mount and render ─────────────────────────────────────────────────────────
 
-let surface: HTMLElement | null = null;
-
-export const mountPlanOverview = (): void => {
-  surface = document.getElementById('plan-redesign-surface');
-};
-
-export const renderPlanOverview = (props: OverviewProps): void => {
-  if (!surface) {
-    surface = document.getElementById('plan-redesign-surface');
-  }
-  if (!surface) return;
+export const renderPlanOverview = (surface: HTMLElement, props: OverviewProps): void => {
   render(<PlanOverviewRoot {...props} />, surface);
 };
