@@ -18,6 +18,11 @@ export const DEBUG_LOGGING_TOPICS = [
     label: 'Objective profiles',
     description: 'Learned temperature and EV progress profiling diagnostics.',
   },
+  {
+    id: 'deferred_objectives',
+    label: 'Ready-by-time diagnostics',
+    description: 'Ready-by-time planning diagnostics.',
+  },
   { id: 'devices', label: 'Devices', description: 'Device snapshots and Homey API interactions.' },
   {
     id: 'settings',

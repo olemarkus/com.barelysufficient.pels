@@ -43,6 +43,19 @@ const allowedOrphans = new Set([
 ]);
 
 const deferredObjectiveBarrelExports = [
+  'buildDeferredObjectiveDiagnostics',
+  'buildDeferredObjectivePolicyHorizon',
+  'createEmptyDeferredObjectiveSettings',
+  'DeferredObjectiveDeadlineResolution',
+  'DeferredObjectiveDiagnostic',
+  'DeferredObjectiveDiagnosticReasonCode',
+  'DeferredObjectivePolicyHorizonResult',
+  'DeferredObjectivePolicyHorizonUnavailableReason',
+  'DeferredObjectiveSettingsEntry',
+  'DeferredObjectiveSettingsKind',
+  'DeferredObjectiveSettingsV1',
+  'emitDeferredObjectiveDiagnostics',
+  'normalizeDeferredObjectiveSettings',
   'planDeferredObjectiveHorizon',
   'DeferredObjective',
   'DeferredObjectiveBucketPreference',
@@ -55,6 +68,7 @@ const deferredObjectiveBarrelExports = [
   'DeferredObjectiveHorizonStatusDetail',
   'DeferredObjectiveKind',
   'DeferredObjectivePlannedBucket',
+  'resolveDeferredObjectiveDeadline',
   'DeferredObjectiveStep',
 ].join('|');
 

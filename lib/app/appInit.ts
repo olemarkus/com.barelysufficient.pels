@@ -8,6 +8,8 @@ import { resolveHomeyEnergyApiFromSdk } from '../utils/homeyEnergy';
 import type { FlowHomeyLike, TargetDeviceSnapshot } from '../utils/types';
 import { DeviceDiagnosticsService, type DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { AppContext } from './appContext';
+import { normalizeDeferredObjectiveSettings } from '../plan/deferredObjectives';
+import { DEFERRED_OBJECTIVES_SETTINGS } from '../utils/settingsKeys';
 
 function requireDeviceManager(ctx: AppContext) {
   if (!ctx.deviceManager) {
@@ -77,6 +79,10 @@ export function createPlanEngine(ctx: AppContext) {
     isCurrentHourExpensive: () => ctx.isCurrentHourExpensive(),
     getPowerTracker: () => ctx.powerTracker,
     getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,
+    getDeferredObjectiveSettings: () => normalizeDeferredObjectiveSettings(
+      ctx.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS),
+    ),
+    getTimeZone: () => ctx.getTimeZone(),
     getPriorityForDevice: (deviceId) => ctx.getPriorityForDevice(deviceId),
     getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
     getDynamicSoftLimitOverride: () => ctx.getDynamicSoftLimitOverride(),
@@ -86,6 +92,7 @@ export function createPlanEngine(ctx: AppContext) {
     deviceDiagnostics: ctx.deviceDiagnosticsService as DeviceDiagnosticsRecorder | undefined,
     structuredLog: ctx.getStructuredLogger('plan'),
     debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
+    deferredObjectiveDebugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
     log: (...args: unknown[]) => ctx.log(...args),
     logDebug: (...args: unknown[]) => ctx.logDebug('plan', ...args),
     error: (...args: unknown[]) => ctx.error(...args),

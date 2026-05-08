@@ -1,12 +1,13 @@
 # Deferred Load Objectives
 
-This note defines the intended model for deadline-aware loads. It is design guidance for future
-implementation work. Some supporting pieces already exist, but the deadline objective behavior
-described here is not current shipped behavior.
+This note defines the intended model for deadline-aware loads. It is design guidance for active and
+future implementation work. Some supporting pieces already exist, but deadline objective behavior is
+not current shipped actuation behavior.
 
-The first concrete target is a Connected 300-style water heater because it is available for
-real-world validation. The abstractions must still serve EV charging later without making the
-planner EV-percent-centric.
+The first concrete runtime slice is a diagnostics-only EV SoC objective bridge because PELS already
+has native SoC snapshots and learned kWh-per-percent profiling. Connected 300-style water-heater
+support remains the first concrete thermal target. The abstractions must still serve both without
+making the planner EV-percent-centric.
 
 ## Current Baseline
 
@@ -15,10 +16,52 @@ As of this note, PELS already has internal/native EV state-of-charge plumbing:
 - native EV SoC capabilities can appear on snapshots as `stateOfCharge`
 - SoC carries freshness and EV session validity
 - stale or invalid SoC is available for diagnostics but must not drive planning
+- learned EV objective profiles can supply kWh per 1% SoC
+- a versioned settings payload can define diagnostics-only EV SoC objectives
+- the diagnostics bridge can read persisted EV SoC objectives and run them through horizon planning
+- the bridge is gated on the price feature and requires complete price buckets through the deadline
 - no public objective or SoC flow-card UX is exposed yet
 
 Deadline objectives should build on that internal state, not reopen SoC as a user-facing feature
 before the broader objective UX is ready.
+
+## Persisted Settings Slice
+
+The first persisted objective format is intentionally narrow and versioned:
+
+```ts
+type DeferredObjectiveSettingsV1 = {
+  version: 1;
+  objectivesByDeviceId: Record<string, {
+    enabled: boolean;
+    kind: 'ev_soc';
+    enforcement: 'soft' | 'hard';
+    targetPercent: number;
+    deadlineLocalTime: string; // HH:mm in the Homey timezone.
+  }>;
+};
+```
+
+Storage rules:
+
+- Keep configured objective facts in settings and derived planning output out of settings.
+- One v1 objective is keyed by device id. Multiple objectives per device require a later schema.
+- Invalid or unsupported settings entries are ignored rather than interpreted with defaults.
+- `targetPercent` must be above 0 and at or below 100.
+- `deadlineLocalTime` is local `HH:mm`. If that time has already passed today, the deadline resolves
+  to the next local day.
+- `enforcement` records soft or hard intent, but the current bridge only emits diagnostics and does
+  not change admission behavior.
+
+The bridge reads this settings payload during plan construction, normalizes it, evaluates each
+enabled objective, and emits structured `deferred_objectives` debug diagnostics. It does not expose
+Settings UI controls, flow cards, triggers, or device actuation yet.
+
+Price gating is deliberate. The v1 bridge only plans when price optimization is enabled and the
+daily-budget price payload covers every hour from now through the objective deadline. If tomorrow's
+deadline has been selected because today's `HH:mm` is already in the past, planning may remain
+`unknown` with `objective_missing_price_horizon` until tomorrow's prices are available. It must not
+fall back to neutral or whole-range planning when the price horizon is incomplete.
 
 ## Goal
 
@@ -197,7 +240,9 @@ Native adapters own device-specific translation. Examples:
 
 The first implementation step is profiling, not deadline control. PELS should learn compact
 per-device conversion and rate facts from observed behavior before it tries to decide whether a
-deadline can be met.
+deadline can be met. The EV settings bridge starts from that foundation: it may use learned
+kWh-per-percent to calculate required energy, but it remains diagnostics-only until admission and
+actuation semantics are implemented.
 
 For temperature devices, the useful learned unit is energy per degree:
 
@@ -614,6 +659,20 @@ priority policy. Hard objective should still prefer cheaper or budget-friendly w
 is enough margin, but it should not miss the deadline merely because the remaining feasible window
 is expensive.
 
+Priority should affect horizon planning through admission risk, not by directly rewriting price
+ordering. A lower-priority device may be blocked by higher-priority managed devices during otherwise
+cheap windows, so those windows should count as less dependable for soft objectives. The planner can
+model that by reducing usable bucket capacity, increasing deadline reserve, or widening the number
+of candidate hours before the deadline. A higher-priority device can use more of its configured
+step capacity as dependable energy, while a lower-priority device should need more time or more
+margin to be considered on track.
+
+This risk adjustment is still a planning estimate. Actual admission remains a runtime decision made
+by normal PELS policy for soft objectives and by the hard-objective admission lane for hard
+objectives. If the current bucket's requested minimum step is blocked, the next evaluations should
+consume deadline margin, replan remaining energy, and eventually move the objective toward
+`at_risk` or `cannot_be_met`.
+
 The horizon plan should produce derived milestones. Milestones should be energy-based where
 possible, not arbitrary wall-clock percentages:
 
@@ -671,6 +730,11 @@ Initial log events:
 - `deferred_objective_deadline_missed`
 - `deferred_objective_unknown`
 
+The current settings-backed EV bridge emits `deferred_objective_horizon_planned` when a horizon plan
+can be built and `deferred_objective_unknown` when required inputs are missing, stale, invalid, or
+price-gated. Later planner integration can add milestone, step request, target met, and deadline
+missed lifecycle events once objectives can affect device behavior.
+
 Useful fields:
 
 - `deviceId`
@@ -684,8 +748,11 @@ Useful fields:
 - `targetPercent`
 - `targetEnergyKwh`
 - `currentEnergyKwh`
-- `energyNeededKwh`
+- `energyNeededKWh`
+- `kWhPerPercent`
 - `deadlineAtMs`
+- `deadlineLocalTime`
+- `deadlineRollsToNextDay`
 - `horizonStartMs`
 - `horizonEndMs`
 - `horizonBucketCount`
@@ -812,26 +879,36 @@ Initial codes:
 
 ## Implementation Shape
 
-This should be phased. The first implementation target is Connected 300-style thermal storage,
-not a generic public flow-card objective surface.
+This should be phased. The first settings-backed slice is EV SoC diagnostics. The first thermal
+implementation target remains Connected 300-style thermal storage, not a generic public flow-card
+objective surface.
+
+Current implementation slice:
+
+1. Learned objective profiling exists before deadline control.
+2. EV SoC objectives can be read from versioned settings.
+3. EV SoC settings objectives resolve a local `HH:mm` deadline, rolling to tomorrow when needed.
+4. Planning is diagnostics-only and price-feature gated.
+5. A next-day rolled deadline waits for tomorrow price buckets instead of assuming neutral prices.
+6. The bridge emits structured debug diagnostics without changing restore/admission behavior.
 
 Recommended implementation order:
 
 1. Add generic objective state/evaluation types and pure evaluator tests.
-2. Add Connected 300-oriented thermal objective support using stepped-load profiles, temperature
+2. Add the settings-backed EV SoC diagnostics bridge that exercises the horizon scheduler without
+   flow cards or actuation.
+3. Add Connected 300-oriented thermal objective support using stepped-load profiles, temperature
    input, target temperature, mode constraints, and requested minimum step.
-3. Add freshness rules for thermal objective inputs.
-4. Add a simple horizon scheduler that can place required energy in budget-friendly buckets and
+4. Add freshness rules for thermal objective inputs.
+5. Add a simple horizon scheduler that can place required energy in budget-friendly buckets and
    emit current-bucket milestones.
-5. Surface objective diagnostics and reason codes without a full Settings editor.
-6. Integrate soft objective through existing boost/step-up behavior while preserving normal budget
+6. Surface objective diagnostics and reason codes without a full Settings editor.
+7. Integrate soft objective through existing boost/step-up behavior while preserving normal budget
    and priority policy.
-7. Add hard admission for already available hard objective admission headroom.
-8. Add hard-boost rebalancing as a follow-up if it touches shed planning deeply.
-9. Expose public flow-backed objective cards only after the planner behavior and UX contract are
+8. Add hard admission for already available hard objective admission capacity.
+9. Add hard-boost rebalancing as a follow-up if it touches limit planning deeply.
+10. Expose public flow-backed objective cards only after the planner behavior and UX contract are
    ready.
-10. Add EV deadline objectives later by reusing existing native SoC snapshot state plus target,
-   capacity or remaining-energy inputs.
 
 The first Connected 300 implementation should focus on temperature-by-deadline UX, thermal energy
 mapping, per-step rate estimates, requested minimum step selection, and diagnostics.

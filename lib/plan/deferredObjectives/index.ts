@@ -1,4 +1,28 @@
 export { planDeferredObjectiveHorizon } from './horizonPlanner';
+export {
+  buildDeferredObjectiveDiagnostics,
+  emitDeferredObjectiveDiagnostics,
+} from './diagnosticsBridge';
+export { resolveDeferredObjectiveDeadline } from './deadline';
+export { buildDeferredObjectivePolicyHorizon } from './policyHorizon';
+export {
+  createEmptyDeferredObjectiveSettings,
+  normalizeDeferredObjectiveSettings,
+} from './settings';
+export type {
+  DeferredObjectiveDiagnostic,
+  DeferredObjectiveDiagnosticReasonCode,
+} from './diagnosticsBridge';
+export type { DeferredObjectiveDeadlineResolution } from './deadline';
+export type {
+  DeferredObjectivePolicyHorizonResult,
+  DeferredObjectivePolicyHorizonUnavailableReason,
+} from './policyHorizon';
+export type {
+  DeferredObjectiveSettingsEntry,
+  DeferredObjectiveSettingsKind,
+  DeferredObjectiveSettingsV1,
+} from './settings';
 export type {
   DeferredObjective,
   DeferredObjectiveBucketPreference,
