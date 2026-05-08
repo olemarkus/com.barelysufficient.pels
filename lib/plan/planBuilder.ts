@@ -41,6 +41,11 @@ import {
 import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './planOvershoot';
+import {
+  buildDeferredObjectiveDiagnostics,
+  emitDeferredObjectiveDiagnostics,
+  type DeferredObjectiveSettingsV1,
+} from './deferredObjectives';
 
 type ShortfallMeta = Pick<
   DevicePlan['meta'],
@@ -63,12 +68,15 @@ export type PlanBuilderDeps = {
   isCurrentHourExpensive: () => boolean;
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
+  getDeferredObjectiveSettings?: () => DeferredObjectiveSettingsV1;
+  getTimeZone?: () => string;
   getPriorityForDevice: (deviceId: string) => number;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   getDynamicSoftLimitOverride?: () => number | null;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
+  deferredObjectiveDebugStructured?: StructuredDebugEmitter;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
 };
@@ -189,6 +197,7 @@ export class PlanBuilder {
       planDevices: finalized.planDevices,
       restoreResult,
     });
+    this.emitDeferredObjectiveDiagnostics(context, dailyBudgetSnapshot, nowTs);
     return {
       meta,
       devices: finalized.planDevices,
@@ -552,6 +561,29 @@ export class PlanBuilder {
       isCurrentHourExpensive: () => this.deps.isCurrentHourExpensive(),
     });
     this.deps.deviceDiagnostics.observePlanSample({ observations, nowTs });
+  }
+
+  private emitDeferredObjectiveDiagnostics(
+    context: PlanContext,
+    dailyBudgetSnapshot: DailyBudgetUiPayload | null,
+    nowTs: number,
+  ): void {
+    if (!this.deps.deferredObjectiveDebugStructured) return;
+    const settings = this.deps.getDeferredObjectiveSettings?.();
+    if (!settings) return;
+    const diagnostics = buildDeferredObjectiveDiagnostics({
+      nowMs: nowTs,
+      timeZone: this.deps.getTimeZone?.() ?? 'UTC',
+      devices: context.devices,
+      settings,
+      powerTracker: this.powerTracker,
+      dailyBudgetSnapshot,
+      priceOptimizationEnabled: this.priceOptimizationEnabled,
+    });
+    emitDeferredObjectiveDiagnostics({
+      diagnostics,
+      debugStructured: this.deps.deferredObjectiveDebugStructured,
+    });
   }
 
   private resolveSoftLimitSource(capacitySoftLimit: number, dailySoftLimit: number | null): SoftLimitSource {

@@ -26,6 +26,7 @@ import {
 import { syncPendingBinaryCommands } from './planBinaryControl';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
+import type { DeferredObjectiveSettingsV1 } from './deferredObjectives';
 
 export type PlanEngineDeps = {
   homey: Homey.App['homey'];
@@ -41,6 +42,8 @@ export type PlanEngineDeps = {
   isCurrentHourExpensive: () => boolean;
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
+  getDeferredObjectiveSettings?: () => DeferredObjectiveSettingsV1;
+  getTimeZone: () => string;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   getPriorityForDevice: (deviceId: string) => number;
   getDynamicSoftLimitOverride?: () => number | null;
@@ -58,6 +61,7 @@ export type PlanEngineDeps = {
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
+  deferredObjectiveDebugStructured?: StructuredDebugEmitter;
   markSteppedLoadDesiredStepIssued: (params: {
     deviceId: string;
     desiredStepId: string;
@@ -97,12 +101,15 @@ export class PlanEngine {
       isCurrentHourExpensive: deps.isCurrentHourExpensive,
       getPowerTracker: deps.getPowerTracker,
       getDailyBudgetSnapshot: deps.getDailyBudgetSnapshot,
+      getDeferredObjectiveSettings: deps.getDeferredObjectiveSettings,
+      getTimeZone: deps.getTimeZone,
       getPriorityForDevice: deps.getPriorityForDevice,
       getShedBehavior: deps.getShedBehavior,
       getDynamicSoftLimitOverride: deps.getDynamicSoftLimitOverride,
       deviceDiagnostics: deps.deviceDiagnostics,
       structuredLog: deps.structuredLog,
       debugStructured: deps.debugStructured,
+      deferredObjectiveDebugStructured: deps.deferredObjectiveDebugStructured,
       log: deps.log,
       logDebug: deps.logDebug,
     };
