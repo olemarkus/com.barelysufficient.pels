@@ -1,5 +1,10 @@
 import { BarChart, HeatmapChart, LineChart } from 'echarts/charts';
-import { GridComponent, LegendComponent, TooltipComponent, VisualMapComponent } from 'echarts/components';
+import {
+  GridComponent,
+  LegendComponent,
+  TooltipComponent,
+  VisualMapComponent,
+} from 'echarts/components';
 import { format, init, use } from 'echarts/core';
 import { SVGRenderer } from 'echarts/renderers';
 

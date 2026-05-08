@@ -72,7 +72,7 @@ test.describe('Settings UI chart layout', () => {
 
     const budgetIssues = await collectLayoutIssues(page, '#budget-panel', [
       '#budget-redesign-chart',
-      '#budget-redesign-metrics',
+      '#budget-plan-summary',
       '#budget-redesign-chart svg',
     ]);
     expect(

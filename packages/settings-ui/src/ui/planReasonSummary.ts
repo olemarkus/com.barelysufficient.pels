@@ -33,14 +33,14 @@ const formatShortfallReason: ReasonFormatter<typeof PLAN_REASON_CODES.shortfall>
     const gap = reason.needKw - reason.headroomKw;
     if (gap > 0.01) return `Needs ${gap.toFixed(1)} kW more`;
   }
-  return 'Waiting for headroom';
+  return 'Waiting for available power';
 };
 
 const formatInsufficientHeadroomReason: ReasonFormatter<typeof PLAN_REASON_CODES.insufficientHeadroom> = (reason) => {
   const avail = reason.effectiveAvailableKw ?? reason.availableKw ?? 0;
   const gap = reason.needKw - avail;
   if (gap > 0.01) return `Needs ${gap.toFixed(1)} kW more`;
-  return 'Waiting for headroom';
+  return 'Waiting for available power';
 };
 
 const formatSwitchDelayReason = (reason: DeviceReason): string => {
@@ -62,7 +62,7 @@ const REASON_SUMMARY_FORMATTERS: Partial<Record<DeviceReason['code'], (reason: D
     (reason) => `Changing target to ${reason.targetText}`,
   ),
   [PLAN_REASON_CODES.capacity]: asReasonFormatter<typeof PLAN_REASON_CODES.capacity>(
-    (reason) => appendDetail('Paused to keep total power under the limit', reason.detail),
+    (reason) => appendDetail('Paused to keep total power under the hard cap', reason.detail),
   ),
   [PLAN_REASON_CODES.sheddingActive]: asReasonFormatter<typeof PLAN_REASON_CODES.sheddingActive>(
     (reason) => appendDetail('Reducing load now', reason.detail),

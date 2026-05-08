@@ -443,6 +443,12 @@ Use Material Design as the interaction and layout language, not as a requirement
 The Settings UI should stay Preact plus PELS CSS tokens, with ECharts isolated behind focused
 chart wrappers for the Budget progress and hourly-plan charts.
 
+Use `@material/web` whenever it provides a component that matches the interaction semantics and
+works cleanly in the Homey webview. Register Material Web components centrally and expose shared
+wrappers/helpers where Preact needs them. If Material Web does not provide the right semantic fit,
+create or reuse one shared PELS primitive built from the existing design tokens. Do not add
+page-local custom chips, cards, buttons, or segmented controls that invent a new visual language.
+
 Use:
 
 - stacked cards
@@ -473,6 +479,10 @@ Good chips:
 - `Needs prices`
 - `Simulation mode`
 - `Configured`
+
+Normal-state chips are optional. On answer-first surfaces such as `Budget > Plan`, the
+hero answer and consequence sentence may carry the normal state while chips are reserved
+for exceptions like `Tight`, `Over budget`, or `No plan`.
 
 ## Terminology
 

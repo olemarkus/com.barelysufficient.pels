@@ -69,7 +69,7 @@ describe('formatHeroHeadline', () => {
       totalKw: 9,
       headroomKw: 2,
     }), NOW);
-    expect(headline?.message).toBe('Keeping power under the limit');
+    expect(headline?.message).toBe('Keeping power under the hard cap');
   });
 
   it('omits age text when lastPowerUpdateMs is missing', () => {

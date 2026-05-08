@@ -39,7 +39,7 @@
     <div id="dry-run-banner" class="banner banner--warning" hidden>
       <span class="banner__icon">⚠️</span>
       <span class="banner__text dry-run-banner__legacy">Dry-run mode is enabled. Devices will not be switched automatically.</span>
-      <span class="banner__text dry-run-banner__redesign">Simulation mode is enabled. Devices will not be switched automatically.</span>
+      <span class="banner__text dry-run-banner__redesign">Simulation mode is enabled. PELS will not switch devices automatically.</span>
       <button type="button" class="btn secondary dry-run-banner__redesign dry-run-banner__action" id="simulation-disable-button">Turn off simulation</button>
     </div>
 
@@ -237,59 +237,45 @@
         <div id="budget-redesign-view-toggle-mount" class="budget-toggle-mount"></div>
 
         <div id="budget-redesign-plan-view" class="budget-redesign-view">
-          <section class="budget-redesign-card budget-plan-status-card">
-            <div class="budget-card-header">
-              <div>
-                <p class="eyebrow">Plan</p>
-                <h3 id="budget-redesign-plan-title">Today's plan</h3>
-                <p class="muted" id="budget-redesign-plan-day">--</p>
-              </div>
-              <span class="chip budget-status-chip" id="budget-redesign-status-chip" hidden>No plan</span>
-            </div>
-            <div id="budget-redesign-day-toggle-mount" class="budget-toggle-mount"></div>
-          </section>
+          <div id="budget-redesign-day-toggle-mount" class="budget-toggle-mount"></div>
 
-          <section class="budget-redesign-card">
-            <h3 class="section-title">Metrics</h3>
-            <div class="budget-metric-grid" id="budget-redesign-metrics">
-              <div class="budget-metric-card" data-budget-metric-slot="0">
-                <span class="summary-label" data-budget-metric-label>Remaining</span>
-                <span class="summary-value" data-budget-metric-value>-- kWh</span>
-              </div>
-              <div class="budget-metric-card" data-budget-metric-slot="1">
-                <span class="summary-label" data-budget-metric-label>Projected use</span>
-                <span class="summary-value" data-budget-metric-value>-- kWh</span>
-              </div>
-              <div class="budget-metric-card" data-budget-metric-slot="2">
-                <span class="summary-label" data-budget-metric-label>Daily budget</span>
-                <span class="summary-value" data-budget-metric-value>-- kWh</span>
-              </div>
-              <div class="budget-metric-card" data-budget-metric-slot="3">
-                <span class="summary-label" data-budget-metric-label>Price estimate</span>
-                <span class="summary-value" data-budget-metric-value>--</span>
-              </div>
+          <section class="plan-hero" id="budget-plan-hero">
+            <div class="plan-hero__chips" id="budget-plan-chip-row">
+              <span class="plan-chip plan-chip--muted" id="budget-redesign-status-chip" hidden>No plan</span>
+              <span class="plan-hero__meta-row">
+                <span class="plan-hero__meta" id="budget-redesign-plan-day">--</span>
+                <span class="plan-chip plan-chip--info" id="budget-redesign-price-chip" hidden>Price-shaped</span>
+              </span>
+            </div>
+            <div class="plan-hero__section" id="budget-plan-summary">
+              <span class="plan-hero__section-label" id="budget-redesign-plan-title">Today's plan</span>
+              <div class="plan-hero__headline" id="budget-plan-primary">-- kWh remaining</div>
+              <div class="plan-hero__subline" id="budget-plan-secondary">Projected -- of -- kWh</div>
+              <div class="plan-hero__subline plan-hero__subline--muted" id="budget-plan-meta" hidden>-- kWh left in today's budget</div>
+              <div class="plan-hero__subline plan-hero__subline--muted" id="budget-plan-cost" hidden>Estimated cost --</div>
+              <p class="plan-hero__decision" id="budget-redesign-next-action">Daily budget data not available yet.</p>
             </div>
           </section>
 
-          <section class="budget-redesign-card budget-chart-card">
+          <section class="pels-surface-card budget-redesign-card budget-chart-card" id="budget-redesign-chart-card">
+            <md-elevation aria-hidden="true"></md-elevation>
             <div class="budget-card-header">
               <div>
-                <h3 class="section-title" id="budget-redesign-chart-title">Progress</h3>
-                <p class="muted" id="budget-redesign-chart-subtitle">Cumulative use against the plan.</p>
+                <h3 class="plan-card__title" id="budget-redesign-chart-title">Progress</h3>
+                <p class="pels-card-supporting" id="budget-redesign-chart-subtitle">Cumulative use against the plan.</p>
               </div>
               <div id="budget-redesign-chart-toggle-mount" class="budget-toggle-mount"></div>
             </div>
             <div class="budget-chart-legend" id="budget-redesign-chart-legend"></div>
             <div class="budget-redesign-chart" id="budget-redesign-chart"></div>
-            <p class="muted budget-chart-caveat" id="budget-redesign-chart-caveat" hidden></p>
+            <p class="pels-card-supporting budget-chart-caveat" id="budget-redesign-chart-caveat" hidden></p>
           </section>
-
-          <p class="budget-next-action" id="budget-redesign-next-action">Daily budget data not available yet.</p>
         </div>
 
         <div id="budget-redesign-adjust-view" class="budget-redesign-view" hidden>
-          <section class="budget-redesign-card">
-            <h3 class="section-title">Daily energy</h3>
+          <section class="pels-surface-card budget-redesign-card">
+            <md-elevation aria-hidden="true"></md-elevation>
+            <h3 class="plan-card__title">Daily energy</h3>
             <div class="budget-settings-list">
               <div class="budget-setting-row">
                 <span>
@@ -315,13 +301,14 @@
             </div>
           </section>
 
-          <details class="budget-redesign-card budget-planning-behavior">
+          <details class="pels-surface-card budget-redesign-card budget-planning-behavior">
             <summary class="budget-planning-behavior__summary">
               <span class="budget-planning-behavior__heading">
-                <span class="section-title">Planning behavior</span>
+                <span class="plan-card__title">Planning behavior</span>
                 <small class="section-hint" id="budget-adjust-planning-summary">--</small>
               </span>
             </summary>
+            <md-elevation aria-hidden="true"></md-elevation>
             <div class="budget-settings-list">
               <div class="budget-setting-row">
                 <span>
@@ -340,14 +327,15 @@
             </div>
           </details>
 
-          <section class="budget-redesign-card">
+          <section class="pels-surface-card budget-redesign-card">
+            <md-elevation aria-hidden="true"></md-elevation>
             <div class="budget-card-header">
               <div>
-                <h3 class="section-title">Limits context</h3>
-                <p class="muted" id="budget-adjust-reaction">PELS reacts before reaching the hard cap.</p>
+                <h3 class="plan-card__title">Limits context</h3>
+                <p class="pels-card-supporting" id="budget-adjust-reaction">PELS reacts before reaching the hard cap.</p>
               </div>
-              <button type="button" class="btn secondary" data-settings-target="limits">Open Limits &amp; safety</button>
             </div>
+            <button type="button" class="btn secondary budget-context-action" data-settings-target="limits">Open Limits &amp; safety</button>
             <div class="budget-settings-list budget-settings-list--compact">
               <div class="budget-setting-row">
                 <span class="budget-setting-row__label">Hard cap</span>

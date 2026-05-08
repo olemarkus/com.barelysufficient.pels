@@ -103,6 +103,7 @@ const shouldShowStateChip = (kind: PlanStateKind, hasTimer: boolean): boolean =>
 // ─── Cooldown progress ────────────────────────────────────────────────────────
 
 type ProgressEl = HTMLElement & { value?: number };
+type PowerReadout = { text: string; variant: 'live' | 'expected' | 'reported' };
 
 const CooldownProgress = ({
   remainingSec,
@@ -132,6 +133,28 @@ const CooldownProgress = ({
   } as Record<string, unknown>);
 };
 
+const isReportedLoadConflict = (dev: PlanDeviceSnapshot, kind: PlanStateKind): boolean => (
+  kind === 'held'
+  && typeof dev.measuredPowerKw === 'number'
+  && dev.measuredPowerKw > 0.05
+);
+
+const resolveHeldStateLabel = (dev: PlanDeviceSnapshot): string => (
+  dev.shedAction === 'turn_off' ? 'Paused by PELS' : 'Limited by PELS'
+);
+
+const normalizeInlineDetail = (detail: unknown): string | null => (
+  typeof detail === 'string' && detail.trim().length > 0 ? detail.trim() : null
+);
+
+const resolveReportedLoadReason = (dev: PlanDeviceSnapshot): string => {
+  const measured = formatKw(dev.measuredPowerKw);
+  const detail = normalizeInlineDetail((dev.reason as { detail?: unknown } | undefined)?.detail);
+  return detail
+    ? `Still reporting ${measured} kW after pause · ${detail}`
+    : `Still reporting ${measured} kW after pause`;
+};
+
 // ─── Generic plan card ────────────────────────────────────────────────────────
 
 export const PlanGenericCard = ({
@@ -157,10 +180,13 @@ export const PlanGenericCard = ({
   const remainingSec = resolveCooldownRemainingSec(displayDev);
   const baseSec = resolveCooldownBaseSec(displayDev);
   const hasTimer = baseSec !== null && remainingSec !== null && remainingSec > 0;
-  const reasonText = resolveReasonText(displayDev);
+  const reportedLoadConflict = isReportedLoadConflict(displayDev, presentation.kind);
+  const reasonText = reportedLoadConflict ? resolveReportedLoadReason(displayDev) : resolveReasonText(displayDev);
 
-  let powerReadout: { text: string; variant: 'live' | 'expected' } | null = null;
-  if (isDrawing(displayDev)) {
+  let powerReadout: PowerReadout | null = null;
+  if (reportedLoadConflict) {
+    powerReadout = { text: `Reported ${formatKw(displayDev.measuredPowerKw)} kW`, variant: 'reported' };
+  } else if (isDrawing(displayDev)) {
     powerReadout = { text: `${formatKw(displayDev.measuredPowerKw)} kW`, variant: 'live' };
   } else {
     const expected = resolveExpectedKw(displayDev);
@@ -212,7 +238,14 @@ export const PlanGenericCard = ({
         </div>
       </div>
 
-      {powerReadout && (
+      {reportedLoadConflict && powerReadout && (
+        <div class="plan-card__state-row">
+          <span class="plan-card__state-label">{resolveHeldStateLabel(displayDev)}</span>
+          <span class="plan-card__state-power">{powerReadout.text}</span>
+        </div>
+      )}
+
+      {!reportedLoadConflict && powerReadout && (
         <div class="plan-card__metric plan-card__metric--power" data-variant={powerReadout.variant}>
           <span class="plan-card__metric-label">{powerReadout.text}</span>
         </div>

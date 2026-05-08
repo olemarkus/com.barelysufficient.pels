@@ -1,4 +1,106 @@
 {
+  "pels": {
+    "on-surface": { "value": "{color.semantic.text.primary}" },
+    "on-surface-variant": { "value": "{color.semantic.text.secondary}" },
+    "on-surface-muted": { "value": "{color.semantic.text.muted}" },
+    "surface-container-low": { "value": "{color.surface.2}" },
+    "surface-container": { "value": "{color.surface.3}" },
+    "surface-container-high": { "value": "{color.surface.4}" },
+    "surface-container-highest": { "value": "{color.surface.5}" },
+    "surface-outline": { "value": "{color.border.default}" },
+    "text": {
+      "primary": { "value": "{pels.on-surface}" },
+      "secondary": { "value": "{pels.on-surface-variant}" },
+      "muted": { "value": "{pels.on-surface-muted}" },
+      "section-label": {
+        "color": { "value": "{pels.text.secondary}" },
+        "font": {
+          "size": { "value": "{font.size.sm}" },
+          "weight": { "value": "{font.weight.semibold}" },
+          "line-height": { "value": "{font.lineHeight.tight}" }
+        }
+      },
+      "answer": {
+        "color": { "value": "{pels.text.primary}" },
+        "font": {
+          "size": { "value": "{font.size.md}" },
+          "weight": { "value": "{font.weight.semibold}" },
+          "line-height": { "value": "{font.lineHeight.tight}" }
+        }
+      },
+      "supporting": {
+        "color": { "value": "{pels.text.secondary}" },
+        "font": {
+          "size": { "value": "{font.size.sm}" },
+          "line-height": { "value": "{font.lineHeight.tight}" }
+        }
+      },
+      "status-line": {
+        "color": { "value": "{pels.text.secondary}" },
+        "positive-color": { "value": "{pels.status.on-good}" },
+        "font": {
+          "size": { "value": "{font.size.sm}" },
+          "line-height": { "value": "{font.lineHeight.normal}" }
+        }
+      },
+      "card-title": {
+        "color": { "value": "{pels.text.primary}" },
+        "font": {
+          "size": { "value": "{font.size.lg}" },
+          "weight": { "value": "{font.weight.semibold}" },
+          "line-height": { "value": "1.2" }
+        }
+      },
+      "card-supporting": {
+        "color": { "value": "{pels.text.secondary}" },
+        "font": {
+          "size": { "value": "{font.size.sm}" },
+          "line-height": { "value": "{font.lineHeight.normal}" }
+        }
+      },
+      "settings-label": {
+        "color": { "value": "{pels.text.primary}" },
+        "font": {
+          "weight": { "value": "{font.weight.semibold}" }
+        }
+      },
+      "settings-trailing": {
+        "color": { "value": "{pels.text.primary}" },
+        "font": {
+          "weight": { "value": "{font.weight.semibold}" }
+        }
+      }
+    },
+    "hero": {
+      "padding": { "value": "{spacing.3}" },
+      "gap": { "value": "{spacing.3}" },
+      "section": {
+        "gap": { "value": "{spacing.1}" }
+      }
+    },
+    "card": {
+      "padding": { "value": "{spacing.3}" },
+      "gap": { "value": "{spacing.2}" },
+      "radius": { "value": "{radius.lg}" }
+    },
+    "segmented": {
+      "container": {
+        "background": { "value": "{pels.surface-container-low}" },
+        "border": { "value": "{pels.status.good-border}" }
+      },
+      "label": {
+        "color": { "value": "{pels.text.secondary}" },
+        "font": {
+          "weight": { "value": "{font.weight.semibold}" }
+        }
+      },
+      "selected": {
+        "background": { "value": "rgba(16, 185, 129, 0.42)" },
+        "text": { "value": "{pels.text.primary}" },
+        "outline": { "value": "{pels.status.good-border}" }
+      }
+    }
+  },
   "chip": {
     "padding": {
       "block": { "value": "4px" },

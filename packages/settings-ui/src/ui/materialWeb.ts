@@ -1,7 +1,6 @@
-// Registers the Material Web components used by the overview redesign.
-// Imported only from planRedesign.ts so legacy bundle paths exclude them
-// when tree-shaking runs, but esbuild's IIFE bundle includes them once
-// the redesign flag is wired in. See docs/overview-redesign.md (TODO).
+// Registers the Material Web components used by the gated new settings UI.
+// Import this from new-UI modules that render Material Web elements. ES modules
+// dedupe registration while keeping legacy-only paths free of direct usage.
 import '@material/web/elevation/elevation.js';
 import '@material/web/progress/circular-progress.js';
 import '@material/web/ripple/ripple.js';

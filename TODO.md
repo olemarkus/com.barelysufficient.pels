@@ -68,6 +68,13 @@ file.
       and preview, Usage for history, and Settings as the navigation container for limits, devices,
       modes, price, simulation mode, and advanced diagnostics.
       Files: `packages/settings-ui/**`, generated `settings/`, relevant settings UI tests.
+- [ ] Consolidate Settings UI design primitives around Material Web and shared PELS tokens. Use
+      `@material/web` for standard Material components when the semantics fit, and replace
+      page-local custom chips, cards, buttons, segmented controls, ripples, and elevation with
+      Material Web components or one shared PELS primitive.
+      Files: `packages/settings-ui/src/ui/materialWeb.ts`,
+      `packages/settings-ui/src/ui/materialWebJSX.tsx`, `packages/settings-ui/public/style.css`,
+      generated `settings/`, focused visual/e2e coverage.
 - [ ] Make Settings UI device refresh await in-flight snapshot refreshes. `/ui_refresh_devices`
       currently calls `refreshTargetDevicesSnapshot()` and then returns the current in-memory
       device snapshot, but overlapping refresh calls only queue another refresh and return

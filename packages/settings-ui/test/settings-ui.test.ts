@@ -701,10 +701,10 @@ describe('Settings UI', () => {
       ]);
 
       expect(await page.locator('.pels-meter-track .pels-meter-track__marker').count()).toBe(2);
-      expect(await page.locator('.plan-card').count()).toBe(1);
-      expect(await page.textContent('.plan-card__title')).toContain('Bathroom Floor');
-      expect(await page.textContent('.plan-card__load-label')).toContain('0.2 / 1.4 kW');
-      expect(await page.textContent('.plan-card__reason')).toContain('Waiting for room to reopen');
+      expect(await page.locator('#overview-panel .plan-card').count()).toBe(1);
+      expect(await page.textContent('#overview-panel .plan-card__title')).toContain('Bathroom Floor');
+      expect(await page.textContent('#overview-panel .plan-card__load-label')).toContain('0.2 / 1.4 kW');
+      expect(await page.textContent('#overview-panel .plan-card__reason')).toContain('Waiting for room to reopen');
     });
 
     test('keeps overview cards within 480px without horizontal overflow', async () => {
