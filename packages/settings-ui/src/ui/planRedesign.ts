@@ -7,7 +7,7 @@ import {
   type SettingsUiPowerStatus,
 } from '../../../contracts/src/settingsUiApi.ts';
 import { getApiReadModel } from './homey.ts';
-import { mountPlanOverview, renderPlanOverview } from './PlanOverview.tsx';
+import { mountPlanOverview, renderPlanOverview } from './views/PlanOverview.tsx';
 import { planNeedsLiveUpdates } from './planLiveData.ts';
 import { state } from './state.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot } from './planTypes.ts';

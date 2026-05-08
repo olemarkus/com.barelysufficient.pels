@@ -2,8 +2,8 @@ import { render } from 'preact';
 import { PlanHero, type HeroContext } from './PlanHero.tsx';
 import { PlanSteppedCard } from './PlanSteppedCard.tsx';
 import { PlanGenericCard, PlanTemperatureCard } from './PlanDeviceCards.tsx';
-import type { PlanDeviceSnapshot, PlanSnapshot } from './planTypes.ts';
-import type { SettingsUiPowerStatus } from '../../../contracts/src/settingsUiApi.ts';
+import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
+import type { SettingsUiPowerStatus } from '../../../../contracts/src/settingsUiApi.ts';
 
 type OverviewProps = {
   plan: PlanSnapshot | null;
