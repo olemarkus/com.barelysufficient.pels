@@ -866,6 +866,17 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
       .toBe(true);
   });
 
+  it('does not infer set_step shed binary drift when the requested step is missing', () => {
+    const plan = buildPlanWith(buildSteppedShedDevice({
+      shedAction: 'set_step',
+      selectedStepId: undefined,
+      desiredStepId: undefined,
+    }));
+
+    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ currentOn: false, selectedStepId: undefined })], 'dev-1'))
+      .toBe(false);
+  });
+
   // Regression 5.3: turn_off shed with a non-off desiredStepId must still resolve to
   // expected binary state 'off' — it must never be contaminated by the set_step logic
   // that would return 'on' for a non-off desiredStep.
