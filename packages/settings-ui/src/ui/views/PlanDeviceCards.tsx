@@ -1,32 +1,32 @@
 import { h } from 'preact';
 import { useRef, useLayoutEffect } from 'preact/hooks';
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
-import { formatDeviceOverview } from '../../../shared-domain/src/deviceOverview.ts';
-import { PLAN_REASON_CODES } from '../../../shared-domain/src/planReasonSemanticsCore.ts';
+import { formatDeviceOverview } from '../../../../shared-domain/src/deviceOverview.ts';
+import { PLAN_REASON_CODES } from '../../../../shared-domain/src/planReasonSemanticsCore.ts';
 import {
   PLAN_STATE_LABEL,
   PLAN_STATE_TONE,
   type PlanStateKind,
   resolvePlanStateKind,
-} from '../../../shared-domain/src/planStateLabels.ts';
+} from '../../../../shared-domain/src/planStateLabels.ts';
 import {
   formatStarvationBadge,
   formatStarvationReason,
-} from '../../../shared-domain/src/planStarvation.ts';
+} from '../../../../shared-domain/src/planStarvation.ts';
 import {
   resolveTemperatureOutputState,
   resolveTemperatureLine,
   resolveTemperatureReasonLine,
-} from '../../../shared-domain/src/planTemperatureCardText.ts';
+} from '../../../../shared-domain/src/planTemperatureCardText.ts';
 import {
   resolveCooldownBaseSec,
   resolveCooldownRemainingSec,
-} from '../../../shared-domain/src/planCooldown.ts';
-import { resolveDisplayPlanDeviceSnapshot } from './planLiveData.ts';
-import { formatReasonSummary } from './planReasonSummary.ts';
-import { cardActivationProps } from './cardActivation.ts';
-import type { PlanDeviceSnapshot, PlanSnapshot } from './planTypes.ts';
-import type { DeviceReason } from '../../../shared-domain/src/planReasonSemanticsCore.ts';
+} from '../../../../shared-domain/src/planCooldown.ts';
+import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
+import { formatReasonSummary } from '../planReasonSummary.ts';
+import { cardActivationProps } from '../cardActivation.ts';
+import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
+import type { DeviceReason } from '../../../../shared-domain/src/planReasonSemanticsCore.ts';
 
 const formatKw = (value: number | undefined): string => (
   typeof value === 'number' && Number.isFinite(value) ? value.toFixed(1) : '–'

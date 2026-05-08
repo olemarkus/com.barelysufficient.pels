@@ -1,10 +1,10 @@
 import {
   formatFreshnessChip,
   formatHeroHeadline,
-} from '../../../shared-domain/src/planHeroSummary.ts';
-import { resolveDisplayPlanDevices } from './planLiveData.ts';
-import type { PlanDeviceSnapshot, PlanMetaSnapshot, PlanSnapshot } from './planTypes.ts';
-import type { SettingsUiPowerStatus } from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../../shared-domain/src/planHeroSummary.ts';
+import { resolveDisplayPlanDevices } from '../planLiveData.ts';
+import type { PlanDeviceSnapshot, PlanMetaSnapshot, PlanSnapshot } from '../planTypes.ts';
+import type { SettingsUiPowerStatus } from '../../../../contracts/src/settingsUiApi.ts';
 
 type FreshnessState = NonNullable<SettingsUiPowerStatus['powerFreshnessState']>;
 type HeroStatus = 'on-track' | 'above-safe-pace' | 'projected-over-budget' | 'over-hard-cap' | 'dry-run' | 'no-data';
