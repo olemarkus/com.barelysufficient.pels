@@ -104,6 +104,17 @@ describe('planExecutableSteppedLoad', () => {
     expect(action?.desired.stepId).toBe('low');
   });
 
+  it('does not project underspecified set_step shed intent without a requested step', () => {
+    const intent = buildExecutableSteppedLoadIntent(steppedPlanDevice({
+      plannedState: 'shed',
+      shedAction: 'set_step',
+      selectedStepId: undefined,
+      desiredStepId: undefined,
+    }));
+
+    expect(intent).toBeNull();
+  });
+
   it('projects planner restore holds as no desired executor state change', () => {
     const intent = buildExecutableSteppedLoadIntent(steppedPlanDevice({
       currentState: 'off',

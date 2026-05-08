@@ -47,6 +47,7 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
     plannedStepId,
     plannedTransition,
   });
+  if (isUnderspecifiedSetStepShedIntent(dev, desired)) return null;
   const transition = desiredMatchesTransition(desired, plannedTransition) ? plannedTransition : null;
   const matchingRestoreAttempt = desired.stepId !== undefined
     ? resolveSteppedRestoreAttemptState(dev, desired.stepId)
@@ -128,6 +129,15 @@ const toExecutableSteppedStepState = (
     fallbackStepId: observed?.assumedStepId,
   };
 };
+
+const isUnderspecifiedSetStepShedIntent = (
+  dev: PlanDevice,
+  desired: ExecutableSteppedLoadDevice['desired'],
+): boolean => (
+  dev.plannedState === 'shed'
+  && dev.shedAction === 'set_step'
+  && desired.stepId === undefined
+);
 
 const resolveDesiredState = (params: {
   dev: PlanDevice;

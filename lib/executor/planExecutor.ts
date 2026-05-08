@@ -56,7 +56,6 @@ import {
   buildExecutableObservedDeviceState,
   buildExecutableObservedState,
   buildExecutablePlan,
-  hasExecutableShedIntent,
 } from './executablePlanProjection';
 import { buildExecutableSteppedLoadDevice } from './executableSteppedLoadProjection';
 import {
@@ -65,6 +64,7 @@ import {
 } from './executableTargetProjection';
 import { resolveEffectiveCurrentOn } from '../plan/planCurrentState';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
+import { hasPlannedShedDevices } from '../plan/planShedPosture';
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
@@ -511,11 +511,18 @@ export class PlanExecutor {
     action: ExecutableSteppedLoadDevice | null,
     snapshot: TargetDeviceSnapshot | undefined,
     mode: PlanActuationMode,
-    anyShedDevices: boolean,
+    hasPlannerShedDevices: boolean,
     options: { preRestoreStepIssued?: boolean } = {},
   ): Promise<boolean> {
     return action
-      ? applySteppedLoadRestore(this.buildSteppedExecutorContext(), action, snapshot, mode, anyShedDevices, options)
+      ? applySteppedLoadRestore(
+        this.buildSteppedExecutorContext(),
+        action,
+        snapshot,
+        mode,
+        hasPlannerShedDevices,
+        options,
+      )
       : false;
   }
 
@@ -645,7 +652,7 @@ export class PlanExecutor {
       const observedState = buildExecutableObservedState(this.latestTargetSnapshot);
       const observedMap = new Map(observedState.devices.map((entry) => [entry.id, entry]));
       const logCapacityDebug = (...args: unknown[]) => this.logDebug(...args);
-      const anyShedDevices = executablePlan.devices.some(hasExecutableShedIntent);
+      const hasPlannerShedDevices = hasPlannedShedDevices(plan);
       let deviceWriteCount = 0;
       let commandRequestCount = 0;
       for (const intent of executablePlan.devices) {
@@ -689,7 +696,7 @@ export class PlanExecutor {
               steppedAction,
               snapshot,
               mode,
-              anyShedDevices,
+              hasPlannerShedDevices,
               { preRestoreStepIssued },
             );
             if (
@@ -708,7 +715,7 @@ export class PlanExecutor {
             if (await this.applySteppedLoadShedOff(steppedAction, snapshot, mode)) {
               deviceWriteCount += 1;
             }
-            await this.applySteppedLoadRestore(steppedAction, snapshot, mode, anyShedDevices);
+            await this.applySteppedLoadRestore(steppedAction, snapshot, mode, hasPlannerShedDevices);
             if (await this.applyTargetIntent(intent.target, observed, mode)) deviceWriteCount += 1;
             continue;
           }

@@ -99,12 +99,6 @@ const buildObservedSteppedLoadState = (
   };
 };
 
-export const hasExecutableShedIntent = (device: ExecutableDeviceIntent): boolean => (
-  device.binary?.kind === 'shed'
-  || device.target?.purpose === 'shed_temperature'
-  || device.steppedLoad?.purpose === 'shed'
-);
-
 const buildExecutableBinaryIntent = (dev: PlanDevice): ExecutableBinaryIntent | null => {
   if (dev.controlModel === 'stepped_load') return null;
   if (dev.hasBinaryControl === false) return null;
