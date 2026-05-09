@@ -47,6 +47,11 @@
     return `${y}-${m}-${day}`;
   };
 
+  const localTimeAfterHours = (hours) => {
+    const deadline = new Date(Date.now() + hours * 3600 * 1000);
+    return `${String(deadline.getHours()).padStart(2, '0')}:${String(deadline.getMinutes()).padStart(2, '0')}`;
+  };
+
   const buildSampleCombinedPrices = () => {
     const now = new Date();
     const startMs = startOfUtcHourMs(now);
@@ -129,6 +134,28 @@
       buckets,
       controlledBuckets,
       uncontrolledBuckets,
+      objectiveProfiles: {
+        dev_connected300: {
+          kind: 'temperature',
+          updatedAtMs: Date.now(),
+          lastSample: {
+            observedAtMs: Date.now() - 10 * 60 * 1000,
+            value: 51.1,
+            unit: 'degree_c',
+          },
+          kwhPerUnit: {
+            sampleCount: 12,
+            mean: 0.8,
+            m2: 0,
+            min: 0.6,
+            max: 1.1,
+            confidence: 'high',
+            lastUpdatedMs: Date.now() - 10 * 60 * 1000,
+          },
+          acceptedSamples: 12,
+          rejectedSamples: 1,
+        },
+      },
       unreliablePeriods: [{ start: unreliableStart, end: unreliableEnd }],
     };
   };
@@ -628,6 +655,18 @@
 
     // Power tracking
     power_tracker_state: buildSamplePowerTracker(),
+    deferred_objectives: {
+      version: 1,
+      objectivesByDeviceId: {
+        dev_connected300: {
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 65,
+          deadlineLocalTime: localTimeAfterHours(8),
+        },
+      },
+    },
 
     // Daily budget settings
     daily_budget_enabled: true,
@@ -716,46 +755,8 @@
     heartbeat: typeof settings.app_heartbeat === 'number' ? settings.app_heartbeat : null,
   });
 
-  const resolveDeadlinePlanMockupScenario = () => {
-    try {
-      return new URLSearchParams(window.location.search).get('scenario') || 'default';
-    } catch {
-      return 'default';
-    }
-  };
-
-  const toLocalIsoHour = (startHour, index) => new Date(2026, 0, 1, startHour + index, 0, 0, 0).toISOString();
-
-  const buildDeadlinePlanMockupPrices = (scenario) => {
-    const rawPrices = scenario === 'priority1-cap-off'
-      ? [94, 102, 131, 158, 172, 149, 108, 93, 61, 86, 58, 54, 82, 91, 49, 46, 88, 104, 138, 112, 98, 87, 79, 73, 76, 82, 91, 118, 142, 161, 149, 121, 94, 81, 76]
-      : [102, 146, 62, 91, 135, 98, 55, 51, 89, 128, 104];
-    const startHour = scenario === 'priority1-cap-off' ? 13 : 21;
-    const sorted = [...rawPrices].sort((a, b) => a - b);
-    const lowThreshold = sorted[Math.max(0, Math.floor(sorted.length * 0.25) - 1)] ?? rawPrices[0];
-    const highThreshold = sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.75))] ?? rawPrices[rawPrices.length - 1];
-    const prices = rawPrices.map((total, index) => ({
-      startsAt: toLocalIsoHour(startHour, index),
-      total,
-      spotPriceExVat: total / 1.25,
-      vatMultiplier: 1.25,
-      vatAmount: total - total / 1.25,
-      totalExVat: total / 1.25,
-      isCheap: total <= lowThreshold,
-      isExpensive: total >= highThreshold,
-    }));
-    return {
-      prices,
-      avgPrice: rawPrices.reduce((sum, price) => sum + price, 0) / rawPrices.length,
-      lowThreshold,
-      highThreshold,
-      priceScheme: 'norway',
-      priceUnit: 'øre/kWh',
-    };
-  };
-
   const buildPricesPayload = () => ({
-    combinedPrices: buildDeadlinePlanMockupPrices(resolveDeadlinePlanMockupScenario()) ?? settings.combined_prices ?? null,
+    combinedPrices: settings.combined_prices ?? null,
     electricityPrices: settings.electricity_prices ?? null,
     priceArea: typeof settings.price_area === 'string' ? settings.price_area : null,
     gridTariffData: settings.nettleie_data ?? null,
@@ -806,179 +807,8 @@
     experimental_ev_support_enabled: settings.experimental_ev_support_enabled,
     overview_redesign_enabled: settings.overview_redesign_enabled,
     device_control_profiles: settings.device_control_profiles,
-    deferred_objective_preview: Object.prototype.hasOwnProperty.call(settings, 'deferred_objective_preview')
-      ? settings.deferred_objective_preview
-      : buildDeadlinePlanMockup(resolveDeadlinePlanMockupScenario()),
+    deferred_objectives: settings.deferred_objectives,
   });
-
-  const buildDeadlinePlanMockup = (scenario) => {
-    const withHorizonDetails = (hours, options = {}) => {
-      const chargeIndexes = new Set(hours
-        .map((hour, index) => hour.plan === 'Charge' ? index : -1)
-        .filter((index) => index >= 0));
-      let progress = options.startProgress ?? 42;
-      const progressStep = options.progressStep ?? 8;
-      return hours.map((hour, index) => {
-        if (chargeIndexes.has(index)) {
-          progress = Math.min(options.targetProgress ?? 80, progress + progressStep);
-        }
-        const otherKwh = options.otherKwh?.[index]
-          ?? (index % 5 === 0 ? 2.6 : index % 3 === 0 ? 2.2 : 1.8)
-          + (options.priorityOne ? 0 : index % 4 === 0 ? 1.8 : 1.0);
-        const chargerKwh = hour.plan === 'Charge' ? (options.chargerKwh ?? 4.2) : 0;
-        const hardCapKwh = options.hardCapKwh ?? 8;
-        return {
-          startsAt: toLocalIsoHour(options.startHour ?? 21, index),
-          tone: hour.tone,
-          plan: hour.plan,
-          usage: { otherKwh, chargerKwh, hardCapKwh },
-          progress,
-        };
-      });
-    };
-
-    const base = {
-      hero: {
-        chips: [
-          { text: 'On track', tone: 'ok' },
-          { text: 'Flexible target', tone: 'info' },
-          { text: 'Price ready', tone: 'muted' },
-        ],
-        sectionLabel: "Tonight's charging plan",
-        headline: 'Use 5 cheap hours and keep 2 fallback hours',
-        subline: 'Needs 22 kWh · expected 4.2 kW · 10 hours left',
-        decision: 'PELS waits for cheaper windows, but keeps recovery room if the charger is blocked.',
-      },
-      timeline: {
-        title: 'Price and charging windows',
-        subtitle: 'Known prices until tomorrow 07:00',
-        ariaLabel: 'Hourly charging plan from 21:00 to 07:00',
-        hours: withHorizonDetails([
-          {},
-          {},
-          { plan: 'Charge' },
-          { plan: 'Fallback' },
-          {},
-          {},
-          { plan: 'Charge' },
-          { plan: 'Charge' },
-          { plan: 'Fallback' },
-          {},
-          { tone: 'deadline' },
-        ], {
-          startHour: 21,
-          startProgress: 42,
-          targetProgress: 80,
-          progressStep: 9,
-          otherKwh: [2.8, 3.9, 2.1, 2.5, 3.7, 2.8, 1.9, 1.8, 2.2, 3.3, 2.6],
-        }),
-        explainer: 'The first window takes one cheap hour and keeps a nearby fallback. The second window uses the cheapest late-night hours and keeps one recovery hour before the deadline.',
-      },
-      assumptions: {
-        title: 'What the plan assumes',
-        subtitle: 'These inputs decide how many fallback hours PELS keeps.',
-        items: [
-          { label: 'Charge estimate', description: '4.2 kW from the selected charger step', value: 'High' },
-          { label: 'Energy per percent', description: '0.74 kWh for each battery percent', value: 'Learned' },
-          { label: 'Priority risk', description: 'Two higher-priority devices may need available power', value: 'Medium' },
-          { label: 'Background usage risk', description: 'Dinner and morning usage can reduce available power', value: 'Medium' },
-        ],
-      },
-      risk: {
-        title: 'Why fallback hours are included',
-        subtitle: 'Priority changes confidence. It does not make expensive hours look cheap.',
-        items: [
-          { label: 'Price fit', value: 82 },
-          { label: 'Charging confidence', value: 64, tone: 'warn' },
-          { label: 'Deadline buffer', value: 72 },
-        ],
-        explainer: 'If a higher-priority device blocks the charger in a planned hour, the fallback hour can still keep the car on track without starting immediately at 21:00.',
-      },
-      comparison: {
-        title: 'Similar goal, different safety model',
-        items: [
-          { label: 'Cheapest-hour scheduling', description: 'Pick the cheapest hours needed for the target.' },
-          { label: 'PELS deadline planning', description: 'Pick cheap hours inside planning windows and keep fallback hours for blocked charging.' },
-        ],
-      },
-    };
-
-    if (scenario !== 'priority1-cap-off') return base;
-
-    return {
-      hero: {
-        chips: [
-          { text: 'On track', tone: 'ok' },
-          { text: 'Priority 1', tone: 'info' },
-          { text: 'Power-limit off', tone: 'muted' },
-        ],
-        sectionLabel: 'Target 80% by tomorrow 08:00',
-        headline: 'Waiting by plan - first charging window starts at 21:00',
-        subline: 'Needs 22 kWh · expected 5.0 kW · 19 hours left',
-        decision: 'PELS can wait because enough lower-priced planned hours remain before the target.',
-      },
-      timeline: {
-        title: 'Price and charging windows',
-        subtitle: 'Known prices until target 08:00',
-        ariaLabel: 'Known-price horizon from 13:00 today to target 08:00 tomorrow',
-        hours: withHorizonDetails([
-          {},
-          {},
-          {},
-          {},
-          {},
-          {},
-          {},
-          {},
-          { plan: 'Charge' },
-          { plan: 'Fallback' },
-          { plan: 'Charge' },
-          { plan: 'Charge' },
-          { plan: 'Fallback' },
-          {},
-          { plan: 'Charge' },
-          { plan: 'Charge' },
-          { plan: 'Fallback' },
-          {},
-          {},
-          { tone: 'deadline' },
-        ], {
-          startHour: 13,
-          priorityOne: true,
-          startProgress: 42,
-          targetProgress: 82,
-          progressStep: 8,
-          chargerKwh: 5,
-          hardCapKwh: 10,
-          otherKwh: [
-            2.2, 2.1, 2.4, 2.8, 3.0, 2.7, 2.3, 2.0, 1.8, 1.7,
-            1.6, 1.5, 1.4, 1.3, 1.4, 1.5, 1.8, 2.0, 2.4, 2.2,
-          ],
-        }),
-        explainer: 'The objective targets 08:00. Fallback hours are reserves before the target, not guaranteed charging.',
-      },
-      assumptions: {
-        title: 'What the plan assumes',
-        subtitle: 'PELS schedules when the charger may run, but does not reduce it for capacity control.',
-        items: [
-          { label: 'Charger rate', description: '5.0 kW when the charger is allowed to run', value: 'Known' },
-          { label: 'Priority', description: 'Priority 1 means no managed device is ahead of this charger', value: 'Low risk' },
-          { label: 'Daily budget', description: '80 kWh budget leaves enough room for a 22 kWh charging plan', value: 'Ready' },
-          { label: 'Power-limit control', description: 'Off - schedule controls when it runs; capacity control does not throttle it.', value: 'Off' },
-        ],
-      },
-      risk: {
-        title: 'Why fallback hours are included',
-        subtitle: 'Priority 1 lowers blocking risk; the longer horizon still keeps recovery hours.',
-        items: [
-          { label: 'Price fit', value: 88 },
-          { label: 'Charging confidence', value: 92 },
-          { label: 'Planned load', value: 78 },
-        ],
-      },
-      comparison: base.comparison,
-    };
-  };
 
   const apiHandlers = {
     'GET /daily_budget': () => resolveDailyBudgetPayload(),

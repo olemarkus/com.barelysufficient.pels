@@ -1,4 +1,8 @@
 import type { PowerTrackerState } from '../../core/powerTracker';
+import {
+  OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS,
+  OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS,
+} from '../../core/objectiveProfiles';
 import type { DailyBudgetUiPayload } from '../../dailyBudget/dailyBudgetTypes';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { sortSteppedLoadSteps } from '../../utils/deviceControlProfiles';
@@ -7,11 +11,13 @@ import { resolveDeferredObjectiveDeadline } from './deadline';
 import { planDeferredObjectiveHorizon } from './horizonPlanner';
 import {
   buildDeferredObjectivePolicyHorizon,
+  type DeferredObjectivePolicyHorizonResult,
   type DeferredObjectivePolicyHorizonUnavailableReason,
 } from './policyHorizon';
 import type { DeferredObjectiveSettingsEntry, DeferredObjectiveSettingsV1 } from './settings';
 import type {
   DeferredObjectiveHorizonPlan,
+  DeferredObjectiveKind,
   DeferredObjectiveStep,
 } from './types';
 
@@ -22,23 +28,27 @@ export type DeferredObjectiveDiagnosticReasonCode =
   | 'objective_missing_capacity'
   | 'objective_missing_charge_rate'
   | 'objective_missing_device'
+  | 'objective_missing_temperature'
   | 'objective_progress_stale';
 
 export type DeferredObjectiveDiagnostic = {
   deviceId: string;
   deviceName?: string;
   objectiveId: string;
-  objectiveKind: 'ev_soc';
+  objectiveKind: DeferredObjectiveSettingsEntry['kind'];
   enforcement: DeferredObjectiveSettingsEntry['enforcement'];
   status: 'unknown' | DeferredObjectiveHorizonPlan['status'];
   reasonCode: DeferredObjectiveDiagnosticReasonCode | DeferredObjectiveHorizonPlan['statusDetail'];
-  targetPercent: number;
+  targetPercent: number | null;
   currentPercent: number | null;
+  targetTemperatureC: number | null;
+  currentTemperatureC: number | null;
   deadlineAtMs: number | null;
   deadlineLocalTime: string;
   deadlineRollsToNextDay: boolean;
   energyNeededKWh: number | null;
   kWhPerPercent: number | null;
+  kWhPerDegreeC: number | null;
   rateConfidence: string | null;
   horizonBucketCount: number;
   requestedMinimumStepId: string | null;
@@ -47,14 +57,26 @@ export type DeferredObjectiveDiagnostic = {
 
 type DeferredObjectiveEnergyResolution = {
   energyNeededKWh: number;
-  kWhPerPercent: number | null;
+  kWhPerUnit: number | null;
   rateConfidence: string | null;
   reasonCode: null;
 } | {
   energyNeededKWh: null;
-  kWhPerPercent: null;
+  kWhPerUnit: null;
   rateConfidence: null;
   reasonCode: 'objective_missing_capacity';
+};
+
+type DeferredObjectiveProgressResolution = {
+  remainingUnits: number;
+  currentPercent: number | null;
+  currentTemperatureC: number | null;
+  reasonCode: null;
+} | {
+  remainingUnits: 0;
+  currentPercent: number | null;
+  currentTemperatureC: number | null;
+  reasonCode: 'objective_invalid_session' | 'objective_missing_temperature' | 'objective_progress_stale';
 };
 
 export const buildDeferredObjectiveDiagnostics = (params: {
@@ -117,8 +139,10 @@ const buildDeferredObjectiveDiagnostic = (params: {
     deadlineAtMs: null,
     deadlineRollsToNextDay: false,
     currentPercent: null,
+    currentTemperatureC: null,
     energyNeededKWh: null,
     kWhPerPercent: null,
+    kWhPerDegreeC: null,
     rateConfidence: null,
   });
   if (!device) return withUnknown(base, 'objective_missing_device');
@@ -148,28 +172,57 @@ const buildDeferredObjectiveDiagnostic = (params: {
     }, policyHorizon.reasonCode);
   }
 
-  const progress = resolveEvObjectiveProgress(device);
+  return buildDiagnosticWithPolicyHorizon({
+    nowMs,
+    deviceId,
+    objective,
+    device,
+    powerTracker,
+    base: withDeadline,
+    policyHorizon,
+    deadlineAtMs: deadline.deadlineAtMs,
+  });
+};
+
+const buildDiagnosticWithPolicyHorizon = (params: {
+  nowMs: number;
+  deviceId: string;
+  objective: DeferredObjectiveSettingsEntry;
+  device: PlanInputDevice;
+  powerTracker: PowerTrackerState;
+  base: DeferredObjectiveDiagnostic;
+  policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>;
+  deadlineAtMs: number;
+}): DeferredObjectiveDiagnostic => {
+  const { nowMs, deviceId, objective, device, powerTracker, base, policyHorizon, deadlineAtMs } = params;
+  const progress = resolveObjectiveProgress({ objective, device, nowMs });
   if (progress.reasonCode) {
     return withUnknown({
-      ...withDeadline,
+      ...base,
       currentPercent: progress.currentPercent,
+      currentTemperatureC: progress.currentTemperatureC,
       horizonBucketCount: policyHorizon.horizonBucketCount,
     }, progress.reasonCode);
   }
 
-  const remainingPercent = Math.max(0, objective.targetPercent - progress.currentPercent);
-  const profileEnergy: DeferredObjectiveEnergyResolution = remainingPercent > 0
-    ? resolveProfileEnergy({ powerTracker, deviceId, remainingPercent })
+  const profileEnergy: DeferredObjectiveEnergyResolution = progress.remainingUnits > 0
+    ? resolveProfileEnergy({
+      powerTracker,
+      deviceId,
+      objectiveKind: objective.kind,
+      remainingUnits: progress.remainingUnits,
+    })
     : {
       energyNeededKWh: 0,
-      kWhPerPercent: null,
+      kWhPerUnit: null,
       rateConfidence: null,
       reasonCode: null,
     };
   if (profileEnergy.reasonCode) {
     return withUnknown({
-      ...withDeadline,
+      ...base,
       currentPercent: progress.currentPercent,
+      currentTemperatureC: progress.currentTemperatureC,
       horizonBucketCount: policyHorizon.horizonBucketCount,
     }, profileEnergy.reasonCode);
   }
@@ -177,10 +230,12 @@ const buildDeferredObjectiveDiagnostic = (params: {
   const steps = profileEnergy.energyNeededKWh > 0 ? resolveObjectiveSteps(device) : [];
   if (profileEnergy.energyNeededKWh > 0 && steps.length === 0) {
     return withUnknown({
-      ...withDeadline,
+      ...base,
       currentPercent: progress.currentPercent,
+      currentTemperatureC: progress.currentTemperatureC,
       energyNeededKWh: profileEnergy.energyNeededKWh,
-      kWhPerPercent: profileEnergy.kWhPerPercent,
+      kWhPerPercent: objective.kind === 'ev_soc' ? profileEnergy.kWhPerUnit : null,
+      kWhPerDegreeC: objective.kind === 'temperature' ? profileEnergy.kWhPerUnit : null,
       rateConfidence: profileEnergy.rateConfidence,
       horizonBucketCount: policyHorizon.horizonBucketCount,
     }, 'objective_missing_charge_rate');
@@ -189,23 +244,25 @@ const buildDeferredObjectiveDiagnostic = (params: {
   const horizonPlan = planDeferredObjectiveHorizon({
     nowMs,
     objective: {
-      id: `${deviceId}:ev_soc`,
-      kind: 'ev_soc',
+      id: `${deviceId}:${objective.kind}`,
+      kind: objective.kind,
       enforcement: objective.enforcement,
       energyNeededKWh: profileEnergy.energyNeededKWh,
-      deadlineAtMs: deadline.deadlineAtMs,
+      deadlineAtMs,
     },
     steps,
     buckets: policyHorizon.buckets,
   });
 
   return {
-    ...withDeadline,
+    ...base,
     status: horizonPlan.status,
     reasonCode: horizonPlan.statusDetail,
     currentPercent: progress.currentPercent,
+    currentTemperatureC: progress.currentTemperatureC,
     energyNeededKWh: profileEnergy.energyNeededKWh,
-    kWhPerPercent: profileEnergy.kWhPerPercent,
+    kWhPerPercent: objective.kind === 'ev_soc' ? profileEnergy.kWhPerUnit : null,
+    kWhPerDegreeC: objective.kind === 'temperature' ? profileEnergy.kWhPerUnit : null,
     rateConfidence: profileEnergy.rateConfidence,
     horizonBucketCount: policyHorizon.horizonBucketCount,
     requestedMinimumStepId: horizonPlan.requestedMinimumStepId,
@@ -220,24 +277,29 @@ const buildDiagnosticBase = (params: {
   deadlineAtMs: number | null;
   deadlineRollsToNextDay: boolean;
   currentPercent: number | null;
+  currentTemperatureC: number | null;
   energyNeededKWh: number | null;
   kWhPerPercent: number | null;
+  kWhPerDegreeC: number | null;
   rateConfidence: string | null;
 }): DeferredObjectiveDiagnostic => ({
   deviceId: params.deviceId,
   deviceName: params.device?.name,
-  objectiveId: `${params.deviceId}:ev_soc`,
-  objectiveKind: 'ev_soc',
+  objectiveId: `${params.deviceId}:${params.objective.kind}`,
+  objectiveKind: params.objective.kind,
   enforcement: params.objective.enforcement,
   status: 'unknown',
   reasonCode: 'objective_progress_stale',
-  targetPercent: params.objective.targetPercent,
+  targetPercent: params.objective.kind === 'ev_soc' ? params.objective.targetPercent : null,
   currentPercent: params.currentPercent,
+  targetTemperatureC: params.objective.kind === 'temperature' ? params.objective.targetTemperatureC : null,
+  currentTemperatureC: params.currentTemperatureC,
   deadlineAtMs: params.deadlineAtMs,
   deadlineLocalTime: params.objective.deadlineLocalTime,
   deadlineRollsToNextDay: params.deadlineRollsToNextDay,
   energyNeededKWh: params.energyNeededKWh,
   kWhPerPercent: params.kWhPerPercent,
+  kWhPerDegreeC: params.kWhPerDegreeC,
   rateConfidence: params.rateConfidence,
   horizonBucketCount: 0,
   requestedMinimumStepId: null,
@@ -277,25 +339,84 @@ const resolveEvObjectiveProgress = (
   return { currentPercent: stateOfCharge.percent, reasonCode: null };
 };
 
+const resolveObjectiveProgress = (params: {
+  objective: DeferredObjectiveSettingsEntry;
+  device: PlanInputDevice;
+  nowMs: number;
+}): DeferredObjectiveProgressResolution => {
+  const { objective, device, nowMs } = params;
+  if (objective.kind === 'ev_soc') {
+    const progress = resolveEvObjectiveProgress(device);
+    if (progress.reasonCode) {
+      return {
+        remainingUnits: 0,
+        currentPercent: progress.currentPercent,
+        currentTemperatureC: null,
+        reasonCode: progress.reasonCode,
+      };
+    }
+    return {
+      remainingUnits: Math.max(0, objective.targetPercent - progress.currentPercent),
+      currentPercent: progress.currentPercent,
+      currentTemperatureC: null,
+      reasonCode: null,
+    };
+  }
+
+  const currentTemperatureC = device.currentTemperature;
+  if (!hasFreshTemperatureProgress({ device, nowMs })) {
+    return {
+      remainingUnits: 0,
+      currentPercent: null,
+      currentTemperatureC: typeof currentTemperatureC === 'number' && Number.isFinite(currentTemperatureC)
+        ? currentTemperatureC
+        : null,
+      reasonCode: typeof currentTemperatureC === 'number' && Number.isFinite(currentTemperatureC)
+        ? 'objective_progress_stale'
+        : 'objective_missing_temperature',
+    };
+  }
+  const freshTemperatureC = Number(device.currentTemperature);
+  return {
+    remainingUnits: Math.max(0, objective.targetTemperatureC - freshTemperatureC),
+    currentPercent: null,
+    currentTemperatureC: freshTemperatureC,
+    reasonCode: null,
+  };
+};
+
+const hasFreshTemperatureProgress = (params: {
+  device: PlanInputDevice;
+  nowMs: number;
+}): params is { device: PlanInputDevice & { currentTemperature: number; lastFreshDataMs: number }; nowMs: number } => {
+  const { device, nowMs } = params;
+  if (device.observationStale === true) return false;
+  if (typeof device.currentTemperature !== 'number' || !Number.isFinite(device.currentTemperature)) return false;
+  if (typeof device.lastFreshDataMs !== 'number' || !Number.isFinite(device.lastFreshDataMs)) return false;
+  if (device.lastFreshDataMs > nowMs + OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS) return false;
+  return nowMs - device.lastFreshDataMs <= OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS;
+};
+
 const resolveProfileEnergy = (params: {
   powerTracker: PowerTrackerState;
   deviceId: string;
-  remainingPercent: number;
+  objectiveKind: DeferredObjectiveKind;
+  remainingUnits: number;
 }): DeferredObjectiveEnergyResolution => {
   const profile = params.powerTracker.objectiveProfiles?.[params.deviceId];
-  const kWhPerPercent = profile?.kind === 'ev_soc' ? profile.kwhPerUnit : undefined;
-  if (!kWhPerPercent || !Number.isFinite(kWhPerPercent.mean) || kWhPerPercent.mean <= 0) {
+  const kWhPerUnit = profile?.kind === params.objectiveKind ? profile.kwhPerUnit : undefined;
+  if (!kWhPerUnit || !Number.isFinite(kWhPerUnit.mean) || kWhPerUnit.mean <= 0) {
     return {
       energyNeededKWh: null,
-      kWhPerPercent: null,
+      kWhPerUnit: null,
       rateConfidence: null,
       reasonCode: 'objective_missing_capacity',
     };
   }
   return {
-    energyNeededKWh: params.remainingPercent * kWhPerPercent.mean,
-    kWhPerPercent: kWhPerPercent.mean,
-    rateConfidence: kWhPerPercent.confidence,
+    energyNeededKWh: params.remainingUnits * kWhPerUnit.mean,
+    kWhPerUnit: kWhPerUnit.mean,
+    rateConfidence: kWhPerUnit.confidence,
     reasonCode: null,
   };
 };
@@ -333,8 +454,11 @@ const buildDeferredObjectiveDebugPayload = (
   reasonCode: diagnostic.reasonCode,
   targetPercent: diagnostic.targetPercent,
   currentPercent: diagnostic.currentPercent,
+  targetTemperatureC: diagnostic.targetTemperatureC,
+  currentTemperatureC: diagnostic.currentTemperatureC,
   energyNeededKWh: diagnostic.energyNeededKWh,
   kWhPerPercent: diagnostic.kWhPerPercent,
+  kWhPerDegreeC: diagnostic.kWhPerDegreeC,
   rateConfidence: diagnostic.rateConfidence,
   deadlineAtMs: diagnostic.deadlineAtMs,
   deadlineLocalTime: diagnostic.deadlineLocalTime,

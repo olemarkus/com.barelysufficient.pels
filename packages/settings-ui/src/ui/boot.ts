@@ -96,6 +96,7 @@ import {
 } from './dailyBudgetTuning.ts';
 import {
   initDeviceDetailHandlers,
+  loadDeferredObjectiveSettings,
   loadEvBoostSettings,
   loadShedBehaviors,
   loadTemperatureBoostSettings,
@@ -383,6 +384,7 @@ const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
 
 const applyOverviewRedesignBootstrap = (bootstrap: SettingsUiBootstrap | null) => {
   canToggleOverviewRedesign = bootstrap?.featureAccess?.canToggleOverviewRedesign === true;
+  state.canToggleOverviewRedesign = canToggleOverviewRedesign;
   if (advancedOverviewRedesignRow) {
     advancedOverviewRedesignRow.hidden = !canToggleOverviewRedesign;
   }
@@ -408,6 +410,7 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
     loadShedBehaviors(),
     loadTemperatureBoostSettings(),
     loadEvBoostSettings(),
+    loadDeferredObjectiveSettings(),
     loadPriceOptimizationSettings(),
     loadPriceSettings(),
     loadGridTariffSettings(),

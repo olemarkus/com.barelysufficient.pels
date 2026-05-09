@@ -67,6 +67,10 @@ import {
   loadTemperatureBoostSettings,
   renderTemperatureBoostSettings,
 } from './temperatureBoost.ts';
+import {
+  loadDeferredObjectiveSettings,
+  renderDeviceDeadlineObjectiveCard,
+} from './deferredObjective.tsx';
 import { createSerializedAsyncRunner, readRecordSetting, writeFreshSetting } from './settingsWrite.ts';
 import {
   clearPendingNativeWiringEnable,
@@ -231,6 +235,7 @@ const refreshOpenDeviceDetail = () => {
   renderTargetPowerConfig(device);
   renderTemperatureBoostSettings(device);
   renderEvBoostSettings(device);
+  renderDeviceDeadlineObjectiveCard(device);
   setDeviceDetailDeltaValues(currentDetailDeviceId);
   renderDeviceDetailModes(device);
   updateDeltaSectionVisibility({
@@ -265,6 +270,7 @@ export const openDeviceDetail = (deviceId: string) => {
   renderTargetPowerConfig(device);
   renderTemperatureBoostSettings(device);
   renderEvBoostSettings(device);
+  renderDeviceDeadlineObjectiveCard(device);
   renderDeviceDetailModes(device);
   setDeviceDetailDeltaValues(deviceId);
   updateDeltaSectionVisibility({
@@ -439,6 +445,7 @@ const initDeviceDetailRefreshHandlers = () => {
 };
 
 export { loadEvBoostSettings, loadShedBehaviors, loadTemperatureBoostSettings };
+export { loadDeferredObjectiveSettings };
 
 export const initDeviceDetailHandlers = () => {
   initDeviceDetailCloseHandlers();

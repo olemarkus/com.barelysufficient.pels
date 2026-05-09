@@ -8,7 +8,7 @@ const sourceDir = path.join(rootDir, 'packages', 'settings-ui', 'dist');
 const targetDir = path.join(rootDir, 'settings');
 const files = [
   'index.html',
-  'deadline-plan-mockup.html',
+  'deadline-plan.html',
   'script.js',
   'style.css',
   'tokens.css',

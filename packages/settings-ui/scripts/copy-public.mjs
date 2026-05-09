@@ -9,5 +9,5 @@ const distDir = path.join(packageDir, 'dist');
 
 await fs.mkdir(distDir, { recursive: true });
 await fs.copyFile(path.join(publicDir, 'index.html'), path.join(distDir, 'index.html'));
-await fs.copyFile(path.join(publicDir, 'deadline-plan-mockup.html'), path.join(distDir, 'deadline-plan-mockup.html'));
+await fs.copyFile(path.join(publicDir, 'deadline-plan.html'), path.join(distDir, 'deadline-plan.html'));
 await fs.copyFile(path.join(publicDir, 'style.css'), path.join(distDir, 'style.css'));

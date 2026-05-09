@@ -4,10 +4,11 @@ This note defines the intended model for deadline-aware loads. It is design guid
 future implementation work. Some supporting pieces already exist, but deadline objective behavior is
 not current shipped actuation behavior.
 
-The first concrete runtime slice is a diagnostics-only EV SoC objective bridge because PELS already
-has native SoC snapshots and learned kWh-per-percent profiling. Connected 300-style water-heater
-support remains the first concrete thermal target. The abstractions must still serve both without
-making the planner EV-percent-centric.
+The first concrete runtime slice started as a diagnostics-only EV SoC objective bridge because PELS
+already had native SoC snapshots and learned kWh-per-percent profiling. Connected 300-style
+water-heater support adds the same settings and horizon-planning path for temperature objectives
+using learned kWh per degree. The abstractions must serve both without making the planner
+EV-percent-centric.
 
 ## Current Baseline
 
@@ -17,10 +18,12 @@ As of this note, PELS already has internal/native EV state-of-charge plumbing:
 - SoC carries freshness and EV session validity
 - stale or invalid SoC is available for diagnostics but must not drive planning
 - learned EV objective profiles can supply kWh per 1% SoC
-- a versioned settings payload can define diagnostics-only EV SoC objectives
-- the diagnostics bridge can read persisted EV SoC objectives and run them through horizon planning
+- learned temperature objective profiles can supply kWh per 1 C
+- a versioned settings payload can define soft EV SoC or temperature objectives
+- the diagnostics bridge can read persisted EV SoC and temperature objectives and run them through horizon planning
 - the bridge is gated on the price feature and requires complete price buckets through the deadline
-- no public objective or SoC flow-card UX is exposed yet
+- a quick Settings UI card can persist one soft temperature deadline objective per temperature device
+- no public objective flow-card UX is exposed yet
 
 Deadline objectives should build on that internal state, not reopen SoC as a user-facing feature
 before the broader objective UX is ready.
@@ -32,13 +35,22 @@ The first persisted objective format is intentionally narrow and versioned:
 ```ts
 type DeferredObjectiveSettingsV1 = {
   version: 1;
-  objectivesByDeviceId: Record<string, {
-    enabled: boolean;
-    kind: 'ev_soc';
-    enforcement: 'soft' | 'hard';
-    targetPercent: number;
-    deadlineLocalTime: string; // HH:mm in the Homey timezone.
-  }>;
+  objectivesByDeviceId: Record<string, (
+    {
+      enabled: boolean;
+      kind: 'ev_soc';
+      enforcement: 'soft' | 'hard';
+      targetPercent: number;
+      deadlineLocalTime: string; // HH:mm in the Homey timezone.
+    }
+    | {
+      enabled: boolean;
+      kind: 'temperature';
+      enforcement: 'soft';
+      targetTemperatureC: number;
+      deadlineLocalTime: string; // HH:mm in the Homey timezone.
+    }
+  )>;
 };
 ```
 
@@ -48,20 +60,44 @@ Storage rules:
 - One v1 objective is keyed by device id. Multiple objectives per device require a later schema.
 - Invalid or unsupported settings entries are ignored rather than interpreted with defaults.
 - `targetPercent` must be above 0 and at or below 100.
+- `targetTemperatureC` must be finite and within the bounded settings range. The Settings UI should
+  further constrain it to the device target capability range when that range is available.
 - `deadlineLocalTime` is local `HH:mm`. If that time has already passed today, the deadline resolves
   to the next local day.
-- `enforcement` records soft or hard intent, but the current bridge only emits diagnostics and does
-  not change admission behavior.
+- Temperature objectives are soft-only for now. The Settings UI must not expose hard temperature
+  deadlines until runtime semantics are explicitly designed.
+- `enforcement` records soft or hard intent for EV settings, but the current bridge only emits
+  diagnostics and does not change admission behavior.
 
 The bridge reads this settings payload during plan construction, normalizes it, evaluates each
-enabled objective, and emits structured `deferred_objectives` debug diagnostics. It does not expose
-Settings UI controls, flow cards, triggers, or device actuation yet.
+enabled objective, and emits structured `deferred_objectives` debug diagnostics. The current
+Settings UI exposure is limited to a manual temperature card on the device detail tab for Homeys
+with the same feature access as the new UI toggle. It does not expose flow cards, triggers, or
+device actuation yet.
 
 Price gating is deliberate. The v1 bridge only plans when price optimization is enabled and the
 daily-budget price payload covers every hour from now through the objective deadline. If tomorrow's
 deadline has been selected because today's `HH:mm` is already in the past, planning may remain
 `unknown` with `objective_missing_price_horizon` until tomorrow's prices are available. It must not
 fall back to neutral or whole-range planning when the price horizon is incomplete.
+
+## Soft Temperature Runtime Semantics
+
+The first temperature UI only stores the objective and lets horizon planning calculate planned
+hours. Runtime actuation still needs a separate implementation step. When that step is added, soft
+temperature deadlines should use this model:
+
+- Planned hours are the hours selected by the deadline plan to add useful energy before the
+  deadline.
+- Inside planned hours, the device uses normal PELS behavior. A planned hour does not imply hidden
+  boost behavior or a special target override.
+- Outside planned hours, the existing capacity-based control toggle decides the fallback behavior:
+  - toggle on: normal PELS behavior may still run the device outside the deadline plan
+  - toggle off: PELS keeps the device idle by plan outside the deadline plan
+- Soft deadlines should still respect budget and capacity planning. Soft means the objective is not
+  a separate hard-safety override; it does not mean PELS may ignore the deadline as the normal path.
+- Priority affects planning risk and normal PELS decisions, not whether the deadline card stores a
+  temperature target.
 
 ## Goal
 
@@ -904,31 +940,32 @@ Initial codes:
 
 ## Implementation Shape
 
-This should be phased. The first settings-backed slice is EV SoC diagnostics. The first thermal
-implementation target remains Connected 300-style thermal storage, not a generic public flow-card
+This should be phased. The first settings-backed slice started with EV SoC diagnostics. The first
+thermal implementation target is Connected 300-style thermal storage, not a generic public flow-card
 objective surface.
 
 Current implementation slice:
 
 1. Learned objective profiling exists before deadline control.
-2. EV SoC objectives can be read from versioned settings.
-3. EV SoC settings objectives resolve a local `HH:mm` deadline, rolling to tomorrow when needed.
+2. EV SoC and soft temperature objectives can be read from versioned settings.
+3. Settings objectives resolve a local `HH:mm` deadline, rolling to tomorrow when needed.
 4. Planning is diagnostics-only and price-feature gated.
 5. A next-day rolled deadline waits for tomorrow price buckets instead of assuming neutral prices.
 6. The bridge emits structured debug diagnostics without changing restore/admission behavior.
+7. The Settings UI exposes a manual temperature deadline card on eligible Homeys and temperature
+   devices.
 
 Recommended implementation order:
 
 1. Add generic objective state/evaluation types and pure evaluator tests.
 2. Add the settings-backed EV SoC diagnostics bridge that exercises the horizon scheduler without
    flow cards or actuation.
-3. Add Connected 300-oriented thermal objective support using stepped-load profiles, temperature
-   input, target temperature, mode constraints, and requested minimum step.
-4. Add freshness rules for thermal objective inputs.
-5. Add a simple horizon scheduler that can place required energy in budget-friendly buckets and
-   emit current-bucket milestones.
+3. Add Connected 300-oriented thermal objective diagnostics using stepped-load profiles, fresh
+   temperature input, target temperature, learned kWh per degree, and requested minimum step.
+4. Add a simple Settings UI card for manual soft temperature deadlines.
+5. Add runtime actuation for planned-hour admission and outside-planned-hour behavior.
 6. Surface objective diagnostics and reason codes without a full Settings editor.
-7. Integrate soft objective through existing boost/step-up behavior while preserving normal budget
+7. Integrate soft objective through existing normal device behavior while preserving normal budget
    and priority policy.
 8. Add hard admission for already available hard objective admission capacity.
 9. Add hard-boost rebalancing as a follow-up if it touches limit planning deeply.
