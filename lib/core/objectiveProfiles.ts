@@ -10,6 +10,7 @@ import type {
   ObjectiveProfileStat,
 } from './objectiveProfileTypes';
 import type { PowerTrackerState } from './powerTrackerTypes';
+import { shouldEmitRejectedProfileSample } from './objectiveProfileRejectionLogging';
 
 export type {
   DeviceObjectiveProfile,
@@ -234,6 +235,7 @@ function emitRejectedProfileSample(params: {
     valueDelta,
     rejectionReason,
   } = params;
+  if (!shouldEmitRejectedProfileSample({ deviceId, rejectionReason })) return;
   debugStructured?.({
     event: 'objective_profile_sample_rejected',
     reasonCode: rejectionReason,

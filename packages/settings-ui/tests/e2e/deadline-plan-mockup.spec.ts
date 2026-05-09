@@ -11,17 +11,17 @@ const expectNoPageOverflow = async (page: Page) => {
   const overflow = await page.evaluate(() => ({
     bodyScrollWidth: document.body.scrollWidth,
     viewportWidth: window.innerWidth,
-    lastAxisRight: document.querySelector('.deadline-horizon__axis span:last-child')?.getBoundingClientRect().right ?? 0,
-    horizonRight: document.querySelector('.deadline-horizon')?.getBoundingClientRect().right ?? 0,
+    chartRight: document.querySelector('.deadline-horizon-chart svg')?.getBoundingClientRect().right ?? 0,
+    cardRight: document.querySelector('.deadline-horizon-card')?.getBoundingClientRect().right ?? 0,
   }));
   expect(
     overflow.bodyScrollWidth,
     `Page should not overflow horizontally: ${JSON.stringify(overflow)}`,
   ).toBeLessThanOrEqual(overflow.viewportWidth + 1);
   expect(
-    overflow.lastAxisRight,
-    `Horizon axis should stay inside the card: ${JSON.stringify(overflow)}`,
-  ).toBeLessThanOrEqual(overflow.horizonRight + 1);
+    overflow.chartRight,
+    `Horizon chart should stay inside the card: ${JSON.stringify(overflow)}`,
+  ).toBeLessThanOrEqual(overflow.cardRight + 1);
 };
 
 test.describe('Deadline plan mockup', () => {
@@ -43,10 +43,11 @@ test.describe('Deadline plan mockup', () => {
 
     await expect(page.getByText(/Target 65\.0 °C/)).toBeVisible();
     await expect(page.getByText('Known-price horizon')).toBeVisible();
-    await expect(page.getByLabel(/Deadline plan/).getByText('Planned load', { exact: true })).toBeVisible();
-    await expect(page.getByLabel(/Deadline plan/).getByText('Charging plan', { exact: true })).toBeVisible();
+    await expect(page.getByLabel(/Deadline plan/).getByText('Planned', { exact: true })).toBeVisible();
+    await expect(page.getByLabel(/Deadline plan/).getByText('Charging', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Other load', { exact: true })).toBeVisible();
-    await expect(page.getByText('Charger', { exact: true })).toBeVisible();
+    await expect(page.getByText('This device', { exact: true })).toBeVisible();
+    await expect(page.locator('.deadline-horizon-chart svg')).toBeVisible();
     await expectNoPageOverflow(page);
   });
 
@@ -68,9 +69,8 @@ test.describe('Deadline plan mockup', () => {
     await expect(page.locator('.plan-chip', { hasText: 'Confidence high' })).toBeVisible();
     await expect(page.getByText(/Known prices until/)).toBeVisible();
     await expect(page.getByText(/This view stops at the deadline/)).toBeVisible();
-    await expect(page.locator('.deadline-horizon-price[data-marker]')).toHaveCount(0);
-    await expect(page.locator('.deadline-horizon-price[data-deadline]')).toHaveCount(0);
-    await expect(page.locator('.deadline-horizon__axis span')).not.toHaveCount(0);
+    await expect(page.getByLabel(/Deadline plan/).getByText(/kWh/).first()).toBeVisible();
+    await expect(page.locator('.deadline-horizon-chart svg')).toBeVisible();
     await expectNoPageOverflow(page);
   });
 
@@ -88,7 +88,7 @@ test.describe('Deadline plan mockup', () => {
     await openMockup(page, 'priority1-cap-off');
 
     await expect(page.getByText('Known-price horizon')).toBeVisible();
-    await expect(page.locator('.deadline-horizon-price').first()).toBeVisible();
+    await expect(page.locator('.deadline-horizon-chart svg')).toBeVisible();
   });
 
   test('shows the controlled error state when the device has no objective', async ({ page }) => {

@@ -419,6 +419,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(diagnostic).toMatchObject({
       status: 'unknown',
       reasonCode: 'objective_missing_price_horizon',
+      currentPercent: 40,
+      energyNeededKWh: 4,
+      kWhPerPercent: 0.2,
       deadlineRollsToNextDay: true,
       deadlineAtMs: Date.UTC(2026, 0, 2, 16, 0, 0),
     });
