@@ -142,13 +142,10 @@ const initTabHandlers = () => {
   tabs.forEach((tab) => {
     tab.addEventListener('click', () => showTab((tab as HTMLElement).dataset.tab || 'devices'));
   });
-  document.querySelectorAll<HTMLElement>('[data-settings-target]').forEach((trigger) => {
-    trigger.addEventListener('click', () => {
-      const target = trigger.dataset.settingsTarget;
-      if (target) {
-        showTab(target);
-      }
-    });
+  document.addEventListener('click', (event) => {
+    if (!(event.target instanceof Element)) return;
+    const trigger = event.target.closest<HTMLElement>('[data-settings-target]');
+    if (trigger?.dataset.settingsTarget) showTab(trigger.dataset.settingsTarget);
   });
 };
 
