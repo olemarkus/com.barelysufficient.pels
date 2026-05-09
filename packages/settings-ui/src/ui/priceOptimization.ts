@@ -1,11 +1,7 @@
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
-import { createDeviceRow, createNumberInput } from './components.ts';
-import { priceOptimizationEmpty, priceOptimizationList, priceOptimizationSection } from './dom.ts';
 import { getSetting, setSetting } from './homey.ts';
-import { logSettingsError } from './logging.ts';
-import { resolveManagedState, defaultPriceOptimizationConfig, state } from './state.ts';
-import { showToastError } from './toast.ts';
-import { supportsTemperatureDevice } from './deviceUtils.ts';
+import { defaultPriceOptimizationConfig, state } from './state.ts';
+import { updatePriceConfigDevices } from './priceConfig.ts';
 
 export const loadPriceOptimizationSettings = async () => {
   const settings = await getSetting('price_optimization_settings');
@@ -18,87 +14,6 @@ export const savePriceOptimizationSettings = async () => {
   await setSetting('price_optimization_settings', state.priceOptimizationSettings);
 };
 
-const getPriceOptimizationConfig = (deviceId: string) => (
-  state.priceOptimizationSettings[deviceId] || { ...defaultPriceOptimizationConfig }
-);
-
-const ensurePriceOptimizationConfig = (deviceId: string) => {
-  if (!state.priceOptimizationSettings[deviceId]) {
-    state.priceOptimizationSettings[deviceId] = { ...defaultPriceOptimizationConfig };
-  }
-  return state.priceOptimizationSettings[deviceId];
-};
-
-const buildPriceOptimizationRow = (device: TargetDeviceSnapshot): HTMLElement => {
-  const config = getPriceOptimizationConfig(device.id);
-
-  const cheapInput = createNumberInput({
-    value: config.cheapDelta ?? 5,
-    min: -20,
-    max: 20,
-    step: 0.5,
-    className: 'price-opt-input',
-    title: 'Temperature adjustment during cheap hours (e.g., +5 to boost)',
-    onChange: async (val) => {
-      const nextConfig = ensurePriceOptimizationConfig(device.id);
-      nextConfig.cheapDelta = val;
-      try {
-        await savePriceOptimizationSettings();
-      } catch (error) {
-        await logSettingsError('Failed to save cheap price delta', error, 'priceOptimizationRow');
-        await showToastError(error, 'Failed to save cheap price delta.');
-      }
-    },
-  });
-
-  const expensiveInput = createNumberInput({
-    value: config.expensiveDelta ?? -5,
-    min: -20,
-    max: 20,
-    step: 0.5,
-    className: 'price-opt-input',
-    title: 'Temperature adjustment during expensive hours (e.g., -5 to reduce)',
-    onChange: async (val) => {
-      const nextConfig = ensurePriceOptimizationConfig(device.id);
-      nextConfig.expensiveDelta = val;
-      try {
-        await savePriceOptimizationSettings();
-      } catch (error) {
-        await logSettingsError('Failed to save expensive price delta', error, 'priceOptimizationRow');
-        await showToastError(error, 'Failed to save expensive price delta.');
-      }
-    },
-  });
-
-  return createDeviceRow({
-    id: device.id,
-    name: device.name,
-    className: 'price-optimization-row',
-    controls: [cheapInput, expensiveInput],
-  });
-};
-
 export const renderPriceOptimization = (devices: TargetDeviceSnapshot[]) => {
-  if (!priceOptimizationList) return;
-  priceOptimizationList.innerHTML = '';
-
-  const enabledDevices = (devices || []).filter((device) => {
-    const config = state.priceOptimizationSettings[device.id];
-    return resolveManagedState(device.id)
-      && config?.enabled === true
-      && supportsTemperatureDevice(device);
-  });
-
-  if (enabledDevices.length === 0) {
-    if (priceOptimizationSection) priceOptimizationSection.hidden = true;
-    if (priceOptimizationEmpty) priceOptimizationEmpty.hidden = false;
-    return;
-  }
-
-  if (priceOptimizationSection) priceOptimizationSection.hidden = false;
-  if (priceOptimizationEmpty) priceOptimizationEmpty.hidden = true;
-
-  enabledDevices.forEach((device) => {
-    priceOptimizationList.appendChild(buildPriceOptimizationRow(device));
-  });
+  updatePriceConfigDevices(devices);
 };

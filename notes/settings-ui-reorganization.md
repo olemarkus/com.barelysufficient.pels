@@ -63,7 +63,8 @@ Recommended order:
 - `Limits & safety`
 - `Devices`
 - `Modes`
-- `Price`
+- `Electricity prices`
+- `Price-aware devices`
 - `Simulation mode`
 - `Advanced`
 
@@ -83,8 +84,11 @@ Managed devices and per-device behavior
 [ Modes ]
 Mode behavior and priorities
 
-[ Price ]
-Source, area, tariffs, cheap/expensive thresholds
+[ Electricity prices ]
+Source, tariffs, cheap and expensive hours
+
+[ Price-aware devices ]
+Devices that respond to cheap and expensive hours
 
 [ Simulation mode ]
 Test behavior without controlling devices
@@ -110,7 +114,9 @@ Inside `Settings`:
 Limits & safety = global safety/source controls.
 Devices = configure what each device may do.
 Modes = configure mode behavior.
-Price = configure global price data and price-feature status.
+Electricity prices = configure price source, tariffs, and cheap/expensive thresholds.
+Price-aware devices = enable/disable price response, edit per-device cheap-hour boost
+  and expensive-hour reduction in bulk.
 Simulation mode = test behavior without controlling devices.
 Advanced = diagnostics, cleanup, logs, experiments, rare recovery tools.
 ```
@@ -360,11 +366,13 @@ Device detail owns:
 - priority
 - allowed control behavior
 - power behavior
-- per-device price behavior
+- per-device price behavior (also editable in bulk on `Settings > Price-aware devices`)
 - device-specific diagnostics
 
-Budget and Price may summarize device behavior, but editing per-device behavior should route to
-device detail.
+Budget may summarize device behavior, but most editing routes to device detail. Per-device price
+behavior is the explicit exception: it lives in two equivalent places, the bulk
+`Settings > Price-aware devices` page and the per-device detail panel, both writing to the same
+setting.
 
 ## Modes
 
@@ -377,13 +385,13 @@ The Overview fast switch changes only the active mode. It must use API/bootstrap
 current active mode, not direct settings reads, so the displayed mode stays live when another
 client or Flow changes it.
 
-## Price
+## Electricity prices
 
-`Settings > Price` owns global electricity price setup and price-feature status.
+`Settings > Electricity prices` owns global electricity price setup and price-feature status.
 
-Price can be useful without daily budget enabled, so price must not be collapsed into Budget.
+Price can be useful without daily budget enabled, so it must not be collapsed into Budget.
 
-Price owns:
+`Electricity prices` owns:
 
 - price source
 - price area
@@ -400,14 +408,29 @@ Budget may show:
 - how price changes the daily plan
 - missing-price warnings only when Budget needs price data
 
-Devices own:
+## Price-aware devices
 
-- `Cheap-hour boost`
-- `Expensive-hour reduction`
-- per-device price behavior enable/disable
+`Settings > Price-aware devices` is the bulk surface for editing per-device cheap-hour boost
+and expensive-hour reduction. Splitting this out from `Electricity prices` keeps the source/rule
+configuration page calm, and lets users tune many devices on one page without drilling into each
+device's detail panel.
 
-Price may summarize affected devices, but editing per-device price behavior should link to the
-device detail page.
+`Price-aware devices` owns:
+
+- the global `Respond to prices` switch
+- per-device `Cheap-hour boost` (°C, magnitude, applied during cheap hours)
+- per-device `Expensive-hour reduction` (°C, magnitude, applied during expensive hours)
+
+The settings UI persists the deltas as signed numbers (`cheapDelta`, `-expensiveDelta`) for
+backwards compatibility with existing data. The view layer adapts those signed values to the
+positive-magnitude UX boundary.
+
+Device detail still exposes the same controls for one device at a time as a secondary editor.
+Both surfaces write to the same `price_optimization_settings` setting key, so changes from one
+surface are reflected on the other.
+
+`Electricity prices` may summarize affected devices, but the editing interaction lives on
+`Price-aware devices` (or, secondarily, on the device detail panel).
 
 ## Simulation Mode
 
@@ -535,8 +558,8 @@ Suggested sequence:
 
 1. Product note and terminology updates.
 2. Navigation shell: top-level `Overview`, `Budget`, `Usage`, `Settings`; Settings card/list.
-3. Settings sections: `Limits & safety`, `Devices`, `Modes`, `Price`, `Simulation mode`,
-   `Advanced`.
+3. Settings sections: `Limits & safety`, `Devices`, `Modes`, `Electricity prices`,
+   `Price-aware devices`, `Simulation mode`, `Advanced`.
 4. Budget `Plan` and `Adjust` views.
 5. Budget `Review changes` comparison flow.
 6. Usage history reorganization and data-management cleanup.

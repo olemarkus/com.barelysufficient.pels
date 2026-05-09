@@ -251,7 +251,7 @@ describe('Settings UI', () => {
       expect(tabTexts).toContain('Overview');
       expect(tabTexts).toContain('Budget');
       expect(tabTexts).toContain('Usage');
-      expect(tabTexts).toContain('Price');
+      expect(tabTexts).toContain('Prices');
       expect(tabTexts).toContain('Advanced');
     });
 
@@ -597,14 +597,6 @@ describe('Settings UI', () => {
       expect(backdropFilter).toContain('blur');
     });
 
-    test('price status badge exists on price tab', async () => {
-      await page.click('[data-tab="price"]');
-      await sleep(50);
-
-      const badge = await page.$('#price-status-badge');
-      expect(badge).toBeTruthy();
-      // Badge is only visible for warn states; hidden otherwise
-    });
   });
 
   describe('Overview layout', () => {
@@ -756,88 +748,6 @@ describe('Settings UI', () => {
 
       expect(overflowInfo.lineOverflow).toBe(false);
       expect(overflowInfo.hasHorizontalScroll).toBe(false);
-    });
-  });
-
-  describe('Price optimization section', () => {
-    beforeAll(async () => {
-      await setupPage({ viewport: { width: 480, height: 800 } });
-      await page.click('[data-tab="price"]');
-      await sleep(50);
-    });
-
-    test('price optimization header aligns with row columns', async () => {
-      const header = await page.$('.price-optimization-header');
-      expect(header).toBeTruthy();
-
-      const headerStyle = await page.$eval('.price-optimization-header', (el) => {
-        const style = getComputedStyle(el);
-        return { display: style.display, gridTemplateColumns: style.gridTemplateColumns };
-      });
-
-      expect(headerStyle.display).toBe('grid');
-    });
-
-    test('price optimization rows have grid layout', async () => {
-      const rows = await page.$$('.price-optimization-row');
-      expect(rows.length).toBeGreaterThan(0);
-
-      const rowStyle = await page.$eval('.price-optimization-row', (el) => {
-        const style = getComputedStyle(el);
-        return { display: style.display, gridTemplateColumns: style.gridTemplateColumns };
-      });
-
-      expect(rowStyle.display).toBe('grid');
-    });
-
-    test('device name and inputs are on same row', async () => {
-      const row = await page.$('.price-optimization-row');
-      expect(row).toBeTruthy();
-
-      const nameBox = await page.$eval('.price-optimization-row .device-row__name', (el) => {
-        const rect = el.getBoundingClientRect();
-        return { top: rect.top, bottom: rect.bottom };
-      });
-      const inputBox = await page.$eval('.price-optimization-row .price-opt-input', (el) => {
-        const rect = el.getBoundingClientRect();
-        return { top: rect.top, bottom: rect.bottom };
-      });
-
-      expect(nameBox.bottom).toBeGreaterThanOrEqual(inputBox.top);
-      expect(inputBox.bottom).toBeGreaterThanOrEqual(nameBox.top);
-    });
-
-    test('inputs fit within viewport at 480px', async () => {
-      const inputRights = await page.$$eval('.price-optimization-row .price-opt-input', (els) => {
-        const rights: number[] = [];
-        for (const el of els) {
-          rights.push(el.getBoundingClientRect().right);
-        }
-        return rights;
-      });
-
-      for (const right of inputRights) {
-        expect(right).toBeLessThanOrEqual(480);
-      }
-    });
-
-    test('each row has device name and 3 inputs (no checkbox)', async () => {
-      const rowContent = await page.$eval('.price-optimization-row', (row) => {
-        const name = row.querySelector('.device-row__name');
-        const inputs = row.querySelectorAll('input[type="number"]');
-        const checkbox = row.querySelector('input[type="checkbox"]');
-        return {
-          hasName: Boolean(name),
-          nameText: name?.textContent,
-          inputCount: inputs.length,
-          hasCheckbox: Boolean(checkbox),
-        };
-      });
-
-      expect(rowContent.hasName).toBe(true);
-      expect(rowContent.nameText).toBeTruthy();
-      expect(rowContent.inputCount).toBe(3);
-      expect(rowContent.hasCheckbox).toBe(false);
     });
   });
 

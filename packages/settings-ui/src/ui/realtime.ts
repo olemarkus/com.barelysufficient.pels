@@ -49,8 +49,7 @@ import {
   refreshActiveMode,
   renderPriorities,
 } from './modes.ts';
-import { refreshPrices, loadPriceSettings } from './prices.ts';
-import { renderPriceOptimization } from './priceOptimization.ts';
+import { refreshPriceConfigView, reloadPriceConfigSettings, updatePriceConfigDevices } from './priceConfig.ts';
 import {
   loadDailyBudgetSettings,
   refreshDailyBudgetPlan,
@@ -81,7 +80,15 @@ const DAILY_BUDGET_REFRESH_KEYS = new Set([
 
 const POWER_USAGE_REALTIME_REFRESH_MIN_INTERVAL_MS = 30 * 1000;
 
-const REDESIGN_SETTINGS_SECTIONS = new Set(['limits', 'devices', 'modes', 'price', 'simulation', 'advanced']);
+const REDESIGN_SETTINGS_SECTIONS = new Set([
+  'limits',
+  'devices',
+  'modes',
+  'electricity-prices',
+  'price-aware-devices',
+  'simulation',
+  'advanced',
+]);
 
 const DAILY_BUDGET_SETTINGS_KEYS = new Set([
   'daily_budget_enabled',
@@ -149,8 +156,8 @@ export const refreshPlanForUi = (context: string) => {
 };
 
 const refreshPricesIfVisible = (context: string) => {
-  if (!isPanelVisible('#price-panel')) return;
-  runLoggedTask(refreshPrices(), 'Failed to refresh prices', context);
+  if (!isPanelVisible('#electricity-prices-panel') && !isPanelVisible('#price-aware-devices-panel')) return;
+  runLoggedTask(refreshPriceConfigView(), 'Failed to refresh prices', context);
 };
 
 const refreshDailyBudgetIfVisible = (context: string) => {
@@ -188,7 +195,7 @@ const renderLatestDevices = (devices: Awaited<ReturnType<typeof getTargetDevices
   state.latestDevices = devices;
   renderPriorities(devices);
   renderDevices(devices);
-  renderPriceOptimization(devices);
+  updatePriceConfigDevices(devices);
   refreshAdvancedDeviceCleanup();
   document.dispatchEvent(new CustomEvent('devices-updated', { detail: { devices } }));
 };
@@ -225,7 +232,7 @@ const refreshModeAndDeviceControls = () => {
       if (!state.devicesLoaded) return;
       renderPriorities(state.latestDevices);
       renderDevices(state.latestDevices);
-      renderPriceOptimization(state.latestDevices);
+      updatePriceConfigDevices(state.latestDevices);
     })
     .catch((error) => {
       void logSettingsError('Failed to load device control settings', error, 'settings.set');
@@ -249,7 +256,7 @@ const refreshPriceSettings = (key: string) => {
     refreshPricesIfVisible('settings.set');
   }
   if (key !== PRICE_SCHEME && key !== NORWAY_PRICE_MODEL) return;
-  runLoggedTask(loadPriceSettings(), 'Failed to load price settings', 'settings.set');
+  runLoggedTask(reloadPriceConfigSettings(), 'Failed to reload price settings', 'settings.set');
   refreshPricesIfVisible('settings.set');
 };
 
@@ -348,6 +355,38 @@ const handlePowerUpdated = (power: unknown) => {
   });
 };
 
+const DEVICE_DEPENDENT_TABS = new Set([
+  'devices',
+  'modes',
+  'electricity-prices',
+  'price-aware-devices',
+  'advanced',
+]);
+
+const runTabActivationSideEffects = (tabId: string) => {
+  if (tabId === 'overview') {
+    document.dispatchEvent(new Event('overview-tab-activated'));
+    refreshPlanForUi('showTab');
+    return;
+  }
+  if (tabId === 'electricity-prices' || tabId === 'price-aware-devices') {
+    runLoggedTask(refreshPriceConfigView(), 'Failed to refresh prices', 'showTab');
+    return;
+  }
+  if (tabId === 'usage') {
+    invalidateApiCache(SETTINGS_UI_POWER_PATH);
+    runLoggedTask(refreshPowerData(), 'Failed to refresh power data', 'showTab');
+    return;
+  }
+  if (tabId === 'budget') {
+    runLoggedTask(refreshDailyBudgetPlan(), 'Failed to refresh daily budget', 'showTab');
+    return;
+  }
+  if (tabId === 'limits' || tabId === 'simulation') {
+    runLoggedTask(loadCapacitySettings(), 'Failed to load limits and simulation settings', 'showTab');
+  }
+};
+
 export const showTab = (tabId: string) => {
   const activeTopLevelTab = (
     getCurrentSettingsUiVariant() === 'redesign' && REDESIGN_SETTINGS_SECTIONS.has(tabId)
@@ -362,27 +401,9 @@ export const showTab = (tabId: string) => {
   panels.forEach((panel) => {
     panel.classList.toggle('hidden', panel.dataset.panel !== tabId);
   });
-  if (tabId === 'overview') {
-    document.dispatchEvent(new Event('overview-tab-activated'));
-    refreshPlanForUi('showTab');
-  }
-  if (tabId === 'price') {
-    runLoggedTask(refreshPrices(), 'Failed to refresh prices', 'showTab');
-  }
-  if (tabId === 'usage') {
-    invalidateApiCache(SETTINGS_UI_POWER_PATH);
-    runLoggedTask(refreshPowerData(), 'Failed to refresh power data', 'showTab');
-  }
-  if (tabId === 'budget') {
-    runLoggedTask(refreshDailyBudgetPlan(), 'Failed to refresh daily budget', 'showTab');
-  }
-  if (tabId === 'limits' || tabId === 'simulation') {
-    runLoggedTask(loadCapacitySettings(), 'Failed to load limits and simulation settings', 'showTab');
-  }
-  if (tabId === 'devices' || tabId === 'modes' || tabId === 'price' || tabId === 'advanced') {
-    if (!state.devicesLoaded && !state.devicesLoading) {
-      loadDevicesOnce();
-    }
+  runTabActivationSideEffects(tabId);
+  if (DEVICE_DEPENDENT_TABS.has(tabId) && !state.devicesLoaded && !state.devicesLoading) {
+    loadDevicesOnce();
   }
 };
 

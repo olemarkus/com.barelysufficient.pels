@@ -102,42 +102,8 @@ export const priorityForm = document.querySelector('#priority-form') as HTMLForm
 export const priorityList = qs('#priority-list');
 export const priorityEmpty = qs('#priority-empty');
 
-export const priceList = qs('#price-list');
-export const priceEmpty = qs('#price-empty');
-export const priceStatusBadge = qs('#price-status-badge');
-export const priceSchemeSelect = document.querySelector('#price-scheme') as HTMLSelectElement;
-export const priceSchemeNote = qs('#price-scheme-note');
-export const priceFlowStatus = qs('#price-flow-status');
-export const priceFlowEnabled = document.querySelector('#price-flow-enabled') as HTMLSpanElement;
-export const priceFlowToday = document.querySelector('#price-flow-today') as HTMLSpanElement;
-export const priceFlowTomorrow = document.querySelector('#price-flow-tomorrow') as HTMLSpanElement;
-export const priceHomeyStatus = qs('#price-homey-status');
-export const priceHomeyEnabled = document.querySelector('#price-homey-enabled') as HTMLSpanElement;
-export const priceHomeyCurrency = document.querySelector('#price-homey-currency') as HTMLSpanElement;
-export const priceHomeyToday = document.querySelector('#price-homey-today') as HTMLSpanElement;
-export const priceHomeyTomorrow = document.querySelector('#price-homey-tomorrow') as HTMLSpanElement;
-export const priceNorwaySettings = qs('#price-norway-settings');
-export const priceSettingsForm = document.querySelector('#price-settings-form') as HTMLFormElement;
-export const norwayPriceModelSelect = document.querySelector('#norway-price-model') as HTMLSelectElement;
-export const priceAreaSelect = document.querySelector('#price-area') as HTMLSelectElement;
-export const providerSurchargeInput = document.querySelector('#provider-surcharge') as HTMLInputElement;
-export const norgesprisRulesRow = qs('#norgespris-rules-row');
-export const priceThresholdInput = document.querySelector('#price-threshold-percent') as HTMLInputElement;
-export const priceMinDiffLabel = document.querySelector('#price-min-diff-label') as HTMLSpanElement;
-export const priceMinDiffInput = document.querySelector('#price-min-diff-ore') as HTMLInputElement;
-export const priceRefreshButton = document.querySelector('#price-refresh-button') as HTMLButtonElement;
-export const gridTariffSettingsForm = document.querySelector('#nettleie-settings-form') as HTMLFormElement;
-export const gridTariffCountySelect = document.querySelector('#nettleie-fylke') as HTMLSelectElement;
-export const gridTariffCompanySelect = document.querySelector('#nettleie-company') as HTMLSelectElement;
-export const gridTariffOrgNumberInput = document.querySelector('#nettleie-orgnr') as HTMLInputElement;
-export const gridTariffGroupSelect = document.querySelector('#nettleie-tariffgruppe') as HTMLSelectElement;
-export const gridTariffRefreshButton = document.querySelector('#nettleie-refresh-button') as HTMLButtonElement;
-export const priceOptimizationList = qs('#price-optimization-list');
-export const priceOptimizationEmpty = qs('#price-optimization-empty');
-export const priceOptimizationSection = qs('#price-optimization-section');
-export const priceOptimizationEnabledCheckbox = document.querySelector(
-  '#price-optimization-enabled',
-) as HTMLInputElement;
+export const electricityPricesSurface = document.querySelector('#electricity-prices-surface') as HTMLElement;
+export const priceAwareDevicesSurface = document.querySelector('#price-aware-devices-surface') as HTMLElement;
 export const advancedOverviewRedesignRow = document.querySelector(
   '#advanced-overview-redesign-row',
 ) as HTMLElement | null;
