@@ -222,6 +222,9 @@ export const deviceDetailEvBoostBelow = document.querySelector(
   '#device-detail-ev-boost-below',
 ) as HTMLInputElement;
 export const deviceDetailEvBoostStatus = qs('#device-detail-ev-boost-status');
+export const deviceDetailDeadlineObjectiveMount = document.querySelector(
+  '#device-detail-deadline-objective',
+) as HTMLElement | null;
 export const deviceDetailSteppedAddStep = document.querySelector(
   '#device-detail-stepped-add-step',
 ) as HTMLButtonElement;

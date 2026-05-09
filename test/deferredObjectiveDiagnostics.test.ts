@@ -37,6 +37,25 @@ const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice 
   ...overrides,
 });
 
+const buildTemperatureDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
+  id: 'heater-1',
+  name: 'Connected 300',
+  targets: [{ id: 'target_temperature', value: 55, unit: 'C', min: 0, max: 95, step: 0.5 }],
+  currentOn: false,
+  deviceType: 'temperature',
+  controlModel: 'stepped_load',
+  currentTemperature: 55,
+  lastFreshDataMs: NOW_MS,
+  steppedLoadProfile: {
+    model: 'stepped_load',
+    steps: [
+      { id: 'off', planningPowerW: 0 },
+      { id: 'heat', planningPowerW: 3000 },
+    ],
+  },
+  ...overrides,
+});
+
 const buildSettings = (overrides = {}) => ({
   version: 1,
   objectivesByDeviceId: {
@@ -45,6 +64,20 @@ const buildSettings = (overrides = {}) => ({
       kind: 'ev_soc',
       enforcement: 'soft',
       targetPercent: 60,
+      deadlineLocalTime: '21:00',
+      ...overrides,
+    },
+  },
+});
+
+const buildTemperatureSettings = (overrides = {}) => ({
+  version: 1,
+  objectivesByDeviceId: {
+    'heater-1': {
+      enabled: true,
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: 65,
       deadlineLocalTime: '21:00',
       ...overrides,
     },
@@ -67,6 +100,28 @@ const buildPowerTracker = (overrides: Partial<PowerTrackerState> = {}): PowerTra
         lastUpdatedMs: NOW_MS,
       },
       acceptedSamples: 4,
+      rejectedSamples: 0,
+    },
+  },
+  ...overrides,
+});
+
+const buildTemperaturePowerTracker = (overrides: Partial<PowerTrackerState> = {}): PowerTrackerState => ({
+  objectiveProfiles: {
+    'heater-1': {
+      kind: 'temperature',
+      updatedAtMs: NOW_MS,
+      lastSample: { observedAtMs: NOW_MS, value: 55, unit: 'degree_c' },
+      kwhPerUnit: {
+        sampleCount: 6,
+        mean: 0.8,
+        m2: 0,
+        min: 0.7,
+        max: 0.9,
+        confidence: 'high',
+        lastUpdatedMs: NOW_MS,
+      },
+      acceptedSamples: 6,
       rejectedSamples: 0,
     },
   },
@@ -210,6 +265,39 @@ describe('deferred objective settings', () => {
     });
   });
 
+  it('keeps valid temperature objectives', () => {
+    expect(normalizeDeferredObjectiveSettings({
+      version: 1,
+      objectivesByDeviceId: {
+        'heater-1': {
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 65,
+          deadlineLocalTime: '08:00',
+        },
+      },
+    })).toEqual({
+      version: 1,
+      objectivesByDeviceId: {
+        'heater-1': {
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 65,
+          deadlineLocalTime: '08:00',
+        },
+      },
+    });
+  });
+
+  it('drops hard temperature objectives until hard thermal semantics exist', () => {
+    expect(normalizeDeferredObjectiveSettings(buildTemperatureSettings({ enforcement: 'hard' }))).toEqual({
+      version: 1,
+      objectivesByDeviceId: {},
+    });
+  });
+
   it('returns an empty versioned settings object for unsupported payloads', () => {
     expect(normalizeDeferredObjectiveSettings({ version: 2 })).toEqual(createEmptyDeferredObjectiveSettings());
   });
@@ -271,6 +359,50 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       horizonBucketCount: 4,
     });
     expect(diagnostic?.horizonPlan?.plannedBuckets.some((bucket) => bucket.preference === 'preferred')).toBe(true);
+  });
+
+  it('plans a persisted temperature objective from learned kWh per degree', () => {
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildTemperatureDevice()],
+      settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
+      powerTracker: buildTemperaturePowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic).toMatchObject({
+      objectiveKind: 'temperature',
+      status: 'on_track',
+      reasonCode: 'planned_with_margin',
+      currentTemperatureC: 55,
+      targetTemperatureC: 65,
+      energyNeededKWh: 8,
+      kWhPerDegreeC: 0.8,
+      requestedMinimumStepId: 'heat',
+      horizonBucketCount: 4,
+    });
+  });
+
+  it('does not plan a temperature objective from stale progress', () => {
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildTemperatureDevice({ observationStale: true })],
+      settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
+      powerTracker: buildTemperaturePowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic).toMatchObject({
+      objectiveKind: 'temperature',
+      status: 'unknown',
+      reasonCode: 'objective_progress_stale',
+      currentTemperatureC: 55,
+      energyNeededKWh: null,
+    });
   });
 
   it('rolls a past local deadline to tomorrow and waits when tomorrow prices are missing', () => {

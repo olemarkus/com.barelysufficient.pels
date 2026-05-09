@@ -195,7 +195,7 @@ const DeadlinePlanMockupRoot = ({ loadState }: { loadState: DeadlinePlanMockupLo
     return (
       <section class="pels-surface-card budget-redesign-card">
         <h1 class="plan-card__title">Loading deadline plan</h1>
-        <p class="pels-card-supporting">Preparing the mockup.</p>
+        <p class="pels-card-supporting">Preparing the device plan.</p>
       </section>
     );
   }

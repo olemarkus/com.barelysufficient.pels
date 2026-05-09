@@ -1,6 +1,6 @@
-import type { DeferredObjectiveEnforcement } from './types';
-
 export const DEFERRED_OBJECTIVES_SETTINGS_VERSION = 1;
+
+export type DeferredObjectiveEnforcement = 'soft' | 'hard';
 
 export type DeferredObjectiveSettingsKind = 'ev_soc' | 'temperature';
 

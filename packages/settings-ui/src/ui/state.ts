@@ -5,6 +5,10 @@ import type {
   TargetDeviceSnapshot,
   TemperatureBoostSettings,
 } from '../../../contracts/src/types.ts';
+import {
+  createEmptyDeferredObjectiveSettings,
+  type DeferredObjectiveSettingsV1,
+} from '../../../contracts/src/deferredObjectiveSettings.ts';
 
 export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 export type ShedBehavior = {
@@ -40,7 +44,9 @@ export type UiState = {
   shedBehaviors: Record<string, ShedBehavior>;
   temperatureBoostSettings: TemperatureBoostSettings;
   evBoostSettings: EvBoostSettings;
+  deferredObjectiveSettings: DeferredObjectiveSettingsV1;
   priceOptimizationSettings: Record<string, PriceOptimizationConfig>;
+  canToggleOverviewRedesign: boolean;
 };
 
 export const defaultPriceOptimizationConfig: PriceOptimizationConfig = {
@@ -70,7 +76,9 @@ export const state: UiState = {
   shedBehaviors: {},
   temperatureBoostSettings: {},
   evBoostSettings: {},
+  deferredObjectiveSettings: createEmptyDeferredObjectiveSettings(),
   priceOptimizationSettings: {},
+  canToggleOverviewRedesign: false,
 };
 
 export const resolveManagedState = (deviceId: string): boolean => {
