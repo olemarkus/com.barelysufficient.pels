@@ -286,7 +286,7 @@ describe('settingsUiApi', () => {
       homey.cloud.getHomeyId.mockReturnValue(new Promise(() => {}));
 
       const resultPromise = buildSettingsUiBootstrap({ homey: homey as never });
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(3000);
 
       await expect(resultPromise).resolves.toMatchObject({
         featureAccess: { canToggleOverviewRedesign: false },

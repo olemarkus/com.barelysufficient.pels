@@ -198,6 +198,48 @@ describe('objective profiles', () => {
     }));
   });
 
+  it('does not emit one routine rejection log per device in the same pass', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2027, 0, 1, 0, 0, 0));
+    try {
+      const debugStructured = vi.fn();
+      const previousState = updateObjectiveProfilesFromSnapshot({
+        state: {},
+        devices: [
+          temperatureDevice({ id: 'heater-1', currentTemperature: 52 }),
+          temperatureDevice({ id: 'heater-2', currentTemperature: 52 }),
+        ],
+        nowMs: startMs,
+      });
+
+      updateObjectiveProfilesFromSnapshot({
+        state: previousState,
+        devices: [
+          temperatureDevice({
+            id: 'heater-1',
+            currentTemperature: 51,
+            lastFreshDataMs: startMs + hourMs,
+          }),
+          temperatureDevice({
+            id: 'heater-2',
+            currentTemperature: 51,
+            lastFreshDataMs: startMs + hourMs,
+          }),
+        ],
+        nowMs: startMs + hourMs,
+        debugStructured,
+      });
+
+      expect(debugStructured).toHaveBeenCalledTimes(1);
+      expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'objective_profile_sample_rejected',
+        reasonCode: 'objective_profile_value_fell',
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps the accepted baseline after too-frequent samples so later readings can be accepted', () => {
     let state: PowerTrackerState = {};
     state = updateObjectiveProfilesFromSnapshot({

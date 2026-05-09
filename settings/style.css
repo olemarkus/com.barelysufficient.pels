@@ -3424,6 +3424,31 @@ input[type="text"]:focus {
   border-color: var(--pels-surface-outline) !important;
 }
 
+.deadline-page-close {
+  position: fixed;
+  z-index: 20;
+  top: max(var(--spacing-3), env(safe-area-inset-top));
+  right: max(var(--spacing-3), env(safe-area-inset-right));
+  display: inline-grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--pels-surface-outline);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--pels-surface-container-high) 86%, transparent);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+  font: inherit;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.deadline-page-close:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .deadline-swatch,
 .deadline-plan-mark {
   display: inline-block;
@@ -3482,6 +3507,12 @@ input[type="text"]:focus {
   padding-top: var(--spacing-7);
 }
 
+.deadline-horizon-chart {
+  width: 100%;
+  min-width: 0;
+  height: 282px;
+}
+
 .deadline-horizon__row {
   display: grid;
   grid-template-columns: minmax(64px, 72px) minmax(0, 1fr);
@@ -3492,10 +3523,19 @@ input[type="text"]:focus {
 
 .deadline-horizon__row-label {
   align-self: center;
+  display: grid;
+  gap: 2px;
   color: var(--text);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
   line-height: var(--line-height-tight);
+}
+
+.deadline-horizon__axis-ceiling {
+  color: var(--pels-text-supporting-color);
+  font-size: 9px;
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
 }
 
 .deadline-horizon__grid,

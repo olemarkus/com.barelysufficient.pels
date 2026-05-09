@@ -112,6 +112,7 @@ export const emitDeferredObjectiveDiagnostics = (params: {
   }
 };
 
+/* eslint-disable sonarjs/cognitive-complexity */
 const buildDeferredObjectiveDiagnostic = (params: {
   nowMs: number;
   timeZone: string;
@@ -166,8 +167,27 @@ const buildDeferredObjectiveDiagnostic = (params: {
     dailyBudgetSnapshot,
   });
   if (policyHorizon.reasonCode) {
+    let knownInputs = withDeadline;
+    if (policyHorizon.reasonCode === 'objective_missing_price_horizon') {
+      const progress = resolveObjectiveProgress({ objective, device, nowMs });
+      const profileEnergy = !progress.reasonCode && progress.remainingUnits > 0
+        ? resolveProfileEnergy({
+          powerTracker,
+          deviceId,
+          objectiveKind: objective.kind,
+          remainingUnits: progress.remainingUnits,
+        })
+        : null;
+      knownInputs = {
+        ...withDeadline,
+        currentPercent: progress.currentPercent,
+        currentTemperatureC: progress.currentTemperatureC,
+        ...(!progress.reasonCode && progress.remainingUnits <= 0 ? { energyNeededKWh: 0 } : {}),
+        ...(profileEnergy && !profileEnergy.reasonCode ? buildKnownEnergyFields({ objective, profileEnergy }) : {}),
+      };
+    }
     return withUnknown({
-      ...withDeadline,
+      ...knownInputs,
       horizonBucketCount: policyHorizon.horizonBucketCount,
     }, policyHorizon.reasonCode);
   }
@@ -183,6 +203,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
     deadlineAtMs: deadline.deadlineAtMs,
   });
 };
+/* eslint-enable sonarjs/cognitive-complexity */
 
 const buildDiagnosticWithPolicyHorizon = (params: {
   nowMs: number;
@@ -313,6 +334,16 @@ const withUnknown = (
   status: 'unknown',
   reasonCode,
   requestedMinimumStepId: null,
+});
+
+const buildKnownEnergyFields = (params: {
+  objective: DeferredObjectiveSettingsEntry;
+  profileEnergy: Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>;
+}): Pick<DeferredObjectiveDiagnostic, 'energyNeededKWh' | 'kWhPerPercent' | 'kWhPerDegreeC' | 'rateConfidence'> => ({
+  energyNeededKWh: params.profileEnergy.energyNeededKWh,
+  kWhPerPercent: params.objective.kind === 'ev_soc' ? params.profileEnergy.kWhPerUnit : null,
+  kWhPerDegreeC: params.objective.kind === 'temperature' ? params.profileEnergy.kWhPerUnit : null,
+  rateConfidence: params.profileEnergy.rateConfidence,
 });
 
 const resolveEvObjectiveProgress = (

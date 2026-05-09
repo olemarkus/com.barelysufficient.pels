@@ -71,7 +71,7 @@ const canShowDeadlineObjectiveCard = (device: TargetDeviceSnapshot): boolean => 
 );
 
 const buildDeadlinePlanHref = (deviceId: string): string => (
-  `./deadline-plan.html?deviceId=${encodeURIComponent(deviceId)}`
+  `./deadline-plan.html?deviceId=${encodeURIComponent(deviceId)}&ui=redesign`
 );
 
 const validateDeadlineObjectiveForm = (params: {
