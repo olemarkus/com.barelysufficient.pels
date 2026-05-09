@@ -25,7 +25,7 @@
         <button type="button" class="tab" data-tab="modes" role="tab" aria-selected="false">Modes</button>
         <button type="button" class="tab" data-tab="budget" role="tab" aria-selected="false">Budget</button>
         <button type="button" class="tab" data-tab="usage" role="tab" aria-selected="false">Usage</button>
-        <button type="button" class="tab" data-tab="price" role="tab" aria-selected="false">Price</button>
+        <button type="button" class="tab" data-tab="electricity-prices" role="tab" aria-selected="false">Prices</button>
         <button type="button" class="tab" data-tab="advanced" role="tab" aria-selected="false">Advanced</button>
       </div>
       <div class="tabs redesign-shell-nav" id="redesign-shell-nav" role="tablist" aria-label="PELS settings sections" hidden>
@@ -399,11 +399,19 @@
           </span>
           <span class="settings-nav-card__chevron" aria-hidden="true">›</span>
         </button>
-        <button type="button" class="settings-nav-card" data-settings-target="price">
+        <button type="button" class="settings-nav-card" data-settings-target="electricity-prices">
           <md-ripple></md-ripple>
           <span class="settings-nav-card__content">
-            <span class="settings-nav-card__title">Price</span>
-            <span class="settings-nav-card__description">Source, area, tariffs, cheap/expensive hours</span>
+            <span class="settings-nav-card__title">Electricity prices</span>
+            <span class="settings-nav-card__description">Source, tariffs, cheap and expensive hours</span>
+          </span>
+          <span class="settings-nav-card__chevron" aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="settings-nav-card" data-settings-target="price-aware-devices">
+          <md-ripple></md-ripple>
+          <span class="settings-nav-card__content">
+            <span class="settings-nav-card__title">Price-aware devices</span>
+            <span class="settings-nav-card__description">Devices that respond to cheap and expensive hours</span>
           </span>
           <span class="settings-nav-card__chevron" aria-hidden="true">›</span>
         </button>
@@ -617,197 +625,12 @@
       </details>
     </section>
 
-    <section class="card panel hidden" id="price-panel" data-panel="price">
-      <button type="button" class="btn ghost settings-back-button settings-back-button--redesign-only" data-settings-target="settings">‹ Settings</button>
-      <div class="card__header">
-        <div>
-          <p class="eyebrow">Price</p>
-          <h2>Electricity pricing</h2>
-        </div>
-        <div class="pill" id="price-status-badge">No data</div>
-      </div>
-      <div class="price-info">
-        <p class="muted">Price-based optimization uses hourly prices to shift energy-intensive tasks to cheaper hours.</p>
-        <p class="muted">Norway source adds grid tariff, provider surcharge, taxes, and electricity support. Flow and Homey sources use values as provided (currency/tax may differ).</p>
-      </div>
+    <section class="card panel hidden settings-detail-panel" id="electricity-prices-panel" data-panel="electricity-prices">
+      <div id="electricity-prices-surface"></div>
+    </section>
 
-      <div class="toggle-row">
-        <label class="toggle-label">
-          <input type="checkbox" id="price-optimization-enabled" checked>
-          <span>Enable price-based optimization</span>
-        </label>
-        <small class="field__hint">When disabled, device temperatures will not be adjusted based on electricity prices.</small>
-      </div>
-
-      <details class="settings-collapse">
-        <summary>
-          <h3 class="section-title">Price settings</h3>
-          <span class="section-hint">Price source, grid tariff &amp; spot price configuration</span>
-        </summary>
-        <div class="collapse-content">
-          <h4>Price source</h4>
-          <form id="price-source-form" class="form-grid">
-            <label class="field">
-              <span class="field__label">Price source</span>
-              <select id="price-scheme" name="price_scheme">
-                <option value="norway">Norway (spot + grid tariff)</option>
-                <option value="flow">Flow (Power by the Hour)</option>
-                <option value="homey" selected>Homey Energy (dynamic prices)</option>
-              </select>
-              <small class="field__hint">Select where PELS should fetch price data.</small>
-            </label>
-          </form>
-          <p id="price-scheme-note" class="price-notice price-notice-info" hidden></p>
-          <div id="price-flow-status" class="price-notice price-notice-info" hidden>
-            <div class="flow-status-row">
-              <span class="flow-status-label">Power by the Hour</span>
-              <span class="flow-status-value" id="price-flow-enabled">Not enabled</span>
-            </div>
-            <div class="flow-status-row">
-              <span class="flow-status-label">Today</span>
-              <span class="flow-status-value" id="price-flow-today">No data yet</span>
-            </div>
-            <div class="flow-status-row">
-              <span class="flow-status-label">Tomorrow</span>
-              <span class="flow-status-value" id="price-flow-tomorrow">No data yet</span>
-            </div>
-          </div>
-          <div id="price-homey-status" class="price-notice price-notice-info" hidden>
-            <div class="flow-status-row">
-              <span class="flow-status-label">Homey Energy</span>
-              <span class="flow-status-value" id="price-homey-enabled">Not enabled</span>
-            </div>
-            <div class="flow-status-row">
-              <span class="flow-status-label">Currency</span>
-              <span class="flow-status-value" id="price-homey-currency">Unknown</span>
-            </div>
-            <div class="flow-status-row">
-              <span class="flow-status-label">Today</span>
-              <span class="flow-status-value" id="price-homey-today">No data yet</span>
-            </div>
-            <div class="flow-status-row">
-              <span class="flow-status-label">Tomorrow</span>
-              <span class="flow-status-value" id="price-homey-tomorrow">No data yet</span>
-            </div>
-          </div>
-          <div id="price-norway-settings">
-          <h4>Grid tariff</h4>
-          <form id="nettleie-settings-form" class="form-grid">
-            <label class="field">
-              <span class="field__label">County</span>
-              <select id="nettleie-fylke" name="nettleie_fylke">
-                <option value="03">Oslo</option>
-                <option value="11">Rogaland</option>
-                <option value="15">Møre og Romsdal</option>
-                <option value="18">Nordland</option>
-                <option value="31">Østfold</option>
-                <option value="32">Akershus</option>
-                <option value="33">Buskerud</option>
-                <option value="34">Innlandet</option>
-                <option value="39">Vestfold</option>
-                <option value="40">Telemark</option>
-                <option value="42">Agder</option>
-                <option value="46">Vestland</option>
-                <option value="50">Trøndelag</option>
-                <option value="55">Troms</option>
-                <option value="56">Finnmark</option>
-              </select>
-              <small class="field__hint">Your county for grid tariff lookup.</small>
-            </label>
-            <label class="field">
-              <span class="field__label">Grid company</span>
-              <select id="nettleie-company" name="nettleie_company">
-                <option value="">-- Select grid company --</option>
-              </select>
-              <input id="nettleie-orgnr" name="nettleie_orgnr" type="hidden">
-              <small class="field__hint">Select your grid company. List filtered by county.</small>
-            </label>
-            <label class="field">
-              <span class="field__label">Tariff group</span>
-              <select id="nettleie-tariffgruppe" name="nettleie_tariffgruppe">
-                <option value="Husholdning">Household</option>
-                <option value="Hytter og fritidshus">Cabin and holiday home</option>
-              </select>
-            </label>
-            <div class="form__actions">
-              <button type="button" class="btn ghost" id="nettleie-refresh-button">Refresh tariffs</button>
-            </div>
-          </form>
-
-          <h4>Spot price (Norway)</h4>
-          <form id="price-norway-form" class="form-grid">
-            <label class="field">
-              <span class="field__label">Norway pricing model</span>
-              <select id="norway-price-model" name="norway_price_model">
-                <option value="stromstotte" selected>Electricity Subsidy Scheme (Strømstøtte)</option>
-                <option value="norgespris">Norway Price (Norgespris)</option>
-              </select>
-              <small class="field__hint">Choose whether Norway prices use the Electricity Subsidy Scheme (Strømstøtte) or Norway Price (Norgespris).</small>
-            </label>
-            <label class="field">
-              <span class="field__label">Price area</span>
-              <select id="price-area" name="price_area">
-                <option value="NO1">NO1 - Oslo / East Norway</option>
-                <option value="NO2">NO2 - Kristiansand / South Norway</option>
-                <option value="NO3">NO3 - Trondheim / Central Norway</option>
-                <option value="NO4">NO4 - Tromsø / North Norway (no VAT)</option>
-                <option value="NO5">NO5 - Bergen / West Norway</option>
-              </select>
-              <small class="field__hint">Your electricity price area. Prices from <a href="https://www.hvakosterstrommen.no" target="_blank" rel="noopener">hvakosterstrommen.no</a></small>
-            </label>
-            <label class="field">
-              <span class="field__label">Provider surcharge (øre/kWh, incl. VAT)</span>
-              <input type="number" id="provider-surcharge" name="provider_surcharge" step="0.1" min="-100" max="100" value="0">
-              <small class="field__hint">Your electricity provider's surcharge on top of the spot price, including VAT. Can be negative if you have a discount (check your contract).</small>
-            </label>
-            <div class="field" id="norgespris-rules-row" hidden>
-              <span class="field__label">Norway Price (Norgespris) rules</span>
-              <small class="field__hint">
-                Official rules are applied automatically: fixed spot target 50 øre/kWh incl. VAT (40 øre/kWh ex. VAT).
-                Monthly eligibility cap is based on tariff group: household 5000 kWh, cabin/holiday home 1000 kWh.
-              </small>
-            </div>
-          </form>
-          </div>
-          <h4>Price signal</h4>
-          <form id="price-settings-form" class="form-grid">
-            <label class="field">
-              <span class="field__label">Price threshold (%)</span>
-              <input type="number" id="price-threshold-percent" name="price_threshold_percent" step="1" min="5" max="50" value="25">
-              <small class="field__hint">Hours below/above this % from average are considered cheap/expensive.</small>
-            </label>
-            <label class="field">
-              <span class="field__label" id="price-min-diff-label">Minimum price difference (øre/kWh)</span>
-              <input type="number" id="price-min-diff-ore" name="price_min_diff_ore" step="any" min="0" max="1000" inputmode="decimal" value="0">
-              <small class="field__hint">Skip optimization if savings are less than this. Avoids sacrificing comfort for minimal savings.</small>
-            </label>
-          </form>
-        </div>
-      </details>
-      <ul id="price-list" class="device-list"></ul>
-      <p id="price-empty" class="muted">No price data available. Configure a price source above or feed flow prices to see hourly rates.</p>
-      <div class="list__footer">
-        <button type="button" class="btn secondary" id="price-refresh-button">Refresh prices</button>
-      </div>
-
-      <div id="price-optimization-section">
-        <div class="section-header">
-          <h3 class="section-title">Price optimization</h3>
-        </div>
-        <div class="price-info">
-          <p class="muted">Adjust temperature based on electricity price. Deltas are applied to the current mode's target temperature.</p>
-        </div>
-        <div class="price-optimization-header">
-          <p class="muted">Device</p>
-          <div class="muted header-delta">🟢 Cheap Δ</div>
-          <div class="muted header-delta">🔴 Expensive Δ</div>
-        </div>
-        <ul id="price-optimization-list" class="device-list"></ul>
-        <div class="list__footer">
-          <p class="muted">e.g., +5 during cheap hours boosts temp, -5 during expensive hours reduces it.</p>
-        </div>
-      </div>
-      <p id="price-optimization-empty" class="muted" hidden>No devices with price optimization enabled. Enable it on the Devices tab.</p>
+    <section class="card panel hidden settings-detail-panel" id="price-aware-devices-panel" data-panel="price-aware-devices">
+      <div id="price-aware-devices-surface"></div>
     </section>
   </main>
 

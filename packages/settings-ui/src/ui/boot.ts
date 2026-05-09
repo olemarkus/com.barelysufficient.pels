@@ -2,23 +2,11 @@ import {
   emptyState,
   tabs,
   refreshButton,
-  priceSettingsForm,
-  priceSchemeSelect,
-  norwayPriceModelSelect,
-  priceAreaSelect,
-  providerSurchargeInput,
-  priceThresholdInput,
-  priceMinDiffInput,
-  priceRefreshButton,
-  priceOptimizationEnabledCheckbox,
+  electricityPricesSurface,
+  priceAwareDevicesSurface,
   advancedOverviewRedesignEnabledInput,
   advancedOverviewRedesignRow,
   advancedEvSupportEnabledInput,
-  gridTariffSettingsForm,
-  gridTariffCountySelect,
-  gridTariffCompanySelect,
-  gridTariffGroupSelect,
-  gridTariffRefreshButton,
   capacityForm,
   capacityLimitInput,
   capacityMarginInput,
@@ -37,10 +25,7 @@ import {
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
-  SETTINGS_UI_REFRESH_GRID_TARIFF_PATH,
-  SETTINGS_UI_REFRESH_PRICES_PATH,
   type SettingsUiBootstrap,
-  type SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
 import {
   applySettingsPatch,
@@ -63,7 +48,6 @@ import {
 import {
   DEBUG_LOGGING_TOPICS as DEBUG_LOGGING_TOPICS_SETTING,
   EXPERIMENTAL_EV_SUPPORT_ENABLED,
-  PRICE_OPTIMIZATION_ENABLED,
 } from '../../../contracts/src/settingsKeys.ts';
 import {
   DEBUG_LOGGING_TOPICS as AVAILABLE_DEBUG_LOGGING_TOPICS,
@@ -74,17 +58,7 @@ import {
   renderModeOptions,
   renderPriorities,
 } from './modes.ts';
-import {
-  loadPriceSettings,
-  refreshPrices,
-  loadGridTariffSettings,
-  refreshGridTariff,
-  savePriceSettings,
-  saveGridTariffSettings,
-  updateGridCompanyOptions,
-  updatePriceSchemeUiFromSelection,
-} from './prices.ts';
-import { loadPriceOptimizationSettings, renderPriceOptimization } from './priceOptimization.ts';
+import { initElectricityPricesView, initPriceAwareDevicesView } from './priceConfig.ts';
 import {
   initDailyBudgetHandlers,
   loadDailyBudgetSettings,
@@ -206,78 +180,6 @@ const initCapacityHandlers = () => {
   }
 };
 
-const initPriceHandlers = () => {
-  const autoSavePriceSettings = async () => {
-    try {
-      await savePriceSettings();
-    } catch (error) {
-      await logSettingsError('Failed to save price settings', error, 'autoSavePriceSettings');
-      await showToastError(error, 'Failed to save price settings.');
-    }
-  };
-  priceSchemeSelect?.addEventListener('change', () => {
-    updatePriceSchemeUiFromSelection();
-    void autoSavePriceSettings();
-  });
-  norwayPriceModelSelect?.addEventListener('change', () => {
-    updatePriceSchemeUiFromSelection();
-    void autoSavePriceSettings();
-  });
-  priceAreaSelect?.addEventListener('change', autoSavePriceSettings);
-  providerSurchargeInput?.addEventListener('change', autoSavePriceSettings);
-  priceThresholdInput?.addEventListener('change', autoSavePriceSettings);
-  priceMinDiffInput?.addEventListener('change', autoSavePriceSettings);
-  priceSettingsForm?.addEventListener('submit', (event) => event.preventDefault());
-  priceRefreshButton?.addEventListener('click', async () => {
-    try {
-      const response = await callApi<SettingsUiPricesPayload>('POST', SETTINGS_UI_REFRESH_PRICES_PATH, {});
-      primeApiCache(SETTINGS_UI_PRICES_PATH, response);
-      await refreshPrices();
-    } catch (error) {
-      await logSettingsError('Failed to refresh spot prices', error, 'priceRefreshButton');
-      await showToastError(error, 'Failed to refresh spot prices.');
-    }
-  });
-  priceOptimizationEnabledCheckbox?.addEventListener('change', async () => {
-    try {
-      await setSetting(PRICE_OPTIMIZATION_ENABLED, priceOptimizationEnabledCheckbox.checked);
-      await showToast(
-        priceOptimizationEnabledCheckbox.checked ? 'Price optimization enabled.' : 'Price optimization disabled.',
-        'ok',
-      );
-    } catch (error) {
-      await logSettingsError('Failed to update price optimization setting', error, 'priceOptimizationEnabledCheckbox');
-      await showToastError(error, 'Failed to update price optimization setting.');
-    }
-  });
-};
-
-const initGridTariffHandlers = () => {
-  const autoSaveGridTariffSettings = async () => {
-    try {
-      await saveGridTariffSettings();
-    } catch (error) {
-      await logSettingsError('Failed to save grid tariff settings', error, 'autoSaveGridTariffSettings');
-      await showToastError(error, 'Failed to save grid tariff settings.');
-    }
-  };
-  gridTariffCompanySelect?.addEventListener('change', autoSaveGridTariffSettings);
-  gridTariffGroupSelect?.addEventListener('change', autoSaveGridTariffSettings);
-  gridTariffSettingsForm?.addEventListener('submit', (event) => event.preventDefault());
-  gridTariffCountySelect?.addEventListener('change', () => {
-    updateGridCompanyOptions(gridTariffCountySelect.value);
-  });
-  gridTariffRefreshButton?.addEventListener('click', async () => {
-    try {
-      const response = await callApi<SettingsUiPricesPayload>('POST', SETTINGS_UI_REFRESH_GRID_TARIFF_PATH, {});
-      primeApiCache(SETTINGS_UI_PRICES_PATH, response);
-      await refreshGridTariff();
-    } catch (error) {
-      await logSettingsError('Failed to refresh grid tariffs', error, 'gridTariffRefreshButton');
-      await showToastError(error, 'Failed to refresh grid tariffs.');
-    }
-  });
-};
 
 const initDebugLoggingCheckboxes = () => {
   const mount = document.getElementById('debug-logging-checkboxes');
@@ -408,21 +310,16 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
     loadTemperatureBoostSettings(),
     loadEvBoostSettings(),
     loadDeferredObjectiveSettings(),
-    loadPriceOptimizationSettings(),
-    loadPriceSettings(),
-    loadGridTariffSettings(),
     loadAdvancedSettings(),
   ]);
 
   // Phase 3: Render everything once with all state populated
-  // Device-dependent renders (renderPriorities, renderDevices, renderPriceOptimization)
+  // Device-dependent renders (renderPriorities, renderDevices)
   // are deferred to first tab open via lazy loading in showTab().
   renderPowerUsage(usage);
   await renderPowerStats();
   renderModeOptions();
   await refreshAdvancedDeviceLogger();
-  await refreshPrices();
-  await refreshGridTariff();
   await refreshDailyBudgetPlan(bootstrap?.dailyBudget);
 
   // Phase 4: Mark initial load complete - enables save operations
@@ -432,7 +329,6 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   if (state.devicesLoaded) {
     renderDevices(state.latestDevices);
     renderPriorities(state.latestDevices);
-    renderPriceOptimization(state.latestDevices);
   }
 };
 
@@ -447,8 +343,12 @@ const initializeBootHandlers = (bootstrap: SettingsUiBootstrap | null) => {
   initModeHandlers();
   initCapacityHandlers();
   initDailyBudgetHandlers();
-  initPriceHandlers();
-  initGridTariffHandlers();
+  if (electricityPricesSurface) {
+    void initElectricityPricesView(electricityPricesSurface);
+  }
+  if (priceAwareDevicesSurface) {
+    void initPriceAwareDevicesView(priceAwareDevicesSurface);
+  }
   initDebugLoggingCheckboxes();
   initAdvancedHandlers();
   markSettingsUi('boot:handlers-ready');
