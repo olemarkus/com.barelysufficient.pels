@@ -1,4 +1,5 @@
 import type { DailyBudgetUiPayload } from './dailyBudgetTypes.js';
+import type { DeferredObjectiveActivePlansV1 } from './deferredObjectiveActivePlans.js';
 import type { DeferredObjectivePlanHistoryEntry } from './deferredObjectivePlanHistory.js';
 import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsTypes.js';
 import type { PowerTrackerState } from './powerTrackerTypes.js';
@@ -69,6 +70,7 @@ export type SettingsUiSettingsPatch = {
 
 export type SettingsUiBootstrap = SettingsUiSettingsPatch & {
   dailyBudget: DailyBudgetUiPayload | null;
+  deferredObjectiveActivePlans: DeferredObjectiveActivePlansV1 | null;
   featureAccess: SettingsUiFeatureAccess;
   plan: SettingsUiPlanSnapshot | null;
   power: SettingsUiPowerPayload;

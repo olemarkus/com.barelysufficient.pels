@@ -87,6 +87,10 @@ export type PlanBuilderDeps = {
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,
   ) => void;
+  observeDeferredObjectiveActivePlans?: (
+    diagnostics: DeferredObjectiveDiagnostic[],
+    nowMs: number,
+  ) => void;
   getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
@@ -182,6 +186,7 @@ export class PlanBuilder {
     const dailyBudgetSnapshot = this.dailyBudgetSnapshot;
     const deferredEvaluations = this.evaluateDeferredObjectives(devices, dailyBudgetSnapshot, nowTs);
     this.deps.observeDeferredObjectivePlanHistory?.(deferredEvaluations, nowTs);
+    this.deps.observeDeferredObjectiveActivePlans?.(deferredEvaluations, nowTs);
     const deferredAdmission = applyDeferredObjectiveAdmission(deferredEvaluations);
     const { devices: admittedDevices, forceShedSet } = applyDeferredAdmissionToInput(devices, deferredAdmission);
     const deferredTargetTempByDeviceId = buildDeferredTargetOverrides(deferredEvaluations);

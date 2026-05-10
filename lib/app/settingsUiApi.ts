@@ -5,6 +5,9 @@ import type {
   DailyBudgetModelSettings,
   DailyBudgetUiPayload,
 } from '../../packages/contracts/src/dailyBudgetTypes';
+import type {
+  DeferredObjectiveActivePlansV1,
+} from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../utils/settingsUiBootstrapKeys';
 import type {
@@ -39,6 +42,7 @@ type SettingsUiApiApp = Homey.App & {
   applyDailyBudgetModel?: (settings: Partial<DailyBudgetModelSettings>) => DailyBudgetUiPayload | null;
   getDeviceDiagnosticsUiPayload?: () => SettingsUiDeviceDiagnosticsResponse;
   getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
+  getDeferredObjectiveActivePlansUiPayload?: () => DeferredObjectiveActivePlansV1 | null;
 };
 
 type ApiContext = {
@@ -202,6 +206,7 @@ export const buildSettingsUiBootstrap = async ({ homey }: ApiContext): Promise<S
   return {
     settings: pickSettings(homey, SETTINGS_UI_BOOTSTRAP_KEYS),
     dailyBudget: app?.getDailyBudgetUiPayload?.() ?? null,
+    deferredObjectiveActivePlans: app?.getDeferredObjectiveActivePlansUiPayload?.() ?? null,
     featureAccess: await getFeatureAccess({ homey }),
     plan: getSettingsUiPlan({ homey }),
     power: getSettingsUiPower({ homey }),

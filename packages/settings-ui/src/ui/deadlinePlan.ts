@@ -17,7 +17,6 @@ import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import { deadlineLabels, type DeadlineLabels } from '../../../shared-domain/src/deadlineLabels.ts';
 import {
-  allocateChargeHours,
   collectHorizonHours,
   isFiniteNumber,
   ONE_HOUR_MS,
@@ -25,8 +24,13 @@ import {
 } from './deadlinePlanData.ts';
 import {
   renderDeadlinePlan,
+  type DeadlinePlanLoadState,
   type DeadlinePlanPayload,
+  type DeadlinePlanPendingPayload,
 } from './views/DeadlinePlan.tsx';
+import type {
+  DeferredObjectiveActivePlanV1,
+} from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import { setStoredOverviewRedesignPreference } from './uiVariant.ts';
 
 export const isDeadlinePlanPage = (): boolean => (
@@ -308,19 +312,85 @@ const buildTimeline = (params: {
   };
 };
 
-const buildObjectivePayload = (params: ObjectivePlanInput): DeadlinePlanPayload | null => {
+type ResolvedObjectiveContext = {
+  device: TargetDeviceSnapshot;
+  objective: DeferredObjectiveSettingsEntry;
+  deviceId: string;
+  deadlineAtMs: number;
+  activePlan: DeferredObjectiveActivePlanV1 | null;
+  nowMs: number;
+};
+
+const resolveObjectiveContext = (params: ObjectivePlanInput): ResolvedObjectiveContext | null => {
   const nowMs = params.nowMs ?? Date.now();
   const deviceId = params.deviceId?.trim();
   if (!deviceId) return null;
   if (params.bootstrap.featureAccess.canToggleOverviewRedesign !== true) return null;
-
   const settings = normalizeDeferredObjectiveSettings(params.bootstrap.settings.deferred_objectives);
   const objective = settings.objectivesByDeviceId[deviceId];
   const device = params.devices.find((candidate) => candidate.id === deviceId);
   if (!objective || !objective.enabled || !device) return null;
-
-  const deadlineAtMs = resolveDeadlineAtMs(objective.deadlineLocalTime, nowMs);
+  const activePlan = params.bootstrap.deferredObjectiveActivePlans?.plansByDeviceId[deviceId] ?? null;
+  // Prefer the runtime-persisted deadline so a deadline-time change does not
+  // silently shift the rendered window before the next plan cycle has caught up.
+  const deadlineAtMs = activePlan?.deadlineAtMs ?? resolveDeadlineAtMs(objective.deadlineLocalTime, nowMs);
   if (deadlineAtMs === null) return null;
+  return { device, objective, deviceId, deadlineAtMs, activePlan, nowMs };
+};
+
+const buildPendingHero = (params: {
+  device: TargetDeviceSnapshot;
+  objective: DeferredObjectiveSettingsEntry;
+  labels: DeadlineLabels;
+  deadlineAtMs: number;
+}): DeadlinePlanPendingPayload['hero'] => {
+  const target = formatTarget(params.objective);
+  const deadline = formatDeadlineFull(params.deadlineAtMs);
+  return {
+    chips: [
+      { text: params.labels.waitingChipLabel, tone: 'info' },
+      { text: params.labels.kindChipLabel, tone: 'info' },
+    ],
+    sectionLabel: `${params.labels.kindChipLabel} plan`,
+    headline: params.labels.pendingHeroHeadline,
+    subline: `${params.device.name} • Target ${target} by ${deadline}`,
+    metaLine: params.labels.pendingHeroBody,
+  };
+};
+
+const buildPendingPayload = (ctx: ResolvedObjectiveContext): DeadlinePlanPendingPayload => {
+  const labels = deadlineLabels(ctx.objective.kind);
+  return {
+    kind: ctx.objective.kind,
+    labels,
+    hero: buildPendingHero({
+      device: ctx.device,
+      objective: ctx.objective,
+      labels,
+      deadlineAtMs: ctx.deadlineAtMs,
+    }),
+  };
+};
+
+const buildChargeByStartMsFromActivePlan = (
+  activePlan: DeferredObjectiveActivePlanV1,
+): Map<number, number> => {
+  const out = new Map<number, number>();
+  if (!activePlan.latest) return out;
+  for (const hour of activePlan.latest.hours) {
+    out.set(hour.startsAtMs, hour.plannedKWh);
+  }
+  return out;
+};
+
+const buildObjectivePayload = (params: ObjectivePlanInput): DeadlinePlanPayload | null => {
+  const ctx = resolveObjectiveContext(params);
+  if (!ctx) return null;
+  const { device, objective, deviceId, deadlineAtMs, activePlan, nowMs } = ctx;
+  // Without a persisted plan with an allocation we cannot render the timeline
+  // — runtime is the source of truth. Caller will fall back to the pending
+  // state when this returns null.
+  if (!activePlan || !activePlan.latest) return null;
 
   const profile = resolveProfile(params.bootstrap.power.tracker, deviceId, objective.kind);
   const progress = resolveProgress({ device, objective, profile });
@@ -328,21 +398,19 @@ const buildObjectivePayload = (params: ObjectivePlanInput): DeadlinePlanPayload 
     ? resolveEnergyNeededKWh({ profile, remainingUnits: progress.remainingUnits })
     : null;
   const usefulPowerKw = resolveUsefulPowerKw(device);
+  // For an active plan, include past hours from the first revision's start so
+  // the chart can show history. Without a revision, fall back to nowMs.
+  const windowStartMs = Math.min(nowMs, activePlan.original?.revisedAtMs ?? nowMs);
   const hours = collectHorizonHours({
     bootstrap: params.bootstrap,
     deadlineAtMs,
     device,
-    nowMs,
+    windowStartMs,
     prices: params.prices,
   });
   if (!progress || !energy || !usefulPowerKw || hours.length === 0) return null;
 
-  const chargeByStartMs = allocateChargeHours({
-    energyNeededKWh: energy.energyNeededKWh,
-    hours,
-    nowMs,
-    usefulPowerKw,
-  });
+  const chargeByStartMs = buildChargeByStartMsFromActivePlan(activePlan);
   const progressPerKWh = energy.energyNeededKWh > 0
     ? progress.remainingUnits / energy.energyNeededKWh
     : 0;
@@ -377,6 +445,43 @@ const buildObjectivePayload = (params: ObjectivePlanInput): DeadlinePlanPayload 
   };
 };
 
+export const resolveRenderInput = (
+  params: ObjectivePlanInput,
+): { status: 'pending'; pending: DeadlinePlanPendingPayload }
+  | { status: 'ready'; payload: DeadlinePlanPayload }
+  | null => {
+  const ctx = resolveObjectiveContext(params);
+  if (!ctx) return null;
+  // No persisted record yet OR record is explicitly pending → pending hero.
+  if (!ctx.activePlan || ctx.activePlan.pending || !ctx.activePlan.latest) {
+    return { status: 'pending', pending: buildPendingPayload(ctx) };
+  }
+  // Active plan exists with an allocation; if the UI cannot render it
+  // (missing temperature/SOC, missing learned profile, missing prices) fall
+  // through to the error state rather than the pending hero — "Waiting for
+  // tomorrow's prices" would mislead the user when the actual issue is
+  // missing device data.
+  const payload = buildObjectivePayload(params);
+  if (!payload) return null;
+  return { status: 'ready', payload };
+};
+
+type RenderInput = ReturnType<typeof resolveRenderInput>;
+type HistoryView = Parameters<typeof renderDeadlinePlan>[1] extends { history?: infer H } ? H : never;
+
+const resolveDeadlinePlanLoadState = (
+  renderInput: RenderInput,
+  history: HistoryView | undefined,
+): DeadlinePlanLoadState => {
+  if (renderInput === null) {
+    return { status: 'error', message: 'Deadline plan data is not available for this device.', history };
+  }
+  if (renderInput.status === 'ready') {
+    return { status: 'ready', payload: renderInput.payload, history };
+  }
+  return { status: 'pending', pending: renderInput.pending, history };
+};
+
 export const mountDeadlinePlan = async (): Promise<void> => {
   const surface = document.getElementById('deadline-plan-root');
   if (!surface) return;
@@ -398,10 +503,8 @@ export const mountDeadlinePlan = async (): Promise<void> => {
     } catch {
       prices = bootstrap.prices;
     }
-    const payload = buildObjectivePayload({ bootstrap, deviceId, devices: devicesPayload.devices, prices });
-    renderDeadlinePlan(surface, payload
-      ? { status: 'ready', payload, history }
-      : { status: 'error', message: 'Deadline plan data is not available for this device.', history });
+    const renderInput = resolveRenderInput({ bootstrap, deviceId, devices: devicesPayload.devices, prices });
+    renderDeadlinePlan(surface, resolveDeadlinePlanLoadState(renderInput, history));
   } catch {
     renderDeadlinePlan(surface, {
       status: 'error',
@@ -412,5 +515,7 @@ export const mountDeadlinePlan = async (): Promise<void> => {
 
 export const testExports = {
   buildObjectivePayload,
+  buildPendingPayload,
   resolveDeadlineAtMs,
+  resolveRenderInput,
 };

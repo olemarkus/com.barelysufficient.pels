@@ -92,7 +92,12 @@ export const collectHorizonHours = (params: {
   bootstrap: SettingsUiBootstrap;
   deadlineAtMs: number;
   device: TargetDeviceSnapshot;
-  nowMs: number;
+  // Hours older than this point are dropped so the chart does not render
+  // unrelated history. The runtime planner is the source of truth for the
+  // active plan; for a known active plan, callers pass the plan's `startedAtMs`
+  // (or `original.revisedAtMs`) so the chart can include past hours within the
+  // plan's lifetime. Without an active plan, callers pass `nowMs`.
+  windowStartMs: number;
   prices: SettingsUiPricesPayload;
 }): HorizonHour[] => (
   getCombinedPrices(params.prices)
@@ -106,31 +111,6 @@ export const collectHorizonHours = (params: {
       isExpensive: price.isExpensive,
       plannedOtherKWh: resolvePlannedOtherKWh(params.bootstrap.dailyBudget, startsAtMs, params.device),
     }))
-    .filter((hour) => hour.endMs > params.nowMs && hour.startsAtMs < params.deadlineAtMs)
+    .filter((hour) => hour.endMs > params.windowStartMs && hour.startsAtMs < params.deadlineAtMs)
     .sort((left, right) => left.startsAtMs - right.startsAtMs)
 );
-
-export const allocateChargeHours = (params: {
-  energyNeededKWh: number;
-  hours: HorizonHour[];
-  nowMs: number;
-  usefulPowerKw: number;
-}): Map<number, number> => {
-  let remainingKWh = Math.max(0, params.energyNeededKWh);
-  const allocation = new Map<number, number>();
-  const candidates = params.hours
-    .map((hour) => {
-      const durationHours = Math.max(0, (hour.endMs - Math.max(hour.startsAtMs, params.nowMs)) / ONE_HOUR_MS);
-      return { hour, capacityKWh: durationHours * params.usefulPowerKw };
-    })
-    .filter((candidate) => candidate.capacityKWh > 0)
-    .sort((left, right) => left.hour.price - right.hour.price || left.hour.startsAtMs - right.hour.startsAtMs);
-
-  for (const candidate of candidates) {
-    if (remainingKWh <= 0.001) break;
-    const allocated = Math.min(remainingKWh, candidate.capacityKWh);
-    allocation.set(candidate.hour.startsAtMs, allocated);
-    remainingKWh -= allocated;
-  }
-  return allocation;
-};

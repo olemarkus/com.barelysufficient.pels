@@ -8,6 +8,8 @@ export type DeadlineLabels = {
   backgroundSeriesName: string;
   planTooltipActive: string;
   planTooltipIdle: string;
+  pendingHeroHeadline: string;
+  pendingHeroBody: string;
   targetUnit: '°C' | '%';
 };
 
@@ -20,6 +22,8 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     backgroundSeriesName: 'Background usage',
     planTooltipActive: 'Heat',
     planTooltipIdle: 'Idle',
+    pendingHeroHeadline: 'Waiting for tomorrow’s prices',
+    pendingHeroBody: 'The heat plan is computed once tomorrow’s prices arrive.',
     targetUnit: '°C',
   },
   ev_soc: {
@@ -30,6 +34,8 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     backgroundSeriesName: 'Background usage',
     planTooltipActive: 'Charge',
     planTooltipIdle: 'Idle',
+    pendingHeroHeadline: 'Waiting for tomorrow’s prices',
+    pendingHeroBody: 'The charging plan is computed once tomorrow’s prices arrive.',
     targetUnit: '%',
   },
 };
