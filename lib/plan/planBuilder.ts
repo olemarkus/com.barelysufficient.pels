@@ -42,8 +42,11 @@ import { resolveEffectiveCurrentOn } from './planCurrentState';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './planOvershoot';
 import {
+  applyDeferredAdmissionToInput,
+  applyDeferredObjectiveAdmission,
   buildDeferredObjectiveDiagnostics,
   emitDeferredObjectiveDiagnostics,
+  type DeferredObjectiveDiagnostic,
   type DeferredObjectiveSettingsV1,
 } from './deferredObjectives';
 
@@ -162,13 +165,24 @@ export class PlanBuilder {
 
   private async buildPlanSnapshotWithTimings(devices: PlanInputDevice[]): Promise<DevicePlan> {
     const nowTs = Date.now();
+    // Evaluate deferred objectives at the planner boundary and translate active objectives
+    // into a plain managed-device shape: cap-off devices become controllable=true for the
+    // cycle (so they participate in shed/restore), and idle hours seed the shedding shed-set.
+    // Cap on/off only decides whether the planner cares about the device this cycle; once
+    // admitted, the shedding and restore lanes act on the device with their normal logic and
+    // produce their normal reasons.
+    const dailyBudgetSnapshot = this.dailyBudgetSnapshot;
+    const deferredEvaluations = this.evaluateDeferredObjectives(devices, dailyBudgetSnapshot, nowTs);
+    const deferredAdmission = applyDeferredObjectiveAdmission(deferredEvaluations);
+    const { devices: admittedDevices, forceShedSet } = applyDeferredAdmissionToInput(devices, deferredAdmission);
+
     const {
       context,
-      dailyBudgetSnapshot,
       sheddingPlan,
       overshootDecision,
-    } = await this.buildContextAndShedding(devices, nowTs);
-    const deviceNameById = new Map(devices.map((d) => [d.id, d.name]));
+    } = await this.buildContextAndShedding(admittedDevices, nowTs, dailyBudgetSnapshot);
+    const deviceNameById = new Map(admittedDevices.map((d) => [d.id, d.name]));
+    for (const id of forceShedSet) sheddingPlan.shedSet.add(id);
 
     let planDevices = this.buildPlanDevices(context, sheddingPlan);
     const restoreResult = this.applyRestorePlanWithTiming(planDevices, context, sheddingPlan, deviceNameById);
@@ -197,21 +211,23 @@ export class PlanBuilder {
       planDevices: finalized.planDevices,
       restoreResult,
     });
-    this.emitDeferredObjectiveDiagnostics(context, dailyBudgetSnapshot, nowTs);
+    this.emitDeferredObjectiveDiagnostics(deferredEvaluations);
     return {
       meta,
       devices: finalized.planDevices,
     };
   }
 
-  private async buildContextAndShedding(devices: PlanInputDevice[], nowTs: number): Promise<{
+  private async buildContextAndShedding(
+    devices: PlanInputDevice[],
+    nowTs: number,
+    dailyBudgetSnapshot: DailyBudgetUiPayload | null,
+  ): Promise<{
     context: PlanContext;
-    dailyBudgetSnapshot: DailyBudgetUiPayload | null;
     sheddingPlan: SheddingPlan;
     overshootDecision: SoftOvershootDecision;
   }> {
     const desiredForMode = this.modeDeviceTargets[this.operatingMode] || {};
-    const dailyBudgetSnapshot = this.dailyBudgetSnapshot;
     const capacitySoftLimit = this.computeDynamicSoftLimit();
     const dailySoftLimit = this.computeDailySoftLimit(dailyBudgetSnapshot, devices);
     const softLimit = dailySoftLimit !== null ? Math.min(capacitySoftLimit, dailySoftLimit) : capacitySoftLimit;
@@ -258,7 +274,7 @@ export class PlanBuilder {
     );
     this.applySheddingUpdates(sheddingPlan);
 
-    return { context, dailyBudgetSnapshot, sheddingPlan, overshootDecision };
+    return { context, sheddingPlan, overshootDecision };
   }
 
   private syncConfirmedRestoreAttributionAttempts(
@@ -434,7 +450,10 @@ export class PlanBuilder {
     };
   }
 
-  private buildPlanDevices(context: PlanContext, sheddingPlan: SheddingPlan): DevicePlanDevice[] {
+  private buildPlanDevices(
+    context: PlanContext,
+    sheddingPlan: SheddingPlan,
+  ): DevicePlanDevice[] {
     return this.trackDuration('plan_devices_ms', () => buildInitialPlanDevices({
       context,
       state: this.state,
@@ -563,23 +582,26 @@ export class PlanBuilder {
     this.deps.deviceDiagnostics.observePlanSample({ observations, nowTs });
   }
 
-  private emitDeferredObjectiveDiagnostics(
-    context: PlanContext,
+  private evaluateDeferredObjectives(
+    devices: PlanInputDevice[],
     dailyBudgetSnapshot: DailyBudgetUiPayload | null,
     nowTs: number,
-  ): void {
-    if (!this.deps.deferredObjectiveDebugStructured) return;
+  ): DeferredObjectiveDiagnostic[] {
     const settings = this.deps.getDeferredObjectiveSettings?.();
-    if (!settings) return;
-    const diagnostics = buildDeferredObjectiveDiagnostics({
+    if (!settings) return [];
+    return buildDeferredObjectiveDiagnostics({
       nowMs: nowTs,
       timeZone: this.deps.getTimeZone?.() ?? 'UTC',
-      devices: context.devices,
+      devices,
       settings,
       powerTracker: this.powerTracker,
       dailyBudgetSnapshot,
       priceOptimizationEnabled: this.priceOptimizationEnabled,
     });
+  }
+
+  private emitDeferredObjectiveDiagnostics(diagnostics: DeferredObjectiveDiagnostic[]): void {
+    if (!this.deps.deferredObjectiveDebugStructured) return;
     emitDeferredObjectiveDiagnostics({
       diagnostics,
       debugStructured: this.deps.deferredObjectiveDebugStructured,
