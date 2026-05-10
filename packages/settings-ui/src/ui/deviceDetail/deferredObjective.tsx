@@ -9,9 +9,11 @@ import {
 import { DEFERRED_OBJECTIVES_SETTINGS } from '../../../../contracts/src/settingsKeys.ts';
 import type { TargetDeviceSnapshot } from '../../../../contracts/src/types.ts';
 import { getPrimaryTargetCapability } from '../../../../contracts/src/targetCapabilities.ts';
+import { buildDeadlineHref } from '../deadlineUrls.ts';
 import { deviceDetailDeadlineObjectiveMount } from '../dom.ts';
 import { getSetting, getSettingFresh, setSetting } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
+import { bumpPlanSurface } from '../planRedesign.ts';
 import { state } from '../state.ts';
 import { showToast, showToastError } from '../toast.ts';
 import { supportsTemperatureDevice } from '../deviceUtils.ts';
@@ -54,6 +56,7 @@ const readDeferredObjectiveSettingsForWrite = async (): Promise<RawDeferredObjec
 export const loadDeferredObjectiveSettings = async (): Promise<void> => {
   const raw = await getSetting(DEFERRED_OBJECTIVES_SETTINGS);
   state.deferredObjectiveSettings = normalizeDeferredObjectiveSettings(raw);
+  bumpPlanSurface();
 };
 
 const getTemperatureEntry = (
@@ -68,10 +71,6 @@ const canShowDeadlineObjectiveCard = (device: TargetDeviceSnapshot): boolean => 
   state.canToggleOverviewRedesign
   && supportsTemperatureDevice(device)
   && getPrimaryTargetCapability(device.targets) !== null
-);
-
-const buildDeadlinePlanHref = (deviceId: string): string => (
-  `./deadline-plan.html?deviceId=${encodeURIComponent(deviceId)}&ui=redesign`
 );
 
 const validateDeadlineObjectiveForm = (params: {
@@ -127,6 +126,7 @@ const saveTemperatureObjective = async (params: {
     };
     await setSetting(DEFERRED_OBJECTIVES_SETTINGS, current);
     state.deferredObjectiveSettings = normalizeDeferredObjectiveSettings(current);
+    bumpPlanSurface();
     await showToast('Deadline target saved.', 'ok');
   } catch (error) {
     await logSettingsError('Failed to save deadline target', error, 'deviceDeadlineObjective');
@@ -146,6 +146,7 @@ const clearTemperatureObjective = async (device: TargetDeviceSnapshot): Promise<
     delete current.objectivesByDeviceId[device.id];
     await setSetting(DEFERRED_OBJECTIVES_SETTINGS, current);
     state.deferredObjectiveSettings = normalizeDeferredObjectiveSettings(current);
+    bumpPlanSurface();
     await showToast('Deadline target cleared.', 'ok');
   } catch (error) {
     await logSettingsError('Failed to clear deadline target', error, 'deviceDeadlineObjective');
@@ -168,7 +169,7 @@ export const renderDeviceDeadlineObjectiveCard = (device: TargetDeviceSnapshot |
       key={device.id}
       deviceName={device.name}
       entry={getTemperatureEntry(state.deferredObjectiveSettings, device.id)}
-      planHref={buildDeadlinePlanHref(device.id)}
+      planHref={buildDeadlineHref(device.id)}
       target={getPrimaryTargetCapability(device.targets)}
       saving={savingDeviceId === device.id}
       error={cardError}
