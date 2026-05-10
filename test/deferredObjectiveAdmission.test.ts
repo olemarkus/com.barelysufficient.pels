@@ -264,6 +264,53 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     expect(temperatureC).toBeGreaterThanOrEqual(TARGET_C);
   });
 
+  // Regression: the planner must lift the device's commanded setpoint to the deadline
+  // target whenever the active operating mode's target is lower. Without this, the
+  // executor would write the mode target to the device, the heater's own thermostat
+  // would stop at the mode target, and the deferred objective could never reach its
+  // goal even with admission and shed-set wiring fully in place.
+  it('commands the deadline target when the operating mode target is below it', async () => {
+    const powerTrackerRef = { current: buildPowerTracker(DAY_START_UTC) };
+    const modeRef = { current: 'Home' };
+    const builder = new PlanBuilder({
+      homey: { settings: { set: vi.fn() } } as never,
+      getCapacityGuard: () => {
+        const guard = new CapacityGuard({ limitKw: 100, softMarginKw: 0 });
+        guard.reportTotalPower(0);
+        return guard;
+      },
+      getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
+      getOperatingMode: () => modeRef.current,
+      // Mode target sits 3 °C below the deadline target — exactly the bug this test pins.
+      getModeDeviceTargets: () => ({ [modeRef.current]: { [DEVICE_ID]: TARGET_C - 3 } }),
+      getPriceOptimizationEnabled: () => true,
+      getPriceOptimizationSettings: () => ({}),
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getPowerTracker: () => powerTrackerRef.current,
+      getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
+      getDeferredObjectiveSettings: () => buildSettings(),
+      getTimeZone: () => 'UTC',
+      getPriorityForDevice: () => 1,
+      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+    }, createPlanEngineState());
+
+    vi.setSystemTime(new Date(DAY_START_UTC));
+    powerTrackerRef.current = buildPowerTracker(DAY_START_UTC);
+
+    const snapshot = await builder.buildDevicePlanSnapshot([
+      buildDevice({ currentTemperatureC: 50, nowMs: DAY_START_UTC, currentOn: false, selectedStepId: 'off' }),
+    ]);
+    const device = findDevice(snapshot.devices);
+
+    // Cycle 0 is a planned hour (cheap-bucket selection from the test fixture's price series).
+    expect(device.plannedState).toBe('keep');
+    // The override raises plannedTarget to the deadline target; without the fix it would be 50.
+    expect(device.plannedTarget).toBe(TARGET_C);
+  });
+
   // The deferred horizon planner and admission decision do not read operating mode, and
   // priority is resolved fresh per cycle from `capacityPriorities[mode][deviceId]`. So a
   // mid-horizon mode flip should be transparent for a single deferred device with no

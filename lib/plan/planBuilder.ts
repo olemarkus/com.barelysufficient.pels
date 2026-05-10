@@ -44,6 +44,7 @@ import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './plan
 import {
   applyDeferredAdmissionToInput,
   applyDeferredObjectiveAdmission,
+  buildDeferredTargetOverrides,
   buildDeferredObjectiveDiagnostics,
   emitDeferredObjectiveDiagnostics,
   emitDeferredObjectiveStatusTransitions,
@@ -188,6 +189,7 @@ export class PlanBuilder {
     this.deps.observeDeferredObjectiveActivePlans?.(deferredEvaluations, nowTs);
     const deferredAdmission = applyDeferredObjectiveAdmission(deferredEvaluations);
     const { devices: admittedDevices, forceShedSet } = applyDeferredAdmissionToInput(devices, deferredAdmission);
+    const deferredTargetTempByDeviceId = buildDeferredTargetOverrides(deferredEvaluations);
 
     const {
       context,
@@ -197,7 +199,7 @@ export class PlanBuilder {
     const deviceNameById = new Map(admittedDevices.map((d) => [d.id, d.name]));
     for (const id of forceShedSet) sheddingPlan.shedSet.add(id);
 
-    let planDevices = this.buildPlanDevices(context, sheddingPlan);
+    let planDevices = this.buildPlanDevices(context, sheddingPlan, deferredTargetTempByDeviceId);
     const restoreResult = this.applyRestorePlanWithTiming(planDevices, context, sheddingPlan, deviceNameById);
     planDevices = restoreResult.planDevices;
 
@@ -467,6 +469,7 @@ export class PlanBuilder {
   private buildPlanDevices(
     context: PlanContext,
     sheddingPlan: SheddingPlan,
+    deferredTargetTempByDeviceId: Record<string, number>,
   ): DevicePlanDevice[] {
     return this.trackDuration('plan_devices_ms', () => buildInitialPlanDevices({
       context,
@@ -474,6 +477,7 @@ export class PlanBuilder {
       shedSet: sheddingPlan.shedSet,
       shedReasons: sheddingPlan.shedReasons,
       guardInShortfall: sheddingPlan.guardInShortfall,
+      deferredTargetTempByDeviceId,
       deps: {
         getPriorityForDevice: (deviceId) => this.deps.getPriorityForDevice(deviceId),
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
