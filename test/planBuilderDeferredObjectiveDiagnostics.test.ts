@@ -12,7 +12,7 @@ const buildDevice = (): PlanInputDevice => ({
 });
 
 describe('PlanBuilder deferred objective diagnostics', () => {
-  it('does not read deferred objective settings when no diagnostics emitter is configured', async () => {
+  it('reads deferred objective settings every cycle so admission can run, even without a diagnostics emitter', async () => {
     const getDeferredObjectiveSettings = vi.fn(() => ({
       version: 1,
       objectivesByDeviceId: {},
@@ -42,6 +42,33 @@ describe('PlanBuilder deferred objective diagnostics', () => {
 
     await builder.buildDevicePlanSnapshot([buildDevice()]);
 
-    expect(getDeferredObjectiveSettings).not.toHaveBeenCalled();
+    expect(getDeferredObjectiveSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips evaluation when no settings provider is configured', async () => {
+    const capacityGuard = new CapacityGuard({ limitKw: 10, softMarginKw: 0 });
+    capacityGuard.reportTotalPower(0);
+
+    const builder = new PlanBuilder({
+      homey: { settings: { set: vi.fn() } } as never,
+      getCapacityGuard: () => capacityGuard,
+      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
+      getOperatingMode: () => 'Home',
+      getModeDeviceTargets: () => ({}),
+      getPriceOptimizationEnabled: () => true,
+      getPriceOptimizationSettings: () => ({}),
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+      getDailyBudgetSnapshot: () => null,
+      getTimeZone: () => 'UTC',
+      getPriorityForDevice: () => 100,
+      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+      log: vi.fn(),
+      logDebug: vi.fn(),
+    }, createPlanEngineState());
+
+    const snapshot = await builder.buildDevicePlanSnapshot([buildDevice()]);
+    expect(snapshot.devices).toHaveLength(1);
   });
 });

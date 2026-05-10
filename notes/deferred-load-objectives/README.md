@@ -83,9 +83,31 @@ fall back to neutral or whole-range planning when the price horizon is incomplet
 
 ## Soft Temperature Runtime Semantics
 
-The first temperature UI only stores the objective and lets horizon planning calculate planned
-hours. Runtime actuation still needs a separate implementation step. When that step is added, soft
-temperature deadlines should use this model:
+The first temperature UI stores the objective and lets horizon planning calculate planned hours.
+Runtime actuation for the cap-off case is now wired in `lib/plan/deferredObjectives/admission.ts`
+and applied at the planner boundary in `PlanBuilder.buildPlanSnapshotWithTimings`:
+
+- The horizon planner computes the planned hours per cycle.
+- For each enabled objective whose status is `on_track` or `at_risk`, an admission decision is
+  produced: `planned` for the current bucket if it has planned energy, `idle` otherwise.
+  `satisfied` and `cannot_meet` resolve to `inactive` so the device returns to its normal
+  behavior once the goal is met or impossible.
+- Capacity-based control on/off is treated purely as device visibility for the planner: cap-on
+  devices are always managed; cap-off devices are normally invisible to PELS (an externally
+  toggled cap-off device runs undisturbed). When a cap-off device has a non-inactive deferred
+  decision the planner makes it visible for that cycle by setting `controllable=true` on the
+  input device. For idle decisions the planner also seeds the device into the shedding shed-set
+  so the shedding lane keeps it off.
+- Once a device is admitted, the shedding and restore lanes act on it with their normal logic
+  and produce their normal reasons (cooldowns, restore-pending, capacity, etc.). The deferred
+  plan does not override step selection, admission gates, or reason codes — it only decides
+  whether the device participates this cycle. Soft deadlines therefore still respect budget,
+  capacity, priority, and cooldown rules, exactly as the original design called for.
+
+Cap-on, hard deadlines, mode override, hard-boost rebalancing, EV admission, and contention
+across multiple deferred objectives are still future work.
+
+Original design semantics (still authoritative for future slices):
 
 - Planned hours are the hours selected by the deadline plan to add useful energy before the
   deadline.
@@ -93,7 +115,7 @@ temperature deadlines should use this model:
   boost behavior or a special target override.
 - Outside planned hours, the existing capacity-based control toggle decides the fallback behavior:
   - toggle on: normal PELS behavior may still run the device outside the deadline plan
-  - toggle off: PELS keeps the device idle by plan outside the deadline plan
+  - toggle off: PELS keeps the device idle by plan outside the deadline plan **(shipped)**
 - Soft deadlines should still respect budget and capacity planning. Soft means the objective is not
   a separate hard-safety override; it does not mean PELS may ignore the deadline as the normal path.
 - Priority affects planning risk and normal PELS decisions, not whether the deadline card stores a

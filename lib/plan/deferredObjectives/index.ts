@@ -3,6 +3,10 @@ export {
   buildDeferredObjectiveDiagnostics,
   emitDeferredObjectiveDiagnostics,
 } from './diagnosticsBridge';
+export {
+  applyDeferredAdmissionToInput,
+  applyDeferredObjectiveAdmission,
+} from './admission';
 export { resolveDeferredObjectiveDeadline } from './deadline';
 export { buildDeferredObjectivePolicyHorizon } from './policyHorizon';
 export {
