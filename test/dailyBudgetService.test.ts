@@ -78,7 +78,7 @@ function buildService(): DailyBudgetService {
     error: () => undefined,
     getPowerTracker: () => ({ buckets: {} }),
     getPriceOptimizationEnabled: () => false,
-    getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }),
+    getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), requestPriceRefetch: () => undefined,
   });
 }
 
@@ -352,7 +352,7 @@ describe('DailyBudgetService', () => {
       error,
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
-      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }),
+      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), requestPriceRefetch: () => undefined,
     });
     (service as any).manager.update = vi.fn(() => {
       throw 'boom';
@@ -381,7 +381,7 @@ describe('DailyBudgetService', () => {
       error: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
-      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }),
+      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), requestPriceRefetch: () => undefined,
       structuredLog: { info } as any,
     });
     (service as any).manager.update = vi.fn(() => ({
@@ -427,7 +427,7 @@ describe('DailyBudgetService', () => {
       error: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
-      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }),
+      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), requestPriceRefetch: () => undefined,
       structuredLog: { info } as any,
     });
     (service as any).manager.update = vi.fn(() => ({
@@ -467,7 +467,7 @@ describe('DailyBudgetService', () => {
       error: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
-      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }),
+      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), requestPriceRefetch: () => undefined,
       structuredLog: { info } as any,
     });
     (service as any).manager.update = vi.fn(() => ({
@@ -502,7 +502,7 @@ describe('DailyBudgetService', () => {
       error: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
-      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }),
+      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), requestPriceRefetch: () => undefined,
       structuredLog: { info } as any,
     });
     const snapshots = [
@@ -559,6 +559,7 @@ describe('DailyBudgetService', () => {
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 5, marginKw: 1 }),
+      requestPriceRefetch: () => undefined,
     });
     const updateSpy = vi.fn(() => ({
       snapshot: buildDayPayload({

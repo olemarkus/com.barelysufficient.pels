@@ -769,6 +769,7 @@ class PelsApp extends Homey.App {
       getPowerTracker: () => this.powerTracker,
       getPriceOptimizationEnabled: () => this.priceOptimizationEnabled,
       getCapacitySettings: () => this.capacitySettings,
+      requestPriceRefetch: () => this.priceCoordinator?.updateCombinedPrices(),
       structuredLog: this.structuredLogger?.child({ component: 'daily_budget' }),
     });
     this.dailyBudgetService.loadSettings();

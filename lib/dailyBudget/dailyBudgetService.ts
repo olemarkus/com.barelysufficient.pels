@@ -7,8 +7,8 @@ import {
   getNextLocalDayStartUtcMs,
   shiftDateKey,
 } from '../utils/dateUtils';
+import { readCombinedPriceData } from '../price/priceStore';
 import {
-  COMBINED_PRICES,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
@@ -29,7 +29,6 @@ import {
   UNMANAGED_RESERVE_MODE,
 } from './dailyBudgetConstants';
 import { DailyBudgetManager } from './dailyBudgetManager';
-import type { CombinedPriceData } from './dailyBudgetManager';
 import { composeHotPathDailyBudgetSnapshot } from './dailyBudgetSnapshotState';
 import {
   DailyBudgetStatePersistencePolicy,
@@ -59,6 +58,7 @@ type DailyBudgetServiceDeps = {
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
+  requestPriceRefetch: () => void;
   structuredLog?: PinoLogger;
 };
 
@@ -188,6 +188,9 @@ export class DailyBudgetService {
     this.deps.homey.settings.set(DAILY_BUDGET_PRICE_FLEX_SHARE, settings.priceShapingFlexShare);
   }
 
+  private get priceStoreDeps() {
+    return { homey: this.deps.homey, requestRefetch: this.deps.requestPriceRefetch };
+  }
   private resolveTimeZone(): string {
     try {
       const tz = this.deps.homey.clock?.getTimezone?.();
@@ -214,7 +217,7 @@ export class DailyBudgetService {
     const nowMs = params.nowMs ?? Date.now();
     const includeAdjacentDays = params.includeAdjacentDays === true;
     const timeZone = this.resolveTimeZone();
-    const combinedPrices = this.deps.homey.settings.get(COMBINED_PRICES) as CombinedPriceData | null;
+    const combinedPrices = readCombinedPriceData(this.priceStoreDeps, new Date(nowMs), timeZone);
     const capacity = this.deps.getCapacitySettings();
     const capacityBudgetKWh = resolveUsableCapacityKw(capacity);
     try {
@@ -283,7 +286,7 @@ export class DailyBudgetService {
       const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
       const todayStartUtcMs = getDateKeyStartMs(todayKey, timeZone);
       const tomorrowStartUtcMs = getNextLocalDayStartUtcMs(todayStartUtcMs, timeZone);
-      const combinedPrices = this.deps.homey.settings.get(COMBINED_PRICES) as CombinedPriceData | null;
+      const combinedPrices = readCombinedPriceData(this.priceStoreDeps, new Date(nowMs), timeZone);
       const capacity = this.deps.getCapacitySettings();
       const capacityBudgetKWh = resolveUsableCapacityKw(capacity);
       return manager.buildPreview({
@@ -305,7 +308,7 @@ export class DailyBudgetService {
     if (!context) return null;
     const { timeZone, yesterdayStartUtcMs } = context;
     try {
-      const combinedPrices = this.deps.homey.settings.get(COMBINED_PRICES) as CombinedPriceData | null;
+      const combinedPrices = readCombinedPriceData(this.priceStoreDeps, new Date(nowMs), timeZone);
       return this.manager.buildHistory({
         dayStartUtcMs: yesterdayStartUtcMs,
         timeZone,
@@ -442,7 +445,7 @@ export class DailyBudgetService {
     const active = this.snapshot;
     const manager = this.createManagerClone();
     const timeZone = this.resolveTimeZone();
-    const combinedPrices = this.deps.homey.settings.get(COMBINED_PRICES) as CombinedPriceData | null;
+    const combinedPrices = readCombinedPriceData(this.priceStoreDeps, new Date(nowMs), timeZone);
     const capacity = this.deps.getCapacitySettings();
     const capacityBudgetKWh = resolveUsableCapacityKw(capacity);
     const update = manager.update({
