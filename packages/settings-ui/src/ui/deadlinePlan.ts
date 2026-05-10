@@ -12,18 +12,25 @@ import {
   normalizeDeferredObjectiveSettings,
   type DeferredObjectiveSettingsEntry,
 } from '../../../contracts/src/deferredObjectiveSettings.ts';
-import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../../contracts/src/dailyBudgetTypes.ts';
 import type { DeviceObjectiveProfile } from '../../../contracts/src/objectiveProfileTypes.ts';
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
+import { deadlineLabels, type DeadlineLabels } from '../../../shared-domain/src/deadlineLabels.ts';
 import {
-  renderDeadlinePlanMockup,
-  type DeadlinePlanMockupPayload,
-} from './views/DeadlinePlanMockup.tsx';
+  allocateChargeHours,
+  collectHorizonHours,
+  isFiniteNumber,
+  ONE_HOUR_MS,
+  type HorizonHour,
+} from './deadlinePlanData.ts';
+import {
+  renderDeadlinePlan,
+  type DeadlinePlanPayload,
+} from './views/DeadlinePlan.tsx';
 import { setStoredOverviewRedesignPreference } from './uiVariant.ts';
 
-export const isDeadlinePlanMockupPage = (): boolean => (
-  document.getElementById('deadline-plan-mockup-root') !== null
+export const isDeadlinePlanPage = (): boolean => (
+  document.getElementById('deadline-plan-root') !== null
 );
 
 const closeDeadlinePlanPage = (): void => {
@@ -43,26 +50,6 @@ const initDeadlinePlanClose = (): void => {
     ?.addEventListener('click', closeDeadlinePlanPage);
 };
 
-type PriceEntryLike = {
-  startsAt: string;
-  total: number;
-  isCheap?: boolean;
-  isExpensive?: boolean;
-};
-
-type CombinedPricesLike = {
-  prices?: unknown;
-};
-
-type HorizonHour = {
-  startsAtMs: number;
-  endMs: number;
-  price: number;
-  isCheap?: boolean;
-  isExpensive?: boolean;
-  plannedOtherKWh: number;
-};
-
 type ObjectivePlanInput = {
   bootstrap: SettingsUiBootstrap;
   deviceId: string | null;
@@ -71,62 +58,43 @@ type ObjectivePlanInput = {
   nowMs?: number;
 };
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
-const DEFAULT_HARD_CAP_KWH = 10;
+const DEADLINE_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
-const isRecord = (candidate: unknown): candidate is Record<string, unknown> => (
-  Boolean(candidate) && typeof candidate === 'object' && !Array.isArray(candidate)
-);
-
-const isFiniteNumber = (candidate: unknown): candidate is number => (
-  typeof candidate === 'number' && Number.isFinite(candidate)
-);
-
-const getCombinedPrices = (payload: SettingsUiPricesPayload): PriceEntryLike[] => {
-  const combined = payload.combinedPrices as CombinedPricesLike | unknown[] | null;
-  let entries: unknown[] = [];
-  if (Array.isArray(combined)) {
-    entries = combined;
-  } else if (Array.isArray((combined as CombinedPricesLike | null)?.prices)) {
-    entries = (combined as CombinedPricesLike).prices as unknown[];
-  }
-  return entries.flatMap((entry) => {
-    if (!isRecord(entry) || typeof entry.startsAt !== 'string') return [];
-    let total: number | null = null;
-    if (isFiniteNumber(entry.total)) total = entry.total;
-    else if (isFiniteNumber(entry.totalPrice)) total = entry.totalPrice;
-    if (!isFiniteNumber(total)) return [];
-    return [{
-      startsAt: entry.startsAt,
-      total,
-      ...(entry.isCheap === true ? { isCheap: true } : {}),
-      ...(entry.isExpensive === true ? { isExpensive: true } : {}),
-    }];
-  });
-};
-
-const formatHour = (startsAtMs: number): string => (
-  new Date(startsAtMs).toLocaleTimeString([], { hour: '2-digit', hour12: false })
+const formatHourLabel = (startsAtMs: number): string => (
+  new Date(startsAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
 );
 
 const formatPrice = (total: number): string => total.toFixed(2);
 
-const formatDeadline = (deadlineAtMs: number): string => (
+const formatDeadlineFull = (deadlineAtMs: number): string => (
   new Date(deadlineAtMs).toLocaleString([], {
     weekday: 'short',
     hour: '2-digit',
     minute: '2-digit',
+    hour12: false,
   })
+);
+
+const formatDeadlineShort = (deadlineAtMs: number): string => (
+  new Date(deadlineAtMs).toLocaleString([], {
+    weekday: 'short',
+    hour: '2-digit',
+    hour12: false,
+  })
+);
+
+const formatTemperature = (value: number): string => (
+  Number.isInteger(value) ? `${value} °C` : `${value.toFixed(1)} °C`
 );
 
 const formatTarget = (objective: DeferredObjectiveSettingsEntry): string => (
   objective.kind === 'temperature'
-    ? `${objective.targetTemperatureC.toFixed(1)} °C`
+    ? formatTemperature(objective.targetTemperatureC)
     : `${objective.targetPercent}%`
 );
 
 const resolveDeadlineAtMs = (deadlineLocalTime: string, nowMs: number): number | null => {
-  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(deadlineLocalTime);
+  const match = deadlineLocalTime.match(DEADLINE_TIME_PATTERN);
   if (!match) return null;
   const now = new Date(nowMs);
   const deadline = new Date(now);
@@ -135,11 +103,6 @@ const resolveDeadlineAtMs = (deadlineLocalTime: string, nowMs: number): number |
     deadline.setDate(deadline.getDate() + 1);
   }
   return deadline.getTime();
-};
-
-const resolveHardCapKWh = (bootstrap: SettingsUiBootstrap): number => {
-  const setting = bootstrap.settings.capacity_limit_kw;
-  return isFiniteNumber(setting) && setting > 0 ? setting : DEFAULT_HARD_CAP_KWH;
 };
 
 const resolveUsefulPowerKw = (device: TargetDeviceSnapshot): number | null => {
@@ -177,7 +140,7 @@ const resolveProgress = (params: {
   currentValue: number;
   remainingUnits: number;
   targetValue: number;
-  unit: '%' | '°C';
+  unit: '°C' | '%';
 } | null => {
   const { device, objective, profile } = params;
   if (objective.kind === 'temperature') {
@@ -227,142 +190,68 @@ const resolveEnergyNeededKWh = (params: {
   };
 };
 
-const getDailyBudgetDayByBucket = (
-  dailyBudget: DailyBudgetUiPayload | null,
-  startMs: number,
-): { day: DailyBudgetDayPayload; index: number } | null => {
-  if (!dailyBudget) return null;
-  for (const day of Object.values(dailyBudget.days)) {
-    const index = day.buckets.startUtc.findIndex((startUtc) => new Date(startUtc).getTime() === startMs);
-    if (index >= 0) return { day, index };
-  }
-  return null;
-};
-
-const resolvePlannedOtherKWh = (
-  dailyBudget: DailyBudgetUiPayload | null,
-  startMs: number,
-  device: TargetDeviceSnapshot,
-): number => {
-  const match = getDailyBudgetDayByBucket(dailyBudget, startMs);
-  if (!match) return 0;
-  const uncontrolled = match.day.buckets.plannedUncontrolledKWh?.[match.index];
-  const controlled = match.day.buckets.plannedControlledKWh?.[match.index];
-  const fallback = match.day.buckets.plannedKWh[match.index];
-  if (device.priority === 1 && isFiniteNumber(uncontrolled)) {
-    return Math.max(0, uncontrolled);
-  }
-  const planned = (
-    (isFiniteNumber(uncontrolled) ? uncontrolled : 0)
-    + (isFiniteNumber(controlled) ? controlled : 0)
-  );
-  if (planned > 0) return planned;
-  return isFiniteNumber(fallback) ? fallback : 0;
-};
-
-const collectHorizonHours = (params: {
-  bootstrap: SettingsUiBootstrap;
-  deadlineAtMs: number;
-  device: TargetDeviceSnapshot;
-  nowMs: number;
-  prices: SettingsUiPricesPayload;
-}): HorizonHour[] => (
-  getCombinedPrices(params.prices)
-    .map((price) => {
-      const startsAtMs = new Date(price.startsAt).getTime();
-      return {
-        price,
-        startsAtMs,
-      };
-    })
-    .filter(({ startsAtMs }) => Number.isFinite(startsAtMs))
-    .map(({ price, startsAtMs }) => ({
-      startsAtMs,
-      endMs: startsAtMs + ONE_HOUR_MS,
-      price: price.total,
-      isCheap: price.isCheap,
-      isExpensive: price.isExpensive,
-      plannedOtherKWh: resolvePlannedOtherKWh(params.bootstrap.dailyBudget, startsAtMs, params.device),
-    }))
-    .filter((hour) => hour.endMs > params.nowMs && hour.startsAtMs < params.deadlineAtMs)
-    .sort((left, right) => left.startsAtMs - right.startsAtMs)
-);
-
-const allocateChargeHours = (params: {
-  energyNeededKWh: number;
-  hours: HorizonHour[];
-  nowMs: number;
-  usefulPowerKw: number;
-}): Map<number, number> => {
-  let remainingKWh = Math.max(0, params.energyNeededKWh);
-  const allocation = new Map<number, number>();
-  const candidates = params.hours
-    .map((hour) => {
-      const durationHours = Math.max(0, (hour.endMs - Math.max(hour.startsAtMs, params.nowMs)) / ONE_HOUR_MS);
-      return {
-        hour,
-        capacityKWh: durationHours * params.usefulPowerKw,
-      };
-    })
-    .filter((candidate) => candidate.capacityKWh > 0)
-    .sort((left, right) => left.hour.price - right.hour.price || left.hour.startsAtMs - right.hour.startsAtMs);
-
-  for (const candidate of candidates) {
-    if (remainingKWh <= 0.001) break;
-    const allocated = Math.min(remainingKWh, candidate.capacityKWh);
-    allocation.set(candidate.hour.startsAtMs, allocated);
-    remainingKWh -= allocated;
-  }
-  return allocation;
-};
-
-const resolvePriceTone = (hour: HorizonHour): DeadlinePlanMockupPayload['timeline']['hours'][number]['tone'] => {
+const resolvePriceTone = (hour: HorizonHour): DeadlinePlanPayload['timeline']['hours'][number]['tone'] => {
   if (hour.isCheap === true) return 'cheap';
   if (hour.isExpensive === true) return 'expensive';
   return 'normal';
 };
 
 const buildHeroChips = (params: {
-  objective: DeferredObjectiveSettingsEntry;
+  labels: DeadlineLabels;
   firstChargingHour: HorizonHour | undefined;
   nowMs: number;
   confidence: string | null;
-}): DeadlinePlanMockupPayload['hero']['chips'] => [
-  {
-    text: params.firstChargingHour && params.firstChargingHour.startsAtMs <= params.nowMs ? 'Charging' : 'Waiting',
-    tone: 'ok',
-  },
-  { text: params.objective.kind === 'temperature' ? 'Temperature' : 'EV', tone: 'info' },
-  ...(params.confidence ? [{ text: `Confidence ${params.confidence}`, tone: 'muted' as const }] : []),
-];
+}): DeadlinePlanPayload['hero']['chips'] => {
+  const isActiveNow = params.firstChargingHour && params.firstChargingHour.startsAtMs <= params.nowMs;
+  return [
+    {
+      text: isActiveNow ? params.labels.activeChipLabel : params.labels.waitingChipLabel,
+      tone: 'ok',
+    },
+    { text: params.labels.kindChipLabel, tone: 'info' },
+    ...(params.confidence ? [{ text: `Confidence ${params.confidence}`, tone: 'muted' as const }] : []),
+  ];
+};
+
+const resolveHeroHeadline = (params: {
+  labels: DeadlineLabels;
+  firstChargingHour: HorizonHour | undefined;
+  nowMs: number;
+}): string => {
+  if (!params.firstChargingHour) return 'On track for the deadline';
+  if (params.firstChargingHour.startsAtMs <= params.nowMs) return `${params.labels.activeChipLabel} now`;
+  return `Waiting until ${formatHourLabel(params.firstChargingHour.startsAtMs)}`;
+};
 
 const buildHero = (params: {
   device: TargetDeviceSnapshot;
   objective: DeferredObjectiveSettingsEntry;
+  labels: DeadlineLabels;
   firstChargingHour: HorizonHour | undefined;
   deadlineAtMs: number;
   energyNeededKWh: number;
-  usefulPowerKw: number;
   hoursLeft: number;
   confidence: string | null;
   nowMs: number;
-}): DeadlinePlanMockupPayload['hero'] => {
-  const targetText = formatTarget(params.objective);
-  const needsText = `${params.energyNeededKWh.toFixed(1)} kWh`;
-  const rateText = `${params.usefulPowerKw.toFixed(1)} kW`;
+}): DeadlinePlanPayload['hero'] => {
+  const headline = resolveHeroHeadline(params);
+  const target = formatTarget(params.objective);
+  const deadline = formatDeadlineFull(params.deadlineAtMs);
+  const subline = `${params.device.name} • Target ${target} by ${deadline}`;
+  const energy = `${params.energyNeededKWh.toFixed(1)} kWh`;
+  const hourWord = params.hoursLeft === 1 ? 'hour' : 'hours';
+  const metaLine = `Needs ${energy} • ${params.hoursLeft} ${hourWord} left`;
   return {
     chips: buildHeroChips({
-      objective: params.objective,
+      labels: params.labels,
       firstChargingHour: params.firstChargingHour,
       nowMs: params.nowMs,
       confidence: params.confidence,
     }),
-    sectionLabel: `${params.device.name}`,
-    headline: `Target ${targetText} by ${formatDeadline(params.deadlineAtMs)}`,
-    subline: `Needs ${needsText} · expected ${rateText} · ${params.hoursLeft} hours left`,
-    decision: params.firstChargingHour
-      ? `Waiting by plan — first planned hour starts at ${formatHour(params.firstChargingHour.startsAtMs)}.`
-      : 'Target is already expected to be met.',
+    sectionLabel: `${params.labels.kindChipLabel} plan`,
+    headline,
+    subline,
+    metaLine,
   };
 };
 
@@ -370,16 +259,13 @@ const buildTimeline = (params: {
   device: TargetDeviceSnapshot;
   hours: HorizonHour[];
   chargeByStartMs: Map<number, number>;
-  hardCapKWh: number;
   progressStart: number;
   progressTarget: number;
   progressPerKWh: number;
-  progressUnit: '%' | '°C';
-  plannedEnergyKWh: number;
+  progressUnit: '°C' | '%';
   deadlineAtMs: number;
-}): DeadlinePlanMockupPayload['timeline'] => {
+}): DeadlinePlanPayload['timeline'] => {
   let projectedProgress = params.progressStart;
-  const maxTotal = Math.max(...params.hours.map((hour) => hour.price));
   const progressFloor = Math.min(
     params.progressStart,
     ...params.hours.map((hour) => {
@@ -392,36 +278,29 @@ const buildTimeline = (params: {
   const normalizedProgressFloor = params.progressUnit === '°C'
     ? Math.max(0, Math.floor((progressFloor - 1) / 5) * 5)
     : Math.max(0, Math.floor((progressFloor - 5) / 10) * 10);
+  const progressCeilingLabel = params.progressUnit === '°C'
+    ? formatTemperature(params.progressTarget)
+    : `${Math.round(params.progressTarget)}%`;
   return {
-    subtitle: `Known prices until ${formatDeadline(params.deadlineAtMs)}`,
     ariaLabel: `Deadline plan for ${params.device.name}`,
-    priceCeiling: formatPrice(maxTotal),
-    plannedLoadCeiling: `${params.hardCapKWh.toFixed(1)} kWh`,
-    progressCeiling: params.progressUnit === '°C'
-      ? `${params.progressTarget.toFixed(1)} °C`
-      : `${Math.round(params.progressTarget)}%`,
-    progressCeilingValue: params.progressTarget,
     progressFloor: Math.min(normalizedProgressFloor, params.progressTarget - 1),
-    progressUnit: params.progressUnit,
-    explainer: [
-      'This view stops at the deadline.',
-      `Planned hours add ${params.plannedEnergyKWh.toFixed(1)} kWh before the target time.`,
-    ].join(' '),
+    progressCeilingValue: params.progressTarget,
+    progressCeilingLabel,
+    deadlineLabel: formatDeadlineShort(params.deadlineAtMs),
     hours: params.hours.map((hour) => {
       const chargerKwh = params.chargeByStartMs.get(hour.startsAtMs) ?? 0;
       if (chargerKwh > 0) {
         projectedProgress = Math.min(params.progressTarget, projectedProgress + chargerKwh * params.progressPerKWh);
       }
       return {
-        time: formatHour(hour.startsAtMs),
+        time: formatHourLabel(hour.startsAtMs),
         price: formatPrice(hour.price),
         priceValue: hour.price,
         tone: resolvePriceTone(hour),
-        plan: chargerKwh > 0 ? 'Charge' as const : undefined,
+        planned: chargerKwh > 0,
         usage: {
-          otherKwh: Math.max(0, hour.plannedOtherKWh),
-          chargerKwh,
-          hardCapKwh: params.hardCapKWh,
+          backgroundKwh: Math.max(0, hour.plannedOtherKWh),
+          deviceKwh: chargerKwh,
         },
         progress: projectedProgress,
       };
@@ -429,7 +308,7 @@ const buildTimeline = (params: {
   };
 };
 
-const buildObjectivePayload = (params: ObjectivePlanInput): DeadlinePlanMockupPayload | null => {
+const buildObjectivePayload = (params: ObjectivePlanInput): DeadlinePlanPayload | null => {
   const nowMs = params.nowMs ?? Date.now();
   const deviceId = params.deviceId?.trim();
   if (!deviceId) return null;
@@ -467,19 +346,20 @@ const buildObjectivePayload = (params: ObjectivePlanInput): DeadlinePlanMockupPa
   const progressPerKWh = energy.energyNeededKWh > 0
     ? progress.remainingUnits / energy.energyNeededKWh
     : 0;
-  const hardCapKWh = resolveHardCapKWh(params.bootstrap);
+  const labels = deadlineLabels(objective.kind);
   const firstChargingHour = hours.find((hour) => chargeByStartMs.has(hour.startsAtMs));
-  const plannedEnergyKWh = Array.from(chargeByStartMs.values()).reduce((sum, value) => sum + value, 0);
   const hoursLeft = Math.max(0, Math.ceil((deadlineAtMs - nowMs) / ONE_HOUR_MS));
 
   return {
+    kind: objective.kind,
+    labels,
     hero: buildHero({
       device,
       objective,
+      labels,
       firstChargingHour,
       deadlineAtMs,
       energyNeededKWh: energy.energyNeededKWh,
-      usefulPowerKw,
       hoursLeft,
       confidence: energy.confidence,
       nowMs,
@@ -488,26 +368,24 @@ const buildObjectivePayload = (params: ObjectivePlanInput): DeadlinePlanMockupPa
       device,
       hours,
       chargeByStartMs,
-      hardCapKWh,
       progressStart: progress.currentValue,
       progressTarget: progress.targetValue,
       progressPerKWh,
       progressUnit: progress.unit,
-      plannedEnergyKWh,
       deadlineAtMs,
     }),
   };
 };
 
-export const mountDeadlinePlanMockup = async (): Promise<void> => {
-  const surface = document.getElementById('deadline-plan-mockup-root');
+export const mountDeadlinePlan = async (): Promise<void> => {
+  const surface = document.getElementById('deadline-plan-root');
   if (!surface) return;
 
   const deviceId = new URLSearchParams(window.location.search).get('deviceId');
   const timeZone = resolveBrowserTimeZone();
 
   initDeadlinePlanClose();
-  renderDeadlinePlanMockup(surface, { status: 'loading' });
+  renderDeadlinePlan(surface, { status: 'loading' });
   try {
     const [bootstrap, devicesPayload, history] = await Promise.all([
       callApi<SettingsUiBootstrap>('GET', SETTINGS_UI_BOOTSTRAP_PATH),
@@ -521,11 +399,11 @@ export const mountDeadlinePlanMockup = async (): Promise<void> => {
       prices = bootstrap.prices;
     }
     const payload = buildObjectivePayload({ bootstrap, deviceId, devices: devicesPayload.devices, prices });
-    renderDeadlinePlanMockup(surface, payload
+    renderDeadlinePlan(surface, payload
       ? { status: 'ready', payload, history }
       : { status: 'error', message: 'Deadline plan data is not available for this device.', history });
   } catch {
-    renderDeadlinePlanMockup(surface, {
+    renderDeadlinePlan(surface, {
       status: 'error',
       message: 'Deadline plan data is not available for this device.',
     });
