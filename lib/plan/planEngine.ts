@@ -26,7 +26,10 @@ import {
 import { syncPendingBinaryCommands } from './planBinaryControl';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
-import type { DeferredObjectiveSettingsV1 } from './deferredObjectives';
+import type {
+  DeferredObjectiveSettingsV1,
+  DeferredObjectiveStatusBus,
+} from './deferredObjectives';
 
 export type PlanEngineDeps = {
   homey: Homey.App['homey'];
@@ -63,6 +66,7 @@ export type PlanEngineDeps = {
   debugStructured?: StructuredDebugEmitter;
   deferredObjectiveDebugStructured?: StructuredDebugEmitter;
   observeDeferredObjectivePlanHistory?: PlanBuilderDeps['observeDeferredObjectivePlanHistory'];
+  getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
   markSteppedLoadDesiredStepIssued: (params: {
     deviceId: string;
     desiredStepId: string;
@@ -112,6 +116,7 @@ export class PlanEngine {
       debugStructured: deps.debugStructured,
       deferredObjectiveDebugStructured: deps.deferredObjectiveDebugStructured,
       observeDeferredObjectivePlanHistory: deps.observeDeferredObjectivePlanHistory,
+      getDeferredObjectiveStatusBus: deps.getDeferredObjectiveStatusBus,
       log: deps.log,
       logDebug: deps.logDebug,
     };

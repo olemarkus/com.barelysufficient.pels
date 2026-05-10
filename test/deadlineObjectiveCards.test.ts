@@ -1,0 +1,376 @@
+import { registerDeadlineObjectiveCards } from '../flowCards/deadlineObjectiveCards';
+import {
+  createDeferredObjectiveStatusBus,
+  createEmptyDeferredObjectiveSettings,
+  type DeferredObjectiveSettingsV1,
+  type DeferredObjectiveStatusBus,
+  type DeferredObjectiveStatusSnapshot,
+} from '../lib/plan/deferredObjectives';
+import type { TargetDeviceSnapshot } from '../lib/utils/types';
+import type { FlowCardDeps } from '../flowCards/registerFlowCards';
+
+type CardListeners = {
+  run?: (args: unknown, state?: unknown) => Promise<boolean> | boolean | void;
+  autocomplete?: (query: string, args?: Record<string, unknown>) => Promise<Array<{ id: string; name: string }>> | Array<{ id: string; name: string }>;
+  trigger: ReturnType<typeof vi.fn>;
+};
+
+type CardRegistry = Map<string, CardListeners>;
+
+const buildCard = (registry: CardRegistry, id: string) => {
+  const listeners: CardListeners = { trigger: vi.fn().mockResolvedValue(undefined) };
+  registry.set(id, listeners);
+  return {
+    registerRunListener: (fn: CardListeners['run']) => { listeners.run = fn; },
+    registerArgumentAutocompleteListener: (
+      _arg: string,
+      fn: CardListeners['autocomplete'],
+    ) => { listeners.autocomplete = fn; },
+    trigger: listeners.trigger,
+  };
+};
+
+const createMockHomey = () => {
+  const settings = new Map<string, unknown>();
+  const actions: CardRegistry = new Map();
+  const triggers: CardRegistry = new Map();
+  const conditions: CardRegistry = new Map();
+  const homey = {
+    flow: {
+      getActionCard: (id: string) => buildCard(actions, id),
+      getTriggerCard: (id: string) => buildCard(triggers, id),
+      getConditionCard: (id: string) => buildCard(conditions, id),
+    },
+    settings: {
+      get: (key: string) => settings.get(key),
+      set: (key: string, value: unknown) => { settings.set(key, value); },
+    },
+  };
+  return { homey, settings, actions, triggers, conditions };
+};
+
+const buildDevice = (overrides: Partial<TargetDeviceSnapshot> & { id: string; name: string }): TargetDeviceSnapshot => ({
+  capabilities: [],
+  targets: [],
+  ...overrides,
+} as TargetDeviceSnapshot);
+
+const buildDeps = (overrides: {
+  snapshot: TargetDeviceSnapshot[];
+  bus?: DeferredObjectiveStatusBus;
+  rebuildPlan?: ReturnType<typeof vi.fn>;
+}): { deps: FlowCardDeps; mock: ReturnType<typeof createMockHomey> } => {
+  const mock = createMockHomey();
+  const deps = {
+    homey: mock.homey,
+    structuredLog: undefined,
+    resolveModeName: (mode: string) => mode,
+    getAllModes: () => new Set<string>(),
+    getCurrentOperatingMode: () => 'Home',
+    handleOperatingModeChange: async () => {},
+    getCurrentPriceLevel: () => 'unknown' as never,
+    recordPowerSample: async () => {},
+    getCapacityGuard: () => undefined,
+    getHeadroom: () => null,
+    setCapacityLimit: () => {},
+    getSnapshot: async () => overrides.snapshot,
+    refreshSnapshot: async () => {},
+    getHomeyDevicesForFlow: async () => [],
+    reportFlowBackedCapability: () => ({ kind: 'noop', valueChanged: false, freshnessAdvanced: false, refreshSnapshot: false, rebuildPlan: false }) as never,
+    reportSteppedLoadActualStep: () => 'unchanged' as never,
+    getDeviceLoadSetting: async () => null,
+    setExpectedOverride: () => false,
+    storeFlowPriceData: () => ({ dateKey: '', storedCount: 0, missingHours: [] }),
+    rebuildPlan: overrides.rebuildPlan ?? vi.fn(),
+    evaluateHeadroomForDevice: () => null,
+    loadDailyBudgetSettings: () => {},
+    updateDailyBudgetState: () => {},
+    getCombinedHourlyPrices: () => null,
+    getTimeZone: () => 'UTC',
+    getNow: () => new Date(),
+    getStructuredLogger: () => undefined,
+    log: () => {},
+    logDebug: () => {},
+    error: () => {},
+    getDeferredObjectiveStatusBus: () => overrides.bus,
+  } as unknown as FlowCardDeps;
+  return { deps, mock };
+};
+
+describe('deadline objective flow cards', () => {
+  it('writes a temperature objective entry on set_temperature_deadline', async () => {
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      rebuildPlan: vi.fn(),
+    });
+    registerDeadlineObjectiveCards(deps);
+    const card = mock.actions.get('set_temperature_deadline')!;
+    await card.run!({ device: 'heater-1', target_c: 55, ready_by: '07:00' });
+
+    const stored = mock.settings.get('deferred_objectives') as DeferredObjectiveSettingsV1;
+    expect(stored.objectivesByDeviceId['heater-1']).toEqual({
+      enabled: true,
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: 55,
+      deadlineLocalTime: '07:00',
+    });
+    expect(deps.rebuildPlan).toHaveBeenCalledWith('deadline_objective_card_set');
+  });
+
+  it('rejects malformed ready_by values', async () => {
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+    });
+    registerDeadlineObjectiveCards(deps);
+    const card = mock.actions.get('set_temperature_deadline')!;
+    await expect(card.run!({ device: 'heater-1', target_c: 55, ready_by: '7am' }))
+      .rejects.toThrow(/HH:mm/);
+  });
+
+  it('rejects target temperatures outside the device capability bounds', async () => {
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({
+        id: 'heater-1',
+        name: 'Boiler',
+        deviceType: 'temperature',
+        targets: [{ id: 'target_temperature', value: 50, min: 30, max: 75, step: 0.5 } as never],
+      })],
+    });
+    registerDeadlineObjectiveCards(deps);
+    const card = mock.actions.get('set_temperature_deadline')!;
+    await expect(card.run!({ device: 'heater-1', target_c: 90, ready_by: '07:00' }))
+      .rejects.toThrow(/between 30 and 75/);
+    await expect(card.run!({ device: 'heater-1', target_c: 60, ready_by: '07:00' }))
+      .resolves.toBe(true);
+  });
+
+  it('rejects when device is not in the snapshot', async () => {
+    const { deps, mock } = buildDeps({ snapshot: [] });
+    registerDeadlineObjectiveCards(deps);
+    const card = mock.actions.get('set_temperature_deadline')!;
+    await expect(card.run!({ device: 'missing-1', target_c: 55, ready_by: '07:00' }))
+      .rejects.toThrow(/was not found/);
+  });
+
+  it('writes an EV objective on set_ev_charge_deadline with hard enforcement', async () => {
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'ev-1', name: 'Charger', deviceClass: 'evcharger' })],
+      rebuildPlan: vi.fn(),
+    });
+    registerDeadlineObjectiveCards(deps);
+    const card = mock.actions.get('set_ev_charge_deadline')!;
+    await card.run!({
+      device: { id: 'ev-1' },
+      target_percent: 80,
+      ready_by: '06:30',
+      enforcement: { id: 'hard' },
+    });
+    const stored = mock.settings.get('deferred_objectives') as DeferredObjectiveSettingsV1;
+    expect(stored.objectivesByDeviceId['ev-1']).toEqual({
+      enabled: true,
+      kind: 'ev_soc',
+      enforcement: 'hard',
+      targetPercent: 80,
+      deadlineLocalTime: '06:30',
+    });
+  });
+
+  it('rejects set_ev_charge_deadline when the device is not in the snapshot', async () => {
+    const { deps, mock } = buildDeps({ snapshot: [] });
+    registerDeadlineObjectiveCards(deps);
+    const card = mock.actions.get('set_ev_charge_deadline')!;
+    await expect(card.run!({
+      device: 'missing-1',
+      target_percent: 80,
+      ready_by: '07:00',
+      enforcement: { id: 'soft' },
+    })).rejects.toThrow(/was not found/);
+  });
+
+  it('rejects set_ev_charge_deadline when the device is not an EV charger', async () => {
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+    });
+    registerDeadlineObjectiveCards(deps);
+    const card = mock.actions.get('set_ev_charge_deadline')!;
+    await expect(card.run!({
+      device: 'heater-1',
+      target_percent: 80,
+      ready_by: '07:00',
+      enforcement: { id: 'soft' },
+    })).rejects.toThrow(/not an EV charger/);
+  });
+
+  it('clear_deadline forgets the bus snapshot before rebuilding the plan', async () => {
+    const bus = createDeferredObjectiveStatusBus();
+    const rebuildPlan = vi.fn(() => {
+      expect(bus.hasActive('heater-1')).toBe(false);
+    });
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      bus,
+      rebuildPlan,
+    });
+    bus.publish({
+      deviceId: 'heater-1',
+      deviceName: 'Boiler',
+      kind: 'temperature',
+      status: 'on_track',
+      previousStatus: 'none',
+      targetText: '55 °C',
+      deadlineLocalTime: '07:00',
+      deadlineAtMs: null,
+      deadlineMissed: false,
+      shortfallKwh: null,
+      shortfallText: null,
+    });
+    mock.settings.set('deferred_objectives', {
+      version: 1,
+      objectivesByDeviceId: {
+        'heater-1': {
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 55,
+          deadlineLocalTime: '07:00',
+        },
+      },
+    });
+    registerDeadlineObjectiveCards(deps);
+    await mock.actions.get('clear_deadline')!.run!({ device: 'heater-1' });
+    expect(rebuildPlan).toHaveBeenCalledWith('deadline_objective_card_clear');
+    expect(bus.hasActive('heater-1')).toBe(false);
+  });
+
+  it('removes the entry on clear_deadline', async () => {
+    const initial: DeferredObjectiveSettingsV1 = {
+      version: 1,
+      objectivesByDeviceId: {
+        'heater-1': {
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 55,
+          deadlineLocalTime: '07:00',
+        },
+      },
+    };
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      rebuildPlan: vi.fn(),
+    });
+    mock.settings.set('deferred_objectives', initial);
+    registerDeadlineObjectiveCards(deps);
+    const card = mock.actions.get('clear_deadline')!;
+    await card.run!({ device: 'heater-1' });
+    const stored = mock.settings.get('deferred_objectives') as DeferredObjectiveSettingsV1;
+    expect(stored.objectivesByDeviceId).toEqual({});
+  });
+
+  it('temperature autocomplete excludes EV chargers', async () => {
+    const { deps, mock } = buildDeps({
+      snapshot: [
+        buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' }),
+        buildDevice({ id: 'ev-1', name: 'Charger', deviceClass: 'evcharger' }),
+      ],
+    });
+    registerDeadlineObjectiveCards(deps);
+    const card = mock.actions.get('set_temperature_deadline')!;
+    const options = await card.autocomplete!('') as Array<{ id: string }>;
+    expect(options.map((opt) => opt.id)).toEqual(['heater-1']);
+  });
+
+  it('deadline_status_changed condition matches the latest bus state', async () => {
+    const bus = createDeferredObjectiveStatusBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      bus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const condition = mock.conditions.get('deadline_status_is')!;
+    bus.publish({
+      deviceId: 'heater-1',
+      deviceName: 'Boiler',
+      kind: 'temperature',
+      status: 'at_risk',
+      previousStatus: 'on_track',
+      targetText: '55 °C',
+      deadlineLocalTime: '07:00',
+      deadlineAtMs: null,
+      deadlineMissed: false,
+      shortfallKwh: null,
+      shortfallText: null,
+    });
+    expect(await condition.run!({ device: 'heater-1', status: 'at_risk' })).toBe(true);
+    expect(await condition.run!({ device: 'heater-1', status: 'on_track' })).toBe(false);
+  });
+
+  it('deadline_status_is returns true for "none" when no entry exists', async () => {
+    const bus = createDeferredObjectiveStatusBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      bus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const condition = mock.conditions.get('deadline_status_is')!;
+    expect(await condition.run!({ device: 'heater-1', status: 'none' })).toBe(true);
+  });
+
+  it('publishes triggers for status transitions filtered by device and status args', async () => {
+    const bus = createDeferredObjectiveStatusBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      bus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const trigger = mock.triggers.get('deadline_status_changed')!;
+    const transition: DeferredObjectiveStatusSnapshot = {
+      deviceId: 'heater-1',
+      deviceName: 'Boiler',
+      kind: 'temperature',
+      status: 'at_risk',
+      previousStatus: 'on_track',
+      targetText: '55 °C',
+      deadlineLocalTime: '07:00',
+      deadlineAtMs: null,
+      deadlineMissed: false,
+      shortfallKwh: null,
+      shortfallText: null,
+    };
+    bus.publish(transition);
+    expect(trigger.trigger).toHaveBeenCalledTimes(1);
+    const [tokens, state] = trigger.trigger.mock.calls[0]!;
+    expect(tokens).toMatchObject({ device_name: 'Boiler', status: 'at_risk', kind: 'temperature' });
+    expect(state).toEqual({ deviceId: 'heater-1', status: 'at_risk' });
+
+    expect(await trigger.run!({ device: 'heater-1', status: { id: 'at_risk' } }, state)).toBe(true);
+    expect(await trigger.run!({ device: 'heater-1', status: { id: 'on_track' } }, state)).toBe(false);
+    expect(await trigger.run!({ device: 'heater-2', status: { id: 'at_risk' } }, state)).toBe(false);
+  });
+
+  it('has_active_deadline returns true only when an enabled entry exists', async () => {
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+    });
+    registerDeadlineObjectiveCards(deps);
+    const condition = mock.conditions.get('has_active_deadline')!;
+
+    mock.settings.set('deferred_objectives', createEmptyDeferredObjectiveSettings());
+    expect(await condition.run!({ device: 'heater-1' })).toBe(false);
+
+    mock.settings.set('deferred_objectives', {
+      version: 1,
+      objectivesByDeviceId: {
+        'heater-1': {
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 55,
+          deadlineLocalTime: '07:00',
+        },
+      },
+    });
+    expect(await condition.run!({ device: 'heater-1' })).toBe(true);
+  });
+});

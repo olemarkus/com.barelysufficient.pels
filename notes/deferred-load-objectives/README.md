@@ -22,8 +22,11 @@ As of this note, PELS already has internal/native EV state-of-charge plumbing:
 - a versioned settings payload can define soft EV SoC or temperature objectives
 - the diagnostics bridge can read persisted EV SoC and temperature objectives and run them through horizon planning
 - the bridge is gated on the price feature and requires complete price buckets through the deadline
-- a quick Settings UI card can persist one soft temperature deadline objective per temperature device
-- no public objective flow-card UX is exposed yet
+- public flow cards expose deadline creation, clearing, status conditions, and status-change /
+  missed-deadline triggers; the earlier device-detail Settings UI card has been removed in favor of
+  the flow-card surface (see `docs/flow-cards.md`)
+- a status bus inside the bridge publishes status transitions and missed-deadline events that the
+  flow trigger cards subscribe to; cards do not change admission or actuation behavior yet
 
 Deadline objectives should build on that internal state, not reopen SoC as a user-facing feature
 before the broader objective UX is ready.
@@ -70,10 +73,11 @@ Storage rules:
   diagnostics and does not change admission behavior.
 
 The bridge reads this settings payload during plan construction, normalizes it, evaluates each
-enabled objective, and emits structured `deferred_objectives` debug diagnostics. The current
-Settings UI exposure is limited to a manual temperature card on the device detail tab for Homeys
-with the same feature access as the new UI toggle. It does not expose flow cards, triggers, or
-device actuation yet.
+enabled objective, and emits structured `deferred_objectives` debug diagnostics. The bridge also
+publishes status transitions and deadline-missed events to an in-process status bus that flow
+trigger and condition cards subscribe to. Public flow cards are the user-facing surface for
+creating and clearing deadlines; the planner does not change admission or device actuation in
+response to objectives yet.
 
 Price gating is deliberate. The v1 bridge only plans when price optimization is enabled and the
 daily-budget price payload covers every hour from now through the objective deadline. If tomorrow's
@@ -1007,15 +1011,15 @@ Recommended implementation order:
    flow cards or actuation.
 3. Add Connected 300-oriented thermal objective diagnostics using stepped-load profiles, fresh
    temperature input, target temperature, learned kWh per degree, and requested minimum step.
-4. Add a simple Settings UI card for manual soft temperature deadlines.
+4. Expose deadline creation, clearing, status conditions, and status-change / missed-deadline
+   triggers through public flow cards. The earlier short-lived device-detail Settings UI card has
+   been retired in favor of this flow-card surface.
 5. Add runtime actuation for planned-hour admission and outside-planned-hour behavior.
 6. Surface objective diagnostics and reason codes without a full Settings editor.
 7. Integrate soft objective through existing normal device behavior while preserving normal budget
    and priority policy.
 8. Add hard admission for already available hard objective admission capacity.
 9. Add hard-boost rebalancing as a follow-up if it touches limit planning deeply.
-10. Expose public flow-backed objective cards only after the planner behavior and UX contract are
-   ready.
 
 The first Connected 300 implementation should focus on temperature-by-deadline UX, thermal energy
 mapping, per-step rate estimates, requested minimum step selection, and diagnostics.

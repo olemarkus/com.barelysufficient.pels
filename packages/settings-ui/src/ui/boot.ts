@@ -71,11 +71,11 @@ import {
 } from './dailyBudgetTuning.ts';
 import {
   initDeviceDetailHandlers,
-  loadDeferredObjectiveSettings,
   loadEvBoostSettings,
   loadShedBehaviors,
   loadTemperatureBoostSettings,
 } from './deviceDetail/index.ts';
+import { loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
 import {
   initAdvancedDeviceCleanupHandlers,

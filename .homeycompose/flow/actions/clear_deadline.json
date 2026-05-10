@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "Clear deadline"
+  },
+  "titleFormatted": {
+    "en": "Clear deadline for [[device]]"
+  },
+  "hint": {
+    "en": "Removes any active deadline objective for this device."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select device"
+      }
+    }
+  ]
+}

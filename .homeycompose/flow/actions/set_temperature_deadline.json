@@ -1,0 +1,43 @@
+{
+  "title": {
+    "en": "Set temperature deadline"
+  },
+  "titleFormatted": {
+    "en": "Have [[device]] reach [[target_c]] °C by [[ready_by]]"
+  },
+  "hint": {
+    "en": "PELS picks the cheapest hours before the deadline to heat this device to the target. Soft target — capacity safety still wins."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select temperature device"
+      }
+    },
+    {
+      "name": "target_c",
+      "type": "number",
+      "title": {
+        "en": "Target temperature (°C)"
+      },
+      "min": -50,
+      "max": 100,
+      "step": 0.5
+    },
+    {
+      "name": "ready_by",
+      "type": "text",
+      "title": {
+        "en": "Ready by (HH:mm)"
+      },
+      "placeholder": {
+        "en": "07:00"
+      }
+    }
+  ]
+}

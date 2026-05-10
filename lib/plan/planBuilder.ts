@@ -46,8 +46,10 @@ import {
   applyDeferredObjectiveAdmission,
   buildDeferredObjectiveDiagnostics,
   emitDeferredObjectiveDiagnostics,
+  emitDeferredObjectiveStatusTransitions,
   type DeferredObjectiveDiagnostic,
   type DeferredObjectiveSettingsV1,
+  type DeferredObjectiveStatusBus,
 } from './deferredObjectives';
 
 type ShortfallMeta = Pick<
@@ -84,6 +86,7 @@ export type PlanBuilderDeps = {
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,
   ) => void;
+  getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
 };
@@ -217,6 +220,7 @@ export class PlanBuilder {
       restoreResult,
     });
     this.emitDeferredObjectiveDiagnostics(deferredEvaluations);
+    this.emitDeferredObjectiveStatusTransitions(deferredEvaluations, nowTs);
     return {
       meta,
       devices: finalized.planDevices,
@@ -611,6 +615,15 @@ export class PlanBuilder {
       diagnostics,
       debugStructured: this.deps.deferredObjectiveDebugStructured,
     });
+  }
+
+  private emitDeferredObjectiveStatusTransitions(
+    diagnostics: DeferredObjectiveDiagnostic[],
+    nowMs: number,
+  ): void {
+    const statusBus = this.deps.getDeferredObjectiveStatusBus?.();
+    if (!statusBus) return;
+    emitDeferredObjectiveStatusTransitions({ diagnostics, statusBus, nowMs });
   }
 
   private resolveSoftLimitSource(capacitySoftLimit: number, dailySoftLimit: number | null): SoftLimitSource {

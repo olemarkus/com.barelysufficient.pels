@@ -131,6 +131,7 @@ export function createPlanEngine(ctx: AppContext) {
       recorder.observe(diagnostics, nowMs);
       recorder.flushIfDirty();
     },
+    getDeferredObjectiveStatusBus: () => ctx.deferredObjectiveStatusBus,
     log: (...args: unknown[]) => ctx.log(...args),
     logDebug: (...args: unknown[]) => ctx.logDebug('plan', ...args),
     error: (...args: unknown[]) => ctx.error(...args),
@@ -190,6 +191,13 @@ export function registerAppFlowCards(ctx: AppContext): void {
     setExpectedOverride: (deviceId, kw) => ctx.setExpectedOverride(deviceId, kw),
     storeFlowPriceData: (kind, raw) => ctx.storeFlowPriceData(kind, raw),
     rebuildPlan: (source) => ctx.requestFlowPlanRebuild(source),
+    getDeferredObjectiveSettings: () => normalizeDeferredObjectiveSettings(
+      ctx.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS),
+    ),
+    setDeferredObjectiveSettings: (next) => {
+      ctx.homey.settings.set(DEFERRED_OBJECTIVES_SETTINGS, next);
+    },
+    getDeferredObjectiveStatusBus: () => ctx.deferredObjectiveStatusBus,
     evaluateHeadroomForDevice: (params) => ctx.evaluateHeadroomForDevice(params),
     loadDailyBudgetSettings: () => requireDailyBudgetService(ctx).loadSettings(),
     updateDailyBudgetState: (options) => ctx.updateDailyBudgetState(options),
