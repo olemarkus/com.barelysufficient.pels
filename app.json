@@ -143,6 +143,168 @@
       },
       {
         "title": {
+          "en": "Deadline missed"
+        },
+        "titleFormatted": {
+          "en": "[[device]] missed its deadline"
+        },
+        "hint": {
+          "en": "Fires the next time PELS evaluates a deadline that has already passed without reaching its target."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          }
+        ],
+        "tokens": [
+          {
+            "name": "device_name",
+            "type": "string",
+            "title": {
+              "en": "Device"
+            }
+          },
+          {
+            "name": "kind",
+            "type": "string",
+            "title": {
+              "en": "Kind"
+            }
+          },
+          {
+            "name": "target_text",
+            "type": "string",
+            "title": {
+              "en": "Target"
+            }
+          },
+          {
+            "name": "deadline_local_time",
+            "type": "string",
+            "title": {
+              "en": "Deadline (HH:mm)"
+            }
+          },
+          {
+            "name": "shortfall_text",
+            "type": "string",
+            "title": {
+              "en": "Shortfall"
+            }
+          },
+          {
+            "name": "shortfall_kwh",
+            "type": "number",
+            "title": {
+              "en": "Shortfall (kWh)"
+            }
+          }
+        ],
+        "id": "deadline_missed"
+      },
+      {
+        "title": {
+          "en": "Deadline status changed"
+        },
+        "titleFormatted": {
+          "en": "[[device]] deadline became [[status]]"
+        },
+        "hint": {
+          "en": "Fires when the planner re-evaluates and the deadline outcome changes for the chosen device."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          },
+          {
+            "name": "status",
+            "type": "dropdown",
+            "title": {
+              "en": "Status"
+            },
+            "values": [
+              {
+                "id": "on_track",
+                "label": {
+                  "en": "On track"
+                }
+              },
+              {
+                "id": "at_risk",
+                "label": {
+                  "en": "At risk"
+                }
+              },
+              {
+                "id": "cannot_meet",
+                "label": {
+                  "en": "Cannot meet"
+                }
+              },
+              {
+                "id": "satisfied",
+                "label": {
+                  "en": "Satisfied"
+                }
+              }
+            ]
+          }
+        ],
+        "tokens": [
+          {
+            "name": "device_name",
+            "type": "string",
+            "title": {
+              "en": "Device"
+            }
+          },
+          {
+            "name": "status",
+            "type": "string",
+            "title": {
+              "en": "Status"
+            }
+          },
+          {
+            "name": "target_text",
+            "type": "string",
+            "title": {
+              "en": "Target"
+            }
+          },
+          {
+            "name": "deadline_local_time",
+            "type": "string",
+            "title": {
+              "en": "Deadline (HH:mm)"
+            }
+          },
+          {
+            "name": "kind",
+            "type": "string",
+            "title": {
+              "en": "Kind"
+            }
+          }
+        ],
+        "id": "deadline_status_changed"
+      },
+      {
+        "title": {
           "en": "Desired stepped load changed for"
         },
         "titleFormatted": {
@@ -348,6 +510,93 @@
       }
     ],
     "conditions": [
+      {
+        "title": {
+          "en": "Deadline status is"
+        },
+        "titleFormatted": {
+          "en": "[[device]] deadline !{{is|is not}} [[status]]"
+        },
+        "hint": {
+          "en": "True when the most recent planner evaluation for this device matches the chosen status."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          },
+          {
+            "name": "status",
+            "type": "dropdown",
+            "title": {
+              "en": "Status"
+            },
+            "values": [
+              {
+                "id": "on_track",
+                "label": {
+                  "en": "On track"
+                }
+              },
+              {
+                "id": "at_risk",
+                "label": {
+                  "en": "At risk"
+                }
+              },
+              {
+                "id": "cannot_meet",
+                "label": {
+                  "en": "Cannot meet"
+                }
+              },
+              {
+                "id": "satisfied",
+                "label": {
+                  "en": "Satisfied"
+                }
+              },
+              {
+                "id": "none",
+                "label": {
+                  "en": "No active deadline"
+                }
+              }
+            ]
+          }
+        ],
+        "id": "deadline_status_is"
+      },
+      {
+        "title": {
+          "en": "Has an active deadline"
+        },
+        "titleFormatted": {
+          "en": "[[device]] !{{has|does not have}} an active deadline"
+        },
+        "hint": {
+          "en": "True when this device has a deadline objective stored in PELS."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          }
+        ],
+        "id": "has_active_deadline"
+      },
       {
         "title": {
           "en": "Is there enough headroom?"
@@ -623,6 +872,30 @@
       },
       {
         "title": {
+          "en": "Clear deadline"
+        },
+        "titleFormatted": {
+          "en": "Clear deadline for [[device]]"
+        },
+        "hint": {
+          "en": "Removes any active deadline objective for this device."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select device"
+            }
+          }
+        ],
+        "id": "clear_deadline"
+      },
+      {
+        "title": {
           "en": "Disable capacity control for device"
         },
         "titleFormatted": {
@@ -893,6 +1166,71 @@
         "id": "set_daily_budget_kwh"
       },
       {
+        "title": {
+          "en": "Set EV charge deadline"
+        },
+        "titleFormatted": {
+          "en": "Charge [[device]] to [[target_percent]] % by [[ready_by]] ([[enforcement]])"
+        },
+        "hint": {
+          "en": "PELS picks the cheapest hours before departure to reach the target SoC. Soft enforcement respects budget and priority; hard treats the deadline as non-negotiable."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "EV charger"
+            },
+            "placeholder": {
+              "en": "Select EV charger"
+            }
+          },
+          {
+            "name": "target_percent",
+            "type": "number",
+            "title": {
+              "en": "Target battery (%)"
+            },
+            "min": 1,
+            "max": 100,
+            "step": 1
+          },
+          {
+            "name": "ready_by",
+            "type": "text",
+            "title": {
+              "en": "Ready by (HH:mm)"
+            },
+            "placeholder": {
+              "en": "07:00"
+            }
+          },
+          {
+            "name": "enforcement",
+            "type": "dropdown",
+            "title": {
+              "en": "Enforcement"
+            },
+            "values": [
+              {
+                "id": "soft",
+                "label": {
+                  "en": "Soft (respect budget)"
+                }
+              },
+              {
+                "id": "hard",
+                "label": {
+                  "en": "Hard (deadline first)"
+                }
+              }
+            ]
+          }
+        ],
+        "id": "set_ev_charge_deadline"
+      },
+      {
         "deprecated": true,
         "title": {
           "en": "Set expected power for device"
@@ -973,6 +1311,50 @@
           }
         ],
         "id": "set_external_prices_tomorrow"
+      },
+      {
+        "title": {
+          "en": "Set temperature deadline"
+        },
+        "titleFormatted": {
+          "en": "Have [[device]] reach [[target_c]] °C by [[ready_by]]"
+        },
+        "hint": {
+          "en": "PELS picks the cheapest hours before the deadline to heat this device to the target. Soft target — capacity safety still wins."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select temperature device"
+            }
+          },
+          {
+            "name": "target_c",
+            "type": "number",
+            "title": {
+              "en": "Target temperature (°C)"
+            },
+            "min": -50,
+            "max": 100,
+            "step": 0.5
+          },
+          {
+            "name": "ready_by",
+            "type": "text",
+            "title": {
+              "en": "Ready by (HH:mm)"
+            },
+            "placeholder": {
+              "en": "07:00"
+            }
+          }
+        ],
+        "id": "set_temperature_deadline"
       }
     ]
   },

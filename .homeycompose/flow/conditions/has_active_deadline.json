@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "Has an active deadline"
+  },
+  "titleFormatted": {
+    "en": "[[device]] !{{has|does not have}} an active deadline"
+  },
+  "hint": {
+    "en": "True when this device has a deadline objective stored in PELS."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select device"
+      }
+    }
+  ]
+}

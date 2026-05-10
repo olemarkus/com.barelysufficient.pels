@@ -3,6 +3,13 @@ export {
   buildDeferredObjectiveDiagnostics,
   emitDeferredObjectiveDiagnostics,
 } from './diagnosticsBridge';
+export { createDeferredObjectiveStatusBus } from './statusBus';
+export { emitDeferredObjectiveStatusTransitions } from './statusTransitions';
+export type {
+  DeferredObjectiveStatus,
+  DeferredObjectiveStatusBus,
+  DeferredObjectiveStatusSnapshot,
+} from './statusBus';
 export {
   applyDeferredAdmissionToInput,
   applyDeferredObjectiveAdmission,

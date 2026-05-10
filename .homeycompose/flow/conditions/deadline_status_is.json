@@ -1,0 +1,37 @@
+{
+  "title": {
+    "en": "Deadline status is"
+  },
+  "titleFormatted": {
+    "en": "[[device]] deadline !{{is|is not}} [[status]]"
+  },
+  "hint": {
+    "en": "True when the most recent planner evaluation for this device matches the chosen status."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select device"
+      }
+    },
+    {
+      "name": "status",
+      "type": "dropdown",
+      "title": {
+        "en": "Status"
+      },
+      "values": [
+        { "id": "on_track", "label": { "en": "On track" } },
+        { "id": "at_risk", "label": { "en": "At risk" } },
+        { "id": "cannot_meet", "label": { "en": "Cannot meet" } },
+        { "id": "satisfied", "label": { "en": "Satisfied" } },
+        { "id": "none", "label": { "en": "No active deadline" } }
+      ]
+    }
+  ]
+}

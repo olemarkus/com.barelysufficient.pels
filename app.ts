@@ -64,6 +64,10 @@ import {
   registerAppFlowCards,
 } from './lib/app/appInit';
 import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
+import {
+  createDeferredObjectiveStatusBus,
+  type DeferredObjectiveStatusBus,
+} from './lib/plan/deferredObjectives';
 import { buildDebugLoggingTopics } from './lib/app/appLoggingHelpers';
 import { initSettingsHandlerForApp, loadCapacitySettingsFromHomey } from './lib/app/appSettingsHelpers';
 import {
@@ -200,6 +204,7 @@ function resolveFlowBackedCapabilityReportOutcome(update: {
 class PelsApp extends Homey.App {
   private powerTracker: PowerTrackerState = {};
   private capacityGuard?: CapacityGuard;
+  private readonly deferredObjectiveStatusBus: DeferredObjectiveStatusBus = createDeferredObjectiveStatusBus();
   private capacitySettings = { limitKw: 10, marginKw: 0.2 };
   private capacityDryRun = true;
   private operatingMode = 'Home';
@@ -662,6 +667,7 @@ class PelsApp extends Homey.App {
       get priceOptimizationSettings() { return app.priceOptimizationSettings; },
       get capacityGuard() { return app.capacityGuard; },
       set capacityGuard(value) { appRef.capacityGuard = value; },
+      get deferredObjectiveStatusBus() { return app.deferredObjectiveStatusBus; },
       get dailyBudgetService() { return app.dailyBudgetService; },
       set dailyBudgetService(value) { appRef.dailyBudgetService = value; },
       get deferredObjectivePlanHistoryRecorder() { return app.deferredObjectivePlanHistoryRecorder; },
