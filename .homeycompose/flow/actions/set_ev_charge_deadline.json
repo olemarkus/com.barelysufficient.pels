@@ -1,0 +1,54 @@
+{
+  "title": {
+    "en": "Set EV charge deadline"
+  },
+  "titleFormatted": {
+    "en": "Charge [[device]] to [[target_percent]] % by [[ready_by]] ([[enforcement]])"
+  },
+  "hint": {
+    "en": "PELS picks the cheapest hours before departure to reach the target SoC. Soft enforcement respects budget and priority; hard treats the deadline as non-negotiable."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "EV charger"
+      },
+      "placeholder": {
+        "en": "Select EV charger"
+      }
+    },
+    {
+      "name": "target_percent",
+      "type": "number",
+      "title": {
+        "en": "Target battery (%)"
+      },
+      "min": 1,
+      "max": 100,
+      "step": 1
+    },
+    {
+      "name": "ready_by",
+      "type": "text",
+      "title": {
+        "en": "Ready by (HH:mm)"
+      },
+      "placeholder": {
+        "en": "07:00"
+      }
+    },
+    {
+      "name": "enforcement",
+      "type": "dropdown",
+      "title": {
+        "en": "Enforcement"
+      },
+      "values": [
+        { "id": "soft", "label": { "en": "Soft (respect budget)" } },
+        { "id": "hard", "label": { "en": "Hard (deadline first)" } }
+      ]
+    }
+  ]
+}

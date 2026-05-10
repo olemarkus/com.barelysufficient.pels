@@ -1,0 +1,55 @@
+{
+  "title": {
+    "en": "Deadline missed"
+  },
+  "titleFormatted": {
+    "en": "[[device]] missed its deadline"
+  },
+  "hint": {
+    "en": "Fires the next time PELS evaluates a deadline that has already passed without reaching its target."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select device"
+      }
+    }
+  ],
+  "tokens": [
+    {
+      "name": "device_name",
+      "type": "string",
+      "title": { "en": "Device" }
+    },
+    {
+      "name": "kind",
+      "type": "string",
+      "title": { "en": "Kind" }
+    },
+    {
+      "name": "target_text",
+      "type": "string",
+      "title": { "en": "Target" }
+    },
+    {
+      "name": "deadline_local_time",
+      "type": "string",
+      "title": { "en": "Deadline (HH:mm)" }
+    },
+    {
+      "name": "shortfall_text",
+      "type": "string",
+      "title": { "en": "Shortfall" }
+    },
+    {
+      "name": "shortfall_kwh",
+      "type": "number",
+      "title": { "en": "Shortfall (kWh)" }
+    }
+  ]
+}

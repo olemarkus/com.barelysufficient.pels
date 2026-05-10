@@ -8,6 +8,7 @@ import type { DeferredObjectivePlanHistoryRecorder } from '../plan/deferredObjec
 import type { DeviceDiagnosticsService } from '../diagnostics/deviceDiagnosticsService';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import type { HeadroomForDeviceDecision } from '../plan/planHeadroomDevice';
+import type { DeferredObjectiveStatusBus } from '../plan/deferredObjectives';
 import type { PlanEngine } from '../plan/planEngine';
 import type { PendingTargetObservationSource, ShedAction, ShedBehavior } from '../plan/planTypes';
 import type { PlanService } from '../plan/planService';
@@ -181,6 +182,7 @@ export type AppContext = {
   get priceOptimizationEnabled(): boolean;
   get priceOptimizationSettings(): Record<string, PriceOptimizationSettings>;
   capacityGuard?: CapacityGuard;
+  readonly deferredObjectiveStatusBus: DeferredObjectiveStatusBus;
   dailyBudgetService?: DailyBudgetService;
   deferredObjectivePlanHistoryRecorder?: DeferredObjectivePlanHistoryRecorder;
   deviceDiagnosticsService?: DeviceDiagnosticsService;

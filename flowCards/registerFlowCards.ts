@@ -29,6 +29,11 @@ import {
 } from './deviceSettingsCards';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 import { registerFlowBackedDeviceCards } from './flowBackedDeviceCards';
+import { registerDeadlineObjectiveCards } from './deadlineObjectiveCards';
+import type {
+  DeferredObjectiveSettingsV1,
+  DeferredObjectiveStatusBus,
+} from '../lib/plan/deferredObjectives';
 
 const STEPPED_LOAD_POWER_CEILING_MARGIN_RATIO = 0.05;
 const STEPPED_LOAD_POWER_CEILING_MARGIN_MAX_W = 150;
@@ -72,6 +77,9 @@ export type FlowCardDeps = {
     missingHours: number[];
   };
   rebuildPlan: (source: string) => void;
+  getDeferredObjectiveSettings?: () => DeferredObjectiveSettingsV1;
+  setDeferredObjectiveSettings?: (next: DeferredObjectiveSettingsV1) => void;
+  getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
   evaluateHeadroomForDevice: (params: {
     devices: HeadroomCardDeviceLike[];
     deviceId: string;
@@ -171,6 +179,7 @@ export function registerFlowCards(deps: FlowCardDeps): void {
     registerBudgetExemptionCondition(deps);
     registerFlowPriceCards(deps);
     registerLowestPriceCards(deps);
+    registerDeadlineObjectiveCards(deps);
   } finally {
     stopSpan();
   }
