@@ -107,6 +107,29 @@ and applied at the planner boundary in `PlanBuilder.buildPlanSnapshotWithTimings
 Cap-on, hard deadlines, mode override, hard-boost rebalancing, EV admission, and contention
 across multiple deferred objectives are still future work.
 
+### Plan history capture
+
+`lib/plan/deferredObjectives/planHistory.ts` runs alongside the diagnostics evaluator to
+capture per-(device, deadline) outcomes for the Settings UI History tab on
+`deadline-plan.html`:
+
+- The recorder observes the diagnostic stream once per plan cycle. It starts an in-progress
+  record on the first plannable diagnostic for a `(deviceId, deadlineAtMs)` pair, refreshes
+  progress + planning flags each cycle, and stamps `metAtMs` the first cycle the status
+  reaches `satisfied`.
+- A run is finalized as `met` when the device hit the target before the deadline,
+  `missed` when the deadline passed below target, `abandoned` when the diagnostic stops
+  appearing for >1 hour with the deadline still in the future, and `unknown` when there's
+  not enough fresh input to classify.
+- Entries are persisted to `deferred_objective_plan_history` with a 30-entry rolling cap.
+  Throttled writes happen on finalize (rare); `onUninit` flushes any pending entries.
+- The Settings UI fetches this via `/ui_deferred_objective_history` and renders
+  per-device cards in the History tab next to the existing current-plan view.
+
+The aspirational lifecycle events (`deferred_objective_goal_met`,
+`deferred_objective_deadline_missed`) for flow cards / triggers remain future work — the
+current capture is purely UI-facing.
+
 Original design semantics (still authoritative for future slices):
 
 - Planned hours are the hours selected by the deadline plan to add useful energy before the

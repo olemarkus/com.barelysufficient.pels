@@ -990,6 +990,95 @@ input:focus-visible {
   gap: var(--spacing-2);
 }
 
+/* Deadline-plan tab strip (Current plan / History). Native role=tab buttons styled as
+   an Android-style segmented control. Uses design tokens only. */
+.plan-tabs {
+  display: flex;
+  gap: var(--spacing-1);
+  margin-bottom: var(--spacing-3);
+  padding: var(--spacing-1);
+  border-radius: var(--radius-md);
+  background: var(--pels-surface-2);
+  border: 1px solid var(--pels-surface-outline);
+}
+
+.plan-tabs__tab {
+  flex: 1;
+  padding: var(--spacing-2) var(--spacing-3);
+  font: inherit;
+  font-weight: var(--font-weight-medium);
+  color: var(--pels-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.plan-tabs__tab:hover {
+  color: var(--pels-text-primary);
+}
+
+.plan-tabs__tab--active {
+  background: var(--pels-surface-3);
+  color: var(--pels-text-primary);
+  box-shadow: var(--elevation-1);
+}
+
+/* Past plans list (History tab). Stacks vertically; each entry is a card. */
+.plan-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.plan-history-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  padding: var(--spacing-3);
+  background: var(--pels-surface-2);
+  border: 1px solid var(--pels-surface-outline);
+  border-radius: var(--radius-md);
+}
+
+.plan-history-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.plan-history-card__deadline {
+  font-weight: var(--font-weight-medium);
+  color: var(--pels-text-primary);
+}
+
+.plan-history-card__device {
+  font-size: var(--font-size-sm);
+  color: var(--pels-text-secondary);
+}
+
+.plan-history-card__progress {
+  font-size: var(--font-size-sm);
+  color: var(--pels-text-secondary);
+}
+
+.plan-history-card__reached {
+  color: var(--pels-text-tertiary, var(--pels-text-secondary));
+}
+
+.plan-history-card__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-1);
+  margin-top: var(--spacing-1);
+}
+
+.plan-history-empty {
+  padding: var(--spacing-3);
+}
+
 .pels-meter-track {
   --meter-value: 0%;
   --meter-tone: var(--pels-status-good);

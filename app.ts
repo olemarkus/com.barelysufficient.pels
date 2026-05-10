@@ -18,6 +18,7 @@ import { PriceLevel } from './lib/price/priceLevels';
 import { buildPeriodicStatusLogFields } from './lib/core/periodicStatus';
 import { getDeviceLoadSetting } from './lib/core/deviceLoad';
 import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
+import type { DeferredObjectivePlanHistoryRecorder } from './lib/plan/deferredObjectives';
 import type {
   DailyBudgetModelPreviewResponse,
   DailyBudgetSettingsInput,
@@ -55,6 +56,7 @@ import {
 import { shouldSkipShortfallRebuildFromPlanSummary } from './lib/app/appPowerRebuildShortfallSuppression';
 import { PlanRebuildScheduler, type RebuildIntent } from './lib/app/planRebuildScheduler';
 import {
+  createDeferredObjectivePlanHistoryRecorder,
   createDeviceDiagnosticsService,
   createPlanEngine,
   createPlanService,
@@ -93,6 +95,12 @@ import {
 } from './lib/app/settingsUiAppRuntime';
 import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';
 import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/src/deviceDiagnosticsTypes';
+import type {
+  DeferredObjectivePlanHistoryEntry,
+} from './packages/contracts/src/deferredObjectivePlanHistory';
+import type {
+  SettingsUiDeferredObjectivePlanHistoryPayload,
+} from './packages/contracts/src/settingsUiApi';
 import type { DeviceControlProfiles } from './lib/utils/types';
 import { AppHomeyEnergyHelpers } from './lib/app/appHomeyEnergyHelpers';
 import {
@@ -216,6 +224,7 @@ class PelsApp extends Homey.App {
   private shedBehaviors: Record<string, ShedBehavior> = {};
   private debugLoggingTopics = new Set<DebugLoggingTopic>();
   private dailyBudgetService!: DailyBudgetService;
+  private deferredObjectivePlanHistoryRecorder?: DeferredObjectivePlanHistoryRecorder;
   private deviceDiagnosticsService!: DeviceDiagnosticsService;
   private priceCoordinator!: PriceCoordinator;
   private deviceManager!: DeviceManager;
@@ -655,6 +664,8 @@ class PelsApp extends Homey.App {
       set capacityGuard(value) { appRef.capacityGuard = value; },
       get dailyBudgetService() { return app.dailyBudgetService; },
       set dailyBudgetService(value) { appRef.dailyBudgetService = value; },
+      get deferredObjectivePlanHistoryRecorder() { return app.deferredObjectivePlanHistoryRecorder; },
+      set deferredObjectivePlanHistoryRecorder(value) { appRef.deferredObjectivePlanHistoryRecorder = value; },
       get deviceDiagnosticsService() { return app.deviceDiagnosticsService; },
       set deviceDiagnosticsService(value) { appRef.deviceDiagnosticsService = value; },
       get priceCoordinator() { return app.priceCoordinator; },
@@ -849,6 +860,9 @@ class PelsApp extends Homey.App {
     });
   }
   private initPlanEngine(): void {
+    if (!this.deferredObjectivePlanHistoryRecorder) {
+      this.deferredObjectivePlanHistoryRecorder = createDeferredObjectivePlanHistoryRecorder(this.ctx);
+    }
     this.planEngine = createPlanEngine(this.ctx);
     this.hydratePlanEngineControlState();
     this.planEngine.beginStartupRestoreStabilization(STARTUP_RESTORE_STABILIZATION_MS);
@@ -982,6 +996,8 @@ class PelsApp extends Homey.App {
     this.stopUninitServices();
     this.planRebuildScheduler.cancelAll('app_uninit');
     this.deviceDiagnosticsService?.destroy();
+    // Persist any unflushed deferred-objective plan-history entries before shutting down.
+    this.deferredObjectivePlanHistoryRecorder?.flushIfDirty();
     this.priceCoordinator.stop();
     this.deviceManager?.destroy();
   }
@@ -1510,6 +1526,23 @@ class PelsApp extends Homey.App {
   public getDeviceDiagnosticsUiPayload(): SettingsUiDeviceDiagnosticsPayload {
     return this.deviceDiagnosticsService?.getUiPayload?.()
       ?? { generatedAt: Date.now(), windowDays: 21, diagnosticsByDeviceId: {} };
+  }
+  public getDeferredObjectivePlanHistoryUiPayload(): SettingsUiDeferredObjectivePlanHistoryPayload {
+    const snapshot = this.deferredObjectivePlanHistoryRecorder?.getHistorySnapshot();
+    const entriesByDeviceId: Record<string, DeferredObjectivePlanHistoryEntry[]> = {};
+    if (snapshot) {
+      // Sort newest finalizedAtMs first within each device to match the UI expectation.
+      const byDevice = new Map<string, DeferredObjectivePlanHistoryEntry[]>();
+      for (const entry of snapshot.entries) {
+        const list = byDevice.get(entry.deviceId) ?? [];
+        list.push(entry);
+        byDevice.set(entry.deviceId, list);
+      }
+      for (const [deviceId, list] of byDevice) {
+        entriesByDeviceId[deviceId] = list.sort((a, b) => b.finalizedAtMs - a.finalizedAtMs);
+      }
+    }
+    return { version: 1, entriesByDeviceId };
   }
   public applyPlanActions = (plan: DevicePlan) => this.planService.applyPlanActions(plan);
   public applySheddingToDevice = (deviceId: string, deviceName: string, reason?: string) =>

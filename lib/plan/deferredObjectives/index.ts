@@ -7,6 +7,8 @@ export {
   applyDeferredAdmissionToInput,
   applyDeferredObjectiveAdmission,
 } from './admission';
+export { DeferredObjectivePlanHistoryRecorder } from './planHistory';
+export { normalizeDeferredObjectivePlanHistory } from './planHistorySettings';
 export { resolveDeferredObjectiveDeadline } from './deadline';
 export { buildDeferredObjectivePolicyHorizon } from './policyHorizon';
 export {
