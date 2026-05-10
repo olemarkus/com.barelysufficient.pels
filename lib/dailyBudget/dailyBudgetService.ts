@@ -29,7 +29,8 @@ import {
   UNMANAGED_RESERVE_MODE,
 } from './dailyBudgetConstants';
 import { DailyBudgetManager } from './dailyBudgetManager';
-import { composeHotPathDailyBudgetSnapshot } from './dailyBudgetSnapshotState';
+import type { CombinedPriceData } from './dailyBudgetManager';
+import { composeHotPathDailyBudgetSnapshot, computeAdjacentDaysSeedSignature } from './dailyBudgetSnapshotState';
 import {
   DailyBudgetStatePersistencePolicy,
   maybePersistDailyBudgetState,
@@ -103,6 +104,7 @@ export class DailyBudgetService {
   };
   private snapshot: DailyBudgetUiPayload | null = null;
   private daySnapshots: Record<string, DailyBudgetDayPayload> = {};
+  private adjacentDaysSeedSignature: string | null = null;
   private lastBudgetLogState: BudgetLogState | null = null;
   private persistencePolicy = new DailyBudgetStatePersistencePolicy();
 
@@ -239,7 +241,7 @@ export class DailyBudgetService {
       });
       incPerfCounter('daily_budget_compute_total');
       addPerfDuration('daily_budget_compute_ms', Date.now() - computeStart);
-      this.setDaySnapshot(update.snapshot, nowMs, includeAdjacentDays);
+      this.setDaySnapshot(update.snapshot, nowMs, combinedPrices, includeAdjacentDays);
       const snap = update.snapshot;
       if (params.emitStructuredEvent !== false && this.shouldEmitBudgetRecomputed(snap)) {
         this.deps.structuredLog?.info({
@@ -501,14 +503,20 @@ export class DailyBudgetService {
     };
   }
 
-  private setDaySnapshot(snapshot: DailyBudgetDayPayload, nowMs: number, includeAdjacentDays = false): void {
-    if (includeAdjacentDays) {
-      this.rebuildSnapshotWithAdjacentDays(snapshot, nowMs);
+  // Hot-path compose preserves cached tomorrow but never seeds it. Rebuild
+  // adjacent days whenever the seed signature changes so fresh start, price
+  // reload, and date rollover all surface tomorrow to the deferred-objective
+  // policyHorizon — see `computeAdjacentDaysSeedSignature`.
+  private setDaySnapshot(snap: DailyBudgetDayPayload, nowMs: number,
+    prices: CombinedPriceData | null, includeAdjacentDays = false): void {
+    const seedSignature = computeAdjacentDaysSeedSignature(snap.dateKey, prices);
+    if (includeAdjacentDays || seedSignature !== this.adjacentDaysSeedSignature) {
+      this.adjacentDaysSeedSignature = seedSignature;
+      this.rebuildSnapshotWithAdjacentDays(snap, nowMs);
       return;
     }
-    const composed = composeHotPathDailyBudgetSnapshot(snapshot, this.snapshot);
-    this.daySnapshots = composed.daySnapshots;
-    this.snapshot = composed.snapshot;
+    ({ daySnapshots: this.daySnapshots, snapshot: this.snapshot }
+      = composeHotPathDailyBudgetSnapshot(snap, this.snapshot));
   }
 
   private rebuildSnapshotWithAdjacentDays(snapshot: DailyBudgetDayPayload, nowMs: number): void {
