@@ -358,6 +358,178 @@ describe('DeviceManager', () => {
         });
     });
 
+    describe('runtime managed filter', () => {
+        const buildDevice = (id: string, capValue: unknown) => ({
+            id,
+            name: id,
+            class: 'heater',
+            capabilities: ['measure_power', 'onoff'],
+            capabilitiesObj: {
+                measure_power: { value: 1000, id: 'measure_power' },
+                onoff: { value: capValue, id: 'onoff' },
+            },
+        });
+
+        it('drops unmanaged devices from the runtime snapshot when at least one device is explicitly managed', async () => {
+            const dm = new DeviceManager(homeyMock, loggerMock, {
+                getManaged: (deviceId) => deviceId === 'dev1',
+                isManagedFilterActive: () => true,
+            });
+            await dm.init();
+            mockApiGet.mockResolvedValue({
+                dev1: buildDevice('dev1', true),
+                dev2: buildDevice('dev2', true),
+            });
+            await dm.refreshSnapshot();
+            const ids = dm.getSnapshot().map((d) => d.id);
+            expect(ids).toEqual(['dev1']);
+            dm.destroy();
+        });
+
+        it('keeps unmanaged devices in the runtime snapshot when no device is explicitly managed (fresh-install)', async () => {
+            const dm = new DeviceManager(homeyMock, loggerMock, {
+                getManaged: () => false,
+                isManagedFilterActive: () => false,
+            });
+            await dm.init();
+            mockApiGet.mockResolvedValue({
+                dev1: buildDevice('dev1', true),
+                dev2: buildDevice('dev2', true),
+            });
+            await dm.refreshSnapshot();
+            const ids = dm.getSnapshot().map((d) => d.id);
+            expect(ids.sort()).toEqual(['dev1', 'dev2']);
+            dm.destroy();
+        });
+
+        it('does not emit device_snapshot_control_state_dropped errors for unmanaged devices with malformed onoff', async () => {
+            const dm = new DeviceManager(homeyMock, loggerMock, {
+                getManaged: (deviceId) => deviceId === 'dev1',
+                isManagedFilterActive: () => true,
+            });
+            await dm.init();
+            mockApiGet.mockResolvedValue({
+                dev1: buildDevice('dev1', true),
+                badDev: buildDevice('badDev', null),
+            });
+            loggerMock.structuredLog.error.mockClear();
+            await dm.refreshSnapshot();
+            const dropEvents = loggerMock.structuredLog.error.mock.calls
+                .filter(([payload]: [unknown]) => (payload as { event?: string })?.event === 'device_snapshot_control_state_dropped');
+            expect(dropEvents).toEqual([]);
+            dm.destroy();
+        });
+    });
+
+    describe('getUiPickerDevices', () => {
+        const buildDevice = (id: string, capValue: unknown) => ({
+            id,
+            name: id,
+            class: 'heater',
+            capabilities: ['measure_power', 'onoff'],
+            capabilitiesObj: {
+                measure_power: { value: 1000, id: 'measure_power' },
+                onoff: { value: capValue, id: 'onoff' },
+            },
+        });
+
+        it('returns only unmanaged-eligible devices and tolerates malformed onoff without an error log', async () => {
+            const dm = new DeviceManager(homeyMock, loggerMock, {
+                getManaged: (deviceId) => deviceId === 'dev1',
+                isManagedFilterActive: () => true,
+            });
+            await dm.init();
+            mockApiGet.mockResolvedValue({
+                dev1: buildDevice('dev1', true),
+                dev2: buildDevice('dev2', true),
+                badDev: buildDevice('badDev', null),
+            });
+            await dm.refreshSnapshot();
+            loggerMock.structuredLog.error.mockClear();
+            const picker = dm.getUiPickerDevices();
+            const ids = picker.map((d) => d.id).sort();
+            expect(ids).toEqual(['badDev', 'dev2']);
+            const dropEvents = loggerMock.structuredLog.error.mock.calls
+                .filter(([payload]: [unknown]) => (payload as { event?: string })?.event === 'device_snapshot_control_state_dropped');
+            expect(dropEvents).toEqual([]);
+            dm.destroy();
+        });
+
+        it('keeps unmanaged-eligible devices visible after a targeted refresh that fetches managed-only ids', async () => {
+            const dm = new DeviceManager(homeyMock, loggerMock, {
+                getManaged: (deviceId) => deviceId === 'dev1',
+                isManagedFilterActive: () => true,
+            });
+            await dm.init();
+            mockApiGet.mockResolvedValue({
+                dev1: buildDevice('dev1', true),
+                dev2: buildDevice('dev2', true),
+            });
+            await dm.refreshSnapshot();
+            expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2']);
+
+            mockApiGet.mockResolvedValue({
+                dev1: buildDevice('dev1', false),
+            });
+            await dm.refreshSnapshot({ targetedRefresh: true });
+
+            expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2']);
+            dm.destroy();
+        });
+
+        it('treats explicit-false-only managedDevices as filter-active so explicit-false stays out of runtime and visible in picker', async () => {
+            const explicitDecisions: Record<string, boolean> = { dev1: false, dev2: false };
+            const dm = new DeviceManager(homeyMock, loggerMock, {
+                getManaged: (deviceId) => explicitDecisions[deviceId] === true,
+                isManagedFilterActive: () => Object.keys(explicitDecisions).length > 0,
+            });
+            await dm.init();
+            mockApiGet.mockResolvedValue({
+                dev1: buildDevice('dev1', true),
+                dev2: buildDevice('dev2', true),
+            });
+            await dm.refreshSnapshot();
+            expect(dm.getSnapshot().map((d) => d.id)).toEqual([]);
+            expect(dm.getUiPickerDevices().map((d) => d.id).sort()).toEqual(['dev1', 'dev2']);
+            dm.destroy();
+        });
+
+        it('keeps managed devices with malformed onoff visible in the picker so the user can toggle them back off', async () => {
+            const managedFlags: Record<string, boolean> = { dev1: true, badDev: true };
+            const dm = new DeviceManager(homeyMock, loggerMock, {
+                getManaged: (deviceId) => managedFlags[deviceId] === true,
+                isManagedFilterActive: () => Object.values(managedFlags).some((v) => v === true),
+            });
+            await dm.init();
+            mockApiGet.mockResolvedValue({
+                dev1: buildDevice('dev1', true),
+                badDev: buildDevice('badDev', null),
+            });
+            await dm.refreshSnapshot();
+            expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1']);
+            expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['badDev']);
+            dm.destroy();
+        });
+
+        it('does not duplicate a previously-valid managed device into the picker on transient malformed onoff', async () => {
+            const dm = new DeviceManager(homeyMock, loggerMock, {
+                getManaged: (deviceId) => deviceId === 'dev1',
+                isManagedFilterActive: () => true,
+            });
+            await dm.init();
+            mockApiGet.mockResolvedValue({ dev1: buildDevice('dev1', true) });
+            await dm.refreshSnapshot();
+            expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1']);
+            expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual([]);
+
+            mockApiGet.mockResolvedValue({ dev1: buildDevice('dev1', null) });
+            await dm.refreshSnapshot();
+            expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1']);
+            expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual([]);
+            dm.destroy();
+        });
+    });
+
     describe('refreshSnapshot', () => {
         it('populates snapshot with controllable devices', async () => {
             await deviceManager.init();
@@ -1105,10 +1277,7 @@ describe('DeviceManager', () => {
             });
 
             expect(realtimeListener).not.toHaveBeenCalled();
-            expect(findSnapshotDevice(managedDeviceManager.getSnapshot(), 'dev2')).toEqual(expect.objectContaining({
-                managed: false,
-                measuredPowerKw: 0.9,
-            }));
+            expect(findSnapshotDevice(managedDeviceManager.getSnapshot(), 'dev2')).toBeUndefined();
 
             managedDeviceManager.destroy();
         });
@@ -5167,10 +5336,7 @@ describe('DeviceManager', () => {
             });
 
             expect(realtimeListener).not.toHaveBeenCalled();
-            expect(findSnapshotDevice(managedDeviceManager.getSnapshot(), 'dev1')).toEqual(expect.objectContaining({
-                managed: false,
-                measuredPowerKw: 1,
-            }));
+            expect(findSnapshotDevice(managedDeviceManager.getSnapshot(), 'dev1')).toBeUndefined();
 
             managedDeviceManager.destroy();
         });

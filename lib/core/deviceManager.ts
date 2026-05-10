@@ -83,6 +83,7 @@ import {
     parseDevice,
     parseDeviceList,
     type DeviceManagerParseProviders,
+    type ParseDevicePurpose,
 } from './deviceManagerParseDevice';
 import { applyDeviceDriverOverride } from './deviceManagerParseIdentity';
 import {
@@ -150,6 +151,7 @@ export class DeviceManager extends EventEmitter {
     private latestSnapshot: TargetDeviceSnapshot[] = [];
     private latestSnapshotById: Map<string, TargetDeviceSnapshot> = new Map();
     private latestTrackedDevicesById: Map<string, HomeyDeviceLike> = new Map();
+    private latestRawDevices: HomeyDeviceLike[] = [];
     private latestHomePowerW: number | null = null;
     private powerState: Required<PowerEstimateState>;
     private measuredPowerResolver: DeviceMeasuredPowerResolver;
@@ -1365,6 +1367,15 @@ export class DeviceManager extends EventEmitter {
     }
 
     getSnapshot(): TargetDeviceSnapshot[] { return this.latestSnapshot; }
+    getUiPickerDevices(): TargetDeviceSnapshot[] {
+        if (this.latestRawDevices.length === 0) return [];
+        return parseDeviceList({
+            list: this.latestRawDevices,
+            previousSnapshotById: this.latestSnapshotById,
+            deps: this.getParseDeviceDeps(),
+            purpose: 'ui_picker',
+        });
+    }
     getHomePowerW(): number | null { return this.latestHomePowerW; }
     async pollHomePowerW(): Promise<number | null> {
         return this.updateHomePowerFromReport(await this.fetchLivePowerReport());
@@ -1379,7 +1390,9 @@ export class DeviceManager extends EventEmitter {
     injectCapabilityUpdateForTest(deviceId: string, capabilityId: string, value: unknown): void {
         this.handleRealtimeCapabilityUpdate(deviceId, capabilityId, value);
     }
-    parseDeviceListForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] { return this.parseDeviceList(list); }
+    parseDeviceListForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] {
+        return this.parseDeviceList(list, {}, 'unfiltered');
+    }
     async getDevicesForDebug(): Promise<HomeyDeviceLike[]> { return this.fetchDevices(); }
     getDebugObservedSources(deviceId: string): DeviceDebugObservedSources | null {
         return getDebugObservedSources(this.observationState, deviceId);
@@ -1474,6 +1487,7 @@ export class DeviceManager extends EventEmitter {
                 : await this.fetchLivePowerReport();
             this.updateHomePowerFromReport(livePowerReport);
             const effectiveList = list.map((device) => this.applyDeviceDriverOverride(device));
+            if (!isTargetedRefresh) this.latestRawDevices = effectiveList;
             const snapshot = this.parseDeviceList(effectiveList, livePowerReport.byDeviceId);
             mergeFresherCapabilityObservations({
                 state: this.observationState,
@@ -1858,6 +1872,7 @@ export class DeviceManager extends EventEmitter {
     private parseDeviceList(
         list: HomeyDeviceLike[],
         livePowerWByDeviceId: LiveDevicePowerWatts = {},
+        purpose: ParseDevicePurpose = 'runtime',
     ): TargetDeviceSnapshot[] {
         const effectiveDevices = list.map((device) => this.applyDeviceDriverOverride(device));
         this.latestTrackedDevicesById = new Map(
@@ -1871,6 +1886,7 @@ export class DeviceManager extends EventEmitter {
             livePowerWByDeviceId,
             previousSnapshotById: this.latestSnapshotById,
             deps: this.getParseDeviceDeps(),
+            purpose,
         });
     }
 

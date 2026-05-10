@@ -27,6 +27,7 @@ export function resolveDeviceParsedControlState(params: {
   evChargingState: TargetDeviceSnapshot['evChargingState'];
   flowBackedCapabilityIds: FlowReportedCapabilityId[];
   previousSnapshot?: TargetDeviceSnapshot;
+  suppressDropLog?: boolean;
 }): ParsedControlStateResult {
   const {
     logger,
@@ -42,6 +43,7 @@ export function resolveDeviceParsedControlState(params: {
     evChargingState,
     flowBackedCapabilityIds,
     previousSnapshot,
+    suppressDropLog = false,
   } = params;
   const observedCurrentOn = getCurrentOn({ deviceClassKey, capabilityObj, controlCapabilityId });
   const invalidControlPayload = hasInvalidControlPayload({ capabilityObj, controlCapabilityId });
@@ -63,7 +65,7 @@ export function resolveDeviceParsedControlState(params: {
     flowBackedCapabilityIds,
     currentOn: candidateCurrentOn,
   });
-  if (controlCapabilityId && (observedCurrentOn === undefined || invalidControlPayload)) {
+  if (!suppressDropLog && controlCapabilityId && (observedCurrentOn === undefined || invalidControlPayload)) {
     logDroppedControlState({
       logger,
       deviceId,
