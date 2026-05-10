@@ -648,6 +648,7 @@ class PelsApp extends Homey.App {
       get powerSampleRebuildState() { return app.powerSampleRebuildState; },
       set powerSampleRebuildState(value) { appRef.powerSampleRebuildState = value; },
       get latestTargetSnapshot() { return app.latestTargetSnapshot; },
+      getUiPickerDevices: () => app.getUiPickerDevices(),
       get priceOptimizationEnabled() { return app.priceOptimizationEnabled; },
       get priceOptimizationSettings() { return app.priceOptimizationSettings; },
       get capacityGuard() { return app.capacityGuard; },
@@ -761,6 +762,7 @@ class PelsApp extends Homey.App {
       getPriority: (id) => this.getPriorityForDevice(id),
       getControllable: (id) => this.isCapacityControlEnabled(id),
       getManaged: (id) => this.resolveManagedState(id),
+      isManagedFilterActive: () => this.isManagedFilterActive(),
       getBudgetExempt: (id) => this.isBudgetExempt(id),
       getCommunicationModel: (id) => this.getCommunicationModel(id),
       getExperimentalEvSupportEnabled: () => this.experimentalEvSupportEnabled,
@@ -1443,6 +1445,10 @@ class PelsApp extends Homey.App {
     const snapshot = this.deviceManager?.getSnapshot() ?? [];
     return this.deviceControlHelpers.decorateTargetSnapshotList(snapshot);
   }
+  getUiPickerDevices(): TargetDeviceSnapshot[] {
+    const snapshot = this.deviceManager?.getUiPickerDevices() ?? [];
+    return this.deviceControlHelpers.decorateTargetSnapshotList(snapshot);
+  }
   setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
     this.deviceManager.setSnapshotForTests(snapshot);
   }
@@ -1484,6 +1490,7 @@ class PelsApp extends Homey.App {
   private resolveModeName = (name: string) => resolveModeNameHelper(name, this.modeAliases);
   private getAllModes = () => getAllModesHelper(this.operatingMode, this.capacityPriorities, this.modeDeviceTargets);
   private resolveManagedState = (deviceId: string) => this.managedDevices[deviceId] === true;
+  private isManagedFilterActive = () => Object.keys(this.managedDevices).length > 0;
   private getCommunicationModel = (deviceId: string): 'local' | 'cloud' => (
     this.deviceCommunicationModels[deviceId] ?? 'local'
   );

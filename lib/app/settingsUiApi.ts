@@ -24,6 +24,7 @@ import {
   getLatestDevicesForUiFromApp,
   getPlanSnapshotForUiFromHomey,
   getPowerTrackerForUiFromApp,
+  getUiPickerDevicesFromApp,
   refreshSettingsUiDevicesForApp,
   refreshSettingsUiGridTariffForApp,
   refreshSettingsUiPricesForApp,
@@ -126,7 +127,9 @@ const asDailyBudgetModelSettings = (value: unknown): Partial<DailyBudgetModelSet
 };
 
 const getSettingsUiDevices = ({ homey }: ApiContext): TargetDeviceSnapshot[] => {
-  return getLatestDevicesForUiFromApp(homey) ?? [];
+  const managed = getLatestDevicesForUiFromApp(homey) ?? [];
+  const unmanagedEligible = getUiPickerDevicesFromApp(homey);
+  return [...managed, ...unmanagedEligible];
 };
 
 const getSettingsUiPlan = ({ homey }: ApiContext): SettingsUiPlanSnapshot | null => (

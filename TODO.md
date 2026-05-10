@@ -275,6 +275,22 @@ file.
 
 ## P2 Simplification and cleanup
 
+- [ ] Remove redundant downstream `managed !== false` filters now that unmanaged devices are
+      excluded from `latestTargetSnapshot` at parse time. Sites: `lib/app/appSnapshotHelpers.ts`
+      (3 filters), `lib/app/appInit.ts:106` (`getPlanDevices`), `lib/plan/planEvBoost.ts`,
+      `lib/plan/planTemperatureBoost.ts`, `lib/plan/planDiagnostics.ts:129`. Each is now a
+      tautology — left as defense-in-depth in the parse-time filter PR; clean up after a release
+      cycle once the new invariant has soaked in production.
+- [ ] Deduplicate `applyDeviceDriverOverride` along the snapshot pipeline. Today the override is
+      applied in `DeviceManager.refreshSnapshot` (over `effectiveList`), again in the private
+      `parseDeviceList` (over `effectiveDevices`, used only for `latestTrackedDevicesById`), and a
+      third time inside `resolveParseDeviceIdentity`. The wrapper is self-idempotent so behavior is
+      correct, but the triple application is wasteful and the private `parseDeviceList` then
+      passes the un-normalized `list` to the module-level call instead of `effectiveDevices`.
+      Pre-existing — flagged on PR #636 by the Copilot reviewer. Cleanup should normalize devices
+      once at the fetch boundary and let parsing/identity reuse that result.
+      Files: `lib/core/deviceManager.ts`, `lib/core/deviceManagerParseDevice.ts`,
+      `lib/core/deviceManagerParseIdentity.ts`.
 - [ ] Audit whether daily-budget confidence scoring materially changes control decisions. If it is
       purely informational, simplify it aggressively.
       Files: `lib/dailyBudget/dailyBudgetConfidence.ts`, daily budget service/plan paths.

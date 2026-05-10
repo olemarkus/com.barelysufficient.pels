@@ -47,6 +47,11 @@ import { resolveStateOfChargeSnapshot } from './deviceStateOfCharge';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { resolveDeviceParsedControlState } from './deviceManagerParsedControlState';
 import { resolveParseDeviceIdentity } from './deviceManagerParseIdentity';
+import {
+    resolveManagedFilterDecision,
+    shouldDropAfterControlState,
+    shouldDropEarly,
+} from './deviceManagerManagedFilter';
 
 type ParsedDeviceSettings = Pick<
     TargetDeviceSnapshot,
@@ -57,6 +62,7 @@ export type DeviceManagerParseProviders = {
     getPriority?: (deviceId: string) => number;
     getControllable?: (deviceId: string) => boolean;
     getManaged?: (deviceId: string) => boolean;
+    isManagedFilterActive?: () => boolean;
     getBudgetExempt?: (deviceId: string) => boolean;
     getCommunicationModel?: (deviceId: string) => 'local' | 'cloud';
     getDeviceDriverIdOverride?: (deviceId: string) => string | undefined;
@@ -82,13 +88,16 @@ export type DeviceManagerParseDeps = {
     resolveLatestLocalWriteMs: (deviceId: string) => number | undefined;
 };
 
+export type ParseDevicePurpose = 'runtime' | 'ui_picker' | 'unfiltered';
+
 export function parseDeviceList(params: {
     list: HomeyDeviceLike[];
     livePowerWByDeviceId?: LiveDevicePowerWatts;
     previousSnapshotById?: ReadonlyMap<string, TargetDeviceSnapshot>;
     deps: DeviceManagerParseDeps;
+    purpose?: ParseDevicePurpose;
 }): TargetDeviceSnapshot[] {
-    const { list, livePowerWByDeviceId = {}, previousSnapshotById, deps } = params;
+    const { list, livePowerWByDeviceId = {}, previousSnapshotById, deps, purpose = 'runtime' } = params;
     const now = Date.now();
     return list
         .map((device) => parseDevice({
@@ -97,6 +106,7 @@ export function parseDeviceList(params: {
             livePowerWByDeviceId,
             previousSnapshot: previousSnapshotById?.get(getDeviceId(device)),
             deps,
+            purpose,
         }))
         .filter(Boolean) as TargetDeviceSnapshot[];
 }
@@ -107,8 +117,9 @@ export function parseDevice(params: {
     livePowerWByDeviceId?: LiveDevicePowerWatts;
     previousSnapshot?: TargetDeviceSnapshot;
     deps: DeviceManagerParseDeps;
+    purpose?: ParseDevicePurpose;
 }): TargetDeviceSnapshot | null {
-    const { device, now, livePowerWByDeviceId = {}, previousSnapshot, deps } = params;
+    const { device, now, livePowerWByDeviceId = {}, previousSnapshot, deps, purpose = 'runtime' } = params;
     const {
         logger,
         providers,
@@ -127,6 +138,8 @@ export function parseDevice(params: {
         deviceClassKey,
         deviceLabel,
     } = identity;
+    const managedDecision = resolveManagedFilterDecision({ providers, deviceId });
+    if (shouldDropEarly({ purpose, decision: managedDecision })) return null;
     const rawCapabilities = getCapabilities(effectiveDevice);
     const rawCapabilityObj = getCapabilityObj(effectiveDevice);
     const {
@@ -198,10 +211,9 @@ export function parseDevice(params: {
         evChargingState,
         flowBackedCapabilityIds,
         previousSnapshot,
+        suppressDropLog: purpose === 'ui_picker',
     });
-    if (currentOn === undefined) {
-        return null;
-    }
+    if (shouldDropAfterControlState({ purpose, decision: managedDecision, currentOn })) return null;
     const available = getIsAvailable(effectiveDevice);
     const powerCapable = isPowerCapable(effectiveDevice, capsStatus, powerEstimate);
     if (shouldSkipFlowBackedCandidate({
@@ -224,7 +236,7 @@ export function parseDevice(params: {
         controlCapabilityId,
         powerEstimate,
         powerCapable,
-        currentOn,
+        currentOn: currentOn ?? false,
         evCharging,
         evChargingState,
         stateOfCharge: resolveParsedSoc(
