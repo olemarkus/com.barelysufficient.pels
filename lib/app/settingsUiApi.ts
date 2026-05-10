@@ -9,6 +9,7 @@ import type { PowerTrackerState } from '../../packages/contracts/src/powerTracke
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../utils/settingsUiBootstrapKeys';
 import type {
   SettingsUiBootstrap,
+  SettingsUiDeferredObjectivePlanHistoryPayload,
   SettingsUiDeviceDiagnosticsResponse,
   SettingsUiDevicesPayload,
   SettingsUiFeatureAccess,
@@ -37,6 +38,7 @@ type SettingsUiApiApp = Homey.App & {
   previewDailyBudgetModel?: (settings: Partial<DailyBudgetModelSettings>) => DailyBudgetModelPreviewResponse;
   applyDailyBudgetModel?: (settings: Partial<DailyBudgetModelSettings>) => DailyBudgetUiPayload | null;
   getDeviceDiagnosticsUiPayload?: () => SettingsUiDeviceDiagnosticsResponse;
+  getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
 };
 
 type ApiContext = {
@@ -233,6 +235,21 @@ export const getSettingsUiDeviceDiagnosticsPayload = ({ homey }: ApiContext): Se
   } catch (error) {
     app.error?.('Device diagnostics API failed', error as Error);
     return buildEmptyDeviceDiagnosticsPayload();
+  }
+};
+
+export const getSettingsUiDeferredObjectivePlanHistoryPayload = (
+  { homey }: ApiContext,
+): SettingsUiDeferredObjectivePlanHistoryPayload => {
+  const app = getApp(homey);
+  if (!app?.getDeferredObjectivePlanHistoryUiPayload) {
+    return { version: 1, entriesByDeviceId: {} };
+  }
+  try {
+    return app.getDeferredObjectivePlanHistoryUiPayload();
+  } catch (error) {
+    app.error?.('Deferred-objective plan-history API failed', error as Error);
+    return { version: 1, entriesByDeviceId: {} };
   }
 };
 

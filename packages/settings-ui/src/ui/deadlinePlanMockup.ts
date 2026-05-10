@@ -7,6 +7,7 @@ import {
   type SettingsUiDevicesPayload,
   type SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
+import { fetchDeadlinePlanHistory, resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
 import {
   normalizeDeferredObjectiveSettings,
   type DeferredObjectiveSettingsEntry,
@@ -502,12 +503,16 @@ export const mountDeadlinePlanMockup = async (): Promise<void> => {
   const surface = document.getElementById('deadline-plan-mockup-root');
   if (!surface) return;
 
+  const deviceId = new URLSearchParams(window.location.search).get('deviceId');
+  const timeZone = resolveBrowserTimeZone();
+
   initDeadlinePlanClose();
   renderDeadlinePlanMockup(surface, { status: 'loading' });
   try {
-    const [bootstrap, devicesPayload] = await Promise.all([
+    const [bootstrap, devicesPayload, history] = await Promise.all([
       callApi<SettingsUiBootstrap>('GET', SETTINGS_UI_BOOTSTRAP_PATH),
       callApi<SettingsUiDevicesPayload>('GET', SETTINGS_UI_DEVICES_PATH),
+      fetchDeadlinePlanHistory(deviceId, timeZone),
     ]);
     let prices = bootstrap.prices;
     try {
@@ -515,15 +520,10 @@ export const mountDeadlinePlanMockup = async (): Promise<void> => {
     } catch {
       prices = bootstrap.prices;
     }
-    const payload = buildObjectivePayload({
-      bootstrap,
-      deviceId: new URLSearchParams(window.location.search).get('deviceId'),
-      devices: devicesPayload.devices,
-      prices,
-    });
+    const payload = buildObjectivePayload({ bootstrap, deviceId, devices: devicesPayload.devices, prices });
     renderDeadlinePlanMockup(surface, payload
-      ? { status: 'ready', payload }
-      : { status: 'error', message: 'Deadline plan data is not available for this device.' });
+      ? { status: 'ready', payload, history }
+      : { status: 'error', message: 'Deadline plan data is not available for this device.', history });
   } catch {
     renderDeadlinePlanMockup(surface, {
       status: 'error',

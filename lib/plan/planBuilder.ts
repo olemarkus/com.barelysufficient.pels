@@ -80,6 +80,10 @@ export type PlanBuilderDeps = {
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
   deferredObjectiveDebugStructured?: StructuredDebugEmitter;
+  observeDeferredObjectivePlanHistory?: (
+    diagnostics: DeferredObjectiveDiagnostic[],
+    nowMs: number,
+  ) => void;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
 };
@@ -173,6 +177,7 @@ export class PlanBuilder {
     // produce their normal reasons.
     const dailyBudgetSnapshot = this.dailyBudgetSnapshot;
     const deferredEvaluations = this.evaluateDeferredObjectives(devices, dailyBudgetSnapshot, nowTs);
+    this.deps.observeDeferredObjectivePlanHistory?.(deferredEvaluations, nowTs);
     const deferredAdmission = applyDeferredObjectiveAdmission(deferredEvaluations);
     const { devices: admittedDevices, forceShedSet } = applyDeferredAdmissionToInput(devices, deferredAdmission);
 

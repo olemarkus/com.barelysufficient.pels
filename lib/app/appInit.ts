@@ -8,14 +8,47 @@ import { resolveHomeyEnergyApiFromSdk } from '../utils/homeyEnergy';
 import type { FlowHomeyLike, TargetDeviceSnapshot } from '../utils/types';
 import { DeviceDiagnosticsService, type DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { AppContext } from './appContext';
-import { normalizeDeferredObjectiveSettings } from '../plan/deferredObjectives';
-import { DEFERRED_OBJECTIVES_SETTINGS } from '../utils/settingsKeys';
+import {
+  DeferredObjectivePlanHistoryRecorder,
+  normalizeDeferredObjectivePlanHistory,
+  normalizeDeferredObjectiveSettings,
+} from '../plan/deferredObjectives';
+import {
+  DEFERRED_OBJECTIVES_SETTINGS,
+  DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING,
+} from '../utils/settingsKeys';
 
 function requireDeviceManager(ctx: AppContext) {
   if (!ctx.deviceManager) {
     throw new Error('DeviceManager must be initialized before plan engine setup.');
   }
   return ctx.deviceManager;
+}
+
+export function createDeferredObjectivePlanHistoryRecorder(
+  ctx: AppContext,
+): DeferredObjectivePlanHistoryRecorder {
+  return new DeferredObjectivePlanHistoryRecorder({
+    load: () => normalizeDeferredObjectivePlanHistory(
+      ctx.homey.settings.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING),
+    ),
+    save: (next) => {
+      try {
+        ctx.homey.settings.set(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING, next);
+      } catch (error) {
+        ctx.error('Failed to persist deferred-objective plan history', error);
+      }
+    },
+  });
+}
+
+function requireDeferredObjectivePlanHistoryRecorder(
+  ctx: AppContext,
+): DeferredObjectivePlanHistoryRecorder {
+  if (!ctx.deferredObjectivePlanHistoryRecorder) {
+    throw new Error('DeferredObjectivePlanHistoryRecorder must be initialized before plan engine setup.');
+  }
+  return ctx.deferredObjectivePlanHistoryRecorder;
 }
 
 function requirePlanEngine(ctx: AppContext) {
@@ -93,6 +126,11 @@ export function createPlanEngine(ctx: AppContext) {
     structuredLog: ctx.getStructuredLogger('plan'),
     debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
     deferredObjectiveDebugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
+    observeDeferredObjectivePlanHistory: (diagnostics, nowMs) => {
+      const recorder = requireDeferredObjectivePlanHistoryRecorder(ctx);
+      recorder.observe(diagnostics, nowMs);
+      recorder.flushIfDirty();
+    },
     log: (...args: unknown[]) => ctx.log(...args),
     logDebug: (...args: unknown[]) => ctx.logDebug('plan', ...args),
     error: (...args: unknown[]) => ctx.error(...args),

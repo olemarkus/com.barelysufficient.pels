@@ -1,6 +1,8 @@
 import { render } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
+import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
+import { DeadlinePlanHistory } from './DeadlinePlanHistory.tsx';
 
 type DeadlinePlanChipTone = 'info' | 'muted' | 'ok' | 'warn';
 type DeadlinePlanHourTone = 'cheap' | 'expensive' | 'normal';
@@ -46,10 +48,12 @@ export type DeadlinePlanMockupPayload = {
   };
 };
 
+export type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
+
 export type DeadlinePlanMockupLoadState =
-  | { status: 'error'; message: string }
-  | { status: 'loading' }
-  | { status: 'ready'; payload: DeadlinePlanMockupPayload };
+  | { status: 'error'; message: string; history?: DeadlinePlanHistoryView }
+  | { status: 'loading'; history?: DeadlinePlanHistoryView }
+  | { status: 'ready'; payload: DeadlinePlanMockupPayload; history?: DeadlinePlanHistoryView };
 
 const chipClass = (tone: DeadlinePlanChipTone): string => `plan-chip plan-chip--${tone}`;
 
@@ -411,7 +415,37 @@ const HorizonCard = ({ payload }: { payload: DeadlinePlanMockupPayload }) => (
   </section>
 );
 
-const DeadlinePlanMockupRoot = ({ loadState }: { loadState: DeadlinePlanMockupLoadState }) => {
+type DeadlinePlanTab = 'current' | 'history';
+
+const PlanTabStrip = ({ active, onChange }: {
+  active: DeadlinePlanTab;
+  onChange: (next: DeadlinePlanTab) => void;
+}) => (
+  // Rendered as a segmented toggle (group of buttons), not the full ARIA tabs pattern.
+  // The ARIA tabs pattern requires aria-controls / role=tabpanel linkage and roving
+  // tabIndex / arrow-key navigation; for two large native buttons on a 480-px-wide mobile
+  // surface those affordances don't add value over standard button semantics.
+  <div class="plan-tabs" role="group" aria-label="Plan view tabs">
+    <button
+      type="button"
+      aria-pressed={active === 'current'}
+      class={`plan-tabs__tab${active === 'current' ? ' plan-tabs__tab--active' : ''}`}
+      onClick={() => onChange('current')}
+    >
+      Current plan
+    </button>
+    <button
+      type="button"
+      aria-pressed={active === 'history'}
+      class={`plan-tabs__tab${active === 'history' ? ' plan-tabs__tab--active' : ''}`}
+      onClick={() => onChange('history')}
+    >
+      History
+    </button>
+  </div>
+);
+
+const CurrentPlanContent = ({ loadState }: { loadState: DeadlinePlanMockupLoadState }) => {
   if (loadState.status === 'loading') {
     return (
       <section class="pels-surface-card budget-redesign-card">
@@ -420,7 +454,6 @@ const DeadlinePlanMockupRoot = ({ loadState }: { loadState: DeadlinePlanMockupLo
       </section>
     );
   }
-
   if (loadState.status === 'error') {
     return (
       <section class="pels-surface-card budget-redesign-card">
@@ -429,11 +462,28 @@ const DeadlinePlanMockupRoot = ({ loadState }: { loadState: DeadlinePlanMockupLo
       </section>
     );
   }
-
   return (
     <>
       <DeadlineHero payload={loadState.payload} />
       <HorizonCard payload={loadState.payload} />
+    </>
+  );
+};
+
+const DeadlinePlanMockupRoot = ({ loadState }: { loadState: DeadlinePlanMockupLoadState }) => {
+  const [activeTab, setActiveTab] = useState<DeadlinePlanTab>('current');
+  const history = loadState.history;
+  return (
+    <>
+      <PlanTabStrip active={activeTab} onChange={setActiveTab} />
+      {activeTab === 'current' ? (
+        <CurrentPlanContent loadState={loadState} />
+      ) : (
+        <DeadlinePlanHistory
+          entries={history?.entries ?? []}
+          timeZone={history?.timeZone ?? 'UTC'}
+        />
+      )}
     </>
   );
 };

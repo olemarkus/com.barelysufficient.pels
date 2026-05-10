@@ -1,4 +1,5 @@
 import type { DailyBudgetUiPayload } from './dailyBudgetTypes.js';
+import type { DeferredObjectivePlanHistoryEntry } from './deferredObjectivePlanHistory.js';
 import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsTypes.js';
 import type { PowerTrackerState } from './powerTrackerTypes.js';
 import type { SettingsUiLogEntry, SteppedLoadProfile, TargetDeviceSnapshot } from './types.js';
@@ -13,6 +14,7 @@ export const SETTINGS_UI_REFRESH_DEVICES_PATH = '/ui_refresh_devices';
 export const SETTINGS_UI_REFRESH_PRICES_PATH = '/ui_refresh_prices';
 export const SETTINGS_UI_REFRESH_GRID_TARIFF_PATH = '/ui_refresh_grid_tariff';
 export const SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH = '/ui_device_diagnostics';
+export const SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH = '/ui_deferred_objective_history';
 export const SETTINGS_UI_LOG_PATH = '/settings_ui_log';
 export const SETTINGS_UI_RESET_POWER_STATS_PATH = '/ui_reset_power_stats';
 export const SETTINGS_UI_RECOMPUTE_DAILY_BUDGET_PATH = '/ui_recompute_daily_budget';
@@ -173,6 +175,11 @@ export type SettingsUiPlanPayload = {
 
 export type SettingsUiDevicesPayload = {
   devices: TargetDeviceSnapshot[];
+};
+
+export type SettingsUiDeferredObjectivePlanHistoryPayload = {
+  version: 1;
+  entriesByDeviceId: Record<string, DeferredObjectivePlanHistoryEntry[]>;
 };
 
 export type SettingsUiPowerStatus = {

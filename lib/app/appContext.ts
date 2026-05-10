@@ -4,6 +4,7 @@ import type { DeviceManager } from '../core/deviceManager';
 import type { PowerTrackerState } from '../core/powerTracker';
 import type { DailyBudgetService } from '../dailyBudget/dailyBudgetService';
 import type { DailyBudgetUiPayload, DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
+import type { DeferredObjectivePlanHistoryRecorder } from '../plan/deferredObjectives/planHistory';
 import type { DeviceDiagnosticsService } from '../diagnostics/deviceDiagnosticsService';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import type { HeadroomForDeviceDecision } from '../plan/planHeadroomDevice';
@@ -181,6 +182,7 @@ export type AppContext = {
   get priceOptimizationSettings(): Record<string, PriceOptimizationSettings>;
   capacityGuard?: CapacityGuard;
   dailyBudgetService?: DailyBudgetService;
+  deferredObjectivePlanHistoryRecorder?: DeferredObjectivePlanHistoryRecorder;
   deviceDiagnosticsService?: DeviceDiagnosticsService;
   priceCoordinator?: PriceCoordinator;
   deviceManager?: DeviceManager;

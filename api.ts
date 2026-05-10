@@ -4,6 +4,7 @@ import type { HomeyDeviceLike } from './lib/utils/types';
 import { getHomeyDevicesForDebugFromApp, logHomeyDeviceForDebugFromApp } from './lib/app/appDebugHelpers';
 import {
   buildSettingsUiBootstrap,
+  getSettingsUiDeferredObjectivePlanHistoryPayload,
   getSettingsUiDeviceDiagnosticsPayload,
   getSettingsUiDevicesPayload,
   getSettingsUiPlanPayload,
@@ -55,6 +56,9 @@ export = {
   },
   async ui_device_diagnostics({ homey }: ApiContext) {
     return getSettingsUiDeviceDiagnosticsPayload({ homey });
+  },
+  async ui_deferred_objective_history({ homey }: ApiContext) {
+    return getSettingsUiDeferredObjectivePlanHistoryPayload({ homey });
   },
   async get_daily_budget({ homey }: ApiContext): Promise<DailyBudgetUiPayload | null> {
     const app = getApp(homey);
