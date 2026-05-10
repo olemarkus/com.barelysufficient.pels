@@ -121,6 +121,61 @@ describe('DailyBudgetService', () => {
     expect(snapshot?.days['2025-03-14']?.state.confidenceDebug).toEqual(todayDebug);
   });
 
+  it('preserves cached tomorrow and yesterday across hot-path snapshot updates', () => {
+    const service = buildService();
+    const today = buildDayPayload({ dateKey: '2025-03-15', confidence: 0.72 });
+    const tomorrow = buildDayPayload({ dateKey: '2025-03-16', confidence: 0.15 });
+    const yesterday = buildDayPayload({ dateKey: '2025-03-14', confidence: 0.2 });
+
+    (service as any).buildTomorrowPreview = vi.fn(() => tomorrow);
+    (service as any).buildYesterdayHistory = vi.fn(() => yesterday);
+
+    (service as any).setDaySnapshot(today, NOW_MS, true);
+    const cachedTomorrow = service.getSnapshot()?.days['2025-03-16'];
+    const cachedYesterday = service.getSnapshot()?.days['2025-03-14'];
+    expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');
+    expect(service.getSnapshot()?.yesterdayKey).toBe('2025-03-14');
+
+    (service as any).buildTomorrowPreview = vi.fn(() => {
+      throw new Error('buildTomorrowPreview should not run on hot-path updates');
+    });
+    (service as any).buildYesterdayHistory = vi.fn(() => {
+      throw new Error('buildYesterdayHistory should not run on hot-path updates');
+    });
+
+    const refreshedToday = buildDayPayload({ dateKey: '2025-03-15', confidence: 0.65 });
+    (service as any).setDaySnapshot(refreshedToday, NOW_MS);
+
+    const snapshot = service.getSnapshot();
+    expect(snapshot?.todayKey).toBe('2025-03-15');
+    expect(snapshot?.days['2025-03-15']?.state.confidence).toBe(0.65);
+    expect(snapshot?.tomorrowKey).toBe('2025-03-16');
+    expect(snapshot?.days['2025-03-16']).toBe(cachedTomorrow);
+    expect(snapshot?.yesterdayKey).toBe('2025-03-14');
+    expect(snapshot?.days['2025-03-14']).toBe(cachedYesterday);
+  });
+
+  it('drops stale adjacent days when the day rolls over on a hot-path update', () => {
+    const service = buildService();
+    const today = buildDayPayload({ dateKey: '2025-03-15', confidence: 0.72 });
+    const tomorrow = buildDayPayload({ dateKey: '2025-03-16', confidence: 0.15 });
+    const yesterday = buildDayPayload({ dateKey: '2025-03-14', confidence: 0.2 });
+
+    (service as any).buildTomorrowPreview = vi.fn(() => tomorrow);
+    (service as any).buildYesterdayHistory = vi.fn(() => yesterday);
+
+    (service as any).setDaySnapshot(today, NOW_MS, true);
+
+    const newToday = buildDayPayload({ dateKey: '2025-03-17', confidence: 0.5 });
+    (service as any).setDaySnapshot(newToday, NOW_MS);
+
+    const snapshot = service.getSnapshot();
+    expect(snapshot?.todayKey).toBe('2025-03-17');
+    expect(Object.keys(snapshot?.days ?? {})).toEqual(['2025-03-17']);
+    expect(snapshot?.tomorrowKey).toBe(null);
+    expect(snapshot?.yesterdayKey).toBe(null);
+  });
+
   it('refreshes confidence explicitly when fetching the UI payload', () => {
     const service = buildService();
     const updateSpy = vi.fn(() => ({

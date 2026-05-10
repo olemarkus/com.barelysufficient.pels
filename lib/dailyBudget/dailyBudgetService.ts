@@ -30,6 +30,7 @@ import {
 } from './dailyBudgetConstants';
 import { DailyBudgetManager } from './dailyBudgetManager';
 import type { CombinedPriceData } from './dailyBudgetManager';
+import { composeHotPathDailyBudgetSnapshot } from './dailyBudgetSnapshotState';
 import {
   DailyBudgetStatePersistencePolicy,
   maybePersistDailyBudgetState,
@@ -498,28 +499,29 @@ export class DailyBudgetService {
   }
 
   private setDaySnapshot(snapshot: DailyBudgetDayPayload, nowMs: number, includeAdjacentDays = false): void {
-    const todayKey = snapshot.dateKey;
-    const tomorrowSnapshot = includeAdjacentDays
-      ? this.applyOverallModelConfidence(this.buildTomorrowPreview(nowMs), snapshot)
-      : null;
-    const tomorrowKey = includeAdjacentDays ? tomorrowSnapshot?.dateKey ?? null : null;
-    const yesterdaySnapshot = includeAdjacentDays
-      ? this.applyOverallModelConfidence(this.buildYesterdayHistory(nowMs), snapshot)
-      : null;
-    const yesterdayKey = includeAdjacentDays ? yesterdaySnapshot?.dateKey ?? null : null;
+    if (includeAdjacentDays) {
+      this.rebuildSnapshotWithAdjacentDays(snapshot, nowMs);
+      return;
+    }
+    const composed = composeHotPathDailyBudgetSnapshot(snapshot, this.snapshot);
+    this.daySnapshots = composed.daySnapshots;
+    this.snapshot = composed.snapshot;
+  }
 
-    this.daySnapshots = includeAdjacentDays
-      ? {
-        [todayKey]: snapshot,
-        ...(tomorrowSnapshot ? { [tomorrowSnapshot.dateKey]: tomorrowSnapshot } : {}),
-        ...(yesterdaySnapshot ? { [yesterdaySnapshot.dateKey]: yesterdaySnapshot } : {}),
-      }
-      : { [todayKey]: snapshot };
+  private rebuildSnapshotWithAdjacentDays(snapshot: DailyBudgetDayPayload, nowMs: number): void {
+    const todayKey = snapshot.dateKey;
+    const tomorrowSnapshot = this.applyOverallModelConfidence(this.buildTomorrowPreview(nowMs), snapshot);
+    const yesterdaySnapshot = this.applyOverallModelConfidence(this.buildYesterdayHistory(nowMs), snapshot);
+    this.daySnapshots = {
+      [todayKey]: snapshot,
+      ...(tomorrowSnapshot ? { [tomorrowSnapshot.dateKey]: tomorrowSnapshot } : {}),
+      ...(yesterdaySnapshot ? { [yesterdaySnapshot.dateKey]: yesterdaySnapshot } : {}),
+    };
     this.snapshot = {
       days: { ...this.daySnapshots },
       todayKey,
-      tomorrowKey,
-      yesterdayKey,
+      tomorrowKey: tomorrowSnapshot?.dateKey ?? null,
+      yesterdayKey: yesterdaySnapshot?.dateKey ?? null,
     };
   }
 
