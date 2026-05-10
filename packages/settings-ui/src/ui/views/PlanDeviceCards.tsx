@@ -25,8 +25,54 @@ import {
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { formatReasonSummary } from '../planReasonSummary.ts';
 import { cardActivationProps } from '../cardActivation.ts';
+import { state } from '../state.ts';
+import { buildDeadlineHref } from '../deadlineUrls.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
 import type { DeviceReason } from '../../../../shared-domain/src/planReasonSemanticsCore.ts';
+
+const hasDeadlineObjective = (deviceId: string): boolean => (
+  Boolean(state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId])
+);
+
+const stopActivation = (event: Event): void => {
+  event.stopPropagation();
+};
+
+const handleChipKeyDown = (event: KeyboardEvent): void => {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.stopPropagation();
+  // Anchors don't activate on Space by default; suppress page scroll so we
+  // can treat Space as activation on keyup, matching the parent card model.
+  if (event.key === ' ') event.preventDefault();
+};
+
+const handleChipKeyUp = (event: KeyboardEvent): void => {
+  if (event.key === 'Enter') {
+    event.stopPropagation();
+    return;
+  }
+  if (event.key !== ' ') return;
+  event.stopPropagation();
+  event.preventDefault();
+  const target = event.currentTarget;
+  if (target instanceof HTMLAnchorElement) target.click();
+};
+
+export const DeadlineChip = ({ deviceId }: { deviceId: string }) => {
+  if (!hasDeadlineObjective(deviceId)) return null;
+  return (
+    <a
+      class="plan-chip plan-chip--info plan-chip--link"
+      href={buildDeadlineHref(deviceId)}
+      onClick={stopActivation}
+      onKeyDown={handleChipKeyDown}
+      onKeyUp={handleChipKeyUp}
+      data-tooltip="Open deadline"
+    >
+      Deadline
+    </a>
+  );
+};
 
 const formatKw = (value: number | undefined): string => (
   typeof value === 'number' && Number.isFinite(value) ? value.toFixed(1) : '–'
@@ -235,6 +281,7 @@ export const PlanGenericCard = ({
               {starvationBadge.label}
             </span>
           )}
+          <DeadlineChip deviceId={dev.id} />
         </div>
       </div>
 
@@ -308,6 +355,7 @@ export const PlanTemperatureCard = ({
               {starvationBadge.label}
             </span>
           )}
+          <DeadlineChip deviceId={dev.id} />
         </div>
       </div>
 

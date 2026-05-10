@@ -16,6 +16,7 @@ import {
 } from '../../../../shared-domain/src/planStateLabels.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { cardActivationProps } from '../cardActivation.ts';
+import { DeadlineChip } from './PlanDeviceCards.tsx';
 import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
 import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
 
@@ -144,6 +145,7 @@ export const PlanSteppedCard = ({
           {displayDev.temperatureBoostActive !== true && displayDev.evBoostActive === true && (
             <span class="plan-chip plan-chip--ok" data-tooltip="EV boost is active">Boost</span>
           )}
+          <DeadlineChip deviceId={dev.id} />
         </div>
       </div>
 

@@ -92,6 +92,10 @@ export const renderPlan = (plan: PlanSnapshot | null) => {
   doRender();
 };
 
+export const bumpPlanSurface = (): void => {
+  doRender();
+};
+
 export const updatePlanPower = (power: SettingsUiPowerStatus | null): void => {
   cachedPowerStatus = power;
   doRender();
