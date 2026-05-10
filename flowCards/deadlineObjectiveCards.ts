@@ -1,5 +1,6 @@
 import {
   normalizeDeferredObjectiveSettings,
+  resolveDeferredObjectiveDeadline,
   type DeferredObjectiveSettingsEntry,
   type DeferredObjectiveSettingsV1,
   type DeferredObjectiveStatus,
@@ -141,6 +142,14 @@ function registerSetTemperatureDeadlineCard(deps: FlowCardDeps): void {
       targetTemperatureC,
       deadlineLocalTime,
     }));
+    seedActivePlanPending(deps, {
+      device,
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC,
+      targetPercent: null,
+      deadlineLocalTime,
+    });
     deps.rebuildPlan('deadline_objective_card_set');
     return true;
   });
@@ -189,6 +198,14 @@ function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
       targetPercent,
       deadlineLocalTime,
     }));
+    seedActivePlanPending(deps, {
+      device,
+      kind: 'ev_soc',
+      enforcement: enforcementId,
+      targetTemperatureC: null,
+      targetPercent,
+      deadlineLocalTime,
+    });
     deps.rebuildPlan('deadline_objective_card_set');
     return true;
   });
@@ -197,6 +214,34 @@ function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
     return buildDeviceAutocompleteOptions(snapshot.filter(isEvCharger), query);
   });
 }
+
+const seedActivePlanPending = (deps: FlowCardDeps, params: {
+  device: TargetDeviceSnapshot;
+  kind: 'temperature' | 'ev_soc';
+  enforcement: 'soft' | 'hard';
+  targetTemperatureC: number | null;
+  targetPercent: number | null;
+  deadlineLocalTime: string;
+}): void => {
+  const seed = deps.markDeferredObjectiveActivePlanPending;
+  if (!seed) return;
+  const nowMs = deps.getNow().getTime();
+  const resolution = resolveDeferredObjectiveDeadline({
+    nowMs,
+    timeZone: deps.getTimeZone(),
+    deadlineLocalTime: params.deadlineLocalTime,
+  });
+  if (resolution.deadlineAtMs === null) return;
+  seed({
+    deviceId: params.device.id,
+    deviceName: params.device.name ?? null,
+    objectiveKind: params.kind,
+    targetTemperatureC: params.targetTemperatureC,
+    targetPercent: params.targetPercent,
+    deadlineAtMs: resolution.deadlineAtMs,
+    enforcement: params.enforcement,
+  }, nowMs);
+};
 
 function registerClearDeadlineCard(deps: FlowCardDeps): void {
   const card = deps.homey.flow.getActionCard('clear_deadline');
@@ -208,6 +253,7 @@ function registerClearDeadlineCard(deps: FlowCardDeps): void {
     const next = removeObjective(accessors.read(), deviceId);
     accessors.write(next);
     deps.getDeferredObjectiveStatusBus?.()?.forgetDevice(deviceId);
+    deps.clearDeferredObjectiveActivePlan?.(deviceId);
     deps.rebuildPlan('deadline_objective_card_clear');
     return true;
   });

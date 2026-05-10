@@ -49,9 +49,22 @@ export type DeadlinePlanPayload = {
 
 export type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 
+export type DeadlinePlanPendingPayload = {
+  kind: DeferredObjectiveSettingsKind;
+  labels: DeadlineLabels;
+  hero: {
+    chips: DeadlinePlanChip[];
+    sectionLabel: string;
+    headline: string;
+    subline: string;
+    metaLine: string;
+  };
+};
+
 export type DeadlinePlanLoadState =
   | { status: 'error'; message: string; history?: DeadlinePlanHistoryView }
   | { status: 'loading'; history?: DeadlinePlanHistoryView }
+  | { status: 'pending'; pending: DeadlinePlanPendingPayload; history?: DeadlinePlanHistoryView }
   | { status: 'ready'; payload: DeadlinePlanPayload; history?: DeadlinePlanHistoryView };
 
 const chipClass = (tone: DeadlinePlanChipTone): string => `plan-chip plan-chip--${tone}`;
@@ -450,6 +463,22 @@ const PlanTabStrip = ({ active, onChange }: {
   </div>
 );
 
+const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
+  <section class="plan-hero" data-tone="info" aria-labelledby="deadline-plan-pending-title">
+    <div class="plan-hero__chips">
+      {pending.hero.chips.map((chip) => (
+        <span key={chip.text} class={chipClass(chip.tone)}>{chip.text}</span>
+      ))}
+    </div>
+    <div class="plan-hero__section">
+      <span class="plan-hero__section-label" id="deadline-plan-pending-title">{pending.hero.sectionLabel}</span>
+      <div class="plan-hero__headline">{pending.hero.headline}</div>
+      <div class="plan-hero__subline">{pending.hero.subline}</div>
+      <div class="plan-hero__subline plan-hero__subline--muted">{pending.hero.metaLine}</div>
+    </div>
+  </section>
+);
+
 const CurrentPlanContent = ({ loadState }: { loadState: DeadlinePlanLoadState }) => {
   if (loadState.status === 'loading') {
     return (
@@ -466,6 +495,9 @@ const CurrentPlanContent = ({ loadState }: { loadState: DeadlinePlanLoadState })
         <p class="pels-card-supporting">{loadState.message}</p>
       </section>
     );
+  }
+  if (loadState.status === 'pending') {
+    return <PendingHero pending={loadState.pending} />;
   }
   return (
     <>

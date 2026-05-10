@@ -16,6 +16,11 @@ export {
 } from './admission';
 export { DeferredObjectivePlanHistoryRecorder } from './planHistory';
 export { normalizeDeferredObjectivePlanHistory } from './planHistorySettings';
+export {
+  DeferredObjectiveActivePlanRecorder,
+  type ActivePlanFlowCardSeed,
+} from './activePlanRecorder';
+export { normalizeDeferredObjectiveActivePlans } from './activePlanSettings';
 export { resolveDeferredObjectiveDeadline } from './deadline';
 export { buildDeferredObjectivePolicyHorizon } from './policyHorizon';
 export {
