@@ -1134,4 +1134,145 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     expect(planDevice.expectedPowerKw).toBeUndefined();
   });
+
+  describe('deferred temperature objective override', () => {
+    const tempInputDevice = (overrides: Partial<Parameters<typeof buildPlanInputDevice>[0]> = {}) => buildPlanInputDevice({
+      id: 'tank',
+      name: 'Water tank',
+      deviceType: 'temperature',
+      currentTemperature: 45,
+      targets: [{ id: 'target_temperature', value: 50, unit: '°C', min: 30, max: 70 }],
+      ...overrides,
+    });
+
+    it('lifts plannedTarget to the deadline target when it exceeds the mode target', () => {
+      const [planDevice] = buildInitialPlanDevices({
+        context: { ...buildContext([tempInputDevice()]), desiredForMode: { tank: 50 } },
+        state: createPlanEngineState(),
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deferredTargetTempByDeviceId: { tank: 60 },
+        deps: defaultDeps,
+      });
+
+      expect(planDevice.plannedTarget).toBe(60);
+    });
+
+    it('keeps the mode target when it already exceeds the deadline target', () => {
+      const [planDevice] = buildInitialPlanDevices({
+        context: { ...buildContext([tempInputDevice()]), desiredForMode: { tank: 65 } },
+        state: createPlanEngineState(),
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deferredTargetTempByDeviceId: { tank: 60 },
+        deps: defaultDeps,
+      });
+
+      expect(planDevice.plannedTarget).toBe(65);
+    });
+
+    it('does not double-apply the cheap-hour delta on top of the deadline target', () => {
+      const [planDevice] = buildInitialPlanDevices({
+        context: { ...buildContext([tempInputDevice()]), desiredForMode: { tank: 50 } },
+        state: createPlanEngineState(),
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deferredTargetTempByDeviceId: { tank: 60 },
+        deps: {
+          ...defaultDeps,
+          isCurrentHourCheap: () => true,
+          getPriceOptimizationEnabled: () => true,
+          getPriceOptimizationSettings: () => ({ tank: { enabled: true, cheapDelta: 2, expensiveDelta: 0 } }),
+        },
+      });
+
+      // mode 50 + cheap delta 2 = 52; deadline 60 wins. Delta is not stacked on top of 60.
+      expect(planDevice.plannedTarget).toBe(60);
+    });
+
+    it('lets mode + cheap delta win when the result still exceeds the deadline target', () => {
+      const [planDevice] = buildInitialPlanDevices({
+        context: { ...buildContext([tempInputDevice()]), desiredForMode: { tank: 55 } },
+        state: createPlanEngineState(),
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deferredTargetTempByDeviceId: { tank: 56 },
+        deps: {
+          ...defaultDeps,
+          isCurrentHourCheap: () => true,
+          getPriceOptimizationEnabled: () => true,
+          getPriceOptimizationSettings: () => ({ tank: { enabled: true, cheapDelta: 3, expensiveDelta: 0 } }),
+        },
+      });
+
+      // mode 55 + cheap delta 3 = 58; deadline 56 — mode side already higher, no override.
+      expect(planDevice.plannedTarget).toBe(58);
+    });
+
+    it('seeds plannedTarget from the deadline target when no mode target is configured', () => {
+      const [planDevice] = buildInitialPlanDevices({
+        context: { ...buildContext([tempInputDevice()]), desiredForMode: {} },
+        state: createPlanEngineState(),
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deferredTargetTempByDeviceId: { tank: 58 },
+        deps: defaultDeps,
+      });
+
+      expect(planDevice.plannedTarget).toBe(58);
+    });
+
+    it('clips the deadline target to the device capability max', () => {
+      const [planDevice] = buildInitialPlanDevices({
+        context: { ...buildContext([tempInputDevice()]), desiredForMode: { tank: 50 } },
+        state: createPlanEngineState(),
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deferredTargetTempByDeviceId: { tank: 95 },
+        deps: defaultDeps,
+      });
+
+      // capability max is 70 per tempInputDevice fixture.
+      expect(planDevice.plannedTarget).toBe(70);
+    });
+
+    it('does not override when the device has no entry in the override map', () => {
+      const [planDevice] = buildInitialPlanDevices({
+        context: { ...buildContext([tempInputDevice()]), desiredForMode: { tank: 50 } },
+        state: createPlanEngineState(),
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deferredTargetTempByDeviceId: {},
+        deps: defaultDeps,
+      });
+
+      expect(planDevice.plannedTarget).toBe(50);
+    });
+
+    it('shed temperature still wins over the deadline override when shedding via set_temperature', () => {
+      const device = tempInputDevice({ currentOn: true });
+      const [planDevice] = buildInitialPlanDevices({
+        context: { ...buildContext([device]), desiredForMode: { tank: 50 } },
+        state: createPlanEngineState(),
+        shedSet: new Set(['tank']),
+        shedReasons: new Map([['tank', 'shed due to capacity']]),
+        guardInShortfall: false,
+        deferredTargetTempByDeviceId: { tank: 60 },
+        deps: {
+          ...defaultDeps,
+          getShedBehavior: () => ({ action: 'set_temperature', temperature: 40, stepId: null }),
+        },
+      });
+
+      expect(planDevice.plannedState).toBe('shed');
+      expect(planDevice.plannedTarget).toBe(40);
+    });
+  });
 });

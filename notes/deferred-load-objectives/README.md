@@ -107,9 +107,22 @@ and applied at the planner boundary in `PlanBuilder.buildPlanSnapshotWithTimings
   plan does not override step selection, admission gates, or reason codes — it only decides
   whether the device participates this cycle. Soft deadlines therefore still respect budget,
   capacity, priority, and cooldown rules, exactly as the original design called for.
+- During planned hours of an active deferred temperature objective, the planner commands
+  `max(modeTarget + priceOptDelta, deadlineTargetC)` to the device so the device's own
+  thermostat can actually reach the deadline. The price-opt cheap/expensive delta combines only
+  with the mode side; the deadline target is never further modulated. Outside planned hours, or
+  once the diagnostic transitions to `satisfied`/`cannot_meet`, the override drops out and the
+  setpoint reverts to the regular mode target. The override applies regardless of the
+  capacity-based control toggle (cap-on and cap-off devices both pick it up).
+  Implementation: `buildDeferredTargetOverrides` in `lib/plan/deferredObjectives/admission.ts`
+  derives the per-cycle map from `deferredEvaluations`; `resolvePlannedTarget` in
+  `lib/plan/planDevices.ts` consumes it after applying the price-opt delta and before the
+  capability clip. Capacity-based shedding (`set_temperature` shed action) still wins because
+  `buildBasePlanDevice` overwrites `plannedTarget` with the shed temperature when the device is
+  in the shed-set.
 
-Cap-on, hard deadlines, mode override, hard-boost rebalancing, EV admission, and contention
-across multiple deferred objectives are still future work.
+Cap-on, hard deadlines, hard-boost rebalancing, EV admission, and contention across multiple
+deferred objectives are still future work.
 
 ### Plan history capture
 
@@ -138,8 +151,11 @@ Original design semantics (still authoritative for future slices):
 
 - Planned hours are the hours selected by the deadline plan to add useful energy before the
   deadline.
-- Inside planned hours, the device uses normal PELS behavior. A planned hour does not imply hidden
-  boost behavior or a special target override.
+- Inside planned hours, the device uses normal PELS behavior for shed/restore admission, cooldowns,
+  budget, and priority. The one exception is the temperature setpoint: the planner lifts the
+  commanded target to `max(modeTarget + priceOptDelta, deadlineTargetC)` so the device's own
+  thermostat can actually reach the deadline. The deadline target is never further adjusted by the
+  price-opt delta.
 - Outside planned hours, the existing capacity-based control toggle decides the fallback behavior:
   - toggle on: normal PELS behavior may still run the device outside the deadline plan
   - toggle off: PELS keeps the device idle by plan outside the deadline plan **(shipped)**

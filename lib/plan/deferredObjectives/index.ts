@@ -13,6 +13,7 @@ export type {
 export {
   applyDeferredAdmissionToInput,
   applyDeferredObjectiveAdmission,
+  buildDeferredTargetOverrides,
 } from './admission';
 export { DeferredObjectivePlanHistoryRecorder } from './planHistory';
 export { normalizeDeferredObjectivePlanHistory } from './planHistorySettings';

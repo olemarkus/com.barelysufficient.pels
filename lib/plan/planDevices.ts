@@ -60,6 +60,7 @@ export function buildInitialPlanDevices(params: {
   shedSet: Set<string>;
   shedReasons: Map<string, DeviceReason>;
   guardInShortfall: boolean;
+  deferredTargetTempByDeviceId?: Record<string, number>;
   deps: PlanDevicesDeps;
 }): DevicePlanDevice[] {
   const {
@@ -68,6 +69,7 @@ export function buildInitialPlanDevices(params: {
     shedSet,
     shedReasons,
     guardInShortfall,
+    deferredTargetTempByDeviceId = {},
     deps,
   } = params;
   return context.devices.map((dev) => {
@@ -76,6 +78,7 @@ export function buildInitialPlanDevices(params: {
     const plannedTarget = resolvePlannedTarget({
       dev,
       desiredForMode: context.desiredForMode,
+      deferredTargetTempByDeviceId,
       supportsTemperature,
       deps,
     });
@@ -131,10 +134,11 @@ export function buildInitialPlanDevices(params: {
 function resolvePlannedTarget(params: {
   dev: PlanInputDevice;
   desiredForMode: Record<string, number>;
+  deferredTargetTempByDeviceId: Record<string, number>;
   supportsTemperature: boolean;
   deps: PlanDevicesDeps;
 }): number | null {
-  const { dev, desiredForMode, supportsTemperature, deps } = params;
+  const { dev, desiredForMode, deferredTargetTempByDeviceId, supportsTemperature, deps } = params;
   if (!supportsTemperature) return null;
   const target = getPrimaryTargetCapability(dev.targets);
   const desired = desiredForMode[dev.id];
@@ -142,6 +146,13 @@ function resolvePlannedTarget(params: {
   const priceOptConfig = deps.getPriceOptimizationSettings()[dev.id];
   if (deps.getPriceOptimizationEnabled() && plannedTarget !== null && priceOptConfig?.enabled) {
     plannedTarget = applyPriceOptimizationDelta(plannedTarget, priceOptConfig, deps);
+  }
+  // Deferred temperature objective: during a planned hour, lift the setpoint to the deadline
+  // target if the price-adjusted mode target falls below it. The price-opt delta combines only
+  // with the mode side; the deadline target is never further modulated.
+  const deferredC = deferredTargetTempByDeviceId[dev.id];
+  if (typeof deferredC === 'number' && Number.isFinite(deferredC)) {
+    plannedTarget = plannedTarget === null ? deferredC : Math.max(plannedTarget, deferredC);
   }
   if (plannedTarget !== null) {
     plannedTarget = normalizeTargetCapabilityValue({ target, value: plannedTarget });

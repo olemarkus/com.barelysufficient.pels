@@ -69,3 +69,21 @@ export const applyDeferredAdmissionToInput = (
   return { devices: transformed, forceShedSet };
 };
 
+// Per-cycle map of the deadline temperature target a device should be commanded to during a
+// planned hour. EV objectives and non-planned diagnostics are skipped. Consumed by
+// `resolvePlannedTarget` to lift the mode setpoint above the configured operating-mode target so
+// the device's own thermostat can actually reach the deadline.
+export const buildDeferredTargetOverrides = (
+  diagnostics: readonly DeferredObjectiveDiagnostic[],
+): Record<string, number> => {
+  const overrides: Record<string, number> = {};
+  for (const diag of diagnostics) {
+    if (!PLANNABLE_STATUSES.has(diag.status)) continue;
+    const currentBucket = diag.horizonPlan?.currentBucket;
+    if (!currentBucket || currentBucket.plannedUsefulEnergyKWh <= 0) continue;
+    if (diag.targetTemperatureC === null || !Number.isFinite(diag.targetTemperatureC)) continue;
+    overrides[diag.deviceId] = diag.targetTemperatureC;
+  }
+  return overrides;
+};
+
