@@ -81,6 +81,7 @@ const allowedUnusedExportPatterns = [
   /^lib\/utils\/dateUtils\.ts:\d+ - formatTimeInTimeZone$/,
   /^lib\/utils\/settingsKeys\.ts:\d+ - DAILY_BUDGET_BREAKDOWN_ENABLED$/,
   /^lib\/utils\/planRebuildTrace\.ts:\d+ - clearPlanRebuildTracesForTests$/,
+  /^lib\/price\/priceStore\.ts:\d+ - __resetRefetchGuardForTest$/,
   /^lib\/core\/deviceManagerHomeyApi\.ts:\d+ - setRestClient$/,
   /^lib\/core\/deviceManagerHomeyApi\.ts:\d+ - resetRestClient$/,
   // Compatibility barrel exports kept intentionally while call sites migrate off appPowerHelpers.ts.

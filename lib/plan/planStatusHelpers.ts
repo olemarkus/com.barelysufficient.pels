@@ -97,8 +97,14 @@ export const normalizeLastPowerUpdate = (
 
 const hasCombinedPrices = (value: unknown): boolean => {
   if (!value || typeof value !== 'object') return false;
-  const record = value as { prices?: unknown };
-  return Array.isArray(record.prices) && record.prices.length > 0;
+  const record = value as { days?: unknown };
+  if (!record.days || typeof record.days !== 'object' || Array.isArray(record.days)) return false;
+  for (const day of Object.values(record.days as Record<string, unknown>)) {
+    if (day && typeof day === 'object'
+      && Array.isArray((day as { hours?: unknown }).hours)
+      && ((day as { hours: unknown[] }).hours.length > 0)) return true;
+  }
+  return false;
 };
 
 const resolveStatusPriceKey = (params: {

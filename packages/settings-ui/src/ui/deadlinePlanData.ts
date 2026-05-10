@@ -21,6 +21,7 @@ type PriceEntryLike = {
 
 type CombinedPricesLike = {
   prices?: unknown;
+  days?: unknown;
 };
 
 export type HorizonHour = {
@@ -37,8 +38,17 @@ const getCombinedPrices = (payload: SettingsUiPricesPayload): PriceEntryLike[] =
   let entries: unknown[] = [];
   if (Array.isArray(combined)) {
     entries = combined;
-  } else if (Array.isArray((combined as CombinedPricesLike | null)?.prices)) {
-    entries = (combined as CombinedPricesLike).prices as unknown[];
+  } else if (combined && typeof combined === 'object') {
+    const days = (combined as CombinedPricesLike).days;
+    if (days && typeof days === 'object' && !Array.isArray(days)) {
+      entries = Object.values(days as Record<string, unknown>).flatMap((day) => (
+        day && typeof day === 'object' && Array.isArray((day as { hours?: unknown }).hours)
+          ? ((day as { hours: unknown[] }).hours)
+          : []
+      ));
+    } else if (Array.isArray((combined as CombinedPricesLike).prices)) {
+      entries = (combined as CombinedPricesLike).prices as unknown[];
+    }
   }
   return entries.flatMap((entry) => {
     if (!isRecord(entry) || typeof entry.startsAt !== 'string') return [];

@@ -254,6 +254,7 @@ export default class PriceService {
       thresholdPercent: this.getNumberSetting('price_threshold_percent', 25),
       minDiffOre: this.getNumberSetting('price_min_diff_ore', 0),
       now: new Date(),
+      timeZone: this.homey.clock.getTimezone(),
     });
     const existingPayload = this.getSettingValue(COMBINED_PRICES);
     if (toCombinedPayloadFingerprint(existingPayload) === toCombinedPayloadFingerprint(payload)) {

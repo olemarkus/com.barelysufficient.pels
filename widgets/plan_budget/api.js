@@ -24,14 +24,32 @@ __export(api_exports, {
 module.exports = __toCommonJS(api_exports);
 var import_planPriceWidgetPayload = require("./planPriceWidgetPayload");
 const COMBINED_PRICES_SETTING = "combined_prices";
-const isCombinedPriceData = (value) => typeof value === "object" && value !== null;
+const flattenStoreToCombinedPriceData = (value) => {
+  if (!value || typeof value !== "object") return null;
+  const record = value;
+  if (!record.days || typeof record.days !== "object" || Array.isArray(record.days)) return null;
+  const days = record.days;
+  const collected = Object.values(days).flatMap((day) => {
+    if (!day || typeof day !== "object") return [];
+    const hours = day.hours;
+    return Array.isArray(hours) ? hours : [];
+  });
+  const prices = [...collected].sort(
+    (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+  );
+  return {
+    prices,
+    lastFetched: typeof record.lastFetched === "string" ? record.lastFetched : void 0,
+    priceUnit: typeof record.priceUnit === "string" ? record.priceUnit : void 0
+  };
+};
 const getChart = async ({ homey, query }) => {
   const app = homey.app;
   const snapshot = typeof app?.getDailyBudgetUiPayload === "function" ? app.getDailyBudgetUiPayload() : null;
-  const combinedPricesValue = homey.settings.get(COMBINED_PRICES_SETTING);
+  const combinedPrices = flattenStoreToCombinedPriceData(homey.settings.get(COMBINED_PRICES_SETTING));
   return (0, import_planPriceWidgetPayload.buildPlanPriceWidgetPayload)({
     snapshot,
-    combinedPrices: isCombinedPriceData(combinedPricesValue) ? combinedPricesValue : null,
+    combinedPrices,
     target: query?.day
   });
 };

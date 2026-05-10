@@ -12,6 +12,8 @@ import {
   ELECTRICITY_SUPPORT_THRESHOLD_EX_VAT,
 } from '../lib/price/priceComponents';
 import { PriceCoordinator } from '../lib/price/priceCoordinator';
+import { flattenAllHours } from '../lib/price/priceStore';
+import type { CombinedPricesV2 } from '../lib/price/priceTypes';
 import { PriceLevel } from '../lib/price/priceLevels';
 import {
   buildLocalDayBuckets,
@@ -318,9 +320,10 @@ describe('Spot price fetching', () => {
 
     // Verify the event data contains price info
     const lastPriceEvent = priceEvents[priceEvents.length - 1];
-    expect(lastPriceEvent.data).toHaveProperty('prices');
+    expect(lastPriceEvent.data).toHaveProperty('days');
     expect(lastPriceEvent.data).toHaveProperty('avgPrice');
-    expect(Array.isArray(lastPriceEvent.data.prices)).toBe(true);
+    expect(lastPriceEvent.data.version).toBe(2);
+    expect(typeof lastPriceEvent.data.days).toBe('object');
   });
 
   it('uses VAT exemption for NO4 (Nord-Norge)', async () => {
@@ -332,8 +335,18 @@ describe('Spot price fetching', () => {
     // Set up price area NO4 (no VAT)
     mockHomeyInstance.settings.set('price_area', 'NO4');
 
+    // Rolling 3-day purge means historical mock dates would be dropped; rebase
+    // the fixture onto today so prices land within the window. Compute the
+    // date key in Europe/Oslo (matching the runtime) so this stays stable
+    // regardless of when the test runs relative to UTC midnight.
+    const todayStr = getDateKeyInTimeZone(new Date(), 'Europe/Oslo');
+    const todayResponse = mockHvakosterStrommenResponse.map((entry) => ({
+      ...entry,
+      time_start: entry.time_start.replace(/\d{4}-\d{2}-\d{2}/, todayStr),
+      time_end: entry.time_end.replace(/\d{4}-\d{2}-\d{2}/, todayStr),
+    }));
     mockHttpsGet.mockImplementation((url: string, options: any, callback: Function) => {
-      const response = createMockHttpsResponse(200, mockHvakosterStrommenResponse);
+      const response = createMockHttpsResponse(200, todayResponse);
       callback(response);
       return {
         on: vi.fn(),
@@ -348,9 +361,10 @@ describe('Spot price fetching', () => {
     mockHomeyInstance.settings.set('refresh_spot_prices', Date.now());
     await flushPromises();
 
-    const combined = mockHomeyInstance.settings.get('combined_prices') as { prices?: Array<{ vatMultiplier?: number; vatAmount?: number; total?: number; totalExVat?: number }> } | null;
-    expect(combined?.prices?.length).toBeGreaterThan(0);
-    const firstPrice = combined?.prices?.[0];
+    const combined = mockHomeyInstance.settings.get('combined_prices') as CombinedPricesV2 | null;
+    const flatPrices = flattenAllHours(combined);
+    expect(flatPrices.length).toBeGreaterThan(0);
+    const firstPrice = flatPrices[0];
     expect(firstPrice?.vatMultiplier).toBe(1);
     expect(firstPrice?.vatAmount).toBeCloseTo(0, 5);
     expect(firstPrice?.total).toBeCloseTo(firstPrice?.totalExVat ?? 0, 5);
@@ -1885,14 +1899,10 @@ describe('Price optimization', () => {
     const result = app['storeFlowPriceData']('today', "{'0':0.2747,'1':0.2678,'2':0.261}");
     expect(result.storedCount).toBe(3);
 
-    const combined = mockHomeyInstance.settings.get('combined_prices') as {
-      prices?: Array<{ total?: number }>;
-      priceScheme?: string;
-      priceUnit?: string;
-    } | null;
+    const combined = mockHomeyInstance.settings.get('combined_prices') as CombinedPricesV2 | null;
     expect(combined?.priceScheme).toBe('flow');
     expect(combined?.priceUnit).toBe('price units');
-    const totals = (combined?.prices || []).map((entry) => entry.total);
+    const totals = flattenAllHours(combined).map((entry) => entry.total);
     expect(totals).toContain(0.2747);
     expect(totals).toContain(0.2678);
     expect(totals).toContain(0.261);

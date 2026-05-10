@@ -1,4 +1,5 @@
 import { buildPelsStatus } from '../lib/core/pelsStatus';
+import { PriceLevel } from '../lib/price/priceLevels';
 import { NEUTRAL_STARTUP_HOLD_REASON } from '../lib/plan/planRestoreDevices';
 import type { DevicePlan } from '../lib/plan/planTypes';
 import type { DeviceReason } from '../packages/shared-domain/src/planReasonSemantics';
@@ -51,7 +52,7 @@ describe('pels status limit reason', () => {
       plan,
       isCheap: false,
       isExpensive: false,
-      combinedPrices: { prices: [{ total: 1.2 }] },
+      combinedPrices: { version: 2, days: { '2026-05-10': { hours: [{ startsAt: '2026-05-10T00:00:00.000Z', total: 1.2, isCheap: false, isExpensive: false }] } } },
       lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
     });
 
@@ -77,7 +78,7 @@ describe('pels status limit reason', () => {
       plan,
       isCheap: false,
       isExpensive: false,
-      combinedPrices: { prices: [{ total: 1.2 }] },
+      combinedPrices: { version: 2, days: { '2026-05-10': { hours: [{ startsAt: '2026-05-10T00:00:00.000Z', total: 1.2, isCheap: false, isExpensive: false }] } } },
       lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
     });
 
@@ -96,7 +97,7 @@ describe('pels status limit reason', () => {
       plan,
       isCheap: false,
       isExpensive: false,
-      combinedPrices: { prices: [{ total: 1.2 }] },
+      combinedPrices: { version: 2, days: { '2026-05-10': { hours: [{ startsAt: '2026-05-10T00:00:00.000Z', total: 1.2, isCheap: false, isExpensive: false }] } } },
       lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
     });
 
@@ -129,7 +130,7 @@ describe('pels status limit reason', () => {
       plan,
       isCheap: false,
       isExpensive: false,
-      combinedPrices: { prices: [{ total: 1.2 }] },
+      combinedPrices: { version: 2, days: { '2026-05-10': { hours: [{ startsAt: '2026-05-10T00:00:00.000Z', total: 1.2, isCheap: false, isExpensive: false }] } } },
       lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
     });
 
@@ -157,7 +158,7 @@ describe('pels status limit reason', () => {
       plan,
       isCheap: false,
       isExpensive: false,
-      combinedPrices: { prices: [{ total: 1.2 }] },
+      combinedPrices: { version: 2, days: { '2026-05-10': { hours: [{ startsAt: '2026-05-10T00:00:00.000Z', total: 1.2, isCheap: false, isExpensive: false }] } } },
       lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
     });
 
@@ -165,5 +166,39 @@ describe('pels status limit reason', () => {
     expect(status.shortfallBudgetThresholdKw).toBe(6);
     expect(status.shortfallBudgetHeadroomKw).toBe(-1.2);
     expect(status.hardCapHeadroomKw).toBe(-1.2);
+  });
+
+  // Regression for #646 review: combined_prices is V2 (date-keyed `days`), not
+  // a flat `prices[]` array. Without V2 awareness in `hasPrices`, the price
+  // level would resolve to UNKNOWN and the price_level_changed flow trigger
+  // would fire spuriously.
+  it.each([
+    [{ isCheap: true, isExpensive: false }, PriceLevel.CHEAP],
+    [{ isCheap: false, isExpensive: true }, PriceLevel.EXPENSIVE],
+    [{ isCheap: false, isExpensive: false }, PriceLevel.NORMAL],
+  ] as const)('resolves price level from V2 combined_prices payload', (flags, expected) => {
+    const plan = buildPlan({ softLimitSource: 'capacity', reason: 'normal' });
+    const { status } = buildPelsStatus({
+      plan,
+      isCheap: flags.isCheap,
+      isExpensive: flags.isExpensive,
+      combinedPrices: { version: 2, days: { '2026-05-10': { hours: [
+        { startsAt: '2026-05-10T00:00:00.000Z', total: 1.2, isCheap: false, isExpensive: false },
+      ] } } },
+      lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
+    });
+    expect(status.priceLevel).toBe(expected);
+  });
+
+  it('resolves price level to UNKNOWN when V2 store has no hours', () => {
+    const plan = buildPlan({ softLimitSource: 'capacity', reason: 'normal' });
+    const { status } = buildPelsStatus({
+      plan,
+      isCheap: true,
+      isExpensive: false,
+      combinedPrices: { version: 2, days: {} },
+      lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
+    });
+    expect(status.priceLevel).toBe(PriceLevel.UNKNOWN);
   });
 });
