@@ -1,11 +1,6 @@
 import './materialWeb.ts';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../../contracts/src/dailyBudgetTypes.ts';
 import {
-  dailyBudgetControlledWeightInput,
-  dailyBudgetEnabledInput,
-  dailyBudgetKwhInput,
-  dailyBudgetPriceFlexShareInput,
-  dailyBudgetPriceShapingInput,
   settingsCapacityLimitInput,
   settingsCapacityMarginInput,
 } from './dom.ts';
@@ -24,6 +19,15 @@ import {
   type BudgetRedesignChartMode,
   type BudgetRedesignDayView,
 } from './budgetRedesignChart.ts';
+import {
+  applyBudgetAdjust,
+  discardBudgetAdjust,
+  getBudgetAdjustCandidatePayload,
+  getBudgetAdjustView,
+  previewBudgetAdjust,
+  setBudgetAdjustRenderer,
+  updateBudgetAdjustField,
+} from './budgetAdjustController.ts';
 
 export type BudgetDayView = BudgetRedesignDayView;
 
@@ -318,15 +322,38 @@ const resolveChartData = (
   };
 };
 
-const resolveAdjustData = (): BudgetAdjustData => ({
-  enabled: dailyBudgetEnabledInput?.checked ?? false,
-  dailyBudgetKWh: Number.parseFloat(dailyBudgetKwhInput?.value ?? ''),
-  priceShaping: dailyBudgetPriceShapingInput?.checked ?? false,
-  controlledWeight: Number.parseFloat(dailyBudgetControlledWeightInput?.value ?? '0'),
-  priceFlexShare: Number.parseFloat(dailyBudgetPriceFlexShareInput?.value ?? '0'),
-  hardCapKw: Number.parseFloat(settingsCapacityLimitInput?.value ?? ''),
-  safetyMarginKw: Number.parseFloat(settingsCapacityMarginInput?.value ?? ''),
-});
+const resolveComparisonChartMax = (day: DailyBudgetDayPayload | null): number => {
+  if (!day) return 0;
+  const planSum = sum(day.buckets.plannedKWh);
+  const actualSum = sum(day.buckets.actualKWh);
+  return Math.max(planSum, actualSum, day.budget.dailyBudgetKWh ?? 0);
+};
+
+const resolveAdjustData = (): BudgetAdjustData => {
+  const view = getBudgetAdjustView();
+  const { payload, costDisplay } = latestRenderState;
+  const dayView: BudgetDayView = 'today';
+  const showComparison = view.status === 'pending';
+  const candidatePayload = showComparison ? getBudgetAdjustCandidatePayload() : null;
+  const activeDay = showComparison ? resolveViewPayload(payload, dayView) : null;
+  const candidateDay = showComparison ? resolveViewPayload(candidatePayload, dayView) : null;
+  const sharedMax = Math.max(resolveComparisonChartMax(activeDay), resolveComparisonChartMax(candidateDay));
+  return {
+    draft: view.draft,
+    active: view.active,
+    candidate: view.candidate,
+    activeChart: activeDay
+      ? { payload: activeDay, view: dayView, costDisplay, dataMaxOverride: sharedMax }
+      : null,
+    candidateChart: candidateDay
+      ? { payload: candidateDay, view: dayView, costDisplay, dataMaxOverride: sharedMax }
+      : null,
+    status: view.status,
+    busy: view.busy,
+    hardCapKw: Number.parseFloat(settingsCapacityLimitInput?.value ?? ''),
+    safetyMarginKw: Number.parseFloat(settingsCapacityMarginInput?.value ?? ''),
+  };
+};
 
 let externalOnDayChange: (v: BudgetDayView) => void = () => {};
 
@@ -350,17 +377,27 @@ const buildProps = (): BudgetOverviewProps => {
     },
     chart: resolveChartData(viewPayload, view, currentChartMode, status, costDisplay),
     adjust: resolveAdjustData(),
-    onLocalViewChange: (v) => { currentBudgetLocalView = v; doRender(); },
+    onLocalViewChange: (v) => {
+      if (currentBudgetLocalView === 'adjust' && v !== 'adjust') discardBudgetAdjust();
+      currentBudgetLocalView = v;
+      doRender();
+    },
     onDayChange: externalOnDayChange,
     onChartModeChange: (v) => { currentChartMode = v; doRender(); },
+    onAdjustFieldChange: (patch) => updateBudgetAdjustField(patch),
+    onPreview: () => { void previewBudgetAdjust(); },
+    onApply: () => { void applyBudgetAdjust(); },
+    onDiscard: () => { discardBudgetAdjust(); },
   };
 };
 
-const doRender = () => {
+export const doRender = () => {
   const surface = getBudgetSurface();
   if (!surface) return;
   renderBudgetOverview(surface, buildProps());
 };
+
+setBudgetAdjustRenderer(() => doRender());
 
 export const renderBudgetRedesign = (
   payload: DailyBudgetUiPayload | null,

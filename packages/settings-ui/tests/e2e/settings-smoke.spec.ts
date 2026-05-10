@@ -144,6 +144,30 @@ test.describe('Settings UI (smoke)', () => {
     await expect(page.locator('#budget-redesign-adjust-view')).toContainText('Planning behavior');
     await expect(page.locator('#budget-redesign-adjust-view')).toContainText('Limits context');
 
+    await expect(page.getByRole('button', { name: 'Preview changes' })).toHaveCount(0);
+    const kwhField = page.locator('#budget-redesign-kwh');
+    await expect(kwhField).toBeVisible();
+    await kwhField.evaluate((el, value) => {
+      const target = el as HTMLElement & { value?: string };
+      target.value = value;
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+    }, '40');
+
+    const previewButton = page.getByRole('button', { name: 'Preview changes' });
+    await expect(previewButton).toBeVisible();
+    await previewButton.click();
+
+    await expect(page.locator('#budget-redesign-comparison')).toBeVisible();
+    await expect(page.locator('#budget-redesign-comparison')).toContainText('Daily budget');
+    await expect(page.getByRole('button', { name: 'Apply changes' })).toBeVisible();
+    const discardButton = page.getByRole('button', { name: 'Discard preview' });
+    await expect(discardButton).toBeVisible();
+
+    await discardButton.click();
+    await expect(page.locator('#budget-redesign-comparison')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Apply changes' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Preview changes' })).toHaveCount(0);
+
     await page.getByRole('button', { name: 'Open Limits & safety' }).click();
     await expect(page.locator('#limits-panel')).toBeVisible();
   });

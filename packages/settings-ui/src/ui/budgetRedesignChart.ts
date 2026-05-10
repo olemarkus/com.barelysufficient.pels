@@ -27,11 +27,11 @@ type BudgetRedesignChartParams = {
   view: BudgetRedesignDayView;
   priceReliable: boolean;
   costDisplay: CostDisplay;
+  dataMaxOverride?: number;
 };
 
-let chart: EChartsType | null = null;
-let chartContainer: HTMLElement | null = null;
-let chartResizeObserver: ResizeObserver | null = null;
+type ChartHandle = { chart: EChartsType; resizeObserver?: ResizeObserver };
+const chartHandles = new WeakMap<HTMLElement, ChartHandle>();
 
 const DEFAULT_CHART_HEIGHT = 210;
 const DEFAULT_CHART_WIDTH = 480;
@@ -53,38 +53,33 @@ const resolveChartSize = (element: HTMLElement) => {
   };
 };
 
-const disposeChart = () => {
-  if (chartResizeObserver) {
-    chartResizeObserver.disconnect();
-    chartResizeObserver = null;
-  }
-  if (chart) {
-    chart.dispose();
-    chart = null;
-  }
-  chartContainer = null;
-};
-
-export const clearBudgetRedesignChart = () => {
-  disposeChart();
+export const clearBudgetRedesignChart = (container?: HTMLElement) => {
+  if (!container) return;
+  const handle = chartHandles.get(container);
+  if (!handle) return;
+  handle.resizeObserver?.disconnect();
+  handle.chart.dispose();
+  chartHandles.delete(container);
 };
 
 const ensureChart = (container: HTMLElement): EChartsType => {
-  if (chart && chartContainer === container) return chart;
-  disposeChart();
+  const existing = chartHandles.get(container);
+  if (existing) return existing.chart;
   container.replaceChildren();
-  chart = initEcharts(container, undefined, {
+  const chart = initEcharts(container, undefined, {
     renderer: 'svg',
     ...resolveChartSize(container),
   });
-  chartContainer = container;
+  let resizeObserver: ResizeObserver | undefined;
   if (typeof ResizeObserver === 'function') {
-    chartResizeObserver = new ResizeObserver(() => {
-      if (!chart || chartContainer !== container) return;
-      chart.resize(resolveChartSize(container));
+    resizeObserver = new ResizeObserver(() => {
+      const handle = chartHandles.get(container);
+      if (!handle) return;
+      handle.chart.resize(resolveChartSize(container));
     });
-    chartResizeObserver.observe(container);
+    resizeObserver.observe(container);
   }
+  chartHandles.set(container, { chart, resizeObserver });
   return chart;
 };
 
@@ -300,6 +295,7 @@ const buildProgressOption = (
   payload: DailyBudgetDayPayload,
   view: BudgetRedesignDayView,
   palette: BudgetChartPalette,
+  dataMaxOverride?: number,
 ): EChartsOption => {
   const planned = payload.buckets.plannedKWh || [];
   const actual = payload.buckets.actualKWh || [];
@@ -313,10 +309,12 @@ const buildProgressOption = (
     ...actualCumulative.filter((value): value is number => Number.isFinite(value)),
     ...projection.filter((value): value is number => Number.isFinite(value)),
   ];
+  const computedMax = Math.max(...values, payload.budget.dailyBudgetKWh);
+  const dataMax = dataMaxOverride !== undefined ? Math.max(computedMax, dataMaxOverride) : computedMax;
   const option = buildBaseOption({
     labels,
     palette,
-    dataMax: Math.max(...values, payload.budget.dailyBudgetKWh),
+    dataMax,
     scaleKind: 'progress',
   });
   const series: SeriesOption[] = [
@@ -358,13 +356,22 @@ const buildProgressOption = (
   return { ...option, series };
 };
 
-const buildHourlyOption = (
-  payload: DailyBudgetDayPayload,
-  view: BudgetRedesignDayView,
-  palette: BudgetChartPalette,
-  priceReliable: boolean,
-  costDisplay: CostDisplay,
-): EChartsOption => {
+type BuildHourlyParams = {
+  payload: DailyBudgetDayPayload;
+  view: BudgetRedesignDayView;
+  palette: BudgetChartPalette;
+  priceReliable: boolean;
+  costDisplay: CostDisplay;
+};
+
+const buildHourlyOption = (params: BuildHourlyParams): EChartsOption => {
+  const {
+    payload,
+    view,
+    palette,
+    priceReliable,
+    costDisplay,
+  } = params;
   const planned = payload.buckets.plannedKWh || [];
   const actual = payload.buckets.actualKWh || [];
   const labels = payload.buckets.startLocalLabels || [];
@@ -457,10 +464,11 @@ export const renderBudgetRedesignChart = (params: BudgetRedesignChartParams) => 
     view,
     priceReliable,
     costDisplay,
+    dataMaxOverride,
   } = params;
   const palette = resolvePalette(container);
   const option = mode === 'progress'
-    ? buildProgressOption(payload, view, palette)
-    : buildHourlyOption(payload, view, palette, priceReliable, costDisplay);
+    ? buildProgressOption(payload, view, palette, dataMaxOverride)
+    : buildHourlyOption({ payload, view, palette, priceReliable, costDisplay });
   ensureChart(container).setOption(option, { notMerge: true });
 };

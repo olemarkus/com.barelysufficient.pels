@@ -56,8 +56,12 @@ import {
   PRICE_SHAPING_FLEX_SHARE,
   UNMANAGED_RESERVE_MODE,
 } from '../../../contracts/src/dailyBudgetConstants.ts';
-import { priceFlexModeValue, reserveModeValue } from './dailyBudgetTuningValues.ts';
 import { initBudgetRedesignHandlers, renderBudgetRedesign, type BudgetDayView } from './budgetRedesign.ts';
+import { setBudgetAdjustRefresh } from './budgetAdjustController.ts';
+import {
+  applyDailyBudgetSettingsToLegacyForm,
+  parseDailyBudgetRatio,
+} from './dailyBudgetLegacyForm.ts';
 const DEFAULT_COST_UNIT = 'kr';
 const DEFAULT_COST_DIVISOR = 100;
 
@@ -77,12 +81,6 @@ const viewLabels: Record<DailyBudgetView, { title: string; costLabel: string }> 
 
 const resolveDailyBudgetTitle = (view: DailyBudgetView) => viewLabels[view].title;
 const resolveDailyBudgetCostLabel = (view: DailyBudgetView) => viewLabels[view].costLabel;
-
-const applyDailyBudgetBounds = () => {
-  if (!dailyBudgetKwhInput) return;
-  dailyBudgetKwhInput.min = MIN_DAILY_BUDGET_KWH.toString();
-  dailyBudgetKwhInput.max = MAX_DAILY_BUDGET_KWH.toString();
-};
 
 const setPillState = (enabled: boolean, exceeded: boolean) => {
   if (!dailyBudgetStatusPill) return;
@@ -333,12 +331,6 @@ export const markDailyBudgetModelDraftChanged = () => {
   showActiveDailyBudgetPlan();
 };
 
-const parseDailyBudgetRatio = (value: string, fallback: number): number => {
-  const parsed = Number.parseFloat(value);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.min(1, Math.max(0, parsed));
-};
-
 const readDailyBudgetKWh = (enabled: boolean): number => {
   const kwhValue = parseFloat(dailyBudgetKwhInput?.value || '0');
   if (!Number.isFinite(kwhValue) || kwhValue < 0) {
@@ -379,34 +371,20 @@ export const loadDailyBudgetSettings = async () => {
     getSetting(DAILY_BUDGET_CONTROLLED_WEIGHT),
     getSetting(DAILY_BUDGET_PRICE_FLEX_SHARE),
   ]);
-
-  applyDailyBudgetBounds();
-
-  if (dailyBudgetEnabledInput) {
-    dailyBudgetEnabledInput.checked = enabled === true;
-  }
-  if (dailyBudgetKwhInput) {
-    const raw = typeof dailyBudgetKWh === 'number' ? dailyBudgetKWh : MIN_DAILY_BUDGET_KWH;
-    const bounded = Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, raw));
-    dailyBudgetKwhInput.value = bounded.toString();
-  }
-  if (dailyBudgetPriceShapingInput) {
-    dailyBudgetPriceShapingInput.checked = priceShapingEnabled !== false;
-  }
-  if (dailyBudgetControlledWeightInput) {
-    const reserveMode = parseDailyBudgetRatio(
+  const rawKWh = typeof dailyBudgetKWh === 'number' ? dailyBudgetKWh : MIN_DAILY_BUDGET_KWH;
+  applyDailyBudgetSettingsToLegacyForm({
+    enabled: enabled === true,
+    dailyBudgetKWh: rawKWh,
+    priceShapingEnabled: priceShapingEnabled !== false,
+    controlledUsageWeight: parseDailyBudgetRatio(
       typeof controlledWeightRaw === 'number' ? controlledWeightRaw.toString() : '',
       UNMANAGED_RESERVE_MODE,
-    );
-    dailyBudgetControlledWeightInput.value = reserveModeValue(reserveMode);
-  }
-  if (dailyBudgetPriceFlexShareInput) {
-    const priceFlexMode = parseDailyBudgetRatio(
+    ),
+    priceShapingFlexShare: parseDailyBudgetRatio(
       typeof priceFlexShareRaw === 'number' ? priceFlexShareRaw.toString() : '',
       PRICE_SHAPING_FLEX_SHARE,
-    );
-    dailyBudgetPriceFlexShareInput.value = priceFlexModeValue(priceFlexMode);
-  }
+    ),
+  });
   setDailyBudgetModelDirty(false);
 };
 
@@ -508,6 +486,15 @@ const setDailyBudgetView = (view: DailyBudgetView) => {
 
 export const initDailyBudgetHandlers = () => {
   initBudgetRedesignHandlers(setDailyBudgetView);
+  setBudgetAdjustRefresh(async (args) => {
+    await refreshDailyBudgetPlan(args?.payload);
+    if (args?.appliedSettings) {
+      applyDailyBudgetSettingsToLegacyForm(args.appliedSettings);
+      setDailyBudgetModelDirty(false);
+    } else {
+      await loadDailyBudgetSettings();
+    }
+  });
   dailyBudgetEnabledInput?.addEventListener('change', markDailyBudgetModelDraftChanged);
   dailyBudgetKwhInput?.addEventListener('change', markDailyBudgetModelDraftChanged);
   dailyBudgetPriceShapingInput?.addEventListener('change', markDailyBudgetModelDraftChanged);

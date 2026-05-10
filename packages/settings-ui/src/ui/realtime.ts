@@ -54,6 +54,7 @@ import {
   loadDailyBudgetSettings,
   refreshDailyBudgetPlan,
 } from './dailyBudget.ts';
+import { discardBudgetAdjust, refreshBudgetAdjust } from './budgetAdjustController.ts';
 import { loadDailyBudgetTuningSettings } from './dailyBudgetTuning.ts';
 import { parsePlanSnapshot, refreshPlan, renderPlan, updatePlanPower, type PlanSnapshot } from './plan.ts';
 import { refreshAdvancedDeviceCleanup } from './advanced.ts';
@@ -243,9 +244,11 @@ const refreshDailyBudgetSettings = (key: string) => {
   if (!DAILY_BUDGET_REFRESH_KEYS.has(key)) return;
   if (DAILY_BUDGET_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadDailyBudgetSettings(), 'Failed to load daily budget settings', 'settings.set');
+    runLoggedTask(refreshBudgetAdjust(), 'Failed to refresh adjust draft', 'settings.set');
   }
   if (DAILY_BUDGET_TUNING_KEYS.has(key)) {
     runLoggedTask(loadDailyBudgetTuningSettings(), 'Failed to load daily budget tuning', 'settings.set');
+    runLoggedTask(refreshBudgetAdjust(), 'Failed to refresh adjust draft', 'settings.set');
   }
   runLoggedTask(refreshDailyBudgetPlan(), 'Failed to refresh daily budget', 'settings.set');
 };
@@ -387,12 +390,21 @@ const runTabActivationSideEffects = (tabId: string) => {
   }
 };
 
+const discardBudgetAdjustOnLeave = (nextTabId: string) => {
+  if (nextTabId === 'budget') return;
+  const onBudget = panels.some(
+    (panel) => panel.dataset.panel === 'budget' && !panel.classList.contains('hidden'),
+  );
+  if (onBudget) discardBudgetAdjust();
+};
+
 export const showTab = (tabId: string) => {
   const activeTopLevelTab = (
     getCurrentSettingsUiVariant() === 'redesign' && REDESIGN_SETTINGS_SECTIONS.has(tabId)
   )
     ? 'settings'
     : tabId;
+  discardBudgetAdjustOnLeave(tabId);
   tabs.forEach((tab) => {
     const isActive = tab.dataset.tab === activeTopLevelTab;
     tab.classList.toggle('active', isActive);

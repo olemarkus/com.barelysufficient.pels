@@ -61,9 +61,9 @@ file.
 
 - [ ] Continue the Settings UI reorganization program from
       `notes/settings-ui-reorganization.md` as stacked reviewable PRs. The new-UI navigation shell
-      and initial Budget Plan/Adjust surface are in place; remaining work is the editable Budget
-      Adjust flow, Budget Review changes preview, Usage history cleanup, per-device price behavior
-      ownership, and final narrow-viewport polish. Preserve the
+      and Budget Plan/Adjust surface (editable controls + Apply/Discard preview comparison) are
+      in place; remaining work is Usage history cleanup, per-device price behavior ownership, and
+      final narrow-viewport polish. Preserve the
       ownership boundaries from that note: Overview for current state, Budget for daily planning
       and preview, Usage for history, and Settings as the navigation container for limits, devices,
       modes, price, simulation mode, and advanced diagnostics.
