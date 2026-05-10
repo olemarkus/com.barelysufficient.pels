@@ -1,6 +1,14 @@
-import { render } from 'preact';
+import { render, type ComponentChildren } from 'preact';
 import { useRef, useLayoutEffect } from 'preact/hooks';
-import { MdElevation } from './materialWebJSX.tsx';
+import {
+  MdElevation,
+  MdFilledButton,
+  MdFilledSelect,
+  MdFilledTextField,
+  MdSelectOption,
+  MdSwitch,
+  MdTextButton,
+} from './materialWebJSX.tsx';
 import {
   renderBudgetRedesignChart,
   clearBudgetRedesignChart,
@@ -10,6 +18,16 @@ import {
 import type { DailyBudgetDayPayload } from '../../../../contracts/src/dailyBudgetTypes.ts';
 import type { CostDisplay } from '../dailyBudgetCost.ts';
 import { formatKWh } from '../dailyBudgetFormat.ts';
+import {
+  MAX_DAILY_BUDGET_KWH,
+  MIN_DAILY_BUDGET_KWH,
+  PRICE_FLEX_HIGH,
+  PRICE_FLEX_LOW,
+  PRICE_FLEX_MEDIUM,
+  UNMANAGED_RESERVE_BALANCED_MODE,
+  UNMANAGED_RESERVE_CONSERVATIVE_MODE,
+} from '../../../../contracts/src/dailyBudgetConstants.ts';
+import type { BudgetAdjustDraft, BudgetAdjustStatus } from '../budgetAdjustController.ts';
 
 export type BudgetLocalView = 'plan' | 'adjust';
 export type BudgetStatus = 'noPlan' | 'within' | 'tight' | 'over';
@@ -40,12 +58,21 @@ export type BudgetChartData = {
   caveat: string | null;
 } | null;
 
+export type BudgetComparisonChart = {
+  payload: DailyBudgetDayPayload;
+  view: BudgetRedesignDayView;
+  costDisplay: CostDisplay;
+  dataMaxOverride?: number;
+};
+
 export type BudgetAdjustData = {
-  enabled: boolean;
-  dailyBudgetKWh: number;
-  priceShaping: boolean;
-  controlledWeight: number;
-  priceFlexShare: number;
+  draft: BudgetAdjustDraft;
+  active: BudgetAdjustDraft;
+  candidate: BudgetAdjustDraft | null;
+  activeChart: BudgetComparisonChart | null;
+  candidateChart: BudgetComparisonChart | null;
+  status: BudgetAdjustStatus;
+  busy: boolean;
   hardCapKw: number;
   safetyMarginKw: number;
 };
@@ -59,6 +86,10 @@ export type BudgetOverviewProps = {
   onLocalViewChange: (v: BudgetLocalView) => void;
   onDayChange: (v: BudgetRedesignDayView) => void;
   onChartModeChange: (v: BudgetRedesignChartMode) => void;
+  onAdjustFieldChange: (patch: Partial<BudgetAdjustDraft>) => void;
+  onPreview: () => void;
+  onApply: () => void;
+  onDiscard: () => void;
 };
 
 // ─── Toggle Group ─────────────────────────────────────────────────────────────
@@ -184,7 +215,9 @@ const EChartsCanvas = ({ chart }: { chart: NonNullable<BudgetChartData> }) => {
     });
   });
 
-  useLayoutEffect(() => () => { clearBudgetRedesignChart(); }, []);
+  useLayoutEffect(() => () => {
+    if (containerRef.current) clearBudgetRedesignChart(containerRef.current);
+  }, []);
 
   return <div id="budget-redesign-chart" class="budget-redesign-chart" ref={containerRef} />;
 };
@@ -215,7 +248,11 @@ const BudgetChartCard = ({
           onChange={onModeChange}
         />
       </div>
-      <ChartLegend view={chart.view} showProjection={chart.showProjection} showPrice={chart.showPrice} />
+      <ChartLegend
+        view={chart.view}
+        showProjection={chart.showProjection}
+        showPrice={chart.showPrice}
+      />
       <EChartsCanvas chart={chart} />
       {chart.caveat !== null && (
         <p class="pels-card-supporting budget-chart-caveat">{chart.caveat}</p>
@@ -226,44 +263,145 @@ const BudgetChartCard = ({
 
 // ─── Adjust View ──────────────────────────────────────────────────────────────
 
-const resolveReserveLabel = (controlledWeight: number): string => (
-  controlledWeight >= 0.5 ? 'Conservative reserve' : 'Balanced reserve'
+const reserveLabelFor = (controlledWeight: number): string => (
+  controlledWeight >= 0.5 ? 'Conservative' : 'Balanced'
 );
 
-const resolveFlexibilityLabel = (priceFlexShare: number): string => {
-  if (priceFlexShare <= 0.3) return 'Low flexibility';
-  if (priceFlexShare >= 0.85) return 'High flexibility';
-  return 'Medium flexibility';
+const flexibilityLabelFor = (priceFlexShare: number): string => {
+  if (priceFlexShare <= PRICE_FLEX_LOW) return 'Low';
+  if (priceFlexShare >= PRICE_FLEX_HIGH) return 'High';
+  return 'Medium';
 };
 
 const formatKw = (value: number): string => (
   Number.isFinite(value) ? `${value.toFixed(1)} kW` : '-- kW'
 );
 
-const SettingRow = ({
-  label,
-  hint,
-  value,
-}: {
-  label: string;
-  hint?: string;
-  value: string;
-}) => (
-  <div class="budget-setting-row">
-    <span>
-      <span class="budget-setting-row__label">{label}</span>
-      {hint && <small class="field__hint">{hint}</small>}
-    </span>
-    <span class="budget-setting-row__value">{value}</span>
-  </div>
+const onOff = (value: boolean): string => (value ? 'On' : 'Off');
+
+type ComparisonRow = { label: string; current: string; candidate: string };
+
+const computeComparison = (active: BudgetAdjustDraft, candidate: BudgetAdjustDraft): ComparisonRow[] => {
+  const rows: ComparisonRow[] = [];
+  if (active.enabled !== candidate.enabled) {
+    rows.push({ label: 'Enable daily budget', current: onOff(active.enabled), candidate: onOff(candidate.enabled) });
+  }
+  if (active.dailyBudgetKWh !== candidate.dailyBudgetKWh) {
+    rows.push({
+      label: 'Daily budget',
+      current: formatKWh(active.dailyBudgetKWh),
+      candidate: formatKWh(candidate.dailyBudgetKWh),
+    });
+  }
+  if (active.priceShaping !== candidate.priceShaping) {
+    rows.push({
+      label: 'Use cheaper hours',
+      current: onOff(active.priceShaping),
+      candidate: onOff(candidate.priceShaping),
+    });
+  }
+  if (active.controlledWeight !== candidate.controlledWeight) {
+    rows.push({
+      label: 'Background usage reserve',
+      current: reserveLabelFor(active.controlledWeight),
+      candidate: reserveLabelFor(candidate.controlledWeight),
+    });
+  }
+  if (active.priceFlexShare !== candidate.priceFlexShare) {
+    rows.push({
+      label: 'Managed device flexibility',
+      current: flexibilityLabelFor(active.priceFlexShare),
+      candidate: flexibilityLabelFor(candidate.priceFlexShare),
+    });
+  }
+  return rows;
+};
+
+const FieldHint = ({ children }: { children: ComponentChildren }) => (
+  <small class="field__hint">{children}</small>
 );
 
-const BudgetAdjustView = ({ adjust }: { adjust: BudgetAdjustData }) => {
-  const reserveLabel = resolveReserveLabel(adjust.controlledWeight);
-  const flexibilityLabel = resolveFlexibilityLabel(adjust.priceFlexShare);
+const ComparisonChart = ({
+  label,
+  chart,
+  testId,
+}: {
+  label: string;
+  chart: BudgetComparisonChart;
+  testId: string;
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    renderBudgetRedesignChart({
+      container,
+      payload: chart.payload,
+      mode: 'progress',
+      view: chart.view,
+      priceReliable: false,
+      costDisplay: chart.costDisplay,
+      dataMaxOverride: chart.dataMaxOverride,
+    });
+  });
+  useLayoutEffect(() => () => {
+    if (containerRef.current) clearBudgetRedesignChart(containerRef.current);
+  }, []);
+  return (
+    <div class="budget-comparison-chart">
+      <h4 class="budget-comparison-chart__title">{label}</h4>
+      <div class="budget-redesign-chart" data-testid={testId} ref={containerRef} />
+    </div>
+  );
+};
+
+const BudgetAdjustView = ({
+  adjust,
+  onAdjustFieldChange,
+  onPreview,
+  onApply,
+  onDiscard,
+}: {
+  adjust: BudgetAdjustData;
+  onAdjustFieldChange: (patch: Partial<BudgetAdjustDraft>) => void;
+  onPreview: () => void;
+  onApply: () => void;
+  onDiscard: () => void;
+}) => {
+  const { draft, active, candidate, activeChart, candidateChart, status, busy } = adjust;
   const reactionText = Number.isFinite(adjust.hardCapKw) && Number.isFinite(adjust.safetyMarginKw)
     ? `PELS reacts at ${Math.max(0, adjust.hardCapKw - adjust.safetyMarginKw).toFixed(1)} kW.`
     : 'PELS reacts before reaching the hard cap.';
+  const reserveValueText = `${reserveLabelFor(draft.controlledWeight)} reserve`;
+  const flexibilityValueText = `${flexibilityLabelFor(draft.priceFlexShare)} flexibility`;
+  const comparisonRows = candidate ? computeComparison(active, candidate) : [];
+
+  const onEnableChange = (event: Event) => {
+    const target = event.currentTarget as HTMLElement & { selected?: boolean };
+    onAdjustFieldChange({ enabled: Boolean(target.selected) });
+  };
+  const onPriceShapingChange = (event: Event) => {
+    const target = event.currentTarget as HTMLElement & { selected?: boolean };
+    onAdjustFieldChange({ priceShaping: Boolean(target.selected) });
+  };
+  const onKWhChange = (event: Event) => {
+    const target = event.currentTarget as HTMLElement & { value?: string };
+    const parsed = Number.parseFloat(target.value ?? '');
+    if (!Number.isFinite(parsed)) return;
+    onAdjustFieldChange({ dailyBudgetKWh: parsed });
+  };
+  const onReserveChange = (event: Event) => {
+    const target = event.currentTarget as HTMLElement & { value?: string };
+    const parsed = Number.parseFloat(target.value ?? '');
+    if (!Number.isFinite(parsed)) return;
+    onAdjustFieldChange({ controlledWeight: parsed });
+  };
+  const onFlexChange = (event: Event) => {
+    const target = event.currentTarget as HTMLElement & { value?: string };
+    const parsed = Number.parseFloat(target.value ?? '');
+    if (!Number.isFinite(parsed)) return;
+    onAdjustFieldChange({ priceFlexShare: parsed });
+  };
 
   return (
     <div id="budget-redesign-adjust-view" class="budget-redesign-view">
@@ -271,21 +409,50 @@ const BudgetAdjustView = ({ adjust }: { adjust: BudgetAdjustData }) => {
         <MdElevation aria-hidden="true" />
         <h3 class="plan-card__title">Daily energy</h3>
         <div class="budget-settings-list">
-          <SettingRow
-            label="Enable daily budget"
-            hint="Use a daily energy budget to shape the plan."
-            value={adjust.enabled ? 'On' : 'Off'}
-          />
-          <SettingRow
-            label="Daily budget"
-            hint="The selected day's energy plan."
-            value={formatKWh(adjust.dailyBudgetKWh)}
-          />
-          <SettingRow
-            label="Use cheaper hours"
-            hint="Shape managed usage toward cheaper hours when prices are usable."
-            value={adjust.priceShaping ? 'On' : 'Off'}
-          />
+          <div class="budget-setting-row budget-setting-row--editable">
+            <span>
+              <span class="budget-setting-row__label">Enable daily budget</span>
+              <FieldHint>Use a daily energy budget to shape the plan.</FieldHint>
+            </span>
+            <MdSwitch
+              id="budget-redesign-enabled"
+              aria-label="Enable daily budget"
+              {...(draft.enabled ? { selected: true } : {})}
+              onChange={onEnableChange}
+            />
+          </div>
+          <div class="budget-setting-row budget-setting-row--editable">
+            <span>
+              <span class="budget-setting-row__label">Daily budget</span>
+              <FieldHint>The selected day's energy plan.</FieldHint>
+            </span>
+            <MdFilledTextField
+              id="budget-redesign-kwh"
+              class="budget-redesign-field budget-redesign-field--kwh"
+              aria-label="Daily budget in kWh"
+              type="number"
+              suffixText="kWh"
+              min={MIN_DAILY_BUDGET_KWH}
+              max={MAX_DAILY_BUDGET_KWH}
+              step="0.1"
+              inputMode="decimal"
+              value={String(draft.dailyBudgetKWh)}
+              {...(draft.enabled ? {} : { disabled: true })}
+              onChange={onKWhChange}
+            />
+          </div>
+          <div class="budget-setting-row budget-setting-row--editable">
+            <span>
+              <span class="budget-setting-row__label">Use cheaper hours</span>
+              <FieldHint>Shape managed usage toward cheaper hours when prices are usable.</FieldHint>
+            </span>
+            <MdSwitch
+              id="budget-redesign-price-shaping"
+              aria-label="Use cheaper hours"
+              {...(draft.priceShaping ? { selected: true } : {})}
+              onChange={onPriceShapingChange}
+            />
+          </div>
         </div>
       </section>
 
@@ -293,23 +460,135 @@ const BudgetAdjustView = ({ adjust }: { adjust: BudgetAdjustData }) => {
         <summary class="budget-planning-behavior__summary">
           <span class="budget-planning-behavior__heading">
             <span class="plan-card__title">Planning behavior</span>
-            <small class="section-hint">{`${reserveLabel} · ${flexibilityLabel}`}</small>
+            <small class="section-hint">{`${reserveValueText} · ${flexibilityValueText}`}</small>
           </span>
         </summary>
         <MdElevation aria-hidden="true" />
         <div class="budget-settings-list">
-          <SettingRow
-            label="Background usage reserve"
-            hint="Daily budget held back for household usage PELS cannot move."
-            value={reserveLabel.replace(' reserve', '')}
-          />
-          <SettingRow
-            label="Managed device flexibility"
-            hint="How freely PELS may shift managed-device usage toward cheaper hours."
-            value={flexibilityLabel.replace(' flexibility', '')}
-          />
+          <div class="budget-setting-row budget-setting-row--editable">
+            <span>
+              <span class="budget-setting-row__label">Background usage reserve</span>
+              <FieldHint>Daily budget held back for household usage PELS cannot move.</FieldHint>
+            </span>
+            <MdFilledSelect
+              id="budget-redesign-controlled-weight"
+              class="budget-redesign-field budget-redesign-field--select"
+              aria-label="Background usage reserve"
+              value={String(draft.controlledWeight)}
+              onChange={onReserveChange}
+            >
+              <MdSelectOption value={String(UNMANAGED_RESERVE_BALANCED_MODE)}>
+                <div slot="headline">Balanced</div>
+              </MdSelectOption>
+              <MdSelectOption value={String(UNMANAGED_RESERVE_CONSERVATIVE_MODE)}>
+                <div slot="headline">Conservative</div>
+              </MdSelectOption>
+            </MdFilledSelect>
+          </div>
+          <div class="budget-setting-row budget-setting-row--editable">
+            <span>
+              <span class="budget-setting-row__label">Managed device flexibility</span>
+              <FieldHint>How freely PELS may shift managed-device usage toward cheaper hours.</FieldHint>
+            </span>
+            <MdFilledSelect
+              id="budget-redesign-price-flex-share"
+              class="budget-redesign-field budget-redesign-field--select"
+              aria-label="Managed device flexibility"
+              value={String(draft.priceFlexShare)}
+              onChange={onFlexChange}
+            >
+              <MdSelectOption value={String(PRICE_FLEX_LOW)}>
+                <div slot="headline">Low</div>
+              </MdSelectOption>
+              <MdSelectOption value={String(PRICE_FLEX_MEDIUM)}>
+                <div slot="headline">Medium</div>
+              </MdSelectOption>
+              <MdSelectOption value={String(PRICE_FLEX_HIGH)}>
+                <div slot="headline">High</div>
+              </MdSelectOption>
+            </MdFilledSelect>
+          </div>
         </div>
       </details>
+
+      {status === 'pending' && candidate && (
+        <section
+          id="budget-redesign-comparison"
+          class="pels-surface-card budget-redesign-card budget-redesign-comparison"
+        >
+          <MdElevation aria-hidden="true" />
+          <div class="budget-card-header">
+            <div>
+              <h3 class="plan-card__title">Compare with current</h3>
+              <p class="pels-card-supporting">
+                {comparisonRows.length === 0
+                  ? 'No setting differences — the candidate plan reflects fresh data only.'
+                  : 'Apply to switch to the candidate plan, or discard to keep current.'}
+              </p>
+            </div>
+          </div>
+          {comparisonRows.length > 0 && (
+            <div class="budget-settings-list budget-settings-list--compact">
+              {comparisonRows.map((row) => (
+                <div key={row.label} class="budget-setting-row budget-setting-row--comparison">
+                  <span class="budget-setting-row__label">{row.label}</span>
+                  <span class="budget-setting-row__value">
+                    <span class="budget-comparison__current">{row.current}</span>
+                    <span class="budget-comparison__arrow" aria-hidden="true">{'→'}</span>
+                    <span class="budget-comparison__candidate">{row.candidate}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          {activeChart && (
+            <ComparisonChart
+              label="Current plan"
+              chart={activeChart}
+              testId="budget-comparison-chart-current"
+            />
+          )}
+          {candidateChart && (
+            <ComparisonChart
+              label="Preview plan"
+              chart={candidateChart}
+              testId="budget-comparison-chart-preview"
+            />
+          )}
+        </section>
+      )}
+
+      {status !== 'clean' && (
+        <div class="budget-redesign-actions" role="group" aria-label="Daily budget actions">
+          {status === 'dirty' && (
+            <MdFilledButton
+              id="budget-redesign-preview"
+              {...(busy ? { disabled: true } : {})}
+              onClick={onPreview}
+            >
+              {busy ? 'Previewing…' : 'Preview changes'}
+            </MdFilledButton>
+          )}
+          {status === 'pending' && (
+            <>
+              <MdFilledButton
+                id="budget-redesign-apply"
+                {...(busy ? { disabled: true } : {})}
+                onClick={onApply}
+              >
+                {busy ? 'Applying…' : 'Apply changes'}
+              </MdFilledButton>
+              <MdTextButton
+                id="budget-redesign-discard"
+                {...(busy ? { disabled: true } : {})}
+                onClick={onDiscard}
+              >
+                Discard preview
+              </MdTextButton>
+            </>
+          )}
+        </div>
+      )}
 
       <section class="pels-surface-card budget-redesign-card">
         <MdElevation aria-hidden="true" />
@@ -348,6 +627,10 @@ const BudgetOverviewRoot = ({
   onLocalViewChange,
   onDayChange,
   onChartModeChange,
+  onAdjustFieldChange,
+  onPreview,
+  onApply,
+  onDiscard,
 }: BudgetOverviewProps) => (
   <div>
     <ToggleGroup
@@ -375,7 +658,15 @@ const BudgetOverviewRoot = ({
         <BudgetChartCard chart={chart} onModeChange={onChartModeChange} />
       </div>
     )}
-    {localView === 'adjust' && <BudgetAdjustView adjust={adjust} />}
+    {localView === 'adjust' && (
+      <BudgetAdjustView
+        adjust={adjust}
+        onAdjustFieldChange={onAdjustFieldChange}
+        onPreview={onPreview}
+        onApply={onApply}
+        onDiscard={onDiscard}
+      />
+    )}
   </div>
 );
 

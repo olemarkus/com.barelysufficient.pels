@@ -162,9 +162,8 @@ It answers:
 
 Recommended local Budget views:
 
-- `Plan`
-- `Adjust`
-- temporary `Review changes`
+- `Plan` (with candidate overlay while a preview is pending)
+- `Adjust` (hosts edits, comparison, and Apply/Discard)
 
 Price is not a Budget sub-page in the target navigation because price can be used without daily
 budget. Budget may still show price context when price affects the plan.
@@ -270,26 +269,25 @@ Expanded fields:
 - `Background usage reserve`
 - `Managed device flexibility`
 
-The full `Preview changes` / `Apply changes` / `Discard` workflow belongs to `Budget > Review
-Changes`. Do not show those actions in an unfinished new-UI Adjust surface.
+`Budget > Adjust` also owns the full `Preview changes` / `Apply changes` / `Discard preview`
+workflow. When the draft is dirty, an action row appears with `Preview changes`. After preview, a
+`Compare with current` card lists only the fields that differ (current → candidate) and `Apply
+changes` / `Discard preview` actions are surfaced in the same view. While a preview is pending,
+`Budget > Plan` overlays the candidate plan as a dashed `Candidate` series alongside the active
+`Plan` line on the chart.
 
 `Budget > Adjust` may show the current hard cap and safety margin when explaining the plan, but
 editing the global safety/source controls belongs in `Settings > Limits & safety`.
 
-### Budget > Review Changes
-
-Temporary view shown after `Preview changes`.
-
-Use:
-
-- `DailyBudgetModelPreviewResponse.active`
-- `DailyBudgetModelPreviewResponse.candidate`
+The earlier plan called for a separate `Budget > Review Changes` tab. That tab is no longer
+needed: the comparison and apply/discard actions live inside `Budget > Adjust` itself, and the
+candidate overlay on `Budget > Plan` covers the chart-comparison need without a temporary view.
 
 Use the Homey webview layout at 320-480px:
 
 - stacked layout
 - compact comparison table
-- one overlay chart
+- candidate overlay on the existing Plan chart
 - visible `Apply changes` and `Discard preview` actions
 
 Do not design the review flow around side-by-side cards. A wider browser can add breathing room,
@@ -560,11 +558,10 @@ Suggested sequence:
 2. Navigation shell: top-level `Overview`, `Budget`, `Usage`, `Settings`; Settings card/list.
 3. Settings sections: `Limits & safety`, `Devices`, `Modes`, `Electricity prices`,
    `Price-aware devices`, `Simulation mode`, `Advanced`.
-4. Budget `Plan` and `Adjust` views.
-5. Budget `Review changes` comparison flow.
-6. Usage history reorganization and data-management cleanup.
-7. Device detail ownership cleanup for per-device price behavior.
-8. Final responsive polish and Playwright visual checks.
+4. Budget `Plan` and `Adjust` views, with comparison + Apply/Discard inside `Adjust`.
+5. Usage history reorganization and data-management cleanup.
+6. Device detail ownership cleanup for per-device price behavior.
+7. Final responsive polish and Playwright visual checks.
 
 Each implementation PR should keep editable controls in their canonical owner and avoid
 temporarily duplicating settings across pages unless the duplicate is read-only summary context.

@@ -773,6 +773,38 @@
       : runtimeOverrides.dailyBudgetPayload
   );
 
+  // Build a candidate payload that visibly reflects the requested model
+  // settings: scale plannedKWh proportionally to the new daily budget so the
+  // comparison charts in the UI show a real difference, then update the per-day
+  // budget block. Other fields are left untouched.
+  const scaleBudgetPayload = (source, candidateSettings) => {
+    if (!source || !source.days) return source;
+    const oldBudget = Number(source.days[source.todayKey]?.budget?.dailyBudgetKWh ?? 0);
+    const newBudget = Number(candidateSettings.dailyBudgetKWh ?? oldBudget);
+    const ratio = oldBudget > 0 ? newBudget / oldBudget : 1;
+    const days = {};
+    for (const [key, day] of Object.entries(source.days)) {
+      const buckets = { ...day.buckets };
+      if (Array.isArray(buckets.plannedKWh)) {
+        buckets.plannedKWh = buckets.plannedKWh.map((v) => Number(((v ?? 0) * ratio).toFixed(3)));
+      }
+      if (Array.isArray(buckets.allowedCumKWh)) {
+        buckets.allowedCumKWh = buckets.allowedCumKWh.map((v) => Number(((v ?? 0) * ratio).toFixed(3)));
+      }
+      days[key] = {
+        ...day,
+        budget: {
+          ...day.budget,
+          enabled: Boolean(candidateSettings.enabled),
+          dailyBudgetKWh: newBudget,
+          priceShapingEnabled: Boolean(candidateSettings.priceShapingEnabled),
+        },
+        buckets,
+      };
+    }
+    return { ...source, days };
+  };
+
   const buildBootstrapSettings = () => ({
     capacity_limit_kw: settings.capacity_limit_kw,
     capacity_margin_kw: settings.capacity_margin_kw,
@@ -840,12 +872,45 @@
     'GET /ui_prices': () => buildPricesPayload(),
     'POST /settings_ui_log': () => ({ ok: true }),
     'POST /log_homey_device': () => ({ ok: true }),
+    'POST /ui_preview_daily_budget_model': (body) => {
+      const activePayload = resolveDailyBudgetPayload();
+      const candidateSettings = {
+        enabled: Boolean(body?.enabled),
+        dailyBudgetKWh: Number(body?.dailyBudgetKWh ?? settings.daily_budget_kwh ?? 0),
+        priceShapingEnabled: body?.priceShapingEnabled !== false,
+        controlledUsageWeight: Number(body?.controlledUsageWeight ?? settings.daily_budget_controlled_weight ?? 0),
+        priceShapingFlexShare: Number(body?.priceShapingFlexShare ?? settings.daily_budget_price_flex_share ?? 0),
+      };
+      const candidatePayload = scaleBudgetPayload(activePayload, candidateSettings);
+      return {
+        active: activePayload,
+        candidate: candidatePayload,
+        settings: candidateSettings,
+      };
+    },
+    'POST /ui_apply_daily_budget_model': (body) => {
+      if (body?.enabled !== undefined) settings.daily_budget_enabled = Boolean(body.enabled);
+      if (body?.dailyBudgetKWh !== undefined) settings.daily_budget_kwh = Number(body.dailyBudgetKWh);
+      if (body?.priceShapingEnabled !== undefined) {
+        settings.daily_budget_price_shaping_enabled = Boolean(body.priceShapingEnabled);
+      }
+      if (body?.controlledUsageWeight !== undefined) {
+        settings.daily_budget_controlled_weight = Number(body.controlledUsageWeight);
+      }
+      if (body?.priceShapingFlexShare !== undefined) {
+        settings.daily_budget_price_flex_share = Number(body.priceShapingFlexShare);
+      }
+      return resolveDailyBudgetPayload();
+    },
   };
 
   const api = (method, uri, bodyOrCallback, cbMaybe) => {
     let callback = cbMaybe;
+    let body;
     if (typeof bodyOrCallback === 'function') {
       callback = bodyOrCallback;
+    } else {
+      body = bodyOrCallback;
     }
 
     const key = `${String(method).toUpperCase()} ${uri}`;
@@ -859,7 +924,7 @@
           callback(new Error(`Homey stub: no handler for ${key}`));
           return;
         }
-        callback(null, handler());
+        callback(null, handler(body));
       } catch (err) {
         callback(err);
       }

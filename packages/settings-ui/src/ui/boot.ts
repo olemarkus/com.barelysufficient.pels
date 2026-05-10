@@ -64,6 +64,7 @@ import {
   loadDailyBudgetSettings,
   refreshDailyBudgetPlan,
 } from './dailyBudget.ts';
+import { loadBudgetAdjust } from './budgetAdjustController.ts';
 import {
   initDailyBudgetTuningHandlers,
   loadDailyBudgetTuningSettings,
@@ -304,6 +305,7 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
     loadCapacitySettings(),
     loadDailyBudgetSettings(),
     loadDailyBudgetTuningSettings(),
+    loadBudgetAdjust(),
     loadStaleDataStatus(),
     loadDeviceControlProfiles(),
     loadShedBehaviors(),
