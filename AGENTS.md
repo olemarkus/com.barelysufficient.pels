@@ -55,3 +55,12 @@ Do not put multi-word sentences in chips.
 ### Terms that stay internal (do not surface in normal UI)
 
 `shed`, `restore`, `headroom`, `shortfall`, `backoff`, `invariant`, `soft limit`, `controlled`, `uncontrolled`
+
+## Out-of-scope review topics
+
+Automated reviewers (Codex, Copilot, Gemini Code Assist) must not comment on:
+
+- ARIA attributes, roles, or landmarks
+- Screen-reader support and other assistive-technology-specific behaviors
+
+**Reason:** the user-facing UI runs only inside Homey's WebView, which does not expose accessibility APIs to assistive technologies. Comments targeting those APIs are not actionable here. Sighted-user concerns — semantic HTML element choice, color contrast, and keyboard navigation — remain in scope and welcome.
