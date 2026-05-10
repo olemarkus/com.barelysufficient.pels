@@ -3,6 +3,10 @@ import { testExports } from '../src/ui/deadlinePlan.ts';
 import type { SettingsUiBootstrap, SettingsUiPricesPayload } from '../../contracts/src/settingsUiApi.ts';
 import type { DailyBudgetUiPayload } from '../../contracts/src/dailyBudgetTypes.ts';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
+import type {
+  DeferredObjectiveActivePlanV1,
+  DeferredObjectiveActivePlansV1,
+} from '../../contracts/src/deferredObjectiveActivePlans.ts';
 
 const atLocalHour = (base: Date, hourOffset: number): Date => {
   const date = new Date(base);
@@ -10,9 +14,54 @@ const atLocalHour = (base: Date, hourOffset: number): Date => {
   return date;
 };
 
-const buildBootstrap = (settings: SettingsUiBootstrap['settings']): SettingsUiBootstrap => ({
+const buildActivePlans = (
+  plan: DeferredObjectiveActivePlanV1 | null,
+): DeferredObjectiveActivePlansV1 => ({
+  version: 1,
+  plansByDeviceId: plan ? { [plan.deviceId]: plan } : {},
+});
+
+const buildHeaterActivePlan = (params: {
+  now: Date;
+  deadline: Date;
+  plannedHourOffsets: number[]; // hour offsets from `now` where the device charges
+  plannedKWhPerHour: number;
+  targetTemperatureC?: number;
+}): DeferredObjectiveActivePlanV1 => {
+  const revisedAtMs = params.now.getTime();
+  const hours = params.plannedHourOffsets.map((offset) => ({
+    startsAtMs: atLocalHour(params.now, offset).getTime(),
+    plannedKWh: params.plannedKWhPerHour,
+  }));
+  const revision = {
+    revision: 1,
+    revisedAtMs,
+    computedFromPricesUpTo: params.deadline.getTime(),
+    reason: 'flow_card' as const,
+    hours,
+  };
+  return {
+    deviceId: 'heater',
+    deviceName: 'Connected 300',
+    objectiveKind: 'temperature',
+    targetTemperatureC: params.targetTemperatureC ?? 22,
+    targetPercent: null,
+    deadlineAtMs: params.deadline.getTime(),
+    startedAtMs: revisedAtMs,
+    pending: false,
+    objectiveSignature: 'sig',
+    original: revision,
+    latest: revision,
+  };
+};
+
+const buildBootstrap = (
+  settings: SettingsUiBootstrap['settings'],
+  activePlan: DeferredObjectiveActivePlanV1 | null = null,
+): SettingsUiBootstrap => ({
   settings,
   dailyBudget: null,
+  deferredObjectiveActivePlans: buildActivePlans(activePlan),
   featureAccess: { canToggleOverviewRedesign: true },
   plan: null,
   power: {
@@ -145,7 +194,14 @@ describe('deadline plan page payload', () => {
             },
           },
         },
-      }),
+      }, buildHeaterActivePlan({
+        now,
+        deadline,
+        // Cheap hour is at offset 5 in the prices fixture; runtime planner
+        // would have selected it.
+        plannedHourOffsets: [5],
+        plannedKWhPerHour: 4,
+      })),
       deviceId: 'heater',
       devices,
       prices,
@@ -208,7 +264,12 @@ describe('deadline plan page payload', () => {
             },
           },
         },
-      }),
+      }, buildHeaterActivePlan({
+        now,
+        deadline,
+        plannedHourOffsets: [0, 1],
+        plannedKWhPerHour: 2,
+      })),
       deviceId: 'heater',
       devices,
       prices,
@@ -260,7 +321,12 @@ describe('deadline plan page payload', () => {
             },
           },
         },
-      }),
+      }, buildHeaterActivePlan({
+        now,
+        deadline,
+        plannedHourOffsets: [0, 1],
+        plannedKWhPerHour: 2,
+      })),
       deviceId: 'heater',
       devices,
       prices,
@@ -269,6 +335,111 @@ describe('deadline plan page payload', () => {
 
     expect(payload?.timeline.hours).toHaveLength(6);
     expect(payload?.timeline.hours.some((hour) => hour.planned)).toBe(true);
+  });
+
+  it('returns a pending render input when an active plan is marked pending', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: { prices: [] },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const pendingPlan: DeferredObjectiveActivePlanV1 = {
+      ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
+      pending: true,
+      original: null,
+      latest: null,
+    };
+
+    const renderInput = testExports.resolveRenderInput({
+      bootstrap: buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: {
+          version: 1,
+          objectivesByDeviceId: {
+            heater: {
+              enabled: true,
+              kind: 'temperature',
+              enforcement: 'soft',
+              targetTemperatureC: 22,
+              deadlineLocalTime: `${String(deadline.getHours()).padStart(2, '0')}:00`,
+            },
+          },
+        },
+      }, pendingPlan),
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    });
+
+    expect(renderInput?.status).toBe('pending');
+    if (renderInput?.status !== 'pending') return;
+    expect(renderInput.pending.kind).toBe('temperature');
+    expect(renderInput.pending.hero.headline).toContain('Waiting');
+    expect(renderInput.pending.hero.subline).toContain('Connected 300');
+  });
+
+  it('returns a pending render input when no active plan record exists yet', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: { prices: [] },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const renderInput = testExports.resolveRenderInput({
+      bootstrap: buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: {
+          version: 1,
+          objectivesByDeviceId: {
+            heater: {
+              enabled: true,
+              kind: 'temperature',
+              enforcement: 'soft',
+              targetTemperatureC: 22,
+              deadlineLocalTime: `${String(deadline.getHours()).padStart(2, '0')}:00`,
+            },
+          },
+        },
+      }, null),
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    });
+
+    expect(renderInput?.status).toBe('pending');
   });
 
   it('does not let lower-priority managed load shrink priority 1 allocation', () => {
@@ -313,7 +484,12 @@ describe('deadline plan page payload', () => {
           },
         },
       },
-    });
+    }, buildHeaterActivePlan({
+      now,
+      deadline,
+      plannedHourOffsets: [0],
+      plannedKWhPerHour: 2,
+    }));
     bootstrap.dailyBudget = buildDailyBudget(now, {
       controlledKWh: 4,
       plannedKWh: 5,

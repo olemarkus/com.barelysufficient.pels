@@ -18,7 +18,10 @@ import { PriceLevel } from './lib/price/priceLevels';
 import { buildPeriodicStatusLogFields } from './lib/core/periodicStatus';
 import { getDeviceLoadSetting } from './lib/core/deviceLoad';
 import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
-import type { DeferredObjectivePlanHistoryRecorder } from './lib/plan/deferredObjectives';
+import type {
+  DeferredObjectiveActivePlanRecorder,
+  DeferredObjectivePlanHistoryRecorder,
+} from './lib/plan/deferredObjectives';
 import type {
   DailyBudgetModelPreviewResponse,
   DailyBudgetSettingsInput,
@@ -56,6 +59,7 @@ import {
 import { shouldSkipShortfallRebuildFromPlanSummary } from './lib/app/appPowerRebuildShortfallSuppression';
 import { PlanRebuildScheduler, type RebuildIntent } from './lib/app/planRebuildScheduler';
 import {
+  createDeferredObjectiveActivePlanRecorder,
   createDeferredObjectivePlanHistoryRecorder,
   createDeviceDiagnosticsService,
   createPlanEngine,
@@ -102,6 +106,9 @@ import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/sr
 import type {
   DeferredObjectivePlanHistoryEntry,
 } from './packages/contracts/src/deferredObjectivePlanHistory';
+import type {
+  DeferredObjectiveActivePlansV1,
+} from './packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   SettingsUiDeferredObjectivePlanHistoryPayload,
 } from './packages/contracts/src/settingsUiApi';
@@ -230,6 +237,8 @@ class PelsApp extends Homey.App {
   private debugLoggingTopics = new Set<DebugLoggingTopic>();
   private dailyBudgetService!: DailyBudgetService;
   private deferredObjectivePlanHistoryRecorder?: DeferredObjectivePlanHistoryRecorder;
+
+  private deferredObjectiveActivePlanRecorder?: DeferredObjectiveActivePlanRecorder;
   private deviceDiagnosticsService!: DeviceDiagnosticsService;
   private priceCoordinator!: PriceCoordinator;
   private deviceManager!: DeviceManager;
@@ -672,6 +681,8 @@ class PelsApp extends Homey.App {
       set dailyBudgetService(value) { appRef.dailyBudgetService = value; },
       get deferredObjectivePlanHistoryRecorder() { return app.deferredObjectivePlanHistoryRecorder; },
       set deferredObjectivePlanHistoryRecorder(value) { appRef.deferredObjectivePlanHistoryRecorder = value; },
+      get deferredObjectiveActivePlanRecorder() { return app.deferredObjectiveActivePlanRecorder; },
+      set deferredObjectiveActivePlanRecorder(value) { appRef.deferredObjectiveActivePlanRecorder = value; },
       get deviceDiagnosticsService() { return app.deviceDiagnosticsService; },
       set deviceDiagnosticsService(value) { appRef.deviceDiagnosticsService = value; },
       get priceCoordinator() { return app.priceCoordinator; },
@@ -869,6 +880,9 @@ class PelsApp extends Homey.App {
     if (!this.deferredObjectivePlanHistoryRecorder) {
       this.deferredObjectivePlanHistoryRecorder = createDeferredObjectivePlanHistoryRecorder(this.ctx);
     }
+    if (!this.deferredObjectiveActivePlanRecorder) {
+      this.deferredObjectiveActivePlanRecorder = createDeferredObjectiveActivePlanRecorder(this.ctx);
+    }
     this.planEngine = createPlanEngine(this.ctx);
     this.hydratePlanEngineControlState();
     this.planEngine.beginStartupRestoreStabilization(STARTUP_RESTORE_STABILIZATION_MS);
@@ -1004,6 +1018,7 @@ class PelsApp extends Homey.App {
     this.deviceDiagnosticsService?.destroy();
     // Persist any unflushed deferred-objective plan-history entries before shutting down.
     this.deferredObjectivePlanHistoryRecorder?.flushIfDirty();
+    this.deferredObjectiveActivePlanRecorder?.flushIfDirty();
     this.priceCoordinator.stop();
     this.deviceManager?.destroy();
   }
@@ -1532,6 +1547,9 @@ class PelsApp extends Homey.App {
   public getDeviceDiagnosticsUiPayload(): SettingsUiDeviceDiagnosticsPayload {
     return this.deviceDiagnosticsService?.getUiPayload?.()
       ?? { generatedAt: Date.now(), windowDays: 21, diagnosticsByDeviceId: {} };
+  }
+  public getDeferredObjectiveActivePlansUiPayload(): DeferredObjectiveActivePlansV1 | null {
+    return this.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null;
   }
   public getDeferredObjectivePlanHistoryUiPayload(): SettingsUiDeferredObjectivePlanHistoryPayload {
     const snapshot = this.deferredObjectivePlanHistoryRecorder?.getHistorySnapshot();

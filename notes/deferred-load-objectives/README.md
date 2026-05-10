@@ -111,6 +111,83 @@ and applied at the planner boundary in `PlanBuilder.buildPlanSnapshotWithTimings
 Cap-on, hard deadlines, mode override, hard-boost rebalancing, EV admission, and contention
 across multiple deferred objectives are still future work.
 
+### Active plan persistence and replan policy
+
+`lib/plan/deferredObjectives/activePlanRecorder.ts` stores the *current* deadline-plan
+allocation per device alongside the outcome history described below. Where the history
+recorder captures sealed outcomes (met/missed/abandoned), the active-plan recorder
+captures the plan that is *being executed right now* so the Settings UI and any
+downstream consumer reads a stable allocation rather than re-deriving one on every load.
+
+Persisted shape (`deferred_objective_active_plans` settings key, V1):
+
+```ts
+type ActivePlan = {
+  deviceId: string;
+  deviceName: string | null;
+  objectiveKind: 'temperature' | 'ev_soc';
+  targetTemperatureC: number | null;
+  targetPercent: number | null;
+  deadlineAtMs: number;
+  startedAtMs: number;
+  pending: boolean;            // flow card fired, prices not yet available
+  objectiveSignature: string;  // hash of (kind, targets, deadline, enforcement)
+  original: Revision | null;   // first non-pending revision
+  latest:   Revision | null;   // current revision (== original until replanned)
+};
+
+type Revision = {
+  revision: number;
+  revisedAtMs: number;
+  computedFromPricesUpTo: number | null;
+  reason: 'flow_card' | 'prices_arrived' | 'objective_changed'
+        | 'prices_revised' | 'device_unavailable' | 'measured_deviation';
+  hours: { startsAtMs: number; plannedKWh: number }[];
+};
+```
+
+The recorder is fed two events: `markPending` (called from the
+`set_temperature_deadline` / `set_ev_charge_deadline` flow cards) and `observe` (called
+once per plan cycle with the diagnostic stream, alongside the history recorder).
+
+#### Replan policy
+
+The recorder treats the per-cycle horizon plan as advisory and only writes a new
+revision on these triggers:
+
+1. **`flow_card`** — A deadline flow card fires. If prices for the horizon are already
+   available, the next plan cycle stamps `original` + `latest`. Otherwise the record is
+   created with `pending: true` until the next trigger fires.
+2. **`prices_arrived`** — `pending` flips to false because the planner produced its
+   first horizon plan. Stamps `original` + `latest`.
+3. **`objective_changed`** — The objective signature (kind, target value, deadline
+   timestamp, enforcement) differs from the stored signature, mid-flight. Replaces
+   `latest`; `original` is preserved unless the deadline timestamp itself changed.
+4. **`prices_revised`** — The hour signature of the planner's allocation differs from
+   the stored `latest.hours` while the objective signature is unchanged. (The most
+   common cause is Nordpool publishing a revised series that shifts which hours are
+   cheapest.) Replaces `latest`.
+5. **`device_unavailable`** — The diagnostic stops appearing for an extended period
+   while the deadline is still in the future. Tracked for future use; today the
+   recorder simply drops the record once a diagnostic disappears, matching the
+   history recorder's abandon path.
+6. **`measured_deviation`** — Reserved for the future per-device metering work. Not
+   yet emitted.
+
+A normal plan cycle whose output happens to match the stored `latest.hours` does **not**
+mutate the record. This is what makes the plan stable: the runtime can re-evaluate every
+cycle, but only listed triggers produce a new revision.
+
+Records are dropped automatically when:
+- The deadline passes (the history recorder records the outcome from its own observation).
+- The diagnostic stops appearing for the device (objective was disabled, device removed,
+  evaluator dropped to unknown indefinitely).
+
+The Settings UI bootstrap (`SettingsUiBootstrap.deferredObjectiveActivePlans`) reads the
+recorder snapshot directly rather than re-allocating from prices on every page load. The
+deadline-plan page renders a *pending* hero state when `pending: true` and a *ready* hero
+plus chart when `latest` is populated.
+
 ### Plan history capture
 
 `lib/plan/deferredObjectives/planHistory.ts` runs alongside the diagnostics evaluator to

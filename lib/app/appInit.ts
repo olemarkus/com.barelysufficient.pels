@@ -9,12 +9,15 @@ import type { FlowHomeyLike, TargetDeviceSnapshot } from '../utils/types';
 import { DeviceDiagnosticsService, type DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { AppContext } from './appContext';
 import {
+  DeferredObjectiveActivePlanRecorder,
   DeferredObjectivePlanHistoryRecorder,
+  normalizeDeferredObjectiveActivePlans,
   normalizeDeferredObjectivePlanHistory,
   normalizeDeferredObjectiveSettings,
 } from '../plan/deferredObjectives';
 import {
   DEFERRED_OBJECTIVES_SETTINGS,
+  DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
   DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING,
 } from '../utils/settingsKeys';
 
@@ -49,6 +52,33 @@ function requireDeferredObjectivePlanHistoryRecorder(
     throw new Error('DeferredObjectivePlanHistoryRecorder must be initialized before plan engine setup.');
   }
   return ctx.deferredObjectivePlanHistoryRecorder;
+}
+
+export function createDeferredObjectiveActivePlanRecorder(
+  ctx: AppContext,
+): DeferredObjectiveActivePlanRecorder {
+  return new DeferredObjectiveActivePlanRecorder({
+    load: () => normalizeDeferredObjectiveActivePlans(
+      ctx.homey.settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING),
+    ),
+    save: (next) => {
+      try {
+        ctx.homey.settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING, next);
+      } catch (error) {
+        ctx.error('Failed to persist deferred-objective active plans', error);
+      }
+    },
+    debugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
+  });
+}
+
+function requireDeferredObjectiveActivePlanRecorder(
+  ctx: AppContext,
+): DeferredObjectiveActivePlanRecorder {
+  if (!ctx.deferredObjectiveActivePlanRecorder) {
+    throw new Error('DeferredObjectiveActivePlanRecorder must be initialized before plan engine setup.');
+  }
+  return ctx.deferredObjectiveActivePlanRecorder;
 }
 
 function requirePlanEngine(ctx: AppContext) {
@@ -131,6 +161,11 @@ export function createPlanEngine(ctx: AppContext) {
       recorder.observe(diagnostics, nowMs);
       recorder.flushIfDirty();
     },
+    observeDeferredObjectiveActivePlans: (diagnostics, nowMs) => {
+      const recorder = requireDeferredObjectiveActivePlanRecorder(ctx);
+      recorder.observe(diagnostics, nowMs);
+      recorder.flushIfDirty();
+    },
     getDeferredObjectiveStatusBus: () => ctx.deferredObjectiveStatusBus,
     log: (...args: unknown[]) => ctx.log(...args),
     logDebug: (...args: unknown[]) => ctx.logDebug('plan', ...args),
@@ -198,6 +233,16 @@ export function registerAppFlowCards(ctx: AppContext): void {
       ctx.homey.settings.set(DEFERRED_OBJECTIVES_SETTINGS, next);
     },
     getDeferredObjectiveStatusBus: () => ctx.deferredObjectiveStatusBus,
+    markDeferredObjectiveActivePlanPending: (seed, nowMs) => {
+      const recorder = requireDeferredObjectiveActivePlanRecorder(ctx);
+      recorder.markPending(seed, nowMs);
+      recorder.flushIfDirty();
+    },
+    clearDeferredObjectiveActivePlan: (deviceId) => {
+      const recorder = requireDeferredObjectiveActivePlanRecorder(ctx);
+      recorder.clearForDevice(deviceId);
+      recorder.flushIfDirty();
+    },
     evaluateHeadroomForDevice: (params) => ctx.evaluateHeadroomForDevice(params),
     loadDailyBudgetSettings: () => requireDailyBudgetService(ctx).loadSettings(),
     updateDailyBudgetState: (options) => ctx.updateDailyBudgetState(options),

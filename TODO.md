@@ -140,50 +140,33 @@ file.
 
 ## P1 Deadline plan persistence and history view
 
-The deadline-plan settings page currently re-runs `allocateChargeHours`
-(`packages/settings-ui/src/ui/deadlinePlanData.ts`) on every page load to derive the per-hour
-allocation from `deferred_objectives` settings. The intended runtime behaviour — *create a
-plan once when the flow card triggers (or when prices arrive for a pending horizon), stick to
-that plan until something forces a replan* — is not yet built. Past-plan outcomes are already
-captured by `lib/plan/deferredObjectives/planHistory.ts` (rolling 30-entry settings cap +
-GET /ui_deferred_objective_history endpoint, surfaced in the History tab); the *current*
-plan still has no persisted allocation snapshot.
+The first slice of this work has shipped: the runtime now persists the active
+deadline-plan allocation (`lib/plan/deferredObjectives/activePlanRecorder.ts`)
+to `deferred_objective_active_plans`, the Settings UI bootstrap exposes it,
+and the deadline-plan page renders a *pending* hero state until the planner
+has computed an allocation. The replan policy is documented in
+`notes/deferred-load-objectives/README.md`.
 
-- [ ] Persist the active deadline-plan allocation (not just the outcome record).
-      Snapshot per device, keyed by deadline, including: `revisedAtMs`,
-      `computedFromPricesUpTo`, `revision` index, and the per-hour allocation
-      (`startsAtMs`, `plannedKwh`). Capture both at flow-card trigger time
-      (`set_temperature_deadline` / `set_ev_charge_deadline`) and when prices arrive for a
-      previously pending plan. Survive app restart.
-      Open question: extend `DeviceObjectiveProfile` in
-      `packages/contracts/src/objectiveProfileTypes.ts` (same lifecycle as confidence stats),
-      add a sibling `deferred_objective_active_plans` settings key, or extend the existing
-      `deferred_objective_plan_history` schema with an `active` slot.
-      Files: `lib/plan/deferredObjectives/**`, `packages/contracts/src/**`, planner persistence
-      tests.
-- [ ] Define the replan policy. List of conditions that force a new revision (objective
-      settings changed mid-flight, prices for a pending horizon arrive, prices revised, device
-      becomes unavailable for an extended period, large measured-vs-planned deviation). Any
-      change outside that list must NOT recompute the plan. Document the list in
-      `notes/deferred-load-objectives/README.md`.
-      Files: `lib/plan/deferredObjectives/**`, runtime tests for each replan trigger.
-- [ ] Stop fresh-allocating in the settings page adapter; read the persisted plan instead.
-      `buildObjectivePayload` in `packages/settings-ui/src/ui/deadlinePlan.ts` should pull the
-      latest revision from the bootstrap payload rather than calling `allocateChargeHours`. Keep
-      `allocateChargeHours` only inside the runtime planner that produces the persisted plan.
-      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`,
-      `packages/settings-ui/src/ui/deadlinePlanData.ts`,
-      `packages/contracts/src/settingsUiApi.ts`, settings UI tests.
-- [ ] Render a "pending until prices arrive" hero state when no allocation has been computed
-      yet (flow card triggered but tomorrow's prices not yet known). Distinct from the
-      `Deadline plan unavailable` error state: this is a normal waiting state, not a failure.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/src/ui/deadlinePlan.ts`, e2e coverage.
-- [ ] Drop the past-hour filter in the deadline-plan adapter
-      (`packages/settings-ui/src/ui/deadlinePlanData.ts:109` — `endMs > nowMs`). For an active
-      objective, include hours from the first revision's start through the deadline so the
-      chart can show history.
-      Files: `packages/settings-ui/src/ui/deadlinePlanData.ts`, e2e coverage.
+- [x] Persist the active deadline-plan allocation (settings key
+      `deferred_objective_active_plans`, schema V1 in
+      `packages/contracts/src/deferredObjectiveActivePlans.ts`). Captured at
+      flow-card trigger and on the next plan cycle when prices arrive.
+      Survives app restart via the recorder's `load`/`save` deps.
+- [x] Define the replan policy. Six trigger reasons (`flow_card`,
+      `prices_arrived`, `objective_changed`, `prices_revised`,
+      `device_unavailable`, `measured_deviation`); any cycle that produces an
+      identical allocation does not mutate `latest`. Documented in
+      `notes/deferred-load-objectives/README.md`. `device_unavailable` and
+      `measured_deviation` are reserved for the metering follow-up below.
+- [x] UI adapter (`packages/settings-ui/src/ui/deadlinePlan.ts`) reads the
+      persisted plan from the bootstrap and no longer runs its own greedy
+      allocator. UI's `allocateChargeHours` was removed; runtime is the source
+      of truth.
+- [x] Pending hero state in `DeadlinePlan.tsx` (distinct from the error
+      state). Copy is sourced from `packages/shared-domain/src/deadlineLabels.ts`.
+- [x] Past-hour filter dropped — `collectHorizonHours` now takes a
+      `windowStartMs` so an active plan's hours-from-revision-start are
+      retained for the chart.
 - [ ] Render *original plan vs final/current plan* on the chart. Original allocation as
       outlined `Heating` / `Charging` bars; current revision as filled. Distinct visual on hours
       that changed between revisions. Add a "Now" divider so past and future are visually

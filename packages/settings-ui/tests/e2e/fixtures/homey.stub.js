@@ -805,6 +805,53 @@
     return { ...source, days };
   };
 
+  const buildSampleActivePlans = () => {
+    const objective = settings.deferred_objectives?.objectivesByDeviceId?.dev_connected300;
+    if (!objective?.enabled) return { version: 1, plansByDeviceId: {} };
+    const nowMs = Date.now();
+    const startsAtMs = startOfUtcHourMs(new Date(nowMs));
+    const deadline = new Date(nowMs);
+    const [hh, mm] = String(objective.deadlineLocalTime ?? '').split(':');
+    if (hh && mm) {
+      deadline.setHours(Number(hh), Number(mm), 0, 0);
+      if (deadline.getTime() <= nowMs) deadline.setDate(deadline.getDate() + 1);
+    }
+    const deadlineAtMs = deadline.getTime();
+    // Pick the first 6 cheap-or-neutral hours within the horizon as planned hours.
+    const hourMs = 3600 * 1000;
+    const totalHoursAvailable = Math.max(1, Math.floor((deadlineAtMs - startsAtMs) / hourMs));
+    const plannedHourCount = Math.min(6, totalHoursAvailable);
+    const hours = [];
+    for (let i = 0; i < plannedHourCount; i += 1) {
+      hours.push({ startsAtMs: startsAtMs + i * hourMs, plannedKWh: 2 });
+    }
+    const revision = {
+      revision: 1,
+      revisedAtMs: nowMs,
+      computedFromPricesUpTo: deadlineAtMs,
+      reason: 'flow_card',
+      hours,
+    };
+    return {
+      version: 1,
+      plansByDeviceId: {
+        dev_connected300: {
+          deviceId: 'dev_connected300',
+          deviceName: 'Connected 300',
+          objectiveKind: objective.kind ?? 'temperature',
+          targetTemperatureC: typeof objective.targetTemperatureC === 'number' ? objective.targetTemperatureC : null,
+          targetPercent: typeof objective.targetPercent === 'number' ? objective.targetPercent : null,
+          deadlineAtMs,
+          startedAtMs: nowMs,
+          pending: false,
+          objectiveSignature: 'stub',
+          original: revision,
+          latest: revision,
+        },
+      },
+    };
+  };
+
   const buildBootstrapSettings = () => ({
     capacity_limit_kw: settings.capacity_limit_kw,
     capacity_margin_kw: settings.capacity_margin_kw,
@@ -856,6 +903,7 @@
     'GET /ui_bootstrap': () => ({
       settings: buildBootstrapSettings(),
       dailyBudget: resolveDailyBudgetPayload(),
+      deferredObjectiveActivePlans: buildSampleActivePlans(),
       featureAccess: initialOverrides.featureAccess ?? { canToggleOverviewRedesign: true },
       devices: settings.target_devices_snapshot,
       plan: settings.plan_snapshot,
