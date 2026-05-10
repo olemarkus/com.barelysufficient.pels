@@ -138,6 +138,69 @@ file.
       Files: `lib/core/nativeSteppedLoadWiring.ts`, `lib/core/deviceManagerNativeEv.ts`,
       target-power/EV stepped-load tests.
 
+## P1 Deadline plan persistence and history view
+
+The deadline-plan settings page currently re-runs `allocateChargeHours`
+(`packages/settings-ui/src/ui/deadlinePlanData.ts`) on every page load to derive the per-hour
+allocation from `deferred_objectives` settings. The intended runtime behaviour — *create a
+plan once when the flow card triggers (or when prices arrive for a pending horizon), stick to
+that plan until something forces a replan* — is not yet built. Past-plan outcomes are already
+captured by `lib/plan/deferredObjectives/planHistory.ts` (rolling 30-entry settings cap +
+GET /ui_deferred_objective_history endpoint, surfaced in the History tab); the *current*
+plan still has no persisted allocation snapshot.
+
+- [ ] Persist the active deadline-plan allocation (not just the outcome record).
+      Snapshot per device, keyed by deadline, including: `revisedAtMs`,
+      `computedFromPricesUpTo`, `revision` index, and the per-hour allocation
+      (`startsAtMs`, `plannedKwh`). Capture both at flow-card trigger time
+      (`set_temperature_deadline` / `set_ev_charge_deadline`) and when prices arrive for a
+      previously pending plan. Survive app restart.
+      Open question: extend `DeviceObjectiveProfile` in
+      `packages/contracts/src/objectiveProfileTypes.ts` (same lifecycle as confidence stats),
+      add a sibling `deferred_objective_active_plans` settings key, or extend the existing
+      `deferred_objective_plan_history` schema with an `active` slot.
+      Files: `lib/plan/deferredObjectives/**`, `packages/contracts/src/**`, planner persistence
+      tests.
+- [ ] Define the replan policy. List of conditions that force a new revision (objective
+      settings changed mid-flight, prices for a pending horizon arrive, prices revised, device
+      becomes unavailable for an extended period, large measured-vs-planned deviation). Any
+      change outside that list must NOT recompute the plan. Document the list in
+      `notes/deferred-load-objectives/README.md`.
+      Files: `lib/plan/deferredObjectives/**`, runtime tests for each replan trigger.
+- [ ] Stop fresh-allocating in the settings page adapter; read the persisted plan instead.
+      `buildObjectivePayload` in `packages/settings-ui/src/ui/deadlinePlan.ts` should pull the
+      latest revision from the bootstrap payload rather than calling `allocateChargeHours`. Keep
+      `allocateChargeHours` only inside the runtime planner that produces the persisted plan.
+      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`,
+      `packages/settings-ui/src/ui/deadlinePlanData.ts`,
+      `packages/contracts/src/settingsUiApi.ts`, settings UI tests.
+- [ ] Render a "pending until prices arrive" hero state when no allocation has been computed
+      yet (flow card triggered but tomorrow's prices not yet known). Distinct from the
+      `Deadline plan unavailable` error state: this is a normal waiting state, not a failure.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts`, e2e coverage.
+- [ ] Drop the past-hour filter in the deadline-plan adapter
+      (`packages/settings-ui/src/ui/deadlinePlanData.ts:109` — `endMs > nowMs`). For an active
+      objective, include hours from the first revision's start through the deadline so the
+      chart can show history.
+      Files: `packages/settings-ui/src/ui/deadlinePlanData.ts`, e2e coverage.
+- [ ] Render *original plan vs final/current plan* on the chart. Original allocation as
+      outlined `Heating` / `Charging` bars; current revision as filled. Distinct visual on hours
+      that changed between revisions. Add a "Now" divider so past and future are visually
+      distinguishable.
+      Open question: a single revision history (`original`, `latest`) is enough to ship this
+      view; a full timeline (`original`, `revision-1`, ..., `latest`) is more accurate but
+      heavier to render. Start with two-revision unless the runtime needs more for other
+      reasons.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`, ECharts series wiring,
+      e2e + screenshot coverage.
+- [ ] Per-device per-hour actuals overlay (deferred). `dailyBudget.buckets.actualKWh` is
+      aggregate across background and all controlled devices, so we cannot reliably show
+      *this device's* measured kWh per hour without device-level energy logging or a
+      subtraction estimate. Skip this layer until device metering exists; the
+      original-vs-current view is meaningful on its own.
+      Files: future device-level energy tracker; deadline plan chart series.
+
 ## P1 Type-safety and state-boundary follow-ups
 
 - [ ] Add missing swap lifecycle coverage from the pre-release review. Cover completed stepped

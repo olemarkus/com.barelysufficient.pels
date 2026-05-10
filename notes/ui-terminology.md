@@ -157,6 +157,22 @@ Chips are one or two words. Reason lines are short sentences. Never put a full s
 | startup stabilization | Waiting after startup |
 | shed invariant | Blocked by safety rule |
 
+## Deadline plan vocabulary
+
+The deadline-plan surface (the per-device plan view that schedules charging or heating to a deadline) speaks the device's domain language. Source of truth: `packages/shared-domain/src/deadlineLabels.ts`.
+
+| Concept | Temperature device | EV-SoC device |
+|---|---|---|
+| Kind chip | `Temperature` | `EV` |
+| Active state chip | `Heating` | `Charging` |
+| Waiting-state chip | `Heat queued` | `Charge queued` |
+| Device load series (legend) | `Heating` | `Charging` |
+| Background load series | `Background usage` | `Background usage` |
+| Plan-active tooltip word | `Heat` | `Charge` |
+| Target unit | `°C` | `%` |
+
+Rule: a temperature device must never render the words *charge*, *charging*, or *EV* in user-facing text. Pull every label from `deadlineLabels(kind)` rather than hardcoding strings.
+
 ## Settings labels worth updating
 
 Only update these when the screen is already being touched — don't rename for its own sake.

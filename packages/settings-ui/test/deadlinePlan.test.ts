@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { testExports } from '../src/ui/deadlinePlanMockup.ts';
+import { testExports } from '../src/ui/deadlinePlan.ts';
 import type { SettingsUiBootstrap, SettingsUiPricesPayload } from '../../contracts/src/settingsUiApi.ts';
 import type { DailyBudgetUiPayload } from '../../contracts/src/dailyBudgetTypes.ts';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
@@ -152,14 +152,18 @@ describe('deadline plan page payload', () => {
       nowMs: now.getTime(),
     });
 
-    expect(payload?.hero.sectionLabel).toBe('Connected 300');
+    expect(payload?.kind).toBe('temperature');
+    expect(payload?.hero.sectionLabel).toBe('Temperature plan');
+    expect(payload?.hero.subline).toContain('Connected 300');
+    expect(payload?.hero.subline).toContain('22 °C');
+    const chipTexts = payload?.hero.chips.map((chip) => chip.text) ?? [];
+    expect(new Set(chipTexts).size).toBe(chipTexts.length);
+    expect(chipTexts).not.toContain('Charging');
     expect(payload?.timeline.hours).toHaveLength(6);
-    expect(payload?.timeline.priceCeiling).toBe('104.00');
-    expect(payload?.timeline.plannedLoadCeiling).toBe('8.0 kWh');
     const hours = payload?.timeline.hours ?? [];
-    expect(hours[hours.length - 1]?.time).toBe(String(deadline.getHours() - 1).padStart(2, '0'));
-    expect(payload?.timeline.hours.some((hour) => hour.plan === 'Charge')).toBe(true);
-    expect(payload?.timeline.hours.some((hour) => hour.plan === 'Charge' && hour.price === '10.00')).toBe(true);
+    expect(hours[hours.length - 1]?.time).toBe(`${String(deadline.getHours() - 1).padStart(2, '0')}:00`);
+    expect(payload?.timeline.hours.some((hour) => hour.planned)).toBe(true);
+    expect(payload?.timeline.hours.some((hour) => hour.planned && hour.price === '10.00')).toBe(true);
   });
 
   it('uses the learned objective sample when live temperature is missing', () => {
@@ -211,8 +215,8 @@ describe('deadline plan page payload', () => {
       nowMs: now.getTime(),
     });
 
-    expect(payload?.hero.subline).toContain('Needs 4.0 kWh');
-    expect(payload?.timeline.hours.some((hour) => hour.plan === 'Charge')).toBe(true);
+    expect(payload?.hero.metaLine).toContain('Needs 4.0 kWh');
+    expect(payload?.timeline.hours.some((hour) => hour.planned)).toBe(true);
   });
 
   it('accepts legacy combined prices stored as a plain array', () => {
@@ -264,7 +268,7 @@ describe('deadline plan page payload', () => {
     });
 
     expect(payload?.timeline.hours).toHaveLength(6);
-    expect(payload?.timeline.hours.some((hour) => hour.plan === 'Charge')).toBe(true);
+    expect(payload?.timeline.hours.some((hour) => hour.planned)).toBe(true);
   });
 
   it('does not let lower-priority managed load shrink priority 1 allocation', () => {
@@ -324,7 +328,7 @@ describe('deadline plan page payload', () => {
       nowMs: now.getTime(),
     });
 
-    expect(payload?.timeline.hours[0]?.usage?.otherKwh).toBe(1);
-    expect(payload?.timeline.hours[0]?.usage?.chargerKwh).toBe(2);
+    expect(payload?.timeline.hours[0]?.usage.backgroundKwh).toBe(1);
+    expect(payload?.timeline.hours[0]?.usage.deviceKwh).toBe(2);
   });
 });

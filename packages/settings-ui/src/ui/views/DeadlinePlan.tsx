@@ -1,5 +1,7 @@
 import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/deferredObjectiveSettings.ts';
+import type { DeadlineLabels } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
 import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 import { DeadlinePlanHistory } from './DeadlinePlanHistory.tsx';
@@ -17,47 +19,44 @@ type DeadlinePlanHour = {
   price: string;
   priceValue: number;
   tone: DeadlinePlanHourTone;
-  plan?: 'Charge' | 'Fallback';
-  usage?: {
-    otherKwh: number;
-    chargerKwh: number;
-    hardCapKwh: number;
+  planned: boolean;
+  usage: {
+    backgroundKwh: number;
+    deviceKwh: number;
   };
-  progress?: number;
+  progress: number;
 };
 
-export type DeadlinePlanMockupPayload = {
+export type DeadlinePlanPayload = {
+  kind: DeferredObjectiveSettingsKind;
+  labels: DeadlineLabels;
   hero: {
     chips: DeadlinePlanChip[];
     sectionLabel: string;
     headline: string;
     subline: string;
-    decision: string;
+    metaLine: string;
   };
   timeline: {
-    subtitle: string;
     ariaLabel: string;
-    priceCeiling: string;
-    plannedLoadCeiling: string;
-    progressCeiling: string;
     progressFloor: number;
     progressCeilingValue: number;
-    progressUnit: '%' | '°C';
+    progressCeilingLabel: string;
+    deadlineLabel: string;
     hours: DeadlinePlanHour[];
-    explainer: string;
   };
 };
 
 export type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 
-export type DeadlinePlanMockupLoadState =
+export type DeadlinePlanLoadState =
   | { status: 'error'; message: string; history?: DeadlinePlanHistoryView }
   | { status: 'loading'; history?: DeadlinePlanHistoryView }
-  | { status: 'ready'; payload: DeadlinePlanMockupPayload; history?: DeadlinePlanHistoryView };
+  | { status: 'ready'; payload: DeadlinePlanPayload; history?: DeadlinePlanHistoryView };
 
 const chipClass = (tone: DeadlinePlanChipTone): string => `plan-chip plan-chip--${tone}`;
 
-const DeadlineHero = ({ payload }: { payload: DeadlinePlanMockupPayload }) => (
+const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
   <section class="plan-hero" data-tone="ok" aria-labelledby="deadline-plan-title">
     <div class="plan-hero__chips">
       {payload.hero.chips.map((chip) => (
@@ -68,7 +67,7 @@ const DeadlineHero = ({ payload }: { payload: DeadlinePlanMockupPayload }) => (
       <span class="plan-hero__section-label" id="deadline-plan-title">{payload.hero.sectionLabel}</span>
       <div class="plan-hero__headline">{payload.hero.headline}</div>
       <div class="plan-hero__subline">{payload.hero.subline}</div>
-      <p class="plan-hero__decision" data-positive>{payload.hero.decision}</p>
+      <div class="plan-hero__subline plan-hero__subline--muted">{payload.hero.metaLine}</div>
     </div>
   </section>
 );
@@ -77,10 +76,8 @@ type DeadlineChartPalette = {
   priceCheap: string;
   priceNormal: string;
   priceExpensive: string;
-  otherLoad: string;
-  charger: string;
-  charging: string;
-  fallback: string;
+  background: string;
+  device: string;
   progress: string;
   grid: string;
   text: string;
@@ -90,26 +87,45 @@ type DeadlineChartPalette = {
   tooltipBorder: string;
 };
 
-const resolveCssColor = (element: HTMLElement, variable: string, fallback: string): string => {
-  const raw = getComputedStyle(element).getPropertyValue(variable).trim();
-  return raw || fallback;
+// `fallback` is consulted only when the computed value is empty (token missing
+// or renamed). Tokens are committed alongside this code, so this is defense in
+// depth rather than a normal code path.
+const cssVar = (element: HTMLElement, variable: string, fallback = ''): string => (
+  getComputedStyle(element).getPropertyValue(variable).trim() || fallback
+);
+
+const cssNumber = (element: HTMLElement, variable: string, fallback: number): number => {
+  const raw = cssVar(element, variable);
+  if (!raw) return fallback;
+  const parsed = Number.parseFloat(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
 };
 
 const resolvePalette = (element: HTMLElement): DeadlineChartPalette => ({
-  priceCheap: resolveCssColor(element, '--color-base-accent-default', '#10b981'),
-  priceNormal: resolveCssColor(element, '--color-surface-5', '#6b7785'),
-  priceExpensive: resolveCssColor(element, '--color-base-warning-default', '#f59e0b'),
-  otherLoad: resolveCssColor(element, '--pels-text-supporting-color', '#8c98a4'),
-  charger: resolveCssColor(element, '--color-base-accent-default', '#10b981'),
-  charging: resolveCssColor(element, '--color-base-accent-default', '#10b981'),
-  fallback: resolveCssColor(element, '--color-base-info-default', '#38bdf8'),
-  progress: resolveCssColor(element, '--color-base-info-default', '#38bdf8'),
-  grid: resolveCssColor(element, '--pels-surface-outline', 'rgba(255,255,255,0.18)'),
-  text: resolveCssColor(element, '--text', '#e6ecf5'),
-  muted: resolveCssColor(element, '--pels-text-supporting-color', '#9aa8b6'),
-  tooltipBackground: resolveCssColor(element, '--color-overlay-toast', 'rgba(12, 17, 27, 0.92)'),
-  tooltipText: resolveCssColor(element, '--color-semantic-text-primary', '#e6ecf5'),
-  tooltipBorder: resolveCssColor(element, '--color-border-medium', 'rgba(255, 255, 255, 0.15)'),
+  priceCheap: cssVar(element, '--pels-status-good-border'),
+  priceNormal: cssVar(element, '--pels-surface-container-high'),
+  priceExpensive: cssVar(element, '--color-base-warning-default'),
+  background: cssVar(element, '--pels-text-supporting-color'),
+  device: cssVar(element, '--color-base-accent-default'),
+  progress: cssVar(element, '--color-base-info-default'),
+  grid: cssVar(element, '--pels-surface-outline'),
+  text: cssVar(element, '--text'),
+  muted: cssVar(element, '--pels-text-supporting-color'),
+  tooltipBackground: cssVar(element, '--color-overlay-toast'),
+  tooltipText: cssVar(element, '--color-semantic-text-primary'),
+  tooltipBorder: cssVar(element, '--color-border-medium'),
+});
+
+type ChartTypography = {
+  labelFontSize: number;
+  axisNameFontSize: number;
+  axisNameFontWeight: number;
+};
+
+const resolveTypography = (element: HTMLElement): ChartTypography => ({
+  labelFontSize: cssNumber(element, '--font-size-xs', 11),
+  axisNameFontSize: cssNumber(element, '--font-size-xs', 11),
+  axisNameFontWeight: cssNumber(element, '--font-weight-bold', 700),
 });
 
 const resolveChartSize = (element: HTMLElement): { height: number; width: number } => {
@@ -117,54 +133,57 @@ const resolveChartSize = (element: HTMLElement): { height: number; width: number
   const viewportWidth = document.documentElement?.clientWidth ?? 0;
   return {
     width: width > 0 ? width : Math.min(480, viewportWidth || 390),
-    height: element.clientHeight > 0 ? element.clientHeight : 282,
+    height: element.clientHeight > 0 ? element.clientHeight : 220,
   };
 };
 
-const buildTooltip = (payload: DeadlinePlanMockupPayload, rawParams: unknown): string => {
+const formatProgressValue = (value: number, unit: DeadlineLabels['targetUnit']): string => (
+  unit === '°C' ? `${value.toFixed(1)} °C` : `${Math.round(value)}%`
+);
+
+const buildTooltip = (payload: DeadlinePlanPayload, rawParams: unknown): string => {
   const params = Array.isArray(rawParams) ? rawParams : [rawParams];
   const first = params.find((item): item is { dataIndex: number } => (
     Boolean(item) && typeof item === 'object' && Number.isInteger((item as { dataIndex?: unknown }).dataIndex)
   ));
   const hour = first ? payload.timeline.hours[first.dataIndex] : null;
   if (!hour) return '';
-  const usage = hour.usage ?? { otherKwh: 0, chargerKwh: 0, hardCapKwh: 0 };
+  const labels = payload.labels;
+  const planLabel = hour.planned ? labels.planTooltipActive : labels.planTooltipIdle;
   return [
     `<strong>${encodeHtml(hour.time)}</strong>`,
     `Price ${encodeHtml(hour.price)}`,
-    `Other load ${usage.otherKwh.toFixed(1)} kWh`,
-    `This device ${usage.chargerKwh.toFixed(1)} kWh`,
-    `Plan ${encodeHtml(hour.plan ?? 'Idle')}`,
-    `Progress ${formatProgressValue(hour.progress ?? 0, payload.timeline.progressUnit)}`,
+    `${encodeHtml(labels.backgroundSeriesName)} ${hour.usage.backgroundKwh.toFixed(1)} kWh`,
+    `${encodeHtml(labels.deviceSeriesName)} ${hour.usage.deviceKwh.toFixed(1)} kWh`,
+    `Plan ${encodeHtml(planLabel)}`,
+    `Progress ${formatProgressValue(hour.progress, labels.targetUnit)}`,
   ].join('<br>');
 };
 
-const formatProgressValue = (value: number, unit: DeadlinePlanMockupPayload['timeline']['progressUnit']): string => (
-  unit === '°C' ? `${value.toFixed(1)} °C` : `${Math.round(value)}%`
-);
+// Two-grid ECharts layout inside a 220 px container. Top: price, Bottom: load + progress overlay.
+const PRICE_GRID_TOP = 28;
+const PRICE_GRID_HEIGHT = 56;
+const LOAD_GRID_TOP = 110;
+const LOAD_GRID_HEIGHT = 84;
+const GRID_LEFT = 36;
+const GRID_RIGHT = 56;
 
 const buildChartOption = (
-  payload: DeadlinePlanMockupPayload,
+  payload: DeadlinePlanPayload,
   palette: DeadlineChartPalette,
+  typography: ChartTypography,
 ): EChartsOption => {
   const hourCount = payload.timeline.hours.length;
   const labels = payload.timeline.hours.map((hour) => hour.time);
   const showLabelEvery = hourCount > 10 ? 3 : 2;
-  const hardCapKwh = Math.max(1, ...payload.timeline.hours.map((hour) => hour.usage?.hardCapKwh ?? 0));
   const priceMax = Math.max(1, ...payload.timeline.hours.map((hour) => hour.priceValue));
   const priceMin = Math.min(...payload.timeline.hours.map((hour) => hour.priceValue));
   const priceRange = priceMax - priceMin;
   const priceAxisMin = priceRange > 0.01 ? priceMin : 0;
-  const hasFallback = payload.timeline.hours.some((hour) => hour.plan === 'Fallback');
-  const legendData = [
-    'Other load',
-    'This device',
-    'Charging',
-    ...(hasFallback ? ['Fallback'] : []),
-  ];
-  const showCeilingLabel = (ceiling: number, label: string) => (value: number) => (
-    Math.abs(value - ceiling) < 0.001 ? label : ''
-  );
+  const stackedMax = Math.max(0.5, ...payload.timeline.hours.map((hour) => (
+    hour.usage.backgroundKwh + hour.usage.deviceKwh
+  )));
+
   const axisBase = {
     type: 'category' as const,
     data: labels,
@@ -173,9 +192,13 @@ const buildChartOption = (
     axisLine: { lineStyle: { color: palette.grid } },
     axisLabel: {
       color: palette.muted,
-      fontSize: 10,
+      fontSize: typography.labelFontSize,
       interval: (index: number) => index === 0 || index === hourCount - 1 || index % showLabelEvery === 0,
-      formatter: (value: string, index: number) => (index === 0 ? `Now\n${value}` : value),
+      formatter: (value: string, index: number) => {
+        if (index === 0) return `Now\n${value}`;
+        if (index === hourCount - 1) return `${payload.timeline.deadlineLabel}\n${value}`;
+        return value;
+      },
     },
   };
   const valueAxisBase = {
@@ -183,29 +206,43 @@ const buildChartOption = (
     splitLine: { lineStyle: { color: palette.grid, opacity: 0.55 } },
     axisLine: { show: false },
     axisTick: { show: false },
-    axisLabel: { color: palette.text, fontSize: 10 },
+    axisLabel: { color: palette.text, fontSize: typography.labelFontSize },
+  };
+  const axisNameStyle = {
+    color: palette.text,
+    fontSize: typography.axisNameFontSize,
+    fontWeight: typography.axisNameFontWeight,
+    align: 'center' as const,
+  };
+  const showCeilingOnly = (max: number, label: string) => (value: number) => (
+    Math.abs(value - max) < 0.001 ? label : ''
+  );
+  const nowMarkLine = {
+    silent: true,
+    symbol: 'none' as const,
+    lineStyle: { color: palette.muted, type: 'dashed' as const, width: 1 },
+    label: { show: false },
+    data: [{ xAxis: 0 }],
   };
 
   return {
     animation: false,
     backgroundColor: 'transparent',
-    color: [palette.otherLoad, palette.charger, palette.charging, palette.progress],
+    color: [palette.background, palette.device, palette.progress],
     textStyle: { color: palette.text, fontFamily: 'inherit' },
     legend: {
       top: 0,
       left: 0,
-      data: legendData,
+      data: [payload.labels.backgroundSeriesName, payload.labels.deviceSeriesName, 'Target progress'],
       itemWidth: 12,
       itemHeight: 8,
       icon: 'roundRect',
-      textStyle: { color: palette.muted, fontSize: 11 },
+      textStyle: { color: palette.muted, fontSize: typography.labelFontSize },
       inactiveColor: palette.grid,
     },
     grid: [
-      { top: 32, left: 8, right: 82, height: 48 },
-      { top: 96, left: 8, right: 82, height: 54 },
-      { top: 169, left: 8, right: 82, height: 26 },
-      { top: 212, left: 8, right: 82, height: 50 },
+      { top: PRICE_GRID_TOP, left: GRID_LEFT, right: GRID_RIGHT, height: PRICE_GRID_HEIGHT },
+      { top: LOAD_GRID_TOP, left: GRID_LEFT, right: GRID_RIGHT, height: LOAD_GRID_HEIGHT },
     ],
     tooltip: {
       trigger: 'axis',
@@ -218,9 +255,7 @@ const buildChartOption = (
     },
     xAxis: [
       { ...axisBase, gridIndex: 0, axisLabel: { show: false } },
-      { ...axisBase, gridIndex: 1, axisLabel: { show: false } },
-      { ...axisBase, gridIndex: 2, axisLabel: { show: false } },
-      { ...axisBase, gridIndex: 3 },
+      { ...axisBase, gridIndex: 1 },
     ],
     yAxis: [
       {
@@ -229,16 +264,16 @@ const buildChartOption = (
         position: 'right',
         name: 'Price',
         nameLocation: 'middle',
-        nameGap: 52,
+        nameGap: GRID_RIGHT - 12,
         nameRotate: 0,
-        nameTextStyle: { color: palette.text, fontSize: 11, fontWeight: 700, align: 'center', lineHeight: 14 },
+        nameTextStyle: axisNameStyle,
         min: priceAxisMin,
         max: priceMax,
         interval: Math.max(1, priceMax - priceAxisMin),
         axisLabel: {
           ...valueAxisBase.axisLabel,
           formatter: (value: number) => {
-            if (Math.abs(value - priceMax) < 0.001) return payload.timeline.priceCeiling;
+            if (Math.abs(value - priceMax) < 0.001) return priceMax.toFixed(2);
             if (priceAxisMin !== 0 && Math.abs(value - priceAxisMin) < 0.001) return priceMin.toFixed(2);
             return '';
           },
@@ -248,48 +283,36 @@ const buildChartOption = (
         ...valueAxisBase,
         gridIndex: 1,
         position: 'right',
-        name: 'Planned\nload',
+        name: 'kWh',
         nameLocation: 'middle',
-        nameGap: 52,
+        nameGap: GRID_RIGHT - 12,
         nameRotate: 0,
-        nameTextStyle: { color: palette.text, fontSize: 11, fontWeight: 700, align: 'center', lineHeight: 14 },
+        nameTextStyle: axisNameStyle,
         min: 0,
-        max: hardCapKwh,
-        interval: hardCapKwh,
+        max: stackedMax,
+        interval: stackedMax,
         axisLabel: {
           ...valueAxisBase.axisLabel,
-          formatter: showCeilingLabel(hardCapKwh, payload.timeline.plannedLoadCeiling),
+          formatter: showCeilingOnly(stackedMax, stackedMax.toFixed(1)),
         },
       },
       {
         ...valueAxisBase,
-        gridIndex: 2,
-        position: 'right',
-        name: 'Charging\nplan',
+        gridIndex: 1,
+        position: 'left',
+        name: payload.labels.targetUnit,
         nameLocation: 'middle',
-        nameGap: 52,
+        nameGap: GRID_LEFT - 12,
         nameRotate: 0,
-        nameTextStyle: { color: palette.text, fontSize: 11, fontWeight: 700, align: 'center', lineHeight: 14 },
-        min: 0,
-        max: 1,
-        splitLine: { show: false },
-        axisLabel: { show: false },
-      },
-      {
-        ...valueAxisBase,
-        gridIndex: 3,
-        position: 'right',
-        name: 'Target\nprogress',
-        nameLocation: 'middle',
-        nameGap: 52,
-        nameRotate: 0,
-        nameTextStyle: { color: palette.text, fontSize: 11, fontWeight: 700, align: 'center', lineHeight: 14 },
+        nameTextStyle: { ...axisNameStyle, color: palette.progress },
         min: payload.timeline.progressFloor,
         max: payload.timeline.progressCeilingValue,
         interval: Math.max(1, payload.timeline.progressCeilingValue - payload.timeline.progressFloor),
+        splitLine: { show: false },
         axisLabel: {
           ...valueAxisBase.axisLabel,
-          formatter: showCeilingLabel(payload.timeline.progressCeilingValue, payload.timeline.progressCeiling),
+          color: palette.progress,
+          formatter: showCeilingOnly(payload.timeline.progressCeilingValue, payload.timeline.progressCeilingLabel),
         },
       },
     ],
@@ -301,6 +324,7 @@ const buildChartOption = (
         yAxisIndex: 0,
         barMaxWidth: 18,
         barMinHeight: 3,
+        markLine: nowMarkLine,
         data: payload.timeline.hours.map((hour) => ({
           value: hour.priceValue,
           itemStyle: {
@@ -314,64 +338,48 @@ const buildChartOption = (
         })),
       },
       {
-        name: 'Other load',
+        name: payload.labels.backgroundSeriesName,
         type: 'bar',
         stack: 'load',
         xAxisIndex: 1,
         yAxisIndex: 1,
         barMaxWidth: 18,
-        data: payload.timeline.hours.map((hour) => hour.usage?.otherKwh ?? 0),
-        itemStyle: { color: palette.otherLoad, borderRadius: [0, 0, 0, 0] },
+        markLine: nowMarkLine,
+        data: payload.timeline.hours.map((hour) => hour.usage.backgroundKwh),
+        itemStyle: { color: palette.background, borderRadius: [0, 0, 0, 0] },
       },
       {
-        name: 'This device',
+        name: payload.labels.deviceSeriesName,
         type: 'bar',
         stack: 'load',
         xAxisIndex: 1,
         yAxisIndex: 1,
         barMaxWidth: 18,
-        data: payload.timeline.hours.map((hour) => hour.usage?.chargerKwh ?? 0),
-        itemStyle: { color: palette.charger, borderRadius: [0, 0, 0, 0] },
+        data: payload.timeline.hours.map((hour) => ({
+          value: hour.usage.deviceKwh,
+          itemStyle: {
+            color: palette.device,
+            opacity: hour.planned ? 1 : 0.45,
+            borderRadius: [3, 3, 0, 0],
+          },
+        })),
       },
-      {
-        name: 'Charging',
-        type: 'bar',
-        xAxisIndex: 2,
-        yAxisIndex: 2,
-        barMaxWidth: 20,
-        data: payload.timeline.hours.map((hour) => (hour.plan === 'Charge' ? 1 : 0)),
-        itemStyle: { color: palette.charging, borderRadius: [5, 5, 5, 5] },
-      },
-      ...(hasFallback ? [{
-        name: 'Fallback',
-        type: 'bar',
-        xAxisIndex: 2,
-        yAxisIndex: 2,
-        barMaxWidth: 20,
-        data: payload.timeline.hours.map((hour) => (hour.plan === 'Fallback' ? 1 : 0)),
-        itemStyle: {
-          color: 'transparent',
-          borderColor: palette.fallback,
-          borderWidth: 1.5,
-          borderType: 'dashed',
-          borderRadius: [5, 5, 5, 5],
-        },
-      }] satisfies SeriesOption[] : []),
       {
         name: 'Target progress',
         type: 'line',
         step: 'end',
-        xAxisIndex: 3,
-        yAxisIndex: 3,
+        xAxisIndex: 1,
+        yAxisIndex: 2,
         symbol: 'none',
         lineStyle: { color: palette.progress, width: 2 },
-        data: payload.timeline.hours.map((hour) => hour.progress ?? 0),
+        areaStyle: { color: palette.progress, opacity: 0.12 },
+        data: payload.timeline.hours.map((hour) => hour.progress),
       },
     ] satisfies SeriesOption[],
   };
 };
 
-const HorizonChart = ({ payload }: { payload: DeadlinePlanMockupPayload }) => {
+const HorizonChart = ({ payload }: { payload: DeadlinePlanPayload }) => {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<EChartsType | null>(null);
 
@@ -383,7 +391,10 @@ const HorizonChart = ({ payload }: { payload: DeadlinePlanMockupPayload }) => {
       ...resolveChartSize(container),
     });
     chartInstanceRef.current = chart;
-    chart.setOption(buildChartOption(payload, resolvePalette(container)), { notMerge: true });
+    chart.setOption(
+      buildChartOption(payload, resolvePalette(container), resolveTypography(container)),
+      { notMerge: true },
+    );
 
     const resizeObserver = typeof ResizeObserver === 'function'
       ? new ResizeObserver(() => chart.resize(resolveChartSize(container)))
@@ -400,18 +411,12 @@ const HorizonChart = ({ payload }: { payload: DeadlinePlanMockupPayload }) => {
   return <div ref={chartRef} class="deadline-horizon-chart" role="img" aria-label={payload.timeline.ariaLabel} />;
 };
 
-const HorizonCard = ({ payload }: { payload: DeadlinePlanMockupPayload }) => (
+const HorizonCard = ({ payload }: { payload: DeadlinePlanPayload }) => (
   <section class="pels-surface-card budget-redesign-card deadline-horizon-card" aria-labelledby="deadline-horizon-title">
     <div class="budget-card-header">
-      <div>
-        <h2 class="plan-card__title" id="deadline-horizon-title">Known-price horizon</h2>
-        <p class="pels-card-supporting">{payload.timeline.subtitle}</p>
-      </div>
+      <h2 class="plan-card__title" id="deadline-horizon-title">Price horizon</h2>
     </div>
-
     <HorizonChart payload={payload} />
-
-    <p class="pels-card-supporting budget-chart-caveat">{payload.timeline.explainer}</p>
   </section>
 );
 
@@ -445,7 +450,7 @@ const PlanTabStrip = ({ active, onChange }: {
   </div>
 );
 
-const CurrentPlanContent = ({ loadState }: { loadState: DeadlinePlanMockupLoadState }) => {
+const CurrentPlanContent = ({ loadState }: { loadState: DeadlinePlanLoadState }) => {
   if (loadState.status === 'loading') {
     return (
       <section class="pels-surface-card budget-redesign-card">
@@ -470,7 +475,7 @@ const CurrentPlanContent = ({ loadState }: { loadState: DeadlinePlanMockupLoadSt
   );
 };
 
-const DeadlinePlanMockupRoot = ({ loadState }: { loadState: DeadlinePlanMockupLoadState }) => {
+const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) => {
   const [activeTab, setActiveTab] = useState<DeadlinePlanTab>('current');
   const history = loadState.history;
   return (
@@ -488,9 +493,9 @@ const DeadlinePlanMockupRoot = ({ loadState }: { loadState: DeadlinePlanMockupLo
   );
 };
 
-export const renderDeadlinePlanMockup = (
+export const renderDeadlinePlan = (
   surface: HTMLElement,
-  loadState: DeadlinePlanMockupLoadState,
+  loadState: DeadlinePlanLoadState,
 ): void => {
-  render(<DeadlinePlanMockupRoot loadState={loadState} />, surface);
+  render(<DeadlinePlanRoot loadState={loadState} />, surface);
 };

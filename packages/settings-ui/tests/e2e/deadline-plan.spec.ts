@@ -1,9 +1,7 @@
 import { expect, test, type Page } from './fixtures/test';
 
-const openMockup = async (page: Page, scenario?: string) => {
-  const suffix = scenario ? `?scenario=${scenario}` : '';
-  const joiner = suffix ? `${suffix}&` : '?';
-  await page.goto(`/deadline-plan.html${joiner}deviceId=dev_connected300`, { waitUntil: 'domcontentloaded' });
+const openDeadlinePlan = async (page: Page) => {
+  await page.goto('/deadline-plan.html?deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('.plan-hero__headline')).toBeVisible();
 };
 
@@ -24,7 +22,7 @@ const expectNoPageOverflow = async (page: Page) => {
   ).toBeLessThanOrEqual(overflow.cardRight + 1);
 };
 
-test.describe('Deadline plan mockup', () => {
+test.describe('Deadline plan', () => {
   test('installs the Homey ready hook before loading homey.js', async ({ request }) => {
     const response = await request.get('/deadline-plan.html');
     expect(response.ok()).toBeTruthy();
@@ -37,41 +35,37 @@ test.describe('Deadline plan mockup', () => {
     expect(readyHookIndex).toBeLessThan(homeyScriptIndex);
   });
 
-  test('shows the EV deadline plan layers at mobile width', async ({ page }) => {
+  test('renders the temperature deadline plan at mobile width', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 780 });
-    await openMockup(page);
+    await openDeadlinePlan(page);
 
-    await expect(page.getByText(/Target 65\.0 °C/)).toBeVisible();
-    await expect(page.getByText('Known-price horizon')).toBeVisible();
-    await expect(page.getByLabel(/Deadline plan/).getByText('Planned', { exact: true })).toBeVisible();
-    await expect(page.getByLabel(/Deadline plan/).getByText('Charging', { exact: true }).first()).toBeVisible();
-    await expect(page.getByText('Other load', { exact: true })).toBeVisible();
-    await expect(page.getByText('This device', { exact: true })).toBeVisible();
+    await expect(page.locator('.plan-hero__section-label')).toHaveText(/Temperature plan/);
+    await expect(page.locator('.plan-hero__subline').first()).toContainText('Connected 300');
+    await expect(page.locator('.plan-hero__subline').first()).toContainText('°C');
+    await expect(page.getByText('Price horizon', { exact: true })).toBeVisible();
+    await expect(page.getByLabel(/Deadline plan/).getByText('Heating', { exact: true })).toBeVisible();
+    await expect(page.getByLabel(/Deadline plan/).getByText('Background usage', { exact: true })).toBeVisible();
+    await expect(page.getByLabel(/Deadline plan/).getByText('Charging', { exact: true })).toHaveCount(0);
     await expect(page.locator('.deadline-horizon-chart svg')).toBeVisible();
     await expectNoPageOverflow(page);
   });
 
-  test('keeps the mockup contained at 480px', async ({ page }) => {
+  test('keeps the surface contained at 480px', async ({ page }) => {
     await page.setViewportSize({ width: 480, height: 900 });
-    await openMockup(page);
+    await openDeadlinePlan(page);
 
     await expect(page.getByLabel(/Deadline plan/)).toBeVisible();
-    await expect(page.getByText('Fallback hours', { exact: true })).toHaveCount(0);
-    await expect(page.getByText('What the plan assumes', { exact: true })).toHaveCount(0);
     await expectNoPageOverflow(page);
   });
 
-  test('renders the priority 1 capacity-off scenario from mocked Homey state', async ({ page }) => {
+  test('shows the temperature kind chip and confidence chip without duplicates', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 860 });
-    await openMockup(page, 'priority1-cap-off');
+    await openDeadlinePlan(page);
 
     await expect(page.locator('.plan-chip', { hasText: 'Temperature' })).toBeVisible();
     await expect(page.locator('.plan-chip', { hasText: 'Confidence high' })).toBeVisible();
-    await expect(page.getByText(/Known prices until/)).toBeVisible();
-    await expect(page.getByText(/This view stops at the deadline/)).toBeVisible();
-    await expect(page.getByLabel(/Deadline plan/).getByText(/kWh/).first()).toBeVisible();
-    await expect(page.locator('.deadline-horizon-chart svg')).toBeVisible();
-    await expectNoPageOverflow(page);
+    const chipTexts = await page.locator('.plan-chip').allTextContents();
+    expect(new Set(chipTexts).size).toBe(chipTexts.length);
   });
 
   test('falls back to bootstrap prices when the refresh price call fails', async ({ page }) => {
@@ -85,13 +79,13 @@ test.describe('Deadline plan mockup', () => {
       };
     });
     await page.setViewportSize({ width: 390, height: 860 });
-    await openMockup(page, 'priority1-cap-off');
+    await openDeadlinePlan(page);
 
-    await expect(page.getByText('Known-price horizon')).toBeVisible();
+    await expect(page.getByText('Price horizon', { exact: true })).toBeVisible();
     await expect(page.locator('.deadline-horizon-chart svg')).toBeVisible();
   });
 
-  test('shows the controlled error state when the device has no objective', async ({ page }) => {
+  test('shows the error state when the device has no objective', async ({ page }) => {
     await page.addInitScript(() => {
       (window as typeof window & { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {
         settings: {
