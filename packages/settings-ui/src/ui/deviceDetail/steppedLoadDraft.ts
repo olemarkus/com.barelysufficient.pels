@@ -135,18 +135,23 @@ export const updateSetStepOptionLabel = (
   const setStepOption = getSetStepOption();
   if (!setStepOption) return;
 
+  const previousLabel = setStepOption.textContent;
+
   if (!device || !isSteppedLoadControlModel(device)) {
     setStepOption.textContent = DEFAULT_SET_STEP_OPTION_LABEL;
-    return;
+  } else {
+    const profile = profileOverride
+      ?? currentSteppedLoadDraft
+      ?? resolveSavedSteppedLoadProfile(device);
+    const lowestActiveStepId = profile ? getSteppedLoadLowestActiveStep(profile)?.id : null;
+    setStepOption.textContent = lowestActiveStepId
+      ? `Set to step "${lowestActiveStepId}"`
+      : DEFAULT_SET_STEP_OPTION_LABEL;
   }
 
-  const profile = profileOverride
-    ?? currentSteppedLoadDraft
-    ?? resolveSavedSteppedLoadProfile(device);
-  const lowestActiveStepId = profile ? getSteppedLoadLowestActiveStep(profile)?.id : null;
-  setStepOption.textContent = lowestActiveStepId
-    ? `Set to step "${lowestActiveStepId}"`
-    : DEFAULT_SET_STEP_OPTION_LABEL;
+  if (previousLabel !== setStepOption.textContent) {
+    deviceDetailShedAction?.dispatchEvent(new Event('pels:segmented-refresh'));
+  }
 };
 
 export const renderSteppedLoadDraft = (device: TargetDeviceSnapshot) => {
