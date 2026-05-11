@@ -51,9 +51,9 @@ const getCapacityTitle = (params: {
 }): string => {
   const { isLoadingComplete, supportsPower, isManaged } = params;
   if (!isLoadingComplete) return 'Loading...';
-  if (!supportsPower) return 'Capacity-based control (requires power measurement or configured load)';
-  if (isManaged) return 'Capacity-based control';
-  return 'Capacity-based control (requires Managed by PELS)';
+  if (!supportsPower) return 'Power-limit control (requires power measurement or configured load)';
+  if (isManaged) return 'Power-limit control';
+  return 'Power-limit control (requires Managed by PELS)';
 };
 
 const getPriceTitle = (params: {
