@@ -30,8 +30,8 @@ import { buildDeadlineHref } from '../deadlineUrls.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
 import type { DeviceReason } from '../../../../shared-domain/src/planReasonSemanticsCore.ts';
 
-const hasDeadlineObjective = (deviceId: string): boolean => (
-  Boolean(state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId])
+const hasActiveDeadlineObjective = (deviceId: string): boolean => (
+  Boolean(state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId]?.enabled)
 );
 
 const stopActivation = (event: Event): void => {
@@ -59,7 +59,7 @@ const handleChipKeyUp = (event: KeyboardEvent): void => {
 };
 
 export const DeadlineChip = ({ deviceId }: { deviceId: string }) => {
-  if (!hasDeadlineObjective(deviceId)) return null;
+  if (!hasActiveDeadlineObjective(deviceId)) return null;
   return (
     <a
       class="plan-chip plan-chip--info plan-chip--link"
