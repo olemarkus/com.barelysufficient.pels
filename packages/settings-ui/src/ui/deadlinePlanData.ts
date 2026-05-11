@@ -81,6 +81,12 @@ const getDailyBudgetDayByBucket = (
 // Per-bucket "other controlled" is unknowable without per-device hourly
 // forecasts, and PELS does not model shed-and-admit reshuffling between
 // controlled devices at the daily-budget layer.
+//
+// Legacy daily-budget snapshots that predate the controlled/uncontrolled
+// split only have `plannedKWh` (which mixes both). We fall back to that so
+// the chart still renders something rather than collapsing the bar to zero;
+// the series may slightly over-state background load on such legacy
+// snapshots until they roll over.
 const resolvePlannedOtherKWh = (
   dailyBudget: DailyBudgetUiPayload | null,
   startMs: number,

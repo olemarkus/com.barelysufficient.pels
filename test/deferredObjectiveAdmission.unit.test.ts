@@ -90,8 +90,8 @@ describe('applyDeferredObjectiveAdmission', () => {
     expect(decisions.get('dev1')).toEqual({ kind: 'inactive' });
   });
 
-  it('returns inactive for unknown / cannot_meet / invalid statuses', () => {
-    for (const status of ['unknown', 'cannot_meet', 'invalid'] as const) {
+  it('returns inactive for unknown / invalid statuses', () => {
+    for (const status of ['unknown', 'invalid'] as const) {
       const diagnostic = buildDiagnostic({
         deviceId: `dev_${status}`,
         status,
@@ -100,6 +100,28 @@ describe('applyDeferredObjectiveAdmission', () => {
       const decisions = applyDeferredObjectiveAdmission([diagnostic]);
       expect(decisions.get(`dev_${status}`)).toEqual({ kind: 'inactive' });
     }
+  });
+
+  it('keeps driving the device best-effort when the planner reports cannot_meet', () => {
+    // The lowest-step commitment can under-allocate when the user's need exceeds the
+    // per-bucket budget headroom (e.g. 1.5 kWh need / 1h on a 1 kW low + 2 kW high
+    // device). Even though the planner cannot guarantee the target, the current
+    // bucket still carries a positive allocation; we keep the device admitted so it
+    // can run at the lowest step and the capacity guard is free to step up when
+    // headroom appears at runtime.
+    const diagnostic = buildDiagnostic({
+      deviceId: 'dev1',
+      status: 'cannot_meet',
+      horizonPlan: buildHorizonPlan({
+        status: 'cannot_meet',
+        statusDetail: 'target_cannot_be_met',
+        plannedUsefulEnergyKWh: 1,
+        unplannedUsefulEnergyKWh: 0.5,
+        currentBucket: { bucketId: 'b0', sourceBucketId: 'b0', plannedUsefulEnergyKWh: 1, requestedMinimumStepId: 'low' },
+      }),
+    });
+    const decisions = applyDeferredObjectiveAdmission([diagnostic]);
+    expect(decisions.get('dev1')).toEqual({ kind: 'planned', requestedMinimumStepId: 'low' });
   });
 
   it('returns inactive when the horizon plan is missing', () => {

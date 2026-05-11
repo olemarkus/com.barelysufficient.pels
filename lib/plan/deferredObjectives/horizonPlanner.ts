@@ -100,8 +100,9 @@ export const planDeferredObjectiveHorizon = (
 
 // We plan against the lowest non-zero step only. That is the commitment we can
 // guarantee for the full hour — higher steps depend on transient headroom and
-// could be denied mid-bucket. `getActiveObjectiveSteps` sorts ascending and
-// drops zero-power steps, so `activeSteps[0]` is the smallest active step.
+// could be denied mid-bucket. `normalizeObjectiveSteps` sorts the input
+// ascending by `usefulPowerKw`, and `getActiveObjectiveSteps` then filters out
+// zero-power entries, so `activeSteps[0]` is the smallest active step.
 const resolveAllocation = (params: {
   activeSteps: NonEmptyObjectiveSteps;
   buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
