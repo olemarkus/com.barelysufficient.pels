@@ -331,119 +331,128 @@
       <div class="budget-redesign-surface" id="budget-redesign-surface"></div>
     </section>
 
-    <section class="card panel hidden" id="usage-panel" data-panel="usage">
-      <div class="card__header">
-        <div>
-          <p class="eyebrow">Usage</p>
-          <h2>History &amp; patterns</h2>
+    <section class="panel hidden usage-panel" id="usage-panel" data-panel="usage" aria-labelledby="usage-title">
+      <header class="usage-panel__header">
+        <p class="eyebrow">Usage</p>
+        <h2 id="usage-title">Energy history</h2>
+      </header>
+
+      <section class="plan-hero usage-hero" id="usage-hero" data-tone="ok" aria-labelledby="usage-hero-headline">
+        <div class="plan-hero__section">
+          <div class="plan-hero__headline-row">
+            <div class="plan-hero__headline" id="usage-hero-headline">-- kWh today</div>
+            <span class="plan-chip plan-chip--muted usage-hero__delta" id="usage-hero-delta" hidden>--</span>
+          </div>
+          <div class="plan-hero__subline plan-hero__subline--muted" id="usage-hero-comparison">Gathering data…</div>
+          <p class="plan-hero__decision" id="usage-hero-projection" hidden></p>
         </div>
-      </div>
+        <ul class="usage-hero__stats">
+          <li class="usage-hero__stat">
+            <span class="usage-hero__stat-label">This week</span>
+            <span class="usage-hero__stat-value" id="usage-week">-- kWh</span>
+          </li>
+          <li class="usage-hero__stat">
+            <span class="usage-hero__stat-label">This month</span>
+            <span class="usage-hero__stat-value" id="usage-month">-- kWh</span>
+          </li>
+          <li class="usage-hero__stat">
+            <span class="usage-hero__stat-label">Daily avg</span>
+            <span class="usage-hero__stat-value" id="usage-weekly-avg">-- kWh</span>
+          </li>
+        </ul>
+        <span hidden id="usage-today">-- kWh</span>
+      </section>
 
-      <details class="settings-collapse" open>
-        <summary>
-          <h3 class="section-title">Usage summary</h3>
-          <span class="section-hint">Daily totals and patterns</span>
-        </summary>
-        <div class="collapse-content">
-          <div id="usage-summary" class="usage-summary">
-            <div class="summary-card">
-              <span class="summary-label">Today</span>
-              <span class="summary-value" id="usage-today">-- kWh</span>
-            </div>
-            <div class="summary-card">
-              <span class="summary-label">This week</span>
-              <span class="summary-value" id="usage-week">-- kWh</span>
-            </div>
-            <div class="summary-card">
-              <span class="summary-label">This month</span>
-              <span class="summary-value" id="usage-month">-- kWh</span>
-            </div>
+      <section class="pels-surface-card usage-card" aria-labelledby="usage-day-title">
+        <md-elevation aria-hidden="true"></md-elevation>
+        <div class="usage-card__header">
+          <div class="usage-card__heading">
+            <h3 class="plan-card__title" id="usage-day-title">Today so far</h3>
+            <p class="pels-card-supporting" id="usage-day-label">--</p>
           </div>
-
-          <div class="day-view-header">
-            <div>
-              <h4 id="usage-day-title">Hourly usage (today)</h4>
-              <p class="muted" id="usage-day-label">--</p>
-            </div>
-            <div class="day-view-actions">
-              <div id="usage-day-toggle-mount"></div>
-              <div class="pill" id="usage-day-status-pill">No data</div>
-            </div>
+          <div class="usage-card__actions">
+            <div id="usage-day-toggle-mount"></div>
+            <span class="plan-chip plan-chip--muted" id="usage-day-status-pill">No data</span>
           </div>
-
-          <div class="usage-summary usage-day-summary">
-            <div class="summary-card">
-              <span class="summary-label">Day total</span>
-              <span class="summary-value" id="usage-day-total">-- kWh</span>
-            </div>
-            <div class="summary-card">
-              <span class="summary-label">Peak hour</span>
-              <span class="summary-value" id="usage-day-peak">-- kWh</span>
-            </div>
-            <div class="summary-card">
-              <span class="summary-label">Warning hours</span>
-              <span class="summary-value" id="usage-day-over-cap">--</span>
-            </div>
-          </div>
-
-          <div id="usage-day-chart" class="day-view-chart">
-            <div class="day-view-bars-wrap">
-              <div id="usage-day-bars" class="day-view-bars"></div>
-            </div>
-            <div id="usage-day-labels" class="day-view-labels"></div>
-          </div>
-
-          <p id="usage-day-empty" class="muted" hidden>No hourly usage for the selected day yet.</p>
-          <p class="muted" id="usage-day-meta">Hourly kWh for the selected local day. Typical usage below is per-hour average; daily history is one bar per day.</p>
-
-          <h4>Weekday vs weekend average</h4>
-          <div id="weekday-weekend-stats" class="usage-summary">
-            <div class="summary-card">
-              <span class="summary-label">Weekday avg</span>
-              <span class="summary-value" id="usage-weekday-avg">-- kWh/day</span>
-            </div>
-            <div class="summary-card">
-              <span class="summary-label">Weekend avg</span>
-              <span class="summary-value" id="usage-weekend-avg">-- kWh/day</span>
-            </div>
-          </div>
-
-          <div class="day-view-header usage-section-header">
-            <h4>Typical usage by time of day</h4>
-            <div class="day-view-actions">
-              <div id="hourly-pattern-toggle-mount"></div>
-            </div>
-          </div>
-          <div id="hourly-pattern" class="hourly-pattern usage-chart"></div>
-          <p class="muted" id="hourly-pattern-meta">Average kWh per hour based on historical data.</p>
         </div>
-      </details>
-
-      <div class="settings-collapse">
-        <div class="settings-collapse-header">
-          <h3 class="section-title">Daily history</h3>
-          <span class="section-hint" id="daily-history-range-hint">Last 14 days</span>
+        <div class="usage-metric-row">
+          <div class="usage-metric">
+            <span class="usage-metric__label">Day total</span>
+            <span class="usage-metric__value" id="usage-day-total">-- kWh</span>
+          </div>
+          <div class="usage-metric">
+            <span class="usage-metric__label">Peak hour</span>
+            <span class="usage-metric__value" id="usage-day-peak">-- kWh</span>
+          </div>
+          <div class="usage-metric">
+            <span class="usage-metric__label">Over limit</span>
+            <span class="usage-metric__value" id="usage-day-over-cap">--</span>
+          </div>
         </div>
-        <div class="collapse-content">
-          <div class="day-view-actions usage-history-actions">
+        <div id="usage-day-chart" class="day-view-chart">
+          <div class="day-view-bars-wrap">
+            <div id="usage-day-bars" class="day-view-bars"></div>
+          </div>
+          <div id="usage-day-labels" class="day-view-labels"></div>
+        </div>
+        <p id="usage-day-empty" class="pels-card-supporting" hidden>No hourly usage for the selected day yet.</p>
+        <p class="pels-card-supporting" id="usage-day-meta">Hourly kWh for the selected local day.</p>
+      </section>
+
+      <section class="pels-surface-card usage-card" aria-labelledby="usage-history-title">
+        <md-elevation aria-hidden="true"></md-elevation>
+        <div class="usage-card__header">
+          <div class="usage-card__heading">
+            <h3 class="plan-card__title" id="usage-history-title">Last 14 days</h3>
+            <p class="pels-card-supporting" id="daily-history-range-hint">Last 14 days</p>
+          </div>
+          <div class="usage-card__actions">
             <div id="daily-history-range-mount"></div>
           </div>
-          <div id="daily-list" class="usage-history-chart usage-chart"></div>
-          <p id="daily-empty" class="muted" hidden>No daily totals yet.</p>
         </div>
-      </div>
+        <div id="daily-list" class="usage-history-chart usage-chart"></div>
+        <p id="daily-empty" class="pels-card-supporting" hidden>No daily totals yet.</p>
+      </section>
 
-      <div class="settings-collapse">
-        <div class="settings-collapse-header">
-          <h3 class="section-title">Hourly detail</h3>
-          <span class="section-hint">Week view</span>
+      <section class="pels-surface-card usage-card" aria-labelledby="usage-pattern-title">
+        <md-elevation aria-hidden="true"></md-elevation>
+        <div class="usage-card__header">
+          <div class="usage-card__heading">
+            <h3 class="plan-card__title" id="usage-pattern-title">Typical day</h3>
+            <p class="pels-card-supporting">Average kWh per hour from history</p>
+          </div>
+          <div class="usage-card__actions">
+            <div id="hourly-pattern-toggle-mount"></div>
+          </div>
         </div>
-        <div class="collapse-content">
-          <div class="hourly-nav day-view-header">
-            <p id="power-week-label" class="muted">This week</p>
-            <div class="day-view-toggle" role="group" aria-label="Hourly detail week">
-              <button type="button" class="day-view-toggle__button" id="power-week-prev">Prev week</button>
-              <button type="button" class="day-view-toggle__button" id="power-week-next">Next week</button>
+        <div class="usage-metric-row">
+          <div class="usage-metric">
+            <span class="usage-metric__label">Weekday avg</span>
+            <span class="usage-metric__value" id="usage-weekday-avg">-- kWh/day</span>
+          </div>
+          <div class="usage-metric">
+            <span class="usage-metric__label">Weekend avg</span>
+            <span class="usage-metric__value" id="usage-weekend-avg">-- kWh/day</span>
+          </div>
+        </div>
+        <div id="hourly-pattern" class="hourly-pattern usage-chart"></div>
+        <p class="pels-card-supporting" id="hourly-pattern-meta">Average kWh per hour based on historical data.</p>
+      </section>
+
+      <details class="pels-surface-card usage-card usage-card--collapsible" id="usage-detail-section">
+        <summary class="usage-card__header usage-card__summary">
+          <span class="usage-card__heading">
+            <span class="plan-card__title plan-card__title--inline">Detailed hourly view</span>
+            <span class="pels-card-supporting" id="power-week-label">This week</span>
+          </span>
+          <span class="usage-card__summary-affordance" aria-hidden="true">›</span>
+        </summary>
+        <md-elevation aria-hidden="true"></md-elevation>
+        <div class="usage-card__collapsible-content">
+          <div class="usage-card__actions usage-card__actions--standalone">
+            <div class="day-view-toggle usage-week-nav" role="group" aria-label="Hourly detail week">
+              <button type="button" class="day-view-toggle__button" id="power-week-prev" aria-label="Previous week">‹</button>
+              <button type="button" class="day-view-toggle__button" id="power-week-next" aria-label="Next week">›</button>
             </div>
           </div>
           <ul id="power-list" class="device-list usage-list"></ul>
@@ -453,14 +462,13 @@
               <span class="muted">Unreliable data</span>
             </div>
           </div>
-          <p id="power-empty" class="muted" hidden>No power samples received yet. Wire the "Report power usage" Flow action.</p>
+          <p id="power-empty" class="pels-card-supporting" hidden>No power samples received yet. Wire the "Report power usage" Flow action.</p>
         </div>
-      </div>
+      </details>
 
-      <div class="list__footer">
-        <button type="button" class="btn ghost" id="reset-stats-button">Reset all stats</button>
-        <p class="muted">Hourly data kept for 30 days, daily totals for 1 year.</p>
-      </div>
+      <footer class="usage-footer">
+        <p class="pels-card-supporting">Hourly data kept for 30 days, daily totals for 1 year. Reset stats lives under Settings → Advanced → Data management.</p>
+      </footer>
     </section>
 
     <section class="card panel hidden" id="deadlines-panel" data-panel="deadlines" aria-labelledby="deadlines-title">
@@ -687,6 +695,20 @@
             </label>
             <p class="muted">PELS uses recent usage history to reserve budget for unmanaged household load, then plans managed-device usage around prices and minimum service needs.</p>
           </form>
+        </div>
+      </details>
+      <details class="settings-collapse">
+        <summary>
+          <h3 class="section-title">Data management</h3>
+          <span class="section-hint">Reset stored history</span>
+        </summary>
+        <div class="collapse-content">
+          <div class="form-grid">
+            <p class="muted">Reset all usage statistics: hourly samples, daily totals, and weekday/weekend averages. PELS will start collecting fresh history after the reset.</p>
+            <div class="inline-actions">
+              <button type="button" class="btn ghost" id="reset-stats-button">Reset all stats</button>
+            </div>
+          </div>
         </div>
       </details>
       <details class="settings-collapse">
