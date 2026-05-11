@@ -866,6 +866,26 @@ describe('Settings UI', () => {
           const overshootSelect = document.getElementById('device-detail-overshoot');
           const overshootRow = document.getElementById('device-detail-overshoot-temp-row');
           const overshootInput = document.getElementById('device-detail-overshoot-temp');
+          const overshootSegmented = document.getElementById('device-detail-overshoot-segmented');
+          const renderSegmented = () => {
+            if (!overshootSegmented || !overshootSelect) return;
+            overshootSegmented.replaceChildren();
+            Array.from(overshootSelect.options).forEach((option) => {
+              const btn = document.createElement('button');
+              btn.type = 'button';
+              btn.className = 'segmented__option';
+              btn.dataset.value = option.value;
+              btn.textContent = option.textContent || option.value;
+              btn.setAttribute('aria-checked', option.value === overshootSelect.value ? 'true' : 'false');
+              btn.addEventListener('click', () => {
+                if (overshootSelect.value === option.value) return;
+                overshootSelect.value = option.value;
+                overshootSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                renderSegmented();
+              });
+              overshootSegmented.appendChild(btn);
+            });
+          };
           const updateOvershoot = () => {
             if (!overshootSelect || !overshootRow) return;
             const isTemp = overshootSelect.value === 'set_temperature';
@@ -875,6 +895,7 @@ describe('Settings UI', () => {
           if (overshootSelect) {
             overshootSelect.addEventListener('change', updateOvershoot);
           }
+          renderSegmented();
           updateOvershoot();
         });
       `;
@@ -1000,7 +1021,7 @@ describe('Settings UI', () => {
       const initiallyHidden = await page.$eval('#device-detail-overshoot-temp-row', (el) => (el as HTMLElement).hidden);
       expect(initiallyHidden).toBe(true);
 
-      await page.selectOption('#device-detail-overshoot', 'set_temperature');
+      await page.click('#device-detail-overshoot-segmented button[data-value="set_temperature"]');
 
       const hiddenAfterSelect = await page.$eval('#device-detail-overshoot-temp-row', (el) => (el as HTMLElement).hidden);
       expect(hiddenAfterSelect).toBe(false);
@@ -1023,22 +1044,18 @@ describe('Settings UI', () => {
       expect(panelBox.right).toBeLessThanOrEqual(480);
     });
 
-    test('device detail header has close button and title', async () => {
+    test('device detail header has back button and content heading has title', async () => {
       // Ensure panel is open
       const isHidden = await page.$eval('#device-detail-overlay', (el) => (el as HTMLElement).hidden);
       if (isHidden) await page.click('.device-row__name');
 
-      const headerContent = await page.$eval('#device-detail-panel .slide-panel__header', (el) => {
-        const closeBtn = el.querySelector('#device-detail-close');
-        const title = el.querySelector('#device-detail-title');
-        return {
-          hasCloseBtn: Boolean(closeBtn),
-          hasTitle: Boolean(title),
-        };
-      });
+      const layout = await page.$eval('#device-detail-panel', (el) => ({
+        hasBackButton: Boolean(el.querySelector('.slide-panel__header #device-detail-close.settings-back-button')),
+        hasTitle: Boolean(el.querySelector('.slide-panel__content #device-detail-title')),
+      }));
 
-      expect(headerContent.hasCloseBtn).toBe(true);
-      expect(headerContent.hasTitle).toBe(true);
+      expect(layout.hasBackButton).toBe(true);
+      expect(layout.hasTitle).toBe(true);
     });
   });
 });
