@@ -15,7 +15,10 @@ export {
   applyDeferredObjectiveAdmission,
   buildDeferredTargetOverrides,
 } from './admission';
-export { DeferredObjectivePlanHistoryRecorder } from './planHistory';
+export {
+  DeferredObjectivePlanHistoryRecorder,
+  type DeferredObjectiveBackfillConfig,
+} from './planHistory';
 export { normalizeDeferredObjectivePlanHistory } from './planHistorySettings';
 export {
   DeferredObjectiveActivePlanRecorder,

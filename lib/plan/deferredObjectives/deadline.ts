@@ -71,15 +71,22 @@ const resolveLocalDateTimeMs = (params: {
   timeZone: string;
   earliestAfterMs?: number;
 }): number | null => {
-  const {
-    dateKey,
-    localTime,
-    timeZone,
-    earliestAfterMs,
-  } = params;
+  const candidates = resolveAllLocalDateTimeMs(params);
+  return candidates.find((candidateMs) => (
+    params.earliestAfterMs === undefined
+    || candidateMs > params.earliestAfterMs
+  )) ?? null;
+};
+
+const resolveAllLocalDateTimeMs = (params: {
+  dateKey: string;
+  localTime: string;
+  timeZone: string;
+}): number[] => {
+  const { dateKey, localTime, timeZone } = params;
   const dateParts = parseDateKey(dateKey);
   const timeParts = parseLocalTime(localTime);
-  if (!dateParts || !timeParts) return null;
+  if (!dateParts || !timeParts) return [];
 
   const target = {
     ...dateParts,
@@ -95,15 +102,11 @@ const resolveLocalDateTimeMs = (params: {
     0,
     0,
   );
-  const candidates = resolveLocalDateTimeCandidates({
+  return resolveLocalDateTimeCandidates({
     approximateUtcMs,
     target,
     timeZone,
   });
-  return candidates.find((candidateMs) => (
-    earliestAfterMs === undefined
-    || candidateMs > earliestAfterMs
-  )) ?? null;
 };
 
 const resolveLocalDateTimeCandidates = (params: {

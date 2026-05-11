@@ -14,12 +14,16 @@ import {
   normalizeDeferredObjectiveActivePlans,
   normalizeDeferredObjectivePlanHistory,
   normalizeDeferredObjectiveSettings,
+  type DeferredObjectiveBackfillConfig,
 } from '../plan/deferredObjectives';
+import type { DeferredObjectiveSettingsEntry } from '../plan/deferredObjectives/settings';
 import {
   DEFERRED_OBJECTIVES_SETTINGS,
   DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
+  DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
   DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING,
 } from '../utils/settingsKeys';
+import { isFiniteNumber } from '../utils/appTypeGuards';
 
 function requireDeviceManager(ctx: AppContext) {
   if (!ctx.deviceManager) {
@@ -28,21 +32,123 @@ function requireDeviceManager(ctx: AppContext) {
   return ctx.deviceManager;
 }
 
+const toBackfillConfig = (
+  deviceId: string,
+  entry: DeferredObjectiveSettingsEntry,
+): DeferredObjectiveBackfillConfig | null => {
+  // Deadlines are one-shot and the runtime auto-disables on pass, so a still-enabled
+  // objective with a past `deadlineAtMs` is exactly the "PELS was off through the deadline"
+  // case we want to back-fill. Disabled entries either have an existing observed history row
+  // (runtime saw the pass) or were cleared by the user before passing — either way back-fill
+  // should ignore them.
+  if (!entry.enabled) return null;
+  if (entry.kind === 'temperature') {
+    return {
+      deviceId,
+      deviceName: null,
+      objectiveKind: 'temperature',
+      deadlineAtMs: entry.deadlineAtMs,
+      targetTemperatureC: entry.targetTemperatureC,
+      targetPercent: null,
+    };
+  }
+  return {
+    deviceId,
+    deviceName: null,
+    objectiveKind: 'ev_soc',
+    deadlineAtMs: entry.deadlineAtMs,
+    targetTemperatureC: null,
+    targetPercent: entry.targetPercent,
+  };
+};
+
+const readWatermark = (ctx: AppContext): number | null => {
+  const raw: unknown = ctx.homey.settings.get(DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK);
+  return isFiniteNumber(raw) ? raw : null;
+};
+
+/**
+ * Advance the deferred-objective observation watermark to "now". If the recorder is still
+ * dirty (its `save` callback returned `false`, meaning the last flush attempt didn't actually
+ * persist), the watermark is left alone — otherwise the next startup back-fill would skip the
+ * window containing the entries that never made it to disk, dropping that history silently.
+ */
+export const persistDeferredObjectiveObservationWatermark = (
+  ctx: AppContext,
+  recorder: DeferredObjectivePlanHistoryRecorder | undefined,
+): void => {
+  if (recorder?.isDirty()) return;
+  writeWatermark(ctx, Date.now());
+};
+
+const writeWatermark = (ctx: AppContext, ms: number): void => {
+  try {
+    ctx.homey.settings.set(DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK, ms);
+  } catch (error) {
+    ctx.error('Failed to persist deferred-objective observation watermark', error);
+  }
+};
+
 export function createDeferredObjectivePlanHistoryRecorder(
   ctx: AppContext,
 ): DeferredObjectivePlanHistoryRecorder {
-  return new DeferredObjectivePlanHistoryRecorder({
+  const recorder = new DeferredObjectivePlanHistoryRecorder({
     load: () => normalizeDeferredObjectivePlanHistory(
       ctx.homey.settings.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING),
     ),
     save: (next) => {
       try {
         ctx.homey.settings.set(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING, next);
+        return true;
       } catch (error) {
         ctx.error('Failed to persist deferred-objective plan history', error);
+        return false;
       }
     },
   });
+  runStartupBackfill(ctx, recorder);
+  return recorder;
+}
+
+function runStartupBackfill(
+  ctx: AppContext,
+  recorder: DeferredObjectivePlanHistoryRecorder,
+): void {
+  const watermark = readWatermark(ctx);
+  if (watermark === null) {
+    // First boot with this version (or the setting was lost). Seed the watermark to now so a
+    // future crash/restart can back-fill from this moment forward — otherwise a deadline that
+    // elapses during a PELS-off window before the first history flush would be lost. We
+    // intentionally don't back-fill on this path: there's no prior observation window, and
+    // inventing one (e.g. 30 days back) could fabricate "unknown" entries for objectives the
+    // user only just configured.
+    writeWatermark(ctx, Date.now());
+    return;
+  }
+  const settings = normalizeDeferredObjectiveSettings(
+    ctx.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS),
+  );
+  const configs = Object.entries(settings.objectivesByDeviceId)
+    .map(([deviceId, entry]) => toBackfillConfig(deviceId, entry))
+    .filter((c): c is DeferredObjectiveBackfillConfig => c !== null);
+  const nowMs = Date.now();
+  if (configs.length === 0) {
+    // No enabled objectives — advance the watermark anyway. We successfully scanned a window
+    // that produced nothing, and on the next restart we don't need to re-scan it.
+    // Caveat: a future "enable an objective" action can't retroactively recover deadlines
+    // that elapsed inside this skipped window — that fidelity gap is acknowledged in
+    // PR-description and would need per-objective enable timestamps to fix.
+    writeWatermark(ctx, nowMs);
+    return;
+  }
+  recorder.backfillFromConfig(configs, watermark, nowMs);
+  if (recorder.isDirty()) {
+    // Back-fill produced new entries — only advance the watermark if we actually persisted
+    // them. A failed save keeps the entries in memory for a later retry; leaving the
+    // watermark in place means the next startup re-runs the scan idempotently.
+    if (!recorder.flushIfDirty()) return;
+  }
+  writeWatermark(ctx, nowMs);
 }
 
 function requireDeferredObjectivePlanHistoryRecorder(
@@ -127,7 +233,16 @@ export const createDeviceDiagnosticsService = (ctx: AppContext): DeviceDiagnosti
   })
 );
 
+// How long the deferred-objective observation watermark can be stale before we advance it
+// during normal observe ticks. Without this idle advance the watermark only moves forward
+// when a deadline finalizes — so a user enabling a new objective during a long quiet period
+// followed by a crash would cause startup back-fill to enumerate that objective's deadlines
+// back to a far-stale watermark, fabricating "unknown" entries for periods when the objective
+// wasn't yet enabled. Five minutes keeps watermark drift small without spamming settings I/O.
+const WATERMARK_IDLE_REFRESH_MS = 5 * 60 * 1000;
+
 export function createPlanEngine(ctx: AppContext) {
+  let lastWatermarkPersistMs = 0;
   return new PlanEngineClass({
     homey: ctx.homey,
     deviceManager: requireDeviceManager(ctx),
@@ -159,7 +274,22 @@ export function createPlanEngine(ctx: AppContext) {
     observeDeferredObjectivePlanHistory: (diagnostics, nowMs) => {
       const recorder = requireDeferredObjectivePlanHistoryRecorder(ctx);
       recorder.observe(diagnostics, nowMs);
-      recorder.flushIfDirty();
+      // Persist the watermark when we flushed new history (recorder is clean and the save
+      // succeeded). Otherwise, if the recorder is clean and enough time has passed since the
+      // last watermark write, also advance it — this keeps the back-fill window small during
+      // long idle stretches and prevents post-enable objectives from being back-filled into
+      // periods they didn't exist for. If the recorder is still dirty (failed save), leave
+      // the watermark alone so the next restart re-tries the persistence.
+      const flushed = recorder.flushIfDirty();
+      if (flushed) {
+        writeWatermark(ctx, nowMs);
+        lastWatermarkPersistMs = nowMs;
+        return;
+      }
+      if (recorder.isDirty()) return;
+      if (nowMs - lastWatermarkPersistMs < WATERMARK_IDLE_REFRESH_MS) return;
+      writeWatermark(ctx, nowMs);
+      lastWatermarkPersistMs = nowMs;
     },
     observeDeferredObjectiveActivePlans: (diagnostics, nowMs) => {
       const recorder = requireDeferredObjectiveActivePlanRecorder(ctx);

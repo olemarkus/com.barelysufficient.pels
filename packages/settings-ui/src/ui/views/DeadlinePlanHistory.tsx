@@ -1,6 +1,7 @@
 import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import {
   formatPlanHistoryDeadlineLine,
+  formatPlanHistoryObservedCoverage,
   formatPlanHistoryProgressLine,
   formatPlanHistoryReachedAtLine,
   getPlanHistoryOutcomeLabel,
@@ -22,6 +23,7 @@ const PlanHistoryCard = ({ entry, timeZone }: {
   const deadlineLine = formatPlanHistoryDeadlineLine(entry, timeZone);
   const progressLine = formatPlanHistoryProgressLine(entry);
   const reachedAtLine = formatPlanHistoryReachedAtLine(entry, timeZone);
+  const coverageLine = formatPlanHistoryObservedCoverage(entry);
   return (
     <article class="plan-history-card" aria-label={`Past plan ${deadlineLine}`}>
       <header class="plan-history-card__header">
@@ -34,6 +36,9 @@ const PlanHistoryCard = ({ entry, timeZone }: {
           {progressLine}
           {reachedAtLine && <span class="plan-history-card__reached">  ·  {reachedAtLine}</span>}
         </div>
+      )}
+      {coverageLine && (
+        <div class="plan-history-card__coverage">{coverageLine}</div>
       )}
       {shouldShowBackupHoursPill(entry) && (
         <div class="plan-history-card__pills">

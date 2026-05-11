@@ -1,13 +1,16 @@
 import type {
+  DeferredObjectivePlanHistoryDiscoveredFrom,
   DeferredObjectivePlanHistoryEntry,
-  DeferredObjectivePlanHistoryV1,
+  DeferredObjectivePlanHistoryEntryV1,
+  DeferredObjectivePlanHistoryObservedInterval,
+  DeferredObjectivePlanHistoryV2,
   DeferredObjectivePlanOutcome,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { isFiniteNumber } from '../../utils/appTypeGuards';
 
-export const DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION = 1 as const;
+export const DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION = 2 as const;
 
-const createEmptyDeferredObjectivePlanHistory = (): DeferredObjectivePlanHistoryV1 => ({
+const createEmptyDeferredObjectivePlanHistory = (): DeferredObjectivePlanHistoryV2 => ({
   version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
   entries: [],
 });
@@ -23,6 +26,16 @@ const isFiniteOrNull = (value: unknown): value is number | null => (
 const isObjectiveKind = (value: unknown): value is 'temperature' | 'ev_soc' => (
   value === 'temperature' || value === 'ev_soc'
 );
+
+const isDiscoveredFrom = (value: unknown): value is DeferredObjectivePlanHistoryDiscoveredFrom => (
+  value === 'observation' || value === 'backfill'
+);
+
+const isObservedInterval = (value: unknown): value is DeferredObjectivePlanHistoryObservedInterval => {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return isFiniteNumber(v.fromMs) && isFiniteNumber(v.toMs);
+};
 
 const hasValidIdentity = (v: Record<string, unknown>): boolean => (
   typeof v.deviceId === 'string'
@@ -55,7 +68,13 @@ const hasValidOutcome = (v: Record<string, unknown>): boolean => (
     && typeof v.usedPolicyAvoid === 'boolean'
 );
 
-const isPlanHistoryEntry = (value: unknown): value is DeferredObjectivePlanHistoryEntry => {
+const hasValidCoverage = (v: Record<string, unknown>): boolean => (
+  Array.isArray(v.observedIntervals)
+    && v.observedIntervals.every(isObservedInterval)
+    && isDiscoveredFrom(v.discoveredFrom)
+);
+
+const isV1EntryShape = (value: unknown): value is DeferredObjectivePlanHistoryEntryV1 => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
   return hasValidIdentity(v)
@@ -65,17 +84,43 @@ const isPlanHistoryEntry = (value: unknown): value is DeferredObjectivePlanHisto
     && hasValidOutcome(v);
 };
 
+const isPlanHistoryEntry = (value: unknown): value is DeferredObjectivePlanHistoryEntry => {
+  if (!isV1EntryShape(value)) return false;
+  const v = value as unknown as Record<string, unknown>;
+  return hasValidCoverage(v);
+};
+
+const upgradeV1Entry = (entry: DeferredObjectivePlanHistoryEntryV1): DeferredObjectivePlanHistoryEntry => ({
+  ...entry,
+  observedIntervals: [{ fromMs: entry.startedAtMs, toMs: entry.finalizedAtMs }],
+  discoveredFrom: 'observation',
+});
+
+const normalizeV1 = (entries: unknown[]): DeferredObjectivePlanHistoryEntry[] => (
+  entries.filter(isV1EntryShape).map(upgradeV1Entry)
+);
+
+const normalizeV2 = (entries: unknown[]): DeferredObjectivePlanHistoryEntry[] => (
+  entries.filter(isPlanHistoryEntry)
+);
+
 export const normalizeDeferredObjectivePlanHistory = (
   raw: unknown,
-): DeferredObjectivePlanHistoryV1 => {
+): DeferredObjectivePlanHistoryV2 => {
   if (!raw || typeof raw !== 'object') return createEmptyDeferredObjectivePlanHistory();
   const r = raw as Record<string, unknown>;
-  if (r.version !== DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION) {
-    return createEmptyDeferredObjectivePlanHistory();
-  }
   if (!Array.isArray(r.entries)) return createEmptyDeferredObjectivePlanHistory();
-  return {
-    version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
-    entries: r.entries.filter(isPlanHistoryEntry),
-  };
+  if (r.version === DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION) {
+    return {
+      version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
+      entries: normalizeV2(r.entries),
+    };
+  }
+  if (r.version === 1) {
+    return {
+      version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
+      entries: normalizeV1(r.entries),
+    };
+  }
+  return createEmptyDeferredObjectivePlanHistory();
 };

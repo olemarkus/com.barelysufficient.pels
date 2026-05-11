@@ -65,6 +65,7 @@ import {
   createPlanEngine,
   createPlanService,
   createPriceCoordinator,
+  persistDeferredObjectiveObservationWatermark,
   registerAppFlowCards,
 } from './lib/app/appInit';
 import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
@@ -1020,6 +1021,9 @@ class PelsApp extends Homey.App {
     // Persist any unflushed deferred-objective plan-history entries before shutting down.
     this.deferredObjectivePlanHistoryRecorder?.flushIfDirty();
     this.deferredObjectiveActivePlanRecorder?.flushIfDirty();
+    // Mark how far we've observed; back-fill on next startup picks up from here. Skipped if
+    // the recorder is still dirty (save failed), so the next start re-scans the missed window.
+    persistDeferredObjectiveObservationWatermark(this.ctx, this.deferredObjectivePlanHistoryRecorder);
     this.priceCoordinator.stop();
     this.deviceManager?.destroy();
   }

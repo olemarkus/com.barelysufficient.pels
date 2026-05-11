@@ -97,3 +97,49 @@ export const getPlanHistoryOutcomeTone = (outcome: DeferredObjectivePlanOutcome)
 export const shouldShowBackupHoursPill = (
   entry: Pick<DeferredObjectivePlanHistoryEntry, 'usedPolicyAvoid' | 'usedDeadlineReserve'>,
 ): boolean => entry.usedPolicyAvoid || entry.usedDeadlineReserve;
+
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+
+const formatDurationMs = (ms: number): string => {
+  if (ms <= 0) return '0m';
+  // Floor to whole minutes so a sub-hour gap never rounds up across the hour boundary (e.g.
+  // 59m 31s must render as "59m", not "1h", to stay consistent with the caller's HOUR_MS
+  // threshold for the "Brief gap" / "Not observed for" split).
+  const totalMinutes = Math.floor(ms / MINUTE_MS);
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
+};
+
+const sumObservedMs = (
+  intervals: ReadonlyArray<{ fromMs: number; toMs: number }>,
+): number => intervals.reduce((acc, interval) => acc + Math.max(0, interval.toMs - interval.fromMs), 0);
+
+/**
+ * Returns a short human-readable note about how complete the observation was for the entry, or
+ * `null` if coverage was effectively full (≥99% of the [start, deadline] window). Used by the
+ * settings UI to explain entries that may have data gaps (PELS off, diagnostics unavailable).
+ */
+export const formatPlanHistoryObservedCoverage = (
+  entry: Pick<
+    DeferredObjectivePlanHistoryEntry,
+    'observedIntervals' | 'discoveredFrom' | 'startedAtMs' | 'deadlineAtMs'
+  >,
+): string | null => {
+  if (entry.discoveredFrom === 'backfill') return 'No observations recorded — deadline reconstructed from settings';
+  // Entries from older storage or from a test stub that predates the v2 contract may arrive
+  // without `observedIntervals`; without this guard the reduce below would throw and crash
+  // the surrounding component. Treat missing data as "no coverage info" rather than a hard
+  // failure — the contract is enforced at the persistence boundary, not in the renderer.
+  if (!Array.isArray(entry.observedIntervals)) return null;
+  const windowMs = Math.max(0, entry.deadlineAtMs - entry.startedAtMs);
+  if (windowMs < MINUTE_MS) return null;
+  const observedMs = Math.min(windowMs, sumObservedMs(entry.observedIntervals));
+  const missingMs = Math.max(0, windowMs - observedMs);
+  if (missingMs <= Math.max(MINUTE_MS, windowMs * 0.01)) return null;
+  if (missingMs >= HOUR_MS) return `Not observed for ${formatDurationMs(missingMs)}`;
+  return `Brief gap (${formatDurationMs(missingMs)}) in observation`;
+};

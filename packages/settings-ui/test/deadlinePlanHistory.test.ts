@@ -21,6 +21,11 @@ const buildEntry = (overrides: Partial<DeferredObjectivePlanHistoryEntry> = {}):
   metAtMs: Date.UTC(2026, 4, 6, 4, 42, 0),
   usedDeadlineReserve: false,
   usedPolicyAvoid: false,
+  observedIntervals: [{
+    fromMs: Date.UTC(2026, 4, 6, 0, 0, 0),
+    toMs: Date.UTC(2026, 4, 6, 6, 0, 0),
+  }],
+  discoveredFrom: 'observation',
   ...overrides,
 });
 
@@ -71,6 +76,68 @@ describe('DeadlinePlanHistory', () => {
       timeZone: 'UTC',
     }));
     expect(mount.textContent).not.toContain('Backup hours');
+  });
+
+  it('renders a backfilled entry with a "reconstructed from settings" note', () => {
+    const entry = buildEntry({
+      outcome: 'unknown',
+      discoveredFrom: 'backfill',
+      observedIntervals: [],
+      startProgressC: null,
+      finalProgressC: null,
+      metAtMs: null,
+    });
+    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    expect(mount.querySelector('.plan-chip--muted')?.textContent).toBe('Unknown');
+    expect(mount.textContent).toContain('reconstructed from settings');
+  });
+
+  it('renders an observation-gap note when intervals only partially cover the window', () => {
+    // Only 2h of observation in a 6h window — should surface a "not observed" note.
+    const start = Date.UTC(2026, 4, 6, 0, 0, 0);
+    const deadline = Date.UTC(2026, 4, 6, 6, 0, 0);
+    const entry = buildEntry({
+      startedAtMs: start,
+      deadlineAtMs: deadline,
+      observedIntervals: [{ fromMs: start, toMs: start + 2 * 60 * 60 * 1000 }],
+    });
+    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    expect(mount.textContent).toMatch(/Not observed for 4h/);
+  });
+
+  it('floors sub-hour gaps so a 59m 31s gap renders as "59m", not "1h"', () => {
+    // Regression: previously used Math.round which made a <1h gap render as "1h" while the
+    // caller still classified it as a "Brief gap" — contradictory copy.
+    const start = Date.UTC(2026, 4, 6, 0, 0, 0);
+    const deadline = start + 60 * 60 * 1000; // 1h window
+    // Observe only the first 28s, then nothing — missing window ≈ 59m 31s.
+    const entry = buildEntry({
+      startedAtMs: start,
+      deadlineAtMs: deadline,
+      observedIntervals: [{ fromMs: start, toMs: start + 29_000 }],
+    });
+    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    expect(mount.textContent).toMatch(/Brief gap \(59m\)/);
+    expect(mount.textContent).not.toMatch(/1h/);
+  });
+
+  it('does not crash when observedIntervals is missing from an entry payload', () => {
+    // Regression: the API stub in `deadline-plan-history.spec.ts` predated the v2 contract
+    // and returned entries without `observedIntervals`. The coverage helper called `.reduce`
+    // on undefined and threw, killing the whole list render. The renderer must tolerate
+    // missing coverage data.
+    const entry = buildEntry();
+    const stripped = entry as unknown as Record<string, unknown>;
+    delete stripped.observedIntervals;
+    delete stripped.discoveredFrom;
+    const mount = mountIntoBody(h(DeadlinePlanHistory, {
+      entries: [stripped as DeferredObjectivePlanHistoryEntry],
+      timeZone: 'UTC',
+    }));
+    // The list and the outcome chip still render.
+    expect(mount.querySelector('.plan-history-list')).not.toBeNull();
+    expect(mount.querySelector('.plan-chip--ok')?.textContent).toBe('Met');
+    expect(mount.querySelector('.plan-history-card__coverage')).toBeNull();
   });
 
   it('renders an abandoned entry with a muted chip', () => {
