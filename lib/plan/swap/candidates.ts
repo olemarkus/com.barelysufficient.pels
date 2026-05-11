@@ -1,5 +1,5 @@
 import type { DevicePlanDevice } from '../planTypes';
-import { resolveCandidatePower } from '../planCandidatePower';
+import { getCurrentDrawKw } from '../../observer/observedPower';
 import {
   RESTORE_ADMISSION_FLOOR_KW,
   SWAP_RESTORE_RESERVE_KW,
@@ -61,8 +61,8 @@ export function buildSwapCandidates(params: {
   for (const onDev of onDevices) {
     if (!isViableSwapCandidate(onDev, dev, swappedOutFor, restoredThisCycle)) continue;
 
-    const pwr = resolveCandidatePower(onDev);
-    if (pwr === null || pwr <= 0) continue;
+    const pwr = getCurrentDrawKw(onDev);
+    if (pwr <= 0) continue;
 
     toShed.push(onDev);
     currentPotential += pwr;

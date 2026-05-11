@@ -6,7 +6,9 @@ import type {
 } from './planState';
 import type { DeviceDiagnosticsBackoffTransition } from '../diagnostics/deviceDiagnosticsService';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
+import { MIN_ACTIVE_MEASURED_POWER_KW, isActivelyDrawing } from '../observer/observedPower';
 import { OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS } from './planConstants';
+import { isFiniteNumber } from '../utils/appTypeGuards';
 
 export type { ActivationAttemptSource } from './planState';
 
@@ -34,7 +36,6 @@ export type ActivationPenaltyInfo = {
   transitions: DeviceDiagnosticsBackoffTransition[];
 };
 
-const MIN_ACTIVE_MEASURED_POWER_KW = 0.05;
 const RESTORE_ATTRIBUTION_DEVICE_CLASSES = new Set([
   'thermostat',
   'heater',
@@ -42,10 +43,6 @@ const RESTORE_ATTRIBUTION_DEVICE_CLASSES = new Set([
   'airconditioning',
   'airtreatment',
 ]);
-
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
 
 const clampPenaltyLevel = (value: unknown): number => {
   if (!isFiniteNumber(value) || value <= 0) return 0;
@@ -200,7 +197,7 @@ export function isActivationObservationActiveNow(
   if (!observation) return false;
   if (observation.available === false) return false;
   if (resolveEffectiveCurrentOn(observation) === true) return true;
-  return isFiniteNumber(observation.measuredPowerKw) && observation.measuredPowerKw > MIN_ACTIVE_MEASURED_POWER_KW;
+  return isActivelyDrawing({ measuredPowerKw: observation.measuredPowerKw });
 }
 
 type CloseActivationAttemptKind = 'inactive' | 'shed' | 'quiet';

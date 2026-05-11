@@ -2,7 +2,7 @@ import type { SteppedLoadCommandStatus, SteppedLoadProfile } from '../utils/type
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { resolveEffectiveCurrentOn } from './planCurrentState';
-import { resolveCandidatePower } from './planCandidatePower';
+import { getCurrentDrawKw } from '../observer/observedPower';
 import {
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
@@ -27,6 +27,7 @@ type RemainingSheddableBaseDevice = RemainingSheddablePowerFields & {
   currentState?: string;
   budgetExempt: boolean;
   hasBinaryControl?: boolean;
+  observationStale?: boolean;
 };
 
 export type RemainingSheddableTemperatureTarget = {
@@ -102,6 +103,7 @@ type RemainingSheddableSourceDevice = RemainingSheddablePowerFields & {
   currentState?: string;
   budgetExempt?: boolean;
   hasBinaryControl?: boolean;
+  observationStale?: boolean;
 };
 
 export function normalizeRemainingShedBehavior(behavior: RawShedBehavior): RemainingShedBehavior {
@@ -155,7 +157,7 @@ export function resolveRemainingSheddableLoadKw(params: RemainingSheddableLoadPa
   if (limitSource === 'daily' && !capacityBreached && device.budgetExempt) return 0;
   if (!canStillShedDevice({ device, shedBehavior })) return 0;
 
-  const power = resolveCandidatePower(device);
+  const power = getCurrentDrawKw(device);
   return power > 0 ? power : 0;
 }
 
@@ -194,6 +196,7 @@ function toRemainingSheddableBaseDevice(device: RemainingSheddableSourceDevice):
     currentState: device.currentState,
     budgetExempt: device.budgetExempt === true,
     hasBinaryControl: device.hasBinaryControl,
+    observationStale: device.observationStale,
     measuredPowerKw: device.measuredPowerKw,
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: device.planningPowerKw,
