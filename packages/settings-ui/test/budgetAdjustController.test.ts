@@ -198,6 +198,60 @@ describe('budgetAdjustController', () => {
     expect(applyHandler).toHaveBeenCalledTimes(1);
   });
 
+  it('offers an Undo action that reapplies the previous active settings', async () => {
+    vi.useFakeTimers();
+    try {
+      const refreshSpy = vi.fn(async () => {});
+      const applyBodies: unknown[] = [];
+      const applyHandler = vi.fn<(body: unknown) => unknown>((body) => {
+        applyBodies.push(body);
+        return { days: {}, todayKey: 'today' };
+      });
+      await installHomey(
+        {
+          daily_budget_enabled: true,
+          daily_budget_kwh: MIN_DAILY_BUDGET_KWH,
+          daily_budget_price_shaping_enabled: true,
+          daily_budget_controlled_weight: UNMANAGED_RESERVE_BALANCED_MODE,
+          daily_budget_price_flex_share: PRICE_FLEX_MEDIUM,
+        },
+        (method, uri, body) => {
+          if (method === 'POST' && uri === SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH) {
+            return applyHandler(body);
+          }
+          throw new Error(`unexpected ${method} ${uri}`);
+        },
+      );
+      const controller = await import('../src/ui/budgetAdjustController.ts');
+      controller.setBudgetAdjustRefresh(refreshSpy);
+      await controller.loadBudgetAdjust();
+
+      controller.updateBudgetAdjustField({ dailyBudgetKWh: 80 });
+      const applyPromise = controller.applyBudgetAdjust();
+      // Flush microtasks so the toast renders before the sleep begins.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(controller.getBudgetAdjustView().draft.dailyBudgetKWh).toBe(80);
+
+      const toast = document.getElementById('toast');
+      const undoButton = toast?.querySelector<HTMLButtonElement>('.toast__action');
+      expect(undoButton).not.toBeNull();
+      expect(undoButton?.textContent).toBe('Undo');
+
+      undoButton?.click();
+      await vi.runAllTimersAsync();
+      await applyPromise;
+
+      const view = controller.getBudgetAdjustView();
+      expect(view.draft.dailyBudgetKWh).toBe(MIN_DAILY_BUDGET_KWH);
+      expect(view.status).toBe('clean');
+      expect(applyHandler).toHaveBeenCalledTimes(2);
+      expect((applyBodies[1] as { dailyBudgetKWh: number }).dailyBudgetKWh).toBe(MIN_DAILY_BUDGET_KWH);
+      expect(refreshSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('discards a pending preview and reverts the working draft', async () => {
     await installHomey(
       {
