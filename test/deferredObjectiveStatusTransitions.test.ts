@@ -21,7 +21,6 @@ const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   currentTemperatureC: 50,
   deadlineAtMs: overrides.deadlineAtMs ?? 1_700_000_000_000,
   deadlineLocalTime: '07:00',
-  deadlineRollsToNextDay: false,
   energyNeededKWh: 1.5,
   kWhPerPercent: null,
   kWhPerDegreeC: 0.3,
@@ -129,6 +128,55 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
 
     emitDeferredObjectiveStatusTransitions({ diagnostics: [rescheduled], statusBus: bus, nowMs: 5_000 });
     expect(missed).toEqual(['heater-1', 'heater-1']);
+  });
+
+  it('invokes onDeadlinePassed once the deadline has passed (any non-trivial status)', () => {
+    const bus = createDeferredObjectiveStatusBus();
+    const disabled: string[] = [];
+    const onDeadlinePassed = (deviceId: string) => { disabled.push(deviceId); };
+
+    const diag = baseDiagnostic({
+      deviceId: 'heater-1',
+      status: 'at_risk',
+      deadlineAtMs: 1_000,
+    });
+    // Pre-deadline: no callback.
+    emitDeferredObjectiveStatusTransitions({
+      diagnostics: [diag], statusBus: bus, nowMs: 999, onDeadlinePassed,
+    });
+    expect(disabled).toEqual([]);
+    // Deadline reached: callback fires. Subsequent ticks may fire again — the
+    // callback itself is idempotent (no-op when enabled is already false),
+    // so we only assert here that the first post-deadline tick triggers it.
+    emitDeferredObjectiveStatusTransitions({
+      diagnostics: [diag], statusBus: bus, nowMs: 1_000, onDeadlinePassed,
+    });
+    expect(disabled[0]).toBe('heater-1');
+  });
+
+  it('disables a satisfied-at-deadline objective so it does not stay enabled forever', () => {
+    // Regression for the case where a device reaches its target before the
+    // deadline and remains 'satisfied' as the deadline passes. The previous
+    // gating on deadlineJustPassed (which is false for satisfied) left the
+    // objective enabled indefinitely; now we disable on any post-deadline
+    // diagnostic regardless of status branch.
+    const bus = createDeferredObjectiveStatusBus();
+    const disabled: string[] = [];
+    const onDeadlinePassed = (deviceId: string) => { disabled.push(deviceId); };
+
+    const satisfied = baseDiagnostic({
+      deviceId: 'heater-1',
+      status: 'satisfied',
+      deadlineAtMs: 1_000,
+    });
+    emitDeferredObjectiveStatusTransitions({
+      diagnostics: [satisfied], statusBus: bus, nowMs: 999, onDeadlinePassed,
+    });
+    expect(disabled).toEqual([]);
+    emitDeferredObjectiveStatusTransitions({
+      diagnostics: [satisfied], statusBus: bus, nowMs: 1_500, onDeadlinePassed,
+    });
+    expect(disabled).toEqual(['heater-1']);
   });
 
   it('forgets devices no longer present in diagnostics', () => {

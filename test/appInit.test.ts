@@ -138,6 +138,63 @@ describe('app init plan service wiring', () => {
     );
   });
 
+  it('disableDeferredObjective also forgets the status bus and active plan for the device', () => {
+    // Regression: previously the auto-disable hook only wrote enabled=false to
+    // settings, leaving the last published status snapshot live in the bus
+    // until the next plan cycle's forget-sweep. Flow conditions like
+    // deadline_status_is would still match the stale snapshot in that window.
+    capturedPlanEngineDeps.current = null;
+    const settingsStore = new Map<string, unknown>();
+    settingsStore.set('deferred_objectives', {
+      version: 1,
+      objectivesByDeviceId: {
+        'heater-1': {
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 55,
+          deadlineAtMs: Date.now() + 60_000,
+        },
+      },
+    });
+    const forgetDevice = vi.fn();
+    const clearForDevice = vi.fn();
+    const homey = {
+      flow: {
+        getTriggerCard: vi.fn(),
+        getConditionCard: vi.fn(),
+        getActionCard: vi.fn(),
+      },
+      settings: {
+        get: vi.fn((key: string) => settingsStore.get(key)),
+        set: vi.fn((key: string, value: unknown) => { settingsStore.set(key, value); }),
+        on: vi.fn(),
+        off: vi.fn(),
+      },
+    } as unknown as AppContext['homey'];
+
+    createPlanEngine(createAppContextMock({
+      homey,
+      deviceManager: {} as AppContext['deviceManager'],
+      deferredObjectiveStatusBus: { forgetDevice } as unknown as AppContext['deferredObjectiveStatusBus'],
+      deferredObjectiveActivePlanRecorder: {
+        clearForDevice,
+      } as unknown as AppContext['deferredObjectiveActivePlanRecorder'],
+    }));
+
+    const disable = (capturedPlanEngineDeps.current as {
+      disableDeferredObjective: (deviceId: string) => void;
+    }).disableDeferredObjective;
+    disable('heater-1');
+
+    const stored = settingsStore.get('deferred_objectives') as {
+      objectivesByDeviceId: Record<string, { enabled: boolean }>;
+    };
+    expect(stored.objectivesByDeviceId['heater-1']?.enabled).toBe(false);
+    expect(forgetDevice).toHaveBeenCalledWith('heater-1');
+    expect(clearForDevice).toHaveBeenCalledWith('heater-1');
+  });
+
   it('fails fast when price coordinator rebuild wiring is invoked without a plan service', async () => {
     capturedPriceCoordinatorDeps.current = null;
     createPriceCoordinator(createAppContextMock({

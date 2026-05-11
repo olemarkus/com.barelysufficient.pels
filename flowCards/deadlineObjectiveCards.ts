@@ -133,6 +133,7 @@ function registerSetTemperatureDeadlineCard(deps: FlowCardDeps): void {
     }
     const targetTemperatureC = validateTargetTemperature(payload?.target_c, device);
     const deadlineLocalTime = validateReadyBy(payload?.ready_by);
+    const deadlineAtMs = resolveReadyByToDeadlineAtMs(deps, deadlineLocalTime);
     const accessors = requireSettingsAccessors(deps);
     const settings = accessors.read();
     accessors.write(upsertObjective(settings, deviceId, {
@@ -140,7 +141,7 @@ function registerSetTemperatureDeadlineCard(deps: FlowCardDeps): void {
       kind: 'temperature',
       enforcement: 'soft',
       targetTemperatureC,
-      deadlineLocalTime,
+      deadlineAtMs,
     }));
     seedActivePlanPending(deps, {
       device,
@@ -148,7 +149,7 @@ function registerSetTemperatureDeadlineCard(deps: FlowCardDeps): void {
       enforcement: 'soft',
       targetTemperatureC,
       targetPercent: null,
-      deadlineLocalTime,
+      deadlineAtMs,
     });
     deps.rebuildPlan('deadline_objective_card_set');
     return true;
@@ -185,6 +186,7 @@ function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
     }
     const targetPercent = validateNumberInRange(payload?.target_percent, 'Target battery (%)', 1, 100);
     const deadlineLocalTime = validateReadyBy(payload?.ready_by);
+    const deadlineAtMs = resolveReadyByToDeadlineAtMs(deps, deadlineLocalTime);
     const enforcementId = getDropdownId(payload?.enforcement) || 'soft';
     if (enforcementId !== 'soft' && enforcementId !== 'hard') {
       throw new Error('Enforcement must be "soft" or "hard".');
@@ -196,7 +198,7 @@ function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
       kind: 'ev_soc',
       enforcement: enforcementId,
       targetPercent,
-      deadlineLocalTime,
+      deadlineAtMs,
     }));
     seedActivePlanPending(deps, {
       device,
@@ -204,7 +206,7 @@ function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
       enforcement: enforcementId,
       targetTemperatureC: null,
       targetPercent,
-      deadlineLocalTime,
+      deadlineAtMs,
     });
     deps.rebuildPlan('deadline_objective_card_set');
     return true;
@@ -215,30 +217,37 @@ function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
   });
 }
 
+const resolveReadyByToDeadlineAtMs = (deps: FlowCardDeps, deadlineLocalTime: string): number => {
+  const nowMs = deps.getNow().getTime();
+  const resolution = resolveDeferredObjectiveDeadline({
+    nowMs,
+    timeZone: deps.getTimeZone(),
+    deadlineLocalTime,
+  });
+  if (resolution.deadlineAtMs === null || resolution.deadlineAtMs <= nowMs) {
+    throw new Error(`Could not resolve "${deadlineLocalTime}" to a future moment in time.`);
+  }
+  return resolution.deadlineAtMs;
+};
+
 const seedActivePlanPending = (deps: FlowCardDeps, params: {
   device: TargetDeviceSnapshot;
   kind: 'temperature' | 'ev_soc';
   enforcement: 'soft' | 'hard';
   targetTemperatureC: number | null;
   targetPercent: number | null;
-  deadlineLocalTime: string;
+  deadlineAtMs: number;
 }): void => {
   const seed = deps.markDeferredObjectiveActivePlanPending;
   if (!seed) return;
   const nowMs = deps.getNow().getTime();
-  const resolution = resolveDeferredObjectiveDeadline({
-    nowMs,
-    timeZone: deps.getTimeZone(),
-    deadlineLocalTime: params.deadlineLocalTime,
-  });
-  if (resolution.deadlineAtMs === null) return;
   seed({
     deviceId: params.device.id,
     deviceName: params.device.name ?? null,
     objectiveKind: params.kind,
     targetTemperatureC: params.targetTemperatureC,
     targetPercent: params.targetPercent,
-    deadlineAtMs: resolution.deadlineAtMs,
+    deadlineAtMs: params.deadlineAtMs,
     enforcement: params.enforcement,
   }, nowMs);
 };

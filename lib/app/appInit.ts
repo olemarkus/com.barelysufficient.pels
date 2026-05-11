@@ -1,4 +1,4 @@
-import { isDeviceObservationStale } from '../plan/planObservationPolicy';
+import { isDeviceObservationStale } from '../observer/observationFreshness';
 import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
 import { PlanService } from '../plan/planService';
 import { PriceCoordinator } from '../price/priceCoordinator';
@@ -167,11 +167,32 @@ export function createPlanEngine(ctx: AppContext) {
       recorder.flushIfDirty();
     },
     getDeferredObjectiveStatusBus: () => ctx.deferredObjectiveStatusBus,
+    disableDeferredObjective: (deviceId) => disableDeferredObjectiveInSettings(ctx, deviceId),
     log: (...args: unknown[]) => ctx.log(...args),
     logDebug: (...args: unknown[]) => ctx.logDebug('plan', ...args),
     error: (...args: unknown[]) => ctx.error(...args),
   });
 }
+
+const disableDeferredObjectiveInSettings = (ctx: AppContext, deviceId: string): void => {
+  const current = normalizeDeferredObjectiveSettings(ctx.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS));
+  const entry = current.objectivesByDeviceId[deviceId];
+  if (!entry || !entry.enabled) return;
+  const next = {
+    ...current,
+    objectivesByDeviceId: {
+      ...current.objectivesByDeviceId,
+      [deviceId]: { ...entry, enabled: false },
+    },
+  };
+  ctx.homey.settings.set(DEFERRED_OBJECTIVES_SETTINGS, next);
+  // Drop in-memory status + active plan so flow conditions like
+  // `deadline_status_is` and the deadline UI agree with the persisted state
+  // immediately, instead of seeing the last published snapshot until the
+  // next plan cycle's forget-sweep runs.
+  ctx.deferredObjectiveStatusBus?.forgetDevice(deviceId);
+  ctx.deferredObjectiveActivePlanRecorder?.clearForDevice(deviceId);
+};
 
 export function createPlanService(ctx: AppContext): PlanService {
   return new PlanService({

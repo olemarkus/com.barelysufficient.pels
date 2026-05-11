@@ -92,6 +92,7 @@ export type PlanBuilderDeps = {
     nowMs: number,
   ) => void;
   getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
+  disableDeferredObjective?: (deviceId: string) => void;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
 };
@@ -632,7 +633,12 @@ export class PlanBuilder {
   ): void {
     const statusBus = this.deps.getDeferredObjectiveStatusBus?.();
     if (!statusBus) return;
-    emitDeferredObjectiveStatusTransitions({ diagnostics, statusBus, nowMs });
+    emitDeferredObjectiveStatusTransitions({
+      diagnostics,
+      statusBus,
+      nowMs,
+      onDeadlinePassed: this.deps.disableDeferredObjective,
+    });
   }
 
   private resolveSoftLimitSource(capacitySoftLimit: number, dailySoftLimit: number | null): SoftLimitSource {
