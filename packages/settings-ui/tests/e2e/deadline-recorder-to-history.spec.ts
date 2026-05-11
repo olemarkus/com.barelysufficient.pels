@@ -36,7 +36,6 @@ type DeferredObjectiveDiagnosticLike = {
   currentTemperatureC: number | null;
   deadlineAtMs: number | null;
   deadlineLocalTime: string;
-  deadlineRollsToNextDay: boolean;
   energyNeededKWh: number | null;
   kWhPerPercent: number | null;
   kWhPerDegreeC: number | null;
@@ -122,7 +121,6 @@ const buildTemperatureDiag = (overrides: TemperatureDiagOverrides): DeferredObje
   currentTemperatureC: overrides.currentTemperatureC,
   deadlineAtMs: overrides.deadlineAtMs,
   deadlineLocalTime: '06:00',
-  deadlineRollsToNextDay: false,
   energyNeededKWh: 22.5,
   kWhPerPercent: null,
   kWhPerDegreeC: 1.5,

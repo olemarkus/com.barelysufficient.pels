@@ -145,7 +145,7 @@ export const PlanSteppedCard = ({
           {displayDev.temperatureBoostActive !== true && displayDev.evBoostActive === true && (
             <span class="plan-chip plan-chip--ok" data-tooltip="EV boost is active">Boost</span>
           )}
-          <DeadlineChip deviceId={dev.id} />
+          <DeadlineChip deviceId={dev.id} nowMs={nowMs} />
         </div>
       </div>
 

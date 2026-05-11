@@ -51,6 +51,20 @@ export const resolveDeferredObjectiveDeadline = (params: {
   };
 };
 
+/**
+ * Format an absolute deadline timestamp back to a local HH:mm string in the given timezone.
+ * Used as a display helper for log fields and flow-card tokens that historically referenced
+ * deadlineLocalTime — the persisted shape is now absolute, but the display string still has
+ * value for users.
+ */
+export const formatDeadlineLocalTime = (deadlineAtMs: number, timeZone: string): string => {
+  if (!Number.isFinite(deadlineAtMs)) return '';
+  const parts = getZonedParts(new Date(deadlineAtMs), timeZone);
+  const hh = String(parts.hour).padStart(2, '0');
+  const mm = String(parts.minute).padStart(2, '0');
+  return `${hh}:${mm}`;
+};
+
 const resolveLocalDateTimeMs = (params: {
   dateKey: string;
   localTime: string;

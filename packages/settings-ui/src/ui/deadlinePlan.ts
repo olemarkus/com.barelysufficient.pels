@@ -62,8 +62,6 @@ type ObjectivePlanInput = {
   nowMs?: number;
 };
 
-const DEADLINE_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
-
 const formatHourLabel = (startsAtMs: number): string => (
   new Date(startsAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
 );
@@ -97,17 +95,6 @@ const formatTarget = (objective: DeferredObjectiveSettingsEntry): string => (
     : `${objective.targetPercent}%`
 );
 
-const resolveDeadlineAtMs = (deadlineLocalTime: string, nowMs: number): number | null => {
-  const match = deadlineLocalTime.match(DEADLINE_TIME_PATTERN);
-  if (!match) return null;
-  const now = new Date(nowMs);
-  const deadline = new Date(now);
-  deadline.setHours(Number(match[1]), Number(match[2]), 0, 0);
-  if (deadline.getTime() <= nowMs) {
-    deadline.setDate(deadline.getDate() + 1);
-  }
-  return deadline.getTime();
-};
 
 const resolveUsefulPowerKw = (device: TargetDeviceSnapshot): number | null => {
   const candidates = [
@@ -331,10 +318,8 @@ const resolveObjectiveContext = (params: ObjectivePlanInput): ResolvedObjectiveC
   const device = params.devices.find((candidate) => candidate.id === deviceId);
   if (!objective || !objective.enabled || !device) return null;
   const activePlan = params.bootstrap.deferredObjectiveActivePlans?.plansByDeviceId[deviceId] ?? null;
-  // Prefer the runtime-persisted deadline so a deadline-time change does not
-  // silently shift the rendered window before the next plan cycle has caught up.
-  const deadlineAtMs = activePlan?.deadlineAtMs ?? resolveDeadlineAtMs(objective.deadlineLocalTime, nowMs);
-  if (deadlineAtMs === null) return null;
+  const deadlineAtMs = activePlan?.deadlineAtMs ?? objective.deadlineAtMs;
+  if (!Number.isFinite(deadlineAtMs) || deadlineAtMs <= nowMs) return null;
   return { device, objective, deviceId, deadlineAtMs, activePlan, nowMs };
 };
 
@@ -516,6 +501,5 @@ export const mountDeadlinePlan = async (): Promise<void> => {
 export const testExports = {
   buildObjectivePayload,
   buildPendingPayload,
-  resolveDeadlineAtMs,
   resolveRenderInput,
 };

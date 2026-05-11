@@ -30,9 +30,11 @@ import { buildDeadlineHref } from '../deadlineUrls.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
 import type { DeviceReason } from '../../../../shared-domain/src/planReasonSemanticsCore.ts';
 
-const hasActiveDeadlineObjective = (deviceId: string): boolean => (
-  Boolean(state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId]?.enabled)
-);
+const hasActiveDeadlineObjective = (deviceId: string, nowMs: number): boolean => {
+  const entry = state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId];
+  if (!entry || !entry.enabled) return false;
+  return Number.isFinite(entry.deadlineAtMs) && entry.deadlineAtMs > nowMs;
+};
 
 const stopActivation = (event: Event): void => {
   event.stopPropagation();
@@ -58,8 +60,8 @@ const handleChipKeyUp = (event: KeyboardEvent): void => {
   if (target instanceof HTMLAnchorElement) target.click();
 };
 
-export const DeadlineChip = ({ deviceId }: { deviceId: string }) => {
-  if (!hasActiveDeadlineObjective(deviceId)) return null;
+export const DeadlineChip = ({ deviceId, nowMs }: { deviceId: string; nowMs: number }) => {
+  if (!hasActiveDeadlineObjective(deviceId, nowMs)) return null;
   return (
     <a
       class="plan-chip plan-chip--info plan-chip--link"
@@ -281,7 +283,7 @@ export const PlanGenericCard = ({
               {starvationBadge.label}
             </span>
           )}
-          <DeadlineChip deviceId={dev.id} />
+          <DeadlineChip deviceId={dev.id} nowMs={nowMs} />
         </div>
       </div>
 
@@ -355,7 +357,7 @@ export const PlanTemperatureCard = ({
               {starvationBadge.label}
             </span>
           )}
-          <DeadlineChip deviceId={dev.id} />
+          <DeadlineChip deviceId={dev.id} nowMs={nowMs} />
         </div>
       </div>
 

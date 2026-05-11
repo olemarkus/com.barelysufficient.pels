@@ -4,11 +4,16 @@ import { DeadlineChip } from '../src/ui/views/PlanDeviceCards.tsx';
 import { state } from '../src/ui/state.ts';
 import { createEmptyDeferredObjectiveSettings } from '../../contracts/src/deferredObjectiveSettings.ts';
 
-const renderChip = (deviceId: string): HTMLDivElement => {
+const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
+
+const renderChip = (deviceId: string, nowMs: number = NOW_MS): HTMLDivElement => {
   const mount = document.createElement('div');
-  render(h(DeadlineChip, { deviceId }), mount);
+  render(h(DeadlineChip, { deviceId, nowMs }), mount);
   return mount;
 };
+
+const futureDeadline = (): number => NOW_MS + 6 * 60 * 60 * 1000;
+const pastDeadline = (): number => NOW_MS - 60 * 1000;
 
 afterEach(() => {
   state.deferredObjectiveSettings = createEmptyDeferredObjectiveSettings();
@@ -29,7 +34,7 @@ describe('DeadlineChip', () => {
           kind: 'temperature',
           enforcement: 'soft',
           targetTemperatureC: 65,
-          deadlineLocalTime: '07:30',
+          deadlineAtMs: futureDeadline(),
         },
       },
     };
@@ -50,7 +55,24 @@ describe('DeadlineChip', () => {
           kind: 'temperature',
           enforcement: 'soft',
           targetTemperatureC: 65,
-          deadlineLocalTime: '07:30',
+          deadlineAtMs: futureDeadline(),
+        },
+      },
+    };
+
+    expect(renderChip('connected-300').querySelector('a')).toBeNull();
+  });
+
+  it('does not render when the deadline has already passed', () => {
+    state.deferredObjectiveSettings = {
+      version: 1,
+      objectivesByDeviceId: {
+        'connected-300': {
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 65,
+          deadlineAtMs: pastDeadline(),
         },
       },
     };
@@ -68,7 +90,7 @@ describe('DeadlineChip', () => {
             kind: 'temperature',
             enforcement: 'soft',
             targetTemperatureC: 65,
-            deadlineLocalTime: '07:30',
+            deadlineAtMs: futureDeadline(),
           },
         },
       };
@@ -83,7 +105,7 @@ describe('DeadlineChip', () => {
       const inner = document.createElement('div');
       card.appendChild(inner);
       document.body.appendChild(card);
-      render(h(DeadlineChip, { deviceId: 'connected-300' }), inner);
+      render(h(DeadlineChip, { deviceId: 'connected-300', nowMs: NOW_MS }), inner);
       const link = card.querySelector('a') as HTMLAnchorElement;
       // Suppress real navigation in jsdom.
       link.addEventListener('click', (event) => event.preventDefault());

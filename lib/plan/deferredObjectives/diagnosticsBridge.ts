@@ -7,7 +7,7 @@ import type { DailyBudgetUiPayload } from '../../dailyBudget/dailyBudgetTypes';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { sortSteppedLoadSteps } from '../../utils/deviceControlProfiles';
 import type { PlanInputDevice } from '../planTypes';
-import { resolveDeferredObjectiveDeadline } from './deadline';
+import { formatDeadlineLocalTime } from './deadline';
 import { planDeferredObjectiveHorizon } from './horizonPlanner';
 import {
   buildDeferredObjectivePolicyHorizon,
@@ -45,7 +45,6 @@ export type DeferredObjectiveDiagnostic = {
   currentTemperatureC: number | null;
   deadlineAtMs: number | null;
   deadlineLocalTime: string;
-  deadlineRollsToNextDay: boolean;
   energyNeededKWh: number | null;
   kWhPerPercent: number | null;
   kWhPerDegreeC: number | null;
@@ -137,8 +136,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
     deviceId,
     device,
     objective,
-    deadlineAtMs: null,
-    deadlineRollsToNextDay: false,
+    timeZone,
     currentPercent: null,
     currentTemperatureC: null,
     energyNeededKWh: null,
@@ -148,21 +146,14 @@ const buildDeferredObjectiveDiagnostic = (params: {
   });
   if (!device) return withUnknown(base, 'objective_missing_device');
 
-  const deadline = resolveDeferredObjectiveDeadline({
-    nowMs,
-    timeZone,
-    deadlineLocalTime: objective.deadlineLocalTime,
-  });
-  const withDeadline = {
-    ...base,
-    deadlineAtMs: deadline.deadlineAtMs,
-    deadlineRollsToNextDay: deadline.rollsToNextDay,
-  };
-  if (deadline.deadlineAtMs === null) return withUnknown(withDeadline, 'objective_invalid_deadline');
+  if (!Number.isFinite(objective.deadlineAtMs) || objective.deadlineAtMs <= 0) {
+    return withUnknown(base, 'objective_invalid_deadline');
+  }
+  const withDeadline = base;
 
   const policyHorizon = buildDeferredObjectivePolicyHorizon({
     nowMs,
-    deadlineAtMs: deadline.deadlineAtMs,
+    deadlineAtMs: objective.deadlineAtMs,
     priceOptimizationEnabled,
     dailyBudgetSnapshot,
   });
@@ -200,7 +191,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
     powerTracker,
     base: withDeadline,
     policyHorizon,
-    deadlineAtMs: deadline.deadlineAtMs,
+    deadlineAtMs: objective.deadlineAtMs,
   });
 };
 /* eslint-enable sonarjs/cognitive-complexity */
@@ -295,36 +286,39 @@ const buildDiagnosticBase = (params: {
   deviceId: string;
   device?: PlanInputDevice;
   objective: DeferredObjectiveSettingsEntry;
-  deadlineAtMs: number | null;
-  deadlineRollsToNextDay: boolean;
+  timeZone: string;
   currentPercent: number | null;
   currentTemperatureC: number | null;
   energyNeededKWh: number | null;
   kWhPerPercent: number | null;
   kWhPerDegreeC: number | null;
   rateConfidence: string | null;
-}): DeferredObjectiveDiagnostic => ({
-  deviceId: params.deviceId,
-  deviceName: params.device?.name,
-  objectiveId: `${params.deviceId}:${params.objective.kind}`,
-  objectiveKind: params.objective.kind,
-  enforcement: params.objective.enforcement,
-  status: 'unknown',
-  reasonCode: 'objective_progress_stale',
-  targetPercent: params.objective.kind === 'ev_soc' ? params.objective.targetPercent : null,
-  currentPercent: params.currentPercent,
-  targetTemperatureC: params.objective.kind === 'temperature' ? params.objective.targetTemperatureC : null,
-  currentTemperatureC: params.currentTemperatureC,
-  deadlineAtMs: params.deadlineAtMs,
-  deadlineLocalTime: params.objective.deadlineLocalTime,
-  deadlineRollsToNextDay: params.deadlineRollsToNextDay,
-  energyNeededKWh: params.energyNeededKWh,
-  kWhPerPercent: params.kWhPerPercent,
-  kWhPerDegreeC: params.kWhPerDegreeC,
-  rateConfidence: params.rateConfidence,
-  horizonBucketCount: 0,
-  requestedMinimumStepId: null,
-});
+}): DeferredObjectiveDiagnostic => {
+  const deadlineAtMs = Number.isFinite(params.objective.deadlineAtMs) && params.objective.deadlineAtMs > 0
+    ? params.objective.deadlineAtMs
+    : null;
+  return {
+    deviceId: params.deviceId,
+    deviceName: params.device?.name,
+    objectiveId: `${params.deviceId}:${params.objective.kind}`,
+    objectiveKind: params.objective.kind,
+    enforcement: params.objective.enforcement,
+    status: 'unknown',
+    reasonCode: 'objective_progress_stale',
+    targetPercent: params.objective.kind === 'ev_soc' ? params.objective.targetPercent : null,
+    currentPercent: params.currentPercent,
+    targetTemperatureC: params.objective.kind === 'temperature' ? params.objective.targetTemperatureC : null,
+    currentTemperatureC: params.currentTemperatureC,
+    deadlineAtMs,
+    deadlineLocalTime: deadlineAtMs !== null ? formatDeadlineLocalTime(deadlineAtMs, params.timeZone) : '',
+    energyNeededKWh: params.energyNeededKWh,
+    kWhPerPercent: params.kWhPerPercent,
+    kWhPerDegreeC: params.kWhPerDegreeC,
+    rateConfidence: params.rateConfidence,
+    horizonBucketCount: 0,
+    requestedMinimumStepId: null,
+  };
+};
 
 const withUnknown = (
   diagnostic: DeferredObjectiveDiagnostic,
@@ -493,7 +487,6 @@ const buildDeferredObjectiveDebugPayload = (
   rateConfidence: diagnostic.rateConfidence,
   deadlineAtMs: diagnostic.deadlineAtMs,
   deadlineLocalTime: diagnostic.deadlineLocalTime,
-  deadlineRollsToNextDay: diagnostic.deadlineRollsToNextDay,
   horizonBucketCount: diagnostic.horizonBucketCount,
   requestedMinimumStepId: diagnostic.requestedMinimumStepId,
   plannedUsefulEnergyKWh: diagnostic.horizonPlan?.plannedUsefulEnergyKWh ?? null,
