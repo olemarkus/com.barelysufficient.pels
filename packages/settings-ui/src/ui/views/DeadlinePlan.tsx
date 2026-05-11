@@ -49,6 +49,10 @@ export type DeadlinePlanPayload = {
     deadlineLabel: string;
     hours: DeadlinePlanHour[];
   };
+  planInputs: {
+    perUnitRateLabel: string | null;
+    maxPowerLabel: string | null;
+  };
 };
 
 export type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
@@ -443,6 +447,32 @@ const HorizonCard = ({ payload }: { payload: DeadlinePlanPayload }) => (
   </section>
 );
 
+const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
+  const { perUnitRateLabel, maxPowerLabel } = payload.planInputs;
+  if (perUnitRateLabel === null && maxPowerLabel === null) return null;
+  return (
+    <section class="pels-surface-card budget-redesign-card" aria-labelledby="deadline-plan-inputs-title">
+      <div class="budget-card-header">
+        <h2 class="plan-card__title" id="deadline-plan-inputs-title">{payload.labels.planInputsCardTitle}</h2>
+      </div>
+      <dl class="plan-inputs__list">
+        {perUnitRateLabel !== null && (
+          <div class="plan-inputs__row">
+            <dt class="plan-inputs__row-label">{payload.labels.planInputsRateRowLabel}</dt>
+            <dd class="plan-inputs__row-value">{perUnitRateLabel}</dd>
+          </div>
+        )}
+        {maxPowerLabel !== null && (
+          <div class="plan-inputs__row">
+            <dt class="plan-inputs__row-label">{payload.labels.planInputsMaxPowerRowLabel}</dt>
+            <dd class="plan-inputs__row-value">{maxPowerLabel}</dd>
+          </div>
+        )}
+      </dl>
+    </section>
+  );
+};
+
 type DeadlinePlanTab = 'current' | 'history';
 
 const PlanTabStrip = ({ active, onChange }: {
@@ -522,6 +552,7 @@ const CurrentPlanContent = ({ loadState }: { loadState: DeadlinePlanLoadState })
     <>
       <DeadlineHero payload={loadState.payload} />
       <HorizonCard payload={loadState.payload} />
+      <PlanInputsCard payload={loadState.payload} />
     </>
   );
 };
