@@ -1036,6 +1036,7 @@ describe('Device plan snapshot', () => {
         targets: [],
         currentOn: false,
         capabilities: ['onoff'],
+        lastFreshDataMs: Date.now(),
       },
     ]);
 
@@ -1105,6 +1106,7 @@ describe('Device plan snapshot', () => {
         targets: [],
         currentOn: false,
         capabilities: ['onoff'],
+        lastFreshDataMs: Date.now(),
       },
     ]);
 
@@ -4269,6 +4271,7 @@ describe('Dry run mode', () => {
         controllable: true,
         powerKw: 0.05,
         expectedPowerKw: 0.05,
+        lastFreshDataMs: Date.now(),
       },
       {
         id: 'low-temp',
@@ -4279,6 +4282,7 @@ describe('Dry run mode', () => {
         controllable: true,
         powerKw: 0.6,
         expectedPowerKw: 0.6,
+        lastFreshDataMs: Date.now(),
       },
     ]);
 
@@ -4341,6 +4345,7 @@ describe('Dry run mode', () => {
         controllable: true,
         powerKw: 0.05,
         expectedPowerKw: 0.05,
+        lastFreshDataMs: Date.now(),
       },
       {
         id: 'low-temp-no-onoff',
@@ -4351,6 +4356,7 @@ describe('Dry run mode', () => {
         controllable: true,
         powerKw: 0.6,
         expectedPowerKw: 0.6,
+        lastFreshDataMs: Date.now(),
       },
     ]);
 

@@ -1,4 +1,4 @@
-import { isDeviceObservationStale } from '../plan/planObservationPolicy';
+import { isDeviceObservationStale } from '../observer/observationFreshness';
 import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
 import { PlanService } from '../plan/planService';
 import { PriceCoordinator } from '../price/priceCoordinator';

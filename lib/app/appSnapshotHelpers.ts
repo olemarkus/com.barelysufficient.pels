@@ -3,7 +3,11 @@ import type { DeviceManager } from '../core/deviceManager';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { PlanEngine } from '../plan/planEngine';
 import { TARGET_CONFIRMATION_STUCK_POLL_MS } from '../plan/planConstants';
-import { getLatestDeviceObservationMs, isDeviceObservationStale } from '../plan/planObservationPolicy';
+import {
+  getLatestDeviceObservationMs,
+  isDeviceObservationStale,
+  isDeviceObservationStaleByAge,
+} from '../observer/observationFreshness';
 import type { PlanService } from '../plan/planService';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import type { TimerRegistry } from './timerRegistry';
@@ -132,7 +136,7 @@ export class AppSnapshotHelpers {
     const nowMs = this.deps.getNow().getTime();
     const snapshot = this.deps.getLatestTargetSnapshot().filter((device) => this.deps.resolveManagedState(device.id));
     this.logDeviceFreshnessTransitions(snapshot, 'stale_observation_check', nowMs);
-    const staleDevices = snapshot.filter((device) => isDeviceObservationStale(device));
+    const staleDevices = snapshot.filter((device) => isDeviceObservationStaleByAge(device, nowMs));
     if (staleDevices.length === 0) return;
 
     this.deps.logDebug(
@@ -150,7 +154,7 @@ export class AppSnapshotHelpers {
     let stillStaleAfterRefreshDevices = 0;
     for (const deviceId of staleDeviceIds) {
       const refreshedDevice = refreshedById.get(deviceId);
-      if (!refreshedDevice || isDeviceObservationStale(refreshedDevice)) {
+      if (!refreshedDevice || isDeviceObservationStaleByAge(refreshedDevice, nowMs)) {
         stillStaleAfterRefreshDevices += 1;
       } else {
         freshAfterRefreshDevices += 1;
