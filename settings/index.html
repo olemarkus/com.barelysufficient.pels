@@ -692,7 +692,7 @@
               <input id="daily-budget-breakdown" type="checkbox">
               <span class="checkbox-field__content">
                 <span class="field__label">Show daily budget breakdown in the chart</span>
-                <small class="field__hint">Stack uncontrolled vs. controlled contributions.</small>
+                <small class="field__hint">Stack background usage and managed device usage.</small>
               </span>
             </label>
             <p class="muted">PELS uses recent usage history to reserve budget for unmanaged household load, then plans managed-device usage around prices and minimum service needs.</p>
@@ -800,11 +800,11 @@
         <section class="detail-section" id="device-detail-delta-section">
           <details class="settings-collapse detail-collapse" open>
             <summary>
-              <h3 class="section-title">Price optimization deltas</h3>
-              <span class="section-hint">Cheap and expensive hour offsets</span>
+              <h3 class="section-title">Price response</h3>
+              <span class="section-hint">Cheap-hour boost and expensive-hour reduction</span>
             </summary>
             <div class="collapse-content">
-              <p class="muted">Temperature adjustments applied during cheap and expensive electricity hours.</p>
+              <p class="muted">Temperature changes applied during cheap and expensive electricity hours.</p>
               <div class="detail-deltas form-grid">
                 <div class="md-field-row">
                   <md-filled-text-field
@@ -838,19 +838,19 @@
         <section class="detail-section" id="device-detail-shedding-section">
           <details class="settings-collapse detail-collapse" open>
             <summary>
-              <h3 class="section-title">Shedding behavior</h3>
-              <span class="section-hint">What PELS does when capacity is exceeded</span>
+              <h3 class="section-title">Power limiting</h3>
+              <span class="section-hint">What PELS does when power needs to be lowered</span>
             </summary>
             <div class="collapse-content">
               <div class="field">
-                <span class="field__label">When shedding</span>
-                <div class="segmented" id="device-detail-overshoot-segmented" role="radiogroup" aria-label="When shedding"></div>
+                <span class="field__label">When limiting</span>
+                <div class="segmented" id="device-detail-overshoot-segmented" role="radiogroup" aria-label="When limiting"></div>
                 <select id="device-detail-overshoot" hidden aria-hidden="true">
                   <option value="turn_off">Turn off</option>
                   <option value="set_temperature">Set to temperature</option>
                   <option value="set_step">Set to step</option>
                 </select>
-                <small class="field__hint">Choose how PELS reacts when capacity is exceeded.</small>
+                <small class="field__hint">Choose what PELS does when power needs to be lowered.</small>
               </div>
               <div class="md-field-row" id="device-detail-overshoot-temp-row" hidden>
                 <md-filled-text-field
@@ -996,7 +996,7 @@
                 <p class="muted" id="device-detail-ev-boost-status"></p>
               </div>
 
-              <p class="muted">When a shed stepped-load device is restored, PELS starts from the lowest active step and only climbs higher when there is room for it.</p>
+              <p class="muted">When a limited stepped-load device resumes, PELS starts from the lowest active step and only climbs higher when there is room for it.</p>
             </div>
           </details>
         </section>

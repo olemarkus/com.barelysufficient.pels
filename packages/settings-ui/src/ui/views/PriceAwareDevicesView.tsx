@@ -162,7 +162,8 @@ const DeviceRow = ({
       <span class="price-aware-grid__name">{device.name}</span>
       <div class="price-aware-grid__cell">
         <span class="price-aware-grid__cell-label" aria-hidden="true">
-          <span>🟢</span> Cheap ↑
+          <span class="price-aware-grid__tone-dot price-aware-grid__tone-dot--cheap"></span>
+          <span>Cheap</span>
         </span>
         <ValueAdjuster
           direction="up"
@@ -178,7 +179,8 @@ const DeviceRow = ({
       </div>
       <div class="price-aware-grid__cell">
         <span class="price-aware-grid__cell-label" aria-hidden="true">
-          <span>🔴</span> Expensive ↓
+          <span class="price-aware-grid__tone-dot price-aware-grid__tone-dot--expensive"></span>
+          <span>Expensive</span>
         </span>
         <ValueAdjuster
           direction="down"
@@ -228,10 +230,12 @@ const DevicesSection = ({
         <header class="price-aware-grid__head" role="row">
           <span role="columnheader">Device</span>
           <span role="columnheader" class="price-aware-grid__col-head">
-            <span aria-hidden="true">🟢</span> Cheap ↑
+            <span class="price-aware-grid__tone-dot price-aware-grid__tone-dot--cheap" aria-hidden="true"></span>
+            Cheap
           </span>
           <span role="columnheader" class="price-aware-grid__col-head">
-            <span aria-hidden="true">🔴</span> Expensive ↓
+            <span class="price-aware-grid__tone-dot price-aware-grid__tone-dot--expensive" aria-hidden="true"></span>
+            Expensive
           </span>
         </header>
         {devices.map((device) => (
