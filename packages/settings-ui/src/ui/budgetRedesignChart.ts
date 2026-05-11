@@ -10,6 +10,8 @@ export type BudgetRedesignDayView = 'today' | 'tomorrow' | 'yesterday';
 type BudgetChartPalette = {
   actual: string;
   plan: string;
+  background: string;
+  managed: string;
   forecast: string;
   priceLine: string;
   priceFill: string;
@@ -86,6 +88,8 @@ const ensureChart = (container: HTMLElement): EChartsType => {
 const resolvePalette = (container: HTMLElement): BudgetChartPalette => ({
   actual: resolveCssColor(container, '--pels-chart-actual', '#e6ecf5'),
   plan: resolveCssColor(container, '--pels-chart-plan', '#10b981'),
+  background: resolveCssColor(container, '--day-view-color-background-usage', '#64b5f6'),
+  managed: resolveCssColor(container, '--day-view-color-managed-usage', '#f59e0b'),
   forecast: resolveCssColor(container, '--pels-chart-forecast', '#64b5f6'),
   priceLine: resolveCssColor(container, '--pels-chart-price-line', '#f59e0b'),
   priceFill: resolveCssColor(container, '--pels-chart-price-fill', 'rgba(245, 158, 11, 0.14)'),
@@ -165,12 +169,18 @@ const resolveYAxisScale = (dataMax: number, kind: ChartScaleKind): { max: number
   };
 };
 
-const resolvePriceYAxisScale = (prices: number[]): { max: number; interval: number } => {
-  const dataMax = Math.max(0, ...prices);
-  const interval = dataMax <= 1.2 ? 0.3 : 0.5;
-  const max = Math.max(interval, Math.ceil(dataMax / interval) * interval);
+const resolvePriceYAxisScale = (prices: number[]): { min: number; max: number; interval: number } => {
+  if (prices.length === 0) return { min: 0, max: 1, interval: 0.5 };
+  const dataMin = Math.min(...prices);
+  const dataMax = Math.max(...prices);
+  const span = Math.max(0.01, dataMax - dataMin);
+  const pad = span * 0.1;
+  const interval = span <= 1.2 ? 0.3 : 0.5;
+  const minPadded = Math.max(0, Math.floor((dataMin - pad) / interval) * interval);
+  const maxPadded = Math.ceil((dataMax + pad) / interval) * interval;
   return {
-    max: Number(max.toFixed(1)),
+    min: Number(minPadded.toFixed(2)),
+    max: Number(maxPadded.toFixed(2)),
     interval,
   };
 };
@@ -362,6 +372,28 @@ type BuildHourlyParams = {
   palette: BudgetChartPalette;
   priceReliable: boolean;
   costDisplay: CostDisplay;
+  dataMaxOverride?: number;
+};
+
+const buildPriceYAxis = (priceValues: number[], priceAxisUnit: string, palette: BudgetChartPalette) => {
+  const priceScale = resolvePriceYAxisScale(priceValues);
+  return {
+    type: 'value' as const,
+    min: priceScale.min,
+    max: priceScale.max,
+    interval: priceScale.interval,
+    name: priceAxisUnit,
+    nameGap: 8,
+    nameTextStyle: { color: palette.muted, fontSize: 10, padding: [0, 0, 4, 0] as [number, number, number, number] },
+    axisTick: { show: false },
+    axisLine: { show: false },
+    axisLabel: {
+      color: palette.muted,
+      fontSize: 11,
+      formatter: (value: number) => value.toFixed(1),
+    },
+    splitLine: { show: false },
+  };
 };
 
 const buildHourlyOption = (params: BuildHourlyParams): EChartsOption => {
@@ -371,6 +403,7 @@ const buildHourlyOption = (params: BuildHourlyParams): EChartsOption => {
     palette,
     priceReliable,
     costDisplay,
+    dataMaxOverride,
   } = params;
   const planned = payload.buckets.plannedKWh || [];
   const actual = payload.buckets.actualKWh || [];
@@ -380,11 +413,13 @@ const buildHourlyOption = (params: BuildHourlyParams): EChartsOption => {
     index <= actualUpToIndex && Number.isFinite(value) ? value : null
   ));
   const allActual = actualVisible.filter((value): value is number => Number.isFinite(value));
+  const computedMax = Math.max(0, ...planned, ...allActual);
+  const dataMax = dataMaxOverride !== undefined ? Math.max(computedMax, dataMaxOverride) : computedMax;
   const priceAxisUnit = resolvePriceAxisUnit(costDisplay);
   const option = buildBaseOption({
     labels,
     palette,
-    dataMax: Math.max(...planned, ...allActual),
+    dataMax,
     scaleKind: 'hourly',
     priceAxisUnit,
   });
@@ -392,51 +427,58 @@ const buildHourlyOption = (params: BuildHourlyParams): EChartsOption => {
     ? normalizePriceValues(payload.buckets.price, labels.length, costDisplay)
     : [];
   if (priceValues.length === labels.length) {
-    const priceScale = resolvePriceYAxisScale(priceValues);
     option.grid = { ...(option.grid as Record<string, unknown>), right: 48, top: 26 };
-    option.yAxis = [
-      option.yAxis,
+    option.yAxis = [option.yAxis, buildPriceYAxis(priceValues, priceAxisUnit, palette)];
+  }
+  const plannedBackground = payload.buckets.plannedUncontrolledKWh || [];
+  const plannedManaged = payload.buckets.plannedControlledKWh || [];
+  const hasSplit = plannedBackground.length === labels.length
+    && plannedManaged.length === labels.length;
+  const series: SeriesOption[] = hasSplit
+    ? [
       {
-        type: 'value',
-        min: 0,
-        max: priceScale.max,
-        interval: priceScale.interval,
-        name: priceAxisUnit,
-        nameGap: 8,
-        nameTextStyle: { color: palette.muted, fontSize: 10, padding: [0, 0, 4, 0] },
-        axisTick: { show: false },
-        axisLine: { show: false },
-        axisLabel: {
-          color: palette.muted,
-          fontSize: 11,
-          formatter: (value: number) => value.toFixed(1),
-        },
-        splitLine: { show: false },
+        type: 'bar',
+        name: 'Background',
+        data: plannedBackground,
+        stack: 'planned',
+        z: 2,
+        barMaxWidth: 10,
+        itemStyle: { color: palette.background },
+        emphasis: { disabled: true },
+      },
+      {
+        type: 'bar',
+        name: 'Managed',
+        data: plannedManaged,
+        stack: 'planned',
+        z: 2,
+        barMaxWidth: 10,
+        itemStyle: { color: palette.managed, borderRadius: [4, 4, 0, 0] },
+        emphasis: { disabled: true },
+      },
+    ]
+    : [
+      {
+        type: 'bar',
+        name: 'Plan',
+        data: planned,
+        z: 2,
+        barMaxWidth: 10,
+        itemStyle: { color: palette.plan, borderRadius: [4, 4, 0, 0] },
+        emphasis: { disabled: true },
       },
     ];
-  }
-  const series: SeriesOption[] = [
-    {
-      type: 'bar',
-      name: 'Plan',
-      data: planned,
-      z: 2,
-      barMaxWidth: 10,
-      itemStyle: { color: palette.plan, borderRadius: [4, 4, 0, 0] },
-      emphasis: { disabled: true },
-    },
-  ];
   if (priceValues.length === labels.length) {
     series.push({
       type: 'line',
       name: 'Price',
       data: priceValues,
       yAxisIndex: 1,
-      z: 3,
+      z: 5,
       showSymbol: false,
       smooth: false,
       step: 'middle',
-      lineStyle: { color: palette.priceLine, width: 2 },
+      lineStyle: { color: palette.priceLine, width: 3 },
       areaStyle: { color: palette.priceFill },
       emphasis: { disabled: true },
     });
@@ -469,6 +511,6 @@ export const renderBudgetRedesignChart = (params: BudgetRedesignChartParams) => 
   const palette = resolvePalette(container);
   const option = mode === 'progress'
     ? buildProgressOption(payload, view, palette, dataMaxOverride)
-    : buildHourlyOption({ payload, view, palette, priceReliable, costDisplay });
+    : buildHourlyOption({ payload, view, palette, priceReliable, costDisplay, dataMaxOverride });
   ensureChart(container).setOption(option, { notMerge: true });
 };

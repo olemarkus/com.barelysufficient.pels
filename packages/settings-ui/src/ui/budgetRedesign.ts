@@ -373,31 +373,69 @@ const resolveChartData = (
 
 const resolveComparisonChartMax = (day: DailyBudgetDayPayload | null): number => {
   if (!day) return 0;
-  const planSum = sum(day.buckets.plannedKWh);
-  const actualSum = sum(day.buckets.actualKWh);
-  return Math.max(planSum, actualSum, day.budget.dailyBudgetKWh ?? 0);
+  const planned = day.buckets.plannedKWh ?? [];
+  const actual = (day.buckets.actualKWh ?? []).filter((value): value is number => Number.isFinite(value));
+  return Math.max(0, ...planned, ...actual);
+};
+
+type ComparisonDay = {
+  dayView: BudgetDayView;
+  activeDay: DailyBudgetDayPayload | null;
+  candidateDay: DailyBudgetDayPayload | null;
+  label: string;
+};
+
+export const resolveEffectiveLocalView = (
+  activeEnabled: boolean,
+  requestedView: BudgetLocalView,
+): BudgetLocalView => (activeEnabled ? requestedView : 'adjust');
+
+export const resolveComparisonDay = (
+  activePayload: DailyBudgetUiPayload | null,
+  candidatePayload: DailyBudgetUiPayload | null,
+): ComparisonDay => {
+  const activeTomorrow = resolveViewPayload(activePayload, 'tomorrow');
+  const candidateTomorrow = resolveViewPayload(candidatePayload, 'tomorrow');
+  const tomorrowReady = Boolean(activeTomorrow && candidateTomorrow)
+    && isPriceReliable(activeTomorrow) && isPriceReliable(candidateTomorrow);
+  if (tomorrowReady) {
+    return {
+      dayView: 'tomorrow',
+      activeDay: activeTomorrow,
+      candidateDay: candidateTomorrow,
+      label: 'Showing tomorrow’s plan — tomorrow’s prices are in.',
+    };
+  }
+  return {
+    dayView: 'today',
+    activeDay: resolveViewPayload(activePayload, 'today'),
+    candidateDay: resolveViewPayload(candidatePayload, 'today'),
+    label: 'Showing today’s plan — tomorrow’s prices not yet available.',
+  };
 };
 
 const resolveAdjustData = (): BudgetAdjustData => {
   const view = getBudgetAdjustView();
   const { costDisplay } = latestRenderState;
-  const dayView: BudgetDayView = 'today';
   const showComparison = view.status === 'pending';
   const activePayload = showComparison ? getBudgetAdjustActivePayload() : null;
   const candidatePayload = showComparison ? getBudgetAdjustCandidatePayload() : null;
-  const activeDay = activePayload ? resolveViewPayload(activePayload, dayView) : null;
-  const candidateDay = candidatePayload ? resolveViewPayload(candidatePayload, dayView) : null;
+  const { dayView, activeDay, candidateDay, label } = resolveComparisonDay(activePayload, candidatePayload);
   const sharedMax = Math.max(resolveComparisonChartMax(activeDay), resolveComparisonChartMax(candidateDay));
+  const priceReliable = isPriceReliable(activeDay) && isPriceReliable(candidateDay);
   return {
     draft: view.draft,
     active: view.active,
     candidate: view.candidate,
     activeChart: activeDay
-      ? { payload: activeDay, view: dayView, costDisplay, dataMaxOverride: sharedMax }
+      ? { payload: activeDay, view: dayView, costDisplay, priceReliable, dataMaxOverride: sharedMax }
       : null,
     candidateChart: candidateDay
-      ? { payload: candidateDay, view: dayView, costDisplay, dataMaxOverride: sharedMax }
+      ? { payload: candidateDay, view: dayView, costDisplay, priceReliable, dataMaxOverride: sharedMax }
       : null,
+    comparisonDayView: dayView,
+    comparisonDayLabel: label,
+    comparisonShowPrice: priceReliable,
     status: view.status,
     busy: view.busy,
     hardCapKw: Number.parseFloat(settingsCapacityLimitInput?.value ?? ''),
@@ -411,12 +449,18 @@ const buildProps = (): BudgetOverviewProps => {
   const { payload, view, costDisplay } = latestRenderState;
   const viewPayload = resolveViewPayload(payload, view);
   const status = resolveStatus(viewPayload, view);
+  const adjust = resolveAdjustData();
+  // The persisted enabled flag — not the per-day payload — is the source
+  // of truth for whether the feature is on. The selected day's payload
+  // may be transiently null (e.g. tomorrowKey not yet seeded) even when
+  // the feature is enabled.
+  const effectiveLocalView = resolveEffectiveLocalView(adjust.active.enabled, currentBudgetLocalView);
   return {
-    localView: currentBudgetLocalView,
+    localView: effectiveLocalView,
     view,
     hero: resolveHeroData(viewPayload, view, costDisplay, status),
     chart: resolveChartData(viewPayload, view, currentChartMode, status, costDisplay),
-    adjust: resolveAdjustData(),
+    adjust,
     onLocalViewChange: (v) => {
       if (currentBudgetLocalView === 'adjust' && v !== 'adjust') discardBudgetAdjust();
       currentBudgetLocalView = v;
