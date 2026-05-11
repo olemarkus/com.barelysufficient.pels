@@ -20,10 +20,11 @@ export {
   type DeferredObjectiveBackfillConfig,
 } from './planHistory';
 export { normalizeDeferredObjectivePlanHistory } from './planHistorySettings';
+export { DeferredObjectiveActivePlanRecorder } from './activePlanRecorder';
 export {
-  DeferredObjectiveActivePlanRecorder,
-  type ActivePlanFlowCardSeed,
-} from './activePlanRecorder';
+  applyDeferredObjectiveChange,
+  type DeferredObjectiveChangeInput,
+} from './objectiveChange';
 export { normalizeDeferredObjectiveActivePlans } from './activePlanSettings';
 export { resolveDeferredObjectiveDeadline } from './deadline';
 export { buildDeferredObjectivePolicyHorizon } from './policyHorizon';

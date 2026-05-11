@@ -468,4 +468,116 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     });
     expect(recorder.getHistorySnapshot().entries).toHaveLength(1);
   });
+
+  describe('finalizeForUserChange', () => {
+    it('finalizes the in-progress run as `replaced` when the user picks a new deadline', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const originalDeadline = 6 * HOUR_MS;
+
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: originalDeadline, currentTemperatureC: 50 })], 0);
+      recorder.finalizeForUserChange('dev', 2 * HOUR_MS, 'replaced');
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('replaced');
+      expect(entry.deadlineAtMs).toBe(originalDeadline);
+      expect(entry.finalizedAtMs).toBe(2 * HOUR_MS);
+      // Same target as the original run; the new deadline starts a separate entry once observed.
+      expect(entry.targetTemperatureC).toBe(65);
+    });
+
+    it('finalizes as `replaced` when the user keeps the deadline but bumps the target', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs,
+        targetTemperatureC: 60,
+        currentTemperatureC: 50,
+      })], 0);
+      recorder.finalizeForUserChange('dev', HOUR_MS, 'replaced');
+      // Next cycle: new diagnostic with the bumped target starts a fresh in-progress record.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs,
+        targetTemperatureC: 70,
+        currentTemperatureC: 52,
+      })], HOUR_MS);
+      recorder.observe([], 6 * HOUR_MS); // deadline sweep finalizes the bumped run as `missed`
+      recorder.flushIfDirty();
+
+      const entries = saved()!.entries;
+      expect(entries).toHaveLength(2);
+      const [first, second] = entries;
+      expect(first!.outcome).toBe('replaced');
+      expect(first!.targetTemperatureC).toBe(60);
+      expect(second!.outcome).toBe('missed');
+      expect(second!.targetTemperatureC).toBe(70);
+    });
+
+    it('finalizes as `abandoned` when the user clears the objective', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
+      recorder.finalizeForUserChange('dev', 30 * 60 * 1000, 'abandoned');
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('abandoned');
+      expect(entry.finalizedAtMs).toBe(30 * 60 * 1000);
+    });
+
+    it('still reports `met` if the user replaced after the target was already reached', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs,
+        currentTemperatureC: 65,
+        status: 'satisfied',
+        horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
+      })], 2 * HOUR_MS);
+      recorder.finalizeForUserChange('dev', 3 * HOUR_MS, 'replaced');
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('met');
+      expect(entry.metAtMs).toBe(2 * HOUR_MS);
+    });
+
+    it('is a no-op when there is no in-progress run for the device', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+
+      recorder.finalizeForUserChange('dev', 0, 'replaced');
+      expect(recorder.flushIfDirty()).toBe(false);
+      expect(saved()).toBeNull();
+    });
+
+    it('does not touch in-progress runs for other devices', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      recorder.observe([
+        makeDiag({ deviceId: 'dev-a', deadlineAtMs, currentTemperatureC: 50 }),
+        makeDiag({ deviceId: 'dev-b', deadlineAtMs, currentTemperatureC: 40 }),
+      ], 0);
+      recorder.finalizeForUserChange('dev-a', HOUR_MS, 'abandoned');
+      recorder.flushIfDirty();
+
+      const entries = saved()!.entries;
+      expect(entries).toHaveLength(1);
+      expect(entries[0]!.deviceId).toBe('dev-a');
+      expect(entries[0]!.outcome).toBe('abandoned');
+    });
+  });
 });

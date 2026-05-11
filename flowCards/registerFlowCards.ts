@@ -31,7 +31,7 @@ import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDev
 import { registerFlowBackedDeviceCards } from './flowBackedDeviceCards';
 import { registerDeadlineObjectiveCards } from './deadlineObjectiveCards';
 import type {
-  ActivePlanFlowCardSeed,
+  DeferredObjectiveChangeInput,
   DeferredObjectiveSettingsV1,
   DeferredObjectiveStatusBus,
 } from '../lib/plan/deferredObjectives';
@@ -81,8 +81,7 @@ export type FlowCardDeps = {
   getDeferredObjectiveSettings?: () => DeferredObjectiveSettingsV1;
   setDeferredObjectiveSettings?: (next: DeferredObjectiveSettingsV1) => void;
   getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
-  markDeferredObjectiveActivePlanPending?: (seed: ActivePlanFlowCardSeed, nowMs: number) => void;
-  clearDeferredObjectiveActivePlan?: (deviceId: string) => void;
+  applyDeferredObjectiveChange?: (params: DeferredObjectiveChangeInput) => void;
   evaluateHeadroomForDevice: (params: {
     devices: HeadroomCardDeviceLike[];
     deviceId: string;
