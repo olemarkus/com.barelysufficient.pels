@@ -136,21 +136,16 @@ function registerSetTemperatureDeadlineCard(deps: FlowCardDeps): void {
     const deadlineAtMs = resolveReadyByToDeadlineAtMs(deps, deadlineLocalTime);
     const accessors = requireSettingsAccessors(deps);
     const settings = accessors.read();
-    accessors.write(upsertObjective(settings, deviceId, {
+    const prevEntry = settings.objectivesByDeviceId[deviceId];
+    const nextEntry: DeferredObjectiveSettingsEntry = {
       enabled: true,
       kind: 'temperature',
       enforcement: 'soft',
       targetTemperatureC,
       deadlineAtMs,
-    }));
-    seedActivePlanPending(deps, {
-      device,
-      kind: 'temperature',
-      enforcement: 'soft',
-      targetTemperatureC,
-      targetPercent: null,
-      deadlineAtMs,
-    });
+    };
+    accessors.write(upsertObjective(settings, deviceId, nextEntry));
+    notifyObjectiveChange(deps, { device, prevEntry, nextEntry });
     deps.rebuildPlan('deadline_objective_card_set');
     return true;
   });
@@ -193,21 +188,16 @@ function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
     }
     const accessors = requireSettingsAccessors(deps);
     const settings = accessors.read();
-    accessors.write(upsertObjective(settings, deviceId, {
+    const prevEntry = settings.objectivesByDeviceId[deviceId];
+    const nextEntry: DeferredObjectiveSettingsEntry = {
       enabled: true,
       kind: 'ev_soc',
       enforcement: enforcementId,
       targetPercent,
       deadlineAtMs,
-    }));
-    seedActivePlanPending(deps, {
-      device,
-      kind: 'ev_soc',
-      enforcement: enforcementId,
-      targetTemperatureC: null,
-      targetPercent,
-      deadlineAtMs,
-    });
+    };
+    accessors.write(upsertObjective(settings, deviceId, nextEntry));
+    notifyObjectiveChange(deps, { device, prevEntry, nextEntry });
     deps.rebuildPlan('deadline_objective_card_set');
     return true;
   });
@@ -230,26 +220,29 @@ const resolveReadyByToDeadlineAtMs = (deps: FlowCardDeps, deadlineLocalTime: str
   return resolution.deadlineAtMs;
 };
 
-const seedActivePlanPending = (deps: FlowCardDeps, params: {
+const resolveDeviceName = async (deps: FlowCardDeps, deviceId: string): Promise<string | null> => {
+  try {
+    const snapshot = await deps.getSnapshot();
+    return snapshot.find((entry) => entry.id === deviceId)?.name ?? null;
+  } catch {
+    return null;
+  }
+};
+
+const notifyObjectiveChange = (deps: FlowCardDeps, params: {
   device: TargetDeviceSnapshot;
-  kind: 'temperature' | 'ev_soc';
-  enforcement: 'soft' | 'hard';
-  targetTemperatureC: number | null;
-  targetPercent: number | null;
-  deadlineAtMs: number;
+  prevEntry: DeferredObjectiveSettingsEntry | undefined;
+  nextEntry: DeferredObjectiveSettingsEntry | undefined;
 }): void => {
-  const seed = deps.markDeferredObjectiveActivePlanPending;
-  if (!seed) return;
-  const nowMs = deps.getNow().getTime();
-  seed({
+  const apply = deps.applyDeferredObjectiveChange;
+  if (!apply) return;
+  apply({
     deviceId: params.device.id,
     deviceName: params.device.name ?? null,
-    objectiveKind: params.kind,
-    targetTemperatureC: params.targetTemperatureC,
-    targetPercent: params.targetPercent,
-    deadlineAtMs: params.deadlineAtMs,
-    enforcement: params.enforcement,
-  }, nowMs);
+    prevEntry: params.prevEntry,
+    nextEntry: params.nextEntry,
+    nowMs: deps.getNow().getTime(),
+  });
 };
 
 function registerClearDeadlineCard(deps: FlowCardDeps): void {
@@ -259,10 +252,17 @@ function registerClearDeadlineCard(deps: FlowCardDeps): void {
     const deviceId = getDeviceIdFromFlowArg(payload?.device);
     if (!deviceId) throw new Error('Device must be provided.');
     const accessors = requireSettingsAccessors(deps);
-    const next = removeObjective(accessors.read(), deviceId);
-    accessors.write(next);
+    const settings = accessors.read();
+    const prevEntry = settings.objectivesByDeviceId[deviceId];
+    accessors.write(removeObjective(settings, deviceId));
     deps.getDeferredObjectiveStatusBus?.()?.forgetDevice(deviceId);
-    deps.clearDeferredObjectiveActivePlan?.(deviceId);
+    deps.applyDeferredObjectiveChange?.({
+      deviceId,
+      deviceName: prevEntry ? await resolveDeviceName(deps, deviceId) : null,
+      prevEntry,
+      nextEntry: undefined,
+      nowMs: deps.getNow().getTime(),
+    });
     deps.rebuildPlan('deadline_objective_card_clear');
     return true;
   });

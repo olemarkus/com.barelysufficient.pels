@@ -249,6 +249,67 @@ describe('deadline objective flow cards', () => {
     expect(bus.hasActive('heater-1')).toBe(false);
   });
 
+  it('calls applyDeferredObjectiveChange with prev/next entries on set_temperature_deadline', async () => {
+    const applyChange = vi.fn();
+    const initial: DeferredObjectiveSettingsV1 = {
+      version: 1,
+      objectivesByDeviceId: {
+        'heater-1': {
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 55,
+          deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+        },
+      },
+    };
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      rebuildPlan: vi.fn(),
+    });
+    (deps as { applyDeferredObjectiveChange?: unknown }).applyDeferredObjectiveChange = applyChange;
+    mock.settings.set('deferred_objectives', initial);
+    registerDeadlineObjectiveCards(deps);
+    await mock.actions.get('set_temperature_deadline')!.run!({
+      device: 'heater-1', target_c: 60, ready_by: '08:00',
+    });
+    expect(applyChange).toHaveBeenCalledTimes(1);
+    const call = applyChange.mock.calls[0]![0];
+    expect(call.deviceId).toBe('heater-1');
+    expect(call.prevEntry?.targetTemperatureC).toBe(55);
+    expect(call.nextEntry?.targetTemperatureC).toBe(60);
+    expect(call.nextEntry?.deadlineAtMs).toBe(HH_MM_TO_UTC_MS(8, 0));
+  });
+
+  it('calls applyDeferredObjectiveChange with cleared next entry on clear_deadline', async () => {
+    const applyChange = vi.fn();
+    const initial: DeferredObjectiveSettingsV1 = {
+      version: 1,
+      objectivesByDeviceId: {
+        'heater-1': {
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 55,
+          deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+        },
+      },
+    };
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      rebuildPlan: vi.fn(),
+    });
+    (deps as { applyDeferredObjectiveChange?: unknown }).applyDeferredObjectiveChange = applyChange;
+    mock.settings.set('deferred_objectives', initial);
+    registerDeadlineObjectiveCards(deps);
+    await mock.actions.get('clear_deadline')!.run!({ device: 'heater-1' });
+    expect(applyChange).toHaveBeenCalledTimes(1);
+    const call = applyChange.mock.calls[0]![0];
+    expect(call.deviceId).toBe('heater-1');
+    expect(call.prevEntry?.targetTemperatureC).toBe(55);
+    expect(call.nextEntry).toBeUndefined();
+  });
+
   it('removes the entry on clear_deadline', async () => {
     const initial: DeferredObjectiveSettingsV1 = {
       version: 1,
