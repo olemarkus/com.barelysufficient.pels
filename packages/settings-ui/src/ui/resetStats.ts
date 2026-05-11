@@ -17,14 +17,12 @@ export const handleResetStats = async (btn: HTMLButtonElement) => {
     const b = btn;
     b.textContent = '\u26A0\uFE0F Click again to confirm reset';
     b.classList.add('confirming');
-    b.style.color = 'var(--homey-red, #f44336)';
 
     if (resetTimeout) clearTimeout(resetTimeout);
     resetTimeout = setTimeout(() => {
       const el = btn;
       el.textContent = 'Reset all stats';
       el.classList.remove('confirming');
-      el.style.color = '';
       resetTimeout = null;
     }, 5000);
     return;
@@ -54,7 +52,6 @@ export const handleResetStats = async (btn: HTMLButtonElement) => {
     const el = btn;
     el.textContent = 'Reset all stats';
     el.classList.remove('confirming');
-    el.style.color = '';
     resetTimeout = null;
   }
 };

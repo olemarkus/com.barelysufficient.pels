@@ -13,6 +13,7 @@
   --radius-md: 10px;
   --radius-lg: 14px;
   --radius-full: 9999px;
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.22);
   --shadow-md: 0 4px 24px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
   --shadow-card: 0 30px 60px rgba(0, 0, 0, 0.28);
@@ -73,14 +74,8 @@
   --color-overlay-toast: rgba(12, 17, 27, 0.9);
   --color-gradient-accent-radial: rgba(16, 185, 129, 0.12);
   --color-gradient-accent-radial-blue: rgba(116, 145, 255, 0.1);
-  --pels-text-card-title-font-line-height: 1.2;
   --pels-segmented-selected-background: rgba(16, 185, 129, 0.42);
-  --chip-padding-block: 4px;
   --chip-padding-inline: 10px;
-  --chip-radius: 9999px;
-  --chip-font-size: 11px;
-  --chip-font-weight: 600;
-  --chip-line-height: 1.2;
   --chip-border-width: 1px;
   --color-semantic-bg: var(--color-base-black);
   --color-semantic-text-primary: var(--color-base-gray-50);
@@ -129,6 +124,7 @@
   --pels-text-status-line-font-line-height: var(--font-line-height-normal);
   --pels-text-card-title-font-size: var(--font-size-lg);
   --pels-text-card-title-font-weight: var(--font-weight-semibold);
+  --pels-text-card-title-font-line-height: var(--font-line-height-tight);
   --pels-text-card-supporting-font-size: var(--font-size-sm);
   --pels-text-card-supporting-font-line-height: var(--font-line-height-normal);
   --pels-text-settings-label-font-weight: var(--font-weight-semibold);
@@ -140,6 +136,11 @@
   --pels-card-gap: var(--spacing-2);
   --pels-card-radius: var(--radius-lg);
   --pels-segmented-label-font-weight: var(--font-weight-semibold);
+  --chip-padding-block: var(--spacing-1);
+  --chip-radius: var(--radius-full);
+  --chip-font-size: var(--font-size-xs);
+  --chip-font-weight: var(--font-weight-semibold);
+  --chip-line-height: var(--font-line-height-tight);
   --pels-on-surface: var(--color-semantic-text-primary);
   --pels-on-surface-variant: var(--color-semantic-text-secondary);
   --pels-on-surface-muted: var(--color-semantic-text-muted);
