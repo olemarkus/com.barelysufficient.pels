@@ -1,9 +1,11 @@
-import type { DailyBudgetDayPayload } from '../../contracts/src/dailyBudgetTypes';
+import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../contracts/src/dailyBudgetTypes';
 import {
   resolveBudgetPlannedDayKWh,
+  resolveComparisonDay,
   resolveDecisionLine,
   resolveDeltaPill,
   resolveDominantCause,
+  resolveEffectiveLocalView,
   resolveHeadroomLine,
   resolveSplitLine,
 } from '../src/ui/budgetRedesign.ts';
@@ -289,5 +291,81 @@ describe('resolveBudgetPlannedDayKWh', () => {
       buckets: { plannedKWh: [2, 1.5, 0.5] },
     } as unknown as DailyBudgetDayPayload;
     expect(resolveBudgetPlannedDayKWh(payload)).toBe(4);
+  });
+});
+
+describe('resolveEffectiveLocalView', () => {
+  it('honours the requested view when the budget feature is on', () => {
+    expect(resolveEffectiveLocalView(true, 'plan')).toBe('plan');
+    expect(resolveEffectiveLocalView(true, 'adjust')).toBe('adjust');
+  });
+
+  it('forces the adjust view when the feature is off so the enable toggle surfaces', () => {
+    expect(resolveEffectiveLocalView(false, 'plan')).toBe('adjust');
+    expect(resolveEffectiveLocalView(false, 'adjust')).toBe('adjust');
+  });
+});
+
+describe('resolveComparisonDay', () => {
+  const buildDayWithPrice = (price: Array<number | null>): DailyBudgetDayPayload => buildPayload({
+    plannedKWh: Array.from({ length: 24 }, () => 1),
+    price,
+  });
+
+  const wrapAsUiPayload = (
+    todayDay: DailyBudgetDayPayload,
+    tomorrowDay: DailyBudgetDayPayload | null,
+  ): DailyBudgetUiPayload => ({
+    days: {
+      '2026-05-11': todayDay,
+      ...(tomorrowDay ? { '2026-05-12': tomorrowDay } : {}),
+    },
+    todayKey: '2026-05-11',
+    tomorrowKey: tomorrowDay ? '2026-05-12' : null,
+    yesterdayKey: null,
+  });
+
+  const reliablePrice = Array.from({ length: 24 }, (_, i) => 0.5 + (i % 12) * 0.02);
+
+  it('routes to tomorrow when both active and candidate have reliable tomorrow prices', () => {
+    const today = buildDayWithPrice(reliablePrice);
+    const tomorrow = buildDayWithPrice(reliablePrice);
+    const active = wrapAsUiPayload(today, tomorrow);
+    const candidate = wrapAsUiPayload(today, tomorrow);
+    const result = resolveComparisonDay(active, candidate);
+    expect(result.dayView).toBe('tomorrow');
+    expect(result.activeDay).toBe(tomorrow);
+    expect(result.candidateDay).toBe(tomorrow);
+    expect(result.label).toMatch(/tomorrow/i);
+  });
+
+  it('falls back to today when tomorrow payload is missing', () => {
+    const today = buildDayWithPrice(reliablePrice);
+    const active = wrapAsUiPayload(today, null);
+    const candidate = wrapAsUiPayload(today, null);
+    const result = resolveComparisonDay(active, candidate);
+    expect(result.dayView).toBe('today');
+    expect(result.activeDay).toBe(today);
+    expect(result.label).toMatch(/today/i);
+    expect(result.label).toMatch(/not yet available/i);
+  });
+
+  it("falls back to today when tomorrow's prices are not reliable", () => {
+    const today = buildDayWithPrice(reliablePrice);
+    const tomorrowWithNullPrice = buildDayWithPrice(Array.from({ length: 24 }, () => null));
+    const active = wrapAsUiPayload(today, tomorrowWithNullPrice);
+    const candidate = wrapAsUiPayload(today, tomorrowWithNullPrice);
+    const result = resolveComparisonDay(active, candidate);
+    expect(result.dayView).toBe('today');
+  });
+
+  it('falls back to today when one side has tomorrow prices and the other does not', () => {
+    const today = buildDayWithPrice(reliablePrice);
+    const tomorrowReliable = buildDayWithPrice(reliablePrice);
+    const tomorrowUnreliable = buildDayWithPrice(Array.from({ length: 24 }, () => null));
+    const active = wrapAsUiPayload(today, tomorrowReliable);
+    const candidate = wrapAsUiPayload(today, tomorrowUnreliable);
+    const result = resolveComparisonDay(active, candidate);
+    expect(result.dayView).toBe('today');
   });
 });
