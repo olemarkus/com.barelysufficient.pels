@@ -76,6 +76,7 @@ const OUTCOME_LABELS: Record<DeferredObjectivePlanOutcome, string> = {
   met: 'Met',
   missed: 'Missed',
   abandoned: 'Stopped',
+  replaced: 'Replaced',
   unknown: 'Unknown',
 };
 
@@ -83,6 +84,7 @@ const OUTCOME_TONES: Record<DeferredObjectivePlanOutcome, DeferredPlanHistoryChi
   met: 'ok',
   missed: 'warn',
   abandoned: 'muted',
+  replaced: 'muted',
   unknown: 'muted',
 };
 

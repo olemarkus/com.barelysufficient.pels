@@ -2,6 +2,7 @@ export type DeferredObjectivePlanOutcome =
   | 'met'
   | 'missed'
   | 'abandoned'
+  | 'replaced'
   | 'unknown';
 
 export type DeferredObjectivePlanHistoryDiscoveredFrom = 'observation' | 'backfill';

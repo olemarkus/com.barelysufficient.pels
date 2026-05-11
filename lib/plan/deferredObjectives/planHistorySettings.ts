@@ -16,7 +16,11 @@ const createEmptyDeferredObjectivePlanHistory = (): DeferredObjectivePlanHistory
 });
 
 const isOutcome = (value: unknown): value is DeferredObjectivePlanOutcome => (
-  value === 'met' || value === 'missed' || value === 'abandoned' || value === 'unknown'
+  value === 'met'
+    || value === 'missed'
+    || value === 'abandoned'
+    || value === 'replaced'
+    || value === 'unknown'
 );
 
 const isFiniteOrNull = (value: unknown): value is number | null => (

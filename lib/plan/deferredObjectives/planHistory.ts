@@ -140,7 +140,7 @@ const classifyOutcome = (
 ): DeferredObjectivePlanOutcome => {
   if (record.satisfied || wasTargetReached(record)) return 'met';
   if (reason === 'abandoned') return 'abandoned';
-  if (reason === 'replaced') return 'abandoned';
+  if (reason === 'replaced') return 'replaced';
   if (record.finalProgressC === null && record.finalProgressPercent === null) return 'unknown';
   return 'missed';
 };
@@ -276,6 +276,25 @@ export class DeferredObjectivePlanHistoryRecorder {
       if (existingKeys.has(key)) continue;
       existingKeys.add(key);
       this.pushEntry(synthesizeBackfillEntry(config));
+    }
+  }
+
+  /**
+   * Finalize any in-progress run for this device because the user changed or cleared the
+   * objective. `'replaced'` is for a new deadline / target replacing the prior one;
+   * `'abandoned'` is for an explicit clear. Without this signal the recorder would wait the
+   * full `ABANDON_GRACE_MS` before declaring the run abandoned, and a user-initiated swap
+   * would be misreported as `'abandoned'` instead of `'replaced'`.
+   *
+   * The active-plan recorder deliberately keeps same-deadline target changes as in-run
+   * revisions; history splits them into separate entries so each entry has a stable target
+   * to judge outcome against.
+   */
+  finalizeForUserChange(deviceId: string, nowMs: number, reason: 'replaced' | 'abandoned'): void {
+    for (const [key, record] of this.inProgress) {
+      if (record.deviceId !== deviceId) continue;
+      this.pushEntry(finalizeRecord(record, nowMs, reason));
+      this.inProgress.delete(key);
     }
   }
 

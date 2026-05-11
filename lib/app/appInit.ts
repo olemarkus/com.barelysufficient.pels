@@ -9,6 +9,7 @@ import type { FlowHomeyLike, TargetDeviceSnapshot } from '../utils/types';
 import { DeviceDiagnosticsService, type DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { AppContext } from './appContext';
 import {
+  applyDeferredObjectiveChange,
   DeferredObjectiveActivePlanRecorder,
   DeferredObjectivePlanHistoryRecorder,
   normalizeDeferredObjectiveActivePlans,
@@ -384,15 +385,16 @@ export function registerAppFlowCards(ctx: AppContext): void {
       ctx.homey.settings.set(DEFERRED_OBJECTIVES_SETTINGS, next);
     },
     getDeferredObjectiveStatusBus: () => ctx.deferredObjectiveStatusBus,
-    markDeferredObjectiveActivePlanPending: (seed, nowMs) => {
-      const recorder = requireDeferredObjectiveActivePlanRecorder(ctx);
-      recorder.markPending(seed, nowMs);
-      recorder.flushIfDirty();
-    },
-    clearDeferredObjectiveActivePlan: (deviceId) => {
-      const recorder = requireDeferredObjectiveActivePlanRecorder(ctx);
-      recorder.clearForDevice(deviceId);
-      recorder.flushIfDirty();
+    applyDeferredObjectiveChange: (params) => {
+      const activeRecorder = requireDeferredObjectiveActivePlanRecorder(ctx);
+      const historyRecorder = requireDeferredObjectivePlanHistoryRecorder(ctx);
+      applyDeferredObjectiveChange({
+        ...params,
+        activePlanRecorder: activeRecorder,
+        planHistoryRecorder: historyRecorder,
+      });
+      activeRecorder.flushIfDirty();
+      historyRecorder.flushIfDirty();
     },
     evaluateHeadroomForDevice: (params) => ctx.evaluateHeadroomForDevice(params),
     loadDailyBudgetSettings: () => requireDailyBudgetService(ctx).loadSettings(),
