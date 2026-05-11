@@ -288,25 +288,163 @@ const getDailyHistoryPoints = (stats: PowerStatsSummary): DailyHistoryPoint[] =>
   stats.dailyHistory.slice(0, Number(dailyHistoryRange))
 );
 
-const updateSummaryLabel = (valueEl: HTMLElement | null, labelText: string) => {
-  const label = valueEl?.closest('.summary-card')?.querySelector('.summary-label');
-  if (label) label.textContent = labelText;
-};
-
 const renderPowerSummary = (stats: PowerStatsSummary, timeZone: string) => {
   const now = new Date();
   const todayText = formatDateInTimeZone(now, { weekday: 'short', month: 'short', day: 'numeric' }, timeZone);
-  const weekRange = getTimeZoneWeekRange(now, 0, timeZone);
-  const weekText = formatWeekLabel(weekRange.startMs, weekRange.endMs, timeZone);
-  const monthText = formatDateInTimeZone(now, { month: 'short', year: 'numeric' }, timeZone);
 
   if (usageToday) usageToday.textContent = `${stats.today.toFixed(1)} kWh`;
   if (usageWeek) usageWeek.textContent = `${stats.week.toFixed(1)} kWh`;
   if (usageMonth) usageMonth.textContent = `${stats.month.toFixed(1)} kWh`;
 
-  updateSummaryLabel(usageToday, `Today (${todayText})`);
-  updateSummaryLabel(usageWeek, `This week (${weekText})`);
-  updateSummaryLabel(usageMonth, `This month (${monthText})`);
+  renderUsageHero(stats, timeZone, todayText);
+};
+
+const isWeekendDate = (date: Date, timeZone: string): boolean => {
+  const { year, month, day } = getZonedParts(date, timeZone);
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  return weekday === 0 || weekday === 6;
+};
+
+const setHeroTone = (hero: HTMLElement | null, tone: 'ok' | 'warn' | 'alert') => {
+  if (!hero) return;
+  hero.setAttribute('data-tone', tone);
+};
+
+type ChipTone = 'ok' | 'warn' | 'alert' | 'muted';
+
+const CHIP_TONE_CLASSES: readonly string[] = [
+  'plan-chip--ok',
+  'plan-chip--warn',
+  'plan-chip--alert',
+  'plan-chip--muted',
+];
+
+const setHeroChip = (chip: HTMLElement | null, label: string, tone: ChipTone) => {
+  if (!chip) return;
+  const target = chip;
+  target.textContent = label;
+  target.hidden = false;
+  target.classList.remove(...CHIP_TONE_CLASSES);
+  target.classList.add(`plan-chip--${tone}`);
+};
+
+const setHeroText = (id: string, text: string | null) => {
+  const el = document.getElementById(id) as HTMLElement | null;
+  if (!el) return;
+  if (text === null) {
+    el.hidden = true;
+    return;
+  }
+  el.textContent = text;
+  el.hidden = false;
+};
+
+const computeBlendedDailyAvg = (stats: PowerStatsSummary): number => (
+  (stats.weekdayAvg * 5 + stats.weekendAvg * 2) / 7
+);
+
+const renderHeroEmpty = (todayText: string) => {
+  setHeroText('usage-hero-comparison', `Today · ${todayText}. Collecting history…`);
+  const delta = document.getElementById('usage-hero-delta') as HTMLElement | null;
+  if (delta) delta.hidden = true;
+  const projection = document.getElementById('usage-hero-projection') as HTMLElement | null;
+  if (projection) projection.hidden = true;
+  setHeroTone(document.getElementById('usage-hero'), 'ok');
+};
+
+export type PaceContext = {
+  diff: number;
+  absDiff: number;
+  expectedSoFar: number;
+  projected: number | null;
+  fractionOfDay: number;
+  typicalDay: number;
+};
+
+// Below this fraction of the day, projecting to midnight amplifies noise (e.g. one
+// kettle boil early in the morning would balloon into a wildly high projection).
+// Pace chip still tracks against the elapsed-time expectation, but the projection
+// text is suppressed.
+const MIN_PROJECTION_FRACTION = 0.1;
+
+export const formatDeltaChipLabel = (ctx: PaceContext): { label: string; tone: ChipTone } => {
+  if (ctx.absDiff < 0.2) return { label: 'On pace', tone: 'ok' };
+  if (ctx.diff > 0) {
+    const pct = (ctx.diff / Math.max(ctx.expectedSoFar, 0.1)) * 100;
+    const tone: ChipTone = pct > 25 ? 'alert' : 'warn';
+    return { label: `+${ctx.absDiff.toFixed(1)} kWh vs pace`, tone };
+  }
+  return { label: `−${ctx.absDiff.toFixed(1)} kWh vs pace`, tone: 'ok' };
+};
+
+export const formatProjectionText = (ctx: PaceContext): string | null => {
+  if (ctx.projected === null) return null;
+  const projectedDiff = ctx.projected - ctx.typicalDay;
+  if (Math.abs(projectedDiff) < 0.3) {
+    return `On track for ~${ctx.projected.toFixed(1)} kWh by midnight.`;
+  }
+  const direction = projectedDiff > 0 ? 'above' : 'below';
+  const gap = Math.abs(projectedDiff).toFixed(1);
+  return `On track for ~${ctx.projected.toFixed(1)} kWh — about ${gap} kWh ${direction} typical.`;
+};
+
+export const resolveHeroTone = (ctx: PaceContext): 'ok' | 'warn' | 'alert' => {
+  if (ctx.diff > ctx.expectedSoFar * 0.25 && ctx.absDiff >= 0.5) return 'alert';
+  if (ctx.diff > ctx.expectedSoFar * 0.1 && ctx.absDiff >= 0.3) return 'warn';
+  return 'ok';
+};
+
+export const computePaceContext = (
+  todayKWh: number,
+  typicalDay: number,
+  now: Date,
+  timeZone: string,
+): PaceContext => {
+  const { hour, minute } = getZonedParts(now, timeZone);
+  const minutesElapsed = hour * 60 + minute;
+  const fractionOfDay = minutesElapsed / (24 * 60);
+  const denom = Math.max(0.001, fractionOfDay);
+  const expectedSoFar = typicalDay * denom;
+  const diff = todayKWh - expectedSoFar;
+  return {
+    diff,
+    absDiff: Math.abs(diff),
+    expectedSoFar,
+    projected: fractionOfDay >= MIN_PROJECTION_FRACTION ? todayKWh / denom : null,
+    fractionOfDay,
+    typicalDay,
+  };
+};
+
+const renderUsageHero = (stats: PowerStatsSummary, timeZone: string, todayText: string) => {
+  const headline = document.getElementById('usage-hero-headline');
+  const weeklyAvg = document.getElementById('usage-weekly-avg');
+  if (headline) headline.textContent = `${stats.today.toFixed(1)} kWh today`;
+  if (weeklyAvg) {
+    weeklyAvg.textContent = stats.hasPatternData
+      ? `${computeBlendedDailyAvg(stats).toFixed(1)} kWh`
+      : '-- kWh';
+  }
+
+  const now = new Date();
+  const isWeekend = isWeekendDate(now, timeZone);
+  const typicalDay = isWeekend ? stats.weekendAvg : stats.weekdayAvg;
+  if (!stats.hasPatternData || typicalDay <= 0) {
+    renderHeroEmpty(todayText);
+    return;
+  }
+
+  const ctx = computePaceContext(stats.today, typicalDay, now, timeZone);
+  const typicalLabel = isWeekend ? 'weekend' : 'weekday';
+  setHeroText(
+    'usage-hero-comparison',
+    `Today · ${todayText}. Typical ${typicalLabel}: ${typicalDay.toFixed(1)} kWh.`,
+  );
+
+  const chip = formatDeltaChipLabel(ctx);
+  setHeroChip(document.getElementById('usage-hero-delta'), chip.label, chip.tone);
+  setHeroText('usage-hero-projection', formatProjectionText(ctx));
+  setHeroTone(document.getElementById('usage-hero'), resolveHeroTone(ctx));
 };
 
 const setSummaryValue = (element: HTMLElement, hasData: boolean, value: string) => {

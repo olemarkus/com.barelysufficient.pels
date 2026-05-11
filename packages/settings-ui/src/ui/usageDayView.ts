@@ -77,7 +77,7 @@ const getUsageDayDateKey = (view: UsageDayView, now: Date, timeZone: string) => 
 };
 
 const formatUsageDayTitle = (view: UsageDayView) => (
-  view === 'today' ? 'Hourly usage (today)' : 'Hourly usage (yesterday)'
+  view === 'today' ? 'Today so far' : 'Yesterday'
 );
 
 const buildUsageDayBuckets = (
