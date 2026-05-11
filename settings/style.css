@@ -263,7 +263,7 @@ body[data-ui-variant="redesign"] .tab[data-tab="advanced"] {
   margin-left: auto;
   padding: var(--spacing-1) var(--spacing-2);
   font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-regular);
+  font-weight: var(--font-weight-normal);
   opacity: 0.7;
 }
 
@@ -437,7 +437,7 @@ body[data-ui-variant="redesign"] #overview-panel {
 
 .settings-nav-card__title {
   color: var(--text);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-md);
   font-weight: var(--font-weight-bold);
   line-height: 1.25;
 }
@@ -654,8 +654,8 @@ input[type="time"]:focus {
 }
 
 .btn.confirming {
-  border-color: var(--homey-red, #f44336);
-  color: var(--homey-red, #f44336);
+  border-color: var(--color-semantic-danger);
+  color: var(--color-semantic-danger);
 }
 
 .btn.confirming:hover {
@@ -703,7 +703,7 @@ input:focus-visible {
 }
 
 .plan-meta-title {
-  font-size: var(--font-size-2xs);
+  font-size: var(--font-size-xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-secondary);
@@ -1018,7 +1018,7 @@ input:focus-visible {
   margin-bottom: var(--spacing-3);
   padding: var(--spacing-1);
   border-radius: var(--radius-md);
-  background: var(--pels-surface-2);
+  background: var(--pels-surface-container-low);
   border: 1px solid var(--pels-surface-outline);
 }
 
@@ -1026,7 +1026,7 @@ input:focus-visible {
   flex: 1;
   padding: var(--spacing-2) var(--spacing-3);
   font: inherit;
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-semibold);
   color: var(--pels-text-secondary);
   background: transparent;
   border: 0;
@@ -1040,9 +1040,9 @@ input:focus-visible {
 }
 
 .plan-tabs__tab--active {
-  background: var(--pels-surface-3);
+  background: var(--pels-surface-container);
   color: var(--pels-text-primary);
-  box-shadow: var(--elevation-1);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Past plans list (History tab). Stacks vertically; each entry is a card. */
@@ -1057,7 +1057,7 @@ input:focus-visible {
   flex-direction: column;
   gap: var(--spacing-1);
   padding: var(--spacing-3);
-  background: var(--pels-surface-2);
+  background: var(--pels-surface-container-low);
   border: 1px solid var(--pels-surface-outline);
   border-radius: var(--radius-md);
 }
@@ -1070,7 +1070,7 @@ input:focus-visible {
 }
 
 .plan-history-card__deadline {
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-semibold);
   color: var(--pels-text-primary);
 }
 
@@ -1085,7 +1085,7 @@ input:focus-visible {
 }
 
 .plan-history-card__reached {
-  color: var(--pels-text-tertiary, var(--pels-text-secondary));
+  color: var(--pels-text-secondary);
 }
 
 .plan-history-card__pills {
@@ -2437,7 +2437,7 @@ body.overview-redesign-enabled :where(#overview-panel) :where(.plan-label) {
 .toast {
   position: fixed;
   bottom: var(--spacing-4);
-  right: var(--spacing-4);
+  left: 50%;
   background: var(--color-overlay-toast);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
@@ -2446,13 +2446,42 @@ body.overview-redesign-enabled :where(#overview-panel) :where(.plan-label) {
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--transition-fast), transform var(--transition-fast);
-  transform: translateY(var(--spacing-1));
-  max-width: 320px;
+  transform: translate(-50%, var(--spacing-1));
+  max-width: min(560px, calc(100vw - var(--spacing-4) * 2));
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  z-index: 20;
 }
 
 .toast.show {
   opacity: 1;
-  transform: translateY(0);
+  pointer-events: auto;
+  transform: translate(-50%, 0);
+}
+
+.toast__message {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast__action {
+  background: transparent;
+  border: none;
+  padding: var(--spacing-1) var(--spacing-2);
+  margin: calc(var(--spacing-1) * -1) calc(var(--spacing-1) * -1) calc(var(--spacing-1) * -1) 0;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.toast__action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* Toggle row for feature enable/disable */
@@ -3219,7 +3248,7 @@ input[type="text"]:focus {
   margin: 0;
   color: var(--text);
   font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-semibold);
 }
 
 .detail-deadline-form {
@@ -3233,7 +3262,7 @@ input[type="text"]:focus {
 }
 
 .detail-deadline-error {
-  color: var(--color-danger);
+  color: var(--color-semantic-danger);
 }
 
 .detail-actions {
@@ -3447,6 +3476,7 @@ input[type="text"]:focus {
   --md-sys-color-on-primary: var(--color-base-black);
   --md-sys-color-secondary: var(--accent);
   --md-sys-color-on-secondary: var(--color-base-black);
+  padding-bottom: var(--spacing-8);
 }
 
 .budget-redesign-actions {
@@ -3455,6 +3485,30 @@ input[type="text"]:focus {
   gap: var(--spacing-2);
   align-items: center;
   margin-top: var(--spacing-2);
+}
+
+#budget-redesign-adjust-view .budget-redesign-actions {
+  position: sticky;
+  bottom: 0;
+  margin-top: 0;
+  padding: var(--spacing-3) var(--spacing-2);
+  background: var(--color-overlay-toast);
+  border-top: 1px solid var(--panel-border);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  z-index: 5;
+  backdrop-filter: blur(8px);
+}
+
+#budget-redesign-adjust-view .budget-redesign-actions md-filled-button,
+#budget-redesign-adjust-view .budget-redesign-actions md-text-button {
+  flex: 1 1 auto;
+}
+
+/* While the Adjust panel has an unsaved/pending state, the sticky actions bar
+   sits at the bottom of the viewport. Raise the snackbar above it so the bar
+   stays tappable (the Undo toast itself uses pointer-events: auto). */
+body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
+  bottom: calc(var(--spacing-4) + var(--spacing-8));
 }
 
 .budget-setting-row--editable {
@@ -3495,6 +3549,12 @@ input[type="text"]:focus {
 .budget-redesign-comparison .budget-comparison__candidate {
   color: var(--accent);
   font-weight: var(--font-weight-semibold);
+}
+
+.budget-redesign-comparison .budget-comparison__delta {
+  margin-left: var(--spacing-2);
+  color: var(--color-semantic-text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .budget-comparison-chart {
@@ -3650,7 +3710,7 @@ input[type="text"]:focus {
 }
 
 .deadline-page-close:focus-visible {
-  outline: 2px solid var(--focus-ring);
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 
@@ -3776,8 +3836,10 @@ input[type="text"]:focus {
   --pels-chart-price-fill: rgba(245, 158, 11, 0.14);
   --day-view-color-primary: var(--pels-status-good);
   --day-view-color-planned: var(--pels-status-good);
-  --day-view-color-uncontrolled: var(--info);
-  --day-view-color-controlled: var(--warning);
+  --day-view-color-background-usage: var(--info);
+  --day-view-color-managed-usage: var(--warning);
+  --day-view-color-actual-background-usage: color-mix(in srgb, var(--day-view-color-background-usage) 45%, transparent);
+  --day-view-color-actual-managed-usage: color-mix(in srgb, var(--day-view-color-managed-usage) 45%, transparent);
   --day-view-color-actual: var(--text);
   --day-view-color-budget: var(--info);
   --day-view-color-warn: var(--pels-status-warning);
@@ -3909,12 +3971,12 @@ body[data-ui-variant="redesign"] #budget-panel > .card__header {
 
 .day-view-bar__segment--uncontrolled,
 .daily-budget-bar__segment--uncontrolled {
-  background: var(--day-view-color-uncontrolled, var(--color-base-info-default));
+  background: var(--day-view-color-background-usage, var(--color-base-info-default));
 }
 
 .day-view-bar__segment--controlled,
 .daily-budget-bar__segment--controlled {
-  background: var(--day-view-color-controlled, var(--color-base-warning-default));
+  background: var(--day-view-color-managed-usage, var(--color-base-warning-default));
 }
 
 .day-view-bar__segment--measured {
@@ -4024,11 +4086,11 @@ body[data-ui-variant="redesign"] #budget-panel > .card__header {
 }
 
 .day-view-legend__swatch--uncontrolled {
-  background: var(--day-view-color-uncontrolled, var(--color-base-info-default));
+  background: var(--day-view-color-background-usage, var(--color-base-info-default));
 }
 
 .day-view-legend__swatch--controlled {
-  background: var(--day-view-color-controlled, var(--color-base-warning-default));
+  background: var(--day-view-color-managed-usage, var(--color-base-warning-default));
 }
 
 .day-view-legend__swatch--measured {
@@ -4342,4 +4404,3 @@ body[data-ui-variant="redesign"] #budget-panel > .card__header {
 .value-adjuster--down .value-adjuster__value {
   color: var(--color-semantic-warning, var(--pels-text-primary));
 }
-
