@@ -763,12 +763,15 @@ body[data-ui-variant="redesign"] .settings-back-button--redesign-only {
 input[type="number"],
 input[type="time"] {
   width: 100%;
+  max-width: 12ch;
   border-radius: var(--radius-md);
   padding: var(--spacing-3) var(--spacing-3);
   border: 1px solid var(--color-border-strong);
   background: var(--color-surface-4);
   color: var(--text);
   font-size: var(--font-size-md);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 input[type="number"]:focus,
@@ -3600,6 +3603,7 @@ body[data-ui-variant="redesign"] #dry-run-banner .banner__icon {
 
 .detail-stepped-row > input {
   width: 100%;
+  max-width: none;
 }
 
 .detail-stepped-row > .btn:disabled,
@@ -3651,6 +3655,7 @@ body[data-ui-variant="redesign"] #dry-run-banner .banner__icon {
   .detail-mode-row input[type="number"] {
     justify-self: stretch;
     width: 100%;
+    max-width: none;
   }
 }
 
