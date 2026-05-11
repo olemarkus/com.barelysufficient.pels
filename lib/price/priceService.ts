@@ -36,8 +36,12 @@ import {
 } from './homeyEnergyRefresh';
 import {
   buildCombinedHourlyPricesFromPayloads,
+  describeFlowSlotChange,
+  purgeStaleFlowPriceSlots,
   storeFlowPriceData as storeFlowPriceDataHelper,
+  type FlowSlotChange,
 } from './priceServiceFlowHelpers';
+import type { FlowPricePayload } from './flowPriceUtils';
 import { buildCombinedPricePayload } from './priceServiceCombined';
 import { DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH } from './norwayPriceDefaults';
 import { buildCombinedHourlyPricesNorway } from './priceServiceNorway';
@@ -302,25 +306,75 @@ export default class PriceService {
     });
   }
 
-  private getCombinedHourlyPricesFromFlow(): CombinedHourlyPrice[] {
+  private rotateFlowPriceSlots(params: {
+    now: Date;
+    timeZone: string;
+    todaySettingKey: string;
+    tomorrowSettingKey: string;
+    label: 'Flow prices' | 'Homey prices';
+    allowTomorrowAsToday: boolean;
+  }): { todayPayload: FlowPricePayload | null; tomorrowPayload: FlowPricePayload | null } {
+    const { now, timeZone, todaySettingKey, tomorrowSettingKey, label, allowTomorrowAsToday } = params;
+    const purge = purgeStaleFlowPriceSlots({
+      now,
+      timeZone,
+      todayPayload: getFlowPricePayload(this.getSettingValue(todaySettingKey)),
+      tomorrowPayload: getFlowPricePayload(this.getSettingValue(tomorrowSettingKey)),
+      allowTomorrowAsToday,
+    });
+    purge.changes.forEach((change: FlowSlotChange) => {
+      this.logDebug(describeFlowSlotChange(label, change));
+    });
+    if (purge.changes.some((c) => c.slot === 'today' || c.action === 'promoted_to_today')) {
+      this.homey.settings.set(todaySettingKey, purge.todayPayload);
+    }
+    if (purge.changes.some((c) => c.slot === 'tomorrow')) {
+      this.homey.settings.set(tomorrowSettingKey, purge.tomorrowPayload);
+    }
+    return { todayPayload: purge.todayPayload, tomorrowPayload: purge.tomorrowPayload };
+  }
+
+  private buildCombinedHourlyPricesWithRotation(params: {
+    todaySettingKey: string;
+    tomorrowSettingKey: string;
+    label: 'Flow prices' | 'Homey prices';
+    allowTomorrowAsToday: boolean;
+  }): CombinedHourlyPrice[] {
+    const { todaySettingKey, tomorrowSettingKey, label, allowTomorrowAsToday } = params;
+    const now = new Date();
+    const timeZone = this.homey.clock.getTimezone();
+    const { todayPayload, tomorrowPayload } = this.rotateFlowPriceSlots({
+      now,
+      timeZone,
+      todaySettingKey,
+      tomorrowSettingKey,
+      label,
+      allowTomorrowAsToday,
+    });
     return buildCombinedHourlyPricesFromPayloads({
-      now: new Date(),
-      timeZone: this.homey.clock.getTimezone(),
-      todayPayload: getFlowPricePayload(this.getSettingValue(FLOW_PRICES_TODAY)),
-      tomorrowPayload: getFlowPricePayload(this.getSettingValue(FLOW_PRICES_TOMORROW)),
+      now,
+      timeZone,
+      todayPayload,
+      tomorrowPayload,
       logDebug: this.logDebug,
+      label,
+      allowTomorrowAsToday,
+    });
+  }
+
+  private getCombinedHourlyPricesFromFlow(): CombinedHourlyPrice[] {
+    return this.buildCombinedHourlyPricesWithRotation({
+      todaySettingKey: FLOW_PRICES_TODAY,
+      tomorrowSettingKey: FLOW_PRICES_TOMORROW,
       label: 'Flow prices',
       allowTomorrowAsToday: true,
     });
   }
 
   private getCombinedHourlyPricesFromHomey(): CombinedHourlyPrice[] {
-    return buildCombinedHourlyPricesFromPayloads({
-      now: new Date(),
-      timeZone: this.homey.clock.getTimezone(),
-      todayPayload: getFlowPricePayload(this.getSettingValue(HOMEY_PRICES_TODAY)),
-      tomorrowPayload: getFlowPricePayload(this.getSettingValue(HOMEY_PRICES_TOMORROW)),
-      logDebug: this.logDebug,
+    return this.buildCombinedHourlyPricesWithRotation({
+      todaySettingKey: HOMEY_PRICES_TODAY,
+      tomorrowSettingKey: HOMEY_PRICES_TOMORROW,
       label: 'Homey prices',
       allowTomorrowAsToday: false,
     });
