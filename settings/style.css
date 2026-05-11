@@ -1250,6 +1250,14 @@ input:focus-visible {
   line-height: var(--pels-text-section-label-font-line-height);
 }
 
+.plan-hero__headline-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+  flex-wrap: wrap;
+}
+
 .plan-hero__headline {
   color: var(--pels-text-answer-color);
   font-size: var(--pels-text-answer-font-size);

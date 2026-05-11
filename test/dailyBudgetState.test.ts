@@ -97,7 +97,7 @@ describe('daily budget state helpers', () => {
     expect(result.bucketUsageExempt).toEqual([1.5]);
   });
 
-  it('buildBucketUsage omits split arrays when no split data exists', () => {
+  it('buildBucketUsage returns null-filled split arrays when no split data exists', () => {
     const hourMs = 60 * 60 * 1000;
     const dayStart = Date.UTC(2024, 0, 1, 0, 0, 0);
     const bucketStartUtcMs = [dayStart, dayStart + hourMs];
@@ -113,8 +113,8 @@ describe('daily budget state helpers', () => {
       },
     });
 
-    expect(result.bucketUsageControlled).toBeUndefined();
-    expect(result.bucketUsageUncontrolled).toBeUndefined();
+    expect(result.bucketUsageControlled).toEqual([null, null]);
+    expect(result.bucketUsageUncontrolled).toEqual([null, null]);
   });
 
   it('buildBudgetUsageViews clamps exempt reductions for budget control math', () => {

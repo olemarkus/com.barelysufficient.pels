@@ -11,6 +11,7 @@ import type { CombinedPriceData } from './dailyBudgetMath';
 import {
   buildDailyBudgetSnapshot,
   computeBudgetState,
+  resolvePlannedSplit,
 } from './dailyBudgetState';
 import type { DayContext } from './dailyBudgetState';
 import type { DailyBudgetDayPayload, DailyBudgetSettings } from './dailyBudgetTypes';
@@ -119,8 +120,8 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     currentBucketProgress: 0,
     bucketUsage,
     budgetControlBucketUsage: bucketUsage,
-    bucketUsageControlled: undefined,
-    bucketUsageUncontrolled: undefined,
+    bucketUsageControlled: bucketStartUtcMs.map(() => null),
+    bucketUsageUncontrolled: bucketStartUtcMs.map(() => null),
     bucketUsageExempt: undefined,
     usedNowKWh,
     budgetControlUsedNowKWh: usedNowKWh,
@@ -191,8 +192,7 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     settings,
     enabled,
     plannedKWh,
-    plannedUncontrolledKWh: breakdown?.plannedUncontrolledKWh,
-    plannedControlledKWh: breakdown?.plannedControlledKWh,
+    ...resolvePlannedSplit(plannedKWh, breakdown),
     priceData,
     budget,
     frozen: false,
