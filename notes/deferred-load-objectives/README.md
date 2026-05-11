@@ -146,7 +146,8 @@ type ActivePlan = {
   targetPercent: number | null;
   deadlineAtMs: number;
   startedAtMs: number;
-  pending: boolean;            // flow card fired, prices not yet available
+  pending: boolean;            // flow card fired, no revision yet
+  pendingReason?: 'awaiting_horizon_plan' | 'price_feature_disabled' | 'device_data_missing';
   objectiveSignature: string;  // hash of (kind, targets, deadline, enforcement)
   original: Revision | null;   // first non-pending revision
   latest:   Revision | null;   // current revision (== original until replanned)

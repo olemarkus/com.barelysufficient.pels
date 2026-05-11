@@ -23,6 +23,11 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   hours: DeferredObjectiveActivePlanHourV1[];
 };
 
+export type DeferredObjectiveActivePlanPendingReason =
+  | 'awaiting_horizon_plan'
+  | 'price_feature_disabled'
+  | 'device_data_missing';
+
 export type DeferredObjectiveActivePlanV1 = {
   deviceId: string;
   deviceName: string | null;
@@ -32,6 +37,11 @@ export type DeferredObjectiveActivePlanV1 = {
   deadlineAtMs: number;
   startedAtMs: number;
   pending: boolean;
+  // Only meaningful when `pending` is true. Identifies why the recorder
+  // couldn't produce a revision (e.g. price-aware optimisation off vs prices
+  // not yet covering the horizon). Optional so older persisted plans without
+  // this field continue to load.
+  pendingReason?: DeferredObjectiveActivePlanPendingReason;
   // The signature of the objective settings that produced `latest`. Used to
   // detect `objective_changed` replans without re-deriving the hash on every
   // load.

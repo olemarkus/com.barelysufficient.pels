@@ -56,7 +56,7 @@ const enabledTemperatureEntry: DeferredObjectiveSettingsEntry = {
   kind: 'temperature',
   enforcement: 'soft',
   targetTemperatureC: 21,
-  deadlineLocalTime: '07:00',
+  deadlineAtMs: T0 + 12 * HOUR_MS,
 };
 
 const enabledEvEntry: DeferredObjectiveSettingsEntry = {
@@ -64,7 +64,7 @@ const enabledEvEntry: DeferredObjectiveSettingsEntry = {
   kind: 'ev_soc',
   enforcement: 'soft',
   targetPercent: 80,
-  deadlineLocalTime: '07:00',
+  deadlineAtMs: T0 + 12 * HOUR_MS,
 };
 
 const devices: TargetDeviceSnapshot[] = [
@@ -91,22 +91,29 @@ describe('resolveDeadlinesListCards', () => {
     expect(cards).toEqual([]);
   });
 
-  it('skips pending plans', () => {
+  it('includes pending plans with pending=true and firstActionAtMs=null', () => {
     const cards = resolveDeadlinesListCards({
-      activePlans: buildActivePlans([buildPlan({ pending: true })]),
+      activePlans: buildActivePlans([buildPlan({ pending: true, latest: null })]),
       objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
       devices,
     });
-    expect(cards).toEqual([]);
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({
+      deviceId: 'dev_a',
+      pending: true,
+      firstActionAtMs: null,
+    });
   });
 
-  it('skips plans with no latest revision', () => {
+  it('includes plans with no latest revision as pending', () => {
     const cards = resolveDeadlinesListCards({
       activePlans: buildActivePlans([buildPlan({ latest: null })]),
       objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
       devices,
     });
-    expect(cards).toEqual([]);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].pending).toBe(true);
+    expect(cards[0].firstActionAtMs).toBeNull();
   });
 
   it('skips plans whose objective is disabled in settings', () => {
@@ -136,6 +143,7 @@ describe('resolveDeadlinesListCards', () => {
       firstActionAtMs: T0 + 3 * HOUR_MS,
       deadlineAtMs: T0 + 12 * HOUR_MS,
       href: './deadline-plan.html?deviceId=dev_a&ui=redesign',
+      pending: false,
     });
   });
 

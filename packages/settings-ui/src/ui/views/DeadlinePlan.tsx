@@ -1,7 +1,11 @@
 import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/deferredObjectiveSettings.ts';
-import type { DeadlineLabels } from '../../../../shared-domain/src/deadlineLabels.ts';
+import {
+  deadlineLabels,
+  type DeadlineLabels,
+  type DeadlinePlanUnavailableReason,
+} from '../../../../shared-domain/src/deadlineLabels.ts';
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
 import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 import { DeadlinePlanHistory } from './DeadlinePlanHistory.tsx';
@@ -65,6 +69,12 @@ export type DeadlinePlanLoadState =
   | { status: 'error'; message: string; history?: DeadlinePlanHistoryView }
   | { status: 'loading'; history?: DeadlinePlanHistoryView }
   | { status: 'pending'; pending: DeadlinePlanPendingPayload; history?: DeadlinePlanHistoryView }
+  | {
+    status: 'unavailable';
+    objectiveKind: DeferredObjectiveSettingsKind;
+    reason: DeadlinePlanUnavailableReason;
+    history?: DeadlinePlanHistoryView;
+  }
   | { status: 'ready'; payload: DeadlinePlanPayload; history?: DeadlinePlanHistoryView };
 
 const chipClass = (tone: DeadlinePlanChipTone): string => `plan-chip plan-chip--${tone}`;
@@ -498,6 +508,15 @@ const CurrentPlanContent = ({ loadState }: { loadState: DeadlinePlanLoadState })
   }
   if (loadState.status === 'pending') {
     return <PendingHero pending={loadState.pending} />;
+  }
+  if (loadState.status === 'unavailable') {
+    const copy = deadlineLabels(loadState.objectiveKind).unavailableByReason[loadState.reason];
+    return (
+      <section class="pels-surface-card budget-redesign-card">
+        <h1 class="plan-card__title">{copy.headline}</h1>
+        <p class="pels-card-supporting">{copy.body}</p>
+      </section>
+    );
   }
   return (
     <>

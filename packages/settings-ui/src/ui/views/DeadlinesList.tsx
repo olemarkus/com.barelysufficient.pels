@@ -13,6 +13,7 @@ export type DeadlinesListCard = {
   firstActionAtMs: number | null;
   deadlineAtMs: number;
   href: string;
+  pending: boolean;
 };
 
 export type DeadlinesListState =
@@ -54,6 +55,9 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
       <div class="deadline-list-card__header">
         <h3 class="deadline-list-card__title">{card.deviceName}</h3>
         <span class="plan-chip plan-chip--info">{labels.kindChipLabel}</span>
+        {card.pending && (
+          <span class="plan-chip plan-chip--muted">Waiting for plan</span>
+        )}
       </div>
       <div class="deadline-list-card__target">
         <span class="deadline-list-card__target-label">Target</span>
