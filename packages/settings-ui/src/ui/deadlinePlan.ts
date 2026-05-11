@@ -12,16 +12,24 @@ import {
   normalizeDeferredObjectiveSettings,
   type DeferredObjectiveSettingsEntry,
 } from '../../../contracts/src/deferredObjectiveSettings.ts';
-import type { DeviceObjectiveProfile } from '../../../contracts/src/objectiveProfileTypes.ts';
-import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
-import { deadlineLabels, type DeadlineLabels } from '../../../shared-domain/src/deadlineLabels.ts';
+import {
+  deadlineLabels,
+  type DeadlineLabels,
+  type DeadlinePlanPendingReason,
+  type DeadlinePlanUnavailableReason,
+} from '../../../shared-domain/src/deadlineLabels.ts';
 import {
   collectHorizonHours,
-  isFiniteNumber,
   ONE_HOUR_MS,
   type HorizonHour,
 } from './deadlinePlanData.ts';
+import {
+  resolveEnergyNeededKWh,
+  resolveProfile,
+  resolveProgress,
+  resolveUsefulPowerKw,
+} from './deadlinePlanResolvers.ts';
 import {
   renderDeadlinePlan,
   type DeadlinePlanLoadState,
@@ -96,90 +104,7 @@ const formatTarget = (objective: DeferredObjectiveSettingsEntry): string => (
 );
 
 
-const resolveUsefulPowerKw = (device: TargetDeviceSnapshot): number | null => {
-  const candidates = [
-    device.planningPowerKw,
-    device.expectedPowerKw,
-    device.powerKw,
-    device.loadKw,
-  ];
-  const value = candidates.find((candidate) => isFiniteNumber(candidate) && candidate > 0);
-  if (value) return value;
-  const steps = device.steppedLoadProfile?.steps ?? [];
-  const highestStepPowerW = Math.max(
-    0,
-    ...steps.map((step) => (
-      isFiniteNumber(step.planningPowerW) ? step.planningPowerW : 0
-    )),
-  );
-  return highestStepPowerW > 0 ? highestStepPowerW / 1000 : null;
-};
 
-const resolveProfileSampleValue = (
-  profile: DeviceObjectiveProfile | null,
-  unit: DeviceObjectiveProfile['lastSample']['unit'],
-): number | null => {
-  if (!profile || profile.lastSample.unit !== unit) return null;
-  return isFiniteNumber(profile.lastSample.value) ? profile.lastSample.value : null;
-};
-
-const resolveProgress = (params: {
-  device: TargetDeviceSnapshot;
-  objective: DeferredObjectiveSettingsEntry;
-  profile: DeviceObjectiveProfile | null;
-}): {
-  currentValue: number;
-  remainingUnits: number;
-  targetValue: number;
-  unit: '°C' | '%';
-} | null => {
-  const { device, objective, profile } = params;
-  if (objective.kind === 'temperature') {
-    const currentTemperature = isFiniteNumber(device.currentTemperature)
-      ? device.currentTemperature
-      : resolveProfileSampleValue(profile, 'degree_c');
-    if (!isFiniteNumber(currentTemperature)) return null;
-    const remainingUnits = Math.max(0, objective.targetTemperatureC - currentTemperature);
-    return {
-      currentValue: currentTemperature,
-      remainingUnits,
-      targetValue: objective.targetTemperatureC,
-      unit: '°C',
-    };
-  }
-
-  const percent = isFiniteNumber(device.stateOfCharge?.percent)
-    ? device.stateOfCharge.percent
-    : resolveProfileSampleValue(profile, 'percent');
-  if (!isFiniteNumber(percent)) return null;
-  return {
-    currentValue: Math.min(100, Math.max(0, percent)),
-    remainingUnits: Math.max(0, objective.targetPercent - percent),
-    targetValue: objective.targetPercent,
-    unit: '%',
-  };
-};
-
-const resolveProfile = (
-  powerTracker: PowerTrackerState | null,
-  deviceId: string,
-  objectiveKind: DeferredObjectiveSettingsEntry['kind'],
-): DeviceObjectiveProfile | null => {
-  const profile = powerTracker?.objectiveProfiles?.[deviceId];
-  return profile?.kind === objectiveKind ? profile : null;
-};
-
-const resolveEnergyNeededKWh = (params: {
-  profile: DeviceObjectiveProfile | null;
-  remainingUnits: number;
-}): { energyNeededKWh: number; confidence: string | null } | null => {
-  const stat = params.profile?.kwhPerUnit;
-  if (!stat || !isFiniteNumber(stat.mean) || stat.mean <= 0) return null;
-  return {
-    energyNeededKWh: params.remainingUnits * stat.mean,
-    confidence: stat.confidence,
-  };
-};
 
 const resolvePriceTone = (hour: HorizonHour): DeadlinePlanPayload['timeline']['hours'][number]['tone'] => {
   if (hour.isCheap === true) return 'cheap';
@@ -323,23 +248,29 @@ const resolveObjectiveContext = (params: ObjectivePlanInput): ResolvedObjectiveC
   return { device, objective, deviceId, deadlineAtMs, activePlan, nowMs };
 };
 
+const resolvePendingReason = (
+  activePlan: DeferredObjectiveActivePlanV1 | null,
+): DeadlinePlanPendingReason => activePlan?.pendingReason ?? 'awaiting_horizon_plan';
+
 const buildPendingHero = (params: {
   device: TargetDeviceSnapshot;
   objective: DeferredObjectiveSettingsEntry;
   labels: DeadlineLabels;
   deadlineAtMs: number;
+  pendingReason: DeadlinePlanPendingReason;
 }): DeadlinePlanPendingPayload['hero'] => {
   const target = formatTarget(params.objective);
   const deadline = formatDeadlineFull(params.deadlineAtMs);
+  const copy = params.labels.pendingHeroByReason[params.pendingReason];
   return {
     chips: [
       { text: params.labels.waitingChipLabel, tone: 'info' },
       { text: params.labels.kindChipLabel, tone: 'info' },
     ],
     sectionLabel: `${params.labels.kindChipLabel} plan`,
-    headline: params.labels.pendingHeroHeadline,
+    headline: copy.headline,
     subline: `${params.device.name} • Target ${target} by ${deadline}`,
-    metaLine: params.labels.pendingHeroBody,
+    metaLine: copy.body,
   };
 };
 
@@ -353,6 +284,7 @@ const buildPendingPayload = (ctx: ResolvedObjectiveContext): DeadlinePlanPending
       objective: ctx.objective,
       labels,
       deadlineAtMs: ctx.deadlineAtMs,
+      pendingReason: resolvePendingReason(ctx.activePlan),
     }),
   };
 };
@@ -368,7 +300,11 @@ const buildChargeByStartMsFromActivePlan = (
   return out;
 };
 
-const buildObjectivePayload = (params: ObjectivePlanInput): DeadlinePlanPayload | null => {
+type ObjectivePayloadResult =
+  | { kind: 'ok'; payload: DeadlinePlanPayload }
+  | { kind: 'unavailable'; reason: DeadlinePlanUnavailableReason };
+
+const buildObjectivePayload = (params: ObjectivePlanInput): ObjectivePayloadResult | null => {
   const ctx = resolveObjectiveContext(params);
   if (!ctx) return null;
   const { device, objective, deviceId, deadlineAtMs, activePlan, nowMs } = ctx;
@@ -379,10 +315,15 @@ const buildObjectivePayload = (params: ObjectivePlanInput): DeadlinePlanPayload 
 
   const profile = resolveProfile(params.bootstrap.power.tracker, deviceId, objective.kind);
   const progress = resolveProgress({ device, objective, profile });
-  const energy = progress
-    ? resolveEnergyNeededKWh({ profile, remainingUnits: progress.remainingUnits })
-    : null;
+  if (!progress) return { kind: 'unavailable', reason: 'no_current_reading' };
+  // Current value already meets or exceeds the target. The recorder may have written a
+  // revision with all-zero `plannedKWh` hours; reporting "no energy estimate" here would
+  // misdiagnose a satisfied deadline as a profile-learning problem.
+  if (progress.remainingUnits <= 0) return { kind: 'unavailable', reason: 'already_satisfied' };
   const usefulPowerKw = resolveUsefulPowerKw(device);
+  if (!usefulPowerKw) return { kind: 'unavailable', reason: 'no_useful_power' };
+  const energy = resolveEnergyNeededKWh({ profile, remainingUnits: progress.remainingUnits, activePlan });
+  if (!energy) return { kind: 'unavailable', reason: 'no_energy_estimate' };
   // For an active plan, include past hours from the first revision's start so
   // the chart can show history. Without a revision, fall back to nowMs.
   const windowStartMs = Math.min(nowMs, activePlan.original?.revisedAtMs ?? nowMs);
@@ -393,7 +334,7 @@ const buildObjectivePayload = (params: ObjectivePlanInput): DeadlinePlanPayload 
     windowStartMs,
     prices: params.prices,
   });
-  if (!progress || !energy || !usefulPowerKw || hours.length === 0) return null;
+  if (hours.length === 0) return { kind: 'unavailable', reason: 'no_horizon_hours' };
 
   const chargeByStartMs = buildChargeByStartMsFromActivePlan(activePlan);
   const progressPerKWh = energy.energyNeededKWh > 0
@@ -404,29 +345,32 @@ const buildObjectivePayload = (params: ObjectivePlanInput): DeadlinePlanPayload 
   const hoursLeft = Math.max(0, Math.ceil((deadlineAtMs - nowMs) / ONE_HOUR_MS));
 
   return {
-    kind: objective.kind,
-    labels,
-    hero: buildHero({
-      device,
-      objective,
+    kind: 'ok',
+    payload: {
+      kind: objective.kind,
       labels,
-      firstChargingHour,
-      deadlineAtMs,
-      energyNeededKWh: energy.energyNeededKWh,
-      hoursLeft,
-      confidence: energy.confidence,
-      nowMs,
-    }),
-    timeline: buildTimeline({
-      device,
-      hours,
-      chargeByStartMs,
-      progressStart: progress.currentValue,
-      progressTarget: progress.targetValue,
-      progressPerKWh,
-      progressUnit: progress.unit,
-      deadlineAtMs,
-    }),
+      hero: buildHero({
+        device,
+        objective,
+        labels,
+        firstChargingHour,
+        deadlineAtMs,
+        energyNeededKWh: energy.energyNeededKWh,
+        hoursLeft,
+        confidence: energy.confidence,
+        nowMs,
+      }),
+      timeline: buildTimeline({
+        device,
+        hours,
+        chargeByStartMs,
+        progressStart: progress.currentValue,
+        progressTarget: progress.targetValue,
+        progressPerKWh,
+        progressUnit: progress.unit,
+        deadlineAtMs,
+      }),
+    },
   };
 };
 
@@ -434,6 +378,7 @@ export const resolveRenderInput = (
   params: ObjectivePlanInput,
 ): { status: 'pending'; pending: DeadlinePlanPendingPayload }
   | { status: 'ready'; payload: DeadlinePlanPayload }
+  | { status: 'unavailable'; kind: DeferredObjectiveSettingsEntry['kind']; reason: DeadlinePlanUnavailableReason }
   | null => {
   const ctx = resolveObjectiveContext(params);
   if (!ctx) return null;
@@ -441,14 +386,12 @@ export const resolveRenderInput = (
   if (!ctx.activePlan || ctx.activePlan.pending || !ctx.activePlan.latest) {
     return { status: 'pending', pending: buildPendingPayload(ctx) };
   }
-  // Active plan exists with an allocation; if the UI cannot render it
-  // (missing temperature/SOC, missing learned profile, missing prices) fall
-  // through to the error state rather than the pending hero — "Waiting for
-  // tomorrow's prices" would mislead the user when the actual issue is
-  // missing device data.
-  const payload = buildObjectivePayload(params);
-  if (!payload) return null;
-  return { status: 'ready', payload };
+  const result = buildObjectivePayload(params);
+  if (!result) return null;
+  if (result.kind === 'unavailable') {
+    return { status: 'unavailable', kind: ctx.objective.kind, reason: result.reason };
+  }
+  return { status: 'ready', payload: result.payload };
 };
 
 type RenderInput = ReturnType<typeof resolveRenderInput>;
@@ -463,6 +406,14 @@ const resolveDeadlinePlanLoadState = (
   }
   if (renderInput.status === 'ready') {
     return { status: 'ready', payload: renderInput.payload, history };
+  }
+  if (renderInput.status === 'unavailable') {
+    return {
+      status: 'unavailable',
+      objectiveKind: renderInput.kind,
+      reason: renderInput.reason,
+      history,
+    };
   }
   return { status: 'pending', pending: renderInput.pending, history };
 };

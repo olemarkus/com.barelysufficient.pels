@@ -148,6 +148,96 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan.latest).toBeNull();
   });
 
+  it('captures awaiting_horizon_plan on a pending record auto-created from a diagnostic with no horizon plan', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // Diagnostic without `horizonPlan` (e.g. price horizon doesn't cover the deadline).
+    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+    delete (diag as { horizonPlan?: unknown }).horizonPlan;
+    diag.reasonCode = 'objective_missing_price_horizon';
+
+    recorder.observe([diag], HOUR_MS);
+    recorder.flushIfDirty();
+
+    const plan = saved()!.plansByDeviceId.dev;
+    expect(plan.pending).toBe(true);
+    expect(plan.pendingReason).toBe('awaiting_horizon_plan');
+  });
+
+  it('captures device_data_missing on a pending record for progress/profile-side diagnostic failures', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+    delete (diag as { horizonPlan?: unknown }).horizonPlan;
+    diag.reasonCode = 'objective_missing_temperature';
+
+    recorder.observe([diag], HOUR_MS);
+    recorder.flushIfDirty();
+
+    const plan = saved()!.plansByDeviceId.dev;
+    expect(plan.pending).toBe(true);
+    expect(plan.pendingReason).toBe('device_data_missing');
+  });
+
+  it('refreshes pendingReason when the diagnostic flips from missing-temperature to missing-prices', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // First cycle: device hasn't reported a temperature yet.
+    const tempMissing = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+    delete (tempMissing as { horizonPlan?: unknown }).horizonPlan;
+    tempMissing.reasonCode = 'objective_missing_temperature';
+    recorder.observe([tempMissing], HOUR_MS);
+
+    // Next cycle: temperature arrived but price horizon does not yet cover the deadline.
+    const horizonMissing = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+    delete (horizonMissing as { horizonPlan?: unknown }).horizonPlan;
+    horizonMissing.reasonCode = 'objective_missing_price_horizon';
+    recorder.observe([horizonMissing], 2 * HOUR_MS);
+
+    recorder.flushIfDirty();
+    const plan = saved()!.plansByDeviceId.dev;
+    expect(plan.pending).toBe(true);
+    expect(plan.pendingReason).toBe('awaiting_horizon_plan');
+  });
+
+  it('captures price_feature_disabled on a pending record when the diagnostic indicates the feature is off', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+    delete (diag as { horizonPlan?: unknown }).horizonPlan;
+    diag.reasonCode = 'objective_price_feature_disabled';
+
+    recorder.observe([diag], HOUR_MS);
+    recorder.flushIfDirty();
+
+    const plan = saved()!.plansByDeviceId.dev;
+    expect(plan.pending).toBe(true);
+    expect(plan.pendingReason).toBe('price_feature_disabled');
+  });
+
+  it('refreshes pendingReason on an existing pending record when the cause transitions', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // Seed via flow card — no pendingReason yet (no diagnostic context).
+    recorder.markPending(buildSeed(), 0);
+
+    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+    delete (diag as { horizonPlan?: unknown }).horizonPlan;
+    diag.reasonCode = 'objective_price_feature_disabled';
+
+    recorder.observe([diag], HOUR_MS);
+    recorder.flushIfDirty();
+
+    const plan = saved()!.plansByDeviceId.dev;
+    expect(plan.pending).toBe(true);
+    expect(plan.pendingReason).toBe('price_feature_disabled');
+  });
+
   it('transitions pending -> first revision with prices_arrived when prices show up', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);

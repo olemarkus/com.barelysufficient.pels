@@ -35,9 +35,9 @@ export const resolveDeadlinesListCards = (params: {
   const deviceNamesById = new Map(params.devices.map((device) => [device.id, device.name]));
   const cards: DeadlinesListCard[] = [];
   for (const [deviceId, plan] of Object.entries(plans)) {
-    if (plan.pending || plan.latest === null) continue;
     if (!isObjectiveEnabled(params.objectiveSettings, deviceId)) continue;
-    const firstHour = plan.latest.hours[0]?.startsAtMs ?? null;
+    const pending = plan.pending || plan.latest === null;
+    const firstHour = plan.latest?.hours[0]?.startsAtMs ?? null;
     cards.push({
       deviceId,
       deviceName: deviceNamesById.get(deviceId) ?? plan.deviceName ?? deviceId,
@@ -48,6 +48,7 @@ export const resolveDeadlinesListCards = (params: {
       firstActionAtMs: firstHour,
       deadlineAtMs: plan.deadlineAtMs,
       href: buildDeadlineHref(deviceId),
+      pending,
     });
   }
   cards.sort((a, b) => a.deadlineAtMs - b.deadlineAtMs);

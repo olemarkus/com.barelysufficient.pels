@@ -1,5 +1,6 @@
 import type {
   DeferredObjectiveActivePlanHourV1,
+  DeferredObjectiveActivePlanPendingReason,
   DeferredObjectiveActivePlanRevisionReason,
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanV1,
@@ -120,6 +121,27 @@ const createPlanFromSeed = (seed: ActivePlanFlowCardSeed, nowMs: number): Deferr
   latest: null,
 });
 
+// Reason codes from `diagnosticsBridge` that indicate the device-data side of the diagnostic
+// failed before a horizon plan could be built. The pending hero needs to say "waiting for a
+// reading from the device", not "waiting for prices" — see the comment in `ensurePendingRecord`.
+const DEVICE_DATA_REASON_CODES: ReadonlySet<string> = new Set([
+  'objective_invalid_deadline',
+  'objective_invalid_session',
+  'objective_missing_capacity',
+  'objective_missing_charge_rate',
+  'objective_missing_device',
+  'objective_missing_temperature',
+  'objective_progress_stale',
+]);
+
+const resolvePendingReason = (
+  diag: DeferredObjectiveDiagnostic,
+): DeferredObjectiveActivePlanPendingReason => {
+  if (diag.reasonCode === 'objective_price_feature_disabled') return 'price_feature_disabled';
+  if (DEVICE_DATA_REASON_CODES.has(diag.reasonCode)) return 'device_data_missing';
+  return 'awaiting_horizon_plan';
+};
+
 const createPlanFromDiagnostic = (
   diag: DeferredObjectiveDiagnostic,
   signature: string,
@@ -133,6 +155,7 @@ const createPlanFromDiagnostic = (
   deadlineAtMs: diag.deadlineAtMs as number,
   startedAtMs: nowMs,
   pending: true,
+  pendingReason: resolvePendingReason(diag),
   objectiveSignature: signature,
   original: null,
   latest: null,
@@ -252,7 +275,19 @@ export class DeferredObjectiveActivePlanRecorder {
     signature: string,
     nowMs: number,
   ): void {
-    if (this.plans[diag.deviceId] !== undefined) return;
+    const pendingReason = resolvePendingReason(diag);
+    const existing = this.plans[diag.deviceId];
+    if (existing !== undefined) {
+      // Refresh `pendingReason` so the UI reflects the current cause even when
+      // the record was first seeded by a flow card (no diagnostic context) or
+      // when the cause transitions, e.g. user toggles price-aware optimisation
+      // off while waiting for the price horizon.
+      if (existing.pending && existing.pendingReason !== pendingReason) {
+        this.plans[diag.deviceId] = { ...existing, pendingReason };
+        this.dirty = true;
+      }
+      return;
+    }
     this.plans[diag.deviceId] = createPlanFromDiagnostic(diag, signature, nowMs);
     this.dirty = true;
     this.emit({
