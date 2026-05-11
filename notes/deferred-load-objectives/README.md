@@ -33,7 +33,7 @@ before the broader objective UX is ready.
 
 ## Persisted Settings Slice
 
-The first persisted objective format is intentionally narrow and versioned:
+The persisted objective format is one-shot and datetime-bound:
 
 ```ts
 type DeferredObjectiveSettingsV1 = {
@@ -44,14 +44,14 @@ type DeferredObjectiveSettingsV1 = {
       kind: 'ev_soc';
       enforcement: 'soft' | 'hard';
       targetPercent: number;
-      deadlineLocalTime: string; // HH:mm in the Homey timezone.
+      deadlineAtMs: number; // absolute UTC timestamp
     }
     | {
       enabled: boolean;
       kind: 'temperature';
       enforcement: 'soft';
       targetTemperatureC: number;
-      deadlineLocalTime: string; // HH:mm in the Homey timezone.
+      deadlineAtMs: number; // absolute UTC timestamp
     }
   )>;
 };
@@ -65,8 +65,11 @@ Storage rules:
 - `targetPercent` must be above 0 and at or below 100.
 - `targetTemperatureC` must be finite and within the bounded settings range. The Settings UI should
   further constrain it to the device target capability range when that range is available.
-- `deadlineLocalTime` is local `HH:mm`. If that time has already passed today, the deadline resolves
-  to the next local day.
+- `deadlineAtMs` is an absolute UTC timestamp. Flow cards take a `HH:mm` local-time argument and
+  resolve it to the next future local moment **once at write time**; the persisted value never
+  rolls forward on its own. When the deadline passes, the runtime auto-disables the entry
+  (`enabled: false`) via the `deadlineJustPassed` hook in `statusTransitions.ts` so the same
+  deadline never replans for the next day. Users re-arm by firing the flow card again.
 - Temperature objectives are soft-only for now. The Settings UI must not expose hard temperature
   deadlines until runtime semantics are explicitly designed.
 - `enforcement` records soft or hard intent for EV settings, but the current bridge only emits
@@ -79,10 +82,10 @@ trigger and condition cards subscribe to. Public flow cards are the user-facing 
 creating and clearing deadlines; the planner does not change admission or device actuation in
 response to objectives yet.
 
-Price gating is deliberate. The v1 bridge only plans when price optimization is enabled and the
-daily-budget price payload covers every hour from now through the objective deadline. If tomorrow's
-deadline has been selected because today's `HH:mm` is already in the past, planning may remain
-`unknown` with `objective_missing_price_horizon` until tomorrow's prices are available. It must not
+Price gating is deliberate. The bridge only plans when price optimization is enabled and the
+daily-budget price payload covers every hour from now through the objective deadline. If the
+deadline is far enough in the future that tomorrow's prices are required, planning may remain
+`unknown` with `objective_missing_price_horizon` until those prices are available. It must not
 fall back to neutral or whole-range planning when the price horizon is incomplete.
 
 ## Soft Temperature Runtime Semantics
@@ -954,8 +957,7 @@ Useful fields:
 - `energyNeededKWh`
 - `kWhPerPercent`
 - `deadlineAtMs`
-- `deadlineLocalTime`
-- `deadlineRollsToNextDay`
+- `deadlineLocalTime` (display-only; formatted from `deadlineAtMs` + Homey timezone)
 - `horizonStartMs`
 - `horizonEndMs`
 - `horizonBucketCount`
@@ -1090,11 +1092,15 @@ Current implementation slice:
 
 1. Learned objective profiling exists before deadline control.
 2. EV SoC and soft temperature objectives can be read from versioned settings.
-3. Settings objectives resolve a local `HH:mm` deadline, rolling to tomorrow when needed.
+3. Settings objectives store an absolute `deadlineAtMs`. Flow cards resolve the user's HH:mm
+   input to a future moment **once at write time**; the bridge never re-resolves on its own.
 4. Planning is diagnostics-only and price-feature gated.
-5. A next-day rolled deadline waits for tomorrow price buckets instead of assuming neutral prices.
+5. The bridge waits for tomorrow's price buckets instead of assuming neutral prices when the
+   deadline falls past the current daily horizon.
 6. The bridge emits structured debug diagnostics without changing restore/admission behavior.
-7. The Settings UI exposes a manual temperature deadline card on eligible Homeys and temperature
+7. When a deadline passes, `statusTransitions.ts` auto-disables the entry so the same deadline
+   does not silently replan for the next day.
+8. The Settings UI exposes a manual temperature deadline card on eligible Homeys and temperature
    devices.
 
 Recommended implementation order:

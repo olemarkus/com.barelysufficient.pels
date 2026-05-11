@@ -15,7 +15,6 @@ const buildDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & { dev
   currentTemperatureC: 50,
   deadlineAtMs: Date.UTC(2026, 4, 11, 7, 0, 0),
   deadlineLocalTime: '07:00',
-  deadlineRollsToNextDay: false,
   energyNeededKWh: 1.5,
   kWhPerPercent: null,
   kWhPerDegreeC: 0.5,

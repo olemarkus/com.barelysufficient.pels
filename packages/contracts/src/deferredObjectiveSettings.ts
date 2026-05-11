@@ -7,7 +7,7 @@ export type DeferredObjectiveSettingsKind = 'ev_soc' | 'temperature';
 type DeferredObjectiveSettingsEntryBase = {
   enabled: boolean;
   kind: DeferredObjectiveSettingsKind;
-  deadlineLocalTime: string;
+  deadlineAtMs: number;
 };
 
 export type DeferredObjectiveEvSocSettingsEntry = DeferredObjectiveSettingsEntryBase & {
@@ -30,8 +30,6 @@ export type DeferredObjectiveSettingsV1 = {
   version: typeof DEFERRED_OBJECTIVES_SETTINGS_VERSION;
   objectivesByDeviceId: Record<string, DeferredObjectiveSettingsEntry>;
 };
-
-const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 export const createEmptyDeferredObjectiveSettings = (): DeferredObjectiveSettingsV1 => ({
   version: DEFERRED_OBJECTIVES_SETTINGS_VERSION,
@@ -63,7 +61,7 @@ export const normalizeDeferredObjectiveSettingsEntry = (
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const entry = raw as Partial<DeferredObjectiveSettingsEntry>;
   if (typeof entry.enabled !== 'boolean') return null;
-  if (typeof entry.deadlineLocalTime !== 'string' || !LOCAL_TIME_PATTERN.test(entry.deadlineLocalTime)) return null;
+  if (!isValidDeadlineAtMs(entry.deadlineAtMs)) return null;
 
   if (entry.kind === 'ev_soc') {
     if (entry.enforcement !== 'soft' && entry.enforcement !== 'hard') return null;
@@ -73,7 +71,7 @@ export const normalizeDeferredObjectiveSettingsEntry = (
       kind: entry.kind,
       enforcement: entry.enforcement,
       targetPercent: entry.targetPercent,
-      deadlineLocalTime: entry.deadlineLocalTime,
+      deadlineAtMs: entry.deadlineAtMs,
     };
   }
 
@@ -85,12 +83,18 @@ export const normalizeDeferredObjectiveSettingsEntry = (
       kind: entry.kind,
       enforcement: 'soft',
       targetTemperatureC: entry.targetTemperatureC,
-      deadlineLocalTime: entry.deadlineLocalTime,
+      deadlineAtMs: entry.deadlineAtMs,
     };
   }
 
   return null;
 };
+
+const isValidDeadlineAtMs = (value: unknown): value is number => (
+  typeof value === 'number'
+  && Number.isFinite(value)
+  && value > 0
+);
 
 const isValidTargetPercent = (value: unknown): value is number => (
   typeof value === 'number'

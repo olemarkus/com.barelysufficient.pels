@@ -52,7 +52,6 @@ const makeDiag = (
   currentTemperatureC: 50,
   deadlineAtMs: overrides.deadlineAtMs,
   deadlineLocalTime: '06:00',
-  deadlineRollsToNextDay: false,
   energyNeededKWh: 22.5,
   kWhPerPercent: null,
   kWhPerDegreeC: 1.5,

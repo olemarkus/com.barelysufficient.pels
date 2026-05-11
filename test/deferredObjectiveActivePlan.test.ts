@@ -77,7 +77,6 @@ const makeDiag = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   currentTemperatureC: 50,
   deadlineAtMs: overrides.deadlineAtMs,
   deadlineLocalTime: '06:00',
-  deadlineRollsToNextDay: false,
   energyNeededKWh: 4.5,
   kWhPerPercent: null,
   kWhPerDegreeC: 1.5,

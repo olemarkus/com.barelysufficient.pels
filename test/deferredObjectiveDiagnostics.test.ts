@@ -56,33 +56,51 @@ const buildTemperatureDevice = (overrides: Partial<PlanInputDevice> = {}): PlanI
   ...overrides,
 });
 
-const buildSettings = (overrides = {}) => ({
-  version: 1,
-  objectivesByDeviceId: {
-    'ev-1': {
-      enabled: true,
-      kind: 'ev_soc',
-      enforcement: 'soft',
-      targetPercent: 60,
-      deadlineLocalTime: '21:00',
-      ...overrides,
-    },
-  },
-});
+const resolveDeadlineAtMsFor = (deadlineLocalTime: string, nowMs: number = NOW_MS): number => {
+  const resolution = resolveDeferredObjectiveDeadline({
+    nowMs,
+    timeZone: 'UTC',
+    deadlineLocalTime,
+  });
+  if (resolution.deadlineAtMs === null) throw new Error('Failed to resolve test deadline');
+  return resolution.deadlineAtMs;
+};
 
-const buildTemperatureSettings = (overrides = {}) => ({
-  version: 1,
-  objectivesByDeviceId: {
-    'heater-1': {
-      enabled: true,
-      kind: 'temperature',
-      enforcement: 'soft',
-      targetTemperatureC: 65,
-      deadlineLocalTime: '21:00',
-      ...overrides,
+const buildSettings = (overrides: Record<string, unknown> = {}) => {
+  const { deadlineLocalTime, ...rest } = overrides as { deadlineLocalTime?: string };
+  const deadlineAtMs = resolveDeadlineAtMsFor(deadlineLocalTime ?? '21:00');
+  return {
+    version: 1,
+    objectivesByDeviceId: {
+      'ev-1': {
+        enabled: true,
+        kind: 'ev_soc',
+        enforcement: 'soft',
+        targetPercent: 60,
+        deadlineAtMs,
+        ...rest,
+      },
     },
-  },
-});
+  };
+};
+
+const buildTemperatureSettings = (overrides: Record<string, unknown> = {}) => {
+  const { deadlineLocalTime, ...rest } = overrides as { deadlineLocalTime?: string };
+  const deadlineAtMs = resolveDeadlineAtMsFor(deadlineLocalTime ?? '21:00');
+  return {
+    version: 1,
+    objectivesByDeviceId: {
+      'heater-1': {
+        enabled: true,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 65,
+        deadlineAtMs,
+        ...rest,
+      },
+    },
+  };
+};
 
 const buildPowerTracker = (overrides: Partial<PowerTrackerState> = {}): PowerTrackerState => ({
   objectiveProfiles: {
@@ -206,6 +224,10 @@ const buildDay = (params: {
 };
 
 describe('deferred objective settings', () => {
+  const evDeadlineAtMs = resolveDeadlineAtMsFor('07:30');
+  const tempDeadlineAtMs = resolveDeadlineAtMsFor('08:00');
+  const evPadDeadlineAtMs = resolveDeadlineAtMsFor('08:15');
+
   it('keeps valid enabled EV SoC objectives and drops invalid entries', () => {
     expect(normalizeDeferredObjectiveSettings({
       version: 1,
@@ -215,14 +237,14 @@ describe('deferred objective settings', () => {
           kind: 'ev_soc',
           enforcement: 'hard',
           targetPercent: 80,
-          deadlineLocalTime: '07:30',
+          deadlineAtMs: evDeadlineAtMs,
         },
         bad: {
           enabled: true,
           kind: 'ev_soc',
           enforcement: 'hard',
           targetPercent: 120,
-          deadlineLocalTime: '07:30',
+          deadlineAtMs: evDeadlineAtMs,
         },
       },
     })).toEqual({
@@ -233,7 +255,7 @@ describe('deferred objective settings', () => {
           kind: 'ev_soc',
           enforcement: 'hard',
           targetPercent: 80,
-          deadlineLocalTime: '07:30',
+          deadlineAtMs: evDeadlineAtMs,
         },
       },
     });
@@ -248,7 +270,7 @@ describe('deferred objective settings', () => {
           kind: 'ev_soc',
           enforcement: 'soft',
           targetPercent: 70,
-          deadlineLocalTime: '08:15',
+          deadlineAtMs: evPadDeadlineAtMs,
         },
       },
     })).toEqual({
@@ -259,7 +281,7 @@ describe('deferred objective settings', () => {
           kind: 'ev_soc',
           enforcement: 'soft',
           targetPercent: 70,
-          deadlineLocalTime: '08:15',
+          deadlineAtMs: evPadDeadlineAtMs,
         },
       },
     });
@@ -274,7 +296,7 @@ describe('deferred objective settings', () => {
           kind: 'temperature',
           enforcement: 'soft',
           targetTemperatureC: 65,
-          deadlineLocalTime: '08:00',
+          deadlineAtMs: tempDeadlineAtMs,
         },
       },
     })).toEqual({
@@ -285,7 +307,7 @@ describe('deferred objective settings', () => {
           kind: 'temperature',
           enforcement: 'soft',
           targetTemperatureC: 65,
-          deadlineLocalTime: '08:00',
+          deadlineAtMs: tempDeadlineAtMs,
         },
       },
     });
@@ -299,7 +321,7 @@ describe('deferred objective settings', () => {
   });
 
   it('returns an empty versioned settings object for unsupported payloads', () => {
-    expect(normalizeDeferredObjectiveSettings({ version: 2 })).toEqual(createEmptyDeferredObjectiveSettings());
+    expect(normalizeDeferredObjectiveSettings({ version: 1 })).toEqual(createEmptyDeferredObjectiveSettings());
   });
 });
 
@@ -422,7 +444,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       currentPercent: 40,
       energyNeededKWh: 4,
       kWhPerPercent: 0.2,
-      deadlineRollsToNextDay: true,
       deadlineAtMs: Date.UTC(2026, 0, 2, 16, 0, 0),
     });
   });
@@ -440,7 +461,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
     expect(diagnostic).toMatchObject({
       status: 'on_track',
-      deadlineRollsToNextDay: true,
       horizonBucketCount: 23,
     });
   });

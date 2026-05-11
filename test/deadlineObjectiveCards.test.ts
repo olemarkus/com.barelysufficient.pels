@@ -9,6 +9,12 @@ import {
 import type { TargetDeviceSnapshot } from '../lib/utils/types';
 import type { FlowCardDeps } from '../flowCards/registerFlowCards';
 
+// Fixed clock for deterministic deadlineAtMs assertions. 2026-01-01 05:00 UTC.
+const MOCK_NOW_MS = Date.UTC(2026, 0, 1, 5, 0, 0);
+const HH_MM_TO_UTC_MS = (hh: number, mm: number, dayOffset = 0): number => (
+  Date.UTC(2026, 0, 1 + dayOffset, hh, mm, 0)
+);
+
 type CardListeners = {
   run?: (args: unknown, state?: unknown) => Promise<boolean> | boolean | void;
   autocomplete?: (query: string, args?: Record<string, unknown>) => Promise<Array<{ id: string; name: string }>> | Array<{ id: string; name: string }>;
@@ -87,7 +93,7 @@ const buildDeps = (overrides: {
     updateDailyBudgetState: () => {},
     getCombinedHourlyPrices: () => null,
     getTimeZone: () => 'UTC',
-    getNow: () => new Date(),
+    getNow: () => new Date(MOCK_NOW_MS),
     getStructuredLogger: () => undefined,
     log: () => {},
     logDebug: () => {},
@@ -113,7 +119,7 @@ describe('deadline objective flow cards', () => {
       kind: 'temperature',
       enforcement: 'soft',
       targetTemperatureC: 55,
-      deadlineLocalTime: '07:00',
+      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
     });
     expect(deps.rebuildPlan).toHaveBeenCalledWith('deadline_objective_card_set');
   });
@@ -172,7 +178,7 @@ describe('deadline objective flow cards', () => {
       kind: 'ev_soc',
       enforcement: 'hard',
       targetPercent: 80,
-      deadlineLocalTime: '06:30',
+      deadlineAtMs: HH_MM_TO_UTC_MS(6, 30),
     });
   });
 
@@ -220,7 +226,7 @@ describe('deadline objective flow cards', () => {
       previousStatus: 'none',
       targetText: '55 °C',
       deadlineLocalTime: '07:00',
-      deadlineAtMs: null,
+      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
       deadlineMissed: false,
       shortfallKwh: null,
       shortfallText: null,
@@ -233,7 +239,7 @@ describe('deadline objective flow cards', () => {
           kind: 'temperature',
           enforcement: 'soft',
           targetTemperatureC: 55,
-          deadlineLocalTime: '07:00',
+          deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
         },
       },
     });
@@ -252,7 +258,7 @@ describe('deadline objective flow cards', () => {
           kind: 'temperature',
           enforcement: 'soft',
           targetTemperatureC: 55,
-          deadlineLocalTime: '07:00',
+          deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
         },
       },
     };
@@ -297,7 +303,7 @@ describe('deadline objective flow cards', () => {
       previousStatus: 'on_track',
       targetText: '55 °C',
       deadlineLocalTime: '07:00',
-      deadlineAtMs: null,
+      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
       deadlineMissed: false,
       shortfallKwh: null,
       shortfallText: null,
@@ -333,7 +339,7 @@ describe('deadline objective flow cards', () => {
       previousStatus: 'on_track',
       targetText: '55 °C',
       deadlineLocalTime: '07:00',
-      deadlineAtMs: null,
+      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
       deadlineMissed: false,
       shortfallKwh: null,
       shortfallText: null,
@@ -367,7 +373,7 @@ describe('deadline objective flow cards', () => {
           kind: 'temperature',
           enforcement: 'soft',
           targetTemperatureC: 55,
-          deadlineLocalTime: '07:00',
+          deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
         },
       },
     });

@@ -98,8 +98,9 @@ const processDiagnosticTransition = (params: {
   diagnostic: DeferredObjectiveDiagnostic;
   statusBus: DeferredObjectiveStatusBus;
   nowMs: number;
+  onDeadlinePassed?: (deviceId: string) => void;
 }): void => {
-  const { diagnostic, statusBus, nowMs } = params;
+  const { diagnostic, statusBus, nowMs, onDeadlinePassed } = params;
   const previous = statusBus.getCurrent(diagnostic.deviceId);
   const previousStatus = previous?.status ?? 'none';
   const nextStatus: DeferredObjectivePublishedStatus = diagnostic.status;
@@ -126,18 +127,32 @@ const processDiagnosticTransition = (params: {
       deadlineMissed: true,
     }));
   }
+  // Auto-disable as soon as the deadline has passed, regardless of whether
+  // the device reached `satisfied` first. `deadlineJustPassed` is gated on
+  // `nextStatus !== 'satisfied'` to suppress duplicate missed events, but a
+  // satisfied-at-deadline objective must still be disarmed so it does not
+  // linger as enabled forever. The callback is idempotent on enabled=false
+  // entries, so firing it on each post-deadline cycle is harmless.
+  if (
+    onDeadlinePassed
+    && diagnostic.deadlineAtMs !== null
+    && nowMs >= diagnostic.deadlineAtMs
+  ) {
+    onDeadlinePassed(diagnostic.deviceId);
+  }
 };
 
 export const emitDeferredObjectiveStatusTransitions = (params: {
   diagnostics: DeferredObjectiveDiagnostic[];
   statusBus: DeferredObjectiveStatusBus;
   nowMs: number;
+  onDeadlinePassed?: (deviceId: string) => void;
 }): void => {
-  const { diagnostics, statusBus, nowMs } = params;
+  const { diagnostics, statusBus, nowMs, onDeadlinePassed } = params;
   const seen = new Set<string>();
   for (const diagnostic of diagnostics) {
     seen.add(diagnostic.deviceId);
-    processDiagnosticTransition({ diagnostic, statusBus, nowMs });
+    processDiagnosticTransition({ diagnostic, statusBus, nowMs, onDeadlinePassed });
   }
   for (const known of statusBus.listDeviceIds()) {
     if (!seen.has(known)) statusBus.forgetDevice(known);

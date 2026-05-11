@@ -47,10 +47,7 @@
     return `${y}-${m}-${day}`;
   };
 
-  const localTimeAfterHours = (hours) => {
-    const deadline = new Date(Date.now() + hours * 3600 * 1000);
-    return `${String(deadline.getHours()).padStart(2, '0')}:${String(deadline.getMinutes()).padStart(2, '0')}`;
-  };
+  const deadlineMsAfterHours = (hours) => Date.now() + hours * 3600 * 1000;
 
   const buildSampleCombinedPrices = () => {
     const now = new Date();
@@ -671,7 +668,7 @@
           kind: 'temperature',
           enforcement: 'soft',
           targetTemperatureC: 65,
-          deadlineLocalTime: localTimeAfterHours(8),
+          deadlineAtMs: deadlineMsAfterHours(8),
         },
       },
     },
@@ -818,13 +815,9 @@
     if (!objective?.enabled) return { version: 1, plansByDeviceId: {} };
     const nowMs = Date.now();
     const startsAtMs = startOfUtcHourMs(new Date(nowMs));
-    const deadline = new Date(nowMs);
-    const [hh, mm] = String(objective.deadlineLocalTime ?? '').split(':');
-    if (hh && mm) {
-      deadline.setHours(Number(hh), Number(mm), 0, 0);
-      if (deadline.getTime() <= nowMs) deadline.setDate(deadline.getDate() + 1);
-    }
-    const deadlineAtMs = deadline.getTime();
+    const deadlineAtMs = typeof objective.deadlineAtMs === 'number'
+      ? objective.deadlineAtMs
+      : nowMs + 8 * 3600 * 1000;
     // Pick the first 6 cheap-or-neutral hours within the horizon as planned hours.
     const hourMs = 3600 * 1000;
     const totalHoursAvailable = Math.max(1, Math.floor((deadlineAtMs - startsAtMs) / hourMs));

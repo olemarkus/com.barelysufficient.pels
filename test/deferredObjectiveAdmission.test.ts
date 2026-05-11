@@ -120,6 +120,8 @@ const buildDevice = (params: {
   targets: [{ id: 'target_temperature', value: TARGET_C, unit: '°C', min: 30, max: 75, step: 1 }],
 });
 
+const DEADLINE_AT_MS = Date.UTC(2026, 4, 10, 6, 0, 0);
+
 const buildSettings = (): DeferredObjectiveSettingsV1 => ({
   version: 1,
   objectivesByDeviceId: {
@@ -128,7 +130,7 @@ const buildSettings = (): DeferredObjectiveSettingsV1 => ({
       kind: 'temperature',
       enforcement: 'soft',
       targetTemperatureC: TARGET_C,
-      deadlineLocalTime: '06:00',
+      deadlineAtMs: DEADLINE_AT_MS,
     },
   },
 });
@@ -519,7 +521,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
             kind: 'temperature',
             enforcement: 'soft',
             targetTemperatureC: TARGET_C,
-            deadlineLocalTime: '06:00',
+            deadlineAtMs: DEADLINE_AT_MS,
           },
         },
       }),
