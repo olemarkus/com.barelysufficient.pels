@@ -119,9 +119,25 @@ type SteppedDevice = SteppedCardDevice;
 
 export const resolveSteppedChip = (device: SteppedDevice): SteppedChip | null => {
   if (isSteppedTransit(device)) return { label: 'Applying', tone: 'ok' };
-  if (isSettlingReason(device.reason.code)) return { label: 'Settling', tone: 'warn' };
   return null;
 };
+
+const isAtTargetStep = (device: SteppedDevice): boolean => {
+  const reportedId = normalizeStepId(resolveCurrentStepId(device));
+  const targetId = normalizeStepId(resolveTargetStepId(device));
+  return reportedId !== null && targetId !== null && reportedId === targetId;
+};
+
+// Settling reasons that only fire while the planner is *checking headroom* for a
+// possible escalation (e.g. boost wanting a higher step). Reasons in this set are
+// safe to suppress when the device is already at its target step. Other settling
+// reasons (cooldown_shedding, cooldown_restore, activation_backoff, restore_pending,
+// startup holds) imply the planner is actively holding the device and must keep
+// rendering their countdown / status text even at-target.
+const isHeadroomCheckSettlingReason = (code: string): boolean => (
+  code === PLAN_REASON_CODES.meterSettling
+  || code === PLAN_REASON_CODES.headroomCooldown
+);
 
 // ─── Status line ──────────────────────────────────────────────────────────────
 
@@ -165,6 +181,18 @@ const resolveSettlingStatusLine = (reason: DeviceReason, nowMs: number): string 
   }
   if (reason.code === PLAN_REASON_CODES.meterSettling) {
     return `Waiting for power meter to stabilise · ${formatSec(reason.remainingSec)}`;
+  }
+  if (reason.code === PLAN_REASON_CODES.activationBackoff) {
+    return `Briefly holding · ${formatSec(reason.remainingSec)}`;
+  }
+  if (reason.code === PLAN_REASON_CODES.restorePending) {
+    return `Queued to resume · ${formatSec(reason.remainingSec)}`;
+  }
+  if (reason.code === PLAN_REASON_CODES.neutralStartupHold) {
+    return 'Holding at startup';
+  }
+  if (reason.code === PLAN_REASON_CODES.startupStabilization) {
+    return 'Stabilising after startup';
   }
   return null;
 };
@@ -218,7 +246,10 @@ export const resolveSteppedStatusLine = (
   nowMs: number,
 ): string | null => {
   if (isSteppedTransit(device)) return resolveTransitStatusLine(device, profile);
-  if (isSettlingReason(device.reason.code)) return resolveSettlingStatusLine(device.reason, nowMs);
+  if (isSettlingReason(device.reason.code)) {
+    const suppressed = isHeadroomCheckSettlingReason(device.reason.code) && isAtTargetStep(device);
+    if (!suppressed) return resolveSettlingStatusLine(device.reason, nowMs);
+  }
   if (device.reason.code === PLAN_REASON_CODES.shedInvariant) {
     const r = device.reason;
     const n = r.shedDeviceCount;

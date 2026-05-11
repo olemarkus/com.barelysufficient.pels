@@ -94,18 +94,18 @@ describe('resolveSteppedChip', () => {
       .toEqual({ label: 'Applying', tone: 'ok' });
   });
 
-  it('returns Settling chip for headroomCooldown reason', () => {
+  it('returns null for headroomCooldown reason (status line covers it)', () => {
     expect(resolveSteppedChip({
       ...baseDevice,
       reason: { code: 'headroom_cooldown', kind: 'recent_pels_restore', remainingSec: 30, fromKw: null, toKw: null, countdownStartedAtMs: NOW_MS - 5000 },
-    })).toEqual({ label: 'Settling', tone: 'warn' });
+    })).toBeNull();
   });
 
-  it('returns Settling chip for meterSettling reason', () => {
+  it('returns null for meterSettling reason (status line covers it)', () => {
     expect(resolveSteppedChip({
       ...baseDevice,
       reason: { code: 'meter_settling', remainingSec: 10 },
-    })).toEqual({ label: 'Settling', tone: 'warn' });
+    })).toBeNull();
   });
 
   it('returns null for shedInvariant reason (bar colour covers it)', () => {
@@ -258,6 +258,127 @@ describe('resolveSteppedStatusLine', () => {
         NOW_MS,
       );
       expect(result).toBe('Waiting for power meter to stabilise · 8s');
+    });
+
+    it('returns "Maintaining level" when reported step equals target step (boost-driven settling)', () => {
+      const result = resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'on',
+          steppedLoad: steppedLoad({ reportedStepId: 'medium', targetStepId: 'medium' }),
+          reason: { code: 'meter_settling', remainingSec: 14 },
+        },
+        profile,
+        NOW_MS,
+      );
+      expect(result).toBe('Maintaining level');
+    });
+
+    it('returns "Maintaining level" when reported step equals target step and reason is headroomCooldown', () => {
+      const result = resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'on',
+          steppedLoad: steppedLoad({ reportedStepId: 'medium', targetStepId: 'medium' }),
+          reason: {
+            code: 'headroom_cooldown',
+            kind: 'recent_pels_shed',
+            remainingSec: 30,
+            fromKw: null,
+            toKw: null,
+            countdownStartedAtMs: NOW_MS - 5_000,
+          },
+        },
+        profile,
+        NOW_MS,
+      );
+      expect(result).toBe('Maintaining level');
+    });
+
+    it('still returns the cooldown countdown for cooldownShedding even when reported step equals target step', () => {
+      // cooldown_shedding implies the planner is actively holding the device at a
+      // shed step; that hold must remain visible even though reported == target.
+      const result = resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'on',
+          steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'low' }),
+          reason: { code: 'cooldown_shedding', remainingSec: 22 },
+        },
+        profile,
+        NOW_MS,
+      );
+      expect(result).toBe('Limited · will try to resume in 22s if power is available');
+    });
+
+    it('still returns the cooldown elapsed text for cooldownRestore even when reported step equals target step', () => {
+      const result = resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'on',
+          steppedLoad: steppedLoad({ reportedStepId: 'medium', targetStepId: 'medium' }),
+          reason: { code: 'cooldown_restore', remainingSec: 18, countdownStartedAtMs: NOW_MS - 4_000 },
+        },
+        profile,
+        NOW_MS,
+      );
+      expect(result).toBe('Resumed 4s ago · checking power reading');
+    });
+
+    it('returns "Briefly holding · Ns" for activationBackoff reason', () => {
+      const result = resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'on',
+          steppedLoad: steppedLoad({ reportedStepId: 'low' }),
+          reason: { code: 'activation_backoff', remainingSec: 12 },
+        },
+        profile,
+        NOW_MS,
+      );
+      expect(result).toBe('Briefly holding · 12s');
+    });
+
+    it('returns "Queued to resume · Ns" for restorePending reason', () => {
+      const result = resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'off',
+          steppedLoad: steppedLoad({ targetStepId: 'low' }),
+          reason: { code: 'restore_pending', remainingSec: 9 },
+        },
+        profile,
+        NOW_MS,
+      );
+      expect(result).toBe('Queued to resume · 9s');
+    });
+
+    it('returns "Holding at startup" for neutralStartupHold reason', () => {
+      const result = resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'on',
+          steppedLoad: steppedLoad({ reportedStepId: 'low' }),
+          reason: { code: 'neutral_startup_hold' },
+        },
+        profile,
+        NOW_MS,
+      );
+      expect(result).toBe('Holding at startup');
+    });
+
+    it('returns "Stabilising after startup" for startupStabilization reason', () => {
+      const result = resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'on',
+          steppedLoad: steppedLoad({ reportedStepId: 'low' }),
+          reason: { code: 'startup_stabilization' },
+        },
+        profile,
+        NOW_MS,
+      );
+      expect(result).toBe('Stabilising after startup');
     });
   });
 
