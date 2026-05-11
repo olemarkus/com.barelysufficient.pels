@@ -111,7 +111,7 @@ describe('DailyBudgetService', () => {
     (service as any).buildTomorrowPreview = vi.fn(() => tomorrow);
     (service as any).buildYesterdayHistory = vi.fn(() => yesterday);
 
-    (service as any).setDaySnapshot(today, NOW_MS, true);
+    (service as any).setDaySnapshot(today, NOW_MS, null, true);
 
     const snapshot = service.getSnapshot();
     expect(snapshot?.days['2025-03-15']?.state.confidence).toBe(0.72);
@@ -130,7 +130,7 @@ describe('DailyBudgetService', () => {
     (service as any).buildTomorrowPreview = vi.fn(() => tomorrow);
     (service as any).buildYesterdayHistory = vi.fn(() => yesterday);
 
-    (service as any).setDaySnapshot(today, NOW_MS, true);
+    (service as any).setDaySnapshot(today, NOW_MS, null, true);
     const cachedTomorrow = service.getSnapshot()?.days['2025-03-16'];
     const cachedYesterday = service.getSnapshot()?.days['2025-03-14'];
     expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');
@@ -144,7 +144,7 @@ describe('DailyBudgetService', () => {
     });
 
     const refreshedToday = buildDayPayload({ dateKey: '2025-03-15', confidence: 0.65 });
-    (service as any).setDaySnapshot(refreshedToday, NOW_MS);
+    (service as any).setDaySnapshot(refreshedToday, NOW_MS, null);
 
     const snapshot = service.getSnapshot();
     expect(snapshot?.todayKey).toBe('2025-03-15');
@@ -155,7 +155,7 @@ describe('DailyBudgetService', () => {
     expect(snapshot?.days['2025-03-14']).toBe(cachedYesterday);
   });
 
-  it('drops stale adjacent days when the day rolls over on a hot-path update', () => {
+  it('re-seeds adjacent days when the day rolls over on a hot-path update', () => {
     const service = buildService();
     const today = buildDayPayload({ dateKey: '2025-03-15', confidence: 0.72 });
     const tomorrow = buildDayPayload({ dateKey: '2025-03-16', confidence: 0.15 });
@@ -164,16 +164,97 @@ describe('DailyBudgetService', () => {
     (service as any).buildTomorrowPreview = vi.fn(() => tomorrow);
     (service as any).buildYesterdayHistory = vi.fn(() => yesterday);
 
-    (service as any).setDaySnapshot(today, NOW_MS, true);
+    (service as any).setDaySnapshot(today, NOW_MS, null, true);
 
     const newToday = buildDayPayload({ dateKey: '2025-03-17', confidence: 0.5 });
-    (service as any).setDaySnapshot(newToday, NOW_MS);
+    const newTomorrow = buildDayPayload({ dateKey: '2025-03-18', confidence: 0.5 });
+    const newYesterday = buildDayPayload({ dateKey: '2025-03-16', confidence: 0.5 });
+    (service as any).buildTomorrowPreview = vi.fn(() => newTomorrow);
+    (service as any).buildYesterdayHistory = vi.fn(() => newYesterday);
+    (service as any).setDaySnapshot(newToday, NOW_MS, null);
 
     const snapshot = service.getSnapshot();
     expect(snapshot?.todayKey).toBe('2025-03-17');
-    expect(Object.keys(snapshot?.days ?? {})).toEqual(['2025-03-17']);
-    expect(snapshot?.tomorrowKey).toBe(null);
-    expect(snapshot?.yesterdayKey).toBe(null);
+    expect(snapshot?.tomorrowKey).toBe('2025-03-18');
+    expect(snapshot?.yesterdayKey).toBe('2025-03-16');
+    expect(Object.keys(snapshot?.days ?? {}).sort()).toEqual([
+      '2025-03-16',
+      '2025-03-17',
+      '2025-03-18',
+    ]);
+  });
+
+  it('seeds tomorrow on a hot-path update once tomorrow prices become available', () => {
+    const service = buildService();
+    const today = buildDayPayload({ dateKey: '2025-03-15', confidence: 0.72 });
+
+    let combinedPrices: { prices: { startsAt: string; total: number }[]; lastFetched: string } | null = {
+      prices: [{ startsAt: '2025-03-15T00:00:00Z', total: 1 }],
+      lastFetched: '2025-03-15T10:00:00Z',
+    };
+
+    // First hot-path update: tomorrow prices not yet available.
+    const noTomorrowBuilder = vi.fn(() => null);
+    (service as any).buildTomorrowPreview = noTomorrowBuilder;
+    (service as any).buildYesterdayHistory = vi.fn(() => null);
+    (service as any).setDaySnapshot(today, NOW_MS, combinedPrices);
+    expect(service.getSnapshot()?.tomorrowKey).toBe(null);
+    expect(noTomorrowBuilder).toHaveBeenCalledTimes(1);
+
+    // Subsequent hot-path updates with the same prices: no rebuild attempt.
+    (service as any).setDaySnapshot(today, NOW_MS, combinedPrices);
+    (service as any).setDaySnapshot(today, NOW_MS, combinedPrices);
+    expect(noTomorrowBuilder).toHaveBeenCalledTimes(1);
+
+    // Tomorrow prices arrive: a new entry appears.
+    const tomorrow = buildDayPayload({ dateKey: '2025-03-16', confidence: 0.3 });
+    combinedPrices = {
+      prices: [
+        { startsAt: '2025-03-15T00:00:00Z', total: 1 },
+        { startsAt: '2025-03-16T00:00:00Z', total: 1 },
+      ],
+      lastFetched: '2025-03-15T13:00:00Z',
+    };
+    const tomorrowBuilder = vi.fn(() => tomorrow);
+    (service as any).buildTomorrowPreview = tomorrowBuilder;
+
+    (service as any).setDaySnapshot(today, NOW_MS, combinedPrices);
+    expect(tomorrowBuilder).toHaveBeenCalledTimes(1);
+    expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');
+    expect(service.getSnapshot()?.days['2025-03-16']).toBeDefined();
+
+    // Once seeded, further hot-path updates do not re-attempt the rebuild.
+    (service as any).setDaySnapshot(today, NOW_MS, combinedPrices);
+    expect(tomorrowBuilder).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not re-seed adjacent days when only combined_prices.lastFetched changes', () => {
+    // PriceService.updateCombinedPrices may bump `lastFetched` on a no-op
+    // refresh. Such ticks must not trigger the expensive adjacent-day rebuild.
+    const service = buildService();
+    const today = buildDayPayload({ dateKey: '2025-03-15', confidence: 0.72 });
+    const tomorrow = buildDayPayload({ dateKey: '2025-03-16', confidence: 0.3 });
+    const prices = {
+      prices: [
+        { startsAt: '2025-03-15T00:00:00Z', total: 1 },
+        { startsAt: '2025-03-16T00:00:00Z', total: 1 },
+      ],
+      lastFetched: '2025-03-15T13:00:00Z',
+    };
+    (service as any).buildTomorrowPreview = vi.fn(() => tomorrow);
+    (service as any).buildYesterdayHistory = vi.fn(() => null);
+    (service as any).setDaySnapshot(today, NOW_MS, prices);
+    expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');
+
+    const builderSpy = vi.spyOn(service as any, 'rebuildSnapshotWithAdjacentDays');
+    for (const lastFetched of [
+      '2026-01-01T00:00:00Z',
+      '2026-01-01T01:00:00Z',
+      '2026-01-01T02:00:00Z',
+    ]) {
+      (service as any).setDaySnapshot(today, NOW_MS, { ...prices, lastFetched });
+    }
+    expect(builderSpy).not.toHaveBeenCalled();
   });
 
   it('refreshes confidence explicitly when fetching the UI payload', () => {

@@ -630,6 +630,47 @@ describe('budgetAdjustController', () => {
     expect(view.status).not.toBe('pending');
   });
 
+  it('exposes the active and candidate payloads as independent values', async () => {
+    const activePayload = { days: { t: { id: 'active' } }, todayKey: 't' };
+    const candidatePayload = { days: { t: { id: 'candidate' } }, todayKey: 't' };
+    await installHomey(
+      {
+        daily_budget_enabled: true,
+        daily_budget_kwh: 60,
+        daily_budget_price_shaping_enabled: true,
+        daily_budget_controlled_weight: UNMANAGED_RESERVE_BALANCED_MODE,
+        daily_budget_price_flex_share: PRICE_FLEX_MEDIUM,
+      },
+      (method, uri) => {
+        if (method === 'POST' && uri === SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH) {
+          return {
+            active: activePayload,
+            candidate: candidatePayload,
+            settings: {
+              enabled: true,
+              dailyBudgetKWh: 80,
+              priceShapingEnabled: true,
+              controlledUsageWeight: UNMANAGED_RESERVE_BALANCED_MODE,
+              priceShapingFlexShare: PRICE_FLEX_MEDIUM,
+            },
+          };
+        }
+        throw new Error(`unexpected ${method} ${uri}`);
+      },
+    );
+    const controller = await import('../src/ui/budgetAdjustController.ts');
+    await controller.loadBudgetAdjust();
+
+    controller.updateBudgetAdjustField({ dailyBudgetKWh: 80 });
+    await controller.previewBudgetAdjust();
+
+    // The "Current plan" chart must read the active baseline, not the candidate.
+    expect(controller.getBudgetAdjustActivePayload()).toBe(activePayload);
+    expect(controller.getBudgetAdjustCandidatePayload()).toBe(candidatePayload);
+    expect(controller.getBudgetAdjustActivePayload())
+      .not.toBe(controller.getBudgetAdjustCandidatePayload());
+  });
+
   it('does not preview while clean', async () => {
     const previewSpy = vi.fn();
     await installHomey(

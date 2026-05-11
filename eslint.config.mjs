@@ -377,6 +377,15 @@ export default tseslint.config(
     },
   },
   {
+    // dailyBudgetService now hosts snapshot caching, adjacent-day seeding, and price-store
+    // wiring in one place. Target: <=500 once the snapshot/seeding logic is extracted into
+    // its own helper alongside `dailyBudgetSnapshotState.ts`.
+    files: ['lib/dailyBudget/dailyBudgetService.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 510, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
     // DeviceManager still owns snapshot refresh, realtime drift reconciliation, and binary settle
     // windows over one shared mutable snapshot. Target: <=850 after the post-Phase-7 helper
     // cleanup trims the remaining orchestration bulk.

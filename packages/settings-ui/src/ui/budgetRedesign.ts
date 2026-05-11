@@ -22,6 +22,7 @@ import {
 import {
   applyBudgetAdjust,
   discardBudgetAdjust,
+  getBudgetAdjustActivePayload,
   getBudgetAdjustCandidatePayload,
   getBudgetAdjustView,
   previewBudgetAdjust,
@@ -331,12 +332,13 @@ const resolveComparisonChartMax = (day: DailyBudgetDayPayload | null): number =>
 
 const resolveAdjustData = (): BudgetAdjustData => {
   const view = getBudgetAdjustView();
-  const { payload, costDisplay } = latestRenderState;
+  const { costDisplay } = latestRenderState;
   const dayView: BudgetDayView = 'today';
   const showComparison = view.status === 'pending';
+  const activePayload = showComparison ? getBudgetAdjustActivePayload() : null;
   const candidatePayload = showComparison ? getBudgetAdjustCandidatePayload() : null;
-  const activeDay = showComparison ? resolveViewPayload(payload, dayView) : null;
-  const candidateDay = showComparison ? resolveViewPayload(candidatePayload, dayView) : null;
+  const activeDay = activePayload ? resolveViewPayload(activePayload, dayView) : null;
+  const candidateDay = candidatePayload ? resolveViewPayload(candidatePayload, dayView) : null;
   const sharedMax = Math.max(resolveComparisonChartMax(activeDay), resolveComparisonChartMax(candidateDay));
   return {
     draft: view.draft,

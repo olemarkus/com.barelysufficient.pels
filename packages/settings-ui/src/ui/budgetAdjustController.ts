@@ -204,6 +204,10 @@ export const getBudgetAdjustCandidatePayload = (): DailyBudgetUiPayload | null =
   pendingPreview?.candidate ?? null
 );
 
+export const getBudgetAdjustActivePayload = (): DailyBudgetUiPayload | null => (
+  pendingPreview?.active ?? null
+);
+
 export const updateBudgetAdjustField = (patch: Partial<BudgetAdjustDraft>): void => {
   const next: BudgetAdjustDraft = { ...workingDraft, ...patch };
   if (Number.isFinite(next.dailyBudgetKWh)) {
