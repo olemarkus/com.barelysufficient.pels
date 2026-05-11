@@ -1,5 +1,6 @@
 import {
   buildCombinedHourlyPricesFromPayloads,
+  purgeStaleFlowPriceSlots,
   storeFlowPriceData,
 } from '../lib/price/priceServiceFlowHelpers';
 
@@ -56,5 +57,86 @@ describe('priceServiceFlowHelpers DST date keys', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('purgeStaleFlowPriceSlots', () => {
+  const now = new Date('2026-05-11T10:00:00.000Z');
+  const timeZone = 'Europe/Oslo';
+  const todayKey = '2026-05-11';
+  const tomorrowKey = '2026-05-12';
+
+  it('returns no changes when both slots match expected keys', () => {
+    const result = purgeStaleFlowPriceSlots({
+      now,
+      timeZone,
+      todayPayload: { dateKey: todayKey, pricesByHour: { '0': 1 }, updatedAt: now.toISOString() },
+      tomorrowPayload: { dateKey: tomorrowKey, pricesByHour: { '0': 2 }, updatedAt: now.toISOString() },
+      allowTomorrowAsToday: true,
+    });
+    expect(result.changes).toEqual([]);
+    expect(result.todayPayload?.dateKey).toBe(todayKey);
+    expect(result.tomorrowPayload?.dateKey).toBe(tomorrowKey);
+  });
+
+  it('promotes a stale tomorrow payload dated today when today slot is empty and allowed', () => {
+    const stalePayload = { dateKey: todayKey, pricesByHour: { '0': 5 }, updatedAt: now.toISOString() };
+    const result = purgeStaleFlowPriceSlots({
+      now,
+      timeZone,
+      todayPayload: null,
+      tomorrowPayload: stalePayload,
+      allowTomorrowAsToday: true,
+    });
+    expect(result.todayPayload).toBe(stalePayload);
+    expect(result.tomorrowPayload).toBeNull();
+    expect(result.changes).toEqual([
+      { slot: 'tomorrow', action: 'promoted_to_today', from: todayKey },
+    ]);
+  });
+
+  it('clears a stale tomorrow payload dated before tomorrow', () => {
+    const result = purgeStaleFlowPriceSlots({
+      now,
+      timeZone,
+      todayPayload: { dateKey: todayKey, pricesByHour: { '0': 1 }, updatedAt: now.toISOString() },
+      tomorrowPayload: { dateKey: todayKey, pricesByHour: { '0': 2 }, updatedAt: now.toISOString() },
+      allowTomorrowAsToday: true,
+    });
+    expect(result.tomorrowPayload).toBeNull();
+    expect(result.changes).toEqual([
+      { slot: 'tomorrow', action: 'cleared', from: todayKey },
+    ]);
+  });
+
+  it('clears a stale today payload dated before today', () => {
+    const yesterday = '2026-05-10';
+    const result = purgeStaleFlowPriceSlots({
+      now,
+      timeZone,
+      todayPayload: { dateKey: yesterday, pricesByHour: { '0': 1 }, updatedAt: now.toISOString() },
+      tomorrowPayload: null,
+      allowTomorrowAsToday: true,
+    });
+    expect(result.todayPayload).toBeNull();
+    expect(result.changes).toEqual([
+      { slot: 'today', action: 'cleared', from: yesterday },
+    ]);
+  });
+
+  it('does not promote when allowTomorrowAsToday is false', () => {
+    const stalePayload = { dateKey: todayKey, pricesByHour: { '0': 5 }, updatedAt: now.toISOString() };
+    const result = purgeStaleFlowPriceSlots({
+      now,
+      timeZone,
+      todayPayload: null,
+      tomorrowPayload: stalePayload,
+      allowTomorrowAsToday: false,
+    });
+    expect(result.todayPayload).toBeNull();
+    expect(result.tomorrowPayload).toBeNull();
+    expect(result.changes).toEqual([
+      { slot: 'tomorrow', action: 'cleared', from: todayKey },
+    ]);
   });
 });
