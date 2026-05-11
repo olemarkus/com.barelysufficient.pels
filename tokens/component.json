@@ -48,7 +48,7 @@
         "font": {
           "size": { "value": "{font.size.lg}" },
           "weight": { "value": "{font.weight.semibold}" },
-          "line-height": { "value": "1.2" }
+          "line-height": { "value": "{font.lineHeight.tight}" }
         }
       },
       "card-supporting": {
@@ -103,15 +103,15 @@
   },
   "chip": {
     "padding": {
-      "block": { "value": "4px" },
+      "block": { "value": "{spacing.1}" },
       "inline": { "value": "10px" }
     },
-    "radius": { "value": "9999px" },
+    "radius": { "value": "{radius.full}" },
     "font": {
-      "size": { "value": "11px" },
-      "weight": { "value": "600" }
+      "size": { "value": "{font.size.xs}" },
+      "weight": { "value": "{font.weight.semibold}" }
     },
-    "lineHeight": { "value": "1.2" },
+    "lineHeight": { "value": "{font.lineHeight.tight}" },
     "border": { "width": { "value": "1px" } }
   }
 }
