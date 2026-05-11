@@ -279,7 +279,13 @@ const formatKw = (value: number): string => (
 
 const onOff = (value: boolean): string => (value ? 'On' : 'Off');
 
-type ComparisonRow = { label: string; current: string; candidate: string };
+type ComparisonRow = { label: string; current: string; candidate: string; delta?: string };
+
+const formatSignedKWhDelta = (diff: number): string => {
+  if (!Number.isFinite(diff) || diff === 0) return '';
+  const sign = diff > 0 ? '+' : '−';
+  return `${sign}${formatKWh(Math.abs(diff))}`;
+};
 
 const computeComparison = (active: BudgetAdjustDraft, candidate: BudgetAdjustDraft): ComparisonRow[] => {
   const rows: ComparisonRow[] = [];
@@ -287,10 +293,12 @@ const computeComparison = (active: BudgetAdjustDraft, candidate: BudgetAdjustDra
     rows.push({ label: 'Enable daily budget', current: onOff(active.enabled), candidate: onOff(candidate.enabled) });
   }
   if (active.dailyBudgetKWh !== candidate.dailyBudgetKWh) {
+    const delta = formatSignedKWhDelta(candidate.dailyBudgetKWh - active.dailyBudgetKWh);
     rows.push({
       label: 'Daily budget',
       current: formatKWh(active.dailyBudgetKWh),
       candidate: formatKWh(candidate.dailyBudgetKWh),
+      ...(delta ? { delta } : {}),
     });
   }
   if (active.priceShaping !== candidate.priceShaping) {
@@ -424,7 +432,10 @@ const BudgetAdjustView = ({
           <div class="budget-setting-row budget-setting-row--editable">
             <span>
               <span class="budget-setting-row__label">Daily budget</span>
-              <FieldHint>The selected day's energy plan.</FieldHint>
+              <FieldHint>
+                The selected day's energy plan.
+                <span class="field__hint-range">{` Range ${MIN_DAILY_BUDGET_KWH}–${MAX_DAILY_BUDGET_KWH} kWh.`}</span>
+              </FieldHint>
             </span>
             <MdFilledTextField
               id="budget-redesign-kwh"
@@ -456,7 +467,7 @@ const BudgetAdjustView = ({
         </div>
       </section>
 
-      <details class="pels-surface-card budget-redesign-card budget-planning-behavior">
+      <details class="pels-surface-card budget-redesign-card budget-planning-behavior" open>
         <summary class="budget-planning-behavior__summary">
           <span class="budget-planning-behavior__heading">
             <span class="plan-card__title">Planning behavior</span>
@@ -536,6 +547,9 @@ const BudgetAdjustView = ({
                     <span class="budget-comparison__current">{row.current}</span>
                     <span class="budget-comparison__arrow" aria-hidden="true">{'→'}</span>
                     <span class="budget-comparison__candidate">{row.candidate}</span>
+                    {row.delta && (
+                      <span class="budget-comparison__delta">{`(${row.delta})`}</span>
+                    )}
                   </span>
                 </div>
               ))}

@@ -251,11 +251,44 @@ export const previewBudgetAdjust = async (): Promise<void> => {
   }
 };
 
+const undoBudgetApply = async (snapshot: BudgetAdjustDraft): Promise<void> => {
+  if (busy) return;
+  busy = true;
+  const requestRevision = draftRevision;
+  renderRequested();
+  try {
+    const settings = toModelSettings(snapshot);
+    const payload = await callApi<DailyBudgetUiPayload | null>(
+      'POST',
+      SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
+      settings,
+    );
+    const userEditedDuringUndo = requestRevision !== draftRevision;
+    activeDraft = fromModelSettings(settings);
+    pendingPreview = null;
+    if (!userEditedDuringUndo) {
+      workingDraft = activeDraft;
+      status = 'clean';
+    } else {
+      status = draftsEqual(workingDraft, activeDraft) ? 'clean' : 'dirty';
+    }
+    await refreshActivePlan({ payload, appliedSettings: settings });
+    await showToast('Reverted to previous daily budget.', 'ok');
+  } catch (error) {
+    await logSettingsError('Failed to undo daily budget apply', error, 'undoBudgetApply');
+    await showToastError(error, 'Failed to undo daily budget changes.');
+  } finally {
+    busy = false;
+    renderRequested();
+  }
+};
+
 export const applyBudgetAdjust = async (): Promise<void> => {
   if (busy) return;
   if (status === 'clean' && !pendingPreview) return;
   busy = true;
   const requestRevision = draftRevision;
+  const previousActive: BudgetAdjustDraft = { ...activeDraft };
   renderRequested();
   try {
     const settings = pendingPreview?.settings ?? toModelSettings(workingDraft);
@@ -274,7 +307,21 @@ export const applyBudgetAdjust = async (): Promise<void> => {
       status = draftsEqual(workingDraft, activeDraft) ? 'clean' : 'dirty';
     }
     await refreshActivePlan({ payload, appliedSettings: settings });
-    await showToast('Daily budget model applied.', 'ok');
+    const undoActionable = !draftsEqual(previousActive, activeDraft);
+    void showToast(
+      'Daily budget model applied.',
+      'ok',
+      undoActionable
+        ? {
+          action: {
+            label: 'Undo',
+            onClick: () => {
+              void undoBudgetApply(previousActive);
+            },
+          },
+        }
+        : {},
+    );
   } catch (error) {
     await logSettingsError('Failed to apply daily budget model', error, 'applyBudgetAdjust');
     await showToastError(error, 'Failed to apply daily budget changes.');
