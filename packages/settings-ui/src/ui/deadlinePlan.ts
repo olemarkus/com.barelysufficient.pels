@@ -26,6 +26,7 @@ import {
 } from './deadlinePlanData.ts';
 import {
   resolveEnergyNeededKWh,
+  resolveLowestActiveStepKw,
   resolveProfile,
   resolveProgress,
   resolveUsefulPowerKw,
@@ -170,6 +171,20 @@ const buildHero = (params: {
     metaLine,
   };
 };
+
+const formatPerUnitRateLabel = (
+  kwhPerUnitMean: number | null | undefined,
+  unitSuffix: DeadlineLabels['perUnitRateUnit'],
+): string | null => {
+  if (typeof kwhPerUnitMean !== 'number' || !Number.isFinite(kwhPerUnitMean) || kwhPerUnitMean <= 0) {
+    return null;
+  }
+  return `${kwhPerUnitMean.toFixed(2)} ${unitSuffix}`;
+};
+
+const formatMaxPowerLabel = (lowestStepKw: number | null): string | null => (
+  lowestStepKw === null ? null : `${lowestStepKw.toFixed(1)} kW`
+);
 
 const buildTimeline = (params: {
   device: TargetDeviceSnapshot;
@@ -330,7 +345,6 @@ const buildObjectivePayload = (params: ObjectivePlanInput): ObjectivePayloadResu
   const hours = collectHorizonHours({
     bootstrap: params.bootstrap,
     deadlineAtMs,
-    device,
     windowStartMs,
     prices: params.prices,
   });
@@ -370,6 +384,10 @@ const buildObjectivePayload = (params: ObjectivePlanInput): ObjectivePayloadResu
         progressUnit: progress.unit,
         deadlineAtMs,
       }),
+      planInputs: {
+        perUnitRateLabel: formatPerUnitRateLabel(profile?.kwhPerUnit?.mean, labels.perUnitRateUnit),
+        maxPowerLabel: formatMaxPowerLabel(resolveLowestActiveStepKw(device)),
+      },
     },
   };
 };

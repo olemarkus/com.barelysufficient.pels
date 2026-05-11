@@ -74,7 +74,11 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(1);
   });
 
-  it('uses a higher step to avoid immediate charging when a later preferred bucket can cover the target', () => {
+  it('plans against the lowest non-zero step even when a higher step exists', () => {
+    // We commit to running the lowest step for the full hour; higher steps may
+    // be denied mid-bucket, so the planner does not bet on stepping up. With a
+    // 2 kWh need across two preferred hours and a 1 kW low step, the plan must
+    // schedule both hours instead of stuffing 2 kWh into one hour via 'high'.
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
       objective: objective({
@@ -91,11 +95,12 @@ describe('planDeferredObjectiveHorizon', () => {
       ],
     });
 
-    expect(plan.status).toBe('on_track');
-    expect(plan.requestedMinimumStepId).toBeNull();
-    expect(plan.currentBucket?.plannedUsefulEnergyKWh).toBe(0);
-    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBe(0);
-    expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(2);
+    expect(plan.status).toBe('at_risk');
+    expect(plan.statusDetail).toBe('planned_using_policy_avoid');
+    expect(plan.usesPolicyAvoid).toBe(true);
+    expect(plan.requestedMinimumStepId).toBe('low');
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
   });
 
   it('requests the lowest current step that keeps the selected windows on track', () => {

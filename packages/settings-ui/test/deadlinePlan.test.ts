@@ -451,7 +451,81 @@ describe('deadline plan page payload', () => {
     expect(renderInput?.status).toBe('pending');
   });
 
-  it('does not let lower-priority managed load shrink priority 1 allocation', () => {
+  it('chart background series shows only the uncontrolled forecast, regardless of device priority', () => {
+    // The chart's "Background usage" series matches the same `plannedUncontrolledKWh`
+    // value the planner subtracts when sizing per-bucket capacity. Controlled forecasts
+    // are not added on top — they'd double-count this device's typical contribution.
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 6 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const buildBootstrapFor = (priority: number | undefined) => {
+      const bootstrap = buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: {
+          version: 1,
+          objectivesByDeviceId: {
+            heater: {
+              enabled: true,
+              kind: 'temperature',
+              enforcement: 'soft',
+              targetTemperatureC: 22,
+              deadlineAtMs: deadline.getTime(),
+            },
+          },
+        },
+      }, buildHeaterActivePlan({
+        now,
+        deadline,
+        plannedHourOffsets: [0],
+        plannedKWhPerHour: 2,
+      }));
+      bootstrap.dailyBudget = buildDailyBudget(now, {
+        controlledKWh: 4,
+        plannedKWh: 5,
+        uncontrolledKWh: 1,
+      });
+      const device: TargetDeviceSnapshot = {
+        id: 'heater',
+        name: 'Connected 300',
+        currentOn: false,
+        currentTemperature: 18,
+        planningPowerKw: 2,
+        ...(priority !== undefined ? { priority } : {}),
+        targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+      };
+      return { bootstrap, devices: [device] };
+    };
+
+    for (const priority of [1, 5, undefined]) {
+      const { bootstrap, devices } = buildBootstrapFor(priority);
+      const payload = expectOk(testExports.buildObjectivePayload({
+        bootstrap,
+        deviceId: 'heater',
+        devices,
+        prices,
+        nowMs: now.getTime(),
+      }));
+      expect(payload.timeline.hours[0]?.usage.backgroundKwh).toBe(1);
+      expect(payload.timeline.hours[0]?.usage.deviceKwh).toBe(2);
+    }
+  });
+
+  it('surfaces planInputs for a temperature device using the learned rate and the lowest step', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
     const devices: TargetDeviceSnapshot[] = [{
@@ -460,7 +534,6 @@ describe('deadline plan page payload', () => {
       currentOn: false,
       currentTemperature: 18,
       planningPowerKw: 2,
-      priority: 1,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
     const prices: SettingsUiPricesPayload = {
@@ -479,42 +552,99 @@ describe('deadline plan page payload', () => {
       homeyToday: null,
       homeyTomorrow: null,
     };
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          heater: {
-            enabled: true,
-            kind: 'temperature',
-            enforcement: 'soft',
-            targetTemperatureC: 22,
-            deadlineAtMs: deadline.getTime(),
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap: buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: {
+          version: 1,
+          objectivesByDeviceId: {
+            heater: {
+              enabled: true,
+              kind: 'temperature',
+              enforcement: 'soft',
+              targetTemperatureC: 22,
+              deadlineAtMs: deadline.getTime(),
+            },
           },
         },
-      },
-    }, buildHeaterActivePlan({
-      now,
-      deadline,
-      plannedHourOffsets: [0],
-      plannedKWhPerHour: 2,
-    }));
-    bootstrap.dailyBudget = buildDailyBudget(now, {
-      controlledKWh: 4,
-      plannedKWh: 5,
-      uncontrolledKWh: 1,
-    });
-
-    const payload = expectOk(testExports.buildObjectivePayload({
-      bootstrap,
+      }, buildHeaterActivePlan({
+        now,
+        deadline,
+        plannedHourOffsets: [0, 1],
+        plannedKWhPerHour: 2,
+      })),
       deviceId: 'heater',
       devices,
       prices,
       nowMs: now.getTime(),
     }));
+    expect(payload.planInputs.perUnitRateLabel).toBe('1.00 kWh/°C');
+    expect(payload.planInputs.maxPowerLabel).toBe('2.0 kW');
+  });
 
-    expect(payload.timeline.hours[0]?.usage.backgroundKwh).toBe(1);
-    expect(payload.timeline.hours[0]?.usage.deviceKwh).toBe(2);
+  it('planInputs maxPowerLabel uses the lowest non-zero stepped-load step', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      // Stepped profile; the lowest non-zero step is 1.5 kW. resolveUsefulPowerKw
+      // (used elsewhere) would return the highest step — we deliberately want the lowest.
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1500 },
+          { id: 'high', planningPowerW: 3000 },
+        ],
+      },
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 6 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap: buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: {
+          version: 1,
+          objectivesByDeviceId: {
+            heater: {
+              enabled: true,
+              kind: 'temperature',
+              enforcement: 'soft',
+              targetTemperatureC: 22,
+              deadlineAtMs: deadline.getTime(),
+            },
+          },
+        },
+      }, buildHeaterActivePlan({
+        now,
+        deadline,
+        plannedHourOffsets: [0],
+        plannedKWhPerHour: 1.5,
+      })),
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+    expect(payload.planInputs.maxPowerLabel).toBe('1.5 kW');
   });
 
   it('renders the allocated plan even when the device profile is not yet learned', () => {

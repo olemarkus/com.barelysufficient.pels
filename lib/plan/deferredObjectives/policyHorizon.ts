@@ -17,12 +17,19 @@ export type DeferredObjectivePolicyHorizonResult =
     reasonCode: DeferredObjectivePolicyHorizonUnavailableReason;
   };
 
+// Per-bucket capacity assumes this objective claims first call on the bucket's
+// budget headroom (per-bucket allowed kWh minus the daily-budget's forecasted
+// background load). True for priority-1 devices; lower-priority devices won't
+// actually get that headroom, but we apply the same math everywhere for now.
+// Revisit once lower-priority shedding lands at the daily-budget layer.
 type PolicyBucketSource = {
   id: string;
   startMs: number;
   endMs: number;
   price: number;
   priceFactor: number | null;
+  backgroundKWh: number | null;
+  perBucketBudgetKWh: number | null;
 };
 
 export const buildDeferredObjectivePolicyHorizon = (params: {
@@ -95,6 +102,8 @@ const collectDayPriceBuckets = (day: DailyBudgetDayPayload): PolicyBucketSource[
   const starts = day.buckets.startUtc;
   const prices = day.buckets.price;
   if (!Array.isArray(starts) || !Array.isArray(prices)) return [];
+  const allowedCumKWh = day.buckets.allowedCumKWh;
+  const plannedUncontrolledKWh = day.buckets.plannedUncontrolledKWh;
   return starts.flatMap((startIso, index) => {
     const startMs = new Date(startIso).getTime();
     const endMs = resolveBucketEndMs(starts, index);
@@ -115,8 +124,26 @@ const collectDayPriceBuckets = (day: DailyBudgetDayPayload): PolicyBucketSource[
       endMs,
       price,
       priceFactor: typeof priceFactor === 'number' && Number.isFinite(priceFactor) ? priceFactor : null,
+      backgroundKWh: finiteOrNull(plannedUncontrolledKWh?.[index]),
+      perBucketBudgetKWh: resolvePerBucketBudget(allowedCumKWh, index),
     }];
   });
+};
+
+const finiteOrNull = (value: number | undefined): number | null => (
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+);
+
+const resolvePerBucketBudget = (
+  allowedCumKWh: number[] | undefined,
+  index: number,
+): number | null => {
+  if (!Array.isArray(allowedCumKWh)) return null;
+  const current = allowedCumKWh[index];
+  if (typeof current !== 'number' || !Number.isFinite(current)) return null;
+  const previous = index > 0 ? allowedCumKWh[index - 1] : 0;
+  if (typeof previous !== 'number' || !Number.isFinite(previous)) return null;
+  return Math.max(0, current - previous);
 };
 
 const resolveBucketEndMs = (starts: string[], index: number): number => {
@@ -147,14 +174,21 @@ const mapPolicyBuckets = (buckets: PolicyBucketSource[]): DeferredObjectiveHoriz
   return buckets.map((bucket, index) => {
     const priceFactor = bucket.priceFactor;
     const rankedScore = ranked[index] ?? 1;
+    const cap = resolveMaxUsefulEnergyKWh(bucket);
     return {
       id: bucket.id,
       startMs: bucket.startMs,
       endMs: bucket.endMs,
       preference: resolveBucketPreference(priceFactor, rankedScore),
       policyScore: priceFactor ?? rankedScore,
+      ...(cap !== null ? { maxUsefulEnergyKWh: cap } : {}),
     };
   });
+};
+
+const resolveMaxUsefulEnergyKWh = (bucket: PolicyBucketSource): number | null => {
+  if (bucket.perBucketBudgetKWh === null || bucket.backgroundKWh === null) return null;
+  return Math.max(0, bucket.perBucketBudgetKWh - bucket.backgroundKWh);
 };
 
 const rankPrices = (prices: number[]): number[] => {

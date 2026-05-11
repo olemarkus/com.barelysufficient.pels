@@ -151,6 +151,8 @@ const buildSnapshot = (params: {
   includeTomorrow?: boolean;
   includePriceFactor?: boolean;
   prices?: number[];
+  plannedUncontrolledKWh?: number[];
+  allowedCumKWh?: number[];
 } = {}): DailyBudgetUiPayload => {
   const nowMs = params.nowMs ?? NOW_MS;
   const today = buildDay({
@@ -159,6 +161,8 @@ const buildSnapshot = (params: {
     currentBucketIndex: new Date(nowMs).getUTCHours(),
     includePriceFactor: params.includePriceFactor,
     prices: params.prices,
+    plannedUncontrolledKWh: params.plannedUncontrolledKWh,
+    allowedCumKWh: params.allowedCumKWh,
   });
   const days: DailyBudgetUiPayload['days'] = { [today.dateKey]: today };
   if (params.includeTomorrow) {
@@ -168,6 +172,8 @@ const buildSnapshot = (params: {
       currentBucketIndex: 0,
       includePriceFactor: params.includePriceFactor,
       prices: params.prices,
+      plannedUncontrolledKWh: params.plannedUncontrolledKWh,
+      allowedCumKWh: params.allowedCumKWh,
     });
     days[tomorrow.dateKey] = tomorrow;
   }
@@ -184,6 +190,8 @@ const buildDay = (params: {
   currentBucketIndex: number;
   includePriceFactor?: boolean;
   prices?: number[];
+  plannedUncontrolledKWh?: number[];
+  allowedCumKWh?: number[];
 }): DailyBudgetDayPayload => {
   const startUtc = Array.from({ length: 24 }, (_, index) => new Date(params.startMs + index * HOUR_MS).toISOString());
   const prices = params.prices ?? Array.from({ length: 24 }, (_, index) => index);
@@ -214,8 +222,9 @@ const buildDay = (params: {
       plannedWeight: Array.from({ length: 24 }, () => 1 / 24),
       plannedKWh: Array.from({ length: 24 }, () => 1),
       actualKWh: Array.from({ length: 24 }, () => 0),
-      allowedCumKWh: Array.from({ length: 24 }, (_, index) => index + 1),
+      allowedCumKWh: params.allowedCumKWh ?? Array.from({ length: 24 }, (_, index) => index + 1),
       price: prices,
+      ...(params.plannedUncontrolledKWh ? { plannedUncontrolledKWh: params.plannedUncontrolledKWh } : {}),
       ...(params.includePriceFactor === false
         ? {}
         : { priceFactor: prices.map((price) => (price <= 10 ? 1.2 : 0.8)) }),
@@ -356,6 +365,53 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
     expect(result.reasonCode).toBeNull();
     expect(result.buckets.map((bucket) => bucket.preference)).toContain('avoid');
   });
+
+  it('sets per-bucket maxUsefulEnergyKWh from per-bucket budget minus uncontrolled forecast', () => {
+    // allowedCumKWh advances by 3 kWh per bucket → 3 kWh budget per hour.
+    // plannedUncontrolledKWh = 0.5 per hour → 2.5 kWh headroom per bucket.
+    const result = buildDeferredObjectivePolicyHorizon({
+      nowMs: NOW_MS,
+      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
+      priceOptimizationEnabled: true,
+      dailyBudgetSnapshot: buildSnapshot({
+        allowedCumKWh: Array.from({ length: 24 }, (_, index) => (index + 1) * 3),
+        plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
+      }),
+    });
+    expect(result.reasonCode).toBeNull();
+    for (const bucket of result.buckets) {
+      expect(bucket.maxUsefulEnergyKWh).toBeCloseTo(2.5);
+    }
+  });
+
+  it('clamps the per-bucket cap to zero when uncontrolled forecast exceeds the per-bucket budget', () => {
+    const result = buildDeferredObjectivePolicyHorizon({
+      nowMs: NOW_MS,
+      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
+      priceOptimizationEnabled: true,
+      dailyBudgetSnapshot: buildSnapshot({
+        allowedCumKWh: Array.from({ length: 24 }, (_, index) => index + 1),
+        plannedUncontrolledKWh: Array.from({ length: 24 }, () => 5),
+      }),
+    });
+    expect(result.reasonCode).toBeNull();
+    for (const bucket of result.buckets) {
+      expect(bucket.maxUsefulEnergyKWh).toBe(0);
+    }
+  });
+
+  it('omits the per-bucket cap when uncontrolled forecast is missing (legacy snapshot)', () => {
+    const result = buildDeferredObjectivePolicyHorizon({
+      nowMs: NOW_MS,
+      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
+      priceOptimizationEnabled: true,
+      dailyBudgetSnapshot: buildSnapshot(),
+    });
+    expect(result.reasonCode).toBeNull();
+    for (const bucket of result.buckets) {
+      expect(bucket.maxUsefulEnergyKWh).toBeUndefined();
+    }
+  });
 });
 
 describe('buildDeferredObjectiveDiagnostics', () => {
@@ -405,6 +461,60 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       requestedMinimumStepId: 'heat',
       horizonBucketCount: 4,
     });
+  });
+
+  it('refuses to promise more energy than the per-bucket budget headroom allows', () => {
+    // Reproduces the case behind the planning-input card: a heater claiming
+    // 31 kWh of need against a horizon whose per-bucket headroom is small
+    // enough that the lowest non-zero step can never deliver it. The planner
+    // must surface `cannot_meet`, not silently accept the inflated rate.
+    const deadlineAtMs = resolveDeadlineAtMsFor('21:00'); // 4 hours after NOW_MS
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildTemperatureDevice({
+        currentTemperature: 20,
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'heat', planningPowerW: 2000 },
+          ],
+        },
+      })],
+      settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings({ deadlineAtMs })),
+      powerTracker: buildTemperaturePowerTracker({
+        objectiveProfiles: {
+          'heater-1': {
+            kind: 'temperature',
+            updatedAtMs: NOW_MS,
+            lastSample: { observedAtMs: NOW_MS, value: 20, unit: 'degree_c' },
+            kwhPerUnit: {
+              sampleCount: 6,
+              mean: 0.62,
+              m2: 0,
+              min: 0.62,
+              max: 0.62,
+              confidence: 'high',
+              lastUpdatedMs: NOW_MS,
+            },
+            acceptedSamples: 6,
+            rejectedSamples: 0,
+          },
+        },
+      }),
+      dailyBudgetSnapshot: buildSnapshot({
+        prices: Array.from({ length: 24 }, () => 5),
+        allowedCumKWh: Array.from({ length: 24 }, (_, index) => (index + 1) * 2),
+        plannedUncontrolledKWh: Array.from({ length: 24 }, () => 1),
+      }),
+      priceOptimizationEnabled: true,
+    });
+
+    // 45 °C × 0.62 kWh/°C = 27.9 kWh of need, but each bucket caps at min(2 kW × 1h, 2 − 1) = 1 kWh.
+    expect(diagnostic?.energyNeededKWh).toBeCloseTo(27.9);
+    expect(diagnostic?.status).toBe('cannot_meet');
+    expect(diagnostic?.horizonPlan?.unplannedUsefulEnergyKWh).toBeGreaterThan(0);
   });
 
   it('does not plan a temperature objective from stale progress', () => {
