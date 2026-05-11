@@ -2,7 +2,7 @@ import { recordPowerSampleForApp } from '../lib/app/appPowerHelpers';
 import type CapacityGuard from '../lib/core/capacityGuard';
 import { PlanExecutor, type PlanExecutorDeps } from '../lib/executor/planExecutor';
 import { buildInitialPlanDevices } from '../lib/plan/planDevices';
-import { resolveLiveUsagePowerKw } from '../lib/plan/planPowerResolution';
+import { getHighestKnownPowerKw } from '../lib/observer/observedPower';
 import { getOffDevices, getSteppedRestoreCandidates } from '../lib/plan/planRestoreDevices';
 import { estimateRestorePower } from '../lib/plan/planRestoreAccounting';
 import { createPlanEngineState } from '../lib/plan/planState';
@@ -70,13 +70,13 @@ describe('P1 bug proofs', () => {
       powerKw: 1,
     });
 
-    const candidatePower = resolveLiveUsagePowerKw(device);
+    const highestKnown = getHighestKnownPowerKw(device)?.kw ?? 0;
     const restorePower = estimateRestorePower(device);
     const liveUsage = sumControlledUsageKw([device]);
 
-    expect(candidatePower).toBe(restorePower);
+    expect(restorePower).toBe(highestKnown);
     expect(liveUsage).not.toBeNull();
-    expect(liveUsage).toBe(candidatePower);
+    expect(liveUsage).toBe(highestKnown);
   });
 
   it('keeps shedding active after a single sample just above the restore margin', async () => {

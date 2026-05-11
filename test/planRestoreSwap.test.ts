@@ -9,7 +9,7 @@ import {
   resolveRestorePowerSource,
 } from '../lib/plan/planRestoreAccounting';
 import { buildRestoreHeadroomReason } from '../lib/plan/planReasonStrings';
-import { resolveCandidatePower } from '../lib/plan/planCandidatePower';
+import { getCurrentDrawKw, getRestoreDrawKw } from '../lib/observer/observedPower';
 import { PENDING_RESTORE_WINDOW_MS } from '../lib/plan/planConstants';
 import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
@@ -370,28 +370,34 @@ describe('resolveRestorePowerSource', () => {
   });
 });
 
-describe('estimateRestorePower and resolveCandidatePower alignment', () => {
-  it('keeps active-device candidate power aligned with restore admission and leaves off-device demand to live-usage logic', () => {
-    // A device drawing 3kW but configured for 1kW expected:
-    // shedding still frees the observed 3kW, while restore admission also holds the line at 3kW
-    // because admission now uses the highest known demand rather than a priority-ordered fallback.
+describe('observed power boundary — current draw vs restore draw', () => {
+  it('keeps shed-candidate current draw aligned with restore admission for an active device', () => {
+    // A device drawing 3kW with configured 1kW: shedding frees the observed 3kW,
+    // restore admission would also reserve 3kW (the highest known demand).
     const device = buildPlanDevice({
       currentState: 'on',
+      currentOn: true,
       measuredPowerKw: 3,
       expectedPowerKw: 1,
     });
-    expect(resolveCandidatePower(device)).toBe(3);     // shedding sees 3kW
-    expect(estimateRestorePower(device)).toBe(3);      // restore admission keeps the higher known draw
+    expect(getCurrentDrawKw(device)).toBe(3);
+    expect(estimateRestorePower(device)).toBe(3);
+  });
 
-    // Conversely, a device with accurate expected but zero measured (it is off):
+  it('reports current draw as zero for an off device while restore admission keeps the stable configured demand', () => {
     const offDevice = buildPlanDevice({
       currentState: 'off',
+      currentOn: false,
       measuredPowerKw: 0,
       expectedPowerKw: 2,
       powerKw: 2.5,
     });
-    expect(resolveCandidatePower(offDevice)).toBe(0);     // raw candidate power remains state-agnostic
-    expect(estimateRestorePower(offDevice)).toBe(2.5);    // restore admission keeps the higher known demand
+    // Shedding an already-off device gives no immediate relief.
+    expect(getCurrentDrawKw(offDevice)).toBe(0);
+    // Restore admission reserves the device's configured peak (TODO #43 — the
+    // configured load stays the stable expected demand even when measured is 0).
+    expect(getRestoreDrawKw(offDevice).kw).toBe(2.5);
+    expect(estimateRestorePower(offDevice)).toBe(2.5);
   });
 });
 
