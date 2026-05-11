@@ -14,11 +14,13 @@ file.
       `lib/dailyBudget/dailyBudgetService.ts`, `app.ts`, daily-budget persistence tests.
 - [ ] Make observation freshness source-aware. Targeted snapshot refreshes and same-value
       realtime updates should only advance freshness when the value source proves the capability
-      was observed, and stale / missing freshness should not be silently considered safe.
+      was observed.
       Why P0: freshness is currently easy to stamp from a refresh cycle rather than from trusted
-      data, which can hide stale state in control paths.
+      data, which can hide stale state in control paths. The "missing freshness silently treated
+      as safe" half is resolved by the Observer module (`lib/observer/observationFreshness.ts`);
+      remaining work is the same-value / refresh-cycle stamping side.
       Files: `lib/core/deviceManagerObservation.ts`, `lib/core/deviceManager.ts`,
-      `lib/plan/planObservationPolicy.ts`, freshness/reconcile tests.
+      freshness/reconcile tests.
 - [ ] Ensure snapshot refresh ordering cannot persist pre-enforcement state. Unsupported-device
       enforcement should complete before the refreshed snapshot is synced and persisted.
       Why P0: persisting before enforcement can expose a snapshot that briefly disagrees with the
