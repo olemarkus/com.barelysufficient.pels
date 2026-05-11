@@ -7,7 +7,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import type {
   DeferredObjectivePlanHistoryEntry,
-  DeferredObjectivePlanHistoryV1,
+  DeferredObjectivePlanHistoryV2,
 } from '../../../contracts/src/deferredObjectivePlanHistory';
 
 const require = createRequire(import.meta.url);
@@ -51,8 +51,8 @@ type PlanHistoryRecorderLike = {
 
 type PlanHistoryRuntimeModule = {
   DeferredObjectivePlanHistoryRecorder: new (deps: {
-    load: () => DeferredObjectivePlanHistoryV1 | null;
-    save: (history: DeferredObjectivePlanHistoryV1) => void;
+    load: () => DeferredObjectivePlanHistoryV2 | null;
+    save: (history: DeferredObjectivePlanHistoryV2) => boolean;
   }) => PlanHistoryRecorderLike;
 };
 
@@ -129,12 +129,12 @@ const buildTemperatureDiag = (overrides: TemperatureDiagOverrides): DeferredObje
   requestedMinimumStepId: null,
 });
 
-const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV1> => {
+const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV2> => {
   const { DeferredObjectivePlanHistoryRecorder } = await loadPlanHistoryRuntime();
-  let saved: DeferredObjectivePlanHistoryV1 | null = null;
+  let saved: DeferredObjectivePlanHistoryV2 | null = null;
   const recorder = new DeferredObjectivePlanHistoryRecorder({
     load: () => null,
-    save: (history) => { saved = history; },
+    save: (history) => { saved = history; return true; },
   });
 
   // Both devices are observed on every planning tick, mirroring how the runtime hands the
@@ -187,7 +187,7 @@ const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV1> => {
 };
 
 const groupByDevice = (
-  history: DeferredObjectivePlanHistoryV1,
+  history: DeferredObjectivePlanHistoryV2,
 ): Record<string, DeferredObjectivePlanHistoryEntry[]> => {
   const grouped: Record<string, DeferredObjectivePlanHistoryEntry[]> = {};
   for (const entry of history.entries) {

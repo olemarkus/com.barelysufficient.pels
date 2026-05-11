@@ -8,7 +8,7 @@ import type {
 } from '../lib/plan/deferredObjectives';
 import type {
   DeferredObjectivePlanHistoryEntry,
-  DeferredObjectivePlanHistoryV1,
+  DeferredObjectivePlanHistoryV2,
 } from '../packages/contracts/src/deferredObjectivePlanHistory';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -62,15 +62,15 @@ const makeDiag = (
   ...overrides,
 });
 
-const buildPersistDeps = (initial?: DeferredObjectivePlanHistoryV1): {
+const buildPersistDeps = (initial?: DeferredObjectivePlanHistoryV2): {
   deps: PlanHistoryPersistDeps;
-  saved: () => DeferredObjectivePlanHistoryV1 | null;
+  saved: () => DeferredObjectivePlanHistoryV2 | null;
 } => {
-  let saved: DeferredObjectivePlanHistoryV1 | null = null;
+  let saved: DeferredObjectivePlanHistoryV2 | null = null;
   return {
     deps: {
       load: () => initial ?? null,
-      save: (next) => { saved = next; },
+      save: (next) => { saved = next; return true; },
     },
     saved: () => saved,
   };
@@ -239,9 +239,205 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     expect(saved()).toBeNull();
   });
 
+  it('starts a record on first sight of an unknown-status diagnostic with a future deadline', () => {
+    // Models the price-horizon-missing case: the diagnostic exists with valid deadline + target
+    // + current progress but never becomes plannable. Pre-fix, the recorder dropped these on
+    // the floor; now they should finalize as `missed` (progress below target) when the deadline
+    // passes.
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+    const deadlineAtMs = 6 * HOUR_MS;
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs, currentTemperatureC: 19, status: 'unknown',
+      reasonCode: 'objective_missing_price_horizon', horizonPlan: undefined,
+    })], 0);
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs, currentTemperatureC: 22, status: 'unknown',
+      reasonCode: 'objective_missing_price_horizon', horizonPlan: undefined,
+    })], 3 * HOUR_MS);
+    recorder.observe([], 6 * HOUR_MS);
+    recorder.flushIfDirty();
+
+    const entries = saved()!.entries;
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.outcome).toBe('missed');
+    expect(entries[0]!.startProgressC).toBe(19);
+    expect(entries[0]!.finalProgressC).toBe(19); // unknown diagnostics don't roll forward progress
+    expect(entries[0]!.discoveredFrom).toBe('observation');
+    expect(entries[0]!.observedIntervals.length).toBeGreaterThan(0);
+  });
+
+  it('records a `met` entry when the device is already at target across an unknown-throughout window', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+    const deadlineAtMs = 6 * HOUR_MS;
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs, currentTemperatureC: 66, status: 'unknown',
+      reasonCode: 'objective_missing_price_horizon', horizonPlan: undefined,
+    })], 0);
+    recorder.observe([], 6 * HOUR_MS);
+    recorder.flushIfDirty();
+
+    const entries = saved()!.entries;
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.outcome).toBe('met');
+  });
+
+  const dayMs = 24 * HOUR_MS;
+  const deadlineA = 100 * dayMs;
+  const deadlineB = 101 * dayMs;
+  const deadlineC = 102 * dayMs;
+
+  it('backfillFromConfig synthesizes one unknown entry per missed one-shot deadline', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+    recorder.backfillFromConfig(
+      [
+        {
+          deviceId: 'dev_a',
+          deviceName: 'Connected 300',
+          objectiveKind: 'temperature',
+          deadlineAtMs: deadlineA,
+          targetTemperatureC: 65,
+          targetPercent: null,
+        },
+        {
+          deviceId: 'dev_b',
+          deviceName: 'Pool pump',
+          objectiveKind: 'temperature',
+          deadlineAtMs: deadlineC,
+          targetTemperatureC: 28,
+          targetPercent: null,
+        },
+      ],
+      deadlineA - HOUR_MS,
+      deadlineC + HOUR_MS,
+    );
+    recorder.flushIfDirty();
+
+    const entries = saved()!.entries;
+    expect(entries.map((e) => e.deadlineAtMs).sort((a, b) => a - b)).toEqual([deadlineA, deadlineC]);
+    for (const entry of entries) {
+      expect(entry.outcome).toBe('unknown');
+      expect(entry.discoveredFrom).toBe('backfill');
+      expect(entry.observedIntervals).toEqual([]);
+    }
+  });
+
+  it('backfillFromConfig skips configs whose deadlineAtMs is outside (fromMs, toMs]', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+    recorder.backfillFromConfig(
+      [
+        // Inside window — included.
+        {
+          deviceId: 'in_window',
+          deviceName: null,
+          objectiveKind: 'temperature',
+          deadlineAtMs: deadlineB,
+          targetTemperatureC: 65,
+          targetPercent: null,
+        },
+        // At fromMs (strict >) — excluded.
+        {
+          deviceId: 'on_lower_boundary',
+          deviceName: null,
+          objectiveKind: 'temperature',
+          deadlineAtMs: deadlineA,
+          targetTemperatureC: 65,
+          targetPercent: null,
+        },
+        // Past toMs — excluded.
+        {
+          deviceId: 'future',
+          deviceName: null,
+          objectiveKind: 'temperature',
+          deadlineAtMs: deadlineC + HOUR_MS,
+          targetTemperatureC: 65,
+          targetPercent: null,
+        },
+      ],
+      deadlineA,
+      deadlineC,
+    );
+    recorder.flushIfDirty();
+
+    expect(saved()!.entries.map((e) => e.deviceId)).toEqual(['in_window']);
+  });
+
+  it('backfillFromConfig is idempotent across repeated calls', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+    const configs = [{
+      deviceId: 'dev',
+      deviceName: 'Connected 300',
+      objectiveKind: 'temperature' as const,
+      deadlineAtMs: deadlineA,
+      targetTemperatureC: 65,
+      targetPercent: null,
+    }];
+    recorder.backfillFromConfig(configs, deadlineA - HOUR_MS, deadlineA + HOUR_MS);
+    recorder.backfillFromConfig(configs, deadlineA - HOUR_MS, deadlineA + HOUR_MS);
+    recorder.flushIfDirty();
+    expect(saved()!.entries).toHaveLength(1);
+  });
+
+  it('backfillFromConfig does not overwrite an observed entry for the same deadline', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+    // Observe and finalize one deadline naturally.
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs: deadlineA, currentTemperatureC: 65,
+      status: 'satisfied',
+      horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
+    })], deadlineA - HOUR_MS);
+    recorder.observe([], deadlineA);
+    recorder.backfillFromConfig(
+      [{
+        deviceId: 'dev',
+        deviceName: 'Connected 300',
+        objectiveKind: 'temperature',
+        deadlineAtMs: deadlineA,
+        targetTemperatureC: 65,
+        targetPercent: null,
+      }],
+      deadlineA - HOUR_MS,
+      deadlineA + HOUR_MS,
+    );
+    recorder.flushIfDirty();
+    const entries = saved()!.entries.filter((e) => e.deadlineAtMs === deadlineA);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.discoveredFrom).toBe('observation');
+    expect(entries[0]!.outcome).toBe('met');
+  });
+
+  it('keeps the recorder dirty and returns false from flushIfDirty when save fails', () => {
+    // Save failure must not move the recorder into a clean state — otherwise the watermark
+    // in appInit would advance past entries that never landed on disk.
+    let saveCalls = 0;
+    const recorder = new DeferredObjectivePlanHistoryRecorder({
+      load: () => null,
+      save: () => {
+        saveCalls += 1;
+        return false;
+      },
+    });
+    const deadlineAtMs = 6 * HOUR_MS;
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
+    recorder.observe([], deadlineAtMs);
+    expect(recorder.isDirty()).toBe(true);
+    expect(recorder.flushIfDirty()).toBe(false);
+    expect(recorder.isDirty()).toBe(true);
+    // A second flush attempt retries the save callback rather than silently skipping.
+    expect(recorder.flushIfDirty()).toBe(false);
+    expect(saveCalls).toBe(2);
+  });
+
   it('hydrates from persisted history on construction', () => {
-    const initial: DeferredObjectivePlanHistoryV1 = {
-      version: 1,
+    const initial: DeferredObjectivePlanHistoryV2 = {
+      version: 2,
       entries: [
         {
           deviceId: 'dev',
@@ -261,12 +457,14 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           metAtMs: HOUR_MS - 1,
           usedDeadlineReserve: false,
           usedPolicyAvoid: false,
+          observedIntervals: [{ fromMs: 0, toMs: HOUR_MS }],
+          discoveredFrom: 'observation',
         } satisfies DeferredObjectivePlanHistoryEntry,
       ],
     };
     const recorder = new DeferredObjectivePlanHistoryRecorder({
       load: () => initial,
-      save: () => undefined,
+      save: () => true,
     });
     expect(recorder.getHistorySnapshot().entries).toHaveLength(1);
   });

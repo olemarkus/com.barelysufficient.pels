@@ -37,6 +37,11 @@ test.describe('Deadline plan history tab', () => {
           metAtMs: Date.UTC(2026, 4, 6, 4, 42, 0),
           usedDeadlineReserve: false,
           usedPolicyAvoid: true,
+          observedIntervals: [{
+            fromMs: Date.UTC(2026, 4, 6, 0, 0, 0),
+            toMs: Date.UTC(2026, 4, 6, 6, 0, 0),
+          }],
+          discoveredFrom: 'observation',
         },
         {
           deviceId: 'dev_connected300',
@@ -56,6 +61,11 @@ test.describe('Deadline plan history tab', () => {
           metAtMs: null,
           usedDeadlineReserve: false,
           usedPolicyAvoid: false,
+          observedIntervals: [{
+            fromMs: Date.UTC(2026, 4, 5, 0, 0, 0),
+            toMs: Date.UTC(2026, 4, 5, 6, 0, 0),
+          }],
+          discoveredFrom: 'observation',
         },
       ],
     });

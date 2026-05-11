@@ -1088,6 +1088,12 @@ input:focus-visible {
   color: var(--pels-text-secondary);
 }
 
+.plan-history-card__coverage {
+  font-size: var(--font-size-xs);
+  color: var(--pels-text-tertiary, var(--pels-text-secondary));
+  font-style: italic;
+}
+
 .plan-history-card__pills {
   display: flex;
   flex-wrap: wrap;

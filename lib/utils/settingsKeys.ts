@@ -10,6 +10,7 @@ export const TEMPERATURE_BOOST_SETTINGS = 'temperature_boost_settings';
 export const EV_BOOST_SETTINGS = 'ev_boost_settings';
 export const DEFERRED_OBJECTIVES_SETTINGS = 'deferred_objectives';
 export const DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING = 'deferred_objective_plan_history';
+export const DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK = 'deferred_objective_observation_watermark';
 export const DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING = 'deferred_objective_active_plans';
 export const NATIVE_EV_WIRING_DEVICES = 'native_ev_wiring_devices';
 export const DEVICE_DRIVER_OVERRIDES = 'device_driver_overrides';

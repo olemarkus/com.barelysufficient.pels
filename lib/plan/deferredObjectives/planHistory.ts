@@ -1,11 +1,11 @@
 import type {
   DeferredObjectivePlanHistoryEntry,
-  DeferredObjectivePlanHistoryV1,
+  DeferredObjectivePlanHistoryObservedInterval,
+  DeferredObjectivePlanHistoryV2,
   DeferredObjectivePlanOutcome,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION } from './planHistorySettings';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
-
 // Cap the rolling buffer. One deferred objective produces at most one entry per deadline run
 // (per-day for HH:mm objectives), so 30 entries covers ~one month of history per device for a
 // single-device household and shorter spans for multi-device homes. Bounded JSON size keeps
@@ -17,10 +17,20 @@ const HISTORY_ENTRY_CAP = 30;
 // dropped to unknown for an extended stretch).
 const ABANDON_GRACE_MS = 60 * 60 * 1000;
 
+// Two consecutive observations closer than this are merged into one observed interval. A larger
+// gap leaves a hole the UI can surface as "we weren't watching during that span." Picked to
+// absorb normal rebuild jitter (a few seconds to a couple of minutes) without hiding genuine
+// downtime windows.
+const INTERVAL_MERGE_GAP_MS = 5 * 60 * 1000;
+
+type ObservedInterval = DeferredObjectivePlanHistoryObservedInterval;
+
 type InProgressKey = string; // `${deviceId}|${deadlineAtMs}`
 
-type InProgressRecord = Omit<DeferredObjectivePlanHistoryEntry, 'finalizedAtMs' | 'outcome'> & {
-  lastSeenAtMs: number;
+type InProgressRecord = Omit<
+  DeferredObjectivePlanHistoryEntry,
+  'finalizedAtMs' | 'outcome' | 'discoveredFrom'
+> & {
   satisfied: boolean;
 };
 
@@ -44,6 +54,25 @@ const captureProgressPercent = (diag: DeferredObjectiveDiagnostic): number | nul
   diag.objectiveKind === 'ev_soc' ? diag.currentPercent : null
 );
 
+const lastObservedAtMs = (record: InProgressRecord): number => {
+  const { observedIntervals } = record;
+  if (observedIntervals.length === 0) return record.startedAtMs;
+  return observedIntervals[observedIntervals.length - 1]!.toMs;
+};
+
+const extendIntervals = (
+  intervals: readonly ObservedInterval[],
+  nowMs: number,
+): ObservedInterval[] => {
+  if (intervals.length === 0) return [{ fromMs: nowMs, toMs: nowMs }];
+  const last = intervals[intervals.length - 1]!;
+  if (nowMs <= last.toMs) return intervals.slice();
+  if (nowMs - last.toMs <= INTERVAL_MERGE_GAP_MS) {
+    return [...intervals.slice(0, -1), { fromMs: last.fromMs, toMs: nowMs }];
+  }
+  return [...intervals, { fromMs: nowMs, toMs: nowMs }];
+};
+
 const startRecord = (diag: DeferredObjectiveDiagnostic, nowMs: number): InProgressRecord | null => {
   if (diag.deadlineAtMs === null) return null;
   return {
@@ -62,7 +91,7 @@ const startRecord = (diag: DeferredObjectiveDiagnostic, nowMs: number): InProgre
     metAtMs: null,
     usedDeadlineReserve: diag.horizonPlan?.usesDeadlineReserve ?? false,
     usedPolicyAvoid: diag.horizonPlan?.usesPolicyAvoid ?? false,
-    lastSeenAtMs: nowMs,
+    observedIntervals: [{ fromMs: nowMs, toMs: nowMs }],
     satisfied: false,
   };
 };
@@ -80,16 +109,19 @@ const mergeRecord = (
     finalProgressPercent: captureProgressPercent(diag) ?? record.finalProgressPercent,
     usedDeadlineReserve: record.usedDeadlineReserve || (diag.horizonPlan?.usesDeadlineReserve ?? false),
     usedPolicyAvoid: record.usedPolicyAvoid || (diag.horizonPlan?.usesPolicyAvoid ?? false),
-    lastSeenAtMs: nowMs,
+    observedIntervals: extendIntervals(record.observedIntervals, nowMs),
     satisfied: record.satisfied || reachedSatisfied,
     metAtMs: reachedSatisfied ? nowMs : record.metAtMs,
   };
 };
 
-const refreshLastSeen = (
+const recordObservedTick = (
   record: InProgressRecord,
   nowMs: number,
-): InProgressRecord => ({ ...record, lastSeenAtMs: nowMs });
+): InProgressRecord => ({
+  ...record,
+  observedIntervals: extendIntervals(record.observedIntervals, nowMs),
+});
 
 const wasTargetReached = (record: InProgressRecord): boolean => {
   if (record.objectiveKind === 'temperature') {
@@ -117,32 +149,68 @@ const finalizeRecord = (
   record: InProgressRecord,
   nowMs: number,
   reason: 'deadline_passed' | 'replaced' | 'abandoned',
-): DeferredObjectivePlanHistoryEntry => {
-  const outcome = classifyOutcome(record, reason);
-  return {
-    deviceId: record.deviceId,
-    deviceName: record.deviceName,
-    objectiveKind: record.objectiveKind,
-    targetTemperatureC: record.targetTemperatureC,
-    targetPercent: record.targetPercent,
-    deadlineAtMs: record.deadlineAtMs,
-    startedAtMs: record.startedAtMs,
-    finalizedAtMs: nowMs,
-    startProgressC: record.startProgressC,
-    startProgressPercent: record.startProgressPercent,
-    finalProgressC: record.finalProgressC,
-    finalProgressPercent: record.finalProgressPercent,
-    initialEnergyNeededKWh: record.initialEnergyNeededKWh,
-    outcome,
-    metAtMs: record.metAtMs,
-    usedDeadlineReserve: record.usedDeadlineReserve,
-    usedPolicyAvoid: record.usedPolicyAvoid,
-  };
+): DeferredObjectivePlanHistoryEntry => ({
+  deviceId: record.deviceId,
+  deviceName: record.deviceName,
+  objectiveKind: record.objectiveKind,
+  targetTemperatureC: record.targetTemperatureC,
+  targetPercent: record.targetPercent,
+  deadlineAtMs: record.deadlineAtMs,
+  startedAtMs: record.startedAtMs,
+  finalizedAtMs: nowMs,
+  startProgressC: record.startProgressC,
+  startProgressPercent: record.startProgressPercent,
+  finalProgressC: record.finalProgressC,
+  finalProgressPercent: record.finalProgressPercent,
+  initialEnergyNeededKWh: record.initialEnergyNeededKWh,
+  outcome: classifyOutcome(record, reason),
+  metAtMs: record.metAtMs,
+  usedDeadlineReserve: record.usedDeadlineReserve,
+  usedPolicyAvoid: record.usedPolicyAvoid,
+  observedIntervals: record.observedIntervals.slice(),
+  discoveredFrom: 'observation',
+});
+
+export type DeferredObjectiveBackfillConfig = {
+  deviceId: string;
+  deviceName: string | null;
+  objectiveKind: 'temperature' | 'ev_soc';
+  deadlineAtMs: number;
+  targetTemperatureC: number | null;
+  targetPercent: number | null;
 };
 
+const synthesizeBackfillEntry = (
+  config: DeferredObjectiveBackfillConfig,
+): DeferredObjectivePlanHistoryEntry => ({
+  deviceId: config.deviceId,
+  deviceName: config.deviceName,
+  objectiveKind: config.objectiveKind,
+  targetTemperatureC: config.targetTemperatureC,
+  targetPercent: config.targetPercent,
+  deadlineAtMs: config.deadlineAtMs,
+  startedAtMs: config.deadlineAtMs,
+  finalizedAtMs: config.deadlineAtMs,
+  startProgressC: null,
+  startProgressPercent: null,
+  finalProgressC: null,
+  finalProgressPercent: null,
+  initialEnergyNeededKWh: 0,
+  outcome: 'unknown',
+  metAtMs: null,
+  usedDeadlineReserve: false,
+  usedPolicyAvoid: false,
+  observedIntervals: [],
+  discoveredFrom: 'backfill',
+});
+
 export type PlanHistoryPersistDeps = {
-  load: () => DeferredObjectivePlanHistoryV1 | null;
-  save: (history: DeferredObjectivePlanHistoryV1) => void;
+  load: () => DeferredObjectivePlanHistoryV2 | null;
+  // Persist the snapshot. Return `true` on success, `false` on failure (e.g. the underlying
+  // settings.set threw and the host swallowed it). A `false` return keeps the recorder dirty
+  // so a later flush retries, and lets callers gate side-effects (like advancing the
+  // observation watermark) on real persistence success.
+  save: (history: DeferredObjectivePlanHistoryV2) => boolean;
 };
 
 export class DeferredObjectivePlanHistoryRecorder {
@@ -167,22 +235,48 @@ export class DeferredObjectivePlanHistoryRecorder {
       const existing = this.inProgress.get(key);
       const plannable = isPlannableStatus(diag.status) || isSatisfiedStatus(diag.status);
       if (existing) {
-        // Always refresh lastSeenAtMs so a transient unknown/invalid status doesn't trip the
-        // abandoned grace timer. Only roll forward progress + planning flags when we have a
-        // plannable diagnostic — unknown/invalid means inputs aren't trustworthy.
-        const next = plannable ? mergeRecord(existing, diag, nowMs) : refreshLastSeen(existing, nowMs);
+        // Plannable diagnostics roll forward progress + planning flags. Unknown/invalid still
+        // count as observation ("PELS was watching") so the interval extends, but progress
+        // fields stay frozen at the last trustworthy value.
+        const next = plannable ? mergeRecord(existing, diag, nowMs) : recordObservedTick(existing, nowMs);
         this.inProgress.set(key, next);
         continue;
       }
-      // Only start tracking a new run once we see a plannable diagnostic with a deadline that
-      // is still in the future. A diagnostic whose deadline has already passed (e.g. a stale
-      // evaluation just before the next-day rollover) would otherwise create a record that
-      // gets finalized on the same cycle, producing a no-op/garbage entry.
-      if (!plannable || diag.deadlineAtMs <= nowMs) continue;
+      // Begin tracking on first sight of a future-dated deadline, regardless of status. The
+      // deadline event is the recorded thing; observation quality is captured separately via
+      // observedIntervals + progress nullability. The stale-deadline guard still applies so a
+      // diagnostic whose deadline has already passed doesn't create a junk record finalized on
+      // the same cycle.
+      if (diag.deadlineAtMs <= nowMs) continue;
       const next = startRecord(diag, nowMs);
       if (next) this.inProgress.set(key, next);
     }
     this.finalizeStaleRecords(seenKeys, nowMs);
+  }
+
+  /**
+   * Synthesize history entries for one-shot deadlines that elapsed while no plannable
+   * observation was possible (e.g. PELS was off, or the diagnostic stream never produced an
+   * entry for this objective). Each config carries a single absolute `deadlineAtMs`; we
+   * include it only when it lies in the (fromMs, toMs] window and no entry already records
+   * the same `(deviceId, deadlineAtMs)` key.
+   */
+  backfillFromConfig(
+    configs: readonly DeferredObjectiveBackfillConfig[],
+    fromMs: number,
+    toMs: number,
+  ): void {
+    if (configs.length === 0 || toMs <= fromMs) return;
+    const existingKeys = new Set<InProgressKey>(
+      this.entries.map((entry) => buildKey(entry.deviceId, entry.deadlineAtMs)),
+    );
+    for (const config of configs) {
+      if (config.deadlineAtMs <= fromMs || config.deadlineAtMs > toMs) continue;
+      const key = buildKey(config.deviceId, config.deadlineAtMs);
+      if (existingKeys.has(key)) continue;
+      existingKeys.add(key);
+      this.pushEntry(synthesizeBackfillEntry(config));
+    }
   }
 
   private finalizeStaleRecords(seenKeys: ReadonlySet<InProgressKey>, nowMs: number): void {
@@ -194,9 +288,9 @@ export class DeferredObjectivePlanHistoryRecorder {
       }
       if (seenKeys.has(key)) continue;
       // Diagnostic stopped appearing while deadline is still future. Wait for the grace
-      // window before declaring the run abandoned, in case the device briefly drops to
-      // unknown and recovers.
-      if (nowMs - record.lastSeenAtMs >= ABANDON_GRACE_MS) {
+      // window before declaring the run abandoned, in case the device briefly drops out and
+      // recovers.
+      if (nowMs - lastObservedAtMs(record) >= ABANDON_GRACE_MS) {
         this.pushEntry(finalizeRecord(record, nowMs, 'abandoned'));
         this.inProgress.delete(key);
       }
@@ -218,15 +312,20 @@ export class DeferredObjectivePlanHistoryRecorder {
 
   flushIfDirty(): boolean {
     if (!this.dirty) return false;
-    this.deps.save({
+    const persisted = this.deps.save({
       version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
       entries: this.entries.slice(),
     });
+    if (!persisted) return false;
     this.dirty = false;
     return true;
   }
 
-  getHistorySnapshot(): DeferredObjectivePlanHistoryV1 {
+  isDirty(): boolean {
+    return this.dirty;
+  }
+
+  getHistorySnapshot(): DeferredObjectivePlanHistoryV2 {
     return {
       version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
       entries: this.entries.slice(),
