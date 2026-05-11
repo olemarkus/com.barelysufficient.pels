@@ -10,6 +10,7 @@ import {
   buildBudgetUsageViews,
   buildDailyBudgetSnapshot,
   computeBudgetState,
+  resolvePlannedSplit,
   type DayContext,
 } from './dailyBudgetState';
 import { buildPlanBreakdown } from './dailyBudgetBreakdown';
@@ -111,7 +112,7 @@ export const buildDailyBudgetHistory = (params: {
     bucketStartUtcMs,
     timeZone,
     plannedKWh,
-    breakdown: profileBreakdown,
+    breakdown: profileBreakdown ?? undefined,
   });
 
   return buildDailyBudgetSnapshot({
@@ -125,8 +126,7 @@ export const buildDailyBudgetHistory = (params: {
     },
     enabled,
     plannedKWh,
-    plannedUncontrolledKWh: planBreakdown?.plannedUncontrolledKWh,
-    plannedControlledKWh: planBreakdown?.plannedControlledKWh,
+    ...resolvePlannedSplit(plannedKWh, planBreakdown),
     priceData,
     budget,
     frozen: false,

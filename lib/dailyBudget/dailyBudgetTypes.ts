@@ -87,11 +87,11 @@ export type DailyBudgetDayPayload = {
     startLocalLabels: string[];
     plannedWeight: number[];
     plannedKWh: number[];
-    plannedUncontrolledKWh?: number[];
-    plannedControlledKWh?: number[];
+    plannedUncontrolledKWh: number[];
+    plannedControlledKWh: number[];
     actualKWh: number[];
-    actualControlledKWh?: Array<number | null>;
-    actualUncontrolledKWh?: Array<number | null>;
+    actualControlledKWh: Array<number | null>;
+    actualUncontrolledKWh: Array<number | null>;
     allowedCumKWh: number[];
     price?: Array<number | null>;
     priceFactor?: Array<number | null>;

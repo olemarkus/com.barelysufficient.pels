@@ -10,6 +10,7 @@ import {
   renderBudgetOverview,
   type BudgetAdjustData,
   type BudgetChartData,
+  type BudgetDeltaTone,
   type BudgetHeroData,
   type BudgetLocalView,
   type BudgetOverviewProps,
@@ -70,12 +71,6 @@ const resolveViewPayload = (
   return key ? (payload.days[key] ?? null) : null;
 };
 
-const resolvePlanTitle = (view: BudgetDayView): string => {
-  if (view === 'yesterday') return "Yesterday's result";
-  if (view === 'tomorrow') return "Tomorrow's plan";
-  return "Today's plan";
-};
-
 const isPriceReliable = (payload: DailyBudgetDayPayload | null): boolean => {
   const prices = payload?.buckets.price;
   const planned = payload?.buckets.plannedKWh ?? [];
@@ -115,43 +110,26 @@ const computeProjectedUse = (payload: DailyBudgetDayPayload): number => {
   return usedNow + Math.max(0, plannedTotal - allowedNow);
 };
 
-const formatKWhNumber = (value: number): string => (
-  Number.isFinite(value) ? value.toFixed(2) : '--'
+const formatComparisonKWh = (value: number): string => (
+  Number.isFinite(value) ? value.toFixed(1) : '--'
 );
 
-const formatKWhComparison = (used: number, budget: number): string => (
-  `${formatKWhNumber(used)} of ${formatKWhNumber(budget)} kWh`
-);
-
-const resolveProjectedBudgetPrimary = (params: {
-  projected: number;
-  budget: number;
-  remaining: number;
-  tolerance: number;
-}): string => {
-  const { projected, budget, remaining, tolerance } = params;
-  if (!Number.isFinite(projected) || !Number.isFinite(budget) || budget <= 0) {
-    return `${formatKWh(remaining)} remaining`;
-  }
-  const projectionDiff = budget - projected;
-  if (Math.abs(projectionDiff) <= tolerance) return 'Projected close to budget';
-  const direction = projectionDiff > 0 ? 'under' : 'over';
-  return `${formatKWh(Math.abs(projectionDiff))} projected ${direction} budget`;
+const resolveComparisonValue = (
+  payload: DailyBudgetDayPayload,
+  view: BudgetDayView,
+): number => {
+  if (view === 'yesterday') return sum(payload.buckets.actualKWh);
+  if (view === 'tomorrow') return sum(payload.buckets.plannedKWh);
+  return computeProjectedUse(payload);
 };
 
-const resolveShortTimeZoneLabel = (payload: DailyBudgetDayPayload): string => {
-  const timeZone = payload.timeZone.trim();
-  if (!timeZone.includes('/')) return timeZone;
-  const referenceDate = new Date(payload.dayStartUtc || payload.nowUtc);
-  try {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone,
-      timeZoneName: 'short',
-    }).formatToParts(referenceDate);
-    return parts.find((part) => part.type === 'timeZoneName')?.value || timeZone;
-  } catch {
-    return timeZone;
-  }
+const formatComparisonLine = (
+  payload: DailyBudgetDayPayload,
+  view: BudgetDayView,
+): string => {
+  const value = resolveComparisonValue(payload, view);
+  const budget = payload.budget.dailyBudgetKWh;
+  return `${formatComparisonKWh(value)} / ${formatComparisonKWh(budget)} kWh`;
 };
 
 const resolveStatus = (payload: DailyBudgetDayPayload | null, view: BudgetDayView): BudgetStatus => {
@@ -176,104 +154,174 @@ const resolveTone = (status: BudgetStatus): BudgetHeroData['heroTone'] => {
   return 'ok';
 };
 
-const resolvePrimaryTone = (status: BudgetStatus): BudgetHeroData['primaryTone'] => {
-  if (status === 'over') return 'critical';
-  if (status === 'tight') return 'warning';
+export const resolveDeltaPill = (
+  payload: DailyBudgetDayPayload,
+  view: BudgetDayView,
+  status: BudgetStatus,
+): { label: string; tone: BudgetDeltaTone } | null => {
+  const budget = payload.budget.dailyBudgetKWh;
+  if (!Number.isFinite(budget) || budget <= 0) return null;
+  const tolerance = Math.max(0.1, budget * 0.01);
+  const value = resolveComparisonValue(payload, view);
+  const diff = value - budget;
+  if (status === 'over') return { label: `Over by ${formatComparisonKWh(diff)} kWh`, tone: 'alert' };
+  if (status === 'tight') return { label: 'Close to budget', tone: 'warn' };
+  if (status === 'within') {
+    if (view === 'yesterday') return { label: `${formatComparisonKWh(Math.abs(diff))} kWh under`, tone: 'ok' };
+    if (Math.abs(diff) <= tolerance) return { label: 'On budget', tone: 'ok' };
+    return { label: `${formatComparisonKWh(Math.abs(diff))} kWh to spare`, tone: 'ok' };
+  }
   return null;
 };
 
-const resolvePriceChip = (payload: DailyBudgetDayPayload | null): BudgetHeroData['priceChip'] => {
-  if (!payload || payload.budget.enabled !== true || payload.budget.priceShapingEnabled !== true) return null;
-  return isPriceReliable(payload) ? 'price-shaped' : 'price-unavailable';
+const SPLIT_COVERAGE_THRESHOLD = 0.5;
+const BACKGROUND_SHARE_GAP = 0.1;
+
+const sumElapsed = (values: number[], buckets: number): number => {
+  let total = 0;
+  for (let index = 0; index < buckets && index < values.length; index += 1) {
+    const value = values[index];
+    if (Number.isFinite(value)) total += value;
+  }
+  return total;
 };
 
-export const resolveBudgetNextAction = (
+const sumElapsedNullable = (values: Array<number | null>, buckets: number): number => {
+  let total = 0;
+  for (let index = 0; index < buckets && index < values.length; index += 1) {
+    const value = values[index];
+    if (Number.isFinite(value)) total += value as number;
+  }
+  return total;
+};
+
+type SplitTotals = { managed: number; background: number };
+
+const resolveTodaySplit = (payload: DailyBudgetDayPayload): SplitTotals => {
+  const elapsed = Math.max(0, payload.currentBucketIndex + 1);
+  const actualTotal = sumElapsed(payload.buckets.actualKWh, elapsed);
+  const managed = sumElapsedNullable(payload.buckets.actualControlledKWh, elapsed);
+  const background = sumElapsedNullable(payload.buckets.actualUncontrolledKWh, elapsed);
+  if (actualTotal > 0 && managed + background < actualTotal * SPLIT_COVERAGE_THRESHOLD) {
+    return { managed: 0, background: actualTotal };
+  }
+  return { managed, background };
+};
+
+export const resolveSplitLine = (payload: DailyBudgetDayPayload): string => {
+  const { managed, background } = resolveTodaySplit(payload);
+  return `Managed ${formatKWh(managed, 1)} · Background ${formatKWh(background, 1)}`;
+};
+
+export type DominantCause = 'managed' | 'background';
+
+export const resolveDominantCause = (payload: DailyBudgetDayPayload): DominantCause => {
+  const elapsed = Math.max(0, payload.currentBucketIndex + 1);
+  const actualTotal = sumElapsed(payload.buckets.actualKWh, elapsed);
+  if (actualTotal <= 0) return 'background';
+  const actualBackground = sumElapsedNullable(payload.buckets.actualUncontrolledKWh, elapsed);
+  const actualManaged = sumElapsedNullable(payload.buckets.actualControlledKWh, elapsed);
+  const splitTotal = actualBackground + actualManaged;
+  if (splitTotal < actualTotal * SPLIT_COVERAGE_THRESHOLD) return 'background';
+  const plannedTotal = sumElapsed(payload.buckets.plannedKWh, elapsed);
+  const plannedBackground = sumElapsed(payload.buckets.plannedUncontrolledKWh, elapsed);
+  const actualBgShare = actualBackground / splitTotal;
+  const plannedBgShare = plannedTotal > 0 ? plannedBackground / plannedTotal : 0;
+  return actualBgShare - plannedBgShare > BACKGROUND_SHARE_GAP ? 'background' : 'managed';
+};
+
+const resolvePriceTagline = (
+  payload: DailyBudgetDayPayload | null,
+  view: BudgetDayView,
+): string | null => {
+  if (!payload || view === 'yesterday') return null;
+  if (payload.budget.enabled !== true || payload.budget.priceShapingEnabled !== true) return null;
+  return isPriceReliable(payload) ? 'Price-shaped plan' : 'Price-shaped plan (price data unavailable)';
+};
+
+export const resolveHeadroomLine = (
+  payload: DailyBudgetDayPayload,
+  costDisplay: CostDisplay,
+): string => {
+  const remaining = payload.state.remainingKWh;
+  const status = Number.isFinite(remaining) && remaining < 0
+    ? `${formatKWh(Math.abs(remaining), 1)} over budget now`
+    : `${formatKWh(remaining, 1)} headroom now`;
+  const cost = computeEstimatedCost({ payload, view: 'today' });
+  if (cost === null) return status;
+  return `${status} · est. ${formatCost(cost, costDisplay)} today`;
+};
+
+const resolveNoPlanLine = (
+  payload: DailyBudgetDayPayload | null,
+  view: BudgetDayView,
+): string => {
+  if (payload?.budget.enabled === true) return 'Waiting for daily budget data.';
+  if (view === 'tomorrow') return 'Enable daily budget to plan tomorrow.';
+  return 'Enable daily budget to build a daily plan.';
+};
+
+const resolveTomorrowLine = (payload: DailyBudgetDayPayload): string => (
+  isPriceReliable(payload) && payload.budget.priceShapingEnabled
+    ? 'Most planned use is shifted toward cheaper hours.'
+    : "Tomorrow's budget plan is ready."
+);
+
+const resolveTodayLine = (
+  payload: DailyBudgetDayPayload,
+  status: BudgetStatus,
+): string | null => {
+  if (status === 'within') return null;
+  const cause = resolveDominantCause(payload);
+  if (status === 'tight') {
+    return cause === 'background'
+      ? 'Close to budget — driven by background usage.'
+      : 'PELS is shaping flexible use to stay within budget.';
+  }
+  return cause === 'background'
+    ? 'Background usage is above plan today.'
+    : 'Managed devices ran above plan — check device priorities.';
+};
+
+export const resolveDecisionLine = (
   payload: DailyBudgetDayPayload | null,
   view: BudgetDayView,
   status: BudgetStatus,
-): string => {
-  if (!payload || status === 'noPlan') {
-    if (payload?.budget.enabled === true) return 'Waiting for daily budget data.';
-    if (view === 'tomorrow') return 'Enable daily budget to plan tomorrow.';
-    return 'Enable daily budget to build a daily plan.';
-  }
+): string | null => {
+  if (!payload || status === 'noPlan') return resolveNoPlanLine(payload, view);
   if (view === 'yesterday') {
     return status === 'over' ? 'Yesterday finished over budget.' : 'Yesterday finished within budget.';
   }
-  if (view === 'tomorrow') {
-    return isPriceReliable(payload) && payload.budget.priceShapingEnabled
-      ? 'Most planned use is shifted toward cheaper hours.'
-      : "Tomorrow's budget plan is ready.";
-  }
-  if (status === 'over') return "Today's budget is over the plan.";
-  if (status === 'tight') return "Today's budget is tight. Review the daily budget or reduce flexible usage.";
-  return "PELS expects to stay within today's budget.";
+  if (view === 'tomorrow') return resolveTomorrowLine(payload);
+  return resolveTodayLine(payload, status);
 };
 
-type HeroSummary = {
-  primary: string;
-  secondary: string | null;
-  meta: string | null;
-  cost: string | null;
-};
-
-const resolveHeroSummaryToday = (
-  payload: DailyBudgetDayPayload,
-  costDisplay: CostDisplay,
-): HeroSummary => {
-  const cost = computeEstimatedCost({ payload, view: 'today' });
-  const projected = computeProjectedUse(payload);
-  const budget = payload.budget.dailyBudgetKWh;
-  const tolerance = Math.max(0.1, budget * 0.01);
-  return {
-    primary: resolveProjectedBudgetPrimary({ projected, budget, remaining: payload.state.remainingKWh, tolerance }),
-    secondary: `Projected ${formatKWhComparison(projected, budget)}`,
-    meta: `${formatKWh(payload.state.remainingKWh)} left in today's budget`,
-    cost: cost === null ? null : `Estimated cost ${formatCost(cost, costDisplay)}`,
-  };
-};
-
-const resolveHeroSummaryYesterday = (payload: DailyBudgetDayPayload): HeroSummary => {
-  const used = sum(payload.buckets.actualKWh);
-  const budget = payload.budget.dailyBudgetKWh;
-  const difference = budget - used;
-  const direction = difference >= -Math.max(0.1, budget * 0.01) ? 'under budget' : 'over budget';
-  return {
-    primary: `${formatKWh(Math.abs(difference))} ${direction}`,
-    secondary: `${formatKWhComparison(used, budget)} used`,
-    meta: null,
-    cost: null,
-  };
-};
-
-const resolveHeroSummaryTomorrow = (payload: DailyBudgetDayPayload): HeroSummary => ({
-  primary: `${formatKWh(resolveBudgetPlannedDayKWh(payload))} planned`,
-  secondary: null,
-  meta: null,
-  cost: null,
-});
-
-const resolveHeroSummary = (
-  payload: DailyBudgetUiPayload | null,
+const resolveHeroData = (
   viewPayload: DailyBudgetDayPayload | null,
   view: BudgetDayView,
   costDisplay: CostDisplay,
   status: BudgetStatus,
-): HeroSummary => {
-  if (!payload || viewPayload?.budget.enabled !== true) {
-    return { primary: 'No daily plan', secondary: 'Enable daily budget to build a plan.', meta: null, cost: null };
-  }
-  if (status === 'noPlan' || !viewPayload) {
+): BudgetHeroData => {
+  if (!viewPayload || viewPayload.budget.enabled !== true || status === 'noPlan') {
     return {
-      primary: 'Waiting for daily budget data',
-      secondary: 'PELS will show the plan when usage data is available.',
-      meta: null,
-      cost: null,
+      comparison: viewPayload?.budget.enabled === true ? 'Waiting for daily budget data' : 'Daily budget off',
+      delta: null,
+      headroomLine: null,
+      splitLine: null,
+      priceTagline: null,
+      decision: resolveDecisionLine(viewPayload, view, status),
+      heroTone: 'ok',
     };
   }
-  if (view === 'yesterday') return resolveHeroSummaryYesterday(viewPayload);
-  if (view === 'tomorrow') return resolveHeroSummaryTomorrow(viewPayload);
-  return resolveHeroSummaryToday(viewPayload, costDisplay);
+  return {
+    comparison: formatComparisonLine(viewPayload, view),
+    delta: resolveDeltaPill(viewPayload, view, status),
+    headroomLine: view === 'today' ? resolveHeadroomLine(viewPayload, costDisplay) : null,
+    splitLine: view === 'today' ? resolveSplitLine(viewPayload) : null,
+    priceTagline: resolvePriceTagline(viewPayload, view),
+    decision: resolveDecisionLine(viewPayload, view, status),
+    heroTone: resolveTone(status),
+  };
 };
 
 const resolveChartSubtitle = (params: {
@@ -363,20 +411,10 @@ const buildProps = (): BudgetOverviewProps => {
   const { payload, view, costDisplay } = latestRenderState;
   const viewPayload = resolveViewPayload(payload, view);
   const status = resolveStatus(viewPayload, view);
-  const heroSummary = resolveHeroSummary(payload, viewPayload, view, costDisplay, status);
   return {
     localView: currentBudgetLocalView,
     view,
-    hero: {
-      planTitle: resolvePlanTitle(view),
-      planDay: viewPayload ? `${viewPayload.dateKey} · ${resolveShortTimeZoneLabel(viewPayload)}` : '--',
-      status,
-      priceChip: view === 'yesterday' ? null : resolvePriceChip(viewPayload),
-      ...heroSummary,
-      primaryTone: resolvePrimaryTone(status),
-      heroTone: resolveTone(status),
-      nextAction: resolveBudgetNextAction(viewPayload, view, status),
-    },
+    hero: resolveHeroData(viewPayload, view, costDisplay, status),
     chart: resolveChartData(viewPayload, view, currentChartMode, status, costDisplay),
     adjust: resolveAdjustData(),
     onLocalViewChange: (v) => {

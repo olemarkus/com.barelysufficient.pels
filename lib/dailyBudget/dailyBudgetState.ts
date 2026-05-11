@@ -28,8 +28,8 @@ export type DayContext = {
   bucketUsage: number[];
   // Budget control ignores exempt load, but reporting stays on real metered usage.
   budgetControlBucketUsage: number[];
-  bucketUsageControlled?: Array<number | null>;
-  bucketUsageUncontrolled?: Array<number | null>;
+  bucketUsageControlled: Array<number | null>;
+  bucketUsageUncontrolled: Array<number | null>;
   bucketUsageExempt?: number[];
   usedNowKWh: number;
   budgetControlUsedNowKWh: number;
@@ -157,8 +157,8 @@ export const buildBucketUsage = (params: {
 }): {
   bucketKeys: string[];
   bucketUsage: number[];
-  bucketUsageControlled?: Array<number | null>;
-  bucketUsageUncontrolled?: Array<number | null>;
+  bucketUsageControlled: Array<number | null>;
+  bucketUsageUncontrolled: Array<number | null>;
   bucketUsageExempt?: number[];
 } => {
   const { bucketStartUtcMs, powerTracker } = params;
@@ -204,14 +204,12 @@ export const buildBucketUsage = (params: {
     const exempt = typeof rawExempt === 'number' && Number.isFinite(rawExempt) ? rawExempt : 0;
     return clamp(exempt, 0, Math.max(0, bucketUsage[index] ?? 0));
   });
-  const hasSplit = bucketUsageControlled.some((value) => typeof value === 'number')
-    || bucketUsageUncontrolled.some((value) => typeof value === 'number');
   const hasExempt = bucketUsageExempt.some((value) => value > 0);
   return {
     bucketKeys,
     bucketUsage,
-    bucketUsageControlled: hasSplit ? bucketUsageControlled : undefined,
-    bucketUsageUncontrolled: hasSplit ? bucketUsageUncontrolled : undefined,
+    bucketUsageControlled,
+    bucketUsageUncontrolled,
     bucketUsageExempt: hasExempt ? bucketUsageExempt : undefined,
   };
 };
@@ -314,13 +312,34 @@ function resolveBucketProgress(params: {
   return clamp((nowMs - start) / Math.max(1, end - start), 0, 1);
 }
 
+export const resolvePlannedSplit = (
+  plannedKWh: number[],
+  breakdown: { plannedControlledKWh: number[]; plannedUncontrolledKWh: number[] } | null | undefined,
+): { plannedControlledKWh: number[]; plannedUncontrolledKWh: number[] } => {
+  if (
+    breakdown
+    && breakdown.plannedControlledKWh.length === plannedKWh.length
+    && breakdown.plannedUncontrolledKWh.length === plannedKWh.length
+  ) {
+    return {
+      plannedControlledKWh: breakdown.plannedControlledKWh,
+      plannedUncontrolledKWh: breakdown.plannedUncontrolledKWh,
+    };
+  }
+  // When no profile breakdown is known, attribute all planned load to background.
+  return {
+    plannedControlledKWh: plannedKWh.map(() => 0),
+    plannedUncontrolledKWh: plannedKWh.slice(),
+  };
+};
+
 export const buildDailyBudgetSnapshot = (params: {
   context: DayContext;
   settings: DailyBudgetSettings;
   enabled: boolean;
   plannedKWh: number[];
-  plannedUncontrolledKWh?: number[];
-  plannedControlledKWh?: number[];
+  plannedUncontrolledKWh: number[];
+  plannedControlledKWh: number[];
   priceData: PriceData;
   budget: BudgetState;
   frozen: boolean;

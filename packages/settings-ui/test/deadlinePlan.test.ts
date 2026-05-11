@@ -143,6 +143,8 @@ const buildDailyBudget = (now: Date, params: {
           plannedUncontrolledKWh: Array.from({ length: 24 }, () => params.uncontrolledKWh),
           plannedControlledKWh: Array.from({ length: 24 }, () => params.controlledKWh),
           actualKWh: Array.from({ length: 24 }, () => 0),
+          actualControlledKWh: Array.from({ length: 24 }, () => null),
+          actualUncontrolledKWh: Array.from({ length: 24 }, () => null),
           allowedCumKWh: Array.from({ length: 24 }, (_, index) => index + 1),
         },
       },
