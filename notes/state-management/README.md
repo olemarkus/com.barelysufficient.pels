@@ -519,7 +519,8 @@ Rules:
 This note does not solve the implementation by itself. The active backlog still includes:
 
 - binary pending confirmation semantics
-- stale-observation handling / freshness thresholds
+- same-value refresh-cycle freshness stamping (missing-freshness handling now lives in
+  `lib/observer/observationFreshness.ts`)
 - communication-model-aware confirmation windows
 - conservative downward stepped-load semantics
 - provisional post-command state for laggy devices
