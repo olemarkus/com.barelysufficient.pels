@@ -3,6 +3,7 @@ import { mockHomeyInstance } from './mocks/homey';
 import {
   COMBINED_PRICES,
   FLOW_PRICES_TODAY,
+  FLOW_PRICES_TOMORROW,
   HOMEY_PRICES_CURRENCY,
   HOMEY_PRICES_TODAY,
   HOMEY_PRICES_TOMORROW,
@@ -231,7 +232,39 @@ describe('Homey price service', () => {
 
     expect(prices).toEqual([]);
     expect(logDebug).toHaveBeenCalledWith(
-      `Homey prices: Ignoring stored today data for ${wrongKey} (expected ${todayKey})`,
+      `Homey prices: Cleared stale today data (was ${wrongKey})`,
+    );
+    expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TODAY)).toBeNull();
+  });
+
+  it('promotes a stale Flow tomorrow payload dated today into the today slot', () => {
+    vi.useFakeTimers().setSystemTime(fixedNow);
+    const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
+
+    mockHomeyInstance.settings.set(PRICE_SCHEME, 'flow');
+    // Tomorrow slot still holds yesterday's "tomorrow" payload, now dated today.
+    const stalePayload = {
+      dateKey: todayKey,
+      pricesByHour: { '0': 1.1, '1': 2.2 },
+      updatedAt: fixedNow.toISOString(),
+    };
+    mockHomeyInstance.settings.set(FLOW_PRICES_TOMORROW, stalePayload);
+
+    const logDebug = vi.fn();
+    const service = new PriceService(
+      mockHomeyInstance as unknown as Homey.App['homey'],
+      () => {},
+      logDebug,
+      () => {},
+    );
+
+    const prices = service.getCombinedHourlyPrices();
+
+    expect(prices.length).toBeGreaterThan(0);
+    expect(mockHomeyInstance.settings.get(FLOW_PRICES_TODAY)).toEqual(stalePayload);
+    expect(mockHomeyInstance.settings.get(FLOW_PRICES_TOMORROW)).toBeNull();
+    expect(logDebug).toHaveBeenCalledWith(
+      `Flow prices: Promoted stored tomorrow data (${todayKey}) into today slot`,
     );
   });
 

@@ -39,18 +39,12 @@ export const buildCombinedHourlyPricesFromPayloads = (params: CombinedPayloadPar
   const resolvePayload = (
     payload: FlowPricePayload | null,
     key: string,
-    slot: 'today' | 'tomorrow',
   ): { entries: BaseHourlyPrice[]; used: boolean } => {
-    if (payload?.dateKey !== key) {
-      if (payload) {
-        logDebug(`${label}: Ignoring stored ${slot} data for ${payload.dateKey} (expected ${key})`);
-      }
-      return { entries: [], used: false };
-    }
+    if (payload?.dateKey !== key) return { entries: [], used: false };
     return { entries: buildFlowEntries(payload, timeZone), used: true };
   };
 
-  const todayResult = resolvePayload(todayPayload, todayKey, 'today');
+  const todayResult = resolvePayload(todayPayload, todayKey);
   const useTomorrowAsToday = allowTomorrowAsToday && !todayResult.used && tomorrowPayload?.dateKey === todayKey;
   const todayEntries = useTomorrowAsToday && tomorrowPayload
     ? buildFlowEntries(tomorrowPayload, timeZone)
@@ -61,10 +55,84 @@ export const buildCombinedHourlyPricesFromPayloads = (params: CombinedPayloadPar
 
   const tomorrowEntries = useTomorrowAsToday
     ? []
-    : resolvePayload(tomorrowPayload, tomorrowKey, 'tomorrow').entries;
+    : resolvePayload(tomorrowPayload, tomorrowKey).entries;
 
   return [...todayEntries, ...tomorrowEntries]
     .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+};
+
+export type FlowSlotChange =
+  | { slot: 'today'; action: 'cleared'; from: string }
+  | { slot: 'tomorrow'; action: 'cleared'; from: string }
+  | { slot: 'tomorrow'; action: 'promoted_to_today'; from: string };
+
+type PurgeStaleFlowSlotsParams = {
+  now: Date;
+  timeZone: string;
+  todayPayload: FlowPricePayload | null;
+  tomorrowPayload: FlowPricePayload | null;
+  allowTomorrowAsToday: boolean;
+};
+
+export type PurgeStaleFlowSlotsResult = {
+  todayPayload: FlowPricePayload | null;
+  tomorrowPayload: FlowPricePayload | null;
+  changes: FlowSlotChange[];
+};
+
+const resolveTomorrowChange = (
+  tomorrowPayload: FlowPricePayload | null,
+  tomorrowKey: string,
+  canPromote: boolean,
+): FlowSlotChange[] => {
+  if (!tomorrowPayload) return [];
+  if (canPromote) {
+    return [{ slot: 'tomorrow', action: 'promoted_to_today', from: tomorrowPayload.dateKey }];
+  }
+  if (tomorrowPayload.dateKey !== tomorrowKey) {
+    return [{ slot: 'tomorrow', action: 'cleared', from: tomorrowPayload.dateKey }];
+  }
+  return [];
+};
+
+// Rotates flow-price slots when the local date rolls over so a stale "tomorrow"
+// payload (now dated today) is promoted into the today slot, and any payload
+// dated outside its expected slot is cleared. Pure — caller persists the result.
+export const purgeStaleFlowPriceSlots = (
+  params: PurgeStaleFlowSlotsParams,
+): PurgeStaleFlowSlotsResult => {
+  const { now, timeZone, todayPayload, tomorrowPayload, allowTomorrowAsToday } = params;
+  const todayKey = getDateKeyInTimeZone(now, timeZone);
+  const tomorrowKey = shiftDateKey(todayKey, 1);
+
+  const todayIsStale = todayPayload !== null && todayPayload.dateKey !== todayKey;
+  const afterTodayClear: FlowPricePayload | null = todayIsStale ? null : todayPayload;
+
+  const canPromoteTomorrow = tomorrowPayload !== null
+    && tomorrowPayload.dateKey === todayKey
+    && allowTomorrowAsToday
+    && afterTodayClear === null;
+
+  const tomorrowChange = resolveTomorrowChange(tomorrowPayload, tomorrowKey, canPromoteTomorrow);
+  const todayChange: FlowSlotChange[] = todayIsStale && todayPayload
+    ? [{ slot: 'today', action: 'cleared', from: todayPayload.dateKey }]
+    : [];
+
+  const nextToday = canPromoteTomorrow ? tomorrowPayload : afterTodayClear;
+  const nextTomorrow = tomorrowChange.length > 0 ? null : tomorrowPayload;
+
+  return {
+    todayPayload: nextToday,
+    tomorrowPayload: nextTomorrow,
+    changes: [...todayChange, ...tomorrowChange],
+  };
+};
+
+export const describeFlowSlotChange = (label: string, change: FlowSlotChange): string => {
+  if (change.action === 'promoted_to_today') {
+    return `${label}: Promoted stored tomorrow data (${change.from}) into today slot`;
+  }
+  return `${label}: Cleared stale ${change.slot} data (was ${change.from})`;
 };
 
 type StoreFlowPriceParams = {
