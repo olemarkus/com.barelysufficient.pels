@@ -41,7 +41,7 @@ describe('DeadlineChip', () => {
     expect(link?.classList.contains('plan-chip--link')).toBe(true);
   });
 
-  it('renders even when the entry is disabled, since the user configured a deadline', () => {
+  it('renders nothing when the entry exists but is disabled', () => {
     state.deferredObjectiveSettings = {
       version: 1,
       objectivesByDeviceId: {
@@ -55,7 +55,7 @@ describe('DeadlineChip', () => {
       },
     };
 
-    expect(renderChip('connected-300').querySelector('a')).not.toBeNull();
+    expect(renderChip('connected-300').querySelector('a')).toBeNull();
   });
 
   describe('with the chip mounted inside a parent card', () => {
