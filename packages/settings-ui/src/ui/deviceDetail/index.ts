@@ -15,7 +15,9 @@ import {
   deviceDetailPriceOpt,
   deviceDetailControlModelRow,
   deviceDetailControlModel,
+  deviceDetailShedAction,
 } from '../dom.ts';
+import { bindSegmentedToSelect } from '../components.ts';
 import { renderDevices } from '../devices.ts';
 import {
   applyLocalDeviceControlProfile,
@@ -440,8 +442,15 @@ const initDeviceDetailRefreshHandlers = () => {
 
 export { loadEvBoostSettings, loadShedBehaviors, loadTemperatureBoostSettings };
 
+const initOvershootSegmented = () => {
+  const container = document.getElementById('device-detail-overshoot-segmented');
+  if (!container || !deviceDetailShedAction) return;
+  bindSegmentedToSelect({ container, select: deviceDetailShedAction });
+};
+
 export const initDeviceDetailHandlers = () => {
   initDeviceDetailCloseHandlers();
+  initOvershootSegmented();
   initDeviceDetailNativeWiringHandler({
     getCurrentDetailDeviceId,
     getDeviceById,

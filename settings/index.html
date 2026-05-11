@@ -636,130 +636,22 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <!-- Device Detail Panel (slide-over) -->
+  <!-- Device Detail Panel (slide-over side sheet) -->
   <div id="device-detail-overlay" class="overlay" hidden>
     <div id="device-detail-panel" class="slide-panel">
       <div class="slide-panel__header">
-        <h2 id="device-detail-title">Device</h2>
-        <button type="button" class="btn ghost icon-btn slide-panel__close" id="device-detail-close" aria-label="Close">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 6L6 18M6 6l12 12"/>
-          </svg>
-        </button>
+        <button type="button" class="btn ghost settings-back-button" id="device-detail-close" aria-label="Back to devices">‹ Devices</button>
       </div>
 
       <div class="slide-panel__content">
-        <section class="detail-section">
-          <details class="settings-collapse detail-collapse" open>
-            <summary>
-              <h3 class="section-title">Controls</h3>
-              <span class="section-hint">Management, shedding, and control model</span>
-            </summary>
-            <div class="collapse-content">
-              <div class="detail-control-list">
-                <div class="device-row device-detail-row device-detail-row--toggle" id="device-detail-native-wiring-row" hidden>
-                  <div class="device-row__name device-detail-row__name">
-                    <label class="device-row__title" for="device-detail-native-wiring">Use built-in device control</label>
-                    <small class="device-detail-row__hint">Lets PELS use this device app's own capabilities instead of Flow wiring.</small>
-                  </div>
-                  <input type="checkbox" id="device-detail-native-wiring">
-                </div>
+        <header class="card__header device-detail-heading">
+          <div>
+            <p class="eyebrow">Device</p>
+            <h2 id="device-detail-title">Device</h2>
+          </div>
+        </header>
 
-                <div class="device-row device-detail-row device-detail-row--toggle" id="device-detail-native-wiring-confirm-row" hidden>
-                  <div class="device-row__name device-detail-row__name">
-                    <label class="device-row__title" for="device-detail-native-wiring-confirm">I understand the risk</label>
-                    <small class="device-detail-row__hint">Native wiring can break if the device app changes its capabilities. Using flows may be safer.</small>
-                  </div>
-                  <input type="checkbox" id="device-detail-native-wiring-confirm">
-                </div>
-
-                <div class="device-row device-detail-row device-detail-row--toggle">
-                  <div class="device-row__name device-detail-row__name">
-                    <label class="device-row__title" for="device-detail-managed">Managed by PELS</label>
-                    <small class="device-detail-row__hint">Include this device in modes and optimization plans.</small>
-                  </div>
-                  <input type="checkbox" id="device-detail-managed">
-                </div>
-
-                <div class="device-row device-detail-row device-detail-row--toggle">
-                  <div class="device-row__name device-detail-row__name">
-                    <label class="device-row__title" for="device-detail-controllable">Capacity-based control</label>
-                    <small class="device-detail-row__hint">Allow PELS to adjust this device based on power capacity limits.</small>
-                  </div>
-                  <input type="checkbox" id="device-detail-controllable">
-                </div>
-
-                <div class="device-row device-detail-row device-detail-row--toggle">
-                  <div class="device-row__name device-detail-row__name">
-                    <label class="device-row__title" for="device-detail-price-opt">Price-based control</label>
-                    <small class="device-detail-row__hint">Adjust temperature based on electricity price fluctuations.</small>
-                  </div>
-                  <input type="checkbox" id="device-detail-price-opt">
-                </div>
-
-                <div class="device-row device-detail-row device-detail-row--toggle">
-                  <div class="device-row__name device-detail-row__name">
-                    <label class="device-row__title" for="device-detail-budget-exempt">Budget exempt</label>
-                    <small class="device-detail-row__hint">Exclude this device from daily budget enforcement.</small>
-                  </div>
-                  <input type="checkbox" id="device-detail-budget-exempt">
-                </div>
-
-                <div class="device-row device-detail-row" id="device-detail-soc-row" hidden>
-                  <div class="device-row__name device-detail-row__name">
-                    <span class="device-row__title">Battery level</span>
-                    <small class="device-detail-row__hint" id="device-detail-soc-updated"></small>
-                  </div>
-                  <div class="device-row__meta" id="device-detail-soc-value">Not reported</div>
-                </div>
-
-                <div class="device-row device-detail-row" id="device-detail-control-model-row">
-                  <div class="device-row__name device-detail-row__name">
-                    <label class="device-row__title" for="device-detail-control-model">Control model</label>
-                    <small class="device-detail-row__hint">Choose the control shape PELS should plan with for this device.</small>
-                  </div>
-                  <select id="device-detail-control-model">
-                    <option value="default">Default</option>
-                    <option value="stepped_load">Stepped load</option>
-                    <option value="continuous">Continuous</option>
-                    <option value="ev_charger_1_phase">EV 1-phase</option>
-                    <option value="ev_charger_3_phase">EV 3-phase</option>
-                  </select>
-                </div>
-
-                <div class="device-row device-detail-row">
-                  <div class="device-row__name device-detail-row__name">
-                    <label class="device-row__title" for="device-detail-overshoot">When shedding</label>
-                    <small class="device-detail-row__hint">Choose how PELS reacts when capacity is exceeded.</small>
-                  </div>
-                  <select id="device-detail-overshoot">
-                    <option value="turn_off">Turn off</option>
-                    <option value="set_temperature">Set to temperature</option>
-                    <option value="set_step">Set to step</option>
-                  </select>
-                </div>
-                <div class="device-row device-detail-row" id="device-detail-overshoot-temp-row" hidden>
-                  <div class="device-row__name device-detail-row__name">
-                    <label class="device-row__title" for="device-detail-overshoot-temp">Shed temperature (°C)</label>
-                    <small class="device-detail-row__hint">Set this instead of turning off when shedding.</small>
-                  </div>
-                  <input type="number" id="device-detail-overshoot-temp" step="0.5" min="-20" max="40">
-                </div>
-                <div class="device-row device-detail-row" id="device-detail-overshoot-step-row" hidden>
-                  <div class="device-row__name device-detail-row__name">
-                    <label class="device-row__title" for="device-detail-overshoot-step">Shed step</label>
-                    <small class="device-detail-row__hint">For stepped loads, PELS will step down to this level or lower when shedding.</small>
-                  </div>
-                  <select id="device-detail-overshoot-step"></select>
-                </div>
-              </div>
-            </div>
-          </details>
-        </section>
-
-        <div id="device-detail-deadline-objective"></div>
-
-        <section class="detail-section">
+        <section class="detail-section" id="device-detail-modes-section">
           <details class="settings-collapse detail-collapse" open>
             <summary>
               <h3 class="section-title">Temperature per mode</h3>
@@ -768,6 +660,63 @@
             <div class="collapse-content">
               <p class="muted">Set the target temperature for each mode. PELS will set this when the mode is active.</p>
               <div id="device-detail-modes" class="detail-mode-list"></div>
+            </div>
+          </details>
+        </section>
+
+        <div id="device-detail-deadline-objective"></div>
+
+        <section class="detail-section" id="device-detail-delta-section">
+          <details class="settings-collapse detail-collapse" open>
+            <summary>
+              <h3 class="section-title">Price optimization deltas</h3>
+              <span class="section-hint">Cheap and expensive hour offsets</span>
+            </summary>
+            <div class="collapse-content">
+              <p class="muted">Temperature adjustments applied during cheap and expensive electricity hours.</p>
+              <div class="detail-deltas form-grid">
+                <label class="field">
+                  <span class="field__label">🟢 Cheap hours delta (°C)</span>
+                  <input id="device-detail-cheap-delta" type="number" step="0.5" value="5" inputmode="decimal">
+                  <small class="field__hint">Added to target during cheap hours, for example +5.</small>
+                </label>
+                <label class="field">
+                  <span class="field__label">🔴 Expensive hours delta (°C)</span>
+                  <input id="device-detail-expensive-delta" type="number" step="0.5" value="-5" inputmode="decimal">
+                  <small class="field__hint">Added to target during expensive hours, for example -5.</small>
+                </label>
+              </div>
+            </div>
+          </details>
+        </section>
+
+        <section class="detail-section" id="device-detail-shedding-section">
+          <details class="settings-collapse detail-collapse" open>
+            <summary>
+              <h3 class="section-title">Shedding behavior</h3>
+              <span class="section-hint">What PELS does when capacity is exceeded</span>
+            </summary>
+            <div class="collapse-content">
+              <div class="field">
+                <span class="field__label">When shedding</span>
+                <div class="segmented" id="device-detail-overshoot-segmented" role="radiogroup" aria-label="When shedding"></div>
+                <select id="device-detail-overshoot" hidden aria-hidden="true">
+                  <option value="turn_off">Turn off</option>
+                  <option value="set_temperature">Set to temperature</option>
+                  <option value="set_step">Set to step</option>
+                </select>
+                <small class="field__hint">Choose how PELS reacts when capacity is exceeded.</small>
+              </div>
+              <label class="field" id="device-detail-overshoot-temp-row" hidden>
+                <span class="field__label">Shed temperature (°C)</span>
+                <input type="number" id="device-detail-overshoot-temp" step="0.5" min="-20" max="40" inputmode="decimal">
+                <small class="field__hint">Set this instead of turning off when shedding.</small>
+              </label>
+              <label class="field" id="device-detail-overshoot-step-row" hidden>
+                <span class="field__label">Shed step</span>
+                <select id="device-detail-overshoot-step"></select>
+                <small class="field__hint">For stepped loads, PELS will step down to this level or lower when shedding.</small>
+              </label>
             </div>
           </details>
         </section>
@@ -823,38 +772,34 @@
               </div>
               <div class="detail-stepped-list" id="device-detail-stepped-steps"></div>
 
-              <div class="detail-control-list detail-stepped-boost" id="device-detail-temperature-boost" hidden>
-                <div class="device-row device-detail-row device-detail-row--toggle">
-                  <div class="device-row__name device-detail-row__name">
-                    <label class="device-row__title" for="device-detail-temperature-boost-enabled">Temperature Boost</label>
-                    <small class="device-detail-row__hint">Step this load up when it is cold, using only lower-priority devices if room must be made.</small>
-                  </div>
+              <div class="detail-stepped-boost" id="device-detail-temperature-boost" hidden>
+                <label class="field checkbox-field">
                   <input type="checkbox" id="device-detail-temperature-boost-enabled">
-                </div>
-                <div class="device-row device-detail-row" id="device-detail-temperature-boost-below-row">
-                  <div class="device-row__name device-detail-row__name">
-                    <label class="device-row__title" for="device-detail-temperature-boost-below">Boost below (°C)</label>
-                    <small class="device-detail-row__hint">Boost continues 2°C above this value to avoid rapid step changes.</small>
-                  </div>
-                  <input type="number" id="device-detail-temperature-boost-below" step="0.5" min="0" max="95">
-                </div>
+                  <span class="checkbox-field__content">
+                    <span class="field__label">Temperature boost</span>
+                    <small class="field__hint">Step this load up when it is cold, using only lower-priority devices if room must be made.</small>
+                  </span>
+                </label>
+                <label class="field" id="device-detail-temperature-boost-below-row">
+                  <span class="field__label">Boost below (°C)</span>
+                  <input type="number" id="device-detail-temperature-boost-below" step="0.5" min="0" max="95" inputmode="decimal">
+                  <small class="field__hint">Boost continues 2°C above this value to avoid rapid step changes.</small>
+                </label>
               </div>
 
-              <div class="detail-control-list detail-stepped-boost" id="device-detail-ev-boost" hidden>
-                <div class="device-row device-detail-row device-detail-row--toggle">
-                  <div class="device-row__name device-detail-row__name">
-                    <label class="device-row__title" for="device-detail-ev-boost-enabled">Charge boost</label>
-                    <small class="device-detail-row__hint">Step this charger up while the car stays below the minimum battery level, using only lower-priority devices if room must be made.</small>
-                  </div>
+              <div class="detail-stepped-boost" id="device-detail-ev-boost" hidden>
+                <label class="field checkbox-field">
                   <input type="checkbox" id="device-detail-ev-boost-enabled">
-                </div>
-                <div class="device-row device-detail-row" id="device-detail-ev-boost-below-row">
-                  <div class="device-row__name device-detail-row__name">
-                    <label class="device-row__title" for="device-detail-ev-boost-below">Boost below (%)</label>
-                    <small class="device-detail-row__hint">Boost stops as soon as the reported battery level reaches this value.</small>
-                  </div>
-                  <input type="number" id="device-detail-ev-boost-below" step="1" min="0" max="100">
-                </div>
+                  <span class="checkbox-field__content">
+                    <span class="field__label">Charge boost</span>
+                    <small class="field__hint">Step this charger up while the car stays below the minimum battery level, using only lower-priority devices if room must be made.</small>
+                  </span>
+                </label>
+                <label class="field" id="device-detail-ev-boost-below-row">
+                  <span class="field__label">Boost below (%)</span>
+                  <input type="number" id="device-detail-ev-boost-below" step="1" min="0" max="100" inputmode="numeric">
+                  <small class="field__hint">Boost stops as soon as the reported battery level reaches this value.</small>
+                </label>
                 <p class="muted" id="device-detail-ev-boost-status"></p>
               </div>
 
@@ -863,28 +808,80 @@
           </details>
         </section>
 
-        <section class="detail-section" id="device-detail-delta-section">
-          <details class="settings-collapse detail-collapse" open>
+        <section class="detail-section" id="device-detail-setup-section">
+          <details class="settings-collapse detail-collapse">
             <summary>
-              <h3 class="section-title">Price optimization deltas</h3>
-              <span class="section-hint">Cheap and expensive hour offsets</span>
+              <h3 class="section-title">Setup</h3>
+              <span class="section-hint">Management, control model, and wiring</span>
             </summary>
             <div class="collapse-content">
-              <p class="muted">Temperature adjustments applied during cheap and expensive electricity hours.</p>
-              <div class="detail-deltas">
-                <div class="device-row device-detail-row">
-                  <div class="device-row__name device-detail-row__name">
-                    <label class="device-row__title" for="device-detail-cheap-delta">🟢 Cheap hours delta (°C)</label>
-                    <small class="device-detail-row__hint">Added to target during cheap hours, for example +5.</small>
+              <div class="detail-setup-list">
+                <label class="field checkbox-field">
+                  <input type="checkbox" id="device-detail-managed">
+                  <span class="checkbox-field__content">
+                    <span class="field__label">Managed by PELS</span>
+                    <small class="field__hint">Include this device in modes and optimization plans.</small>
+                  </span>
+                </label>
+
+                <label class="field checkbox-field">
+                  <input type="checkbox" id="device-detail-controllable">
+                  <span class="checkbox-field__content">
+                    <span class="field__label">Capacity-based control</span>
+                    <small class="field__hint">Allow PELS to adjust this device based on power capacity limits.</small>
+                  </span>
+                </label>
+
+                <label class="field checkbox-field">
+                  <input type="checkbox" id="device-detail-price-opt">
+                  <span class="checkbox-field__content">
+                    <span class="field__label">Price-based control</span>
+                    <small class="field__hint">Adjust temperature based on electricity price fluctuations.</small>
+                  </span>
+                </label>
+
+                <label class="field checkbox-field">
+                  <input type="checkbox" id="device-detail-budget-exempt">
+                  <span class="checkbox-field__content">
+                    <span class="field__label">Budget exempt</span>
+                    <small class="field__hint">Exclude this device from daily budget enforcement.</small>
+                  </span>
+                </label>
+
+                <label class="field checkbox-field" id="device-detail-native-wiring-row" hidden>
+                  <input type="checkbox" id="device-detail-native-wiring">
+                  <span class="checkbox-field__content">
+                    <span class="field__label">Use built-in device control</span>
+                    <small class="field__hint">Lets PELS use this device app's own capabilities instead of Flow wiring.</small>
+                  </span>
+                </label>
+
+                <label class="field checkbox-field" id="device-detail-native-wiring-confirm-row" hidden>
+                  <input type="checkbox" id="device-detail-native-wiring-confirm">
+                  <span class="checkbox-field__content">
+                    <span class="field__label">I understand the risk</span>
+                    <small class="field__hint">Native wiring can break if the device app changes its capabilities. Using flows may be safer.</small>
+                  </span>
+                </label>
+
+                <label class="field" id="device-detail-control-model-row">
+                  <span class="field__label">Control model</span>
+                  <select id="device-detail-control-model">
+                    <option value="default">Default</option>
+                    <option value="stepped_load">Stepped load</option>
+                    <option value="continuous">Continuous</option>
+                    <option value="ev_charger_1_phase">EV 1-phase</option>
+                    <option value="ev_charger_3_phase">EV 3-phase</option>
+                  </select>
+                  <small class="field__hint">Choose the control shape PELS should plan with for this device.</small>
+                </label>
+
+                <div class="field device-detail-readout" id="device-detail-soc-row" hidden>
+                  <div class="device-detail-readout__head">
+                    <span class="field__label">Battery level</span>
+                    <span class="device-detail-readout__value" id="device-detail-soc-value">Not reported</span>
                   </div>
-                  <input type="number" id="device-detail-cheap-delta" step="0.5" value="5">
-                </div>
-                <div class="device-row device-detail-row">
-                  <div class="device-row__name device-detail-row__name">
-                    <label class="device-row__title" for="device-detail-expensive-delta">🔴 Expensive hours delta (°C)</label>
-                    <small class="device-detail-row__hint">Added to target during expensive hours, for example -5.</small>
-                  </div>
-                  <input type="number" id="device-detail-expensive-delta" step="0.5" value="-5">
+                  <small class="field__hint" id="device-detail-soc-updated"></small>
                 </div>
               </div>
             </div>

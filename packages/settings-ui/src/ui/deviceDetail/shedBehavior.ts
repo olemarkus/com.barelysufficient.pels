@@ -297,6 +297,7 @@ export const setDeviceDetailShedBehavior = (params: {
       configuredAction: shedConfig?.action,
     });
     deviceDetailShedAction.value = nextAction === 'set_step' && !shedControls.supportsStep ? 'turn_off' : nextAction;
+    deviceDetailShedAction.dispatchEvent(new Event('pels:segmented-refresh'));
   }
 
   if (deviceDetailShedStep) {
