@@ -6,11 +6,15 @@ export type DeferredAdmissionDecision =
   | { kind: 'planned'; requestedMinimumStepId: string | null }
   | { kind: 'idle' };
 
-// `satisfied` and `cannot_meet` deliberately fall back to inactive: when the goal is met or
-// physically impossible, the deferred objective should not keep forcing the device on or off.
+// `satisfied` falls back to inactive: the goal is met, so the objective should
+// not keep forcing the device on. `cannot_meet` still drives the device — the
+// planner's lowest-step allocation is what we _can_ deliver, not a reason to
+// stop trying; runtime is free to step up when headroom appears, so a
+// hard-cap miss should still get us as close to the target as possible.
 const PLANNABLE_STATUSES = new Set<DeferredObjectiveDiagnostic['status']>([
   'on_track',
   'at_risk',
+  'cannot_meet',
 ]);
 
 const resolveDecision = (
