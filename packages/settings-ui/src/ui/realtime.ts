@@ -1,5 +1,6 @@
 import { panels, tabs } from './dom.ts';
 import {
+  SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
   SETTINGS_UI_PLAN_PATH,
@@ -64,6 +65,7 @@ import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
 import { state } from './state.ts';
 import { logSettingsError, logSettingsWarn } from './logging.ts';
 import { getCurrentSettingsUiVariant } from './uiVariant.ts';
+import { refreshDeadlinesList } from './deadlinesList.ts';
 
 const DAILY_BUDGET_REFRESH_KEYS = new Set([
   'daily_budget_enabled',
@@ -383,6 +385,12 @@ const runTabActivationSideEffects = (tabId: string) => {
   }
   if (tabId === 'budget') {
     runLoggedTask(refreshDailyBudgetPlan(), 'Failed to refresh daily budget', 'showTab');
+    return;
+  }
+  if (tabId === 'deadlines') {
+    invalidateApiCache(SETTINGS_UI_BOOTSTRAP_PATH);
+    invalidateApiCache(SETTINGS_UI_DEVICES_PATH);
+    runLoggedTask(refreshDeadlinesList(), 'Failed to load deadlines list', 'showTab');
     return;
   }
   if (tabId === 'limits' || tabId === 'simulation') {

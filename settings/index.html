@@ -32,6 +32,7 @@
         <button type="button" class="tab active" data-tab="overview" role="tab" aria-selected="true">Overview</button>
         <button type="button" class="tab" data-tab="budget" role="tab" aria-selected="false">Budget</button>
         <button type="button" class="tab" data-tab="usage" role="tab" aria-selected="false">Usage</button>
+        <button type="button" class="tab" data-tab="deadlines" role="tab" aria-selected="false">Deadlines</button>
         <button type="button" class="tab" data-tab="settings" role="tab" aria-selected="false">Settings</button>
       </div>
     </header>
@@ -366,6 +367,16 @@
         <button type="button" class="btn ghost" id="reset-stats-button">Reset all stats</button>
         <p class="muted">Hourly data kept for 30 days, daily totals for 1 year.</p>
       </div>
+    </section>
+
+    <section class="card panel hidden" id="deadlines-panel" data-panel="deadlines" aria-labelledby="deadlines-title">
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Deadlines</p>
+          <h2 id="deadlines-title">Active device deadlines</h2>
+        </div>
+      </div>
+      <div id="deadlines-list-root"></div>
     </section>
 
     <section class="panel hidden settings-home-panel" id="settings-panel" data-panel="settings" aria-labelledby="settings-title">
