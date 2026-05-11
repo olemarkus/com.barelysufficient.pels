@@ -1,5 +1,11 @@
 import { buildPlanBreakdown } from './dailyBudgetBreakdown';
-import { buildDailyBudgetSnapshot, type BudgetState, type DayContext, type PriceData } from './dailyBudgetState';
+import {
+  buildDailyBudgetSnapshot,
+  resolvePlannedSplit,
+  type BudgetState,
+  type DayContext,
+  type PriceData,
+} from './dailyBudgetState';
 import { getEffectiveProfileData } from './dailyBudgetProfile';
 import { logDailyBudgetPlanDebug } from './dailyBudgetManagerPlan';
 import type {
@@ -48,14 +54,10 @@ export function buildSnapshot(params: {
     confidenceDebug,
   } = params;
   const profileData = getEffectiveProfileData(state, settings, defaultProfile);
-  const hasPlannedBreakdown = Array.isArray(plan.plannedUncontrolledKWh)
-    && Array.isArray(plan.plannedControlledKWh)
-    && plan.plannedUncontrolledKWh.length === plan.plannedKWh.length
-    && plan.plannedControlledKWh.length === plan.plannedKWh.length;
-  const breakdown = hasPlannedBreakdown
+  const breakdown = plan.plannedUncontrolledKWh && plan.plannedControlledKWh
     ? {
-      plannedUncontrolledKWh: plan.plannedUncontrolledKWh as number[],
-      plannedControlledKWh: plan.plannedControlledKWh as number[],
+      plannedUncontrolledKWh: plan.plannedUncontrolledKWh,
+      plannedControlledKWh: plan.plannedControlledKWh,
     }
     : buildPlanBreakdown({
       bucketStartUtcMs: context.bucketStartUtcMs,
@@ -68,8 +70,7 @@ export function buildSnapshot(params: {
     settings,
     enabled,
     plannedKWh: plan.plannedKWh,
-    plannedUncontrolledKWh: breakdown?.plannedUncontrolledKWh,
-    plannedControlledKWh: breakdown?.plannedControlledKWh,
+    ...resolvePlannedSplit(plan.plannedKWh, breakdown),
     priceData: plan.priceData,
     budget,
     frozen: Boolean(state.frozen),

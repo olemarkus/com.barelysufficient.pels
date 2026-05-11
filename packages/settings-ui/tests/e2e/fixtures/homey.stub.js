@@ -411,7 +411,15 @@
           startLocalLabels,
           plannedWeight,
           plannedKWh,
+          plannedControlledKWh: plannedKWh.map((value) => Number((value * 0.4).toFixed(3))),
+          plannedUncontrolledKWh: plannedKWh.map((value) => Number((value * 0.6).toFixed(3))),
           actualKWh,
+          actualControlledKWh: actualKWh.map((value, i) => (
+            i <= currentBucketIndex ? Number((value * 0.4).toFixed(3)) : null
+          )),
+          actualUncontrolledKWh: actualKWh.map((value, i) => (
+            i <= currentBucketIndex ? Number((value * 0.6).toFixed(3)) : null
+          )),
           allowedCumKWh,
           price,
         },
