@@ -9,6 +9,7 @@ import {
 } from '../../../contracts/src/dailyBudgetConstants.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
+  SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_LOG_PATH,
@@ -50,6 +51,7 @@ export type HomeyApiMethod = 'DELETE' | 'GET' | 'POST' | 'PUT';
 
 export type MockHomeyUiState = {
   dailyBudget?: unknown;
+  deferredObjectiveHistory?: unknown;
   deviceDiagnostics?: unknown;
   featureAccess?: unknown;
   homeyDevices?: unknown;
@@ -254,6 +256,9 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('GET', SETTINGS_UI_POWER_PATH)]: (homey) => async () => buildUiPower(homey),
   [buildRouteKey('GET', SETTINGS_UI_PRICES_PATH)]: (homey) => async () => buildUiPrices(homey),
   [buildRouteKey('GET', SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH)]: (homey) => async () => buildUiDiagnostics(homey),
+  [buildRouteKey('GET', SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'deferredObjectiveHistory') ?? { version: 1, entriesByDeviceId: {} }
+  ),
   [buildRouteKey('GET', DAILY_BUDGET_PATH)]: (homey) => async () => getUiOverride(homey, 'dailyBudget') ?? null,
   [buildRouteKey('GET', HOMEY_DEVICES_PATH)]: (homey) => async () => getUiOverride(homey, 'homeyDevices') ?? [],
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_DEVICES_PATH)]: (homey) => async () => ({

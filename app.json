@@ -65,6 +65,10 @@
       "method": "GET",
       "path": "/ui_device_diagnostics"
     },
+    "ui_deferred_objective_history": {
+      "method": "GET",
+      "path": "/ui_deferred_objective_history"
+    },
     "get_daily_budget": {
       "method": "GET",
       "path": "/daily_budget"
