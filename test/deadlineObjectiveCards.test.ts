@@ -159,7 +159,29 @@ describe('deadline objective flow cards', () => {
       .rejects.toThrow(/was not found/);
   });
 
-  it('writes an EV objective on set_ev_charge_deadline with hard enforcement', async () => {
+  it('writes an EV objective on set_ev_charge_deadline with normal task behavior', async () => {
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'ev-1', name: 'Charger', deviceClass: 'evcharger' })],
+      rebuildPlan: vi.fn(),
+    });
+    registerDeadlineObjectiveCards(deps);
+    const card = mock.actions.get('set_ev_charge_deadline')!;
+    await card.run!({
+      device: { id: 'ev-1' },
+      target_percent: 80,
+      ready_by: '06:30',
+    });
+    const stored = mock.settings.get('deferred_objectives') as DeferredObjectiveSettingsV1;
+    expect(stored.objectivesByDeviceId['ev-1']).toEqual({
+      enabled: true,
+      kind: 'ev_soc',
+      enforcement: 'soft',
+      targetPercent: 80,
+      deadlineAtMs: HH_MM_TO_UTC_MS(6, 30),
+    });
+  });
+
+  it('honors legacy EV enforcement args while the visible input is removed', async () => {
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'ev-1', name: 'Charger', deviceClass: 'evcharger' })],
       rebuildPlan: vi.fn(),
@@ -173,13 +195,7 @@ describe('deadline objective flow cards', () => {
       enforcement: { id: 'hard' },
     });
     const stored = mock.settings.get('deferred_objectives') as DeferredObjectiveSettingsV1;
-    expect(stored.objectivesByDeviceId['ev-1']).toEqual({
-      enabled: true,
-      kind: 'ev_soc',
-      enforcement: 'hard',
-      targetPercent: 80,
-      deadlineAtMs: HH_MM_TO_UTC_MS(6, 30),
-    });
+    expect(stored.objectivesByDeviceId['ev-1']?.enforcement).toBe('hard');
   });
 
   it('rejects set_ev_charge_deadline when the device is not in the snapshot', async () => {
@@ -190,7 +206,6 @@ describe('deadline objective flow cards', () => {
       device: 'missing-1',
       target_percent: 80,
       ready_by: '07:00',
-      enforcement: { id: 'soft' },
     })).rejects.toThrow(/was not found/);
   });
 
@@ -204,7 +219,6 @@ describe('deadline objective flow cards', () => {
       device: 'heater-1',
       target_percent: 80,
       ready_by: '07:00',
-      enforcement: { id: 'soft' },
     })).rejects.toThrow(/not an EV charger/);
   });
 
@@ -348,7 +362,7 @@ describe('deadline objective flow cards', () => {
     expect(options.map((opt) => opt.id)).toEqual(['heater-1']);
   });
 
-  it('deadline_status_changed condition matches the latest bus state', async () => {
+  it('deadline_status_changed condition matches the simplified smart task status', async () => {
     const bus = createDeferredObjectiveStatusBus();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
@@ -369,11 +383,11 @@ describe('deadline objective flow cards', () => {
       shortfallKwh: null,
       shortfallText: null,
     });
-    expect(await condition.run!({ device: 'heater-1', status: 'at_risk' })).toBe(true);
-    expect(await condition.run!({ device: 'heater-1', status: 'on_track' })).toBe(false);
+    expect(await condition.run!({ device: 'heater-1', status: 'on_track' })).toBe(true);
+    expect(await condition.run!({ device: 'heater-1', status: 'unachievable' })).toBe(false);
   });
 
-  it('deadline_status_is returns true for "none" when no entry exists', async () => {
+  it('deadline_status_is returns true for waiting when a task has no status yet', async () => {
     const bus = createDeferredObjectiveStatusBus();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
@@ -381,10 +395,84 @@ describe('deadline objective flow cards', () => {
     });
     registerDeadlineObjectiveCards(deps);
     const condition = mock.conditions.get('deadline_status_is')!;
-    expect(await condition.run!({ device: 'heater-1', status: 'none' })).toBe(true);
+    mock.settings.set('deferred_objectives', {
+      version: 1,
+      objectivesByDeviceId: {
+        'heater-1': {
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 55,
+          deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+        },
+      },
+    });
+    expect(await condition.run!({ device: 'heater-1', status: 'waiting' })).toBe(true);
+    expect(await condition.run!({ device: 'heater-1', status: 'pending_prices' })).toBe(true);
   });
 
-  it('publishes triggers for status transitions filtered by device and status args', async () => {
+  it('deadline_status_is maps compatibility status args to active smart task statuses', async () => {
+    const bus = createDeferredObjectiveStatusBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      bus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const condition = mock.conditions.get('deadline_status_is')!;
+    const snapshot: DeferredObjectiveStatusSnapshot = {
+      deviceId: 'heater-1',
+      deviceName: 'Boiler',
+      kind: 'temperature',
+      status: 'cannot_meet',
+      previousStatus: 'on_track',
+      targetText: '55 °C',
+      deadlineLocalTime: '07:00',
+      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      deadlineMissed: false,
+      shortfallKwh: null,
+      shortfallText: null,
+    };
+    bus.publish(snapshot);
+
+    expect(await condition.run!({ device: 'heater-1', status: 'unachievable' })).toBe(true);
+    expect(await condition.run!({ device: 'heater-1', status: 'cannot_finish' })).toBe(true);
+    expect(await condition.run!({ device: 'heater-1', status: 'missed' })).toBe(false);
+
+    bus.publish({
+      ...snapshot,
+      status: 'satisfied',
+      previousStatus: 'cannot_meet',
+    });
+    expect(await condition.run!({ device: 'heater-1', status: 'satisfied' })).toBe(true);
+    expect(await condition.run!({ device: 'heater-1', status: 'done' })).toBe(true);
+  });
+
+  it('deadline_status_is preserves the legacy none status for cleared tasks', async () => {
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+    });
+    registerDeadlineObjectiveCards(deps);
+    const condition = mock.conditions.get('deadline_status_is')!;
+
+    mock.settings.set('deferred_objectives', createEmptyDeferredObjectiveSettings());
+    expect(await condition.run!({ device: 'heater-1', status: 'none' })).toBe(true);
+
+    mock.settings.set('deferred_objectives', {
+      version: 1,
+      objectivesByDeviceId: {
+        'heater-1': {
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 55,
+          deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+        },
+      },
+    });
+    expect(await condition.run!({ device: 'heater-1', status: 'none' })).toBe(false);
+  });
+
+  it('publishes triggers for simplified status transitions filtered by device and status args', async () => {
     const bus = createDeferredObjectiveStatusBus();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
@@ -406,14 +494,133 @@ describe('deadline objective flow cards', () => {
       shortfallText: null,
     };
     bus.publish(transition);
+    expect(trigger.trigger).not.toHaveBeenCalled();
+
+    bus.publish({
+      ...transition,
+      status: 'cannot_meet',
+      previousStatus: 'at_risk',
+    });
     expect(trigger.trigger).toHaveBeenCalledTimes(1);
     const [tokens, state] = trigger.trigger.mock.calls[0]!;
-    expect(tokens).toMatchObject({ device_name: 'Boiler', status: 'at_risk', kind: 'temperature' });
-    expect(state).toEqual({ deviceId: 'heater-1', status: 'at_risk' });
+    expect(tokens).toMatchObject({ device_name: 'Boiler', status: 'Cannot finish', kind: 'temperature' });
+    expect(state).toEqual({ deviceId: 'heater-1', status: 'unachievable' });
 
-    expect(await trigger.run!({ device: 'heater-1', status: { id: 'at_risk' } }, state)).toBe(true);
+    expect(await trigger.run!({ device: 'heater-1', status: { id: 'unachievable' } }, state)).toBe(true);
+    expect(await trigger.run!({ device: 'heater-1', status: { id: 'cannot_finish' } }, state)).toBe(true);
     expect(await trigger.run!({ device: 'heater-1', status: { id: 'on_track' } }, state)).toBe(false);
-    expect(await trigger.run!({ device: 'heater-2', status: { id: 'at_risk' } }, state)).toBe(false);
+    expect(await trigger.run!({ device: 'heater-2', status: { id: 'unachievable' } }, state)).toBe(false);
+  });
+
+  it('publishes unknown as waiting when the active smart task status changes', async () => {
+    const bus = createDeferredObjectiveStatusBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      bus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const trigger = mock.triggers.get('deadline_status_changed')!;
+    bus.publish({
+      deviceId: 'heater-1',
+      deviceName: 'Boiler',
+      kind: 'temperature',
+      status: 'unknown',
+      previousStatus: 'on_track',
+      targetText: '55 °C',
+      deadlineLocalTime: '07:00',
+      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      deadlineMissed: false,
+      shortfallKwh: null,
+      shortfallText: null,
+    });
+
+    expect(trigger.trigger).toHaveBeenCalledTimes(1);
+    const [tokens, state] = trigger.trigger.mock.calls[0]!;
+    expect(tokens).toMatchObject({ device_name: 'Boiler', status: 'Waiting', kind: 'temperature' });
+    expect(state).toEqual({ deviceId: 'heater-1', status: 'waiting' });
+  });
+
+  it('does not suppress a recreated task with the same deadline time', async () => {
+    const bus = createDeferredObjectiveStatusBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      bus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const trigger = mock.triggers.get('deadline_status_changed')!;
+    const snapshot: DeferredObjectiveStatusSnapshot = {
+      deviceId: 'heater-1',
+      deviceName: 'Boiler',
+      kind: 'temperature',
+      status: 'on_track',
+      previousStatus: 'none',
+      targetText: '55 °C',
+      deadlineLocalTime: '07:00',
+      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      deadlineMissed: false,
+      shortfallKwh: null,
+      shortfallText: null,
+    };
+
+    bus.publish(snapshot);
+    expect(trigger.trigger).toHaveBeenCalledTimes(1);
+    bus.forgetDevice('heater-1');
+    bus.publish(snapshot);
+    expect(trigger.trigger).toHaveBeenCalledTimes(2);
+  });
+
+  it('publishes missed through the legacy missed trigger, not active status', async () => {
+    const bus = createDeferredObjectiveStatusBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      bus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const statusTrigger = mock.triggers.get('deadline_status_changed')!;
+    const missedTrigger = mock.triggers.get('deadline_missed')!;
+    const condition = mock.conditions.get('deadline_status_is')!;
+    const transition: DeferredObjectiveStatusSnapshot = {
+      deviceId: 'heater-1',
+      deviceName: 'Boiler',
+      kind: 'temperature',
+      status: 'cannot_meet',
+      previousStatus: 'on_track',
+      targetText: '55 °C',
+      deadlineLocalTime: '07:00',
+      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      deadlineMissed: true,
+      shortfallKwh: 1.2,
+      shortfallText: '5 °C below target',
+    };
+    bus.publishMissed(transition);
+
+    expect(statusTrigger.trigger).not.toHaveBeenCalled();
+    expect(missedTrigger.trigger).toHaveBeenCalledTimes(1);
+    const [tokens, state] = missedTrigger.trigger.mock.calls[0]!;
+    expect(tokens).toMatchObject({
+      device_name: 'Boiler',
+      kind: 'temperature',
+      shortfall_kwh: 1.2,
+      shortfall_text: '5 °C below target',
+    });
+    expect(state).toEqual({ deviceId: 'heater-1' });
+    expect(await missedTrigger.run!({ device: 'heater-1' }, state)).toBe(true);
+    expect(await condition.run!({ device: 'heater-1', status: 'missed' })).toBe(false);
+    expect(await condition.run!({ device: 'heater-1', status: 'unachievable' })).toBe(false);
+
+    bus.publish({
+      ...transition,
+      status: 'cannot_meet',
+      previousStatus: 'on_track',
+    });
+    expect(statusTrigger.trigger).not.toHaveBeenCalled();
+
+    bus.publishMissed({
+      ...transition,
+      deadlineAtMs: HH_MM_TO_UTC_MS(8, 0),
+      deadlineLocalTime: '08:00',
+    });
+    expect(missedTrigger.trigger).toHaveBeenCalledTimes(2);
   });
 
   it('has_active_deadline returns true only when an enabled entry exists', async () => {
