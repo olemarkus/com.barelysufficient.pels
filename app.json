@@ -426,6 +426,9 @@
             "placeholder": {
               "en": "2 - 23"
             },
+            "hint": {
+              "en": "Counted back from the end hour. The window can cross midnight — for example, 6 hours before 04:00 searches 22:00 the previous day through 03:59."
+            },
             "min": 2,
             "max": 23,
             "step": 1
@@ -454,6 +457,9 @@
             },
             "placeholder": {
               "en": "1 - 24"
+            },
+            "hint": {
+              "en": "Hour the window ends at, in local time (use 24 for midnight)."
             },
             "min": 1,
             "max": 24,
@@ -776,6 +782,9 @@
             "placeholder": {
               "en": "2 - 23"
             },
+            "hint": {
+              "en": "Counted back from the end hour. The window can cross midnight — for example, 6 hours before 04:00 searches 22:00 the previous day through 03:59."
+            },
             "min": 2,
             "max": 23,
             "step": 1
@@ -804,6 +813,9 @@
             },
             "placeholder": {
               "en": "1 - 24"
+            },
+            "hint": {
+              "en": "Hour the window ends at, in local time (use 24 for midnight)."
             },
             "min": 1,
             "max": 24,
