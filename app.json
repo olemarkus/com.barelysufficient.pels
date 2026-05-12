@@ -142,14 +142,15 @@
         "id": "capacity_shortfall"
       },
       {
+        "deprecated": true,
         "title": {
-          "en": "Deadline missed"
+          "en": "Smart task missed"
         },
         "titleFormatted": {
-          "en": "[[device]] missed its deadline"
+          "en": "[[device]] did not finish its smart task in time"
         },
         "hint": {
-          "en": "Fires the next time PELS evaluates a deadline that has already passed without reaching its target."
+          "en": "Fires when the selected time passes before the task target is reached."
         },
         "args": [
           {
@@ -189,21 +190,21 @@
             "name": "deadline_local_time",
             "type": "string",
             "title": {
-              "en": "Deadline (HH:mm)"
+              "en": "Ready by"
             }
           },
           {
             "name": "shortfall_text",
             "type": "string",
             "title": {
-              "en": "Shortfall"
+              "en": "Remaining"
             }
           },
           {
             "name": "shortfall_kwh",
             "type": "number",
             "title": {
-              "en": "Shortfall (kWh)"
+              "en": "Remaining energy"
             }
           }
         ],
@@ -211,13 +212,13 @@
       },
       {
         "title": {
-          "en": "Deadline status changed"
+          "en": "Smart task status changed"
         },
         "titleFormatted": {
-          "en": "[[device]] deadline became [[status]]"
+          "en": "[[device]] smart task became [[status]]"
         },
         "hint": {
-          "en": "Fires when the planner re-evaluates and the deadline outcome changes for the chosen device."
+          "en": "Fires when the smart task status changes for the chosen device."
         },
         "args": [
           {
@@ -238,21 +239,21 @@
             },
             "values": [
               {
+                "id": "waiting",
+                "label": {
+                  "en": "Waiting"
+                }
+              },
+              {
                 "id": "on_track",
                 "label": {
                   "en": "On track"
                 }
               },
               {
-                "id": "at_risk",
+                "id": "unachievable",
                 "label": {
-                  "en": "At risk"
-                }
-              },
-              {
-                "id": "cannot_meet",
-                "label": {
-                  "en": "Cannot meet"
+                  "en": "Cannot finish"
                 }
               },
               {
@@ -290,7 +291,7 @@
             "name": "deadline_local_time",
             "type": "string",
             "title": {
-              "en": "Deadline (HH:mm)"
+              "en": "Ready by"
             }
           },
           {
@@ -512,13 +513,13 @@
     "conditions": [
       {
         "title": {
-          "en": "Deadline status is"
+          "en": "Smart task status is"
         },
         "titleFormatted": {
-          "en": "[[device]] deadline !{{is|is not}} [[status]]"
+          "en": "[[device]] smart task !{{is|is not}} [[status]]"
         },
         "hint": {
-          "en": "True when the most recent planner evaluation for this device matches the chosen status."
+          "en": "True when the current smart task status for this device matches the chosen status."
         },
         "args": [
           {
@@ -539,33 +540,27 @@
             },
             "values": [
               {
+                "id": "waiting",
+                "label": {
+                  "en": "Waiting"
+                }
+              },
+              {
                 "id": "on_track",
                 "label": {
                   "en": "On track"
                 }
               },
               {
-                "id": "at_risk",
+                "id": "unachievable",
                 "label": {
-                  "en": "At risk"
-                }
-              },
-              {
-                "id": "cannot_meet",
-                "label": {
-                  "en": "Cannot meet"
+                  "en": "Cannot finish"
                 }
               },
               {
                 "id": "satisfied",
                 "label": {
                   "en": "Satisfied"
-                }
-              },
-              {
-                "id": "none",
-                "label": {
-                  "en": "No active deadline"
                 }
               }
             ]
@@ -575,13 +570,13 @@
       },
       {
         "title": {
-          "en": "Has an active deadline"
+          "en": "Has smart task"
         },
         "titleFormatted": {
-          "en": "[[device]] !{{has|does not have}} an active deadline"
+          "en": "[[device]] !{{has|does not have}} a smart task"
         },
         "hint": {
-          "en": "True when this device has a deadline objective stored in PELS."
+          "en": "True when this device has a smart task stored in PELS."
         },
         "args": [
           {
@@ -872,13 +867,13 @@
       },
       {
         "title": {
-          "en": "Clear deadline"
+          "en": "Clear smart task"
         },
         "titleFormatted": {
-          "en": "Clear deadline for [[device]]"
+          "en": "Clear smart task for [[device]]"
         },
         "hint": {
-          "en": "Removes any active deadline objective for this device."
+          "en": "Removes the active smart task for this device."
         },
         "args": [
           {
@@ -1167,13 +1162,13 @@
       },
       {
         "title": {
-          "en": "Set EV charge deadline"
+          "en": "Add charging task"
         },
         "titleFormatted": {
-          "en": "Charge [[device]] to [[target_percent]] % by [[ready_by]] ([[enforcement]])"
+          "en": "Charge [[device]] to [[target_percent]] % by [[ready_by]]"
         },
         "hint": {
-          "en": "PELS picks the cheapest hours before departure to reach the target SoC. Soft enforcement respects budget and priority; hard treats the deadline as non-negotiable."
+          "en": "PELS plans charging from the device settings, prices, budget, and power limits."
         },
         "args": [
           {
@@ -1200,32 +1195,11 @@
             "name": "ready_by",
             "type": "text",
             "title": {
-              "en": "Ready by (HH:mm)"
+              "en": "Ready by"
             },
             "placeholder": {
               "en": "07:00"
             }
-          },
-          {
-            "name": "enforcement",
-            "type": "dropdown",
-            "title": {
-              "en": "Enforcement"
-            },
-            "values": [
-              {
-                "id": "soft",
-                "label": {
-                  "en": "Soft (respect budget)"
-                }
-              },
-              {
-                "id": "hard",
-                "label": {
-                  "en": "Hard (deadline first)"
-                }
-              }
-            ]
           }
         ],
         "id": "set_ev_charge_deadline"
@@ -1314,13 +1288,13 @@
       },
       {
         "title": {
-          "en": "Set temperature deadline"
+          "en": "Add heating task"
         },
         "titleFormatted": {
-          "en": "Have [[device]] reach [[target_c]] °C by [[ready_by]]"
+          "en": "Heat [[device]] to [[target_c]] °C by [[ready_by]]"
         },
         "hint": {
-          "en": "PELS picks the cheapest hours before the deadline to heat this device to the target. Soft target — capacity safety still wins."
+          "en": "PELS plans heating from the device settings, prices, budget, and power limits."
         },
         "args": [
           {
@@ -1347,7 +1321,7 @@
             "name": "ready_by",
             "type": "text",
             "title": {
-              "en": "Ready by (HH:mm)"
+              "en": "Ready by"
             },
             "placeholder": {
               "en": "07:00"

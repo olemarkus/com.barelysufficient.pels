@@ -1,12 +1,12 @@
 {
   "title": {
-    "en": "Set EV charge deadline"
+    "en": "Add charging task"
   },
   "titleFormatted": {
-    "en": "Charge [[device]] to [[target_percent]] % by [[ready_by]] ([[enforcement]])"
+    "en": "Charge [[device]] to [[target_percent]] % by [[ready_by]]"
   },
   "hint": {
-    "en": "PELS picks the cheapest hours before departure to reach the target SoC. Soft enforcement respects budget and priority; hard treats the deadline as non-negotiable."
+    "en": "PELS plans charging from the device settings, prices, budget, and power limits."
   },
   "args": [
     {
@@ -33,22 +33,11 @@
       "name": "ready_by",
       "type": "text",
       "title": {
-        "en": "Ready by (HH:mm)"
+        "en": "Ready by"
       },
       "placeholder": {
         "en": "07:00"
       }
-    },
-    {
-      "name": "enforcement",
-      "type": "dropdown",
-      "title": {
-        "en": "Enforcement"
-      },
-      "values": [
-        { "id": "soft", "label": { "en": "Soft (respect budget)" } },
-        { "id": "hard", "label": { "en": "Hard (deadline first)" } }
-      ]
     }
   ]
 }

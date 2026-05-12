@@ -1,12 +1,12 @@
 {
   "title": {
-    "en": "Set temperature deadline"
+    "en": "Add heating task"
   },
   "titleFormatted": {
-    "en": "Have [[device]] reach [[target_c]] °C by [[ready_by]]"
+    "en": "Heat [[device]] to [[target_c]] °C by [[ready_by]]"
   },
   "hint": {
-    "en": "PELS picks the cheapest hours before the deadline to heat this device to the target. Soft target — capacity safety still wins."
+    "en": "PELS plans heating from the device settings, prices, budget, and power limits."
   },
   "args": [
     {
@@ -33,7 +33,7 @@
       "name": "ready_by",
       "type": "text",
       "title": {
-        "en": "Ready by (HH:mm)"
+        "en": "Ready by"
       },
       "placeholder": {
         "en": "07:00"

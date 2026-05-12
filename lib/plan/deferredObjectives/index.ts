@@ -6,7 +6,6 @@ export {
 export { createDeferredObjectiveStatusBus } from './statusBus';
 export { emitDeferredObjectiveStatusTransitions } from './statusTransitions';
 export type {
-  DeferredObjectiveStatus,
   DeferredObjectiveStatusBus,
   DeferredObjectiveStatusSnapshot,
 } from './statusBus';

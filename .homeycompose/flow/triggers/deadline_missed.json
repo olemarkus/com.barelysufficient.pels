@@ -1,12 +1,13 @@
 {
+  "deprecated": true,
   "title": {
-    "en": "Deadline missed"
+    "en": "Smart task missed"
   },
   "titleFormatted": {
-    "en": "[[device]] missed its deadline"
+    "en": "[[device]] did not finish its smart task in time"
   },
   "hint": {
-    "en": "Fires the next time PELS evaluates a deadline that has already passed without reaching its target."
+    "en": "Fires when the selected time passes before the task target is reached."
   },
   "args": [
     {
@@ -39,17 +40,17 @@
     {
       "name": "deadline_local_time",
       "type": "string",
-      "title": { "en": "Deadline (HH:mm)" }
+      "title": { "en": "Ready by" }
     },
     {
       "name": "shortfall_text",
       "type": "string",
-      "title": { "en": "Shortfall" }
+      "title": { "en": "Remaining" }
     },
     {
       "name": "shortfall_kwh",
       "type": "number",
-      "title": { "en": "Shortfall (kWh)" }
+      "title": { "en": "Remaining energy" }
     }
   ]
 }
