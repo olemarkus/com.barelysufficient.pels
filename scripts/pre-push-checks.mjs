@@ -203,7 +203,7 @@ const main = () => {
   }
 
   if (matchesAnyPath(changedFiles, VALIDATE_PATHS)) {
-    commands.push(['npm', ['run', 'validate']]);
+    commands.push(['npm', ['run', 'build']], ['npm', ['run', 'validate']]);
   }
 
   if (commands.length > 0) {
