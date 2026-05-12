@@ -117,7 +117,6 @@ export const PlanSteppedCard = ({
   const cardClasses = [
     'device-row plan-card plan-card--stepped clickable',
     (stateKind === 'idle' || stateKind === 'manual') ? 'plan-card--dim' : '',
-    stateKind === 'unavailable' ? 'plan-card--unavailable' : '',
   ].filter(Boolean).join(' ');
 
   return (

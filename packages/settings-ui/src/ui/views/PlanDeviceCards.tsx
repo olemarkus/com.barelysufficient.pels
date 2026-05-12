@@ -222,7 +222,6 @@ export const PlanGenericCard = ({
   const cardClasses = [
     'device-row plan-card clickable',
     (presentation.kind === 'idle' || presentation.kind === 'manual') ? 'plan-card--dim' : '',
-    presentation.kind === 'unavailable' ? 'plan-card--unavailable' : '',
   ].filter(Boolean).join(' ');
 
   const remainingSec = resolveCooldownRemainingSec(displayDev);
@@ -323,8 +322,7 @@ export const PlanTemperatureCard = ({
 
   const cardClasses = [
     'device-row plan-card plan-card--temperature clickable',
-    kind === 'idle' ? 'plan-card--dim' : '',
-    kind === 'unavailable' ? 'plan-card--unavailable' : '',
+    (kind === 'idle' || kind === 'manual') ? 'plan-card--dim' : '',
   ].filter(Boolean).join(' ');
 
   const temperatureLine = resolveTemperatureLine(displayDev);
