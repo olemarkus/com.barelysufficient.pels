@@ -1,4 +1,5 @@
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
+import { getSteppedLoadLowestActiveStep } from '../../../contracts/src/deviceControlProfiles.ts';
 import type { DeviceObjectiveProfile } from '../../../contracts/src/objectiveProfileTypes.ts';
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
@@ -22,6 +23,23 @@ export const resolveUsefulPowerKw = (device: TargetDeviceSnapshot): number | nul
     )),
   );
   return highestStepPowerW > 0 ? highestStepPowerW / 1000 : null;
+};
+
+// The planner commits to running this device at the lowest non-zero step for
+// the full hour (see `resolveAllocation` in `lib/plan/deferredObjectives/
+// horizonPlanner.ts`). The Plan inputs card surfaces that committed power so
+// the user can sanity-check "Needs X kWh" against the realistic per-hour cap.
+export const resolveLowestActiveStepKw = (device: TargetDeviceSnapshot): number | null => {
+  const profile = device.steppedLoadProfile;
+  if (profile) {
+    const lowestActiveStep = getSteppedLoadLowestActiveStep(profile);
+    if (lowestActiveStep && isFiniteNumber(lowestActiveStep.planningPowerW) && lowestActiveStep.planningPowerW > 0) {
+      return lowestActiveStep.planningPowerW / 1000;
+    }
+  }
+  return isFiniteNumber(device.planningPowerKw) && device.planningPowerKw > 0
+    ? device.planningPowerKw
+    : null;
 };
 
 const resolveProfileSampleValue = (

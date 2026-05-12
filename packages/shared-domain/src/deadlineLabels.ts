@@ -25,6 +25,10 @@ export type DeadlineLabels = {
   pendingHeroByReason: Record<DeadlinePlanPendingReason, { headline: string; body: string }>;
   unavailableByReason: Record<DeadlinePlanUnavailableReason, { headline: string; body: string }>;
   targetUnit: '°C' | '%';
+  planInputsCardTitle: string;
+  planInputsRateRowLabel: string;
+  planInputsMaxPowerRowLabel: string;
+  perUnitRateUnit: 'kWh/°C' | 'kWh/%';
 };
 
 const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
@@ -78,6 +82,10 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       },
     },
     targetUnit: '°C',
+    planInputsCardTitle: 'Plan inputs',
+    planInputsRateRowLabel: 'Energy per unit',
+    planInputsMaxPowerRowLabel: 'Max power per hour',
+    perUnitRateUnit: 'kWh/°C',
   },
   ev_soc: {
     kindChipLabel: 'EV',
@@ -129,6 +137,10 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       },
     },
     targetUnit: '%',
+    planInputsCardTitle: 'Plan inputs',
+    planInputsRateRowLabel: 'Energy per unit',
+    planInputsMaxPowerRowLabel: 'Max power per hour',
+    perUnitRateUnit: 'kWh/%',
   },
 };
 

@@ -216,9 +216,20 @@ capture per-(device, deadline) outcomes for the Settings UI History tab on
   progress + planning flags each cycle, and stamps `metAtMs` the first cycle the status
   reaches `satisfied`.
 - A run is finalized as `met` when the device hit the target before the deadline,
-  `missed` when the deadline passed below target, `abandoned` when the diagnostic stops
-  appearing for >1 hour with the deadline still in the future, and `unknown` when there's
-  not enough fresh input to classify.
+  `missed` when the deadline passed below target, `abandoned` when the user clears the
+  objective (or when the diagnostic stops appearing for >1 hour with the deadline still in
+  the future), `replaced` when the user picks a new deadline or changes the target value on
+  the same deadline, and `unknown` when there's not enough fresh input to classify.
+- Flow card writes route through `applyDeferredObjectiveChange`
+  (`lib/plan/deferredObjectives/objectiveChange.ts`) so a user-initiated replace or clear
+  finalizes the prior in-progress run immediately rather than waiting for the abandon-grace
+  window. The runtime auto-disable path (`statusTransitions.deadlineJustPassed`) stays on
+  the `deadline_passed` classification — only user-initiated changes produce `replaced` or
+  the prompt `abandoned`.
+- Same-deadline target changes finalize the prior history entry as `replaced` and start a
+  fresh entry. The active-plan recorder is intentionally asymmetric here: it keeps a single
+  record across the change and writes an `objective_changed` revision, because the hero is a
+  live view of intent while history is an audit trail with one stable target per entry.
 - Entries are persisted to `deferred_objective_plan_history` with a 30-entry rolling cap.
   Throttled writes happen on finalize (rare); `onUninit` flushes any pending entries.
 - The Settings UI fetches this via `/ui_deferred_objective_history` and renders

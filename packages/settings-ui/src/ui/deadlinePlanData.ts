@@ -1,6 +1,5 @@
 import type { SettingsUiBootstrap, SettingsUiPricesPayload } from '../../../contracts/src/settingsUiApi.ts';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../../contracts/src/dailyBudgetTypes.ts';
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 
 export const ONE_HOUR_MS = 60 * 60 * 1000;
 
@@ -77,31 +76,32 @@ const getDailyBudgetDayByBucket = (
   return null;
 };
 
+// Chart "Background usage" = `plannedUncontrolledKWh` — the same quantity the
+// planner subtracts in `policyHorizon` when sizing each bucket's capacity.
+// Per-bucket "other controlled" is unknowable without per-device hourly
+// forecasts, and PELS does not model shed-and-admit reshuffling between
+// controlled devices at the daily-budget layer.
+//
+// Legacy daily-budget snapshots that predate the controlled/uncontrolled
+// split only have `plannedKWh` (which mixes both). We fall back to that so
+// the chart still renders something rather than collapsing the bar to zero;
+// the series may slightly over-state background load on such legacy
+// snapshots until they roll over.
 const resolvePlannedOtherKWh = (
   dailyBudget: DailyBudgetUiPayload | null,
   startMs: number,
-  device: TargetDeviceSnapshot,
 ): number => {
   const match = getDailyBudgetDayByBucket(dailyBudget, startMs);
   if (!match) return 0;
   const uncontrolled = match.day.buckets.plannedUncontrolledKWh?.[match.index];
-  const controlled = match.day.buckets.plannedControlledKWh?.[match.index];
+  if (isFiniteNumber(uncontrolled)) return Math.max(0, uncontrolled);
   const fallback = match.day.buckets.plannedKWh[match.index];
-  if (device.priority === 1 && isFiniteNumber(uncontrolled)) {
-    return Math.max(0, uncontrolled);
-  }
-  const planned = (
-    (isFiniteNumber(uncontrolled) ? uncontrolled : 0)
-    + (isFiniteNumber(controlled) ? controlled : 0)
-  );
-  if (planned > 0) return planned;
   return isFiniteNumber(fallback) ? fallback : 0;
 };
 
 export const collectHorizonHours = (params: {
   bootstrap: SettingsUiBootstrap;
   deadlineAtMs: number;
-  device: TargetDeviceSnapshot;
   // Hours older than this point are dropped so the chart does not render
   // unrelated history. The runtime planner is the source of truth for the
   // active plan; for a known active plan, callers pass the plan's `startedAtMs`
@@ -119,7 +119,7 @@ export const collectHorizonHours = (params: {
       price: price.total,
       isCheap: price.isCheap,
       isExpensive: price.isExpensive,
-      plannedOtherKWh: resolvePlannedOtherKWh(params.bootstrap.dailyBudget, startsAtMs, params.device),
+      plannedOtherKWh: resolvePlannedOtherKWh(params.bootstrap.dailyBudget, startsAtMs),
     }))
     .filter((hour) => hour.endMs > params.windowStartMs && hour.startsAtMs < params.deadlineAtMs)
     .sort((left, right) => left.startsAtMs - right.startsAtMs)

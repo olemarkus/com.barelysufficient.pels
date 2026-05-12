@@ -20,10 +20,6 @@ import type {
 
 const DEFAULT_EPSILON_KWH = 0.001;
 type NonEmptyObjectiveSteps = [DeferredObjectiveStep, ...DeferredObjectiveStep[]];
-type AllocationCandidate = {
-  allocation: BucketAllocationResult;
-  step: DeferredObjectiveStep;
-};
 
 export const planDeferredObjectiveHorizon = (
   input: DeferredObjectiveHorizonInput,
@@ -102,106 +98,22 @@ export const planDeferredObjectiveHorizon = (
   });
 };
 
+// We plan against the lowest non-zero step only. That is the commitment we can
+// guarantee for the full hour — higher steps depend on transient headroom and
+// could be denied mid-bucket. `normalizeObjectiveSteps` sorts the input
+// ascending by `usefulPowerKw`, and `getActiveObjectiveSteps` then filters out
+// zero-power entries, so `activeSteps[0]` is the smallest active step.
 const resolveAllocation = (params: {
   activeSteps: NonEmptyObjectiveSteps;
   buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
   energyNeededKWh: number;
   epsilonKWh: number;
-}): BucketAllocationResult => {
-  const {
-    activeSteps,
-    buckets,
-    energyNeededKWh,
-    epsilonKWh,
-  } = params;
-  let best = buildAllocationCandidate({ buckets, step: activeSteps[0], energyNeededKWh, epsilonKWh });
-
-  for (let index = 1; index < activeSteps.length; index += 1) {
-    const candidate = buildAllocationCandidate({ buckets, step: activeSteps[index], energyNeededKWh, epsilonKWh });
-    if (compareAllocationCandidates(candidate, best, epsilonKWh) < 0) {
-      best = candidate;
-    }
-  }
-
-  return best.allocation;
-};
-
-const buildAllocationCandidate = (params: {
-  buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
-  step: DeferredObjectiveStep;
-  energyNeededKWh: number;
-  epsilonKWh: number;
-}): AllocationCandidate => ({
-  step: params.step,
-  allocation: allocateEnergyToBuckets({
-    buckets: params.buckets,
-    step: params.step,
-    energyNeededKWh: params.energyNeededKWh,
-    epsilonKWh: params.epsilonKWh,
-  }),
+}): BucketAllocationResult => allocateEnergyToBuckets({
+  buckets: params.buckets,
+  step: params.activeSteps[0],
+  energyNeededKWh: params.energyNeededKWh,
+  epsilonKWh: params.epsilonKWh,
 });
-
-const compareAllocationCandidates = (
-  left: AllocationCandidate,
-  right: AllocationCandidate,
-  epsilonKWh: number,
-): number => (
-  compareFeasibility(left.allocation, right.allocation, epsilonKWh)
-  || compareUnplannedEnergy(left.allocation, right.allocation, epsilonKWh)
-  || compareAllocationRisk(left.allocation, right.allocation)
-  || compareCurrentPlannedEnergy(left.allocation, right.allocation, epsilonKWh)
-  || left.step.usefulPowerKw - right.step.usefulPowerKw
-);
-
-const compareFeasibility = (
-  left: BucketAllocationResult,
-  right: BucketAllocationResult,
-  epsilonKWh: number,
-): number => {
-  const leftFeasible = left.unplannedUsefulEnergyKWh <= epsilonKWh;
-  const rightFeasible = right.unplannedUsefulEnergyKWh <= epsilonKWh;
-  if (leftFeasible === rightFeasible) return 0;
-  return leftFeasible ? -1 : 1;
-};
-
-const compareUnplannedEnergy = (
-  left: BucketAllocationResult,
-  right: BucketAllocationResult,
-  epsilonKWh: number,
-): number => {
-  const delta = left.unplannedUsefulEnergyKWh - right.unplannedUsefulEnergyKWh;
-  return Math.abs(delta) <= epsilonKWh ? 0 : delta;
-};
-
-const compareAllocationRisk = (
-  left: BucketAllocationResult,
-  right: BucketAllocationResult,
-): number => (
-  compareBooleanRisk(left.usesDeadlineReserve, right.usesDeadlineReserve)
-  || compareBooleanRisk(left.usesPolicyAvoid, right.usesPolicyAvoid)
-);
-
-const compareBooleanRisk = (left: boolean, right: boolean): number => {
-  if (left === right) return 0;
-  return left ? 1 : -1;
-};
-
-const compareCurrentPlannedEnergy = (
-  left: BucketAllocationResult,
-  right: BucketAllocationResult,
-  epsilonKWh: number,
-): number => {
-  const delta = sumCurrentPlannedEnergyKWh(left) - sumCurrentPlannedEnergyKWh(right);
-  return Math.abs(delta) <= epsilonKWh ? 0 : delta;
-};
-
-const sumCurrentPlannedEnergyKWh = (allocation: BucketAllocationResult): number => {
-  let total = 0;
-  for (const bucket of allocation.plannedBuckets) {
-    if (bucket.current) total += bucket.plannedUsefulEnergyKWh;
-  }
-  return total;
-};
 
 const buildPlanFromAllocation = (params: {
   input: DeferredObjectiveHorizonInput;

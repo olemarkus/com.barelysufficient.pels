@@ -3775,6 +3775,33 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   padding-right: 48px;
 }
 
+.plan-inputs__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  margin: 0;
+}
+
+.plan-inputs__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+}
+
+.plan-inputs__row-label {
+  color: var(--pels-text-supporting-color);
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+
+.plan-inputs__row-value {
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Day view foundation */
 .day-view-header,
 .daily-budget-header {
