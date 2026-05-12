@@ -3708,6 +3708,47 @@ body[data-ui-variant="redesign"] #dry-run-banner .banner__icon {
   gap: var(--pels-card-gap);
 }
 
+.budget-confidence-card {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+.budget-confidence-card__value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--spacing-2);
+  justify-self: end;
+  padding: 2px var(--spacing-2);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--pels-surface-container-highest) 62%, transparent);
+  color: var(--pels-text-settings-trailing-color);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
+.budget-confidence-card__value small {
+  color: var(--pels-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-normal);
+}
+
+.budget-confidence-card__details {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.budget-confidence-card__details summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--accent);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.budget-confidence-card__explanation {
+  margin: 0;
+}
+
 .budget-chart-card .budget-card-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
