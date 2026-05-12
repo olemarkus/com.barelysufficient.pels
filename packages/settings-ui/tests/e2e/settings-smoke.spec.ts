@@ -142,7 +142,7 @@ test.describe('Settings UI (smoke)', () => {
     await expect(page.locator('#budget-redesign-adjust-view')).toBeVisible();
     await expect(page.locator('#budget-redesign-adjust-view')).toContainText('Daily energy');
     await expect(page.locator('#budget-redesign-adjust-view')).toContainText('Planning behavior');
-    await expect(page.locator('#budget-redesign-adjust-view')).toContainText('Limits context');
+    await expect(page.locator('#budget-redesign-adjust-view')).toContainText('Current limits');
 
     await expect(page.getByRole('button', { name: 'Preview changes' })).toHaveCount(0);
     const kwhField = page.locator('#budget-redesign-kwh');

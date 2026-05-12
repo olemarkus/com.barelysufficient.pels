@@ -315,6 +315,9 @@ body[data-ui-variant="redesign"] #dry-run-banner {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
+  background: var(--pels-surface-container-high);
+  border: 1px solid var(--pels-surface-outline);
+  color: var(--text);
 }
 
 body[data-ui-variant="redesign"] .dry-run-banner__action {
@@ -323,6 +326,9 @@ body[data-ui-variant="redesign"] .dry-run-banner__action {
   justify-self: start;
   flex: 0 0 auto;
   padding: var(--spacing-2) var(--spacing-3) !important;
+  background: var(--pels-surface-container-highest) !important;
+  border: 1px solid var(--pels-surface-outline) !important;
+  color: var(--text) !important;
 }
 
 body[data-ui-variant="redesign"] .legacy-ui-copy,
@@ -3086,6 +3092,11 @@ input[type="text"]:focus {
   flex-shrink: 0;
 }
 
+body[data-ui-variant="redesign"] #dry-run-banner .banner__icon {
+  color: var(--color-base-warning-default);
+  font-size: var(--font-size-md);
+}
+
 .banner__text {
   flex: 1;
 }
@@ -3689,6 +3700,16 @@ input[type="text"]:focus {
   min-width: 0;
 }
 
+#budget-redesign-adjust-view .budget-redesign-card {
+  background: var(--pels-surface-container);
+  border-color: var(--pels-surface-outline);
+  box-shadow: var(--shadow-sm);
+}
+
+#budget-redesign-adjust-view details.budget-redesign-card[open] {
+  background: var(--pels-surface-container-high);
+}
+
 .budget-card-header {
   display: flex;
   align-items: flex-start;
@@ -3763,6 +3784,13 @@ input[type="text"]:focus {
   padding-bottom: var(--spacing-8);
 }
 
+#budget-redesign-adjust-view .plan-card__title {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--pels-on-surface-variant, var(--color-semantic-text-secondary));
+  margin-bottom: var(--spacing-1);
+}
+
 .budget-redesign-actions {
   display: flex;
   flex-wrap: wrap;
@@ -3807,18 +3835,70 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   min-width: 0;
 }
 
-.budget-setting-row--editable md-filled-text-field,
-.budget-setting-row--editable md-filled-select {
-  min-width: 140px;
-  max-width: 160px;
+@media (max-width: 380px) {
+  #budget-redesign-adjust-view .budget-setting-row--editable {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--spacing-2);
+  }
+
+  #budget-redesign-adjust-view .budget-setting-row--editable > .budget-redesign-field,
+  #budget-redesign-adjust-view .budget-setting-row--editable > select.budget-redesign-field--select,
+  #budget-redesign-adjust-view .budget-setting-row--editable > md-switch {
+    justify-self: start;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  #budget-redesign-adjust-view .budget-redesign-field--kwh,
+  #budget-redesign-adjust-view .budget-redesign-field--select {
+    width: 100%;
+  }
 }
 
 .budget-redesign-field--kwh {
+  --kwh-suffix-padding: 44px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
   width: 140px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-4);
+}
+
+.budget-redesign-field--kwh input[type="number"] {
+  border: none !important;
+  background: transparent !important;
+  padding: var(--spacing-3) var(--kwh-suffix-padding) var(--spacing-3) var(--spacing-3) !important;
+  min-width: 0;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.budget-redesign-field--kwh input[type="number"]:focus {
+  outline: none;
+}
+
+.budget-redesign-field--kwh:focus-within {
+  outline: 2px solid var(--color-focus-ring);
+  border-color: transparent;
+}
+
+.budget-redesign-field__suffix {
+  position: absolute;
+  right: var(--spacing-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  pointer-events: none;
 }
 
 .budget-redesign-field--select {
   width: 160px;
+  padding-top: var(--spacing-3);
+  padding-bottom: var(--spacing-3);
 }
 
 .budget-redesign-comparison .budget-comparison__current {
@@ -3853,6 +3933,48 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   color: var(--color-semantic-text-secondary);
+}
+
+.budget-comparison__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-3);
+  align-items: center;
+  margin-top: var(--spacing-2);
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+}
+
+.budget-comparison__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+.budget-comparison__legend-swatch {
+  width: 12px;
+  height: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--pels-chart-plan);
+}
+
+.budget-comparison__legend-swatch--background {
+  background: var(--day-view-color-background-usage);
+}
+
+.budget-comparison__legend-swatch--managed {
+  background: var(--day-view-color-managed-usage);
+}
+
+.budget-redesign-comparison {
+  --pels-chart-price-line: var(--color-base-danger-default);
+  --pels-chart-price-fill: color-mix(in srgb, var(--color-base-danger-default) 14%, transparent);
+}
+
+.budget-comparison__legend-swatch--price {
+  height: 2px;
+  border-top: 2px solid var(--pels-chart-price-line);
+  background: transparent;
 }
 
 .budget-redesign-chart {
@@ -3971,6 +4093,44 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   justify-self: stretch;
   background: var(--pels-surface-container-high) !important;
   border-color: var(--pels-surface-outline) !important;
+}
+
+.budget-setting-row--link {
+  width: 100%;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.budget-setting-row--link:last-child {
+  border-bottom: 0;
+}
+
+.budget-setting-row--link:hover {
+  background: color-mix(in srgb, var(--pels-surface-container-highest) 40%, transparent);
+}
+
+.budget-setting-row--link:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.budget-setting-row__chevron {
+  background: transparent !important;
+  color: var(--muted) !important;
+  font-size: var(--font-size-lg) !important;
+  font-weight: var(--font-weight-bold) !important;
+  padding: 0 !important;
+}
+
+.budget-setting-row--link .budget-setting-row__value {
+  cursor: inherit;
 }
 
 .deadline-page-close {
@@ -4108,8 +4268,10 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   width: 100%;
   justify-content: stretch;
   padding: 3px;
-  border-color: var(--pels-segmented-container-border);
-  background: color-mix(in srgb, var(--pels-segmented-container-background) 72%, transparent);
+  border-color: var(--pels-surface-outline);
+  background: var(--pels-surface-container-low);
+  --pels-segmented-selected-background: var(--pels-surface-container-highest);
+  --pels-segmented-selected-outline: var(--pels-surface-outline);
 }
 
 .budget-redesign-surface .day-view-toggle__button {
@@ -4127,7 +4289,9 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 .budget-redesign-surface .day-view-toggle__button.is-active {
   background-color: var(--pels-segmented-selected-background) !important;
   color: var(--pels-segmented-selected-text) !important;
-  box-shadow: inset 0 0 0 1px var(--pels-segmented-selected-outline);
+  box-shadow:
+    inset 0 0 0 1px var(--pels-segmented-selected-outline),
+    inset 0 -2px 0 0 var(--accent);
 }
 
 .usage-history-actions {

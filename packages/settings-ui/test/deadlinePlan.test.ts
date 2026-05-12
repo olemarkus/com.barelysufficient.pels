@@ -34,6 +34,8 @@ const buildHeaterActivePlan = (params: {
   plannedHourOffsets: number[]; // hour offsets from `now` where the device charges
   plannedKWhPerHour: number;
   targetTemperatureC?: number;
+  energyNeededKWh?: number;
+  planStatus?: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied';
 }): DeferredObjectiveActivePlanV1 => {
   const revisedAtMs = params.now.getTime();
   const hours = params.plannedHourOffsets.map((offset) => ({
@@ -46,6 +48,9 @@ const buildHeaterActivePlan = (params: {
     computedFromPricesUpTo: params.deadline.getTime(),
     reason: 'flow_card' as const,
     hours,
+    energyNeededKWh: params.energyNeededKWh
+      ?? params.plannedHourOffsets.length * params.plannedKWhPerHour,
+    planStatus: params.planStatus ?? ('on_track' as const),
   };
   return {
     deviceId: 'heater',
@@ -712,6 +717,123 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.metaLine).toContain('Needs 4.5 kWh');
   });
 
+  it('renders a cannot-meet plan with a warning chip and shortfall sub-line', () => {
+    // The recorder writes a revision under planStatus=cannot_meet (best-effort
+    // allocation that still falls short of the target). The UI must render the
+    // timeline rather than the legacy "plan unavailable" error and surface
+    // both a warning chip and the shortfall to the user.
+    const now = new Date(2026, 0, 1, 4, 0, 0, 0);
+    const deadline = atLocalHour(now, 2);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 40, // far from target 65 with only 2 h horizon
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 2 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const bootstrap = buildBootstrap({
+      capacity_limit_kw: 8,
+      deferred_objectives: {
+        version: 1,
+        objectivesByDeviceId: {
+          heater: {
+            enabled: true,
+            kind: 'temperature',
+            enforcement: 'soft',
+            targetTemperatureC: 65,
+            deadlineAtMs: deadline.getTime(),
+          },
+        },
+      },
+    }, buildHeaterActivePlan({
+      now,
+      deadline,
+      plannedHourOffsets: [0, 1],
+      plannedKWhPerHour: 2,
+      targetTemperatureC: 65,
+      energyNeededKWh: 16,
+      planStatus: 'cannot_meet',
+    }));
+
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap,
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+
+    expect(payload.hero.chips.some((chip) => chip.text === 'Can’t fully meet' && chip.tone === 'warn')).toBe(true);
+    expect(payload.hero.metaLine).toMatch(/Best effort/);
+    expect(payload.hero.metaLine).toMatch(/short ~/i);
+  });
+
+  it('routes a passed deadline to the completed state on the History tab', () => {
+    const now = new Date(2026, 0, 1, 7, 0, 0, 0);
+    const deadline = atLocalHour(now, -1); // already passed
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 21,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: { prices: [] },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const renderInput = testExports.resolveRenderInput({
+      bootstrap: buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: {
+          version: 1,
+          objectivesByDeviceId: {
+            heater: {
+              enabled: true,
+              kind: 'temperature',
+              enforcement: 'soft',
+              targetTemperatureC: 22,
+              deadlineAtMs: deadline.getTime(),
+            },
+          },
+        },
+      }, null),
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    });
+
+    expect(renderInput?.status).toBe('completed');
+    if (renderInput?.status !== 'completed') return;
+    expect(renderInput.kind).toBe('temperature');
+  });
+
   it('returns no_current_reading when the device has no temperature and no profile sample', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
@@ -767,7 +889,10 @@ describe('deadline plan page payload', () => {
     expect(result.reason).toBe('no_current_reading');
   });
 
-  it('returns no_useful_power when the device has no planning power', () => {
+  it('renders without a maxPowerLabel when the device has no planning power', () => {
+    // Devices without a configured planning power no longer block the page;
+    // the timeline still renders and `planInputs.maxPowerLabel` is simply
+    // null so the row is omitted.
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
     const devices: TargetDeviceSnapshot[] = [{
@@ -778,7 +903,12 @@ describe('deadline plan page payload', () => {
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
     const prices: SettingsUiPricesPayload = {
-      combinedPrices: { prices: [] },
+      combinedPrices: {
+        prices: Array.from({ length: 6 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
       electricityPrices: null,
       priceArea: null,
       gridTariffData: null,
@@ -809,19 +939,17 @@ describe('deadline plan page payload', () => {
       plannedKWhPerHour: 2,
     }));
 
-    const result = testExports.buildObjectivePayload({
+    const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap,
       deviceId: 'heater',
       devices,
       prices,
       nowMs: now.getTime(),
-    });
-    expect(result?.kind).toBe('unavailable');
-    if (result?.kind !== 'unavailable') return;
-    expect(result.reason).toBe('no_useful_power');
+    }));
+    expect(payload.planInputs.maxPowerLabel).toBeNull();
   });
 
-  it('returns no_horizon_hours when prices do not cover the deadline window', () => {
+  it('falls back to the pending hero when prices do not cover the deadline window', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
     const devices: TargetDeviceSnapshot[] = [{
@@ -864,16 +992,16 @@ describe('deadline plan page payload', () => {
       plannedKWhPerHour: 2,
     }));
 
-    const result = testExports.buildObjectivePayload({
+    const renderInput = testExports.resolveRenderInput({
       bootstrap,
       deviceId: 'heater',
       devices,
       prices,
       nowMs: now.getTime(),
     });
-    expect(result?.kind).toBe('unavailable');
-    if (result?.kind !== 'unavailable') return;
-    expect(result.reason).toBe('no_horizon_hours');
+    expect(renderInput?.status).toBe('pending');
+    if (renderInput?.status !== 'pending') return;
+    expect(renderInput.pending.hero.headline).toBe('Waiting for tomorrow’s prices');
   });
 
   it('renders the price-feature-disabled pending hero when the active plan carries that reason', () => {
@@ -1113,7 +1241,7 @@ describe('deadline plan page payload', () => {
     expect(renderInput.pending.hero.headline).toBe('Waiting for a reading from the EV');
   });
 
-  it('renders the EV-specific copy for no_horizon_hours', () => {
+  it('falls back to the pending hero for EVs when prices do not cover the deadline window', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
     const devices: TargetDeviceSnapshot[] = [{
@@ -1151,6 +1279,8 @@ describe('deadline plan page payload', () => {
         computedFromPricesUpTo: deadline.getTime(),
         reason: 'flow_card',
         hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 5 }],
+        energyNeededKWh: 5,
+        planStatus: 'on_track',
       },
       latest: {
         revision: 1,
@@ -1158,6 +1288,8 @@ describe('deadline plan page payload', () => {
         computedFromPricesUpTo: deadline.getTime(),
         reason: 'flow_card',
         hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 5 }],
+        energyNeededKWh: 5,
+        planStatus: 'on_track',
       },
     };
     const renderInput = testExports.resolveRenderInput({
@@ -1181,10 +1313,9 @@ describe('deadline plan page payload', () => {
       prices,
       nowMs: now.getTime(),
     });
-    expect(renderInput?.status).toBe('unavailable');
-    if (renderInput?.status !== 'unavailable') return;
-    expect(renderInput.kind).toBe('ev_soc');
-    expect(renderInput.reason).toBe('no_horizon_hours');
+    expect(renderInput?.status).toBe('pending');
+    if (renderInput?.status !== 'pending') return;
+    expect(renderInput.pending.hero.headline).toBe('Waiting for tomorrow’s prices');
   });
 
   it('totals every allocated hour into "Needs X kWh", including hours that have already elapsed', () => {
@@ -1228,6 +1359,8 @@ describe('deadline plan page payload', () => {
         { startsAtMs: planStart.getTime() + 60 * 60 * 1000, plannedKWh: 1.5 },
         { startsAtMs: atLocalHour(now, 1).getTime(), plannedKWh: 1.5 },
       ],
+      energyNeededKWh: 4.5,
+      planStatus: 'on_track' as const,
     };
     const activePlan: DeferredObjectiveActivePlanV1 = {
       deviceId: 'heater',

@@ -35,6 +35,8 @@ const buildPlan = (overrides: Partial<DeferredObjectiveActivePlanV1>): DeferredO
       { startsAtMs: T0 + 3 * HOUR_MS, plannedKWh: 2 },
       { startsAtMs: T0 + 4 * HOUR_MS, plannedKWh: 2 },
     ],
+    energyNeededKWh: 4,
+    planStatus: 'on_track',
   },
   ...overrides,
 });
@@ -188,6 +190,8 @@ describe('resolveDeadlinesListCards', () => {
             computedFromPricesUpTo: T0 + 24 * HOUR_MS,
             reason: 'flow_card',
             hours: [],
+            energyNeededKWh: 0,
+            planStatus: 'on_track',
           },
         }),
       ]),

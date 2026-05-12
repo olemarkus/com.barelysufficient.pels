@@ -167,13 +167,20 @@ const buildRevision = (params: {
   revision: number;
   reason: DeferredObjectiveActivePlanRevisionReason;
   nowMs: number;
-}): DeferredObjectiveActivePlanRevisionV1 => ({
-  revision: params.revision,
-  revisedAtMs: params.nowMs,
-  computedFromPricesUpTo: resolveComputedFromPricesUpTo(params.diag),
-  reason: params.reason,
-  hours: params.hours,
-});
+}): DeferredObjectiveActivePlanRevisionV1 => {
+  // Callers only invoke buildRevision after `buildHoursFromHorizonPlan` returned
+  // non-null, which guarantees `horizonPlan` is present.
+  const horizonPlan = params.diag.horizonPlan as NonNullable<typeof params.diag.horizonPlan>;
+  return {
+    revision: params.revision,
+    revisedAtMs: params.nowMs,
+    computedFromPricesUpTo: resolveComputedFromPricesUpTo(params.diag),
+    reason: params.reason,
+    hours: params.hours,
+    energyNeededKWh: horizonPlan.energyNeededKWh,
+    planStatus: horizonPlan.status,
+  };
+};
 
 export class DeferredObjectiveActivePlanRecorder {
   private plans: Record<string, DeferredObjectiveActivePlanV1>;

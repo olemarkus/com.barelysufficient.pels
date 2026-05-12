@@ -3,9 +3,6 @@ import { useRef, useLayoutEffect } from 'preact/hooks';
 import {
   MdElevation,
   MdFilledButton,
-  MdFilledSelect,
-  MdFilledTextField,
-  MdSelectOption,
   MdSwitch,
   MdTextButton,
 } from './materialWebJSX.tsx';
@@ -59,6 +56,7 @@ export type BudgetComparisonChart = {
   payload: DailyBudgetDayPayload;
   view: BudgetRedesignDayView;
   costDisplay: CostDisplay;
+  priceReliable: boolean;
   dataMaxOverride?: number;
 };
 
@@ -68,6 +66,9 @@ export type BudgetAdjustData = {
   candidate: BudgetAdjustDraft | null;
   activeChart: BudgetComparisonChart | null;
   candidateChart: BudgetComparisonChart | null;
+  comparisonDayView: BudgetRedesignDayView;
+  comparisonDayLabel: string;
+  comparisonShowPrice: boolean;
   status: BudgetAdjustStatus;
   busy: boolean;
   hardCapKw: number;
@@ -91,7 +92,7 @@ export type BudgetOverviewProps = {
 
 // ─── Toggle Group ─────────────────────────────────────────────────────────────
 
-type ToggleOpt<T extends string> = { value: T; label: string };
+type ToggleOpt<T extends string> = { value: T; label: string; disabled?: boolean; title?: string };
 
 const ToggleGroup = <T extends string>({
   options,
@@ -111,6 +112,8 @@ const ToggleGroup = <T extends string>({
         type="button"
         class={`day-view-toggle__button${value === opt.value ? ' is-active' : ''}`}
         aria-pressed={value === opt.value}
+        disabled={opt.disabled}
+        title={opt.title}
         onClick={() => onChange(opt.value)}
       >
         {opt.label}
@@ -332,9 +335,9 @@ const ComparisonChart = ({
     renderBudgetRedesignChart({
       container,
       payload: chart.payload,
-      mode: 'progress',
+      mode: 'hourlyPlan',
       view: chart.view,
-      priceReliable: false,
+      priceReliable: chart.priceReliable,
       costDisplay: chart.costDisplay,
       dataMaxOverride: chart.dataMaxOverride,
     });
@@ -363,7 +366,17 @@ const BudgetAdjustView = ({
   onApply: () => void;
   onDiscard: () => void;
 }) => {
-  const { draft, active, candidate, activeChart, candidateChart, status, busy } = adjust;
+  const {
+    draft,
+    active,
+    candidate,
+    activeChart,
+    candidateChart,
+    comparisonDayLabel,
+    comparisonShowPrice,
+    status,
+    busy,
+  } = adjust;
   const reactionText = Number.isFinite(adjust.hardCapKw) && Number.isFinite(adjust.safetyMarginKw)
     ? `PELS reacts at ${Math.max(0, adjust.hardCapKw - adjust.safetyMarginKw).toFixed(1)} kW.`
     : 'PELS reacts before reaching the hard cap.';
@@ -380,19 +393,19 @@ const BudgetAdjustView = ({
     onAdjustFieldChange({ priceShaping: Boolean(target.selected) });
   };
   const onKWhChange = (event: Event) => {
-    const target = event.currentTarget as HTMLElement & { value?: string };
+    const target = event.currentTarget as HTMLInputElement;
     const parsed = Number.parseFloat(target.value ?? '');
     if (!Number.isFinite(parsed)) return;
     onAdjustFieldChange({ dailyBudgetKWh: parsed });
   };
   const onReserveChange = (event: Event) => {
-    const target = event.currentTarget as HTMLElement & { value?: string };
+    const target = event.currentTarget as HTMLSelectElement;
     const parsed = Number.parseFloat(target.value ?? '');
     if (!Number.isFinite(parsed)) return;
     onAdjustFieldChange({ controlledWeight: parsed });
   };
   const onFlexChange = (event: Event) => {
-    const target = event.currentTarget as HTMLElement & { value?: string };
+    const target = event.currentTarget as HTMLSelectElement;
     const parsed = Number.parseFloat(target.value ?? '');
     if (!Number.isFinite(parsed)) return;
     onAdjustFieldChange({ priceFlexShare: parsed });
@@ -424,20 +437,21 @@ const BudgetAdjustView = ({
                 <span class="field__hint-range">{` Range ${MIN_DAILY_BUDGET_KWH}–${MAX_DAILY_BUDGET_KWH} kWh.`}</span>
               </FieldHint>
             </span>
-            <MdFilledTextField
-              id="budget-redesign-kwh"
-              class="budget-redesign-field budget-redesign-field--kwh"
-              aria-label="Daily budget in kWh"
-              type="number"
-              suffixText="kWh"
-              min={MIN_DAILY_BUDGET_KWH}
-              max={MAX_DAILY_BUDGET_KWH}
-              step="0.1"
-              inputMode="decimal"
-              value={String(draft.dailyBudgetKWh)}
-              {...(draft.enabled ? {} : { disabled: true })}
-              onChange={onKWhChange}
-            />
+            <div class="budget-redesign-field budget-redesign-field--kwh">
+              <input
+                id="budget-redesign-kwh"
+                aria-label="Daily budget in kWh"
+                type="number"
+                min={MIN_DAILY_BUDGET_KWH}
+                max={MAX_DAILY_BUDGET_KWH}
+                step="0.1"
+                inputMode="decimal"
+                value={String(draft.dailyBudgetKWh)}
+                disabled={!draft.enabled}
+                onChange={onKWhChange}
+              />
+              <span class="budget-redesign-field__suffix" aria-hidden="true">kWh</span>
+            </div>
           </div>
           <div class="budget-setting-row budget-setting-row--editable">
             <span>
@@ -468,43 +482,33 @@ const BudgetAdjustView = ({
               <span class="budget-setting-row__label">Background usage reserve</span>
               <FieldHint>Daily budget held back for household usage PELS cannot move.</FieldHint>
             </span>
-            <MdFilledSelect
+            <select
               id="budget-redesign-controlled-weight"
               class="budget-redesign-field budget-redesign-field--select"
               aria-label="Background usage reserve"
               value={String(draft.controlledWeight)}
               onChange={onReserveChange}
             >
-              <MdSelectOption value={String(UNMANAGED_RESERVE_BALANCED_MODE)}>
-                <div slot="headline">Balanced</div>
-              </MdSelectOption>
-              <MdSelectOption value={String(UNMANAGED_RESERVE_CONSERVATIVE_MODE)}>
-                <div slot="headline">Conservative</div>
-              </MdSelectOption>
-            </MdFilledSelect>
+              <option value={String(UNMANAGED_RESERVE_BALANCED_MODE)}>Balanced</option>
+              <option value={String(UNMANAGED_RESERVE_CONSERVATIVE_MODE)}>Conservative</option>
+            </select>
           </div>
           <div class="budget-setting-row budget-setting-row--editable">
             <span>
               <span class="budget-setting-row__label">Managed device flexibility</span>
               <FieldHint>How freely PELS may shift managed-device usage toward cheaper hours.</FieldHint>
             </span>
-            <MdFilledSelect
+            <select
               id="budget-redesign-price-flex-share"
               class="budget-redesign-field budget-redesign-field--select"
               aria-label="Managed device flexibility"
               value={String(draft.priceFlexShare)}
               onChange={onFlexChange}
             >
-              <MdSelectOption value={String(PRICE_FLEX_LOW)}>
-                <div slot="headline">Low</div>
-              </MdSelectOption>
-              <MdSelectOption value={String(PRICE_FLEX_MEDIUM)}>
-                <div slot="headline">Medium</div>
-              </MdSelectOption>
-              <MdSelectOption value={String(PRICE_FLEX_HIGH)}>
-                <div slot="headline">High</div>
-              </MdSelectOption>
-            </MdFilledSelect>
+              <option value={String(PRICE_FLEX_LOW)}>Low</option>
+              <option value={String(PRICE_FLEX_MEDIUM)}>Medium</option>
+              <option value={String(PRICE_FLEX_HIGH)}>High</option>
+            </select>
           </div>
         </div>
       </details>
@@ -518,6 +522,7 @@ const BudgetAdjustView = ({
           <div class="budget-card-header">
             <div>
               <h3 class="plan-card__title">Compare with current</h3>
+              <p class="pels-card-supporting">{comparisonDayLabel}</p>
               <p class="pels-card-supporting">
                 {comparisonRows.length === 0
                   ? 'No setting differences — the candidate plan reflects fresh data only.'
@@ -542,16 +547,32 @@ const BudgetAdjustView = ({
               ))}
             </div>
           )}
+          <div class="budget-comparison__legend">
+            <span class="budget-comparison__legend-item">
+              <span class="budget-comparison__legend-swatch budget-comparison__legend-swatch--background" />
+              Background
+            </span>
+            <span class="budget-comparison__legend-item">
+              <span class="budget-comparison__legend-swatch budget-comparison__legend-swatch--managed" />
+              Managed
+            </span>
+            {comparisonShowPrice && (
+              <span class="budget-comparison__legend-item">
+                <span class="budget-comparison__legend-swatch budget-comparison__legend-swatch--price" />
+                Price
+              </span>
+            )}
+          </div>
           {activeChart && (
             <ComparisonChart
-              label="Current plan"
+              label="Current"
               chart={activeChart}
               testId="budget-comparison-chart-current"
             />
           )}
           {candidateChart && (
             <ComparisonChart
-              label="Preview plan"
+              label="Preview"
               chart={candidateChart}
               testId="budget-comparison-chart-preview"
             />
@@ -595,13 +616,10 @@ const BudgetAdjustView = ({
         <MdElevation aria-hidden="true" />
         <div class="budget-card-header">
           <div>
-            <h3 class="plan-card__title">Limits context</h3>
+            <h3 class="plan-card__title">Current limits</h3>
             <p class="pels-card-supporting">{reactionText}</p>
           </div>
         </div>
-        <button type="button" class="btn secondary budget-context-action" data-settings-target="limits">
-          Open Limits &amp; safety
-        </button>
         <div class="budget-settings-list budget-settings-list--compact">
           <div class="budget-setting-row">
             <span class="budget-setting-row__label">Hard cap</span>
@@ -611,6 +629,14 @@ const BudgetAdjustView = ({
             <span class="budget-setting-row__label">Safety margin</span>
             <span class="budget-setting-row__value">{formatKw(adjust.safetyMarginKw)}</span>
           </div>
+          <button
+            type="button"
+            class="budget-setting-row budget-setting-row--link"
+            data-settings-target="limits"
+          >
+            <span class="budget-setting-row__label">Open Limits &amp; safety</span>
+            <span class="budget-setting-row__value budget-setting-row__chevron" aria-hidden="true">›</span>
+          </button>
         </div>
       </section>
     </div>
@@ -632,11 +658,18 @@ const BudgetOverviewRoot = ({
   onPreview,
   onApply,
   onDiscard,
-}: BudgetOverviewProps) => (
+}: BudgetOverviewProps) => {
+  const budgetEnabled = adjust.active.enabled;
+  return (
   <div>
     <ToggleGroup
       options={[
-        { value: 'plan' as const, label: 'Plan' },
+        {
+          value: 'plan' as const,
+          label: 'Plan',
+          disabled: !budgetEnabled,
+          title: budgetEnabled ? undefined : 'Enable daily budget to see the plan.',
+        },
         { value: 'adjust' as const, label: 'Adjust' },
       ]}
       value={localView}
@@ -669,7 +702,8 @@ const BudgetOverviewRoot = ({
       />
     )}
   </div>
-);
+  );
+};
 
 // ─── Mount ────────────────────────────────────────────────────────────────────
 
