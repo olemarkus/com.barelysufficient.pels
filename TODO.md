@@ -188,7 +188,7 @@ has computed an allocation. The replan policy is documented in
       runtime semantics for EV and heater objectives: already-met targets are live `satisfied`
       states until the deadline, and a later below-target reading returns to tracking. Keep
       terminology aligned with `notes/ui-terminology.md`.
-- [ ] Render *original plan vs final/current plan* on the chart. Original allocation as
+- [x] Render *original plan vs final/current plan* on the chart. Original allocation as
       outlined `Heating` / `Charging` bars; current revision as filled. Distinct visual on hours
       that changed between revisions. Add a "Now" divider so past and future are visually
       distinguishable.

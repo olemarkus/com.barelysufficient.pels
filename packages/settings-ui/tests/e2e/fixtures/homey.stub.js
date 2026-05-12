@@ -814,6 +814,9 @@
     for (let i = 0; i < plannedHourCount; i += 1) {
       hours.push({ startsAtMs: startsAtMs + i * hourMs, plannedKWh: 2 });
     }
+    const latestHours = plannedHourCount < totalHoursAvailable
+      ? hours.slice(1).concat([{ startsAtMs: startsAtMs + plannedHourCount * hourMs, plannedKWh: 2 }])
+      : hours;
     const revision = {
       revision: 1,
       revisedAtMs: nowMs,
@@ -822,6 +825,13 @@
       hours,
       energyNeededKWh: plannedHourCount * 2,
       planStatus: 'on_track',
+    };
+    const latestRevision = latestHours === hours ? revision : {
+      ...revision,
+      revision: 2,
+      revisedAtMs: nowMs + 60 * 1000,
+      reason: 'prices_revised',
+      hours: latestHours,
     };
     return {
       version: 1,
@@ -837,7 +847,7 @@
           pending: false,
           objectiveSignature: 'stub',
           original: revision,
-          latest: revision,
+          latest: latestRevision,
         },
       },
     };

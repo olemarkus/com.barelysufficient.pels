@@ -32,6 +32,7 @@ import {
 } from './views/DeadlinePlan.tsx';
 import type {
   DeferredObjectiveActivePlanV1,
+  DeferredObjectiveActivePlanRevisionV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 
 type ObjectivePlanInput = {
@@ -184,7 +185,8 @@ const formatMaxPowerLabel = (lowestStepKw: number | null): string | null => (
 const buildTimeline = (params: {
   device: TargetDeviceSnapshot;
   hours: HorizonHour[];
-  chargeByStartMs: Map<number, number>;
+  originalChargeByStartMs: Map<number, number>;
+  currentChargeByStartMs: Map<number, number>;
   progressStart: number;
   progressTarget: number;
   progressPerKWh: number;
@@ -195,9 +197,9 @@ const buildTimeline = (params: {
   const progressFloor = Math.min(
     params.progressStart,
     ...params.hours.map((hour) => {
-      const chargerKwh = params.chargeByStartMs.get(hour.startsAtMs) ?? 0;
-      return chargerKwh > 0
-        ? Math.min(params.progressTarget, params.progressStart + chargerKwh * params.progressPerKWh)
+      const currentKwh = params.currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
+      return currentKwh > 0
+        ? Math.min(params.progressTarget, params.progressStart + currentKwh * params.progressPerKWh)
         : params.progressStart;
     }),
   );
@@ -214,19 +216,22 @@ const buildTimeline = (params: {
     progressCeilingLabel,
     deadlineLabel: formatDeadlineShort(params.deadlineAtMs),
     hours: params.hours.map((hour) => {
-      const chargerKwh = params.chargeByStartMs.get(hour.startsAtMs) ?? 0;
-      if (chargerKwh > 0) {
-        projectedProgress = Math.min(params.progressTarget, projectedProgress + chargerKwh * params.progressPerKWh);
+      const originalKwh = params.originalChargeByStartMs.get(hour.startsAtMs) ?? 0;
+      const currentKwh = params.currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
+      if (currentKwh > 0) {
+        projectedProgress = Math.min(params.progressTarget, projectedProgress + currentKwh * params.progressPerKWh);
       }
       return {
         time: formatHourLabel(hour.startsAtMs),
         price: formatPrice(hour.price),
         priceValue: hour.price,
         tone: resolvePriceTone(hour),
-        planned: chargerKwh > 0,
+        planned: currentKwh > 0,
+        changed: Math.abs(originalKwh - currentKwh) > 0.001,
         usage: {
           backgroundKwh: Math.max(0, hour.plannedOtherKWh),
-          deviceKwh: chargerKwh,
+          originalDeviceKwh: originalKwh,
+          deviceKwh: currentKwh,
         },
         progress: projectedProgress,
       };
@@ -312,12 +317,12 @@ const buildPendingPayload = (ctx: ResolvedObjectiveContext): DeadlinePlanPending
   };
 };
 
-const buildChargeByStartMsFromActivePlan = (
-  activePlan: DeferredObjectiveActivePlanV1,
+const buildChargeByStartMs = (
+  revision: DeferredObjectiveActivePlanRevisionV1 | null,
 ): Map<number, number> => {
   const out = new Map<number, number>();
-  if (!activePlan.latest) return out;
-  for (const hour of activePlan.latest.hours) {
+  if (!revision) return out;
+  for (const hour of revision.hours) {
     out.set(hour.startsAtMs, hour.plannedKWh);
   }
   return out;
@@ -387,12 +392,13 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   const latest = activePlan!.latest!;
   const labels = deadlineLabels(objective.kind);
   const energyNeededKWh = energy?.energyNeededKWh ?? 0;
-  const chargeByStartMs = buildChargeByStartMsFromActivePlan(activePlan!);
+  const originalChargeByStartMs = buildChargeByStartMs(activePlan!.original ?? latest);
+  const currentChargeByStartMs = buildChargeByStartMs(latest);
   const progressPerKWh = energyNeededKWh > 0 ? progress.remainingUnits / energyNeededKWh : 0;
-  const allocatedKWh = [...chargeByStartMs.values()].reduce((sum, kwh) => sum + Math.max(0, kwh), 0);
+  const allocatedKWh = [...currentChargeByStartMs.values()].reduce((sum, kwh) => sum + Math.max(0, kwh), 0);
   const cannotMeet = latest.planStatus === 'cannot_meet' || latest.planStatus === 'at_risk';
   const { cannotMeetUnits } = resolveShortfall({ progress, allocatedKWh, progressPerKWh });
-  const firstChargingHour = hours.find((hour) => chargeByStartMs.has(hour.startsAtMs));
+  const firstChargingHour = hours.find((hour) => currentChargeByStartMs.has(hour.startsAtMs));
   const hoursLeft = Math.max(0, Math.ceil((deadlineAtMs - nowMs) / ONE_HOUR_MS));
 
   return {
@@ -415,7 +421,8 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
     timeline: buildTimeline({
       device,
       hours,
-      chargeByStartMs,
+      originalChargeByStartMs,
+      currentChargeByStartMs,
       progressStart: progress.currentValue,
       progressTarget: progress.targetValue,
       progressPerKWh,

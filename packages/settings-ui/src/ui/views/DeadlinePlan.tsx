@@ -25,8 +25,10 @@ type DeadlinePlanHour = {
   priceValue: number;
   tone: DeadlinePlanHourTone;
   planned: boolean;
+  changed: boolean;
   usage: {
     backgroundKwh: number;
+    originalDeviceKwh: number;
     deviceKwh: number;
   };
   progress: number;
@@ -186,10 +188,14 @@ const buildTooltip = (payload: DeadlinePlanPayload, rawParams: unknown): string 
   if (!hour) return '';
   const labels = payload.labels;
   const planLabel = hour.planned ? labels.planTooltipActive : labels.planTooltipIdle;
+  const originalLine = hour.changed
+    ? `${labels.originalDeviceSeriesName} ${hour.usage.originalDeviceKwh.toFixed(1)} kWh`
+    : null;
   return [
     `<strong>${encodeHtml(hour.time)}</strong>`,
     `Price ${encodeHtml(hour.price)}`,
     `${encodeHtml(labels.backgroundSeriesName)} ${hour.usage.backgroundKwh.toFixed(1)} kWh`,
+    ...(originalLine ? [encodeHtml(originalLine)] : []),
     `${encodeHtml(labels.deviceSeriesName)} ${hour.usage.deviceKwh.toFixed(1)} kWh`,
     `Plan ${encodeHtml(planLabel)}`,
     `Progress ${formatProgressValue(hour.progress, labels.targetUnit)}`,
@@ -217,8 +223,9 @@ const buildChartOption = (
   const priceRange = priceMax - priceMin;
   const priceAxisMin = priceRange > 0.01 ? priceMin : 0;
   const stackedMax = Math.max(0.5, ...payload.timeline.hours.map((hour) => (
-    hour.usage.backgroundKwh + hour.usage.deviceKwh
+    hour.usage.backgroundKwh + Math.max(hour.usage.originalDeviceKwh, hour.usage.deviceKwh)
   )));
+  const originalSeriesName = payload.labels.originalDeviceSeriesName;
 
   const axisBase = {
     type: 'category' as const,
@@ -269,7 +276,7 @@ const buildChartOption = (
     legend: {
       top: 0,
       left: 0,
-      data: [payload.labels.backgroundSeriesName, payload.labels.deviceSeriesName, 'Target progress'],
+      data: [payload.labels.backgroundSeriesName, payload.labels.deviceSeriesName, originalSeriesName, 'Target progress'],
       itemWidth: 12,
       itemHeight: 8,
       icon: 'roundRect',
@@ -396,6 +403,42 @@ const buildChartOption = (
           itemStyle: {
             color: palette.device,
             opacity: hour.planned ? 1 : 0.45,
+            borderColor: hour.changed ? palette.tooltipText : palette.device,
+            borderWidth: hour.changed ? 1 : 0,
+            borderRadius: [3, 3, 0, 0],
+          },
+        })),
+      },
+      {
+        name: payload.labels.backgroundSeriesName,
+        type: 'bar',
+        stack: 'original-load',
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        barMaxWidth: 18,
+        barGap: '-100%',
+        silent: true,
+        tooltip: { show: false },
+        itemStyle: { color: 'transparent', borderColor: 'transparent' },
+        emphasis: { disabled: true },
+        data: payload.timeline.hours.map((hour) => hour.usage.backgroundKwh),
+      },
+      {
+        name: originalSeriesName,
+        type: 'bar',
+        stack: 'original-load',
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        barMaxWidth: 18,
+        barGap: '-100%',
+        itemStyle: { color: 'transparent', borderColor: palette.device, borderWidth: 2 },
+        data: payload.timeline.hours.map((hour) => ({
+          value: hour.usage.originalDeviceKwh,
+          itemStyle: {
+            color: 'transparent',
+            borderColor: hour.usage.originalDeviceKwh > 0 ? palette.device : 'transparent',
+            borderWidth: hour.usage.originalDeviceKwh > 0 ? 2 : 0,
+            borderType: hour.changed ? 'dashed' as const : 'solid' as const,
             borderRadius: [3, 3, 0, 0],
           },
         })),
