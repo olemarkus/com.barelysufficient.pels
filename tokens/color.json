@@ -65,12 +65,14 @@
       },
       "negative": {
         "bg": { "value": "rgba(242, 107, 107, 0.15)" },
+        "bg-strong": { "value": "rgba(242, 107, 107, 0.22)" },
         "border": { "value": "rgba(242, 107, 107, 0.35)" },
         "text": { "value": "{color.base.danger.dark}" }
       },
       "warning": {
         "bg": { "value": "rgba(255, 193, 7, 0.15)" },
         "bg-muted": { "value": "rgba(255, 193, 7, 0.1)" },
+        "bg-strong": { "value": "rgba(255, 193, 7, 0.22)" },
         "border": { "value": "rgba(255, 193, 7, 0.4)" },
         "border-muted": { "value": "rgba(255, 193, 7, 0.3)" },
         "text": { "value": "{color.base.warning.default}" }
@@ -102,18 +104,22 @@
       "good": { "value": "{color.base.accent.default}" },
       "on-good": { "value": "{color.base.accent.light}" },
       "good-container": { "value": "{color.state.positive.bg-muted}" },
+      "good-surface": { "value": "{color.state.positive.bg-strong}" },
       "good-border": { "value": "{color.state.positive.border}" },
       "warning": { "value": "{color.base.warning.default}" },
       "on-warning": { "value": "{color.base.warning.default}" },
       "warning-container": { "value": "{color.state.warning.bg-muted}" },
+      "warning-surface": { "value": "{color.state.warning.bg-strong}" },
       "warning-border": { "value": "{color.state.warning.border-muted}" },
       "limited": { "value": "{color.base.danger.default}" },
       "on-limited": { "value": "{color.base.danger.dark}" },
       "limited-container": { "value": "{color.state.negative.bg}" },
+      "limited-surface": { "value": "{color.state.negative.bg-strong}" },
       "limited-border": { "value": "{color.state.negative.border}" },
       "critical": { "value": "{color.base.danger.dark}" },
       "on-critical": { "value": "{color.base.danger.dark}" },
       "critical-container": { "value": "{color.state.negative.bg}" },
+      "critical-surface": { "value": "{color.state.negative.bg-strong}" },
       "critical-border": { "value": "{color.state.negative.border}" }
     }
   }
