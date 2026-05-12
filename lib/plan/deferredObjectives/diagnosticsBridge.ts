@@ -7,6 +7,7 @@ import type { DailyBudgetUiPayload } from '../../dailyBudget/dailyBudgetTypes';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { sortSteppedLoadSteps } from '../../utils/deviceControlProfiles';
 import type { PlanInputDevice } from '../planTypes';
+import { isDeviceObservationTrusted } from '../../observer/observationTrust';
 import { formatDeadlineLocalTime } from './deadline';
 import { planDeferredObjectiveHorizon } from './horizonPlanner';
 import {
@@ -415,7 +416,7 @@ const hasFreshTemperatureProgress = (params: {
   nowMs: number;
 }): params is { device: PlanInputDevice & { currentTemperature: number; lastFreshDataMs: number }; nowMs: number } => {
   const { device, nowMs } = params;
-  if (device.observationStale === true) return false;
+  if (!isDeviceObservationTrusted(device)) return false;
   if (typeof device.currentTemperature !== 'number' || !Number.isFinite(device.currentTemperature)) return false;
   if (typeof device.lastFreshDataMs !== 'number' || !Number.isFinite(device.lastFreshDataMs)) return false;
   if (device.lastFreshDataMs > nowMs + OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS) return false;

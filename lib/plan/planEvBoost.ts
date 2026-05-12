@@ -1,5 +1,6 @@
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { isSteppedLoadDevice } from './planSteppedLoad';
+import { getTrustedStateOfCharge } from '../observer/observationTrust';
 import type { StructuredDebugEmitter } from '../logging/logger';
 
 export function resolveEvBoostActive(params: {
@@ -12,11 +13,9 @@ export function resolveEvBoostActive(params: {
   if (dev.deviceClass !== 'evcharger') return false;
   if (!isSteppedLoadDevice(dev)) return false;
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
-  if (dev.observationStale === true) return false;
   if (dev.evChargingState === 'plugged_out' || dev.evChargingState === 'plugged_in_discharging') return false;
-  const stateOfCharge = dev.stateOfCharge;
-  if (!stateOfCharge || stateOfCharge.status !== 'fresh') return false;
-  if (!Number.isFinite(stateOfCharge.percent)) return false;
+  const stateOfCharge = getTrustedStateOfCharge(dev);
+  if (!stateOfCharge) return false;
   const boostBelowPercent = config.boostBelowPercent;
   if (!Number.isFinite(boostBelowPercent)) return false;
   return stateOfCharge.percent < boostBelowPercent;

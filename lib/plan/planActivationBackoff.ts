@@ -359,8 +359,9 @@ const shouldTrackObservedActivePower = (
   attemptStartedMs: number,
   nowTs: number,
 ): observation is ActivationBackoffObservation & { measuredPowerKw: number; lastFreshDataMs: number } => (
+  // `isObservedOn` already short-circuits on stale observations, so no
+  // explicit `observationStale` gate is needed here.
   observation !== undefined
-  && observation.observationStale !== true
   && isFiniteNumber(observation.lastFreshDataMs)
   && observation.lastFreshDataMs > attemptStartedMs
   && observation.lastFreshDataMs <= nowTs
