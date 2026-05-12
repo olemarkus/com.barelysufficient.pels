@@ -189,6 +189,7 @@ md-text-button {
 body[data-ui-variant="redesign"] .screen {
   width: min(100%, 480px);
   max-width: 480px;
+  box-sizing: border-box;
   gap: var(--spacing-4);
   padding: clamp(6px, 2vw, 10px);
 }
@@ -426,9 +427,9 @@ body[data-ui-variant="redesign"] .redesign-ui-copy {
 body[data-ui-variant="redesign"] .redesign-device-settings {
   display: grid;
   gap: var(--spacing-3);
-  margin-top: var(--spacing-2);
-  max-width: 100%;
   min-width: 0;
+  max-width: 100%;
+  margin-top: var(--spacing-2);
 }
 
 .device-control-legend {
@@ -529,7 +530,8 @@ body[data-ui-variant="redesign"] .redesign-device-settings {
 }
 
 .pels-device-card {
-  --pels-device-switch-col-width: 56px;
+  --pels-device-switch-col-width: 44px;
+  --pels-device-detail-col-width: 40px;
 }
 
 .pels-device-card[data-managed-state="all"]::before {
@@ -563,12 +565,14 @@ body[data-ui-variant="redesign"] .redesign-device-settings {
 
 .pels-device-card__row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) repeat(3, var(--pels-device-switch-col-width));
+  grid-template-columns:
+    minmax(0, 1fr)
+    repeat(3, var(--pels-device-switch-col-width))
+    var(--pels-device-detail-col-width);
   gap: var(--spacing-2);
   align-items: center;
   padding: var(--spacing-2) var(--spacing-1);
   border-radius: var(--radius-md);
-  cursor: pointer;
   transition: background var(--transition-fast);
 }
 
@@ -591,6 +595,18 @@ body[data-ui-variant="redesign"] .redesign-device-settings {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--spacing-1);
+}
+
+.pels-device-card__reasons {
+  flex: 1 0 100%;
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--pels-text-muted);
+  font-size: var(--font-size-xs);
+  line-height: var(--font-line-height-normal);
 }
 
 .pels-device-card__cell {
@@ -656,6 +672,25 @@ body[data-ui-variant="redesign"] .redesign-device-settings {
 
 .pels-icon-toggle.is-on:not(.is-disabled):hover {
   background: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+.pels-device-card__detail-button {
+  width: 36px;
+  height: 36px;
+  color: var(--pels-text-muted);
+  border-radius: var(--radius-full);
+}
+
+.pels-device-card__detail-button:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--pels-surface-container-high) 70%, transparent);
+}
+
+.pels-device-card__detail-icon {
+  display: block;
+  font-size: 28px;
+  line-height: 1;
+  transform: translateY(-1px);
 }
 
 .budget-redesign-surface {
@@ -5645,7 +5680,13 @@ body[data-ui-variant="redesign"] .card.panel:where(
 }
 
 :where(body[data-ui-variant="redesign"]) #device-detail-panel .segmented__option {
-  min-height: 40px;
+  min-height: 48px;
+  min-width: 0;
+  height: auto;
+  line-height: var(--font-line-height-tight);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  --md-text-button-container-height: 48px;
 }
 
 :where(body[data-ui-variant="redesign"]) #device-detail-panel :where(
@@ -5691,8 +5732,23 @@ body[data-ui-variant="redesign"] .card.panel:where(
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  :where(body[data-ui-variant="redesign"]) #devices-panel .pels-device-card__row {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) var(--pels-device-detail-col-width);
+    gap: var(--spacing-1);
+    padding-block: var(--spacing-2);
+  }
+
   :where(body[data-ui-variant="redesign"]) #devices-panel .control-row .device-row__name {
     grid-column: 1 / -1;
+  }
+
+  :where(body[data-ui-variant="redesign"]) #devices-panel .pels-device-card__name {
+    grid-column: 1 / -1;
+  }
+
+  :where(body[data-ui-variant="redesign"]) #devices-panel .pels-device-card__cell {
+    justify-content: center;
+    min-height: 40px;
   }
 
   :where(body[data-ui-variant="redesign"]) #devices-panel .device-row__inputs .checkbox-icon {
@@ -5769,6 +5825,10 @@ body[data-ui-variant="redesign"] .card.panel:where(
     .target-power-grid,
     .detail-deadline-form .form-grid
   ) {
+    grid-template-columns: 1fr;
+  }
+
+  :where(body[data-ui-variant="redesign"]) #device-detail-panel .segmented--power-limiting {
     grid-template-columns: 1fr;
   }
 }

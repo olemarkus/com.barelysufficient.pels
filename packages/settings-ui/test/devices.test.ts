@@ -211,7 +211,7 @@ describe('devices render — redesign shell', () => {
     inputs?.forEach((input) => expect(input.getAttribute('aria-disabled')).toBe('true'));
   });
 
-  it('clicking outside switch dispatches open-device-detail', async () => {
+  it('opens device detail only from the explicit settings button', async () => {
     const { renderDevices } = await importDevicesInRedesign();
     const { state } = await import('../src/ui/state.ts');
 
@@ -226,8 +226,13 @@ describe('devices render — redesign shell', () => {
 
     const handler = vi.fn();
     document.addEventListener('open-device-detail', handler);
+
     const nameEl = document.querySelector<HTMLElement>('[data-device-id="h1"] .device-row__title');
     nameEl?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(handler).not.toHaveBeenCalled();
+
+    const detailButton = document.querySelector<HTMLElement>('[data-device-id="h1"] .pels-device-card__detail-button');
+    detailButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(handler).toHaveBeenCalled();
     document.removeEventListener('open-device-detail', handler);
   });

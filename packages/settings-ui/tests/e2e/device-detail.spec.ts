@@ -14,12 +14,19 @@ const openDevices = async (page: Page) => {
   await expect(page.locator('#devices-panel')).toBeVisible();
 };
 
-const openDeviceDetail = async (page: Page, deviceId: string) => {
-  await openDevices(page);
+const clickDeviceDetailButton = async (page: Page, deviceId: string) => {
   const row = page.locator(`#devices-panel [data-device-id="${deviceId}"]`).first();
   await expect(row).toBeVisible();
-  await row.click();
-  await expect(page.locator('#device-detail-overlay')).toBeVisible();
+  const detailButton = row.locator('.pels-device-card__detail-button');
+  await expect(detailButton).toBeVisible();
+  await detailButton.scrollIntoViewIfNeeded();
+  await detailButton.click();
+  await expect(page.locator('#device-detail-overlay')).toBeVisible({ timeout: 10000 });
+};
+
+const openDeviceDetail = async (page: Page, deviceId: string) => {
+  await openDevices(page);
+  await clickDeviceDetailButton(page, deviceId);
 };
 
 const readHomeySetting = async <T,>(page: Page, key: string): Promise<T> => page.evaluate(
@@ -49,6 +56,31 @@ const collectConsoleErrors = (page: Page): string[] => {
 };
 
 test.describe('Device detail panel', () => {
+  test('opens only from the explicit device settings button', async ({ page }) => {
+    await openDevices(page);
+    const overlay = page.locator('#device-detail-overlay');
+    const row = page.locator('#devices-panel [data-device-id="dev_heatpump"]').first();
+    await expect(row).toBeVisible();
+
+    await row.locator('.device-row__name').click();
+    await expect(overlay).toBeHidden();
+
+    await row.locator('.pels-icon-toggle').first().click();
+    await expect(overlay).toBeHidden();
+
+    await row.locator('.pels-device-card__detail-button').click();
+    await expect(overlay).toBeVisible();
+    await expect(page.locator('#device-detail-title')).toHaveText('Living Room Heat Pump');
+  });
+
+  test('shows plain disabled-control reasons in the device list', async ({ page }) => {
+    await openDevices(page);
+    const waterHeaterRow = page.locator('#devices-panel [data-device-id="dev_waterheater"]').first();
+    await expect(waterHeaterRow.locator('.pels-device-card__reasons')).toContainText(
+      'Price works with temperature devices only.',
+    );
+  });
+
   test('opens and closes via back button, overlay backdrop, and Escape', async ({ page }) => {
     await openDeviceDetail(page, 'dev_heatpump');
     await expect(page.locator('#device-detail-title')).toHaveText('Living Room Heat Pump');
@@ -58,7 +90,7 @@ test.describe('Device detail panel', () => {
     await expect(page.locator('#device-detail-overlay')).toBeHidden();
 
     // Close via Escape.
-    await openDeviceDetail(page, 'dev_heatpump');
+    await clickDeviceDetailButton(page, 'dev_heatpump');
     await page.keyboard.press('Escape');
     await expect(page.locator('#device-detail-overlay')).toBeHidden();
 
@@ -67,7 +99,7 @@ test.describe('Device detail panel', () => {
     // a synthetic click whose event.target is the overlay itself, which
     // is the exact contract the handler at index.ts:299 enforces
     // (`event.target === deviceDetailOverlay`).
-    await openDeviceDetail(page, 'dev_heatpump');
+    await clickDeviceDetailButton(page, 'dev_heatpump');
     const overlay = page.locator('#device-detail-overlay');
     await overlay.evaluate((el) => {
       el.dispatchEvent(new MouseEvent('click', { bubbles: true }));

@@ -32,7 +32,7 @@ const openDeviceDetail = async (page: Page, deviceId: string) => {
   await page.locator('[data-settings-target="devices"]').click();
   const row = page.locator(`#devices-panel [data-device-id="${deviceId}"]`).first();
   await expect(row).toBeVisible();
-  await row.click();
+  await row.locator('.pels-device-card__detail-button').click();
   await expect(page.locator('#device-detail-overlay')).toBeVisible();
   await prepPage(page);
 };

@@ -148,7 +148,7 @@
             </span>
             <div>
               <strong>Managed</strong>
-              <p>PELS observes this device's state. Required before Limit or Price can take effect.</p>
+              <p>PELS includes this device in modes and plans. Turn this on before using Limit or Price.</p>
             </div>
           </li>
           <li class="device-control-legend__item">
@@ -159,7 +159,7 @@
             </span>
             <div>
               <strong>Limit</strong>
-              <p>PELS will actively turn the device on and off to safely fill the allocated budget. When disabled, PELS will only turn the device on when it has a smart task, and will not turn it off if it was switched on externally.</p>
+              <p>PELS may lower or turn off this device to stay under the hard cap. When off, PELS only starts it for smart tasks.</p>
             </div>
           </li>
           <li class="device-control-legend__item">
@@ -172,7 +172,7 @@
             </span>
             <div>
               <strong>Price</strong>
-              <p>PELS shifts the device's temperature target with electricity prices — boosting on cheap hours and easing back on expensive ones.</p>
+              <p>PELS adjusts the temperature target around electricity prices: higher in cheap hours, lower in expensive hours.</p>
             </div>
           </li>
         </ul>
@@ -816,7 +816,7 @@
             <div class="collapse-content">
               <div class="field">
                 <span class="field__label">When limiting</span>
-                <div class="segmented" id="device-detail-overshoot-segmented" role="radiogroup" aria-label="When limiting"></div>
+                <div class="segmented segmented--power-limiting" id="device-detail-overshoot-segmented" role="radiogroup" aria-label="When limiting"></div>
                 <md-filled-select id="device-detail-overshoot" hidden aria-hidden="true">
                   <md-select-option value="turn_off"><div slot="headline">Turn off</div></md-select-option>
                   <md-select-option value="set_temperature"><div slot="headline">Set to temperature</div></md-select-option>
@@ -993,7 +993,7 @@
                   <md-switch id="device-detail-controllable"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label">Power-limit control</span>
-                    <small class="field__hint">Allow PELS to adjust this device based on power capacity limits.</small>
+                    <small class="field__hint">Allow PELS to lower or turn off this device to stay under the hard cap.</small>
                   </span>
                 </div>
 
