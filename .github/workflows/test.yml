@@ -37,8 +37,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run build, lint, and static checks
+      - name: Run lint, typecheck, and static checks
         run: npm run ci:checks
+
+      - name: Build app bundle
+        run: npm run build
 
       - name: Validate Homey package contents
         run: npm run validate

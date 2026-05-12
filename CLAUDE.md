@@ -126,7 +126,7 @@ npm run lint                # ESLint entire codebase (zero warnings)
 npm run arch:check          # dependency-cruiser architecture boundaries
 npm run deadcode:check      # Unused exports detection
 npm run typecheck:unused    # TypeScript unused symbols check
-npm run ci:checks           # Full static analysis suite (build + all lints + arch)
+npm run ci:checks           # Full static analysis suite (all lints + typecheck + arch + deadcode), runs steps in parallel
 ```
 
 ---
@@ -165,7 +165,7 @@ Key timing:
 
 GitHub Actions (`.github/workflows/test.yml`) runs on every push and PR:
 
-1. **checks** — `npm run ci:checks` (build, all lints, architecture, dead code, typecheck).
+1. **checks** — `npm run ci:checks` (all lints, architecture, dead code, typecheck) followed by `npm run build` and `npm run validate`.
 2. **docs** — VitePress build validation.
 3. **runtime-tests** — `npm run ci:test:runtime` (Jest + timezone tests).
 4. **settings-ui-tests** — `npm run ci:test:settings-ui`.

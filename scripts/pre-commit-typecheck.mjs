@@ -1,6 +1,6 @@
-import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import process from 'node:process';
+import { runParallel } from './lib/run-parallel.mjs';
 
 const files = process.argv.slice(2)
   .map((file) => path.relative(process.cwd(), path.resolve(file)).replaceAll(path.sep, '/'))
@@ -26,7 +26,7 @@ if (matches([
   'vitest.config.perf.mts',
   'vitest-env.d.ts',
 ])) {
-  commands.push(['npx', ['tsc', '--noEmit']]);
+  commands.push({ label: 'tsc:runtime', command: 'npx', args: ['tsc', '--noEmit'] });
 }
 
 if (matches([
@@ -36,16 +36,13 @@ if (matches([
   'packages/contracts/src/',
   'packages/shared-domain/src/',
 ])) {
-  commands.push(['npx', ['tsc', '-p', 'packages/settings-ui/tsconfig.json', '--noEmit']]);
+  commands.push({ label: 'tsc:settings-ui', command: 'npx', args: ['tsc', '-p', 'packages/settings-ui/tsconfig.json', '--noEmit'] });
 }
 
 if (matches(['widgets/'])) {
-  commands.push(['npx', ['tsc', '-p', 'tsconfig.widgets.json', '--noEmit']]);
+  commands.push({ label: 'tsc:widgets', command: 'npx', args: ['tsc', '-p', 'tsconfig.widgets.json', '--noEmit'] });
 }
 
-for (const [command, args] of commands) {
-  console.log(`pre-commit: running ${command} ${args.join(' ')}`);
-  const result = spawnSync(command, args, { stdio: 'inherit', env: process.env });
-  if (result.error) throw result.error;
-  if (typeof result.status === 'number' && result.status !== 0) process.exit(result.status);
+if (commands.length > 0) {
+  await runParallel(commands);
 }
