@@ -6,8 +6,6 @@ import { isFiniteNumber } from '../utils/appTypeGuards';
 export { isFiniteNumber };
 
 export type HeadroomCardCooldownSource = 'pels_shed' | 'pels_restore';
-export type HeadroomDeviceKwSource = 'expectedPowerKw' | 'powerKw' | 'measuredPowerKw' | 'fallback_zero';
-export type ResolvedHeadroomDeviceKw = { kw: number; source: HeadroomDeviceKwSource };
 export type HeadroomUsageObservation = { kw: number; freshnessMs?: number };
 export type HeadroomTrackedTransitionContext = Extract<
   DeviceDiagnosticsTrackedTransitionReconciliation,
@@ -181,18 +179,3 @@ export const resolveTrackedTransitionReconciliation = (params: {
   return undefined;
 };
 
-export const resolveHeadroomUsageKw = (
-  device: Pick<HeadroomCardDeviceLike, 'expectedPowerKw' | 'powerKw'>,
-): number => {
-  if (isFiniteNumber(device.expectedPowerKw)) return device.expectedPowerKw;
-  if (isFiniteNumber(device.powerKw)) return device.powerKw;
-  return 0;
-};
-
-export const resolveObservedHeadroomDeviceKw = (
-  device: Pick<HeadroomCardDeviceLike, 'measuredPowerKw' | 'powerKw'>,
-): ResolvedHeadroomDeviceKw => {
-  if (isFiniteNumber(device.measuredPowerKw)) return { kw: device.measuredPowerKw, source: 'measuredPowerKw' };
-  if (isFiniteNumber(device.powerKw)) return { kw: device.powerKw, source: 'powerKw' };
-  return { kw: 0, source: 'fallback_zero' };
-};
