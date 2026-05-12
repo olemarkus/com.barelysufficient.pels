@@ -31,6 +31,30 @@ const readHomeySetting = async <T,>(page: Page, key: string): Promise<T> => page
   key,
 ) as Promise<T>;
 
+// md-filled-text-field / md-filled-select are custom elements; Playwright's
+// .fill() / .selectOption() don't reach the inner native control. Set the
+// host property and dispatch a `change` event the same way our application
+// listeners do.
+const setMdValue = async (page: Page, selector: string, value: string) => {
+  await page.locator(selector).evaluate((el, v) => {
+    (el as HTMLElement & { value: string }).value = v;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }, value);
+};
+
+// md-switch exposes `selected` instead of `checked`; flip it the same way.
+const setMdSwitch = async (page: Page, selector: string, selected: boolean) => {
+  await page.locator(selector).evaluate((el, v) => {
+    (el as HTMLElement & { selected: boolean }).selected = v;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, selected);
+};
+
+const readMdSwitchSelected = (page: Page, selector: string) => page.locator(selector)
+  .evaluate((el) => (el as HTMLElement & { selected: boolean }).selected);
+
 const collectConsoleErrors = (page: Page): string[] => {
   const errors: string[] = [];
   page.on('console', (msg) => {
@@ -83,9 +107,7 @@ test.describe('Device detail panel', () => {
       const row = rows.nth(i);
       const mode = await row.getAttribute('data-mode');
       expect(mode).toBeTruthy();
-      const input = row.locator('input.detail-mode-temp');
-      await input.fill('19');
-      await input.dispatchEvent('change');
+      await setMdValue(page, `[data-mode="${mode}"] md-filled-text-field.detail-mode-temp`, '19');
       // modes.ts persists mode_device_targets through debouncedSetSetting
       // (300ms delay); poll until the write lands.
       await expect.poll(async () => {
@@ -101,12 +123,8 @@ test.describe('Device detail panel', () => {
   test('Cheap/expensive delta inputs persist', async ({ page }) => {
     await openDeviceDetail(page, 'dev_heatpump');
 
-    const cheap = page.locator('#device-detail-cheap-delta');
-    const expensive = page.locator('#device-detail-expensive-delta');
-    await cheap.fill('3');
-    await cheap.dispatchEvent('change');
-    await expensive.fill('-2.5');
-    await expensive.dispatchEvent('change');
+    await setMdValue(page, '#device-detail-cheap-delta', '3');
+    await setMdValue(page, '#device-detail-expensive-delta', '-2.5');
 
     await expect.poll(async () => {
       const settings = await readHomeySetting<Record<string, { cheapDelta?: number; expensiveDelta?: number }>>(
@@ -138,8 +156,7 @@ test.describe('Device detail panel', () => {
     await options.filter({ hasText: 'Set to temperature' }).click();
     await expect(hiddenSelect).toHaveValue('set_temperature');
     await expect(tempRow).toBeVisible();
-    await page.locator('#device-detail-overshoot-temp').fill('12');
-    await page.locator('#device-detail-overshoot-temp').dispatchEvent('change');
+    await setMdValue(page, '#device-detail-overshoot-temp', '12');
 
     await expect.poll(async () => {
       const behaviors = await readHomeySetting<Record<string, { action?: string; temperature?: number }>>(
@@ -178,31 +195,28 @@ test.describe('Device detail panel', () => {
 
     await page.locator('#device-detail-setup-section summary').click();
 
-    const budgetExempt = page.locator('#device-detail-budget-exempt');
-    const initiallyChecked = await budgetExempt.isChecked();
-    await budgetExempt.setChecked(!initiallyChecked);
+    const initiallyExempt = await readMdSwitchSelected(page, '#device-detail-budget-exempt');
+    await setMdSwitch(page, '#device-detail-budget-exempt', !initiallyExempt);
     await expect.poll(async () => {
       const map = await readHomeySetting<Record<string, boolean>>(page, 'budget_exempt_devices');
       return Boolean(map?.dev_heatpump);
-    }, { timeout: 3000 }).toBe(!initiallyChecked);
+    }, { timeout: 3000 }).toBe(!initiallyExempt);
 
     // Capacity-based control: toggle off then on.
-    const controllable = page.locator('#device-detail-controllable');
-    await controllable.uncheck();
+    await setMdSwitch(page, '#device-detail-controllable', false);
     await expect.poll(async () => {
       const map = await readHomeySetting<Record<string, boolean>>(page, 'controllable_devices');
       return map?.dev_heatpump;
     }, { timeout: 3000 }).toBe(false);
-    await controllable.check();
+    await setMdSwitch(page, '#device-detail-controllable', true);
     await expect.poll(async () => {
       const map = await readHomeySetting<Record<string, boolean>>(page, 'controllable_devices');
       return map?.dev_heatpump;
     }, { timeout: 3000 }).toBe(true);
 
     // Price-based control: enabling persists into price_optimization_settings.
-    const priceOpt = page.locator('#device-detail-price-opt');
-    if (!(await priceOpt.isChecked())) {
-      await priceOpt.check();
+    if (!(await readMdSwitchSelected(page, '#device-detail-price-opt'))) {
+      await setMdSwitch(page, '#device-detail-price-opt', true);
       await expect.poll(async () => {
         const settings = await readHomeySetting<Record<string, { enabled?: boolean }>>(
           page,
@@ -213,13 +227,12 @@ test.describe('Device detail panel', () => {
     }
 
     // Managed toggle: disabling persists into managed_devices.
-    const managed = page.locator('#device-detail-managed');
-    await managed.uncheck();
+    await setMdSwitch(page, '#device-detail-managed', false);
     await expect.poll(async () => {
       const map = await readHomeySetting<Record<string, boolean>>(page, 'managed_devices');
       return map?.dev_heatpump;
     }, { timeout: 3000 }).toBe(false);
-    await managed.check();
+    await setMdSwitch(page, '#device-detail-managed', true);
 
     // Control model select responds to changes. Selecting "continuous"
     // writes a device_target_power_configs entry (see controlMode.ts +
@@ -227,9 +240,12 @@ test.describe('Device detail panel', () => {
     // so we assert the select reflects the new value and that the target
     // power config was created.
     const controlModel = page.locator('#device-detail-control-model');
-    await expect(controlModel).toBeEnabled();
-    await controlModel.selectOption('continuous');
-    await expect(controlModel).toHaveValue('continuous');
+    await expect(controlModel).toBeVisible();
+    await setMdValue(page, '#device-detail-control-model', 'continuous');
+    await expect.poll(async () => {
+      const value = await controlModel.evaluate((el) => (el as HTMLElement & { value: string }).value);
+      return value;
+    }, { timeout: 3000 }).toBe('continuous');
     await expect.poll(async () => {
       const configs = await readHomeySetting<Record<string, { enabled?: boolean; preset?: string }>>(
         page,
@@ -239,6 +255,25 @@ test.describe('Device detail panel', () => {
     }, { timeout: 3000 }).toMatchObject({ enabled: true });
 
     expect(consoleErrors).toEqual([]);
+  });
+
+  test('Switch row label is clickable to toggle the switch', async ({ page }) => {
+    await openDeviceDetail(page, 'dev_heatpump');
+    await page.locator('#device-detail-setup-section summary').click();
+
+    // Click the text content area of the Budget exempt row — NOT the
+    // md-switch thumb. This proves the whole-row tap behavior is wired
+    // up so users don't have to hit the small switch hitbox.
+    const initially = await readMdSwitchSelected(page, '#device-detail-budget-exempt');
+    await page.locator('#device-detail-budget-exempt')
+      .locator('xpath=ancestor::*[contains(@class, "md-switch-row")][1]')
+      .locator('.md-switch-row__label')
+      .click();
+
+    await expect.poll(
+      () => readMdSwitchSelected(page, '#device-detail-budget-exempt'),
+      { timeout: 3000 },
+    ).toBe(!initially);
   });
 
   test('Diagnostics disclosure opens and renders status content', async ({ page }) => {

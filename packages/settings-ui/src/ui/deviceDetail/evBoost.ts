@@ -50,7 +50,7 @@ export const renderEvBoostSettings = (device: TargetDeviceSnapshot | null) => {
 
   const config = state.evBoostSettings[device.id] ?? device.evBoost;
   const enabled = config?.enabled === true;
-  deviceDetailEvBoostEnabled.checked = enabled;
+  deviceDetailEvBoostEnabled.selected = enabled;
   deviceDetailEvBoostEnabled.disabled = false;
   deviceDetailEvBoostBelow.value = String(config?.boostBelowPercent ?? DEFAULT_BOOST_BELOW_PERCENT);
   deviceDetailEvBoostBelow.disabled = !enabled;
@@ -125,13 +125,13 @@ export const initEvBoostHandlers = (deps: EvBoostHandlerDeps) => {
     const fallback = state.evBoostSettings[deviceId]?.boostBelowPercent ?? DEFAULT_BOOST_BELOW_PERCENT;
     const parsed = Number(deviceDetailEvBoostBelow.value);
     const boostBelowPercent = normalizeBoostBelowPercent(parsed, fallback);
-    await persist(deviceId, deviceDetailEvBoostEnabled.checked, boostBelowPercent);
+    await persist(deviceId, deviceDetailEvBoostEnabled.selected, boostBelowPercent);
   });
 
   deviceDetailEvBoostBelow?.addEventListener('change', async () => {
     const deviceId = deps.getCurrentDetailDeviceId();
     if (!deviceId || !deviceDetailEvBoostEnabled || !deviceDetailEvBoostBelow) return;
-    if (!deviceDetailEvBoostEnabled.checked) return;
+    if (!deviceDetailEvBoostEnabled.selected) return;
     const parsed = Number(deviceDetailEvBoostBelow.value);
     const boostBelowPercent = normalizeBoostBelowPercent(parsed, DEFAULT_BOOST_BELOW_PERCENT);
     await persist(deviceId, true, boostBelowPercent);

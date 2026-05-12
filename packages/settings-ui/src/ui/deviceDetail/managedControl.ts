@@ -15,7 +15,7 @@ export function initDeviceDetailManagedControlHandlers(params: {
     const deviceId = params.getCurrentDetailDeviceId();
     if (!deviceId || !deviceDetailControllable) return;
 
-    const nextChecked = deviceDetailControllable.checked;
+    const nextChecked = deviceDetailControllable.selected;
     await writeFreshSetting<Record<string, boolean>>({
       key: 'controllable_devices',
       context: 'device detail',
@@ -39,7 +39,7 @@ export function initDeviceDetailManagedControlHandlers(params: {
     const deviceId = params.getCurrentDetailDeviceId();
     if (!deviceId || !deviceDetailManaged) return;
 
-    const nextChecked = deviceDetailManaged.checked;
+    const nextChecked = deviceDetailManaged.selected;
     await writeFreshSetting<Record<string, boolean>>({
       key: 'managed_devices',
       context: 'device detail',

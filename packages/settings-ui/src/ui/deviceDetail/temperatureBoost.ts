@@ -46,7 +46,7 @@ export const renderTemperatureBoostSettings = (device: TargetDeviceSnapshot | nu
 
   const config = state.temperatureBoostSettings[device.id] ?? device.temperatureBoost;
   const enabled = config?.enabled === true;
-  deviceDetailTemperatureBoostEnabled.checked = enabled;
+  deviceDetailTemperatureBoostEnabled.selected = enabled;
   deviceDetailTemperatureBoostEnabled.disabled = false;
   deviceDetailTemperatureBoostBelow.value = String(config?.boostBelowC ?? DEFAULT_BOOST_BELOW_C);
   deviceDetailTemperatureBoostBelow.disabled = !enabled;
@@ -91,13 +91,13 @@ export const initTemperatureBoostHandlers = (deps: TemperatureBoostHandlerDeps) 
     const fallback = state.temperatureBoostSettings[deviceId]?.boostBelowC ?? DEFAULT_BOOST_BELOW_C;
     const parsed = Number(deviceDetailTemperatureBoostBelow.value);
     const boostBelowC = Number.isFinite(parsed) ? parsed : fallback;
-    await persist(deviceId, deviceDetailTemperatureBoostEnabled.checked, boostBelowC);
+    await persist(deviceId, deviceDetailTemperatureBoostEnabled.selected, boostBelowC);
   });
 
   deviceDetailTemperatureBoostBelow?.addEventListener('change', async () => {
     const deviceId = deps.getCurrentDetailDeviceId();
     if (!deviceId || !deviceDetailTemperatureBoostEnabled || !deviceDetailTemperatureBoostBelow) return;
-    if (!deviceDetailTemperatureBoostEnabled.checked) return;
+    if (!deviceDetailTemperatureBoostEnabled.selected) return;
     const parsed = Number(deviceDetailTemperatureBoostBelow.value);
     const boostBelowC = Number.isFinite(parsed) ? parsed : DEFAULT_BOOST_BELOW_C;
     await persist(deviceId, true, boostBelowC);

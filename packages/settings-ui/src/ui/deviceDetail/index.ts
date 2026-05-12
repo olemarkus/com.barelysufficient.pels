@@ -7,6 +7,7 @@ import { normalizeDeviceControlProfiles } from '../../../../contracts/src/device
 import {
   deviceDetailDiagnosticsDisclosure,
   deviceDetailOverlay,
+  deviceDetailPanel,
   deviceDetailTitle,
   deviceDetailClose,
   deviceDetailManaged,
@@ -105,7 +106,7 @@ const setDeviceDetailTitle = (name: string) => {
 
 const setDeviceDetailBudgetExemptState = (device: TargetDeviceSnapshot | null) => {
   if (!deviceDetailBudgetExempt || !device) return;
-  deviceDetailBudgetExempt.checked = state.budgetExemptMap[device.id] === true || device.budgetExempt === true;
+  deviceDetailBudgetExempt.selected = state.budgetExemptMap[device.id] === true || device.budgetExempt === true;
   deviceDetailBudgetExempt.disabled = false;
 };
 
@@ -149,16 +150,16 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   setDeviceDetailNativeWiringState(device);
 
   if (deviceDetailManaged) {
-    deviceDetailManaged.checked = controlState.isManaged;
+    deviceDetailManaged.selected = controlState.isManaged;
     deviceDetailManaged.disabled = !controlState.canManageDevice;
   }
   if (deviceDetailControllable) {
-    deviceDetailControllable.checked = controlState.supportsPower && state.controllableMap[deviceId] === true;
+    deviceDetailControllable.selected = controlState.supportsPower && state.controllableMap[deviceId] === true;
     deviceDetailControllable.disabled = !controlState.supportsPower || !controlState.isManaged;
   }
   if (deviceDetailPriceOpt) {
     const priceConfig = state.priceOptimizationSettings[deviceId];
-    deviceDetailPriceOpt.checked = controlState.supportsTemperature
+    deviceDetailPriceOpt.selected = controlState.supportsTemperature
       && controlState.isManaged
       && priceConfig?.enabled === true;
     deviceDetailPriceOpt.disabled = !controlState.supportsTemperature || !controlState.isManaged;
@@ -169,7 +170,7 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   if (deviceDetailControlModel && deviceDetailControlModelRow) {
     const effectiveControlMode = device ? resolveDeviceDetailControlMode(device) : 'default';
     const nativeSteppedLoadLocked = isNativeSteppedLoadProfileActive(device);
-    syncDeviceDetailControlModeOptions(deviceDetailControlModel, device);
+    syncDeviceDetailControlModeOptions(deviceDetailControlModel, device, effectiveControlMode);
     deviceDetailControlModel.value = effectiveControlMode;
     deviceDetailControlModel.disabled = !controlState.canManageDevice || nativeSteppedLoadLocked;
     deviceDetailControlModelRow.hidden = !controlState.canManageDevice;
@@ -303,6 +304,28 @@ const initDeviceDetailCloseHandlers = () => {
   });
 };
 
+// md-switch only flips when the user hits the small thumb. Restore the
+// legacy whole-row tap behavior by toggling the switch when its label
+// area is clicked.
+const initDeviceDetailSwitchRowClick = () => {
+  if (!deviceDetailPanel) return;
+  deviceDetailPanel.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const row = target.closest<HTMLElement>('.md-switch-row');
+    if (!row) return;
+    // The user already interacted with the switch itself or an inner
+    // focusable element — let the native behavior handle it.
+    if (target.closest('md-switch, a, button, input, select, textarea')) return;
+    const swEl = row.querySelector('md-switch') as
+      | (HTMLElement & { selected: boolean; disabled: boolean })
+      | null;
+    if (!swEl || swEl.disabled) return;
+    swEl.selected = !swEl.selected;
+    swEl.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+};
+
 const initDeviceDetailControlModelHandler = () => {
   deviceDetailControlModel?.addEventListener('change', async () => {
     const deviceId = currentDetailDeviceId;
@@ -342,7 +365,7 @@ const initDeviceDetailBudgetExemptHandler = () => {
     const deviceId = currentDetailDeviceId;
     if (!deviceId || !deviceDetailBudgetExempt) return;
 
-    const nextChecked = deviceDetailBudgetExempt.checked;
+    const nextChecked = deviceDetailBudgetExempt.selected;
     await writeFreshSetting<Record<string, boolean>>({
       key: BUDGET_EXEMPT_DEVICES,
       context: 'device detail',
@@ -450,6 +473,7 @@ const initOvershootSegmented = () => {
 
 export const initDeviceDetailHandlers = () => {
   initDeviceDetailCloseHandlers();
+  initDeviceDetailSwitchRowClick();
   initOvershootSegmented();
   initDeviceDetailNativeWiringHandler({
     getCurrentDetailDeviceId,

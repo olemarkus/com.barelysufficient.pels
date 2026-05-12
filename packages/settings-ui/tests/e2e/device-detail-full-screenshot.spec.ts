@@ -7,10 +7,16 @@ import { expect, test, type Page } from './fixtures/test';
 
 const OUT = '../../docs/public/screenshots/device-detail';
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }, testInfo) => {
   test.skip(Boolean(process.env.CI), 'Full-panel screenshot is local only');
-  // Disable CSS animations and transitions so screenshots are deterministic
-  // without waitForTimeout settle hacks.
+  // Outputs are CDN-bound docs assets, not browser comparison artifacts —
+  // pin them to a single project so the two Playwright projects don't
+  // overwrite each other's PNGs nondeterministically when running locally
+  // with fullyParallel.
+  test.skip(
+    testInfo.project.name !== 'chromium-mobile-width',
+    'Screenshots are pinned to chromium-mobile-width to avoid clobbering.',
+  );
   await page.addInitScript(() => {
     const css = '*,*::before,*::after{transition:none!important;animation:none!important;}';
     const apply = () => {
@@ -34,7 +40,6 @@ const openDeviceDetail = async (page: Page, deviceId: string) => {
   await expect(row).toBeVisible();
   await row.locator('.device-row__name').click();
   await expect(page.locator('#device-detail-overlay')).toBeVisible();
-
   await page.evaluate(() => {
     document.querySelector<HTMLElement>('#dry-run-banner')?.style.setProperty('display', 'none');
   });
@@ -75,7 +80,6 @@ const fullPanelScreenshot = async (page: Page, name: string) => {
     const el = document.querySelector<HTMLElement>('.slide-panel__content');
     if (el) el.scrollTop = 0;
   });
-  // One animation frame after the layout change settles, no arbitrary sleep.
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
   await panel.screenshot({ path: `${OUT}/${name}.png` });
 };
@@ -83,37 +87,35 @@ const fullPanelScreenshot = async (page: Page, name: string) => {
 test('thermostat — heatpump', async ({ page }) => {
   await openDeviceDetail(page, 'dev_heatpump');
   await expandAllSections(page);
-  await fullPanelScreenshot(page, 'thermostat-heatpump-full');
+  await fullPanelScreenshot(page, 'mw-thermostat-heatpump-full');
 });
 
 test('thermostat — bedroom', async ({ page }) => {
   await openDeviceDetail(page, 'dev_bedroom');
   await expandAllSections(page);
-  await fullPanelScreenshot(page, 'thermostat-bedroom-full');
+  await fullPanelScreenshot(page, 'mw-thermostat-bedroom-full');
 });
 
 test('on/off — water heater', async ({ page }) => {
   await openDeviceDetail(page, 'dev_waterheater');
   await expandAllSections(page);
-  await fullPanelScreenshot(page, 'onoff-waterheater-full');
+  await fullPanelScreenshot(page, 'mw-onoff-waterheater-full');
 });
 
 test('stepped — Zaptec EV charger', async ({ page }) => {
   await openDeviceDetail(page, 'dev_zaptec');
   await expandAllSections(page);
-  await fullPanelScreenshot(page, 'stepped-zaptec-full');
+  await fullPanelScreenshot(page, 'mw-stepped-zaptec-full');
 });
 
 test('stepped — Connected 300 water heater', async ({ page }) => {
   await openDeviceDetail(page, 'dev_connected300');
   await expandAllSections(page);
-  await fullPanelScreenshot(page, 'stepped-connected300-full');
+  await fullPanelScreenshot(page, 'mw-stepped-connected300-full');
 });
 
 test('generic EV charger (with EV support enabled)', async ({ page }) => {
   await enableEvSupportViaUi(page);
-  // Stay on the same SPA session so the EV toggle persists; navigate to
-  // Devices via the in-app tab rather than goto('/').
   await page.getByRole('tab', { name: 'Settings' }).click();
   await page.locator('[data-settings-target="devices"]').click();
   const row = page.locator('#device-list .device-row[data-device-id="dev_evcharger"]');
@@ -124,5 +126,5 @@ test('generic EV charger (with EV support enabled)', async ({ page }) => {
     document.querySelector<HTMLElement>('#dry-run-banner')?.style.setProperty('display', 'none');
   });
   await expandAllSections(page);
-  await fullPanelScreenshot(page, 'ev-generic-full');
+  await fullPanelScreenshot(page, 'mw-ev-generic-full');
 });

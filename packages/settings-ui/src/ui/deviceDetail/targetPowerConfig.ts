@@ -157,13 +157,15 @@ function validateTargetPowerConfig(config: TargetPowerSteppedLoadConfig): void {
   }
 }
 
-function setNumberInput(input: HTMLInputElement | null, value: number | undefined) {
+type ValueHost = HTMLElement & { value: string };
+
+function setNumberInput(input: ValueHost | null, value: number | undefined) {
   const element = input;
   if (!element) return;
   element.value = value === undefined ? '' : String(value);
 }
 
-function readNumberInput(input: HTMLInputElement | null): number | undefined {
+function readNumberInput(input: ValueHost | null): number | undefined {
   const value = input?.value.trim();
   if (!value) return undefined;
   const parsed = Number.parseFloat(value);

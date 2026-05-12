@@ -4,6 +4,7 @@ import {
   getStoredTargetPowerConfig,
   isNativeSteppedLoadProfileActive,
 } from '../deviceControlProfiles.ts';
+import type { MdFilledSelectElement } from '../dom.ts';
 import {
   createContinuousTargetPowerConfig,
   createEvTargetPowerConfig,
@@ -47,17 +48,27 @@ export function getDeviceDetailControlModeOptions(
 }
 
 export function syncDeviceDetailControlModeOptions(
-  select: HTMLSelectElement | null,
+  select: MdFilledSelectElement | null,
   device: TargetDeviceSnapshot | null,
+  selectedValue?: string,
 ): void {
   if (!select) return;
-  const options = getDeviceDetailControlModeOptions(device);
-  select.replaceChildren(...options.map((option) => {
-    const element = document.createElement('option');
-    element.value = option.value;
-    element.textContent = option.label;
-    return element;
-  }));
+  const allowed = new Set<string>(getDeviceDetailControlModeOptions(device).map((option) => option.value));
+  // The full option set lives in the HTML so md-filled-select indexes them at
+  // mount; toggle visibility/disabled rather than replacing children, which
+  // would leave the trigger headline blank.
+  const options = select.querySelectorAll('md-select-option');
+  options.forEach((option) => {
+    const value = option.getAttribute('value') ?? '';
+    const isAllowed = allowed.has(value);
+    option.toggleAttribute('disabled', !isAllowed);
+    option.toggleAttribute('hidden', !isAllowed);
+    if (selectedValue !== undefined && value === selectedValue) {
+      option.setAttribute('selected', '');
+    } else {
+      option.removeAttribute('selected');
+    }
+  });
 }
 
 export function resolveDeviceDetailControlMode(device: TargetDeviceSnapshot): DeviceDetailControlMode {
