@@ -21,6 +21,14 @@ import type {
   DailyBudgetState,
 } from './dailyBudgetTypes';
 
+type NumericArraySummary = {
+  length: number;
+  min: number | null;
+  max: number | null;
+  sum: number;
+  mean: number | null;
+};
+
 export function resolveExistingPlanState(params: {
   state: DailyBudgetState;
   context: DayContext;
@@ -227,12 +235,12 @@ function buildPlanDebugPayload(params: {
       profileSampleCount: profileMeta.sampleCount,
       profileSplitSampleCount: profileMeta.splitSampleCount,
       profileBlendConfidence: getProfileBlendConfidence(profileMeta.sampleCount),
-      profileDefaultWeights: defaultProfile,
-      profileLearnedWeights: learnedWeights,
-      profileEffectiveWeights: combinedWeights,
-      profileWeightsCombined: state.profile?.weights ?? null,
-      profileWeightsUncontrolled: state.profileUncontrolled?.weights ?? null,
-      profileWeightsControlled: state.profileControlled?.weights ?? null,
+      profileDefaultWeights: summarizeNumericArray(defaultProfile),
+      profileLearnedWeights: summarizeNumericArray(learnedWeights),
+      profileEffectiveWeights: summarizeNumericArray(combinedWeights),
+      profileWeightsCombined: summarizeNumericArray(state.profile?.weights),
+      profileWeightsUncontrolled: summarizeNumericArray(state.profileUncontrolled?.weights),
+      profileWeightsControlled: summarizeNumericArray(state.profileControlled?.weights),
       profileControlledShare: profileMeta.controlledShare,
       observedPeakWindowDays: OBSERVED_HOURLY_PEAK_WINDOW_DAYS,
       observedPeakMarginRatio: OBSERVED_HOURLY_PEAK_MARGIN_RATIO,
@@ -252,14 +260,36 @@ function buildPlanDebugPayload(params: {
 
 function buildObservedStatsDebugMeta(state: DailyBudgetState): Record<string, unknown> {
   return {
-    profileObservedMaxUncontrolledKWh: state.profileObservedMaxUncontrolledKWh ?? null,
-    profileObservedMaxControlledKWh: state.profileObservedMaxControlledKWh ?? null,
-    profileObservedMinUncontrolledKWh: state.profileObservedMinUncontrolledKWh ?? null,
-    profileObservedMinControlledKWh: state.profileObservedMinControlledKWh ?? null,
-    profileObservedP50UncontrolledKWh: state.profileObservedP50UncontrolledKWh ?? null,
-    profileObservedP75UncontrolledKWh: state.profileObservedP75UncontrolledKWh ?? null,
-    profileObservedP90UncontrolledKWh: state.profileObservedP90UncontrolledKWh ?? null,
-    profileObservedUncontrolledSampleCounts: state.profileObservedUncontrolledSampleCounts ?? null,
+    profileObservedMaxUncontrolledKWh: summarizeNumericArray(state.profileObservedMaxUncontrolledKWh),
+    profileObservedMaxControlledKWh: summarizeNumericArray(state.profileObservedMaxControlledKWh),
+    profileObservedMinUncontrolledKWh: summarizeNumericArray(state.profileObservedMinUncontrolledKWh),
+    profileObservedMinControlledKWh: summarizeNumericArray(state.profileObservedMinControlledKWh),
+    profileObservedP50UncontrolledKWh: summarizeNumericArray(state.profileObservedP50UncontrolledKWh),
+    profileObservedP75UncontrolledKWh: summarizeNumericArray(state.profileObservedP75UncontrolledKWh),
+    profileObservedP90UncontrolledKWh: summarizeNumericArray(state.profileObservedP90UncontrolledKWh),
+    profileObservedUncontrolledSampleCounts: summarizeNumericArray(state.profileObservedUncontrolledSampleCounts),
+  };
+}
+
+function summarizeNumericArray(values?: number[] | null): NumericArraySummary | null {
+  if (!Array.isArray(values)) return null;
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  let sum = 0;
+  let finiteCount = 0;
+  for (const value of values) {
+    if (!Number.isFinite(value)) continue;
+    min = Math.min(min, value);
+    max = Math.max(max, value);
+    sum += value;
+    finiteCount += 1;
+  }
+  return {
+    length: values.length,
+    min: finiteCount > 0 ? min : null,
+    max: finiteCount > 0 ? max : null,
+    sum,
+    mean: finiteCount > 0 ? sum / finiteCount : null,
   };
 }
 

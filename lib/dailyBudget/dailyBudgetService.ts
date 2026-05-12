@@ -55,6 +55,7 @@ type DailyBudgetServiceDeps = {
   homey: Homey.App['homey'];
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
+  isDebugTopicEnabled?: (topic: 'daily_budget') => boolean;
   error: (...args: unknown[]) => void;
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
@@ -112,6 +113,7 @@ export class DailyBudgetService {
     this.manager = new DailyBudgetManager({
       log: (...args: unknown[]) => this.deps.log(...args),
       logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
+      isDebugTopicEnabled: (topic) => this.deps.isDebugTopicEnabled?.(topic) ?? true,
       structuredDebug: (payload: Record<string, unknown>) => this.emitStructuredDailyBudgetDebug(payload),
     });
   }
@@ -148,6 +150,7 @@ export class DailyBudgetService {
     const manager = new DailyBudgetManager({
       log: (...args: unknown[]) => this.deps.log(...args),
       logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
+      isDebugTopicEnabled: (topic) => this.deps.isDebugTopicEnabled?.(topic) ?? true,
       structuredDebug: (payload: Record<string, unknown>) => this.emitStructuredDailyBudgetDebug(payload),
     });
     manager.loadState(this.manager.exportState());
