@@ -33,25 +33,36 @@ const buildHeaterActivePlan = (params: {
   deadline: Date;
   plannedHourOffsets: number[]; // hour offsets from `now` where the device charges
   plannedKWhPerHour: number;
+  latestHourOffsets?: number[];
   targetTemperatureC?: number;
   energyNeededKWh?: number;
   planStatus?: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied';
 }): DeferredObjectiveActivePlanV1 => {
   const revisedAtMs = params.now.getTime();
-  const hours = params.plannedHourOffsets.map((offset) => ({
+  const buildHours = (offsets: number[]) => offsets.map((offset) => ({
     startsAtMs: atLocalHour(params.now, offset).getTime(),
     plannedKWh: params.plannedKWhPerHour,
   }));
-  const revision = {
+  const originalHours = buildHours(params.plannedHourOffsets);
+  const originalRevision = {
     revision: 1,
     revisedAtMs,
     computedFromPricesUpTo: params.deadline.getTime(),
     reason: 'flow_card' as const,
-    hours,
+    hours: originalHours,
     energyNeededKWh: params.energyNeededKWh
       ?? params.plannedHourOffsets.length * params.plannedKWhPerHour,
     planStatus: params.planStatus ?? ('on_track' as const),
   };
+  const latestRevision = params.latestHourOffsets
+    ? {
+      ...originalRevision,
+      revision: 2,
+      revisedAtMs: revisedAtMs + 60 * 1000,
+      reason: 'prices_revised' as const,
+      hours: buildHours(params.latestHourOffsets),
+    }
+    : originalRevision;
   return {
     deviceId: 'heater',
     deviceName: 'Connected 300',
@@ -62,8 +73,8 @@ const buildHeaterActivePlan = (params: {
     startedAtMs: revisedAtMs,
     pending: false,
     objectiveSignature: 'sig',
-    original: revision,
-    latest: revision,
+    original: originalRevision,
+    latest: latestRevision,
   };
 };
 
@@ -526,8 +537,76 @@ describe('deadline plan page payload', () => {
         nowMs: now.getTime(),
       }));
       expect(payload.timeline.hours[0]?.usage.backgroundKwh).toBe(1);
+      expect(payload.timeline.hours[0]?.usage.originalDeviceKwh).toBe(2);
       expect(payload.timeline.hours[0]?.usage.deviceKwh).toBe(2);
     }
+  });
+
+  it('carries original and current plan allocations for changed chart hours', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 6 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap: buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: {
+          version: 1,
+          objectivesByDeviceId: {
+            heater: {
+              enabled: true,
+              kind: 'temperature',
+              enforcement: 'soft',
+              targetTemperatureC: 22,
+              deadlineAtMs: deadline.getTime(),
+            },
+          },
+        },
+      }, buildHeaterActivePlan({
+        now,
+        deadline,
+        plannedHourOffsets: [1],
+        latestHourOffsets: [2],
+        plannedKWhPerHour: 2,
+      })),
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+
+    expect(payload.timeline.hours[1]).toMatchObject({
+      changed: true,
+      planned: false,
+      usage: { originalDeviceKwh: 2, deviceKwh: 0 },
+    });
+    expect(payload.timeline.hours[2]).toMatchObject({
+      changed: true,
+      planned: true,
+      usage: { originalDeviceKwh: 0, deviceKwh: 2 },
+    });
   });
 
   it('surfaces planInputs for a temperature device using the learned rate and the lowest step', () => {
