@@ -44,15 +44,11 @@ file.
       makes overshoot and cooldown diagnostics harder to reason about.
       Files: `lib/plan/planHeadroomSupport.ts`, `lib/plan/planHeadroomState.ts`,
       `lib/plan/planPowerResolution.ts`, headroom diagnostics tests.
-- [ ] Use the configured device load as the stable expected load for binary restore planning and
+- [x] Use the configured device load as the stable expected load for binary restore planning and
       overview copy when live/measurement evidence is absent or the device is off.
-      Context: `Termostat kontor` flipped between 1.0kW and 0kW expected load during restore
-      logging. For binary/thermostat devices, the Homey device setting / energy load value
-      should remain the expected restore load instead of being erased by current off-state power.
-      Why P1: restore admission and operator-facing overview text should not lose the configured
-      demand estimate just because the device is currently shed.
-      Files: `lib/core/deviceManagerControl.ts`, `lib/plan/planPowerResolution.ts`,
-      `lib/plan/planDevices.ts`, restore/overview power-source tests.
+      Closed by Observer's `getRestoreDrawKw`: `lib/plan/planDevices.ts` now projects
+      `expectedPowerKw` from the highest-known source, so a thermostat's configured demand
+      stays anchored even when its current `measure_power` reports 0 during the off-cycle.
 - [ ] Finish the starvation rollout beyond the current diagnostics implementation: add
       per-episode / duration-threshold flow triggers, verify insights coverage, and close any
       remaining snapshot/UI contract gaps against `notes/starvation/README.md`.
@@ -262,12 +258,13 @@ has computed an allocation. The replan policy is documented in
       pass through the planner with the same shape.
       Files: `packages/contracts/src/types.ts`, `lib/plan/planTypes.ts`,
       `lib/plan/planBuilder.ts`, settings UI contract tests.
-- [ ] Replace optional-bag power helper APIs with explicit power evidence types such as measured,
+- [x] Replace optional-bag power helper APIs with explicit power evidence types such as measured,
       live, estimated, fallback, and unknown.
-      Why P1: helper inputs like `PowerCandidate`, `LiveUsageCandidate`, `RestorePowerCandidate`,
-      and `UsageDevice` make fallback power look structurally similar to measured power.
-      Files: `lib/plan/planPowerResolution.ts`, `lib/plan/planUsage.ts`,
-      `lib/plan/planHeadroomSupport.ts`, power-resolution tests.
+      Superseded by Observer's `lib/observer/observedPower.ts`: consumers read two resolved
+      values (`getCurrentDrawKw`, `getRestoreDrawKw`) instead of evidence-typed bags. The
+      `PowerCandidate` / `LiveUsageCandidate` / `RestorePowerCandidate` / `UsageDevice` types
+      and the `lib/plan/planPowerResolution.ts` / `lib/plan/planCandidatePower.ts` modules
+      were deleted.
 - [ ] Normalize persisted optional state into runtime state with required maps immediately after
       loading. Keep persisted shape and runtime shape separate for power tracker, activation
       attempts, headroom cards, pending commands, and similar planner state.

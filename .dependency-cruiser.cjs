@@ -33,7 +33,7 @@ module.exports = {
       name: 'no-domain-to-app-layer',
       comment: 'Domain modules should not depend on app wiring.',
       severity: 'error',
-      from: { path: '^lib/(core|plan|price|dailyBudget)/' },
+      from: { path: '^lib/(core|plan|price|dailyBudget|observer)/' },
       to: { path: '^lib/app/' },
     },
     {

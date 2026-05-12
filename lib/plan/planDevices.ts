@@ -5,7 +5,7 @@ import {
   PLAN_REASON_CODES,
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-import { resolveCandidatePower } from './planCandidatePower';
+import { getRestoreDrawKw } from '../observer/observedPower';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import {
@@ -191,7 +191,7 @@ function resolveExpectedPowerKw(
   });
   if (steppedExpectedPowerKw !== null) return steppedExpectedPowerKw;
   if (!hasKnownPowerFields(dev)) return undefined;
-  return resolveCandidatePower(dev);
+  return getRestoreDrawKw(dev).kw;
 }
 function resolveSteppedExpectedPowerKw(params: {
   dev: PlanInputDevice;

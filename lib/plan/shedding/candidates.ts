@@ -2,7 +2,7 @@ import type { PlanEngineState } from '../planState';
 import type { PlanInputDevice, ShedAction } from '../planTypes';
 import type { SteppedLoadProfile } from '../../utils/types';
 import { resolveEffectiveCurrentOn } from '../planCurrentState';
-import { resolveCandidatePower } from '../planCandidatePower';
+import { getCurrentDrawKw } from '../../observer/observedPower';
 import {
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
@@ -185,8 +185,8 @@ function buildBinaryCandidate(
   recentlyRestored: boolean,
   state: PlanEngineState,
 ): BinaryShedCandidate | null {
-  const power = resolveCandidatePower(device);
-  if (power === null || power <= 0) return null;
+  const power = getCurrentDrawKw(device);
+  if (power <= 0) return null;
   const pendingBinary = isPendingBinaryCommandActive({
     pending: state.pendingBinaryCommands[device.id],
     communicationModel: device.communicationModel,
@@ -230,8 +230,8 @@ function buildTemperatureCandidate(params: {
     device, priority, recentlyRestored, targetCapabilityId, targetCapability, pendingTargetCommands,
   } = params;
   const shedTemperature = normalizeTargetCapabilityValue({ target: targetCapability, value: params.shedTemperature });
-  const power = resolveCandidatePower(device);
-  if (power === null || power <= 0) return null;
+  const power = getCurrentDrawKw(device);
+  if (power <= 0) return null;
   const pending = pendingTargetCommands[device.id];
   const unconfirmedRelief = pending !== undefined
     && pending.status === 'waiting_confirmation'
@@ -374,8 +374,8 @@ function buildPreparedSteppedBinaryOffCandidate(params: {
   }
   const selectedStep = getSteppedLoadStep(steppedProfile, device.selectedStepId);
   if (!selectedStep || isSteppedLoadOffStep(steppedProfile, selectedStep.id)) return null;
-  const effectivePower = resolveCandidatePower(device);
-  if (effectivePower === null || effectivePower <= 0) return null;
+  const effectivePower = getCurrentDrawKw(device);
+  if (effectivePower <= 0) return null;
   const pendingBinary = isPendingBinaryCommandActive({
     pending: state.pendingBinaryCommands[device.id],
     communicationModel: device.communicationModel,
