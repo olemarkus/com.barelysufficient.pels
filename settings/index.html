@@ -78,7 +78,7 @@
         <div class="device-table-header">
           <span>Device</span>
           <span data-tooltip="Managed by PELS">Managed</span>
-          <span data-tooltip="Capacity-based control">
+          <span data-tooltip="Power-limit control">
             <span class="legacy-ui-copy">Cap</span>
             <span class="redesign-ui-copy">Limit</span>
           </span>
@@ -781,7 +781,7 @@
                 <div class="md-field-row">
                   <md-filled-text-field
                     id="device-detail-cheap-delta"
-                    label="Cheap hours delta"
+                    label="Cheap-hour boost"
                     type="number"
                     step="0.5"
                     value="5"
@@ -793,7 +793,7 @@
                 <div class="md-field-row">
                   <md-filled-text-field
                     id="device-detail-expensive-delta"
-                    label="Expensive hours delta"
+                    label="Expensive-hour reduction"
                     type="number"
                     step="0.5"
                     value="-5"
@@ -992,8 +992,8 @@
                 <div class="md-switch-row">
                   <md-switch id="device-detail-controllable"></md-switch>
                   <span class="md-switch-row__content">
-                    <span class="md-switch-row__label">Capacity-based control</span>
-                    <small class="field__hint">Allow PELS to adjust this device based on power capacity limits.</small>
+                    <span class="md-switch-row__label">Power-limit control</span>
+                    <small class="field__hint">Allow PELS to adjust this device based on power limits.</small>
                   </span>
                 </div>
 

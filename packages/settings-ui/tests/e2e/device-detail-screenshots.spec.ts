@@ -7,8 +7,13 @@ import { expect, test, type Page } from './fixtures/test';
 
 const OUT = '../../docs/public/screenshots/device-detail';
 
-test.beforeEach(() => {
+test.beforeEach(({ page }, testInfo) => {
+  void page;
   test.skip(Boolean(process.env.CI), 'Device-detail screenshots are for local use only');
+  test.skip(
+    testInfo.project.name !== 'chromium-mobile-width',
+    'Screenshots are pinned to chromium-mobile-width to avoid clobbering.',
+  );
 });
 
 test.use({ viewport: { width: 480, height: 900 } });
@@ -27,7 +32,7 @@ const openDeviceDetail = async (page: Page, deviceId: string) => {
   await page.locator('[data-settings-target="devices"]').click();
   const row = page.locator(`#devices-panel [data-device-id="${deviceId}"]`).first();
   await expect(row).toBeVisible();
-  await row.locator('.device-row__name').click();
+  await row.click();
   await expect(page.locator('#device-detail-overlay')).toBeVisible();
   await prepPage(page);
 };
@@ -47,7 +52,7 @@ test('shedding section with conditional row', async ({ page }) => {
   await openDeviceDetail(page, 'dev_heatpump');
   await page.locator('#device-detail-shedding-section').scrollIntoViewIfNeeded();
   const segmented = page.locator('#device-detail-overshoot-segmented');
-  await segmented.locator('button.segmented__option', { hasText: 'Set to temperature' }).click();
+  await segmented.locator('.segmented__option', { hasText: 'Set to temperature' }).click();
   await page.waitForTimeout(200);
   await page.locator('#device-detail-shedding-section').screenshot({
     path: `${OUT}/shedding-with-temperature.png`,

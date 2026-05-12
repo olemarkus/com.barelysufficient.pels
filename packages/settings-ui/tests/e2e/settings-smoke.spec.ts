@@ -11,7 +11,10 @@ const requestLegacyUi = async (page: Page) => {
 const openSettingsSection = async (page: Page, target: string) => {
   await page.getByRole('tab', { name: 'Settings' }).click();
   await expect(page.locator('#settings-panel')).toBeVisible();
-  await page.locator(`[data-settings-target="${target}"]`).click();
+  const sectionButton = page.locator(`[data-settings-target="${target}"]`);
+  await expect(sectionButton).toBeVisible();
+  await sectionButton.scrollIntoViewIfNeeded();
+  await sectionButton.click();
 };
 
 const getRedesignDeviceRow = (page: Page, deviceId: string) => (
@@ -130,7 +133,8 @@ test.describe('Settings UI (smoke)', () => {
 
     await page.getByRole('button', { name: 'Tomorrow' }).click();
     await expect(page.locator('#budget-redesign-comparison')).toContainText('kWh');
-    await expect(page.locator('#budget-plan-summary')).not.toContainText('to spare now');
+    await expect(page.locator('#budget-plan-summary .plan-hero__decision')).toContainText('Most planned use');
+    await expect(page.locator('#budget-plan-summary .plan-hero__subline')).not.toContainText('to spare now');
 
     await page.getByRole('button', { name: 'Yesterday' }).click();
     await expect(page.locator('#budget-redesign-comparison')).toContainText('kWh');
@@ -157,7 +161,7 @@ test.describe('Settings UI (smoke)', () => {
 
     await expect(page.locator('#budget-redesign-comparison')).toBeVisible();
     await expect(page.locator('#budget-redesign-comparison')).toContainText('Daily budget');
-    await expect(page.getByRole('button', { name: 'Apply changes' })).toBeVisible();
+    await expect(page.locator('#budget-redesign-apply')).toBeVisible();
     const discardButton = page.getByRole('button', { name: 'Discard preview' });
     await expect(discardButton).toBeVisible();
 
