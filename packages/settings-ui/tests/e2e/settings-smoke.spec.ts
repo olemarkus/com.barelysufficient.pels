@@ -27,7 +27,7 @@ test.describe('Settings UI (smoke)', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('tablist')).toBeVisible();
     await expect(page.locator('#overview-panel')).toBeVisible();
-    await expect(page.locator('#overview-panel')).toContainText('Energy used so far this hour');
+    await expect(page.locator('#overview-panel')).toContainText('Energy used this hour');
     await expect(page.locator('#overview-panel')).toContainText('0.26 / 4.5 kWh');
   });
 
@@ -117,7 +117,7 @@ test.describe('Settings UI (smoke)', () => {
 
     await expect(page.locator('#budget-redesign-comparison')).toContainText('/');
     await expect(page.locator('#budget-redesign-comparison')).toContainText('kWh');
-    await expect(page.locator('#budget-plan-summary')).toContainText('headroom now');
+    await expect(page.locator('#budget-plan-summary')).toContainText('to spare now');
     await expect(page.locator('#budget-plan-summary')).toContainText('Managed');
     await expect(page.locator('#budget-plan-summary')).toContainText('Background');
     await expect(page.locator('#budget-redesign-chart')).toBeVisible();
@@ -130,11 +130,11 @@ test.describe('Settings UI (smoke)', () => {
 
     await page.getByRole('button', { name: 'Tomorrow' }).click();
     await expect(page.locator('#budget-redesign-comparison')).toContainText('kWh');
-    await expect(page.locator('#budget-plan-summary')).not.toContainText('headroom now');
+    await expect(page.locator('#budget-plan-summary')).not.toContainText('to spare now');
 
     await page.getByRole('button', { name: 'Yesterday' }).click();
     await expect(page.locator('#budget-redesign-comparison')).toContainText('kWh');
-    await expect(page.locator('#budget-plan-summary')).not.toContainText('headroom now');
+    await expect(page.locator('#budget-plan-summary')).not.toContainText('to spare now');
 
     await page.getByRole('button', { name: 'Adjust', exact: true }).click();
     await expect(page.locator('#budget-redesign-adjust-view')).toBeVisible();

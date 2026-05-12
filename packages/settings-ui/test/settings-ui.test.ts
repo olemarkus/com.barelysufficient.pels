@@ -638,7 +638,7 @@ describe('Settings UI', () => {
               '<div class="plan-hero__top">',
               '  <div class="plan-hero__heading">',
               '    <p class="eyebrow plan-hero__eyebrow">Overview</p>',
-              '    <div class="plan-hero__headline-row"><h2 class="plan-hero__value">4.2 kW</h2><p class="plan-hero__limit">of 9.5 kW soft limit</p></div>',
+              '    <div class="plan-hero__headline-row"><h2 class="plan-hero__value">4.2 kW</h2><p class="plan-hero__limit">of 9.5 kW safe pace</p></div>',
               '    <p class="plan-hero__message">5.3 kW to spare</p>',
               '  </div>',
               '  <div class="plan-hero__status"><span class="plan-chip plan-chip--ok">Live</span><span class="plan-hero__age">10s ago</span></div>',

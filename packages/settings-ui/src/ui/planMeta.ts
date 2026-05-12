@@ -100,14 +100,14 @@ const buildHardCapDisplay = (meta: ValidatedMeta): HardCapDisplay => {
     const breachKw = Math.abs(Math.min(0, hardCapHeadroomKw));
     return {
       breached: true,
-      breachText: `Hard cap exceeded by ${breachKw.toFixed(1)}kW`,
+      breachText: `Hard cap exceeded by ${breachKw.toFixed(1)} kW`,
       remainingText: null,
     };
   }
   return {
     breached: false,
     breachText: null,
-    remainingText: `${hardCapHeadroomKw.toFixed(1)}kW before hard cap`,
+    remainingText: `${hardCapHeadroomKw.toFixed(1)} kW before hard cap`,
   };
 };
 
@@ -115,16 +115,16 @@ const buildNowLines = (meta: ValidatedMeta, nowMs: number): string[] => {
   const headroomAbs = Math.abs(meta.headroomKw).toFixed(1);
   const hardCap = buildHardCapDisplay(meta);
   const headroomText = hardCap.breachText
-    ?? (meta.headroomKw >= 0 ? `${headroomAbs}kW available` : `${headroomAbs}kW over soft limit`);
+    ?? (meta.headroomKw >= 0 ? `${headroomAbs} kW to spare` : `${headroomAbs} kW above safe pace`);
   const ageText = typeof meta.lastPowerUpdateMs === 'number'
     ? ` (${formatRelativeTime(meta.lastPowerUpdateMs, nowMs)})`
     : '';
   const lines = [
-    `Now ${meta.totalKw.toFixed(1)}kW${ageText} (soft limit ${meta.softLimitKw.toFixed(1)}kW)`,
+    `Now ${meta.totalKw.toFixed(1)} kW${ageText} (Safe pace now ${meta.softLimitKw.toFixed(1)} kW)`,
     headroomText,
   ];
   if ((meta.capacityShortfall || hardCap.breached) && typeof meta.shortfallBudgetThresholdKw === 'number') {
-    lines.push(`Shortfall threshold ${meta.shortfallBudgetThresholdKw.toFixed(1)}kW (hourly budget-derived)`);
+    lines.push(`Manual action threshold ${meta.shortfallBudgetThresholdKw.toFixed(1)} kW (from this hour's budget)`);
   } else if (meta.headroomKw < 0 && hardCap.remainingText) {
     lines.push(hardCap.remainingText);
   }
@@ -132,12 +132,12 @@ const buildNowLines = (meta: ValidatedMeta, nowMs: number): string[] => {
     typeof meta.shortfallBudgetHeadroomKw === 'number'
     && meta.shortfallBudgetHeadroomKw !== meta.hardCapHeadroomKw
   ) {
-    lines.push(`Shortfall-threshold headroom ${meta.shortfallBudgetHeadroomKw.toFixed(1)}kW`);
+    lines.push(`Available power before manual action ${meta.shortfallBudgetHeadroomKw.toFixed(1)} kW`);
   }
   if (typeof meta.controlledKw === 'number' && typeof meta.uncontrolledKw === 'number') {
     lines.push(
-      `Capacity-controlled ${meta.controlledKw.toFixed(2)}kW `
-      + `/ Other load ${meta.uncontrolledKw.toFixed(2)}kW`,
+      `Managed ${meta.controlledKw.toFixed(2)} `
+      + `/ Background ${meta.uncontrolledKw.toFixed(2)} kW`,
     );
   }
   return lines;
@@ -152,8 +152,8 @@ const buildHourLines = (meta: PlanMetaSnapshot): string[] => {
   }
   if (typeof meta.hourControlledKWh === 'number' && typeof meta.hourUncontrolledKWh === 'number') {
     lines.push(
-      `Capacity-controlled ${meta.hourControlledKWh.toFixed(2)} `
-      + `/ Other load ${meta.hourUncontrolledKWh.toFixed(2)} kWh`,
+      `Managed ${meta.hourControlledKWh.toFixed(2)} `
+      + `/ Background ${meta.hourUncontrolledKWh.toFixed(2)} kWh`,
     );
   }
   if (typeof meta.minutesRemaining === 'number' && meta.minutesRemaining <= 10) lines.push('End of hour');
