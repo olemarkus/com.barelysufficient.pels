@@ -13,8 +13,12 @@ export type RestoreCandidate = {
 };
 
 export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): boolean {
+  // No explicit staleness check: `resolveRestoreObservedState` reads
+  // `isObservedOff` / `isObservedOn` from observer, both of which already
+  // short-circuit on stale observations. A stale device resolves to 'unknown'
+  // / 'target_only' there and is not classified as a binary or stepped
+  // restore candidate.
   return device.controllable !== false
-    && device.observationStale !== true
     && device.plannedState !== 'shed';
 }
 

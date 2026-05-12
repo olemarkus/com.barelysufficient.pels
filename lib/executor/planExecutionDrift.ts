@@ -12,16 +12,18 @@ import {
 
 type PlanDevice = DevicePlan['devices'][number];
 type BinaryState = 'on' | 'off';
-type DriftObservationFreshness = { kind: 'fresh' } | { kind: 'stale' };
 type DriftPendingBinaryCommand =
   | { kind: 'pending'; desired: boolean | 'unknown' }
   | { kind: 'none' };
 type DriftPendingStepCommand = { kind: 'pending' } | { kind: 'none' };
+type DriftPendingTargetCommand =
+  | { kind: 'pending'; desired: number }
+  | { kind: 'none' };
 
 type DriftRuntimeState = {
-  observation: DriftObservationFreshness;
   pendingBinary: DriftPendingBinaryCommand;
   pendingStep: DriftPendingStepCommand;
+  pendingTarget: DriftPendingTargetCommand;
 };
 type ExecutableSteppedLoadTransition = NonNullable<ExecutableSteppedLoadIntent['transition']>;
 
@@ -47,7 +49,7 @@ export function hasPlanDeviceExecutionDrift(params: {
   return hasExecutableDeviceExecutionDrift({
     intent: buildExecutableDeviceIntent(planDevice),
     observed: buildExecutableObservedDeviceState(liveDevice),
-    runtime: buildDriftRuntimeState(liveDevice),
+    runtime: buildDriftRuntimeState(planDevice, liveDevice),
   });
 }
 
@@ -56,15 +58,35 @@ function hasExecutableDeviceExecutionDrift(params: {
   observed: ExecutableObservedDeviceState;
   runtime: DriftRuntimeState;
 }): boolean {
+  // Drift compares observer-reported state with planner-intended state.
+  // Observer-reported state is authoritative here — even a stale observation
+  // is what the device actually shows, and re-actuating against a drift is
+  // idempotent, so we no longer gate drift on observation freshness.
   const { intent, observed, runtime } = params;
-  if (runtime.observation.kind === 'stale') return false;
   if (hasExecutableBinaryExecutionDrift(intent, observed, runtime)) return true;
-  return hasExecutableTargetExecutionDrift(intent, observed);
+  return hasExecutableTargetExecutionDrift(intent, observed, runtime);
 }
 
-function buildDriftRuntimeState(liveDevice: PlanInputDevice): DriftRuntimeState {
+// Drift no longer suppresses on observation staleness — observer-reported
+// state is authoritative. Repeat-drift dampening depends on the per-axis
+// pending-command flags (`binaryCommandPending`, `stepCommandPending`,
+// `pendingTargetCommand`) being set whenever the executor dispatches a command
+// in response to detected drift, and cleared on success/failure. Any future
+// actuation path that bypasses those flags would turn the new behavior into a
+// tight retry loop on unresponsive devices — `targetExecutor` reconcile mode
+// in particular bypasses pending-target retry suppression, so the
+// `pendingTarget` dampener below is what keeps drift from re-firing while a
+// target command is awaiting settlement.
+function buildDriftRuntimeState(
+  planDevice: PlanDevice,
+  liveDevice: PlanInputDevice,
+): DriftRuntimeState {
+  // `pendingTargetCommand` is engine state, projected onto the plan device by
+  // `planBuilder.shouldExposePendingTargetCommand`. The plan snapshot is the
+  // authoritative source for in-flight target commands; the input device only
+  // carries observed capability values.
+  const pendingTarget = planDevice.pendingTargetCommand;
   return {
-    observation: liveDevice.observationStale === true ? { kind: 'stale' } : { kind: 'fresh' },
     pendingBinary: liveDevice.binaryCommandPending === true
       ? {
         kind: 'pending',
@@ -74,16 +96,29 @@ function buildDriftRuntimeState(liveDevice: PlanInputDevice): DriftRuntimeState 
       }
       : { kind: 'none' },
     pendingStep: liveDevice.stepCommandPending === true ? { kind: 'pending' } : { kind: 'none' },
+    pendingTarget: pendingTarget
+      ? { kind: 'pending', desired: pendingTarget.desired }
+      : { kind: 'none' },
   };
 }
 
 function hasExecutableTargetExecutionDrift(
   intent: ExecutableDeviceIntent,
   observed: ExecutableObservedDeviceState,
+  runtime: DriftRuntimeState,
 ): boolean {
   if (!intent.target) return false;
   if (intent.target.purpose !== 'shed_temperature' && hasNonTemperatureShedIntent(intent)) return false;
+  if (isPendingTargetCommandMatchingExpected(runtime.pendingTarget, intent.target.desired)) return false;
   return !Object.is(observed.target?.observedValue, intent.target.desired);
+}
+
+function isPendingTargetCommandMatchingExpected(
+  pending: DriftPendingTargetCommand,
+  expectedTarget: number,
+): boolean {
+  if (pending.kind !== 'pending') return false;
+  return Object.is(pending.desired, expectedTarget);
 }
 
 function hasNonTemperatureShedIntent(intent: ExecutableDeviceIntent): boolean {

@@ -213,12 +213,12 @@ export function buildPlanSignature(plan: DevicePlan): string {
 }
 
 function isActiveControlledDevice(device: DevicePlanDevice): boolean {
-  if (device.observationStale === true) return false;
+  // `isObservedOn` already short-circuits on stale observations.
   return isObservedOn(device);
 }
 
 function isActiveInputDevice(device: PlanInputDevice): boolean {
-  if (device.observationStale === true) return false;
+  // `isObservedOn` already short-circuits on stale observations.
   return isObservedOn(device);
 }
 

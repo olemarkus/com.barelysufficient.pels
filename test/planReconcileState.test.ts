@@ -150,6 +150,61 @@ describe('planReconcileState stepped device drift', () => {
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
     });
 
+    it('does not treat target divergence as drift while a matching target command is still pending', () => {
+      // Symmetric with the binary dampener: `targetExecutor` reconcile mode
+      // bypasses pending-target retry suppression, so without this dampener a
+      // stale observation would re-fire drift every cycle until the circuit
+      // breaker tripped.
+      const plan = buildPlan([buildBinaryDevice({
+        currentState: 'not_applicable',
+        plannedState: 'keep',
+        hasBinaryControl: false,
+        currentTarget: 21,
+        plannedTarget: 21,
+        pendingTargetCommand: {
+          desired: 21,
+          retryCount: 0,
+          nextRetryAtMs: 0,
+          status: 'waiting_confirmation',
+        },
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-2',
+        name: 'Heater',
+        currentOn: false,
+        hasBinaryControl: false,
+        observationStale: true,
+        targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);
+    });
+
+    it('treats a mismatched pending target command as drift', () => {
+      const plan = buildPlan([buildBinaryDevice({
+        currentState: 'not_applicable',
+        plannedState: 'keep',
+        hasBinaryControl: false,
+        currentTarget: 21,
+        plannedTarget: 21,
+        pendingTargetCommand: {
+          desired: 18,
+          retryCount: 0,
+          nextRetryAtMs: 0,
+          status: 'waiting_confirmation',
+        },
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-2',
+        name: 'Heater',
+        currentOn: false,
+        hasBinaryControl: false,
+        targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
+    });
+
     it('does not treat a keep device as drift while a matching binary command is still pending', () => {
       const plan = buildPlan([buildBinaryDevice({
         currentState: 'off',
@@ -220,7 +275,12 @@ describe('planReconcileState stepped device drift', () => {
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);
     });
 
-    it('does not treat stale live binary observations as drift', () => {
+    it('still detects drift against a stale live binary observation — observer data wins over planner data', () => {
+      // Drift compares what we asked for against what observer reports. Even a
+      // stale observation is the device's most recently observed (possibly
+      // outdated) state; suppressing drift on staleness would hide a real
+      // divergence. Re-actuating against the drift is idempotent, so the worst
+      // case is a redundant command.
       const plan = buildPlan([buildBinaryDevice({
         currentState: 'on',
         plannedState: 'keep',
@@ -234,7 +294,7 @@ describe('planReconcileState stepped device drift', () => {
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       }];
 
-      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
     });
 
     it('detects binary drift for a stepped device via live input', () => {
