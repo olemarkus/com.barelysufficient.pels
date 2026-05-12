@@ -8,6 +8,8 @@ import {
   resolveDominantCause,
   resolveEffectiveLocalView,
   resolveHeadroomLine,
+  resolveHeroData,
+  resolvePlanPayload,
   resolveSplitLine,
 } from '../src/ui/budgetRedesign.ts';
 import { resolveAllocationWarning } from '../src/ui/dailyBudgetAllocationWarning.ts';
@@ -76,11 +78,21 @@ const buildPayload = (overrides: {
 
 describe('resolveDecisionLine', () => {
   it('asks to wait when budget is enabled but data is missing', () => {
-    expect(resolveDecisionLine(enabledPayload, 'today', 'noPlan')).toBe('Waiting for daily budget data.');
+    expect(resolveDecisionLine(enabledPayload, 'today', 'noPlan'))
+      .toBe('PELS is preparing the daily plan. Check again shortly.');
   });
 
   it('asks to enable daily budget when off', () => {
     expect(resolveDecisionLine(null, 'today', 'noPlan')).toBe('Enable daily budget to build a daily plan.');
+  });
+
+  it('points to price setup without assuming prices are the only missing tomorrow input', () => {
+    expect(resolveDecisionLine(null, 'tomorrow', 'noPlan', true))
+      .toBe("Tomorrow's plan is not available yet. Check electricity prices if it does not appear shortly.");
+  });
+
+  it('does not imply budget is off when persisted settings say it is enabled', () => {
+    expect(resolveDecisionLine(null, 'today', 'noPlan', true)).not.toContain('Enable daily budget');
   });
 
   it('is silent on within-budget today', () => {
@@ -156,6 +168,21 @@ describe('resolveDecisionLine', () => {
   it('uses generic ready line for tomorrow when not shaped', () => {
     const payload = buildPayload();
     expect(resolveDecisionLine(payload, 'tomorrow', 'within')).toBe("Tomorrow's budget plan is ready.");
+  });
+});
+
+describe('resolveHeroData', () => {
+  it('uses persisted disabled state even when the day payload is still enabled', () => {
+    const hero = resolveHeroData(buildPayload({ enabled: true }), 'today', costDisplay, 'within', false);
+    expect(hero.comparison).toBe('Daily budget off');
+    expect(hero.decision).toBe('Enable daily budget to build a daily plan.');
+  });
+});
+
+describe('resolveChartData', () => {
+  it('hides plan visuals when persisted settings say budget is disabled', () => {
+    const payload = buildPayload({ enabled: true });
+    expect(resolvePlanPayload(payload, false)).toBeNull();
   });
 });
 
@@ -369,6 +396,11 @@ describe('resolveConfidenceData', () => {
   it('hides confidence when daily budget is off or no plan exists', () => {
     expect(resolveConfidenceData(buildPayload({ enabled: false }), 'today', 'noPlan')).toBeNull();
     expect(resolveConfidenceData(buildPayload({ confidence: 0.72 }), 'today', 'noPlan')).toBeNull();
+  });
+
+  it('hides confidence when persisted settings say budget is disabled', () => {
+    const payload = resolvePlanPayload(buildPayload({ enabled: true, confidence: 0.72 }), false);
+    expect(resolveConfidenceData(payload, 'today', 'within')).toBeNull();
   });
 });
 
