@@ -343,7 +343,7 @@ describe('daily budget chart render', () => {
 
     expect(capturedArgs).toHaveLength(1);
     expect(capturedArgs[0].bars[2]?.title).toBe(
-      '02:00 · Planned use 2.00 kWh · Planned uncontrolled 1.20 kWh · Planned controlled 0.80 kWh · Actual use so far 1.90 kWh · Actual uncontrolled so far 1.20 kWh · Actual controlled so far 0.70 kWh',
+      '02:00 · Planned use 2.00 kWh · Planned background 1.20 kWh · Planned managed 0.80 kWh · Actual use so far 1.90 kWh · Actual background so far 1.20 kWh · Actual managed so far 0.70 kWh',
     );
   });
 
@@ -428,13 +428,13 @@ describe('daily budget chart render', () => {
     const option = setOption.mock.calls[0][0] as { series: Array<{ name: string; stack?: string }> };
     const names = option.series.map((s) => s.name);
     // Both actual and plan breakdown groups must be present
-    expect(names).toContain('Actual Uncontrolled');
-    expect(names).toContain('Actual Controlled');
-    expect(names).toContain('Plan Uncontrolled');
-    expect(names).toContain('Plan Controlled');
+    expect(names).toContain('Actual Background');
+    expect(names).toContain('Actual Managed');
+    expect(names).toContain('Plan Background');
+    expect(names).toContain('Plan Managed');
     // Actual and plan must use different stack keys (they are grouped side by side)
-    const actualStack = option.series.find((s) => s.name === 'Actual Uncontrolled')?.stack;
-    const planStack = option.series.find((s) => s.name === 'Plan Uncontrolled')?.stack;
+    const actualStack = option.series.find((s) => s.name === 'Actual Background')?.stack;
+    const planStack = option.series.find((s) => s.name === 'Plan Background')?.stack;
     expect(actualStack).not.toBe(planStack);
   });
 

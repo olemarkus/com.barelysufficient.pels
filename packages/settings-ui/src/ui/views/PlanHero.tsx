@@ -302,7 +302,7 @@ const PowerMeter = ({ scale }: { scale: BarScale }) => {
     {
       kind: 'actual',
       positionPct: pctOf(scale.total, scale.scaleKw),
-      tooltip: `Power being used now ${scale.total.toFixed(1)} kW`,
+      tooltip: `Power now ${scale.total.toFixed(1)} kW`,
     },
     {
       kind: 'target',
@@ -337,7 +337,7 @@ const PowerSection = ({
   const powerTone = scale ? resolvePowerTone(scale) : null;
   return (
     <div class="plan-hero__section">
-      <span class="plan-hero__section-label">Power being used now</span>
+      <span class="plan-hero__section-label">Power now</span>
       <div class="plan-hero__headline" data-tone={powerTone}>{headline.totalKw.toFixed(1)} kW</div>
       {headline.overHardLimit && headline.hardLimitKw !== null && (
         <div class="plan-hero__subline" data-tone="critical">
@@ -383,7 +383,7 @@ const EnergyMeter = ({ scale }: { scale: EnergyBarScale }) => {
       kind: 'actual',
       positionPct: pctOf(scale.usedKWh, scaleKWh),
       tone: scale.usedKWh > scale.budgetKWh ? 'warning' : 'good',
-      tooltip: `Energy used so far this hour ${scale.usedKWh.toFixed(2)} kWh`,
+      tooltip: `Energy used this hour ${scale.usedKWh.toFixed(2)} kWh`,
     },
     {
       kind: 'target',
@@ -414,7 +414,7 @@ const EnergySection = ({ meta }: { meta: PlanMetaSnapshot }) => {
   const usedText = `${scale.usedKWh.toFixed(2)} / ${scale.budgetKWh.toFixed(1)} kWh`;
   return (
     <div class="plan-hero__section">
-      <span class="plan-hero__section-label">Energy used so far this hour</span>
+      <span class="plan-hero__section-label">Energy used this hour</span>
       <div class="plan-hero__headline" data-tone={scale.usedKWh > scale.budgetKWh ? 'warning' : undefined}>
         {usedText}
       </div>
