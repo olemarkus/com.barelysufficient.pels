@@ -95,7 +95,7 @@ test.describe('Deadline plan', () => {
     });
     await page.goto('/deadline-plan.html?deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
 
-    await expect(page.getByRole('heading', { name: 'Deadline plan unavailable' })).toBeVisible();
-    await expect(page.getByText('Deadline plan data is not available for this device.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Smart task plan unavailable' })).toBeVisible();
+    await expect(page.getByText('Smart task plan data is not available for this device.')).toBeVisible();
   });
 });

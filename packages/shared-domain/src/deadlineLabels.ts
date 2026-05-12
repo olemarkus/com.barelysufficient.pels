@@ -23,6 +23,7 @@ export type DeadlineLabels = {
   pendingHeroByReason: Record<DeadlinePlanPendingReason, { headline: string; body: string }>;
   unavailableByReason: Record<DeadlinePlanUnavailableReason, { headline: string; body: string }>;
   cannotMeetShortfall: (shortfallLabel: string) => string;
+  cannotMeetFallback: string;
   completedHero: { headline: string; body: string };
   targetUnit: '°C' | '%';
   planInputsCardTitle: string;
@@ -36,7 +37,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     kindChipLabel: 'Temperature',
     activeChipLabel: 'Heating',
     waitingChipLabel: 'Heat queued',
-    cannotMeetChipLabel: 'Can’t fully meet',
+    cannotMeetChipLabel: 'Cannot finish',
     deviceSeriesName: 'Heating',
     backgroundSeriesName: 'Background usage',
     planTooltipActive: 'Heat',
@@ -44,7 +45,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     pendingHeroByReason: {
       awaiting_horizon_plan: {
         headline: 'Waiting for tomorrow’s prices',
-        body: 'The heat plan is computed once the price horizon covers the deadline.',
+        body: 'PELS will plan this task once prices are available through the selected time.',
       },
       price_feature_disabled: {
         headline: 'Price-aware optimisation is off',
@@ -53,7 +54,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       device_data_missing: {
         headline: 'Waiting for a reading from the device',
         body: 'PELS needs a current temperature, a useful capacity, or a recent observation '
-          + 'from this heater before it can plan the deadline.',
+          + 'from this heater before it can plan the smart task.',
       },
     },
     unavailableByReason: {
@@ -62,15 +63,18 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
         body: 'The plan will appear once the device reports its current temperature.',
       },
       already_satisfied: {
-        headline: 'Already at the target temperature',
-        body: 'PELS will not schedule any heating because the current temperature already meets '
-          + 'the deadline target. The plan reactivates if the temperature drops below target.',
+        headline: 'Satisfied',
+        body: 'The current temperature already meets the smart task target. PELS will plan again '
+          + 'if the temperature drops below target.',
       },
     },
-    cannotMeetShortfall: (shortfallLabel) => `Best effort — short ~${shortfallLabel} of the target by the deadline.`,
+    cannotMeetShortfall: (shortfallLabel) => (
+      `There may not be enough time or available power to finish. Short by about ${shortfallLabel}.`
+    ),
+    cannotMeetFallback: 'There may not be enough time or available power to finish.',
     completedHero: {
-      headline: 'Deadline complete',
-      body: 'See the History tab for what was delivered.',
+      headline: 'Smart task finished',
+      body: 'See History for the outcome.',
     },
     targetUnit: '°C',
     planInputsCardTitle: 'Plan inputs',
@@ -82,7 +86,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     kindChipLabel: 'EV',
     activeChipLabel: 'Charging',
     waitingChipLabel: 'Charge queued',
-    cannotMeetChipLabel: 'Can’t fully meet',
+    cannotMeetChipLabel: 'Cannot finish',
     deviceSeriesName: 'Charging',
     backgroundSeriesName: 'Background usage',
     planTooltipActive: 'Charge',
@@ -90,7 +94,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     pendingHeroByReason: {
       awaiting_horizon_plan: {
         headline: 'Waiting for tomorrow’s prices',
-        body: 'The charging plan is computed once the price horizon covers the deadline.',
+        body: 'PELS will plan this task once prices are available through the selected time.',
       },
       price_feature_disabled: {
         headline: 'Price-aware optimisation is off',
@@ -99,7 +103,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       device_data_missing: {
         headline: 'Waiting for a reading from the EV',
         body: 'PELS needs a current state of charge, a charge rate, or a recent observation '
-          + 'from this EV before it can plan the deadline.',
+          + 'from this EV before it can plan the smart task.',
       },
     },
     unavailableByReason: {
@@ -108,15 +112,18 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
         body: 'The plan will appear once the EV reports its current state of charge.',
       },
       already_satisfied: {
-        headline: 'Already at the target state of charge',
-        body: 'PELS will not schedule any charging because the EV is already at or above the '
-          + 'deadline target. The plan reactivates if the state of charge drops below target.',
+        headline: 'Satisfied',
+        body: 'The EV is already at or above the smart task target. PELS will plan again if the '
+          + 'state of charge drops below target.',
       },
     },
-    cannotMeetShortfall: (shortfallLabel) => `Best effort — short ~${shortfallLabel} of the target by the deadline.`,
+    cannotMeetShortfall: (shortfallLabel) => (
+      `There may not be enough time or available power to finish. Short by about ${shortfallLabel}.`
+    ),
+    cannotMeetFallback: 'There may not be enough time or available power to finish.',
     completedHero: {
-      headline: 'Deadline complete',
-      body: 'See the History tab for what was delivered.',
+      headline: 'Smart task finished',
+      body: 'See History for the outcome.',
     },
     targetUnit: '%',
     planInputsCardTitle: 'Plan inputs',
