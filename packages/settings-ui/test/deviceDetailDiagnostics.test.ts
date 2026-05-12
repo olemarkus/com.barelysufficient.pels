@@ -11,7 +11,7 @@ const buildDom = () => {
     <div id="device-detail-overlay" hidden></div>
     <div id="device-detail-panel"></div>
     <div id="device-detail-title"></div>
-    <button id="device-detail-close"></button>
+    <md-text-button id="device-detail-close"></md-text-button>
     <div id="device-detail-native-wiring-row" hidden></div>
     <md-switch id="device-detail-native-wiring"></md-switch>
     <div id="device-detail-native-wiring-confirm-row" hidden></div>
@@ -21,14 +21,14 @@ const buildDom = () => {
     <md-switch id="device-detail-price-opt"></md-switch>
     <div id="device-detail-modes"></div>
     <div id="device-detail-delta-section"></div>
-    <input id="device-detail-cheap-delta">
-    <input id="device-detail-expensive-delta">
-    <select id="device-detail-overshoot">
-      <option value="turn_off">Turn off</option>
-      <option value="set_temperature">Set to temperature</option>
-    </select>
+    <md-filled-text-field id="device-detail-cheap-delta"></md-filled-text-field>
+    <md-filled-text-field id="device-detail-expensive-delta"></md-filled-text-field>
+    <md-filled-select id="device-detail-overshoot">
+      <md-select-option value="turn_off"><div slot="headline">Turn off</div></md-select-option>
+      <md-select-option value="set_temperature"><div slot="headline">Set to temperature</div></md-select-option>
+    </md-filled-select>
     <div id="device-detail-overshoot-temp-row"></div>
-    <input id="device-detail-overshoot-temp">
+    <md-filled-text-field id="device-detail-overshoot-temp"></md-filled-text-field>
     <details id="device-detail-diagnostics-disclosure">
       <summary>Advanced diagnostics</summary>
       <div id="device-detail-diagnostics-status"></div>

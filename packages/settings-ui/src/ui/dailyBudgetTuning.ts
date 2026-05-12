@@ -3,6 +3,7 @@ import {
   dailyBudgetControlledWeightInput,
   dailyBudgetPriceFlexShareInput,
   dailyBudgetBreakdownInput,
+  type MdFilledSelectElement,
 } from './dom.ts';
 import { getSetting } from './homey.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
@@ -25,7 +26,7 @@ const clampRatio = (value: number, fallback: number): number => {
   return Math.min(1, Math.max(0, value));
 };
 
-const setSelectValue = (input: HTMLSelectElement | null, value: string) => {
+const setSelectValue = (input: MdFilledSelectElement | null, value: string) => {
   if (!input) return;
   const target = input;
   target.value = value;

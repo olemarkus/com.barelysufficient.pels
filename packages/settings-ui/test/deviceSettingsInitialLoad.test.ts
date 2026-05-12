@@ -14,7 +14,7 @@ const setupDom = () => {
   document.body.innerHTML = `
     <div id="device-list"></div>
     <div id="empty-state"></div>
-    <button id="refresh-button"></button>
+    <md-outlined-button id="refresh-button"></md-outlined-button>
   `;
 };
 
@@ -74,7 +74,7 @@ const setupHarness = async (options: {
   renderDevices([device]);
 
   const deviceList = document.getElementById('device-list');
-  const checkboxes = deviceList?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]') ?? [];
+  const checkboxes = deviceList?.querySelectorAll<HTMLInputElement>('md-checkbox') ?? [];
   const managedCheckbox = checkboxes[0];
   const controllableCheckbox = checkboxes[1];
   const priceOptCheckbox = checkboxes[2];

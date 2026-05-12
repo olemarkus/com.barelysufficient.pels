@@ -18,6 +18,60 @@ let originalWindowFetch: typeof window.fetch | undefined;
 let hadOriginalWindowFetch = false;
 const originalConsoleError = console.error;
 
+const installElementInternalsPolyfill = () => {
+  if (typeof window === 'undefined') return;
+  const proto = window.HTMLElement.prototype as typeof window.HTMLElement.prototype & {
+    attachInternals?: () => Record<string, unknown>;
+  };
+  const originalAttachInternals = proto.attachInternals;
+  proto.attachInternals = function attachInternals() {
+    const internals = typeof originalAttachInternals === 'function'
+      ? originalAttachInternals.call(this)
+      : {};
+    const define = (name: string, value: unknown) => {
+      if (name in internals) return;
+      Object.defineProperty(internals, name, {
+        configurable: true,
+        value,
+      });
+    };
+    define('setFormValue', () => {});
+    define('setValidity', () => {});
+    define('checkValidity', () => true);
+    define('reportValidity', () => true);
+    define('validity', {});
+    define('validationMessage', '');
+    define('willValidate', true);
+    define('labels', []);
+    define('form', null);
+    return internals;
+  };
+};
+
+const installMaterialSelectValuePolyfill = () => {
+  const selectCtor = customElements.get('md-filled-select');
+  if (!selectCtor) return;
+  const proto = selectCtor.prototype as HTMLElement & { value?: string };
+  Object.defineProperty(proto, 'value', {
+    configurable: true,
+    get(this: HTMLElement) {
+      const explicit = this.getAttribute('data-test-value');
+      if (explicit !== null) return explicit;
+      const selected = this.querySelector<HTMLElement & { value?: string }>('md-select-option[selected]');
+      return selected?.value ?? selected?.getAttribute('value') ?? '';
+    },
+    set(this: HTMLElement, value: string) {
+      this.setAttribute('data-test-value', value);
+      this.querySelectorAll<HTMLElement & { selected?: boolean; value?: string }>('md-select-option')
+        .forEach((option) => {
+          const optionValue = option.value ?? option.getAttribute('value') ?? '';
+          option.selected = optionValue === value;
+          option.toggleAttribute('selected', option.selected);
+        });
+    },
+  });
+};
+
 const mockHttpsGetImplementation = (): typeof https.get => (
   ((url: unknown, optionsOrCallback?: unknown, callbackMaybe?: unknown) => {
     let callback: ((res: NodeJS.EventEmitter) => void) | undefined;
@@ -57,7 +111,11 @@ const installHttpsGetSpy = () => {
   httpsGetSpy = vi.spyOn(https, 'get').mockImplementation(mockHttpsGetImplementation());
 };
 
-beforeAll(() => {
+beforeAll(async () => {
+  installElementInternalsPolyfill();
+  await import('../src/ui/materialWeb.ts');
+  installMaterialSelectValuePolyfill();
+
   const matchMediaStub = (query: string) => ({
     matches: false,
     media: query,

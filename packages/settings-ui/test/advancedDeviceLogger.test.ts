@@ -1,12 +1,23 @@
 const setupDom = () => {
   document.body.innerHTML = [
-    '<select id="advanced-device-select"></select>',
-    '<button id="advanced-device-clear"></button>',
-    '<button id="advanced-device-clear-unknown"></button>',
-    '<select id="advanced-api-device-select"></select>',
-    '<button id="advanced-api-device-refresh"></button>',
-    '<button id="advanced-api-device-log"></button>',
+    '<md-filled-select id="advanced-device-select"></md-filled-select>',
+    '<md-outlined-button id="advanced-device-clear"></md-outlined-button>',
+    '<md-outlined-button id="advanced-device-clear-unknown"></md-outlined-button>',
+    '<md-filled-select id="advanced-api-device-select"></md-filled-select>',
+    '<md-outlined-button id="advanced-api-device-refresh"></md-outlined-button>',
+    '<md-outlined-button id="advanced-api-device-log"></md-outlined-button>',
   ].join('');
+};
+
+const createSelectOption = (value: string, label: string): HTMLElement & { value: string } => {
+  const option = document.createElement('md-select-option') as HTMLElement & { value: string };
+  option.value = value;
+  option.setAttribute('value', value);
+  const headline = document.createElement('div');
+  headline.slot = 'headline';
+  headline.textContent = label;
+  option.appendChild(headline);
+  return option;
 };
 
 const flushPromises = async () => new Promise<void>((resolve) => {
@@ -121,10 +132,7 @@ describe('advanced device logger', () => {
     await advanced.refreshAdvancedDeviceLogger();
 
     const select = document.querySelector('#advanced-api-device-select') as HTMLSelectElement;
-    const staleOption = document.createElement('option');
-    staleOption.value = 'dev-2';
-    staleOption.textContent = 'Stale device';
-    select.appendChild(staleOption);
+    select.appendChild(createSelectOption('dev-2', 'Stale device'));
     select.value = 'dev-2';
 
     const logButton = document.querySelector('#advanced-api-device-log') as HTMLButtonElement;

@@ -8,10 +8,11 @@ import { callApi, primeApiCache } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
 import { logSettingsError, logSettingsInfo } from './logging.ts';
 import { refreshDailyBudgetPlan } from './dailyBudget.ts';
+import type { MdButtonElement } from './dom.ts';
 
 let resetTimeout: ReturnType<typeof setTimeout> | null = null;
 
-export const handleResetStats = async (btn: HTMLButtonElement) => {
+export const handleResetStats = async (btn: MdButtonElement) => {
   if (!btn.classList.contains('confirming')) {
     await logSettingsInfo('Reset stats confirmation requested', 'handleResetStats');
     const b = btn;

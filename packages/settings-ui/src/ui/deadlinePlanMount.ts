@@ -15,6 +15,7 @@ import {
 import { renderDeadlinePlan } from './views/DeadlinePlan.tsx';
 import { resolveDeadlinePlanLoadState, resolveRenderInput } from './deadlinePlan.ts';
 import { setStoredOverviewRedesignPreference } from './uiVariant.ts';
+import type { MdButtonElement } from './dom.ts';
 
 const closeDeadlinePlanPage = (): void => {
   if (new URLSearchParams(window.location.search).get('ui') === 'redesign') {
@@ -29,7 +30,7 @@ const closeDeadlinePlanPage = (): void => {
 
 const initDeadlinePlanClose = (): void => {
   document
-    .querySelector<HTMLButtonElement>('[data-deadline-plan-close]')
+    .querySelector<MdButtonElement>('[data-deadline-plan-close]')
     ?.addEventListener('click', closeDeadlinePlanPage);
 };
 

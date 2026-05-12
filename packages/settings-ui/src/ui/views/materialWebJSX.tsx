@@ -18,6 +18,10 @@ export const MdSwitch = (props: MdBaseProps) => (
   h('md-switch', props as Record<string, unknown>)
 );
 
+export const MdCheckbox = (props: MdBaseProps) => (
+  h('md-checkbox', props as Record<string, unknown>)
+);
+
 export const MdFilledTextField = (props: MdBaseProps) => (
   h('md-filled-text-field', props as Record<string, unknown>)
 );
@@ -34,6 +38,14 @@ export const MdFilledButton = (props: MdBaseProps) => (
   h('md-filled-button', props as Record<string, unknown>)
 );
 
+export const MdOutlinedButton = (props: MdBaseProps) => (
+  h('md-outlined-button', props as Record<string, unknown>)
+);
+
 export const MdTextButton = (props: MdBaseProps) => (
   h('md-text-button', props as Record<string, unknown>)
+);
+
+export const MdIconButton = (props: MdBaseProps) => (
+  h('md-icon-button', props as Record<string, unknown>)
 );

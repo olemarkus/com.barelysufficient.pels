@@ -86,9 +86,15 @@ const updateShedActionOptions = (params: {
 }): void => {
   if (!deviceDetailShedAction) return;
 
-  const turnOffOption = deviceDetailShedAction.querySelector<HTMLOptionElement>('option[value="turn_off"]');
-  const setTempOption = deviceDetailShedAction.querySelector<HTMLOptionElement>('option[value="set_temperature"]');
-  const setStepOption = deviceDetailShedAction.querySelector<HTMLOptionElement>('option[value="set_step"]');
+  const turnOffOption = deviceDetailShedAction.querySelector<HTMLElement & { disabled: boolean }>(
+    'md-select-option[value="turn_off"]',
+  );
+  const setTempOption = deviceDetailShedAction.querySelector<HTMLElement & { disabled: boolean }>(
+    'md-select-option[value="set_temperature"]',
+  );
+  const setStepOption = deviceDetailShedAction.querySelector<HTMLElement & { disabled: boolean }>(
+    'md-select-option[value="set_step"]',
+  );
 
   if (turnOffOption) {
     turnOffOption.disabled = !params.canConfigure || params.forceTemperatureOnly || params.forceStepOnly;
@@ -108,7 +114,7 @@ const updateShedActionOptions = (params: {
 
 const isShedActionOptionVisible = (action: ShedAction): boolean => {
   if (!deviceDetailShedAction) return false;
-  const option = deviceDetailShedAction.querySelector<HTMLOptionElement>(`option[value="${action}"]`);
+  const option = deviceDetailShedAction.querySelector<HTMLElement>(`md-select-option[value="${action}"]`);
   return Boolean(option && !option.hidden);
 };
 

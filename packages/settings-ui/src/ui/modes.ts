@@ -27,6 +27,28 @@ import { createDragHandle } from './components.ts';
 import { logSettingsError } from './logging.ts';
 import { debouncedSetSetting } from './utils.ts';
 
+type MaterialTextFieldElement = HTMLElement & {
+  value: string;
+  step: string;
+  min: string;
+  max: string;
+  inputMode: string;
+  placeholder: string;
+};
+type MaterialSelectOptionElement = HTMLElement & { value: string; selected: boolean };
+
+const createModeOption = (value: string, selected: boolean): MaterialSelectOptionElement => {
+  const option = document.createElement('md-select-option') as MaterialSelectOptionElement;
+  option.value = value;
+  option.setAttribute('value', value);
+  option.selected = selected;
+  const headline = document.createElement('div');
+  headline.slot = 'headline';
+  headline.textContent = value;
+  option.appendChild(headline);
+  return option;
+};
+
 const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
   device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0
 );
@@ -97,25 +119,17 @@ export const renderModeOptions = () => {
   const sortedModes = Array.from(modes).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
   if (modeSelect) {
-    modeSelect.innerHTML = '';
-    sortedModes.forEach((m) => {
-      const opt = document.createElement('option');
-      opt.value = m;
-      opt.textContent = m;
-      if (m === state.editingMode) opt.selected = true;
-      modeSelect.appendChild(opt);
-    });
+    modeSelect.replaceChildren(
+      ...sortedModes.map((mode) => createModeOption(mode, mode === state.editingMode)),
+    );
+    modeSelect.value = state.editingMode || sortedModes[0] || 'Home';
   }
 
   if (activeModeSelect) {
-    activeModeSelect.innerHTML = '';
-    sortedModes.forEach((m) => {
-      const opt = document.createElement('option');
-      opt.value = m;
-      opt.textContent = m;
-      if (m === state.activeMode) opt.selected = true;
-      activeModeSelect.appendChild(opt);
-    });
+    activeModeSelect.replaceChildren(
+      ...sortedModes.map((mode) => createModeOption(mode, mode === state.activeMode)),
+    );
+    activeModeSelect.value = state.activeMode || sortedModes[0] || 'Home';
   }
 };
 
@@ -150,17 +164,22 @@ const buildOnOffPlaceholder = (): HTMLElement => {
 const buildModeTargetInput = (device: TargetDeviceSnapshot, desired: number | null): HTMLElement => {
   if (!supportsTemperatureDevice(device)) return buildOnOffPlaceholder();
   const target = getPrimaryTemperatureTarget(device);
-  const tempInput = document.createElement('input');
-  tempInput.type = 'number';
+  const tempInput = document.createElement('md-filled-text-field') as MaterialTextFieldElement;
+  tempInput.setAttribute('type', 'number');
   tempInput.step = getTargetCapabilityStep(target).toString();
+  tempInput.setAttribute('step', tempInput.step);
   if (typeof target?.min === 'number' && Number.isFinite(target.min)) {
     tempInput.min = target.min.toString();
+    tempInput.setAttribute('min', tempInput.min);
   }
   if (typeof target?.max === 'number' && Number.isFinite(target.max)) {
     tempInput.max = target.max.toString();
+    tempInput.setAttribute('max', tempInput.max);
   }
   tempInput.inputMode = 'decimal';
   tempInput.placeholder = 'Desired °C';
+  tempInput.setAttribute('inputmode', tempInput.inputMode);
+  tempInput.setAttribute('placeholder', tempInput.placeholder);
   tempInput.value = desired === null ? '' : desired.toString();
   tempInput.dataset.deviceId = device.id;
   tempInput.className = 'mode-target-input';

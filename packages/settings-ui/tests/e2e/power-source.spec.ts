@@ -2,8 +2,16 @@ import { expect, test, type Page } from './fixtures/test';
 
 const openLimitsAndSafety = async (page: Page) => {
   await page.getByRole('tab', { name: 'Settings' }).click();
-  await page.getByRole('button', { name: /Limits & safety/ }).click();
+  await page.locator('[data-settings-target="limits"]').click();
   await expect(page.locator('#limits-panel')).toBeVisible();
+};
+
+const setMaterialSelectValue = async (page: Page, selector: string, value: string) => {
+  await page.locator(selector).evaluate((el, nextValue) => {
+    const target = el as HTMLElement & { value: string };
+    target.value = nextValue;
+    target.dispatchEvent(new Event('change', { bubbles: true }));
+  }, value);
 };
 
 test.describe('Power source setting', () => {
@@ -13,7 +21,7 @@ test.describe('Power source setting', () => {
 
     const select = page.locator('#settings-power-source');
     await expect(select).toBeVisible();
-    await expect(select).toHaveValue('flow');
+    await expect(select).toHaveJSProperty('value', 'flow');
   });
 
   test('loads persisted "homey_energy" value on startup', async ({ page }) => {
@@ -25,7 +33,7 @@ test.describe('Power source setting', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await openLimitsAndSafety(page);
 
-    await expect(page.locator('#settings-power-source')).toHaveValue('homey_energy');
+    await expect(page.locator('#settings-power-source')).toHaveJSProperty('value', 'homey_energy');
   });
 
   test('saves power source change and shows toast', async ({ page }) => {
@@ -33,9 +41,9 @@ test.describe('Power source setting', () => {
     await openLimitsAndSafety(page);
 
     const select = page.locator('#settings-power-source');
-    await expect(select).toHaveValue('flow');
+    await expect(select).toHaveJSProperty('value', 'flow');
 
-    await select.selectOption('homey_energy');
+    await setMaterialSelectValue(page, '#settings-power-source', 'homey_energy');
     await expect(page.locator('#toast')).toContainText('Limits & safety saved');
 
     // Verify the setting was persisted in the Homey stub
@@ -63,9 +71,9 @@ test.describe('Power source setting', () => {
     await openLimitsAndSafety(page);
 
     const select = page.locator('#settings-power-source');
-    await expect(select).toHaveValue('homey_energy');
+    await expect(select).toHaveJSProperty('value', 'homey_energy');
 
-    await select.selectOption('flow');
+    await setMaterialSelectValue(page, '#settings-power-source', 'flow');
     await expect(page.locator('#toast')).toContainText('Limits & safety saved');
 
     const stored = await page.evaluate(() => {
@@ -101,7 +109,7 @@ test.describe('Power source setting', () => {
     await expect(banner).toContainText('Flow');
 
     // Switch to homey_energy
-    await page.locator('#settings-power-source').selectOption('homey_energy');
+    await setMaterialSelectValue(page, '#settings-power-source', 'homey_energy');
 
     // Re-trigger stale banner refresh so the hint text updates
     await page.evaluate(() => {
