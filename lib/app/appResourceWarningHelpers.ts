@@ -34,19 +34,35 @@ const summarizeDuration = (
 
 const MB = 1024 * 1024;
 
-const resolveMemoryMb = (): Record<string, number | string> => {
+export const resolveMemoryMb = (): Record<string, number | string> => {
+  let heap: ReturnType<typeof v8.getHeapStatistics>;
   try {
-    const heap = v8.getHeapStatistics();
-    return {
-      heapUsedMb: Math.round(heap.used_heap_size / MB * 10) / 10,
-      heapTotalMb: Math.round(heap.total_heap_size / MB * 10) / 10,
-      heapLimitMb: Math.round(heap.heap_size_limit / MB * 10) / 10,
-      externalMb: Math.round(heap.external_memory / MB * 10) / 10,
-      mallocMb: Math.round(heap.malloced_memory / MB * 10) / 10,
-    };
+    heap = v8.getHeapStatistics();
   } catch {
     return { source: 'unavailable' };
   }
+  const result: Record<string, number | string> = {
+    heapUsedMb: Math.round(heap.used_heap_size / MB * 10) / 10,
+    heapTotalMb: Math.round(heap.total_heap_size / MB * 10) / 10,
+    heapLimitMb: Math.round(heap.heap_size_limit / MB * 10) / 10,
+    externalMb: Math.round(heap.external_memory / MB * 10) / 10,
+    mallocMb: Math.round(heap.malloced_memory / MB * 10) / 10,
+  };
+  // RSS read is best-effort: on Homey runtimes where libuv refuses
+  // `/proc/self/stat`, `process.memoryUsage()` throws ENOENT
+  // `uv_resident_set_memory`. Keep the heap fields rather than collapsing the
+  // whole payload to "unavailable".
+  try {
+    const mem = process.memoryUsage();
+    /* eslint-disable-next-line functional/immutable-data -- Local payload accumulator. */
+    Object.assign(result, {
+      rssMb: Math.round(mem.rss / MB * 10) / 10,
+      arrayBuffersMb: Math.round(mem.arrayBuffers / MB * 10) / 10,
+    });
+  } catch {
+    /* RSS unsupported on this platform; keep heap stats. */
+  }
+  return result;
 };
 
 const resolveHeapSpaces = (): Record<string, string> => {

@@ -9,6 +9,7 @@ const startCpuSpikeMonitorMock = vi.fn((params: unknown) => {
 
 vi.mock('../lib/app/smapsRollup', () => ({
   resolveSmapsSummary: () => resolveSmapsSummaryMock(),
+  resolveSmapsDetail: () => null,
 }));
 
 vi.mock('../lib/utils/cpuSpikeMonitor', () => ({

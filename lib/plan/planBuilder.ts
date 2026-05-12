@@ -21,6 +21,7 @@ import {
 } from './planReasons';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
+import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import { buildDeviceDiagnosticsObservations } from './planDiagnostics';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
@@ -125,19 +126,23 @@ export class PlanBuilder {
 
   private trackDuration<T>(key: string, fn: () => T): T {
     const start = Date.now();
+    const rssBefore = safeRss();
     try {
       return fn();
     } finally {
       addPerfDuration(key, Date.now() - start);
+      recordOpRssDelta(key, rssBefore, safeRss());
     }
   }
 
   private async trackDurationAsync<T>(key: string, fn: () => Promise<T>): Promise<T> {
     const start = Date.now();
+    const rssBefore = safeRss();
     try {
       return await fn();
     } finally {
       addPerfDuration(key, Date.now() - start);
+      recordOpRssDelta(key, rssBefore, safeRss());
     }
   }
 
@@ -169,10 +174,12 @@ export class PlanBuilder {
 
   public async buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
     const planStart = Date.now();
+    const rssBefore = safeRss();
     try {
       return await this.buildPlanSnapshotWithTimings(devices);
     } finally {
       addPerfDuration('plan_build_ms', Date.now() - planStart);
+      recordOpRssDelta('plan_build_ms', rssBefore, safeRss());
     }
   }
 
@@ -185,7 +192,9 @@ export class PlanBuilder {
     // admitted, the shedding and restore lanes act on the device with their normal logic and
     // produce their normal reasons.
     const dailyBudgetSnapshot = this.dailyBudgetSnapshot;
-    const deferredEvaluations = this.evaluateDeferredObjectives(devices, dailyBudgetSnapshot, nowTs);
+    const deferredEvaluations = this.trackDuration('evaluate_deferred_objectives_ms', () => (
+      this.evaluateDeferredObjectives(devices, dailyBudgetSnapshot, nowTs)
+    ));
     this.deps.observeDeferredObjectivePlanHistory?.(deferredEvaluations, nowTs);
     this.deps.observeDeferredObjectiveActivePlans?.(deferredEvaluations, nowTs);
     const deferredAdmission = applyDeferredObjectiveAdmission(deferredEvaluations);
