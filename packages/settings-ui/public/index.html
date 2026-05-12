@@ -78,8 +78,8 @@
         <div class="device-table-header">
           <span>Device</span>
           <span data-tooltip="Managed by PELS">Managed</span>
-          <span data-tooltip="Capacity-based control">
-            <span class="legacy-ui-copy">Cap</span>
+          <span data-tooltip="Power-limit control">
+            <span class="legacy-ui-copy">Limit</span>
             <span class="redesign-ui-copy">Limit</span>
           </span>
           <span data-tooltip="Price-based control">Price</span>
@@ -244,9 +244,9 @@
                 <md-filled-text-field id="capacity-limit" name="capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required></md-filled-text-field>
               </label>
               <label class="field">
-                <span class="field__label">Soft margin (kW)</span>
+                <span class="field__label">Safety margin (kW)</span>
                 <md-filled-text-field id="capacity-margin" name="capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required></md-filled-text-field>
-                <small class="field__hint">Soft limit = limit - margin.</small>
+                <small class="field__hint">PELS reacts at the hard cap minus this safety margin.</small>
               </label>
             </form>
           </div>
@@ -781,7 +781,7 @@
                 <div class="md-field-row">
                   <md-filled-text-field
                     id="device-detail-cheap-delta"
-                    label="Cheap hours delta"
+                    label="Cheap-hour boost"
                     type="number"
                     step="0.5"
                     value="5"
@@ -793,7 +793,7 @@
                 <div class="md-field-row">
                   <md-filled-text-field
                     id="device-detail-expensive-delta"
-                    label="Expensive hours delta"
+                    label="Expensive-hour reduction"
                     type="number"
                     step="0.5"
                     value="-5"
@@ -992,7 +992,7 @@
                 <div class="md-switch-row">
                   <md-switch id="device-detail-controllable"></md-switch>
                   <span class="md-switch-row__content">
-                    <span class="md-switch-row__label">Capacity-based control</span>
+                    <span class="md-switch-row__label">Power-limit control</span>
                     <small class="field__hint">Allow PELS to adjust this device based on power capacity limits.</small>
                   </span>
                 </div>

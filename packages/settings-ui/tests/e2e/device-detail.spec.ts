@@ -204,7 +204,7 @@ test.describe('Device detail panel', () => {
       return Boolean(map?.dev_heatpump);
     }, { timeout: 3000 }).toBe(!initiallyExempt);
 
-    // Capacity-based control: toggle off then on.
+    // Power-limit control: toggle off then on.
     await setMdSwitch(page, '#device-detail-controllable', false);
     await expect.poll(async () => {
       const map = await readHomeySetting<Record<string, boolean>>(page, 'controllable_devices');

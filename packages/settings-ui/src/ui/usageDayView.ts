@@ -138,8 +138,8 @@ const getCurrentUsageDayBucketIndex = (buckets: UsageDayBucket[], nextDayStartUt
 const buildUsageDayBarTitle = (bucket: UsageDayBucket) => {
   const lines = [`${bucket.label}`, `Measured ${bucket.measuredKWh.toFixed(2)} kWh`];
   if (bucket.controlledKWh !== null && bucket.uncontrolledKWh !== null) {
-    lines.push(`Controlled ${bucket.controlledKWh.toFixed(2)} kWh`);
-    lines.push(`Uncontrolled ${bucket.uncontrolledKWh.toFixed(2)} kWh`);
+    lines.push(`Managed ${bucket.controlledKWh.toFixed(2)} kWh`);
+    lines.push(`Background ${bucket.uncontrolledKWh.toFixed(2)} kWh`);
   }
   if (bucket.unreliable) lines.push('Unreliable data');
   return lines.join(' · ');
