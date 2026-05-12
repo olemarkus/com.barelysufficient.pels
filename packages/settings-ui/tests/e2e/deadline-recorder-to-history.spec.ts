@@ -218,7 +218,7 @@ const openHistory = async (page: Page, deviceId: string) => {
 };
 
 test.describe('Deadline recorder → history UI round-trip', () => {
-  test('runs through a met deadline and renders the Met card', async ({ page }) => {
+  test('runs through a met deadline and renders the Succeeded card', async ({ page }) => {
     const history = await runRecorder();
     const entriesByDeviceId = groupByDevice(history);
 
@@ -234,7 +234,7 @@ test.describe('Deadline recorder → history UI round-trip', () => {
     await expect(list).toBeVisible();
     const cards = list.locator('.plan-history-card');
     await expect(cards).toHaveCount(1);
-    await expect(cards.first().locator('.plan-chip--ok')).toHaveText('Met');
+    await expect(cards.first().locator('.plan-chip--ok')).toHaveText('Succeeded');
   });
 
   test('runs through a missed deadline and renders the Missed card', async ({ page }) => {

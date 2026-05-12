@@ -88,7 +88,7 @@ export const mountDeadlinePlan = async (): Promise<void> => {
   } catch {
     renderDeadlinePlan(surface, {
       status: 'error',
-      message: 'Deadline plan data is not available for this device.',
+      message: 'Smart task plan data is not available for this device.',
     });
     return;
   }

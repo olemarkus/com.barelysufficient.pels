@@ -69,9 +69,9 @@ export const DeadlineChip = ({ deviceId, nowMs }: { deviceId: string; nowMs: num
       onClick={stopActivation}
       onKeyDown={handleChipKeyDown}
       onKeyUp={handleChipKeyUp}
-      data-tooltip="Open deadline"
+      data-tooltip="Open smart task"
     >
-      Deadline
+      Smart task
     </a>
   );
 };

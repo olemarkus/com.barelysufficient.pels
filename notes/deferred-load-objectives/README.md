@@ -220,6 +220,9 @@ capture per-(device, deadline) outcomes for the Settings UI History tab on
   objective (or when the diagnostic stops appearing for >1 hour with the deadline still in
   the future), `replaced` when the user picks a new deadline or changes the target value on
   the same deadline, and `unknown` when there's not enough fresh input to classify.
+  These stored outcome names are internal compatibility values. Public Settings UI labels
+  expose `met` as `Succeeded`, `missed` as `Missed`, and user-clear/replacement/disappear
+  outcomes as `Abandoned`.
 - Flow card writes route through `applyDeferredObjectiveChange`
   (`lib/plan/deferredObjectives/objectiveChange.ts`) so a user-initiated replace or clear
   finalizes the prior in-progress run immediately rather than waiting for the abandon-grace
