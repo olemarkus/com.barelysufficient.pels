@@ -342,6 +342,11 @@ export type ToggleGroupResult<T extends string> = {
 /**
  * Creates a button-group toggle (day-view style). Returns the container element
  * and a setActive helper so callers never touch classes directly.
+ *
+ * We deliberately keep this as a custom segmented control rather than reaching
+ * for `md-tabs`: Material 3 secondary tabs are for switching between major
+ * content views, not binary or small-set selectors, and Material Web does not
+ * (yet) ship a segmented-button component. Usage and Budget share this look.
  */
 export const createToggleGroup = <T extends string>(
     options: ToggleOption<T>[],

@@ -4347,6 +4347,11 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
   --day-view-color-now: var(--color-state-info-border);
 }
 
+#usage-panel:not(.hidden) {
+  display: grid;
+  gap: var(--spacing-4);
+}
+
 .usage-day-summary {
   margin-bottom: var(--spacing-4);
 }
@@ -4990,4 +4995,175 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
 .deadline-list-card__when-row--accent dd {
   color: var(--accent);
   font-weight: var(--font-weight-semibold);
+}
+
+/* ─── Usage panel redesign ─────────────────────────────────────────────────── */
+
+.usage-hero {
+  position: relative;
+}
+
+.usage-hero .plan-hero__headline {
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-hero__delta {
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-hero__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-2);
+  padding-top: var(--spacing-3);
+  border-top: 1px solid color-mix(in srgb, var(--pels-surface-outline) 70%, transparent);
+}
+
+.usage-hero__stat {
+  display: grid;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.usage-hero__stat-label {
+  font-size: var(--font-size-xs, 0.75rem);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pels-text-secondary);
+}
+
+.usage-hero__stat-value {
+  font-size: var(--font-size-md, 1rem);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.usage-card {
+  gap: var(--spacing-3);
+}
+
+.usage-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+  flex-wrap: wrap;
+}
+
+.usage-card__heading {
+  display: grid;
+  gap: var(--spacing-1);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.usage-card__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.usage-metric-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: var(--spacing-2);
+}
+
+.usage-metric {
+  display: grid;
+  gap: var(--spacing-1);
+  padding: var(--spacing-2) var(--spacing-3);
+  border-radius: var(--radius-md);
+  background: var(--pels-surface-container-low);
+  border: 1px solid color-mix(in srgb, var(--pels-surface-outline) 60%, transparent);
+  min-width: 0;
+}
+
+.usage-metric__label {
+  font-size: var(--font-size-xs, 0.75rem);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pels-text-secondary);
+}
+
+.usage-metric__value {
+  font-size: var(--font-size-lg, 1.125rem);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-card--collapsible {
+  padding: 0;
+  gap: 0;
+}
+
+.usage-card--collapsible > md-elevation {
+  border-radius: inherit;
+}
+
+.usage-card__summary {
+  list-style: none;
+  cursor: pointer;
+  padding: var(--pels-card-padding);
+  margin: 0;
+  user-select: none;
+}
+
+.usage-card__summary::-webkit-details-marker {
+  display: none;
+}
+
+.usage-card__summary-affordance {
+  font-size: 1.25rem;
+  color: var(--pels-text-secondary);
+  transition: transform var(--transition-fast);
+  line-height: 1;
+}
+
+.usage-card--collapsible[open] .usage-card__summary-affordance {
+  transform: rotate(90deg);
+}
+
+.usage-card__collapsible-content {
+  display: grid;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3) var(--pels-card-padding) var(--pels-card-padding);
+  border-top: 1px solid color-mix(in srgb, var(--pels-surface-outline) 60%, transparent);
+}
+
+.usage-card__actions--standalone {
+  justify-content: flex-start;
+}
+
+.usage-week-nav {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+/* Material Web Secondary Tabs as our segmented control. */
+.usage-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3) var(--spacing-1) var(--spacing-1);
+}
+
+@media (max-width: 380px) {
+  .usage-hero__stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--spacing-1);
+  }
+  .usage-hero__stat-value {
+    font-size: var(--font-size-sm, 0.875rem);
+  }
 }
