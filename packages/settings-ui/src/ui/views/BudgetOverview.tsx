@@ -29,6 +29,7 @@ import {
   UNMANAGED_RESERVE_CONSERVATIVE_MODE,
 } from '../../../../contracts/src/dailyBudgetConstants.ts';
 import type { BudgetAdjustDraft, BudgetAdjustStatus } from '../budgetAdjustController.ts';
+import type { AllocationWarning } from '../dailyBudgetAllocationWarning.ts';
 
 export type BudgetLocalView = 'plan' | 'adjust';
 export type BudgetStatus = 'noPlan' | 'within' | 'tight' | 'over';
@@ -92,6 +93,7 @@ export type BudgetOverviewProps = {
   chart: BudgetChartData;
   confidence: BudgetConfidenceData;
   adjust: BudgetAdjustData;
+  allocationWarning: AllocationWarning | null;
   onLocalViewChange: (v: BudgetLocalView) => void;
   onDayChange: (v: BudgetRedesignDayView) => void;
   onChartModeChange: (v: BudgetRedesignChartMode) => void;
@@ -164,6 +166,34 @@ const BudgetHero = ({ hero }: { hero: BudgetHeroData }) => (
         <p class="plan-hero__decision">{hero.decision}</p>
       )}
     </div>
+  </section>
+);
+
+// ─── Allocation Warning ───────────────────────────────────────────────────────
+
+const AllocationWarningBanner = ({
+  warning,
+  onAdjustClick,
+}: {
+  warning: AllocationWarning;
+  onAdjustClick: () => void;
+}) => (
+  <section
+    id="budget-redesign-allocation-warning"
+    class="banner banner--warning budget-redesign-allocation-warning"
+    role="status"
+  >
+    <span class="banner__icon" aria-hidden="true">⚠️</span>
+    <div class="banner__body">
+      <p class="banner__title">{warning.title}</p>
+      <p class="banner__text">{warning.body}</p>
+    </div>
+    <MdTextButton
+      id="budget-redesign-allocation-warning-action"
+      onClick={onAdjustClick}
+    >
+      Adjust budget
+    </MdTextButton>
   </section>
 );
 
@@ -706,6 +736,7 @@ const BudgetOverviewRoot = ({
   chart,
   confidence,
   adjust,
+  allocationWarning,
   onLocalViewChange,
   onDayChange,
   onChartModeChange,
@@ -744,6 +775,12 @@ const BudgetOverviewRoot = ({
           onChange={onDayChange}
         />
         <BudgetHero hero={hero} />
+        {allocationWarning && (
+          <AllocationWarningBanner
+            warning={allocationWarning}
+            onAdjustClick={() => onLocalViewChange('adjust')}
+          />
+        )}
         <BudgetConfidenceCard confidence={confidence} />
         <BudgetChartCard chart={chart} onModeChange={onChartModeChange} />
       </div>

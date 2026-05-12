@@ -208,8 +208,9 @@ describe('daily budget chart render', () => {
 
     const warning = document.querySelector('#daily-budget-allocation-warning') as HTMLElement | null;
     expect(warning?.hidden).toBe(false);
-    expect(warning?.textContent).toContain('7.5 kWh');
-    expect(warning?.textContent).toContain('4.5 kWh of 12.0 kWh');
+    expect(warning?.textContent).toContain('larger than your hourly limit');
+    expect(warning?.textContent).toContain('4.5 kWh per day');
+    expect(warning?.textContent).toContain('daily budget of 12.0 kWh');
   });
 
   it('keeps a candidate preview visible across background refreshes', async () => {

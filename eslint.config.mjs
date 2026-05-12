@@ -468,4 +468,13 @@ export default tseslint.config(
       'max-lines': ['warn', { max: 650, skipBlankLines: true, skipComments: true }],
     },
   },
+  {
+    // budgetRedesign hosts payload-to-prop derivation for hero, chart, adjust, confidence, and
+    // allocation-warning surfaces in one place. Target: <=500 once the per-surface resolvers move
+    // into their own modules alongside BudgetOverview.
+    files: ['packages/settings-ui/src/ui/budgetRedesign.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 510, skipBlankLines: true, skipComments: true }],
+    },
+  },
 );
