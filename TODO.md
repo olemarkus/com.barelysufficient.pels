@@ -74,6 +74,13 @@ file.
       Files: `packages/settings-ui/src/ui/materialWeb.ts`,
       `packages/settings-ui/src/ui/materialWebJSX.tsx`, `packages/settings-ui/public/style.css`,
       generated `settings/`, focused visual/e2e coverage.
+- [ ] Fix redesigned top navigation at 320px. The current five-tab shell can truncate or collide,
+      especially `Smart tasks`, on narrow Homey WebView widths. Keep the top-level destinations
+      from `notes/settings-ui-reorganization.md`, but make the control behave like a polished
+      mobile navigation surface: no clipped labels, predictable horizontal scrolling or overflow
+      treatment, and Playwright screenshots at 320px / 480px.
+      Files: `packages/settings-ui/public/index.html`, `packages/settings-ui/public/style.css`,
+      generated `settings/`, focused navigation layout coverage.
 - [ ] Make Settings UI device refresh await in-flight snapshot refreshes. `/ui_refresh_devices`
       currently calls `refreshTargetDevicesSnapshot()` and then returns the current in-memory
       device snapshot, but overlapping refresh calls only queue another refresh and return
