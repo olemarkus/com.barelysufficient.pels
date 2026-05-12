@@ -653,7 +653,7 @@ describe('deadline plan page payload', () => {
   });
 
   it('renders the allocated plan even when the device profile is not yet learned', () => {
-    // Reproduces the user-reported "Deadline plan unavailable" after prices
+    // Reproduces the user-reported "Smart task plan unavailable" after prices
     // arrived: the recorder has written an allocation but
     // powerTracker.objectiveProfiles is empty (no learned kwhPerUnit). The UI
     // must compute energy from the stored allocation, not the absent profile.
@@ -780,9 +780,9 @@ describe('deadline plan page payload', () => {
       nowMs: now.getTime(),
     }));
 
-    expect(payload.hero.chips.some((chip) => chip.text === 'Can’t fully meet' && chip.tone === 'warn')).toBe(true);
-    expect(payload.hero.metaLine).toMatch(/Best effort/);
-    expect(payload.hero.metaLine).toMatch(/short ~/i);
+    expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish' && chip.tone === 'warn')).toBe(true);
+    expect(payload.hero.metaLine).toMatch(/not be enough time or available power/i);
+    expect(payload.hero.metaLine).toMatch(/short by about/i);
   });
 
   it('routes a passed deadline to the completed state on the History tab', () => {

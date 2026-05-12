@@ -81,7 +81,7 @@ test.describe('Deadline plan history tab', () => {
     const cards = list.locator('.plan-history-card');
     await expect(cards).toHaveCount(2);
     // First card is the May 6 met run with backup hours.
-    await expect(cards.nth(0).locator('.plan-chip--ok')).toHaveText('Met');
+    await expect(cards.nth(0).locator('.plan-chip--ok')).toHaveText('Succeeded');
     await expect(cards.nth(0).locator('.plan-chip--info')).toHaveText('Backup hours');
     // Second card is the May 5 missed run.
     await expect(cards.nth(1).locator('.plan-chip--warn')).toHaveText('Missed');

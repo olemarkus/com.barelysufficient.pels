@@ -82,7 +82,7 @@ export const refreshDeadlinesList = async (): Promise<void> => {
     await logSettingsError('Failed to load deadlines list', error, 'refreshDeadlinesList');
     renderDeadlinesList(surface, {
       status: 'error',
-      message: 'Could not load deadlines. Try again later.',
+      message: 'Could not load smart tasks. Try again later.',
     });
   }
 };
