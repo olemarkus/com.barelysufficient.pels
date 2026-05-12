@@ -16,7 +16,7 @@ const setupPlanDom = () => {
 const renderPlanSnapshot = async (plan: unknown) => {
   vi.resetModules();
   setupPlanDom();
-  const { renderPlan } = await import('../src/ui/plan.ts');
+  const { renderPlan } = await import('../src/ui/planLegacy.ts');
   renderPlan(normalizeUiTestPlanSnapshot(plan) as Parameters<typeof renderPlan>[0]);
 };
 
@@ -647,7 +647,7 @@ describe('plan live timing', () => {
     vi.resetModules();
     setupPlanDom();
 
-    const { renderPlan } = await import('../src/ui/plan.ts');
+    const { renderPlan } = await import('../src/ui/planLegacy.ts');
     const staleSnapshot = normalizeUiTestPlanSnapshot({
       generatedAtMs: Date.parse('2026-04-18T11:59:58Z'),
       devices: [
@@ -707,7 +707,7 @@ describe('plan live timing', () => {
       get: () => hidden,
     });
 
-    const { renderPlan } = await import('../src/ui/plan.ts');
+    const { renderPlan } = await import('../src/ui/planLegacy.ts');
     renderPlan(normalizeUiTestPlanSnapshot({
       devices: [
         {
@@ -740,7 +740,7 @@ describe('plan live timing', () => {
     setupPlanDom();
 
     const overviewPanel = document.querySelector('#overview-panel') as HTMLElement;
-    const { renderPlan } = await import('../src/ui/plan.ts');
+    const { renderPlan } = await import('../src/ui/planLegacy.ts');
     renderPlan(normalizeUiTestPlanSnapshot({
       devices: [
         {

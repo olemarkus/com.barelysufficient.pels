@@ -8,8 +8,8 @@ import {
 
 const getPlanModule = () => (getCurrentSettingsUiVariant() === 'redesign' ? redesignPlan : legacyPlan);
 
-export const setOverviewRedesignEnabled = (enabled: boolean): void => {
-  applySettingsUiVariant(enabled === true ? 'redesign' : 'legacy');
+export const setOverviewRedesignEnabled = (_enabled: boolean): void => {
+  applySettingsUiVariant('redesign');
 };
 
 export const renderPlan = (plan: redesignPlan.PlanSnapshot | null) => {

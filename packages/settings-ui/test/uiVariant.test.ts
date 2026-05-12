@@ -17,6 +17,7 @@ describe('settings UI variant preference', () => {
     try {
       const {
         applyStoredOverviewRedesignPreference,
+        applySettingsUiVariant,
         getStoredOverviewRedesignPreference,
         setStoredOverviewRedesignPreference,
       } = await import('../src/ui/uiVariant.ts');
@@ -25,6 +26,8 @@ describe('settings UI variant preference', () => {
 
       expect(getStoredOverviewRedesignPreference()).toBe(true);
       expect(applyStoredOverviewRedesignPreference(true)).toBe('redesign');
+      expect(applyStoredOverviewRedesignPreference(false)).toBe('redesign');
+      applySettingsUiVariant('legacy');
       expect(document.body.dataset.uiVariant).toBe('redesign');
       expect(document.body.classList.contains('overview-redesign-enabled')).toBe(true);
     } finally {
