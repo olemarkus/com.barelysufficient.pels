@@ -1478,4 +1478,173 @@ describe('deadline plan page payload', () => {
     // 3 hours × 1.5 kWh = 4.5 kWh total, not just the 1.5 kWh future hour.
     expect(payload.hero.metaLine).toContain('Needs 4.5 kWh');
   });
+
+  it('surfaces flow-scheme actionable copy when the missing horizon is on the user’s Flow', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: { prices: [], priceScheme: 'flow', lastFetched: now.toISOString() },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const bootstrap = buildBootstrap({
+      capacity_limit_kw: 8,
+      deferred_objectives: {
+        version: 1,
+        objectivesByDeviceId: {
+          heater: {
+            enabled: true,
+            kind: 'temperature',
+            enforcement: 'soft',
+            targetTemperatureC: 22,
+            deadlineAtMs: deadline.getTime(),
+          },
+        },
+      },
+    }, buildHeaterActivePlan({
+      now,
+      deadline,
+      plannedHourOffsets: [0],
+      plannedKWhPerHour: 2,
+    }));
+
+    const renderInput = testExports.resolveRenderInput({
+      bootstrap,
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    });
+    expect(renderInput?.status).toBe('pending');
+    if (renderInput?.status !== 'pending') return;
+    expect(renderInput.pending.hero.headline).toBe('Waiting for tomorrow’s prices from your Flow');
+    expect(renderInput.pending.hero.metaLine).toContain('Set external prices (tomorrow)');
+    expect(renderInput.pending.hero.metaLine).toContain('Last price update:');
+  });
+
+  it('keeps managed-scheme copy neutral and surfaces last-update time when present', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: { prices: [], priceScheme: 'norway', lastFetched: now.toISOString() },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const bootstrap = buildBootstrap({
+      capacity_limit_kw: 8,
+      deferred_objectives: {
+        version: 1,
+        objectivesByDeviceId: {
+          heater: {
+            enabled: true,
+            kind: 'temperature',
+            enforcement: 'soft',
+            targetTemperatureC: 22,
+            deadlineAtMs: deadline.getTime(),
+          },
+        },
+      },
+    }, buildHeaterActivePlan({
+      now,
+      deadline,
+      plannedHourOffsets: [0],
+      plannedKWhPerHour: 2,
+    }));
+
+    const renderInput = testExports.resolveRenderInput({
+      bootstrap,
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    });
+    expect(renderInput?.status).toBe('pending');
+    if (renderInput?.status !== 'pending') return;
+    expect(renderInput.pending.hero.headline).toBe('Waiting for tomorrow’s prices');
+    expect(renderInput.pending.hero.metaLine).not.toContain('Flow');
+    expect(renderInput.pending.hero.metaLine).toContain('Last price update:');
+  });
+
+  it('omits the last-update hint when combinedPrices has no lastFetched', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: { prices: [], priceScheme: 'norway' },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const bootstrap = buildBootstrap({
+      capacity_limit_kw: 8,
+      deferred_objectives: {
+        version: 1,
+        objectivesByDeviceId: {
+          heater: {
+            enabled: true,
+            kind: 'temperature',
+            enforcement: 'soft',
+            targetTemperatureC: 22,
+            deadlineAtMs: deadline.getTime(),
+          },
+        },
+      },
+    }, buildHeaterActivePlan({
+      now,
+      deadline,
+      plannedHourOffsets: [0],
+      plannedKWhPerHour: 2,
+    }));
+
+    const renderInput = testExports.resolveRenderInput({
+      bootstrap,
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    });
+    expect(renderInput?.status).toBe('pending');
+    if (renderInput?.status !== 'pending') return;
+    expect(renderInput.pending.hero.metaLine).not.toContain('Last price update:');
+  });
 });
