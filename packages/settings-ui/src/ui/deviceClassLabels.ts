@@ -1,0 +1,92 @@
+const DEVICE_CLASS_LABELS: Record<string, string> = {
+  airconditioning: 'Air Conditioning',
+  airfryer: 'Air Fryer',
+  airpurifier: 'Air Purifier',
+  airtreatment: 'Air Treatment',
+  amplifier: 'Amplifier',
+  battery: 'Battery',
+  bicycle: 'Bicycle',
+  blinds: 'Blinds',
+  boiler: 'Boiler',
+  bridge: 'Bridge',
+  button: 'Button',
+  camera: 'Camera',
+  car: 'Car',
+  coffeemachine: 'Coffee Machine',
+  cooktop: 'Cooktop',
+  curtain: 'Curtain',
+  dehumidifier: 'Dehumidifier',
+  diffuser: 'Diffuser',
+  dishwasher: 'Dishwasher',
+  doorbell: 'Doorbell',
+  dryer: 'Dryer',
+  evcharger: 'EV Charger',
+  fan: 'Fan',
+  faucet: 'Faucet',
+  fireplace: 'Fireplace',
+  freezer: 'Freezer',
+  fridge: 'Fridge',
+  fridge_and_freezer: 'Fridge and Freezer',
+  fryer: 'Fryer',
+  gameconsole: 'Game Console',
+  garagedoor: 'Garage Door',
+  grill: 'Grill',
+  heater: 'Heater',
+  heatpump: 'Heat Pump',
+  homealarm: 'Home Alarm',
+  hood: 'Hood',
+  humidifier: 'Humidifier',
+  kettle: 'Kettle',
+  lawnmower: 'Lawn Mower',
+  light: 'Light',
+  lock: 'Lock',
+  mediaplayer: 'Media Player',
+  microwave: 'Microwave',
+  mop: 'Mop',
+  multicooker: 'Multicooker',
+  networkrouter: 'Network Router',
+  other: 'Other',
+  oven: 'Oven',
+  oven_and_microwave: 'Oven and Microwave',
+  petfeeder: 'Pet Feeder',
+  radiator: 'Radiator',
+  relay: 'Relay',
+  remote: 'Remote',
+  scooter: 'Scooter',
+  sensor: 'Sensor',
+  service: 'Service',
+  settopbox: 'Set-top Box',
+  shutterblinds: 'Shutter Blinds',
+  siren: 'Siren',
+  smokealarm: 'Smoke Alarm',
+  socket: 'Socket',
+  solarpanel: 'Solar Panel',
+  speaker: 'Speaker',
+  sprinkler: 'Sprinkler',
+  sunshade: 'Sunshade',
+  thermostat: 'Thermostat',
+  tv: 'TV',
+  vacuumcleaner: 'Vacuum Cleaner',
+  vehicle: 'Vehicle',
+  washer: 'Washer',
+  washer_and_dryer: 'Washer and Dryer',
+  waterheater: 'Water Heater',
+  waterpurifier: 'Water Purifier',
+  watervalve: 'Water Valve',
+  windowcoverings: 'Window Coverings',
+};
+
+const CLASS_TITLE_LOWERCASE = new Set(['and', 'of', 'the']);
+
+const toTitleCase = (value: string): string => (
+  value.split('_').map((word, index) => {
+    if (!word) return word;
+    if (index > 0 && CLASS_TITLE_LOWERCASE.has(word)) return word;
+    return word[0].toUpperCase() + word.slice(1);
+  }).join(' ')
+);
+
+export const resolveDeviceClassLabel = (deviceClass?: string): string => {
+  const key = (deviceClass || 'other').trim().toLowerCase() || 'other';
+  return DEVICE_CLASS_LABELS[key] || toTitleCase(key);
+};

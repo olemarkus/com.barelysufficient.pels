@@ -74,23 +74,117 @@
           <small class="field__hint">Where whole-home power readings come from.</small>
         </label>
       </form>
-      <div class="device-table-header">
-        <span>Device</span>
-        <span data-tooltip="Managed by PELS">Managed</span>
-        <span data-tooltip="Capacity-based control">
-          <span class="legacy-ui-copy">Cap</span>
-          <span class="redesign-ui-copy">Limit</span>
-        </span>
-        <span data-tooltip="Price-based control">Price</span>
+      <div class="legacy-device-settings">
+        <div class="device-table-header">
+          <span>Device</span>
+          <span data-tooltip="Managed by PELS">Managed</span>
+          <span data-tooltip="Capacity-based control">
+            <span class="legacy-ui-copy">Cap</span>
+            <span class="redesign-ui-copy">Limit</span>
+          </span>
+          <span data-tooltip="Price-based control">Price</span>
+        </div>
+        <ul id="device-list" class="device-list"></ul>
       </div>
-      <ul id="device-list" class="device-list"></ul>
+      <template id="pels-icon-managed">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"></circle>
+          <path d="m8 12 3 3 5-6"></path>
+        </svg>
+      </template>
+      <template id="pels-icon-limit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"></path>
+        </svg>
+      </template>
+      <template id="pels-icon-price">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"></circle>
+          <path d="M14.5 9.5c-.5-.9-1.4-1.5-2.8-1.5-1.5 0-2.7.7-2.7 2 0 2.8 5.5 1.5 5.5 4.2 0 1.4-1.4 2.1-2.8 2.1-1.4 0-2.5-.6-3-1.5"></path>
+          <path d="M12 6.5v1.5M12 15.5v1.5"></path>
+        </svg>
+      </template>
+      <details id="device-control-legend" class="redesign-device-settings device-control-legend">
+        <summary class="device-control-legend__summary">
+          <span class="device-control-legend__pill">
+            <span class="device-control-legend__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9"></circle>
+                <path d="m8 12 3 3 5-6"></path>
+              </svg>
+            </span>
+            Managed
+          </span>
+          <span class="device-control-legend__pill">
+            <span class="device-control-legend__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"></path>
+              </svg>
+            </span>
+            Limit
+          </span>
+          <span class="device-control-legend__pill">
+            <span class="device-control-legend__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9"></circle>
+                <path d="M14.5 9.5c-.5-.9-1.4-1.5-2.8-1.5-1.5 0-2.7.7-2.7 2 0 2.8 5.5 1.5 5.5 4.2 0 1.4-1.4 2.1-2.8 2.1-1.4 0-2.5-.6-3-1.5"></path>
+                <path d="M12 6.5v1.5M12 15.5v1.5"></path>
+              </svg>
+            </span>
+            Price
+          </span>
+          <span class="device-control-legend__action" aria-hidden="true">
+            <span class="device-control-legend__action-label">Explain</span>
+            <span class="device-control-legend__chevron">▸</span>
+          </span>
+        </summary>
+        <ul class="device-control-legend__list">
+          <li class="device-control-legend__item">
+            <span class="device-control-legend__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9"></circle>
+                <path d="m8 12 3 3 5-6"></path>
+              </svg>
+            </span>
+            <div>
+              <strong>Managed</strong>
+              <p>PELS observes this device's state. Required before Limit or Price can take effect.</p>
+            </div>
+          </li>
+          <li class="device-control-legend__item">
+            <span class="device-control-legend__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"></path>
+              </svg>
+            </span>
+            <div>
+              <strong>Limit</strong>
+              <p>PELS will actively turn the device on and off to safely fill the allocated budget. When disabled, PELS will only turn the device on when there is a deadline, and will not turn it off if it was switched on externally.</p>
+            </div>
+          </li>
+          <li class="device-control-legend__item">
+            <span class="device-control-legend__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9"></circle>
+                <path d="M14.5 9.5c-.5-.9-1.4-1.5-2.8-1.5-1.5 0-2.7.7-2.7 2 0 2.8 5.5 1.5 5.5 4.2 0 1.4-1.4 2.1-2.8 2.1-1.4 0-2.5-.6-3-1.5"></path>
+                <path d="M12 6.5v1.5M12 15.5v1.5"></path>
+              </svg>
+            </span>
+            <div>
+              <strong>Price</strong>
+              <p>PELS shifts the device's temperature target with electricity prices — boosting on cheap hours and easing back on expensive ones.</p>
+            </div>
+          </li>
+        </ul>
+      </details>
+      <div id="device-card-list" class="redesign-device-settings"></div>
       <p id="empty-state" class="muted" hidden>No compatible devices found. PELS requires devices with power measurement and either temperature control or on/off capability.</p>
       <div class="list__footer">
-        <button type="button" class="btn secondary" id="refresh-button">Refresh</button>
-        <p class="muted">
-          <span class="legacy-ui-copy">Managed devices participate in modes and optimization. Temperature &amp; priority live in the Modes tab.</span>
-          <span class="redesign-ui-copy">Managed devices participate in modes and optimization. Temperature and priority live in Settings.</span>
-        </p>
+        <button type="button" class="btn secondary" id="refresh-button">
+          <span class="legacy-ui-copy">Refresh</span>
+          <span class="redesign-ui-copy">Fetch device list from Homey</span>
+        </button>
+        <p class="muted legacy-device-settings">Managed devices participate in modes and optimization. Temperature &amp; priority live in the Modes tab.</p>
       </div>
     </section>
 

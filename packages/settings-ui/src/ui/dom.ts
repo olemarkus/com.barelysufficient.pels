@@ -2,6 +2,7 @@ export const qs = (selector: string) => document.querySelector(selector) as HTML
 
 export const toastEl = qs('#toast');
 export const deviceList = qs('#device-list');
+export const deviceCardList = document.querySelector('#device-card-list') as HTMLElement | null;
 export const emptyState = qs('#empty-state');
 export const refreshButton = document.querySelector('#refresh-button') as HTMLButtonElement;
 export const powerList = qs('#power-list');
