@@ -15,7 +15,7 @@ file.
       `lastUpdated`, and the merge step now only carries that forward; if no tracked
       capability has reported new evidence, the device ages naturally under the 40-minute
       `STALE_DEVICE_OBSERVATION_MS` window.
-- [ ] Ensure snapshot refresh ordering cannot persist pre-enforcement state. Unsupported-device
+- [x] Ensure snapshot refresh ordering cannot persist pre-enforcement state. Unsupported-device
       enforcement should complete before the refreshed snapshot is synced and persisted.
       Why P0: persisting before enforcement can expose a snapshot that briefly disagrees with the
       settings the app just enforced.
