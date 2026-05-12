@@ -77,6 +77,13 @@ beforeAll(() => {
   }
   installCanvasContextStub();
 
+  // jsdom does not implement Element.prototype.scrollTo, which Material Web's
+  // md-tabs calls when activating a tab. Provide a no-op stub so tests that
+  // mount tabs (or load components that import md-tabs) don't crash.
+  if (typeof Element !== 'undefined' && typeof (Element.prototype as Element & { scrollTo?: unknown }).scrollTo !== 'function') {
+    (Element.prototype as Element & { scrollTo: () => void }).scrollTo = () => {};
+  }
+
   const fetchStub = vi.fn().mockResolvedValue({
     ok: true,
     status: 200,

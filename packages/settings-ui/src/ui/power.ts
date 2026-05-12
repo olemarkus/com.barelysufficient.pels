@@ -312,20 +312,13 @@ const setHeroTone = (hero: HTMLElement | null, tone: 'ok' | 'warn' | 'alert') =>
 
 type ChipTone = 'ok' | 'warn' | 'alert' | 'muted';
 
-const CHIP_TONE_CLASSES: readonly string[] = [
-  'plan-chip--ok',
-  'plan-chip--warn',
-  'plan-chip--alert',
-  'plan-chip--muted',
-];
-
 const setHeroChip = (chip: HTMLElement | null, label: string, tone: ChipTone) => {
   if (!chip) return;
   const target = chip;
-  target.textContent = label;
+  // md-assist-chip uses the `label` attribute for its displayed text.
+  target.setAttribute('label', label);
+  target.dataset.tone = tone;
   target.hidden = false;
-  target.classList.remove(...CHIP_TONE_CLASSES);
-  target.classList.add(`plan-chip--${tone}`);
 };
 
 const setHeroText = (id: string, text: string | null) => {
