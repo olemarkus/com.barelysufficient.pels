@@ -204,7 +204,7 @@ describe('plan meta usage summary', () => {
     });
 
     const metaLines = getPlanMetaText();
-    expect(metaLines.some((line) => line === 'Capacity-controlled 2.00kW / Other load 1.50kW')).toBe(true);
+    expect(metaLines.some((line) => line === 'Managed 2.00 / Background 1.50 kW')).toBe(true);
   });
 
   it('shows meta lines even when no devices are managed', async () => {
@@ -218,8 +218,8 @@ describe('plan meta usage summary', () => {
     });
 
     const metaLines = getPlanMetaText();
-    expect(metaLines.some((line) => line === 'Now 3.5kW (soft limit 5.0kW)')).toBe(true);
-    expect(metaLines.some((line) => line === '1.5kW available')).toBe(true);
+    expect(metaLines.some((line) => line === 'Now 3.5 kW (Safe pace now 5.0 kW)')).toBe(true);
+    expect(metaLines.some((line) => line === '1.5 kW to spare')).toBe(true);
 
     const empty = document.querySelector('#plan-empty') as HTMLElement | null;
     expect(empty?.textContent?.trim()).toBe('No managed devices.');
@@ -240,12 +240,12 @@ describe('plan meta usage summary', () => {
     });
 
     const metaLines = getPlanMetaText();
-    expect(metaLines.some((line) => line === 'Hard cap exceeded by 1.2kW')).toBe(true);
-    expect(metaLines.some((line) => line === 'Shortfall threshold 6.0kW (hourly budget-derived)')).toBe(true);
-    expect(metaLines.some((line) => line === '2.4kW over soft limit')).toBe(false);
+    expect(metaLines.some((line) => line === 'Hard cap exceeded by 1.2 kW')).toBe(true);
+    expect(metaLines.some((line) => line === "Manual action threshold 6.0 kW (from this hour's budget)")).toBe(true);
+    expect(metaLines.some((line) => line === '2.4 kW above safe pace')).toBe(false);
   });
 
-  it('keeps soft-limit text when negative headroom is not a hard-cap shortfall', async () => {
+  it('keeps safe-pace text when available power is negative without a hard-cap shortfall', async () => {
     await renderPlanSnapshot({
       meta: {
         totalKw: 5.2,
@@ -257,11 +257,11 @@ describe('plan meta usage summary', () => {
     });
 
     const metaLines = getPlanMetaText();
-    expect(metaLines.some((line) => line === '0.4kW over soft limit')).toBe(true);
+    expect(metaLines.some((line) => line === '0.4 kW above safe pace')).toBe(true);
     expect(metaLines.some((line) => line.startsWith('Hard cap exceeded'))).toBe(false);
   });
 
-  it('shows remaining hard-cap room while above soft limit', async () => {
+  it('shows remaining hard-cap room while above safe pace', async () => {
     await renderPlanSnapshot({
       meta: {
         totalKw: 5.2,
@@ -276,9 +276,9 @@ describe('plan meta usage summary', () => {
     });
 
     const metaLines = getPlanMetaText();
-    expect(metaLines.some((line) => line === '0.4kW over soft limit')).toBe(true);
-    expect(metaLines.some((line) => line === '0.8kW before hard cap')).toBe(true);
-    expect(metaLines.some((line) => line === 'Shortfall-threshold headroom 3.3kW')).toBe(true);
+    expect(metaLines.some((line) => line === '0.4 kW above safe pace')).toBe(true);
+    expect(metaLines.some((line) => line === '0.8 kW before hard cap')).toBe(true);
+    expect(metaLines.some((line) => line === 'Available power before manual action 3.3 kW')).toBe(true);
   });
 
   it('shows hard-cap breach text before shortfall state is entered', async () => {
@@ -296,9 +296,9 @@ describe('plan meta usage summary', () => {
     });
 
     const metaLines = getPlanMetaText();
-    expect(metaLines.some((line) => line === 'Hard cap exceeded by 2.6kW')).toBe(true);
-    expect(metaLines.some((line) => line === 'Shortfall threshold 4.8kW (hourly budget-derived)')).toBe(true);
-    expect(metaLines.some((line) => line === '2.6kW over soft limit')).toBe(false);
+    expect(metaLines.some((line) => line === 'Hard cap exceeded by 2.6 kW')).toBe(true);
+    expect(metaLines.some((line) => line === "Manual action threshold 4.8 kW (from this hour's budget)")).toBe(true);
+    expect(metaLines.some((line) => line === '2.6 kW above safe pace')).toBe(false);
   });
 
   it('updates the plan age text live', async () => {
@@ -315,11 +315,11 @@ describe('plan meta usage summary', () => {
       devices: [],
     });
 
-    expect(getPlanMetaText().some((line) => line === 'Now 3.5kW (10s ago) (soft limit 5.0kW)')).toBe(true);
+    expect(getPlanMetaText().some((line) => line === 'Now 3.5 kW (10s ago) (Safe pace now 5.0 kW)')).toBe(true);
 
     await vi.advanceTimersByTimeAsync(1000);
 
-    expect(getPlanMetaText().some((line) => line === 'Now 3.5kW (11s ago) (soft limit 5.0kW)')).toBe(true);
+    expect(getPlanMetaText().some((line) => line === 'Now 3.5 kW (11s ago) (Safe pace now 5.0 kW)')).toBe(true);
   });
 });
 

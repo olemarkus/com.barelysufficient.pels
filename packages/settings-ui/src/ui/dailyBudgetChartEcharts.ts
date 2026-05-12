@@ -260,7 +260,7 @@ const buildStackedPlanSeries = (ctx: SeriesContext): SeriesOption[] => {
   return [
     {
       ...BAR_SERIES_BASE,
-      name: 'Plan Uncontrolled',
+      name: 'Plan Background',
       stack: 'plan',
       data: buildPlanBarData({
         values: ctx.plannedUncontrolled, color: palette.uncontrolled,
@@ -269,7 +269,7 @@ const buildStackedPlanSeries = (ctx: SeriesContext): SeriesOption[] => {
     },
     {
       ...BAR_SERIES_BASE,
-      name: 'Plan Controlled',
+      name: 'Plan Managed',
       stack: 'plan',
       data: buildPlanBarData({
         values: ctx.plannedControlled, color: palette.controlled,
@@ -284,7 +284,7 @@ const buildActualBreakdownSeries = (ctx: SeriesContext): SeriesOption[] => {
   return [
     {
       ...BAR_SERIES_BASE,
-      name: 'Actual Uncontrolled',
+      name: 'Actual Background',
       stack: 'actual',
       data: buildActualBreakdownData({
         values: ctx.actualUncontrolled, color: palette.actualUncontrolled,
@@ -293,7 +293,7 @@ const buildActualBreakdownSeries = (ctx: SeriesContext): SeriesOption[] => {
     },
     {
       ...BAR_SERIES_BASE,
-      name: 'Actual Controlled',
+      name: 'Actual Managed',
       stack: 'actual',
       data: buildActualBreakdownData({
         values: ctx.actualControlled, color: palette.actualControlled,
@@ -368,29 +368,29 @@ const buildLegendData = (params: {
   if (showBreakdown) {
     if (showActual && hasActualBreakdown) {
       return [
-        { name: 'Actual Uncontrolled', itemStyle: { color: palette.actualUncontrolled } },
-        { name: 'Actual Controlled', itemStyle: { color: palette.actualControlled } },
-        { name: 'Plan Uncontrolled', itemStyle: { color: palette.uncontrolled } },
-        { name: 'Plan Controlled', itemStyle: { color: palette.controlled } },
+        { name: 'Actual Background', itemStyle: { color: palette.actualUncontrolled } },
+        { name: 'Actual Managed', itemStyle: { color: palette.actualControlled } },
+        { name: 'Plan Background', itemStyle: { color: palette.uncontrolled } },
+        { name: 'Plan Managed', itemStyle: { color: palette.controlled } },
       ];
     }
     if (showActual && canShowActualBreakdown) {
       return [
-        { name: 'Actual Uncontrolled', itemStyle: { color: palette.actualUncontrolled } },
-        { name: 'Actual Controlled', itemStyle: { color: palette.actualControlled } },
+        { name: 'Actual Background', itemStyle: { color: palette.actualUncontrolled } },
+        { name: 'Actual Managed', itemStyle: { color: palette.actualControlled } },
         { name: 'Budget', itemStyle: { color: palette.planned } },
       ];
     }
     if (showActual) {
       return [
         { name: 'Actual', itemStyle: { color: palette.actual } },
-        { name: 'Plan Uncontrolled', itemStyle: { color: palette.uncontrolled } },
-        { name: 'Plan Controlled', itemStyle: { color: palette.controlled } },
+        { name: 'Plan Background', itemStyle: { color: palette.uncontrolled } },
+        { name: 'Plan Managed', itemStyle: { color: palette.controlled } },
       ];
     }
     return [
-      { name: 'Plan Uncontrolled', itemStyle: { color: palette.uncontrolled } },
-      { name: 'Plan Controlled', itemStyle: { color: palette.controlled } },
+      { name: 'Plan Background', itemStyle: { color: palette.uncontrolled } },
+      { name: 'Plan Managed', itemStyle: { color: palette.controlled } },
     ];
   }
 
