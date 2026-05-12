@@ -254,11 +254,12 @@ export const resolveHeadroomLine = (
   return `${status} · est. ${formatCost(cost, costDisplay)} today`;
 };
 
-const resolveNoPlanLine = (
-  payload: DailyBudgetDayPayload | null,
-  view: BudgetDayView,
-): string => {
-  if (payload?.budget.enabled === true) return 'Waiting for daily budget data.';
+const resolveNoPlanLine = (view: BudgetDayView, budgetEnabled: boolean): string => {
+  if (budgetEnabled && view === 'tomorrow') {
+    return "Tomorrow's plan is not available yet. Check electricity prices if it does not appear shortly.";
+  }
+  if (budgetEnabled && view === 'yesterday') return 'Yesterday history is not available yet.';
+  if (budgetEnabled) return 'PELS is preparing the daily plan. Check again shortly.';
   if (view === 'tomorrow') return 'Enable daily budget to plan tomorrow.';
   return 'Enable daily budget to build a daily plan.';
 };
@@ -289,8 +290,9 @@ export const resolveDecisionLine = (
   payload: DailyBudgetDayPayload | null,
   view: BudgetDayView,
   status: BudgetStatus,
+  budgetEnabled = payload?.budget.enabled === true,
 ): string | null => {
-  if (!payload || status === 'noPlan') return resolveNoPlanLine(payload, view);
+  if (!payload || status === 'noPlan') return resolveNoPlanLine(view, budgetEnabled);
   if (view === 'yesterday') {
     return status === 'over' ? 'Yesterday finished over budget.' : 'Yesterday finished within budget.';
   }
@@ -298,20 +300,21 @@ export const resolveDecisionLine = (
   return resolveTodayLine(payload, status);
 };
 
-const resolveHeroData = (
+export const resolveHeroData = (
   viewPayload: DailyBudgetDayPayload | null,
   view: BudgetDayView,
   costDisplay: CostDisplay,
   status: BudgetStatus,
+  budgetEnabled: boolean,
 ): BudgetHeroData => {
-  if (!viewPayload || viewPayload.budget.enabled !== true || status === 'noPlan') {
+  if (!budgetEnabled || !viewPayload || viewPayload.budget.enabled !== true || status === 'noPlan') {
     return {
-      comparison: viewPayload?.budget.enabled === true ? 'Waiting for daily budget data' : 'Daily budget off',
+      comparison: budgetEnabled ? 'Waiting for daily budget data' : 'Daily budget off',
       delta: null,
       headroomLine: null,
       splitLine: null,
       priceTagline: null,
-      decision: resolveDecisionLine(viewPayload, view, status),
+      decision: resolveNoPlanLine(view, budgetEnabled),
       heroTone: 'ok',
     };
   }
@@ -321,7 +324,7 @@ const resolveHeroData = (
     headroomLine: view === 'today' ? resolveHeadroomLine(viewPayload, costDisplay) : null,
     splitLine: view === 'today' ? resolveSplitLine(viewPayload) : null,
     priceTagline: resolvePriceTagline(viewPayload, view),
-    decision: resolveDecisionLine(viewPayload, view, status),
+    decision: resolveDecisionLine(viewPayload, view, status, budgetEnabled),
     heroTone: resolveTone(status),
   };
 };
@@ -446,6 +449,8 @@ export const resolveEffectiveLocalView = (
   requestedView: BudgetLocalView,
 ): BudgetLocalView => (activeEnabled ? requestedView : 'adjust');
 
+export const resolvePlanPayload = (p: DailyBudgetDayPayload | null, enabled: boolean) => (enabled ? p : null);
+
 export const resolveComparisonDay = (
   activePayload: DailyBudgetUiPayload | null,
   candidatePayload: DailyBudgetUiPayload | null,
@@ -510,15 +515,17 @@ const buildProps = (): BudgetOverviewProps => {
   // of truth for whether the feature is on. The selected day's payload
   // may be transiently null (e.g. tomorrowKey not yet seeded) even when
   // the feature is enabled.
-  const effectiveLocalView = resolveEffectiveLocalView(adjust.active.enabled, currentBudgetLocalView);
+  const budgetEnabled = adjust.active.enabled;
+  const planPayload = resolvePlanPayload(viewPayload, budgetEnabled);
+  const effectiveLocalView = resolveEffectiveLocalView(budgetEnabled, currentBudgetLocalView);
   return {
     localView: effectiveLocalView,
     view,
-    hero: resolveHeroData(viewPayload, view, costDisplay, status),
-    chart: resolveChartData(viewPayload, view, currentChartMode, status, costDisplay),
-    confidence: resolveConfidenceData(viewPayload, view, status),
+    hero: resolveHeroData(viewPayload, view, costDisplay, status, budgetEnabled),
+    chart: resolveChartData(planPayload, view, currentChartMode, status, costDisplay),
+    confidence: resolveConfidenceData(planPayload, view, status),
     adjust,
-    allocationWarning: view === 'today' ? resolveAllocationWarning(viewPayload) : null,
+    allocationWarning: view === 'today' ? resolveAllocationWarning(planPayload) : null,
     onLocalViewChange: (v) => {
       if (currentBudgetLocalView === 'adjust' && v !== 'adjust') discardBudgetAdjust();
       currentBudgetLocalView = v;
