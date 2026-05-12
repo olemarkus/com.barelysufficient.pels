@@ -10,7 +10,7 @@ import type {
 } from '../../contracts/src/deferredObjectiveSettings.ts';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
 
-const { resolveDeadlinesListCards } = testExports;
+const { resolveDeadlinesListCards, resolveDeadlinesHistoryEntries } = testExports;
 
 const HOUR_MS = 3_600_000;
 const T0 = Date.UTC(2026, 4, 11, 0, 0, 0);
@@ -221,5 +221,49 @@ describe('resolveDeadlinesListCards', () => {
       devices,
     });
     expect(cards.map((card) => card.deviceId)).toEqual(['dev_b', 'dev_a']);
+  });
+});
+
+describe('resolveDeadlinesHistoryEntries', () => {
+  const buildEntry = (deviceId: string, finalizedAtMs: number) => ({
+    deviceId,
+    deviceName: deviceId,
+    objectiveKind: 'temperature' as const,
+    targetTemperatureC: 21,
+    targetPercent: null,
+    deadlineAtMs: finalizedAtMs,
+    startedAtMs: finalizedAtMs - HOUR_MS,
+    finalizedAtMs,
+    startProgressC: 18,
+    startProgressPercent: null,
+    finalProgressC: 21,
+    finalProgressPercent: null,
+    initialEnergyNeededKWh: 2,
+    outcome: 'met' as const,
+    metAtMs: finalizedAtMs,
+    usedDeadlineReserve: false,
+    usedPolicyAvoid: false,
+    observedIntervals: [],
+    discoveredFrom: 'observation' as const,
+  });
+
+  it('returns an empty list when payload is null', () => {
+    expect(resolveDeadlinesHistoryEntries(null)).toEqual([]);
+  });
+
+  it('flattens entries across devices, newest finalizedAtMs first', () => {
+    const result = resolveDeadlinesHistoryEntries({
+      version: 1,
+      entriesByDeviceId: {
+        dev_a: [buildEntry('dev_a', T0 + 1 * HOUR_MS), buildEntry('dev_a', T0 + 4 * HOUR_MS)],
+        dev_b: [buildEntry('dev_b', T0 + 2 * HOUR_MS), buildEntry('dev_b', T0 + 3 * HOUR_MS)],
+      },
+    });
+    expect(result.map((entry) => entry.finalizedAtMs)).toEqual([
+      T0 + 4 * HOUR_MS,
+      T0 + 3 * HOUR_MS,
+      T0 + 2 * HOUR_MS,
+      T0 + 1 * HOUR_MS,
+    ]);
   });
 });

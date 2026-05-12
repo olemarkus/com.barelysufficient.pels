@@ -2,8 +2,10 @@ import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
+  SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
   SETTINGS_UI_DEVICES_PATH,
   type SettingsUiBootstrap,
+  type SettingsUiDeferredObjectivePlanHistoryPayload,
   type SettingsUiDevicesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
 import {
@@ -13,13 +15,19 @@ import {
 import type {
   DeferredObjectiveActivePlansV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
+import type { DeferredObjectivePlanHistoryEntry } from '../../../contracts/src/deferredObjectivePlanHistory.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import { buildDeadlineHref } from './deadlineUrls.ts';
+import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
 import {
   renderDeadlinesList,
   type DeadlinesListCard,
   type DeadlinesListState,
 } from './views/DeadlinesList.tsx';
+import {
+  renderDeadlinesHistoryList,
+  type DeadlinesHistoryListState,
+} from './views/DeadlinesHistoryList.tsx';
 
 const isObjectiveEnabled = (
   settings: DeferredObjectiveSettingsV1,
@@ -55,14 +63,62 @@ export const resolveDeadlinesListCards = (params: {
   return cards;
 };
 
+export const resolveDeadlinesHistoryEntries = (
+  payload: SettingsUiDeferredObjectivePlanHistoryPayload | null,
+): DeferredObjectivePlanHistoryEntry[] => {
+  if (!payload) return [];
+  return Object.values(payload.entriesByDeviceId)
+    .flat()
+    .sort((a, b) => b.finalizedAtMs - a.finalizedAtMs);
+};
+
 const getSurface = (): HTMLElement | null => (
   document.getElementById('deadlines-list-root')
 );
 
+const getHistorySurface = (): HTMLElement | null => (
+  document.getElementById('deadlines-history-root')
+);
+
+const fetchPlanHistoryOrNull = async (): Promise<
+  SettingsUiDeferredObjectivePlanHistoryPayload | null
+> => {
+  try {
+    return await callApi<SettingsUiDeferredObjectivePlanHistoryPayload>(
+      'GET',
+      SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
+    );
+  } catch {
+    return null;
+  }
+};
+
+const renderHistorySurface = (
+  surface: HTMLElement,
+  payload: SettingsUiDeferredObjectivePlanHistoryPayload | null,
+): void => {
+  const entries = resolveDeadlinesHistoryEntries(payload);
+  const state: DeadlinesHistoryListState = entries.length === 0
+    ? { status: 'hidden' }
+    : { status: 'ready', entries, timeZone: resolveBrowserTimeZone() };
+  renderDeadlinesHistoryList(surface, state);
+};
+
 export const refreshDeadlinesList = async (): Promise<void> => {
   const surface = getSurface();
   if (!surface) return;
+  const historySurface = getHistorySurface();
   renderDeadlinesList(surface, { status: 'loading' });
+  if (historySurface) renderDeadlinesHistoryList(historySurface, { status: 'loading' });
+  // Fire history fetch in parallel but don't await it before rendering the
+  // active list — history is optional and a slow/hanging endpoint must not
+  // gate first paint of the primary Smart tasks list.
+  if (historySurface) {
+    const targetSurface = historySurface;
+    void fetchPlanHistoryOrNull().then((payload) => {
+      renderHistorySurface(targetSurface, payload);
+    });
+  }
   try {
     const [bootstrap, devicesPayload] = await Promise.all([
       callApi<SettingsUiBootstrap>('GET', SETTINGS_UI_BOOTSTRAP_PATH),
@@ -89,4 +145,5 @@ export const refreshDeadlinesList = async (): Promise<void> => {
 
 export const testExports = {
   resolveDeadlinesListCards,
+  resolveDeadlinesHistoryEntries,
 };
