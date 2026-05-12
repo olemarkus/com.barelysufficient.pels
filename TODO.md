@@ -12,15 +12,16 @@ file.
       does not reload stale `lastUsedNowKWh` or same-bucket plan state.
       Files: `lib/dailyBudget/dailyBudgetStatePersistence.ts`,
       `lib/dailyBudget/dailyBudgetService.ts`, `app.ts`, daily-budget persistence tests.
-- [ ] Make observation freshness source-aware. Targeted snapshot refreshes and same-value
+- [x] Make observation freshness source-aware. Targeted snapshot refreshes and same-value
       realtime updates should only advance freshness when the value source proves the capability
       was observed.
-      Why P0: freshness is currently easy to stamp from a refresh cycle rather than from trusted
-      data, which can hide stale state in control paths. The "missing freshness silently treated
-      as safe" half is resolved by the Observer module (`lib/observer/observationFreshness.ts`);
-      remaining work is the same-value / refresh-cycle stamping side.
-      Files: `lib/core/deviceManagerObservation.ts`, `lib/core/deviceManager.ts`,
-      freshness/reconcile tests.
+      Closed by `lib/observer/observationFreshness.ts` (missing-freshness half) and the
+      `mergeFresherCapabilityObservations` change in `lib/core/deviceManagerObservation.ts`:
+      the targeted-refresh override that fabricated `lastFreshDataMs` from poll time is
+      removed. `parseDevice` already derives `lastFreshDataMs` from Homey's per-capability
+      `lastUpdated`, and the merge step now only carries that forward; if no tracked
+      capability has reported new evidence, the device ages naturally under the 40-minute
+      `STALE_DEVICE_OBSERVATION_MS` window.
 - [ ] Ensure snapshot refresh ordering cannot persist pre-enforcement state. Unsupported-device
       enforcement should complete before the refreshed snapshot is synced and persisted.
       Why P0: persisting before enforcement can expose a snapshot that briefly disagrees with the
@@ -44,6 +45,20 @@ file.
       makes overshoot and cooldown diagnostics harder to reason about.
       Files: `lib/plan/planHeadroomSupport.ts`, `lib/plan/planHeadroomState.ts`,
       `lib/plan/planPowerResolution.ts`, headroom diagnostics tests.
+- [ ] Move remaining plan-side `observationStale` branches into Observer-emitted resolved values.
+      Today ~6-10 sites in `lib/plan/**` read `device.observationStale` directly and gate
+      restore eligibility, boost suppression, drift detection, activation backoff, and
+      diagnostics filtering. Per the Observer layering principle, plan code should not
+      branch on freshness; Observer should resolve each question internally (the way
+      `getCurrentDrawKw`, `isObservedOff`, and `isObservedOn` already hide staleness for
+      power and binary state) and emit flat values that the planner reads without checking.
+      Why P1: avoids planner-side staleness logic drifting from Observer's policy, and
+      removes a tri-state ergonomic that consumers have to keep remembering to check.
+      Files: `lib/plan/planRestoreDevices.ts`, `lib/plan/planRestoreCoordination.ts`,
+      `lib/plan/planTemperatureBoost.ts`, `lib/plan/planEvBoost.ts`,
+      `lib/executor/planExecutionDrift.ts`, `lib/plan/planHeadroomState.ts`,
+      `lib/plan/planActivationBackoff.ts`, `lib/plan/planDiagnostics.ts`,
+      new Observer-side accessors, related plan/executor tests.
 - [x] Use the configured device load as the stable expected load for binary restore planning and
       overview copy when live/measurement evidence is absent or the device is off.
       Closed by Observer's `getRestoreDrawKw`: `lib/plan/planDevices.ts` now projects

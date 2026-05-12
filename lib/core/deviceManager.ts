@@ -1494,7 +1494,6 @@ export class DeviceManager extends EventEmitter {
                 previousSnapshot,
                 nextSnapshot: snapshot,
                 devices: effectiveList,
-                targetedRefreshPollAtMs: isTargetedRefresh ? start : undefined,
                 logger: this.logger,
             });
             this.reconcileBinarySettleEvidenceAfterSnapshotRefresh(snapshot, effectiveList);
