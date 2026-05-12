@@ -34,7 +34,6 @@ describe('homeyApiMock', () => {
       settings: {
         device_control_profiles: deviceControlProfiles,
         device_driver_overrides: { 'device-1': 'driver-override' },
-        experimental_ev_support_enabled: true,
       },
     });
 
@@ -44,7 +43,6 @@ describe('homeyApiMock', () => {
       settings: expect.objectContaining({
         device_control_profiles: deviceControlProfiles,
         device_driver_overrides: { 'device-1': 'driver-override' },
-        experimental_ev_support_enabled: true,
       }),
     }));
     expect(Object.keys((result as { settings: Record<string, unknown> }).settings))

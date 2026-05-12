@@ -21,15 +21,9 @@ Vendor-specific examples:
 
 If PELS is not set up yet, start with [Getting Started](/getting-started).
 
-## Step 1: Enable EV Charger Support
+## Step 1: Open the Charger Settings
 
-Open **Apps -> PELS -> Settings -> Advanced** and enable **Enable EV charger support**.
-
-Go back to the **Devices** tab. The charger should now appear there. Refresh the device list if it does not.
-
-::: note
-EV charger support is currently behind an Advanced tab toggle. A later PELS version may move this into the normal setup path.
-:::
+Open **Apps -> PELS -> Settings -> Devices**. The charger should appear there. Refresh the device list if it does not.
 
 ## Step 2: Choose the EV Control Mode
 
@@ -114,7 +108,7 @@ Start with dry run if you are still tuning the rest of PELS. Then verify:
 
 | Problem | What to check |
 | --- | --- |
-| The charger is not listed in PELS | Enable **Enable EV charger support** in the Advanced tab, then refresh the Devices tab. |
+| The charger is not listed in PELS | Confirm the charger is paired in Homey and refresh the Devices tab. |
 | The Flow does not trigger | Confirm the charger is managed, capacity control is enabled, and PELS has live whole-home power data. |
 | The charger receives the wrong current | Check that the device uses the correct **EV 1-phase** or **EV 3-phase** control mode. |
 | Battery level does not update in PELS | Check that the battery reporting Flow uses the same charger device as the current-control Flow. |

@@ -153,9 +153,6 @@ export const advancedOverviewRedesignRow = document.querySelector(
 export const advancedOverviewRedesignEnabledInput = document.querySelector(
   '#advanced-overview-redesign-enabled',
 ) as MdCheckboxElement | null;
-export const advancedEvSupportEnabledInput = document.querySelector(
-  '#advanced-ev-support-enabled',
-) as MdCheckboxElement;
 export const advancedDeviceSelect = document.querySelector('#advanced-device-select') as MdFilledSelectElement;
 export const advancedDeviceClearButton = document.querySelector('#advanced-device-clear') as MdButtonElement;
 export const advancedDeviceClearUnknownButton = document.querySelector(

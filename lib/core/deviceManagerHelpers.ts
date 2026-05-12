@@ -12,17 +12,11 @@ const SUPPORTED_DEVICE_CLASSES = new Set([
 
 export const getDeviceId = (device: HomeyDeviceLike): string => device.id;
 
-export const resolveDeviceClassKey = (params: {
-  device: HomeyDeviceLike;
-  experimentalEvSupportEnabled: boolean;
-}): string | null => {
-  const deviceClass = typeof params.device.class === 'string' && params.device.class.trim()
-    ? params.device.class.trim()
-    : null;
+export const resolveDeviceClassKey = (device: HomeyDeviceLike): string | null => {
+  const deviceClass = typeof device.class === 'string' ? device.class.trim() : '';
   if (!deviceClass) return null;
   const deviceClassKey = deviceClass.toLowerCase();
   if (!SUPPORTED_DEVICE_CLASSES.has(deviceClassKey)) return null;
-  if (deviceClassKey === 'evcharger' && !params.experimentalEvSupportEnabled) return null;
   return deviceClassKey;
 };
 

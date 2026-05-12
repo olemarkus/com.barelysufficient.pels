@@ -1,7 +1,7 @@
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from './utils/appTestUtils';
 import { mockHomeyInstance, setMockDrivers } from './mocks/homey';
 import type { TargetDeviceSnapshot } from '../lib/utils/types';
-import { EXPERIMENTAL_EV_SUPPORT_ENABLED, FLOW_REPORTED_DEVICE_CAPABILITIES } from '../lib/utils/settingsKeys';
+import { FLOW_REPORTED_DEVICE_CAPABILITIES } from '../lib/utils/settingsKeys';
 
 vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
 
@@ -189,7 +189,6 @@ describe('Flow-backed device support', () => {
   });
 
   it('admits EV chargers only after reported charging, car connected, and resumable when native power exists', async () => {
-    mockHomeyInstance.settings.set(EXPERIMENTAL_EV_SUPPORT_ENABLED, true);
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'ev-1': {
         ...buildEvApiDevice({ capabilities: ['measure_power'] }),
@@ -231,7 +230,6 @@ describe('Flow-backed device support', () => {
   });
 
   it('synthesizes a paused EV charging state from car connected plus charging off plus resumable yes', async () => {
-    mockHomeyInstance.settings.set(EXPERIMENTAL_EV_SUPPORT_ENABLED, true);
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'ev-1': {
         ...buildEvApiDevice({ capabilities: ['measure_power'] }),
@@ -257,7 +255,6 @@ describe('Flow-backed device support', () => {
   });
 
   it('synthesizes a connected EV charging state from car connected plus charging off plus resumable no', async () => {
-    mockHomeyInstance.settings.set(EXPERIMENTAL_EV_SUPPORT_ENABLED, true);
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'ev-1': {
         ...buildEvApiDevice({ capabilities: ['measure_power'] }),
@@ -283,7 +280,6 @@ describe('Flow-backed device support', () => {
   });
 
   it('does not acknowledge native car-connected support unless flow reports it', async () => {
-    mockHomeyInstance.settings.set(EXPERIMENTAL_EV_SUPPORT_ENABLED, true);
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'ev-1': {
         ...buildEvApiDevice({
@@ -378,7 +374,6 @@ describe('Flow-backed device support', () => {
   });
 
   it('does not admit EV charging reports without native power support', async () => {
-    mockHomeyInstance.settings.set(EXPERIMENTAL_EV_SUPPORT_ENABLED, true);
     vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
       'ev-1': buildEvApiDevice(),
     });

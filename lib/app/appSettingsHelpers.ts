@@ -33,7 +33,6 @@ import {
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
   EV_BOOST_SETTINGS,
-  EXPERIMENTAL_EV_SUPPORT_ENABLED,
   NATIVE_EV_WIRING_DEVICES,
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
@@ -62,7 +61,6 @@ export type CapacitySettingsSnapshot = {
   deviceControlProfiles: DeviceControlProfiles;
   deviceTargetPowerConfigs: DeviceTargetPowerConfigs;
   deviceCommunicationModels: Record<string, 'local' | 'cloud'>;
-  experimentalEvSupportEnabled: boolean;
   shedBehaviors: Record<string, ShedBehavior>;
 };
 
@@ -82,7 +80,6 @@ export function buildCapacitySettingsSnapshot(params: {
   const deviceSettings = readDeviceControlSettings({ settings, current });
   const deviceOverrides = readDeviceOverrideSettings({ settings, current });
   const nativeEvSettings = readNativeEvSettings({ settings, current });
-  const experimentalEvSupportEnabled = settings.get(EXPERIMENTAL_EV_SUPPORT_ENABLED) as unknown;
   const rawShedBehaviors = settings.get(OVERSHOOT_BEHAVIORS) as unknown;
   const rawTemperatureBoostSettings = settings.get(TEMPERATURE_BOOST_SETTINGS) as unknown;
   const rawEvBoostSettings = settings.get(EV_BOOST_SETTINGS) as unknown;
@@ -105,9 +102,6 @@ export function buildCapacitySettingsSnapshot(params: {
   const nextPriorities = isPrioritySettings(priorities) ? priorities : current.capacityPriorities;
   const nextTargets = isModeDeviceTargets(modeTargets) ? modeTargets : current.modeDeviceTargets;
   const nextDryRun = typeof dryRun === 'boolean' ? dryRun : current.capacityDryRun;
-  const nextExperimentalEvSupportEnabled = typeof experimentalEvSupportEnabled === 'boolean'
-    ? experimentalEvSupportEnabled
-    : current.experimentalEvSupportEnabled;
   const nextBehaviors = normalizeShedBehaviorsHelper(rawShedBehaviors as Record<string, ShedBehavior> | undefined);
 
   return {
@@ -127,7 +121,6 @@ export function buildCapacitySettingsSnapshot(params: {
     deviceControlProfiles: deviceSettings.deviceControlProfiles,
     deviceTargetPowerConfigs: deviceSettings.deviceTargetPowerConfigs,
     deviceCommunicationModels: deviceSettings.deviceCommunicationModels,
-    experimentalEvSupportEnabled: nextExperimentalEvSupportEnabled,
     shedBehaviors: nextBehaviors,
   };
 }
@@ -285,8 +278,6 @@ export function initSettingsHandlerForApp(ctx: AppContext): { handle: SettingsHa
     updatePriceOptimizationEnabled: ctx.updatePriceOptimizationEnabled,
     updateOverheadToken: ctx.updateOverheadToken,
     updateDebugLoggingEnabled: ctx.updateDebugLoggingEnabled,
-    getExperimentalEvSupportEnabled: () => ctx.experimentalEvSupportEnabled,
-    disableManagedEvDevices: ctx.disableManagedEvDevices,
     restartHomeyEnergyPoll: () => ctx.homeyEnergyHelpers.restart(),
     log: (message: string) => ctx.log(message),
     errorLog: (message: string, err: unknown) => ctx.error(message, err as Error),

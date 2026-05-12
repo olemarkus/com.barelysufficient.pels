@@ -71,6 +71,10 @@ describe('power page stats (buckets-only)', () => {
     buildPowerDom();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('computes weekday/weekend averages from buckets when dailyTotals are missing', async () => {
     const buckets = buildBuckets('2025-01-06T00:00:00.000Z', 7 * 24, 1.2);
     await installHomeyClient({ buckets });

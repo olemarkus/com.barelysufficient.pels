@@ -17,7 +17,6 @@ const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'temperature_boost_settings',
   'native_ev_wiring_devices',
   'device_driver_overrides',
-  'experimental_ev_support_enabled',
   'mode_aliases',
   'overshoot_behaviors',
   'price_optimization_settings',

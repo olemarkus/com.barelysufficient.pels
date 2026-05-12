@@ -221,7 +221,6 @@ const buildDom = () => {
       <label id="advanced-overview-redesign-row" hidden>
         <md-checkbox id="advanced-overview-redesign-enabled"></md-checkbox>
       </label>
-      <md-checkbox id="advanced-ev-support-enabled"></md-checkbox>
       <form id="daily-budget-advanced-form">
         <md-filled-select id="daily-budget-controlled-weight">
           <md-select-option value="0"><div slot="headline">Balanced</div></md-select-option>
