@@ -36,9 +36,9 @@ const openDeviceDetail = async (page: Page, deviceId: string) => {
   await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
   await page.getByRole('tab', { name: 'Settings' }).click();
   await page.locator('[data-settings-target="devices"]').click();
-  const row = page.locator(`#device-list .device-row[data-device-id="${deviceId}"]`);
+  const row = page.locator(`#devices-panel [data-device-id="${deviceId}"]`).first();
   await expect(row).toBeVisible();
-  await row.locator('.device-row__name').click();
+  await row.click();
   await expect(page.locator('#device-detail-overlay')).toBeVisible();
   await page.evaluate(() => {
     document.querySelector<HTMLElement>('#dry-run-banner')?.style.setProperty('display', 'none');
@@ -106,9 +106,9 @@ test('generic EV charger', async ({ page }) => {
   await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
   await page.getByRole('tab', { name: 'Settings' }).click();
   await page.locator('[data-settings-target="devices"]').click();
-  const row = page.locator('#device-list .device-row[data-device-id="dev_evcharger"]');
+  const row = page.locator('#devices-panel [data-device-id="dev_evcharger"]').first();
   await expect(row).toBeVisible();
-  await row.locator('.device-row__name').click();
+  await row.click();
   await expect(page.locator('#device-detail-overlay')).toBeVisible();
   await page.evaluate(() => {
     document.querySelector<HTMLElement>('#dry-run-banner')?.style.setProperty('display', 'none');

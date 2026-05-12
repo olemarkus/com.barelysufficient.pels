@@ -35,7 +35,11 @@ const stickyOffsetFromViewportBottom = async (page: Page): Promise<number> => (
   })
 );
 
-test('budget adjust → preview → apply walkthrough', async ({ page }) => {
+test('budget adjust → preview → apply walkthrough', async ({ page }, testInfo) => {
+  test.skip(
+    testInfo.project.name !== 'chromium-mobile-width',
+    'Screenshot walkthrough is pinned to chromium-mobile-width.',
+  );
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('tablist')).toBeVisible();
 

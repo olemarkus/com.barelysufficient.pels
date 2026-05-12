@@ -1,6 +1,6 @@
-import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import process from 'node:process';
+import { runParallel } from './lib/run-parallel.mjs';
 
 const files = process.argv.slice(2)
   .map((file) => path.relative(process.cwd(), path.resolve(file)).replaceAll(path.sep, '/'))
@@ -45,47 +45,47 @@ const settingsFiles = unique(files.filter((file) => matches(file, settingsPrefix
     ? file.slice('packages/settings-ui/'.length)
     : `../../${file}`);
 
-const run = (command, args, options = {}) => {
-  console.log(`pre-commit: running ${command} ${args.join(' ')}`);
-  const result = spawnSync(command, args, { stdio: 'inherit', env: process.env, ...options });
-  if (result.error) throw result.error;
-  if (typeof result.status === 'number' && result.status !== 0) process.exit(result.status);
-};
+const commands = [];
 
 if (hasRuntimeTestWiringChange) {
-  run('npx', ['vitest', 'run', '--config', 'vitest.config.fast.mts']);
-  run('npx', ['vitest', 'run', '--config', 'vitest.config.dom.fast.mts']);
+  commands.push(
+    { label: 'vitest:node', command: 'npx', args: ['vitest', 'run', '--config', 'vitest.config.fast.mts'] },
+    { label: 'vitest:dom', command: 'npx', args: ['vitest', 'run', '--config', 'vitest.config.dom.fast.mts'] },
+  );
 } else if (runtimeFiles.length > 0) {
-  run('npx', [
-    'vitest',
-    'related',
-    '--config',
-    'vitest.config.fast.mts',
-    '--passWithNoTests',
-    ...runtimeFiles,
-  ]);
-
-  run('npx', [
-    'vitest',
-    'related',
-    '--config',
-    'vitest.config.dom.fast.mts',
-    '--passWithNoTests',
-    ...runtimeFiles,
-  ]);
+  commands.push(
+    {
+      label: 'vitest:node:related',
+      command: 'npx',
+      args: ['vitest', 'related', '--config', 'vitest.config.fast.mts', '--passWithNoTests', ...runtimeFiles],
+    },
+    {
+      label: 'vitest:dom:related',
+      command: 'npx',
+      args: ['vitest', 'related', '--config', 'vitest.config.dom.fast.mts', '--passWithNoTests', ...runtimeFiles],
+    },
+  );
 }
 
 if (settingsFiles.length > 0) {
-  run('npm', [
-    '--workspace',
-    '@pels/settings-ui',
-    'exec',
-    '--',
-    'vitest',
-    'related',
-    '--config',
-    'vitest.config.ts',
-    '--passWithNoTests',
-    ...settingsFiles,
-  ]);
+  commands.push({
+    label: 'vitest:settings-ui:related',
+    command: 'npm',
+    args: [
+      '--workspace',
+      '@pels/settings-ui',
+      'exec',
+      '--',
+      'vitest',
+      'related',
+      '--config',
+      'vitest.config.ts',
+      '--passWithNoTests',
+      ...settingsFiles,
+    ],
+  });
+}
+
+if (commands.length > 0) {
+  await runParallel(commands);
 }
