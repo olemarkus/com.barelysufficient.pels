@@ -87,6 +87,10 @@ test.describe('Settings UI chart layout', () => {
     await expect(page.locator('#hourly-pattern svg').first()).toBeVisible();
 
     await expect(page.locator('#daily-list svg').first()).toBeVisible();
+
+    // Detailed hourly view is collapsed by default per the spec; expand it before
+    // asserting the inner chart renders and stays within panel width.
+    await page.locator('#usage-detail-section summary').click();
     await expect(page.locator('#power-list svg').first()).toBeVisible();
 
     const usageIssues = await collectLayoutIssues(page, '#usage-panel', [

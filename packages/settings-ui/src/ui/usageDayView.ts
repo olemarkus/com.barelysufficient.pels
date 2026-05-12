@@ -55,8 +55,8 @@ const setUsageDayStatus = (text: string, tone?: 'ok' | 'warn') => {
   if (!usageDayStatusPill) return;
   if (tone === 'warn') {
     usageDayStatusPill.textContent = text;
-    usageDayStatusPill.classList.remove('ok');
-    usageDayStatusPill.classList.add('warn');
+    usageDayStatusPill.classList.remove('plan-chip--muted', 'plan-chip--ok');
+    usageDayStatusPill.classList.add('plan-chip--warn');
     usageDayStatusPill.hidden = false;
   } else {
     usageDayStatusPill.hidden = true;
@@ -77,7 +77,7 @@ const getUsageDayDateKey = (view: UsageDayView, now: Date, timeZone: string) => 
 };
 
 const formatUsageDayTitle = (view: UsageDayView) => (
-  view === 'today' ? 'Hourly usage (today)' : 'Hourly usage (yesterday)'
+  view === 'today' ? 'Today so far' : 'Yesterday'
 );
 
 const buildUsageDayBuckets = (

@@ -14,6 +14,7 @@ import {
   hourlyPattern,
   hourlyPatternMeta,
 } from './dom.ts';
+import { renderUsageHero } from './usageHero.ts';
 import { SETTINGS_UI_POWER_PATH, type SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
 import { renderPowerWeekChart, disposePowerWeekChart } from './powerWeekChartEcharts.ts';
 import { getApiReadModel, getHomeyTimezone } from './homey.ts';
@@ -288,26 +289,17 @@ const getDailyHistoryPoints = (stats: PowerStatsSummary): DailyHistoryPoint[] =>
   stats.dailyHistory.slice(0, Number(dailyHistoryRange))
 );
 
-const updateSummaryLabel = (valueEl: HTMLElement | null, labelText: string) => {
-  const label = valueEl?.closest('.summary-card')?.querySelector('.summary-label');
-  if (label) label.textContent = labelText;
-};
-
 const renderPowerSummary = (stats: PowerStatsSummary, timeZone: string) => {
   const now = new Date();
   const todayText = formatDateInTimeZone(now, { weekday: 'short', month: 'short', day: 'numeric' }, timeZone);
-  const weekRange = getTimeZoneWeekRange(now, 0, timeZone);
-  const weekText = formatWeekLabel(weekRange.startMs, weekRange.endMs, timeZone);
-  const monthText = formatDateInTimeZone(now, { month: 'short', year: 'numeric' }, timeZone);
 
   if (usageToday) usageToday.textContent = `${stats.today.toFixed(1)} kWh`;
   if (usageWeek) usageWeek.textContent = `${stats.week.toFixed(1)} kWh`;
   if (usageMonth) usageMonth.textContent = `${stats.month.toFixed(1)} kWh`;
 
-  updateSummaryLabel(usageToday, `Today (${todayText})`);
-  updateSummaryLabel(usageWeek, `This week (${weekText})`);
-  updateSummaryLabel(usageMonth, `This month (${monthText})`);
+  renderUsageHero(stats, timeZone, todayText);
 };
+
 
 const setSummaryValue = (element: HTMLElement, hasData: boolean, value: string) => {
   const target = element;

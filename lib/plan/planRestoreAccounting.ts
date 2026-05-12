@@ -1,18 +1,21 @@
 import type { DevicePlanDevice } from './planTypes';
 import { isSteppedLoadDevice } from './planSteppedLoad';
+import { getSteppedLoadRestoreStep } from '../utils/deviceControlProfiles';
 import {
   PENDING_RESTORE_CONFIRMED_FRACTION,
   PENDING_RESTORE_WINDOW_MS,
 } from './planConstants';
 import { buildRestoreHeadroomReason } from './planReasonStrings';
 import {
-  resolveRestorePower as resolveSharedRestorePower,
-  type RestorePowerSource as SharedRestorePowerSource,
-} from './planPowerResolution';
+  getRestoreDrawKw,
+  type ExpectedPowerSource,
+} from '../observer/observedPower';
 import {
   resolveActiveSteppedRestoreReservation,
   resolveSteppedRestoreObservedGapKw,
 } from './planSteppedRestorePending';
+
+export type RestorePowerSource = ExpectedPowerSource;
 
 export function buildInsufficientHeadroomUpdate(params: {
   neededKw: number;
@@ -36,14 +39,37 @@ export function computeRestoreBufferKw(devPower: number): number {
   return Math.max(0.2, Math.min(0.6, scaled));
 }
 
-export type RestorePowerSource = SharedRestorePowerSource;
-
 export function resolveRestorePowerSource(dev: DevicePlanDevice): RestorePowerSource {
-  return resolveSharedRestorePower(dev).source;
+  return resolveRestorePower(dev).source;
 }
 
 export function estimateRestorePower(dev: DevicePlanDevice): number {
-  return resolveSharedRestorePower(dev).powerKw;
+  return resolveRestorePower(dev).kw;
+}
+
+function resolveRestorePower(
+  dev: DevicePlanDevice,
+): { kw: number; source: RestorePowerSource } {
+  const stepped = resolveSteppedRestorePower(dev);
+  if (stepped !== null) return stepped;
+  return getRestoreDrawKw(dev);
+}
+
+function resolveSteppedRestorePower(
+  dev: DevicePlanDevice,
+): { kw: number; source: RestorePowerSource } | null {
+  if (!isSteppedLoadDevice(dev) || !dev.steppedLoadProfile) return null;
+
+  if (dev.currentState !== 'off' && typeof dev.planningPowerKw === 'number' && dev.planningPowerKw > 0) {
+    return { kw: dev.planningPowerKw, source: 'planning' };
+  }
+
+  const restoreStep = getSteppedLoadRestoreStep(dev.steppedLoadProfile);
+  if (restoreStep && restoreStep.planningPowerW > 0) {
+    return { kw: restoreStep.planningPowerW / 1000, source: 'stepped' };
+  }
+
+  return null;
 }
 
 /**
