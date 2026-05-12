@@ -181,7 +181,6 @@ export function mergeFresherCapabilityObservations(params: {
     previousSnapshot: TargetDeviceSnapshot[];
     nextSnapshot: TargetDeviceSnapshot[];
     devices: HomeyDeviceLike[];
-    targetedRefreshPollAtMs?: number;
     logger: { debug: (...args: unknown[]) => void };
 }): void {
     const {
@@ -189,7 +188,6 @@ export function mergeFresherCapabilityObservations(params: {
         previousSnapshot,
         nextSnapshot,
         devices,
-        targetedRefreshPollAtMs,
         logger,
     } = params;
     const previousById = new Map(previousSnapshot.map((device) => [device.id, device]));
@@ -200,13 +198,18 @@ export function mergeFresherCapabilityObservations(params: {
         devicesById.set(deviceId, device);
     }
 
+    // `lastFreshDataMs` on each snapshot is already set by `parseDevice` from the
+    // highest Homey per-capability `lastUpdated` (see `resolveLastFreshDataMs` in
+    // `deviceManagerParseSnapshot.ts`). That is the device's actual liveness
+    // signal — Homey only advances `lastUpdated` when a capability genuinely
+    // reported. A successful refresh poll is *not* by itself evidence the device
+    // is alive: Homey serves cached capability values even when the device has
+    // been silent for hours. The 40-minute `STALE_DEVICE_OBSERVATION_MS` window
+    // (in `lib/observer/observationFreshness.ts`) is the backstop.
     for (const snapshot of nextSnapshot) {
         const previous = previousById.get(snapshot.id);
         const sourceDevice = devicesById.get(snapshot.id);
         if (!previous || !sourceDevice) continue;
-        const hasTrustedTargetedRefresh = targetedRefreshPollAtMs
-            ? hasTrustedTargetedRefreshEvidence(sourceDevice, snapshot)
-            : false;
         mergeSnapshotObservationsForDevice({
             state,
             nextSnapshot: snapshot,
@@ -214,53 +217,7 @@ export function mergeFresherCapabilityObservations(params: {
             sourceDevice,
             logger,
         });
-        if (targetedRefreshPollAtMs && hasTrustedTargetedRefresh) {
-            snapshot.lastFreshDataMs = Math.max(
-                snapshot.lastFreshDataMs ?? 0,
-                targetedRefreshPollAtMs,
-            ) || undefined;
-            snapshot.lastUpdated = snapshot.lastFreshDataMs;
-        }
     }
-}
-
-function hasTrustedTargetedRefreshEvidence(
-    sourceDevice: HomeyDeviceLike,
-    snapshot: TargetDeviceSnapshot,
-): boolean {
-    const capabilities = sourceDevice.capabilitiesObj ?? {};
-    return hasTrustedControlRefreshEvidence(capabilities, snapshot)
-        || hasTrustedScalarRefreshEvidence(capabilities)
-        || hasTrustedTargetRefreshEvidence(capabilities, snapshot);
-}
-
-function hasTrustedControlRefreshEvidence(
-    capabilities: HomeyDeviceLike['capabilitiesObj'],
-    snapshot: TargetDeviceSnapshot,
-): boolean {
-    if (
-        snapshot.binaryControlObservation?.valid
-        && snapshot.binaryControlObservation.capabilityId === snapshot.controlCapabilityId
-        && typeof snapshot.binaryControlObservation.observedValue === 'boolean'
-    ) {
-        return true;
-    }
-    const controlCapabilityId = snapshot.controlObservationCapabilityId ?? snapshot.controlCapabilityId;
-    if (controlCapabilityId && typeof capabilities?.[controlCapabilityId]?.value === 'boolean') return true;
-    return snapshot.controlCapabilityId === 'evcharger_charging'
-        && resolveEvChargingStateBinaryEvidence(capabilities?.evcharger_charging_state?.value) !== undefined;
-}
-
-function hasTrustedScalarRefreshEvidence(capabilities: HomeyDeviceLike['capabilitiesObj']): boolean {
-    return typeof capabilities?.measure_power?.value === 'number'
-        || typeof capabilities?.measure_temperature?.value === 'number';
-}
-
-function hasTrustedTargetRefreshEvidence(
-    capabilities: HomeyDeviceLike['capabilitiesObj'],
-    snapshot: TargetDeviceSnapshot,
-): boolean {
-    return snapshot.targets.some((target) => typeof capabilities?.[target.id]?.value === 'number');
 }
 
 export function recordSnapshotCapabilityObservations(params: {
