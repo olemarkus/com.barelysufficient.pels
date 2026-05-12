@@ -3,7 +3,7 @@ import { getSheddingClearThresholdKw } from '../../core/capacityGuard';
 import type { PlanCapacityStateSummary } from '../../core/capacityStateSummary';
 import type { PlanInputDevice, ShedAction } from '../planTypes';
 import type { PlanContext } from '../planContext';
-import { resolveEffectiveCurrentOn } from '../planCurrentState';
+import { isObservedOff } from '../../observer/observedState';
 import { buildPlanInputCapacityStateSummary } from '../planLogging';
 import {
   isCapacityBreached,
@@ -139,10 +139,7 @@ export function countRemainingCandidates(params: {
   if (headroom >= 0) return 0;
   const capacityBreached = isCapacityBreached(total, capacitySoftLimit);
   return devices
-    .filter((d) => {
-      const effectiveCurrentOn = resolveEffectiveCurrentOn(d);
-      return d.controllable !== false && effectiveCurrentOn !== false && !shedSet.has(d.id);
-    })
+    .filter((d) => d.controllable !== false && !isObservedOff(d) && !shedSet.has(d.id))
     .filter((d) => limitSource !== 'daily' || capacityBreached || d.budgetExempt !== true)
     .filter((d) => resolveRemainingSheddableLoadKw({
       device: toInputRemainingSheddableDevice(d),

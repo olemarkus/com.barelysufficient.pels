@@ -28,7 +28,7 @@ import {
   getSteppedLoadStep,
   isSteppedLoadOffStep,
 } from '../utils/deviceControlProfiles';
-import { resolveObservedCurrentState } from './planStateResolution';
+import { resolveObservedCurrentState } from '../observer/observedState';
 import {
   buildBoostPlanDeviceFields,
   emitEvBoostStateChange,
@@ -39,7 +39,7 @@ import {
   resolveTemperatureBoostActive,
   supportsTemperatureBoostDevice,
 } from './planTemperatureBoost';
-import { resolveEffectiveCurrentOn } from './planCurrentState';
+import { isObservedOff } from '../observer/observedState';
 import type { StructuredDebugEmitter } from '../logging/logger';
 
 export type PlanDevicesDeps = {
@@ -449,8 +449,8 @@ function isNonSteppedDeviceRecovering(
   candidate: PlanInputDevice,
   state: Pick<PlanEngineState, 'lastDeviceShedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>,
 ): boolean {
-  const effectiveCurrentOn = resolveEffectiveCurrentOn(candidate);
-  if (candidate.controllable === false || isSteppedLoadDevice(candidate) || effectiveCurrentOn !== false) {
+  const observedOff = isObservedOff(candidate);
+  if (candidate.controllable === false || isSteppedLoadDevice(candidate) || !observedOff) {
     return false;
   }
   if (state.swapByDevice[candidate.id]?.swappedOutFor || state.swapByDevice[candidate.id]?.pendingTarget) {

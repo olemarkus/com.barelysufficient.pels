@@ -111,6 +111,9 @@ function resolvePendingRestoreGapKwForDevice(
 
   const restoreMs = lastDeviceRestoreMs[dev.id];
   if (!restoreMs || nowTs - restoreMs > PENDING_RESTORE_WINDOW_MS) return 0;
+  // This branch is non-stepped (stepped exits earlier). The raw `currentOn` is
+  // authoritative for binary-only devices, and matches the rest of the binary
+  // pending-restore-gap math below.
   if (!dev.currentOn) return 0;
   const expectedKw = estimateRestorePower(dev);
   const actualKw = Math.max(0, dev.measuredPowerKw ?? dev.powerKw ?? 0);

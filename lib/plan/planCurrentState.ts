@@ -1,5 +1,15 @@
-import { getSteppedLoadStep, isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
-import type { DeviceControlModel, SteppedLoadProfile } from '../utils/types';
+/**
+ * Plan-state-aware `ResolvedCurrentState` projection used by reason rendering.
+ * Pure observed-state resolution lives in `lib/observer/observedState.ts`;
+ * this module adds the `pendingInfluence` plan/executor concept on top.
+ */
+import {
+  resolveObservedCurrentState,
+  resolveObservedCurrentStateValue,
+  resolveObservedSteppedLoadCurrentState,
+  type CurrentStateInput,
+  type ObservedCurrentStateInput,
+} from '../observer/observedState';
 
 export type PlannerCurrentStateSource = 'binary' | 'stepped' | 'target' | 'unknown';
 export type PlannerPendingInfluence = 'none' | 'present_but_not_applied';
@@ -12,27 +22,15 @@ export type ResolvedCurrentState = {
   pendingInfluence: PlannerPendingInfluence;
 };
 
-type ObservedCurrentStateInput = {
-  currentOn: boolean;
-  hasBinaryControl?: boolean;
-  observationStale?: boolean;
-  controlModel?: DeviceControlModel;
-  steppedLoadProfile?: SteppedLoadProfile;
-  selectedStepId?: string;
+export {
+  resolveObservedCurrentState,
+  resolveObservedSteppedLoadCurrentState,
 };
-
-type CurrentStateInput = Partial<ObservedCurrentStateInput> & {
-  currentState?: string;
-};
+export type { CurrentStateInput, ObservedCurrentStateInput };
 
 type ResolveCurrentStateOptions = {
   pendingPresent?: boolean;
 };
-
-type StepCurrentStateInput = Pick<
-  ObservedCurrentStateInput,
-  'controlModel' | 'steppedLoadProfile' | 'selectedStepId'
-> & { currentOn: boolean };
 
 const isSteppedLoadObservation = (
   device: Pick<CurrentStateInput, 'controlModel' | 'steppedLoadProfile'>,
@@ -44,53 +42,6 @@ function resolvePendingInfluence(
   options?: ResolveCurrentStateOptions,
 ): PlannerPendingInfluence {
   return options?.pendingPresent === true ? 'present_but_not_applied' : 'none';
-}
-
-function resolveObservedCurrentStateValue(device: CurrentStateInput): string {
-  if (typeof device.currentState === 'string') return device.currentState;
-  if (typeof device.currentOn === 'boolean') {
-    return resolveObservedCurrentState(device as ObservedCurrentStateInput);
-  }
-  return 'unknown';
-}
-
-export function resolveObservedSteppedLoadCurrentState(
-  device: StepCurrentStateInput,
-): string {
-  const profile = isSteppedLoadObservation(device) ? device.steppedLoadProfile ?? null : null;
-  if (!profile) {
-    return device.currentOn ? 'on' : 'off';
-  }
-  if (device.currentOn === false) return 'off';
-  if (!device.selectedStepId) return 'unknown';
-
-  const selectedStep = getSteppedLoadStep(profile, device.selectedStepId);
-  if (!selectedStep) return 'unknown';
-  return isSteppedLoadOffStep(profile, selectedStep.id) ? 'off' : 'on';
-}
-
-export function resolveObservedCurrentState(
-  device: ObservedCurrentStateInput,
-): string {
-  if (device.observationStale === true) {
-    return device.hasBinaryControl === false ? 'not_applicable' : 'unknown';
-  }
-
-  if (isSteppedLoadObservation(device) && device.steppedLoadProfile) {
-    const steppedState = resolveObservedSteppedLoadCurrentState({
-      controlModel: 'stepped_load',
-      steppedLoadProfile: device.steppedLoadProfile,
-      selectedStepId: device.selectedStepId,
-      currentOn: device.currentOn,
-    });
-    if (steppedState !== 'unknown') return steppedState;
-  }
-
-  if (device.hasBinaryControl === false) {
-    return 'not_applicable';
-  }
-
-  return device.currentOn ? 'on' : 'off';
 }
 
 function buildBinaryResolvedCurrentState(params: {

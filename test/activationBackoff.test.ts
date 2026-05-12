@@ -1168,7 +1168,11 @@ describe('activation backoff', () => {
     }));
   });
 
-  it('does not open an activation attempt from a snapshot-refresh tracked rise on a still-shed device', () => {
+  it('does not track target-only devices in the activation backoff lifecycle', () => {
+    // Target-only devices (`not_applicable`) have no onoff capability — their
+    // raw `currentOn` flag is not authoritative for binary state, so the
+    // activation backoff system does not classify them as "active" and skips
+    // both the tracked-rise diagnostic and the activation-attempt lifecycle.
     const state = createPlanEngineState();
     const start = Date.now();
     const diagnostics = {
@@ -1208,11 +1212,7 @@ describe('activation backoff', () => {
       diagnostics: diagnostics as any,
     })).toBe(false);
 
-    expect(diagnostics.recordControlEvent).toHaveBeenCalledWith(expect.objectContaining({
-      kind: 'tracked_usage_rise',
-      deviceId: 'dev-1',
-      reconciliation: 'snapshot_refresh',
-    }));
+    expect(diagnostics.recordControlEvent).not.toHaveBeenCalled();
     expect(diagnostics.recordActivationTransition).not.toHaveBeenCalled();
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
 
