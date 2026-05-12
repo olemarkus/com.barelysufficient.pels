@@ -18,9 +18,10 @@ import { buildDayContext } from '../lib/dailyBudget/dailyBudgetState';
 
 const TZ = 'Europe/Oslo';
 
-const buildManager = () => new DailyBudgetManager({
+const buildManager = (overrides: Partial<ConstructorParameters<typeof DailyBudgetManager>[0]> = {}) => new DailyBudgetManager({
   log: () => undefined,
   logDebug: () => undefined,
+  ...overrides,
 });
 
 const buildSettings = (overrides: Partial<{
@@ -156,6 +157,88 @@ describe('daily budget profile blending', () => {
 });
 
 describe('daily budget planning', () => {
+  it('does not stringify plan debug payloads when the daily budget debug topic is disabled', () => {
+    const manager = buildManager({
+      isDebugTopicEnabled: () => false,
+    });
+    const stringify = vi.spyOn(JSON, 'stringify');
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+
+    try {
+      manager.update({
+        nowMs: dayStart + 30 * 60 * 1000,
+        timeZone: TZ,
+        settings,
+        powerTracker: { buckets: {} },
+        priceOptimizationEnabled: false,
+        forcePlanRebuild: true,
+      });
+
+      expect(stringify).not.toHaveBeenCalled();
+    } finally {
+      stringify.mockRestore();
+    }
+  });
+
+  it('summarizes long profile arrays in plan debug payloads', () => {
+    const logDebug = vi.fn();
+    const manager = buildManager({
+      logDebug,
+      isDebugTopicEnabled: () => true,
+    });
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+
+    manager.loadState({
+      profile: {
+        weights: normalizeWeights([0.5, 0.5, ...Array.from({ length: 22 }, () => 0)]),
+        sampleCount: 14,
+      },
+      profileObservedP90UncontrolledKWh: Array.from({ length: 24 }, (_, index) => index),
+    });
+    manager.update({
+      nowMs: dayStart + 30 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: {} },
+      priceOptimizationEnabled: false,
+      forcePlanRebuild: true,
+    });
+
+    const debugCall = logDebug.mock.calls.find((call) => (
+      typeof call[0] === 'string'
+      && call[0].startsWith('Daily budget: plan debug ')
+    ));
+    expect(debugCall).toBeDefined();
+    const payload = JSON.parse(
+      (debugCall?.[0] as string).replace('Daily budget: plan debug ', ''),
+    );
+    expect(payload.meta.profileDefaultWeights).toEqual(expect.objectContaining({
+      length: 24,
+      min: expect.any(Number),
+      max: expect.any(Number),
+    }));
+    expect(payload.meta.profileDefaultWeights.sum).toBeCloseTo(1, 10);
+    expect(payload.meta.profileDefaultWeights.mean).toBeCloseTo(1 / 24, 10);
+    expect(payload.meta.profileWeightsCombined).toEqual({
+      length: 24,
+      min: 0,
+      max: 0.5,
+      sum: 1,
+      mean: 1 / 24,
+    });
+    expect(payload.meta.profileObservedP90UncontrolledKWh).toEqual({
+      length: 24,
+      min: 0,
+      max: 23,
+      sum: 276,
+      mean: 11.5,
+    });
+  });
+
   it('builds an allowed curve from weights and daily budget', () => {
     const manager = buildManager();
     const settings = buildSettings({ dailyBudgetKWh: 10 });

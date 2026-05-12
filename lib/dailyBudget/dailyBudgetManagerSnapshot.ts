@@ -8,14 +8,17 @@ import {
 } from './dailyBudgetState';
 import { getEffectiveProfileData } from './dailyBudgetProfile';
 import { logDailyBudgetPlanDebug } from './dailyBudgetManagerPlan';
+import type { CombinedPriceData } from './dailyBudgetMath';
 import type {
   ConfidenceDebug,
   DailyBudgetDayPayload,
   DailyBudgetSettings,
   DailyBudgetState,
 } from './dailyBudgetTypes';
-import type { PlanResult } from './dailyBudgetManagerTypes';
+import type { DailyBudgetManagerDeps, PlanResult } from './dailyBudgetManagerTypes';
 import type { UncontrolledReservePlanDiagnostics } from './dailyBudgetPlanCaps';
+import { logNextDayPlanDebug } from './dailyBudgetNextDayDebug';
+import { logUncontrolledReserveDebug as logReserveDebug } from './dailyBudgetReserveLogging';
 
 export function logBudgetSummaryIfNeeded(params: {
   logDebug: (...args: unknown[]) => void;
@@ -76,6 +79,70 @@ export function buildSnapshot(params: {
     frozen: Boolean(state.frozen),
     confidenceDebug,
   });
+}
+
+export function buildSnapshotAndLogDebug(params: {
+  deps: DailyBudgetManagerDeps;
+  state: DailyBudgetState;
+  settings: DailyBudgetSettings;
+  enabled: boolean;
+  plan: PlanResult;
+  budget: BudgetState;
+  context: DayContext;
+  defaultProfile: number[];
+  confidenceDebug?: ConfidenceDebug;
+  capacityBudgetKWh?: number;
+  combinedPrices?: CombinedPriceData | null;
+  priceOptimizationEnabled: boolean;
+}): DailyBudgetDayPayload {
+  const {
+    deps,
+    state,
+    settings,
+    enabled,
+    plan,
+    budget,
+    context,
+    defaultProfile,
+    confidenceDebug,
+    capacityBudgetKWh,
+    combinedPrices,
+    priceOptimizationEnabled,
+  } = params;
+  const shouldLog = plan.shouldLog && (deps.isDebugTopicEnabled?.('daily_budget') ?? true);
+  logBudgetSummaryIfNeeded({ logDebug: deps.logDebug, shouldLog, context, budget });
+  const snapshot = buildSnapshot({ state, settings, enabled, plan, budget, context, defaultProfile, confidenceDebug });
+  logPlanDebugIfNeeded({
+    logDebug: deps.logDebug,
+    shouldLog,
+    snapshot,
+    priceData: plan.priceData,
+    priceOptimizationEnabled,
+    capacityBudgetKWh,
+    settings,
+    state,
+    defaultProfile,
+    planDebug: plan.planDebug,
+    uncontrolledReserveDiagnostics: plan.uncontrolledReserveDiagnostics,
+  });
+  logNextDayPlanDebug({
+    logDebug: deps.logDebug,
+    shouldLog,
+    context,
+    settings,
+    state,
+    combinedPrices,
+    priceOptimizationEnabled,
+    capacityBudgetKWh,
+    defaultProfile,
+  });
+  logReserveDebug({
+    plan,
+    reserveMode: settings.controlledUsageWeight,
+    shouldLog,
+    structuredDebug: deps.structuredDebug,
+  });
+  return snapshot;
 }
 
 export function logPlanDebugIfNeeded(params: {

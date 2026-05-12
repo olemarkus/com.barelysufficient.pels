@@ -1,13 +1,12 @@
 import type { PowerTrackerState } from '../core/powerTracker';
 import { buildDefaultProfile, buildPlan, buildPriceDebugData } from './dailyBudgetMath';
 import type { CombinedPriceData } from './dailyBudgetMath';
-import { buildSnapshot, logBudgetSummaryIfNeeded, logPlanDebugIfNeeded } from './dailyBudgetManagerSnapshot';
+import { buildSnapshotAndLogDebug } from './dailyBudgetManagerSnapshot';
 import {
   resolveExistingPlanState,
   resolvePlanLockState,
   shouldRebuildDailyBudgetPlan,
 } from './dailyBudgetManagerPlan';
-import { logNextDayPlanDebug } from './dailyBudgetNextDayDebug';
 import { buildDailyBudgetPreview } from './dailyBudgetPreview';
 import { buildDayContext, computeBudgetState, computePlanDeviation } from './dailyBudgetState';
 import { buildDailyBudgetHistory } from './dailyBudgetHistory';
@@ -43,7 +42,6 @@ import {
   getCachedConfidence,
   resolveConfidence,
 } from './dailyBudgetConfidence';
-import { logUncontrolledReserveDebug as logReserveDebug } from './dailyBudgetReserveLogging';
 import { resolveDailyBudgetPersistReason } from './dailyBudgetStatePersistence';
 
 const DEFAULT_PROFILE = buildDefaultProfile();
@@ -105,10 +103,8 @@ export class DailyBudgetManager {
     this.state = profileResult.state;
     if (refreshObservedStats) this.maybeUpdateObservedStats(powerTracker, timeZone, context.nowMs);
     this.handleRollover({ context, settings, powerTracker });
-
     const enabled = this.isEnabled(settings);
     this.syncEnabledState(enabled);
-
     const planState = this.preparePlanState({
       context,
       enabled,
@@ -128,7 +124,6 @@ export class DailyBudgetManager {
       recomputeFrozenPlan,
       capacityBudgetKWh,
     });
-
     const budget = { ...computeBudgetState({
       context,
       enabled,
@@ -137,7 +132,6 @@ export class DailyBudgetManager {
       profileSampleCount: getProfileSampleCount(this.state),
       profileSplitSampleCount: getProfileSplitSampleCount(this.state),
     }) };
-
     const cr = refreshConfidence
       ? resolveConfidence({
         cache: this.confidenceCache, nowMs: context.nowMs, timeZone, powerTracker,
@@ -163,14 +157,8 @@ export class DailyBudgetManager {
     }).deviationKWh;
     this.maybeFreezeFromDeviation(enabled, budgetControlDeviationKWh);
     this.maybeUnfreezeFromDeviation(enabled, budgetControlDeviationKWh);
-    logBudgetSummaryIfNeeded({
-      logDebug: this.deps.logDebug,
-      shouldLog: plan.shouldLog,
-      context,
-      budget,
-    });
-
-    const snapshot = buildSnapshot({
+    const snapshot = buildSnapshotAndLogDebug({
+      deps: this.deps,
       state: this.state,
       settings,
       enabled,
@@ -179,37 +167,12 @@ export class DailyBudgetManager {
       context,
       defaultProfile: DEFAULT_PROFILE,
       confidenceDebug: cr.debug,
-    });
-    this.snapshot = snapshot;
-
-    logPlanDebugIfNeeded({
-      logDebug: this.deps.logDebug,
-      shouldLog: plan.shouldLog,
-      snapshot,
-      priceData: plan.priceData,
-      priceOptimizationEnabled,
       capacityBudgetKWh,
-      settings,
-      state: this.state,
-      defaultProfile: DEFAULT_PROFILE,
-      planDebug: plan.planDebug,
-      uncontrolledReserveDiagnostics: plan.uncontrolledReserveDiagnostics,
-    });
-    logNextDayPlanDebug({
-      logDebug: this.deps.logDebug,
-      shouldLog: plan.shouldLog,
-      context,
-      settings,
-      state: this.state,
       combinedPrices,
       priceOptimizationEnabled,
-      capacityBudgetKWh,
-      defaultProfile: DEFAULT_PROFILE,
     });
-    logReserveDebug({ plan, reserveMode: settings.controlledUsageWeight, structuredDebug: this.deps.structuredDebug });
-
+    this.snapshot = snapshot;
     this.recordRuntimeState(context);
-
     return { snapshot, persistReason: this.consumePersistReason() };
   }
 
