@@ -44,7 +44,8 @@ import type {
   DailyBudgetStatePersistReason,
   DailyBudgetUiPayload,
 } from './dailyBudgetTypes';
-import { incPerfCounter, addPerfDuration } from '../utils/perfCounters';
+import { incPerfCounter } from '../utils/perfCounters';
+import { recordOpDuration, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { normalizeDebugLoggingTopics } from '../utils/debugLogging';
 import { normalizeError } from '../utils/errorUtils';
@@ -219,6 +220,7 @@ export class DailyBudgetService {
   } = {}): void {
     const stopSpan = startRuntimeSpan('daily_budget_update');
     const start = Date.now();
+    const updateRssBefore = safeRss();
     const nowMs = params.nowMs ?? Date.now();
     const includeAdjacentDays = params.includeAdjacentDays === true;
     const timeZone = this.resolveTimeZone();
@@ -227,6 +229,7 @@ export class DailyBudgetService {
     const capacityBudgetKWh = resolveUsableCapacityKw(capacity);
     try {
       const computeStart = Date.now();
+      const computeRssBefore = safeRss();
       const update = this.manager.update({
         nowMs,
         timeZone,
@@ -243,7 +246,7 @@ export class DailyBudgetService {
         persistReason: params.persistReason,
       });
       incPerfCounter('daily_budget_compute_total');
-      addPerfDuration('daily_budget_compute_ms', Date.now() - computeStart);
+      recordOpDuration('daily_budget_compute_ms', computeStart, computeRssBefore);
       this.setDaySnapshot(update.snapshot, nowMs, combinedPrices, includeAdjacentDays);
       const snap = update.snapshot;
       if (params.emitStructuredEvent !== false && this.shouldEmitBudgetRecomputed(snap)) {
@@ -261,7 +264,7 @@ export class DailyBudgetService {
     } finally {
       stopSpan();
       incPerfCounter('daily_budget_update_total');
-      addPerfDuration('daily_budget_update_ms', Date.now() - start);
+      recordOpDuration('daily_budget_update_ms', start, updateRssBefore);
     }
   }
 
