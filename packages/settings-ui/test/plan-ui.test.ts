@@ -1873,7 +1873,7 @@ describe('Redesign plan UI', () => {
       // Cooldown summary lives on device card, not as a hero chip
     });
   
-    it('adds dim and dashed treatments from the structured state kind', async () => {
+    it('dims idle devices and marks missing devices unavailable via state kind', async () => {
       await renderPlanSnapshot({
         meta: { totalKw: 0, softLimitKw: 5, headroomKw: 5 },
         devices: [
@@ -1883,7 +1883,7 @@ describe('Redesign plan UI', () => {
       });
   
       expect(document.querySelector('[data-device-id="idle"]')?.className).toContain('plan-card--dim');
-      expect(document.querySelector('[data-device-id="missing"]')?.className).toContain('plan-card--unavailable');
+      expect(document.querySelector('[data-device-id="missing"]')?.getAttribute('data-state-kind')).toBe('unavailable');
     });
   
     it('opens device details on click and keyboard activation', async () => {
