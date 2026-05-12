@@ -252,7 +252,6 @@ const resolveObjectiveContext = (params: ObjectivePlanInput): ResolvedContextRes
   const nowMs = params.nowMs ?? Date.now();
   const deviceId = params.deviceId?.trim();
   if (!deviceId) return { kind: 'absent' };
-  if (params.bootstrap.featureAccess.canToggleOverviewRedesign !== true) return { kind: 'absent' };
   const settings = normalizeDeferredObjectiveSettings(params.bootstrap.settings.deferred_objectives);
   const objective = settings.objectivesByDeviceId[deviceId];
   const device = params.devices.find((candidate) => candidate.id === deviceId);
