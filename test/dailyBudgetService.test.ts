@@ -766,6 +766,53 @@ describe('DailyBudgetService', () => {
     expect(perfCount('settings_set.daily_budget_state_reason.reset_total')).toBe(reasonBefore + 1);
   });
 
+  it('persistState flushes a throttled low-priority write on shutdown', () => {
+    const service = buildService();
+    const set = (service as any).deps.homey.settings.set as ReturnType<typeof vi.fn>;
+    let exportIndex = 0;
+    (service as any).manager.update = vi.fn(() => ({
+      snapshot: buildDayPayload({
+        dateKey: '2025-03-15',
+        confidence: 0.72,
+        confidenceDebug: buildConfidenceDebug(),
+      }),
+      persistReason: 'runtime',
+    }));
+    (service as any).manager.exportState = vi.fn(() => ({ lastUsedNowKWh: exportIndex++ }));
+
+    service.updateState({ nowMs: NOW_MS });
+    service.updateState({ nowMs: NOW_MS + 60_000 });
+    expect(dailyBudgetStateSetCount(set)).toBe(1);
+
+    service.persistState('runtime', NOW_MS + 60_000);
+
+    expect(dailyBudgetStateSetCount(set)).toBe(2);
+    expect(set).toHaveBeenLastCalledWith('daily_budget_state', { lastUsedNowKWh: 2 });
+  });
+
+  it('persistState is a no-op when the exported state matches the last persisted write', () => {
+    const service = buildService();
+    const set = (service as any).deps.homey.settings.set as ReturnType<typeof vi.fn>;
+    (service as any).manager.update = vi.fn(() => ({
+      snapshot: buildDayPayload({
+        dateKey: '2025-03-15',
+        confidence: 0.72,
+        confidenceDebug: buildConfidenceDebug(),
+      }),
+      persistReason: 'manual',
+    }));
+    (service as any).manager.exportState = vi.fn(() => ({ plannedKWh: [10] }));
+
+    service.updateState({ nowMs: NOW_MS });
+    expect(dailyBudgetStateSetCount(set)).toBe(1);
+    const skippedBefore = perfCount('settings_set.daily_budget_state_skipped_unchanged_total');
+
+    service.persistState('runtime', NOW_MS + 1_000);
+
+    expect(dailyBudgetStateSetCount(set)).toBe(1);
+    expect(perfCount('settings_set.daily_budget_state_skipped_unchanged_total')).toBe(skippedBefore + 1);
+  });
+
   it('does not carry reset persistence reason into the next update', () => {
     const reasonBefore = perfCount('settings_set.daily_budget_state_reason.reset_total');
     const service = buildService();

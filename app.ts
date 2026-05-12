@@ -1014,11 +1014,22 @@ class PelsApp extends Homey.App {
     // Persist any unflushed deferred-objective plan-history entries before shutting down.
     this.deferredObjectivePlanHistoryRecorder?.flushIfDirty();
     this.deferredObjectiveActivePlanRecorder?.flushIfDirty();
+    this.flushDailyBudgetStateOnUninit();
     // Mark how far we've observed; back-fill on next startup picks up from here. Skipped if
     // the recorder is still dirty (save failed), so the next start re-scans the missed window.
     persistDeferredObjectiveObservationWatermark(this.ctx, this.deferredObjectivePlanHistoryRecorder);
     this.priceCoordinator.stop();
     this.deviceManager?.destroy();
+  }
+  private flushDailyBudgetStateOnUninit(): void {
+    try {
+      this.dailyBudgetService?.persistState('runtime', Date.now());
+    } catch (error) {
+      this.getStructuredLogger('daily_budget')?.error({
+        event: 'daily_budget_state_shutdown_flush_failed',
+        err: normalizeError(error),
+      });
+    }
   }
   private clearUninitTimers(): void {
     if (this.timers.has('powerTrackerSave')) {
