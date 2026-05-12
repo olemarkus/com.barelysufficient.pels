@@ -4,7 +4,7 @@ import {
   getTargetCapabilityStep,
   normalizeTargetCapabilityValue,
 } from '../../../../contracts/src/targetCapabilities.ts';
-import { deviceDetailModes } from '../dom.ts';
+import { deviceDetailModes, type MdFilledTextFieldElement } from '../dom.ts';
 import { state } from '../state.ts';
 import { showToastError } from '../toast.ts';
 import { logSettingsError } from '../logging.ts';
@@ -55,23 +55,24 @@ const buildDeviceDetailModeInput = (
   mode: string,
   device: TargetDeviceSnapshot,
   target: ReturnType<typeof getPrimaryTargetCapability>,
-) => {
-  const tempInput = document.createElement('input');
-  tempInput.type = 'number';
-  tempInput.step = getTargetCapabilityStep(target).toString();
+): MdFilledTextFieldElement => {
+  const tempInput = document.createElement('md-filled-text-field') as MdFilledTextFieldElement;
+  tempInput.setAttribute('type', 'number');
+  tempInput.setAttribute('step', getTargetCapabilityStep(target).toString());
   const bounds = getTargetBounds(target);
-  if (bounds.min) tempInput.min = bounds.min;
-  if (bounds.max) tempInput.max = bounds.max;
-  tempInput.inputMode = 'decimal';
-  tempInput.placeholder = '°C';
-  tempInput.className = 'detail-mode-temp';
+  if (bounds.min) tempInput.setAttribute('min', bounds.min);
+  if (bounds.max) tempInput.setAttribute('max', bounds.max);
+  tempInput.setAttribute('inputmode', 'decimal');
+  tempInput.setAttribute('suffix-text', '°C');
+  tempInput.setAttribute('aria-label', `${mode} target temperature`);
+  tempInput.classList.add('detail-mode-temp');
   tempInput.dataset.mode = mode;
   tempInput.value = getTargetInputValue(mode, device);
   return tempInput;
 };
 
 const bindDeviceDetailModeInput = (
-  tempInput: HTMLInputElement,
+  tempInput: MdFilledTextFieldElement,
   mode: string,
   device: TargetDeviceSnapshot,
   target: ReturnType<typeof getPrimaryTargetCapability>,

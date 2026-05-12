@@ -1,5 +1,28 @@
 export const qs = (selector: string) => document.querySelector(selector) as HTMLElement;
 
+// Minimal structural types for Material Web 3 elements used in the settings UI.
+// We keep them narrow to what the device detail handlers actually touch
+// (value/selected/disabled) so callers don't depend on Lit / @material/web
+// internals.
+export type MdSwitchElement = HTMLElement & {
+  selected: boolean;
+  disabled: boolean;
+};
+
+export type MdFilledTextFieldElement = HTMLElement & {
+  value: string;
+  disabled: boolean;
+};
+
+export type MdFilledSelectElement = HTMLElement & {
+  value: string;
+  disabled: boolean;
+};
+
+export type MdButtonElement = HTMLElement & {
+  disabled: boolean;
+};
+
 export const toastEl = qs('#toast');
 export const deviceList = qs('#device-list');
 export const emptyState = qs('#empty-state');
@@ -125,81 +148,91 @@ export const advancedApiDeviceLogButton = document.querySelector('#advanced-api-
 export const deviceDetailOverlay = qs('#device-detail-overlay');
 export const deviceDetailPanel = qs('#device-detail-panel');
 export const deviceDetailTitle = qs('#device-detail-title');
-export const deviceDetailClose = qs('#device-detail-close') as HTMLButtonElement;
+export const deviceDetailClose = qs('#device-detail-close') as MdButtonElement;
 export const deviceDetailNativeWiringRow = qs('#device-detail-native-wiring-row');
-export const deviceDetailNativeWiring = document.querySelector('#device-detail-native-wiring') as HTMLInputElement;
+export const deviceDetailNativeWiring = document.querySelector('#device-detail-native-wiring') as MdSwitchElement;
 export const deviceDetailNativeWiringConfirmRow = qs('#device-detail-native-wiring-confirm-row');
 export const deviceDetailNativeWiringConfirm = document.querySelector(
   '#device-detail-native-wiring-confirm',
-) as HTMLInputElement;
-export const deviceDetailManaged = document.querySelector('#device-detail-managed') as HTMLInputElement;
-export const deviceDetailControllable = document.querySelector('#device-detail-controllable') as HTMLInputElement;
-export const deviceDetailPriceOpt = document.querySelector('#device-detail-price-opt') as HTMLInputElement;
-export const deviceDetailBudgetExempt = document.querySelector('#device-detail-budget-exempt') as HTMLInputElement;
+) as MdSwitchElement;
+export const deviceDetailManaged = document.querySelector('#device-detail-managed') as MdSwitchElement;
+export const deviceDetailControllable = document.querySelector('#device-detail-controllable') as MdSwitchElement;
+export const deviceDetailPriceOpt = document.querySelector('#device-detail-price-opt') as MdSwitchElement;
+export const deviceDetailBudgetExempt = document.querySelector('#device-detail-budget-exempt') as MdSwitchElement;
 export const deviceDetailSocRow = qs('#device-detail-soc-row');
 export const deviceDetailSocValue = qs('#device-detail-soc-value');
 export const deviceDetailSocUpdated = qs('#device-detail-soc-updated');
 export const deviceDetailControlModelRow = qs('#device-detail-control-model-row');
-export const deviceDetailControlModel = document.querySelector('#device-detail-control-model') as HTMLSelectElement;
+export const deviceDetailControlModel = document.querySelector('#device-detail-control-model') as MdFilledSelectElement;
 export const deviceDetailModes = qs('#device-detail-modes');
 export const deviceDetailDeltaSection = qs('#device-detail-delta-section');
-export const deviceDetailCheapDelta = document.querySelector('#device-detail-cheap-delta') as HTMLInputElement;
-export const deviceDetailExpensiveDelta = document.querySelector('#device-detail-expensive-delta') as HTMLInputElement;
+export const deviceDetailCheapDelta = document.querySelector('#device-detail-cheap-delta') as MdFilledTextFieldElement;
+export const deviceDetailExpensiveDelta = document.querySelector(
+  '#device-detail-expensive-delta',
+) as MdFilledTextFieldElement;
 export const deviceDetailShedAction = document.querySelector('#device-detail-overshoot') as HTMLSelectElement;
 export const deviceDetailShedTempRow = qs('#device-detail-overshoot-temp-row');
-export const deviceDetailShedTemp = document.querySelector('#device-detail-overshoot-temp') as HTMLInputElement;
+export const deviceDetailShedTemp = document.querySelector(
+  '#device-detail-overshoot-temp',
+) as MdFilledTextFieldElement;
 export const deviceDetailShedStepRow = qs('#device-detail-overshoot-step-row');
-export const deviceDetailShedStep = document.querySelector('#device-detail-overshoot-step') as HTMLSelectElement;
+export const deviceDetailShedStep = document.querySelector(
+  '#device-detail-overshoot-step',
+) as MdFilledSelectElement;
 export const deviceDetailSteppedSection = qs('#device-detail-stepped-section');
 export const deviceDetailSteppedSteps = qs('#device-detail-stepped-steps');
 export const deviceDetailTargetPowerConfig = qs('#device-detail-target-power-config');
 export const deviceDetailTargetPowerFields = qs('#device-detail-target-power-fields');
-export const deviceDetailTargetPowerMin = document.querySelector('#device-detail-target-power-min') as HTMLInputElement;
-export const deviceDetailTargetPowerMax = document.querySelector('#device-detail-target-power-max') as HTMLInputElement;
+export const deviceDetailTargetPowerMin = document.querySelector(
+  '#device-detail-target-power-min',
+) as MdFilledTextFieldElement;
+export const deviceDetailTargetPowerMax = document.querySelector(
+  '#device-detail-target-power-max',
+) as MdFilledTextFieldElement;
 export const deviceDetailTargetPowerStep = document.querySelector(
   '#device-detail-target-power-step',
-) as HTMLInputElement;
+) as MdFilledTextFieldElement;
 export const deviceDetailTargetPowerExcludeMin = document.querySelector(
   '#device-detail-target-power-exclude-min',
-) as HTMLInputElement;
+) as MdFilledTextFieldElement;
 export const deviceDetailTargetPowerExcludeMax = document.querySelector(
   '#device-detail-target-power-exclude-max',
-) as HTMLInputElement;
+) as MdFilledTextFieldElement;
 export const deviceDetailTargetPowerSave = document.querySelector(
   '#device-detail-target-power-save',
-) as HTMLButtonElement;
+) as MdButtonElement;
 export const deviceDetailTargetPowerClear = document.querySelector(
   '#device-detail-target-power-clear',
-) as HTMLButtonElement;
+) as MdButtonElement;
 export const deviceDetailTemperatureBoost = qs('#device-detail-temperature-boost');
 export const deviceDetailTemperatureBoostEnabled = document.querySelector(
   '#device-detail-temperature-boost-enabled',
-) as HTMLInputElement;
+) as MdSwitchElement;
 export const deviceDetailTemperatureBoostBelowRow = qs('#device-detail-temperature-boost-below-row');
 export const deviceDetailTemperatureBoostBelow = document.querySelector(
   '#device-detail-temperature-boost-below',
-) as HTMLInputElement;
+) as MdFilledTextFieldElement;
 export const deviceDetailEvBoost = qs('#device-detail-ev-boost');
 export const deviceDetailEvBoostEnabled = document.querySelector(
   '#device-detail-ev-boost-enabled',
-) as HTMLInputElement;
+) as MdSwitchElement;
 export const deviceDetailEvBoostBelowRow = qs('#device-detail-ev-boost-below-row');
 export const deviceDetailEvBoostBelow = document.querySelector(
   '#device-detail-ev-boost-below',
-) as HTMLInputElement;
+) as MdFilledTextFieldElement;
 export const deviceDetailEvBoostStatus = qs('#device-detail-ev-boost-status');
 export const deviceDetailDeadlineObjectiveMount = document.querySelector(
   '#device-detail-deadline-objective',
 ) as HTMLElement | null;
 export const deviceDetailSteppedAddStep = document.querySelector(
   '#device-detail-stepped-add-step',
-) as HTMLButtonElement;
+) as MdButtonElement;
 export const deviceDetailSteppedSave = document.querySelector(
   '#device-detail-stepped-save',
-) as HTMLButtonElement;
+) as MdButtonElement;
 export const deviceDetailSteppedReset = document.querySelector(
   '#device-detail-stepped-reset',
-) as HTMLButtonElement;
+) as MdButtonElement;
 export const deviceDetailDiagnosticsDisclosure = document.querySelector(
   '#device-detail-diagnostics-disclosure',
 ) as HTMLDetailsElement | null;

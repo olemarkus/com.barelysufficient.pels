@@ -77,6 +77,22 @@ beforeAll(() => {
   }
   installCanvasContextStub();
 
+  // jsdom's ElementInternals lacks setFormValue, which Material Web's
+  // form-associated behaviors call during component initialization. Stub it
+  // so tests that mount <md-switch> / <md-filled-text-field> / etc. don't
+  // throw uncaught TypeErrors. jsdom v23+ may provide this; remove the
+  // shim when it does.
+  if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
+    const proto = (window as unknown as { ElementInternals?: { prototype: Record<string, unknown> } })
+      .ElementInternals?.prototype;
+    if (proto && typeof proto.setFormValue !== 'function') {
+      proto.setFormValue = () => {};
+    }
+    if (proto && typeof proto.setValidity !== 'function') {
+      proto.setValidity = () => {};
+    }
+  }
+
   const fetchStub = vi.fn().mockResolvedValue({
     ok: true,
     status: 200,

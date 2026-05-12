@@ -4586,3 +4586,108 @@ body[data-ui-variant="redesign"] #budget-panel > .card__header {
   color: var(--accent);
   font-weight: var(--font-weight-semibold);
 }
+
+/* ---------------------------------------------------------------------------
+ * Device detail panel — Material Web 3 theming + layout
+ * --------------------------------------------------------------------------- */
+
+#device-detail-panel {
+  /* Re-theme @material/web on this panel to match the PELS dark surface. */
+  --md-sys-color-primary: var(--accent);
+  --md-sys-color-on-primary: var(--color-base-black);
+  --md-sys-color-primary-container: rgba(127, 209, 174, 0.2);
+  --md-sys-color-on-primary-container: var(--text);
+  --md-sys-color-secondary: var(--accent);
+  --md-sys-color-on-secondary: var(--color-base-black);
+  --md-sys-color-surface: var(--color-surface-2);
+  --md-sys-color-surface-variant: var(--color-surface-3);
+  --md-sys-color-surface-container-highest: var(--color-surface-4);
+  --md-sys-color-on-surface: var(--text);
+  --md-sys-color-on-surface-variant: var(--color-semantic-text-secondary);
+  --md-sys-color-outline: var(--panel-border);
+  --md-sys-color-outline-variant: var(--panel-border);
+  --md-sys-color-error: var(--color-semantic-danger, #e57373);
+  --md-sys-color-on-error: var(--color-base-black);
+}
+
+/* Switch row: switch on the left, label + hint stacked beside it.
+ * Mirrors the M3 list-with-trailing-control pattern but with the switch on
+ * the leading side, which fits the PELS dense settings list. */
+.md-switch-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-3);
+  padding: var(--spacing-2) 0;
+}
+
+.md-switch-row md-switch {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.md-switch-row__content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.md-switch-row__label {
+  font-weight: var(--font-weight-semibold);
+  color: var(--text);
+}
+
+/* Text-field row: M3 text field with a small caption underneath. */
+.md-field-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  padding: var(--spacing-1) 0;
+}
+
+.md-field-row md-filled-text-field,
+.md-field-row md-filled-select {
+  width: 100%;
+}
+
+/* Stepped load row: compact M3 inputs side-by-side with a trailing remove.
+ * Scoped to #device-detail-panel so these rules sort after the shared
+ * .detail-stepped-* / .detail-mode-* baselines and satisfy stylelint's
+ * no-descending-specificity rule. */
+#device-detail-panel .detail-stepped-row > md-filled-text-field {
+  width: 100%;
+  min-width: 0;
+}
+
+#device-detail-panel .detail-stepped-row > md-text-button {
+  justify-self: end;
+}
+
+#device-detail-panel .detail-mode-row md-filled-text-field.detail-mode-temp {
+  width: 120px;
+  justify-self: end;
+}
+
+#device-detail-panel .detail-stepped-actions md-filled-button,
+#device-detail-panel .detail-stepped-actions md-text-button {
+  flex: 1 1 auto;
+}
+
+/* Slide-panel back button blends with the header. */
+#device-detail-panel .slide-panel__header md-text-button.settings-back-button {
+  --md-sys-color-primary: var(--text);
+  font-size: var(--font-size-md);
+}
+
+/* Target-power-grid uses M3 fields directly inside the grid; ensure they
+ * fill their cells. */
+#device-detail-panel .target-power-grid md-filled-text-field {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Control model row: full-width select with the hint below. */
+#device-detail-control-model-row md-filled-select {
+  width: 100%;
+}

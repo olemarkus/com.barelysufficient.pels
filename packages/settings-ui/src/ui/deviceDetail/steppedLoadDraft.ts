@@ -37,10 +37,11 @@ const getSetStepOption = (): HTMLOptionElement | null => (
 
 const attachDraftSyncOnChange = (
   onDraftChanged: () => void,
-  ...inputs: HTMLInputElement[]
+  ...inputs: HTMLElement[]
 ) => {
   inputs.forEach((input) => {
     input.addEventListener('change', onDraftChanged);
+    input.addEventListener('input', onDraftChanged);
   });
 };
 
@@ -59,9 +60,10 @@ const collectSteppedLoadDraftFromDom = (): SteppedLoadProfile | null => {
 
   const rows = Array.from(deviceDetailSteppedSteps.querySelectorAll<HTMLElement>('[data-step-row="true"]'));
   const steps = rows.map((row) => {
-    const readValue = (field: string) => (
-      row.querySelector<HTMLInputElement>(`[data-step-field="${field}"]`)?.value?.trim() ?? ''
-    );
+    const readValue = (field: string) => {
+      const el = row.querySelector(`[data-step-field="${field}"]`) as (HTMLElement & { value?: string }) | null;
+      return el?.value?.trim() ?? '';
+    };
     return {
       id: readValue('id'),
       planningPowerW: Number.parseFloat(readValue('planningPowerW')),
@@ -83,29 +85,30 @@ const buildSteppedLoadStepRow = (params: {
   row.className = 'device-row detail-stepped-row';
   row.dataset.stepRow = 'true';
 
-  const idInput = document.createElement('input');
-  idInput.type = 'text';
+  const idInput = document.createElement('md-filled-text-field') as HTMLElement & {
+    value: string; disabled: boolean;
+  };
+  idInput.setAttribute('label', 'Step');
   idInput.value = params.step.id;
   idInput.dataset.stepField = 'id';
-  idInput.placeholder = 'step';
   idInput.disabled = params.disabled === true;
-  idInput.setAttribute('aria-label', 'Step id');
 
-  const planningInput = document.createElement('input');
-  planningInput.type = 'number';
-  planningInput.step = '50';
-  planningInput.min = '0';
+  const planningInput = document.createElement('md-filled-text-field') as HTMLElement & {
+    value: string; disabled: boolean;
+  };
+  planningInput.setAttribute('label', 'Planning');
+  planningInput.setAttribute('type', 'number');
+  planningInput.setAttribute('step', '50');
+  planningInput.setAttribute('min', '0');
+  planningInput.setAttribute('inputmode', 'numeric');
+  planningInput.setAttribute('suffix-text', 'W');
   planningInput.value = String(params.step.planningPowerW);
   planningInput.dataset.stepField = 'planningPowerW';
-  planningInput.placeholder = '0';
   planningInput.disabled = params.disabled === true;
-  planningInput.setAttribute('aria-label', 'Planning power in watts');
 
   attachDraftSyncOnChange(params.onDraftChanged, idInput, planningInput);
 
-  const removeButton = document.createElement('button');
-  removeButton.type = 'button';
-  removeButton.className = 'btn ghost';
+  const removeButton = document.createElement('md-text-button') as HTMLElement & { disabled: boolean };
   removeButton.textContent = 'Remove';
   removeButton.disabled = params.disabled === true;
   removeButton.setAttribute('aria-label', `Remove step ${params.step.id}`);

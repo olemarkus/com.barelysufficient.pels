@@ -105,7 +105,7 @@ const setDeviceDetailTitle = (name: string) => {
 
 const setDeviceDetailBudgetExemptState = (device: TargetDeviceSnapshot | null) => {
   if (!deviceDetailBudgetExempt || !device) return;
-  deviceDetailBudgetExempt.checked = state.budgetExemptMap[device.id] === true || device.budgetExempt === true;
+  deviceDetailBudgetExempt.selected = state.budgetExemptMap[device.id] === true || device.budgetExempt === true;
   deviceDetailBudgetExempt.disabled = false;
 };
 
@@ -149,16 +149,16 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   setDeviceDetailNativeWiringState(device);
 
   if (deviceDetailManaged) {
-    deviceDetailManaged.checked = controlState.isManaged;
+    deviceDetailManaged.selected = controlState.isManaged;
     deviceDetailManaged.disabled = !controlState.canManageDevice;
   }
   if (deviceDetailControllable) {
-    deviceDetailControllable.checked = controlState.supportsPower && state.controllableMap[deviceId] === true;
+    deviceDetailControllable.selected = controlState.supportsPower && state.controllableMap[deviceId] === true;
     deviceDetailControllable.disabled = !controlState.supportsPower || !controlState.isManaged;
   }
   if (deviceDetailPriceOpt) {
     const priceConfig = state.priceOptimizationSettings[deviceId];
-    deviceDetailPriceOpt.checked = controlState.supportsTemperature
+    deviceDetailPriceOpt.selected = controlState.supportsTemperature
       && controlState.isManaged
       && priceConfig?.enabled === true;
     deviceDetailPriceOpt.disabled = !controlState.supportsTemperature || !controlState.isManaged;
@@ -169,7 +169,7 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   if (deviceDetailControlModel && deviceDetailControlModelRow) {
     const effectiveControlMode = device ? resolveDeviceDetailControlMode(device) : 'default';
     const nativeSteppedLoadLocked = isNativeSteppedLoadProfileActive(device);
-    syncDeviceDetailControlModeOptions(deviceDetailControlModel, device);
+    syncDeviceDetailControlModeOptions(deviceDetailControlModel, device, effectiveControlMode);
     deviceDetailControlModel.value = effectiveControlMode;
     deviceDetailControlModel.disabled = !controlState.canManageDevice || nativeSteppedLoadLocked;
     deviceDetailControlModelRow.hidden = !controlState.canManageDevice;
@@ -342,7 +342,7 @@ const initDeviceDetailBudgetExemptHandler = () => {
     const deviceId = currentDetailDeviceId;
     if (!deviceId || !deviceDetailBudgetExempt) return;
 
-    const nextChecked = deviceDetailBudgetExempt.checked;
+    const nextChecked = deviceDetailBudgetExempt.selected;
     await writeFreshSetting<Record<string, boolean>>({
       key: BUDGET_EXEMPT_DEVICES,
       context: 'device detail',

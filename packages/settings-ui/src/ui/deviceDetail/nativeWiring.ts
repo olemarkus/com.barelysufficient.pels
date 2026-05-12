@@ -33,14 +33,14 @@ export const setDeviceDetailNativeWiringState = (device: TargetDeviceSnapshot | 
     deviceDetailNativeWiringRow.hidden = !nativeWiringSupported;
   }
   if (deviceDetailNativeWiring) {
-    deviceDetailNativeWiring.checked = nativeWiringEffectiveEnabled || nativeWiringActivationPending;
+    deviceDetailNativeWiring.selected = nativeWiringEffectiveEnabled || nativeWiringActivationPending;
     deviceDetailNativeWiring.disabled = !nativeWiringSupported;
   }
   if (deviceDetailNativeWiringConfirmRow) {
     deviceDetailNativeWiringConfirmRow.hidden = !nativeWiringActivationPending;
   }
   if (deviceDetailNativeWiringConfirm) {
-    deviceDetailNativeWiringConfirm.checked = false;
+    deviceDetailNativeWiringConfirm.selected = false;
     deviceDetailNativeWiringConfirm.disabled = !nativeWiringActivationPending;
   }
 };
@@ -127,7 +127,7 @@ export const initDeviceDetailNativeWiringHandler = (params: {
 
     const nativeWiringEffectiveEnabled = state.nativeWiringMap[deviceId] === true
       || device.controlAdapter?.activationEnabled === true;
-    if (deviceDetailNativeWiring.checked) {
+    if (deviceDetailNativeWiring.selected) {
       if (nativeWiringEffectiveEnabled) return;
       nativeWiringActivationPendingDeviceId = deviceId;
       refreshOpenDeviceDetail();
@@ -151,7 +151,7 @@ export const initDeviceDetailNativeWiringHandler = (params: {
     const deviceId = getCurrentDetailDeviceId();
     if (!deviceId || !deviceDetailNativeWiringConfirm) return;
     if (nativeWiringActivationPendingDeviceId !== deviceId) return;
-    if (!deviceDetailNativeWiringConfirm.checked) return;
+    if (!deviceDetailNativeWiringConfirm.selected) return;
 
     await persistNativeWiringEnabled(deviceId, true);
   });

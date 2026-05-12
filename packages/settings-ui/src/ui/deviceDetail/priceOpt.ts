@@ -27,7 +27,7 @@ const parsePriceDeltaInput = (value: string | undefined, fallback: number): numb
 };
 
 const readPriceOptInputs = (): { enabled: boolean; cheapDelta: number; expensiveDelta: number } => ({
-  enabled: deviceDetailPriceOpt?.checked || false,
+  enabled: deviceDetailPriceOpt?.selected || false,
   cheapDelta: parsePriceDeltaInput(deviceDetailCheapDelta?.value, 5),
   expensiveDelta: parsePriceDeltaInput(deviceDetailExpensiveDelta?.value, -5),
 });
@@ -55,7 +55,7 @@ export const updateDeltaSectionVisibility = (params: {
   }
 
   const isManaged = params.currentDetailDeviceId ? resolveManagedState(params.currentDetailDeviceId) : false;
-  deviceDetailDeltaSection.style.display = deviceDetailPriceOpt.checked && isManaged ? 'block' : 'none';
+  deviceDetailDeltaSection.style.display = deviceDetailPriceOpt.selected && isManaged ? 'block' : 'none';
 };
 
 export const initDeviceDetailPriceOptHandlers = (params: {

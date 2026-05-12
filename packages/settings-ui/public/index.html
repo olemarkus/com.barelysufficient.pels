@@ -651,7 +651,9 @@
   <div id="device-detail-overlay" class="overlay" hidden>
     <div id="device-detail-panel" class="slide-panel">
       <div class="slide-panel__header">
-        <button type="button" class="btn ghost settings-back-button" id="device-detail-close" aria-label="Back to devices">‹ Devices</button>
+        <md-text-button id="device-detail-close" class="settings-back-button" aria-label="Back to devices">
+          <span aria-hidden="true">‹</span>&nbsp;Devices
+        </md-text-button>
       </div>
 
       <div class="slide-panel__content">
@@ -686,16 +688,30 @@
             <div class="collapse-content">
               <p class="muted">Temperature adjustments applied during cheap and expensive electricity hours.</p>
               <div class="detail-deltas form-grid">
-                <label class="field">
-                  <span class="field__label">🟢 Cheap hours delta (°C)</span>
-                  <input id="device-detail-cheap-delta" type="number" step="0.5" value="5" inputmode="decimal">
+                <div class="md-field-row">
+                  <md-filled-text-field
+                    id="device-detail-cheap-delta"
+                    label="Cheap hours delta"
+                    type="number"
+                    step="0.5"
+                    value="5"
+                    inputmode="decimal"
+                    suffix-text="°C"
+                  ></md-filled-text-field>
                   <small class="field__hint">Added to target during cheap hours, for example +5.</small>
-                </label>
-                <label class="field">
-                  <span class="field__label">🔴 Expensive hours delta (°C)</span>
-                  <input id="device-detail-expensive-delta" type="number" step="0.5" value="-5" inputmode="decimal">
+                </div>
+                <div class="md-field-row">
+                  <md-filled-text-field
+                    id="device-detail-expensive-delta"
+                    label="Expensive hours delta"
+                    type="number"
+                    step="0.5"
+                    value="-5"
+                    inputmode="decimal"
+                    suffix-text="°C"
+                  ></md-filled-text-field>
                   <small class="field__hint">Added to target during expensive hours, for example -5.</small>
-                </label>
+                </div>
               </div>
             </div>
           </details>
@@ -718,16 +734,23 @@
                 </select>
                 <small class="field__hint">Choose how PELS reacts when capacity is exceeded.</small>
               </div>
-              <label class="field" id="device-detail-overshoot-temp-row" hidden>
-                <span class="field__label">Shed temperature (°C)</span>
-                <input type="number" id="device-detail-overshoot-temp" step="0.5" min="-20" max="40" inputmode="decimal">
+              <div class="md-field-row" id="device-detail-overshoot-temp-row" hidden>
+                <md-filled-text-field
+                  id="device-detail-overshoot-temp"
+                  label="Shed temperature"
+                  type="number"
+                  step="0.5"
+                  min="-20"
+                  max="40"
+                  inputmode="decimal"
+                  suffix-text="°C"
+                ></md-filled-text-field>
                 <small class="field__hint">Set this instead of turning off when shedding.</small>
-              </label>
-              <label class="field" id="device-detail-overshoot-step-row" hidden>
-                <span class="field__label">Shed step</span>
-                <select id="device-detail-overshoot-step"></select>
+              </div>
+              <div class="md-field-row" id="device-detail-overshoot-step-row" hidden>
+                <md-filled-select id="device-detail-overshoot-step" label="Shed step"></md-filled-select>
                 <small class="field__hint">For stepped loads, PELS will step down to this level or lower when shedding.</small>
-              </label>
+              </div>
             </div>
           </details>
         </section>
@@ -743,37 +766,62 @@
 
               <div class="target-power-config" id="device-detail-target-power-config">
                 <div class="form-grid target-power-grid" id="device-detail-target-power-fields">
-                  <label class="field">
-                    <span class="field__label">Min W</span>
-                    <input id="device-detail-target-power-min" type="number" step="1" min="0" inputmode="numeric">
-                  </label>
-                  <label class="field">
-                    <span class="field__label">Max W</span>
-                    <input id="device-detail-target-power-max" type="number" step="1" min="0" inputmode="numeric">
-                  </label>
-                  <label class="field">
-                    <span class="field__label">Step W</span>
-                    <input id="device-detail-target-power-step" type="number" step="1" min="1" inputmode="numeric">
-                  </label>
-                  <label class="field">
-                    <span class="field__label">Exclude min W</span>
-                    <input id="device-detail-target-power-exclude-min" type="number" step="1" min="0" inputmode="numeric">
-                  </label>
-                  <label class="field">
-                    <span class="field__label">Exclude max W</span>
-                    <input id="device-detail-target-power-exclude-max" type="number" step="1" min="0" inputmode="numeric">
-                  </label>
+                  <md-filled-text-field
+                    id="device-detail-target-power-min"
+                    label="Min"
+                    type="number"
+                    step="1"
+                    min="0"
+                    inputmode="numeric"
+                    suffix-text="W"
+                  ></md-filled-text-field>
+                  <md-filled-text-field
+                    id="device-detail-target-power-max"
+                    label="Max"
+                    type="number"
+                    step="1"
+                    min="0"
+                    inputmode="numeric"
+                    suffix-text="W"
+                  ></md-filled-text-field>
+                  <md-filled-text-field
+                    id="device-detail-target-power-step"
+                    label="Step"
+                    type="number"
+                    step="1"
+                    min="1"
+                    inputmode="numeric"
+                    suffix-text="W"
+                  ></md-filled-text-field>
+                  <md-filled-text-field
+                    id="device-detail-target-power-exclude-min"
+                    label="Exclude min"
+                    type="number"
+                    step="1"
+                    min="0"
+                    inputmode="numeric"
+                    suffix-text="W"
+                  ></md-filled-text-field>
+                  <md-filled-text-field
+                    id="device-detail-target-power-exclude-max"
+                    label="Exclude max"
+                    type="number"
+                    step="1"
+                    min="0"
+                    inputmode="numeric"
+                    suffix-text="W"
+                  ></md-filled-text-field>
                 </div>
                 <div class="detail-stepped-actions">
-                  <button type="button" class="btn primary" id="device-detail-target-power-save">Save range</button>
-                  <button type="button" class="btn ghost" id="device-detail-target-power-clear">Clear range</button>
+                  <md-filled-button id="device-detail-target-power-save">Save range</md-filled-button>
+                  <md-text-button id="device-detail-target-power-clear">Clear range</md-text-button>
                 </div>
               </div>
 
               <div class="detail-stepped-actions">
-                <button type="button" class="btn secondary" id="device-detail-stepped-add-step">Add step</button>
-                <button type="button" class="btn ghost" id="device-detail-stepped-reset">Reset draft</button>
-                <button type="button" class="btn primary" id="device-detail-stepped-save">Save profile</button>
+                <md-text-button id="device-detail-stepped-add-step">Add step</md-text-button>
+                <md-text-button id="device-detail-stepped-reset">Reset draft</md-text-button>
+                <md-filled-button id="device-detail-stepped-save">Save profile</md-filled-button>
               </div>
 
               <div class="detail-stepped-header" aria-hidden="true">
@@ -784,33 +832,49 @@
               <div class="detail-stepped-list" id="device-detail-stepped-steps"></div>
 
               <div class="detail-stepped-boost" id="device-detail-temperature-boost" hidden>
-                <label class="field checkbox-field">
-                  <input type="checkbox" id="device-detail-temperature-boost-enabled">
-                  <span class="checkbox-field__content">
-                    <span class="field__label">Temperature boost</span>
+                <div class="md-switch-row">
+                  <md-switch id="device-detail-temperature-boost-enabled"></md-switch>
+                  <span class="md-switch-row__content">
+                    <span class="md-switch-row__label">Temperature boost</span>
                     <small class="field__hint">Step this load up when it is cold, using only lower-priority devices if room must be made.</small>
                   </span>
-                </label>
-                <label class="field" id="device-detail-temperature-boost-below-row">
-                  <span class="field__label">Boost below (°C)</span>
-                  <input type="number" id="device-detail-temperature-boost-below" step="0.5" min="0" max="95" inputmode="decimal">
+                </div>
+                <div class="md-field-row" id="device-detail-temperature-boost-below-row">
+                  <md-filled-text-field
+                    id="device-detail-temperature-boost-below"
+                    label="Boost below"
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="95"
+                    inputmode="decimal"
+                    suffix-text="°C"
+                  ></md-filled-text-field>
                   <small class="field__hint">Boost continues 2°C above this value to avoid rapid step changes.</small>
-                </label>
+                </div>
               </div>
 
               <div class="detail-stepped-boost" id="device-detail-ev-boost" hidden>
-                <label class="field checkbox-field">
-                  <input type="checkbox" id="device-detail-ev-boost-enabled">
-                  <span class="checkbox-field__content">
-                    <span class="field__label">Charge boost</span>
+                <div class="md-switch-row">
+                  <md-switch id="device-detail-ev-boost-enabled"></md-switch>
+                  <span class="md-switch-row__content">
+                    <span class="md-switch-row__label">Charge boost</span>
                     <small class="field__hint">Step this charger up while the car stays below the minimum battery level, using only lower-priority devices if room must be made.</small>
                   </span>
-                </label>
-                <label class="field" id="device-detail-ev-boost-below-row">
-                  <span class="field__label">Boost below (%)</span>
-                  <input type="number" id="device-detail-ev-boost-below" step="1" min="0" max="100" inputmode="numeric">
+                </div>
+                <div class="md-field-row" id="device-detail-ev-boost-below-row">
+                  <md-filled-text-field
+                    id="device-detail-ev-boost-below"
+                    label="Boost below"
+                    type="number"
+                    step="1"
+                    min="0"
+                    max="100"
+                    inputmode="numeric"
+                    suffix-text="%"
+                  ></md-filled-text-field>
                   <small class="field__hint">Boost stops as soon as the reported battery level reaches this value.</small>
-                </label>
+                </div>
                 <p class="muted" id="device-detail-ev-boost-status"></p>
               </div>
 
@@ -827,65 +891,64 @@
             </summary>
             <div class="collapse-content">
               <div class="detail-setup-list">
-                <label class="field checkbox-field">
-                  <input type="checkbox" id="device-detail-managed">
-                  <span class="checkbox-field__content">
-                    <span class="field__label">Managed by PELS</span>
+                <div class="md-switch-row">
+                  <md-switch id="device-detail-managed"></md-switch>
+                  <span class="md-switch-row__content">
+                    <span class="md-switch-row__label">Managed by PELS</span>
                     <small class="field__hint">Include this device in modes and optimization plans.</small>
                   </span>
-                </label>
+                </div>
 
-                <label class="field checkbox-field">
-                  <input type="checkbox" id="device-detail-controllable">
-                  <span class="checkbox-field__content">
-                    <span class="field__label">Capacity-based control</span>
+                <div class="md-switch-row">
+                  <md-switch id="device-detail-controllable"></md-switch>
+                  <span class="md-switch-row__content">
+                    <span class="md-switch-row__label">Capacity-based control</span>
                     <small class="field__hint">Allow PELS to adjust this device based on power capacity limits.</small>
                   </span>
-                </label>
+                </div>
 
-                <label class="field checkbox-field">
-                  <input type="checkbox" id="device-detail-price-opt">
-                  <span class="checkbox-field__content">
-                    <span class="field__label">Price-based control</span>
+                <div class="md-switch-row">
+                  <md-switch id="device-detail-price-opt"></md-switch>
+                  <span class="md-switch-row__content">
+                    <span class="md-switch-row__label">Price-based control</span>
                     <small class="field__hint">Adjust temperature based on electricity price fluctuations.</small>
                   </span>
-                </label>
+                </div>
 
-                <label class="field checkbox-field">
-                  <input type="checkbox" id="device-detail-budget-exempt">
-                  <span class="checkbox-field__content">
-                    <span class="field__label">Budget exempt</span>
+                <div class="md-switch-row">
+                  <md-switch id="device-detail-budget-exempt"></md-switch>
+                  <span class="md-switch-row__content">
+                    <span class="md-switch-row__label">Budget exempt</span>
                     <small class="field__hint">Exclude this device from daily budget enforcement.</small>
                   </span>
-                </label>
+                </div>
 
-                <label class="field checkbox-field" id="device-detail-native-wiring-row" hidden>
-                  <input type="checkbox" id="device-detail-native-wiring">
-                  <span class="checkbox-field__content">
-                    <span class="field__label">Use built-in device control</span>
+                <div class="md-switch-row" id="device-detail-native-wiring-row" hidden>
+                  <md-switch id="device-detail-native-wiring"></md-switch>
+                  <span class="md-switch-row__content">
+                    <span class="md-switch-row__label">Use built-in device control</span>
                     <small class="field__hint">Lets PELS use this device app's own capabilities instead of Flow wiring.</small>
                   </span>
-                </label>
+                </div>
 
-                <label class="field checkbox-field" id="device-detail-native-wiring-confirm-row" hidden>
-                  <input type="checkbox" id="device-detail-native-wiring-confirm">
-                  <span class="checkbox-field__content">
-                    <span class="field__label">I understand the risk</span>
+                <div class="md-switch-row" id="device-detail-native-wiring-confirm-row" hidden>
+                  <md-switch id="device-detail-native-wiring-confirm"></md-switch>
+                  <span class="md-switch-row__content">
+                    <span class="md-switch-row__label">I understand the risk</span>
                     <small class="field__hint">Native wiring can break if the device app changes its capabilities. Using flows may be safer.</small>
                   </span>
-                </label>
+                </div>
 
-                <label class="field" id="device-detail-control-model-row">
-                  <span class="field__label">Control model</span>
-                  <select id="device-detail-control-model">
-                    <option value="default">Default</option>
-                    <option value="stepped_load">Stepped load</option>
-                    <option value="continuous">Continuous</option>
-                    <option value="ev_charger_1_phase">EV 1-phase</option>
-                    <option value="ev_charger_3_phase">EV 3-phase</option>
-                  </select>
+                <div class="md-field-row" id="device-detail-control-model-row">
+                  <md-filled-select id="device-detail-control-model" label="Control model">
+                    <md-select-option value="default"><div slot="headline">Default</div></md-select-option>
+                    <md-select-option value="stepped_load"><div slot="headline">Stepped load</div></md-select-option>
+                    <md-select-option value="continuous"><div slot="headline">Continuous</div></md-select-option>
+                    <md-select-option value="ev_charger_1_phase"><div slot="headline">EV 1-phase</div></md-select-option>
+                    <md-select-option value="ev_charger_3_phase"><div slot="headline">EV 3-phase</div></md-select-option>
+                  </md-filled-select>
                   <small class="field__hint">Choose the control shape PELS should plan with for this device.</small>
-                </label>
+                </div>
 
                 <div class="field device-detail-readout" id="device-detail-soc-row" hidden>
                   <div class="device-detail-readout__head">
