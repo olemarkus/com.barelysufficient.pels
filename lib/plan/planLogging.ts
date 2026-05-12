@@ -10,7 +10,7 @@ import {
   PLAN_REASON_CODES,
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-import { resolveEffectiveCurrentOn } from './planCurrentState';
+import { isObservedOff, isObservedOn } from '../observer/observedState';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
 import {
   isActivationPenaltyBlockedReason,
@@ -214,12 +214,12 @@ export function buildPlanSignature(plan: DevicePlan): string {
 
 function isActiveControlledDevice(device: DevicePlanDevice): boolean {
   if (device.observationStale === true) return false;
-  return resolveEffectiveCurrentOn(device) === true;
+  return isObservedOn(device);
 }
 
 function isActiveInputDevice(device: PlanInputDevice): boolean {
   if (device.observationStale === true) return false;
-  return resolveEffectiveCurrentOn(device) === true;
+  return isObservedOn(device);
 }
 
 function isZeroDrawControlledDevice(device: DevicePlanDevice): boolean {
@@ -238,7 +238,7 @@ function isZeroDrawInputDevice(device: PlanInputDevice): boolean {
 
 function isActionableShortfallCandidate(device: DevicePlanDevice): boolean {
   if (device.controllable === false) return false;
-  if (resolveEffectiveCurrentOn(device) === false) return false;
+  if (isObservedOff(device)) return false;
   if (device.plannedState === 'shed') return false;
   if (isBlockedByCooldown(device) || isBlockedByPenalty(device)) {
     return false;

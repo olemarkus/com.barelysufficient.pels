@@ -1775,6 +1775,7 @@ describe('Device plan snapshot', () => {
         currentOn: true,
         controllable: true,
         priority: 1,
+        lastFreshDataMs: Date.now(),
       },
       {
         id: 'dev-2',
@@ -1784,6 +1785,7 @@ describe('Device plan snapshot', () => {
         currentOn: true,
         controllable: true,
         priority: 10,
+        lastFreshDataMs: Date.now(),
       },
     ]);
 
@@ -1799,6 +1801,7 @@ describe('Device plan snapshot', () => {
         currentOn: true,
         controllable: true,
         priority: 1,
+        lastFreshDataMs: Date.now(),
       },
       {
         id: 'dev-2',
@@ -1808,6 +1811,7 @@ describe('Device plan snapshot', () => {
         currentOn: false,
         controllable: true,
         priority: 10,
+        lastFreshDataMs: Date.now(),
       },
     ]);
 

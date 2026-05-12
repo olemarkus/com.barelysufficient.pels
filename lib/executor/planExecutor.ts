@@ -62,7 +62,7 @@ import {
   buildExecutableTargetCommand,
   buildExecutableTargetUpdate,
 } from './executableTargetProjection';
-import { resolveEffectiveCurrentOn } from '../plan/planCurrentState';
+import { isObservedOff } from '../observer/observedState';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import { hasPlannedShedDevices } from '../plan/planShedPosture';
 
@@ -773,7 +773,7 @@ function hasStableUncontrolledRestoreActuation(
 ): boolean {
   return dev.controllable === false
     && dev.plannedState === 'keep'
-    && resolveEffectiveCurrentOn(dev) === false
+    && isObservedOff(dev)
     && Boolean(state.lastDeviceShedMs[dev.id]);
 }
 
@@ -794,7 +794,7 @@ function hasStableSteppedLoadStepActuation(dev: DevicePlan['devices'][number]): 
   const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, desiredStepId);
   if (!selectedStep || !desiredStep) return false;
   if (desiredStep.planningPowerW < selectedStep.planningPowerW) {
-    return resolveEffectiveCurrentOn(dev) !== false
+    return !isObservedOff(dev)
       || !isRestoreHoldReason(dev.reason);
   }
   return desiredStep.planningPowerW > selectedStep.planningPowerW

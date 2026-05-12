@@ -1,5 +1,5 @@
 import { getHighestKnownPowerKw, getMeasuredDrawKw } from '../observer/observedPower';
-import { resolveEffectiveCurrentOn } from './planCurrentState';
+import { isObservedOff } from '../observer/observedState';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 
 type UsageDevice = {
@@ -14,13 +14,6 @@ type UsageDevice = {
   planningPowerKw?: number;
   powerKw?: number;
 };
-
-function isObservedOff(device: UsageDevice): boolean {
-  if (device.currentState === 'not_applicable' || device.hasBinaryControl === false) {
-    return device.currentOn === false;
-  }
-  return resolveEffectiveCurrentOn(device) === false;
-}
 
 function isFiniteNonNegative(value: number | undefined): value is number {
   return isFiniteNumber(value) && value >= 0;

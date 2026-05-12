@@ -1,7 +1,7 @@
 import type { PlanEngineState } from '../planState';
 import type { PlanInputDevice, ShedAction } from '../planTypes';
 import type { SteppedLoadProfile } from '../../utils/types';
-import { resolveEffectiveCurrentOn } from '../planCurrentState';
+import { isObservedOff } from '../../observer/observedState';
 import { getCurrentDrawKw } from '../../observer/observedPower';
 import {
   getSteppedLoadShedTargetStep,
@@ -89,12 +89,7 @@ function collectSheddingCandidates(
 
   for (const device of devices) {
     if (device.controllable === false) continue;
-    const eligible = isEligibleForShedding({
-      device,
-      state,
-      nowTs,
-    });
-    if (!eligible) continue;
+    if (!isEligibleForShedding(device)) continue;
 
     const candidate = addCandidatePower({
       device,
@@ -201,20 +196,8 @@ function buildBinaryCandidate(
   };
 }
 
-function isEligibleForShedding(params: {
-  device: PlanInputDevice;
-  state: PlanEngineState;
-  nowTs: number;
-}): boolean {
-  const { device, state, nowTs } = params;
-  const effectiveCurrentOn = resolveEffectiveCurrentOn(device, {
-    pendingPresent: isPendingBinaryCommandActive({
-      pending: state.pendingBinaryCommands[device.id],
-      nowMs: nowTs,
-      communicationModel: device.communicationModel,
-    }),
-  });
-  return effectiveCurrentOn !== false;
+function isEligibleForShedding(device: PlanInputDevice): boolean {
+  return !isObservedOff(device);
 }
 
 function buildTemperatureCandidate(params: {
@@ -460,8 +443,7 @@ function isNonSteppedDeviceRecovering(
   candidate: PlanInputDevice,
   state: Pick<PlanEngineState, 'lastDeviceShedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>,
 ): boolean {
-  const effectiveCurrentOn = resolveEffectiveCurrentOn(candidate);
-  if (candidate.controllable === false || isSteppedLoadDevice(candidate) || effectiveCurrentOn !== false) {
+  if (candidate.controllable === false || isSteppedLoadDevice(candidate) || !isObservedOff(candidate)) {
     return false;
   }
   if (state.swapByDevice[candidate.id]?.swappedOutFor || state.swapByDevice[candidate.id]?.pendingTarget) {
