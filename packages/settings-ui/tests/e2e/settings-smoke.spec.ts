@@ -19,6 +19,8 @@ test.describe('Settings UI (smoke)', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('tablist')).toBeVisible();
     await expect(page.locator('#overview-panel')).toBeVisible();
+    await expect(page.locator('#overview-panel')).toContainText('Energy used so far this hour');
+    await expect(page.locator('#overview-panel')).toContainText('0.26 / 4.5 kWh');
   });
 
   test('keeps legacy top-level navigation available when the new UI is disabled', async ({ page }) => {

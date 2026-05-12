@@ -169,6 +169,7 @@
         headroomKw: 0.8,
         usedKWh: 0.26,
         budgetKWh: 4.5,
+        hourBudgetKWh: 4.5,
         minutesRemaining: 48,
         controlledKw: 0.0,
         uncontrolledKw: 1.5,
