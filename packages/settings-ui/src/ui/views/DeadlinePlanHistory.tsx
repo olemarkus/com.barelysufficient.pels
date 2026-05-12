@@ -14,7 +14,7 @@ type DeadlinePlanHistoryProps = {
   timeZone: string;
 };
 
-const PlanHistoryCard = ({ entry, timeZone }: {
+export const PlanHistoryCard = ({ entry, timeZone }: {
   entry: DeferredObjectivePlanHistoryEntry;
   timeZone: string;
 }) => {

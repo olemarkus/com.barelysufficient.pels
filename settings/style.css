@@ -5065,6 +5065,22 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
   font-weight: var(--font-weight-semibold);
 }
 
+.deadlines-history {
+  margin-top: var(--spacing-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.deadlines-history__heading {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--muted);
+  border-top: 1px solid var(--panel-border);
+  padding-top: var(--spacing-4);
+}
+
 /* ─── Usage panel redesign ─────────────────────────────────────────────────── */
 
 .usage-hero {
