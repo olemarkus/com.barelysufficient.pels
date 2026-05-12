@@ -5,9 +5,11 @@ import {
   normalizeDeferredObjectiveSettings,
   resolveDeferredObjectiveDeadline,
 } from '../lib/plan/deferredObjectives';
+import { DeferredObjectivePlanHistoryRecorder } from '../lib/plan/deferredObjectives/planHistory';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
+import type { DeferredObjectivePlanHistoryV2 } from '../packages/contracts/src/deferredObjectivePlanHistory';
 
 const HOUR_MS = 60 * 60 * 1000;
 const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
@@ -123,6 +125,20 @@ const buildPowerTracker = (overrides: Partial<PowerTrackerState> = {}): PowerTra
   },
   ...overrides,
 });
+
+const buildHistoryRecorder = (): {
+  recorder: DeferredObjectivePlanHistoryRecorder;
+  saved: () => DeferredObjectivePlanHistoryV2 | null;
+} => {
+  let saved: DeferredObjectivePlanHistoryV2 | null = null;
+  return {
+    recorder: new DeferredObjectivePlanHistoryRecorder({
+      load: () => null,
+      save: (next) => { saved = next; return true; },
+    }),
+    saved: () => saved,
+  };
+};
 
 const buildTemperaturePowerTracker = (overrides: Partial<PowerTrackerState> = {}): PowerTrackerState => ({
   objectiveProfiles: {
@@ -589,7 +605,225 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(diagnostic).toMatchObject({
       status: 'unknown',
       reasonCode: 'objective_price_feature_disabled',
+      currentPercent: 40,
+      targetPercent: 60,
       energyNeededKWh: null,
+    });
+  });
+
+  it('does not surface stale EV progress when the price feature is disabled', () => {
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice({
+        stateOfCharge: {
+          percent: 40,
+          status: 'stale',
+          source: 'capability',
+          observedAtMs: NOW_MS - HOUR_MS,
+        },
+      })],
+      settings: normalizeDeferredObjectiveSettings(buildSettings()),
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: false,
+    });
+
+    expect(diagnostic).toMatchObject({
+      status: 'unknown',
+      reasonCode: 'objective_price_feature_disabled',
+      currentPercent: null,
+      targetPercent: 60,
+      energyNeededKWh: null,
+    });
+  });
+
+  it('does not clear a satisfied run from stale EV progress while price planning is disabled', () => {
+    const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
+    const { recorder, saved } = buildHistoryRecorder();
+    const [satisfied] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice({
+        stateOfCharge: {
+          percent: 70,
+          status: 'fresh',
+          source: 'capability',
+          observedAtMs: NOW_MS,
+        },
+      })],
+      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineAtMs })),
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: false,
+    });
+    const [staleBelowTarget] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS + HOUR_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice({
+        stateOfCharge: {
+          percent: 40,
+          status: 'stale',
+          source: 'capability',
+          observedAtMs: NOW_MS,
+        },
+      })],
+      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineAtMs })),
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: false,
+    });
+
+    recorder.observe([satisfied!], NOW_MS);
+    recorder.observe([staleBelowTarget!], NOW_MS + HOUR_MS);
+    recorder.observe([], deadlineAtMs);
+    recorder.flushIfDirty();
+
+    const entry = saved()!.entries[0]!;
+    expect(staleBelowTarget).toMatchObject({
+      status: 'unknown',
+      reasonCode: 'objective_price_feature_disabled',
+      currentPercent: null,
+    });
+    expect(entry.outcome).toBe('met');
+    expect(entry.metAtMs).toBe(NOW_MS);
+    expect(entry.finalProgressPercent).toBe(70);
+  });
+
+  it('marks a met EV objective as satisfied even when price planning is disabled', () => {
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice({
+        stateOfCharge: {
+          percent: 70,
+          status: 'fresh',
+          source: 'capability',
+          observedAtMs: NOW_MS,
+        },
+      })],
+      settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
+      powerTracker: {},
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: false,
+    });
+
+    expect(diagnostic).toMatchObject({
+      objectiveKind: 'ev_soc',
+      status: 'satisfied',
+      reasonCode: 'energy_already_met',
+      currentPercent: 70,
+      targetPercent: 60,
+      energyNeededKWh: 0,
+      requestedMinimumStepId: null,
+    });
+  });
+
+  it('marks a met EV objective as satisfied while waiting for tomorrow prices', () => {
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice({
+        stateOfCharge: {
+          percent: 70,
+          status: 'fresh',
+          source: 'capability',
+          observedAtMs: NOW_MS,
+        },
+      })],
+      settings: normalizeDeferredObjectiveSettings(buildSettings({
+        deadlineLocalTime: '16:00',
+        targetPercent: 60,
+      })),
+      powerTracker: {},
+      dailyBudgetSnapshot: buildSnapshot({ includeTomorrow: false }),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic).toMatchObject({
+      objectiveKind: 'ev_soc',
+      status: 'satisfied',
+      reasonCode: 'energy_already_met',
+      currentPercent: 70,
+      targetPercent: 60,
+      energyNeededKWh: 0,
+      deadlineAtMs: Date.UTC(2026, 0, 2, 16, 0, 0),
+    });
+  });
+
+  it('marks a met temperature objective as satisfied when price planning is unavailable', () => {
+    for (const priceParams of [
+      { priceOptimizationEnabled: false, dailyBudgetSnapshot: buildSnapshot() },
+      { priceOptimizationEnabled: true, dailyBudgetSnapshot: buildSnapshot({ includeTomorrow: false }) },
+    ]) {
+      const [diagnostic] = buildDeferredObjectiveDiagnostics({
+        nowMs: NOW_MS,
+        timeZone: 'UTC',
+        devices: [buildTemperatureDevice({ currentTemperature: 66 })],
+        settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings({
+          deadlineLocalTime: '16:00',
+          targetTemperatureC: 65,
+        })),
+        powerTracker: {},
+        ...priceParams,
+      });
+
+      expect(diagnostic).toMatchObject({
+        objectiveKind: 'temperature',
+        status: 'satisfied',
+        reasonCode: 'energy_already_met',
+        currentTemperatureC: 66,
+        targetTemperatureC: 65,
+        energyNeededKWh: 0,
+        requestedMinimumStepId: null,
+      });
+    }
+  });
+
+  it('returns from satisfied to tracking when progress falls below target before the deadline', () => {
+    const satisfied = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice({
+        stateOfCharge: {
+          percent: 70,
+          status: 'fresh',
+          source: 'capability',
+          observedAtMs: NOW_MS,
+        },
+      })],
+      settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    })[0];
+    const tracking = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice({
+        stateOfCharge: {
+          percent: 40,
+          status: 'fresh',
+          source: 'capability',
+          observedAtMs: NOW_MS,
+        },
+      })],
+      settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    })[0];
+
+    expect(satisfied).toMatchObject({
+      status: 'satisfied',
+      reasonCode: 'energy_already_met',
+      energyNeededKWh: 0,
+    });
+    expect(tracking).toMatchObject({
+      status: 'on_track',
+      reasonCode: 'planned_with_margin',
+      currentPercent: 40,
+      energyNeededKWh: 4,
     });
   });
 

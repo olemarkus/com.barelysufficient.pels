@@ -88,6 +88,12 @@ deadline is far enough in the future that tomorrow's prices are required, planni
 `unknown` with `objective_missing_price_horizon` until those prices are available. It must not
 fall back to neutral or whole-range planning when the price horizon is incomplete.
 
+That gate applies only while the objective still needs future energy. When fresh EV SoC or
+temperature progress already meets the target, the bridge emits `satisfied` before price or
+horizon gating because no future allocation is needed. `satisfied` remains a live evaluation,
+not a terminal completion before the deadline: if a later fresh reading drops below the target,
+the next cycle returns to normal deadline tracking.
+
 ## Soft Temperature Runtime Semantics
 
 The first temperature UI stores the objective and lets horizon planning calculate planned hours.
@@ -213,13 +219,15 @@ capture per-(device, deadline) outcomes for the Settings UI History tab on
 
 - The recorder observes the diagnostic stream once per plan cycle. It starts an in-progress
   record on the first plannable diagnostic for a `(deviceId, deadlineAtMs)` pair, refreshes
-  progress + planning flags each cycle, and stamps `metAtMs` the first cycle the status
-  reaches `satisfied`.
-- A run is finalized as `met` when the device hit the target before the deadline,
-  `missed` when the deadline passed below target, `abandoned` when the user clears the
-  objective (or when the diagnostic stops appearing for >1 hour with the deadline still in
-  the future), `replaced` when the user picks a new deadline or changes the target value on
-  the same deadline, and `unknown` when there's not enough fresh input to classify.
+  progress + planning flags each cycle, and stamps `metAtMs` while the status is `satisfied`.
+  If progress drops below the target again before the deadline, the recorder clears that live
+  satisfied marker and continues tracking; a later recovered `satisfied` status stamps the later
+  met time.
+- A run is finalized as `met` when the latest trustworthy progress at finalization is at or
+  above the target, `missed` when the deadline passed below target, `abandoned` when the user
+  clears the objective (or when the diagnostic stops appearing for >1 hour with the deadline
+  still in the future), `replaced` when the user picks a new deadline or changes the target
+  value on the same deadline, and `unknown` when there's not enough fresh input to classify.
   These stored outcome names are internal compatibility values. Public Settings UI labels
   expose `met` as `Succeeded`, `missed` as `Missed`, and user-clear/replacement/disappear
   outcomes as `Abandoned`.

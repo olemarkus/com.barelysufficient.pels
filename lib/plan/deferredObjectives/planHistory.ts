@@ -46,6 +46,14 @@ const isSatisfiedStatus = (status: DeferredObjectiveDiagnostic['status']): boole
   status === 'satisfied'
 );
 
+const PROGRESS_UNTRUSTWORTHY_REASON_CODES: ReadonlySet<DeferredObjectiveDiagnostic['reasonCode']> = new Set([
+  'objective_invalid_deadline',
+  'objective_invalid_session',
+  'objective_missing_device',
+  'objective_missing_temperature',
+  'objective_progress_stale',
+]);
+
 const captureProgressC = (diag: DeferredObjectiveDiagnostic): number | null => (
   diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : null
 );
@@ -53,6 +61,23 @@ const captureProgressC = (diag: DeferredObjectiveDiagnostic): number | null => (
 const captureProgressPercent = (diag: DeferredObjectiveDiagnostic): number | null => (
   diag.objectiveKind === 'ev_soc' ? diag.currentPercent : null
 );
+
+const hasTrustworthyProgress = (diag: DeferredObjectiveDiagnostic): boolean => {
+  if (PROGRESS_UNTRUSTWORTHY_REASON_CODES.has(diag.reasonCode)) return false;
+  if (diag.objectiveKind === 'temperature') {
+    return diag.currentTemperatureC !== null && diag.targetTemperatureC !== null;
+  }
+  return diag.currentPercent !== null && diag.targetPercent !== null;
+};
+
+const diagnosticProgressAtTarget = (diag: DeferredObjectiveDiagnostic): boolean => {
+  if (diag.objectiveKind === 'temperature') {
+    if (diag.currentTemperatureC === null || diag.targetTemperatureC === null) return false;
+    return diag.currentTemperatureC >= diag.targetTemperatureC;
+  }
+  if (diag.currentPercent === null || diag.targetPercent === null) return false;
+  return diag.currentPercent >= diag.targetPercent;
+};
 
 const lastObservedAtMs = (record: InProgressRecord): number => {
   const { observedIntervals } = record;
@@ -75,6 +100,7 @@ const extendIntervals = (
 
 const startRecord = (diag: DeferredObjectiveDiagnostic, nowMs: number): InProgressRecord | null => {
   if (diag.deadlineAtMs === null) return null;
+  const currentlySatisfied = isSatisfiedStatus(diag.status);
   return {
     deviceId: diag.deviceId,
     deviceName: diag.deviceName ?? null,
@@ -88,11 +114,11 @@ const startRecord = (diag: DeferredObjectiveDiagnostic, nowMs: number): InProgre
     finalProgressC: captureProgressC(diag),
     finalProgressPercent: captureProgressPercent(diag),
     initialEnergyNeededKWh: diag.energyNeededKWh ?? 0,
-    metAtMs: null,
+    metAtMs: currentlySatisfied ? nowMs : null,
     usedDeadlineReserve: diag.horizonPlan?.usesDeadlineReserve ?? false,
     usedPolicyAvoid: diag.horizonPlan?.usesPolicyAvoid ?? false,
     observedIntervals: [{ fromMs: nowMs, toMs: nowMs }],
-    satisfied: false,
+    satisfied: currentlySatisfied,
   };
 };
 
@@ -101,7 +127,8 @@ const mergeRecord = (
   diag: DeferredObjectiveDiagnostic,
   nowMs: number,
 ): InProgressRecord => {
-  const reachedSatisfied = !record.satisfied && isSatisfiedStatus(diag.status);
+  const currentlySatisfied = isSatisfiedStatus(diag.status);
+  const metAtMs = currentlySatisfied ? (record.metAtMs ?? nowMs) : null;
   return {
     ...record,
     deviceName: diag.deviceName ?? record.deviceName,
@@ -110,8 +137,24 @@ const mergeRecord = (
     usedDeadlineReserve: record.usedDeadlineReserve || (diag.horizonPlan?.usesDeadlineReserve ?? false),
     usedPolicyAvoid: record.usedPolicyAvoid || (diag.horizonPlan?.usesPolicyAvoid ?? false),
     observedIntervals: extendIntervals(record.observedIntervals, nowMs),
-    satisfied: record.satisfied || reachedSatisfied,
-    metAtMs: reachedSatisfied ? nowMs : record.metAtMs,
+    satisfied: currentlySatisfied,
+    metAtMs,
+  };
+};
+
+const clearSatisfiedWithProgress = (
+  record: InProgressRecord,
+  diag: DeferredObjectiveDiagnostic,
+  nowMs: number,
+): InProgressRecord => {
+  return {
+    ...record,
+    deviceName: diag.deviceName ?? record.deviceName,
+    finalProgressC: captureProgressC(diag) ?? record.finalProgressC,
+    finalProgressPercent: captureProgressPercent(diag) ?? record.finalProgressPercent,
+    observedIntervals: extendIntervals(record.observedIntervals, nowMs),
+    satisfied: false,
+    metAtMs: null,
   };
 };
 
@@ -122,6 +165,17 @@ const recordObservedTick = (
   ...record,
   observedIntervals: extendIntervals(record.observedIntervals, nowMs),
 });
+
+const recordNonPlannableTick = (
+  record: InProgressRecord,
+  diag: DeferredObjectiveDiagnostic,
+  nowMs: number,
+): InProgressRecord => {
+  if (record.satisfied && hasTrustworthyProgress(diag) && !diagnosticProgressAtTarget(diag)) {
+    return clearSatisfiedWithProgress(record, diag, nowMs);
+  }
+  return recordObservedTick(record, nowMs);
+};
 
 const wasTargetReached = (record: InProgressRecord): boolean => {
   if (record.objectiveKind === 'temperature') {
@@ -236,9 +290,12 @@ export class DeferredObjectivePlanHistoryRecorder {
       const plannable = isPlannableStatus(diag.status) || isSatisfiedStatus(diag.status);
       if (existing) {
         // Plannable diagnostics roll forward progress + planning flags. Unknown/invalid still
-        // count as observation ("PELS was watching") so the interval extends, but progress
-        // fields stay frozen at the last trustworthy value.
-        const next = plannable ? mergeRecord(existing, diag, nowMs) : recordObservedTick(existing, nowMs);
+        // count as observation ("PELS was watching"). If an already-met run later reports
+        // trustworthy below-target progress, clear the live met marker; otherwise preserve
+        // the last trustworthy progress.
+        const next = plannable
+          ? mergeRecord(existing, diag, nowMs)
+          : recordNonPlannableTick(existing, diag, nowMs);
         this.inProgress.set(key, next);
         continue;
       }
