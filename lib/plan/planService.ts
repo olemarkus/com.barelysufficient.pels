@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type Homey from 'homey';
 import { PriceLevel } from '../price/priceLevels';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
+import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import {
   buildDeviceOverviewTransitionSignature,
@@ -561,6 +562,7 @@ export class PlanService {
     const isDryRun = this.deps.getCapacityDryRun();
     const rebuildId = `rb_${randomUUID()}`;
     const rebuildStart = Date.now();
+    const rssBefore = safeRss();
     const stopSpan = startRuntimeSpan(`plan_rebuild(${reason})`);
     const outcome = createPlanRebuildOutcome(isDryRun);
 
@@ -574,6 +576,7 @@ export class PlanService {
       } finally {
         const durationMs = Date.now() - rebuildStart;
         this.recordPlanRebuildMetrics(reason, queueWaitMs, queueDepth, rebuildStart, outcome);
+        recordOpRssDelta('plan_rebuild_ms', rssBefore, safeRss());
         stopSpan();
         const rebuildLogLevel = getPlanRebuildLogLevel(reason, durationMs, outcome);
         if (rebuildLogLevel) {

@@ -1,6 +1,39 @@
+import fs from 'node:fs';
 import { getPerfSnapshotAndResetWindow, type PerfSnapshot } from '../utils/perfCounters';
 import { startCpuSpikeMonitor } from '../utils/cpuSpikeMonitor';
-import { resolveSmapsSummary } from './smapsRollup';
+import { resolveMemoryMb } from './appResourceWarningHelpers';
+import { drainGcWindow, startGcObserver } from './gcObserver';
+import { drainOpRssWindow } from '../utils/opRssTracker';
+import { resolveSmapsDetail, resolveSmapsSummary } from './smapsRollup';
+
+const NON_RETRYABLE_FD_PROBE_CODES = new Set(['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM']);
+
+let fdCountSupported: boolean | undefined;
+export const resolveFdCount = (): number | null => {
+  if (fdCountSupported === false) return null;
+  try {
+    const entries = fs.readdirSync('/proc/self/fd');
+    fdCountSupported = true;
+    return entries.length;
+  } catch (error) {
+    const code = typeof error === 'object' && error !== null && 'code' in error
+      ? String((error as { code: unknown }).code)
+      : '';
+    // Only treat platform-level "not supported" as permanently unsupported.
+    // Transient pressure (EMFILE, EAGAIN, EIO) is exactly when this metric
+    // is most valuable, so leave the probe armed for the next call.
+    if (NON_RETRYABLE_FD_PROBE_CODES.has(code)) fdCountSupported = false;
+    return null;
+  }
+};
+
+/**
+ * Test-only hook. Resets the probe cache so a test can exercise both the
+ * transient-error retry path and the unsupported-platform short-circuit.
+ */
+export const __resetFdCountProbeForTests = (): void => {
+  fdCountSupported = undefined;
+};
 
 type PerfDurationEntry = {
   totalMs: number;
@@ -64,6 +97,8 @@ const VALUE_DURATION_KEYS = new Set([
   'device_fetch_full_ms',
   'device_fetch_targeted_ms',
   'device_refresh_ms',
+  'evaluate_deferred_objectives_ms',
+  'price_optimizer_apply_ms',
 ]);
 
 const buildPerfDelta = (current: PerfSnapshot, previous?: PerfSnapshot | null): PerfDelta => {
@@ -172,10 +207,12 @@ export const startPerfLogger = (params: {
   const intervalMs = typeof params.intervalMs === 'number' ? params.intervalMs : 30 * 1000;
   let lastSnapshot: PerfSnapshot | null = null;
   let stopCpuMonitor: (() => void) | undefined;
-  const syncCpuMonitor = (): void => {
-    if (typeof params.logCpuSpike !== 'function') return;
-    if (params.isEnabled()) {
-      if (!stopCpuMonitor) {
+  let stopGcObserver: (() => void) | undefined;
+  const syncObservers = (): void => {
+    const enabled = params.isEnabled();
+    if (enabled) {
+      if (!stopGcObserver) stopGcObserver = startGcObserver();
+      if (typeof params.logCpuSpike === 'function' && !stopCpuMonitor) {
         stopCpuMonitor = startCpuSpikeMonitor({
           log: params.logCpuSpike,
           error: params.error,
@@ -184,13 +221,18 @@ export const startPerfLogger = (params: {
       }
       return;
     }
+    if (stopGcObserver) {
+      stopGcObserver();
+      stopGcObserver = undefined;
+      drainGcWindow();
+    }
     if (stopCpuMonitor) {
       stopCpuMonitor();
       stopCpuMonitor = undefined;
     }
   };
   const logCounters = () => {
-    syncCpuMonitor();
+    syncObservers();
     if (!params.isEnabled()) return;
     const snapshot = getPerfSnapshotAndResetWindow();
     const delta = buildPerfDelta(snapshot, lastSnapshot);
@@ -199,7 +241,12 @@ export const startPerfLogger = (params: {
     const uptimeSec = Math.round((Date.now() - snapshot.startedAt) / 1000);
     const payload = {
       uptimeSec,
+      memory: resolveMemoryMb(),
       smaps: resolveSmapsSummary(),
+      smapsDetail: resolveSmapsDetail(),
+      fdCount: resolveFdCount(),
+      gc: drainGcWindow(),
+      opRss: drainOpRssWindow(),
       summary: buildPerfSummary(delta),
       delta: {
         counts: delta.counts,
@@ -220,5 +267,6 @@ export const startPerfLogger = (params: {
   return () => {
     clearInterval(timer);
     stopCpuMonitor?.();
+    stopGcObserver?.();
   };
 };

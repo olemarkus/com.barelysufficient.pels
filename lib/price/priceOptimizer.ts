@@ -1,6 +1,7 @@
 import type { CombinedHourlyPrice } from './priceTypes';
 import { PriceLevel } from './priceLevels';
-import { incPerfCounters } from '../utils/perfCounters';
+import { incPerfCounters, addPerfDuration } from '../utils/perfCounters';
+import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import type { Logger as PinoLogger } from '../logging/logger';
 
@@ -37,8 +38,11 @@ export class PriceOptimizer {
 
   constructor(private deps: PriceOptimizerDeps) {}
 
+  /* eslint-disable-next-line max-statements -- adds 3 instrumentation statements (timing + RSS sampling). */
   async applyOnce(): Promise<void> {
     const stopSpan = startRuntimeSpan('price_optimizer_apply');
+    const opStart = Date.now();
+    const rssBefore = safeRss();
     try {
       if (!this.deps.isEnabled()) {
         this.deps.logDebug('Price optimization: Disabled globally');
@@ -93,6 +97,8 @@ export class PriceOptimizer {
       await this.deps.rebuildPlan(`price optimization (${resultingMode} hour)`);
     } finally {
       stopSpan();
+      addPerfDuration('price_optimizer_apply_ms', Date.now() - opStart);
+      recordOpRssDelta('price_optimizer_apply_ms', rssBefore, safeRss());
     }
   }
 

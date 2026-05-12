@@ -104,6 +104,9 @@ const allowedUnusedExportPatterns = [
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH$/,
   /^packages\/contracts\/src\/targetCapabilities\.ts:\d+ - getTargetCapabilityStep$/,
   /^lib\/app\/smapsRollup\.ts:\d+ - _resetSmapsCacheForTests$/,
+  /^lib\/app\/smapsRollup\.ts:\d+ - __resetSmapsDetailCacheForTests$/,
+  /^lib\/app\/perfLogging\.ts:\d+ - __resetFdCountProbeForTests$/,
+  /^lib\/utils\/opRssTracker\.ts:\d+ - __resetRssSupportProbeForTests$/,
   // Pure scheduler barrel kept intentionally until planner integration consumes it.
   new RegExp(`^lib\\/plan\\/deferredObjectives\\/index\\.ts:\\d+ - (${deferredObjectiveBarrelExports})$`),
   // Consumed by packages/settings-ui/src/ui/planDeviceCard.ts via cross-package relative import; ts-prune doesn't follow these.

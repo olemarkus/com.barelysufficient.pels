@@ -84,6 +84,7 @@ import { startPerfLogger } from './lib/app/perfLogging';
 import { VOLATILE_WRITE_THROTTLE_MS } from './lib/utils/timingConstants';
 import { getHourBucketKey } from './lib/utils/dateUtils';
 import { startResourceWarningListeners as startResourceWarnings } from './lib/app/appResourceWarningHelpers';
+import { installHeapSnapshotHandler } from './lib/app/heapSnapshotHandler';
 import { migrateManagedDevices as migrateManagedDevicesHelper } from './lib/app/appManagedDeviceMigration';
 import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './lib/app/appPriceLowestTrigger';
 import * as realtimeReconcile from './lib/app/appRealtimeDeviceReconcile';
@@ -268,6 +269,7 @@ class PelsApp extends Homey.App {
   private stopPriceLowestTriggerChecker?: () => void;
   private stopPerfLogging?: () => void;
   private stopResourceWarningListeners?: () => void;
+  private stopHeapSnapshotHandler?: () => void;
   private stopSettingsHandler?: () => void;
   private structuredLogger?: PinoLogger;
   private readonly timers = new TimerRegistry();
@@ -710,6 +712,9 @@ class PelsApp extends Homey.App {
     );
     this.structuredLogger.child({ component: 'startup' }).info({ event: 'app_initialized' });
     this.startResourceWarningListeners();
+    this.stopHeapSnapshotHandler = installHeapSnapshotHandler({
+      logger: this.structuredLogger.child({ component: 'heap' }),
+    });
     await runStartupStep('updateDebugLoggingEnabled', () => this.updateDebugLoggingEnabled(), logStartupStepFailure);
     this.startPerfLogging();
     await runStartupStep('initPriceCoordinator', () => this.initPriceCoordinator(), logStartupStepFailure);
@@ -1042,7 +1047,7 @@ class PelsApp extends Homey.App {
   }
   private stopUninitServices(): void {
     this.stopPriceLowestTriggerChecker?.(); this.stopPerfLogging?.();
-    this.stopResourceWarningListeners?.(); this.stopSettingsHandler?.();
+    this.stopResourceWarningListeners?.(); this.stopHeapSnapshotHandler?.(); this.stopSettingsHandler?.();
   }
   private logDebug(topic: DebugLoggingTopic, ...args: unknown[]): void {
     if (this.debugLoggingTopics.has(topic)) this.log(...args);
