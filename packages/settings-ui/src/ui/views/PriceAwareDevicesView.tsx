@@ -1,5 +1,6 @@
 import { render } from 'preact';
 import type { PriceOptDevice } from '../priceConfigTypes.ts';
+import { MdIconButton, MdSwitch, MdTextButton } from './materialWebJSX.tsx';
 
 export type PriceAwareDevicesViewProps = {
   optimizationEnabled: boolean;
@@ -33,6 +34,8 @@ type ValueAdjusterProps = {
   decreaseLabel: string;
   onChange: (value: number) => void;
 };
+
+type SwitchElement = HTMLElement & { selected: boolean };
 
 const ValueAdjuster = ({
   direction,
@@ -69,18 +72,17 @@ const ValueAdjuster = ({
 
   return (
     <div class={`value-adjuster value-adjuster--${direction}`} role="group">
-      <button
-        type="button"
+      <MdIconButton
         class="value-adjuster__btn"
         aria-label={decreaseLabel}
-        disabled={disabled || value <= min}
+        {...(disabled || value <= min ? { disabled: true } : {})}
         onClick={() => handleStep(-step)}
         onKeyDown={handleKey}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
           <path d="M5 12h14" />
         </svg>
-      </button>
+      </MdIconButton>
       <output
         class="value-adjuster__value"
         tabindex={0}
@@ -89,31 +91,29 @@ const ValueAdjuster = ({
       >
         {display}
       </output>
-      <button
-        type="button"
+      <MdIconButton
         class="value-adjuster__btn"
         aria-label={increaseLabel}
-        disabled={disabled || value >= max}
+        {...(disabled || value >= max ? { disabled: true } : {})}
         onClick={() => handleStep(step)}
         onKeyDown={handleKey}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
           <path d="M12 5v14M5 12h14" />
         </svg>
-      </button>
+      </MdIconButton>
     </div>
   );
 };
 
 const Header = () => (
   <>
-    <button
-      type="button"
+    <MdTextButton
       class="btn ghost settings-back-button"
       data-settings-target="settings"
     >
       ‹ Settings
-    </button>
+    </MdTextButton>
     <div class="card__header">
       <div>
         <p class="eyebrow">Price-aware devices</p>
@@ -130,11 +130,11 @@ const RespondTogglesCard = ({
   enabled: boolean;
   onToggle: (val: boolean) => void;
 }) => (
-  <label class="field checkbox-field settings-form-card">
-    <input
-      type="checkbox"
-      checked={enabled}
-      onChange={(e) => onToggle((e.target as HTMLInputElement).checked)}
+  <div class="field checkbox-field settings-form-card">
+    <MdSwitch
+      aria-label="Respond to prices"
+      {...(enabled ? { selected: true } : {})}
+      onChange={(e) => onToggle((e.currentTarget as SwitchElement).selected)}
     />
     <span class="checkbox-field__content">
       <span class="field__label">Respond to prices</span>
@@ -142,7 +142,7 @@ const RespondTogglesCard = ({
         When on, eligible devices boost during cheap hours and reduce during expensive hours.
       </small>
     </span>
-  </label>
+  </div>
 );
 
 const DeviceRow = ({
@@ -162,7 +162,8 @@ const DeviceRow = ({
       <span class="price-aware-grid__name">{device.name}</span>
       <div class="price-aware-grid__cell">
         <span class="price-aware-grid__cell-label" aria-hidden="true">
-          <span>🟢</span> Cheap ↑
+          <span class="price-aware-grid__tone-dot price-aware-grid__tone-dot--cheap"></span>
+          <span>Cheap</span>
         </span>
         <ValueAdjuster
           direction="up"
@@ -178,7 +179,8 @@ const DeviceRow = ({
       </div>
       <div class="price-aware-grid__cell">
         <span class="price-aware-grid__cell-label" aria-hidden="true">
-          <span>🔴</span> Expensive ↓
+          <span class="price-aware-grid__tone-dot price-aware-grid__tone-dot--expensive"></span>
+          <span>Expensive</span>
         </span>
         <ValueAdjuster
           direction="down"
@@ -228,10 +230,12 @@ const DevicesSection = ({
         <header class="price-aware-grid__head" role="row">
           <span role="columnheader">Device</span>
           <span role="columnheader" class="price-aware-grid__col-head">
-            <span aria-hidden="true">🟢</span> Cheap ↑
+            <span class="price-aware-grid__tone-dot price-aware-grid__tone-dot--cheap" aria-hidden="true"></span>
+            Cheap
           </span>
           <span role="columnheader" class="price-aware-grid__col-head">
-            <span aria-hidden="true">🔴</span> Expensive ↓
+            <span class="price-aware-grid__tone-dot price-aware-grid__tone-dot--expensive" aria-hidden="true"></span>
+            Expensive
           </span>
         </header>
         {devices.map((device) => (

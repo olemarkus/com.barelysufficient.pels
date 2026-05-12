@@ -14,6 +14,10 @@ const openSettingsSection = async (page: Page, target: string) => {
   await page.locator(`[data-settings-target="${target}"]`).click();
 };
 
+const expectModeOption = async (page: Page, mode: string) => {
+  await expect(page.locator(`#active-mode-select md-select-option[value="${mode}"]`)).toHaveCount(1);
+};
+
 test.describe('Settings UI (smoke)', () => {
   test('loads control center', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -34,8 +38,8 @@ test.describe('Settings UI (smoke)', () => {
 
     await page.getByRole('tab', { name: 'Modes' }).click();
     await expect(page.locator('#modes-panel')).toBeVisible();
-    await expect(page.locator('#active-mode-select')).toContainText('Home');
-    await expect(page.locator('#active-mode-select')).toContainText('Away');
+    await expectModeOption(page, 'Home');
+    await expectModeOption(page, 'Away');
 
     await page.getByRole('tab', { name: 'Budget' }).click();
     await expect(page.locator('#budget-panel')).toBeVisible();
@@ -70,7 +74,7 @@ test.describe('Settings UI (smoke)', () => {
 
     await openSettingsSection(page, 'modes');
     await expect(page.locator('#modes-panel')).toBeVisible();
-    await expect(page.locator('#active-mode-select')).toContainText('Home');
+    await expectModeOption(page, 'Home');
 
     await openSettingsSection(page, 'electricity-prices');
     await expect(page.locator('#electricity-prices-panel')).toBeVisible();
@@ -90,14 +94,14 @@ test.describe('Settings UI (smoke)', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     await expect(page.locator('#dry-run-banner')).toContainText('Simulation mode is enabled');
-    await page.getByRole('button', { name: 'Turn off simulation' }).click();
+    await page.locator('#simulation-disable-button').click();
 
     await expect(page.locator('#toast')).toContainText('Simulation mode updated.');
     await expect(page.locator('#dry-run-banner')).toBeHidden();
 
     await page.getByRole('tab', { name: 'Settings' }).click();
-    await page.getByRole('button', { name: /Simulation mode/ }).click();
-    await expect(page.locator('#settings-simulation-mode')).not.toBeChecked();
+    await page.locator('[data-settings-target="simulation"]').click();
+    await expect(page.locator('#settings-simulation-mode')).toHaveJSProperty('checked', false);
 
     const stored = await page.evaluate(() => new Promise<unknown>((resolve, reject) => {
       (window as any).Homey.get('capacity_dry_run', (error: Error | null, value?: unknown) => {
@@ -184,17 +188,19 @@ test.describe('Settings UI (smoke)', () => {
 
     await openSettingsSection(page, 'advanced');
     const evToggle = page.locator('#advanced-ev-support-enabled');
-    await expect(evToggle).not.toBeChecked();
+    await expect(evToggle).toHaveJSProperty('checked', false);
 
-    await evToggle.check();
+    await evToggle.click();
     await expect(page.locator('#toast')).toContainText('EV charger support enabled.');
+    await expect(evToggle).toHaveJSProperty('checked', true);
 
     await openSettingsSection(page, 'devices');
     await expect(genericEvDeviceRow).toBeVisible();
 
     await openSettingsSection(page, 'advanced');
-    await evToggle.uncheck();
+    await evToggle.click();
     await expect(page.locator('#toast')).toContainText('Managed EV chargers were set to unmanaged.');
+    await expect(evToggle).toHaveJSProperty('checked', false);
 
     await openSettingsSection(page, 'devices');
     await expect(genericEvDeviceRow).toHaveCount(0);

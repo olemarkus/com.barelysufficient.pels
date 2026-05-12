@@ -19,7 +19,9 @@ import {
   settingsPowerSourceSelect,
   settingsSimulationModeInput,
   simulationDisableButton,
+  type MdCheckboxElement,
   priorityForm,
+  resetStatsButton,
 } from './dom.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
@@ -174,9 +176,8 @@ const initCapacityHandlers = () => {
     void refreshDevices();
   });
   /* 2-step confirmation logic */
-  const resetStatsBtn = document.getElementById('reset-stats-button') as HTMLButtonElement;
-  if (resetStatsBtn) {
-    resetStatsBtn.addEventListener('click', () => handleResetStats(resetStatsBtn));
+  if (resetStatsButton) {
+    resetStatsButton.addEventListener('click', () => handleResetStats(resetStatsButton));
   } else {
     void logSettingsWarn('Reset stats button not found', undefined, 'initCapacityHandlers');
   }
@@ -197,7 +198,7 @@ const initDebugLoggingCheckboxes = () => {
 const initAdvancedHandlers = () => {
   const saveDebugTopics = async () => {
     try {
-      const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('[data-debug-topic]'));
+      const inputs = Array.from(document.querySelectorAll<MdCheckboxElement>('[data-debug-topic]'));
       const selected = inputs
         .filter((input) => input.checked && typeof input.dataset.debugTopic === 'string')
         .map((input) => input.dataset.debugTopic as string);
@@ -213,7 +214,7 @@ const initAdvancedHandlers = () => {
     }
   };
 
-  document.querySelectorAll<HTMLInputElement>('[data-debug-topic]').forEach((input) => {
+  document.querySelectorAll<MdCheckboxElement>('[data-debug-topic]').forEach((input) => {
     input.addEventListener('change', () => {
       void saveDebugTopics();
     });

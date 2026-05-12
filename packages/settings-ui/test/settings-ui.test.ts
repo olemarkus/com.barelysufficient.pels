@@ -456,8 +456,12 @@ describe('Settings UI', () => {
       const input = await page.$('#capacity-limit');
       expect(input).toBeTruthy();
 
-      await input?.click({ clickCount: 3 });
-      await input?.type('15.5');
+      await page.$eval('#capacity-limit', (el) => {
+        const field = el as HTMLElement & { value: string };
+        field.value = '15.5';
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+      });
 
       const value = await page.$eval('#capacity-limit', (el) => (el as HTMLInputElement).value);
       expect(value).toBe('15.5');
@@ -870,16 +874,17 @@ describe('Settings UI', () => {
           const renderSegmented = () => {
             if (!overshootSegmented || !overshootSelect) return;
             overshootSegmented.replaceChildren();
-            Array.from(overshootSelect.options).forEach((option) => {
-              const btn = document.createElement('button');
-              btn.type = 'button';
+            Array.from(overshootSelect.querySelectorAll('md-select-option')).forEach((option) => {
+              const optionValue = option.getAttribute('value') || '';
+              const btn = document.createElement('md-text-button');
+              btn.setAttribute('type', 'button');
               btn.className = 'segmented__option';
-              btn.dataset.value = option.value;
-              btn.textContent = option.textContent || option.value;
-              btn.setAttribute('aria-checked', option.value === overshootSelect.value ? 'true' : 'false');
+              btn.dataset.value = optionValue;
+              btn.textContent = option.textContent || optionValue;
+              btn.setAttribute('aria-checked', optionValue === overshootSelect.value ? 'true' : 'false');
               btn.addEventListener('click', () => {
-                if (overshootSelect.value === option.value) return;
-                overshootSelect.value = option.value;
+                if (overshootSelect.value === optionValue) return;
+                overshootSelect.value = optionValue;
                 overshootSelect.dispatchEvent(new Event('change', { bubbles: true }));
                 renderSegmented();
               });
@@ -1021,7 +1026,7 @@ describe('Settings UI', () => {
       const initiallyHidden = await page.$eval('#device-detail-overshoot-temp-row', (el) => (el as HTMLElement).hidden);
       expect(initiallyHidden).toBe(true);
 
-      await page.click('#device-detail-overshoot-segmented button[data-value="set_temperature"]');
+      await page.click('#device-detail-overshoot-segmented .segmented__option[data-value="set_temperature"]');
 
       const hiddenAfterSelect = await page.$eval('#device-detail-overshoot-temp-row', (el) => (el as HTMLElement).hidden);
       expect(hiddenAfterSelect).toBe(false);

@@ -15,7 +15,15 @@ html {
 }
 
 /* Override Homey's font */
-body, input {
+body,
+md-filled-text-field,
+md-filled-select,
+md-checkbox,
+md-switch,
+md-filled-button,
+md-outlined-button,
+md-text-button,
+md-icon-button {
   font-family: var(--font-sans) !important;
 }
 
@@ -25,37 +33,6 @@ label {
   color: inherit !important;
   font-size: inherit !important;
   font-weight: inherit !important;
-}
-
-/* Override Homey's input styling */
-input[type="text"],
-input[type="number"],
-input[type="password"],
-input[type="email"] {
-  border: 1px solid var(--panel-border) !important;
-  border-bottom: 1px solid var(--panel-border) !important;
-  background: var(--color-surface-4) !important;
-  color: var(--text) !important;
-  padding: 12px 14px !important;
-  border-radius: var(--radius-md) !important;
-}
-
-/* Override Homey's checkbox styling */
-input[type="checkbox"] {
-  appearance: auto !important;
-  -webkit-mask-image: none !important;
-  mask-image: none !important;
-  background-color: transparent !important;
-  width: auto !important;
-  height: auto !important;
-  accent-color: var(--accent);
-}
-
-/* Override Homey's button styling */
-button {
-  background-color: var(--color-surface-4) !important;
-  color: var(--text) !important;
-  border-radius: var(--radius-md) !important;
 }
 
 /* Override Homey's fieldset styling */
@@ -93,6 +70,30 @@ hr {
   /* Panel variants for different contexts */
   --panel-bg: var(--color-surface-1);
   --panel-hover: var(--color-surface-3);
+
+  /* Material Web component theme bridge. */
+  --md-ref-typeface-plain: var(--font-sans);
+  --md-ref-typeface-brand: var(--font-sans);
+  --md-sys-color-primary: var(--accent);
+  --md-sys-color-on-primary: var(--color-semantic-text-inverse);
+  --md-sys-color-primary-container: var(--color-surface-4);
+  --md-sys-color-on-primary-container: var(--text);
+  --md-sys-color-secondary-container: var(--color-surface-3);
+  --md-sys-color-on-secondary-container: var(--text);
+  --md-sys-color-surface: var(--color-surface-2);
+  --md-sys-color-surface-container: var(--color-surface-2);
+  --md-sys-color-surface-container-highest: var(--color-surface-4);
+  --md-sys-color-on-surface: var(--text);
+  --md-sys-color-on-surface-variant: var(--text-secondary);
+  --md-sys-color-outline: var(--panel-border);
+  --md-sys-color-outline-variant: var(--panel-border);
+  --md-sys-color-error: var(--danger);
+  --md-sys-shape-corner-extra-small: var(--radius-md);
+  --md-sys-shape-corner-small: var(--radius-md);
+  --md-sys-typescale-body-large-font: var(--font-sans);
+  --md-sys-typescale-body-large-size: var(--font-size-md);
+  --md-sys-typescale-body-large-line-height: var(--font-line-height-normal);
+  --md-sys-typescale-label-large-font: var(--font-sans);
 }
 
 * {
@@ -115,6 +116,42 @@ body {
   /* Override Homey's body padding (we handle our own layout spacing). */
   padding: 0 !important;
   overflow-x: hidden;
+}
+
+md-filled-text-field,
+md-filled-select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  --md-filled-text-field-container-color: var(--color-surface-4);
+  --md-filled-text-field-container-shape: var(--radius-md);
+  --md-filled-text-field-input-text-color: var(--text);
+  --md-filled-text-field-input-text-placeholder-color: var(--muted);
+  --md-filled-text-field-focus-active-indicator-color: var(--accent);
+  --md-filled-text-field-hover-active-indicator-color: var(--text-secondary);
+  --md-filled-text-field-active-indicator-color: var(--panel-border);
+  --md-filled-select-text-field-container-color: var(--color-surface-4);
+  --md-filled-select-text-field-container-shape: var(--radius-md);
+  --md-filled-select-text-field-input-text-color: var(--text);
+  --md-filled-select-text-field-focus-active-indicator-color: var(--accent);
+  --md-filled-select-text-field-hover-active-indicator-color: var(--text-secondary);
+  --md-filled-select-text-field-active-indicator-color: var(--panel-border);
+}
+
+md-checkbox {
+  flex: 0 0 auto;
+  --md-checkbox-selected-container-color: var(--accent);
+  --md-checkbox-selected-checkmark-color: var(--color-semantic-text-inverse);
+  --md-checkbox-selected-focus-icon-color: var(--accent);
+  --md-checkbox-selected-hover-icon-color: var(--accent);
+  --md-checkbox-unselected-icon-color: var(--text-secondary);
+}
+
+md-filled-button,
+md-outlined-button,
+md-text-button {
+  min-height: 40px;
+  font-weight: var(--font-weight-bold);
 }
 
 .screen {
@@ -637,17 +674,16 @@ body[data-ui-variant="redesign"] #overview-panel {
 .settings-nav-list {
   display: grid;
   gap: var(--spacing-2);
+  padding: 0;
+  background: transparent;
 }
 
 .settings-nav-card {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--spacing-6);
-  gap: var(--spacing-4);
-  align-items: center;
+  display: flex;
   width: 100%;
   min-height: var(--spacing-8);
-  padding: var(--spacing-3) var(--spacing-4);
+  padding: 0;
   border: 1px solid var(--panel-border) !important;
   border-radius: var(--radius-md) !important;
   background: var(--color-surface-2) !important;
@@ -655,6 +691,18 @@ body[data-ui-variant="redesign"] #overview-panel {
   text-align: left;
   cursor: pointer;
   overflow: hidden;
+  --md-list-item-label-text-color: var(--text);
+  --md-list-item-label-text-font: var(--font-sans);
+  --md-list-item-label-text-weight: var(--font-weight-bold);
+  --md-list-item-label-text-size: var(--font-size-md);
+  --md-list-item-supporting-text-color: var(--muted);
+  --md-list-item-supporting-text-font: var(--font-sans);
+  --md-list-item-supporting-text-size: var(--font-size-sm);
+  --md-list-item-two-line-container-height: var(--spacing-8);
+  --md-list-item-leading-space: var(--spacing-4);
+  --md-list-item-trailing-space: var(--spacing-3);
+  --md-list-item-top-space: var(--spacing-3);
+  --md-list-item-bottom-space: var(--spacing-3);
 }
 
 .settings-nav-card:hover,
@@ -760,26 +808,6 @@ body[data-ui-variant="redesign"] .settings-back-button--redesign-only {
   font-weight: var(--font-weight-semibold);
 }
 
-input[type="number"],
-input[type="time"] {
-  width: 100%;
-  max-width: 12ch;
-  border-radius: var(--radius-md);
-  padding: var(--spacing-3) var(--spacing-3);
-  border: 1px solid var(--color-border-strong);
-  background: var(--color-surface-4);
-  color: var(--text);
-  font-size: var(--font-size-md);
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-input[type="number"]:focus,
-input[type="time"]:focus {
-  outline: 2px solid var(--color-focus-ring);
-  border-color: transparent;
-}
-
 .field__hint {
   margin: 0;
   color: var(--muted);
@@ -804,26 +832,9 @@ input[type="time"]:focus {
   gap: 2px;
 }
 
-.checkbox-field input[type="checkbox"] {
+.checkbox-field md-checkbox {
   width: 18px;
   height: 18px;
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-
-.checkbox-field-inline {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-
-.checkbox-field-inline input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -834,16 +845,15 @@ input[type="time"]:focus {
   cursor: pointer;
 }
 
-.toggle-label input[type="checkbox"],
-.checkbox-icon input[type="checkbox"] {
+.toggle-label md-checkbox,
+.checkbox-icon md-checkbox {
   width: 18px;
   height: 18px;
-  accent-color: var(--accent);
   cursor: pointer;
 }
 
 .checkbox-icon.is-disabled,
-.checkbox-icon input[type="checkbox"]:disabled {
+.checkbox-icon md-checkbox:disabled {
   cursor: not-allowed;
   opacity: var(--opacity-disabled);
 }
@@ -910,11 +920,6 @@ input[type="time"]:focus {
 
 .btn:not(:disabled):hover {
   transform: translateY(-1px);
-}
-
-input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
 }
 
 .pill {
@@ -1256,8 +1261,8 @@ input:focus-visible {
   gap: var(--spacing-2);
 }
 
-/* Deadline-plan tab strip (Current plan / History). Native role=tab buttons styled as
-   an Android-style segmented control. Uses design tokens only. */
+/* Deadline-plan tab strip (Current plan / History). Material text buttons styled
+   as an Android-style segmented control. Uses design tokens only. */
 .plan-tabs {
   display: flex;
   gap: var(--spacing-1);
@@ -2580,13 +2585,8 @@ input:focus-visible {
   margin: 0;
 }
 
-.inline-actions input {
+.inline-actions md-filled-text-field {
   min-width: 140px;
-  border-radius: var(--radius-md);
-  padding: var(--spacing-2) var(--spacing-2);
-  border: 1px solid var(--color-border-strong);
-  background: var(--color-surface-4);
-  color: var(--text);
 }
 
 .list__footer {
@@ -2831,61 +2831,6 @@ body.overview-redesign-enabled :where(#overview-panel) :where(.plan-label) {
 
 #tibber-token-field a:hover {
   text-decoration: underline;
-}
-
-select {
-  width: 100%;
-  border-radius: var(--radius-md);
-  padding: var(--spacing-3) var(--spacing-3);
-  border: 1px solid var(--color-border-strong);
-  background: var(--color-surface-4);
-  color: var(--text);
-  font-size: var(--font-size-md);
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a8b8c8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right var(--spacing-3) center;
-  cursor: pointer;
-}
-
-select:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-select:focus {
-  outline: 2px solid var(--color-focus-ring);
-  border-color: transparent;
-}
-
-input[type="password"] {
-  width: 100%;
-  border-radius: var(--radius-md);
-  padding: var(--spacing-3) var(--spacing-3);
-  border: 1px solid var(--panel-border);
-  background: var(--color-surface-3);
-  color: var(--text);
-  font-size: var(--font-size-md);
-}
-
-input[type="password"]:focus {
-  outline: 2px solid var(--color-focus-ring);
-  border-color: transparent;
-}
-
-input[type="text"] {
-  width: 100%;
-  border-radius: var(--radius-md);
-  padding: var(--spacing-3) var(--spacing-3);
-  border: 1px solid var(--color-border-strong);
-  background: var(--color-surface-4);
-  color: var(--text);
-  font-size: var(--font-size-md);
-}
-
-input[type="text"]:focus {
-  outline: 2px solid var(--color-focus-ring);
-  border-color: transparent;
 }
 
 .section-header {
@@ -3472,7 +3417,7 @@ body[data-ui-variant="redesign"] #dry-run-banner .banner__icon {
   font-weight: var(--font-weight-semibold);
 }
 
-.detail-mode-row input[type="number"] {
+.detail-mode-row md-filled-text-field {
   width: 80px;
   justify-self: end;
   text-align: center;
@@ -3572,7 +3517,7 @@ body[data-ui-variant="redesign"] #dry-run-banner .banner__icon {
   padding: var(--spacing-2) 0;
 }
 
-.detail-stepped-row > input {
+.detail-stepped-row > md-filled-text-field {
   width: 100%;
   max-width: none;
 }
@@ -3621,9 +3566,9 @@ body[data-ui-variant="redesign"] #dry-run-banner .banner__icon {
     justify-self: start;
   }
 
-  .device-detail-row > input,
-  .device-detail-row > select,
-  .detail-mode-row input[type="number"] {
+  .device-detail-row > md-filled-text-field,
+  .device-detail-row > md-filled-select,
+  .detail-mode-row md-filled-text-field {
     justify-self: stretch;
     width: 100%;
     max-width: none;
@@ -3883,7 +3828,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   }
 
   #budget-redesign-adjust-view .budget-setting-row--editable > .budget-redesign-field,
-  #budget-redesign-adjust-view .budget-setting-row--editable > select.budget-redesign-field--select,
   #budget-redesign-adjust-view .budget-setting-row--editable > md-switch {
     justify-self: start;
     width: 100%;
@@ -3897,49 +3841,11 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .budget-redesign-field--kwh {
-  --kwh-suffix-padding: 44px;
-  position: relative;
-  display: inline-flex;
-  align-items: center;
   width: 140px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-strong);
-  background: var(--color-surface-4);
-}
-
-.budget-redesign-field--kwh input[type="number"] {
-  border: none !important;
-  background: transparent !important;
-  padding: var(--spacing-3) var(--kwh-suffix-padding) var(--spacing-3) var(--spacing-3) !important;
-  min-width: 0;
-  width: 100%;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.budget-redesign-field--kwh input[type="number"]:focus {
-  outline: none;
-}
-
-.budget-redesign-field--kwh:focus-within {
-  outline: 2px solid var(--color-focus-ring);
-  border-color: transparent;
-}
-
-.budget-redesign-field__suffix {
-  position: absolute;
-  right: var(--spacing-3);
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--muted);
-  font-size: var(--font-size-sm);
-  pointer-events: none;
 }
 
 .budget-redesign-field--select {
   width: 160px;
-  padding-top: var(--spacing-3);
-  padding-bottom: var(--spacing-3);
 }
 
 .budget-redesign-comparison .budget-comparison__current {
@@ -4798,6 +4704,21 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
   overflow-wrap: anywhere;
 }
 
+.price-aware-grid__tone-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+}
+
+.price-aware-grid__tone-dot--cheap {
+  background: var(--pels-status-good);
+}
+
+.price-aware-grid__tone-dot--expensive {
+  background: var(--pels-status-critical);
+}
+
 .price-aware-grid__cell {
   display: flex;
   flex-direction: column;
@@ -4815,7 +4736,7 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
   letter-spacing: 0.04em;
 }
 
-@media (max-width: 380px) {
+@media (max-width: 560px) {
   .price-aware-grid__head {
     display: none;
   }
@@ -4823,7 +4744,7 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
   .price-aware-grid__row {
     grid-template-columns: 1fr 1fr;
     gap: var(--spacing-2);
-    padding-top: var(--spacing-3);
+    padding: var(--spacing-3) 0 var(--spacing-1);
     border-top: 1px solid var(--panel-border);
   }
 
@@ -4834,6 +4755,8 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
 
   .price-aware-grid__name {
     grid-column: 1 / -1;
+    font-size: var(--font-size-base);
+    line-height: var(--font-line-height-tight);
   }
 
   .price-aware-grid__cell-label {
@@ -4929,6 +4852,7 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
 .value-adjuster--down .value-adjuster__value {
   color: var(--color-semantic-warning, var(--pels-text-primary));
 }
+
 /* Deadlines list (top-level Deadlines tab) */
 .deadline-list {
   display: grid;
@@ -5314,3 +5238,488 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
 #device-detail-control-model-row md-filled-select {
   width: 100%;
 }
+
+/* stylelint-disable no-descending-specificity */
+/* Settings redesign detail overrides */
+body[data-ui-variant="redesign"] .card.panel:where(
+  #devices-panel,
+  #modes-panel,
+  #limits-panel,
+  #simulation-panel,
+  #advanced-panel,
+  #electricity-prices-panel,
+  #price-aware-devices-panel
+) {
+  display: grid;
+  gap: var(--spacing-3);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+body[data-ui-variant="redesign"] .card.panel:where(
+  #devices-panel,
+  #modes-panel,
+  #limits-panel,
+  #simulation-panel,
+  #advanced-panel,
+  #electricity-prices-panel,
+  #price-aware-devices-panel
+).hidden {
+  display: none;
+}
+
+:where(body[data-ui-variant="redesign"]) :where(
+  #devices-panel,
+  #modes-panel,
+  #limits-panel,
+  #simulation-panel,
+  #advanced-panel
+) > .card__header,
+:where(body[data-ui-variant="redesign"]) :where(
+  #electricity-prices-surface,
+  #price-aware-devices-surface
+) > .card__header,
+:where(body[data-ui-variant="redesign"]) #device-detail-panel .device-detail-heading {
+  margin: 0;
+  padding: var(--spacing-4);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--pels-surface-container-low);
+  box-shadow: var(--shadow-sm);
+}
+
+:where(body[data-ui-variant="redesign"]) :where(
+  #devices-panel,
+  #modes-panel,
+  #limits-panel,
+  #simulation-panel,
+  #advanced-panel,
+  #electricity-prices-panel,
+  #price-aware-devices-panel,
+  #device-detail-panel
+) .settings-back-button {
+  justify-self: start;
+  min-height: 36px;
+  padding: var(--spacing-2) var(--spacing-3) !important;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md) !important;
+  background: var(--color-surface-2) !important;
+  color: var(--text) !important;
+  box-shadow: none;
+}
+
+:where(body[data-ui-variant="redesign"]) :where(
+  #electricity-prices-surface,
+  #price-aware-devices-surface
+) {
+  display: grid;
+  gap: var(--spacing-3);
+  min-width: 0;
+}
+
+:where(body[data-ui-variant="redesign"]) :where(
+  #limits-panel,
+  #simulation-panel,
+  #electricity-prices-panel,
+  #price-aware-devices-panel
+) .settings-form-card,
+:where(body[data-ui-variant="redesign"]) #modes-panel > .form-grid,
+:where(body[data-ui-variant="redesign"]) :where(#modes-panel) :where(#priority-form) {
+  display: grid;
+  gap: var(--spacing-3);
+  margin: 0;
+  padding: var(--spacing-4);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  box-shadow: var(--shadow-sm);
+}
+
+:where(body[data-ui-variant="redesign"]) :where(
+  #advanced-panel,
+  #device-detail-panel
+) .settings-collapse,
+:where(body[data-ui-variant="redesign"]) #device-detail-panel .detail-diagnostics-card {
+  margin: 0;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+:where(body[data-ui-variant="redesign"]) :where(
+  #advanced-panel,
+  #device-detail-panel
+) .settings-collapse summary,
+:where(body[data-ui-variant="redesign"]) :where(
+  #advanced-panel,
+  #device-detail-panel
+) .settings-collapse-header {
+  min-height: 58px;
+  padding: var(--spacing-3) var(--spacing-4);
+  background: var(--color-surface-2);
+}
+
+:where(body[data-ui-variant="redesign"]) :where(
+  #advanced-panel,
+  #device-detail-panel
+) .settings-collapse .collapse-content {
+  display: grid;
+  gap: var(--spacing-3);
+  padding: var(--spacing-4);
+  background: var(--pels-surface-container-low);
+}
+
+:where(body[data-ui-variant="redesign"]) :where(
+  #limits-panel,
+  #simulation-panel,
+  #advanced-panel,
+  #electricity-prices-panel,
+  #price-aware-devices-panel,
+  #device-detail-panel
+) :where(.field, .form-grid, .detail-setup-list, .detail-stepped-boost) {
+  gap: var(--spacing-3);
+  margin-bottom: 0;
+}
+
+:where(body[data-ui-variant="redesign"]) :where(
+  #limits-panel,
+  #simulation-panel,
+  #advanced-panel,
+  #electricity-prices-panel,
+  #price-aware-devices-panel,
+  #device-detail-panel
+) .field__label {
+  color: var(--pels-text-settings-label-color);
+  font-weight: var(--pels-text-settings-label-font-weight);
+  line-height: var(--font-line-height-tight);
+}
+
+:where(body[data-ui-variant="redesign"]) :where(
+  #limits-panel,
+  #simulation-panel,
+  #advanced-panel,
+  #electricity-prices-panel,
+  #price-aware-devices-panel,
+  #device-detail-panel
+) :where(.field__hint, .muted) {
+  color: var(--pels-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: var(--font-line-height-normal);
+}
+
+:where(body[data-ui-variant="redesign"]) :where(
+  #limits-panel,
+  #modes-panel,
+  #advanced-panel,
+  #electricity-prices-panel,
+  #price-aware-devices-panel,
+  #device-detail-panel
+) :where(md-filled-text-field, md-filled-select) {
+  min-height: 44px;
+}
+
+:where(body[data-ui-variant="redesign"]) :where(
+  #limits-panel,
+  #simulation-panel,
+  #advanced-panel,
+  #price-aware-devices-panel,
+  #device-detail-panel
+) .checkbox-field {
+  align-items: flex-start;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-3);
+}
+
+:where(body[data-ui-variant="redesign"]) :where(
+  #limits-panel,
+  #simulation-panel,
+  #advanced-panel,
+  #price-aware-devices-panel,
+  #device-detail-panel
+) .checkbox-field md-checkbox {
+  flex: 0 0 auto;
+  width: 20px !important;
+  height: 20px !important;
+  margin-top: 2px;
+}
+
+:where(body[data-ui-variant="redesign"]) :where(
+  #devices-panel,
+  #modes-panel
+) .device-list {
+  display: grid;
+  gap: var(--spacing-2);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+:where(body[data-ui-variant="redesign"]) #devices-panel .device-table-header {
+  display: none;
+}
+
+:where(body[data-ui-variant="redesign"]) #devices-panel .device-group-header {
+  margin: var(--spacing-2) 0 0;
+  padding: var(--spacing-2) var(--spacing-1) 0;
+  border-bottom: 0;
+  color: var(--pels-text-muted);
+  letter-spacing: 0.04em;
+}
+
+:where(body[data-ui-variant="redesign"]) #devices-panel .control-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(3, minmax(44px, 64px));
+  gap: var(--spacing-2);
+  align-items: center;
+  min-width: 0;
+  padding: var(--spacing-3);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  box-shadow: var(--shadow-sm);
+}
+
+:where(body[data-ui-variant="redesign"]) #devices-panel .control-row:last-child {
+  border-bottom: 1px solid var(--panel-border);
+}
+
+:where(body[data-ui-variant="redesign"]) #devices-panel .device-row__name {
+  margin: 0;
+  min-width: 0;
+}
+
+:where(body[data-ui-variant="redesign"]) #devices-panel .device-row__title {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+:where(body[data-ui-variant="redesign"]) #devices-panel .device-row__inputs .checkbox-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-3);
+}
+
+:where(body[data-ui-variant="redesign"]) #devices-panel .device-row.clickable:hover {
+  background: var(--color-surface-2);
+}
+
+:where(body[data-ui-variant="redesign"]) #devices-panel .list__footer {
+  align-items: flex-start;
+  margin-top: var(--spacing-1);
+  padding: var(--spacing-3);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+}
+
+:where(body[data-ui-variant="redesign"]) #modes-panel .inline-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(3, auto);
+  gap: var(--spacing-2);
+  margin-top: var(--spacing-1);
+}
+
+:where(body[data-ui-variant="redesign"]) #modes-panel .inline-actions md-filled-text-field {
+  min-width: 0;
+}
+
+:where(body[data-ui-variant="redesign"]) #modes-panel .mode-row {
+  grid-template-columns: auto minmax(0, 1fr) minmax(80px, 96px) auto;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  box-shadow: var(--shadow-sm);
+}
+
+:where(body[data-ui-variant="redesign"]) #modes-panel .mode-row:last-child {
+  border-bottom: 1px solid var(--panel-border);
+}
+
+:where(body[data-ui-variant="redesign"]) #modes-panel .drag-handle {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: var(--radius-md);
+}
+
+:where(body[data-ui-variant="redesign"]) #modes-panel .mode-target-input {
+  width: 100%;
+}
+
+:where(body[data-ui-variant="redesign"]) #modes-panel .priority-badge {
+  margin-left: 0;
+}
+
+:where(body[data-ui-variant="redesign"]) #device-detail-panel.slide-panel {
+  max-width: 480px;
+  background: var(--bg);
+}
+
+:where(body[data-ui-variant="redesign"]) #device-detail-panel .slide-panel__header {
+  padding: var(--spacing-3);
+  background: var(--color-surface-2);
+}
+
+:where(body[data-ui-variant="redesign"]) #device-detail-panel .slide-panel__content {
+  display: grid;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+}
+
+:where(body[data-ui-variant="redesign"]) #device-detail-panel .detail-section {
+  margin: 0;
+}
+
+:where(body[data-ui-variant="redesign"]) #device-detail-panel .segmented {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  width: 100%;
+  border-color: var(--panel-border);
+  background: var(--color-surface-4);
+}
+
+:where(body[data-ui-variant="redesign"]) #device-detail-panel .segmented__option {
+  min-height: 40px;
+}
+
+:where(body[data-ui-variant="redesign"]) #device-detail-panel :where(
+  .detail-mode-row,
+  .detail-stepped-row
+) {
+  padding: var(--spacing-3);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-3);
+}
+
+:where(body[data-ui-variant="redesign"]) #device-detail-panel .detail-mode-list,
+:where(body[data-ui-variant="redesign"]) #device-detail-panel .detail-stepped-list {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+:where(body[data-ui-variant="redesign"]) #device-detail-panel .detail-stepped-actions,
+:where(body[data-ui-variant="redesign"]) #device-detail-panel .detail-actions,
+:where(body[data-ui-variant="redesign"]) #device-detail-panel .form__actions {
+  gap: var(--spacing-2);
+}
+
+:where(body[data-ui-variant="redesign"]) #price-aware-devices-panel .value-adjuster {
+  background: var(--color-surface-3);
+}
+
+@media (max-width: 430px) {
+  :where(body[data-ui-variant="redesign"]) :where(
+    #devices-panel,
+    #modes-panel,
+    #limits-panel,
+    #simulation-panel,
+    #advanced-panel,
+    #electricity-prices-panel,
+    #price-aware-devices-panel
+  ) {
+    gap: var(--spacing-2);
+  }
+
+  :where(body[data-ui-variant="redesign"]) #devices-panel .control-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  :where(body[data-ui-variant="redesign"]) #devices-panel .control-row .device-row__name {
+    grid-column: 1 / -1;
+  }
+
+  :where(body[data-ui-variant="redesign"]) #devices-panel .device-row__inputs .checkbox-icon {
+    flex-direction: column;
+    gap: var(--spacing-1);
+    min-height: 52px;
+    padding: var(--spacing-2) var(--spacing-1);
+    color: var(--pels-text-muted);
+    font-size: var(--font-size-xs);
+    line-height: 1;
+  }
+
+  :where(body[data-ui-variant="redesign"]) #devices-panel .device-row__inputs .checkbox-icon:nth-child(1)::after {
+    content: "Managed";
+  }
+
+  :where(body[data-ui-variant="redesign"]) #devices-panel .device-row__inputs .checkbox-icon:nth-child(2)::after {
+    content: "Limit";
+  }
+
+  :where(body[data-ui-variant="redesign"]) #devices-panel .device-row__inputs .checkbox-icon:nth-child(3)::after {
+    content: "Price";
+  }
+
+  :where(body[data-ui-variant="redesign"]) #modes-panel .inline-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  :where(body[data-ui-variant="redesign"]) #modes-panel .inline-actions md-filled-text-field {
+    grid-column: 1 / -1;
+  }
+
+  :where(body[data-ui-variant="redesign"]) #modes-panel .inline-actions .btn {
+    width: 100%;
+    min-width: 0;
+    padding-inline: var(--spacing-2);
+  }
+
+  :where(body[data-ui-variant="redesign"]) #modes-panel .mode-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: var(--spacing-2);
+  }
+
+  :where(body[data-ui-variant="redesign"]) #modes-panel .mode-row .device-row__name {
+    white-space: normal;
+  }
+
+  :where(body[data-ui-variant="redesign"]) #modes-panel :where(
+    .mode-target-input,
+    .mode-target-placeholder
+  ) {
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  :where(body[data-ui-variant="redesign"]) #device-detail-panel.slide-panel {
+    max-width: 100%;
+  }
+
+  :where(body[data-ui-variant="redesign"]) :where(
+    #advanced-panel,
+    #device-detail-panel
+  ) .settings-collapse summary,
+  :where(body[data-ui-variant="redesign"]) :where(
+    #advanced-panel,
+    #device-detail-panel
+  ) .settings-collapse-header {
+    align-items: flex-start;
+  }
+
+  :where(body[data-ui-variant="redesign"]) #device-detail-panel :where(
+    .detail-deltas,
+    .target-power-grid,
+    .detail-deadline-form .form-grid
+  ) {
+    grid-template-columns: 1fr;
+  }
+}
+/* stylelint-enable no-descending-specificity */

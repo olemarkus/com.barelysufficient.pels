@@ -43,6 +43,9 @@ const setMdValue = async (page: Page, selector: string, value: string) => {
   }, value);
 };
 
+const readMdValue = (page: Page, selector: string) => page.locator(selector)
+  .evaluate((el) => (el as HTMLElement & { value: string }).value);
+
 // md-switch exposes `selected` instead of `checked`; flip it the same way.
 const setMdSwitch = async (page: Page, selector: string, selected: boolean) => {
   await page.locator(selector).evaluate((el, v) => {
@@ -139,22 +142,21 @@ test.describe('Device detail panel', () => {
     await openDeviceDetail(page, 'dev_heatpump');
 
     const segmented = page.locator('#device-detail-overshoot-segmented');
-    const hiddenSelect = page.locator('#device-detail-overshoot');
     const tempRow = page.locator('#device-detail-overshoot-temp-row');
     const stepRow = page.locator('#device-detail-overshoot-step-row');
 
     await expect(segmented).toBeVisible();
-    const options = segmented.locator('button.segmented__option:not([hidden])');
+    const options = segmented.locator('.segmented__option:not([hidden])');
     await expect(options.first()).toBeVisible();
     expect(await options.count()).toBeGreaterThanOrEqual(2);
 
     await options.filter({ hasText: 'Turn off' }).click();
-    await expect(hiddenSelect).toHaveValue('turn_off');
+    await expect.poll(() => readMdValue(page, '#device-detail-overshoot')).toBe('turn_off');
     await expect(tempRow).toBeHidden();
     await expect(stepRow).toBeHidden();
 
     await options.filter({ hasText: 'Set to temperature' }).click();
-    await expect(hiddenSelect).toHaveValue('set_temperature');
+    await expect.poll(() => readMdValue(page, '#device-detail-overshoot')).toBe('set_temperature');
     await expect(tempRow).toBeVisible();
     await setMdValue(page, '#device-detail-overshoot-temp', '12');
 
