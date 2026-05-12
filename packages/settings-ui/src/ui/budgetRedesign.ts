@@ -10,6 +10,7 @@ import {
   renderBudgetOverview,
   type BudgetAdjustData,
   type BudgetChartData,
+  type BudgetConfidenceData,
   type BudgetDeltaTone,
   type BudgetHeroData,
   type BudgetLocalView,
@@ -371,6 +372,60 @@ const resolveChartData = (
   };
 };
 
+type ConfidenceBand = NonNullable<BudgetConfidenceData>['label'];
+
+const CONFIDENCE_HIGH_THRESHOLD = 0.75;
+const CONFIDENCE_MEDIUM_THRESHOLD = 0.45;
+
+const confidenceBand = (value: number): ConfidenceBand => {
+  if (value >= CONFIDENCE_HIGH_THRESHOLD) return 'High';
+  if (value >= CONFIDENCE_MEDIUM_THRESHOLD) return 'Medium';
+  return 'Low';
+};
+
+const formatConfidencePercent = (value: number): string => `${Math.floor(value * 100)}%`;
+
+const resolveConfidenceDebugRows = (
+  confidenceDebug: DailyBudgetDayPayload['state']['confidenceDebug'],
+): Array<{ label: string; value: string }> => {
+  if (!confidenceDebug) return [];
+  return [
+    {
+      label: 'Usage days',
+      value: String(Math.max(0, Math.round(confidenceDebug.confidenceValidActualDays))),
+    },
+    {
+      label: 'Planned days',
+      value: String(Math.max(0, Math.round(confidenceDebug.confidenceValidPlannedDays))),
+    },
+    {
+      label: 'Usage regularity',
+      value: confidenceBand(confidenceDebug.confidenceRegularity),
+    },
+    {
+      label: 'Managed-device fit',
+      value: confidenceBand(confidenceDebug.confidenceAdaptability),
+    },
+  ];
+};
+
+export const resolveConfidenceData = (
+  payload: DailyBudgetDayPayload | null,
+  view: BudgetDayView,
+  status: BudgetStatus,
+): BudgetConfidenceData => {
+  if (!payload || view !== 'today') return null;
+  if (payload.budget.enabled !== true || status === 'noPlan') return null;
+  const confidence = payload.state.confidence;
+  if (!Number.isFinite(confidence)) return null;
+  const boundedConfidence = Math.max(0, Math.min(1, confidence));
+  return {
+    label: confidenceBand(boundedConfidence),
+    percent: formatConfidencePercent(boundedConfidence),
+    details: resolveConfidenceDebugRows(payload.state.confidenceDebug),
+  };
+};
+
 const resolveComparisonChartMax = (day: DailyBudgetDayPayload | null): number => {
   if (!day) return 0;
   const planned = day.buckets.plannedKWh ?? [];
@@ -460,6 +515,7 @@ const buildProps = (): BudgetOverviewProps => {
     view,
     hero: resolveHeroData(viewPayload, view, costDisplay, status),
     chart: resolveChartData(viewPayload, view, currentChartMode, status, costDisplay),
+    confidence: resolveConfidenceData(viewPayload, view, status),
     adjust,
     onLocalViewChange: (v) => {
       if (currentBudgetLocalView === 'adjust' && v !== 'adjust') discardBudgetAdjust();
