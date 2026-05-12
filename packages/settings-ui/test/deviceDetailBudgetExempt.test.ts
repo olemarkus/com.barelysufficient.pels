@@ -13,13 +13,13 @@ const buildDom = () => {
         <div id="device-detail-title"></div>
         <button id="device-detail-close"></button>
         <div id="device-detail-native-wiring-row" hidden></div>
-        <input id="device-detail-native-wiring" type="checkbox">
+        <md-switch id="device-detail-native-wiring"></md-switch>
         <div id="device-detail-native-wiring-confirm-row" hidden></div>
-        <input id="device-detail-native-wiring-confirm" type="checkbox">
-        <input id="device-detail-managed" type="checkbox">
-        <input id="device-detail-controllable" type="checkbox">
-        <input id="device-detail-price-opt" type="checkbox">
-        <input id="device-detail-budget-exempt" type="checkbox">
+        <md-switch id="device-detail-native-wiring-confirm"></md-switch>
+        <md-switch id="device-detail-managed"></md-switch>
+        <md-switch id="device-detail-controllable"></md-switch>
+        <md-switch id="device-detail-price-opt"></md-switch>
+        <md-switch id="device-detail-budget-exempt"></md-switch>
         <div id="device-detail-control-model-row">
           <select id="device-detail-control-model"></select>
         </div>
@@ -114,11 +114,11 @@ describe('device detail budget exemption', () => {
     openDeviceDetail('heater-1');
     await flushPromises();
 
-    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as HTMLInputElement | null;
+    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     expect(budgetExemptInput).not.toBeNull();
-    expect(budgetExemptInput?.checked).toBe(true);
+    expect(budgetExemptInput?.selected).toBe(true);
 
-    budgetExemptInput!.checked = false;
+    budgetExemptInput!.selected = false;
     budgetExemptInput!.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
 
@@ -168,8 +168,8 @@ describe('device detail budget exemption', () => {
     openDeviceDetail('heater-1');
     await flushPromises();
 
-    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as HTMLInputElement | null;
-    expect(budgetExemptInput?.checked).toBe(true);
+    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
+    expect(budgetExemptInput?.selected).toBe(true);
   });
 
   it('merges budget exempt updates with the latest persisted map', async () => {
@@ -214,10 +214,10 @@ describe('device detail budget exemption', () => {
     openDeviceDetail('heater-1');
     await flushPromises();
 
-    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as HTMLInputElement | null;
-    expect(budgetExemptInput?.checked).toBe(false);
+    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
+    expect(budgetExemptInput?.selected).toBe(false);
 
-    budgetExemptInput!.checked = true;
+    budgetExemptInput!.selected = true;
     budgetExemptInput!.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
 
@@ -273,8 +273,8 @@ describe('device detail budget exemption', () => {
     openDeviceDetail('heater-1');
     await flushPromises();
 
-    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as HTMLInputElement | null;
-    budgetExemptInput!.checked = true;
+    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
+    budgetExemptInput!.selected = true;
     budgetExemptInput!.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
 
@@ -327,14 +327,14 @@ describe('device detail budget exemption', () => {
     openDeviceDetail('heater-1');
     await flushPromises();
 
-    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as HTMLInputElement | null;
-    expect(budgetExemptInput?.checked).toBe(true);
+    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
+    expect(budgetExemptInput?.selected).toBe(true);
 
-    budgetExemptInput!.checked = false;
+    budgetExemptInput!.selected = false;
     budgetExemptInput!.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
 
-    expect(budgetExemptInput?.checked).toBe(false);
+    expect(budgetExemptInput?.selected).toBe(false);
     expect(state.latestDevices[0].budgetExempt).toBe(false);
   });
 
@@ -383,8 +383,8 @@ describe('device detail budget exemption', () => {
     openDeviceDetail('heater-1');
     await flushPromises();
 
-    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as HTMLInputElement | null;
-    budgetExemptInput!.checked = true;
+    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
+    budgetExemptInput!.selected = true;
     budgetExemptInput!.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
 

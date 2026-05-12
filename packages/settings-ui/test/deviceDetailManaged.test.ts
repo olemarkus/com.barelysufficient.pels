@@ -28,18 +28,24 @@ const buildDom = () => {
         <div id="device-detail-title"></div>
         <button id="device-detail-close"></button>
         <div id="device-detail-native-wiring-row" hidden></div>
-        <input id="device-detail-native-wiring" type="checkbox">
+        <md-switch id="device-detail-native-wiring"></md-switch>
         <div id="device-detail-native-wiring-confirm-row" hidden></div>
-        <input id="device-detail-native-wiring-confirm" type="checkbox">
-        <input id="device-detail-managed" type="checkbox">
-        <input id="device-detail-controllable" type="checkbox">
-        <input id="device-detail-price-opt" type="checkbox">
-        <input id="device-detail-budget-exempt" type="checkbox">
+        <md-switch id="device-detail-native-wiring-confirm"></md-switch>
+        <md-switch id="device-detail-managed"></md-switch>
+        <md-switch id="device-detail-controllable"></md-switch>
+        <md-switch id="device-detail-price-opt"></md-switch>
+        <md-switch id="device-detail-budget-exempt"></md-switch>
         <div id="device-detail-soc-row" hidden></div>
         <div id="device-detail-soc-updated"></div>
         <div id="device-detail-soc-value"></div>
         <div id="device-detail-control-model-row">
-          <select id="device-detail-control-model"></select>
+          <md-filled-select id="device-detail-control-model">
+            <md-select-option value="default"><div slot="headline">Default</div></md-select-option>
+            <md-select-option value="stepped_load"><div slot="headline">Stepped load</div></md-select-option>
+            <md-select-option value="continuous"><div slot="headline">Continuous</div></md-select-option>
+            <md-select-option value="ev_charger_1_phase"><div slot="headline">EV 1-phase</div></md-select-option>
+            <md-select-option value="ev_charger_3_phase"><div slot="headline">EV 3-phase</div></md-select-option>
+          </md-filled-select>
         </div>
         <div id="device-detail-modes"></div>
         <div id="device-detail-delta-section"></div>
@@ -57,12 +63,12 @@ const buildDom = () => {
         <section id="device-detail-stepped-section" hidden>
           <div id="device-detail-stepped-steps" class="detail-stepped-list"></div>
           <div id="device-detail-temperature-boost" class="detail-control-list detail-stepped-boost" hidden>
-            <input id="device-detail-temperature-boost-enabled" type="checkbox">
+            <md-switch id="device-detail-temperature-boost-enabled"></md-switch>
             <div id="device-detail-temperature-boost-below-row"></div>
             <input id="device-detail-temperature-boost-below" type="number">
           </div>
           <div id="device-detail-ev-boost" class="detail-control-list detail-stepped-boost" hidden>
-            <input id="device-detail-ev-boost-enabled" type="checkbox">
+            <md-switch id="device-detail-ev-boost-enabled"></md-switch>
             <div id="device-detail-ev-boost-below-row"></div>
             <input id="device-detail-ev-boost-below" type="number">
             <div id="device-detail-ev-boost-status"></div>
@@ -161,23 +167,23 @@ describe('device detail managed state saves', () => {
     openDeviceDetail('heater-1');
     await flushPromises();
 
-    const managedInput = document.querySelector('#device-detail-managed') as HTMLInputElement | null;
+    const managedInput = document.querySelector('#device-detail-managed') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     const detailTitle = document.querySelector('#device-detail-title') as HTMLElement | null;
 
-    managedInput!.checked = false;
+    managedInput!.selected = false;
     managedInput!.dispatchEvent(new Event('change', { bubbles: true }));
 
     openDeviceDetail('heater-2');
     await flushPromises();
     expect(detailTitle?.textContent).toBe('Bedroom Heater');
-    expect(managedInput?.checked).toBe(false);
+    expect(managedInput?.selected).toBe(false);
 
     resolveFresh!({ 'heater-1': true, 'heater-2': false });
     await flushPromises();
     await flushPromises();
 
     expect(detailTitle?.textContent).toBe('Bedroom Heater');
-    expect(managedInput?.checked).toBe(false);
+    expect(managedInput?.selected).toBe(false);
   });
 
   it('requires transient confirmation before enabling built-in device control', async () => {
@@ -236,25 +242,25 @@ describe('device detail managed state saves', () => {
     openDeviceDetail('zaptec-1');
     await flushPromises();
 
-    const nativeWiringInput = document.querySelector('#device-detail-native-wiring') as HTMLInputElement | null;
+    const nativeWiringInput = document.querySelector('#device-detail-native-wiring') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     const confirmRow = document.querySelector('#device-detail-native-wiring-confirm-row') as HTMLElement | null;
-    const confirmInput = document.querySelector('#device-detail-native-wiring-confirm') as HTMLInputElement | null;
-    const managedInput = document.querySelector('#device-detail-managed') as HTMLInputElement | null;
+    const confirmInput = document.querySelector('#device-detail-native-wiring-confirm') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
+    const managedInput = document.querySelector('#device-detail-managed') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     const controlModelRow = document.querySelector('#device-detail-control-model-row') as HTMLElement | null;
 
-    expect(nativeWiringInput?.checked).toBe(false);
+    expect(nativeWiringInput?.selected).toBe(false);
     expect(confirmRow?.hidden).toBe(true);
     expect(managedInput?.disabled).toBe(true);
     expect(controlModelRow?.hidden).toBe(true);
 
-    nativeWiringInput!.checked = true;
+    nativeWiringInput!.selected = true;
     nativeWiringInput!.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
 
     expect(confirmRow?.hidden).toBe(false);
     expect(homey.set).not.toHaveBeenCalledWith('native_ev_wiring_devices', expect.anything(), expect.any(Function));
 
-    confirmInput!.checked = true;
+    confirmInput!.selected = true;
     confirmInput!.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
 
@@ -266,7 +272,7 @@ describe('device detail managed state saves', () => {
     expect(state.nativeWiringMap['zaptec-1']).toBe(true);
     expect(managedInput?.disabled).toBe(false);
 
-    nativeWiringInput!.checked = false;
+    nativeWiringInput!.selected = false;
     nativeWiringInput!.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
 
@@ -348,15 +354,15 @@ describe('device detail managed state saves', () => {
     openDeviceDetail('zaptec-1');
     await flushPromises();
 
-    const nativeWiringInput = document.querySelector('#device-detail-native-wiring') as HTMLInputElement | null;
+    const nativeWiringInput = document.querySelector('#device-detail-native-wiring') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     const confirmRow = document.querySelector('#device-detail-native-wiring-confirm-row') as HTMLElement | null;
 
-    nativeWiringInput!.checked = true;
+    nativeWiringInput!.selected = true;
     nativeWiringInput!.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
     expect(confirmRow?.hidden).toBe(false);
 
-    nativeWiringInput!.checked = false;
+    nativeWiringInput!.selected = false;
     nativeWiringInput!.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
 
@@ -472,14 +478,14 @@ describe('device detail managed state saves', () => {
     openDeviceDetail('heater-1');
     await flushPromises();
 
-    const controllableInput = document.querySelector('#device-detail-controllable') as HTMLInputElement | null;
-    expect(controllableInput?.checked).toBe(true);
+    const controllableInput = document.querySelector('#device-detail-controllable') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
+    expect(controllableInput?.selected).toBe(true);
 
-    controllableInput!.checked = false;
+    controllableInput!.selected = false;
     controllableInput!.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
 
-    expect(controllableInput?.checked).toBe(true);
+    expect(controllableInput?.selected).toBe(true);
     expect(state.controllableMap['heater-1']).toBe(true);
   });
 
@@ -527,14 +533,14 @@ describe('device detail managed state saves', () => {
     openDeviceDetail('heater-1');
     await flushPromises();
 
-    const managedInput = document.querySelector('#device-detail-managed') as HTMLInputElement | null;
-    expect(managedInput?.checked).toBe(true);
+    const managedInput = document.querySelector('#device-detail-managed') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
+    expect(managedInput?.selected).toBe(true);
 
-    managedInput!.checked = false;
+    managedInput!.selected = false;
     managedInput!.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
 
-    expect(managedInput?.checked).toBe(true);
+    expect(managedInput?.selected).toBe(true);
     expect(state.managedMap['heater-1']).toBe(true);
   });
 
@@ -591,7 +597,7 @@ describe('device detail managed state saves', () => {
     openDeviceDetail('heater-1');
     await flushPromises();
 
-    const cheapDeltaInput = document.querySelector('#device-detail-cheap-delta') as HTMLInputElement | null;
+    const cheapDeltaInput = document.querySelector('#device-detail-cheap-delta') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     const deltaSection = document.querySelector('#device-detail-delta-section') as HTMLElement | null;
 
     cheapDeltaInput!.value = '6';
@@ -626,10 +632,10 @@ describe('device detail managed state saves', () => {
       logSettingsError: vi.fn().mockResolvedValue(undefined),
     }));
 
-    const controlModelInput = document.querySelector('#device-detail-control-model') as HTMLSelectElement | null;
+    const controlModelInput = document.querySelector('#device-detail-control-model') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     controlModelInput!.innerHTML = `
-      <option value="temperature_target">Temperature target</option>
-      <option value="stepped_load">Stepped load</option>
+      <md-select-option value="default"><div slot="headline">Default</div></md-select-option>
+      <md-select-option value="stepped_load"><div slot="headline">Stepped load</div></md-select-option>
     `;
 
     const homeyModule = await import('../src/ui/homey.ts');
@@ -696,10 +702,10 @@ describe('device detail managed state saves', () => {
       logSettingsError: vi.fn().mockResolvedValue(undefined),
     }));
 
-    const controlModelInput = document.querySelector('#device-detail-control-model') as HTMLSelectElement | null;
+    const controlModelInput = document.querySelector('#device-detail-control-model') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     controlModelInput!.innerHTML = `
-      <option value="temperature_target">Temperature target</option>
-      <option value="stepped_load">Stepped load</option>
+      <md-select-option value="default"><div slot="headline">Default</div></md-select-option>
+      <md-select-option value="stepped_load"><div slot="headline">Stepped load</div></md-select-option>
     `;
 
     const homeyModule = await import('../src/ui/homey.ts');
@@ -755,7 +761,7 @@ describe('device detail managed state saves', () => {
     await flushPromises();
 
     const detailTitle = document.querySelector('#device-detail-title') as HTMLElement | null;
-    const cheapDeltaInput = document.querySelector('#device-detail-cheap-delta') as HTMLInputElement | null;
+    const cheapDeltaInput = document.querySelector('#device-detail-cheap-delta') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     cheapDeltaInput!.value = '99';
 
     rejectFirstProfileSave!();
@@ -784,10 +790,10 @@ describe('device detail managed state saves', () => {
       logSettingsError: vi.fn().mockResolvedValue(undefined),
     }));
 
-    const controlModelInput = document.querySelector('#device-detail-control-model') as HTMLSelectElement | null;
+    const controlModelInput = document.querySelector('#device-detail-control-model') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     controlModelInput!.innerHTML = `
-      <option value="temperature_target">Temperature target</option>
-      <option value="stepped_load">Stepped load</option>
+      <md-select-option value="default"><div slot="headline">Default</div></md-select-option>
+      <md-select-option value="stepped_load"><div slot="headline">Stepped load</div></md-select-option>
     `;
 
     const homeyModule = await import('../src/ui/homey.ts');
@@ -934,7 +940,7 @@ describe('device detail managed state saves', () => {
     openDeviceDetail('zaptec-1');
     await flushPromises();
 
-    const controlModelInput = document.querySelector('#device-detail-control-model') as HTMLSelectElement | null;
+    const controlModelInput = document.querySelector('#device-detail-control-model') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     const shedActionInput = document.querySelector('#device-detail-overshoot') as HTMLSelectElement | null;
     const steppedSection = document.querySelector('#device-detail-stepped-section') as HTMLElement | null;
     const steppedSteps = document.querySelector('#device-detail-stepped-steps') as HTMLElement | null;
@@ -943,7 +949,7 @@ describe('device detail managed state saves', () => {
     const steppedReset = document.querySelector('#device-detail-stepped-reset') as HTMLButtonElement | null;
     const evBoost = document.querySelector('#device-detail-ev-boost') as HTMLElement | null;
     const temperatureBoost = document.querySelector('#device-detail-temperature-boost') as HTMLElement | null;
-    expect(Array.from(controlModelInput?.options ?? []).map((option) => option.value)).toEqual([
+    expect(Array.from(controlModelInput?.querySelectorAll('md-select-option:not([hidden])') ?? []).map((option) => option.getAttribute('value') ?? '')).toEqual([
       'default',
       'ev_charger_1_phase',
       'ev_charger_3_phase',
@@ -1045,7 +1051,7 @@ describe('device detail managed state saves', () => {
     openDeviceDetail('charger-1');
     await flushPromises();
 
-    const controlModelInput = document.querySelector('#device-detail-control-model') as HTMLSelectElement | null;
+    const controlModelInput = document.querySelector('#device-detail-control-model') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     const steppedSection = document.querySelector('#device-detail-stepped-section') as HTMLElement | null;
     const steppedSteps = document.querySelector('#device-detail-stepped-steps') as HTMLElement | null;
     const steppedAdd = document.querySelector('#device-detail-stepped-add-step') as HTMLButtonElement | null;
@@ -1095,10 +1101,10 @@ describe('device detail managed state saves', () => {
       logSettingsError: vi.fn().mockResolvedValue(undefined),
     }));
 
-    const controlModelInput = document.querySelector('#device-detail-control-model') as HTMLSelectElement | null;
+    const controlModelInput = document.querySelector('#device-detail-control-model') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     controlModelInput!.innerHTML = `
-      <option value="temperature_target">Temperature target</option>
-      <option value="stepped_load">Stepped load</option>
+      <md-select-option value="default"><div slot="headline">Default</div></md-select-option>
+      <md-select-option value="stepped_load"><div slot="headline">Stepped load</div></md-select-option>
     `;
 
     const homeyModule = await import('../src/ui/homey.ts');
@@ -1232,15 +1238,15 @@ describe('device detail managed state saves', () => {
     await flushPromises();
 
     const boostSection = document.querySelector('#device-detail-temperature-boost') as HTMLElement | null;
-    const boostEnabled = document.querySelector('#device-detail-temperature-boost-enabled') as HTMLInputElement | null;
-    const boostBelow = document.querySelector('#device-detail-temperature-boost-below') as HTMLInputElement | null;
+    const boostEnabled = document.querySelector('#device-detail-temperature-boost-enabled') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
+    const boostBelow = document.querySelector('#device-detail-temperature-boost-below') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
 
     expect(boostSection?.hidden).toBe(false);
-    expect(boostEnabled?.checked).toBe(false);
+    expect(boostEnabled?.selected).toBe(false);
     expect(boostBelow?.value).toBe('55');
 
     boostBelow!.value = '54';
-    boostEnabled!.checked = true;
+    boostEnabled!.selected = true;
     boostEnabled!.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
     await flushPromises();
@@ -1387,16 +1393,16 @@ describe('device detail managed state saves', () => {
 
     const boostSection = document.querySelector('#device-detail-ev-boost') as HTMLElement | null;
     const temperatureBoost = document.querySelector('#device-detail-temperature-boost') as HTMLElement | null;
-    const boostEnabled = document.querySelector('#device-detail-ev-boost-enabled') as HTMLInputElement | null;
-    const boostBelow = document.querySelector('#device-detail-ev-boost-below') as HTMLInputElement | null;
+    const boostEnabled = document.querySelector('#device-detail-ev-boost-enabled') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
+    const boostBelow = document.querySelector('#device-detail-ev-boost-below') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
 
     expect(boostSection?.hidden).toBe(false);
     expect(temperatureBoost?.hidden).toBe(true);
-    expect(boostEnabled?.checked).toBe(false);
+    expect(boostEnabled?.selected).toBe(false);
     expect(boostBelow?.value).toBe('40');
 
     boostBelow!.value = '35';
-    boostEnabled!.checked = true;
+    boostEnabled!.selected = true;
     boostEnabled!.dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
     await flushPromises();

@@ -13,12 +13,12 @@ const buildDom = () => {
     <div id="device-detail-title"></div>
     <button id="device-detail-close"></button>
     <div id="device-detail-native-wiring-row" hidden></div>
-    <input id="device-detail-native-wiring" type="checkbox">
+    <md-switch id="device-detail-native-wiring"></md-switch>
     <div id="device-detail-native-wiring-confirm-row" hidden></div>
-    <input id="device-detail-native-wiring-confirm" type="checkbox">
-    <input id="device-detail-managed" type="checkbox">
-    <input id="device-detail-controllable" type="checkbox">
-    <input id="device-detail-price-opt" type="checkbox">
+    <md-switch id="device-detail-native-wiring-confirm"></md-switch>
+    <md-switch id="device-detail-managed"></md-switch>
+    <md-switch id="device-detail-controllable"></md-switch>
+    <md-switch id="device-detail-price-opt"></md-switch>
     <div id="device-detail-modes"></div>
     <div id="device-detail-delta-section"></div>
     <input id="device-detail-cheap-delta">
@@ -251,9 +251,9 @@ describe('device detail diagnostics', () => {
     await vi.advanceTimersByTimeAsync(0);
     await flushPromises();
 
-    const input = document.querySelector('.detail-mode-temp') as HTMLInputElement | null;
+    const input = document.querySelector('.detail-mode-temp') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
     expect(input).not.toBeNull();
-    expect(input?.step).toBe('5');
+    expect(input?.getAttribute('step')).toBe('5');
     expect(input?.value).toBe('65');
 
     if (!input) throw new Error('Expected detail mode input');
