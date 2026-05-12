@@ -18,7 +18,6 @@ export const DEVICE_CONTROL_PROFILES = 'device_control_profiles';
 export const DEVICE_TARGET_POWER_CONFIGS = 'device_target_power_configs';
 export const DEVICE_COMMUNICATION_MODELS = 'device_communication_models';
 export const DEVICE_LAST_CONTROLLED_MS = 'device_last_controlled_ms';
-export const EXPERIMENTAL_EV_SUPPORT_ENABLED = 'experimental_ev_support_enabled';
 export const OVERSHOOT_BEHAVIORS = 'overshoot_behaviors';
 export const PRICE_OPTIMIZATION_SETTINGS = 'price_optimization_settings';
 export const PRICE_OPTIMIZATION_ENABLED = 'price_optimization_enabled';

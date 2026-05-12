@@ -11,7 +11,7 @@ export type SettingsUiVariant = 'legacy' | 'redesign';
 export const OVERVIEW_REDESIGN_PREFERENCE_STORAGE_KEY = 'pels.settingsUi.overviewRedesignEnabled';
 const OVERVIEW_REDESIGN_ENABLED_CLASS = 'overview-redesign-enabled';
 
-let currentSettingsUiVariant: SettingsUiVariant = 'legacy';
+let currentSettingsUiVariant: SettingsUiVariant = 'redesign';
 let fallbackOverviewRedesignPreference: boolean | null = null;
 
 const getStorage = (): Storage | null => {
@@ -63,7 +63,7 @@ export const getStoredOverviewRedesignPreference = (): boolean => {
   return fallbackOverviewRedesignPreference === true;
 };
 
-export const resolveOverviewRedesignPreference = (): boolean => getStoredOverviewRedesignPreference();
+export const resolveOverviewRedesignPreference = (): boolean => true;
 
 export const setStoredOverviewRedesignPreference = (enabled: boolean): void => {
   fallbackOverviewRedesignPreference = enabled;
@@ -76,14 +76,12 @@ export const setStoredOverviewRedesignPreference = (enabled: boolean): void => {
 };
 
 export const resolveSettingsUiVariant = (
-  canToggleOverviewRedesign: boolean,
-  prefersOverviewRedesign = resolveOverviewRedesignPreference(),
-): SettingsUiVariant => (
-  canToggleOverviewRedesign && prefersOverviewRedesign ? 'redesign' : 'legacy'
-);
+  _canToggleOverviewRedesign: boolean,
+  _prefersOverviewRedesign = resolveOverviewRedesignPreference(),
+): SettingsUiVariant => 'redesign';
 
-export const applySettingsUiVariant = (variant: SettingsUiVariant): void => {
-  currentSettingsUiVariant = variant;
+export const applySettingsUiVariant = (_variant: SettingsUiVariant): void => {
+  currentSettingsUiVariant = 'redesign';
   syncSettingsUiVariantVisibility();
 };
 

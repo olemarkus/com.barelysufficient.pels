@@ -141,7 +141,6 @@ const installDailyBudgetStub = async (page: Page, payload: DailyBudgetUiPayload)
   const today = payload.days[payload.todayKey];
   await page.addInitScript((params) => {
     (window as StubbedHomeyWindow).__PELS_HOMEY_STUB__ = {
-      overviewRedesignEnabled: false,
       settings: params.settings,
       dailyBudgetPayload: params.payload,
     };
@@ -172,7 +171,6 @@ type BucketGeometry = {
 
 type StubbedHomeyWindow = Window & {
   __PELS_HOMEY_STUB__?: {
-    overviewRedesignEnabled?: boolean;
     settings: Record<string, unknown>;
     dailyBudgetPayload: DailyBudgetUiPayload;
   };
@@ -187,9 +185,9 @@ type StubbedHomeyWindow = Window & {
 
 const getPlannedBucketGeometry = async (page: Page, bucketIndex: number): Promise<BucketGeometry | null> => (
   page.evaluate((targetBucketIndex) => {
-    const barsEl = document.querySelector('#daily-budget-bars');
-    const svg = barsEl?.querySelector('svg');
-    if (!(barsEl instanceof HTMLElement) || !(svg instanceof SVGSVGElement)) {
+    const chartEl = document.querySelector('#budget-redesign-chart');
+    const svg = chartEl?.querySelector('svg');
+    if (!(chartEl instanceof HTMLElement) || !(svg instanceof SVGSVGElement)) {
       return null;
     }
 
@@ -202,7 +200,7 @@ const getPlannedBucketGeometry = async (page: Page, bucketIndex: number): Promis
       return color;
     };
 
-    const styles = getComputedStyle(barsEl);
+    const styles = getComputedStyle(chartEl);
     const uncontrolledColor = normalizeColor(
       styles.getPropertyValue('--day-view-color-background-usage').trim(),
       '#3AA9FF',
@@ -287,7 +285,9 @@ test.describe('Daily budget rollover chart', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.getByRole('tab', { name: 'Budget' }).click();
     await expect(page.locator('#budget-panel')).toBeVisible();
-    await expect(page.locator('#daily-budget-bars svg')).toBeVisible();
+    await page.getByRole('button', { name: 'Hourly plan' }).click();
+    await expect(page.locator('#budget-redesign-chart-title')).toHaveText('Hourly plan');
+    await expect(page.locator('#budget-redesign-chart svg')).toBeVisible();
 
     const beforeGeometry = await getPlannedBucketGeometry(page, 0);
     expect(beforeGeometry).not.toBeNull();

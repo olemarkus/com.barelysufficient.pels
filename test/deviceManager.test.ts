@@ -653,7 +653,7 @@ describe('DeviceManager', () => {
             expect(snapshot[0].canSetControl).toBeUndefined();
         });
 
-        it('skips EV chargers when experimental support is disabled', async () => {
+        it('includes EV chargers by default', async () => {
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
                 ev1: {
@@ -671,12 +671,53 @@ describe('DeviceManager', () => {
 
             await deviceManager.refreshSnapshot();
 
-            expect(deviceManager.getSnapshot()).toHaveLength(0);
+            const snapshot = deviceManager.getSnapshot();
+            expect(snapshot).toHaveLength(1);
+            expect(snapshot[0]).toEqual(expect.objectContaining({
+                deviceClass: 'evcharger',
+                deviceType: 'onoff',
+                controlCapabilityId: 'evcharger_charging',
+                currentOn: true,
+                canSetControl: true,
+            }));
         });
 
-        it('includes official EV chargers when experimental support is enabled', async () => {
+        it('skips devices with malformed class values without crashing snapshot refresh', async () => {
+            await deviceManager.init();
+            mockApiGet.mockResolvedValue({
+                badClass: {
+                    id: 'badClass',
+                    name: 'Malformed Class Device',
+                    class: { value: 'heater' },
+                    capabilities: ['onoff'],
+                    capabilitiesObj: {
+                        onoff: { value: true, id: 'onoff', setable: true },
+                    },
+                },
+                heater1: {
+                    id: 'heater1',
+                    name: 'Valid Heater',
+                    class: 'heater',
+                    capabilities: ['onoff', 'measure_power'],
+                    capabilitiesObj: {
+                        onoff: { value: true, id: 'onoff', setable: true },
+                        measure_power: { value: 750, id: 'measure_power' },
+                    },
+                },
+            });
+
+            await expect(deviceManager.refreshSnapshot()).resolves.toBeUndefined();
+
+            const snapshot = deviceManager.getSnapshot();
+            expect(snapshot).toHaveLength(1);
+            expect(snapshot[0]).toEqual(expect.objectContaining({
+                id: 'heater1',
+                deviceClass: 'heater',
+            }));
+        });
+
+        it('includes official EV chargers with charging-state control', async () => {
             const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                getExperimentalEvSupportEnabled: () => true,
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -710,7 +751,6 @@ describe('DeviceManager', () => {
 
         it('derives EV charging state when the boolean capability is missing', async () => {
             const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                getExperimentalEvSupportEnabled: () => true,
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -738,7 +778,6 @@ describe('DeviceManager', () => {
 
         it('uses EV charging state as settlement evidence before the raw charging boolean', async () => {
             const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                getExperimentalEvSupportEnabled: () => true,
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -780,7 +819,6 @@ describe('DeviceManager', () => {
 
         it('uses raw EV boolean settlement evidence only when state is absent and fresh', async () => {
             const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                getExperimentalEvSupportEnabled: () => true,
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -845,7 +883,6 @@ describe('DeviceManager', () => {
 
         it('excludes EV chargers without the official charging capability', async () => {
             const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                getExperimentalEvSupportEnabled: () => true,
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -869,7 +906,6 @@ describe('DeviceManager', () => {
 
         it('excludes EV chargers without the official charging state capability', async () => {
             const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                getExperimentalEvSupportEnabled: () => true,
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -1856,7 +1892,6 @@ describe('DeviceManager', () => {
 
         it('preserves EV state-derived binary evidence when snapshot refresh has no state timestamp', async () => {
             const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                getExperimentalEvSupportEnabled: () => true,
             });
             await evDeviceManager.init();
             const previousEvidence = {
@@ -1912,7 +1947,6 @@ describe('DeviceManager', () => {
 
         it('preserves newer EV state-derived binary evidence when snapshot refresh has stale state timestamp', async () => {
             const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                getExperimentalEvSupportEnabled: () => true,
             });
             await evDeviceManager.init();
             const newerEvidence = {
@@ -1969,7 +2003,6 @@ describe('DeviceManager', () => {
 
         it('keeps fresh EV state-derived binary evidence when previous snapshot had raw EV evidence', async () => {
             const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                getExperimentalEvSupportEnabled: () => true,
             });
             await evDeviceManager.init();
             const previousRawEvidence = {
@@ -2038,7 +2071,6 @@ describe('DeviceManager', () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                    getExperimentalEvSupportEnabled: () => true,
                 });
                 await evDeviceManager.init();
                 const previousRawEvidence = {
@@ -2107,7 +2139,6 @@ describe('DeviceManager', () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                    getExperimentalEvSupportEnabled: () => true,
                 });
                 await evDeviceManager.init();
                 const previousEvidence = {
@@ -2835,7 +2866,6 @@ describe('DeviceManager', () => {
                 vi.useFakeTimers();
                 try {
                     const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                        getExperimentalEvSupportEnabled: () => true,
                     });
                     await evDeviceManager.init();
                     mockApiGet.mockResolvedValue({
@@ -2883,7 +2913,6 @@ describe('DeviceManager', () => {
                 vi.useFakeTimers();
                 try {
                     const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                        getExperimentalEvSupportEnabled: () => true,
                     });
                     await evDeviceManager.init();
                     mockApiGet.mockResolvedValue({
@@ -3710,7 +3739,6 @@ describe('DeviceManager', () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                    getExperimentalEvSupportEnabled: () => true,
                 });
                 await evDeviceManager.init();
 
@@ -3762,7 +3790,6 @@ describe('DeviceManager', () => {
 
         it('keeps paused EV device.update payloads on even when evcharger_charging is false', async () => {
             const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                getExperimentalEvSupportEnabled: () => true,
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -3807,7 +3834,6 @@ describe('DeviceManager', () => {
 
         it('recomputes currentOn and reconciles when evcharger_charging_state changes from an on-state to plugged_out', async () => {
             const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                getExperimentalEvSupportEnabled: () => true,
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -3849,7 +3875,6 @@ describe('DeviceManager', () => {
 
         it('does not emit a binary reconcile when evcharger_charging_state stays within the same derived on-state', async () => {
             const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                getExperimentalEvSupportEnabled: () => true,
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -3885,7 +3910,6 @@ describe('DeviceManager', () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                    getExperimentalEvSupportEnabled: () => true,
                 });
                 await evDeviceManager.init();
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
@@ -3937,7 +3961,6 @@ describe('DeviceManager', () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                    getExperimentalEvSupportEnabled: () => true,
                 });
                 await evDeviceManager.init();
                 mockApiGet.mockResolvedValue({
@@ -3974,7 +3997,6 @@ describe('DeviceManager', () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                    getExperimentalEvSupportEnabled: () => true,
                 });
                 await evDeviceManager.init();
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
@@ -4074,7 +4096,6 @@ describe('DeviceManager', () => {
 
         it('treats a fresher charging-state start as on even when the stored EV boolean is stale false', async () => {
             const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                getExperimentalEvSupportEnabled: () => true,
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -4111,7 +4132,6 @@ describe('DeviceManager', () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                    getExperimentalEvSupportEnabled: () => true,
                 });
                 await evDeviceManager.init();
 
@@ -4185,7 +4205,6 @@ describe('DeviceManager', () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                    getExperimentalEvSupportEnabled: () => true,
                 });
                 await evDeviceManager.init();
 
@@ -4281,7 +4300,6 @@ describe('DeviceManager', () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                    getExperimentalEvSupportEnabled: () => true,
                 });
                 await evDeviceManager.init();
 
@@ -4387,7 +4405,6 @@ describe('DeviceManager', () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                    getExperimentalEvSupportEnabled: () => true,
                 });
                 await evDeviceManager.init();
 
@@ -4493,7 +4510,6 @@ describe('DeviceManager', () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                    getExperimentalEvSupportEnabled: () => true,
                 });
                 await evDeviceManager.init();
 
@@ -4583,7 +4599,6 @@ describe('DeviceManager', () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                    getExperimentalEvSupportEnabled: () => true,
                 });
                 await evDeviceManager.init();
 
@@ -4716,7 +4731,6 @@ describe('DeviceManager', () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                    getExperimentalEvSupportEnabled: () => true,
                 });
                 await evDeviceManager.init();
 
@@ -4841,7 +4855,6 @@ describe('DeviceManager', () => {
                     },
                 };
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                    getExperimentalEvSupportEnabled: () => true,
                     getFlowReportedCapabilities: () => flowReportedCapabilities,
                 });
                 await evDeviceManager.init();
@@ -4994,7 +5007,6 @@ describe('DeviceManager', () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                    getExperimentalEvSupportEnabled: () => true,
                     getNativeEvWiringEnabled: () => true,
                 });
                 await evDeviceManager.init();
@@ -5074,7 +5086,6 @@ describe('DeviceManager', () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                    getExperimentalEvSupportEnabled: () => true,
                 });
                 await evDeviceManager.init();
                 mockApiGet.mockResolvedValue({
@@ -5145,7 +5156,6 @@ describe('DeviceManager', () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                    getExperimentalEvSupportEnabled: () => true,
                 });
                 await evDeviceManager.init();
                 mockApiGet.mockResolvedValue({
@@ -5201,7 +5211,6 @@ describe('DeviceManager', () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                    getExperimentalEvSupportEnabled: () => true,
                 });
                 await evDeviceManager.init();
                 mockApiGet.mockResolvedValue({
@@ -5258,7 +5267,6 @@ describe('DeviceManager', () => {
 
         it('normalizes Zaptec proprietary capability updates at the observation boundary', async () => {
             const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
-                getExperimentalEvSupportEnabled: () => true,
                 getNativeEvWiringEnabled: () => true,
             });
             await evDeviceManager.init();

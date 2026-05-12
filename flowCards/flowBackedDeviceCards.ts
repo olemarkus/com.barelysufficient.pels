@@ -378,10 +378,7 @@ function isSupportedFlowBackedDevice(device: HomeyDeviceLike, target: FlowBacked
 }
 
 function resolveFlowBackedDeviceCategory(device: HomeyDeviceLike): FlowBackedCardTarget | 'unsupported' {
-  const deviceClassKey = resolveDeviceClassKey({
-    device,
-    experimentalEvSupportEnabled: true,
-  });
+  const deviceClassKey = resolveDeviceClassKey(device);
   if (!deviceClassKey) return 'unsupported';
   const capabilities = getCapabilities(device);
   const targetCapabilityIds = capabilities.filter((capabilityId) => capabilityId.startsWith('target_temperature'));

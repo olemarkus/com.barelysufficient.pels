@@ -21,7 +21,6 @@ import {
   DAILY_BUDGET_RESET,
   DEBUG_LOGGING_TOPICS,
   EV_BOOST_SETTINGS,
-  EXPERIMENTAL_EV_SUPPORT_ENABLED,
   FLOW_PRICES_TODAY,
   FLOW_PRICES_TOMORROW,
   HOMEY_PRICES_CURRENCY,
@@ -67,8 +66,6 @@ export type SettingsHandlerDeps = {
   updatePriceOptimizationEnabled: (logChange?: boolean) => void;
   updateOverheadToken: (value?: number) => Promise<void>;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
-  getExperimentalEvSupportEnabled: () => boolean;
-  disableManagedEvDevices: () => void;
   restartHomeyEnergyPoll?: () => void;
   log: (message: string) => void;
   errorLog: (message: string, error: unknown) => void;
@@ -87,7 +84,6 @@ const DEDUPED_CAPACITY_KEYS = [
   DEVICE_CONTROL_PROFILES,
   DEVICE_TARGET_POWER_CONFIGS,
   DEVICE_COMMUNICATION_MODELS,
-  EXPERIMENTAL_EV_SUPPORT_ENABLED,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_DRY_RUN,
@@ -318,14 +314,6 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
     [EV_BOOST_SETTINGS]: async () => {
       deps.loadCapacitySettings();
       await rebuildPlanFromSettings(deps, EV_BOOST_SETTINGS);
-    },
-    [EXPERIMENTAL_EV_SUPPORT_ENABLED]: async () => {
-      deps.loadCapacitySettings();
-      if (!deps.getExperimentalEvSupportEnabled()) {
-        deps.disableManagedEvDevices();
-      }
-      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after EV support change');
-      await rebuildPlanFromSettings(deps, EXPERIMENTAL_EV_SUPPORT_ENABLED);
     },
     power_tracker_state: async () => deps.loadPowerTracker(),
     [CAPACITY_LIMIT_KW]: async () => handleCapacityLimitChange(deps),

@@ -254,17 +254,22 @@ export class AppSnapshotHelpers {
     });
 
     const snapshot = this.deps.getLatestTargetSnapshot();
+    this.deps.disableUnsupportedDevices(snapshot);
+    const enforcedSnapshot = snapshot.map((device) => ({
+      ...device,
+      managed: this.deps.resolveManagedState(device.id),
+      controllable: this.deps.isCapacityControlEnabled(device.id),
+    }));
     this.logDeviceFreshnessTransitions(
-      snapshot.filter((device) => this.deps.resolveManagedState(device.id)),
+      enforcedSnapshot.filter((device) => device.managed !== false),
       'snapshot_refresh',
     );
     await this.deps.getPlanService()?.syncLivePlanState('snapshot_refresh');
     this.deps.getPlanService()?.syncHeadroomCardState({
-      devices: snapshot,
+      devices: enforcedSnapshot,
       cleanupMissingDevices: true,
       reconciliationContext: 'snapshot_refresh',
     });
-    this.deps.disableUnsupportedDevices(snapshot);
     this.deps.getStructuredLogger('devices')?.debug({
       event: 'target_devices_refreshed',
       reasonCode: options.targeted === true ? 'targeted_refresh' : 'snapshot_refresh',

@@ -7,7 +7,8 @@
     : {};
   const hasInitialDailyBudgetPayload = Object.prototype.hasOwnProperty.call(initialOverrides, 'dailyBudgetPayload');
 
-  // Default to redesign in the local preview unless the test stub explicitly disables it.
+  // Keep seeding the legacy browser preference for older fixtures; production code now
+  // keeps the redesigned UI on regardless of this value.
   if (initialOverrides.overviewRedesignEnabled !== false) {
     try { localStorage.setItem('pels.settingsUi.overviewRedesignEnabled', 'true'); } catch (e) { void e; }
   }
@@ -635,7 +636,6 @@
     capacity_limit_kw: 8,
     capacity_margin_kw: 0.4,
     capacity_dry_run: true,
-    experimental_ev_support_enabled: false,
     overview_redesign_enabled: false,
 
     // Status and heartbeat
@@ -724,36 +724,23 @@
     Object.assign(settings, initialSettings);
   }
 
-  const syncExperimentalEvSupportState = () => {
+  const ensureEvSupportState = () => {
     const hasEvDevice = settings.target_devices_snapshot.some((device) => device.id === evDeviceSnapshot.id);
     const hasEvPlanDevice = Array.isArray(settings.plan_snapshot?.devices)
       && settings.plan_snapshot.devices.some((device) => device.id === evPlanDevice.id);
 
-    if (settings.experimental_ev_support_enabled === true) {
-      if (!hasEvDevice) {
-        settings.target_devices_snapshot = [...settings.target_devices_snapshot, { ...evDeviceSnapshot }];
-      }
-      if (!hasEvPlanDevice) {
-        settings.plan_snapshot = {
-          ...settings.plan_snapshot,
-          devices: [...(settings.plan_snapshot?.devices ?? []), { ...evPlanDevice }],
-        };
-      }
-      return;
+    if (!hasEvDevice) {
+      settings.target_devices_snapshot = [...settings.target_devices_snapshot, { ...evDeviceSnapshot }];
     }
-
-    settings.target_devices_snapshot = settings.target_devices_snapshot.filter((device) => device.id !== evDeviceSnapshot.id);
-    settings.plan_snapshot = {
-      ...settings.plan_snapshot,
-      devices: (settings.plan_snapshot?.devices ?? []).filter((device) => device.id !== evPlanDevice.id),
-    };
-    settings.managed_devices = {
-      ...settings.managed_devices,
-      [evDeviceSnapshot.id]: false,
-    };
+    if (!hasEvPlanDevice) {
+      settings.plan_snapshot = {
+        ...settings.plan_snapshot,
+        devices: [...(settings.plan_snapshot?.devices ?? []), { ...evPlanDevice }],
+      };
+    }
   };
 
-  syncExperimentalEvSupportState();
+  ensureEvSupportState();
 
   const buildPowerPayload = () => ({
     tracker: settings.power_tracker_state ?? null,
@@ -887,7 +874,6 @@
     daily_budget_breakdown_enabled: settings.daily_budget_breakdown_enabled,
     debug_logging_topics: settings.debug_logging_topics,
     debug_logging_enabled: settings.debug_logging_enabled,
-    experimental_ev_support_enabled: settings.experimental_ev_support_enabled,
     overview_redesign_enabled: settings.overview_redesign_enabled,
     device_control_profiles: settings.device_control_profiles,
     deferred_objectives: settings.deferred_objectives,
@@ -999,18 +985,9 @@
 
     set: (key, value, cb) => {
       settings[key] = value;
-      const followUpKeys = [];
-      let emitDevicesUpdated = false;
-      if (key === 'experimental_ev_support_enabled') {
-        syncExperimentalEvSupportState();
-        followUpKeys.push('managed_devices');
-        emitDevicesUpdated = true;
-      }
       setTimeout(() => {
         cb(null);
         emit('settings.set', key);
-        followUpKeys.forEach((nextKey) => emit('settings.set', nextKey));
-        if (emitDevicesUpdated) emit('devices_updated', null);
       }, 5);
     },
 

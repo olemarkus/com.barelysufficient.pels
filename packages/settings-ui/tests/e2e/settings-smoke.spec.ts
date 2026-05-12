@@ -1,6 +1,6 @@
 import { expect, test, type Page } from './fixtures/test';
 
-const useLegacyUi = async (page: Page) => {
+const requestLegacyUi = async (page: Page) => {
   await page.addInitScript(() => {
     (window as any).__PELS_HOMEY_STUB__ = {
       overviewRedesignEnabled: false,
@@ -13,6 +13,10 @@ const openSettingsSection = async (page: Page, target: string) => {
   await expect(page.locator('#settings-panel')).toBeVisible();
   await page.locator(`[data-settings-target="${target}"]`).click();
 };
+
+const getRedesignDeviceRow = (page: Page, deviceId: string) => (
+  page.locator(`#device-card-list [data-device-id="${deviceId}"]`)
+);
 
 const expectModeOption = async (page: Page, mode: string) => {
   await expect(page.locator(`#active-mode-select md-select-option[value="${mode}"]`)).toHaveCount(1);
@@ -27,31 +31,19 @@ test.describe('Settings UI (smoke)', () => {
     await expect(page.locator('#overview-panel')).toContainText('0.26 / 4.5 kWh');
   });
 
-  test('keeps legacy top-level navigation available when the new UI is disabled', async ({ page }) => {
-    await useLegacyUi(page);
+  test('keeps the new UI on when the old local stub requests legacy navigation', async ({ page }) => {
+    await requestLegacyUi(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('tablist')).toBeVisible();
 
-    await page.getByRole('tab', { name: 'Devices' }).click();
+    await expect(page.getByRole('tab', { name: 'Settings' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Devices' })).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'Prices' })).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'Advanced' })).toHaveCount(0);
+
+    await openSettingsSection(page, 'devices');
     await expect(page.locator('#devices-panel')).toBeVisible();
-    await expect(page.locator('#device-list')).toContainText('Living Room Heat Pump');
-
-    await page.getByRole('tab', { name: 'Modes' }).click();
-    await expect(page.locator('#modes-panel')).toBeVisible();
-    await expectModeOption(page, 'Home');
-    await expectModeOption(page, 'Away');
-
-    await page.getByRole('tab', { name: 'Budget' }).click();
-    await expect(page.locator('#budget-panel')).toBeVisible();
-
-    await page.getByRole('tab', { name: 'Usage' }).click();
-    await expect(page.locator('#usage-panel')).toBeVisible();
-
-    await page.getByRole('tab', { name: 'Prices' }).click();
-    await expect(page.locator('#electricity-prices-panel')).toBeVisible();
-
-    await page.getByRole('tab', { name: 'Advanced' }).click();
-    await expect(page.locator('#advanced-panel')).toBeVisible();
+    await expect(page.locator('#device-card-list')).toContainText('Living Room Heat Pump');
   });
 
   test('routes Settings-owned areas through the new UI Settings shell', async ({ page }) => {
@@ -178,51 +170,13 @@ test.describe('Settings UI (smoke)', () => {
     await expect(page.locator('#limits-panel')).toBeVisible();
   });
 
-  test('advanced EV toggle controls EV visibility in the device list', async ({ page }) => {
+  test('EV chargers are visible in the device list', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
 
     await openSettingsSection(page, 'devices');
-    const genericEvDeviceRow = page.locator('[data-device-id="dev_evcharger"]');
-    await expect(genericEvDeviceRow).toHaveCount(0);
-
-    await openSettingsSection(page, 'advanced');
-    const evToggle = page.locator('#advanced-ev-support-enabled');
-    await expect(evToggle).toHaveJSProperty('checked', false);
-
-    await evToggle.click();
-    await expect(page.locator('#toast')).toContainText('EV charger support enabled.');
-    await expect(evToggle).toHaveJSProperty('checked', true);
-
-    await openSettingsSection(page, 'devices');
+    const genericEvDeviceRow = getRedesignDeviceRow(page, 'dev_evcharger');
     await expect(genericEvDeviceRow).toBeVisible();
-
-    await openSettingsSection(page, 'advanced');
-    await evToggle.click();
-    await expect(page.locator('#toast')).toContainText('Managed EV chargers were set to unmanaged.');
-    await expect(evToggle).toHaveJSProperty('checked', false);
-
-    await openSettingsSection(page, 'devices');
-    await expect(genericEvDeviceRow).toHaveCount(0);
-
-    const managedMap = await page.evaluate(async () => {
-      const homey = (window as unknown as {
-        Homey: {
-          get: (key: string, callback: (error: Error | null, value?: unknown) => void) => void;
-        };
-      }).Homey;
-      return await new Promise<Record<string, boolean>>((resolve, reject) => {
-        homey.get('managed_devices', (error: Error | null, value?: unknown) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-          resolve((value ?? {}) as Record<string, boolean>);
-        });
-      });
-    });
-
-    expect(managedMap.dev_evcharger).toBe(false);
   });
 
   test('keeps stubbed daily budget API payloads in sync with settings writes', async ({ page }) => {
