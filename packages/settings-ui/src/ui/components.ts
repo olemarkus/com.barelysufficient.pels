@@ -213,6 +213,56 @@ export const createCheckboxLabel = (options: CheckboxOptions): HTMLElement => {
     return label;
 };
 
+export type IconToggleOptions = CheckboxOptions & {
+    iconTemplateId: string;
+};
+
+/**
+ * Icon-based toggle: tap to switch a behaviour on/off. Renders an SVG icon
+ * cloned from a <template> in the DOM, with a pill background when active.
+ * Exposes WAI-ARIA `role="switch"` + `aria-checked` so screen readers
+ * announce the state transition.
+ */
+export const createIconToggle = (options: IconToggleOptions): HTMLElement => {
+    const { title, checked, disabled = false, onChange, iconTemplateId } = options;
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'pels-icon-toggle';
+    button.setAttribute('role', 'switch');
+    button.setAttribute('aria-checked', String(checked));
+    button.setAttribute('aria-label', title);
+    setTooltip(button, title);
+    if (checked) button.classList.add('is-on');
+    if (disabled) {
+        // aria-disabled, not native `disabled`: native suppresses click events
+        // entirely, which kills the tippy delegate that surfaces the tooltip
+        // explaining why the toggle is off.
+        button.classList.add('is-disabled');
+        button.setAttribute('aria-disabled', 'true');
+    }
+
+    const template = document.getElementById(iconTemplateId) as HTMLTemplateElement | null;
+    if (template) {
+        button.appendChild(template.content.cloneNode(true));
+    }
+
+    button.addEventListener('click', () => {
+        if (button.getAttribute('aria-disabled') === 'true') return;
+        const next = button.getAttribute('aria-checked') !== 'true';
+        button.setAttribute('aria-checked', String(next));
+        button.classList.toggle('is-on', next);
+        const result = onChange(next);
+        if (result instanceof Promise) {
+            result.catch((error) => {
+                void logSettingsError('Icon toggle action failed', error, 'components');
+            });
+        }
+    });
+
+    return button;
+};
+
 /**
  * Creates a number input with validation.
  */

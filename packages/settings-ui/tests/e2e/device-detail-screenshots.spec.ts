@@ -25,7 +25,7 @@ const openDeviceDetail = async (page: Page, deviceId: string) => {
   await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
   await page.getByRole('tab', { name: 'Settings' }).click();
   await page.locator('[data-settings-target="devices"]').click();
-  const row = page.locator(`#device-list .device-row[data-device-id="${deviceId}"]`);
+  const row = page.locator(`#devices-panel [data-device-id="${deviceId}"]`).first();
   await expect(row).toBeVisible();
   await row.locator('.device-row__name').click();
   await expect(page.locator('#device-detail-overlay')).toBeVisible();

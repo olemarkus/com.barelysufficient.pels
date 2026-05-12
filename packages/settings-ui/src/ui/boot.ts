@@ -243,6 +243,13 @@ const initAdvancedHandlers = () => {
       const enabled = advancedOverviewRedesignEnabledInput.checked;
       setStoredOverviewRedesignPreference(enabled);
       applySettingsUiVariant(enabled ? 'redesign' : 'legacy');
+      // Re-render device-dependent lists so the just-revealed shell's
+      // container is populated; otherwise users who viewed Devices before
+      // toggling see a blank panel until reload.
+      if (state.devicesLoaded) {
+        renderDevices(state.latestDevices);
+        renderPriorities(state.latestDevices);
+      }
       showTab('advanced');
       await refreshPlan();
       await showToast(

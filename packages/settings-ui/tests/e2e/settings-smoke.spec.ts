@@ -64,7 +64,7 @@ test.describe('Settings UI (smoke)', () => {
 
     await openSettingsSection(page, 'devices');
     await expect(page.locator('#devices-panel')).toBeVisible();
-    await expect(page.locator('#device-list')).toContainText('Living Room Heat Pump');
+    await expect(page.locator('#device-card-list')).toContainText('Living Room Heat Pump');
 
     await openSettingsSection(page, 'modes');
     await expect(page.locator('#modes-panel')).toBeVisible();

@@ -10,7 +10,7 @@ const openDevices = async (page: Page) => {
 
 const openDeviceDetail = async (page: Page, deviceId: string) => {
   await openDevices(page);
-  const row = page.locator(`#device-list .device-row[data-device-id="${deviceId}"]`);
+  const row = page.locator(`#devices-panel [data-device-id="${deviceId}"]`).first();
   await expect(row).toBeVisible();
   await row.locator('.device-row__name').click();
   await expect(page.locator('#device-detail-overlay')).toBeVisible();
