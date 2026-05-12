@@ -38,7 +38,7 @@ const openDeviceDetail = async (page: Page, deviceId: string) => {
   await page.locator('[data-settings-target="devices"]').click();
   const row = page.locator(`#devices-panel [data-device-id="${deviceId}"]`).first();
   await expect(row).toBeVisible();
-  await row.click();
+  await row.locator('.pels-device-card__detail-button').click();
   await expect(page.locator('#device-detail-overlay')).toBeVisible();
   await page.evaluate(() => {
     document.querySelector<HTMLElement>('#dry-run-banner')?.style.setProperty('display', 'none');
@@ -108,7 +108,7 @@ test('generic EV charger', async ({ page }) => {
   await page.locator('[data-settings-target="devices"]').click();
   const row = page.locator('#devices-panel [data-device-id="dev_evcharger"]').first();
   await expect(row).toBeVisible();
-  await row.click();
+  await row.locator('.pels-device-card__detail-button').click();
   await expect(page.locator('#device-detail-overlay')).toBeVisible();
   await page.evaluate(() => {
     document.querySelector<HTMLElement>('#dry-run-banner')?.style.setProperty('display', 'none');

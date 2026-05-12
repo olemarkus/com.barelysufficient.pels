@@ -8,7 +8,7 @@ import {
 } from '../../../contracts/src/settingsUiApi.ts';
 import { callApi, getApiReadModel, invalidateApiCache, primeApiCache } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
-import { resolveManagedState, state } from './state.ts';
+import { state } from './state.ts';
 import { renderPriorities } from './modes.ts';
 import { refreshPlan } from './plan.ts';
 import { renderPriceOptimization, savePriceOptimizationSettings } from './priceOptimization.ts';
@@ -18,13 +18,18 @@ import { logSettingsError, logSettingsWarn } from './logging.ts';
 import { debouncedSetSetting } from './utils.ts';
 import { setTooltip } from './tooltips.ts';
 import {
-  supportsManagedDevice,
-  supportsPowerDevice,
-  supportsTemperatureDevice,
-  isGrayStateDevice,
-  requiresNativeWiringForActivation,
-} from './deviceUtils.ts';
-import { resolveDeviceClassLabel } from './deviceClassLabels.ts';
+  getRowDisabledReasons,
+  type RowSwitchTitles,
+} from './deviceControlAvailability.ts';
+import {
+  appendDeviceStateChips,
+  appendRedesignDisabledReasons,
+  countManagedInGroup,
+  groupDevicesByClass,
+  resolveDeviceManageability,
+  resolveGroupManagedState,
+  type DeviceGroup,
+} from './deviceListPresentation.ts';
 
 export const getTargetDevices = async (): Promise<TargetDeviceSnapshot[]> => {
   const payload = await getApiReadModel<SettingsUiDevicesPayload>(SETTINGS_UI_DEVICES_PATH);
@@ -129,64 +134,6 @@ const buildPriceToggleHandler = (deviceId: string) => withInitialLoadGuard('pric
   }
 });
 
-const buildStateChip = (label: string, title: string): HTMLElement => {
-  const chip = document.createElement('span');
-  chip.className = 'chip chip--neutral device-row__state-chip';
-  chip.textContent = label;
-  setTooltip(chip, title);
-  return chip;
-};
-
-const buildDeviceAvailabilityChip = (device: TargetDeviceSnapshot): HTMLElement | null => {
-  if (!isGrayStateDevice(device)) return null;
-  return buildStateChip(
-    device.available === false ? 'Unavailable' : 'Unknown',
-    device.available === false
-      ? 'Device is currently unavailable in Homey.'
-      : 'Device state is unknown.',
-  );
-};
-
-const buildBudgetExemptChip = (device: TargetDeviceSnapshot): HTMLElement | null => {
-  if (state.budgetExemptMap[device.id] !== true && device.budgetExempt !== true) return null;
-  return buildStateChip('Budget exempt', 'This device is excluded from daily budget limits.');
-};
-
-const buildFlowBackedChip = (device: TargetDeviceSnapshot): HTMLElement | null => {
-  if (device.flowBacked !== true) return null;
-  return buildStateChip(
-    'Flow-backed',
-    'PELS is using flow-reported state to support this existing Homey device.',
-  );
-};
-
-const appendDeviceStateChips = (container: HTMLElement, device: TargetDeviceSnapshot) => {
-  const chips = [
-    buildDeviceAvailabilityChip(device),
-    buildFlowBackedChip(device),
-    buildBudgetExemptChip(device),
-  ];
-  chips.forEach((chip) => {
-    if (chip) container.appendChild(chip);
-  });
-};
-
-const resolveDeviceManageability = (device: TargetDeviceSnapshot) => {
-  const supportsTemperature = supportsTemperatureDevice(device);
-  const supportsPower = supportsPowerDevice(device);
-  const supportsManage = supportsManagedDevice(supportsPower, supportsTemperature);
-  const nativeWiringRequired = requiresNativeWiringForActivation(device);
-  const canManage = supportsManage && !nativeWiringRequired;
-  return {
-    supportsTemperature,
-    supportsPower,
-    supportsManage,
-    nativeWiringRequired,
-    canManage,
-    isManaged: canManage && resolveManagedState(device.id),
-  };
-};
-
 const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
   const manageability = resolveDeviceManageability(device);
   const isLoadingComplete = state.initialLoadComplete;
@@ -248,48 +195,6 @@ const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
   return row;
 };
 
-type DeviceGroup = {
-  key: string;
-  label: string;
-  devices: TargetDeviceSnapshot[];
-};
-
-const groupDevicesByClass = (devices: TargetDeviceSnapshot[]): DeviceGroup[] => {
-  const groups = new Map<string, TargetDeviceSnapshot[]>();
-  devices.forEach((device) => {
-    const key = (device.deviceClass || 'other').trim().toLowerCase() || 'other';
-    const bucket = groups.get(key) || [];
-    bucket.push(device);
-    groups.set(key, bucket);
-  });
-  return Array.from(groups.entries())
-    .map(([key, items]) => ({
-      key,
-      label: resolveDeviceClassLabel(key),
-      devices: items.sort((a, b) => a.name.localeCompare(b.name)),
-    }))
-    .sort((a, b) => a.label.localeCompare(b.label));
-};
-
-const countManagedInGroup = (group: DeviceGroup): { managed: number; manageable: number; total: number } => {
-  let managed = 0;
-  let manageable = 0;
-  group.devices.forEach((device) => {
-    const m = resolveDeviceManageability(device);
-    if (m.canManage) manageable += 1;
-    if (m.canManage && m.isManaged) managed += 1;
-  });
-  return { managed, manageable, total: group.devices.length };
-};
-
-type GroupManagedState = 'all' | 'partial' | 'none';
-
-const resolveGroupManagedState = (counts: { managed: number; manageable: number }): GroupManagedState => {
-  if (counts.manageable === 0 || counts.managed === 0) return 'none';
-  if (counts.managed === counts.manageable) return 'all';
-  return 'partial';
-};
-
 const buildRedesignSwitchCell = (
   switchEl: HTMLElement,
   disabled: boolean,
@@ -321,8 +226,6 @@ const buildRedesignNameCell = (device: TargetDeviceSnapshot): HTMLElement => {
   appendDeviceStateChips(nameWrap, device);
   return nameWrap;
 };
-
-type RowSwitchTitles = { managed: string; limit: string; price: string };
 
 const buildRedesignRowSwitches = (
   device: TargetDeviceSnapshot,
@@ -360,21 +263,23 @@ const buildRedesignRowSwitches = (
   ];
 };
 
-const attachRedesignRowActivation = (row: HTMLElement, deviceId: string) => {
-  const isInteractiveChild = (target: HTMLElement) => Boolean(
-    target.closest('input, select, button, a, .pels-icon-toggle, .pels-device-card__cell-placeholder'),
-  );
-  const openDetail = (event: Event) => {
-    if (isInteractiveChild(event.target as HTMLElement)) return;
-    document.dispatchEvent(new CustomEvent('open-device-detail', { detail: { deviceId } }));
-  };
-  row.addEventListener('click', openDetail);
-  row.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    if (isInteractiveChild(event.target as HTMLElement)) return;
-    event.preventDefault();
-    openDetail(event);
+const createRedesignDetailButton = (device: TargetDeviceSnapshot): HTMLElement => {
+  const button = document.createElement('md-icon-button');
+  button.className = 'pels-device-card__detail-button';
+  button.setAttribute('type', 'button');
+  button.setAttribute('aria-label', `Open settings for ${device.name}`);
+  setTooltip(button, `Open settings for ${device.name}`);
+
+  const icon = document.createElement('span');
+  icon.className = 'pels-device-card__detail-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = '›';
+  button.appendChild(icon);
+
+  button.addEventListener('click', () => {
+    document.dispatchEvent(new CustomEvent('open-device-detail', { detail: { deviceId: device.id } }));
   });
+  return button;
 };
 
 const buildRedesignDeviceRow = (device: TargetDeviceSnapshot): HTMLElement => {
@@ -392,9 +297,6 @@ const buildRedesignDeviceRow = (device: TargetDeviceSnapshot): HTMLElement => {
     row.classList.add('pels-device-card__row--unmanageable');
   }
   row.dataset.deviceId = device.id;
-  row.setAttribute('role', 'button');
-  row.setAttribute('aria-label', `Open ${device.name} settings`);
-  row.tabIndex = 0;
 
   const titles: RowSwitchTitles = {
     managed: getManagedTitle(isLoadingComplete, manageability.supportsManage, manageability.nativeWiringRequired),
@@ -410,8 +312,18 @@ const buildRedesignDeviceRow = (device: TargetDeviceSnapshot): HTMLElement => {
     }),
   };
 
-  row.append(buildRedesignNameCell(device), ...buildRedesignRowSwitches(device, manageability, titles, disabled));
-  attachRedesignRowActivation(row, device.id);
+  const nameCell = buildRedesignNameCell(device);
+  appendRedesignDisabledReasons(nameCell, getRowDisabledReasons({
+    isLoadingComplete,
+    manageability,
+    disabled,
+  }));
+
+  row.append(
+    nameCell,
+    ...buildRedesignRowSwitches(device, manageability, titles, disabled),
+    createRedesignDetailButton(device),
+  );
   return row;
 };
 
