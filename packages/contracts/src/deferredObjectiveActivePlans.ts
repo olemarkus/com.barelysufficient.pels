@@ -15,12 +15,30 @@ export type DeferredObjectiveActivePlanHourV1 = {
   plannedKWh: number;
 };
 
+// Mirrors `DeferredObjectiveHorizonStatus` in `lib/plan/deferredObjectives/types`.
+// Duplicated here because contracts must stay browser-safe and cannot import
+// from `lib/`.
+export type DeferredObjectiveActivePlanStatusV1 =
+  | 'at_risk'
+  | 'cannot_meet'
+  | 'invalid'
+  | 'on_track'
+  | 'satisfied';
+
 export type DeferredObjectiveActivePlanRevisionV1 = {
   revision: number;
   revisedAtMs: number;
   computedFromPricesUpTo: number | null;
   reason: DeferredObjectiveActivePlanRevisionReason;
   hours: DeferredObjectiveActivePlanHourV1[];
+  // Total energy the planner thinks is required to meet the deadline. Lets the
+  // UI render a meaningful timeline even when allocated hours sum to zero
+  // (e.g. `cannot_meet` against a sub-second remaining bucket) and without
+  // depending on a learned `kwhPerUnit` profile.
+  energyNeededKWh: number;
+  // Planner status. UI surfaces a "Can't fully meet" chip when this is
+  // `cannot_meet` or `at_risk`.
+  planStatus: DeferredObjectiveActivePlanStatusV1;
 };
 
 export type DeferredObjectiveActivePlanPendingReason =

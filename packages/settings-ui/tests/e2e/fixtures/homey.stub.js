@@ -832,6 +832,8 @@
       computedFromPricesUpTo: deadlineAtMs,
       reason: 'flow_card',
       hours,
+      energyNeededKWh: plannedHourCount * 2,
+      planStatus: 'on_track',
     };
     return {
       version: 1,

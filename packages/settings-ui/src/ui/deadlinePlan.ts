@@ -1,13 +1,7 @@
-import { callApi } from './homey.ts';
-import {
-  SETTINGS_UI_BOOTSTRAP_PATH,
-  SETTINGS_UI_DEVICES_PATH,
-  SETTINGS_UI_PRICES_PATH,
-  type SettingsUiBootstrap,
-  type SettingsUiDevicesPayload,
-  type SettingsUiPricesPayload,
+import type {
+  SettingsUiBootstrap,
+  SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
-import { fetchDeadlinePlanHistory, resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
 import {
   normalizeDeferredObjectiveSettings,
   type DeferredObjectiveSettingsEntry,
@@ -29,7 +23,6 @@ import {
   resolveLowestActiveStepKw,
   resolveProfile,
   resolveProgress,
-  resolveUsefulPowerKw,
 } from './deadlinePlanResolvers.ts';
 import {
   renderDeadlinePlan,
@@ -40,28 +33,6 @@ import {
 import type {
   DeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
-import { setStoredOverviewRedesignPreference } from './uiVariant.ts';
-
-export const isDeadlinePlanPage = (): boolean => (
-  document.getElementById('deadline-plan-root') !== null
-);
-
-const closeDeadlinePlanPage = (): void => {
-  if (new URLSearchParams(window.location.search).get('ui') === 'redesign') {
-    setStoredOverviewRedesignPreference(true);
-  }
-  if (window.history.length > 1) {
-    window.history.back();
-    return;
-  }
-  window.close();
-};
-
-const initDeadlinePlanClose = (): void => {
-  document
-    .querySelector<HTMLButtonElement>('[data-deadline-plan-close]')
-    ?.addEventListener('click', closeDeadlinePlanPage);
-};
 
 type ObjectivePlanInput = {
   bootstrap: SettingsUiBootstrap;
@@ -118,6 +89,7 @@ const buildHeroChips = (params: {
   firstChargingHour: HorizonHour | undefined;
   nowMs: number;
   confidence: string | null;
+  cannotMeet: boolean;
 }): DeadlinePlanPayload['hero']['chips'] => {
   const isActiveNow = params.firstChargingHour && params.firstChargingHour.startsAtMs <= params.nowMs;
   return [
@@ -126,6 +98,7 @@ const buildHeroChips = (params: {
       tone: 'ok',
     },
     { text: params.labels.kindChipLabel, tone: 'info' },
+    ...(params.cannotMeet ? [{ text: params.labels.cannotMeetChipLabel, tone: 'warn' as const }] : []),
     ...(params.confidence ? [{ text: `Confidence ${params.confidence}`, tone: 'muted' as const }] : []),
   ];
 };
@@ -134,11 +107,20 @@ const resolveHeroHeadline = (params: {
   labels: DeadlineLabels;
   firstChargingHour: HorizonHour | undefined;
   nowMs: number;
+  cannotMeet: boolean;
 }): string => {
+  if (params.cannotMeet) return `${params.labels.activeChipLabel} as fast as possible`;
   if (!params.firstChargingHour) return 'On track for the deadline';
   if (params.firstChargingHour.startsAtMs <= params.nowMs) return `${params.labels.activeChipLabel} now`;
   return `Waiting until ${formatHourLabel(params.firstChargingHour.startsAtMs)}`;
 };
+
+const formatShortfallLabel = (shortfallUnits: number, unit: '°C' | '%'): string => (
+  // For `%` clamp to ≥ 1 with `ceil` so a sub-1% shortfall does not render as
+  // "0%" while the warning chip says "Can't fully meet" — that mismatch was
+  // flagged on the original PR (copilot review of `formatShortfallLabel`).
+  unit === '°C' ? `${shortfallUnits.toFixed(1)} °C` : `${Math.max(1, Math.ceil(shortfallUnits))}%`
+);
 
 const buildHero = (params: {
   device: TargetDeviceSnapshot;
@@ -150,6 +132,9 @@ const buildHero = (params: {
   hoursLeft: number;
   confidence: string | null;
   nowMs: number;
+  cannotMeet: boolean;
+  shortfallUnits: number;
+  shortfallUnit: '°C' | '%';
 }): DeadlinePlanPayload['hero'] => {
   const headline = resolveHeroHeadline(params);
   const target = formatTarget(params.objective);
@@ -157,13 +142,23 @@ const buildHero = (params: {
   const subline = `${params.device.name} • Target ${target} by ${deadline}`;
   const energy = `${params.energyNeededKWh.toFixed(1)} kWh`;
   const hourWord = params.hoursLeft === 1 ? 'hour' : 'hours';
-  const metaLine = `Needs ${energy} • ${params.hoursLeft} ${hourWord} left`;
+  // When the chip says "Can't fully meet" we must not fall back to the
+  // on-track "Needs X kWh • Y hours left" copy — that contradicts the chip.
+  // A zero shortfall under cannot_meet means rounding has flattened the gap;
+  // surface a softer body line instead so the two pieces stay consistent.
+  const cannotMeetMeta = params.shortfallUnits > 0
+    ? params.labels.cannotMeetShortfall(formatShortfallLabel(params.shortfallUnits, params.shortfallUnit))
+    : 'Best effort — running at the lowest active step every available hour.';
+  const metaLine = params.cannotMeet
+    ? cannotMeetMeta
+    : `Needs ${energy} • ${params.hoursLeft} ${hourWord} left`;
   return {
     chips: buildHeroChips({
       labels: params.labels,
       firstChargingHour: params.firstChargingHour,
       nowMs: params.nowMs,
       confidence: params.confidence,
+      cannotMeet: params.cannotMeet,
     }),
     sectionLabel: `${params.labels.kindChipLabel} plan`,
     headline,
@@ -248,19 +243,33 @@ type ResolvedObjectiveContext = {
   nowMs: number;
 };
 
-const resolveObjectiveContext = (params: ObjectivePlanInput): ResolvedObjectiveContext | null => {
+type ResolvedContextResult =
+  | { kind: 'active'; context: ResolvedObjectiveContext }
+  | { kind: 'completed'; objectiveKind: DeferredObjectiveSettingsEntry['kind'] }
+  | { kind: 'absent' };
+
+const resolveObjectiveContext = (params: ObjectivePlanInput): ResolvedContextResult => {
   const nowMs = params.nowMs ?? Date.now();
   const deviceId = params.deviceId?.trim();
-  if (!deviceId) return null;
-  if (params.bootstrap.featureAccess.canToggleOverviewRedesign !== true) return null;
+  if (!deviceId) return { kind: 'absent' };
+  if (params.bootstrap.featureAccess.canToggleOverviewRedesign !== true) return { kind: 'absent' };
   const settings = normalizeDeferredObjectiveSettings(params.bootstrap.settings.deferred_objectives);
   const objective = settings.objectivesByDeviceId[deviceId];
   const device = params.devices.find((candidate) => candidate.id === deviceId);
-  if (!objective || !objective.enabled || !device) return null;
+  if (!objective || !device) return { kind: 'absent' };
   const activePlan = params.bootstrap.deferredObjectiveActivePlans?.plansByDeviceId[deviceId] ?? null;
   const deadlineAtMs = activePlan?.deadlineAtMs ?? objective.deadlineAtMs;
-  if (!Number.isFinite(deadlineAtMs) || deadlineAtMs <= nowMs) return null;
-  return { device, objective, deviceId, deadlineAtMs, activePlan, nowMs };
+  if (!Number.isFinite(deadlineAtMs)) return { kind: 'absent' };
+  // Deadline already passed: runtime auto-disables on pass, so a still-enabled
+  // entry with a past deadline is the same lifecycle moment. Either way the
+  // page should land on History rather than a stale current-plan card.
+  if (deadlineAtMs <= nowMs) return { kind: 'completed', objectiveKind: objective.kind };
+  // Future deadline but the user disabled it (e.g. cleared from the deadlines
+  // list): no current plan to show, no useful history to surface. Fall through
+  // to the absent path so the generic "no deadline" card renders instead of
+  // misleading "Deadline complete" copy.
+  if (!objective.enabled) return { kind: 'absent' };
+  return { kind: 'active', context: { device, objective, deviceId, deadlineAtMs, activePlan, nowMs } };
 };
 
 const resolvePendingReason = (
@@ -317,110 +326,159 @@ const buildChargeByStartMsFromActivePlan = (
 
 type ObjectivePayloadResult =
   | { kind: 'ok'; payload: DeadlinePlanPayload }
-  | { kind: 'unavailable'; reason: DeadlinePlanUnavailableReason };
+  | { kind: 'unavailable'; reason: DeadlinePlanUnavailableReason }
+  // Active plan exists but the UI lacks prices to render a timeline. The
+  // caller routes this to the pending hero so the user sees the same "waiting
+  // for prices" copy regardless of whether the recorder or the prices fetch
+  // is behind.
+  | { kind: 'awaiting_prices' };
 
-const buildObjectivePayload = (params: ObjectivePlanInput): ObjectivePayloadResult | null => {
-  const ctx = resolveObjectiveContext(params);
-  if (!ctx) return null;
-  const { device, objective, deviceId, deadlineAtMs, activePlan, nowMs } = ctx;
-  // Without a persisted plan with an allocation we cannot render the timeline
-  // — runtime is the source of truth. Caller will fall back to the pending
-  // state when this returns null.
-  if (!activePlan || !activePlan.latest) return null;
+const resolveShortfall = (params: {
+  progress: ReturnType<typeof resolveProgress>;
+  allocatedKWh: number;
+  progressPerKWh: number;
+}): { cannotMeetUnits: number } => {
+  if (!params.progress) return { cannotMeetUnits: 0 };
+  const projected = Math.min(
+    params.progress.targetValue,
+    params.progress.currentValue + params.allocatedKWh * params.progressPerKWh,
+  );
+  return { cannotMeetUnits: Math.max(0, params.progress.targetValue - projected) };
+};
 
-  const profile = resolveProfile(params.bootstrap.power.tracker, deviceId, objective.kind);
-  const progress = resolveProgress({ device, objective, profile });
+type ObjectivePayloadReady = {
+  ctx: ResolvedObjectiveContext;
+  profile: ReturnType<typeof resolveProfile>;
+  progress: NonNullable<ReturnType<typeof resolveProgress>>;
+  hours: HorizonHour[];
+  energy: ReturnType<typeof resolveEnergyNeededKWh>;
+};
+
+const prepareObjectivePayload = (
+  params: ObjectivePlanInput,
+): ObjectivePayloadReady | ObjectivePayloadResult | null => {
+  const ctxResult = resolveObjectiveContext(params);
+  if (ctxResult.kind !== 'active') return null;
+  const ctx = ctxResult.context;
+  // `resolveRenderInput` filters this out as `pending` before reaching here.
+  // Reachable only via direct test calls to `buildObjectivePayload`; signal
+  // "not renderable" rather than misleading `already_satisfied`.
+  if (!ctx.activePlan?.latest) return null;
+
+  const profile = resolveProfile(params.bootstrap.power.tracker, ctx.deviceId, ctx.objective.kind);
+  const progress = resolveProgress({ device: ctx.device, objective: ctx.objective, profile });
   if (!progress) return { kind: 'unavailable', reason: 'no_current_reading' };
-  // Current value already meets or exceeds the target. The recorder may have written a
-  // revision with all-zero `plannedKWh` hours; reporting "no energy estimate" here would
-  // misdiagnose a satisfied deadline as a profile-learning problem.
   if (progress.remainingUnits <= 0) return { kind: 'unavailable', reason: 'already_satisfied' };
-  const usefulPowerKw = resolveUsefulPowerKw(device);
-  if (!usefulPowerKw) return { kind: 'unavailable', reason: 'no_useful_power' };
-  const energy = resolveEnergyNeededKWh({ profile, remainingUnits: progress.remainingUnits, activePlan });
-  if (!energy) return { kind: 'unavailable', reason: 'no_energy_estimate' };
-  // For an active plan, include past hours from the first revision's start so
-  // the chart can show history. Without a revision, fall back to nowMs.
-  const windowStartMs = Math.min(nowMs, activePlan.original?.revisedAtMs ?? nowMs);
+
+  const windowStartMs = Math.min(ctx.nowMs, ctx.activePlan.original?.revisedAtMs ?? ctx.nowMs);
   const hours = collectHorizonHours({
     bootstrap: params.bootstrap,
-    deadlineAtMs,
+    deadlineAtMs: ctx.deadlineAtMs,
     windowStartMs,
     prices: params.prices,
   });
-  if (hours.length === 0) return { kind: 'unavailable', reason: 'no_horizon_hours' };
+  if (hours.length === 0) return { kind: 'awaiting_prices' };
 
-  const chargeByStartMs = buildChargeByStartMsFromActivePlan(activePlan);
-  const progressPerKWh = energy.energyNeededKWh > 0
-    ? progress.remainingUnits / energy.energyNeededKWh
-    : 0;
+  return { ctx, profile, progress, hours, energy: resolveEnergyNeededKWh({ profile, activePlan: ctx.activePlan }) };
+};
+
+const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload => {
+  const { ctx, profile, progress, hours, energy } = input;
+  const { device, objective, deadlineAtMs, activePlan, nowMs } = ctx;
+  const latest = activePlan!.latest!;
   const labels = deadlineLabels(objective.kind);
+  const energyNeededKWh = energy?.energyNeededKWh ?? 0;
+  const chargeByStartMs = buildChargeByStartMsFromActivePlan(activePlan!);
+  const progressPerKWh = energyNeededKWh > 0 ? progress.remainingUnits / energyNeededKWh : 0;
+  const allocatedKWh = [...chargeByStartMs.values()].reduce((sum, kwh) => sum + Math.max(0, kwh), 0);
+  const cannotMeet = latest.planStatus === 'cannot_meet' || latest.planStatus === 'at_risk';
+  const { cannotMeetUnits } = resolveShortfall({ progress, allocatedKWh, progressPerKWh });
   const firstChargingHour = hours.find((hour) => chargeByStartMs.has(hour.startsAtMs));
   const hoursLeft = Math.max(0, Math.ceil((deadlineAtMs - nowMs) / ONE_HOUR_MS));
 
   return {
-    kind: 'ok',
-    payload: {
-      kind: objective.kind,
+    kind: objective.kind,
+    labels,
+    hero: buildHero({
+      device,
+      objective,
       labels,
-      hero: buildHero({
-        device,
-        objective,
-        labels,
-        firstChargingHour,
-        deadlineAtMs,
-        energyNeededKWh: energy.energyNeededKWh,
-        hoursLeft,
-        confidence: energy.confidence,
-        nowMs,
-      }),
-      timeline: buildTimeline({
-        device,
-        hours,
-        chargeByStartMs,
-        progressStart: progress.currentValue,
-        progressTarget: progress.targetValue,
-        progressPerKWh,
-        progressUnit: progress.unit,
-        deadlineAtMs,
-      }),
-      planInputs: {
-        perUnitRateLabel: formatPerUnitRateLabel(profile?.kwhPerUnit?.mean, labels.perUnitRateUnit),
-        maxPowerLabel: formatMaxPowerLabel(resolveLowestActiveStepKw(device)),
-      },
+      firstChargingHour,
+      deadlineAtMs,
+      energyNeededKWh,
+      hoursLeft,
+      confidence: energy?.confidence ?? null,
+      nowMs,
+      cannotMeet,
+      shortfallUnits: cannotMeetUnits,
+      shortfallUnit: progress.unit,
+    }),
+    timeline: buildTimeline({
+      device,
+      hours,
+      chargeByStartMs,
+      progressStart: progress.currentValue,
+      progressTarget: progress.targetValue,
+      progressPerKWh,
+      progressUnit: progress.unit,
+      deadlineAtMs,
+    }),
+    planInputs: {
+      perUnitRateLabel: formatPerUnitRateLabel(profile?.kwhPerUnit?.mean, labels.perUnitRateUnit),
+      maxPowerLabel: formatMaxPowerLabel(resolveLowestActiveStepKw(device)),
     },
   };
 };
 
-export const resolveRenderInput = (
-  params: ObjectivePlanInput,
-): { status: 'pending'; pending: DeadlinePlanPendingPayload }
+const buildObjectivePayload = (params: ObjectivePlanInput): ObjectivePayloadResult | null => {
+  const prepared = prepareObjectivePayload(params);
+  if (prepared === null) return null;
+  if ('kind' in prepared) return prepared;
+  return { kind: 'ok', payload: buildReadyPayload(prepared) };
+};
+
+export type DeadlineRenderInput =
+  | { status: 'pending'; pending: DeadlinePlanPendingPayload }
   | { status: 'ready'; payload: DeadlinePlanPayload }
   | { status: 'unavailable'; kind: DeferredObjectiveSettingsEntry['kind']; reason: DeadlinePlanUnavailableReason }
-  | null => {
-  const ctx = resolveObjectiveContext(params);
-  if (!ctx) return null;
+  | { status: 'completed'; kind: DeferredObjectiveSettingsEntry['kind'] }
+  | { status: 'absent' };
+
+export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderInput => {
+  const ctxResult = resolveObjectiveContext(params);
+  if (ctxResult.kind === 'absent') return { status: 'absent' };
+  if (ctxResult.kind === 'completed') return { status: 'completed', kind: ctxResult.objectiveKind };
+  const ctx = ctxResult.context;
   // No persisted record yet OR record is explicitly pending → pending hero.
   if (!ctx.activePlan || ctx.activePlan.pending || !ctx.activePlan.latest) {
     return { status: 'pending', pending: buildPendingPayload(ctx) };
   }
   const result = buildObjectivePayload(params);
-  if (!result) return null;
+  if (!result) return { status: 'absent' };
   if (result.kind === 'unavailable') {
     return { status: 'unavailable', kind: ctx.objective.kind, reason: result.reason };
+  }
+  if (result.kind === 'awaiting_prices') {
+    return { status: 'pending', pending: buildPendingPayload(ctx) };
   }
   return { status: 'ready', payload: result.payload };
 };
 
-type RenderInput = ReturnType<typeof resolveRenderInput>;
+
 type HistoryView = Parameters<typeof renderDeadlinePlan>[1] extends { history?: infer H } ? H : never;
 
-const resolveDeadlinePlanLoadState = (
-  renderInput: RenderInput,
+export const resolveDeadlinePlanLoadState = (
+  renderInput: DeadlineRenderInput,
   history: HistoryView | undefined,
 ): DeadlinePlanLoadState => {
-  if (renderInput === null) {
+  if (renderInput.status === 'absent') {
+    // Genuinely unknown device or feature gated off — keep the legacy error
+    // card. Lifecycle transitions (passed deadline, auto-disable) go through
+    // the `completed` branch instead.
     return { status: 'error', message: 'Deadline plan data is not available for this device.', history };
+  }
+  if (renderInput.status === 'completed') {
+    return { status: 'completed', objectiveKind: renderInput.kind, history };
   }
   if (renderInput.status === 'ready') {
     return { status: 'ready', payload: renderInput.payload, history };
@@ -434,37 +492,6 @@ const resolveDeadlinePlanLoadState = (
     };
   }
   return { status: 'pending', pending: renderInput.pending, history };
-};
-
-export const mountDeadlinePlan = async (): Promise<void> => {
-  const surface = document.getElementById('deadline-plan-root');
-  if (!surface) return;
-
-  const deviceId = new URLSearchParams(window.location.search).get('deviceId');
-  const timeZone = resolveBrowserTimeZone();
-
-  initDeadlinePlanClose();
-  renderDeadlinePlan(surface, { status: 'loading' });
-  try {
-    const [bootstrap, devicesPayload, history] = await Promise.all([
-      callApi<SettingsUiBootstrap>('GET', SETTINGS_UI_BOOTSTRAP_PATH),
-      callApi<SettingsUiDevicesPayload>('GET', SETTINGS_UI_DEVICES_PATH),
-      fetchDeadlinePlanHistory(deviceId, timeZone),
-    ]);
-    let prices = bootstrap.prices;
-    try {
-      prices = await callApi<SettingsUiPricesPayload>('GET', SETTINGS_UI_PRICES_PATH);
-    } catch {
-      prices = bootstrap.prices;
-    }
-    const renderInput = resolveRenderInput({ bootstrap, deviceId, devices: devicesPayload.devices, prices });
-    renderDeadlinePlan(surface, resolveDeadlinePlanLoadState(renderInput, history));
-  } catch {
-    renderDeadlinePlan(surface, {
-      status: 'error',
-      message: 'Deadline plan data is not available for this device.',
-    });
-  }
 };
 
 export const testExports = {
