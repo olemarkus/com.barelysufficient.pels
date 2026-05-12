@@ -31,9 +31,29 @@ let currentSteppedLoadDraft: SteppedLoadProfile | null = null;
 
 const DEFAULT_SET_STEP_OPTION_LABEL = 'Set to step';
 
-const getSetStepOption = (): HTMLOptionElement | null => (
-  deviceDetailShedAction?.querySelector<HTMLOptionElement>('option[value="set_step"]') ?? null
+type MaterialSelectOptionElement = HTMLElement & { value: string };
+
+const getSetStepOption = (): MaterialSelectOptionElement | null => (
+  deviceDetailShedAction?.querySelector<MaterialSelectOptionElement>(
+    'md-select-option[value="set_step"]',
+  ) ?? null
 );
+
+const getOptionLabel = (option: MaterialSelectOptionElement): string => (
+  option.querySelector<HTMLElement>('[slot="headline"]')?.textContent ?? option.textContent ?? ''
+);
+
+const setOptionLabel = (option: MaterialSelectOptionElement, label: string): void => {
+  const headline = option.querySelector<HTMLElement>('[slot="headline"]');
+  if (headline) {
+    headline.textContent = label;
+    return;
+  }
+  const nextHeadline = document.createElement('div');
+  nextHeadline.slot = 'headline';
+  nextHeadline.textContent = label;
+  option.replaceChildren(nextHeadline);
+};
 
 const attachDraftSyncOnChange = (
   onDraftChanged: () => void,
@@ -84,6 +104,7 @@ const buildSteppedLoadStepRow = (params: {
   const row = document.createElement('div');
   row.className = 'device-row detail-stepped-row';
   row.dataset.stepRow = 'true';
+  const disabled = params.disabled === true;
 
   const idInput = document.createElement('md-filled-text-field') as HTMLElement & {
     value: string; disabled: boolean;
@@ -91,7 +112,7 @@ const buildSteppedLoadStepRow = (params: {
   idInput.setAttribute('label', 'Step');
   idInput.value = params.step.id;
   idInput.dataset.stepField = 'id';
-  idInput.disabled = params.disabled === true;
+  idInput.disabled = disabled;
 
   const planningInput = document.createElement('md-filled-text-field') as HTMLElement & {
     value: string; disabled: boolean;
@@ -104,13 +125,13 @@ const buildSteppedLoadStepRow = (params: {
   planningInput.setAttribute('suffix-text', 'W');
   planningInput.value = String(params.step.planningPowerW);
   planningInput.dataset.stepField = 'planningPowerW';
-  planningInput.disabled = params.disabled === true;
+  planningInput.disabled = disabled;
 
   attachDraftSyncOnChange(params.onDraftChanged, idInput, planningInput);
 
   const removeButton = document.createElement('md-text-button') as HTMLElement & { disabled: boolean };
   removeButton.textContent = 'Remove';
-  removeButton.disabled = params.disabled === true;
+  removeButton.disabled = disabled;
   removeButton.setAttribute('aria-label', `Remove step ${params.step.id}`);
   removeButton.addEventListener('click', () => {
     row.remove();
@@ -138,21 +159,21 @@ export const updateSetStepOptionLabel = (
   const setStepOption = getSetStepOption();
   if (!setStepOption) return;
 
-  const previousLabel = setStepOption.textContent;
+  const previousLabel = getOptionLabel(setStepOption);
 
   if (!device || !isSteppedLoadControlModel(device)) {
-    setStepOption.textContent = DEFAULT_SET_STEP_OPTION_LABEL;
+    setOptionLabel(setStepOption, DEFAULT_SET_STEP_OPTION_LABEL);
   } else {
     const profile = profileOverride
       ?? currentSteppedLoadDraft
       ?? resolveSavedSteppedLoadProfile(device);
     const lowestActiveStepId = profile ? getSteppedLoadLowestActiveStep(profile)?.id : null;
-    setStepOption.textContent = lowestActiveStepId
+    setOptionLabel(setStepOption, lowestActiveStepId
       ? `Set to step "${lowestActiveStepId}"`
-      : DEFAULT_SET_STEP_OPTION_LABEL;
+      : DEFAULT_SET_STEP_OPTION_LABEL);
   }
 
-  if (previousLabel !== setStepOption.textContent) {
+  if (previousLabel !== getOptionLabel(setStepOption)) {
     deviceDetailShedAction?.dispatchEvent(new Event('pels:segmented-refresh'));
   }
 };

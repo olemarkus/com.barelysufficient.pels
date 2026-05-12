@@ -3,6 +3,10 @@ import { useRef, useLayoutEffect } from 'preact/hooks';
 import {
   MdElevation,
   MdFilledButton,
+  MdFilledSelect,
+  MdFilledTextField,
+  MdOutlinedButton,
+  MdSelectOption,
   MdSwitch,
   MdTextButton,
 } from './materialWebJSX.tsx';
@@ -107,9 +111,8 @@ const ToggleGroup = <T extends string>({
 }) => (
   <div class="day-view-toggle" role="group" aria-label={ariaLabel}>
     {options.map((opt) => (
-      <button
+      <MdTextButton
         key={opt.value}
-        type="button"
         class={`day-view-toggle__button${value === opt.value ? ' is-active' : ''}`}
         aria-pressed={value === opt.value}
         disabled={opt.disabled}
@@ -117,7 +120,7 @@ const ToggleGroup = <T extends string>({
         onClick={() => onChange(opt.value)}
       >
         {opt.label}
-      </button>
+      </MdTextButton>
     ))}
   </div>
 );
@@ -393,19 +396,19 @@ const BudgetAdjustView = ({
     onAdjustFieldChange({ priceShaping: Boolean(target.selected) });
   };
   const onKWhChange = (event: Event) => {
-    const target = event.currentTarget as HTMLInputElement;
+    const target = event.currentTarget as HTMLElement & { value?: string };
     const parsed = Number.parseFloat(target.value ?? '');
     if (!Number.isFinite(parsed)) return;
     onAdjustFieldChange({ dailyBudgetKWh: parsed });
   };
   const onReserveChange = (event: Event) => {
-    const target = event.currentTarget as HTMLSelectElement;
+    const target = event.currentTarget as HTMLElement & { value?: string };
     const parsed = Number.parseFloat(target.value ?? '');
     if (!Number.isFinite(parsed)) return;
     onAdjustFieldChange({ controlledWeight: parsed });
   };
   const onFlexChange = (event: Event) => {
-    const target = event.currentTarget as HTMLSelectElement;
+    const target = event.currentTarget as HTMLElement & { value?: string };
     const parsed = Number.parseFloat(target.value ?? '');
     if (!Number.isFinite(parsed)) return;
     onAdjustFieldChange({ priceFlexShare: parsed });
@@ -437,21 +440,20 @@ const BudgetAdjustView = ({
                 <span class="field__hint-range">{` Range ${MIN_DAILY_BUDGET_KWH}–${MAX_DAILY_BUDGET_KWH} kWh.`}</span>
               </FieldHint>
             </span>
-            <div class="budget-redesign-field budget-redesign-field--kwh">
-              <input
-                id="budget-redesign-kwh"
-                aria-label="Daily budget in kWh"
-                type="number"
-                min={MIN_DAILY_BUDGET_KWH}
-                max={MAX_DAILY_BUDGET_KWH}
-                step="0.1"
-                inputMode="decimal"
-                value={String(draft.dailyBudgetKWh)}
-                disabled={!draft.enabled}
-                onChange={onKWhChange}
-              />
-              <span class="budget-redesign-field__suffix" aria-hidden="true">kWh</span>
-            </div>
+            <MdFilledTextField
+              id="budget-redesign-kwh"
+              class="budget-redesign-field budget-redesign-field--kwh"
+              aria-label="Daily budget in kWh"
+              type="number"
+              suffixText="kWh"
+              min={MIN_DAILY_BUDGET_KWH}
+              max={MAX_DAILY_BUDGET_KWH}
+              step="0.1"
+              inputMode="decimal"
+              value={String(draft.dailyBudgetKWh)}
+              {...(draft.enabled ? {} : { disabled: true })}
+              onChange={onKWhChange}
+            />
           </div>
           <div class="budget-setting-row budget-setting-row--editable">
             <span>
@@ -482,33 +484,43 @@ const BudgetAdjustView = ({
               <span class="budget-setting-row__label">Background usage reserve</span>
               <FieldHint>Daily budget held back for household usage PELS cannot move.</FieldHint>
             </span>
-            <select
+            <MdFilledSelect
               id="budget-redesign-controlled-weight"
               class="budget-redesign-field budget-redesign-field--select"
               aria-label="Background usage reserve"
               value={String(draft.controlledWeight)}
               onChange={onReserveChange}
             >
-              <option value={String(UNMANAGED_RESERVE_BALANCED_MODE)}>Balanced</option>
-              <option value={String(UNMANAGED_RESERVE_CONSERVATIVE_MODE)}>Conservative</option>
-            </select>
+              <MdSelectOption value={String(UNMANAGED_RESERVE_BALANCED_MODE)}>
+                <div slot="headline">Balanced</div>
+              </MdSelectOption>
+              <MdSelectOption value={String(UNMANAGED_RESERVE_CONSERVATIVE_MODE)}>
+                <div slot="headline">Conservative</div>
+              </MdSelectOption>
+            </MdFilledSelect>
           </div>
           <div class="budget-setting-row budget-setting-row--editable">
             <span>
               <span class="budget-setting-row__label">Managed device flexibility</span>
               <FieldHint>How freely PELS may shift managed-device usage toward cheaper hours.</FieldHint>
             </span>
-            <select
+            <MdFilledSelect
               id="budget-redesign-price-flex-share"
               class="budget-redesign-field budget-redesign-field--select"
               aria-label="Managed device flexibility"
               value={String(draft.priceFlexShare)}
               onChange={onFlexChange}
             >
-              <option value={String(PRICE_FLEX_LOW)}>Low</option>
-              <option value={String(PRICE_FLEX_MEDIUM)}>Medium</option>
-              <option value={String(PRICE_FLEX_HIGH)}>High</option>
-            </select>
+              <MdSelectOption value={String(PRICE_FLEX_LOW)}>
+                <div slot="headline">Low</div>
+              </MdSelectOption>
+              <MdSelectOption value={String(PRICE_FLEX_MEDIUM)}>
+                <div slot="headline">Medium</div>
+              </MdSelectOption>
+              <MdSelectOption value={String(PRICE_FLEX_HIGH)}>
+                <div slot="headline">High</div>
+              </MdSelectOption>
+            </MdFilledSelect>
           </div>
         </div>
       </details>
@@ -620,6 +632,9 @@ const BudgetAdjustView = ({
             <p class="pels-card-supporting">{reactionText}</p>
           </div>
         </div>
+        <MdOutlinedButton class="btn secondary budget-context-action" data-settings-target="limits">
+          Open Limits &amp; safety
+        </MdOutlinedButton>
         <div class="budget-settings-list budget-settings-list--compact">
           <div class="budget-setting-row">
             <span class="budget-setting-row__label">Hard cap</span>
@@ -629,14 +644,6 @@ const BudgetAdjustView = ({
             <span class="budget-setting-row__label">Safety margin</span>
             <span class="budget-setting-row__value">{formatKw(adjust.safetyMarginKw)}</span>
           </div>
-          <button
-            type="button"
-            class="budget-setting-row budget-setting-row--link"
-            data-settings-target="limits"
-          >
-            <span class="budget-setting-row__label">Open Limits &amp; safety</span>
-            <span class="budget-setting-row__value budget-setting-row__chevron" aria-hidden="true">›</span>
-          </button>
         </div>
       </section>
     </div>

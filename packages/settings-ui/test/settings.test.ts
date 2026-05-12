@@ -50,7 +50,7 @@ const buildDom = () => {
     <div id="toast"></div>
     <div id="status-badge"></div>
     <div id="dry-run-banner" hidden></div>
-    <button id="simulation-disable-button"></button>
+    <md-outlined-button id="simulation-disable-button"></md-outlined-button>
     <div id="stale-data-banner" hidden>
       <span id="stale-data-text"></span>
     </div>
@@ -84,17 +84,17 @@ const buildDom = () => {
     </section>
     <section class="panel hidden" id="limits-panel" data-panel="limits">
       <form id="settings-limits-form">
-        <input id="settings-capacity-limit">
-        <input id="settings-capacity-margin">
+        <md-filled-text-field id="settings-capacity-limit"></md-filled-text-field>
+        <md-filled-text-field id="settings-capacity-margin"></md-filled-text-field>
         <span id="settings-capacity-reaction"></span>
-        <select id="settings-power-source">
-          <option value="flow">Flow card</option>
-          <option value="homey_energy">Homey Energy</option>
-        </select>
+        <md-filled-select id="settings-power-source">
+          <md-select-option value="flow"><div slot="headline">Flow card</div></md-select-option>
+          <md-select-option value="homey_energy"><div slot="headline">Homey Energy</div></md-select-option>
+        </md-filled-select>
       </form>
     </section>
     <section class="panel hidden" id="simulation-panel" data-panel="simulation">
-      <input id="settings-simulation-mode" type="checkbox">
+      <md-checkbox id="settings-simulation-mode"></md-checkbox>
     </section>
     <section class="panel hidden" id="overview-panel" data-panel="overview">
       <div id="plan-legacy-surface">
@@ -118,27 +118,27 @@ const buildDom = () => {
       <form id="targets-form">
         <select id="target-mode-select"></select>
       </form>
-      <input id="capacity-dry-run" type="checkbox">
+      <md-checkbox id="capacity-dry-run"></md-checkbox>
       <div id="device-list"></div>
       <p id="empty-state" hidden></p>
     </section>
     <section class="panel hidden" data-panel="modes">
-      <form id="active-mode-form"><select id="active-mode-select"></select></form>
-      <select id="mode-select"></select>
-      <input id="mode-new">
-      <button id="add-mode-button"></button>
-      <button id="delete-mode-button"></button>
-      <button id="rename-mode-button"></button>
+      <form id="active-mode-form"><md-filled-select id="active-mode-select"></md-filled-select></form>
+      <md-filled-select id="mode-select"></md-filled-select>
+      <md-filled-text-field id="mode-new"></md-filled-text-field>
+      <md-outlined-button id="add-mode-button"></md-outlined-button>
+      <md-outlined-button id="delete-mode-button"></md-outlined-button>
+      <md-outlined-button id="rename-mode-button"></md-outlined-button>
       <form id="priority-form"></form>
       <div id="priority-list"></div>
       <p id="priority-empty" hidden></p>
     </section>
     <section class="panel hidden" data-panel="budget">
-      <form id="capacity-form"><input id="capacity-limit"><input id="capacity-margin"></form>
+      <form id="capacity-form"><md-filled-text-field id="capacity-limit"></md-filled-text-field><md-filled-text-field id="capacity-margin"></md-filled-text-field></form>
       <form id="daily-budget-form">
-        <input id="daily-budget-enabled" type="checkbox">
-        <input id="daily-budget-kwh">
-        <input id="daily-budget-price-shaping" type="checkbox">
+        <md-checkbox id="daily-budget-enabled"></md-checkbox>
+        <md-filled-text-field id="daily-budget-kwh"></md-filled-text-field>
+        <md-checkbox id="daily-budget-price-shaping"></md-checkbox>
       </form>
       <div id="daily-budget-chart"></div>
       <div id="daily-budget-bars"></div>
@@ -157,8 +157,8 @@ const buildDom = () => {
     <section class="panel hidden" id="usage-panel" data-panel="usage">
       <div id="power-list"></div>
       <p id="power-empty" hidden></p>
-      <button id="power-week-prev"></button>
-      <button id="power-week-next"></button>
+      <md-text-button id="power-week-prev"></md-text-button>
+      <md-text-button id="power-week-next"></md-text-button>
       <div id="power-week-label"></div>
       <div id="daily-list"></div>
       <p id="daily-empty" hidden></p>
@@ -219,47 +219,47 @@ const buildDom = () => {
     <section class="panel hidden" data-panel="advanced">
       <div id="debug-logging-checkboxes"></div>
       <label id="advanced-overview-redesign-row" hidden>
-        <input id="advanced-overview-redesign-enabled" type="checkbox">
+        <md-checkbox id="advanced-overview-redesign-enabled"></md-checkbox>
       </label>
-      <input id="advanced-ev-support-enabled" type="checkbox">
+      <md-checkbox id="advanced-ev-support-enabled"></md-checkbox>
       <form id="daily-budget-advanced-form">
-        <select id="daily-budget-controlled-weight">
-          <option value="0">Balanced</option>
-          <option value="1">Conservative</option>
-        </select>
-        <select id="daily-budget-price-flex-share">
-          <option value="0.3">Low</option>
-          <option value="0.6">Medium</option>
-          <option value="0.85">High</option>
-        </select>
-        <input id="daily-budget-breakdown" type="checkbox">
+        <md-filled-select id="daily-budget-controlled-weight">
+          <md-select-option value="0"><div slot="headline">Balanced</div></md-select-option>
+          <md-select-option value="1"><div slot="headline">Conservative</div></md-select-option>
+        </md-filled-select>
+        <md-filled-select id="daily-budget-price-flex-share">
+          <md-select-option value="0.3"><div slot="headline">Low</div></md-select-option>
+          <md-select-option value="0.6"><div slot="headline">Medium</div></md-select-option>
+          <md-select-option value="0.85"><div slot="headline">High</div></md-select-option>
+        </md-filled-select>
+        <md-checkbox id="daily-budget-breakdown"></md-checkbox>
       </form>
     </section>
     <div id="device-detail-overlay" hidden>
       <div id="device-detail-panel">
         <div id="device-detail-title"></div>
-        <button id="device-detail-close"></button>
-        <input id="device-detail-managed" type="checkbox">
-        <input id="device-detail-controllable" type="checkbox">
-        <input id="device-detail-price-opt" type="checkbox">
+        <md-text-button id="device-detail-close"></md-text-button>
+        <md-checkbox id="device-detail-managed"></md-checkbox>
+        <md-checkbox id="device-detail-controllable"></md-checkbox>
+        <md-checkbox id="device-detail-price-opt"></md-checkbox>
         <div id="device-detail-modes"></div>
         <div id="device-detail-delta-section"></div>
-        <input id="device-detail-cheap-delta">
-        <input id="device-detail-expensive-delta">
-        <select id="device-detail-overshoot">
-          <option value="turn_off">Turn off</option>
-          <option value="set_temperature">Set to temperature</option>
-          <option value="set_step">Set to step</option>
-        </select>
+        <md-filled-text-field id="device-detail-cheap-delta"></md-filled-text-field>
+        <md-filled-text-field id="device-detail-expensive-delta"></md-filled-text-field>
+        <md-filled-select id="device-detail-overshoot">
+          <md-select-option value="turn_off"><div slot="headline">Turn off</div></md-select-option>
+          <md-select-option value="set_temperature"><div slot="headline">Set to temperature</div></md-select-option>
+          <md-select-option value="set_step"><div slot="headline">Set to step</div></md-select-option>
+        </md-filled-select>
         <div id="device-detail-overshoot-temp-row"></div>
-        <input id="device-detail-overshoot-temp">
+        <md-filled-text-field id="device-detail-overshoot-temp"></md-filled-text-field>
         <div id="device-detail-overshoot-step-row"></div>
-        <select id="device-detail-overshoot-step"></select>
+        <md-filled-select id="device-detail-overshoot-step"></md-filled-select>
         <section id="device-detail-stepped-section" hidden>
           <div id="device-detail-stepped-steps"></div>
-          <button id="device-detail-stepped-add-step" type="button"></button>
-          <button id="device-detail-stepped-save" type="button"></button>
-          <button id="device-detail-stepped-reset" type="button"></button>
+          <md-outlined-button id="device-detail-stepped-add-step"></md-outlined-button>
+          <md-filled-button id="device-detail-stepped-save"></md-filled-button>
+          <md-outlined-button id="device-detail-stepped-reset"></md-outlined-button>
         </section>
         <details id="device-detail-diagnostics-disclosure">
           <summary>Advanced diagnostics</summary>
@@ -268,8 +268,8 @@ const buildDom = () => {
         </details>
       </div>
     </div>
-    <button id="refresh-button"></button>
-    <button id="reset-stats-button"></button>
+    <md-outlined-button id="refresh-button"></md-outlined-button>
+    <md-outlined-button id="reset-stats-button"></md-outlined-button>
   `;
 };
 
@@ -623,7 +623,7 @@ describe('settings script', () => {
 
     const tempRow = document.querySelector('#device-detail-overshoot-temp-row') as HTMLElement;
     const stepRow = document.querySelector('#device-detail-overshoot-step-row') as HTMLElement;
-    const stepOption = shedAction.querySelector('option[value="set_step"]') as HTMLOptionElement;
+    const stepOption = shedAction.querySelector('md-select-option[value="set_step"]') as HTMLOptionElement;
 
     expect(stepOption.hidden).toBe(true);
     expect(tempRow.hidden).toBe(false);
@@ -665,8 +665,8 @@ describe('settings script', () => {
     const shedAction = document.querySelector('#device-detail-overshoot') as HTMLSelectElement;
     const tempRow = document.querySelector('#device-detail-overshoot-temp-row') as HTMLElement;
     const stepRow = document.querySelector('#device-detail-overshoot-step-row') as HTMLElement;
-    const tempOption = shedAction.querySelector('option[value="set_temperature"]') as HTMLOptionElement;
-    const stepOption = shedAction.querySelector('option[value="set_step"]') as HTMLOptionElement;
+    const tempOption = shedAction.querySelector('md-select-option[value="set_temperature"]') as HTMLOptionElement;
+    const stepOption = shedAction.querySelector('md-select-option[value="set_step"]') as HTMLOptionElement;
 
     expect(shedAction.value).toBe('set_step');
     expect(tempOption.hidden).toBe(false);
@@ -711,8 +711,8 @@ describe('settings script', () => {
     const tempRow = document.querySelector('#device-detail-overshoot-temp-row') as HTMLElement;
     const stepRow = document.querySelector('#device-detail-overshoot-step-row') as HTMLElement;
     const tempInput = document.querySelector('#device-detail-overshoot-temp') as HTMLInputElement;
-    const tempOption = shedAction.querySelector('option[value="set_temperature"]') as HTMLOptionElement;
-    const stepOption = shedAction.querySelector('option[value="set_step"]') as HTMLOptionElement;
+    const tempOption = shedAction.querySelector('md-select-option[value="set_temperature"]') as HTMLOptionElement;
+    const stepOption = shedAction.querySelector('md-select-option[value="set_step"]') as HTMLOptionElement;
 
     expect(tempOption.hidden).toBe(false);
     expect(stepOption.hidden).toBe(false);
@@ -817,7 +817,7 @@ describe('settings script', () => {
     await flushPromises();
 
     const shedAction = document.querySelector('#device-detail-overshoot') as HTMLSelectElement;
-    const stepOption = shedAction.querySelector('option[value="set_step"]') as HTMLOptionElement;
+    const stepOption = shedAction.querySelector('md-select-option[value="set_step"]') as HTMLOptionElement;
     const planningInputs = Array.from(
       document.querySelectorAll('#device-detail-stepped-steps [data-step-field="planningPowerW"]'),
     ) as HTMLInputElement[];
@@ -1197,7 +1197,7 @@ describe('settings script', () => {
 
     const getToggles = () => {
       const checkboxes = Array.from(
-        document.querySelectorAll('[data-device-id="socket-1"] input[type="checkbox"]'),
+        document.querySelectorAll('[data-device-id="socket-1"] md-checkbox'),
       ) as HTMLInputElement[];
       return {
         managed: checkboxes[0],
@@ -1209,7 +1209,8 @@ describe('settings script', () => {
     expect(getToggles().managed.disabled).toBe(false);
     expect(getToggles().controllable.disabled).toBe(true);
 
-    getToggles().managed.click();
+    getToggles().managed.checked = true;
+    getToggles().managed.dispatchEvent(new Event('change', { bubbles: true }));
     await waitFor(() => {
       const calls = setSpy.mock.calls.filter((call) => call[0] === 'managed_devices');
       return calls.length > 0;
@@ -1218,7 +1219,8 @@ describe('settings script', () => {
     expect(managedCalls[managedCalls.length - 1]?.[1]).toEqual(expect.objectContaining({ 'socket-1': true }));
 
     await waitFor(() => getToggles().controllable.disabled === false);
-    getToggles().controllable.click();
+    getToggles().controllable.checked = true;
+    getToggles().controllable.dispatchEvent(new Event('change', { bubbles: true }));
     await waitFor(() => {
       const calls = setSpy.mock.calls.filter((call) => call[0] === 'controllable_devices');
       return calls.length > 0;
@@ -1261,7 +1263,7 @@ describe('settings script', () => {
 
     const getToggles = () => {
       const checkboxes = Array.from(
-        document.querySelectorAll('[data-device-id="socket-2"] input[type="checkbox"]'),
+        document.querySelectorAll('[data-device-id="socket-2"] md-checkbox'),
       ) as HTMLInputElement[];
       return {
         managed: checkboxes[0],
@@ -1273,14 +1275,16 @@ describe('settings script', () => {
     expect(getToggles().managed.disabled).toBe(false);
     expect(getToggles().controllable.disabled).toBe(true);
 
-    getToggles().managed.click();
+    getToggles().managed.checked = true;
+    getToggles().managed.dispatchEvent(new Event('change', { bubbles: true }));
     await waitFor(() => {
       const calls = setSpy.mock.calls.filter((call) => call[0] === 'managed_devices');
       return calls.length > 0;
     }, 1500);
     await waitFor(() => getToggles().controllable.disabled === false);
 
-    getToggles().controllable.click();
+    getToggles().controllable.checked = true;
+    getToggles().controllable.dispatchEvent(new Event('change', { bubbles: true }));
     await waitFor(() => {
       const calls = setSpy.mock.calls.filter((call) => call[0] === 'controllable_devices');
       return calls.length > 0;
@@ -1312,7 +1316,7 @@ describe('settings script', () => {
     const renameBtn = document.querySelector('#rename-mode-button') as HTMLButtonElement;
     const modeInput = document.querySelector('#mode-new') as HTMLInputElement;
     const modeSelect = document.querySelector('#mode-select') as HTMLSelectElement;
-    modeSelect.value = 'home';
+    modeSelect.value = 'Home';
     modeInput.value = 'cozy';
     renameBtn.click();
     await waitFor(() => Array.from(modeSelect.options).some((o) => o.value === 'cozy'));

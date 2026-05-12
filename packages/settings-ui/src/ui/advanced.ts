@@ -32,6 +32,20 @@ type DeviceOption = {
   name: string;
 };
 
+type MaterialSelectOptionElement = HTMLElement & { value: string; selected: boolean };
+
+const createSelectOption = (value: string, label: string, selected = false): MaterialSelectOptionElement => {
+  const option = document.createElement('md-select-option') as MaterialSelectOptionElement;
+  option.value = value;
+  option.setAttribute('value', value);
+  option.selected = selected;
+  const headline = document.createElement('div');
+  headline.slot = 'headline';
+  headline.textContent = label;
+  option.appendChild(headline);
+  return option;
+};
+
 const collectDeviceIdsFromSettings = (): Set<string> => {
   const simpleSettingIds = [
     ...Object.keys(state.controllableMap),
@@ -75,12 +89,11 @@ const renderAdvancedDeviceOptions = () => {
   if (!advancedDeviceSelect) return;
   const devices = resolveDeviceOptionsFromSettings();
   const unknownIds = resolveUnknownDeviceIdsFromSettings();
-  advancedDeviceSelect.innerHTML = '';
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = devices.length ? 'Select a device' : 'No devices in settings';
-  advancedDeviceSelect.appendChild(placeholder);
+  advancedDeviceSelect.replaceChildren(
+    createSelectOption('', devices.length ? 'Select a device' : 'No devices in settings', true),
+  );
   advancedDeviceSelect.disabled = devices.length === 0;
+  advancedDeviceSelect.value = '';
   if (advancedDeviceClearButton) {
     advancedDeviceClearButton.disabled = devices.length === 0;
   }
@@ -92,10 +105,7 @@ const renderAdvancedDeviceOptions = () => {
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name))
     .forEach((device) => {
-      const option = document.createElement('option');
-      option.value = device.id;
-      option.textContent = device.name;
-      advancedDeviceSelect.appendChild(option);
+      advancedDeviceSelect.appendChild(createSelectOption(device.id, device.name));
     });
 };
 
@@ -243,12 +253,11 @@ const resolveApiDeviceLabel = (device: HomeyApiDevice) => {
 
 const renderApiDeviceOptions = (devices: HomeyApiDevice[]) => {
   if (!advancedApiDeviceSelect) return;
-  advancedApiDeviceSelect.innerHTML = '';
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = devices.length ? 'Select a device' : 'No devices available';
-  advancedApiDeviceSelect.appendChild(placeholder);
+  advancedApiDeviceSelect.replaceChildren(
+    createSelectOption('', devices.length ? 'Select a device' : 'No devices available', true),
+  );
   advancedApiDeviceSelect.disabled = devices.length === 0;
+  advancedApiDeviceSelect.value = '';
   if (advancedApiDeviceLogButton) {
     advancedApiDeviceLogButton.disabled = devices.length === 0;
   }
@@ -257,10 +266,7 @@ const renderApiDeviceOptions = (devices: HomeyApiDevice[]) => {
     .slice()
     .sort((a, b) => resolveApiDeviceLabel(a).localeCompare(resolveApiDeviceLabel(b)))
     .forEach((device) => {
-      const option = document.createElement('option');
-      option.value = device.id;
-      option.textContent = resolveApiDeviceLabel(device);
-      advancedApiDeviceSelect.appendChild(option);
+      advancedApiDeviceSelect.appendChild(createSelectOption(device.id, resolveApiDeviceLabel(device)));
     });
 };
 

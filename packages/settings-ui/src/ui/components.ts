@@ -7,6 +7,8 @@
 import { logSettingsError } from './logging.ts';
 import { setTooltip } from './tooltips.ts';
 
+export { bindSegmentedToSelect, type MaterialSegmentedSelectElement } from './segmentedControl.ts';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -63,6 +65,32 @@ export type UsageBarOptions = {
     title?: string;
 };
 
+export type MaterialCheckboxElement = HTMLElement & {
+    checked: boolean;
+    disabled: boolean;
+};
+
+export type MaterialTextFieldElement = HTMLElement & {
+    value: string;
+    disabled: boolean;
+};
+
+export type MaterialSelectElement = HTMLElement & {
+    value: string;
+    disabled: boolean;
+};
+
+export type MaterialSelectOptionElement = HTMLElement & {
+    value: string;
+    selected: boolean;
+    disabled: boolean;
+};
+
+type MaterialButtonElement = HTMLElement & {
+    disabled: boolean;
+    focus: () => void;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Row Components
 // ─────────────────────────────────────────────────────────────────────────────
@@ -108,8 +136,20 @@ export const createDeviceRow = (options: DeviceRowOptions): HTMLElement => {
     if (onClick) {
         row.classList.add('clickable');
         row.addEventListener('click', (e) => {
-            // Don't trigger row click if clicking on input elements
-            if ((e.target as HTMLElement).closest('input, select, button, a')) return;
+            // Don't trigger row click if clicking on nested controls.
+            if ((e.target as HTMLElement).closest([
+                'input',
+                'select',
+                'button',
+                'a',
+                'md-checkbox',
+                'md-filled-text-field',
+                'md-filled-select',
+                'md-icon-button',
+                'md-text-button',
+                'md-filled-button',
+                'md-outlined-button',
+            ].join(','))) return;
             onClick(e);
         });
     }
@@ -195,8 +235,7 @@ export const createCheckboxLabel = (options: CheckboxOptions): HTMLElement => {
         label.classList.add('is-disabled');
     }
 
-    const input = document.createElement('input');
-    input.type = 'checkbox';
+    const input = document.createElement('md-checkbox') as MaterialCheckboxElement;
     input.checked = checked;
     input.disabled = disabled;
     input.setAttribute('aria-label', title);
@@ -220,24 +259,21 @@ export type IconToggleOptions = CheckboxOptions & {
 /**
  * Icon-based toggle: tap to switch a behaviour on/off. Renders an SVG icon
  * cloned from a <template> in the DOM, with a pill background when active.
- * Exposes WAI-ARIA `role="switch"` + `aria-checked` so screen readers
- * announce the state transition.
  */
 export const createIconToggle = (options: IconToggleOptions): HTMLElement => {
     const { title, checked, disabled = false, onChange, iconTemplateId } = options;
 
-    const button = document.createElement('button');
-    button.type = 'button';
+    const button = document.createElement('md-icon-button') as HTMLElement & { selected?: boolean };
     button.className = 'pels-icon-toggle';
+    button.setAttribute('toggle', '');
     button.setAttribute('role', 'switch');
     button.setAttribute('aria-checked', String(checked));
     button.setAttribute('aria-label', title);
+    button.selected = checked;
+    button.toggleAttribute('selected', checked);
     setTooltip(button, title);
     if (checked) button.classList.add('is-on');
     if (disabled) {
-        // aria-disabled, not native `disabled`: native suppresses click events
-        // entirely, which kills the tippy delegate that surfaces the tooltip
-        // explaining why the toggle is off.
         button.classList.add('is-disabled');
         button.setAttribute('aria-disabled', 'true');
     }
@@ -252,6 +288,8 @@ export const createIconToggle = (options: IconToggleOptions): HTMLElement => {
         const next = button.getAttribute('aria-checked') !== 'true';
         button.setAttribute('aria-checked', String(next));
         button.classList.toggle('is-on', next);
+        button.selected = next;
+        button.toggleAttribute('selected', next);
         const result = onChange(next);
         if (result instanceof Promise) {
             result.catch((error) => {
@@ -266,15 +304,15 @@ export const createIconToggle = (options: IconToggleOptions): HTMLElement => {
 /**
  * Creates a number input with validation.
  */
-export const createNumberInput = (options: NumberInputOptions): HTMLInputElement => {
+export const createNumberInput = (options: NumberInputOptions): MaterialTextFieldElement => {
     const { value, min, max, step = 1, className = '', title = '', onChange } = options;
 
-    const input = document.createElement('input');
-    input.type = 'number';
+    const input = document.createElement('md-filled-text-field') as MaterialTextFieldElement;
+    input.setAttribute('type', 'number');
     input.value = value.toString();
-    input.step = step.toString();
-    if (min !== undefined) input.min = min.toString();
-    if (max !== undefined) input.max = max.toString();
+    input.setAttribute('step', step.toString());
+    if (min !== undefined) input.setAttribute('min', min.toString());
+    if (max !== undefined) input.setAttribute('max', max.toString());
     if (className) input.className = className;
     if (title) {
         setTooltip(input, title);
@@ -299,16 +337,20 @@ export const createNumberInput = (options: NumberInputOptions): HTMLInputElement
 /**
  * Creates a select dropdown.
  */
-export const createSelectInput = (options: SelectInputOptions): HTMLSelectElement => {
+export const createSelectInput = (options: SelectInputOptions): MaterialSelectElement => {
     const { options: selectOptions, className = '', onChange } = options;
 
-    const select = document.createElement('select');
+    const select = document.createElement('md-filled-select') as MaterialSelectElement;
     if (className) select.className = className;
 
     selectOptions.forEach((opt) => {
-        const option = document.createElement('option');
+        const option = document.createElement('md-select-option') as MaterialSelectOptionElement;
         option.value = opt.value;
-        option.textContent = opt.label;
+        option.setAttribute('value', opt.value);
+        const headline = document.createElement('div');
+        headline.slot = 'headline';
+        headline.textContent = opt.label;
+        option.appendChild(headline);
         if (opt.selected) option.selected = true;
         select.appendChild(option);
     });
@@ -358,10 +400,10 @@ export const createToggleGroup = <T extends string>(
     container.setAttribute('role', 'group');
     container.setAttribute('aria-label', ariaLabel);
 
-    const buttons = new Map<T, HTMLButtonElement>();
+    const buttons = new Map<T, MaterialButtonElement>();
     options.forEach(({ value, label }) => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
+        const btn = document.createElement('md-text-button') as MaterialButtonElement;
+        btn.setAttribute('type', 'button');
         btn.className = 'day-view-toggle__button';
         btn.textContent = label;
         btn.setAttribute('aria-pressed', 'false');
@@ -394,7 +436,7 @@ export type CheckboxFieldOptions = {
 
 export type CheckboxFieldResult = {
     element: HTMLElement;
-    input: HTMLInputElement;
+    input: MaterialCheckboxElement;
 };
 
 export type FieldOptions = {
@@ -414,11 +456,10 @@ export type FieldOptions = {
 export const createCheckboxField = (options: CheckboxFieldOptions): CheckboxFieldResult => {
     const { id, label, hint, checked = false } = options;
 
-    const wrapper = document.createElement('label');
+    const wrapper = document.createElement('div');
     wrapper.className = 'field checkbox-field';
 
-    const input = document.createElement('input');
-    input.type = 'checkbox';
+    const input = document.createElement('md-checkbox') as MaterialCheckboxElement;
     input.id = id;
     input.checked = checked;
 
@@ -501,139 +542,6 @@ export const createDragHandle = (): HTMLElement => {
 // ─────────────────────────────────────────────────────────────────────────────
 // List Utilities
 // ─────────────────────────────────────────────────────────────────────────────
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Segmented Control (binds to a hidden <select>)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Binds a segmented control container ([role="radiogroup"]) to a sibling
- * <select>. The select stays the source of truth: option text, value, hidden,
- * and disabled state propagate to the visible buttons. Clicking a button
- * updates the select's value and dispatches a change event so existing
- * select-change handlers still work.
- *
- * Buttons are created once and updated in place on subsequent refreshes so
- * keyboard focus survives renders. Call refresh() (or dispatch
- * `pels:segmented-refresh` on the select) after mutating option text, hidden,
- * or disabled state.
- */
-export const bindSegmentedToSelect = (params: {
-    container: HTMLElement;
-    select: HTMLSelectElement;
-}): { refresh: () => void } => {
-    const { container, select } = params;
-    const buttons = new Map<HTMLOptionElement, HTMLButtonElement>();
-
-    const isInteractive = (button: HTMLButtonElement) => !button.disabled && !button.hidden;
-
-    const visibleEnabledOptions = () => (select.disabled ? [] : Array.from(select.options).filter((option) => (
-        !option.hidden && !option.disabled
-    )));
-
-    const focusOption = (option: HTMLOptionElement) => {
-        const button = buttons.get(option);
-        if (!button) return;
-        select.value = option.value;
-        render();
-        button.focus();
-        select.dispatchEvent(new Event('change', { bubbles: true }));
-    };
-
-    const handleKeydown = (event: KeyboardEvent, option: HTMLOptionElement) => {
-        const movableOptions = visibleEnabledOptions();
-        if (movableOptions.length === 0) return;
-        const currentIndex = movableOptions.indexOf(option);
-        let nextIndex: number;
-        if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-            nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % movableOptions.length;
-        } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-            nextIndex = currentIndex === -1
-                ? movableOptions.length - 1
-                : (currentIndex - 1 + movableOptions.length) % movableOptions.length;
-        } else if (event.key === 'Home') {
-            nextIndex = 0;
-        } else if (event.key === 'End') {
-            nextIndex = movableOptions.length - 1;
-        } else {
-            return;
-        }
-        event.preventDefault();
-        const target = movableOptions[nextIndex];
-        if (target && target !== option) focusOption(target);
-    };
-
-    const createButton = (option: HTMLOptionElement): HTMLButtonElement => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'segmented__option';
-        button.setAttribute('role', 'radio');
-        button.dataset.value = option.value;
-        button.addEventListener('click', () => {
-            if (!isInteractive(button)) return;
-            if (select.value === option.value) return;
-            select.value = option.value;
-            select.dispatchEvent(new Event('change', { bubbles: true }));
-        });
-        button.addEventListener('keydown', (event) => handleKeydown(event, option));
-        return button;
-    };
-
-    const render = () => {
-        const options = Array.from(select.options);
-        const seen = new Set<HTMLOptionElement>();
-        container.setAttribute('aria-disabled', select.disabled ? 'true' : 'false');
-
-        // Detect the focusable button: prefer the currently-selected visible+enabled
-        // option, otherwise fall back to the first visible+enabled option so the
-        // group always has exactly one tabbable target. When the select itself is
-        // disabled, no button is tabbable.
-        const interactive = visibleEnabledOptions();
-        const selectedIfInteractive = interactive.find((option) => option.value === select.value);
-        const focusableOption = selectedIfInteractive ?? interactive[0] ?? null;
-
-        options.forEach((option, index) => {
-            seen.add(option);
-            let button = buttons.get(option);
-            if (!button) {
-                button = createButton(option);
-                buttons.set(option, button);
-            }
-            if (button.dataset.value !== option.value) button.dataset.value = option.value;
-            const label = option.textContent || option.value;
-            if (button.textContent !== label) button.textContent = label;
-            // Reflect the selected value even when the option is disabled (ARIA
-            // permits a disabled+checked radio). Hidden options are never
-            // visually selected because they're not rendered.
-            const isChecked = option.value === select.value && !option.hidden;
-            button.setAttribute('aria-checked', isChecked ? 'true' : 'false');
-            button.disabled = option.disabled || select.disabled;
-            button.hidden = option.hidden;
-            button.tabIndex = option === focusableOption ? 0 : -1;
-
-            const existing = container.children[index];
-            if (existing !== button) {
-                container.insertBefore(button, existing ?? null);
-            }
-        });
-
-        // Remove any buttons whose options were detached from the select.
-        buttons.forEach((button, option) => {
-            if (seen.has(option)) return;
-            button.remove();
-            buttons.delete(option);
-        });
-    };
-
-    render();
-    select.addEventListener('change', render);
-    // Also listen for a custom event that lets external code request a redraw
-    // after mutating option.hidden / option.disabled / option.textContent /
-    // select.value without triggering a real change event (which would re-fire
-    // user handlers).
-    select.addEventListener('pels:segmented-refresh', render as EventListener);
-    return { refresh: render };
-};
 
 /**
  * Renders a list of items into a container, handling empty state.

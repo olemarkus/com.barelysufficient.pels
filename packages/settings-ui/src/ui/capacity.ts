@@ -11,6 +11,8 @@ import {
   advancedEvSupportEnabledInput,
   advancedOverviewRedesignEnabledInput,
   dryRunBanner,
+  type MdCheckboxElement,
+  type MdFilledTextFieldElement,
   staleDataBanner,
   staleDataBannerText,
 } from './dom.ts';
@@ -116,7 +118,7 @@ const syncCapacityControls = (
   updateCapacityReactionHint(limit, margin);
 };
 
-const readNumberInput = (input: HTMLInputElement | null, label: string): number => {
+const readNumberInput = (input: MdFilledTextFieldElement | null, label: string): number => {
   const value = parseFloat(input?.value ?? '');
   if (!Number.isFinite(value)) throw new Error(`${label} must be a number.`);
   return value;
@@ -260,7 +262,7 @@ export const loadAdvancedSettings = async () => {
   if (enabledTopics.length === 0 && legacyEnabled === true) {
     enabledTopics = [...ALL_DEBUG_LOGGING_TOPICS];
   }
-  document.querySelectorAll<HTMLInputElement>('[data-debug-topic]').forEach((input) => {
+  document.querySelectorAll<MdCheckboxElement>('[data-debug-topic]').forEach((input) => {
     const el = input;
     const topic = el.dataset.debugTopic;
     el.checked = typeof topic === 'string' && isDebugLoggingTopic(topic) && enabledTopics.includes(topic);
