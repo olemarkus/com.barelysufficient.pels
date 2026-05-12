@@ -1,4 +1,10 @@
 import { expect, test, type Page } from './fixtures/test';
+import {
+  readMdSwitchSelected,
+  readMdValue,
+  setMdSwitch,
+  setMdValue,
+} from './fixtures/materialWeb';
 
 const openDevices = async (page: Page) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -12,7 +18,7 @@ const openDeviceDetail = async (page: Page, deviceId: string) => {
   await openDevices(page);
   const row = page.locator(`#devices-panel [data-device-id="${deviceId}"]`).first();
   await expect(row).toBeVisible();
-  await row.locator('.device-row__name').click();
+  await row.click();
   await expect(page.locator('#device-detail-overlay')).toBeVisible();
 };
 
@@ -30,33 +36,6 @@ const readHomeySetting = async <T,>(page: Page, key: string): Promise<T> => page
   }),
   key,
 ) as Promise<T>;
-
-// md-filled-text-field / md-filled-select are custom elements; Playwright's
-// .fill() / .selectOption() don't reach the inner native control. Set the
-// host property and dispatch a `change` event the same way our application
-// listeners do.
-const setMdValue = async (page: Page, selector: string, value: string) => {
-  await page.locator(selector).evaluate((el, v) => {
-    (el as HTMLElement & { value: string }).value = v;
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-  }, value);
-};
-
-const readMdValue = (page: Page, selector: string) => page.locator(selector)
-  .evaluate((el) => (el as HTMLElement & { value: string }).value);
-
-// md-switch exposes `selected` instead of `checked`; flip it the same way.
-const setMdSwitch = async (page: Page, selector: string, selected: boolean) => {
-  await page.locator(selector).evaluate((el, v) => {
-    (el as HTMLElement & { selected: boolean }).selected = v;
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-  }, selected);
-};
-
-const readMdSwitchSelected = (page: Page, selector: string) => page.locator(selector)
-  .evaluate((el) => (el as HTMLElement & { selected: boolean }).selected);
 
 const collectConsoleErrors = (page: Page): string[] => {
   const errors: string[] = [];
