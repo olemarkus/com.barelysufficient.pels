@@ -12,10 +12,17 @@ export type MdSwitchElement = HTMLElement & {
 export type MdFilledTextFieldElement = HTMLElement & {
   value: string;
   disabled: boolean;
+  min: string;
+  max: string;
 };
 
 export type MdFilledSelectElement = HTMLElement & {
   value: string;
+  disabled: boolean;
+};
+
+export type MdCheckboxElement = HTMLElement & {
+  checked: boolean;
   disabled: boolean;
 };
 
@@ -27,11 +34,11 @@ export const toastEl = qs('#toast');
 export const deviceList = qs('#device-list');
 export const deviceCardList = document.querySelector('#device-card-list') as HTMLElement | null;
 export const emptyState = qs('#empty-state');
-export const refreshButton = document.querySelector('#refresh-button') as HTMLButtonElement;
+export const refreshButton = document.querySelector('#refresh-button') as MdButtonElement;
 export const powerList = qs('#power-list');
 export const powerEmpty = qs('#power-empty');
-export const powerWeekPrev = document.querySelector('#power-week-prev') as HTMLButtonElement;
-export const powerWeekNext = document.querySelector('#power-week-next') as HTMLButtonElement;
+export const powerWeekPrev = document.querySelector('#power-week-prev') as MdButtonElement;
+export const powerWeekNext = document.querySelector('#power-week-next') as MdButtonElement;
 export const powerWeekLabel = qs('#power-week-label');
 export const dailyList = qs('#daily-list');
 export const dailyEmpty = qs('#daily-empty');
@@ -65,31 +72,37 @@ export const redesignShellNav = document.querySelector('#redesign-shell-nav') as
 export const tabs = Array.from(document.querySelectorAll<HTMLElement>('.tab'));
 export const panels = Array.from(document.querySelectorAll<HTMLElement>('.panel'));
 export const capacityForm = document.querySelector('#capacity-form') as HTMLFormElement;
-export const capacityLimitInput = document.querySelector('#capacity-limit') as HTMLInputElement;
-export const capacityMarginInput = document.querySelector('#capacity-margin') as HTMLInputElement;
-export const capacityDryRunInput = document.querySelector('#capacity-dry-run') as HTMLInputElement;
-export const powerSourceSelect = document.querySelector('#power-source') as HTMLSelectElement;
+export const capacityLimitInput = document.querySelector('#capacity-limit') as MdFilledTextFieldElement;
+export const capacityMarginInput = document.querySelector('#capacity-margin') as MdFilledTextFieldElement;
+export const capacityDryRunInput = document.querySelector('#capacity-dry-run') as MdCheckboxElement;
+export const powerSourceSelect = document.querySelector('#power-source') as MdFilledSelectElement;
 export const settingsLimitsForm = document.querySelector('#settings-limits-form') as HTMLFormElement | null;
-export const settingsCapacityLimitInput = document.querySelector('#settings-capacity-limit') as HTMLInputElement | null;
+export const settingsCapacityLimitInput = document.querySelector(
+  '#settings-capacity-limit',
+) as MdFilledTextFieldElement | null;
 export const settingsCapacityMarginInput = document.querySelector(
   '#settings-capacity-margin',
-) as HTMLInputElement | null;
-export const settingsCapacityReactionHint = document.querySelector('#settings-capacity-reaction') as HTMLElement | null;
-export const settingsPowerSourceSelect = document.querySelector('#settings-power-source') as HTMLSelectElement | null;
+) as MdFilledTextFieldElement | null;
+export const settingsCapacityReactionHint = document.querySelector(
+  '#settings-capacity-reaction',
+) as HTMLElement | null;
+export const settingsPowerSourceSelect = document.querySelector(
+  '#settings-power-source',
+) as MdFilledSelectElement | null;
 export const settingsSimulationModeInput = document.querySelector(
   '#settings-simulation-mode',
-) as HTMLInputElement | null;
+) as MdCheckboxElement | null;
 export const dailyBudgetForm = document.querySelector('#daily-budget-form') as HTMLFormElement;
-export const dailyBudgetEnabledInput = document.querySelector('#daily-budget-enabled') as HTMLInputElement;
-export const dailyBudgetKwhInput = document.querySelector('#daily-budget-kwh') as HTMLInputElement;
-export const dailyBudgetPriceShapingInput = document.querySelector('#daily-budget-price-shaping') as HTMLInputElement;
+export const dailyBudgetEnabledInput = document.querySelector('#daily-budget-enabled') as MdCheckboxElement;
+export const dailyBudgetKwhInput = document.querySelector('#daily-budget-kwh') as MdFilledTextFieldElement;
+export const dailyBudgetPriceShapingInput = document.querySelector('#daily-budget-price-shaping') as MdCheckboxElement;
 export const dailyBudgetAdvancedForm = document.querySelector('#daily-budget-advanced-form') as HTMLFormElement;
 export const dailyBudgetControlledWeightInput = document.querySelector(
   '#daily-budget-controlled-weight',
-) as HTMLSelectElement;
+) as MdFilledSelectElement;
 export const dailyBudgetPriceFlexShareInput = document.querySelector(
   '#daily-budget-price-flex-share',
-) as HTMLSelectElement;
+) as MdFilledSelectElement;
 export const dailyBudgetStatusPill = qs('#daily-budget-status-pill');
 export const dailyBudgetTitle = qs('#daily-budget-title');
 export const dailyBudgetDay = qs('#daily-budget-day');
@@ -105,12 +118,12 @@ export const dailyBudgetConfidence = document.getElementById('daily-budget-confi
 export const dailyBudgetAllocationWarning = document.getElementById(
   'daily-budget-allocation-warning',
 ) as HTMLElement | null;
-export const dailyBudgetBreakdownInput = document.querySelector('#daily-budget-breakdown') as HTMLInputElement;
-export const dailyBudgetRecomputeButton = document.querySelector('#daily-budget-recompute') as HTMLButtonElement;
-export const dailyBudgetApplyButton = document.querySelector('#daily-budget-apply') as HTMLButtonElement;
-export const dailyBudgetDiscardButton = document.querySelector('#daily-budget-discard') as HTMLButtonElement;
+export const dailyBudgetBreakdownInput = document.querySelector('#daily-budget-breakdown') as MdCheckboxElement;
+export const dailyBudgetRecomputeButton = document.querySelector('#daily-budget-recompute') as MdButtonElement;
+export const dailyBudgetApplyButton = document.querySelector('#daily-budget-apply') as MdButtonElement;
+export const dailyBudgetDiscardButton = document.querySelector('#daily-budget-discard') as MdButtonElement;
 export const dryRunBanner = qs('#dry-run-banner');
-export const simulationDisableButton = document.querySelector('#simulation-disable-button') as HTMLButtonElement | null;
+export const simulationDisableButton = document.querySelector('#simulation-disable-button') as MdButtonElement | null;
 export const staleDataBanner = qs('#stale-data-banner');
 export const staleDataBannerText = qs('#stale-data-text');
 export const planLegacySurface = document.querySelector('#plan-legacy-surface') as HTMLElement | null;
@@ -121,13 +134,13 @@ export const planHero = qs('#plan-hero');
 export const planHourStrip = qs('#plan-hour-strip');
 export const planCards = qs('#plan-cards');
 export const planEmpty = qs('#plan-empty');
-export const resetStatsButton = document.querySelector('#reset-stats-button') as HTMLButtonElement;
-export const modeSelect = document.querySelector('#mode-select') as HTMLSelectElement;
-export const modeNewInput = document.querySelector('#mode-new') as HTMLInputElement;
-export const addModeButton = document.querySelector('#add-mode-button') as HTMLButtonElement;
-export const deleteModeButton = document.querySelector('#delete-mode-button') as HTMLButtonElement;
-export const renameModeButton = document.querySelector('#rename-mode-button') as HTMLButtonElement;
-export const activeModeSelect = document.querySelector('#active-mode-select') as HTMLSelectElement;
+export const resetStatsButton = document.querySelector('#reset-stats-button') as MdButtonElement;
+export const modeSelect = document.querySelector('#mode-select') as MdFilledSelectElement;
+export const modeNewInput = document.querySelector('#mode-new') as MdFilledTextFieldElement;
+export const addModeButton = document.querySelector('#add-mode-button') as MdButtonElement;
+export const deleteModeButton = document.querySelector('#delete-mode-button') as MdButtonElement;
+export const renameModeButton = document.querySelector('#rename-mode-button') as MdButtonElement;
+export const activeModeSelect = document.querySelector('#active-mode-select') as MdFilledSelectElement;
 export const priorityForm = document.querySelector('#priority-form') as HTMLFormElement;
 export const priorityList = qs('#priority-list');
 export const priorityEmpty = qs('#priority-empty');
@@ -139,18 +152,20 @@ export const advancedOverviewRedesignRow = document.querySelector(
 ) as HTMLElement | null;
 export const advancedOverviewRedesignEnabledInput = document.querySelector(
   '#advanced-overview-redesign-enabled',
-) as HTMLInputElement | null;
-export const advancedEvSupportEnabledInput = document.querySelector('#advanced-ev-support-enabled') as HTMLInputElement;
-export const advancedDeviceSelect = document.querySelector('#advanced-device-select') as HTMLSelectElement;
-export const advancedDeviceClearButton = document.querySelector('#advanced-device-clear') as HTMLButtonElement;
+) as MdCheckboxElement | null;
+export const advancedEvSupportEnabledInput = document.querySelector(
+  '#advanced-ev-support-enabled',
+) as MdCheckboxElement;
+export const advancedDeviceSelect = document.querySelector('#advanced-device-select') as MdFilledSelectElement;
+export const advancedDeviceClearButton = document.querySelector('#advanced-device-clear') as MdButtonElement;
 export const advancedDeviceClearUnknownButton = document.querySelector(
   '#advanced-device-clear-unknown',
-) as HTMLButtonElement;
-export const advancedApiDeviceSelect = document.querySelector('#advanced-api-device-select') as HTMLSelectElement;
+) as MdButtonElement;
+export const advancedApiDeviceSelect = document.querySelector('#advanced-api-device-select') as MdFilledSelectElement;
 export const advancedApiDeviceRefreshButton = document.querySelector(
   '#advanced-api-device-refresh',
-) as HTMLButtonElement;
-export const advancedApiDeviceLogButton = document.querySelector('#advanced-api-device-log') as HTMLButtonElement;
+) as MdButtonElement;
+export const advancedApiDeviceLogButton = document.querySelector('#advanced-api-device-log') as MdButtonElement;
 
 export const deviceDetailOverlay = qs('#device-detail-overlay');
 export const deviceDetailPanel = qs('#device-detail-panel');
@@ -177,7 +192,7 @@ export const deviceDetailCheapDelta = document.querySelector('#device-detail-che
 export const deviceDetailExpensiveDelta = document.querySelector(
   '#device-detail-expensive-delta',
 ) as MdFilledTextFieldElement;
-export const deviceDetailShedAction = document.querySelector('#device-detail-overshoot') as HTMLSelectElement;
+export const deviceDetailShedAction = document.querySelector('#device-detail-overshoot') as MdFilledSelectElement;
 export const deviceDetailShedTempRow = qs('#device-detail-overshoot-temp-row');
 export const deviceDetailShedTemp = document.querySelector(
   '#device-detail-overshoot-temp',

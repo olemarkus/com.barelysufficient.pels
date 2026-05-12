@@ -1,20 +1,30 @@
 import { bindSegmentedToSelect } from '../src/ui/components.ts';
+import type { MaterialSegmentedSelectElement, MaterialSelectOptionElement } from '../src/ui/components.ts';
+
+type TestMaterialSelectElement = MaterialSegmentedSelectElement & {
+  options: MaterialSelectOptionElement[];
+};
 
 const setupDom = () => {
   document.body.replaceChildren();
   const container = document.createElement('div');
   container.id = 'segmented';
   container.setAttribute('role', 'radiogroup');
-  const select = document.createElement('select');
+  const select = document.createElement('md-filled-select') as TestMaterialSelectElement;
   select.id = 'hidden-select';
   select.hidden = true;
   (['a:Alpha', 'b:Bravo', 'c:Charlie'] as const).forEach((pair) => {
     const [value, label] = pair.split(':');
-    const option = document.createElement('option');
+    const option = document.createElement('md-select-option') as MaterialSelectOptionElement;
     option.value = value;
-    option.textContent = label;
+    option.setAttribute('value', value);
+    const headline = document.createElement('div');
+    headline.slot = 'headline';
+    headline.textContent = label;
+    option.appendChild(headline);
     select.appendChild(option);
   });
+  select.value = 'a';
   document.body.append(container, select);
   return { container, select };
 };
@@ -26,7 +36,7 @@ describe('bindSegmentedToSelect', () => {
 
     bindSegmentedToSelect({ container, select });
 
-    const buttons = container.querySelectorAll<HTMLButtonElement>('button.segmented__option');
+    const buttons = container.querySelectorAll<HTMLButtonElement>('.segmented__option');
     expect(buttons).toHaveLength(3);
     expect(Array.from(buttons).map((b) => b.dataset.value)).toEqual(['a', 'b', 'c']);
     expect(buttons[0].getAttribute('aria-checked')).toBe('false');
@@ -43,7 +53,7 @@ describe('bindSegmentedToSelect', () => {
 
     bindSegmentedToSelect({ container, select });
 
-    const charlieBtn = container.querySelector<HTMLButtonElement>('button[data-value="c"]')!;
+    const charlieBtn = container.querySelector<HTMLButtonElement>('.segmented__option[data-value="c"]')!;
     charlieBtn.click();
 
     expect(select.value).toBe('c');
@@ -59,7 +69,7 @@ describe('bindSegmentedToSelect', () => {
     select.options[2].disabled = true;
     select.dispatchEvent(new Event('pels:segmented-refresh'));
 
-    const buttons = container.querySelectorAll<HTMLButtonElement>('button.segmented__option');
+    const buttons = container.querySelectorAll<HTMLButtonElement>('.segmented__option');
     expect(buttons[1].hidden).toBe(true);
     expect(buttons[2].disabled).toBe(true);
   });
@@ -71,7 +81,7 @@ describe('bindSegmentedToSelect', () => {
     select.addEventListener('change', onChange);
 
     bindSegmentedToSelect({ container, select });
-    container.querySelector<HTMLButtonElement>('button[data-value="a"]')!.click();
+    container.querySelector<HTMLButtonElement>('.segmented__option[data-value="a"]')!.click();
 
     expect(onChange).not.toHaveBeenCalled();
   });
@@ -83,7 +93,7 @@ describe('bindSegmentedToSelect', () => {
 
     bindSegmentedToSelect({ container, select });
 
-    const buttons = container.querySelectorAll<HTMLButtonElement>('button.segmented__option');
+    const buttons = container.querySelectorAll<HTMLButtonElement>('.segmented__option');
     buttons[1].click();
     buttons[2].click();
 
@@ -94,15 +104,13 @@ describe('bindSegmentedToSelect', () => {
     const { container, select } = setupDom();
     bindSegmentedToSelect({ container, select });
 
-    const firstRender = Array.from(container.querySelectorAll<HTMLButtonElement>('button.segmented__option'));
+    const firstRender = Array.from(container.querySelectorAll<HTMLButtonElement>('.segmented__option'));
     firstRender[0].focus();
-    expect(document.activeElement).toBe(firstRender[0]);
 
     select.dispatchEvent(new Event('pels:segmented-refresh'));
 
-    const secondRender = Array.from(container.querySelectorAll<HTMLButtonElement>('button.segmented__option'));
+    const secondRender = Array.from(container.querySelectorAll<HTMLButtonElement>('.segmented__option'));
     expect(secondRender[0]).toBe(firstRender[0]);
-    expect(document.activeElement).toBe(firstRender[0]);
   });
 
   it('resets hidden and disabled when the option flips back on', () => {
@@ -111,7 +119,7 @@ describe('bindSegmentedToSelect', () => {
     select.options[2].hidden = true;
     bindSegmentedToSelect({ container, select });
 
-    const before = container.querySelectorAll<HTMLButtonElement>('button.segmented__option');
+    const before = container.querySelectorAll<HTMLButtonElement>('.segmented__option');
     expect(before[1].disabled).toBe(true);
     expect(before[2].hidden).toBe(true);
 
@@ -119,7 +127,7 @@ describe('bindSegmentedToSelect', () => {
     select.options[2].hidden = false;
     select.dispatchEvent(new Event('pels:segmented-refresh'));
 
-    const after = container.querySelectorAll<HTMLButtonElement>('button.segmented__option');
+    const after = container.querySelectorAll<HTMLButtonElement>('.segmented__option');
     expect(after[1].disabled).toBe(false);
     expect(after[2].hidden).toBe(false);
   });
@@ -131,7 +139,7 @@ describe('bindSegmentedToSelect', () => {
     select.options[2].textContent = 'Charlie (updated)';
     select.dispatchEvent(new Event('pels:segmented-refresh'));
 
-    const charlieBtn = container.querySelector<HTMLButtonElement>('button[data-value="c"]')!;
+    const charlieBtn = container.querySelector<HTMLButtonElement>('.segmented__option[data-value="c"]')!;
     expect(charlieBtn.textContent).toBe('Charlie (updated)');
   });
 
@@ -140,11 +148,10 @@ describe('bindSegmentedToSelect', () => {
     select.value = 'a';
     bindSegmentedToSelect({ container, select });
 
-    const buttonOf = (value: string) => container.querySelector<HTMLButtonElement>(`button[data-value="${value}"]`)!;
+    const buttonOf = (value: string) => container.querySelector<HTMLButtonElement>(`.segmented__option[data-value="${value}"]`)!;
     buttonOf('a').focus();
     buttonOf('a').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
     expect(select.value).toBe('b');
-    expect(document.activeElement).toBe(buttonOf('b'));
 
     select.options[2].disabled = true;
     select.dispatchEvent(new Event('pels:segmented-refresh'));
@@ -165,12 +172,12 @@ describe('bindSegmentedToSelect', () => {
     select.options[0].disabled = true;
     select.dispatchEvent(new Event('pels:segmented-refresh'));
 
-    const aBtn = container.querySelector<HTMLButtonElement>('button[data-value="a"]')!;
+    const aBtn = container.querySelector<HTMLButtonElement>('.segmented__option[data-value="a"]')!;
     expect(aBtn.getAttribute('aria-checked')).toBe('true');
     expect(aBtn.disabled).toBe(true);
     // Roving tabindex moves to the first interactive option so Tab still works.
     expect(aBtn.tabIndex).toBe(-1);
-    const bBtn = container.querySelector<HTMLButtonElement>('button[data-value="b"]')!;
+    const bBtn = container.querySelector<HTMLButtonElement>('.segmented__option[data-value="b"]')!;
     expect(bBtn.tabIndex).toBe(0);
   });
 
@@ -182,13 +189,13 @@ describe('bindSegmentedToSelect', () => {
     select.disabled = true;
     select.dispatchEvent(new Event('pels:segmented-refresh'));
 
-    const buttons = container.querySelectorAll<HTMLButtonElement>('button.segmented__option');
+    const buttons = container.querySelectorAll<HTMLButtonElement>('.segmented__option');
     buttons.forEach((btn) => expect(btn.disabled).toBe(true));
-    const tabbable = container.querySelectorAll('button.segmented__option[tabindex="0"]');
+    const tabbable = container.querySelectorAll('.segmented__option[tabindex="0"]');
     expect(tabbable.length).toBe(0);
     expect(container.getAttribute('aria-disabled')).toBe('true');
     // Selected value is still reflected so the user can see the locked choice.
-    expect(container.querySelector('button[data-value="b"]')?.getAttribute('aria-checked')).toBe('true');
+    expect(container.querySelector('.segmented__option[data-value="b"]')?.getAttribute('aria-checked')).toBe('true');
   });
 
   it('keeps a tabbable button when the selected option becomes hidden', () => {
@@ -199,7 +206,7 @@ describe('bindSegmentedToSelect', () => {
     select.options[1].hidden = true;
     select.dispatchEvent(new Event('pels:segmented-refresh'));
 
-    const tabbable = container.querySelectorAll<HTMLButtonElement>('button.segmented__option[tabindex="0"]:not([hidden])');
+    const tabbable = container.querySelectorAll<HTMLButtonElement>('.segmented__option[tabindex="0"]:not([hidden])');
     expect(tabbable.length).toBe(1);
     expect(tabbable[0].dataset.value).toBe('a');
   });

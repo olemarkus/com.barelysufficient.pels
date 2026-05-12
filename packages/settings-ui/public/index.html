@@ -20,20 +20,20 @@
         <p class="lede">Manage devices, modes, budgets, and usage.</p>
       </div>
       <div class="tabs" id="legacy-shell-nav" role="tablist" aria-label="PELS settings sections">
-        <button type="button" class="tab active" data-tab="overview" role="tab" aria-selected="true">Overview</button>
-        <button type="button" class="tab" data-tab="devices" role="tab" aria-selected="false">Devices</button>
-        <button type="button" class="tab" data-tab="modes" role="tab" aria-selected="false">Modes</button>
-        <button type="button" class="tab" data-tab="budget" role="tab" aria-selected="false">Budget</button>
-        <button type="button" class="tab" data-tab="usage" role="tab" aria-selected="false">Usage</button>
-        <button type="button" class="tab" data-tab="electricity-prices" role="tab" aria-selected="false">Prices</button>
-        <button type="button" class="tab" data-tab="advanced" role="tab" aria-selected="false">Advanced</button>
+        <md-primary-tab class="tab active" data-tab="overview" role="tab" aria-selected="true">Overview</md-primary-tab>
+        <md-primary-tab class="tab" data-tab="devices" role="tab" aria-selected="false">Devices</md-primary-tab>
+        <md-primary-tab class="tab" data-tab="modes" role="tab" aria-selected="false">Modes</md-primary-tab>
+        <md-primary-tab class="tab" data-tab="budget" role="tab" aria-selected="false">Budget</md-primary-tab>
+        <md-primary-tab class="tab" data-tab="usage" role="tab" aria-selected="false">Usage</md-primary-tab>
+        <md-primary-tab class="tab" data-tab="electricity-prices" role="tab" aria-selected="false">Prices</md-primary-tab>
+        <md-primary-tab class="tab" data-tab="advanced" role="tab" aria-selected="false">Advanced</md-primary-tab>
       </div>
       <div class="tabs redesign-shell-nav" id="redesign-shell-nav" role="tablist" aria-label="PELS settings sections" hidden>
-        <button type="button" class="tab active" data-tab="overview" role="tab" aria-selected="true">Overview</button>
-        <button type="button" class="tab" data-tab="budget" role="tab" aria-selected="false">Budget</button>
-        <button type="button" class="tab" data-tab="usage" role="tab" aria-selected="false">Usage</button>
-        <button type="button" class="tab" data-tab="deadlines" role="tab" aria-selected="false">Deadlines</button>
-        <button type="button" class="tab" data-tab="settings" role="tab" aria-selected="false">Settings</button>
+        <md-primary-tab class="tab active" data-tab="overview" role="tab" aria-selected="true">Overview</md-primary-tab>
+        <md-primary-tab class="tab" data-tab="budget" role="tab" aria-selected="false">Budget</md-primary-tab>
+        <md-primary-tab class="tab" data-tab="usage" role="tab" aria-selected="false">Usage</md-primary-tab>
+        <md-primary-tab class="tab" data-tab="deadlines" role="tab" aria-selected="false">Deadlines</md-primary-tab>
+        <md-primary-tab class="tab" data-tab="settings" role="tab" aria-selected="false">Settings</md-primary-tab>
       </div>
     </header>
 
@@ -41,7 +41,7 @@
       <span class="banner__icon">⚠️</span>
       <span class="banner__text dry-run-banner__legacy">Dry-run mode is enabled. Devices will not be switched automatically.</span>
       <span class="banner__text dry-run-banner__redesign">Simulation mode is enabled. PELS will not switch devices automatically.</span>
-      <button type="button" class="btn secondary dry-run-banner__redesign dry-run-banner__action" id="simulation-disable-button">Turn off simulation</button>
+      <md-outlined-button type="button" class="btn secondary dry-run-banner__redesign dry-run-banner__action" id="simulation-disable-button">Turn off simulation</md-outlined-button>
     </div>
 
     <div id="stale-data-banner" class="banner banner--warning" hidden>
@@ -50,7 +50,7 @@
     </div>
 
     <section class="card panel hidden" id="devices-panel" data-panel="devices">
-      <button type="button" class="btn ghost settings-back-button settings-back-button--redesign-only" data-settings-target="settings">‹ Settings</button>
+      <md-text-button type="button" class="btn ghost settings-back-button settings-back-button--redesign-only" data-settings-target="settings">‹ Settings</md-text-button>
       <div class="card__header">
         <div>
           <p class="eyebrow">Devices</p>
@@ -59,7 +59,7 @@
       </div>
       <div class="toggle-row legacy-device-settings">
         <label class="toggle-label">
-          <input id="capacity-dry-run" name="capacity_dry_run" type="checkbox" checked>
+          <md-checkbox id="capacity-dry-run" name="capacity_dry_run" checked></md-checkbox>
           <span>Disable device control (dry run)</span>
         </label>
         <small class="field__hint">PELS will only monitor devices while this is enabled.</small>
@@ -67,10 +67,10 @@
       <form class="form-grid legacy-device-settings">
         <label class="field">
           <span class="field__label">Power source</span>
-          <select id="power-source" name="power_source">
-            <option value="flow">Flow card</option>
-            <option value="homey_energy">Homey Energy</option>
-          </select>
+          <md-filled-select id="power-source" name="power_source">
+            <md-select-option value="flow" selected><div slot="headline">Flow card</div></md-select-option>
+            <md-select-option value="homey_energy"><div slot="headline">Homey Energy</div></md-select-option>
+          </md-filled-select>
           <small class="field__hint">Where whole-home power readings come from.</small>
         </label>
       </form>
@@ -180,16 +180,16 @@
       <div id="device-card-list" class="redesign-device-settings"></div>
       <p id="empty-state" class="muted" hidden>No compatible devices found. PELS requires devices with power measurement and either temperature control or on/off capability.</p>
       <div class="list__footer">
-        <button type="button" class="btn secondary" id="refresh-button">
+        <md-outlined-button type="button" class="btn secondary" id="refresh-button">
           <span class="legacy-ui-copy">Refresh</span>
           <span class="redesign-ui-copy">Fetch device list from Homey</span>
-        </button>
+        </md-outlined-button>
         <p class="muted legacy-device-settings">Managed devices participate in modes and optimization. Temperature &amp; priority live in the Modes tab.</p>
       </div>
     </section>
 
     <section class="card panel hidden" id="modes-panel" data-panel="modes">
-      <button type="button" class="btn ghost settings-back-button settings-back-button--redesign-only" data-settings-target="settings">‹ Settings</button>
+      <md-text-button type="button" class="btn ghost settings-back-button settings-back-button--redesign-only" data-settings-target="settings">‹ Settings</md-text-button>
       <div class="card__header">
         <div>
           <p class="eyebrow">Modes</p>
@@ -199,19 +199,19 @@
       <div class="form-grid form-inline">
         <label class="field">
           <span class="field__label">Active mode</span>
-          <select id="active-mode-select" name="active_mode"></select>
+          <md-filled-select id="active-mode-select" name="active_mode"></md-filled-select>
           <small class="field__hint">Changes apply immediately.</small>
         </label>
       </div>
       <form id="priority-form" class="form-grid">
         <div class="field">
           <label class="field__label" for="mode-select">Edit mode</label>
-          <select id="mode-select" name="mode"></select>
+          <md-filled-select id="mode-select" name="mode"></md-filled-select>
           <div class="inline-actions">
-            <input id="mode-new" type="text" placeholder="New mode name">
-            <button type="button" class="btn secondary" id="add-mode-button">Add</button>
-            <button type="button" class="btn ghost" id="delete-mode-button">Delete</button>
-            <button type="button" class="btn ghost" id="rename-mode-button">Rename</button>
+            <md-filled-text-field id="mode-new" type="text" placeholder="New mode name"></md-filled-text-field>
+            <md-outlined-button type="button" class="btn secondary" id="add-mode-button">Add</md-outlined-button>
+            <md-outlined-button type="button" class="btn ghost" id="delete-mode-button">Delete</md-outlined-button>
+            <md-outlined-button type="button" class="btn ghost" id="rename-mode-button">Rename</md-outlined-button>
           </div>
           <small class="field__hint">Drag to reorder priorities (top = keep on longest). Set desired temps per mode.</small>
         </div>
@@ -241,11 +241,11 @@
             <form id="capacity-form" class="form-grid">
               <label class="field">
                 <span class="field__label">Capacity limit (kW)</span>
-                <input id="capacity-limit" name="capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required>
+                <md-filled-text-field id="capacity-limit" name="capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required></md-filled-text-field>
               </label>
               <label class="field">
                 <span class="field__label">Soft margin (kW)</span>
-                <input id="capacity-margin" name="capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required>
+                <md-filled-text-field id="capacity-margin" name="capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required></md-filled-text-field>
                 <small class="field__hint">Soft limit = limit - margin.</small>
               </label>
             </form>
@@ -263,16 +263,16 @@
           <div class="collapse-content">
             <form id="daily-budget-form" class="form-grid">
               <label class="field checkbox-field">
-                <input id="daily-budget-enabled" name="daily_budget_enabled" type="checkbox">
+                <md-checkbox id="daily-budget-enabled" name="daily_budget_enabled"></md-checkbox>
                 <span class="field__label">Enable daily energy budget</span>
               </label>
               <label class="field">
                 <span class="field__label">Daily budget (kWh)</span>
-                <input id="daily-budget-kwh" name="daily_budget_kwh" type="number" step="0.1" inputmode="decimal" autocomplete="off">
+                <md-filled-text-field id="daily-budget-kwh" name="daily_budget_kwh" type="number" step="0.1" inputmode="decimal" autocomplete="off"></md-filled-text-field>
                 <small class="field__hint">Daily energy target used to build the plan.</small>
               </label>
               <label class="field checkbox-field">
-                <input id="daily-budget-price-shaping" name="daily_budget_price_shaping_enabled" type="checkbox" checked>
+                <md-checkbox id="daily-budget-price-shaping" name="daily_budget_price_shaping_enabled" checked></md-checkbox>
                 <span class="field__label">Price-shape today plan</span>
               </label>
             </form>
@@ -283,9 +283,9 @@
                 <p class="muted" id="daily-budget-day">--</p>
               </div>
               <div class="daily-budget-actions day-view-actions">
-                <button type="button" class="btn secondary" id="daily-budget-recompute">Preview changes</button>
-                <button type="button" class="btn primary" id="daily-budget-apply" hidden>Apply changes</button>
-                <button type="button" class="btn ghost" id="daily-budget-discard" hidden>Discard preview</button>
+                <md-outlined-button type="button" class="btn secondary" id="daily-budget-recompute">Preview changes</md-outlined-button>
+                <md-filled-button type="button" class="btn primary" id="daily-budget-apply" hidden>Apply changes</md-filled-button>
+                <md-text-button type="button" class="btn ghost" id="daily-budget-discard" hidden>Discard preview</md-text-button>
                 <div id="daily-budget-toggle-mount"></div>
                 <div class="pill" id="daily-budget-status-pill">No data</div>
               </div>
@@ -489,68 +489,47 @@
         <h2 id="settings-title">Configure PELS</h2>
         <p class="muted">Choose what to adjust. Everyday planning stays in Budget; rare recovery tools stay in Advanced.</p>
       </div>
-      <div class="settings-nav-list">
-        <button type="button" class="settings-nav-card" data-settings-target="limits">
-          <md-ripple></md-ripple>
-          <span class="settings-nav-card__content">
-            <span class="settings-nav-card__title">Limits &amp; safety</span>
-            <span class="settings-nav-card__description">Hard cap, safety margin, power source</span>
-          </span>
-          <span class="settings-nav-card__chevron" aria-hidden="true">›</span>
-        </button>
-        <button type="button" class="settings-nav-card" data-settings-target="devices">
-          <md-ripple></md-ripple>
-          <span class="settings-nav-card__content">
-            <span class="settings-nav-card__title">Devices</span>
-            <span class="settings-nav-card__description">Managed devices and per-device behavior</span>
-          </span>
-          <span class="settings-nav-card__chevron" aria-hidden="true">›</span>
-        </button>
-        <button type="button" class="settings-nav-card" data-settings-target="modes">
-          <md-ripple></md-ripple>
-          <span class="settings-nav-card__content">
-            <span class="settings-nav-card__title">Modes</span>
-            <span class="settings-nav-card__description">Mode behavior and priorities</span>
-          </span>
-          <span class="settings-nav-card__chevron" aria-hidden="true">›</span>
-        </button>
-        <button type="button" class="settings-nav-card" data-settings-target="electricity-prices">
-          <md-ripple></md-ripple>
-          <span class="settings-nav-card__content">
-            <span class="settings-nav-card__title">Electricity prices</span>
-            <span class="settings-nav-card__description">Source, tariffs, cheap and expensive hours</span>
-          </span>
-          <span class="settings-nav-card__chevron" aria-hidden="true">›</span>
-        </button>
-        <button type="button" class="settings-nav-card" data-settings-target="price-aware-devices">
-          <md-ripple></md-ripple>
-          <span class="settings-nav-card__content">
-            <span class="settings-nav-card__title">Price-aware devices</span>
-            <span class="settings-nav-card__description">Devices that respond to cheap and expensive hours</span>
-          </span>
-          <span class="settings-nav-card__chevron" aria-hidden="true">›</span>
-        </button>
-        <button type="button" class="settings-nav-card" data-settings-target="simulation">
-          <md-ripple></md-ripple>
-          <span class="settings-nav-card__content">
-            <span class="settings-nav-card__title">Simulation mode</span>
-            <span class="settings-nav-card__description">Test behavior without switching devices</span>
-          </span>
-          <span class="settings-nav-card__chevron" aria-hidden="true">›</span>
-        </button>
-        <button type="button" class="settings-nav-card settings-nav-card--quiet" data-settings-target="advanced">
-          <md-ripple></md-ripple>
-          <span class="settings-nav-card__content">
-            <span class="settings-nav-card__title">Advanced</span>
-            <span class="settings-nav-card__description">Diagnostics, cleanup, logs, experiments</span>
-          </span>
-          <span class="settings-nav-card__chevron" aria-hidden="true">›</span>
-        </button>
-      </div>
+      <md-list class="settings-nav-list">
+        <md-list-item type="button" class="settings-nav-card" data-settings-target="limits">
+          <span slot="headline" class="settings-nav-card__title">Limits &amp; safety</span>
+          <span slot="supporting-text" class="settings-nav-card__description">Hard cap, safety margin, power source</span>
+          <span slot="end" class="settings-nav-card__chevron" aria-hidden="true">›</span>
+        </md-list-item>
+        <md-list-item type="button" class="settings-nav-card" data-settings-target="devices">
+          <span slot="headline" class="settings-nav-card__title">Devices</span>
+          <span slot="supporting-text" class="settings-nav-card__description">Managed devices and per-device behavior</span>
+          <span slot="end" class="settings-nav-card__chevron" aria-hidden="true">›</span>
+        </md-list-item>
+        <md-list-item type="button" class="settings-nav-card" data-settings-target="modes">
+          <span slot="headline" class="settings-nav-card__title">Modes</span>
+          <span slot="supporting-text" class="settings-nav-card__description">Mode behavior and priorities</span>
+          <span slot="end" class="settings-nav-card__chevron" aria-hidden="true">›</span>
+        </md-list-item>
+        <md-list-item type="button" class="settings-nav-card" data-settings-target="electricity-prices">
+          <span slot="headline" class="settings-nav-card__title">Electricity prices</span>
+          <span slot="supporting-text" class="settings-nav-card__description">Source, tariffs, cheap and expensive hours</span>
+          <span slot="end" class="settings-nav-card__chevron" aria-hidden="true">›</span>
+        </md-list-item>
+        <md-list-item type="button" class="settings-nav-card" data-settings-target="price-aware-devices">
+          <span slot="headline" class="settings-nav-card__title">Price-aware devices</span>
+          <span slot="supporting-text" class="settings-nav-card__description">Devices that respond to cheap and expensive hours</span>
+          <span slot="end" class="settings-nav-card__chevron" aria-hidden="true">›</span>
+        </md-list-item>
+        <md-list-item type="button" class="settings-nav-card" data-settings-target="simulation">
+          <span slot="headline" class="settings-nav-card__title">Simulation mode</span>
+          <span slot="supporting-text" class="settings-nav-card__description">Test behavior without switching devices</span>
+          <span slot="end" class="settings-nav-card__chevron" aria-hidden="true">›</span>
+        </md-list-item>
+        <md-list-item type="button" class="settings-nav-card settings-nav-card--quiet" data-settings-target="advanced">
+          <span slot="headline" class="settings-nav-card__title">Advanced</span>
+          <span slot="supporting-text" class="settings-nav-card__description">Diagnostics, cleanup, logs, experiments</span>
+          <span slot="end" class="settings-nav-card__chevron" aria-hidden="true">›</span>
+        </md-list-item>
+      </md-list>
     </section>
 
     <section class="card panel hidden settings-detail-panel" id="limits-panel" data-panel="limits" aria-labelledby="limits-title">
-      <button type="button" class="btn ghost settings-back-button" data-settings-target="settings">‹ Settings</button>
+      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">‹ Settings</md-text-button>
       <div class="card__header">
         <div>
           <p class="eyebrow">Limits &amp; safety</p>
@@ -560,40 +539,40 @@
       <form id="settings-limits-form" class="form-grid settings-form-card">
         <label class="field">
           <span class="field__label">Hard cap (kW)</span>
-          <input id="settings-capacity-limit" name="settings_capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required>
+          <md-filled-text-field id="settings-capacity-limit" name="settings_capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required></md-filled-text-field>
           <small class="field__hint">The upper boundary PELS tries not to exceed.</small>
         </label>
         <label class="field">
           <span class="field__label">Safety margin (kW)</span>
-          <input id="settings-capacity-margin" name="settings_capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required>
+          <md-filled-text-field id="settings-capacity-margin" name="settings_capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required></md-filled-text-field>
           <small class="field__hint" id="settings-capacity-reaction">PELS reacts before reaching the hard cap.</small>
         </label>
         <label class="field">
           <span class="field__label">Power source</span>
-          <select id="settings-power-source" name="settings_power_source">
-            <option value="flow">Flow card</option>
-            <option value="homey_energy">Homey Energy</option>
-          </select>
+          <md-filled-select id="settings-power-source" name="settings_power_source">
+            <md-select-option value="flow" selected><div slot="headline">Flow card</div></md-select-option>
+            <md-select-option value="homey_energy"><div slot="headline">Homey Energy</div></md-select-option>
+          </md-filled-select>
           <small class="field__hint">Where whole-home power readings come from.</small>
         </label>
       </form>
     </section>
 
     <section class="card panel hidden settings-detail-panel" id="simulation-panel" data-panel="simulation" aria-labelledby="simulation-title">
-      <button type="button" class="btn ghost settings-back-button" data-settings-target="settings">‹ Settings</button>
+      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">‹ Settings</md-text-button>
       <div class="card__header">
         <div>
           <p class="eyebrow">Simulation mode</p>
           <h2 id="simulation-title">Test without switching devices</h2>
         </div>
       </div>
-      <label class="field checkbox-field settings-form-card">
-        <input id="settings-simulation-mode" name="settings_simulation_mode" type="checkbox">
+      <div class="field checkbox-field settings-form-card">
+        <md-checkbox id="settings-simulation-mode" name="settings_simulation_mode"></md-checkbox>
         <span class="checkbox-field__content">
           <span class="field__label">Simulation mode</span>
           <small class="field__hint">PELS shows what it would do, but devices are not switched automatically.</small>
         </span>
-      </label>
+      </div>
     </section>
 
     <section class="card panel" id="overview-panel" data-panel="overview">
@@ -623,7 +602,7 @@
     </section>
 
     <section class="card panel hidden" id="advanced-panel" data-panel="advanced">
-      <button type="button" class="btn ghost settings-back-button settings-back-button--redesign-only" data-settings-target="settings">‹ Settings</button>
+      <md-text-button type="button" class="btn ghost settings-back-button settings-back-button--redesign-only" data-settings-target="settings">‹ Settings</md-text-button>
       <div class="card__header">
         <div>
           <p class="eyebrow">Advanced</p>
@@ -637,20 +616,20 @@
         </summary>
         <div class="collapse-content">
           <div class="form-grid">
-            <label class="field checkbox-field" id="advanced-overview-redesign-row" hidden>
-              <input id="advanced-overview-redesign-enabled" type="checkbox">
+            <div class="field checkbox-field" id="advanced-overview-redesign-row" hidden>
+              <md-checkbox id="advanced-overview-redesign-enabled"></md-checkbox>
               <span class="checkbox-field__content">
                 <span class="field__label">Enable new UI</span>
                 <small class="field__hint">Opt into the new Overview dashboard and Settings navigation in this browser.</small>
               </span>
-            </label>
-            <label class="field checkbox-field">
-              <input id="advanced-ev-support-enabled" type="checkbox">
+            </div>
+            <div class="field checkbox-field">
+              <md-checkbox id="advanced-ev-support-enabled"></md-checkbox>
               <span class="checkbox-field__content">
                 <span class="field__label">Enable EV charger support</span>
                 <small class="field__hint">Shows official EV chargers in the device list and allows pause/resume capacity control. Turning this off will unmanage EV chargers.</small>
               </span>
-            </label>
+            </div>
           </div>
         </div>
       </details>
@@ -673,28 +652,28 @@
           <form id="daily-budget-advanced-form" class="form-grid">
             <label class="field">
               <span class="field__label">Unmanaged usage reserve</span>
-              <select id="daily-budget-controlled-weight">
-                <option value="0">Balanced</option>
-                <option value="1">Conservative</option>
-              </select>
+              <md-filled-select id="daily-budget-controlled-weight">
+                <md-select-option value="0" selected><div slot="headline">Balanced</div></md-select-option>
+                <md-select-option value="1"><div slot="headline">Conservative</div></md-select-option>
+              </md-filled-select>
               <small class="field__hint">How much daily budget to hold back for household usage PELS cannot move.</small>
             </label>
             <label class="field">
               <span class="field__label">Managed device flexibility</span>
-              <select id="daily-budget-price-flex-share">
-                <option value="0.3">Low</option>
-                <option value="0.6">Medium</option>
-                <option value="0.85">High</option>
-              </select>
+              <md-filled-select id="daily-budget-price-flex-share">
+                <md-select-option value="0.3"><div slot="headline">Low</div></md-select-option>
+                <md-select-option value="0.6" selected><div slot="headline">Medium</div></md-select-option>
+                <md-select-option value="0.85"><div slot="headline">High</div></md-select-option>
+              </md-filled-select>
               <small class="field__hint">How freely PELS may shift managed-device usage toward cheaper hours after preserving minimum service.</small>
             </label>
-            <label class="field checkbox-field">
-              <input id="daily-budget-breakdown" type="checkbox">
+            <div class="field checkbox-field">
+              <md-checkbox id="daily-budget-breakdown"></md-checkbox>
               <span class="checkbox-field__content">
                 <span class="field__label">Show daily budget breakdown in the chart</span>
                 <small class="field__hint">Stack background usage and managed device usage.</small>
               </span>
-            </label>
+            </div>
             <p class="muted">PELS uses recent usage history to reserve budget for unmanaged household load, then plans managed-device usage around prices and minimum service needs.</p>
           </form>
         </div>
@@ -722,11 +701,11 @@
           <div class="form-grid">
             <label class="field">
               <span class="field__label">Device</span>
-              <select id="advanced-device-select"></select>
+              <md-filled-select id="advanced-device-select"></md-filled-select>
               <small class="field__hint">Removes PELS settings for this device only.</small>
             </label>
             <div class="inline-actions">
-              <button type="button" class="btn ghost" id="advanced-device-clear">Clear device data</button>
+              <md-outlined-button type="button" class="btn ghost" id="advanced-device-clear">Clear device data</md-outlined-button>
             </div>
             <p class="muted">Clears modes, priorities, control flags, overshoot behavior, and price optimization for the selected device.</p>
           </div>
@@ -741,12 +720,12 @@
           <div class="form-grid">
             <label class="field">
               <span class="field__label">Homey device</span>
-              <select id="advanced-api-device-select"></select>
+              <md-filled-select id="advanced-api-device-select"></md-filled-select>
               <small class="field__hint">Loads the raw device from the Homey API.</small>
             </label>
             <div class="inline-actions">
-              <button type="button" class="btn ghost" id="advanced-api-device-refresh">Refresh list</button>
-              <button type="button" class="btn ghost" id="advanced-api-device-log">Log device</button>
+              <md-outlined-button type="button" class="btn ghost" id="advanced-api-device-refresh">Refresh list</md-outlined-button>
+              <md-outlined-button type="button" class="btn ghost" id="advanced-api-device-log">Log device</md-outlined-button>
             </div>
             <p class="muted">Writes the selected device payload to the app logs for inspection.</p>
           </div>
@@ -845,17 +824,17 @@
               <div class="field">
                 <span class="field__label">When limiting</span>
                 <div class="segmented" id="device-detail-overshoot-segmented" role="radiogroup" aria-label="When limiting"></div>
-                <select id="device-detail-overshoot" hidden aria-hidden="true">
-                  <option value="turn_off">Turn off</option>
-                  <option value="set_temperature">Set to temperature</option>
-                  <option value="set_step">Set to step</option>
-                </select>
+                <md-filled-select id="device-detail-overshoot" hidden aria-hidden="true">
+                  <md-select-option value="turn_off"><div slot="headline">Turn off</div></md-select-option>
+                  <md-select-option value="set_temperature"><div slot="headline">Set to temperature</div></md-select-option>
+                  <md-select-option value="set_step"><div slot="headline">Set to step</div></md-select-option>
+                </md-filled-select>
                 <small class="field__hint">Choose what PELS does when power needs to be lowered.</small>
               </div>
               <div class="md-field-row" id="device-detail-overshoot-temp-row" hidden>
                 <md-filled-text-field
                   id="device-detail-overshoot-temp"
-                  label="Shed temperature"
+                  label="Limited temperature"
                   type="number"
                   step="0.5"
                   min="-20"
@@ -863,11 +842,11 @@
                   inputmode="decimal"
                   suffix-text="°C"
                 ></md-filled-text-field>
-                <small class="field__hint">Set this instead of turning off when shedding.</small>
+                <small class="field__hint">Use this target instead of turning the device off.</small>
               </div>
               <div class="md-field-row" id="device-detail-overshoot-step-row" hidden>
-                <md-filled-select id="device-detail-overshoot-step" label="Shed step"></md-filled-select>
-                <small class="field__hint">For stepped loads, PELS will step down to this level or lower when shedding.</small>
+                <md-filled-select id="device-detail-overshoot-step" label="Limited step"></md-filled-select>
+                <small class="field__hint">For stepped loads, PELS will step down to this level or lower.</small>
               </div>
             </div>
           </details>

@@ -23,9 +23,9 @@ const clearToast = () => {
   delete toastEl.dataset.tone;
 };
 
-const buildActionButton = (action: ToastAction, dismiss: () => void): HTMLButtonElement => {
-  const button = document.createElement('button');
-  button.type = 'button';
+const buildActionButton = (action: ToastAction, dismiss: () => void): HTMLElement => {
+  const button = document.createElement('md-text-button');
+  button.setAttribute('type', 'button');
   button.className = 'toast__action';
   button.textContent = action.label;
   button.addEventListener('click', (event) => {

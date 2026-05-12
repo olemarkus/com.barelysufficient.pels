@@ -26,7 +26,7 @@ const buildDom = () => {
     <div id="device-detail-overlay" hidden>
       <div id="device-detail-panel">
         <div id="device-detail-title"></div>
-        <button id="device-detail-close"></button>
+        <md-text-button id="device-detail-close"></md-text-button>
         <div id="device-detail-native-wiring-row" hidden></div>
         <md-switch id="device-detail-native-wiring"></md-switch>
         <div id="device-detail-native-wiring-confirm-row" hidden></div>
@@ -49,33 +49,33 @@ const buildDom = () => {
         </div>
         <div id="device-detail-modes"></div>
         <div id="device-detail-delta-section"></div>
-        <input id="device-detail-cheap-delta">
-        <input id="device-detail-expensive-delta">
-        <select id="device-detail-overshoot">
-          <option value="turn_off">Turn off</option>
-          <option value="set_temperature">Set to temperature</option>
-          <option value="set_step">Set to step</option>
-        </select>
+        <md-filled-text-field id="device-detail-cheap-delta"></md-filled-text-field>
+        <md-filled-text-field id="device-detail-expensive-delta"></md-filled-text-field>
+        <md-filled-select id="device-detail-overshoot">
+          <md-select-option value="turn_off"><div slot="headline">Turn off</div></md-select-option>
+          <md-select-option value="set_temperature"><div slot="headline">Set to temperature</div></md-select-option>
+          <md-select-option value="set_step"><div slot="headline">Set to step</div></md-select-option>
+        </md-filled-select>
         <div id="device-detail-overshoot-temp-row"></div>
-        <input id="device-detail-overshoot-temp">
+        <md-filled-text-field id="device-detail-overshoot-temp"></md-filled-text-field>
         <div id="device-detail-overshoot-step-row"></div>
-        <select id="device-detail-overshoot-step"></select>
+        <md-filled-select id="device-detail-overshoot-step"></md-filled-select>
         <section id="device-detail-stepped-section" hidden>
           <div id="device-detail-stepped-steps" class="detail-stepped-list"></div>
           <div id="device-detail-temperature-boost" class="detail-control-list detail-stepped-boost" hidden>
             <md-switch id="device-detail-temperature-boost-enabled"></md-switch>
             <div id="device-detail-temperature-boost-below-row"></div>
-            <input id="device-detail-temperature-boost-below" type="number">
+            <md-filled-text-field id="device-detail-temperature-boost-below"></md-filled-text-field>
           </div>
           <div id="device-detail-ev-boost" class="detail-control-list detail-stepped-boost" hidden>
             <md-switch id="device-detail-ev-boost-enabled"></md-switch>
             <div id="device-detail-ev-boost-below-row"></div>
-            <input id="device-detail-ev-boost-below" type="number">
+            <md-filled-text-field id="device-detail-ev-boost-below"></md-filled-text-field>
             <div id="device-detail-ev-boost-status"></div>
           </div>
-          <button id="device-detail-stepped-add-step" type="button"></button>
-          <button id="device-detail-stepped-save" type="button"></button>
-          <button id="device-detail-stepped-reset" type="button"></button>
+          <md-outlined-button id="device-detail-stepped-add-step"></md-outlined-button>
+          <md-filled-button id="device-detail-stepped-save"></md-filled-button>
+          <md-outlined-button id="device-detail-stepped-reset"></md-outlined-button>
         </section>
         <details id="device-detail-diagnostics-disclosure">
           <summary>Advanced diagnostics</summary>
@@ -857,7 +857,7 @@ describe('device detail managed state saves', () => {
     const resetButton = document.querySelector('#device-detail-stepped-reset') as HTMLButtonElement | null;
     const saveButton = document.querySelector('#device-detail-stepped-save') as HTMLButtonElement | null;
     const removeButtons = Array.from(
-      document.querySelectorAll('#device-detail-stepped-steps button'),
+      document.querySelectorAll('#device-detail-stepped-steps md-outlined-button'),
     ) as HTMLButtonElement[];
 
     expect(controlModelInput?.value).toBe('stepped_load');
@@ -983,7 +983,7 @@ describe('device detail managed state saves', () => {
     expect(temperatureBoost?.hidden).toBe(true);
     expect(shedActionInput?.value).toBe('turn_off');
     expect(shedActionInput?.disabled).toBe(false);
-    expect(shedActionInput?.querySelector<HTMLOptionElement>('option[value="set_step"]')?.hidden).toBe(true);
+    expect(shedActionInput?.querySelector<HTMLOptionElement>('md-select-option[value="set_step"]')?.hidden).toBe(true);
   });
 
   it('hides EV boost and generated steps in continuous EV mode', async () => {

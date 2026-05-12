@@ -9,6 +9,7 @@ import {
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
 import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 import { DeadlinePlanHistory } from './DeadlinePlanHistory.tsx';
+import { MdTextButton } from './materialWebJSX.tsx';
 
 type DeadlinePlanChipTone = 'info' | 'muted' | 'ok' | 'warn';
 type DeadlinePlanHourTone = 'cheap' | 'expensive' | 'normal';
@@ -487,27 +488,21 @@ const PlanTabStrip = ({ active, onChange }: {
   active: DeadlinePlanTab;
   onChange: (next: DeadlinePlanTab) => void;
 }) => (
-  // Rendered as a segmented toggle (group of buttons), not the full ARIA tabs pattern.
-  // The ARIA tabs pattern requires aria-controls / role=tabpanel linkage and roving
-  // tabIndex / arrow-key navigation; for two large native buttons on a 480-px-wide mobile
-  // surface those affordances don't add value over standard button semantics.
   <div class="plan-tabs" role="group" aria-label="Plan view tabs">
-    <button
-      type="button"
+    <MdTextButton
       aria-pressed={active === 'current'}
       class={`plan-tabs__tab${active === 'current' ? ' plan-tabs__tab--active' : ''}`}
       onClick={() => onChange('current')}
     >
       Current plan
-    </button>
-    <button
-      type="button"
+    </MdTextButton>
+    <MdTextButton
       aria-pressed={active === 'history'}
       class={`plan-tabs__tab${active === 'history' ? ' plan-tabs__tab--active' : ''}`}
       onClick={() => onChange('history')}
     >
       History
-    </button>
+    </MdTextButton>
   </div>
 );
 
