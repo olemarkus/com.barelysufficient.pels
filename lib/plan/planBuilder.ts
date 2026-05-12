@@ -38,7 +38,7 @@ import {
   OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS,
   SOFT_OVERSHOOT_DEADBAND_KW,
 } from './planConstants';
-import { resolveEffectiveCurrentOn } from './planCurrentState';
+import { isObservedOff } from '../observer/observedState';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './planOvershoot';
 import {
@@ -1047,7 +1047,7 @@ function resolveOvershootDevicePower(
   if (!device) return { kw: null, source: 'unknown' };
   const measuredPowerKw = resolveFiniteNumber(device.measuredPowerKw);
   if (measuredPowerKw !== null) return { kw: measuredPowerKw, source: 'measured' };
-  if (resolveEffectiveCurrentOn(device) === false) return { kw: 0, source: 'off' };
+  if (isObservedOff(device)) return { kw: 0, source: 'off' };
   const expectedPowerKw = resolveFiniteNumber(device.expectedPowerKw);
   if (expectedPowerKw !== null) return { kw: expectedPowerKw, source: 'expected' };
   const planningPowerKw = resolveFiniteNumber(device.planningPowerKw);

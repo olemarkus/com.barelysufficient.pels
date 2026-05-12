@@ -77,7 +77,7 @@ import {
   reserveHeadroomForPendingRestores,
 } from './planRestoreSupport';
 import { buildMeterSettlingReason, buildShortfallReason } from './planReasonStrings';
-import { resolveEffectiveCurrentOn } from './planCurrentState';
+import { isObservedOff, isObservedOn } from '../observer/observedState';
 
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;
@@ -294,7 +294,7 @@ function applyActiveSteppedRestoreCandidates(params: {
 }): RestoreLoopState {
   let { availableHeadroom, restoredOneThisCycle } = params;
   const activeSteppedDevices = getSteppedRestoreCandidates(Array.from(params.deviceMap.values()))
-    .filter((dev) => resolveEffectiveCurrentOn(dev) === true);
+    .filter((dev) => isObservedOn(dev));
   for (const dev of activeSteppedDevices) {
     if (holdPendingSwapTargetUntilSourcesAreOff({
       swapState: params.swapState,
@@ -433,7 +433,7 @@ function applyRestorePlanInCooldown(params: {
   // active devices need processing.
   const steppedCandidates = getSteppedRestoreCandidates(Array.from(deviceMap.values()));
   const eligibleStepped = meterSettlingRemainingSec !== null
-    ? steppedCandidates.filter((dev) => resolveEffectiveCurrentOn(dev) === true)
+    ? steppedCandidates.filter((dev) => isObservedOn(dev))
     : steppedCandidates;
   for (const dev of eligibleStepped) {
     const result = planRestoreForSteppedDevice({
@@ -473,7 +473,7 @@ function markRestoreCandidatesStayShedForShortfall(params: {
   });
 
   for (const dev of steppedCandidates) {
-    const currentOff = resolveEffectiveCurrentOn(dev) === false;
+    const currentOff = isObservedOff(dev);
     const reason = buildRestoreShortfallReason(dev, headroomKw);
     let update: Partial<DevicePlanDevice> = {
       reason,
@@ -1082,7 +1082,7 @@ function hasPendingSwapSourcesStillOn(params: {
   for (const [deviceId, swappedOutFor] of swapState.swappedOutFor) {
     if (swappedOutFor !== targetDeviceId) continue;
     const sourceDevice = deviceMap.get(deviceId);
-    if (!sourceDevice || resolveEffectiveCurrentOn(sourceDevice) !== false) return true;
+    if (!sourceDevice || !isObservedOff(sourceDevice)) return true;
   }
   return false;
 }
@@ -1211,7 +1211,7 @@ function rejectSwapRestoreUntilFreshMeasurement(params: {
 
 function buildSwapPendingTargetUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {
   const reason = { code: PLAN_REASON_CODES.swapPending, targetName: null } as const;
-  if (isSteppedLoadDevice(dev) && resolveEffectiveCurrentOn(dev) !== false) {
+  if (isSteppedLoadDevice(dev) && !isObservedOff(dev)) {
     return { plannedState: 'keep', reason };
   }
   return { plannedState: 'shed', reason };
@@ -1265,7 +1265,7 @@ function markOffDevicesMeterSettling(params: {
 
   const meterSettlingDevices = [
     ...getOffDevices(snapshot),
-    ...getSteppedRestoreCandidates(snapshot).filter((dev) => resolveEffectiveCurrentOn(dev) === false),
+    ...getSteppedRestoreCandidates(snapshot).filter((dev) => isObservedOff(dev)),
   ];
 
   for (const dev of meterSettlingDevices) {

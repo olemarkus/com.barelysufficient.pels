@@ -1,1 +1,0 @@
-export { resolveObservedCurrentState } from './planCurrentState';

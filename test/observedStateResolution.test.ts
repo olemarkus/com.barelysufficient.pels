@@ -1,4 +1,4 @@
-import { resolveObservedCurrentState } from '../lib/plan/planStateResolution';
+import { resolveObservedCurrentState } from '../lib/observer/observedState';
 
 describe('plan state resolution', () => {
   it('returns not_applicable for fresh devices without binary control', () => {

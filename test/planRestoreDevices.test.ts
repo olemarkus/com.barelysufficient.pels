@@ -307,13 +307,16 @@ describe('plan restore device helpers', () => {
     expect(isBinaryRestoreCandidate(shed)).toBe(false);
   });
 
-  it('treats target-only devices with an explicit observed off state as off restore candidates', () => {
+  it('does not treat target-only (not_applicable) devices as binary restore candidates', () => {
+    // Target-only devices have no onoff capability — restore happens via the
+    // temperature/target path, not via binary on. The defaulted currentOn flag
+    // on the snapshot is not authoritative for "is this device off".
     const targetOnlyOff = makeDevice({
       id: 'target-only-off',
       currentState: 'not_applicable',
       currentOn: false,
     });
 
-    expect(isBinaryRestoreCandidate(targetOnlyOff)).toBe(true);
+    expect(isBinaryRestoreCandidate(targetOnlyOff)).toBe(false);
   });
 });

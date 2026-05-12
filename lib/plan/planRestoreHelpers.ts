@@ -8,7 +8,7 @@ import {
   formatDeviceReason,
   PLAN_REASON_CODES,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-import { resolveEffectiveCurrentOn } from './planCurrentState';
+import { isObservedOff, isObservedOn } from '../observer/observedState';
 import {
   getSteppedRestoreCandidates,
   NEUTRAL_STARTUP_HOLD_REASON,
@@ -112,7 +112,7 @@ export function markSteppedDevicesStayAtCurrentLevel(params: {
   } = params;
   const steppedDevices = getSteppedRestoreCandidates(Array.from(deviceMap.values()));
   for (const dev of steppedDevices) {
-    const currentOff = resolveEffectiveCurrentOn(dev) === false;
+    const currentOff = isObservedOff(dev);
     const neverControlledStartupHold = timing.inStartupStabilization
       && currentOff
       && getLastControlledMs?.(dev.id) === undefined;
@@ -401,7 +401,7 @@ export function planRestoreForSteppedDevice(params: {
   const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
   // Active stepped devices (ON but below their target step) must not be blocked by the global
   // restore cooldown or meter-settling gate — per-device restore timing still applies.
-  const deviceIsActive = resolveEffectiveCurrentOn(dev) === true;
+  const deviceIsActive = isObservedOn(dev);
   const nextStep = getSteppedLoadNextRestoreStep(dev);
   if (applySteppedDeviceGates({
     dev,
@@ -577,7 +577,7 @@ function admitSteppedRestore(params: {
 }
 
 function resolveRejectedSteppedSwapUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {
-  return resolveEffectiveCurrentOn(dev) === false
+  return isObservedOff(dev)
     ? buildOffSteppedRestoreShedUpdate(dev)
     : { plannedState: 'keep' };
 }
@@ -663,7 +663,7 @@ function canUseSwapForSteppedRestore(params: {
 }): boolean {
   const { dev, nextStep, lowestNonZeroStep } = params;
   if (lowestNonZeroStep === null) return false;
-  if (resolveEffectiveCurrentOn(dev) === false && nextStep.id === lowestNonZeroStep.id) return true;
+  if (isObservedOff(dev) && nextStep.id === lowestNonZeroStep.id) return true;
   return dev.temperatureBoostActive === true || dev.evBoostActive === true;
 }
 
@@ -689,7 +689,7 @@ function rejectSteppedRestoreForInsufficientHeadroom(params: {
     postReserveMarginKw: admission.postReserveMarginKw,
     minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
   });
-  const update: Partial<DevicePlanDevice> = resolveEffectiveCurrentOn(dev) === false
+  const update: Partial<DevicePlanDevice> = isObservedOff(dev)
     ? { ...buildOffSteppedRestoreShedUpdate(dev), reason }
     : { reason };
   setRestorePlanDevice(deviceMap, dev.id, update);

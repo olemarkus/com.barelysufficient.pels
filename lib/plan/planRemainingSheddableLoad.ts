@@ -1,7 +1,7 @@
 import type { SteppedLoadCommandStatus, SteppedLoadProfile } from '../utils/types';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
-import { resolveEffectiveCurrentOn } from './planCurrentState';
+import { isObservedOff } from '../observer/observedState';
 import { getCurrentDrawKw } from '../observer/observedPower';
 import {
   getSteppedLoadShedTargetStep,
@@ -152,7 +152,7 @@ export function resolveRemainingSheddableLoadKw(params: RemainingSheddableLoadPa
   } = params;
 
   if (device.controllable === false) return 0;
-  if (resolveEffectiveCurrentOn(device) === false) return 0;
+  if (isObservedOff(device)) return 0;
   if (alreadyShed) return 0;
   if (limitSource === 'daily' && !capacityBreached && device.budgetExempt) return 0;
   if (!canStillShedDevice({ device, shedBehavior })) return 0;

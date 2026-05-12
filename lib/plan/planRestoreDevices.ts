@@ -1,7 +1,7 @@
 import { getSteppedLoadHighestStep } from '../utils/deviceControlProfiles';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlanDevice } from './planTypes';
-import { resolveEffectiveCurrentOn } from './planCurrentState';
+import { isObservedOff, isObservedOn } from '../observer/observedState';
 import { sortByPriorityAsc, sortByPriorityDesc } from './planSort';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 
@@ -21,16 +21,9 @@ export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): boolean {
 type RestoreObservedState = 'off' | 'on' | 'target_only' | 'unknown';
 
 function resolveRestoreObservedState(device: DevicePlanDevice): RestoreObservedState {
-  if (device.currentState === 'not_applicable') {
-    const effectiveCurrentOn = resolveEffectiveCurrentOn(device);
-    if (effectiveCurrentOn === false) return 'off';
-    if (effectiveCurrentOn === true) return 'on';
-    return 'target_only';
-  }
-  const effectiveCurrentOn = resolveEffectiveCurrentOn(device);
-  if (effectiveCurrentOn === false) return 'off';
-  if (effectiveCurrentOn === true) return 'on';
-  return 'unknown';
+  if (isObservedOff(device)) return 'off';
+  if (isObservedOn(device)) return 'on';
+  return device.currentState === 'not_applicable' ? 'target_only' : 'unknown';
 }
 
 export function isBinaryRestoreCandidate(device: DevicePlanDevice): boolean {

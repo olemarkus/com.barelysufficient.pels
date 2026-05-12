@@ -90,7 +90,11 @@ describe('sumControlledUsageKw', () => {
     });
   });
 
-  it('treats shed target-only devices explicitly observed off as zero controlled usage', () => {
+  it('reports unknown live usage for shed target-only devices without measurement', () => {
+    // Target-only devices have no onoff capability — the defaulted currentOn
+    // is not authoritative. Without a measured power sample, the device's
+    // live attribution is genuinely unknown; the helper returns null/null so
+    // the caller doesn't optimistically attribute its draw to controlled load.
     expect(splitControlledUsageKw({
       totalKw: 1.25,
       devices: [
@@ -99,12 +103,13 @@ describe('sumControlledUsageKw', () => {
           plannedState: 'shed',
           currentState: 'not_applicable',
           currentOn: false,
+          hasBinaryControl: false,
           expectedPowerKw: 1.25,
         },
       ],
     })).toEqual({
-      controlledKw: 0,
-      uncontrolledKw: 1.25,
+      controlledKw: null,
+      uncontrolledKw: null,
     });
   });
 

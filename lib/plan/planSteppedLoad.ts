@@ -12,7 +12,7 @@ import {
 } from '../utils/deviceControlProfiles';
 import type { SteppedLoadProfile, SteppedLoadStep } from '../utils/types';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
-import { resolveEffectiveCurrentOn } from './planCurrentState';
+import { isObservedOff, isObservedOn } from '../observer/observedState';
 import type { ShedAction } from './planTypes';
 import {
   isReportedStep,
@@ -111,7 +111,6 @@ export const resolveSteppedLoadTransition = (
   const profile = getSteppedLoadProfileForDevice(device);
   if (!profile) return null;
 
-  const currentOn = resolveEffectiveCurrentOn(device);
   const stepState = normalizePlannerStepState(device);
   const selectedStep = getSteppedLoadStep(profile, resolveKnownEffectiveStepId(stepState));
   const desiredStep = getSteppedLoadStep(profile, plannedDesiredStepId);
@@ -129,7 +128,7 @@ export const resolveSteppedLoadTransition = (
     };
   }
 
-  if (device.plannedState === 'keep' && currentOn === false) {
+  if (device.plannedState === 'keep' && isObservedOff(device)) {
     const commandStepId = lowestActiveStep?.id ?? desiredStep?.id;
     const stepPrepared = commandStepId !== undefined
       && selectedStep?.id === commandStepId
@@ -180,15 +179,13 @@ export const resolveSteppedKeepDesiredStepId = (
   const lowestActiveStepId = getSteppedLoadLowestActiveStep(profile)?.id;
   if (!lowestActiveStepId) return device.desiredStepId;
 
-  const effectiveCurrentOn = resolveEffectiveCurrentOn(device);
-
-  if (effectiveCurrentOn === true) {
+  if (isObservedOn(device)) {
     return device.desiredStepId && isSteppedLoadOffStep(profile, device.desiredStepId)
       ? lowestActiveStepId
       : device.desiredStepId;
   }
 
-  if (effectiveCurrentOn === false) {
+  if (isObservedOff(device)) {
     return lowestActiveStepId;
   }
 
@@ -204,7 +201,7 @@ export const getSteppedLoadNextRestoreStep = (
   const profile = getSteppedLoadProfileForDevice(device);
   if (!profile) return null;
 
-  if (resolveEffectiveCurrentOn(device) === false) {
+  if (isObservedOff(device)) {
     return getSteppedLoadRestoreStep(profile);
   }
 
@@ -237,7 +234,7 @@ export const getSteppedLoadShedTargetStep = (params: {
     : getSteppedLoadOffStep(profile) ?? getSteppedLoadLowestStep(profile);
   if (!targetStep) return null;
 
-  if (resolveEffectiveCurrentOn(device) === false) {
+  if (isObservedOff(device)) {
     return targetStep;
   }
 
@@ -313,7 +310,7 @@ export const resolveSteppedLoadRestoreDeltaKw = (params: {
 }): number => {
   const { device, fromStepId, toStepId } = params;
   if (!isSteppedLoadDevice(device)) return 0;
-  const currentPlanningKw = resolveEffectiveCurrentOn(device) === false
+  const currentPlanningKw = isObservedOff(device)
     ? 0
     : resolveSteppedLoadPlanningKw(device, fromStepId);
   const nextPlanningKw = resolveSteppedLoadPlanningKw(device, toStepId);

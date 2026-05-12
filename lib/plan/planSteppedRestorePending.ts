@@ -3,7 +3,7 @@ import { buildMeterSettlingReason, buildRestorePendingReason } from './planReaso
 import { resolveSteppedLoadCommandPendingMs } from './planObservationPolicy';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import { isSteppedLoadDevice } from './planSteppedLoad';
-import { resolveEffectiveCurrentOn } from './planCurrentState';
+import { isObservedOff } from '../observer/observedState';
 import { RESTORE_COOLDOWN_MS } from './planConstants';
 
 export type SteppedRestoreAttemptState = {
@@ -116,14 +116,14 @@ function resolveSteppedRestoreReservation(
   const requestedStep = getSteppedLoadStep(dev.steppedLoadProfile, requestedStepId);
   if (!requestedStep || requestedStep.planningPowerW <= 0) return null;
 
-  const effectiveCurrentOn = resolveEffectiveCurrentOn(dev);
-  const baselineStepId = effectiveCurrentOn === false
+  const observedOff = isObservedOff(dev);
+  const baselineStepId = observedOff
     ? undefined
     : (dev.previousStepId ?? dev.selectedStepId);
   const baselineStep = baselineStepId
     ? getSteppedLoadStep(dev.steppedLoadProfile, baselineStepId)
     : null;
-  const baselinePowerKw = effectiveCurrentOn === false
+  const baselinePowerKw = observedOff
     ? 0
     : Math.max(0, (baselineStep?.planningPowerW ?? 0) / 1000);
   const requestedPowerKw = requestedStep.planningPowerW / 1000;

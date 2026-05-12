@@ -5,7 +5,7 @@ import type {
   PlanEngineState,
 } from './planState';
 import type { DeviceDiagnosticsBackoffTransition } from '../diagnostics/deviceDiagnosticsService';
-import { resolveEffectiveCurrentOn } from './planCurrentState';
+import { isObservedOff, isObservedOn } from '../observer/observedState';
 import { MIN_ACTIVE_MEASURED_POWER_KW, isActivelyDrawing } from '../observer/observedPower';
 import { OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS } from './planConstants';
 import { isFiniteNumber } from '../utils/appTypeGuards';
@@ -186,7 +186,7 @@ export function isActivationObservationExplicitlyInactive(
 ): boolean {
   if (!observation) return false;
   if (observation.available === false) return true;
-  if (resolveEffectiveCurrentOn(observation) === false) return true;
+  if (isObservedOff(observation)) return true;
   if (observation.currentState === 'off' || observation.currentState === 'inactive') return true;
   return false;
 }
@@ -196,7 +196,7 @@ export function isActivationObservationActiveNow(
 ): boolean {
   if (!observation) return false;
   if (observation.available === false) return false;
-  if (resolveEffectiveCurrentOn(observation) === true) return true;
+  if (isObservedOn(observation)) return true;
   return isActivelyDrawing({ measuredPowerKw: observation.measuredPowerKw });
 }
 
@@ -364,7 +364,7 @@ const shouldTrackObservedActivePower = (
   && isFiniteNumber(observation.lastFreshDataMs)
   && observation.lastFreshDataMs > attemptStartedMs
   && observation.lastFreshDataMs <= nowTs
-  && resolveEffectiveCurrentOn(observation) === true
+  && isObservedOn(observation)
   && isFiniteNumber(observation.measuredPowerKw)
   && observation.measuredPowerKw > MIN_ACTIVE_MEASURED_POWER_KW
 );
@@ -379,7 +379,7 @@ const shouldCloseConfirmedRestoreAttribution = (params: {
   const observedActivePowerAtMs = getObservedActivePowerAtMs(params.state, params.deviceId);
   if (params.observation === undefined) return false;
   if (isActivationObservationExplicitlyInactive(params.observation)) return false;
-  if (resolveEffectiveCurrentOn(params.observation) !== true) return false;
+  if (!isObservedOn(params.observation)) return false;
   return observedActivePowerAtMs !== null
     && params.cleanWholeHomeSample
     && isFiniteNumber(params.wholeHomePowerSampleAtMs)
