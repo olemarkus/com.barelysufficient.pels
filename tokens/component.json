@@ -99,6 +99,36 @@
         "text": { "value": "{pels.text.primary}" },
         "outline": { "value": "{pels.status.good-border}" }
       }
+    },
+    "shell-nav": {
+      "container": {
+        "background": { "value": "{pels.surface-container-low}" },
+        "border": { "value": "{pels.surface-outline}" },
+        "radius": { "value": "{radius.lg}" },
+        "padding": { "value": "{spacing.1}" },
+        "gap": { "value": "{spacing.1}" }
+      },
+      "tab": {
+        "height": { "value": "36px" },
+        "height-compact": { "value": "32px" },
+        "padding-inline": { "value": "{spacing.2}" },
+        "padding-inline-compact": { "value": "{spacing.1}" },
+        "radius": { "value": "{radius.md}" },
+        "label-color": { "value": "{pels.text.secondary}" },
+        "label-hover-color": { "value": "{pels.text.primary}" },
+        "label-size": { "value": "{font.size.sm}" },
+        "label-size-compact": { "value": "{font.size.xs}" },
+        "label-weight": { "value": "{font.weight.semibold}" },
+        "selected-background": { "value": "{color.semantic.accent}" },
+        "selected-hover-background": { "value": "{color.semantic.accent-strong}" },
+        "selected-text": { "value": "{color.semantic.text.inverse}" }
+      }
+    },
+    "deadline-close": {
+      "size": { "value": "40px" },
+      "background": { "value": "{pels.surface-container-high}" },
+      "text": { "value": "{pels.text.primary}" },
+      "outline": { "value": "{pels.surface-outline}" }
     }
   },
   "chip": {

@@ -77,6 +77,9 @@
   --color-gradient-accent-radial: rgba(16, 185, 129, 0.12);
   --color-gradient-accent-radial-blue: rgba(116, 145, 255, 0.1);
   --pels-segmented-selected-background: rgba(16, 185, 129, 0.42);
+  --pels-shell-nav-tab-height: 36px;
+  --pels-shell-nav-tab-height-compact: 32px;
+  --pels-deadline-close-size: 40px;
   --chip-padding-inline: 10px;
   --chip-border-width: 1px;
   --color-semantic-bg: var(--color-base-black);
@@ -142,6 +145,15 @@
   --pels-card-gap: var(--spacing-2);
   --pels-card-radius: var(--radius-lg);
   --pels-segmented-label-font-weight: var(--font-weight-semibold);
+  --pels-shell-nav-container-radius: var(--radius-lg);
+  --pels-shell-nav-container-padding: var(--spacing-1);
+  --pels-shell-nav-container-gap: var(--spacing-1);
+  --pels-shell-nav-tab-padding-inline: var(--spacing-2);
+  --pels-shell-nav-tab-padding-inline-compact: var(--spacing-1);
+  --pels-shell-nav-tab-radius: var(--radius-md);
+  --pels-shell-nav-tab-label-size: var(--font-size-sm);
+  --pels-shell-nav-tab-label-size-compact: var(--font-size-xs);
+  --pels-shell-nav-tab-label-weight: var(--font-weight-semibold);
   --chip-padding-block: var(--spacing-1);
   --chip-radius: var(--radius-full);
   --chip-font-size: var(--font-size-xs);
@@ -154,6 +166,13 @@
   --pels-segmented-container-background: var(--pels-surface-container-low);
   --pels-segmented-container-border: var(--pels-status-good-border);
   --pels-segmented-selected-outline: var(--pels-status-good-border);
+  --pels-shell-nav-container-background: var(--pels-surface-container-low);
+  --pels-shell-nav-container-border: var(--pels-surface-outline);
+  --pels-shell-nav-tab-selected-background: var(--color-semantic-accent);
+  --pels-shell-nav-tab-selected-hover-background: var(--color-semantic-accent-strong);
+  --pels-shell-nav-tab-selected-text: var(--color-semantic-text-inverse);
+  --pels-deadline-close-background: var(--pels-surface-container-high);
+  --pels-deadline-close-outline: var(--pels-surface-outline);
   --pels-text-primary: var(--pels-on-surface);
   --pels-text-secondary: var(--pels-on-surface-variant);
   --pels-text-muted: var(--pels-on-surface-muted);
@@ -167,4 +186,7 @@
   --pels-text-settings-trailing-color: var(--pels-text-primary);
   --pels-segmented-label-color: var(--pels-text-secondary);
   --pels-segmented-selected-text: var(--pels-text-primary);
+  --pels-shell-nav-tab-label-color: var(--pels-text-secondary);
+  --pels-shell-nav-tab-label-hover-color: var(--pels-text-primary);
+  --pels-deadline-close-text: var(--pels-text-primary);
 }

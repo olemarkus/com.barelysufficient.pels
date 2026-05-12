@@ -19,22 +19,22 @@
         <h1>Control center</h1>
         <p class="lede">Manage devices, modes, budgets, and usage.</p>
       </div>
-      <div class="tabs" id="legacy-shell-nav" role="tablist" aria-label="PELS settings sections">
-        <md-primary-tab class="tab active" data-tab="overview" role="tab" aria-selected="true">Overview</md-primary-tab>
+      <md-tabs class="tabs" id="legacy-shell-nav" role="tablist" aria-label="PELS settings sections">
+        <md-primary-tab class="tab active" data-tab="overview" role="tab" aria-selected="true" active>Overview</md-primary-tab>
         <md-primary-tab class="tab" data-tab="devices" role="tab" aria-selected="false">Devices</md-primary-tab>
         <md-primary-tab class="tab" data-tab="modes" role="tab" aria-selected="false">Modes</md-primary-tab>
         <md-primary-tab class="tab" data-tab="budget" role="tab" aria-selected="false">Budget</md-primary-tab>
         <md-primary-tab class="tab" data-tab="usage" role="tab" aria-selected="false">Usage</md-primary-tab>
         <md-primary-tab class="tab" data-tab="electricity-prices" role="tab" aria-selected="false">Prices</md-primary-tab>
         <md-primary-tab class="tab" data-tab="advanced" role="tab" aria-selected="false">Advanced</md-primary-tab>
-      </div>
-      <div class="tabs redesign-shell-nav" id="redesign-shell-nav" role="tablist" aria-label="PELS settings sections" hidden>
-        <md-primary-tab class="tab active" data-tab="overview" role="tab" aria-selected="true">Overview</md-primary-tab>
+      </md-tabs>
+      <md-tabs class="tabs redesign-shell-nav" id="redesign-shell-nav" role="tablist" aria-label="PELS settings sections" hidden>
+        <md-primary-tab class="tab active" data-tab="overview" role="tab" aria-selected="true" active>Overview</md-primary-tab>
         <md-primary-tab class="tab" data-tab="budget" role="tab" aria-selected="false">Budget</md-primary-tab>
         <md-primary-tab class="tab" data-tab="usage" role="tab" aria-selected="false">Usage</md-primary-tab>
         <md-primary-tab class="tab" data-tab="deadlines" role="tab" aria-selected="false">Smart tasks</md-primary-tab>
         <md-primary-tab class="tab" data-tab="settings" role="tab" aria-selected="false">Settings</md-primary-tab>
-      </div>
+      </md-tabs>
     </header>
 
     <div id="dry-run-banner" class="banner banner--warning" hidden>
@@ -79,7 +79,7 @@
           <span>Device</span>
           <span data-tooltip="Managed by PELS">Managed</span>
           <span data-tooltip="Power-limit control">
-            <span class="legacy-ui-copy">Cap</span>
+            <span class="legacy-ui-copy">Limit</span>
             <span class="redesign-ui-copy">Limit</span>
           </span>
           <span data-tooltip="Price-based control">Price</span>
@@ -244,9 +244,9 @@
                 <md-filled-text-field id="capacity-limit" name="capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required></md-filled-text-field>
               </label>
               <label class="field">
-                <span class="field__label">Soft margin (kW)</span>
+                <span class="field__label">Safety margin (kW)</span>
                 <md-filled-text-field id="capacity-margin" name="capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required></md-filled-text-field>
-                <small class="field__hint">Soft limit = limit - margin.</small>
+                <small class="field__hint">PELS reacts at the hard cap minus this safety margin.</small>
               </label>
             </form>
           </div>
@@ -993,7 +993,7 @@
                   <md-switch id="device-detail-controllable"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label">Power-limit control</span>
-                    <small class="field__hint">Allow PELS to adjust this device based on power limits.</small>
+                    <small class="field__hint">Allow PELS to adjust this device based on power capacity limits.</small>
                   </span>
                 </div>
 

@@ -30,6 +30,20 @@ export type MdButtonElement = HTMLElement & {
   disabled: boolean;
 };
 
+export type MdTabsElement = HTMLElement & {
+  activeTabIndex: number;
+};
+
+export type MdTabElement = HTMLElement & {
+  active: boolean;
+  selected: boolean;
+};
+
+export type MdTabListEntry = {
+  tabList: MdTabsElement;
+  tabs: HTMLElement[];
+};
+
 export const toastEl = qs('#toast');
 export const deviceList = qs('#device-list');
 export const deviceCardList = document.querySelector('#device-card-list') as HTMLElement | null;
@@ -70,6 +84,12 @@ export const legacyShellCopy = document.querySelector('#legacy-shell-copy') as H
 export const legacyShellNav = document.querySelector('#legacy-shell-nav') as HTMLElement | null;
 export const redesignShellNav = document.querySelector('#redesign-shell-nav') as HTMLElement | null;
 export const tabs = Array.from(document.querySelectorAll<HTMLElement>('.tab'));
+export const tabListEntries: MdTabListEntry[] = Array
+  .from(document.querySelectorAll<MdTabsElement>('md-tabs.tabs'))
+  .map((tabList) => ({
+    tabList,
+    tabs: Array.from(tabList.querySelectorAll<HTMLElement>('.tab')),
+  }));
 export const panels = Array.from(document.querySelectorAll<HTMLElement>('.panel'));
 export const capacityForm = document.querySelector('#capacity-form') as HTMLFormElement;
 export const capacityLimitInput = document.querySelector('#capacity-limit') as MdFilledTextFieldElement;
