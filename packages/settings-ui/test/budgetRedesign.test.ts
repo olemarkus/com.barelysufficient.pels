@@ -279,12 +279,12 @@ describe('resolveDominantCause', () => {
 });
 
 describe('resolveHeadroomLine', () => {
-  it('frames positive remaining as headroom', () => {
+  it('frames positive remaining as energy to spare', () => {
     const payload = buildPayload({ remainingKWh: 7.7 });
-    expect(resolveHeadroomLine(payload, costDisplay)).toMatch(/^7\.7 kWh headroom now/);
+    expect(resolveHeadroomLine(payload, costDisplay)).toMatch(/^7\.7 kWh to spare now/);
   });
 
-  it('frames negative remaining as overdraw rather than negative headroom', () => {
+  it('frames negative remaining as overdraw rather than negative spare energy', () => {
     const payload = buildPayload({ remainingKWh: -1.3 });
     expect(resolveHeadroomLine(payload, costDisplay))
       .toMatch(/^1\.3 kWh over budget now/);

@@ -248,7 +248,7 @@ export const resolveHeadroomLine = (
   const remaining = payload.state.remainingKWh;
   const status = Number.isFinite(remaining) && remaining < 0
     ? `${formatKWh(Math.abs(remaining), 1)} over budget now`
-    : `${formatKWh(remaining, 1)} headroom now`;
+    : `${formatKWh(remaining, 1)} to spare now`;
   const cost = computeEstimatedCost({ payload, view: 'today' });
   if (cost === null) return status;
   return `${status} · est. ${formatCost(cost, costDisplay)} today`;
