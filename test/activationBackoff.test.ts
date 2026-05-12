@@ -76,6 +76,94 @@ describe('activation backoff', () => {
     vi.useRealTimers();
   });
 
+  it('does not synthesize fallback draw for a running device with no configured load', () => {
+    // Regression: Observer's `getCurrentDrawKw` falls back to 1.0 kW (or
+    // 1.38 kW for EVs) when no source is configured. For the Flow-card path
+    // that would credit headroom for a device that has not proven any draw.
+    // Headroom credit must be 0 in that case.
+    const state = createPlanEngineState();
+    const start = Date.now();
+    const unknownRunningDevice = {
+      id: 'dev-1',
+      name: 'Unknown heater',
+      currentOn: true,
+      available: true,
+      lastFreshDataMs: start,
+    };
+    const decision = evaluateHeadroomForDevice({
+      state,
+      devices: [unknownRunningDevice as any],
+      deviceId: 'dev-1',
+      device: unknownRunningDevice as any,
+      headroom: 0.5,
+      requiredKw: 1.0,
+      nowTs: start,
+    });
+    expect(decision?.observedKw).toBe(0);
+    expect(decision?.calculatedHeadroomForDeviceKw).toBe(0.5);
+    expect(decision?.allowed).toBe(false);
+  });
+
+  it('credits a running non-metered device with its configured load in headroom math', () => {
+    // Regression: non-metered relay-style devices (`powerKw` configured, no
+    // `measure_power` capability) must still contribute their configured draw
+    // back into `headroom + observedKw`, otherwise the Flow card blocks
+    // legitimate activations of devices already drawing the requested load.
+    const state = createPlanEngineState();
+    const start = Date.now();
+    const runningNonMeteredDevice = {
+      id: 'dev-1',
+      name: 'Relay heater',
+      currentOn: true,
+      available: true,
+      lastFreshDataMs: start,
+      expectedPowerKw: 1.2,
+      powerKw: 1.2,
+    };
+    const decision = evaluateHeadroomForDevice({
+      state,
+      devices: [runningNonMeteredDevice as any],
+      deviceId: 'dev-1',
+      device: runningNonMeteredDevice as any,
+      headroom: 0.3,
+      requiredKw: 1.2,
+      nowTs: start,
+    });
+    expect(decision?.observedKw).toBe(1.2);
+    expect(decision?.calculatedHeadroomForDeviceKw).toBeCloseTo(1.5);
+    expect(decision?.allowed).toBe(true);
+  });
+
+  it('treats a stale-observation device with no measurement as drawing zero in headroom math', () => {
+    // Regression: Flow-card snapshots (`TargetDeviceSnapshot`) carry
+    // `lastFreshDataMs` but no precomputed `observationStale` field. Staleness
+    // for the headroom guard must be derived from the timestamp so the
+    // conservative path actually fires during comms gaps.
+    const state = createPlanEngineState();
+    const start = Date.now();
+    const staleDevice = {
+      id: 'dev-1',
+      name: 'Heater',
+      currentOn: true,
+      available: true,
+      lastFreshDataMs: start - (45 * 60 * 1000),
+      expectedPowerKw: 1.2,
+      powerKw: 1.2,
+    };
+    const decision = evaluateHeadroomForDevice({
+      state,
+      devices: [staleDevice as any],
+      deviceId: 'dev-1',
+      device: staleDevice as any,
+      headroom: 0.5,
+      requiredKw: 1.0,
+      nowTs: start,
+    });
+    expect(decision?.observedKw).toBe(0);
+    expect(decision?.calculatedHeadroomForDeviceKw).toBe(0.5);
+    expect(decision?.allowed).toBe(false);
+  });
+
   it('bumps penalty only once per activation attempt', () => {
     const state = createPlanEngineState();
     const now = Date.now();
@@ -670,6 +758,7 @@ describe('activation backoff', () => {
       name: 'Heater',
       currentOn: false,
       available: true,
+      lastFreshDataMs: start,
       expectedPowerKw: 0,
       measuredPowerKw: 0,
       powerKw: 0,
@@ -688,6 +777,7 @@ describe('activation backoff', () => {
     const steppedUpDevice = {
       ...offDevice,
       currentOn: true,
+      lastFreshDataMs: start + 60 * 1000,
       expectedPowerKw: 3.2,
       measuredPowerKw: 3.2,
       powerKw: 3.2,
@@ -704,6 +794,7 @@ describe('activation backoff', () => {
 
     const steppedDownDevice = {
       ...steppedUpDevice,
+      lastFreshDataMs: start + 2 * 60 * 1000,
       expectedPowerKw: 1,
       measuredPowerKw: 1,
       powerKw: 1,
@@ -718,12 +809,12 @@ describe('activation backoff', () => {
       nowTs: start + 2 * 60 * 1000,
     });
     expect(setbackDecision?.cooldownSource).toBeNull();
-    expect(setbackDecision?.observedKwSource).toBe('measuredPowerKw');
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
     expect(setbackDecision?.allowed).toBe(true);
 
     const recoveredDevice = {
       ...steppedUpDevice,
+      lastFreshDataMs: start + 3 * 60 * 1000,
       expectedPowerKw: 3.2,
       measuredPowerKw: 3.2,
       powerKw: 3.2,
@@ -937,6 +1028,7 @@ describe('activation backoff', () => {
       devices: [buildTrackedDevice({
         id: 'dev-1',
         name: 'Heater',
+        measuredPowerKw: 1.2,
         expectedPowerKw: 1.2,
         powerKw: 1.2,
         lastFreshDataMs: start + 5_000,
@@ -950,6 +1042,7 @@ describe('activation backoff', () => {
       devices: [buildTrackedDevice({
         id: 'dev-1',
         name: 'Heater',
+        measuredPowerKw: 0.2,
         expectedPowerKw: 0.2,
         powerKw: 0.2,
         lastFreshDataMs: start + 1_000,
@@ -1093,6 +1186,7 @@ describe('activation backoff', () => {
         name: 'Heater',
         currentOn: true,
         currentState: 'on',
+        measuredPowerKw: 1.2,
         expectedPowerKw: 1.2,
         powerKw: 1.2,
         lastFreshDataMs: start + 5_000,
@@ -1131,9 +1225,9 @@ describe('activation backoff', () => {
     syncHeadroomCardState({
       state,
       devices: [
-        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', expectedPowerKw: 3.2, powerKw: 3.2 }),
-        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', expectedPowerKw: 2.4, powerKw: 2.4 }),
-        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', expectedPowerKw: 1.8, powerKw: 1.8 }),
+        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', measuredPowerKw: 3.2, expectedPowerKw: 3.2, powerKw: 3.2 }),
+        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', measuredPowerKw: 2.4, expectedPowerKw: 2.4, powerKw: 2.4 }),
+        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', measuredPowerKw: 1.8, expectedPowerKw: 1.8, powerKw: 1.8 }),
       ] as any,
       nowTs: start,
     });
@@ -1141,9 +1235,9 @@ describe('activation backoff', () => {
     expect(syncHeadroomCardState({
       state,
       devices: [
-        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', expectedPowerKw: 0.8, powerKw: 0.8 }),
-        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', expectedPowerKw: 0.5, powerKw: 0.5 }),
-        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', expectedPowerKw: 0.2, powerKw: 0.2 }),
+        buildTrackedDevice({ id: 'dev-1', name: 'Heater A', measuredPowerKw: 0.8, expectedPowerKw: 0.8, powerKw: 0.8 }),
+        buildTrackedDevice({ id: 'dev-2', name: 'Heater B', measuredPowerKw: 0.5, expectedPowerKw: 0.5, powerKw: 0.5 }),
+        buildTrackedDevice({ id: 'dev-3', name: 'Heater C', measuredPowerKw: 0.2, expectedPowerKw: 0.2, powerKw: 0.2 }),
       ] as any,
       nowTs: start + 5_000,
       reconciliationContext: 'snapshot_refresh',
@@ -1230,7 +1324,7 @@ describe('activation backoff', () => {
       }],
       nowTs: start + 24_000,
       diagnostics: diagnostics as any,
-    })).toBe(true);
+    })).toBe(false);
 
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
     expect(getActivationRestoreBlockRemainingMs({

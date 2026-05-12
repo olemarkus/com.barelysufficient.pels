@@ -14,13 +14,13 @@ import {
   resolveUsageObservationMergeDecision,
   resolveTrackedTransitionReconciliation,
   resolveHeadroomDeviceName,
-  resolveHeadroomUsageKw,
   updateHeadroomCardUsageObservation,
   type HeadroomCardDeviceLike,
   type HeadroomCooldownCandidate,
   type HeadroomUsageObservation,
   type HeadroomTrackedTransitionContext,
 } from './planHeadroomSupport';
+import { getMeasuredDrawKw } from '../observer/observedPower';
 
 const HEADROOM_STEP_DOWN_THRESHOLD_KW = 0.15;
 
@@ -352,7 +352,7 @@ const syncHeadroomCardDevice = (params: {
     state: params.state,
     deviceId: params.device.id,
     usageObservation: {
-      kw: resolveHeadroomUsageKw(params.device),
+      kw: getMeasuredDrawKw(params.device) ?? 0,
       freshnessMs: params.device.lastFreshDataMs,
     },
     nowTs: params.nowTs,

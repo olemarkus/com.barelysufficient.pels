@@ -38,20 +38,13 @@ file.
       makes overshoot and cooldown diagnostics harder to reason about.
       Files: `lib/plan/planHeadroomSupport.ts`, `lib/plan/planHeadroomState.ts`,
       `lib/plan/planPowerResolution.ts`, headroom diagnostics tests.
-- [ ] Move remaining plan-side `observationStale` branches into Observer-emitted resolved values.
-      Today ~6-10 sites in `lib/plan/**` read `device.observationStale` directly and gate
-      restore eligibility, boost suppression, drift detection, activation backoff, and
-      diagnostics filtering. Per the Observer layering principle, plan code should not
-      branch on freshness; Observer should resolve each question internally (the way
-      `getCurrentDrawKw`, `isObservedOff`, and `isObservedOn` already hide staleness for
-      power and binary state) and emit flat values that the planner reads without checking.
-      Why P1: avoids planner-side staleness logic drifting from Observer's policy, and
-      removes a tri-state ergonomic that consumers have to keep remembering to check.
-      Files: `lib/plan/planRestoreDevices.ts`, `lib/plan/planRestoreCoordination.ts`,
-      `lib/plan/planTemperatureBoost.ts`, `lib/plan/planEvBoost.ts`,
-      `lib/executor/planExecutionDrift.ts`, `lib/plan/planHeadroomState.ts`,
-      `lib/plan/planActivationBackoff.ts`, `lib/plan/planDiagnostics.ts`,
-      new Observer-side accessors, related plan/executor tests.
+- [x] Move remaining plan-side `observationStale` branches into Observer-emitted resolved values.
+      Closed by `lib/observer/observationTrust.ts` (`isDeviceObservationTrusted`,
+      `getTrustedCurrentTemperatureC`, `getTrustedStateOfCharge`). Six plan-side gating sites
+      now read flat resolved values; the redundant `observationStale` gate in
+      `planActivationBackoff.ts` was dropped (already dominated by `isObservedOn`).
+      `planLogging.ts` keeps reading `observationStale` for stale-device accounting in log
+      summaries — that is not a downstream decision.
 - [x] Use the configured device load as the stable expected load for binary restore planning and
       overview copy when live/measurement evidence is absent or the device is off.
       Closed by Observer's `getRestoreDrawKw`: `lib/plan/planDevices.ts` now projects
