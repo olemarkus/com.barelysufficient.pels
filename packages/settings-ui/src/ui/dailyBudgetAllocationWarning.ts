@@ -11,13 +11,12 @@ export const resolveAllocationWarning = (
 ): AllocationWarning | null => {
   const pressure = payload?.state.allocationPressure;
   if (!pressure?.constrained) return null;
-  const planned = formatKWh(pressure.plannedBudgetKWh, 1);
-  const requested = formatKWh(pressure.requestedBudgetKWh, 1);
+  const configured = formatKWh(payload.budget.dailyBudgetKWh, 1);
   return {
     title: 'Daily budget is larger than your hourly limit allows',
-    body: `Your hourly power limit leaves room for about ${planned} per day, `
-      + `but you've set a daily budget of ${requested}. `
-      + `PELS has to run flat against the limit and can't shift usage to cheaper hours. `
+    body: `You've set a daily budget of ${configured}. `
+      + `Your hourly power limit can't fit that, so PELS has to run flat against the limit `
+      + `and can't shift usage to cheaper hours. `
       + `Lower the daily budget to get full price savings.`,
   };
 };
