@@ -1,4 +1,4 @@
-import { panels, tabs } from './dom.ts';
+import { panels, tabListEntries, tabs, type MdTabElement } from './dom.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_DEVICES_PATH,
@@ -411,11 +411,19 @@ export const showTab = (tabId: string) => {
     ? 'settings'
     : tabId;
   discardBudgetAdjustOnLeave(tabId);
-  tabs.forEach((tab) => {
+  for (const tab of tabs) {
     const isActive = tab.dataset.tab === activeTopLevelTab;
     tab.classList.toggle('active', isActive);
+    tab.toggleAttribute('active', isActive);
+    (tab as MdTabElement).active = isActive;
+    (tab as MdTabElement).selected = isActive;
     tab.setAttribute('aria-selected', String(isActive));
-  });
+  }
+  for (const { tabList, tabs: tabListTabs } of tabListEntries) {
+    const tabIndex = tabListTabs
+      .findIndex((tab) => tab.dataset.tab === activeTopLevelTab);
+    if (tabIndex >= 0) tabList.activeTabIndex = tabIndex;
+  }
   panels.forEach((panel) => {
     panel.classList.toggle('hidden', panel.dataset.panel !== tabId);
   });

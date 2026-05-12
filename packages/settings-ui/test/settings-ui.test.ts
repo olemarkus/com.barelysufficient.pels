@@ -588,10 +588,28 @@ describe('Settings UI', () => {
     });
 
     test('active tab has correct styling', async () => {
-      const activeTabBg = await page.$eval('.tab.active', (el) => {
-        return getComputedStyle(el).background;
+      const activeTabTheme = await page.$eval('.tab.active', (el) => {
+        const style = getComputedStyle(el);
+        const probe = document.createElement('div');
+        probe.style.backgroundColor = 'var(--md-primary-tab-container-color)';
+        probe.style.color = 'var(--md-primary-tab-active-label-text-color)';
+        el.append(probe);
+        const probeStyle = getComputedStyle(probe);
+        const colors = {
+          activeText: probeStyle.color,
+          container: probeStyle.backgroundColor,
+        };
+        probe.remove();
+        return {
+          ...colors,
+          expectedActiveText: style.getPropertyValue('--pels-shell-nav-tab-selected-text').trim(),
+          expectedContainer: style.getPropertyValue('--pels-shell-nav-tab-selected-background').trim(),
+        };
       });
-      expect(activeTabBg).toContain('linear-gradient');
+      expect(activeTabTheme.container).toBe('rgb(16, 185, 129)');
+      expect(activeTabTheme.activeText).toBe('rgb(13, 17, 23)');
+      expect(activeTabTheme.expectedContainer).toBe('#10b981');
+      expect(activeTabTheme.expectedActiveText).toBe('#0d1117');
     });
 
     test('cards have backdrop blur effect', async () => {
