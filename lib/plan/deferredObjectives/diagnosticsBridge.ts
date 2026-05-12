@@ -112,7 +112,35 @@ export const emitDeferredObjectiveDiagnostics = (params: {
   }
 };
 
-/* eslint-disable sonarjs/cognitive-complexity */
+const canReportFreshProgressWhileUnknown = (reasonCode: DeferredObjectiveDiagnosticReasonCode): boolean => (
+  reasonCode === 'objective_missing_price_horizon'
+    || reasonCode === 'objective_price_feature_disabled'
+);
+
+const buildPolicyGatedKnownInputs = (
+  base: DeferredObjectiveDiagnostic,
+  progress: DeferredObjectiveProgressResolution,
+  policyReasonCode: DeferredObjectivePolicyHorizonUnavailableReason,
+  ctx: { powerTracker: PowerTrackerState; deviceId: string; objective: DeferredObjectiveSettingsEntry },
+): DeferredObjectiveDiagnostic => {
+  const { powerTracker, deviceId, objective } = ctx;
+  const { remainingUnits } = progress;
+  if (!canReportFreshProgressWhileUnknown(policyReasonCode)) return base;
+
+  const profileEnergy = !progress.reasonCode && remainingUnits > 0
+    && policyReasonCode === 'objective_missing_price_horizon'
+    ? resolveProfileEnergy({ powerTracker, deviceId, objectiveKind: objective.kind, remainingUnits })
+    : null;
+
+  return {
+    ...base,
+    currentPercent: !progress.reasonCode ? progress.currentPercent : null,
+    currentTemperatureC: !progress.reasonCode ? progress.currentTemperatureC : null,
+    ...(!progress.reasonCode && remainingUnits <= 0 ? { energyNeededKWh: 0 } : {}),
+    ...(profileEnergy && !profileEnergy.reasonCode ? buildKnownEnergyFields({ objective, profileEnergy }) : {}),
+  };
+};
+
 const buildDeferredObjectiveDiagnostic = (params: {
   nowMs: number;
   timeZone: string;
@@ -151,6 +179,20 @@ const buildDeferredObjectiveDiagnostic = (params: {
     return withUnknown(base, 'objective_invalid_deadline');
   }
   const withDeadline = base;
+  const progress = resolveObjectiveProgress({ objective, device, nowMs });
+  if (!progress.reasonCode && progress.remainingUnits <= 0) {
+    return buildDiagnosticWithPolicyHorizon({
+      nowMs,
+      deviceId,
+      objective,
+      device,
+      powerTracker,
+      base: withDeadline,
+      progress,
+      policyHorizon: { buckets: [], horizonBucketCount: 0, reasonCode: null },
+      deadlineAtMs: objective.deadlineAtMs,
+    });
+  }
 
   const policyHorizon = buildDeferredObjectivePolicyHorizon({
     nowMs,
@@ -159,25 +201,12 @@ const buildDeferredObjectiveDiagnostic = (params: {
     dailyBudgetSnapshot,
   });
   if (policyHorizon.reasonCode) {
-    let knownInputs = withDeadline;
-    if (policyHorizon.reasonCode === 'objective_missing_price_horizon') {
-      const progress = resolveObjectiveProgress({ objective, device, nowMs });
-      const profileEnergy = !progress.reasonCode && progress.remainingUnits > 0
-        ? resolveProfileEnergy({
-          powerTracker,
-          deviceId,
-          objectiveKind: objective.kind,
-          remainingUnits: progress.remainingUnits,
-        })
-        : null;
-      knownInputs = {
-        ...withDeadline,
-        currentPercent: progress.currentPercent,
-        currentTemperatureC: progress.currentTemperatureC,
-        ...(!progress.reasonCode && progress.remainingUnits <= 0 ? { energyNeededKWh: 0 } : {}),
-        ...(profileEnergy && !profileEnergy.reasonCode ? buildKnownEnergyFields({ objective, profileEnergy }) : {}),
-      };
-    }
+    const knownInputs = buildPolicyGatedKnownInputs(
+      withDeadline,
+      progress,
+      policyHorizon.reasonCode,
+      { powerTracker, deviceId, objective },
+    );
     return withUnknown({
       ...knownInputs,
       horizonBucketCount: policyHorizon.horizonBucketCount,
@@ -191,11 +220,11 @@ const buildDeferredObjectiveDiagnostic = (params: {
     device,
     powerTracker,
     base: withDeadline,
+    progress,
     policyHorizon,
     deadlineAtMs: objective.deadlineAtMs,
   });
 };
-/* eslint-enable sonarjs/cognitive-complexity */
 
 const buildDiagnosticWithPolicyHorizon = (params: {
   nowMs: number;
@@ -204,11 +233,11 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   device: PlanInputDevice;
   powerTracker: PowerTrackerState;
   base: DeferredObjectiveDiagnostic;
+  progress: DeferredObjectiveProgressResolution;
   policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>;
   deadlineAtMs: number;
 }): DeferredObjectiveDiagnostic => {
-  const { nowMs, deviceId, objective, device, powerTracker, base, policyHorizon, deadlineAtMs } = params;
-  const progress = resolveObjectiveProgress({ objective, device, nowMs });
+  const { nowMs, deviceId, objective, device, powerTracker, base, progress, policyHorizon, deadlineAtMs } = params;
   if (progress.reasonCode) {
     return withUnknown({
       ...base,
@@ -468,9 +497,7 @@ const resolveObjectiveSteps = (device: PlanInputDevice): DeferredObjectiveStep[]
 const buildDeferredObjectiveDebugPayload = (
   diagnostic: DeferredObjectiveDiagnostic,
 ): Record<string, unknown> => ({
-  event: diagnostic.status === 'unknown'
-    ? 'deferred_objective_unknown'
-    : 'deferred_objective_horizon_planned',
+  event: diagnostic.status === 'unknown' ? 'deferred_objective_unknown' : 'deferred_objective_horizon_planned',
   deviceId: diagnostic.deviceId,
   ...(diagnostic.deviceName ? { deviceName: diagnostic.deviceName } : {}),
   objectiveId: diagnostic.objectiveId,
@@ -495,12 +522,8 @@ const buildDeferredObjectiveDebugPayload = (
   usesDeadlineReserve: diagnostic.horizonPlan?.usesDeadlineReserve ?? null,
   usesPolicyAvoid: diagnostic.horizonPlan?.usesPolicyAvoid ?? null,
   plannedBuckets: diagnostic.horizonPlan?.plannedBuckets.map((bucket) => ({
-    id: bucket.id,
-    startMs: bucket.startMs,
-    endMs: bucket.endMs,
-    preference: bucket.preference,
-    reserve: bucket.reserve,
-    current: bucket.current,
+    id: bucket.id, startMs: bucket.startMs, endMs: bucket.endMs,
+    preference: bucket.preference, reserve: bucket.reserve, current: bucket.current,
     plannedUsefulEnergyKWh: bucket.plannedUsefulEnergyKWh,
   })) ?? null,
 });
