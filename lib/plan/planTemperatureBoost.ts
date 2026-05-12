@@ -1,6 +1,7 @@
 import type { PlanInputDevice } from './planTypes';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
+import { getTrustedCurrentTemperatureC } from '../observer/observationTrust';
 import type { StructuredDebugEmitter } from '../logging/logger';
 
 export const TEMPERATURE_BOOST_EXIT_MARGIN_C = 2;
@@ -19,9 +20,8 @@ export function resolveTemperatureBoostActive(params: {
   if (!isSteppedLoadDevice(dev)) return false;
   if (!supportsTemperatureBoostDevice(dev)) return false;
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
-  if (dev.observationStale === true) return false;
-  const currentTemperature = dev.currentTemperature;
-  if (typeof currentTemperature !== 'number' || !Number.isFinite(currentTemperature)) return false;
+  const currentTemperature = getTrustedCurrentTemperatureC(dev);
+  if (currentTemperature === undefined) return false;
   const boostBelowC = config.boostBelowC;
   if (typeof boostBelowC !== 'number' || !Number.isFinite(boostBelowC)) return false;
   const exitThresholdC = boostBelowC + TEMPERATURE_BOOST_EXIT_MARGIN_C;

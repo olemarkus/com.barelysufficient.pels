@@ -11,6 +11,7 @@ import type { PlanContext } from './planContext';
 import type { RestorePlanResult } from './planRestore';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
+import { isDeviceObservationTrusted } from '../observer/observationTrust';
 
 const TARGET_DEFICIT_EPSILON_C = 0.5;
 const STARVATION_LOW_TEMP_STEP_C = 0.5;
@@ -112,8 +113,8 @@ const resolveObservationFresh = (
   device: DevicePlanDevice,
   inputDevice?: PlanInputDevice,
 ): boolean => (
-  device.observationStale !== true
-  && inputDevice?.observationStale !== true
+  isDeviceObservationTrusted(device)
+  && (inputDevice === undefined || isDeviceObservationTrusted(inputDevice))
 );
 
 const resolveEligibleForStarvation = (params: {
