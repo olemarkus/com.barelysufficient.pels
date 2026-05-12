@@ -331,17 +331,19 @@
       <div class="budget-redesign-surface" id="budget-redesign-surface"></div>
     </section>
 
-    <section class="panel hidden usage-panel" id="usage-panel" data-panel="usage" aria-labelledby="usage-title">
-      <header class="usage-panel__header">
-        <p class="eyebrow">Usage</p>
-        <h2 id="usage-title">Energy history</h2>
-      </header>
+    <section class="card panel hidden" id="usage-panel" data-panel="usage" aria-labelledby="usage-title">
+      <div class="card__header">
+        <div>
+          <p class="eyebrow">Usage</p>
+          <h2 id="usage-title">Energy history</h2>
+        </div>
+      </div>
 
       <section class="plan-hero usage-hero" id="usage-hero" data-tone="ok" aria-labelledby="usage-hero-headline">
         <div class="plan-hero__section">
           <div class="plan-hero__headline-row">
             <div class="plan-hero__headline" id="usage-hero-headline">-- kWh today</div>
-            <md-assist-chip class="usage-hero__delta" data-tone="muted" id="usage-hero-delta" label="--" hidden></md-assist-chip>
+            <span class="plan-chip plan-chip--muted usage-hero__delta" id="usage-hero-delta" hidden>--</span>
           </div>
           <div class="plan-hero__subline plan-hero__subline--muted" id="usage-hero-comparison">Gathering data…</div>
           <p class="plan-hero__decision" id="usage-hero-projection" hidden></p>
@@ -372,7 +374,7 @@
           </div>
           <div class="usage-card__actions">
             <div id="usage-day-toggle-mount"></div>
-            <md-assist-chip data-tone="muted" id="usage-day-status-pill" label="No data"></md-assist-chip>
+            <span class="plan-chip plan-chip--muted" id="usage-day-status-pill">No data</span>
           </div>
         </div>
         <div class="usage-metric-row">

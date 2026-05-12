@@ -54,9 +54,9 @@ let setUsageDayToggleActive: (view: UsageDayView | null) => void = () => {};
 const setUsageDayStatus = (text: string, tone?: 'ok' | 'warn') => {
   if (!usageDayStatusPill) return;
   if (tone === 'warn') {
-    // The pill is an md-assist-chip; its displayed text is the `label` attribute.
-    usageDayStatusPill.setAttribute('label', text);
-    usageDayStatusPill.dataset.tone = 'warn';
+    usageDayStatusPill.textContent = text;
+    usageDayStatusPill.classList.remove('plan-chip--muted', 'plan-chip--ok');
+    usageDayStatusPill.classList.add('plan-chip--warn');
     usageDayStatusPill.hidden = false;
   } else {
     usageDayStatusPill.hidden = true;

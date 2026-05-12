@@ -4347,6 +4347,11 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
   --day-view-color-now: var(--color-state-info-border);
 }
 
+#usage-panel:not(.hidden) {
+  display: grid;
+  gap: var(--spacing-4);
+}
+
 .usage-day-summary {
   margin-bottom: var(--spacing-4);
 }
@@ -4994,23 +4999,6 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
 
 /* ─── Usage panel redesign ─────────────────────────────────────────────────── */
 
-.usage-panel {
-  display: grid;
-  gap: var(--spacing-4);
-}
-
-.usage-panel__header {
-  display: grid;
-  gap: var(--spacing-1);
-}
-
-.usage-panel__header h2 {
-  margin: 0;
-  font-size: var(--font-size-h2, 1.5rem);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text);
-}
-
 .usage-hero {
   position: relative;
 }
@@ -5162,60 +5150,6 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
 }
 
 /* Material Web Secondary Tabs as our segmented control. */
-.pels-segmented-tabs {
-  --md-secondary-tab-container-color: var(--pels-surface-container-low);
-  --md-secondary-tab-active-indicator-color: var(--accent);
-  --md-secondary-tab-active-label-text-color: var(--accent);
-  --md-secondary-tab-label-text-color: var(--pels-text-secondary);
-  --md-secondary-tab-label-text-font: inherit;
-  --md-secondary-tab-label-text-size: var(--font-size-sm, 0.875rem);
-  --md-secondary-tab-container-height: 36px;
-  --md-sys-color-surface: var(--pels-surface-container-low);
-  --md-sys-color-surface-variant: var(--pels-surface-container-low);
-  border-radius: var(--radius-md);
-  background: var(--pels-surface-container-low);
-  border: 1px solid var(--pels-surface-outline);
-  overflow: hidden;
-  min-width: 0;
-}
-
-/* Material Web assist chips: tonal status variants driven by data-tone. */
-md-assist-chip[data-tone] {
-  --md-assist-chip-outline-color: var(--pels-surface-outline);
-  --md-assist-chip-label-text-color: var(--pels-text-primary, var(--text));
-  --md-assist-chip-label-text-font: inherit;
-  --md-assist-chip-label-text-size: var(--chip-font-size);
-  --md-assist-chip-container-shape: var(--chip-radius);
-  --md-assist-chip-container-height: 28px;
-}
-
-md-assist-chip[data-tone="ok"] {
-  --md-assist-chip-outline-color: var(--pels-status-good-border);
-  --md-assist-chip-label-text-color: var(--pels-status-on-good);
-  background: var(--pels-status-good-container);
-}
-
-md-assist-chip[data-tone="warn"] {
-  --md-assist-chip-outline-color: var(--pels-status-warning-border);
-  --md-assist-chip-label-text-color: var(--pels-status-on-warning);
-  background: var(--pels-status-warning-container);
-}
-
-md-assist-chip[data-tone="alert"] {
-  --md-assist-chip-outline-color: var(--pels-status-critical-border);
-  --md-assist-chip-label-text-color: var(--pels-status-on-critical);
-  background: var(--pels-status-critical-container);
-}
-
-md-assist-chip[data-tone="muted"] {
-  background: var(--pels-surface-container-high);
-  --md-assist-chip-label-text-color: var(--pels-text-secondary);
-}
-
-md-assist-chip[hidden] {
-  display: none;
-}
-
 .usage-footer {
   display: flex;
   flex-direction: column;
