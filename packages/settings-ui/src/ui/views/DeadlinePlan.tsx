@@ -526,7 +526,7 @@ const CurrentPlanContent = ({ loadState }: { loadState: DeadlinePlanLoadState })
   if (loadState.status === 'loading') {
     return (
       <section class="pels-surface-card budget-redesign-card">
-        <h1 class="plan-card__title">Loading deadline plan</h1>
+        <h1 class="plan-card__title">Loading smart task plan</h1>
         <p class="pels-card-supporting">Preparing the device plan.</p>
       </section>
     );
@@ -534,7 +534,7 @@ const CurrentPlanContent = ({ loadState }: { loadState: DeadlinePlanLoadState })
   if (loadState.status === 'error') {
     return (
       <section class="pels-surface-card budget-redesign-card">
-        <h1 class="plan-card__title">Deadline plan unavailable</h1>
+        <h1 class="plan-card__title">Smart task plan unavailable</h1>
         <p class="pels-card-supporting">{loadState.message}</p>
       </section>
     );

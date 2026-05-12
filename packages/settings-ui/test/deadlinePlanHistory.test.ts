@@ -42,10 +42,10 @@ describe('DeadlinePlanHistory', () => {
     expect(mount.textContent).toContain('No past plans yet for this device.');
   });
 
-  it('renders a met entry with an ok chip and a reached-at line', () => {
+  it('renders a succeeded entry with an ok chip and a reached-at line', () => {
     const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [buildEntry()], timeZone: 'UTC' }));
     const chip = mount.querySelector('.plan-chip--ok');
-    expect(chip?.textContent).toBe('Met');
+    expect(chip?.textContent).toBe('Succeeded');
     // Time formatting uses the system default locale via shared dateUtils helpers, so match
     // the leading HH:mm rather than a fully-rendered locale string.
     expect(mount.textContent).toMatch(/reached at 04:42/);
@@ -136,7 +136,7 @@ describe('DeadlinePlanHistory', () => {
     }));
     // The list and the outcome chip still render.
     expect(mount.querySelector('.plan-history-list')).not.toBeNull();
-    expect(mount.querySelector('.plan-chip--ok')?.textContent).toBe('Met');
+    expect(mount.querySelector('.plan-chip--ok')?.textContent).toBe('Succeeded');
     expect(mount.querySelector('.plan-history-card__coverage')).toBeNull();
   });
 
@@ -144,6 +144,13 @@ describe('DeadlinePlanHistory', () => {
     const entry = buildEntry({ outcome: 'abandoned', metAtMs: null });
     const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
     const chip = mount.querySelector('.plan-chip--muted');
-    expect(chip?.textContent).toBe('Stopped');
+    expect(chip?.textContent).toBe('Abandoned');
+  });
+
+  it('renders a replaced entry as abandoned', () => {
+    const entry = buildEntry({ outcome: 'replaced', metAtMs: null });
+    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    const chip = mount.querySelector('.plan-chip--muted');
+    expect(chip?.textContent).toBe('Abandoned');
   });
 });

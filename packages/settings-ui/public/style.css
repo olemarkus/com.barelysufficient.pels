@@ -4855,7 +4855,7 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
   color: var(--color-semantic-warning, var(--pels-text-primary));
 }
 
-/* Deadlines list (top-level Deadlines tab) */
+/* Smart tasks list (top-level Smart tasks tab) */
 .deadline-list {
   display: grid;
   gap: var(--spacing-2);
