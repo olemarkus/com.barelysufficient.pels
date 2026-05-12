@@ -341,7 +341,7 @@
         <div class="plan-hero__section">
           <div class="plan-hero__headline-row">
             <div class="plan-hero__headline" id="usage-hero-headline">-- kWh today</div>
-            <span class="plan-chip plan-chip--muted usage-hero__delta" id="usage-hero-delta" hidden>--</span>
+            <md-assist-chip class="usage-hero__delta" data-tone="muted" id="usage-hero-delta" label="--" hidden></md-assist-chip>
           </div>
           <div class="plan-hero__subline plan-hero__subline--muted" id="usage-hero-comparison">Gathering data…</div>
           <p class="plan-hero__decision" id="usage-hero-projection" hidden></p>
@@ -372,7 +372,7 @@
           </div>
           <div class="usage-card__actions">
             <div id="usage-day-toggle-mount"></div>
-            <span class="plan-chip plan-chip--muted" id="usage-day-status-pill">No data</span>
+            <md-assist-chip data-tone="muted" id="usage-day-status-pill" label="No data"></md-assist-chip>
           </div>
         </div>
         <div class="usage-metric-row">
@@ -450,9 +450,9 @@
         <md-elevation aria-hidden="true"></md-elevation>
         <div class="usage-card__collapsible-content">
           <div class="usage-card__actions usage-card__actions--standalone">
-            <div class="day-view-toggle usage-week-nav" role="group" aria-label="Hourly detail week">
-              <button type="button" class="day-view-toggle__button" id="power-week-prev" aria-label="Previous week">‹</button>
-              <button type="button" class="day-view-toggle__button" id="power-week-next" aria-label="Next week">›</button>
+            <div class="usage-week-nav" role="group" aria-label="Hourly detail week">
+              <md-text-button id="power-week-prev" aria-label="Previous week">‹</md-text-button>
+              <md-text-button id="power-week-next" aria-label="Next week">›</md-text-button>
             </div>
           </div>
           <ul id="power-list" class="device-list usage-list"></ul>
@@ -706,7 +706,7 @@
           <div class="form-grid">
             <p class="muted">Reset all usage statistics: hourly samples, daily totals, and weekday/weekend averages. PELS will start collecting fresh history after the reset.</p>
             <div class="inline-actions">
-              <button type="button" class="btn ghost" id="reset-stats-button">Reset all stats</button>
+              <md-text-button id="reset-stats-button">Reset all stats</md-text-button>
             </div>
           </div>
         </div>
