@@ -2,6 +2,7 @@ import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../contract
 import {
   resolveBudgetPlannedDayKWh,
   resolveComparisonDay,
+  resolveConfidenceData,
   resolveDecisionLine,
   resolveDeltaPill,
   resolveDominantCause,
@@ -28,6 +29,9 @@ const buildPayload = (overrides: {
   price?: Array<number | null>;
   currentBucketIndex?: number;
   remainingKWh?: number;
+  confidence?: number;
+  confidenceDebug?: DailyBudgetDayPayload['state']['confidenceDebug'];
+  enabled?: boolean;
 } = {}): DailyBudgetDayPayload => ({
   dateKey: '2026-05-11',
   timeZone: 'Europe/Oslo',
@@ -35,7 +39,7 @@ const buildPayload = (overrides: {
   dayStartUtc: '2026-05-10T22:00:00Z',
   currentBucketIndex: overrides.currentBucketIndex ?? 12,
   budget: {
-    enabled: true,
+    enabled: overrides.enabled ?? true,
     dailyBudgetKWh: overrides.budgetKWh ?? 60,
     priceShapingEnabled: overrides.priceShapingEnabled ?? false,
   },
@@ -46,8 +50,9 @@ const buildPayload = (overrides: {
     deviationKWh: 0,
     exceeded: false,
     frozen: false,
-    confidence: 1,
+    confidence: overrides.confidence ?? 1,
     priceShapingActive: false,
+    ...(overrides.confidenceDebug ? { confidenceDebug: overrides.confidenceDebug } : {}),
   },
   buckets: {
     startUtc: [],
@@ -291,6 +296,78 @@ describe('resolveBudgetPlannedDayKWh', () => {
       buckets: { plannedKWh: [2, 1.5, 0.5] },
     } as unknown as DailyBudgetDayPayload;
     expect(resolveBudgetPlannedDayKWh(payload)).toBe(4);
+  });
+});
+
+describe('resolveConfidenceData', () => {
+  const confidenceDebug = {
+    confidenceRegularity: 0.82,
+    confidenceAdaptability: 0.6,
+    confidenceAdaptabilityInfluence: 0.3,
+    confidenceWeightedControlledShare: 0.25,
+    confidenceValidActualDays: 12,
+    confidenceValidPlannedDays: 4,
+    confidenceBootstrapLow: 0.45,
+    confidenceBootstrapHigh: 0.75,
+    profileBlendConfidence: 0.72,
+  };
+
+  it('labels high confidence at the upper threshold', () => {
+    const payload = buildPayload({ confidence: 0.75, confidenceDebug });
+    expect(resolveConfidenceData(payload, 'today', 'within')).toEqual({
+      label: 'High',
+      percent: '75%',
+      details: [
+        { label: 'Usage days', value: '12' },
+        { label: 'Planned days', value: '4' },
+        { label: 'Usage regularity', value: 'High' },
+        { label: 'Managed-device fit', value: 'Medium' },
+      ],
+    });
+  });
+
+  it('does not round the shown percent into the next band', () => {
+    const payload = buildPayload({ confidence: 0.749 });
+    expect(resolveConfidenceData(payload, 'today', 'within')).toMatchObject({
+      label: 'Medium',
+      percent: '74%',
+    });
+  });
+
+  it('labels medium confidence from the lower threshold', () => {
+    const payload = buildPayload({ confidence: 0.45 });
+    expect(resolveConfidenceData(payload, 'today', 'within')?.label).toBe('Medium');
+    expect(resolveConfidenceData(payload, 'today', 'within')?.percent).toBe('45%');
+  });
+
+  it('labels low confidence below the medium threshold', () => {
+    const payload = buildPayload({ confidence: 0.44 });
+    expect(resolveConfidenceData(payload, 'today', 'within')?.label).toBe('Low');
+  });
+
+  it('shows the main value without details when debug data is missing', () => {
+    const payload = buildPayload({ confidence: 0.72 });
+    expect(resolveConfidenceData(payload, 'today', 'within')).toEqual({
+      label: 'Medium',
+      percent: '72%',
+      details: [],
+    });
+  });
+
+  it('hides confidence when the value is missing', () => {
+    const payload = buildPayload({ confidence: Number.NaN });
+    expect(resolveConfidenceData(payload, 'today', 'within')).toBeNull();
+  });
+
+  it('hides confidence outside today', () => {
+    const payload = buildPayload({ confidence: 0.72 });
+    expect(resolveConfidenceData(payload, 'tomorrow', 'within')).toBeNull();
+    expect(resolveConfidenceData(payload, 'yesterday', 'within')).toBeNull();
+  });
+
+  it('hides confidence when daily budget is off or no plan exists', () => {
+    expect(resolveConfidenceData(buildPayload({ enabled: false }), 'today', 'noPlan')).toBeNull();
+    expect(resolveConfidenceData(buildPayload({ confidence: 0.72 }), 'today', 'noPlan')).toBeNull();
   });
 });
 

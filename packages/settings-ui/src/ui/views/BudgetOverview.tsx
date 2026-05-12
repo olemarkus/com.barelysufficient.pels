@@ -52,6 +52,12 @@ export type BudgetChartData = {
   caveat: string | null;
 } | null;
 
+export type BudgetConfidenceData = {
+  label: 'High' | 'Medium' | 'Low';
+  percent: string;
+  details: Array<{ label: string; value: string }>;
+} | null;
+
 export type BudgetComparisonChart = {
   payload: DailyBudgetDayPayload;
   view: BudgetRedesignDayView;
@@ -80,6 +86,7 @@ export type BudgetOverviewProps = {
   view: BudgetRedesignDayView;
   hero: BudgetHeroData;
   chart: BudgetChartData;
+  confidence: BudgetConfidenceData;
   adjust: BudgetAdjustData;
   onLocalViewChange: (v: BudgetLocalView) => void;
   onDayChange: (v: BudgetRedesignDayView) => void;
@@ -247,6 +254,46 @@ const BudgetChartCard = ({
       {chart.caveat !== null && (
         <p class="pels-card-supporting budget-chart-caveat">{chart.caveat}</p>
       )}
+    </section>
+  );
+};
+
+// ─── Plan Confidence ─────────────────────────────────────────────────────────
+
+const BudgetConfidenceCard = ({ confidence }: { confidence: BudgetConfidenceData }) => {
+  if (!confidence) return null;
+  return (
+    <section class="pels-surface-card budget-redesign-card budget-confidence-card">
+      <MdElevation aria-hidden="true" />
+      <div class="budget-card-header">
+        <div>
+          <h3 class="plan-card__title">Plan confidence</h3>
+          <p class="pels-card-supporting">
+            How well PELS can predict this plan from recent complete days.
+          </p>
+        </div>
+        <span id="budget-plan-confidence-value" class="budget-confidence-card__value">
+          <span>{confidence.label}</span>
+          <small>{confidence.percent}</small>
+        </span>
+      </div>
+      <details class="budget-confidence-card__details">
+        <summary>What this means</summary>
+        <p class="pels-card-supporting budget-confidence-card__explanation">
+          Based on recent complete days. Higher confidence means your usage pattern has been regular
+          and managed devices have followed earlier plans.
+        </p>
+        {confidence.details.length > 0 && (
+          <div class="budget-settings-list budget-settings-list--compact">
+            {confidence.details.map((row) => (
+              <div key={row.label} class="budget-setting-row">
+                <span class="budget-setting-row__label">{row.label}</span>
+                <span class="budget-setting-row__value">{row.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </details>
     </section>
   );
 };
@@ -650,6 +697,7 @@ const BudgetOverviewRoot = ({
   view,
   hero,
   chart,
+  confidence,
   adjust,
   onLocalViewChange,
   onDayChange,
@@ -689,6 +737,7 @@ const BudgetOverviewRoot = ({
           onChange={onDayChange}
         />
         <BudgetHero hero={hero} />
+        <BudgetConfidenceCard confidence={confidence} />
         <BudgetChartCard chart={chart} onModeChange={onChartModeChange} />
       </div>
     )}
