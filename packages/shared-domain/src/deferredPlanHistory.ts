@@ -73,10 +73,10 @@ export const formatPlanHistoryReachedAtLine = (
 };
 
 const OUTCOME_LABELS: Record<DeferredObjectivePlanOutcome, string> = {
-  met: 'Met',
+  met: 'Succeeded',
   missed: 'Missed',
-  abandoned: 'Stopped',
-  replaced: 'Replaced',
+  abandoned: 'Abandoned',
+  replaced: 'Abandoned',
   unknown: 'Unknown',
 };
 
@@ -131,7 +131,7 @@ export const formatPlanHistoryObservedCoverage = (
     'observedIntervals' | 'discoveredFrom' | 'startedAtMs' | 'deadlineAtMs'
   >,
 ): string | null => {
-  if (entry.discoveredFrom === 'backfill') return 'No observations recorded — deadline reconstructed from settings';
+  if (entry.discoveredFrom === 'backfill') return 'No observations recorded — smart task reconstructed from settings';
   // Entries from older storage or from a test stub that predates the v2 contract may arrive
   // without `observedIntervals`; without this guard the reduce below would throw and crash
   // the surrounding component. Treat missing data as "no coverage info" rather than a hard

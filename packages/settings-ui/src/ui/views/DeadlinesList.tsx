@@ -56,7 +56,7 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
         <h3 class="deadline-list-card__title">{card.deviceName}</h3>
         <span class="plan-chip plan-chip--info">{labels.kindChipLabel}</span>
         {card.pending && (
-          <span class="plan-chip plan-chip--muted">Waiting for plan</span>
+          <span class="plan-chip plan-chip--muted">Waiting</span>
         )}
       </div>
       <div class="deadline-list-card__target">
@@ -75,7 +75,7 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
           </div>
         )}
         <div class="deadline-list-card__when-row deadline-list-card__when-row--accent">
-          <dt>Deadline</dt>
+          <dt>Ready by</dt>
           <dd>{formatWhen(card.deadlineAtMs)}</dd>
         </div>
       </dl>
@@ -86,7 +86,7 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
 
 const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
   if (state.status === 'loading') {
-    return <p class="muted">Loading deadlines…</p>;
+    return <p class="muted">Loading smart tasks…</p>;
   }
   if (state.status === 'error') {
     return <p class="muted">{state.message}</p>;
@@ -94,7 +94,7 @@ const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
   if (state.cards.length === 0) {
     return (
       <p class="muted">
-        No active deadlines. Set a deadline on a device to see it here.
+        No smart tasks. Add a task when something should be charged, heated, cooled, or run before a specific time.
       </p>
     );
   }

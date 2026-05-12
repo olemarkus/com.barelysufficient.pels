@@ -32,7 +32,7 @@
         <md-primary-tab class="tab active" data-tab="overview" role="tab" aria-selected="true">Overview</md-primary-tab>
         <md-primary-tab class="tab" data-tab="budget" role="tab" aria-selected="false">Budget</md-primary-tab>
         <md-primary-tab class="tab" data-tab="usage" role="tab" aria-selected="false">Usage</md-primary-tab>
-        <md-primary-tab class="tab" data-tab="deadlines" role="tab" aria-selected="false">Deadlines</md-primary-tab>
+        <md-primary-tab class="tab" data-tab="deadlines" role="tab" aria-selected="false">Smart tasks</md-primary-tab>
         <md-primary-tab class="tab" data-tab="settings" role="tab" aria-selected="false">Settings</md-primary-tab>
       </div>
     </header>
@@ -159,7 +159,7 @@
             </span>
             <div>
               <strong>Limit</strong>
-              <p>PELS will actively turn the device on and off to safely fill the allocated budget. When disabled, PELS will only turn the device on when there is a deadline, and will not turn it off if it was switched on externally.</p>
+              <p>PELS will actively turn the device on and off to safely fill the allocated budget. When disabled, PELS will only turn the device on when it has a smart task, and will not turn it off if it was switched on externally.</p>
             </div>
           </li>
           <li class="device-control-legend__item">
@@ -476,8 +476,8 @@
     <section class="card panel hidden" id="deadlines-panel" data-panel="deadlines" aria-labelledby="deadlines-title">
       <div class="card__header">
         <div>
-          <p class="eyebrow">Deadlines</p>
-          <h2 id="deadlines-title">Active device deadlines</h2>
+          <p class="eyebrow">Smart tasks</p>
+          <h2 id="deadlines-title">Smart tasks</h2>
         </div>
       </div>
       <div id="deadlines-list-root"></div>

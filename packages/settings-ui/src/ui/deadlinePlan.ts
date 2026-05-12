@@ -109,15 +109,15 @@ const resolveHeroHeadline = (params: {
   nowMs: number;
   cannotMeet: boolean;
 }): string => {
-  if (params.cannotMeet) return `${params.labels.activeChipLabel} as fast as possible`;
-  if (!params.firstChargingHour) return 'On track for the deadline';
+  if (params.cannotMeet) return params.labels.cannotMeetChipLabel;
+  if (!params.firstChargingHour) return 'On track';
   if (params.firstChargingHour.startsAtMs <= params.nowMs) return `${params.labels.activeChipLabel} now`;
   return `Waiting until ${formatHourLabel(params.firstChargingHour.startsAtMs)}`;
 };
 
 const formatShortfallLabel = (shortfallUnits: number, unit: '°C' | '%'): string => (
   // For `%` clamp to ≥ 1 with `ceil` so a sub-1% shortfall does not render as
-  // "0%" while the warning chip says "Can't fully meet" — that mismatch was
+  // "0%" while the warning chip says "Cannot finish" — that mismatch was
   // flagged on the original PR (copilot review of `formatShortfallLabel`).
   unit === '°C' ? `${shortfallUnits.toFixed(1)} °C` : `${Math.max(1, Math.ceil(shortfallUnits))}%`
 );
@@ -142,13 +142,13 @@ const buildHero = (params: {
   const subline = `${params.device.name} • Target ${target} by ${deadline}`;
   const energy = `${params.energyNeededKWh.toFixed(1)} kWh`;
   const hourWord = params.hoursLeft === 1 ? 'hour' : 'hours';
-  // When the chip says "Can't fully meet" we must not fall back to the
+  // When the chip says "Cannot finish" we must not fall back to the
   // on-track "Needs X kWh • Y hours left" copy — that contradicts the chip.
   // A zero shortfall under cannot_meet means rounding has flattened the gap;
   // surface a softer body line instead so the two pieces stay consistent.
   const cannotMeetMeta = params.shortfallUnits > 0
     ? params.labels.cannotMeetShortfall(formatShortfallLabel(params.shortfallUnits, params.shortfallUnit))
-    : 'Best effort — running at the lowest active step every available hour.';
+    : params.labels.cannotMeetFallback;
   const metaLine = params.cannotMeet
     ? cannotMeetMeta
     : `Needs ${energy} • ${params.hoursLeft} ${hourWord} left`;
@@ -474,7 +474,7 @@ export const resolveDeadlinePlanLoadState = (
     // Genuinely unknown device or feature gated off — keep the legacy error
     // card. Lifecycle transitions (passed deadline, auto-disable) go through
     // the `completed` branch instead.
-    return { status: 'error', message: 'Deadline plan data is not available for this device.', history };
+    return { status: 'error', message: 'Smart task plan data is not available for this device.', history };
   }
   if (renderInput.status === 'completed') {
     return { status: 'completed', objectiveKind: renderInput.kind, history };
