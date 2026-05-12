@@ -31,8 +31,8 @@ const buildDailyBudgetBarTitle = (params: {
   if (showBreakdown
     && typeof plannedUncontrolledKWh === 'number'
     && typeof plannedControlledKWh === 'number') {
-    titleParts.push(`Planned uncontrolled ${formatKWh(plannedUncontrolledKWh)}`);
-    titleParts.push(`Planned controlled ${formatKWh(plannedControlledKWh)}`);
+    titleParts.push(`Planned background ${formatKWh(plannedUncontrolledKWh)}`);
+    titleParts.push(`Planned managed ${formatKWh(plannedControlledKWh)}`);
   }
   const hasActualSplit = Number.isFinite(actualControlledKWh) && Number.isFinite(actualUncontrolledKWh);
   let actualUseKWh: number | undefined;
@@ -44,8 +44,8 @@ const buildDailyBudgetBarTitle = (params: {
   if (hasActualSplit) {
     const actualTimingSuffix = isCurrent ? ' so far' : '';
     titleParts.push(`Actual use${actualTimingSuffix} ${formatKWh(actualUseKWh as number)}`);
-    titleParts.push(`Actual uncontrolled${actualTimingSuffix} ${formatKWh(actualUncontrolledKWh as number)}`);
-    titleParts.push(`Actual controlled${actualTimingSuffix} ${formatKWh(actualControlledKWh as number)}`);
+    titleParts.push(`Actual background${actualTimingSuffix} ${formatKWh(actualUncontrolledKWh as number)}`);
+    titleParts.push(`Actual managed${actualTimingSuffix} ${formatKWh(actualControlledKWh as number)}`);
   } else if (typeof actualUseKWh === 'number') {
     const actualLabel = isCurrent ? 'Actual use so far' : 'Actual use';
     titleParts.push(`${actualLabel} ${formatKWh(actualUseKWh)}`);
