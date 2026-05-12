@@ -65,7 +65,7 @@ test.describe('Usage zero-value handling', () => {
     await expect(page.locator('#usage-day-empty')).toBeHidden();
     await expect(page.locator('#usage-day-total')).toHaveText('0.0 kWh');
     await expect(page.locator('#usage-day-status-pill')).toBeVisible();
-    await expect(page.locator('#usage-day-status-pill')).toHaveAttribute('label', 'Warnings (1h)');
+    await expect(page.locator('#usage-day-status-pill')).toHaveText('Warnings (1h)');
   });
 
   test('treats repeated zero samples in the hour as valid data', async ({ page }) => {

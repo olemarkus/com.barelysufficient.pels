@@ -340,47 +340,42 @@ export type ToggleGroupResult<T extends string> = {
 };
 
 /**
- * Creates a segmented toggle using Material Web Secondary Tabs (`md-tabs`).
- * Returns the container element and a setActive helper so callers don't have to
- * touch the tab elements directly. Activation events are debounced to a single
- * `onSelect` callback per user click.
+ * Creates a button-group toggle (day-view style). Returns the container element
+ * and a setActive helper so callers never touch classes directly.
+ *
+ * We deliberately keep this as a custom segmented control rather than reaching
+ * for `md-tabs`: Material 3 secondary tabs are for switching between major
+ * content views, not binary or small-set selectors, and Material Web does not
+ * (yet) ship a segmented-button component. Usage and Budget share this look.
  */
 export const createToggleGroup = <T extends string>(
     options: ToggleOption<T>[],
     ariaLabel: string,
     onSelect: (value: T) => void,
 ): ToggleGroupResult<T> => {
-    const container = document.createElement('md-tabs');
-    container.className = 'pels-segmented-tabs';
+    const container = document.createElement('div');
+    container.className = 'day-view-toggle';
+    container.setAttribute('role', 'group');
     container.setAttribute('aria-label', ariaLabel);
 
-    const tabs = new Map<T, HTMLElement>();
+    const buttons = new Map<T, HTMLButtonElement>();
     options.forEach(({ value, label }) => {
-        const tab = document.createElement('md-secondary-tab');
-        tab.textContent = label;
-        tab.dataset.value = value;
-        container.appendChild(tab);
-        tabs.set(value, tab);
-    });
-
-    // `md-tabs` fires `change` when the active tab updates, including via
-    // setAttribute('active', ...). Suppress the callback when we set the active
-    // tab programmatically so callers don't double-fire.
-    let suppressChange = false;
-    container.addEventListener('change', () => {
-        if (suppressChange) return;
-        const activeTab = (container as unknown as { activeTab?: HTMLElement }).activeTab;
-        const value = activeTab?.dataset?.value as T | undefined;
-        if (value !== undefined) onSelect(value);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'day-view-toggle__button';
+        btn.textContent = label;
+        btn.setAttribute('aria-pressed', 'false');
+        btn.addEventListener('click', () => onSelect(value));
+        container.appendChild(btn);
+        buttons.set(value, btn);
     });
 
     const setActive = (active: T | null) => {
-        suppressChange = true;
-        tabs.forEach((tab, value) => {
-            if (value === active) tab.setAttribute('active', '');
-            else tab.removeAttribute('active');
+        buttons.forEach((btn, value) => {
+            const isActive = value === active;
+            btn.classList.toggle('is-active', isActive);
+            btn.setAttribute('aria-pressed', String(isActive));
         });
-        suppressChange = false;
     };
 
     return { element: container, setActive };
