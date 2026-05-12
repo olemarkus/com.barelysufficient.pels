@@ -31,6 +31,7 @@ import {
   setBudgetAdjustRenderer,
   updateBudgetAdjustField,
 } from './budgetAdjustController.ts';
+import { resolveAllocationWarning } from './dailyBudgetAllocationWarning.ts';
 
 export type BudgetDayView = BudgetRedesignDayView;
 
@@ -517,6 +518,7 @@ const buildProps = (): BudgetOverviewProps => {
     chart: resolveChartData(viewPayload, view, currentChartMode, status, costDisplay),
     confidence: resolveConfidenceData(viewPayload, view, status),
     adjust,
+    allocationWarning: view === 'today' ? resolveAllocationWarning(viewPayload) : null,
     onLocalViewChange: (v) => {
       if (currentBudgetLocalView === 'adjust' && v !== 'adjust') discardBudgetAdjust();
       currentBudgetLocalView = v;

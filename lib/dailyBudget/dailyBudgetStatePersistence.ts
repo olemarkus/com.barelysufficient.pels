@@ -42,9 +42,13 @@ export class DailyBudgetStatePersistencePolicy {
     nowMs: number;
   }): 'persist' | 'unchanged' | 'throttled' {
     const { reason, stateJson, nowMs } = params;
-    if (stateJson === this.lastPersistedStateJson) return 'unchanged';
+    if (this.hasPersistedJson(stateJson)) return 'unchanged';
     if (this.shouldThrottle(reason, nowMs)) return 'throttled';
     return 'persist';
+  }
+
+  hasPersistedJson(stateJson: string): boolean {
+    return stateJson === this.lastPersistedStateJson;
   }
 
   recordPersisted(params: {
@@ -89,6 +93,10 @@ export function persistDailyBudgetState(
   params: PersistDailyBudgetStateParams & { stateJson?: string },
 ): void {
   const stateJson = params.stateJson ?? JSON.stringify(params.state);
+  if (params.policy.hasPersistedJson(stateJson)) {
+    incPerfCounter('settings_set.daily_budget_state_skipped_unchanged_total');
+    return;
+  }
   const persistStart = Date.now();
   params.settings.set(DAILY_BUDGET_STATE, params.state);
   params.policy.recordPersisted({ reason: params.reason, stateJson, nowMs: params.nowMs });

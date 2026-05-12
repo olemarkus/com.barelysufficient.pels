@@ -14,6 +14,10 @@ const openSettingsSection = async (page: Page, target: string) => {
   await page.locator(`[data-settings-target="${target}"]`).click();
 };
 
+const getRedesignDeviceRow = (page: Page, deviceId: string) => (
+  page.locator(`#device-card-list [data-device-id="${deviceId}"]`)
+);
+
 const expectModeOption = async (page: Page, mode: string) => {
   await expect(page.locator(`#active-mode-select md-select-option[value="${mode}"]`)).toHaveCount(1);
 };
@@ -166,51 +170,13 @@ test.describe('Settings UI (smoke)', () => {
     await expect(page.locator('#limits-panel')).toBeVisible();
   });
 
-  test('advanced EV toggle controls EV visibility in the device list', async ({ page }) => {
+  test('EV chargers are visible in the device list', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
 
     await openSettingsSection(page, 'devices');
-    const genericEvDeviceRow = page.locator('[data-device-id="dev_evcharger"]');
-    await expect(genericEvDeviceRow).toHaveCount(0);
-
-    await openSettingsSection(page, 'advanced');
-    const evToggle = page.locator('#advanced-ev-support-enabled');
-    await expect(evToggle).toHaveJSProperty('checked', false);
-
-    await evToggle.click();
-    await expect(page.locator('#toast')).toContainText('EV charger support enabled.');
-    await expect(evToggle).toHaveJSProperty('checked', true);
-
-    await openSettingsSection(page, 'devices');
+    const genericEvDeviceRow = getRedesignDeviceRow(page, 'dev_evcharger');
     await expect(genericEvDeviceRow).toBeVisible();
-
-    await openSettingsSection(page, 'advanced');
-    await evToggle.click();
-    await expect(page.locator('#toast')).toContainText('Managed EV chargers were set to unmanaged.');
-    await expect(evToggle).toHaveJSProperty('checked', false);
-
-    await openSettingsSection(page, 'devices');
-    await expect(genericEvDeviceRow).toHaveCount(0);
-
-    const managedMap = await page.evaluate(async () => {
-      const homey = (window as unknown as {
-        Homey: {
-          get: (key: string, callback: (error: Error | null, value?: unknown) => void) => void;
-        };
-      }).Homey;
-      return await new Promise<Record<string, boolean>>((resolve, reject) => {
-        homey.get('managed_devices', (error: Error | null, value?: unknown) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-          resolve((value ?? {}) as Record<string, boolean>);
-        });
-      });
-    });
-
-    expect(managedMap.dev_evcharger).toBe(false);
   });
 
   test('keeps stubbed daily budget API payloads in sync with settings writes', async ({ page }) => {

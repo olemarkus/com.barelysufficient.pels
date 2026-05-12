@@ -49,8 +49,6 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
     updatePriceOptimizationEnabled: vi.fn(),
     updateOverheadToken: vi.fn().mockResolvedValue(undefined),
     updateDebugLoggingEnabled: vi.fn(),
-    getExperimentalEvSupportEnabled: vi.fn().mockReturnValue(false),
-    disableManagedEvDevices: vi.fn(),
     restartHomeyEnergyPoll: vi.fn(),
     log: vi.fn(),
     errorLog: vi.fn(),

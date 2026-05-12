@@ -66,7 +66,6 @@ export type DeviceManagerParseProviders = {
     getBudgetExempt?: (deviceId: string) => boolean;
     getCommunicationModel?: (deviceId: string) => 'local' | 'cloud';
     getDeviceDriverIdOverride?: (deviceId: string) => string | undefined;
-    getExperimentalEvSupportEnabled?: () => boolean;
     getNativeEvWiringEnabled?: (deviceId: string) => boolean;
     getDeviceControlProfile?: (deviceId: string) => DeviceControlProfile | undefined;
     getDeviceTargetPowerConfig?: (deviceId: string) => TargetDeviceSnapshot['targetPowerConfig'];

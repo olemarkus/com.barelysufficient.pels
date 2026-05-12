@@ -3,7 +3,6 @@ import {
   resolveDeferredObjectiveDeadline,
   type DeferredObjectiveSettingsEntry,
   type DeferredObjectiveSettingsV1,
-  type DeferredObjectiveStatus,
   type DeferredObjectiveStatusSnapshot,
 } from '../lib/plan/deferredObjectives';
 import { DEFERRED_OBJECTIVES_SETTINGS } from '../lib/utils/settingsKeys';
@@ -13,15 +12,28 @@ import type { FlowCardDeps } from './registerFlowCards';
 
 const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
-const TRIGGER_STATUS_VALUES = new Set([
-  'on_track',
-  'at_risk',
-  'cannot_meet',
-  'satisfied',
-] as const);
-type TriggerStatusValue = 'on_track' | 'at_risk' | 'cannot_meet' | 'satisfied';
+type SmartTaskActiveFlowStatus =
+  | 'waiting'
+  | 'on_track'
+  | 'unachievable'
+  | 'satisfied';
+
+type LastSmartTaskFlowStatus = {
+  status: SmartTaskActiveFlowStatus;
+  deadlineAtMs: number | null;
+};
+
+const SMART_TASK_STATUS_LABELS: Record<SmartTaskActiveFlowStatus, string> = {
+  waiting: 'Waiting',
+  on_track: 'On track',
+  unachievable: 'Cannot finish',
+  satisfied: 'Satisfied',
+};
 
 type DropdownArg = string | { id?: string; name?: string };
+type InternalTaskStatus =
+  | DeferredObjectiveStatusSnapshot['status']
+  | DeferredObjectiveStatusSnapshot['previousStatus'];
 
 const getDropdownId = (raw: DropdownArg | undefined): string => (
   (typeof raw === 'object' && raw !== null ? raw.id : raw) ?? ''
@@ -88,9 +100,70 @@ const removeObjective = (
   return { version: settings.version, objectivesByDeviceId: rest };
 };
 
-const buildTriggerTokens = (snapshot: DeferredObjectiveStatusSnapshot): Record<string, unknown> => ({
+const normalizeSmartTaskStatusArg = (raw: DropdownArg | undefined): SmartTaskActiveFlowStatus | null => {
+  const status = getDropdownId(raw);
+  switch (status) {
+    case 'waiting':
+    case 'pending_prices':
+      return 'waiting';
+    case 'on_track':
+    case 'at_risk':
+      return 'on_track';
+    case 'unachievable':
+    case 'cannot_meet':
+    case 'cannot_finish':
+      return 'unachievable';
+    case 'satisfied':
+    case 'done':
+      return 'satisfied';
+    default:
+      return null;
+  }
+};
+
+const mapInternalTaskStatusToFlowStatus = (status: InternalTaskStatus): SmartTaskActiveFlowStatus | null => {
+  switch (status) {
+    case 'none':
+      return null;
+    case 'unknown':
+      return 'waiting';
+    case 'on_track':
+    case 'at_risk':
+      return 'on_track';
+    case 'cannot_meet':
+    case 'invalid':
+      return 'unachievable';
+    case 'satisfied':
+      return 'satisfied';
+    default:
+      return 'waiting';
+  }
+};
+
+const mapSnapshotToFlowStatus = (snapshot: DeferredObjectiveStatusSnapshot): SmartTaskActiveFlowStatus => {
+  return mapInternalTaskStatusToFlowStatus(snapshot.status) ?? 'waiting';
+};
+
+const mapPreviousStatusToFlowStatus = (
+  previousStatus: DeferredObjectiveStatusSnapshot['previousStatus'],
+): SmartTaskActiveFlowStatus | null => mapInternalTaskStatusToFlowStatus(previousStatus);
+
+const isLegacyNoneStatusMatch = (
+  deps: FlowCardDeps,
+  deviceId: string,
+  rawStatus: string,
+): boolean | null => {
+  if (rawStatus !== 'none') return null;
+  const settings = requireSettingsAccessors(deps).read();
+  return !settings.objectivesByDeviceId[deviceId]?.enabled;
+};
+
+const buildTriggerTokens = (
+  snapshot: DeferredObjectiveStatusSnapshot,
+  status: SmartTaskActiveFlowStatus,
+): Record<string, unknown> => ({
   device_name: snapshot.deviceName ?? snapshot.deviceId,
-  status: snapshot.status,
+  status: SMART_TASK_STATUS_LABELS[status],
   target_text: snapshot.targetText,
   deadline_local_time: snapshot.deadlineLocalTime,
   kind: snapshot.kind,
@@ -182,8 +255,8 @@ function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
     const targetPercent = validateNumberInRange(payload?.target_percent, 'Target battery (%)', 1, 100);
     const deadlineLocalTime = validateReadyBy(payload?.ready_by);
     const deadlineAtMs = resolveReadyByToDeadlineAtMs(deps, deadlineLocalTime);
-    const enforcementId = getDropdownId(payload?.enforcement) || 'soft';
-    if (enforcementId !== 'soft' && enforcementId !== 'hard') {
+    const legacyEnforcement = getDropdownId(payload?.enforcement);
+    if (legacyEnforcement && legacyEnforcement !== 'soft' && legacyEnforcement !== 'hard') {
       throw new Error('Enforcement must be "soft" or "hard".');
     }
     const accessors = requireSettingsAccessors(deps);
@@ -192,7 +265,7 @@ function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
     const nextEntry: DeferredObjectiveSettingsEntry = {
       enabled: true,
       kind: 'ev_soc',
-      enforcement: enforcementId,
+      enforcement: legacyEnforcement === 'hard' ? 'hard' : 'soft',
       targetPercent,
       deadlineAtMs,
     };
@@ -279,13 +352,15 @@ function registerClearDeadlineCard(deps: FlowCardDeps): void {
 
 function registerDeadlineStatusChangedTrigger(deps: FlowCardDeps): void {
   const card = deps.homey.flow.getTriggerCard('deadline_status_changed');
+  const lastFlowStatusByDeviceId = new Map<string, LastSmartTaskFlowStatus>();
   card.registerRunListener(async (args: unknown, state?: unknown) => {
     const payload = args as { device?: RawFlowDeviceArg; status?: DropdownArg } | null;
-    const stateRecord = (state ?? {}) as { deviceId?: string; status?: string };
+    const stateRecord = (state ?? {}) as { deviceId?: string; status?: DropdownArg };
     const wantedDeviceId = getDeviceIdFromFlowArg(payload?.device);
-    const wantedStatus = getDropdownId(payload?.status);
+    const wantedStatus = normalizeSmartTaskStatusArg(payload?.status);
+    const actualStatus = normalizeSmartTaskStatusArg(stateRecord.status);
     if (!wantedDeviceId || wantedDeviceId !== stateRecord.deviceId) return false;
-    if (!wantedStatus || wantedStatus !== stateRecord.status) return false;
+    if (!wantedStatus || wantedStatus !== actualStatus) return false;
     return true;
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
@@ -296,8 +371,23 @@ function registerDeadlineStatusChangedTrigger(deps: FlowCardDeps): void {
   const bus = deps.getDeferredObjectiveStatusBus?.();
   if (!bus) return;
   bus.onTransition((snapshot) => {
-    if (!TRIGGER_STATUS_VALUES.has(snapshot.status as TriggerStatusValue)) return;
-    void card.trigger?.(buildTriggerTokens(snapshot), { deviceId: snapshot.deviceId, status: snapshot.status })
+    if (snapshot.deadlineMissed) return;
+    const flowStatus = mapSnapshotToFlowStatus(snapshot);
+    const previousFlowStatus = lastFlowStatusByDeviceId.get(snapshot.deviceId);
+    let previousStatus: SmartTaskActiveFlowStatus | null;
+    if (snapshot.previousStatus === 'none') {
+      previousStatus = null;
+    } else if (previousFlowStatus?.deadlineAtMs === snapshot.deadlineAtMs) {
+      previousStatus = previousFlowStatus.status;
+    } else {
+      previousStatus = mapPreviousStatusToFlowStatus(snapshot.previousStatus);
+    }
+    if (previousStatus === flowStatus) return;
+    lastFlowStatusByDeviceId.set(snapshot.deviceId, {
+      status: flowStatus,
+      deadlineAtMs: snapshot.deadlineAtMs,
+    });
+    void card.trigger?.(buildTriggerTokens(snapshot, flowStatus), { deviceId: snapshot.deviceId, status: flowStatus })
       .catch((err: Error) => deps.error('Failed to trigger deadline_status_changed', err));
   });
 }
@@ -308,8 +398,7 @@ function registerDeadlineMissedTrigger(deps: FlowCardDeps): void {
     const payload = args as { device?: RawFlowDeviceArg } | null;
     const stateRecord = (state ?? {}) as { deviceId?: string };
     const wantedDeviceId = getDeviceIdFromFlowArg(payload?.device);
-    if (!wantedDeviceId || wantedDeviceId !== stateRecord.deviceId) return false;
-    return true;
+    return Boolean(wantedDeviceId && wantedDeviceId === stateRecord.deviceId);
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
     const snapshot = await deps.getSnapshot();
@@ -330,13 +419,19 @@ function registerDeadlineStatusIsCondition(deps: FlowCardDeps): void {
     const payload = args as { device?: RawFlowDeviceArg; status?: DropdownArg } | null;
     const deviceId = getDeviceIdFromFlowArg(payload?.device);
     if (!deviceId) return false;
-    const wantedStatus = getDropdownId(payload?.status) as DeferredObjectiveStatus;
+    const rawStatus = getDropdownId(payload?.status);
+    const legacyNoneMatch = isLegacyNoneStatusMatch(deps, deviceId, rawStatus);
+    if (legacyNoneMatch !== null) return legacyNoneMatch;
+    const wantedStatus = normalizeSmartTaskStatusArg(payload?.status);
+    if (!wantedStatus) return false;
     const bus = deps.getDeferredObjectiveStatusBus?.();
     const current = bus?.getCurrent(deviceId) ?? null;
     const settings = requireSettingsAccessors(deps).read();
     const hasEntry = Boolean(settings.objectivesByDeviceId[deviceId]?.enabled);
-    if (wantedStatus === 'none') return !hasEntry;
-    return current?.status === wantedStatus;
+    if (wantedStatus === 'waiting' && current === null) return hasEntry;
+    if (!current) return false;
+    if (current.deadlineMissed) return false;
+    return mapSnapshotToFlowStatus(current) === wantedStatus;
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
     const snapshot = await deps.getSnapshot();

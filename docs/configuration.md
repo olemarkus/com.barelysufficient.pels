@@ -9,9 +9,8 @@ The PELS settings UI is organized by task. Most users spend the most time in **D
 
 ## Devices tab
 
-The Devices tab shows temperature devices, on-off devices, and optionally supported EV chargers.
+The Devices tab shows temperature devices, on-off devices, and supported EV chargers.
 
-- EV chargers are hidden by default and only appear after enabling **Enable EV charger support** in the Advanced tab.
 - Devices without a usable power estimate cannot be capacity-controlled.
 - Temperature devices can still be managed for mode and price behavior even when capacity control is unavailable.
 
@@ -139,11 +138,10 @@ Water heaters and similar thermal loads are usually the best first candidates.
 
 ## Advanced tab
 
-The Advanced tab is for optional capabilities and expert tuning.
+The Advanced tab is for diagnostics, cleanup, and expert tuning.
 
 | Setting | What it does |
 | --- | --- |
-| **Enable EV charger support** | Shows supported EV chargers and EV current-control options. |
 | **Debug logging topics** | Chooses which internal topics emit debug logs. |
 | **Unmanaged usage reserve** | Tunes how much daily budget PELS holds back for household usage it cannot move. |
 | **Managed device flexibility** | Tunes how freely PELS may shift managed-device usage toward cheaper feasible hours. |

@@ -1,12 +1,12 @@
 {
   "title": {
-    "en": "Has an active deadline"
+    "en": "Has smart task"
   },
   "titleFormatted": {
-    "en": "[[device]] !{{has|does not have}} an active deadline"
+    "en": "[[device]] !{{has|does not have}} a smart task"
   },
   "hint": {
-    "en": "True when this device has a deadline objective stored in PELS."
+    "en": "True when this device has a smart task stored in PELS."
   },
   "args": [
     {

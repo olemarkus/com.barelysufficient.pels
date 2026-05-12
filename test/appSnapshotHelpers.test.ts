@@ -1,5 +1,10 @@
 import { AppSnapshotHelpers } from '../lib/app/appSnapshotHelpers';
+import { disableUnsupportedDevices } from '../lib/app/appDeviceSupport';
 import { TimerRegistry } from '../lib/app/timerRegistry';
+import {
+  CONTROLLABLE_DEVICES,
+  MANAGED_DEVICES,
+} from '../lib/utils/settingsKeys';
 import { mockHomeyInstance } from './mocks/homey';
 
 describe('appSnapshotHelpers', () => {
@@ -75,7 +80,7 @@ describe('appSnapshotHelpers', () => {
       } as any),
       getLatestTargetSnapshot: () => snapshot as any,
       resolveManagedState: () => true,
-      isCapacityControlEnabled: () => false,
+      isCapacityControlEnabled: () => true,
       getStructuredLogger: () => undefined,
       logDebug: vi.fn(),
       error: vi.fn(),
@@ -91,7 +96,136 @@ describe('appSnapshotHelpers', () => {
     await (helper as any).runSnapshotRefreshCycle({ refreshSnapshot } as any, { targeted: true });
 
     expect(syncHeadroomCardState).toHaveBeenCalledWith({
-      devices: snapshot,
+      devices: [{
+        ...snapshot[0],
+        managed: true,
+        controllable: true,
+      }],
+      cleanupMissingDevices: true,
+      reconciliationContext: 'snapshot_refresh',
+    });
+  });
+
+  it('enforces unsupported-device settings before syncing plan and headroom state', async () => {
+    const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
+    const callOrder: string[] = [];
+    const syncLivePlanState = vi.fn(async () => {
+      callOrder.push('syncLivePlanState');
+    });
+    const syncHeadroomCardState = vi.fn(() => {
+      callOrder.push('syncHeadroomCardState');
+    });
+    const disableUnsupported = vi.fn(() => {
+      callOrder.push('disableUnsupportedDevices');
+    });
+    const emitSettingsUiDevicesUpdated = vi.fn(() => {
+      callOrder.push('emitSettingsUiDevicesUpdated');
+    });
+    const snapshot = [{
+      id: 'dev-1',
+      name: 'Unsupported Socket',
+      deviceType: 'onoff',
+      powerCapable: false,
+      targets: [],
+    }];
+    const helper = new AppSnapshotHelpers({
+      homey: mockHomeyInstance as any,
+      timers: new TimerRegistry(),
+      getDeviceManager: () => ({ refreshSnapshot } as any),
+      getPlanEngine: () => undefined,
+      getPlanService: () => ({
+        syncLivePlanState,
+        syncHeadroomCardState,
+        getLatestPlanSnapshot: vi.fn(),
+      } as any),
+      getLatestTargetSnapshot: () => snapshot as any,
+      resolveManagedState: () => true,
+      isCapacityControlEnabled: () => true,
+      getStructuredLogger: () => undefined,
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      getNow: () => new Date('2026-03-21T10:00:00Z'),
+      logPeriodicStatus: vi.fn(),
+      disableUnsupportedDevices: disableUnsupported,
+      getFlowReportedDeviceIds: vi.fn(() => []),
+      emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
+      emitSettingsUiDevicesUpdated,
+      recordPowerSample: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await (helper as any).runSnapshotRefreshCycle({ refreshSnapshot } as any, { targeted: true });
+
+    expect(callOrder).toEqual([
+      'disableUnsupportedDevices',
+      'syncLivePlanState',
+      'syncHeadroomCardState',
+      'emitSettingsUiDevicesUpdated',
+    ]);
+  });
+
+  it('lets snapshot sync collaborators observe settings after unsupported-device enforcement', async () => {
+    mockHomeyInstance.settings.set(MANAGED_DEVICES, { 'socket-1': true });
+    mockHomeyInstance.settings.set(CONTROLLABLE_DEVICES, { 'socket-1': true });
+    const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
+    const settingsSeenByLivePlan: unknown[] = [];
+    const settingsSeenByHeadroom: unknown[] = [];
+    const snapshot = [{
+      id: 'socket-1',
+      name: 'Unsupported Socket',
+      deviceType: 'onoff',
+      powerCapable: false,
+      targets: [],
+      managed: true,
+      controllable: true,
+    }];
+    const syncHeadroomCardState = vi.fn(() => {
+      settingsSeenByHeadroom.push(mockHomeyInstance.settings.get(CONTROLLABLE_DEVICES));
+    });
+    const helper = new AppSnapshotHelpers({
+      homey: mockHomeyInstance as any,
+      timers: new TimerRegistry(),
+      getDeviceManager: () => ({ refreshSnapshot } as any),
+      getPlanEngine: () => undefined,
+      getPlanService: () => ({
+        syncLivePlanState: vi.fn(async () => {
+          settingsSeenByLivePlan.push(mockHomeyInstance.settings.get(MANAGED_DEVICES));
+        }),
+        syncHeadroomCardState,
+        getLatestPlanSnapshot: vi.fn(),
+      } as any),
+      getLatestTargetSnapshot: () => snapshot as any,
+      resolveManagedState: (deviceId) => (
+        mockHomeyInstance.settings.get(MANAGED_DEVICES) as Record<string, boolean>
+      )[deviceId] !== false,
+      isCapacityControlEnabled: (deviceId) => (
+        mockHomeyInstance.settings.get(CONTROLLABLE_DEVICES) as Record<string, boolean>
+      )[deviceId] !== false,
+      getStructuredLogger: () => undefined,
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      getNow: () => new Date('2026-03-21T10:00:00Z'),
+      logPeriodicStatus: vi.fn(),
+      disableUnsupportedDevices: (nextSnapshot) => disableUnsupportedDevices({
+        snapshot: nextSnapshot,
+        settings: mockHomeyInstance.settings as any,
+        logDebug: vi.fn(),
+      }),
+      getFlowReportedDeviceIds: vi.fn(() => []),
+      emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
+      emitSettingsUiDevicesUpdated: vi.fn(),
+      recordPowerSample: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await (helper as any).runSnapshotRefreshCycle({ refreshSnapshot } as any, { targeted: true });
+
+    expect(settingsSeenByLivePlan).toEqual([{ 'socket-1': false }]);
+    expect(settingsSeenByHeadroom).toEqual([{ 'socket-1': false }]);
+    expect(syncHeadroomCardState).toHaveBeenCalledWith({
+      devices: [{
+        ...snapshot[0],
+        managed: false,
+        controllable: false,
+      }],
       cleanupMissingDevices: true,
       reconciliationContext: 'snapshot_refresh',
     });

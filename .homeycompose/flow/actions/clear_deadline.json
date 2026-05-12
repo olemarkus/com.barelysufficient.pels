@@ -1,12 +1,12 @@
 {
   "title": {
-    "en": "Clear deadline"
+    "en": "Clear smart task"
   },
   "titleFormatted": {
-    "en": "Clear deadline for [[device]]"
+    "en": "Clear smart task for [[device]]"
   },
   "hint": {
-    "en": "Removes any active deadline objective for this device."
+    "en": "Removes the active smart task for this device."
   },
   "args": [
     {

@@ -87,7 +87,6 @@ export type AppContext = {
   };
   loadDailyBudgetSettings: () => void;
   updateDailyBudgetState: (options?: DailyBudgetUpdateStateOptions) => void;
-  disableManagedEvDevices: () => void;
   requestFlowPlanRebuild: (source: string) => void;
   getFlowReportedCapabilitiesForDevice: (deviceId: string) => FlowReportedCapabilitiesForDevice;
   getFlowReportedDeviceIds: () => string[];
@@ -163,8 +162,6 @@ export type AppContext = {
   set deviceTargetPowerConfigs(value: DeviceTargetPowerConfigs);
   get deviceCommunicationModels(): Record<string, 'local' | 'cloud'>;
   set deviceCommunicationModels(value: Record<string, 'local' | 'cloud'>);
-  get experimentalEvSupportEnabled(): boolean;
-  set experimentalEvSupportEnabled(value: boolean);
   get shedBehaviors(): Record<string, ShedBehavior>;
   set shedBehaviors(value: Record<string, ShedBehavior>);
   get debugLoggingTopics(): Set<DebugLoggingTopic>;

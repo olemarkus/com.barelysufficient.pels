@@ -76,7 +76,6 @@ import {
 import { buildDebugLoggingTopics } from './lib/app/appLoggingHelpers';
 import { initSettingsHandlerForApp, loadCapacitySettingsFromHomey } from './lib/app/appSettingsHelpers';
 import {
-  disableManagedEvDevices as disableManagedEvDevicesHelper,
   disableUnsupportedDevices as disableUnsupportedDevicesHelper,
 } from './lib/app/appDeviceSupport';
 import { runStartupStep, startAppServices } from './lib/app/appLifecycleHelpers';
@@ -233,7 +232,6 @@ class PelsApp extends Homey.App {
   private deviceControlProfiles: DeviceControlProfiles = {};
   private deviceTargetPowerConfigs: DeviceTargetPowerConfigs = {};
   private deviceCommunicationModels: Record<string, 'local' | 'cloud'> = {};
-  private experimentalEvSupportEnabled = false;
   private shedBehaviors: Record<string, ShedBehavior> = {};
   private debugLoggingTopics = new Set<DebugLoggingTopic>();
   private dailyBudgetService!: DailyBudgetService;
@@ -518,7 +516,6 @@ class PelsApp extends Homey.App {
     const eligibleDeviceIds = getFlowRefreshRequestedDeviceIds({
       state: this.flowReportedCapabilities,
       devices,
-      experimentalEvSupportEnabled: this.experimentalEvSupportEnabled,
       candidateDeviceIds: deviceIds,
     }).filter((deviceId) => !ignoredNativeEvFlowIds.has(deviceId));
     if (eligibleDeviceIds.length === 0) return;
@@ -587,7 +584,6 @@ class PelsApp extends Homey.App {
       storeFlowPriceData: (kind, raw) => app.storeFlowPriceData(kind, raw),
       loadDailyBudgetSettings: () => app.dailyBudgetService.loadSettings(),
       updateDailyBudgetState: (options) => app.updateDailyBudgetAndRecordCap(options),
-      disableManagedEvDevices: () => app.disableManagedEvDevices(),
       requestFlowPlanRebuild: (source) => app.planRebuildScheduler.request({
         kind: 'flow',
         reason: `flow_card:${source}`,
@@ -656,8 +652,6 @@ class PelsApp extends Homey.App {
       set deviceTargetPowerConfigs(value) { appRef.deviceTargetPowerConfigs = value; },
       get deviceCommunicationModels() { return app.deviceCommunicationModels; },
       set deviceCommunicationModels(value) { appRef.deviceCommunicationModels = value; },
-      get experimentalEvSupportEnabled() { return app.experimentalEvSupportEnabled; },
-      set experimentalEvSupportEnabled(value) { appRef.experimentalEvSupportEnabled = value; },
       get shedBehaviors() { return app.shedBehaviors; },
       set shedBehaviors(value) { appRef.shedBehaviors = value; },
       get debugLoggingTopics() { return app.debugLoggingTopics; },
@@ -795,7 +789,6 @@ class PelsApp extends Homey.App {
       isManagedFilterActive: () => this.isManagedFilterActive(),
       getBudgetExempt: (id) => this.isBudgetExempt(id),
       getCommunicationModel: (id) => this.getCommunicationModel(id),
-      getExperimentalEvSupportEnabled: () => this.experimentalEvSupportEnabled,
       getNativeEvWiringEnabled: (id) => this.nativeEvWiringDevices[id] === true,
       getDeviceDriverIdOverride: (id) => this.getDeviceDriverIdOverride(id),
       getDeviceControlProfile: (id) => this.deviceControlProfiles[id],
@@ -1021,11 +1014,22 @@ class PelsApp extends Homey.App {
     // Persist any unflushed deferred-objective plan-history entries before shutting down.
     this.deferredObjectivePlanHistoryRecorder?.flushIfDirty();
     this.deferredObjectiveActivePlanRecorder?.flushIfDirty();
+    this.flushDailyBudgetStateOnUninit();
     // Mark how far we've observed; back-fill on next startup picks up from here. Skipped if
     // the recorder is still dirty (save failed), so the next start re-scans the missed window.
     persistDeferredObjectiveObservationWatermark(this.ctx, this.deferredObjectivePlanHistoryRecorder);
     this.priceCoordinator.stop();
     this.deviceManager?.destroy();
+  }
+  private flushDailyBudgetStateOnUninit(): void {
+    try {
+      this.dailyBudgetService?.persistState('runtime', Date.now());
+    } catch (error) {
+      this.getStructuredLogger('daily_budget')?.error({
+        event: 'daily_budget_state_shutdown_flush_failed',
+        err: normalizeError(error),
+      });
+    }
   }
   private clearUninitTimers(): void {
     if (this.timers.has('powerTrackerSave')) {
@@ -1206,7 +1210,6 @@ class PelsApp extends Homey.App {
         deviceControlProfiles: this.deviceControlProfiles,
         deviceTargetPowerConfigs: this.deviceTargetPowerConfigs,
         deviceCommunicationModels: this.deviceCommunicationModels,
-        experimentalEvSupportEnabled: this.experimentalEvSupportEnabled,
         shedBehaviors: this.shedBehaviors,
       },
     });
@@ -1226,17 +1229,9 @@ class PelsApp extends Homey.App {
     this.deviceControlProfiles = normalizeStoredDeviceControlProfiles(next.deviceControlProfiles) ?? {};
     this.deviceTargetPowerConfigs = next.deviceTargetPowerConfigs;
     this.deviceCommunicationModels = next.deviceCommunicationModels;
-    this.experimentalEvSupportEnabled = next.experimentalEvSupportEnabled;
     this.shedBehaviors = next.shedBehaviors;
     this.updatePriceOptimizationEnabled();
     void this.updateOverheadToken(this.capacitySettings.marginKw);
-  }
-  private disableManagedEvDevices(): void {
-    disableManagedEvDevicesHelper({
-      snapshot: this.latestTargetSnapshot,
-      settings: this.homey.settings,
-      logDebug: (...args: unknown[]) => this.logDebug('devices', ...args),
-    });
   }
   private loadPriceOptimizationSettings(): void { this.priceCoordinator.loadPriceOptimizationSettings(); }
   public getDailyBudgetUiPayload(): DailyBudgetUiPayload | null { return this.dailyBudgetService.getUiPayload(); }

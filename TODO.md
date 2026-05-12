@@ -5,13 +5,6 @@ file.
 
 ## P0 Correctness and control integrity
 
-- [ ] Flush throttled daily-budget state on shutdown. Low-priority `runtime` / `plan`
-      daily-budget writes can be skipped by the 10-minute throttle without retaining a pending
-      flush, while `onUninit()` only forces `power_tracker_state` persistence. Keep the latest
-      throttled daily-budget state pending and write it during app shutdown so restart/upgrade
-      does not reload stale `lastUsedNowKWh` or same-bucket plan state.
-      Files: `lib/dailyBudget/dailyBudgetStatePersistence.ts`,
-      `lib/dailyBudget/dailyBudgetService.ts`, `app.ts`, daily-budget persistence tests.
 - [x] Make observation freshness source-aware. Targeted snapshot refreshes and same-value
       realtime updates should only advance freshness when the value source proves the capability
       was observed.
@@ -22,7 +15,7 @@ file.
       `lastUpdated`, and the merge step now only carries that forward; if no tracked
       capability has reported new evidence, the device ages naturally under the 40-minute
       `STALE_DEVICE_OBSERVATION_MS` window.
-- [ ] Ensure snapshot refresh ordering cannot persist pre-enforcement state. Unsupported-device
+- [x] Ensure snapshot refresh ordering cannot persist pre-enforcement state. Unsupported-device
       enforcement should complete before the refreshed snapshot is synced and persisted.
       Why P0: persisting before enforcement can expose a snapshot that briefly disagrees with the
       settings the app just enforced.

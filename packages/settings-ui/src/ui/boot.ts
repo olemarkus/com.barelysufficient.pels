@@ -7,7 +7,6 @@ import {
   priceAwareDevicesSurface,
   advancedOverviewRedesignEnabledInput,
   advancedOverviewRedesignRow,
-  advancedEvSupportEnabledInput,
   capacityForm,
   capacityLimitInput,
   capacityMarginInput,
@@ -50,7 +49,6 @@ import {
 } from './capacity.ts';
 import {
   DEBUG_LOGGING_TOPICS as DEBUG_LOGGING_TOPICS_SETTING,
-  EXPERIMENTAL_EV_SUPPORT_ENABLED,
 } from '../../../contracts/src/settingsKeys.ts';
 import {
   DEBUG_LOGGING_TOPICS as AVAILABLE_DEBUG_LOGGING_TOPICS,
@@ -215,21 +213,6 @@ const initAdvancedHandlers = () => {
     input.addEventListener('change', () => {
       void saveDebugTopics();
     });
-  });
-
-  advancedEvSupportEnabledInput?.addEventListener('change', async () => {
-    try {
-      await setSetting(EXPERIMENTAL_EV_SUPPORT_ENABLED, advancedEvSupportEnabledInput.checked);
-      await showToast(
-        advancedEvSupportEnabledInput.checked
-          ? 'EV charger support enabled.'
-          : 'EV charger support disabled. Managed EV chargers were set to unmanaged.',
-        'ok',
-      );
-    } catch (error) {
-      await logSettingsError('Failed to update EV charger support setting', error, 'advancedEvSupportEnabledInput');
-      await showToastError(error, 'Failed to update EV charger support setting.');
-    }
   });
 
   advancedOverviewRedesignEnabledInput?.addEventListener('change', async () => {
