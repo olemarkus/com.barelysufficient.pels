@@ -3,7 +3,6 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CONTROLLABLE_DEVICES,
-  EXPERIMENTAL_EV_SUPPORT_ENABLED,
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
 } from '../lib/utils/settingsKeys';
@@ -391,7 +390,6 @@ async function createEvApp(
   });
 
   mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
-  mockHomeyInstance.settings.set(EXPERIMENTAL_EV_SUPPORT_ENABLED, true);
   mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
   mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.2);
   mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);

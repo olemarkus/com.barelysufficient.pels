@@ -153,13 +153,11 @@ export function getFlowReportedDeviceIds(state: FlowReportedCapabilitiesByDevice
 export function getFlowRefreshRequestedDeviceIds(params: {
   state: FlowReportedCapabilitiesByDevice | undefined;
   devices: HomeyDeviceLike[];
-  experimentalEvSupportEnabled: boolean;
   candidateDeviceIds?: readonly string[];
 }): string[] {
   const {
     state,
     devices,
-    experimentalEvSupportEnabled,
     candidateDeviceIds,
   } = params;
   if (!state) return [];
@@ -174,10 +172,7 @@ export function getFlowRefreshRequestedDeviceIds(params: {
     const device = deviceById.get(deviceId);
     if (!device) return false;
 
-    const deviceClassKey = resolveDeviceClassKey({
-      device,
-      experimentalEvSupportEnabled,
-    });
+    const deviceClassKey = resolveDeviceClassKey(device);
     if (!deviceClassKey) return false;
 
     const capabilities = getCapabilities(device);

@@ -39,7 +39,6 @@ import {
   DEVICE_CONTROL_PROFILES,
   DEVICE_LAST_CONTROLLED_MS,
   EV_BOOST_SETTINGS,
-  EXPERIMENTAL_EV_SUPPORT_ENABLED,
   FLOW_REPORTED_DEVICE_CAPABILITIES,
   OPERATING_MODE_SETTING,
 } from '../lib/utils/settingsKeys';
@@ -1217,7 +1216,6 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set(EV_BOOST_SETTINGS, {
       'ev-1': { enabled: true, boostBelowPercent: 40 },
     });
-    mockHomeyInstance.settings.set(EXPERIMENTAL_EV_SUPPORT_ENABLED, true);
     mockHomeyInstance.settings.set('managed_devices', { 'ev-1': true });
 
     const app = createApp();
@@ -2854,7 +2852,6 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('does not emit flow-backed refresh requests for unmanaged Zaptec native-wiring candidates', async () => {
     const app = createApp();
-    (app as any).experimentalEvSupportEnabled = true;
     (app as any).managedDevices = {};
     (app as any).flowReportedCapabilities = {
       'zaptec-1': {
@@ -2920,7 +2917,6 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('does not emit flow-backed refresh requests when Zaptec already has native evcharger support', async () => {
     const app = createApp();
-    (app as any).experimentalEvSupportEnabled = true;
     (app as any).managedDevices = {
       'zaptec-native-1': true,
     };
@@ -2991,7 +2987,6 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('does not emit flow-backed refresh requests when Zaptec shim wiring is active', async () => {
     const app = createApp();
-    (app as any).experimentalEvSupportEnabled = true;
     (app as any).managedDevices = {
       'zaptec-active-1': true,
     };

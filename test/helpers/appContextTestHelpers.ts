@@ -85,7 +85,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   let deviceDriverOverrides: Record<string, string> = {};
   let deviceControlProfiles: DeviceControlProfiles = {};
   let deviceCommunicationModels: Record<string, 'local' | 'cloud'> = {};
-  let experimentalEvSupportEnabled = false;
   let shedBehaviors: Record<string, ShedBehavior> = {};
   let debugLoggingTopics = new Set<DebugLoggingTopic>();
   let defaultComputeDynamicSoftLimit: (() => number) | undefined;
@@ -160,7 +159,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     storeFlowPriceData: vi.fn(),
     loadDailyBudgetSettings: vi.fn(),
     updateDailyBudgetState: vi.fn(),
-    disableManagedEvDevices: vi.fn(),
     requestFlowPlanRebuild: vi.fn(),
     getFlowReportedCapabilitiesForDevice: vi.fn(() => ({})),
     getFlowReportedDeviceIds: vi.fn(() => []),
@@ -207,8 +205,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     set deviceControlProfiles(value) { deviceControlProfiles = value; },
     get deviceCommunicationModels() { return deviceCommunicationModels; },
     set deviceCommunicationModels(value) { deviceCommunicationModels = value; },
-    get experimentalEvSupportEnabled() { return experimentalEvSupportEnabled; },
-    set experimentalEvSupportEnabled(value) { experimentalEvSupportEnabled = value; },
     get shedBehaviors() { return shedBehaviors; },
     set shedBehaviors(value) { shedBehaviors = value; },
     get debugLoggingTopics() { return debugLoggingTopics; },

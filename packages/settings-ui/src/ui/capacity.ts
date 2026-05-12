@@ -8,7 +8,6 @@ import {
   settingsCapacityReactionHint,
   settingsPowerSourceSelect,
   settingsSimulationModeInput,
-  advancedEvSupportEnabledInput,
   advancedOverviewRedesignEnabledInput,
   dryRunBanner,
   type MdCheckboxElement,
@@ -24,7 +23,6 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   DEBUG_LOGGING_TOPICS,
-  EXPERIMENTAL_EV_SUPPORT_ENABLED,
   POWER_SOURCE,
 } from '../../../contracts/src/settingsKeys.ts';
 import {
@@ -253,10 +251,9 @@ export const saveSimulationModeSettings = async (
 };
 
 export const loadAdvancedSettings = async () => {
-  const [topicsRaw, legacyEnabled, evSupportEnabled] = await Promise.all([
+  const [topicsRaw, legacyEnabled] = await Promise.all([
     getSetting(DEBUG_LOGGING_TOPICS),
     getSetting('debug_logging_enabled'),
-    getSetting(EXPERIMENTAL_EV_SUPPORT_ENABLED),
   ]);
   let enabledTopics = normalizeDebugLoggingTopics(topicsRaw);
   if (enabledTopics.length === 0 && legacyEnabled === true) {
@@ -267,9 +264,6 @@ export const loadAdvancedSettings = async () => {
     const topic = el.dataset.debugTopic;
     el.checked = typeof topic === 'string' && isDebugLoggingTopic(topic) && enabledTopics.includes(topic);
   });
-  if (advancedEvSupportEnabledInput) {
-    advancedEvSupportEnabledInput.checked = evSupportEnabled === true;
-  }
   if (advancedOverviewRedesignEnabledInput) {
     advancedOverviewRedesignEnabledInput.checked = resolveOverviewRedesignPreference();
   }

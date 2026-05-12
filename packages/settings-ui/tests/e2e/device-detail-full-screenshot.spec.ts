@@ -45,19 +45,6 @@ const openDeviceDetail = async (page: Page, deviceId: string) => {
   });
 };
 
-const enableEvSupportViaUi = async (page: Page) => {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
-  await page.getByRole('tab', { name: 'Settings' }).click();
-  await page.locator('[data-settings-target="advanced"]').click();
-  const toggle = page.locator('#advanced-ev-support-enabled');
-  await expect(toggle).toBeVisible();
-  if (!(await toggle.isChecked())) {
-    await toggle.check();
-    await expect(page.locator('#toast')).toContainText('EV charger support enabled.');
-  }
-};
-
 const expandAllSections = async (page: Page) => {
   await page.evaluate(() => {
     document
@@ -114,8 +101,9 @@ test('stepped — Connected 300 water heater', async ({ page }) => {
   await fullPanelScreenshot(page, 'mw-stepped-connected300-full');
 });
 
-test('generic EV charger (with EV support enabled)', async ({ page }) => {
-  await enableEvSupportViaUi(page);
+test('generic EV charger', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
   await page.getByRole('tab', { name: 'Settings' }).click();
   await page.locator('[data-settings-target="devices"]').click();
   const row = page.locator('#device-list .device-row[data-device-id="dev_evcharger"]');

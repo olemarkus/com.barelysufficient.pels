@@ -302,7 +302,6 @@ describe('native stepped-load wiring', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getExperimentalEvSupportEnabled: () => true,
       },
     );
 
@@ -332,7 +331,6 @@ describe('native stepped-load wiring', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getExperimentalEvSupportEnabled: () => true,
         getDeviceTargetPowerConfig: (deviceId) => (
           deviceId === 'target-power-1'
             ? { enabled: true, preset: 'ev_charger_3_phase' }
@@ -375,7 +373,6 @@ describe('native stepped-load wiring', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getExperimentalEvSupportEnabled: () => true,
         getDeviceTargetPowerConfig: (deviceId) => (
           deviceId === 'synthetic-target-power-1'
             ? { enabled: true, preset: 'ev_charger_1_phase' }
@@ -412,7 +409,6 @@ describe('native stepped-load wiring', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getExperimentalEvSupportEnabled: () => true,
       },
     );
 
@@ -468,7 +464,6 @@ describe('native stepped-load wiring', () => {
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
-          getExperimentalEvSupportEnabled: () => true,
           getNativeEvWiringEnabled: () => true,
         },
       );

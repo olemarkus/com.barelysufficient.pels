@@ -25,10 +25,7 @@ export function resolveParseDeviceIdentity(params: {
     compatibleDevice,
     providers.getDeviceDriverIdOverride?.(deviceId),
   );
-  const deviceClassKey = resolveDeviceClassKey({
-    device: effectiveDevice,
-    experimentalEvSupportEnabled: providers.getExperimentalEvSupportEnabled?.() === true,
-  });
+  const deviceClassKey = resolveDeviceClassKey(effectiveDevice);
   return deviceClassKey
     ? {
       deviceId,
