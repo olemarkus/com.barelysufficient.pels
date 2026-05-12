@@ -467,7 +467,7 @@ describe('resolveAllocationWarning', () => {
   });
 
   it('returns layman title and body when constrained', () => {
-    const payload = buildPayload();
+    const payload = buildPayload({ budgetKWh: 60 });
     (payload.state as { allocationPressure?: unknown }).allocationPressure = {
       requestedBudgetKWh: 12,
       plannedBudgetKWh: 4.5,
@@ -477,9 +477,26 @@ describe('resolveAllocationWarning', () => {
     };
     const result = resolveAllocationWarning(payload);
     expect(result?.title).toContain('larger than your hourly limit');
-    expect(result?.body).toContain('4.5 kWh per day');
-    expect(result?.body).toContain('daily budget of 12.0 kWh');
+    expect(result?.body).toContain('daily budget of 60.0 kWh');
     expect(result?.body).toContain('Lower the daily budget');
+  });
+
+  it('quotes the configured daily budget, not the remaining requestedBudgetKWh', () => {
+    // requestedBudgetKWh is the remaining budget after consumption (see
+    // computeAllocationPressure in lib/dailyBudget/dailyBudgetState.ts) — mid-day
+    // it diverges from payload.budget.dailyBudgetKWh. The warning must show
+    // the configured value so the user can match it to their setting.
+    const payload = buildPayload({ budgetKWh: 60 });
+    (payload.state as { allocationPressure?: unknown }).allocationPressure = {
+      requestedBudgetKWh: 20,
+      plannedBudgetKWh: 5,
+      unallocatedBudgetKWh: 15,
+      saturationRatio: 0.25,
+      constrained: true,
+    };
+    const result = resolveAllocationWarning(payload);
+    expect(result?.body).toContain('60.0 kWh');
+    expect(result?.body).not.toContain('20.0 kWh');
   });
 
   it('returns null for null payload', () => {
