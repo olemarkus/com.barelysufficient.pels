@@ -7,7 +7,8 @@
     : {};
   const hasInitialDailyBudgetPayload = Object.prototype.hasOwnProperty.call(initialOverrides, 'dailyBudgetPayload');
 
-  // Default to redesign in the local preview unless the test stub explicitly disables it.
+  // Keep seeding the legacy browser preference for older fixtures; production code now
+  // keeps the redesigned UI on regardless of this value.
   if (initialOverrides.overviewRedesignEnabled !== false) {
     try { localStorage.setItem('pels.settingsUi.overviewRedesignEnabled', 'true'); } catch (e) { void e; }
   }
