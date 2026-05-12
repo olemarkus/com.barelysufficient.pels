@@ -66,6 +66,22 @@ hr {
   --radius: var(--radius-lg);
   --font-sans: var(--font-family-sans);
   --temp-input-width: 80px;
+  --pels-md-primary: var(--accent);
+  --pels-md-on-primary: var(--color-semantic-text-inverse);
+  --pels-md-primary-container: var(--color-surface-4);
+  --pels-md-on-primary-container: var(--text);
+  --pels-md-secondary: var(--accent);
+  --pels-md-on-secondary: var(--color-semantic-text-inverse);
+  --pels-md-secondary-container: var(--color-surface-3);
+  --pels-md-on-secondary-container: var(--text);
+  --pels-md-surface: var(--color-surface-2);
+  --pels-md-surface-variant: var(--color-surface-3);
+  --pels-md-surface-container-highest: var(--color-surface-4);
+  --pels-md-on-surface: var(--text);
+  --pels-md-on-surface-variant: var(--text-secondary);
+  --pels-md-outline: var(--panel-border);
+  --pels-md-error: var(--danger);
+  --pels-md-on-error: var(--color-semantic-text-inverse);
   
   /* Panel variants for different contexts */
   --panel-bg: var(--color-surface-1);
@@ -74,20 +90,24 @@ hr {
   /* Material Web component theme bridge. */
   --md-ref-typeface-plain: var(--font-sans);
   --md-ref-typeface-brand: var(--font-sans);
-  --md-sys-color-primary: var(--accent);
-  --md-sys-color-on-primary: var(--color-semantic-text-inverse);
-  --md-sys-color-primary-container: var(--color-surface-4);
-  --md-sys-color-on-primary-container: var(--text);
-  --md-sys-color-secondary-container: var(--color-surface-3);
-  --md-sys-color-on-secondary-container: var(--text);
-  --md-sys-color-surface: var(--color-surface-2);
-  --md-sys-color-surface-container: var(--color-surface-2);
-  --md-sys-color-surface-container-highest: var(--color-surface-4);
-  --md-sys-color-on-surface: var(--text);
-  --md-sys-color-on-surface-variant: var(--text-secondary);
-  --md-sys-color-outline: var(--panel-border);
-  --md-sys-color-outline-variant: var(--panel-border);
-  --md-sys-color-error: var(--danger);
+  --md-sys-color-primary: var(--pels-md-primary);
+  --md-sys-color-on-primary: var(--pels-md-on-primary);
+  --md-sys-color-primary-container: var(--pels-md-primary-container);
+  --md-sys-color-on-primary-container: var(--pels-md-on-primary-container);
+  --md-sys-color-secondary: var(--pels-md-secondary);
+  --md-sys-color-on-secondary: var(--pels-md-on-secondary);
+  --md-sys-color-secondary-container: var(--pels-md-secondary-container);
+  --md-sys-color-on-secondary-container: var(--pels-md-on-secondary-container);
+  --md-sys-color-surface: var(--pels-md-surface);
+  --md-sys-color-surface-variant: var(--pels-md-surface-variant);
+  --md-sys-color-surface-container: var(--pels-md-surface);
+  --md-sys-color-surface-container-highest: var(--pels-md-surface-container-highest);
+  --md-sys-color-on-surface: var(--pels-md-on-surface);
+  --md-sys-color-on-surface-variant: var(--pels-md-on-surface-variant);
+  --md-sys-color-outline: var(--pels-md-outline);
+  --md-sys-color-outline-variant: var(--pels-md-outline);
+  --md-sys-color-error: var(--pels-md-error);
+  --md-sys-color-on-error: var(--pels-md-on-error);
   --md-sys-shape-corner-extra-small: var(--radius-md);
   --md-sys-shape-corner-small: var(--radius-md);
   --md-sys-typescale-body-large-font: var(--font-sans);
@@ -166,7 +186,7 @@ body[data-ui-variant="redesign"] .screen {
   width: min(100%, 480px);
   max-width: 480px;
   gap: var(--spacing-4);
-  padding: clamp(8px, 2vw, 10px);
+  padding: clamp(6px, 2vw, 10px);
 }
 
 .screen > * {
@@ -204,8 +224,8 @@ body[data-ui-variant="redesign"] .hero h1 {
 
 .redesign-shell-nav {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--spacing-1);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px;
   margin-top: 0;
   border-radius: var(--radius-lg);
   background: var(--color-surface-2);
@@ -277,10 +297,12 @@ body[data-ui-variant="redesign"] .hero h1 {
 }
 
 .redesign-shell-nav .tab {
+  --md-primary-tab-container-height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: var(--spacing-8);
+  height: 34px;
+  min-height: 34px;
   line-height: 1;
 }
 
@@ -306,8 +328,8 @@ body[data-ui-variant="redesign"] .tab[data-tab="advanced"] {
 
 body[data-ui-variant="redesign"] .redesign-shell-nav .tab[data-tab="settings"] {
   margin-left: 0;
-  padding: var(--spacing-2) var(--spacing-2);
-  font-size: var(--font-size-sm);
+  padding: 5px 4px;
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
   opacity: 1;
 }
@@ -2167,16 +2189,19 @@ body[data-ui-variant="redesign"] .settings-back-button--redesign-only {
 
 @media (max-width: 480px) {
   body[data-ui-variant="redesign"] .tabs {
-    gap: 6px;
+    gap: 4px;
   }
 
   body[data-ui-variant="redesign"] .tab {
-    flex: 1 1 calc(25% - 5px);
     text-align: center;
     justify-content: center;
-    padding: 6px 6px;
+    padding: 5px 4px;
     font-size: var(--font-size-xs);
     min-width: 0;
+  }
+
+  body[data-ui-variant="redesign"] .redesign-shell-nav {
+    gap: 2px;
   }
 
   body[data-ui-variant="redesign"] .card__header {
@@ -3765,10 +3790,8 @@ body[data-ui-variant="redesign"] #dry-run-banner .banner__icon {
 }
 
 #budget-redesign-adjust-view {
-  --md-sys-color-primary: var(--accent);
-  --md-sys-color-on-primary: var(--color-base-black);
-  --md-sys-color-secondary: var(--accent);
-  --md-sys-color-on-secondary: var(--color-base-black);
+  --pels-md-on-primary: var(--color-base-black);
+  --pels-md-on-secondary: var(--color-base-black);
   padding-bottom: var(--spacing-8);
 }
 
@@ -4085,11 +4108,11 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 .deadline-page-close {
   position: fixed;
   z-index: 20;
-  top: max(var(--spacing-3), env(safe-area-inset-top));
+  top: max(var(--spacing-2), env(safe-area-inset-top));
   right: max(var(--spacing-3), env(safe-area-inset-right));
   display: inline-grid;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   place-items: center;
   padding: 0;
   border: 1px solid var(--pels-surface-outline);
@@ -4100,6 +4123,10 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font: inherit;
   font-size: 24px;
   line-height: 1;
+}
+
+#deadline-plan-root {
+  padding-top: calc(max(var(--spacing-2), env(safe-area-inset-top)) + 36px + var(--spacing-2));
 }
 
 .deadline-page-close:focus-visible {
@@ -5141,21 +5168,11 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
 
 #device-detail-panel {
   /* Re-theme @material/web on this panel to match the PELS dark surface. */
-  --md-sys-color-primary: var(--accent);
-  --md-sys-color-on-primary: var(--color-base-black);
-  --md-sys-color-primary-container: rgba(127, 209, 174, 0.2);
-  --md-sys-color-on-primary-container: var(--text);
-  --md-sys-color-secondary: var(--accent);
-  --md-sys-color-on-secondary: var(--color-base-black);
-  --md-sys-color-surface: var(--color-surface-2);
-  --md-sys-color-surface-variant: var(--color-surface-3);
-  --md-sys-color-surface-container-highest: var(--color-surface-4);
-  --md-sys-color-on-surface: var(--text);
-  --md-sys-color-on-surface-variant: var(--color-semantic-text-secondary);
-  --md-sys-color-outline: var(--panel-border);
-  --md-sys-color-outline-variant: var(--panel-border);
-  --md-sys-color-error: var(--color-semantic-danger, #e57373);
-  --md-sys-color-on-error: var(--color-base-black);
+  --pels-md-on-primary: var(--color-base-black);
+  --pels-md-primary-container: color-mix(in srgb, var(--accent) 20%, transparent);
+  --pels-md-on-secondary: var(--color-base-black);
+  --pels-md-on-surface-variant: var(--color-semantic-text-secondary);
+  --pels-md-on-error: var(--color-base-black);
 }
 
 /* Switch row: switch on the left, label + hint stacked beside it.

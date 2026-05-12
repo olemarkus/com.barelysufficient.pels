@@ -104,6 +104,158 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     expect(entry.finalizedAtMs).toBe(6 * HOUR_MS);
   });
 
+  it('does not keep a run met when progress drops below target before the deadline', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+    const deadlineAtMs = 6 * HOUR_MS;
+
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs,
+      currentTemperatureC: 65,
+      status: 'satisfied',
+      horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
+    })], 3 * HOUR_MS);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs,
+      currentTemperatureC: 60,
+      status: 'on_track',
+      horizonPlan: makeHorizon({ status: 'on_track', statusDetail: 'planned_with_margin' }),
+    })], 5 * HOUR_MS);
+    recorder.observe([], 6 * HOUR_MS);
+    recorder.flushIfDirty();
+
+    const entry = saved()!.entries[0]!;
+    expect(entry.outcome).toBe('missed');
+    expect(entry.metAtMs).toBeNull();
+    expect(entry.finalProgressC).toBe(60);
+  });
+
+  it('clears a met run when fresh progress drops below target during an unknown cycle', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+    const deadlineAtMs = 6 * HOUR_MS;
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs,
+      currentTemperatureC: 65,
+      status: 'satisfied',
+      horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
+    })], 0);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs,
+      currentTemperatureC: 60,
+      status: 'unknown',
+      reasonCode: 'objective_missing_price_horizon',
+      horizonPlan: undefined,
+    })], 5 * HOUR_MS);
+    recorder.observe([], 6 * HOUR_MS);
+    recorder.flushIfDirty();
+
+    const entry = saved()!.entries[0]!;
+    expect(entry.outcome).toBe('missed');
+    expect(entry.metAtMs).toBeNull();
+    expect(entry.finalProgressC).toBe(60);
+  });
+
+  it('clears a met run when fresh progress drops below target while price planning is disabled', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+    const deadlineAtMs = 6 * HOUR_MS;
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs,
+      currentTemperatureC: 65,
+      status: 'satisfied',
+      horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
+    })], 0);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs,
+      currentTemperatureC: 60,
+      status: 'unknown',
+      reasonCode: 'objective_price_feature_disabled',
+      horizonPlan: undefined,
+    })], 5 * HOUR_MS);
+    recorder.observe([], 6 * HOUR_MS);
+    recorder.flushIfDirty();
+
+    const entry = saved()!.entries[0]!;
+    expect(entry.outcome).toBe('missed');
+    expect(entry.metAtMs).toBeNull();
+    expect(entry.finalProgressC).toBe(60);
+  });
+
+  it('keeps the last met marker when an unknown cycle only has stale progress', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+    const deadlineAtMs = 6 * HOUR_MS;
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs,
+      currentTemperatureC: 65,
+      status: 'satisfied',
+      horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
+    })], 0);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs,
+      currentTemperatureC: 60,
+      status: 'unknown',
+      reasonCode: 'objective_progress_stale',
+      horizonPlan: undefined,
+    })], 5 * HOUR_MS);
+    recorder.observe([], 6 * HOUR_MS);
+    recorder.flushIfDirty();
+
+    const entry = saved()!.entries[0]!;
+    expect(entry.outcome).toBe('met');
+    expect(entry.metAtMs).toBe(0);
+    expect(entry.finalProgressC).toBe(65);
+  });
+
+  it('records the later met time when progress recovers before the deadline', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+    const deadlineAtMs = 6 * HOUR_MS;
+
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs,
+      currentTemperatureC: 65,
+      status: 'satisfied',
+      horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
+    })], 2 * HOUR_MS);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs,
+      currentTemperatureC: 60,
+      status: 'on_track',
+      horizonPlan: makeHorizon({ status: 'on_track', statusDetail: 'planned_with_margin' }),
+    })], 3 * HOUR_MS);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs,
+      currentTemperatureC: 66,
+      status: 'satisfied',
+      horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
+    })], 5 * HOUR_MS);
+    recorder.observe([], 6 * HOUR_MS);
+    recorder.flushIfDirty();
+
+    const entry = saved()!.entries[0]!;
+    expect(entry.outcome).toBe('met');
+    expect(entry.metAtMs).toBe(5 * HOUR_MS);
+    expect(entry.finalProgressC).toBe(66);
+  });
+
   it('finalizes as `missed` when the deadline passes with progress below target', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
