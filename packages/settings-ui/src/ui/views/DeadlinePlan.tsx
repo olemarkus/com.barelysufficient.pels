@@ -79,6 +79,14 @@ export type DeadlinePlanLoadState =
     reason: DeadlinePlanUnavailableReason;
     history?: DeadlinePlanHistoryView;
   }
+  | {
+    // Deadline has passed or the runtime auto-disabled the objective. The
+    // root lands on the History tab so the user sees outcomes rather than
+    // a stale current plan.
+    status: 'completed';
+    objectiveKind: DeferredObjectiveSettingsKind;
+    history?: DeadlinePlanHistoryView;
+  }
   | { status: 'ready'; payload: DeadlinePlanPayload; history?: DeadlinePlanHistoryView };
 
 const chipClass = (tone: DeadlinePlanChipTone): string => `plan-chip plan-chip--${tone}`;
@@ -548,6 +556,15 @@ const CurrentPlanContent = ({ loadState }: { loadState: DeadlinePlanLoadState })
       </section>
     );
   }
+  if (loadState.status === 'completed') {
+    const copy = deadlineLabels(loadState.objectiveKind).completedHero;
+    return (
+      <section class="pels-surface-card budget-redesign-card">
+        <h1 class="plan-card__title">{copy.headline}</h1>
+        <p class="pels-card-supporting">{copy.body}</p>
+      </section>
+    );
+  }
   return (
     <>
       <DeadlineHero payload={loadState.payload} />
@@ -558,7 +575,16 @@ const CurrentPlanContent = ({ loadState }: { loadState: DeadlinePlanLoadState })
 };
 
 const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) => {
+  // Completed deadlines land on History so the user sees outcomes immediately;
+  // the Current tab stays reachable as a debug surface. `useState`'s
+  // initializer fires only on first mount — and the first mount is always the
+  // `loading` state because the boot fetch runs after the initial render — so
+  // also force the switch with an effect when the status transitions to
+  // `completed`. After that the user can still click back to Current.
   const [activeTab, setActiveTab] = useState<DeadlinePlanTab>('current');
+  useEffect(() => {
+    if (loadState.status === 'completed') setActiveTab('history');
+  }, [loadState.status]);
   const history = loadState.history;
   return (
     <>

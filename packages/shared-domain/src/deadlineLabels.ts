@@ -2,9 +2,6 @@ import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferred
 
 export type DeadlinePlanUnavailableReason =
   | 'no_current_reading'
-  | 'no_useful_power'
-  | 'no_energy_estimate'
-  | 'no_horizon_hours'
   | 'already_satisfied';
 
 export type DeadlinePlanPendingReason =
@@ -12,18 +9,21 @@ export type DeadlinePlanPendingReason =
   | 'price_feature_disabled'
   | 'device_data_missing';
 
+export type DeadlinePlanCompletedReason = 'deadline_passed';
+
 export type DeadlineLabels = {
   kindChipLabel: string;
   activeChipLabel: string;
   waitingChipLabel: string;
+  cannotMeetChipLabel: string;
   deviceSeriesName: string;
   backgroundSeriesName: string;
   planTooltipActive: string;
   planTooltipIdle: string;
-  pendingHeroHeadline: string;
-  pendingHeroBody: string;
   pendingHeroByReason: Record<DeadlinePlanPendingReason, { headline: string; body: string }>;
   unavailableByReason: Record<DeadlinePlanUnavailableReason, { headline: string; body: string }>;
+  cannotMeetShortfall: (shortfallLabel: string) => string;
+  completedHero: { headline: string; body: string };
   targetUnit: '°C' | '%';
   planInputsCardTitle: string;
   planInputsRateRowLabel: string;
@@ -36,12 +36,11 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     kindChipLabel: 'Temperature',
     activeChipLabel: 'Heating',
     waitingChipLabel: 'Heat queued',
+    cannotMeetChipLabel: 'Can’t fully meet',
     deviceSeriesName: 'Heating',
     backgroundSeriesName: 'Background usage',
     planTooltipActive: 'Heat',
     planTooltipIdle: 'Idle',
-    pendingHeroHeadline: 'Waiting for tomorrow’s prices',
-    pendingHeroBody: 'The heat plan is computed once tomorrow’s prices arrive.',
     pendingHeroByReason: {
       awaiting_horizon_plan: {
         headline: 'Waiting for tomorrow’s prices',
@@ -62,24 +61,16 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
         headline: 'Waiting for the first temperature reading',
         body: 'The plan will appear once the device reports its current temperature.',
       },
-      no_useful_power: {
-        headline: 'No planning power configured',
-        body: 'PELS does not yet know how much power this heater draws. Configure its expected load to compute a plan.',
-      },
-      no_energy_estimate: {
-        headline: 'No energy estimate yet',
-        body: 'PELS needs a learned heating profile or an allocated plan to estimate energy. '
-          + 'Run a heating cycle so the device can be profiled.',
-      },
-      no_horizon_hours: {
-        headline: 'No price horizon for this deadline',
-        body: 'The price horizon does not cover the time between now and the deadline.',
-      },
       already_satisfied: {
         headline: 'Already at the target temperature',
         body: 'PELS will not schedule any heating because the current temperature already meets '
           + 'the deadline target. The plan reactivates if the temperature drops below target.',
       },
+    },
+    cannotMeetShortfall: (shortfallLabel) => `Best effort — short ~${shortfallLabel} of the target by the deadline.`,
+    completedHero: {
+      headline: 'Deadline complete',
+      body: 'See the History tab for what was delivered.',
     },
     targetUnit: '°C',
     planInputsCardTitle: 'Plan inputs',
@@ -91,12 +82,11 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     kindChipLabel: 'EV',
     activeChipLabel: 'Charging',
     waitingChipLabel: 'Charge queued',
+    cannotMeetChipLabel: 'Can’t fully meet',
     deviceSeriesName: 'Charging',
     backgroundSeriesName: 'Background usage',
     planTooltipActive: 'Charge',
     planTooltipIdle: 'Idle',
-    pendingHeroHeadline: 'Waiting for tomorrow’s prices',
-    pendingHeroBody: 'The charging plan is computed once tomorrow’s prices arrive.',
     pendingHeroByReason: {
       awaiting_horizon_plan: {
         headline: 'Waiting for tomorrow’s prices',
@@ -117,24 +107,16 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
         headline: 'Waiting for the first state-of-charge reading',
         body: 'The plan will appear once the EV reports its current state of charge.',
       },
-      no_useful_power: {
-        headline: 'No planning power configured',
-        body: 'PELS does not yet know how fast this EV charges. Configure its expected load to compute a plan.',
-      },
-      no_energy_estimate: {
-        headline: 'No energy estimate yet',
-        body: 'PELS needs a learned charging profile or an allocated plan to estimate energy. '
-          + 'Run a charging cycle so the EV can be profiled.',
-      },
-      no_horizon_hours: {
-        headline: 'No price horizon for this deadline',
-        body: 'The price horizon does not cover the time between now and the deadline.',
-      },
       already_satisfied: {
         headline: 'Already at the target state of charge',
         body: 'PELS will not schedule any charging because the EV is already at or above the '
           + 'deadline target. The plan reactivates if the state of charge drops below target.',
       },
+    },
+    cannotMeetShortfall: (shortfallLabel) => `Best effort — short ~${shortfallLabel} of the target by the deadline.`,
+    completedHero: {
+      headline: 'Deadline complete',
+      body: 'See the History tab for what was delivered.',
     },
     targetUnit: '%',
     planInputsCardTitle: 'Plan inputs',

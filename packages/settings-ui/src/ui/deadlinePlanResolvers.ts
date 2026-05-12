@@ -98,31 +98,15 @@ export const resolveProfile = (
   return profile?.kind === objectiveKind ? profile : null;
 };
 
-const sumAllocationKWh = (activePlan: DeferredObjectiveActivePlanV1): number | null => {
-  const hours = activePlan.latest?.hours;
-  if (!hours) return null;
-  let total = 0;
-  for (const hour of hours) {
-    if (isFiniteNumber(hour.plannedKWh) && hour.plannedKWh > 0) total += hour.plannedKWh;
-  }
-  return total;
-};
-
 export const resolveEnergyNeededKWh = (params: {
   profile: DeviceObjectiveProfile | null;
-  remainingUnits: number;
   activePlan: DeferredObjectiveActivePlanV1;
 }): { energyNeededKWh: number; confidence: string | null } | null => {
-  // Allocation from the recorder is authoritative: the planner already sized
-  // the kWh against whatever data it had, so the UI must not refuse to render
-  // just because its own learned profile is missing. The sum spans every
-  // allocated hour (including past hours), matching the timeline chart, which
-  // iterates the same set and accumulates planned kWh against `progressPerKWh`.
-  const allocated = sumAllocationKWh(params.activePlan);
-  if (allocated !== null && allocated > 0) {
-    return { energyNeededKWh: allocated, confidence: params.profile?.kwhPerUnit?.confidence ?? null };
-  }
-  const stat = params.profile?.kwhPerUnit;
-  if (!stat || !isFiniteNumber(stat.mean) || stat.mean <= 0) return null;
-  return { energyNeededKWh: params.remainingUnits * stat.mean, confidence: stat.confidence };
+  // The recorder stores `energyNeededKWh` straight from the horizon planner —
+  // authoritative even under `cannot_meet` (allocated hours can round to zero
+  // for sub-second remaining buckets). The UI never needs its own learned
+  // profile to render the timeline.
+  const revisionEnergy = params.activePlan.latest?.energyNeededKWh;
+  if (!isFiniteNumber(revisionEnergy) || revisionEnergy <= 0) return null;
+  return { energyNeededKWh: revisionEnergy, confidence: params.profile?.kwhPerUnit?.confidence ?? null };
 };

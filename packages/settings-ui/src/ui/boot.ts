@@ -109,7 +109,7 @@ import {
 import {
   isDeadlinePlanPage,
   mountDeadlinePlan,
-} from './deadlinePlan.ts';
+} from './deadlinePlanMount.ts';
 
 let canToggleOverviewRedesign = false;
 
