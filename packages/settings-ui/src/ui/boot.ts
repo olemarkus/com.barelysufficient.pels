@@ -106,15 +106,12 @@ import { refreshPlan } from './plan.ts';
 import {
   applySettingsUiVariant,
   applyStoredOverviewRedesignPreference,
-  getStoredOverviewRedesignPreference,
   setStoredOverviewRedesignPreference,
 } from './uiVariant.ts';
 import {
   isDeadlinePlanPage,
   mountDeadlinePlan,
 } from './deadlinePlanMount.ts';
-
-let canToggleOverviewRedesign = false;
 
 const initTabHandlers = () => {
   tabs.forEach((tab) => {
@@ -237,14 +234,9 @@ const initAdvancedHandlers = () => {
 
   advancedOverviewRedesignEnabledInput?.addEventListener('change', async () => {
     try {
-      if (!canToggleOverviewRedesign) {
-        advancedOverviewRedesignEnabledInput.checked = getStoredOverviewRedesignPreference();
-        applyStoredOverviewRedesignPreference(false);
-        return;
-      }
-      const enabled = advancedOverviewRedesignEnabledInput.checked;
-      setStoredOverviewRedesignPreference(enabled);
-      applySettingsUiVariant(enabled ? 'redesign' : 'legacy');
+      advancedOverviewRedesignEnabledInput.checked = true;
+      setStoredOverviewRedesignPreference(true);
+      applySettingsUiVariant('redesign');
       // Re-render device-dependent lists so the just-revealed shell's
       // container is populated; otherwise users who viewed Devices before
       // toggling see a blank panel until reload.
@@ -254,10 +246,7 @@ const initAdvancedHandlers = () => {
       }
       showTab('advanced');
       await refreshPlan();
-      await showToast(
-        enabled ? 'New UI enabled.' : 'New UI disabled.',
-        'ok',
-      );
+      await showToast('New UI is always on.', 'ok');
     } catch (error) {
       await logSettingsError(
         'Failed to update new UI preference',
@@ -292,15 +281,14 @@ const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
 };
 
 const applyOverviewRedesignBootstrap = (bootstrap: SettingsUiBootstrap | null) => {
-  canToggleOverviewRedesign = bootstrap?.featureAccess?.canToggleOverviewRedesign === true;
-  state.canToggleOverviewRedesign = canToggleOverviewRedesign;
+  state.canToggleOverviewRedesign = bootstrap?.featureAccess?.canToggleOverviewRedesign === true;
   if (advancedOverviewRedesignRow) {
-    advancedOverviewRedesignRow.hidden = !canToggleOverviewRedesign;
+    advancedOverviewRedesignRow.hidden = true;
   }
   if (advancedOverviewRedesignEnabledInput) {
-    advancedOverviewRedesignEnabledInput.checked = getStoredOverviewRedesignPreference();
+    advancedOverviewRedesignEnabledInput.checked = true;
   }
-  applyStoredOverviewRedesignPreference(canToggleOverviewRedesign);
+  applyStoredOverviewRedesignPreference(state.canToggleOverviewRedesign);
 };
 
 const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
