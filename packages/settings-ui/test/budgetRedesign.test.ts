@@ -10,6 +10,7 @@ import {
   resolveHeadroomLine,
   resolveSplitLine,
 } from '../src/ui/budgetRedesign.ts';
+import { resolveAllocationWarning } from '../src/ui/dailyBudgetAllocationWarning.ts';
 
 const costDisplay = { unit: 'kr', divisor: 100 } as const;
 
@@ -444,5 +445,44 @@ describe('resolveComparisonDay', () => {
     const candidate = wrapAsUiPayload(today, tomorrowUnreliable);
     const result = resolveComparisonDay(active, candidate);
     expect(result.dayView).toBe('today');
+  });
+});
+
+describe('resolveAllocationWarning', () => {
+  it('returns null when no allocation pressure is present', () => {
+    const payload = buildPayload();
+    expect(resolveAllocationWarning(payload)).toBeNull();
+  });
+
+  it('returns null when pressure is not constrained', () => {
+    const payload = buildPayload();
+    (payload.state as { allocationPressure?: unknown }).allocationPressure = {
+      requestedBudgetKWh: 12,
+      plannedBudgetKWh: 12,
+      unallocatedBudgetKWh: 0,
+      saturationRatio: 0,
+      constrained: false,
+    };
+    expect(resolveAllocationWarning(payload)).toBeNull();
+  });
+
+  it('returns layman title and body when constrained', () => {
+    const payload = buildPayload();
+    (payload.state as { allocationPressure?: unknown }).allocationPressure = {
+      requestedBudgetKWh: 12,
+      plannedBudgetKWh: 4.5,
+      unallocatedBudgetKWh: 7.5,
+      saturationRatio: 0.375,
+      constrained: true,
+    };
+    const result = resolveAllocationWarning(payload);
+    expect(result?.title).toContain('larger than your hourly limit');
+    expect(result?.body).toContain('4.5 kWh per day');
+    expect(result?.body).toContain('daily budget of 12.0 kWh');
+    expect(result?.body).toContain('Lower the daily budget');
+  });
+
+  it('returns null for null payload', () => {
+    expect(resolveAllocationWarning(null)).toBeNull();
   });
 });

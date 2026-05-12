@@ -3672,6 +3672,30 @@ body[data-ui-variant="redesign"] #dry-run-banner .banner__icon {
   gap: var(--spacing-3);
 }
 
+.budget-redesign-allocation-warning {
+  align-items: flex-start;
+}
+
+.budget-redesign-allocation-warning .banner__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.budget-redesign-allocation-warning .banner__body > * {
+  margin: 0;
+}
+
+.budget-redesign-allocation-warning .banner__title {
+  font-weight: var(--font-weight-semibold);
+}
+
+.budget-redesign-allocation-warning .banner__text {
+  flex: initial;
+}
+
 .budget-redesign-card {
   min-width: 0;
 }
