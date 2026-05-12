@@ -4,11 +4,12 @@ import { UNMANAGED_RESERVE_CONSERVATIVE_MODE } from './dailyBudgetConstants';
 export function logUncontrolledReserveDebug(params: {
   plan: PlanResult;
   reserveMode: number;
+  shouldLog?: boolean;
   structuredDebug?: (payload: Record<string, unknown>) => void;
 }): void {
-  const { plan, reserveMode, structuredDebug } = params;
+  const { plan, reserveMode, shouldLog = plan.shouldLog, structuredDebug } = params;
   const diagnostics = plan.uncontrolledReserveDiagnostics;
-  if (!plan.shouldLog || !diagnostics) return;
+  if (!shouldLog || !diagnostics) return;
   structuredDebug?.({
     component: 'daily_budget',
     event: 'uncontrolled_reserve_plan',
