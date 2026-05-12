@@ -6277,7 +6277,48 @@ describe('DeviceManager', () => {
                     return deviceData;
                 };
 
-            it('marks device fresh at poll time even when tracked capability timestamps are unchanged', async () => {
+            it('advances freshness when any tracked capability lastUpdated advances on a refresh', async () => {
+                // Device-level liveness: a single capability reporting recently is enough
+                // to prove the device is online for the whole device.
+                vi.useFakeTimers();
+                try {
+                    await deviceManager.init();
+
+                    const initialAt = new Date('2026-04-01T11:55:00.000Z').toISOString();
+                    const deviceData = {
+                        dev1: {
+                            id: 'dev1',
+                            name: 'Heater',
+                            class: 'heater',
+                            capabilities: ['onoff', 'measure_power'],
+                            capabilitiesObj: {
+                                onoff: { value: true, id: 'onoff', lastUpdated: initialAt },
+                                measure_power: { value: 500, id: 'measure_power', lastUpdated: initialAt },
+                            },
+                        },
+                    };
+                    mockApiGet.mockImplementation(buildPathAwareMock(deviceData));
+
+                    vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+                    await deviceManager.refreshSnapshot();
+                    expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(new Date(initialAt).getTime());
+
+                    // measure_power gets a new lastUpdated; onoff stays at the old value.
+                    const updatedAt = new Date('2026-04-01T12:05:00.000Z').toISOString();
+                    deviceData.dev1.capabilitiesObj.measure_power.lastUpdated = updatedAt;
+                    vi.setSystemTime(new Date('2026-04-01T12:06:00.000Z'));
+                    await deviceManager.refreshSnapshot();
+                    expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(new Date(updatedAt).getTime());
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
+
+            it('does not fabricate freshness when a targeted refresh sees unchanged capability timestamps', async () => {
+                // Homey serves cached capability values even when the device has been silent
+                // for hours. A successful poll is not by itself evidence the device is alive;
+                // only Homey's per-capability `lastUpdated` proves new observation. The
+                // 40-minute `STALE_DEVICE_OBSERVATION_MS` window is the backstop.
                 vi.useFakeTimers();
                 try {
                     await deviceManager.init();
@@ -6302,27 +6343,28 @@ describe('DeviceManager', () => {
                     const freshnessAfterInit = deviceManager.getSnapshot()[0].lastFreshDataMs;
                     expect(freshnessAfterInit).toBe(new Date('2026-04-01T11:55:00.000Z').getTime());
 
-                    // Advance 6 minutes — device is now stale (threshold is 5 minutes)
+                    // Advance 6 minutes — device's capability timestamps still report 11:55.
                     vi.setSystemTime(new Date('2026-04-01T12:06:00.000Z'));
 
-                    // Normal refresh with unchanged timestamps: freshness must NOT advance
+                    // Normal refresh with unchanged timestamps: freshness must NOT advance.
                     await deviceManager.refreshSnapshot();
                     expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(freshnessAfterInit);
 
-                    // Stale-targeted refresh: freshness MUST advance to the poll time
+                    // Targeted refresh with unchanged timestamps: also must NOT advance —
+                    // the poll itself is not evidence the device communicated.
                     await deviceManager.refreshSnapshot({ targetedRefresh: true });
-                    expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(
-                        new Date('2026-04-01T12:06:00.000Z').getTime(),
-                    );
+                    expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(freshnessAfterInit);
                 } finally {
                     vi.useRealTimers();
                 }
             });
 
-            it('trusts parsed EV control observations during targeted refresh', () => {
+            it('preserves the parsed lastFreshDataMs across merge when no new capability evidence arrived', () => {
+                // The merge step never fabricates freshness on its own. The snapshot's
+                // `lastFreshDataMs` is already set by `parseDevice` from Homey's per-capability
+                // `lastUpdated`, and the merge only carries forward fresher prior observations.
                 const observationState = createObservationState();
                 const initialFreshAt = new Date('2026-04-01T11:55:00.000Z').getTime();
-                const targetedPollAt = new Date('2026-04-01T12:06:00.000Z').getTime();
                 const previousSnapshot: TargetDeviceSnapshot[] = [{
                     id: 'ev1',
                     name: 'Zaptec',
@@ -6360,12 +6402,11 @@ describe('DeviceManager', () => {
                     previousSnapshot,
                     nextSnapshot,
                     devices: [sourceDevice],
-                    targetedRefreshPollAtMs: targetedPollAt,
                     logger: loggerMock,
                 });
 
-                expect(nextSnapshot[0].lastFreshDataMs).toBe(targetedPollAt);
-                expect(nextSnapshot[0].lastUpdated).toBe(targetedPollAt);
+                expect(nextSnapshot[0].lastFreshDataMs).toBe(initialFreshAt);
+                expect(nextSnapshot[0].lastUpdated).toBe(initialFreshAt);
             });
         });
 
