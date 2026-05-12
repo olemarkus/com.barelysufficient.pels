@@ -21,7 +21,7 @@ export const handleResetStats = async (btn: HTMLButtonElement) => {
     if (resetTimeout) clearTimeout(resetTimeout);
     resetTimeout = setTimeout(() => {
       const el = btn;
-      el.textContent = 'Reset all stats';
+      el.textContent = 'Reset usage history';
       el.classList.remove('confirming');
       resetTimeout = null;
     }, 5000);
@@ -31,7 +31,7 @@ export const handleResetStats = async (btn: HTMLButtonElement) => {
   await logSettingsInfo('Reset stats confirmed', 'handleResetStats');
   if (resetTimeout) clearTimeout(resetTimeout);
   const b = btn;
-  b.textContent = 'Resetting...';
+  b.textContent = 'Resetting\u2026';
 
   try {
     const response = await callApi<SettingsUiResetPowerStatsResponse>('POST', SETTINGS_UI_RESET_POWER_STATS_PATH, {});
@@ -43,14 +43,14 @@ export const handleResetStats = async (btn: HTMLButtonElement) => {
     if (response?.dailyBudget !== undefined) {
       await refreshDailyBudgetPlan(response.dailyBudget);
     }
-    await showToast('Power stats reset (current hour preserved).', 'ok');
+    await showToast('Usage history reset (current hour preserved).', 'ok');
     await logSettingsInfo('Reset stats completed', 'handleResetStats');
   } catch (error) {
     await logSettingsError('Reset stats failed', error, 'handleResetStats');
-    await showToastError(error, 'Failed to reset stats.');
+    await showToastError(error, 'Failed to reset usage history.');
   } finally {
     const el = btn;
-    el.textContent = 'Reset all stats';
+    el.textContent = 'Reset usage history';
     el.classList.remove('confirming');
     resetTimeout = null;
   }
