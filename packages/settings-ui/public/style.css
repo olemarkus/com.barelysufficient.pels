@@ -4289,11 +4289,24 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   cursor: pointer;
 }
 
+:where(.budget-redesign-surface, body[data-ui-variant="redesign"] #usage-panel) .day-view-toggle__button {
+  color: var(--pels-segmented-label-color) !important;
+  font-weight: var(--pels-segmented-label-font-weight);
+}
+
 .day-view-toggle__button.is-active,
 .daily-budget-toggle__button.is-active {
   background-color: var(--color-surface-4) !important;
   color: var(--text) !important;
   font-weight: var(--font-weight-semibold);
+}
+
+:where(.budget-redesign-surface, body[data-ui-variant="redesign"] #usage-panel) .day-view-toggle__button.is-active {
+  background-color: var(--pels-segmented-selected-background) !important;
+  color: var(--pels-segmented-selected-text) !important;
+  box-shadow:
+    inset 0 0 0 1px var(--pels-segmented-selected-outline),
+    inset 0 -2px 0 0 var(--accent);
 }
 
 .day-view-toggle__button:focus-visible,
@@ -4308,9 +4321,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   cursor: not-allowed;
 }
 
-.budget-redesign-surface .day-view-toggle {
-  width: 100%;
-  justify-content: stretch;
+:where(.budget-redesign-surface, body[data-ui-variant="redesign"] #usage-panel) .day-view-toggle {
   padding: 3px;
   border-color: var(--pels-surface-outline);
   background: var(--pels-surface-container-low);
@@ -4318,24 +4329,19 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   --pels-segmented-selected-outline: var(--pels-surface-outline);
 }
 
+.budget-redesign-surface .day-view-toggle {
+  width: 100%;
+  justify-content: stretch;
+}
+
 .budget-redesign-surface .day-view-toggle__button {
   flex: 1 1 0;
   min-width: 0;
-  color: var(--pels-segmented-label-color) !important;
-  font-weight: var(--pels-segmented-label-font-weight);
 }
 
 .budget-chart-card .budget-card-header .day-view-toggle {
   max-width: 190px;
   justify-self: start;
-}
-
-.budget-redesign-surface .day-view-toggle__button.is-active {
-  background-color: var(--pels-segmented-selected-background) !important;
-  color: var(--pels-segmented-selected-text) !important;
-  box-shadow:
-    inset 0 0 0 1px var(--pels-segmented-selected-outline),
-    inset 0 -2px 0 0 var(--accent);
 }
 
 .usage-history-actions {
@@ -5089,8 +5095,7 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
 
 .usage-hero__stat-label {
   font-size: var(--font-size-xs, 0.75rem);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   color: var(--pels-text-secondary);
 }
 
@@ -5105,22 +5110,20 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
 }
 
 .usage-card {
-  gap: var(--spacing-3);
+  gap: var(--pels-card-gap);
 }
 
 .usage-card__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--spacing-3);
-  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .usage-card__heading {
   display: grid;
   gap: var(--spacing-1);
   min-width: 0;
-  flex: 1 1 auto;
 }
 
 .usage-card__actions {
@@ -5128,34 +5131,30 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
   align-items: center;
   gap: var(--spacing-2);
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .usage-metric-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
-  gap: var(--spacing-2);
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: var(--spacing-3);
+  min-width: 0;
 }
 
 .usage-metric {
   display: grid;
   gap: var(--spacing-1);
-  padding: var(--spacing-2) var(--spacing-3);
-  border-radius: var(--radius-md);
-  background: var(--pels-surface-container-low);
-  border: 1px solid color-mix(in srgb, var(--pels-surface-outline) 60%, transparent);
   min-width: 0;
 }
 
 .usage-metric__label {
   font-size: var(--font-size-xs, 0.75rem);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   color: var(--pels-text-secondary);
 }
 
 .usage-metric__value {
-  font-size: var(--font-size-lg, 1.125rem);
+  font-size: var(--font-size-md, 1rem);
   font-weight: var(--font-weight-semibold);
   color: var(--text);
   font-variant-numeric: tabular-nums;
@@ -5171,6 +5170,10 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
 }
 
 .usage-card__summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-3);
   list-style: none;
   cursor: pointer;
   padding: var(--pels-card-padding);
@@ -5209,6 +5212,16 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-1);
+}
+
+:where(body[data-ui-variant="redesign"]) #usage-panel .day-view-toggle {
+  min-height: 40px;
+  border-radius: var(--radius-lg);
+}
+
+:where(body[data-ui-variant="redesign"]) #usage-panel .day-view-toggle__button {
+  min-height: 32px;
+  border-radius: calc(var(--radius-lg) - 4px);
 }
 
 /* Material Web Secondary Tabs as our segmented control. */
@@ -5333,6 +5346,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
   #modes-panel,
   #limits-panel,
   #simulation-panel,
+  #usage-panel,
   #advanced-panel,
   #electricity-prices-panel,
   #price-aware-devices-panel
@@ -5351,6 +5365,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
   #modes-panel,
   #limits-panel,
   #simulation-panel,
+  #usage-panel,
   #advanced-panel,
   #electricity-prices-panel,
   #price-aware-devices-panel
@@ -5363,6 +5378,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
   #modes-panel,
   #limits-panel,
   #simulation-panel,
+  #usage-panel,
   #advanced-panel
 ) > .card__header,
 :where(body[data-ui-variant="redesign"]) :where(
@@ -5376,6 +5392,10 @@ body[data-ui-variant="redesign"] .card.panel:where(
   border-radius: var(--radius-md);
   background: var(--pels-surface-container-low);
   box-shadow: var(--shadow-sm);
+}
+
+:where(body[data-ui-variant="redesign"]) #usage-panel > .card__header {
+  display: none;
 }
 
 :where(body[data-ui-variant="redesign"]) :where(
