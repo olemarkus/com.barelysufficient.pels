@@ -362,7 +362,7 @@ describe('deadline objective flow cards', () => {
     expect(options.map((opt) => opt.id)).toEqual(['heater-1']);
   });
 
-  it('deadline_status_changed condition matches the simplified smart task status', async () => {
+  it('deadline_status_is matches at-risk as its own smart task status', async () => {
     const bus = createDeferredObjectiveStatusBus();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
@@ -383,7 +383,8 @@ describe('deadline objective flow cards', () => {
       shortfallKwh: null,
       shortfallText: null,
     });
-    expect(await condition.run!({ device: 'heater-1', status: 'on_track' })).toBe(true);
+    expect(await condition.run!({ device: 'heater-1', status: 'at_risk' })).toBe(true);
+    expect(await condition.run!({ device: 'heater-1', status: 'on_track' })).toBe(false);
     expect(await condition.run!({ device: 'heater-1', status: 'unachievable' })).toBe(false);
   });
 
@@ -472,7 +473,7 @@ describe('deadline objective flow cards', () => {
     expect(await condition.run!({ device: 'heater-1', status: 'none' })).toBe(false);
   });
 
-  it('publishes triggers for simplified status transitions filtered by device and status args', async () => {
+  it('publishes triggers for at-risk status transitions filtered by device and status args', async () => {
     const bus = createDeferredObjectiveStatusBus();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
@@ -494,18 +495,33 @@ describe('deadline objective flow cards', () => {
       shortfallText: null,
     };
     bus.publish(transition);
-    expect(trigger.trigger).not.toHaveBeenCalled();
+    expect(trigger.trigger).toHaveBeenCalledTimes(1);
+    let [tokens, state] = trigger.trigger.mock.calls[0]!;
+    expect(tokens).toMatchObject({ device_name: 'Boiler', status: 'At risk', kind: 'temperature' });
+    expect(state).toEqual({ deviceId: 'heater-1', status: 'at_risk' });
+    expect(await trigger.run!({ device: 'heater-1', status: { id: 'at_risk' } }, state)).toBe(true);
+    expect(await trigger.run!({ device: 'heater-1', status: { id: 'on_track' } }, state)).toBe(false);
+
+    bus.publish({
+      ...transition,
+      status: 'on_track',
+      previousStatus: 'at_risk',
+    });
+    expect(trigger.trigger).toHaveBeenCalledTimes(2);
+    [tokens, state] = trigger.trigger.mock.calls[1]!;
+    expect(tokens).toMatchObject({ device_name: 'Boiler', status: 'On track', kind: 'temperature' });
+    expect(state).toEqual({ deviceId: 'heater-1', status: 'on_track' });
+    expect(await trigger.run!({ device: 'heater-1', status: { id: 'on_track' } }, state)).toBe(true);
 
     bus.publish({
       ...transition,
       status: 'cannot_meet',
-      previousStatus: 'at_risk',
+      previousStatus: 'on_track',
     });
-    expect(trigger.trigger).toHaveBeenCalledTimes(1);
-    const [tokens, state] = trigger.trigger.mock.calls[0]!;
+    expect(trigger.trigger).toHaveBeenCalledTimes(3);
+    [tokens, state] = trigger.trigger.mock.calls[2]!;
     expect(tokens).toMatchObject({ device_name: 'Boiler', status: 'Cannot finish', kind: 'temperature' });
     expect(state).toEqual({ deviceId: 'heater-1', status: 'unachievable' });
-
     expect(await trigger.run!({ device: 'heater-1', status: { id: 'unachievable' } }, state)).toBe(true);
     expect(await trigger.run!({ device: 'heater-1', status: { id: 'cannot_finish' } }, state)).toBe(true);
     expect(await trigger.run!({ device: 'heater-1', status: { id: 'on_track' } }, state)).toBe(false);

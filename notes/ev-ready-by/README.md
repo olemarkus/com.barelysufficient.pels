@@ -87,15 +87,11 @@ deadline feature end-to-end and to display EV deadline plans without actuating t
 - Temperature admission wired in `lib/plan/deferredObjectives/admission.ts`: cap-off devices made
   visible during planned hours, kept idle outside, setpoint lifted to deadline target.
 
-## Where the broken surfaces are today
+## Where the broken surface is today
 
-Two user-facing flow surfaces are landed but functionally broken — these are the P0 release
-blockers:
+One user-facing flow surface is landed but functionally broken — this is the remaining P0 release
+blocker:
 
-- The `deadline_status_changed` trigger and `deadline_status_is` condition collapse `at_risk`
-  into `on_track` at `flowCards/deadlineObjectiveCards.ts:17-19, 109-111, 130-132`. The
-  temperature deadline trigger/condition surface is otherwise landed and shipped; this status
-  collapse silently hides at-risk transitions from every user-built flow.
 - The `set_ev_charge_deadline` flow card is registered and exposed to users
   (`.homeycompose/flow/actions/set_ev_charge_deadline.json`: "Charge [[device]] to
   [[target_percent]] % by [[ready_by]]"). Firing it succeeds and writes a plan, but no command
@@ -114,24 +110,9 @@ not required for the v1 release.
 
 ## Gap Plan
 
-### P0 — Release blockers (broken in landed features)
+### P0 — Release blocker (broken in landed feature)
 
-**P0.1 At-risk flow status collapse**.
-
-Extend `SmartTaskActiveFlowStatus` to include `'at_risk'`, drop the case-fallthrough in
-`normalizeSmartTaskStatusArg` and `mapInternalTaskStatusToFlowStatus`, update the dropdown lists
-in the trigger and condition flow-card JSON, and add a transition test that asserts
-`deadline_status_changed` fires for at-risk transitions and `deadline_status_is = at_risk`
-matches.
-
-Minimum acceptable completion: `at_risk` round-trips through the trigger and condition surfaces
-end-to-end, with regression tests covering both. No collapse remains in the status mappers.
-
-Files: `flowCards/deadlineObjectiveCards.ts`,
-`.homeycompose/flow/triggers/deadline_status_changed.json`,
-`.homeycompose/flow/conditions/deadline_status_is.json`, status-mapping tests.
-
-**P0.2 EV admission and resume / pause actuation**.
+**P0.1 EV admission and resume / pause actuation**.
 
 Add EV-aware executor intent (`ev_resume` / `ev_pause`) emitted when the admission decision flips
 between planned and idle, with a capability dispatch in `lib/core/` that issues the charger's
