@@ -274,7 +274,7 @@ const handleSchemeChange = async (scheme: PriceScheme) => {
     await showToast('Price settings saved.', 'ok');
   } catch (error) {
     await logSettingsError('Failed to save price scheme', error, 'priceConfig');
-    await showToastError(error, 'Failed to save price settings.');
+    await showToastError(error, 'Failed to save price settings. If this keeps happening, send a diagnostics report.');
   }
 };
 
@@ -286,7 +286,7 @@ const handleNorwayModelChange = async (model: NorwayPriceModel) => {
     await showToast('Price settings saved.', 'ok');
   } catch (error) {
     await logSettingsError('Failed to save Norway price model', error, 'priceConfig');
-    await showToastError(error, 'Failed to save price settings.');
+    await showToastError(error, 'Failed to save price settings. If this keeps happening, send a diagnostics report.');
   }
 };
 
@@ -298,7 +298,7 @@ const handlePriceAreaChange = async (area: string) => {
     await showToast('Price settings saved.', 'ok');
   } catch (error) {
     await logSettingsError('Failed to save price area', error, 'priceConfig');
-    await showToastError(error, 'Failed to save price settings.');
+    await showToastError(error, 'Failed to save price settings. If this keeps happening, send a diagnostics report.');
   }
 };
 
@@ -309,7 +309,7 @@ const handleProviderSurchargeChange = async (val: number) => {
     await showToast('Price settings saved.', 'ok');
   } catch (error) {
     await logSettingsError('Failed to save provider surcharge', error, 'priceConfig');
-    await showToastError(error, 'Failed to save price settings.');
+    await showToastError(error, 'Failed to save price settings. If this keeps happening, send a diagnostics report.');
   }
 };
 
@@ -320,7 +320,7 @@ const handleThresholdChange = async (val: number) => {
     await showToast('Price settings saved.', 'ok');
   } catch (error) {
     await logSettingsError('Failed to save price threshold', error, 'priceConfig');
-    await showToastError(error, 'Failed to save price settings.');
+    await showToastError(error, 'Failed to save price settings. If this keeps happening, send a diagnostics report.');
   }
 };
 
@@ -331,7 +331,7 @@ const handleMinDiffChange = async (val: number) => {
     await showToast('Price settings saved.', 'ok');
   } catch (error) {
     await logSettingsError('Failed to save min diff', error, 'priceConfig');
-    await showToastError(error, 'Failed to save price settings.');
+    await showToastError(error, 'Failed to save price settings. If this keeps happening, send a diagnostics report.');
   }
 };
 
@@ -413,7 +413,7 @@ const handleRefreshPrices = async () => {
     renderAll();
   } catch (error) {
     await logSettingsError('Failed to refresh prices', error, 'priceConfig');
-    await showToastError(error, 'Failed to refresh spot prices.');
+    await showToastError(error, 'Failed to refresh spot prices. If this keeps happening, send a diagnostics report.');
   }
 };
 
@@ -424,7 +424,7 @@ const handleRefreshGridTariff = async () => {
     await showToast('Grid tariffs refreshed.', 'ok');
   } catch (error) {
     await logSettingsError('Failed to refresh grid tariff', error, 'priceConfig');
-    await showToastError(error, 'Failed to refresh grid tariffs.');
+    await showToastError(error, 'Failed to refresh grid tariffs. If this keeps happening, send a diagnostics report.');
   }
 };
 

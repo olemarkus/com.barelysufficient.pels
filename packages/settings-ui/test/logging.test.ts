@@ -43,4 +43,26 @@ describe('settings UI logging', () => {
       suppressedCount: 1,
     });
   });
+
+  it('classifies missing Homey API adapter errors inside composed log detail', async () => {
+    const callApi = vi.fn().mockResolvedValue({ ok: true });
+    vi.doMock('../src/ui/homey.ts', () => ({
+      callApi,
+    }));
+
+    const { logSettingsError } = await import('../src/ui/logging.ts');
+
+    const error = new Error('Homey api POST /ui_refresh_prices not available');
+    await logSettingsError('Failed to refresh spot prices', error, 'refreshPrices');
+
+    expect(callApi).toHaveBeenCalledTimes(1);
+    const [, , entry] = callApi.mock.calls[0];
+    expect(entry.message).toBe('settings_ui_network_failure');
+    expect(JSON.parse(entry.detail)).toMatchObject({
+      event: 'settings_ui_network_failure',
+      message: 'Failed to refresh spot prices',
+      context: 'refreshPrices',
+      error: 'Homey api POST /ui_refresh_prices not available',
+    });
+  });
 });

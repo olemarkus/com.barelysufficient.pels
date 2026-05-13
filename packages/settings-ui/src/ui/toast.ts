@@ -1,4 +1,5 @@
 import { toastEl } from './dom.ts';
+import { isHomeyTransportErrorMessage } from './homeyTransportErrors.ts';
 import { sleep } from './homey.ts';
 
 export type ToastTone = 'default' | 'ok' | 'warn';
@@ -71,6 +72,7 @@ export const showToast = async (
 };
 
 export const showToastError = async (error: unknown, fallback: string): Promise<void> => {
-  const message = error instanceof Error && error.message ? error.message : fallback;
+  const rawMessage = error instanceof Error && error.message ? error.message : '';
+  const message = rawMessage && !isHomeyTransportErrorMessage(rawMessage) ? rawMessage : fallback;
   await showToast(message, 'warn');
 };
