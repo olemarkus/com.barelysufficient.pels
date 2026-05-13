@@ -311,6 +311,22 @@ has computed an allocation. The replan policy is documented in
 
 ## P1 Simplification follow-ups
 
+- [ ] Extract a shared `PersistedSettingsState<T>` helper for recorder-style settings storage.
+      Three modules currently reimplement the same dirty / debounce / abandon-grace / flush /
+      plausibility cascade: `lib/app/appPowerCalibrationWiring.ts` (calibration),
+      `lib/plan/deferredObjectives/planHistory.ts`, and
+      `lib/plan/deferredObjectives/activePlanRecorder.ts`. The calibration module accumulated
+      ~10 bot-review findings across four rounds of PR #710, all in the persistence wrapper
+      rather than the domain logic. The deferred-objective recorders almost certainly have the
+      same bugs in latent form. A shared helper would: (1) clear `dirty` only after the
+      settings write succeeds; (2) own debounce + load-grace windows uniformly; (3) accept a
+      consumer-supplied strict plausibility predicate that mirrors the normaliser; (4) provide
+      debounced and flush variants where flush bypasses debounce only, never grace. After the
+      helper lands, migrate calibration first (freshest test surface), then the two recorders.
+      Design context in `notes/persisted-settings-state.md`.
+      Files: new `lib/persistence/` or `lib/utils/persistedSettingsState.ts`,
+      `lib/app/appPowerCalibrationWiring.ts`, `lib/plan/deferredObjectives/planHistory.ts`,
+      `lib/plan/deferredObjectives/activePlanRecorder.ts`, recorder/persistence tests.
 - [ ] Unify stepped restore admission wrappers so pending-swap source-off holds and stepped swap
       executor context are applied consistently across normal restore planning, restore cooldown,
       meter-settling, and active stepped upgrade paths.
