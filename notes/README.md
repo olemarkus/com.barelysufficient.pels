@@ -24,6 +24,9 @@ Current notes:
 - `deferred-load-objectives/README.md`: deadline-aware objective model for loads that need to
   reach a ready state; the soft temperature runtime slice has shipped, while hard deadlines,
   richer EV admission, step-change history, and contention handling remain future work.
+- `ev-ready-by/README.md`: product framing, release-readiness analysis, and prioritized task
+  plan for the user-facing EV charging deadline feature built on the deferred-load-objectives
+  model.
 - `ev-soc-layering.md`: decision record for keeping SoC source-of-evidence metadata inside the
   observation layer.
 - `overview-hero-spec.md`: current Overview hero and device-card design reference.
