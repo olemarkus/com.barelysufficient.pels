@@ -629,9 +629,9 @@ describe('Settings UI', () => {
           expectedContainer: style.getPropertyValue('--pels-shell-nav-tab-selected-background').trim(),
         };
       });
-      expect(activeTabTheme.container).toBe('rgb(16, 185, 129)');
+      expect(activeTabTheme.container).toBe('rgb(22, 163, 74)');
       expect(activeTabTheme.activeText).toBe('rgb(13, 17, 23)');
-      expect(activeTabTheme.expectedContainer).toBe('#10b981');
+      expect(activeTabTheme.expectedContainer).toBe('#16a34a');
       expect(activeTabTheme.expectedActiveText).toBe('#0d1117');
     });
 

@@ -7,7 +7,10 @@ file.
 
 - **P0:** v1 / next-release blocker: release-blocking correctness, control-integrity, startup,
   validation, or data-loss issue that can affect current runtime behavior without another feature
-  or broad refactor landing first. Only P0 items are required before the v1 release.
+  or broad refactor landing first. Also includes first-impression visual coherence that would
+  cost user trust on the v1 release — token sanity, hero / typography consistency, primitive
+  consolidation, and chart palette alignment — because the redesigned UI is the user's first
+  contact with v1. Only P0 items are required before the v1 release.
 - **P1:** next patch-release correctness, data-integrity, first-impression UI polish, and
   supported UX work after v1: bounded planner/executor risks, settings writes that can corrupt
   persisted state, supported-width UI breakage, confusing visible wording, or missing validation
@@ -24,7 +27,180 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P0 Release Blockers
 
+- [x] Flatten `settings/tokens.css` to a single colour layer with no aliasing tier. *(landed —
+      this PR introduces a flat `color.role.*` namespace, removes the per-state `-muted` /
+      `-strong` alpha triplets and the `color.state.success.*` family, fixes the five aliasing
+      bugs called out in the audit, points the deprecated `--pels-status-*` shims at the new
+      flat tokens, applies an eco-themed palette (primary `#16a34a` leaf-green, good `#5eead4`
+      teal, warning `#f59e0b` solar amber, danger `#ef4444`, info `#60a5fa`), and adds typography
+      tokens for M3 display/headline/title scales. Shims are retained for one release while
+      chart consumers migrate; final removal lands with the chart-token P0 below.)*
+- [ ] CSS-side migration: rebind hero + section headers + card titles to the new typography
+      tokens (`--pels-text-display-*`, `--pels-text-headline-*`, `--pels-text-section-headline-*`,
+      `--pels-text-title-*`) added by the token-flatten PR. M3 audit (2026-05-14) found
+      typography collapsed to only 4 sizes / 3 weights — Overview hero "2.9 kW" renders
+      identically to every device-row title. Acceptance: `.plan-hero__headline` and
+      `.usage-hero__stat-value` use `display-small` (36/400); page KPIs use `headline-medium`
+      (28/400); section `h2` headers move from 18/700 → `headline-small` (24/400); card titles
+      move from `card-title` to `title-medium` (16/500); supporting eyebrows use `.eyebrow`
+      (`label-small` 11/500) consistently. CSS-only change.
+      Files: `packages/settings-ui/public/style.css`, generated `settings/style.css`,
+      screenshot suite under `packages/settings-ui/tests/e2e/`.
+- [ ] CSS-side migration: apply existing surface tier tokens (`--pels-surface-container-low/-/
+      -high/-highest`) per M3 nesting. Audit found only `-low` (5%) was applied across every
+      surface. Acceptance: `.plan-hero` and `.slide-panel` raise to `-high` (8%); regular
+      `.plan-card` stays at `-low`; inset chip rails and `.banner` use `-highest` or matching
+      semantic-tonal container. CSS-only change. Files as above.
+      *Sub-bullets from M3 follow-up audit (2026-05-14):*
+      - **`resuming` plan-card binds to the same warning surface as `held`** — they render
+        pixel-identical. Re-route `[data-state-kind="resuming"]` to the good-teal tonal
+        container (`var(--color-state-positive-bg)` + matching border token) so "recovering
+        toward normal" carries its own semantic colour.
+      - **`unknown` plan-card has no tint at all** — renders identical to `active`. Add a
+        neutral slate tint or apply `.plan-card--dim` 0.6 opacity so "we don't know" is
+        visually distinct without spending a semantic colour.
+      - **Plain `.plan-card` doesn't read the new surface-container tokens yet** — its
+        bg still resolves to the legacy `linear-gradient(rgba(white,.075), rgba(white,.06))`
+        pattern. Active cards (Hallway, WC, Bedroom 1, …) therefore all look identical with
+        flat lift. Rebind `.plan-card` background to `var(--color-surface-1)` (now a flat
+        `#161b24`) so the surface-tier hierarchy actually applies on Overview.
+- [ ] Demote accent, promote good. Today `--color-base-accent-default` (now `#16a34a` leaf)
+      simultaneously carries interactive, positive-semantic, and chart-data roles. M3 reserves
+      `primary` for interactive elements only. Acceptance: positive-semantic CSS rules
+      (`--pels-status-on-good`, chart `--actual` series fill, "Succeeded" past-task chip) rebind
+      from `--color-base-accent-default` to `--color-base-good-default` (`#5eead4` teal); accent
+      stays on selected-tab, focus ring, checkbox/switch, primary buttons only. CSS-only with
+      a chart-side migration overlap (charts also covered by the chart-token P0 below).
+- [ ] Replace fake-M3 segmented controls and active badges with real M3 components.
+      `.day-view-toggle` (Budget Plan/Adjust), `.segmented` (Devices, Modes), and the
+      "When limiting" segmented row inside device-detail (Turn off / Set to temperature /
+      Set to step) all reinvent `md-outlined-segmented-button` + `md-segmented-button`
+      without matching state layers — the device-detail one renders all three options as
+      leaf-green text on transparent with no selected-state surface fill (M3 follow-up
+      audit, 2026-05-14). `.active-badge` (device-detail per-mode priority rows) uses a
+      4 px square corner — inconsistent with the 9999 px `--chip-radius` everywhere else,
+      and under leaf-green the fill reads as "sticker" rather than "active". Replace with
+      `md-assist-chip` carrying tonal good-teal (`rgba(94,234,212,.15)` bg +
+      `#5eead4` text) so it matches Succeeded chips. Component-level change.
+      Files: `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
+      `packages/settings-ui/src/ui/views/PlanModes.tsx`,
+      `packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts`, related styles.
+- [ ] Switch Advanced behavioural settings from `md-checkbox` to `md-switch`. M3: checkboxes are
+      for selection (forms, lists); switches are for on/off settings. All 12 Advanced toggles
+      are textbook switch use cases. Component-level change. Files:
+      `packages/settings-ui/public/index.html`, `packages/settings-ui/src/ui/advanced.ts`.
+- [ ] Align every chart series, heatmap cell, and tooltip with the same flat tokens the rest of
+      the UI uses. Charts currently embed raw hex fallbacks and hard-coded series fills; managed
+      usage, background usage, plan, actual, price, forecast, and heatmap low/high should each
+      resolve to the same `--color-*` token as the equivalent chip / badge of that role (managed =
+      accent, background = surface ramp, warning tones = warning, over-budget = danger).
+      Acceptance: `grep -E "#[0-9a-f]{3,6}"` in `packages/settings-ui/src/ui/*Chart*.ts` returns
+      zero hex literals; chart series read `--color-state-*` or `--color-role-*` directly (not
+      the deprecated `--pels-status-*` shims, which this PR retires after migration);
+      managed/background fills match Overview chip hues at 320 / 480 px screenshots; legend
+      swatch hex equals the rendered series fill exactly. Pull from the P2 chart-token entry
+      below — this is the colour-token subset, scoped to ship for v1.
+      Files: `settings/style.css`, `packages/settings-ui/public/style.css`,
+      `packages/settings-ui/src/ui/budgetRedesignChart.ts`,
+      `packages/settings-ui/src/ui/dailyBudgetChartEcharts.ts`,
+      `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
+      `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,
+      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/tests/e2e/charts-layout.spec.ts`.
+- [ ] Unify the hero and section-label primitive across every settings-UI surface.
+      Overview hero, Budget header, Usage header, Smart tasks header, Settings header, Advanced
+      header, and deadline-plan hero should read as one component: same eyebrow (font-size,
+      letter-spacing, colour token), same headline weight / size / line-height, same status-tone
+      bindings (`data-tone="good|warn|alert"` → flattened tokens from the entry above), same
+      accent radial-gradient atmosphere rule, same supporting-text token. Same for section
+      labels (`eyebrow`) — one font-size + one weight + one colour token, applied uniformly.
+      Acceptance: a Playwright screenshot matrix of all primary surfaces at 320 / 480 px shows
+      hero typography and section-label typography each trace to a single source of truth in
+      `style.css`; the screenshot snapshots are committed and diff-gated; no surface defines its
+      own one-off hero rule. Files: `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/public/style.css`, `packages/settings-ui/src/ui/views/PlanHero.tsx`,
+      `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/power.ts`, generated `settings/`, screenshot suite under
+      `packages/settings-ui/tests/e2e/`.
+      *Sub-bullets from M3 visual pass (2026-05-14, after eco-palette landed):*
+      - **`.plan-hero[data-tone="alert"]` is visually overloaded.** In an over-hard-cap
+        state the hero stacks four semantic signals at once: red rim, red headline
+        ("5.6 kW"), red subline ("0.6 kW above hard cap"), red power-bar fill, plus an
+        amber over-budget sub-bar with a red end marker, plus an alert chip and a
+        muted chip in the same row. M3 wants one tonal-container story per surface — the
+        red rim alone communicates the alert. Drop the headline-red, keep the rim and one
+        alert chip; let the rest of the type stay neutral primary so the hero reads as
+        "elevated card in danger state", not "danger shouted four ways".
+      - **`0.6 kW above hard cap` subline** quadruples information already encoded by
+        rim + chip + headline colour + bar overshoot. Either remove it or convert to an
+        instruction (e.g. "Reduce load now").
+      - **Info as a role is sparse on Overview** — only the Smart-task chip and the
+        info-tinted histogram on Budget/Usage tabs. That's M3-appropriate (info is for
+        neutral explanation), but worth confirming during hero work that we're not
+        artificially restraining it; if there's a natural "Price low / Price high" hint
+        for the hero meta-row, use info there.
+      Chips, cards, buttons, segmented controls, ripples, and elevation are currently duplicated
+      across views with subtle per-page variations (padding, border colour, ripple behaviour,
+      focus ring). A first-impression UI should read as one system, not five-plus near-duplicates.
+      Acceptance: one shared CSS class / JSX wrapper per primitive type, every consumer rebound,
+      no inline overrides beyond data-attribute state. Implementation may use the existing custom
+      primitives or `@material/web` — that choice stays with the P2 entry below; this P0 only
+      requires that consumers converge. Files: `packages/settings-ui/public/style.css`,
+      `packages/settings-ui/src/ui/views/*.tsx`,
+      `packages/settings-ui/src/ui/views/materialWebJSX.tsx`,
+      `packages/settings-ui/src/ui/materialWeb.ts`, generated `settings/`, focused visual/e2e
+      coverage.
+- [ ] Fix chart clarity issues from the first-impression Settings UI audit.
+      Tighten the graphs users are most likely to inspect on first load. Normalize deadline-plan
+      price values and units against the Budget chart convention (`kr/kWh` or `øre/kWh` shown
+      explicitly), make the Budget hourly-plan legend match the rendered `Managed` / `Background`
+      split series, and resize/reinitialize Usage ECharts when a hidden panel becomes visible so
+      SVGs cannot keep a too-wide fallback size after tab navigation. While fixing the resize
+      path, review module-level chart instance state and move lifecycle ownership to the
+      rendering view or component where needed. Promoted from P1: a chart whose legend lies
+      about its colours, or that renders the wrong width after a tab switch, is exactly the
+      first-impression problem the rubric now scopes into P0.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts`,
+      `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
+      `packages/settings-ui/src/ui/budgetRedesignChart.ts`,
+      `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
+      `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,
+      `packages/settings-ui/tests/e2e/charts-layout.spec.ts`.
+
 ## P1 Correctness, Data Integrity, and Supported UX
+
+- [ ] Give settings-form text-field / select controls an accessible name. M3 follow-up audit
+      (2026-05-14) re-checked the previous "duplicate visible labels" finding and corrected the
+      framing: `md-filled-text-field` and `md-filled-select` in `Limits & safety`,
+      `Electricity prices`, daily-budget advanced, and device-detail have **no `label`
+      attribute and no `aria-label` / `aria-labelledby` set anywhere**, so only one label
+      *renders* visually (the sibling `<span class="field__label">`). The bug is a11y, not
+      dual-rendering: 32 of 33 `.field__label` are bare `<span>` (not `<label for=>`), so the
+      M3 control has no accessible name at all to screen readers. Acceptance: every control
+      either receives the text via the component's `label=""` attribute or is bound to its
+      sibling label via `aria-labelledby` referencing a `.field__label[id]`. The visible
+      label rendering should stay the same as today.
+      Files: `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/src/ui/deviceDetail/*.ts`, related layout tests.
+- [ ] Replace `.plan-hero__meta-row` "Home mode" plain text with a real `md-assist-chip`. M3
+      audit found the element is named like a chip (`.plan-hero__meta-row`) but renders with
+      `bg: transparent`, no border, no radius — visually indistinguishable from body text. Apply
+      the existing `.chip` styles or migrate to `md-assist-chip`. Markup change in
+      `packages/settings-ui/src/ui/views/PlanHero.tsx`.
+- [ ] Lift touch targets to M3 minimum (48 px). Audit found `md-tabs` 36 px, segmented buttons
+      40 px, back-buttons 38 px, `md-checkbox` 20 px visible with no extended hit area. The
+      WebView is finger-touch at 480 px wide. CSS-only via `--md-primary-tab-container-height`
+      and `min-height` on custom controls; wrap `md-checkbox` rows in a 48 px-min `.toggle-row`
+      surface so the row catches taps. Files: `packages/settings-ui/public/style.css`,
+      `packages/settings-ui/public/index.html`.
+- [ ] Refresh the PELS leaf icon to match the new eco palette. The current app icon and any
+      in-UI leaf graphic should align with the leaf-green primary (`#16a34a`) rather than the
+      previous emerald (`#10b981`). Out of scope for the redesigned settings UI; touches Homey
+      app metadata. Files: `assets/icon.svg`, `.homeycompose/app.json`, any in-UI SVG leaf.
 
 - [ ] Make Settings UI device refresh await in-flight snapshot refreshes. `/ui_refresh_devices`
       currently calls `refreshTargetDevicesSnapshot()` and then returns the current in-memory
@@ -200,22 +376,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       future cap eligibility, and strømstøtte behavior is unchanged.
       Files: `lib/price/priceServiceNorway.ts`, `test/norgesprisPriceService.test.ts`,
       price UI/widget tests that render past combined prices.
-- [ ] Fix chart clarity issues from the first-impression Settings UI audit.
-      Keep this as patch work, not a v1 blocker: the redesigned UI is coherent enough to ship,
-      but the first patch should tighten the graphs users are most likely to inspect. Normalize
-      deadline-plan price values and units against the Budget chart convention (`kr/kWh` or
-      `øre/kWh` shown explicitly), make the Budget hourly-plan legend match the rendered
-      `Managed` / `Background` split series, and resize/reinitialize Usage ECharts when a hidden
-      panel becomes visible so SVGs cannot keep a too-wide fallback size after tab navigation.
-      While fixing the resize path, review module-level chart instance state and move lifecycle
-      ownership to the rendering view or component where needed.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/src/ui/deadlinePlan.ts`,
-      `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
-      `packages/settings-ui/src/ui/budgetRedesignChart.ts`,
-      `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
-      `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,
-      `packages/settings-ui/tests/e2e/charts-layout.spec.ts`.
 - [ ] Align user-visible Homey labels, Flow cards, and public docs with the redesigned Settings UI
       terminology.
       The settings UI mostly follows `notes/ui-terminology.md`, but Homey-facing labels and public
@@ -282,13 +442,14 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       in place; remaining work is Usage history cleanup, per-device price behavior ownership,
       Material primitive consolidation, and final polish.
       Files: `packages/settings-ui/**`, generated `settings/`, relevant settings UI tests.
-- [ ] Consolidate Settings UI design primitives around Material Web and shared PELS tokens. Use
-      `@material/web` for standard Material components when the semantics fit, and replace
-      page-local custom chips, cards, buttons, segmented controls, ripples, and elevation with
-      Material Web components or one shared PELS primitive.
+- [ ] Evaluate migrating shared PELS primitives to `@material/web` components.
+      Once the consistency P0 above lands and every chip / card / button reads one primitive,
+      decide whether the shared primitive should be replaced by `@material/web` components
+      (`md-filled-button`, `md-elevated-card`, etc.) for standard Material semantics, or whether
+      the custom primitive remains. Out of scope for v1.
       Files: `packages/settings-ui/src/ui/materialWeb.ts`,
-      `packages/settings-ui/src/ui/views/materialWebJSX.tsx`, `packages/settings-ui/public/style.css`,
-      generated `settings/`, focused visual/e2e coverage.
+      `packages/settings-ui/src/ui/views/materialWebJSX.tsx`,
+      `packages/settings-ui/public/style.css`, focused visual/e2e coverage.
 - [ ] Make the device-detail "When limiting" selection explicit for stepped loads.
       The action segmented control shows `Set to step "<lowest active step>"` via
       `updateSetStepOptionLabel()`, but the dedicated `Limited step` row is always hidden
@@ -360,14 +521,11 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
       `packages/settings-ui/public/style.css`,
       `packages/settings-ui/tests/e2e/material-select.spec.ts`, budget/settings screenshots.
-- [ ] Finish chart token and chart-test hardening from the first-impression UI audit.
-      Add shared semantic chart tokens for actual, plan, background usage, managed usage, price,
-      forecast/progress, heatmap low/high, grid, tooltip surface, and tooltip border. Remove raw
-      chart color fallbacks and hard-coded series fills where practical. Add deterministic visual
-      assertions for legend text matching rendered series, explicit axis/tooltip units, price-unit
-      normalization, SVG bounds, and no deadline legend/axis overlap at 320px and 480px.
-      Files: `packages/settings-ui/public/style.css`,
-      `packages/settings-ui/src/ui/budgetRedesignChart.ts`,
+- [ ] Finish chart-test hardening from the first-impression UI audit. The colour-token subset is
+      now P0 (see above); this P2 entry covers the remaining non-colour test surface: deterministic
+      visual assertions for legend text matching rendered series, explicit axis/tooltip units,
+      price-unit normalization, SVG bounds, and no deadline legend/axis overlap at 320 / 480 px.
+      Files: `packages/settings-ui/src/ui/budgetRedesignChart.ts`,
       `packages/settings-ui/src/ui/dailyBudgetChartEcharts.ts`,
       `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
       `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,

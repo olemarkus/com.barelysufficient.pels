@@ -19,7 +19,7 @@
     "lg": { "value": "0 12px 32px rgba(0, 0, 0, 0.5)" },
     "card": { "value": "0 30px 60px rgba(0, 0, 0, 0.28)" },
     "panel": { "value": "-4px 0 24px rgba(0, 0, 0, 0.3)" },
-    "primary-glow": { "value": "0 16px 30px rgba(127, 209, 174, 0.25)" }
+    "primary-glow": { "value": "0 16px 30px rgba({color.base.accent.default-rgb}, 0.25)" }
   },
   "font": {
     "family": {
@@ -29,10 +29,15 @@
       "xs": { "value": "11px" },
       "sm": { "value": "13px" },
       "md": { "value": "15px" },
-      "lg": { "value": "18px" }
+      "lg": { "value": "18px" },
+      "title-md": { "value": "16px" },
+      "headline-sm": { "value": "24px" },
+      "headline-md": { "value": "28px" },
+      "display-sm": { "value": "36px" }
     },
     "weight": {
       "normal": { "value": "400" },
+      "medium": { "value": "500" },
       "semibold": { "value": "600" },
       "bold": { "value": "700" }
     },

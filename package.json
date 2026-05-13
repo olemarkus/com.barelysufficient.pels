@@ -62,7 +62,7 @@
       "eslint --max-warnings=0 --no-warn-ignored"
     ],
     "**/*.css": [
-      "stylelint --max-warnings=0"
+      "stylelint --max-warnings=0 --allow-empty-input"
     ],
     "**/*.html": [
       "html-validate --max-warnings=0"

@@ -2,31 +2,46 @@
   "color": {
     "base": {
       "black": { "value": "#0c111b" },
+      "black-rgb": { "value": "12, 17, 27" },
       "white": { "value": "#ffffff" },
       "gray": {
         "50": { "value": "#e6ecf5" },
         "100": { "value": "#cdd6e1" },
-        "200": { "value": "#a8b8c8" },
+        "200": { "value": "#d1d8e0" },
         "900": { "value": "#0d1117" }
       },
       "accent": {
-        "light": { "value": "#34d399" },
-        "default": { "value": "#10b981" },
-        "dark": { "value": "#059669" }
+        "light": { "value": "#4ade80" },
+        "default": { "value": "#16a34a" },
+        "default-rgb": { "value": "22, 163, 74" },
+        "dark": { "value": "#15803d" }
+      },
+      "good": {
+        "default": { "value": "#5eead4" }
       },
       "danger": {
-        "default": { "value": "#f26b6b" },
+        "default": { "value": "#ef4444" },
+        "light": { "value": "#ffb4b4" },
         "dark": { "value": "#e57373" }
       },
       "warning": {
-        "default": { "value": "#ffc107" }
+        "default": { "value": "#f59e0b" },
+        "light": { "value": "#fcd34d" }
       },
       "info": {
-        "default": { "value": "#64b5f6" }
+        "default": { "value": "#60a5fa" }
       },
       "success": {
         "default": { "value": "#4ed2cc" }
       }
+    },
+    "role": {
+      "accent": { "value": "{color.base.accent.default}" },
+      "on-accent": { "value": "{color.base.gray.900}" },
+      "good": { "value": "{color.base.good.default}" },
+      "warn": { "value": "{color.base.warning.default}" },
+      "danger": { "value": "{color.base.danger.default}" },
+      "info": { "value": "{color.base.info.default}" }
     },
     "semantic": {
       "bg": { "value": "{color.base.black}" },
@@ -43,83 +58,69 @@
       "info": { "value": "{color.base.info.default}" }
     },
     "surface": {
-      "1": { "value": "rgba(255, 255, 255, 0.04)" },
-      "2": { "value": "rgba(255, 255, 255, 0.05)" },
-      "3": { "value": "rgba(255, 255, 255, 0.06)" },
-      "4": { "value": "rgba(255, 255, 255, 0.08)" },
-      "5": { "value": "rgba(255, 255, 255, 0.12)" },
+      "1": { "value": "#161b24" },
+      "2": { "value": "#181d26" },
+      "3": { "value": "#1b1f29" },
+      "4": { "value": "#1f242d" },
+      "5": { "value": "#292e36" },
       "elevated": { "value": "#1a1a1a" }
     },
     "border": {
-      "default": { "value": "rgba(255, 255, 255, 0.12)" },
-      "medium": { "value": "rgba(255, 255, 255, 0.15)" },
-      "strong": { "value": "rgba(255, 255, 255, 0.20)" }
+      "default": { "value": "#2d3239" },
+      "medium": { "value": "#30353d" },
+      "strong": { "value": "#3d4149" }
     },
     "state": {
       "positive": {
-        "bg": { "value": "rgba(16, 185, 129, 0.15)" },
-        "bg-muted": { "value": "rgba(16, 185, 129, 0.1)" },
-        "bg-strong": { "value": "rgba(16, 185, 129, 0.25)" },
-        "border": { "value": "rgba(16, 185, 129, 0.4)" },
-        "text": { "value": "{color.base.accent.light}" }
+        "bg": { "value": "#183237" },
+        "border": { "value": "#2d6865" },
+        "text": { "value": "{color.role.good}" }
       },
       "negative": {
-        "bg": { "value": "rgba(242, 107, 107, 0.15)" },
-        "bg-strong": { "value": "rgba(242, 107, 107, 0.22)" },
-        "border": { "value": "rgba(242, 107, 107, 0.35)" },
-        "text": { "value": "{color.base.danger.dark}" }
+        "bg": { "value": "#2e1921" },
+        "border": { "value": "#5b2329" },
+        "text": { "value": "{color.base.danger.light}" }
       },
       "warning": {
-        "bg": { "value": "rgba(255, 193, 7, 0.15)" },
-        "bg-muted": { "value": "rgba(255, 193, 7, 0.1)" },
-        "bg-strong": { "value": "rgba(255, 193, 7, 0.22)" },
-        "border": { "value": "rgba(255, 193, 7, 0.4)" },
-        "border-muted": { "value": "rgba(255, 193, 7, 0.3)" },
-        "text": { "value": "{color.base.warning.default}" }
+        "bg": { "value": "#2f2619" },
+        "border": { "value": "#694915" },
+        "text": { "value": "{color.base.warning.light}" }
       },
       "info": {
-        "bg": { "value": "rgba(100, 181, 246, 0.1)" },
-        "border": { "value": "rgba(100, 181, 246, 0.3)" },
-        "text": { "value": "{color.base.info.default}" }
-      },
-      "success": {
-        "bg": { "value": "rgba(78, 210, 204, 0.15)" },
-        "bg-muted": { "value": "rgba(78, 210, 204, 0.1)" }
+        "bg": { "value": "#142031" },
+        "border": { "value": "#253d5e" },
+        "text": { "value": "{color.role.info}" }
       }
     },
     "focus": {
-      "ring": { "value": "rgba(16, 185, 129, 0.6)" }
+      "ring": { "value": "rgba({color.base.accent.default-rgb}, 0.6)" }
     },
     "overlay": {
       "backdrop": { "value": "rgba(0, 0, 0, 0.6)" },
-      "toast": { "value": "rgba(12, 17, 27, 0.9)" }
-    },
-    "gradient": {
-      "accent-radial": { "value": "rgba(16, 185, 129, 0.12)" },
-      "accent-radial-blue": { "value": "rgba(116, 145, 255, 0.1)" }
+      "toast": { "value": "rgba({color.base.black-rgb}, 0.9)" }
     }
   },
   "pels": {
     "status": {
-      "good": { "value": "{color.base.accent.default}" },
-      "on-good": { "value": "{color.base.accent.light}" },
-      "good-container": { "value": "{color.state.positive.bg-muted}" },
-      "good-surface": { "value": "{color.state.positive.bg-strong}" },
+      "good": { "value": "{color.role.accent}" },
+      "on-good": { "value": "{color.role.good}" },
+      "good-container": { "value": "{color.state.positive.bg}" },
+      "good-surface": { "value": "{color.state.positive.bg}" },
       "good-border": { "value": "{color.state.positive.border}" },
-      "warning": { "value": "{color.base.warning.default}" },
-      "on-warning": { "value": "{color.base.warning.default}" },
-      "warning-container": { "value": "{color.state.warning.bg-muted}" },
-      "warning-surface": { "value": "{color.state.warning.bg-strong}" },
-      "warning-border": { "value": "{color.state.warning.border-muted}" },
-      "limited": { "value": "{color.base.danger.default}" },
-      "on-limited": { "value": "{color.base.danger.dark}" },
-      "limited-container": { "value": "{color.state.negative.bg}" },
-      "limited-surface": { "value": "{color.state.negative.bg-strong}" },
-      "limited-border": { "value": "{color.state.negative.border}" },
+      "warning": { "value": "{color.role.warn}" },
+      "on-warning": { "value": "{color.state.warning.text}" },
+      "warning-container": { "value": "{color.state.warning.bg}" },
+      "warning-surface": { "value": "{color.state.warning.bg}" },
+      "warning-border": { "value": "{color.state.warning.border}" },
+      "limited": { "value": "{color.role.warn}" },
+      "on-limited": { "value": "{color.state.warning.text}" },
+      "limited-container": { "value": "{color.state.warning.bg}" },
+      "limited-surface": { "value": "{color.state.warning.bg}" },
+      "limited-border": { "value": "{color.state.warning.border}" },
       "critical": { "value": "{color.base.danger.dark}" },
-      "on-critical": { "value": "{color.base.danger.dark}" },
+      "on-critical": { "value": "{color.state.negative.text}" },
       "critical-container": { "value": "{color.state.negative.bg}" },
-      "critical-surface": { "value": "{color.state.negative.bg-strong}" },
+      "critical-surface": { "value": "{color.state.negative.bg}" },
       "critical-border": { "value": "{color.state.negative.border}" }
     }
   }
