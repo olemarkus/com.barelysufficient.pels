@@ -1,8 +1,11 @@
 # Deferred Load Objectives
 
 This note defines the intended model for deadline-aware loads. It is design guidance for active and
-future implementation work. Some supporting pieces already exist, but deadline objective behavior is
-not current shipped actuation behavior.
+future implementation work. The soft temperature slice is current shipped behavior: PELS can plan
+deadline hours, make cap-off temperature devices visible during planned hours, keep them idle
+outside planned hours, and raise the planned setpoint to the deadline target while still respecting
+normal budget, capacity, priority, cooldown, and admission gates. Hard deadlines, EV admission,
+hard-boost rebalancing, multi-objective contention, and richer step escalation remain future work.
 
 The first concrete runtime slice started as a diagnostics-only EV SoC objective bridge because PELS
 already had native SoC snapshots and learned kWh-per-percent profiling. Connected 300-style
@@ -26,7 +29,10 @@ As of this note, PELS already has internal/native EV state-of-charge plumbing:
   missed-deadline triggers; the earlier device-detail Settings UI card has been removed in favor of
   the flow-card surface (see `docs/flow-cards.md`)
 - a status bus inside the bridge publishes status transitions and missed-deadline events that the
-  flow trigger cards subscribe to; cards do not change admission or actuation behavior yet
+  flow trigger cards subscribe to
+- soft temperature objectives participate in planner admission: planned hours admit the device,
+  idle hours keep cap-off devices off, and planned temperature targets are lifted to the deadline
+  target
 
 Deadline objectives should build on that internal state, not reopen SoC as a user-facing feature
 before the broader objective UX is ready.
@@ -72,15 +78,16 @@ Storage rules:
   deadline never replans for the next day. Users re-arm by firing the flow card again.
 - Temperature objectives are soft-only for now. The Settings UI must not expose hard temperature
   deadlines until runtime semantics are explicitly designed.
-- `enforcement` records soft or hard intent for EV settings, but the current bridge only emits
-  diagnostics and does not change admission behavior.
+- `enforcement` records soft or hard intent for EV settings. Soft temperature objectives currently
+  affect admission and target temperature; EV admission and hard-deadline behavior remain future
+  planner work.
 
 The bridge reads this settings payload during plan construction, normalizes it, evaluates each
 enabled objective, and emits structured `deferred_objectives` debug diagnostics. The bridge also
 publishes status transitions and deadline-missed events to an in-process status bus that flow
 trigger and condition cards subscribe to. Public flow cards are the user-facing surface for
-creating and clearing deadlines; the planner does not change admission or device actuation in
-response to objectives yet.
+creating and clearing deadlines. For soft temperature objectives, the planner uses the evaluation
+to decide planned/idle participation and deadline target overrides.
 
 Price gating is deliberate. The bridge only plans when price optimization is enabled and the
 daily-budget price payload covers every hour from now through the objective deadline. If the
@@ -101,10 +108,10 @@ Runtime actuation for the cap-off case is now wired in `lib/plan/deferredObjecti
 and applied at the planner boundary in `PlanBuilder.buildPlanSnapshotWithTimings`:
 
 - The horizon planner computes the planned hours per cycle.
-- For each enabled objective whose status is `on_track` or `at_risk`, an admission decision is
-  produced: `planned` for the current bucket if it has planned energy, `idle` otherwise.
-  `satisfied` and `cannot_meet` resolve to `inactive` so the device returns to its normal
-  behavior once the goal is met or impossible.
+- For each enabled objective whose status is `on_track`, `at_risk`, or `cannot_meet`, an admission
+  decision is produced: `planned` for the current bucket if it has planned energy, `idle`
+  otherwise. `satisfied`, `unknown`, and `invalid` resolve to `inactive` so the device returns to
+  its normal behavior once the goal is met or the objective cannot be trusted.
 - Capacity-based control on/off is treated purely as device visibility for the planner: cap-on
   devices are always managed; cap-off devices are normally invisible to PELS (an externally
   toggled cap-off device runs undisturbed). When a cap-off device has a non-inactive deferred
@@ -164,8 +171,12 @@ type Revision = {
   revisedAtMs: number;
   computedFromPricesUpTo: number | null;
   reason: 'flow_card' | 'prices_arrived' | 'objective_changed'
-        | 'prices_revised' | 'device_unavailable' | 'measured_deviation';
+        | 'prices_revised' | 'rate_refined' | 'device_unavailable'
+        | 'measured_deviation';
   hours: { startsAtMs: number; plannedKWh: number }[];
+  energyNeededKWh: number;
+  planStatus: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied';
+  kwhPerUnitSource?: 'learned' | 'bootstrap';
 };
 ```
 
@@ -190,11 +201,13 @@ revision on these triggers:
    the stored `latest.hours` while the objective signature is unchanged. (The most
    common cause is Nordpool publishing a revised series that shifts which hours are
    cheapest.) Replaces `latest`.
-5. **`device_unavailable`** — The diagnostic stops appearing for an extended period
+5. **`rate_refined`** — A learned kWh-per-unit value replaces a conservative bootstrap fallback,
+   or otherwise changes the energy basis enough to produce a different stable allocation.
+6. **`device_unavailable`** — The diagnostic stops appearing for an extended period
    while the deadline is still in the future. Tracked for future use; today the
    recorder simply drops the record once a diagnostic disappears, matching the
    history recorder's abandon path.
-6. **`measured_deviation`** — Reserved for the future per-device metering work. Not
+7. **`measured_deviation`** — Reserved for the future per-device metering work. Not
    yet emitted.
 
 A normal plan cycle whose output happens to match the stored `latest.hours` does **not**
@@ -246,9 +259,8 @@ capture per-(device, deadline) outcomes for the Settings UI History tab on
 - The Settings UI fetches this via `/ui_deferred_objective_history` and renders
   per-device cards in the History tab next to the existing current-plan view.
 
-The aspirational lifecycle events (`deferred_objective_goal_met`,
-`deferred_objective_deadline_missed`) for flow cards / triggers remain future work — the
-current capture is purely UI-facing.
+The missed-deadline trigger is wired. A separate goal-met trigger remains future work; consumers can
+observe the existing status-change trigger when a task reaches `satisfied`.
 
 Original design semantics (still authoritative for future slices):
 
@@ -445,8 +457,7 @@ Native adapters own device-specific translation. Examples:
 The first implementation step is profiling, not deadline control. PELS should learn compact
 per-device conversion and rate facts from observed behavior before it tries to decide whether a
 deadline can be met. The EV settings bridge starts from that foundation: it may use learned
-kWh-per-percent to calculate required energy, but it remains diagnostics-only until admission and
-actuation semantics are implemented.
+kWh-per-percent to calculate required energy, but EV admission and actuation remain future work.
 
 For temperature devices, the useful learned unit is energy per degree:
 
@@ -1137,14 +1148,15 @@ Current implementation slice:
 2. EV SoC and soft temperature objectives can be read from versioned settings.
 3. Settings objectives store an absolute `deadlineAtMs`. Flow cards resolve the user's HH:mm
    input to a future moment **once at write time**; the bridge never re-resolves on its own.
-4. Planning is diagnostics-only and price-feature gated.
+4. Planning is price-feature gated and feeds soft temperature admission/target overrides.
 5. The bridge waits for tomorrow's price buckets instead of assuming neutral prices when the
    deadline falls past the current daily horizon.
-6. The bridge emits structured debug diagnostics without changing restore/admission behavior.
+6. The bridge emits structured debug diagnostics and supplies planner admission decisions for the
+   shipped soft temperature slice.
 7. When a deadline passes, `statusTransitions.ts` auto-disables the entry so the same deadline
    does not silently replan for the next day.
-8. The Settings UI exposes a manual temperature deadline card on eligible Homeys and temperature
-   devices.
+8. The Settings UI exposes Smart tasks and per-device deadline-plan/history pages; deadline
+   creation and clearing are handled by public flow cards.
 
 Recommended implementation order:
 
@@ -1156,8 +1168,10 @@ Recommended implementation order:
 4. Expose deadline creation, clearing, status conditions, and status-change / missed-deadline
    triggers through public flow cards. The earlier short-lived device-detail Settings UI card has
    been retired in favor of this flow-card surface.
-5. Add runtime actuation for planned-hour admission and outside-planned-hour behavior.
-6. Surface objective diagnostics and reason codes without a full Settings editor.
+5. Add runtime actuation for planned-hour admission and outside-planned-hour behavior. Shipped for
+   soft temperature objectives.
+6. Surface objective diagnostics and reason codes without a full Settings editor. Current UI
+   surfaces Smart tasks and per-device plan/history views; broader public docs still need refresh.
 7. Integrate soft objective through existing normal device behavior while preserving normal budget
    and priority policy.
 8. Add hard admission for already available hard objective admission capacity.

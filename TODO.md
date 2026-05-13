@@ -3,81 +3,20 @@
 Only unresolved work belongs here. Completed items live in git history and tests, not in this
 file.
 
-## P0 Correctness and control integrity
+## Priority Rubric
 
-- [x] Make observation freshness source-aware. Targeted snapshot refreshes and same-value
-      realtime updates should only advance freshness when the value source proves the capability
-      was observed.
-      Closed by `lib/observer/observationFreshness.ts` (missing-freshness half) and the
-      `mergeFresherCapabilityObservations` change in `lib/core/deviceManagerObservation.ts`:
-      the targeted-refresh override that fabricated `lastFreshDataMs` from poll time is
-      removed. `parseDevice` already derives `lastFreshDataMs` from Homey's per-capability
-      `lastUpdated`, and the merge step now only carries that forward; if no tracked
-      capability has reported new evidence, the device ages naturally under the 40-minute
-      `STALE_DEVICE_OBSERVATION_MS` window.
-- [x] Ensure snapshot refresh ordering cannot persist pre-enforcement state. Unsupported-device
-      enforcement should complete before the refreshed snapshot is synced and persisted.
-      Why P0: persisting before enforcement can expose a snapshot that briefly disagrees with the
-      settings the app just enforced.
-      Files: `lib/app/appSnapshotHelpers.ts`, snapshot/enforcement tests.
+- **P0:** release-blocking correctness, control-integrity, startup, validation, or data-loss issue
+  that can affect current runtime behavior without another feature or broad refactor landing first.
+- **P1:** next-release correctness or data-integrity work: bounded planner/executor risks, settings
+  writes that can corrupt persisted state, supported-width UI breakage, or missing validation around
+  commandable device contracts.
+- **P2:** important product, observability, documentation, and maintainability work where current
+  behavior is usable or has a workaround, but the gap increases support cost or slows future work.
+- **P3:** future capability, optional hardening, or exploratory cleanup with no current correctness
+  or supportability pressure.
 
-## P1 Observability and runtime diagnostics
+## P1 Correctness, Data Integrity, and Supported UX
 
-- [x] Normalize comparable `restoreNeed` / `insufficientHeadroom` kW fields so small
-      admission-metric jitter does not churn detail signatures, overview transitions, or restore
-      debug dedupe while the device remains in the same restore-admission posture.
-      Closed by `planReasonComparable.quantizeKwToW`: the comparable now carries integer
-      watts in 100 W buckets (`needW`, `headroomW`, `availableW`, etc.) instead of raw float
-      kW. See `notes/units.md` for the broader "prefer W internally, kW only at the UI"
-      convention this slice formalizes.
-- [x] Separate observed power from estimated / planning power in headroom state and diagnostics.
-      Closed by Observer slice 7: `planHeadroomState` reads `getMeasuredDrawKw(device) ?? 0`
-      for transition tracking and `evaluateHeadroomForDevice` composes
-      `getMeasuredDrawKw` + `getHighestKnownPowerKw` + `isDeviceObservationStale` for the
-      Flow-card path. `planPowerResolution.ts` was previously inlined and no longer exists.
-- [x] Move remaining plan-side `observationStale` branches into Observer-emitted resolved values.
-      Closed by `lib/observer/observationTrust.ts` (`isDeviceObservationTrusted`,
-      `getTrustedCurrentTemperatureC`, `getTrustedStateOfCharge`). Six plan-side gating sites
-      now read flat resolved values; the redundant `observationStale` gate in
-      `planActivationBackoff.ts` was dropped (already dominated by `isObservedOn`).
-      `planLogging.ts` keeps reading `observationStale` for stale-device accounting in log
-      summaries — that is not a downstream decision.
-- [x] Use the configured device load as the stable expected load for binary restore planning and
-      overview copy when live/measurement evidence is absent or the device is off.
-      Closed by Observer's `getRestoreDrawKw`: `lib/plan/planDevices.ts` now projects
-      `expectedPowerKw` from the highest-known source, so a thermostat's configured demand
-      stays anchored even when its current `measure_power` reports 0 during the off-cycle.
-- [ ] Finish the starvation rollout beyond the current diagnostics implementation: add
-      per-episode / duration-threshold flow triggers, verify insights coverage, and close any
-      remaining snapshot/UI contract gaps against `notes/starvation/README.md`.
-      Files: `lib/diagnostics/**`, `flowCards/**`, `drivers/pels_insights/**`,
-      plan snapshot/contracts/UI wiring.
-
-## P1 UI and product follow-ups
-
-- [ ] Continue the Settings UI reorganization program from
-      `notes/settings-ui-reorganization.md` as stacked reviewable PRs. The new-UI navigation shell
-      and Budget Plan/Adjust surface (editable controls + Apply/Discard preview comparison) are
-      in place; remaining work is Usage history cleanup, per-device price behavior ownership, and
-      final narrow-viewport polish. Preserve the
-      ownership boundaries from that note: Overview for current state, Budget for daily planning
-      and preview, Usage for history, and Settings as the navigation container for limits, devices,
-      modes, price, simulation mode, and advanced diagnostics.
-      Files: `packages/settings-ui/**`, generated `settings/`, relevant settings UI tests.
-- [ ] Consolidate Settings UI design primitives around Material Web and shared PELS tokens. Use
-      `@material/web` for standard Material components when the semantics fit, and replace
-      page-local custom chips, cards, buttons, segmented controls, ripples, and elevation with
-      Material Web components or one shared PELS primitive.
-      Files: `packages/settings-ui/src/ui/materialWeb.ts`,
-      `packages/settings-ui/src/ui/materialWebJSX.tsx`, `packages/settings-ui/public/style.css`,
-      generated `settings/`, focused visual/e2e coverage.
-- [ ] Fix redesigned top navigation at 320px. The current five-tab shell can truncate or collide,
-      especially `Smart tasks`, on narrow Homey WebView widths. Keep the top-level destinations
-      from `notes/settings-ui-reorganization.md`, but make the control behave like a polished
-      mobile navigation surface: no clipped labels, predictable horizontal scrolling or overflow
-      treatment, and Playwright screenshots at 320px / 480px.
-      Files: `packages/settings-ui/public/index.html`, `packages/settings-ui/public/style.css`,
-      generated `settings/`, focused navigation layout coverage.
 - [ ] Make Settings UI device refresh await in-flight snapshot refreshes. `/ui_refresh_devices`
       currently calls `refreshTargetDevicesSnapshot()` and then returns the current in-memory
       device snapshot, but overlapping refresh calls only queue another refresh and return
@@ -85,14 +24,6 @@ file.
       device data during startup or overlapping refreshes.
       Files: `lib/app/appSnapshotHelpers.ts`, `lib/app/settingsUiAppRuntime.ts`,
       `lib/app/settingsUiApi.ts`, settings UI API/runtime tests.
-- [ ] Update the Settings UI Homey API mock to stop serving devices from
-      `target_devices_snapshot`. Production now serves `/ui_devices` and `/ui_refresh_devices`
-      from runtime app state, so the mock should model live device data explicitly and avoid
-      masking runtime-backed device API regressions.
-      Files: `packages/settings-ui/test/helpers/homeyApiMock.ts`, settings UI tests.
-- [ ] Add a device-log view in the Settings UI, and reuse the shared device overview formatter so
-      the visible device-log wording matches backend overview transition logs exactly.
-      Files: settings UI advanced/device-log surface, `packages/shared-domain/src/deviceOverview.ts`.
 - [ ] Make Settings UI device setting writes fail closed when a fresh settings read is missing or
       invalid. Avoid falling back to `{}` or caller-provided defaults and writing a partial object
       back as if it were the current state.
@@ -110,127 +41,29 @@ file.
       Why P1: a single draft can bleed between device detail sessions and makes fallback chains
       depend on whichever device wrote the draft last.
       Files: `packages/settings-ui/src/ui/deviceDetail/steppedLoadDraft.ts`.
-- [x] Unify duplicated device-state derivation.
-      Closed by `packages/shared-domain/src/deviceStatePredicates.ts`:
-      `normalizeDeviceState`, `isOnLikeState`, `isOffLikeState`, and
-      `isGrayStateDevice` are single-sourced for `deviceOverview`,
-      `planLegacy`, and `deviceUtils`. Each of those used to carry a drifted
-      copy (planLegacy's `isOffLikeState` did not normalize case/whitespace
-      and its `isOnLikeState` treated `'disappeared'` as on-like).
-      Note: `planSteppedCardText.isSteppedCardOffLikeState` is intentionally
-      separate — it has broader semantics (also treats empty / `'disappeared'`
-      as off-for-display so the stepped card renders "Off now" when the
-      device has no fresh observation) and is documented as display-only.
-- [ ] Move presentation text out of `shared-domain/deviceOverview.ts`.
-      Why P1: the overview generator emits human-readable English strings
-      (`'Charging requested'`, `'Restoring'`, `'Active (temperature-managed)'`,
-      `'Shed (charging paused)'`, …). That couples shared-domain to a single
-      UI language and makes control-state reuse harder to type cleanly. Replace
-      the inline strings with a code-keyed contract that the Settings UI maps
-      to display text.
-      Files: `packages/shared-domain/src/deviceOverview.ts`,
-      `packages/contracts/src/settingsUiApi.ts`,
-      `packages/settings-ui/src/ui/**` rendering call sites.
-- [x] Tighten EV SoC layer boundaries before expanding EV objectives.
-      Closed by dropping `source: 'capability' | 'flow'` from the public
-      `DeviceStateOfChargeSnapshot` contract: nothing outside the producer was reading
-      it, so source-of-evidence stays internal to `lib/core/deviceStateOfCharge.ts`.
-      Synthetic SoC keeps writing to native Homey capability ids; the
-      `pels_`-prefixed-capability alternative is documented in
-      `notes/ev-soc-layering.md` with explicit triggers for revisiting.
-- [x] Gate boost-driven stepped escalation on recent observed draw at the current step.
-      `blockSteppedRestoreForShedInvariant` / `canUseSwapForSteppedRestore` now consult
-      `device.hasRecentObservedDrawAtSelectedStep`, derived from the per-step calibration
-      store. Calibration-confirmed `false` blocks the boost bypass; `undefined` keeps the
-      legacy bypass intact so newly-paired devices are not penalised during warmup.
+- [ ] Fix redesigned top navigation at 320px. The current five-destination shell can truncate or
+      collide, especially `Smart tasks`, on narrow Homey WebView widths. Make the control behave
+      like a polished mobile navigation surface: no clipped labels, predictable horizontal
+      scrolling or overflow treatment, and Playwright screenshots at 320px / 480px.
+      Files: `packages/settings-ui/public/index.html`, `packages/settings-ui/public/style.css`,
+      generated `settings/`, focused navigation layout coverage.
 - [ ] Clamp stale EV boost stepped-load intent after boost deactivates.
       When EV boost admits a higher charger step and a later SoC update turns boost off, the next
-      plan can briefly carry the old higher `desiredStepId` even when the shed-invariant reason says
-      the step-up should not be admitted while other devices are still limited. This is expected to
-      self-correct on later step/power observations, but the planner should eventually clamp the
-      desired/target step to the currently allowed step when the boost exemption no longer applies.
+      plan can briefly carry the old higher `desiredStepId` even when the shed-invariant reason
+      says the step-up should not be admitted while other devices are still limited. This is
+      expected to self-correct on later step/power observations, but the planner should eventually
+      clamp the desired/target step to the currently allowed step when the boost exemption no
+      longer applies.
       Files: `lib/plan/planRestoreHelpers.ts`, `lib/plan/planDevices.ts`,
       EV boost / stepped restore tests.
 - [ ] Harden target-power stepped-load contract validation.
       Homey's `target_power` contract requires the range to include `0`; minimum operating power
       should be modeled with `excludeMin` / `excludeMax`, and `0` means idle. Keep mapping the off
-      step to `target_power = 0`, but validate manual/synthetic profiles and warn or ignore invalid
-      target-power metadata instead of letting malformed capability options look like normal input.
+      step to `target_power = 0`, but validate manual/synthetic profiles and warn or ignore
+      invalid target-power metadata instead of letting malformed capability options look like
+      normal input.
       Files: `lib/core/nativeSteppedLoadWiring.ts`, `lib/core/deviceManagerNativeEv.ts`,
       target-power/EV stepped-load tests.
-
-## P1 Deadline plan persistence and history view
-
-The first slice of this work has shipped: the runtime now persists the active
-deadline-plan allocation (`lib/plan/deferredObjectives/activePlanRecorder.ts`)
-to `deferred_objective_active_plans`, the Settings UI bootstrap exposes it,
-and the deadline-plan page renders a *pending* hero state until the planner
-has computed an allocation. The replan policy is documented in
-`notes/deferred-load-objectives/README.md`.
-
-- [x] Persist the active deadline-plan allocation (settings key
-      `deferred_objective_active_plans`, schema V1 in
-      `packages/contracts/src/deferredObjectiveActivePlans.ts`). Captured at
-      flow-card trigger and on the next plan cycle when prices arrive.
-      Survives app restart via the recorder's `load`/`save` deps.
-- [x] Define the replan policy. Six trigger reasons (`flow_card`,
-      `prices_arrived`, `objective_changed`, `prices_revised`,
-      `device_unavailable`, `measured_deviation`); any cycle that produces an
-      identical allocation does not mutate `latest`. Documented in
-      `notes/deferred-load-objectives/README.md`. `device_unavailable` and
-      `measured_deviation` are reserved for the metering follow-up below.
-- [x] UI adapter (`packages/settings-ui/src/ui/deadlinePlan.ts`) reads the
-      persisted plan from the bootstrap and no longer runs its own greedy
-      allocator. UI's `allocateChargeHours` was removed; runtime is the source
-      of truth.
-- [x] Pending hero state in `DeadlinePlan.tsx` (distinct from the error
-      state). Copy is sourced from `packages/shared-domain/src/deadlineLabels.ts`.
-- [x] Past-hour filter dropped — `collectHorizonHours` now takes a
-      `windowStartMs` so an active plan's hours-from-revision-start are
-      retained for the chart.
-- [ ] Update public deadline documentation once the feature enters testing. Keep
-      `docs/technical.md`, `docs/flow-cards.md`, and any deadline-plan docs aligned with the
-      runtime semantics for EV and heater objectives: already-met targets are live `satisfied`
-      states until the deadline, and a later below-target reading returns to tracking. Keep
-      terminology aligned with `notes/ui-terminology.md`.
-- [x] Render *original plan vs final/current plan* on the chart. Original allocation as
-      outlined `Heating` / `Charging` bars; current revision as filled. Distinct visual on hours
-      that changed between revisions. Add a "Now" divider so past and future are visually
-      distinguishable.
-      Open question: a single revision history (`original`, `latest`) is enough to ship this
-      view; a full timeline (`original`, `revision-1`, ..., `latest`) is more accurate but
-      heavier to render. Start with two-revision unless the runtime needs more for other
-      reasons.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`, ECharts series wiring,
-      e2e + screenshot coverage.
-- [x] Auto-refresh the per-device deadline-plan page on `plan_updated` / `devices_updated`.
-      `mountDeadlinePlan` (`packages/settings-ui/src/ui/deadlinePlanMount.ts`) now subscribes to
-      `plan_updated`, `devices_updated`, and `prices_updated`, then debounces/coalesces a
-      bootstrap/devices/prices refresh before re-running `resolveRenderInput` →
-      `renderDeadlinePlan`. The focused e2e mutates the open page state and verifies the event
-      burst refreshes the page without a reload.
-      Files: `packages/settings-ui/src/ui/deadlinePlanMount.ts`,
-      `packages/settings-ui/tests/e2e/deadline-plan.spec.ts`.
-- [x] Per-device per-hour actuals overlay. The power tracker now stores measured per-device
-      hourly kWh buckets from fresh device power observations, and the deadline-plan chart renders
-      them as a measured `Heating` / `Charging` overlay for the active device.
-      Files: `lib/core/powerTracker.ts`, `lib/app/appPowerSampleIngest.ts`,
-      `packages/settings-ui/src/ui/deadlinePlan.ts`,
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
-- [ ] Track per-device step changes with the same 30-day hourly retention model, so measured
-      usage history can explain which step or mode was active during each measured period.
-      Files: future device-level step-change tracker; usage-history UI.
-- [ ] Add a per-device usage history page showing measured kWh over time with step-change context.
-      Files: future device-level usage-history route and chart.
-
-## P1 Type-safety and state-boundary follow-ups
-
-- [ ] Add missing swap lifecycle coverage from the pre-release review. Cover completed stepped
-      swap cleanup with a stepped target and requested step, assert approved stepped swaps persist
-      the stale-cleanup timestamp, and add an `applyRestorePlan()` integration test for orphan
-      measurement deferral before a fresh power sample.
-      Files: `test/swapLifecycle.test.ts`, `test/planRestoreBackoff.test.ts`,
-      `lib/plan/planRestore.ts`.
 - [ ] Make stepped swap completion use confirmed step evidence instead of planner-effective
       `selectedStepId`. `cleanupCompletedSwaps()` currently treats a pending stepped swap target
       as complete when `selectedStepId` is at or above the requested step, but that field can be
@@ -239,14 +72,6 @@ has computed an allocation. The replan policy is documented in
       devices are not released before the target step is actually confirmed.
       Files: `lib/plan/swap/completion.ts`, `lib/plan/swap/lifecycle.ts`,
       `lib/plan/planRestore.ts`, stepped swap lifecycle tests.
-- [ ] Finish the planner/executor/device-manager state boundary split.
-      Planner output should carry desired state and planner reasons; `DeviceManager` should provide
-      observed current state and own native / flow / capability transport; executor should compare
-      current with desired and handle sequencing, pending commands, retries, and materialization.
-      `ExecutablePlan` now carries executor intent and `ExecutableObservedState` carries
-      snapshot-built observer truth at the dispatch and drift-detection boundaries. Remaining work
-      is to move the last flow-backed binary transport details fully behind `DeviceManager`.
-      Files: `lib/executor/**`, `lib/core/deviceManager.ts`, binary transport tests.
 - [ ] Tighten the planner-to-executor projection so executable stepped-load intents cannot be
       underspecified. The desired end state is an `input snapshots -> ExecutablePlan` boundary
       where only core planning/admission sees both current and desired state; executable intents
@@ -256,6 +81,89 @@ has computed an allocation. The replan policy is documented in
       it.
       Files: `lib/executor/executableSteppedLoadProjection.ts`, `lib/executor/executablePlan.ts`,
       `lib/executor/planExecutionDrift.ts`, stepped executable projection/drift tests.
+- [ ] Add typed schemas/parsers for settings maps and flow-card args before values enter app
+      logic. Avoid raw `Record<string, ...>`, `unknown`, and inline casts beyond the external
+      Homey boundary.
+      Why P1: flow cards and settings helpers repeatedly parse loose values with local fallbacks,
+      so invalid external input can become normal internal state.
+      Files: `lib/app/appSettingsHelpers.ts`, `flowCards/registerFlowCards.ts`,
+      `flowCards/deviceSettingsCards.ts`, `flowCards/flowBackedDeviceCards.ts`.
+- [ ] Extract a shared `PersistedSettingsState<T>` helper for recorder-style settings storage.
+      Three modules currently reimplement the same dirty / debounce / abandon-grace / flush /
+      plausibility cascade: `lib/app/appPowerCalibrationWiring.ts` (calibration),
+      `lib/plan/deferredObjectives/planHistory.ts`, and
+      `lib/plan/deferredObjectives/activePlanRecorder.ts`. After the helper lands, migrate
+      calibration first, then the two deferred-objective recorders.
+      Design context in `notes/persisted-settings-state.md`.
+      Files: new `lib/persistence/` or `lib/utils/persistedSettingsState.ts`,
+      `lib/app/appPowerCalibrationWiring.ts`, `lib/plan/deferredObjectives/planHistory.ts`,
+      `lib/plan/deferredObjectives/activePlanRecorder.ts`, recorder/persistence tests.
+- [ ] Unify stepped restore admission wrappers so pending-swap source-off holds and stepped swap
+      executor context are applied consistently across normal restore planning, restore cooldown,
+      meter-settling, and active stepped upgrade paths.
+      Why P1: the two-phase swap contract is currently enforced by branch-local calls in
+      `planRestore.ts`, which makes narrow bypasses easy when a new restore branch calls
+      `planRestoreForSteppedDevice()` directly. Include a regression for an active stepped
+      pending swap target during restore cooldown while its swapped-out source is still on.
+      Files: `lib/plan/planRestore.ts`, `lib/plan/planRestoreHelpers.ts`,
+      stepped swap / restore-cooldown tests.
+
+## P2 Product, Observability, and Maintainability
+
+- [ ] Finish the starvation rollout beyond the current diagnostics implementation: add
+      per-episode / duration-threshold flow triggers, verify insights coverage, and close any
+      remaining snapshot/UI contract gaps against `notes/starvation/README.md`.
+      Files: `lib/diagnostics/**`, `flowCards/**`, `drivers/pels_insights/**`,
+      plan snapshot/contracts/UI wiring.
+- [ ] Continue the Settings UI reorganization program from
+      `notes/settings-ui-reorganization.md` as stacked reviewable PRs. The five-destination
+      navigation shell, Budget Plan/Adjust surface, Smart tasks list, and Settings card/list are
+      in place; remaining work is Usage history cleanup, per-device price behavior ownership,
+      Material primitive consolidation, and final polish.
+      Files: `packages/settings-ui/**`, generated `settings/`, relevant settings UI tests.
+- [ ] Consolidate Settings UI design primitives around Material Web and shared PELS tokens. Use
+      `@material/web` for standard Material components when the semantics fit, and replace
+      page-local custom chips, cards, buttons, segmented controls, ripples, and elevation with
+      Material Web components or one shared PELS primitive.
+      Files: `packages/settings-ui/src/ui/materialWeb.ts`,
+      `packages/settings-ui/src/ui/views/materialWebJSX.tsx`, `packages/settings-ui/public/style.css`,
+      generated `settings/`, focused visual/e2e coverage.
+- [ ] Update the Settings UI Homey API mock to stop serving devices from
+      `target_devices_snapshot`. Production now serves `/ui_devices` and `/ui_refresh_devices`
+      from runtime app state, so the mock should model live device data explicitly and avoid
+      masking runtime-backed device API regressions.
+      Files: `packages/settings-ui/test/helpers/homeyApiMock.ts`, settings UI tests.
+- [ ] Add a device-log view in the Settings UI, and reuse the shared device overview formatter so
+      the visible device-log wording matches backend overview transition logs exactly.
+      Files: settings UI advanced/device-log surface, `packages/shared-domain/src/deviceOverview.ts`.
+- [ ] Move presentation text out of `shared-domain/deviceOverview.ts`.
+      Why P2: the overview generator emits human-readable English strings
+      (`'Charging requested'`, `'Restoring'`, `'Active (temperature-managed)'`,
+      `'Shed (charging paused)'`, ...). That couples shared-domain to a single UI language and
+      makes control-state reuse harder to type cleanly.
+      Files: `packages/shared-domain/src/deviceOverview.ts`,
+      `packages/contracts/src/settingsUiApi.ts`,
+      `packages/settings-ui/src/ui/**` rendering call sites.
+- [ ] Update public deadline documentation once the feature enters testing. Keep
+      `docs/technical.md`, `docs/flow-cards.md`, and any deadline-plan docs aligned with the
+      runtime semantics for EV and heater objectives: already-met targets are live `satisfied`
+      states until the deadline, and a later below-target reading returns to tracking. Keep
+      terminology aligned with `notes/ui-terminology.md`.
+- [ ] Add missing swap lifecycle coverage from the pre-release review. Cover completed stepped
+      swap cleanup with a stepped target and requested step, assert approved stepped swaps persist
+      the stale-cleanup timestamp, and add an `applyRestorePlan()` integration test for orphan
+      measurement deferral before a fresh power sample.
+      Files: `test/swapLifecycle.test.ts`, `test/planRestoreBackoff.test.ts`,
+      `lib/plan/planRestore.ts`.
+- [ ] Finish the planner/executor/device-manager state boundary split.
+      Planner output should carry desired state and planner reasons; `DeviceManager` should
+      provide observed current state and own native / flow / capability transport; executor should
+      compare current with desired and handle sequencing, pending commands, retries, and
+      materialization. `ExecutablePlan` now carries executor intent and `ExecutableObservedState`
+      carries snapshot-built observer truth at the dispatch and drift-detection boundaries.
+      Remaining work is to move the last flow-backed binary transport details fully behind
+      `DeviceManager`.
+      Files: `lib/executor/**`, `lib/core/deviceManager.ts`, binary transport tests.
 - [ ] Define the binary operating precondition for temperature-lowered devices.
       `set_temperature` limiting currently lowers the target only. For devices that also expose
       binary control, decide whether an observed off state should be treated as drift and turned
@@ -273,124 +181,52 @@ has computed an allocation. The replan policy is documented in
 - [ ] Replace the broad optional-field device snapshots with stronger discriminated state types.
       `TargetDeviceSnapshot`, `DevicePlanDevice`, and `PlanInputDevice` should not carry all
       binary, temperature, stepped-load, EV, freshness, and power fields as one nullable bag.
-      Why P1: unknown, stale, estimated, unsupported, and observed values are currently easy to
-      pass through the planner with the same shape.
       Files: `packages/contracts/src/types.ts`, `lib/plan/planTypes.ts`,
       `lib/plan/planBuilder.ts`, settings UI contract tests.
-- [x] Replace optional-bag power helper APIs with explicit power evidence types such as measured,
-      live, estimated, fallback, and unknown.
-      Superseded by Observer's `lib/observer/observedPower.ts`: consumers read two resolved
-      values (`getCurrentDrawKw`, `getRestoreDrawKw`) instead of evidence-typed bags. The
-      `PowerCandidate` / `LiveUsageCandidate` / `RestorePowerCandidate` / `UsageDevice` types
-      and the `lib/plan/planPowerResolution.ts` / `lib/plan/planCandidatePower.ts` modules
-      were deleted.
 - [ ] Normalize persisted optional state into runtime state with required maps immediately after
       loading. Keep persisted shape and runtime shape separate for power tracker, activation
       attempts, headroom cards, pending commands, and similar planner state.
-      Why P1: repeated `Record<string, ...> | undefined`, `?? {}`, and partially populated maps
-      spread load-time uncertainty into normal runtime paths.
       Files: `lib/core/powerTracker.ts`, `packages/contracts/src/powerTrackerTypes.ts`,
       `lib/plan/planState.ts`, `lib/utils/appTypeGuards.ts`.
 - [ ] Replace deeply partial flow-reported capability state with a normalized runtime
       representation at the boundary.
-      Why P1: `Partial<Record<...Partial<Record<...>>>>` makes every caller defend against missing
-      nested objects and encourages merge-by-fallback writes.
       Files: `lib/core/flowReportedCapabilities.ts`.
-- [ ] Add typed schemas/parsers for settings maps and flow-card args before values enter app
-      logic. Avoid raw `Record<string, ...>`, `unknown`, and inline casts beyond the external
-      Homey boundary.
-      Why P1: flow cards and settings helpers repeatedly parse loose values with local fallbacks,
-      so invalid external input can become normal internal state.
-      Files: `lib/app/appSettingsHelpers.ts`, `flowCards/registerFlowCards.ts`,
-      `flowCards/deviceSettingsCards.ts`, `flowCards/flowBackedDeviceCards.ts`.
 - [ ] Split app lifecycle context into initialized vs initializing phases so services that are
       required after startup are not exposed forever as optional fields.
-      Why P1: `AppContext` currently carries optional service references and broad maps across
-      code that usually assumes those services exist.
       Files: `lib/app/appContext.ts`, `app.ts`, app init/service tests.
-
-## P1 Simplification follow-ups
-
-- [ ] Extract a shared `PersistedSettingsState<T>` helper for recorder-style settings storage.
-      Three modules currently reimplement the same dirty / debounce / abandon-grace / flush /
-      plausibility cascade: `lib/app/appPowerCalibrationWiring.ts` (calibration),
-      `lib/plan/deferredObjectives/planHistory.ts`, and
-      `lib/plan/deferredObjectives/activePlanRecorder.ts`. The calibration module accumulated
-      ~10 bot-review findings across four rounds of PR #710, all in the persistence wrapper
-      rather than the domain logic. The deferred-objective recorders almost certainly have the
-      same bugs in latent form. A shared helper would: (1) clear `dirty` only after the
-      settings write succeeds; (2) own debounce + load-grace windows uniformly; (3) accept a
-      consumer-supplied strict plausibility predicate that mirrors the normaliser; (4) provide
-      debounced and flush variants where flush bypasses debounce only, never grace. After the
-      helper lands, migrate calibration first (freshest test surface), then the two recorders.
-      Design context in `notes/persisted-settings-state.md`.
-      Files: new `lib/persistence/` or `lib/utils/persistedSettingsState.ts`,
-      `lib/app/appPowerCalibrationWiring.ts`, `lib/plan/deferredObjectives/planHistory.ts`,
-      `lib/plan/deferredObjectives/activePlanRecorder.ts`, recorder/persistence tests.
-- [ ] Unify stepped restore admission wrappers so pending-swap source-off holds and stepped swap
-      executor context are applied consistently across normal restore planning, restore cooldown,
-      meter-settling, and active stepped upgrade paths.
-      Why P1: the two-phase swap contract is currently enforced by branch-local calls in
-      `planRestore.ts`, which makes narrow bypasses easy when a new restore branch calls
-      `planRestoreForSteppedDevice()` directly. Include a regression for an active stepped
-      pending swap target during restore cooldown while its swapped-out source is still on.
-      Files: `lib/plan/planRestore.ts`, `lib/plan/planRestoreHelpers.ts`,
-      stepped swap / restore-cooldown tests.
 - [ ] Split planner state from render-only explanation data so keep/shed/inactive decisions no
-      longer depend on UI-facing `reason` objects. The stepped restore admission path now keeps
-      rejected off restores explicit in the plan, and cooldown / meter-settling restore blocks now
-      stay non-executable until admission. Continue with the remaining reason-derived rendering
-      boundaries.
-      Why P1: this is the next boundary cleanup after the local `planReasons.ts` split and would
-      remove a recurring source of state/reason coupling bugs.
+      longer depend on UI-facing `reason` objects.
       Files: `lib/plan/planRestore.ts`, `lib/plan/planReasons.ts`, plan/executor/rendering
       boundaries.
-- [ ] Extract rebuild-metrics/tracing helpers out of `planService.ts` now that plan snapshots
-      are in-memory/realtime only. Fold or delete the remaining tiny
-      `planServiceInternals.ts` helper surface if it no longer pays for itself.
-      Why P1: `planService.ts` no longer owns the throttled snapshot timer/write path, but it
-      still mixes rebuild orchestration with perf aggregation, trace recording, and completion
-      logging.
+- [ ] Extract rebuild-metrics/tracing helpers out of `planService.ts` now that plan snapshots are
+      in-memory/realtime only. Fold or delete the remaining tiny `planServiceInternals.ts` helper
+      surface if it no longer pays for itself.
       Files: `lib/plan/planService.ts`, `lib/plan/planServiceInternals.ts`,
       new `lib/plan/planRebuildMetrics.ts`.
 - [ ] Keep executor-owned actuation metadata persistence from growing ad hoc now that
       `lastControlledMs` is persisted out of `PlanExecutor`. If more per-device actuation state
       needs durable storage, extract a small persistence helper/queue instead of adding more
       direct settings writes to the executor.
-      Why P1: batching fixed the immediate write-burst concern, but `PlanExecutor` should not
-      become a second persistence hub alongside the plan snapshot/status writers.
       Files: `lib/executor/planExecutor.ts`.
 - [ ] Finish the last `app.ts` shrink after the `TimerRegistry` / `AppContext` refactor. The
       remaining cleanup is to decide whether the now-thin `lib/app/appInit.ts` adapter should be
       deleted, move `resolveHasBinaryControl` to a better long-term home if it stays shared, and
       keep trimming any delegates that no longer buy readability or testability.
-      Why P1: the broad callback bags and timer teardown scatter are gone, but `app.ts` is still
-      the main lifecycle assembly point and still carries more wrapper surface than ideal.
       Files: `app.ts`, `lib/app/**`.
 - [ ] Finish post-unification cleanup for plan rebuild scheduling.
-      Why P1: `PlanRebuildScheduler` exists and is wired, but stale migration notes and any
-      remaining legacy scheduler fallback surface should be removed or documented as an explicit
-      compatibility layer.
+      `PlanRebuildScheduler` exists and is wired, but the compatibility surface in
+      `appPowerRebuildScheduler.ts` still owns signal/backoff bridging. Either fold that surface
+      into the unified scheduler or document it as an explicit compatibility layer.
       Files: `lib/app/planRebuildScheduler.ts`, `lib/app/appPowerRebuildScheduler.ts`,
-      `notes/complexity-cleanup/rebuild-scheduler-unification.md`,
-      `notes/complexity-cleanup/README.md`.
-
-## P2 Simplification and cleanup
-
+      scheduler tests.
 - [ ] Remove redundant downstream `managed !== false` filters now that unmanaged devices are
-      excluded from `latestTargetSnapshot` at parse time. Sites: `lib/app/appSnapshotHelpers.ts`
-      (3 filters), `lib/app/appInit.ts:106` (`getPlanDevices`), `lib/plan/planEvBoost.ts`,
-      `lib/plan/planTemperatureBoost.ts`, `lib/plan/planDiagnostics.ts:129`. Each is now a
-      tautology — left as defense-in-depth in the parse-time filter PR; clean up after a release
-      cycle once the new invariant has soaked in production.
+      excluded from `latestTargetSnapshot` at parse time. Current sites:
+      `lib/app/appSnapshotHelpers.ts:264`, `lib/app/appInit.ts:341`,
+      `lib/plan/planEvBoost.ts:15`, `lib/plan/planTemperatureBoost.ts:22`, and
+      `lib/plan/planDiagnostics.ts:130`.
 - [ ] Deduplicate `applyDeviceDriverOverride` along the snapshot pipeline. Today the override is
-      applied in `DeviceManager.refreshSnapshot` (over `effectiveList`), again in the private
-      `parseDeviceList` (over `effectiveDevices`, used only for `latestTrackedDevicesById`), and a
-      third time inside `resolveParseDeviceIdentity`. The wrapper is self-idempotent so behavior is
-      correct, but the triple application is wasteful and the private `parseDeviceList` then
-      passes the un-normalized `list` to the module-level call instead of `effectiveDevices`.
-      Pre-existing — flagged on PR #636 by the Copilot reviewer. Cleanup should normalize devices
-      once at the fetch boundary and let parsing/identity reuse that result.
+      applied in `DeviceManager.refreshSnapshot`, again in the private `parseDeviceList`, and a
+      third time inside `resolveParseDeviceIdentity`.
       Files: `lib/core/deviceManager.ts`, `lib/core/deviceManagerParseDevice.ts`,
       `lib/core/deviceManagerParseIdentity.ts`.
 - [ ] Audit whether daily-budget confidence scoring materially changes control decisions. If it is
@@ -400,36 +236,22 @@ has computed an allocation. The replan policy is documented in
       as either Bucket A ("must shrink to <=500") or Bucket B ("documented exception with a
       concrete raised ceiling"), replace file-level `eslint-disable` pragmas with per-file config
       overrides in `eslint.config.mjs` that cite the structural reason.
-      Why P2: the files most in need of the LOC rule are currently the ones waived from it, which
-      makes the limit effectively unenforced in the hotspots.
       Proposal: `notes/complexity-cleanup/god-file-policy.md`.
       Files: `eslint.config.mjs`, file-level disables in `app.ts`, `lib/**`.
-- [ ] Refresh complexity-cleanup notes so phase status, LOC snapshots, and migration writeups
-      match the current codebase.
-      Why P2: several notes still describe pre-implementation plans or old file sizes even though
-      the code has moved on.
-      Files: `notes/complexity-cleanup/README.md`,
-      `notes/complexity-cleanup/rebuild-scheduler-unification.md`,
-      `notes/complexity-cleanup/god-file-policy.md`.
-- [ ] Land the Phase 1 file consolidations once their target files have headroom: merge
-      `planRestoreAdmission.ts` and `planRestoreSupport.ts` into `planRestoreSwap.ts`; merge
-      `planStatusHelpers.ts` into `planStatusWriter.ts`; merge `appRealtimeDeviceReconcileRuntime.ts`
-      into `appRealtimeDeviceReconcile.ts`; bundle the tiny plan files (`planCandidatePower`,
-      `planSort`, `planHourContext`, `planOvershoot`, `planStateHelpers`, `planObservationPolicy`)
-      into a single `planBuilderHelpers.ts`; merge `planDebugDedupe.ts` and `planReasonStrings.ts`
-      into a new `planReasonFormatting.ts`.
-      Why P2: low-risk move-only work reducing directory surface. Blocked only where targets are
-      currently at or over the 500 LOC ceiling.
+- [ ] Land low-risk file consolidations once their target files have headroom. Merge tiny helpers
+      only where doing so reduces directory surface without hiding real subsystem boundaries.
       Files: `lib/plan/**`, `lib/app/appRealtimeDeviceReconcile*`.
 
-## P3 Tooling, architecture, and future work
+## P3 Future and Exploratory Work
 
+- [ ] Track per-device step changes with the same 30-day hourly retention model, so measured
+      usage history can explain which step or mode was active during each measured period.
+      Files: future device-level step-change tracker; usage-history UI.
+- [ ] Add a per-device usage history page showing measured kWh over time with step-change context.
+      Files: future device-level usage-history route and chart.
 - [ ] Consider allowing Homey Energy-backed `powerKw` as a fallback for stepped restore
       post-confirmation settlement when `measure_power` is missing, but keep manual overrides and
       other derived power sources non-authoritative for that release check.
-      Why P3: the stepped restore settlement path is now intentionally gated on `measure_power`
-      only; broadening it to a narrower Homey Energy fallback is optional follow-up work, not a
-      correctness blocker.
       Files: `lib/plan/planSteppedRestorePending.ts`, stepped restore settlement tests.
 - [ ] Remove the remaining `lib/utils/** -> lib/{core,plan}` imports, then make the architecture
       check strict instead of advisory.
@@ -446,5 +268,5 @@ has computed an allocation. The replan policy is documented in
       `notes/daily-budget-auto-adjust/README.md`.
       Files: daily budget state/service/UI/settings/diagnostics.
 - [ ] Keep the remaining future feature ideas small and design-driven: configurable per-device
-      cooldowns, explicit headroom reservations, richer price explainability, weather-aware budget
-      context, and small per-device action history in the UI.
+      cooldowns, explicit available-power reservations, richer price explainability,
+      weather-aware budget context, and small per-device action history in the UI.
