@@ -1635,7 +1635,7 @@ describe('Redesign plan UI', () => {
       // Status chip stays quiet when below safe pace and data is fresh
       expect(document.querySelector('.plan-hero .plan-chip:not(.plan-chip--muted)')).toBeNull();
       expect((document.querySelector('.plan-hero .plan-chip--muted') as HTMLElement | null)?.textContent?.trim())
-        .toBe('Mode: Home');
+        .toBe('Home mode');
       // No stale-data chip when power is fresh
       expect(document.querySelector('.plan-hero .plan-chip--alert')).toBeNull();
 

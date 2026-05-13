@@ -14,6 +14,7 @@ import {
   addModeButton,
   deleteModeButton,
   renameModeButton,
+  settingsActiveModeSummary,
 } from './dom.ts';
 import { getSetting, setSetting } from './homey.ts';
 import {
@@ -25,6 +26,7 @@ import { showToast, showToastError } from './toast.ts';
 import { resolveManagedState, state } from './state.ts';
 import { createDragHandle } from './components.ts';
 import { logSettingsError } from './logging.ts';
+import { DEFAULT_MODE_NAME, formatModeLabel, resolveModeName } from './modeLabels.ts';
 import { debouncedSetSetting } from './utils.ts';
 
 type MaterialTextFieldElement = HTMLElement & {
@@ -47,6 +49,11 @@ const createModeOption = (value: string, selected: boolean): MaterialSelectOptio
   headline.textContent = value;
   option.appendChild(headline);
   return option;
+};
+
+const renderActiveModeSummary = () => {
+  if (!settingsActiveModeSummary) return;
+  settingsActiveModeSummary.textContent = formatModeLabel(state.activeMode);
 };
 
 const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
@@ -87,7 +94,7 @@ export const loadModeAndPriorities = async () => {
   const budgetExempt = await getSetting(BUDGET_EXEMPT_DEVICES);
   const nativeWiring = await getSetting(NATIVE_EV_WIRING_DEVICES);
   const aliases = await getSetting('mode_aliases');
-  state.activeMode = typeof mode === 'string' && mode.trim() ? mode : 'Home';
+  state.activeMode = typeof mode === 'string' && mode.trim() ? mode : DEFAULT_MODE_NAME;
   state.editingMode = state.activeMode; // Start editing the active mode
   state.capacityPriorities = priorities && typeof priorities === 'object'
     ? priorities as Record<string, Record<string, number>>
@@ -106,31 +113,30 @@ export const loadModeAndPriorities = async () => {
 export const refreshActiveMode = async () => {
   const mode = await getSetting(OPERATING_MODE_SETTING);
   state.activeMode = typeof mode === 'string' && mode.trim() ? mode : 'Home';
-  if (activeModeSelect) {
-    activeModeSelect.value = state.activeMode;
-  }
+  renderModeOptions();
 };
 
 export const renderModeOptions = () => {
   const modes = new Set([state.activeMode]);
   Object.keys(state.capacityPriorities || {}).forEach((m) => modes.add(m));
   Object.keys(state.modeTargets || {}).forEach((m) => modes.add(m));
-  if (modes.size === 0) modes.add('Home');
+  if (modes.size === 0) modes.add(DEFAULT_MODE_NAME);
   const sortedModes = Array.from(modes).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
   if (modeSelect) {
     modeSelect.replaceChildren(
       ...sortedModes.map((mode) => createModeOption(mode, mode === state.editingMode)),
     );
-    modeSelect.value = state.editingMode || sortedModes[0] || 'Home';
+    modeSelect.value = state.editingMode || sortedModes[0] || DEFAULT_MODE_NAME;
   }
 
   if (activeModeSelect) {
     activeModeSelect.replaceChildren(
       ...sortedModes.map((mode) => createModeOption(mode, mode === state.activeMode)),
     );
-    activeModeSelect.value = state.activeMode || sortedModes[0] || 'Home';
+    activeModeSelect.value = state.activeMode || sortedModes[0] || DEFAULT_MODE_NAME;
   }
+  renderActiveModeSummary();
 };
 
 const getPriorityRows = (): HTMLElement[] => (
@@ -138,13 +144,13 @@ const getPriorityRows = (): HTMLElement[] => (
 );
 
 export const getPriority = (deviceId: string) => {
-  const mode = state.editingMode || 'Home';
+  const mode = state.editingMode || DEFAULT_MODE_NAME;
   return state.capacityPriorities[mode]?.[deviceId] ?? 100;
 };
 
 export const getDesiredTarget = (device: TargetDeviceSnapshot) => {
   if (!supportsTemperatureDevice(device)) return null;
-  const mode = state.editingMode || 'Home';
+  const mode = state.editingMode || DEFAULT_MODE_NAME;
   const value = state.modeTargets[mode]?.[device.id];
   if (typeof value === 'number') return normalizeDeviceTargetValue(device, value);
   const firstTarget = device.targets?.find?.(() => true);
@@ -237,7 +243,7 @@ export const renderPriorities = (devices: TargetDeviceSnapshot[]) => {
 };
 
 export const setActiveMode = async (mode: string) => {
-  const next = mode.trim() || 'Home';
+  const next = resolveModeName(mode);
   state.activeMode = next;
   renderModeOptions();
   try {
@@ -250,7 +256,7 @@ export const setActiveMode = async (mode: string) => {
 };
 
 export const setEditingMode = (mode: string) => {
-  const next = mode.trim() || 'Home';
+  const next = resolveModeName(mode);
   state.editingMode = next;
   renderModeOptions();
   renderPriorities(state.latestDevices);
@@ -323,7 +329,7 @@ const initSortable = () => {
 
 export const savePriorities = async () => {
   try {
-    const mode = (modeSelect?.value || '').trim() || 'Home';
+    const mode = resolveModeName(modeSelect?.value || '');
     state.editingMode = mode;
     const rows = getPriorityRows();
     const modeMap = state.capacityPriorities[mode] || {};
@@ -344,7 +350,7 @@ export const savePriorities = async () => {
 
 export const applyTargetChange = async (deviceId: string, rawValue: string) => {
   try {
-    const mode = (modeSelect?.value || state.editingMode || 'Home').trim() || 'Home';
+    const mode = resolveModeName(modeSelect?.value || state.editingMode || DEFAULT_MODE_NAME);
     state.editingMode = mode;
     const val = parseFloat(rawValue);
     if (!Number.isFinite(val)) return;
@@ -397,7 +403,7 @@ const ensureModeTemplates = async (mode: string) => {
   if (Object.keys(state.capacityPriorities || {}).length === 0 || Object.keys(state.modeTargets || {}).length === 0) {
     await loadModeAndPriorities();
   }
-  const templateMode = state.activeMode || 'Home';
+  const templateMode = state.activeMode || DEFAULT_MODE_NAME;
   const storedPriorities = await getSetting('capacity_priorities') as Record<string, Record<string, number>> | null;
   const storedTargets = await getSetting('mode_device_targets') as Record<string, Record<string, number>> | null;
 
@@ -474,7 +480,7 @@ const handleRenameMode = async () => {
 
 export const initModeHandlers = () => {
   modeSelect?.addEventListener('change', () => {
-    setEditingMode(modeSelect.value || 'Home');
+    setEditingMode(modeSelect.value || DEFAULT_MODE_NAME);
   });
   activeModeSelect?.addEventListener('change', async () => {
     const mode = (activeModeSelect?.value || '').trim();

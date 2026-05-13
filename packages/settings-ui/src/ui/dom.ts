@@ -161,6 +161,9 @@ export const addModeButton = document.querySelector('#add-mode-button') as MdBut
 export const deleteModeButton = document.querySelector('#delete-mode-button') as MdButtonElement;
 export const renameModeButton = document.querySelector('#rename-mode-button') as MdButtonElement;
 export const activeModeSelect = document.querySelector('#active-mode-select') as MdFilledSelectElement;
+export const settingsActiveModeSummary = document.querySelector(
+  '#settings-active-mode-summary',
+) as HTMLElement | null;
 export const priorityForm = document.querySelector('#priority-form') as HTMLFormElement;
 export const priorityList = qs('#priority-list');
 export const priorityEmpty = qs('#priority-empty');

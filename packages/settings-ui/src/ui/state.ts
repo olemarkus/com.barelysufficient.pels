@@ -9,6 +9,7 @@ import {
   createEmptyDeferredObjectiveSettings,
   type DeferredObjectiveSettingsV1,
 } from '../../../contracts/src/deferredObjectiveSettings.ts';
+import { DEFAULT_MODE_NAME } from './modeLabels.ts';
 
 export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 export type ShedBehavior = {
@@ -62,8 +63,8 @@ export const state: UiState = {
   devicesLoading: false,
   dryRun: false,
   capacityPriorities: {},
-  activeMode: 'Home',
-  editingMode: 'Home',
+  activeMode: DEFAULT_MODE_NAME,
+  editingMode: DEFAULT_MODE_NAME,
   latestDevices: [],
   modeTargets: {},
   controllableMap: {},

@@ -196,13 +196,6 @@
           <h2>Per-mode priorities &amp; temperatures</h2>
         </div>
       </div>
-      <div class="form-grid form-inline">
-        <label class="field">
-          <span class="field__label">Active mode</span>
-          <md-filled-select id="active-mode-select" name="active_mode"></md-filled-select>
-          <small class="field__hint">Changes apply immediately.</small>
-        </label>
-      </div>
       <form id="priority-form" class="form-grid">
         <div class="field">
           <label class="field__label" for="mode-select">Edit mode</label>
@@ -490,6 +483,17 @@
         <h2 id="settings-title">Configure PELS</h2>
         <p class="muted">Choose what to adjust. Everyday planning stays in Budget; rare recovery tools stay in Advanced.</p>
       </div>
+      <section class="settings-form-card settings-current-mode" aria-labelledby="settings-current-mode-label">
+        <div class="settings-current-mode__summary">
+          <p class="eyebrow" id="settings-current-mode-label">Current mode</p>
+          <h3 id="settings-active-mode-summary">Home mode</h3>
+          <p class="muted">Priorities and temperatures stay in Modes.</p>
+        </div>
+        <label class="field settings-current-mode__field">
+          <span class="field__label">Mode</span>
+          <md-filled-select id="active-mode-select" name="active_mode"></md-filled-select>
+        </label>
+      </section>
       <md-list class="settings-nav-list">
         <md-list-item type="button" class="settings-nav-card" data-settings-target="limits">
           <span slot="headline" class="settings-nav-card__title">Limits &amp; safety</span>
@@ -503,7 +507,7 @@
         </md-list-item>
         <md-list-item type="button" class="settings-nav-card" data-settings-target="modes">
           <span slot="headline" class="settings-nav-card__title">Modes</span>
-          <span slot="supporting-text" class="settings-nav-card__description">Mode behavior and priorities</span>
+          <span slot="supporting-text" class="settings-nav-card__description">Priorities and temperatures</span>
           <span slot="end" class="settings-nav-card__chevron" aria-hidden="true">›</span>
         </md-list-item>
         <md-list-item type="button" class="settings-nav-card" data-settings-target="electricity-prices">

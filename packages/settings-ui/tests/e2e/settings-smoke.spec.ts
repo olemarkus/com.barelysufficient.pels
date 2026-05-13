@@ -1,4 +1,5 @@
 import { expect, test, type Page } from './fixtures/test';
+import { setMdValue } from './fixtures/materialWeb';
 
 const requestLegacyUi = async (page: Page) => {
   await page.addInitScript(() => {
@@ -83,6 +84,29 @@ test.describe('Settings UI (smoke)', () => {
 
     await openSettingsSection(page, 'advanced');
     await expect(page.locator('#advanced-panel')).toBeVisible();
+  });
+
+  test('shows and switches the current mode from Settings', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
+
+    await page.getByRole('tab', { name: 'Settings' }).click();
+    const currentMode = page.locator('#settings-active-mode-summary');
+    await expect(currentMode).toHaveText('Home mode');
+    await expect(page.locator('#active-mode-select md-select-option[value="Away"]')).toHaveCount(1);
+
+    await setMdValue(page, '#active-mode-select', 'Away');
+
+    await expect(currentMode).toHaveText('Away mode');
+    await expect(page.locator('#toast')).toContainText('Active mode set to Away');
+
+    const stored = await page.evaluate(() => new Promise<unknown>((resolve, reject) => {
+      (window as any).Homey.get('operating_mode', (error: Error | null, value?: unknown) => {
+        if (error) reject(error);
+        else resolve(value);
+      });
+    }));
+    expect(stored).toBe('Away');
   });
 
   test('lets users turn off simulation mode from the warning banner', async ({ page }) => {
