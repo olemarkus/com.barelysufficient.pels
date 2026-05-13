@@ -5,16 +5,22 @@ file.
 
 ## Priority Rubric
 
-- **P0:** next-release blocker: release-blocking correctness, control-integrity, startup,
+- **P0:** v1 / next-release blocker: release-blocking correctness, control-integrity, startup,
   validation, or data-loss issue that can affect current runtime behavior without another feature
-  or broad refactor landing first.
-- **P1:** next patch-release correctness or data-integrity work after the next release: bounded
-  planner/executor risks, settings writes that can corrupt persisted state, supported-width UI
-  breakage, or missing validation around commandable device contracts.
-- **P2:** later product, observability, documentation, and maintainability work where current
-  behavior is usable or has a workaround, but the gap increases support cost or slows future work.
+  or broad refactor landing first. Only P0 items are required before the v1 release.
+- **P1:** next patch-release correctness, data-integrity, first-impression UI polish, and
+  supported UX work after v1: bounded planner/executor risks, settings writes that can corrupt
+  persisted state, supported-width UI breakage, confusing visible wording, or missing validation
+  around commandable device contracts.
+- **P2:** later / future product, observability, documentation, and maintainability work where
+  current behavior is usable or has a workaround, but the gap increases support cost or slows
+  future work.
 - **P3:** future capability, optional hardening, or exploratory cleanup with no current correctness
   or supportability pressure.
+
+The redesigned Settings UI is expected to be many users' first exposure to the new UI direction.
+P1 UI items should prioritize a pleasant surprise: compact, calm, coherent, and clear enough that
+users trust the redesign immediately, while still keeping non-P0 polish out of the v1 release gate.
 
 ## P0 Release Blockers
 
@@ -195,6 +201,59 @@ file.
       future cap eligibility, and strømstøtte behavior is unchanged.
       Files: `lib/price/priceServiceNorway.ts`, `test/norgesprisPriceService.test.ts`,
       price UI/widget tests that render past combined prices.
+- [ ] Fix chart clarity issues from the first-impression Settings UI audit.
+      Keep this as patch work, not a v1 blocker: the redesigned UI is coherent enough to ship,
+      but the first patch should tighten the graphs users are most likely to inspect. Normalize
+      deadline-plan price values and units against the Budget chart convention (`kr/kWh` or
+      `øre/kWh` shown explicitly), make the Budget hourly-plan legend match the rendered
+      `Managed` / `Background` split series, and resize/reinitialize Usage ECharts when a hidden
+      panel becomes visible so SVGs cannot keep a too-wide fallback size after tab navigation.
+      While fixing the resize path, review module-level chart instance state and move lifecycle
+      ownership to the rendering view or component where needed.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts`,
+      `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
+      `packages/settings-ui/src/ui/budgetRedesignChart.ts`,
+      `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
+      `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,
+      `packages/settings-ui/tests/e2e/charts-layout.spec.ts`.
+- [ ] Align user-visible Homey labels, Flow cards, and public docs with the redesigned Settings UI
+      terminology.
+      The settings UI mostly follows `notes/ui-terminology.md`, but Homey-facing labels and public
+      docs still teach old wording and old navigation. Replace visible `headroom`, `soft limit`,
+      `shed`, `controlled/uncontrolled`, `shortfall`, `Soft margin`, `Dry run`, `Cheap delta`, and
+      `Expensive delta` with the approved vocabulary. Update docs to describe the current shell:
+      `Overview`, `Budget`, `Usage`, `Smart tasks`, and `Settings`, with setup paths such as
+      `Settings > Limits & safety`, `Settings > Devices`, `Settings > Electricity prices`, and
+      `Settings > Simulation mode`.
+      Files: `.homeycompose/capabilities/*.json`, `.homeycompose/flow/**/*.json`,
+      `docs/configuration.md`, `docs/getting-started.md`, relevant generated `app.json` after
+      `homey app validate`.
+- [ ] Do a bounded first-impression copy polish pass on the redesigned Settings UI.
+      This should stay small and user-visible: change `Mode: Home` to `Home mode`, explain the
+      `Safe pace now` tooltip from `softLimitSource`, replace `Price-shaped plan` with
+      `Cheaper-hour planning`, replace `Unmanaged usage reserve` with `Background usage reserve`,
+      avoid `model` in daily-budget success toasts, and refine device-card limited/off wording
+      such as `Paused by PELS` so it matches `notes/ui-terminology.md`. Do not rename internal
+      identifiers, fixtures, or log strings.
+      Files: `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/src/ui/views/PlanHero.tsx`,
+      `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
+      `packages/settings-ui/src/ui/budgetRedesign.ts`,
+      `packages/settings-ui/src/ui/budgetAdjustController.ts`,
+      `packages/shared-domain/src/planTemperatureCardText.ts`,
+      `packages/shared-domain/src/planSteppedCardText.ts`.
+- [ ] Make the browser Homey stub reliable enough for future screenshot UI audits.
+      Keep audit states at the Homey SDK boundary instead of injecting component props. Add missing
+      route handlers for diagnostics, deferred-objective history, refresh/reset actions, and daily
+      budget recompute. Add `deferredObjectiveActivePlans` to the shared unit mock bootstrap state,
+      and add typed audit scenario fixtures around `SettingsUiBootstrap`, `SettingsUiPlanSnapshot`,
+      `SettingsUiPowerPayload`, and `DailyBudgetUiPayload` so normal, pressure, over-budget,
+      missing-price, empty-history, and dense-device states can be rendered repeatedly.
+      Files: `packages/settings-ui/tests/e2e/fixtures/homey.stub.js`,
+      `packages/settings-ui/test/helpers/homeyApiMock.ts`,
+      `packages/contracts/src/settingsUiApi.ts`,
+      settings UI mock and browser smoke tests.
 
 ## P2 Product, Observability, and Maintainability
 
@@ -302,6 +361,44 @@ file.
       Files: `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
       `packages/settings-ui/public/style.css`,
       `packages/settings-ui/tests/e2e/material-select.spec.ts`, budget/settings screenshots.
+- [ ] Finish chart token and chart-test hardening from the first-impression UI audit.
+      Add shared semantic chart tokens for actual, plan, background usage, managed usage, price,
+      forecast/progress, heatmap low/high, grid, tooltip surface, and tooltip border. Remove raw
+      chart color fallbacks and hard-coded series fills where practical. Add deterministic visual
+      assertions for legend text matching rendered series, explicit axis/tooltip units, price-unit
+      normalization, SVG bounds, and no deadline legend/axis overlap at 320px and 480px.
+      Files: `packages/settings-ui/public/style.css`,
+      `packages/settings-ui/src/ui/budgetRedesignChart.ts`,
+      `packages/settings-ui/src/ui/dailyBudgetChartEcharts.ts`,
+      `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
+      `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,
+      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/tests/e2e/charts-layout.spec.ts`,
+      screenshot/audit Playwright coverage.
+- [ ] Promote the Price-aware devices value adjuster or replace it with a Material Web control.
+      `PriceAwareDevicesView` currently owns a page-local `ValueAdjuster` for cheap-hour boost and
+      expensive-hour reduction. If the +/- stepper UX remains the right product shape, promote it
+      to one token-driven shared PELS primitive; otherwise use `md-filled-text-field` or another
+      suitable Material Web component.
+      Files: `packages/settings-ui/src/ui/views/PriceAwareDevicesView.tsx`,
+      `packages/settings-ui/public/style.css`, shared settings UI component primitives.
+- [ ] Add a reusable audit-state Playwright matrix for the redesigned Settings UI.
+      Current screenshot specs are docs/capture oriented. Add an audit-only suite that renders the
+      main surfaces and important states at 320px and 480px from the Homey SDK boundary, writes
+      artifacts to ignored output by default, and only writes docs assets behind an explicit env
+      var. Include normal, capacity pressure, hard-cap exceeded, device limited but still drawing,
+      unavailable/inactive device, daily budget tight/over, missing/unreliable prices, empty
+      history, dense devices, graph-heavy pages, and device-detail surfaces.
+      Files: `packages/settings-ui/tests/e2e/**`,
+      `packages/settings-ui/tests/e2e/fixtures/homey.stub.js`,
+      ignored `output/` artifacts only.
+- [ ] Make the browser Homey stub follow the injected SDK handoff more closely.
+      After assigning `window.Homey`, call `window.onHomeyReady?.(Homey)` so full-browser audits
+      exercise the same delivery path as Homey's injected settings SDK. Keep the existing global
+      fallback covered for compatibility.
+      Files: `packages/settings-ui/tests/e2e/fixtures/homey.stub.js`,
+      settings UI boot tests.
 - [ ] Update the Settings UI Homey API mock to stop serving devices from
       `target_devices_snapshot`. Production now serves `/ui_devices` and `/ui_refresh_devices`
       from runtime app state, so the mock should model live device data explicitly and avoid
