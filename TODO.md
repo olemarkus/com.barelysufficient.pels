@@ -110,14 +110,27 @@ file.
       Why P1: a single draft can bleed between device detail sessions and makes fallback chains
       depend on whichever device wrote the draft last.
       Files: `packages/settings-ui/src/ui/deviceDetail/steppedLoadDraft.ts`.
-- [ ] Unify duplicated device-state derivation and keep presentation text out of shared domain
-      contracts where possible.
-      Why P1: overview/device detail/legacy plan code derive similar states independently, and
-      UI-facing wording in shared-domain makes control-state reuse harder to type cleanly.
+- [x] Unify duplicated device-state derivation.
+      Closed by `packages/shared-domain/src/deviceStatePredicates.ts`:
+      `normalizeDeviceState`, `isOnLikeState`, `isOffLikeState`, and
+      `isGrayStateDevice` are single-sourced for `deviceOverview`,
+      `planLegacy`, and `deviceUtils`. Each of those used to carry a drifted
+      copy (planLegacy's `isOffLikeState` did not normalize case/whitespace
+      and its `isOnLikeState` treated `'disappeared'` as on-like).
+      Note: `planSteppedCardText.isSteppedCardOffLikeState` is intentionally
+      separate — it has broader semantics (also treats empty / `'disappeared'`
+      as off-for-display so the stepped card renders "Off now" when the
+      device has no fresh observation) and is documented as display-only.
+- [ ] Move presentation text out of `shared-domain/deviceOverview.ts`.
+      Why P1: the overview generator emits human-readable English strings
+      (`'Charging requested'`, `'Restoring'`, `'Active (temperature-managed)'`,
+      `'Shed (charging paused)'`, …). That couples shared-domain to a single
+      UI language and makes control-state reuse harder to type cleanly. Replace
+      the inline strings with a code-keyed contract that the Settings UI maps
+      to display text.
       Files: `packages/shared-domain/src/deviceOverview.ts`,
-      `packages/settings-ui/src/ui/deviceUtils.ts`,
-      `packages/settings-ui/src/ui/planLegacy.ts`,
-      `packages/contracts/src/settingsUiApi.ts`.
+      `packages/contracts/src/settingsUiApi.ts`,
+      `packages/settings-ui/src/ui/**` rendering call sites.
 - [x] Tighten EV SoC layer boundaries before expanding EV objectives.
       Closed by dropping `source: 'capability' | 'flow'` from the public
       `DeviceStateOfChargeSnapshot` contract: nothing outside the producer was reading

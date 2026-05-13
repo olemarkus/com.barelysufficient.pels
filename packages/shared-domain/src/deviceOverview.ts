@@ -4,6 +4,12 @@ import {
   PLAN_REASON_CODES,
   type DeviceReason,
 } from './planReasonSemantics.js';
+import {
+  isGrayStateDevice,
+  isOffLikeState,
+  isOnLikeState,
+  normalizeDeviceState,
+} from './deviceStatePredicates.js';
 
 export type DeviceOverviewSnapshot = {
   currentState?: string;
@@ -42,35 +48,12 @@ export type DeviceOverviewStrings = {
   statusMsg: string;
 };
 
-const normalizeState = (value: string | undefined): string => (value || '').trim().toLowerCase();
-
 const isSteppedLoadDevice = (device: DeviceOverviewSnapshot): boolean => (
   device.controlModel === 'stepped_load'
 );
 const isEvChargerDevice = (device: DeviceOverviewSnapshot): boolean => (
   device.controlCapabilityId === 'evcharger_charging'
 );
-
-const isGrayStateDevice = (device: DeviceOverviewSnapshot): boolean => {
-  if (device.available === false) return true;
-  if (device.observationStale === true) return true;
-  const currentState = normalizeState(device.currentState);
-  return currentState === 'unknown' || currentState === 'disappeared';
-};
-
-const isOnLikeState = (value: string | undefined): boolean => {
-  const normalized = normalizeState(value);
-  if (!normalized) return false;
-  return normalized !== 'off'
-    && normalized !== 'unknown'
-    && normalized !== 'not_applicable'
-    && normalized !== 'disappeared';
-};
-
-const isOffLikeState = (state?: string): boolean => {
-  const normalized = normalizeState(state);
-  return normalized === 'off' || normalized === 'unknown';
-};
 
 export const getDeviceOverviewReportedStepId = (device: DeviceOverviewSnapshot): string | undefined => (
   (device.actualStepSource === 'reported' ? device.actualStepId : undefined) ?? device.reportedStepId
@@ -178,7 +161,7 @@ const resolveEvKeepStateMsg = (device: DeviceOverviewSnapshot, evState: string):
 
 const resolveEvStateMsg = (device: DeviceOverviewSnapshot): string | null => {
   if (!isEvChargerDevice(device)) return null;
-  const evState = normalizeState(device.evChargingState);
+  const evState = normalizeDeviceState(device.evChargingState);
 
   if (device.plannedState === 'shed') return 'Shed (charging paused)';
   if (device.plannedState === 'inactive') return resolveEvInactiveStateMsg(evState);
@@ -191,7 +174,7 @@ const resolveKeepStateMsg = (device: DeviceOverviewSnapshot): string => {
   if (evStateMsg) return evStateMsg;
   if (device.binaryCommandPending && isOffLikeState(device.currentState)) return 'Restore requested';
   if (isOffLikeState(device.currentState)) return 'Restoring';
-  if (normalizeState(device.currentState) === 'not_applicable') return 'Active (temperature-managed)';
+  if (normalizeDeviceState(device.currentState) === 'not_applicable') return 'Active (temperature-managed)';
   return 'Active';
 };
 
@@ -263,7 +246,7 @@ const appendOverviewStatus = (statusMsg: string, extraStatus: string | null): st
 };
 
 export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOverviewStrings => {
-  const currentPowerRaw = normalizeState(device.currentState) || 'unknown';
+  const currentPowerRaw = normalizeDeviceState(device.currentState) || 'unknown';
   let powerMsg: string | null = null;
   if (!isSteppedLoadDevice(device) && currentPowerRaw !== 'not_applicable') {
     const currentPower = currentPowerRaw;
@@ -310,7 +293,7 @@ export const buildDeviceOverviewTransitionSignature = (
   device: DeviceOverviewSnapshot,
 ): string => (
   JSON.stringify({
-    currentState: normalizeState(device.currentState) || 'unknown',
+    currentState: normalizeDeviceState(device.currentState) || 'unknown',
     plannedState: device.plannedState ?? null,
     controlModel: device.controlModel ?? null,
     controllable: device.controllable === false,
