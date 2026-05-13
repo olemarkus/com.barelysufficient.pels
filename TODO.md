@@ -53,6 +53,15 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       device data during startup or overlapping refreshes.
       Files: `lib/app/appSnapshotHelpers.ts`, `lib/app/settingsUiAppRuntime.ts`,
       `lib/app/settingsUiApi.ts`, settings UI API/runtime tests.
+- [ ] Investigate repeated stale managed-device refreshes that never become fresh.
+      `/tmp/pels/start.main.stdout.log` from 2026-05-13 repeatedly emitted
+      `stale_device_observation_refresh` with `staleDevices: 2`, `refreshedDevices: 2`, and
+      `freshAfterRefreshDevices: 0`. Determine whether those devices lack fresh telemetry,
+      targeted refresh is not replacing stale fields, or freshness metadata is preserved
+      incorrectly. Add a regression proving stale observations either become fresh when Homey
+      returns fresh data or are degraded with a clear reason when they cannot.
+      Files: `lib/app/appSnapshotHelpers.ts`, observer/device-state freshness helpers,
+      snapshot-refresh tests.
 - [ ] Make Settings UI device setting writes fail closed when a fresh settings read is missing or
       invalid. Avoid falling back to `{}` or caller-provided defaults and writing a partial object
       back as if it were the current state.
@@ -253,6 +262,21 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       remaining snapshot/UI contract gaps against `notes/starvation/README.md`.
       Files: `lib/diagnostics/**`, `flowCards/**`, `drivers/pels_insights/**`,
       plan snapshot/contracts/UI wiring.
+- [ ] Profile and reduce plan-rebuild CPU spikes seen in live Homey runs.
+      `/tmp/pels/start.main.stderr.log` from 2026-05-13 had 11 Homey `cpuwarn` entries, and
+      stdout had about 80 `[perf] cpu spike` entries. Plan rebuilds in that run were roughly
+      1.6s median, 1.8s p90, and 3.7s max during `hard_cap_breach`. Use the existing perf
+      counters to isolate hot paths in plan build, status write, and apply work, then add a
+      repeatable perf check or benchmark before changing planner code.
+      Files: `lib/plan/planBuilder.ts`, `lib/plan/planService.ts`, `lib/app/perfLogging.ts`,
+      perf tests.
+- [ ] Improve overshoot attribution for hard-cap incidents.
+      The 2026-05-13 log sample included a hard-cap breach with `totalKw: 5.655`,
+      `hardCapHeadroomKw: -0.655`, `overshootUnattributedDeltaKw: 3.77`, and empty contributor
+      arrays. If telemetry is available, surface the main managed/background contributors; if it
+      is not, emit an explicit no-attribution reason so incident logs explain why attribution is
+      unavailable.
+      Files: `lib/plan/planBuilder.ts`, overshoot attribution tests.
 - [ ] Continue the Settings UI reorganization program from
       `notes/settings-ui-reorganization.md` as stacked reviewable PRs. The five-destination
       navigation shell, Budget Plan/Adjust surface, Smart tasks list, and Settings card/list are
@@ -387,10 +411,24 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Why P2: the overview generator emits human-readable English strings
       (`'Charging requested'`, `'Restoring'`, `'Active (temperature-managed)'`,
       `'Shed (charging paused)'`, ...). That couples shared-domain to a single UI language and
-      makes control-state reuse harder to type cleanly.
+      makes control-state reuse harder to type cleanly. The 2026-05-13 log review confirmed
+      those strings reach overview payloads as `stateMsg`/`statusMsg`/`reasonText`, including
+      current user-facing text that should render through `notes/ui-terminology.md` instead:
+      `Shed (powered off)`, `insufficient headroom to restore`, `shortfall (...)`, and
+      `cooldown (restore, ... remaining)`.
       Files: `packages/shared-domain/src/deviceOverview.ts`,
       `packages/contracts/src/settingsUiApi.ts`,
       `packages/settings-ui/src/ui/**` rendering call sites.
+- [ ] Investigate Settings UI bundle growth and the runtime module-type warning from Homey runs.
+      Current start logs show esbuild warning on `dist/script.js 1.2mb` and Node
+      `[MODULE_TYPELESS_PACKAGE_JSON]` warnings for
+      `packages/shared-domain/src/planReasonSemanticsCore.js`, despite
+      `packages/shared-domain/package.json` declaring ESM. Verify why the packaged runtime import
+      path does not see the workspace package metadata, fix the warning without broad package-mode
+      churn, and decide whether the settings script needs an explicit size budget.
+      Files: `package.json`, `packages/shared-domain/package.json`,
+      `packages/shared-domain/src/planReasonSemanticsCore.js`,
+      `packages/settings-ui/package.json`, settings build/sync scripts.
 - [ ] Update public deadline documentation once the feature enters testing. Keep
       `docs/technical.md`, `docs/flow-cards.md`, and any deadline-plan docs aligned with the
       runtime semantics for EV and heater objectives: already-met targets are live `satisfied`
