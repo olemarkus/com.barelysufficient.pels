@@ -2,6 +2,7 @@ import type { DevicePlan, PlanInputDevice } from '../plan/planTypes';
 import { isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
 import type {
   ExecutableDeviceIntent,
+  ExecutableEvIntent,
   ExecutableObservedDeviceState,
   ExecutableSteppedLoadIntent,
 } from './executablePlan';
@@ -133,12 +134,30 @@ function hasExecutableBinaryExecutionDrift(
   if (intent.steppedLoad) {
     return hasExecutableSteppedLoadExecutionDrift(intent.steppedLoad, observed, runtime);
   }
+  if (intent.ev) {
+    return hasExecutableEvExecutionDrift(intent.ev, observed, runtime);
+  }
   const expectedBinaryState = resolveExpectedBinaryStateForIntent(intent);
   return hasBinaryStateDrift({
     expectedBinaryState,
     observed,
     pendingBinary: runtime.pendingBinary,
   });
+}
+
+function hasExecutableEvExecutionDrift(
+  intent: ExecutableEvIntent,
+  observed: ExecutableObservedDeviceState,
+  runtime: DriftRuntimeState,
+): boolean {
+  if (isPendingBinaryCommandMatchingExpected(runtime.pendingBinary, intent.kind === 'ev_resume' ? 'on' : 'off')) {
+    return false;
+  }
+  const chargingState = observed.snapshot.evChargingState;
+  if (intent.kind === 'ev_resume') {
+    return chargingState === 'plugged_in_paused';
+  }
+  return chargingState === 'plugged_in_charging';
 }
 
 function hasExecutableSteppedLoadExecutionDrift(

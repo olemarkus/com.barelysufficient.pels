@@ -61,6 +61,27 @@ describe('applyDeferredObjectiveAdmission', () => {
     expect(decisions.get('dev1')).toEqual({ kind: 'planned', requestedMinimumStepId: 'low' });
   });
 
+  it('adds an EV resume intent for an EV objective in a planned bucket', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'ev1',
+      objectiveId: 'ev1:ev_soc',
+      objectiveKind: 'ev_soc',
+      targetPercent: 80,
+      currentPercent: 40,
+      targetTemperatureC: null,
+      currentTemperatureC: null,
+      kWhPerPercent: 1,
+      kWhPerDegreeC: null,
+      horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc' }),
+    });
+    const decisions = applyDeferredObjectiveAdmission([diagnostic]);
+    expect(decisions.get('ev1')).toEqual({
+      kind: 'planned',
+      requestedMinimumStepId: 'low',
+      evCommandIntent: 'ev_resume',
+    });
+  });
+
   it('returns idle when the current bucket has no planned energy', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'dev1',
@@ -70,6 +91,27 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
     expect(decisions.get('dev1')).toEqual({ kind: 'idle' });
+  });
+
+  it('adds an EV pause intent for an EV objective in an idle bucket', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'ev1',
+      objectiveId: 'ev1:ev_soc',
+      objectiveKind: 'ev_soc',
+      targetPercent: 80,
+      currentPercent: 40,
+      targetTemperatureC: null,
+      currentTemperatureC: null,
+      kWhPerPercent: 1,
+      kWhPerDegreeC: null,
+      horizonPlan: buildHorizonPlan({
+        kind: 'ev_soc',
+        objectiveId: 'ev1:ev_soc',
+        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, requestedMinimumStepId: null },
+      }),
+    });
+    const decisions = applyDeferredObjectiveAdmission([diagnostic]);
+    expect(decisions.get('ev1')).toEqual({ kind: 'idle', evCommandIntent: 'ev_pause' });
   });
 
   it('returns idle when the current bucket is missing entirely', () => {

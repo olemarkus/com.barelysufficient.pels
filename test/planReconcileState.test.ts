@@ -46,6 +46,20 @@ const buildBinaryDevice = (
   ...overrides,
 });
 
+const buildEvDevice = (
+  overrides: Partial<DevicePlan['devices'][number]> = {},
+): DevicePlan['devices'][number] => buildBinaryDevice({
+  id: 'ev-1',
+  name: 'EV Charger',
+  currentTarget: null,
+  plannedTarget: null,
+  deviceClass: 'evcharger',
+  controlCapabilityId: 'evcharger_charging',
+  evChargingState: 'plugged_in_paused',
+  deferredEvCommandIntent: 'ev_resume',
+  ...overrides,
+});
+
 const buildPlan = (devices: DevicePlan['devices']): DevicePlan => ({
   meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
   devices,
@@ -255,6 +269,76 @@ describe('planReconcileState stepped device drift', () => {
       }];
 
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
+    });
+
+    it('treats paused EV state as drift when a deadline resume is expected', () => {
+      const plan = buildPlan([buildEvDevice()]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'ev-1',
+        name: 'EV Charger',
+        currentOn: true,
+        hasBinaryControl: true,
+        controlCapabilityId: 'evcharger_charging',
+        evChargingState: 'plugged_in_paused',
+        targets: [],
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'ev-1')).toBe(true);
+    });
+
+    it('dampens EV deadline resume drift while the matching binary command is pending', () => {
+      const plan = buildPlan([buildEvDevice()]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'ev-1',
+        name: 'EV Charger',
+        currentOn: true,
+        hasBinaryControl: true,
+        controlCapabilityId: 'evcharger_charging',
+        evChargingState: 'plugged_in_paused',
+        binaryCommandPending: true,
+        binaryCommandPendingDesired: true,
+        targets: [],
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'ev-1')).toBe(false);
+    });
+
+    it('treats charging EV state as drift when a deadline pause is expected', () => {
+      const plan = buildPlan([buildEvDevice({
+        evChargingState: 'plugged_in_charging',
+        deferredEvCommandIntent: 'ev_pause',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'ev-1',
+        name: 'EV Charger',
+        currentOn: true,
+        hasBinaryControl: true,
+        controlCapabilityId: 'evcharger_charging',
+        evChargingState: 'plugged_in_charging',
+        targets: [],
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'ev-1')).toBe(true);
+    });
+
+    it('dampens EV deadline pause drift while the matching binary command is pending', () => {
+      const plan = buildPlan([buildEvDevice({
+        evChargingState: 'plugged_in_charging',
+        deferredEvCommandIntent: 'ev_pause',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'ev-1',
+        name: 'EV Charger',
+        currentOn: true,
+        hasBinaryControl: true,
+        controlCapabilityId: 'evcharger_charging',
+        evChargingState: 'plugged_in_charging',
+        binaryCommandPending: true,
+        binaryCommandPendingDesired: false,
+        targets: [],
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'ev-1')).toBe(false);
     });
 
     it('does not treat capacity-control-off keep state as drift without executor restore context', () => {

@@ -3,9 +3,12 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CONTROLLABLE_DEVICES,
+  DEFERRED_OBJECTIVES_SETTINGS,
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
 } from '../lib/utils/settingsKeys';
+import { getDateKeyInTimeZone, getDateKeyStartMs } from '../lib/utils/dateUtils';
+import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
 import { getLatestPlanSnapshotForTests, MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from './mocks/homey';
 import { cleanupApps, createApp, getLatestTargetSnapshotForTests } from './utils/appTestUtils';
 import { reasonText } from './utils/deviceReasonTestUtils';
@@ -24,6 +27,9 @@ type InternalApp = {
   refreshTargetDevicesSnapshot(options?: { fast?: boolean }): Promise<void>;
   planService: {
     rebuildPlanFromCache(reason?: string): Promise<void>;
+  };
+  dailyBudgetService: {
+    getSnapshot(): DailyBudgetUiPayload | null;
   };
   capacityGuard: {
     reportTotalPower(powerKw: number): void;
@@ -54,9 +60,12 @@ type PlanDeviceEntry = {
   id: string;
   plannedState?: string;
   reason?: string;
+  deferredEvCommandIntent?: 'ev_resume' | 'ev_pause';
 };
 
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
+const HOUR_MS = 60 * 60 * 1000;
+const EV_DEADLINE_TEST_NOW_MS = Date.UTC(2026, 4, 13, 10, 0, 0);
 
 let currentTimeMs = 1_730_000_000_000;
 const originalDateNow = Date.now;
@@ -82,6 +91,7 @@ class EaseeMockCharger extends MockDevice {
         'target_circuit_current',
         'evcharger_charging',
         'evcharger_charging_state',
+        'measure_battery',
       ],
       'evcharger',
     );
@@ -96,6 +106,7 @@ class EaseeMockCharger extends MockDevice {
   async seedState(state: EaseeChargingState): Promise<void> {
     await super.setCapabilityValue('target_charger_current', 0);
     await super.setCapabilityValue('target_circuit_current', 0);
+    await super.setCapabilityValue('measure_battery', 40);
     await this.applyObservedState(state);
   }
 
@@ -289,7 +300,76 @@ describe('EV charger integration', () => {
     },
   );
 
-  it('keeps a paused charger active without an EV restore command when power is unknown', async () => {
+  it('resumes a paused plugged-in charger during a planned EV deadline bucket', async () => {
+    currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
+    const charger = new EaseeMockCharger({ loadW: 7200 });
+    await charger.seedState('plugged_in_paused');
+    const app = await createEvApp(charger, [charger], {
+      evDeadlinePricesByRelativeHour: [1, 50, 50, 50],
+    });
+
+    const plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
+    const evPlan = getPlanEntry(plan, charger.idValue);
+
+    expect(evPlan.deferredEvCommandIntent).toBe('ev_resume');
+    expect(evPlan.plannedState).not.toBe('inactive');
+    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:true']);
+
+    const snapshot = await refreshSnapshot(app);
+    const entry = getSnapshotEntry(snapshot, charger.idValue);
+    expect(entry).toEqual(expect.objectContaining({
+      currentOn: true,
+      evChargingState: 'plugged_in_charging',
+    }));
+  });
+
+  it('pauses a charging charger during an idle EV deadline bucket', async () => {
+    currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
+    const charger = new EaseeMockCharger();
+    await charger.seedState('plugged_in_charging');
+    const app = await createEvApp(charger, [charger], {
+      evDeadlinePricesByRelativeHour: [100, 1, 1, 1],
+    });
+
+    await rebuildPlan(app, { totalPowerKw: 7.2, softLimitKw: 10.0 });
+
+    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:false']);
+
+    const snapshot = await refreshSnapshot(app);
+    const entry = getSnapshotEntry(snapshot, charger.idValue);
+    expect(entry).toEqual(expect.objectContaining({
+      currentOn: true,
+      evChargingState: 'plugged_in_paused',
+    }));
+  });
+
+  it('skips planned EV deadline resume when power is stale-fail-closed', async () => {
+    currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
+    const charger = new EaseeMockCharger();
+    await charger.seedState('plugged_in_paused');
+    const app = await createEvApp(charger, [charger], {
+      evDeadlinePricesByRelativeHour: [1, 50, 50, 50],
+    });
+
+    const appState = app as InternalApp & { powerTracker: { lastTimestamp?: number } };
+    appState.computeDynamicSoftLimit = () => 10.0;
+    appState.capacityGuard.reportTotalPower(0.4);
+    appState.powerTracker.lastTimestamp = currentTimeMs - 10 * 60 * 1000;
+    await appState.planService.rebuildPlanFromCache('ev_deadline_stale_power_test');
+    await flushPromises();
+
+    const plan = getLatestPlanSnapshotForTests() as { devices: PlanDeviceEntry[] };
+    expect(getPlanEntry(plan, charger.idValue).deferredEvCommandIntent).toBeUndefined();
+    expect(charger.getCommandSequence()).toEqual([]);
+
+    appState.powerTracker.lastTimestamp = currentTimeMs;
+    await appState.planService.rebuildPlanFromCache('ev_deadline_power_fresh_test');
+    await flushPromises();
+
+    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:true']);
+  });
+
+  it('keeps non-deadline paused charger behavior unchanged when power is unknown', async () => {
     const charger = new EaseeMockCharger();
     await charger.seedState('plugged_in_paused');
     const app = await createEvApp(charger);
@@ -383,6 +463,7 @@ async function createEvApp(
   devices: MockDevice[] = [charger],
   options?: {
     capacityPriorities?: Record<string, Record<string, number>>;
+    evDeadlinePricesByRelativeHour?: number[];
   },
 ): Promise<InternalApp> {
   setMockDrivers({
@@ -404,12 +485,93 @@ async function createEvApp(
   if (options?.capacityPriorities) {
     mockHomeyInstance.settings.set('capacity_priorities', options.capacityPriorities);
   }
-
   const app = createApp() as unknown as InternalApp;
   await app.onInit();
+  if (options?.evDeadlinePricesByRelativeHour) {
+    app.dailyBudgetService.getSnapshot = () => buildEvDeadlineDailyBudgetSnapshot(options.evDeadlinePricesByRelativeHour!);
+  }
   await app.refreshTargetDevicesSnapshot({ fast: false });
+  if (options?.evDeadlinePricesByRelativeHour) configureEvDeadlineObjective(charger);
   charger.clearCommandLog();
   return app;
+}
+
+function buildEvDeadlineDailyBudgetSnapshot(pricesByRelativeHour: number[]): DailyBudgetUiPayload {
+  const now = new Date(currentTimeMs);
+  const timeZone = 'Europe/Oslo';
+  const todayKey = getDateKeyInTimeZone(now, timeZone);
+  const day = buildEvDeadlineDay({ dateKey: todayKey, timeZone, pricesByRelativeHour });
+  return {
+    todayKey,
+    days: {
+      [todayKey]: day,
+    },
+  };
+}
+
+function buildEvDeadlineDay(params: {
+  dateKey: string;
+  timeZone: string;
+  pricesByRelativeHour: number[];
+}): DailyBudgetDayPayload {
+  const { dateKey, timeZone, pricesByRelativeHour } = params;
+  const now = new Date(currentTimeMs);
+  const dayStartMs = getDateKeyStartMs(dateKey, timeZone);
+  const currentHour = Number(new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: 'numeric',
+    hour12: false,
+  }).format(now));
+  const pricesByHour = Array.from({ length: 24 }, () => 50);
+  pricesByRelativeHour.forEach((price, offset) => {
+    pricesByHour[(currentHour + offset) % 24] = price;
+  });
+
+  const startUtc = Array.from({ length: 24 }, (_, hour) => new Date(dayStartMs + hour * HOUR_MS).toISOString());
+  const startLocalLabels = Array.from({ length: 24 }, (_, hour) => String(hour).padStart(2, '0'));
+  const zeros = Array.from({ length: 24 }, () => 0);
+  return {
+    dateKey,
+    timeZone,
+    nowUtc: now.toISOString(),
+    dayStartUtc: new Date(dayStartMs).toISOString(),
+    currentBucketIndex: currentHour,
+    budget: { enabled: false, dailyBudgetKWh: 0, priceShapingEnabled: true },
+    state: {
+      usedNowKWh: 0,
+      allowedNowKWh: 0,
+      remainingKWh: 0,
+      deviationKWh: 0,
+      exceeded: false,
+      frozen: false,
+      confidence: 1,
+      priceShapingActive: true,
+    },
+    buckets: {
+      startUtc,
+      startLocalLabels,
+      plannedWeight: Array.from({ length: 24 }, () => 1),
+      plannedKWh: zeros,
+      actualKWh: zeros,
+      allowedCumKWh: zeros,
+      price: pricesByHour,
+    },
+  };
+}
+
+function configureEvDeadlineObjective(charger: EaseeMockCharger): void {
+  mockHomeyInstance.settings.set(DEFERRED_OBJECTIVES_SETTINGS, {
+    version: 1,
+    objectivesByDeviceId: {
+      [charger.idValue]: {
+        enabled: true,
+        kind: 'ev_soc',
+        enforcement: 'soft',
+        targetPercent: 42,
+        deadlineAtMs: currentTimeMs + 3 * HOUR_MS,
+      },
+    },
+  });
 }
 
 async function rebuildPlan(

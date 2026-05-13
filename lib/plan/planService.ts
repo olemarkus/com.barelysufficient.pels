@@ -44,6 +44,7 @@ import {
   canRefreshPlanSnapshotFromLiveState,
   hasPlanExecutionDriftAgainstIntent,
 } from './planReconcileState';
+import { resolvePowerSampleFreshness } from './planPowerFreshness';
 import type { PlanEngine } from './planEngine';
 import type {
   DevicePlan,
@@ -248,6 +249,20 @@ export class PlanService {
     };
   }
 
+  private stampCurrentPowerFreshness(plan: DevicePlan): DevicePlan {
+    const lastTimestamp = this.deps.getLastPowerUpdate();
+    const freshness = resolvePowerSampleFreshness(
+      typeof lastTimestamp === 'number' ? { lastTimestamp } : {},
+    );
+    return {
+      ...plan,
+      meta: {
+        ...plan.meta,
+        powerFreshnessState: freshness.powerFreshnessState,
+      },
+    };
+  }
+
   async syncLivePlanState(source: PendingTargetObservationSource): Promise<boolean> {
     return this.enqueuePlanOperation(
       () => Promise.resolve(this.syncLivePlanStateInline(source)),
@@ -422,7 +437,9 @@ export class PlanService {
       return false;
     }
 
-    const driftedLivePlan = buildLiveStatePlan(plannedSnapshot, liveDevices);
+    const driftedLivePlan = this.stampCurrentPowerFreshness(
+      buildLiveStatePlan(plannedSnapshot, liveDevices),
+    );
     this.deps.logDebug('Realtime device drift detected, reapplying current plan');
     await this.applyPlanActions(driftedLivePlan, 'reconcile');
     this.deps.schedulePostActuationRefresh?.();

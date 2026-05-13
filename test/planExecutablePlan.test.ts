@@ -8,6 +8,7 @@ import {
   buildExecutableTargetUpdate,
 } from '../lib/executor/executableTargetProjection';
 import type { DevicePlan } from '../lib/plan/planTypes';
+import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
 
 const planWithDevices = (devices: DevicePlan['devices']): DevicePlan => ({
@@ -111,6 +112,35 @@ describe('planExecutablePlan', () => {
         purpose: 'target_update',
       },
     });
+  });
+
+  it.each([
+    [{ code: PLAN_REASON_CODES.startupStabilization }],
+    [{ code: PLAN_REASON_CODES.waitingForOtherDevices }],
+  ] as const)('does not project EV deadline resume while restore admission is held by %s', (reason) => {
+    const evCharger = buildPlanDevice({
+      id: 'ev-1',
+      name: 'EV Charger',
+      deviceClass: 'evcharger',
+      controlCapabilityId: 'evcharger_charging',
+      plannedState: 'keep',
+      currentState: 'on',
+      evChargingState: 'plugged_in_paused',
+      deferredEvCommandIntent: 'ev_resume',
+      reason,
+    });
+
+    const executablePlan = buildExecutablePlan({
+      meta: {
+        totalKw: 1,
+        softLimitKw: 5,
+        headroomKw: 4,
+        powerFreshnessState: 'fresh',
+      },
+      devices: [evCharger],
+    });
+
+    expect(executablePlan.devices[0]?.ev).toBeNull();
   });
 
   it('uses observed state when projecting target updates', () => {

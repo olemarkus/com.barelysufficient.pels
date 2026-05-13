@@ -45,6 +45,7 @@ import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './plan
 import {
   applyDeferredAdmissionToInput,
   applyDeferredObjectiveAdmission,
+  buildDeferredEvCommandIntents,
   buildDeferredTargetOverrides,
   buildDeferredObjectiveDiagnostics,
   emitDeferredObjectiveDiagnostics,
@@ -200,6 +201,7 @@ export class PlanBuilder {
     const deferredAdmission = applyDeferredObjectiveAdmission(deferredEvaluations);
     const { devices: admittedDevices, forceShedSet } = applyDeferredAdmissionToInput(devices, deferredAdmission);
     const deferredTargetTempByDeviceId = buildDeferredTargetOverrides(deferredEvaluations);
+    const deferredEvCommandIntentByDeviceId = buildDeferredEvCommandIntents(deferredAdmission);
 
     const {
       context,
@@ -217,6 +219,7 @@ export class PlanBuilder {
     planDevices = holdResult.planDevices;
 
     planDevices = this.normalizeReasonsWithTiming(planDevices, context, restoreResult, sheddingPlan);
+    planDevices = attachDeferredEvCommandIntents(planDevices, deferredEvCommandIntentByDeviceId, context);
     this.syncHeadroomCardStateWithTiming(planDevices);
     const finalized = this.finalizePlanWithTiming(planDevices);
     this.state.lastPlannedShedIds = finalized.lastPlannedShedIds;
@@ -1045,6 +1048,20 @@ function shouldExposePendingTargetCommand(
     && device.plannedTarget !== device.currentTarget
     && device.plannedTarget === pending.desired,
   );
+}
+
+function attachDeferredEvCommandIntents(
+  planDevices: DevicePlanDevice[],
+  intentByDeviceId: Record<string, 'ev_resume' | 'ev_pause'>,
+  context: PlanContext,
+): DevicePlanDevice[] {
+  if (Object.keys(intentByDeviceId).length === 0) return planDevices;
+  return planDevices.map((device) => {
+    const deferredEvCommandIntent = intentByDeviceId[device.id];
+    if (!deferredEvCommandIntent) return device;
+    if (deferredEvCommandIntent === 'ev_resume' && context.powerFreshnessState !== 'fresh') return device;
+    return { ...device, deferredEvCommandIntent };
+  });
 }
 
 function resolveOvershootDevicePower(

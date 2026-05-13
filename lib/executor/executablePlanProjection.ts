@@ -8,6 +8,7 @@ import type { TargetDeviceSnapshot } from '../utils/types';
 import type {
   ExecutableBinaryIntent,
   ExecutableDeviceIntent,
+  ExecutableEvIntent,
   ExecutableObservedDeviceState,
   ExecutableObservedState,
   ExecutableObservedSteppedLoadState,
@@ -18,27 +19,29 @@ import { buildExecutableSteppedLoadIntent } from './executableSteppedLoadProject
 import { buildExecutableTargetIntent } from './executableTargetProjection';
 
 type PlanDevice = DevicePlan['devices'][number];
+type PlanMeta = DevicePlan['meta'];
 
 export function buildExecutablePlan(plan: DevicePlan): ExecutablePlan {
   return {
-    devices: plan.devices.map(buildExecutableDeviceIntentSafe),
+    devices: plan.devices.map((device) => buildExecutableDeviceIntentSafe(device, plan.meta)),
   };
 }
 
-export function buildExecutableDeviceIntent(planDevice: PlanDevice): ExecutableDeviceIntent {
+export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: PlanMeta): ExecutableDeviceIntent {
   return {
     id: planDevice.id,
     name: planDevice.name,
     controllable: planDevice.controllable !== false,
     target: buildExecutableTargetIntent(planDevice),
     binary: buildExecutableBinaryIntent(planDevice),
+    ev: buildExecutableEvIntent(planDevice, planMeta),
     steppedLoad: buildExecutableSteppedLoadIntent(planDevice),
   };
 }
 
-function buildExecutableDeviceIntentSafe(planDevice: PlanDevice): ExecutableDeviceIntent {
+function buildExecutableDeviceIntentSafe(planDevice: PlanDevice, planMeta?: PlanMeta): ExecutableDeviceIntent {
   try {
-    return buildExecutableDeviceIntent(planDevice);
+    return buildExecutableDeviceIntent(planDevice, planMeta);
   } catch (error) {
     return {
       id: planDevice.id,
@@ -46,6 +49,7 @@ function buildExecutableDeviceIntentSafe(planDevice: PlanDevice): ExecutableDevi
       controllable: planDevice.controllable !== false,
       target: null,
       binary: null,
+      ev: null,
       steppedLoad: null,
       projectionError: error,
     };
@@ -131,4 +135,35 @@ const buildExecutableBinaryShedIntent = (dev: PlanDevice): ExecutableBinaryInten
 
 const isSwapTargetPendingReason = (dev: PlanDevice): boolean => (
   dev.reason?.code === PLAN_REASON_CODES.swapPending && dev.reason.targetName === null
+);
+
+const buildExecutableEvIntent = (dev: PlanDevice, planMeta?: PlanMeta): ExecutableEvIntent | null => {
+  const kind = dev.deferredEvCommandIntent;
+  if (!kind) return null;
+  if (dev.deviceClass !== 'evcharger' && dev.controlCapabilityId !== 'evcharger_charging') return null;
+  if (kind === 'ev_pause') return { kind, deviceId: dev.id, name: dev.name };
+  if (planMeta?.powerFreshnessState && planMeta.powerFreshnessState !== 'fresh') return null;
+  if (dev.plannedState !== 'keep') return null;
+  if (isSwapTargetPendingReason(dev)) return null;
+  if (dev.reason && isEvResumeBlockedReason(dev.reason)) return null;
+  return { kind, deviceId: dev.id, name: dev.name };
+};
+
+const EV_RESUME_BLOCK_REASON_CODES = new Set<string>([
+  PLAN_REASON_CODES.activationBackoff,
+  PLAN_REASON_CODES.capacity,
+  PLAN_REASON_CODES.cooldownRestore,
+  PLAN_REASON_CODES.cooldownShedding,
+  PLAN_REASON_CODES.headroomCooldown,
+  PLAN_REASON_CODES.insufficientHeadroom,
+  PLAN_REASON_CODES.meterSettling,
+  PLAN_REASON_CODES.restorePending,
+  PLAN_REASON_CODES.restoreThrottled,
+  PLAN_REASON_CODES.shedInvariant,
+  PLAN_REASON_CODES.startupStabilization,
+  PLAN_REASON_CODES.waitingForOtherDevices,
+]);
+
+const isEvResumeBlockedReason = (reason: NonNullable<PlanDevice['reason']>): boolean => (
+  EV_RESUME_BLOCK_REASON_CODES.has(reason.code)
 );

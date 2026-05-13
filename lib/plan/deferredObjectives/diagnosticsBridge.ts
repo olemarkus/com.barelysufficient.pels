@@ -471,6 +471,19 @@ const resolveObjectiveSteps = (device: PlanInputDevice): DeferredObjectiveStep[]
   if (typeof planning === 'number' && Number.isFinite(planning) && planning > 0) {
     return [{ id: 'charge', usefulPowerKw: planning }];
   }
+  if (device.deviceClass === 'evcharger') {
+    const expected = firstPositiveFinite([
+      device.expectedPowerKw,
+      device.powerKw,
+    ]);
+    if (expected !== null) return [{ id: 'charge', usefulPowerKw: expected }];
+  }
   return [];
 };
 
+const firstPositiveFinite = (values: readonly unknown[]): number | null => {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+  }
+  return null;
+};
