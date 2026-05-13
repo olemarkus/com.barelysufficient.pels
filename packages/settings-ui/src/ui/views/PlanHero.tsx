@@ -2,6 +2,7 @@ import {
   formatFreshnessChip,
   formatHeroHeadline,
 } from '../../../../shared-domain/src/planHeroSummary.ts';
+import { formatModeLabel } from '../modeLabels.ts';
 import { resolveDisplayPlanDevices } from '../planLiveData.ts';
 import type { PlanDeviceSnapshot, PlanMetaSnapshot, PlanSnapshot } from '../planTypes.ts';
 import type { SettingsUiPowerStatus } from '../../../../contracts/src/settingsUiApi.ts';
@@ -246,7 +247,7 @@ const HeroChipRow = ({
       {statusLabel && <Chip label={statusLabel} tone={HERO_STATUS_CHIP_TONE[heroStatus]} />}
       {(activeMode || freshnessText) && (
         <span class="plan-hero__meta-row">
-          {activeMode && <span class="plan-chip plan-chip--muted">Mode: {activeMode}</span>}
+          {activeMode && <span class="plan-chip plan-chip--muted">{formatModeLabel(activeMode)}</span>}
           {freshnessText && (
             <span class="plan-hero__meta" data-tone={freshness.tone} data-tooltip={freshnessTooltip}>
               {freshnessText}

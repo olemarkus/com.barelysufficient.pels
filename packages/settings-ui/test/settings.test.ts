@@ -75,6 +75,14 @@ const buildDom = () => {
       <button class="tab" data-tab="settings"></button>
     </div>
     <section class="panel hidden" id="settings-panel" data-panel="settings">
+      <section class="settings-form-card settings-current-mode">
+        <p class="eyebrow" id="settings-current-mode-label">Current mode</p>
+        <h3 id="settings-active-mode-summary">Home mode</h3>
+        <label class="field">
+          <span class="field__label">Mode</span>
+          <md-filled-select id="active-mode-select"></md-filled-select>
+        </label>
+      </section>
       <button data-settings-target="limits"></button>
       <button data-settings-target="devices"></button>
       <button data-settings-target="modes"></button>
@@ -123,7 +131,6 @@ const buildDom = () => {
       <p id="empty-state" hidden></p>
     </section>
     <section class="panel hidden" data-panel="modes">
-      <form id="active-mode-form"><md-filled-select id="active-mode-select"></md-filled-select></form>
       <md-filled-select id="mode-select"></md-filled-select>
       <md-filled-text-field id="mode-new"></md-filled-text-field>
       <md-outlined-button id="add-mode-button"></md-outlined-button>
@@ -1447,6 +1454,9 @@ describe('settings script', () => {
     await loadSettingsScript();
 
     const activeModeSelect = document.querySelector('#active-mode-select') as HTMLSelectElement;
+    const activeModeSummary = document.querySelector('#settings-active-mode-summary') as HTMLElement;
+
+    expect(activeModeSummary.textContent).toBe('Home mode');
 
     // Change active mode to 'Away' - should auto-save on change
     activeModeSelect.value = 'Away';
@@ -1455,6 +1465,7 @@ describe('settings script', () => {
 
     // Now operating_mode should be saved as 'Away'
     expect(setSpy).toHaveBeenCalledWith('operating_mode', 'Away', expect.any(Function));
+    expect(activeModeSummary.textContent).toBe('Away mode');
   });
 
   it('shows different selected values in editing vs active mode dropdowns', async () => {

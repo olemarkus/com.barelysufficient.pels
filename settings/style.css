@@ -775,6 +775,42 @@ body[data-ui-variant="redesign"] #overview-panel {
   margin-bottom: 0;
 }
 
+.settings-current-mode {
+  display: grid;
+  gap: var(--spacing-3);
+  background: var(--color-surface-2);
+  box-shadow: var(--shadow-sm);
+}
+
+.settings-current-mode__summary {
+  display: grid;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.settings-current-mode__summary h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--font-size-lg);
+  line-height: var(--font-line-height-tight);
+  letter-spacing: 0;
+}
+
+.settings-current-mode__field {
+  margin: 0;
+}
+
+.settings-current-mode__field md-filled-select {
+  width: 100%;
+}
+
+@media (min-width: 420px) {
+  .settings-current-mode {
+    grid-template-columns: minmax(0, 1fr) minmax(144px, 180px);
+    align-items: end;
+  }
+}
+
 .settings-nav-list {
   display: grid;
   gap: var(--spacing-2);
