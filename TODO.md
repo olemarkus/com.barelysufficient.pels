@@ -24,26 +24,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P0 Release Blockers
 
-- [ ] Make EV deadline plans actually control the charger.
-      Admission produces a decision for EV diagnostics but no command path exists:
-      `buildDeferredTargetOverrides` skips EV (`lib/plan/deferredObjectives/admission.ts:80-92`)
-      and the binary restore lane only fires for `currentOn === false` while
-      `plugged_in_paused` reports `currentOn: true`
-      (`lib/core/deviceManagerControl.ts:51-60`, `lib/executor/binaryExecutor.ts:56`). Add
-      EV-aware executor intent (`ev_resume` / `ev_pause`) emitted when the admission decision
-      flips between planned and idle. Honor existing cooldowns and the stale-power failsafe.
-      Replace the `test/evDevices.integration.test.ts:292` "no command for paused EV" assertion
-      with the new expected behavior.
-      Why P0: the `set_ev_charge_deadline` flow card is registered and exposed to users today
-      ("Charge [[device]] to [[target_percent]] % by [[ready_by]]"). Firing it succeeds and
-      writes a plan, but no command reaches the charger.
-      Minimum acceptable completion: a planned EV bucket resumes/starts a paused plugged-in
-      charger, an idle bucket pauses/limits it through the normal control path, capacity safety is
-      retained, and integration tests cover both the resume and idle transitions.
-      Design: `notes/ev-ready-by/README.md`.
-      Files: `lib/plan/deferredObjectives/admission.ts`, `lib/executor/`,
-      `lib/core/deviceManagerControl.ts`, `test/evDevices.integration.test.ts`.
-
 ## P1 Correctness, Data Integrity, and Supported UX
 
 - [ ] Make Settings UI device refresh await in-flight snapshot refreshes. `/ui_refresh_devices`

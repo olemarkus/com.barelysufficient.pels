@@ -1478,6 +1478,48 @@ describe('PlanExecutor stepped loads', () => {
     }))).toBe(false);
   });
 
+  const evDeadlinePlan = (overrides: Partial<DevicePlanDevice> = {}): DevicePlan => ({
+    meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+    devices: [{
+      id: 'ev-1',
+      name: 'EV Charger',
+      currentState: 'on',
+      plannedState: 'keep',
+      currentTarget: null,
+      plannedTarget: null,
+      controllable: true,
+      reason: KEEP_REASON,
+      deviceClass: 'evcharger',
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_in_paused',
+      deferredEvCommandIntent: 'ev_resume',
+      ...overrides,
+    }],
+  });
+
+  it('marks stable EV deadline resume actuatable while the charger remains paused', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(evDeadlinePlan())).toBe(true);
+  });
+
+  it('marks stable EV deadline pause actuatable while the charger remains charging', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(evDeadlinePlan({
+      evChargingState: 'plugged_in_charging',
+      deferredEvCommandIntent: 'ev_pause',
+    }))).toBe(true);
+  });
+
+  it('does not mark stable EV deadline actuation while a binary command is pending', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(evDeadlinePlan({
+      binaryCommandPending: true,
+    }))).toBe(false);
+  });
+
   it('does not wait for stepped-load flow execution before completing apply', async () => {
     const { executor, desiredSteppedTrigger, deps, state } = buildExecutor(
       undefined,

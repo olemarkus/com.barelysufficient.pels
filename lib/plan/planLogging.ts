@@ -202,6 +202,7 @@ function buildPlanSignatureDevice(device: DevicePlanDevice): Record<string, unkn
     plannedTarget: device.plannedTarget,
     desiredStepId: device.desiredStepId,
     shedAction: device.shedAction,
+    deferredEvCommandIntent: device.deferredEvCommandIntent,
     controllable: device.controllable,
   };
 }

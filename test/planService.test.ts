@@ -1,9 +1,11 @@
 import { PlanService } from '../lib/plan/planService';
-import type { DevicePlan } from '../lib/plan/planTypes';
+import { buildExecutablePlan } from '../lib/executor/executablePlanProjection';
+import type { DevicePlan, PlanInputDevice } from '../lib/plan/planTypes';
 import type { BinaryControlObservation } from '../lib/utils/types';
 import * as pelsStatusModule from '../lib/core/pelsStatus';
 import { getRecentPlanRebuildTraces } from '../lib/utils/planRebuildTrace';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';
+import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../packages/shared-domain/src/powerFreshness';
 import { formatDeviceOverview } from '../packages/shared-domain/src/deviceOverview';
 import type { DeviceReason } from '../packages/shared-domain/src/planReasonSemantics';
 import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
@@ -973,6 +975,79 @@ describe('PlanService', () => {
       ],
     }));
     expect(realtime).not.toHaveBeenCalled();
+  });
+
+  it('blocks stale EV deadline resume intents during realtime reconcile', async () => {
+    const applyPlanActions = vi.fn().mockImplementation(async (plan: DevicePlan) => {
+      expect(plan.meta.powerFreshnessState).toBe('stale_hold');
+      expect(buildExecutablePlan(plan).devices[0].ev).toBeNull();
+      return { deviceWriteCount: 0, commandRequestCount: 0 };
+    });
+    const liveDevices: PlanInputDevice[] = [{
+      id: 'ev-1',
+      name: 'EV Charger',
+      deviceClass: 'evcharger',
+      controlCapabilityId: 'evcharger_charging',
+      hasBinaryControl: true,
+      currentOn: false,
+      evChargingState: 'plugged_in_paused',
+    }];
+    const service = new PlanService({
+      homey: {
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: {
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions,
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+      } as any,
+      getPlanDevices: () => liveDevices,
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => Date.now() - POWER_SAMPLE_STALE_THRESHOLD_MS,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+    });
+
+    (service as any).latestPlanSnapshot = buildPlan(
+      null,
+      'stable',
+      { powerFreshnessState: 'fresh' },
+      {
+        id: 'ev-1',
+        name: 'EV Charger',
+        currentOn: false,
+        currentState: 'off',
+        currentTarget: null,
+        plannedState: 'keep',
+        plannedTarget: null,
+        deviceClass: 'evcharger',
+        controlCapabilityId: 'evcharger_charging',
+        evChargingState: 'plugged_in_paused',
+        deferredEvCommandIntent: 'ev_resume',
+      },
+    );
+
+    await expect(service.reconcileLatestPlanState()).resolves.toBe(true);
+    expect(applyPlanActions).toHaveBeenCalledWith(expect.objectContaining({
+      meta: expect.objectContaining({ powerFreshnessState: 'stale_hold' }),
+      devices: [
+        expect.objectContaining({
+          id: 'ev-1',
+          evChargingState: 'plugged_in_paused',
+          deferredEvCommandIntent: 'ev_resume',
+        }),
+      ],
+    }), 'reconcile');
   });
 
   it('reapplies the current plan when the live target drifts', async () => {

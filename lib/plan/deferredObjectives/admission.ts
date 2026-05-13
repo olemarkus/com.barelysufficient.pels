@@ -2,9 +2,9 @@ import type { PlanInputDevice } from '../planTypes';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 
 export type DeferredAdmissionDecision =
-  | { kind: 'inactive' }
-  | { kind: 'planned'; requestedMinimumStepId: string | null }
-  | { kind: 'idle' };
+  | { kind: 'inactive'; evCommandIntent?: undefined }
+  | { kind: 'planned'; requestedMinimumStepId: string | null; evCommandIntent?: 'ev_resume' }
+  | { kind: 'idle'; evCommandIntent?: 'ev_pause' };
 
 // `satisfied` falls back to inactive: the goal is met, so the objective should
 // not keep forcing the device on. `cannot_meet` still drives the device — the
@@ -24,12 +24,16 @@ const resolveDecision = (
   const horizonPlan = diagnostic.horizonPlan;
   if (!horizonPlan) return { kind: 'inactive' };
   const currentBucket = horizonPlan.currentBucket;
+  const isEvObjective = diagnostic.objectiveKind === 'ev_soc';
   if (!currentBucket || currentBucket.plannedUsefulEnergyKWh <= 0) {
-    return { kind: 'idle' };
+    return isEvObjective
+      ? { kind: 'idle', evCommandIntent: 'ev_pause' }
+      : { kind: 'idle' };
   }
   return {
     kind: 'planned',
     requestedMinimumStepId: currentBucket.requestedMinimumStepId,
+    ...(isEvObjective ? { evCommandIntent: 'ev_resume' as const } : {}),
   };
 };
 
@@ -91,3 +95,13 @@ export const buildDeferredTargetOverrides = (
   return overrides;
 };
 
+export const buildDeferredEvCommandIntents = (
+  decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
+): Record<string, 'ev_resume' | 'ev_pause'> => {
+  const intents: Record<string, 'ev_resume' | 'ev_pause'> = {};
+  for (const [deviceId, decision] of decisions) {
+    if (!decision.evCommandIntent) continue;
+    intents[deviceId] = decision.evCommandIntent;
+  }
+  return intents;
+};

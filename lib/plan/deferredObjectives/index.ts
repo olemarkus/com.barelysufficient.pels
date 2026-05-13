@@ -12,6 +12,7 @@ export type {
 export {
   applyDeferredAdmissionToInput,
   applyDeferredObjectiveAdmission,
+  buildDeferredEvCommandIntents,
   buildDeferredTargetOverrides,
 } from './admission';
 export {

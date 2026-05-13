@@ -18,6 +18,7 @@ import type { PlanEngineState } from '../plan/planState';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import type {
   ExecutableBinaryIntent,
+  ExecutableEvIntent,
   ExecutableObservedDeviceState,
 } from './executablePlan';
 import type { PlanActuationMode } from './executorTypes';
@@ -178,6 +179,41 @@ export const applyBinarySheddingToDevice = async (
   } finally {
     ctx.state.pendingSheds.delete(deviceId);
   }
+};
+
+export const applyDeferredEvCommand = async (
+  ctx: PlanExecutorBinaryContext,
+  intent: ExecutableEvIntent | null,
+  observed: ExecutableObservedDeviceState | undefined,
+  mode: PlanActuationMode,
+): Promise<boolean> => {
+  if (!intent) return false;
+  const snapshot = ctx.deviceManager.getSnapshot().find((d) => d.id === intent.deviceId) ?? observed?.snapshot;
+  if (!snapshot || snapshot.controlCapabilityId !== 'evcharger_charging') return false;
+
+  if (intent.kind === 'ev_pause') {
+    if (snapshot.evChargingState !== 'plugged_in_charging') return false;
+    return applyBinarySheddingToDevice(ctx, {
+      deviceId: intent.deviceId,
+      deviceName: intent.name,
+    });
+  }
+
+  if (snapshot.evChargingState !== 'plugged_in_paused') return false;
+  if (!canApplyRestoreSnapshot(ctx, {
+    snapshot,
+    deviceId: intent.deviceId,
+    name: intent.name,
+    logContext: 'capacity',
+    mode,
+  })) return false;
+  return applyBinaryRestoreWithSnapshot(ctx, {
+    deviceId: intent.deviceId,
+    name: intent.name,
+    snapshot,
+    logContext: 'capacity',
+    mode,
+  });
 };
 
 const canApplyRestoreSnapshot = (

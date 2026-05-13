@@ -76,6 +76,7 @@ export type DevicePlanDevice = {
   controlAdapter?: DeviceControlAdapterSnapshot;
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
   evChargingState?: string;
+  deferredEvCommandIntent?: 'ev_resume' | 'ev_pause';
   priority?: number;
   powerKw?: number;
   expectedPowerKw?: number;

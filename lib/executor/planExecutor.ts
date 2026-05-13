@@ -9,6 +9,7 @@ import type { PendingTargetObservationSource } from '../plan/planTypes';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import type {
   ExecutableBinaryIntent,
+  ExecutableEvIntent,
   ExecutableObservedDeviceState,
   ExecutableSteppedLoadDevice,
   ExecutableSteppedLoadIntent,
@@ -47,6 +48,7 @@ import {
   isRestoreAdmissionHoldReason,
 } from '../planContract/planDecisionSemantics';
 import {
+  applyDeferredEvCommand,
   applyBinaryRestore,
   applyBinarySheddingToDevice,
   applyUncontrolledBinaryRestore,
@@ -424,6 +426,14 @@ export class PlanExecutor {
     return applyBinaryRestore(this.buildBinaryExecutorContext(), intent, observed, mode);
   }
 
+  private async applyDeferredEvIntent(
+    intent: ExecutableEvIntent | null,
+    observed: ExecutableObservedDeviceState | undefined,
+    mode: PlanActuationMode,
+  ): Promise<boolean> {
+    return applyDeferredEvCommand(this.buildBinaryExecutorContext(), intent, observed, mode);
+  }
+
   private async applyTargetIntent(
     intent: ExecutableTargetIntent | null,
     observed: ExecutableObservedDeviceState | undefined,
@@ -587,6 +597,7 @@ export class PlanExecutor {
   public hasStablePlanActuation(plan: DevicePlan): boolean {
     return plan.devices.some((dev) => (
       hasStableUncontrolledRestoreActuation(dev, this.state)
+      || hasStableEvDeadlineActuation(dev)
       || hasStableSteppedLoadStepActuation(dev)
     ));
   }
@@ -727,6 +738,10 @@ export class PlanExecutor {
             if (await this.applyBinaryShedIntent(intent.binary)) deviceWriteCount += 1;
             continue;
           }
+          if (await this.applyDeferredEvIntent(intent.ev, observed, mode)) {
+            deviceWriteCount += 1;
+            continue;
+          }
           if (await this.applyBinaryRestoreIntent(intent.binary, observed, mode)) deviceWriteCount += 1;
           if (await this.applyTargetIntent(intent.target, observed, mode)) deviceWriteCount += 1;
         } catch (error) {
@@ -775,6 +790,17 @@ function hasStableUncontrolledRestoreActuation(
     && dev.plannedState === 'keep'
     && isObservedOff(dev)
     && Boolean(state.lastDeviceShedMs[dev.id]);
+}
+
+function hasStableEvDeadlineActuation(dev: DevicePlan['devices'][number]): boolean {
+  if (dev.binaryCommandPending === true) return false;
+  if (dev.deferredEvCommandIntent === 'ev_resume') {
+    return dev.evChargingState === 'plugged_in_paused';
+  }
+  if (dev.deferredEvCommandIntent === 'ev_pause') {
+    return dev.evChargingState === 'plugged_in_charging';
+  }
+  return false;
 }
 
 function isSteppedLoadRestoreFromOff(
