@@ -15,6 +15,7 @@ const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 type SmartTaskActiveFlowStatus =
   | 'waiting'
   | 'on_track'
+  | 'at_risk'
   | 'unachievable'
   | 'satisfied';
 
@@ -26,6 +27,7 @@ type LastSmartTaskFlowStatus = {
 const SMART_TASK_STATUS_LABELS: Record<SmartTaskActiveFlowStatus, string> = {
   waiting: 'Waiting',
   on_track: 'On track',
+  at_risk: 'At risk',
   unachievable: 'Cannot finish',
   satisfied: 'Satisfied',
 };
@@ -107,8 +109,9 @@ const normalizeSmartTaskStatusArg = (raw: DropdownArg | undefined): SmartTaskAct
     case 'pending_prices':
       return 'waiting';
     case 'on_track':
-    case 'at_risk':
       return 'on_track';
+    case 'at_risk':
+      return 'at_risk';
     case 'unachievable':
     case 'cannot_meet':
     case 'cannot_finish':
@@ -128,8 +131,9 @@ const mapInternalTaskStatusToFlowStatus = (status: InternalTaskStatus): SmartTas
     case 'unknown':
       return 'waiting';
     case 'on_track':
-    case 'at_risk':
       return 'on_track';
+    case 'at_risk':
+      return 'at_risk';
     case 'cannot_meet':
     case 'invalid':
       return 'unachievable';

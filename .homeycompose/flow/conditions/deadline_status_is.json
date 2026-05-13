@@ -28,6 +28,7 @@
       "values": [
         { "id": "waiting", "label": { "en": "Waiting" } },
         { "id": "on_track", "label": { "en": "On track" } },
+        { "id": "at_risk", "label": { "en": "At risk" } },
         { "id": "unachievable", "label": { "en": "Cannot finish" } },
         { "id": "satisfied", "label": { "en": "Satisfied" } }
       ]
