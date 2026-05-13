@@ -246,11 +246,17 @@ body[data-ui-variant="redesign"] .hero h1 {
 }
 
 .redesign-shell-nav {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 2px;
   margin-top: 0;
   box-shadow: inset 0 0 0 1px var(--pels-shell-nav-container-border);
+}
+
+.redesign-shell-nav > md-primary-tab {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.redesign-shell-nav > md-primary-tab:not(:last-child) {
+  margin-inline-end: 2px;
 }
 
 /* Table header for device lists */
@@ -2254,10 +2260,6 @@ body[data-ui-variant="redesign"] .settings-back-button--redesign-only {
     padding-inline: var(--pels-shell-nav-tab-padding-inline-compact);
     font-size: var(--pels-shell-nav-tab-label-size-compact);
     min-width: 0;
-  }
-
-  body[data-ui-variant="redesign"] .redesign-shell-nav {
-    gap: 2px;
   }
 
   body[data-ui-variant="redesign"] .card__header {

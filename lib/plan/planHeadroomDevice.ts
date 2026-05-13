@@ -9,17 +9,46 @@ import {
   resolveHeadroomCardCooldown,
   syncHeadroomCardState,
 } from './planHeadroomState';
-import {
-  resolveObservedHeadroomDeviceKw,
-  type HeadroomCardCooldownSource,
-  type HeadroomCardDeviceLike,
-  type HeadroomDeviceKwSource,
+import { getHighestKnownPowerKw, getMeasuredDrawKw } from '../observer/observedPower';
+import { isDeviceObservationStale } from '../observer/observationFreshness';
+
+/**
+ * Conservative read of a device's current draw for headroom-for-device math.
+ * The Flow card is asking permission to *add* load, so we never synthesize
+ * draw the device hasn't proven it consumes:
+ *
+ *  - Stale observation → 0. Staleness is derived from `lastFreshDataMs` so
+ *    this works for both planner state (`DevicePlanDevice`) and Flow-card
+ *    snapshots (`TargetDeviceSnapshot`), neither of which carries a
+ *    precomputed `observationStale` field on the public contract.
+ *  - Measured draw present → that value (including 0 — a real zero-measurement
+ *    is authoritative).
+ *  - Fresh-off → 0.
+ *  - Running with no measurement → highest known configured demand (expected /
+ *    planning / configured `powerKw`) so non-metered relays still credit
+ *    their declared load. If none of those are configured either, fall back
+ *    to 0 — we explicitly avoid Observer's generic 1.0 kW / EV 1.38 kW
+ *    fallback because that would overstate `headroom + observedKw` and let
+ *    activations through that should be blocked.
+ */
+const resolveObservedHeadroomDeviceKw = (
+  device: HeadroomCardDeviceLike,
+  nowTs: number,
+): number => {
+  if (isDeviceObservationStale(device, nowTs)) return 0;
+  const measured = getMeasuredDrawKw(device);
+  if (measured !== null) return measured;
+  if (device.currentOn === false) return 0;
+  return getHighestKnownPowerKw(device)?.kw ?? 0;
+};
+import type {
+  HeadroomCardCooldownSource,
+  HeadroomCardDeviceLike,
 } from './planHeadroomSupport';
 
 export type {
   HeadroomCardCooldownSource,
   HeadroomCardDeviceLike,
-  HeadroomDeviceKwSource,
   HeadroomUsageObservation,
 } from './planHeadroomSupport';
 export {
@@ -27,14 +56,12 @@ export {
   syncHeadroomCardState,
   syncHeadroomUsageObservation,
 } from './planHeadroomState';
-export { resolveObservedHeadroomDeviceKw } from './planHeadroomSupport';
 
 export type HeadroomForDeviceDecision = {
   allowed: boolean;
   cooldownSource: HeadroomCardCooldownSource | null;
   cooldownRemainingSec: number | null;
   observedKw: number;
-  observedKwSource: HeadroomDeviceKwSource;
   calculatedHeadroomForDeviceKw: number;
   penaltyLevel: number;
   requiredKwWithPenalty: number;
@@ -83,7 +110,7 @@ export const evaluateHeadroomForDevice = (params: {
   });
   emitActivationTransitions(diagnostics, device.name, penaltyInfo.transitions);
 
-  const { kw: observedKw, source: observedKwSource } = resolveObservedHeadroomDeviceKw(device);
+  const observedKw = resolveObservedHeadroomDeviceKw(device, nowTs);
   const calculatedHeadroomForDeviceKw = headroom + observedKw;
   const penalty = applyActivationPenalty({
     baseRequiredKw: requiredKw,
@@ -99,7 +126,6 @@ export const evaluateHeadroomForDevice = (params: {
     cooldownSource: cooldown?.source ?? null,
     cooldownRemainingSec: cooldown?.remainingSec ?? null,
     observedKw,
-    observedKwSource,
     calculatedHeadroomForDeviceKw,
     penaltyLevel: penaltyInfo.penaltyLevel,
     requiredKwWithPenalty: penalty.requiredKwWithPenalty,
