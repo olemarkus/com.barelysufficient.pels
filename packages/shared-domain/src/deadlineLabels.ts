@@ -36,6 +36,7 @@ export type DeadlineLabels = {
   cannotMeetChipLabel: string;
   deviceSeriesName: string;
   originalDeviceSeriesName: string;
+  actualDeviceSeriesName: string;
   backgroundSeriesName: string;
   planTooltipActive: string;
   planTooltipIdle: string;
@@ -87,6 +88,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     cannotMeetChipLabel: 'Cannot finish',
     deviceSeriesName: 'Heating',
     originalDeviceSeriesName: 'Original Heating',
+    actualDeviceSeriesName: 'Measured Heating',
     backgroundSeriesName: 'Background usage',
     planTooltipActive: 'Heat',
     planTooltipIdle: 'Idle',
@@ -134,6 +136,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     cannotMeetChipLabel: 'Cannot finish',
     deviceSeriesName: 'Charging',
     originalDeviceSeriesName: 'Original Charging',
+    actualDeviceSeriesName: 'Measured Charging',
     backgroundSeriesName: 'Background usage',
     planTooltipActive: 'Charge',
     planTooltipIdle: 'Idle',

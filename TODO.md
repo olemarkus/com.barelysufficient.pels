@@ -203,12 +203,17 @@ has computed an allocation. The replan policy is documented in
       burst refreshes the page without a reload.
       Files: `packages/settings-ui/src/ui/deadlinePlanMount.ts`,
       `packages/settings-ui/tests/e2e/deadline-plan.spec.ts`.
-- [ ] Per-device per-hour actuals overlay (deferred). `dailyBudget.buckets.actualKWh` is
-      aggregate across background and all controlled devices, so we cannot reliably show
-      *this device's* measured kWh per hour without device-level energy logging or a
-      subtraction estimate. Skip this layer until device metering exists; the
-      original-vs-current view is meaningful on its own.
-      Files: future device-level energy tracker; deadline plan chart series.
+- [x] Per-device per-hour actuals overlay. The power tracker now stores measured per-device
+      hourly kWh buckets from fresh device power observations, and the deadline-plan chart renders
+      them as a measured `Heating` / `Charging` overlay for the active device.
+      Files: `lib/core/powerTracker.ts`, `lib/app/appPowerSampleIngest.ts`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+- [ ] Track per-device step changes with the same 30-day hourly retention model, so measured
+      usage history can explain which step or mode was active during each measured period.
+      Files: future device-level step-change tracker; usage-history UI.
+- [ ] Add a per-device usage history page showing measured kWh over time with step-change context.
+      Files: future device-level usage-history route and chart.
 
 ## P1 Type-safety and state-boundary follow-ups
 

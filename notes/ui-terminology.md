@@ -167,6 +167,7 @@ The deadline-plan surface (the per-device plan view that schedules charging or h
 | Active state chip | `Heating` | `Charging` |
 | Waiting-state chip | `Heat queued` | `Charge queued` |
 | Device load series (legend) | `Heating` | `Charging` |
+| Measured device series (legend) | `Measured Heating` | `Measured Charging` |
 | Background load series | `Background usage` | `Background usage` |
 | Plan-active tooltip word | `Heat` | `Charge` |
 | Target unit | `°C` | `%` |
