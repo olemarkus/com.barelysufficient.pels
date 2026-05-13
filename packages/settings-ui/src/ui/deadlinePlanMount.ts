@@ -17,6 +17,8 @@ import { resolveDeadlinePlanLoadState, resolveRenderInput } from './deadlinePlan
 import { setStoredOverviewRedesignPreference } from './uiVariant.ts';
 import type { MdButtonElement } from './dom.ts';
 
+const DEADLINE_PLAN_REFRESH_DEBOUNCE_MS = 200;
+
 const closeDeadlinePlanPage = (): void => {
   if (new URLSearchParams(window.location.search).get('ui') === 'redesign') {
     setStoredOverviewRedesignPreference(true);
@@ -103,8 +105,13 @@ export const mountDeadlinePlan = async (): Promise<void> => {
   const homey = getHomeyClient();
   if (homey && typeof homey.on === 'function') {
     let refreshing = false;
-    const refresh = async () => {
-      if (refreshing) return;
+    let refreshQueued = false;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const refresh = async (): Promise<void> => {
+      if (refreshing) {
+        refreshQueued = true;
+        return;
+      }
       refreshing = true;
       try {
         const next = await fetchDeadlinePlanBoot();
@@ -114,11 +121,29 @@ export const mountDeadlinePlan = async (): Promise<void> => {
         // Ignore transient failures; the next event tick will retry.
       } finally {
         refreshing = false;
+        if (refreshQueued && isDeadlinePlanPage()) {
+          refreshQueued = false;
+          scheduleRefresh();
+        }
       }
     };
-    homey.on('plan_updated', refresh);
-    homey.on('devices_updated', refresh);
-    homey.on('prices_updated', refresh);
+    const scheduleRefresh = (): void => {
+      if (!isDeadlinePlanPage()) return;
+      refreshQueued = true;
+      if (refreshTimer !== null) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        if (!isDeadlinePlanPage()) {
+          refreshQueued = false;
+          return;
+        }
+        refreshQueued = false;
+        void refresh();
+      }, DEADLINE_PLAN_REFRESH_DEBOUNCE_MS);
+    };
+    homey.on('plan_updated', scheduleRefresh);
+    homey.on('devices_updated', scheduleRefresh);
+    homey.on('prices_updated', scheduleRefresh);
   }
 
   // Warm history in the background so the History tab is populated when the
