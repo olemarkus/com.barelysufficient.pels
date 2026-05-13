@@ -10,7 +10,11 @@ import { getApiReadModel } from './homey.ts';
 import { createMetaLine } from './components.ts';
 import { getPriceIndicatorIcon, type PriceIndicatorTone } from './priceIndicator.ts';
 import { formatDeviceOverview, type DeviceOverviewStrings } from '../../../shared-domain/src/deviceOverview.ts';
-import { isGrayStateDevice } from './deviceUtils.ts';
+import {
+  isGrayStateDevice,
+  isOffLikeState,
+  isOnLikeState,
+} from '../../../shared-domain/src/deviceStatePredicates.ts';
 import { setTooltip } from './tooltips.ts';
 import { createLivePlanController } from './planLive.ts';
 import {
@@ -124,15 +128,6 @@ const buildPlanStatusLine = (dev: PlanDeviceSnapshot, overview: DeviceOverviewSt
   }
   return line;
 };
-
-const isOnLikeState = (value: string | undefined): boolean => {
-  const normalized = (value || '').trim().toLowerCase();
-  if (!normalized) return false;
-  return normalized !== 'off' && normalized !== 'unknown' && normalized !== 'not_applicable';
-};
-
-const isOffLikeState = (state?: string): boolean =>
-  state === 'off' || state === 'unknown';
 
 const hasSteppedRestorePending = (dev: PlanDeviceSnapshot): boolean => (
   isSteppedLoadDevice(dev)
