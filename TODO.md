@@ -18,20 +18,6 @@ file.
 
 ## P0 Release Blockers
 
-- [ ] Fix the at-risk flow status collapse before Smart tasks v1 releases.
-      The flow-card boundary maps `at_risk` to `on_track`
-      (`flowCards/deadlineObjectiveCards.ts:17-19,109-111,130-132`). Triggers watching for
-      at-risk transitions never fire; conditions matching `at_risk` never match. Affects
-      temperature and EV deadlines equally.
-      Why P0: this is a landed flow/status surface that can tell users a deadline is on track
-      when the planner believes it is at risk.
-      Minimum acceptable completion: extend `SmartTaskActiveFlowStatus` to include `at_risk`,
-      drop the case-fallthrough in both status mappers, update the trigger/condition dropdowns,
-      and add a transition test for `deadline_status_changed` plus a condition test for
-      `deadline_status_is = at_risk`.
-      Files: `flowCards/deadlineObjectiveCards.ts`,
-      `.homeycompose/flow/triggers/deadline_status_changed.json`,
-      `.homeycompose/flow/conditions/deadline_status_is.json`, status-mapping tests.
 - [ ] Make EV deadline plans actually control the charger.
       Admission produces a decision for EV diagnostics but no command path exists:
       `buildDeferredTargetOverrides` skips EV (`lib/plan/deferredObjectives/admission.ts:80-92`)
