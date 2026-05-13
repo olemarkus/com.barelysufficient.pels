@@ -59,15 +59,54 @@ export const isDeadlinePlanPage = (): boolean => (
   document.getElementById('deadline-plan-root') !== null
 );
 
+// History-detail route does not need bootstrap/devices/prices — rendering a
+// finalized plan reads only from the persisted history entry. Fetch history
+// alone so a bookmarked link still works when the live endpoints fail.
+const mountHistoryDetail = async (
+  surface: HTMLElement,
+  deviceId: string | null,
+  historyId: string,
+  timeZone: string,
+): Promise<void> => {
+  let history: DeadlinePlanHistoryView;
+  try {
+    history = await fetchDeadlinePlanHistory(deviceId, timeZone, true);
+  } catch {
+    renderDeadlinePlan(surface, {
+      status: 'error',
+      message: 'Smart task plan data is not available for this device.',
+    });
+    return;
+  }
+  const entry = history.entries.find((candidate) => candidate.id === historyId);
+  if (!entry) {
+    renderDeadlinePlan(surface, { status: 'history-missing', history });
+    return;
+  }
+  renderDeadlinePlan(surface, {
+    status: 'history-detail',
+    entry,
+    timeZone: history.timeZone,
+    history,
+  });
+};
+
 export const mountDeadlinePlan = async (): Promise<void> => {
   const surface = document.getElementById('deadline-plan-root');
   if (!surface) return;
 
-  const deviceId = new URLSearchParams(window.location.search).get('deviceId');
+  const params = new URLSearchParams(window.location.search);
+  const deviceId = params.get('deviceId');
+  const historyId = params.get('historyId');
   const timeZone = resolveBrowserTimeZone();
 
   initDeadlinePlanClose();
   renderDeadlinePlan(surface, { status: 'loading' });
+
+  if (historyId !== null) {
+    await mountHistoryDetail(surface, deviceId, historyId, timeZone);
+    return;
+  }
 
   let lastBoot: DeadlinePlanBoot | null = null;
   let lastHistory: DeadlinePlanHistoryView | undefined;

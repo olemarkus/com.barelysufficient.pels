@@ -282,7 +282,8 @@ export function createPlanEngine(ctx: AppContext) {
     deferredObjectiveDebugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
     observeDeferredObjectivePlanHistory: (diagnostics, nowMs) => {
       const recorder = requireDeferredObjectivePlanHistoryRecorder(ctx);
-      recorder.observe(diagnostics, nowMs);
+      const activePlans = ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null;
+      recorder.observe(diagnostics, nowMs, activePlans);
       // Persist the watermark when we flushed new history (recorder is clean and the save
       // succeeded). Otherwise, if the recorder is clean and enough time has passed since the
       // last watermark write, also advance it — this keeps the back-fill window small during

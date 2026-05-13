@@ -1,11 +1,18 @@
 import type {
+  DeferredObjectiveActivePlanRevisionV1,
+  DeferredObjectiveActivePlanV1,
+  DeferredObjectiveActivePlansV1,
+} from '../../../packages/contracts/src/deferredObjectiveActivePlans';
+import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryObservedInterval,
-  DeferredObjectivePlanHistoryV2,
+  DeferredObjectivePlanHistoryRevisionSnapshot,
+  DeferredObjectivePlanHistoryV3,
   DeferredObjectivePlanOutcome,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION } from './planHistorySettings';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
+import { randomUUID } from 'node:crypto';
 // Cap the rolling buffer. One deferred objective produces at most one entry per deadline run
 // (per-day for HH:mm objectives), so 30 entries covers ~one month of history per device for a
 // single-device household and shorter spans for multi-device homes. Bounded JSON size keeps
@@ -29,9 +36,62 @@ type InProgressKey = string; // `${deviceId}|${deadlineAtMs}`
 
 type InProgressRecord = Omit<
   DeferredObjectivePlanHistoryEntry,
-  'finalizedAtMs' | 'outcome' | 'discoveredFrom'
+  'id' | 'finalizedAtMs' | 'outcome' | 'discoveredFrom' | 'originalPlan' | 'finalPlan'
 > & {
   satisfied: boolean;
+  // True original plan for this run, captured the first cycle an active plan
+  // exists for `(deviceId, deadlineAtMs)`. We snapshot `plan.original` when
+  // it's present so a recorder picking up mid-run (app restart, back-fill)
+  // still records the run's true starting shape rather than a current
+  // revision; falls back to `plan.latest` only when `original` is absent.
+  // Never overwritten once set.
+  originalPlan: DeferredObjectivePlanHistoryRevisionSnapshot | null;
+  // Most recent `latest` revision observed for this run. Replaced on every
+  // cycle that carries a fresh revision so finalization snapshots the truly
+  // final plan, not the first one.
+  finalPlan: DeferredObjectivePlanHistoryRevisionSnapshot | null;
+};
+
+const captureRevisionSnapshot = (
+  revision: DeferredObjectiveActivePlanRevisionV1,
+): DeferredObjectivePlanHistoryRevisionSnapshot => ({
+  hours: revision.hours.map((hour) => ({ ...hour })),
+  energyNeededKWh: revision.energyNeededKWh,
+  planStatus: revision.planStatus,
+  revisedAtMs: revision.revisedAtMs,
+});
+
+const pickRevisionForOriginal = (
+  plan: DeferredObjectiveActivePlanV1 | undefined,
+): DeferredObjectiveActivePlanRevisionV1 | null => {
+  if (!plan) return null;
+  // True original capture: prefer `plan.original` so a recorder starting
+  // mid-run (app restart / back-fill picking up an already-replanned plan)
+  // still records the run's actual starting shape rather than a current
+  // revision. Falls back to `latest` only when no original exists yet.
+  return plan.original ?? plan.latest ?? null;
+};
+
+const pickRevisionForFinal = (
+  plan: DeferredObjectiveActivePlanV1 | undefined,
+): DeferredObjectiveActivePlanRevisionV1 | null => {
+  if (!plan) return null;
+  // Final capture follows the live detail view: `latest` is what the UI
+  // charts. Falls back to `original` for pending plans where no `latest`
+  // revision has been produced yet.
+  return plan.latest ?? plan.original ?? null;
+};
+
+const findPlanForRecord = (
+  plans: DeferredObjectiveActivePlansV1 | null,
+  record: { deviceId: string; deadlineAtMs: number },
+): DeferredObjectiveActivePlanV1 | undefined => {
+  if (!plans) return undefined;
+  const plan = plans.plansByDeviceId[record.deviceId];
+  if (!plan) return undefined;
+  // A persisted plan with a different deadline belongs to a different run.
+  if (plan.deadlineAtMs !== record.deadlineAtMs) return undefined;
+  return plan;
 };
 
 const buildKey = (deviceId: string, deadlineAtMs: number): InProgressKey => (
@@ -98,9 +158,17 @@ const extendIntervals = (
   return [...intervals, { fromMs: nowMs, toMs: nowMs }];
 };
 
-const startRecord = (diag: DeferredObjectiveDiagnostic, nowMs: number): InProgressRecord | null => {
+const startRecord = (
+  diag: DeferredObjectiveDiagnostic,
+  nowMs: number,
+  plan: DeferredObjectiveActivePlanV1 | undefined,
+): InProgressRecord | null => {
   if (diag.deadlineAtMs === null) return null;
   const currentlySatisfied = isSatisfiedStatus(diag.status);
+  const originalRevision = pickRevisionForOriginal(plan);
+  const finalRevision = pickRevisionForFinal(plan);
+  const originalSnapshot = originalRevision ? captureRevisionSnapshot(originalRevision) : null;
+  const finalSnapshot = finalRevision ? captureRevisionSnapshot(finalRevision) : null;
   return {
     deviceId: diag.deviceId,
     deviceName: diag.deviceName ?? null,
@@ -119,13 +187,37 @@ const startRecord = (diag: DeferredObjectiveDiagnostic, nowMs: number): InProgre
     usedPolicyAvoid: diag.horizonPlan?.usesPolicyAvoid ?? false,
     observedIntervals: [{ fromMs: nowMs, toMs: nowMs }],
     satisfied: currentlySatisfied,
+    originalPlan: originalSnapshot,
+    finalPlan: finalSnapshot,
   };
+};
+
+const refreshPlanSnapshots = (
+  record: InProgressRecord,
+  plan: DeferredObjectiveActivePlanV1 | undefined,
+): Pick<InProgressRecord, 'originalPlan' | 'finalPlan'> => {
+  const finalRevision = pickRevisionForFinal(plan);
+  if (!finalRevision) {
+    return { originalPlan: record.originalPlan, finalPlan: record.finalPlan };
+  }
+  const finalSnapshot = captureRevisionSnapshot(finalRevision);
+  if (record.originalPlan) {
+    return { originalPlan: record.originalPlan, finalPlan: finalSnapshot };
+  }
+  // No original captured yet: this is the first cycle on which a plan exists
+  // for this run. Capture both, preferring `plan.original` for the original
+  // slot so a recorder picking up mid-run still records the run's true
+  // starting shape rather than the current revision.
+  const originalRevision = pickRevisionForOriginal(plan);
+  const originalSnapshot = originalRevision ? captureRevisionSnapshot(originalRevision) : finalSnapshot;
+  return { originalPlan: originalSnapshot, finalPlan: finalSnapshot };
 };
 
 const mergeRecord = (
   record: InProgressRecord,
   diag: DeferredObjectiveDiagnostic,
   nowMs: number,
+  plan: DeferredObjectiveActivePlanV1 | undefined,
 ): InProgressRecord => {
   const currentlySatisfied = isSatisfiedStatus(diag.status);
   const metAtMs = currentlySatisfied ? (record.metAtMs ?? nowMs) : null;
@@ -139,6 +231,7 @@ const mergeRecord = (
     observedIntervals: extendIntervals(record.observedIntervals, nowMs),
     satisfied: currentlySatisfied,
     metAtMs,
+    ...refreshPlanSnapshots(record, plan),
   };
 };
 
@@ -146,6 +239,7 @@ const clearSatisfiedWithProgress = (
   record: InProgressRecord,
   diag: DeferredObjectiveDiagnostic,
   nowMs: number,
+  plan: DeferredObjectiveActivePlanV1 | undefined,
 ): InProgressRecord => {
   return {
     ...record,
@@ -155,26 +249,30 @@ const clearSatisfiedWithProgress = (
     observedIntervals: extendIntervals(record.observedIntervals, nowMs),
     satisfied: false,
     metAtMs: null,
+    ...refreshPlanSnapshots(record, plan),
   };
 };
 
 const recordObservedTick = (
   record: InProgressRecord,
   nowMs: number,
+  plan: DeferredObjectiveActivePlanV1 | undefined,
 ): InProgressRecord => ({
   ...record,
   observedIntervals: extendIntervals(record.observedIntervals, nowMs),
+  ...refreshPlanSnapshots(record, plan),
 });
 
 const recordNonPlannableTick = (
   record: InProgressRecord,
   diag: DeferredObjectiveDiagnostic,
   nowMs: number,
+  plan: DeferredObjectiveActivePlanV1 | undefined,
 ): InProgressRecord => {
   if (record.satisfied && hasTrustworthyProgress(diag) && !diagnosticProgressAtTarget(diag)) {
-    return clearSatisfiedWithProgress(record, diag, nowMs);
+    return clearSatisfiedWithProgress(record, diag, nowMs, plan);
   }
-  return recordObservedTick(record, nowMs);
+  return recordObservedTick(record, nowMs, plan);
 };
 
 const wasTargetReached = (record: InProgressRecord): boolean => {
@@ -204,6 +302,7 @@ const finalizeRecord = (
   nowMs: number,
   reason: 'deadline_passed' | 'replaced' | 'abandoned',
 ): DeferredObjectivePlanHistoryEntry => ({
+  id: randomUUID(),
   deviceId: record.deviceId,
   deviceName: record.deviceName,
   objectiveKind: record.objectiveKind,
@@ -223,6 +322,8 @@ const finalizeRecord = (
   usedPolicyAvoid: record.usedPolicyAvoid,
   observedIntervals: record.observedIntervals.slice(),
   discoveredFrom: 'observation',
+  originalPlan: record.originalPlan,
+  finalPlan: record.finalPlan,
 });
 
 export type DeferredObjectiveBackfillConfig = {
@@ -237,6 +338,7 @@ export type DeferredObjectiveBackfillConfig = {
 const synthesizeBackfillEntry = (
   config: DeferredObjectiveBackfillConfig,
 ): DeferredObjectivePlanHistoryEntry => ({
+  id: randomUUID(),
   deviceId: config.deviceId,
   deviceName: config.deviceName,
   objectiveKind: config.objectiveKind,
@@ -256,15 +358,17 @@ const synthesizeBackfillEntry = (
   usedPolicyAvoid: false,
   observedIntervals: [],
   discoveredFrom: 'backfill',
+  originalPlan: null,
+  finalPlan: null,
 });
 
 export type PlanHistoryPersistDeps = {
-  load: () => DeferredObjectivePlanHistoryV2 | null;
+  load: () => DeferredObjectivePlanHistoryV3 | null;
   // Persist the snapshot. Return `true` on success, `false` on failure (e.g. the underlying
   // settings.set threw and the host swallowed it). A `false` return keeps the recorder dirty
   // so a later flush retries, and lets callers gate side-effects (like advancing the
   // observation watermark) on real persistence success.
-  save: (history: DeferredObjectivePlanHistoryV2) => boolean;
+  save: (history: DeferredObjectivePlanHistoryV3) => boolean;
 };
 
 export class DeferredObjectivePlanHistoryRecorder {
@@ -280,7 +384,11 @@ export class DeferredObjectivePlanHistoryRecorder {
     this.trimEntries();
   }
 
-  observe(diagnostics: readonly DeferredObjectiveDiagnostic[], nowMs: number): void {
+  observe(
+    diagnostics: readonly DeferredObjectiveDiagnostic[],
+    nowMs: number,
+    activePlans: DeferredObjectiveActivePlansV1 | null = null,
+  ): void {
     const seenKeys = new Set<InProgressKey>();
     for (const diag of diagnostics) {
       if (diag.deadlineAtMs === null) continue;
@@ -288,14 +396,15 @@ export class DeferredObjectivePlanHistoryRecorder {
       seenKeys.add(key);
       const existing = this.inProgress.get(key);
       const plannable = isPlannableStatus(diag.status) || isSatisfiedStatus(diag.status);
+      const plan = findPlanForRecord(activePlans, { deviceId: diag.deviceId, deadlineAtMs: diag.deadlineAtMs });
       if (existing) {
         // Plannable diagnostics roll forward progress + planning flags. Unknown/invalid still
         // count as observation ("PELS was watching"). If an already-met run later reports
         // trustworthy below-target progress, clear the live met marker; otherwise preserve
         // the last trustworthy progress.
         const next = plannable
-          ? mergeRecord(existing, diag, nowMs)
-          : recordNonPlannableTick(existing, diag, nowMs);
+          ? mergeRecord(existing, diag, nowMs, plan)
+          : recordNonPlannableTick(existing, diag, nowMs, plan);
         this.inProgress.set(key, next);
         continue;
       }
@@ -305,7 +414,7 @@ export class DeferredObjectivePlanHistoryRecorder {
       // diagnostic whose deadline has already passed doesn't create a junk record finalized on
       // the same cycle.
       if (diag.deadlineAtMs <= nowMs) continue;
-      const next = startRecord(diag, nowMs);
+      const next = startRecord(diag, nowMs, plan);
       if (next) this.inProgress.set(key, next);
     }
     this.finalizeStaleRecords(seenKeys, nowMs);
@@ -401,7 +510,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     return this.dirty;
   }
 
-  getHistorySnapshot(): DeferredObjectivePlanHistoryV2 {
+  getHistorySnapshot(): DeferredObjectivePlanHistoryV3 {
     return {
       version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
       entries: this.entries.slice(),

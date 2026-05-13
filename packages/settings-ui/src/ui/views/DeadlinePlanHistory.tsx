@@ -8,6 +8,7 @@ import {
   getPlanHistoryOutcomeTone,
   shouldShowBackupHoursPill,
 } from '../../../../shared-domain/src/deferredPlanHistory.ts';
+import { buildDeadlineHistoryHref } from '../deadlineUrls.ts';
 
 type DeadlinePlanHistoryProps = {
   entries: DeferredObjectivePlanHistoryEntry[];
@@ -25,7 +26,11 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
   const reachedAtLine = formatPlanHistoryReachedAtLine(entry, timeZone);
   const coverageLine = formatPlanHistoryObservedCoverage(entry);
   return (
-    <article class="plan-history-card" aria-label={`Past plan ${deadlineLine}`}>
+    <a
+      class="plan-history-card plan-history-card--link"
+      aria-label={`Past plan ${deadlineLine}`}
+      href={buildDeadlineHistoryHref(entry.deviceId, entry.id)}
+    >
       <header class="plan-history-card__header">
         <span class="plan-history-card__deadline">{deadlineLine}</span>
         <span class={`plan-chip plan-chip--${tone}`}>{outcomeLabel}</span>
@@ -45,7 +50,7 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
           <span class="plan-chip plan-chip--info">Backup hours</span>
         </div>
       )}
-    </article>
+    </a>
   );
 };
 
@@ -61,7 +66,7 @@ export const DeadlinePlanHistory = ({ entries, timeZone }: DeadlinePlanHistoryPr
     <section class="plan-history-list" aria-label="Past plans">
       {entries.map((entry) => (
         <PlanHistoryCard
-          key={`${entry.deviceId}-${entry.deadlineAtMs}-${entry.finalizedAtMs}`}
+          key={entry.id}
           entry={entry}
           timeZone={timeZone}
         />

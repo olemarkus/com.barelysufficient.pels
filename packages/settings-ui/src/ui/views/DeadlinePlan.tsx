@@ -8,7 +8,9 @@ import {
 } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
 import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
+import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { DeadlinePlanHistory } from './DeadlinePlanHistory.tsx';
+import { DeadlinePlanHistoryDetail } from './DeadlinePlanHistoryDetail.tsx';
 import { MdTextButton } from './materialWebJSX.tsx';
 
 type DeadlinePlanChipTone = 'info' | 'muted' | 'ok' | 'warn';
@@ -92,7 +94,23 @@ export type DeadlinePlanLoadState =
     objectiveKind: DeferredObjectiveSettingsKind;
     history?: DeadlinePlanHistoryView;
   }
-  | { status: 'ready'; payload: DeadlinePlanPayload; history?: DeadlinePlanHistoryView };
+  | { status: 'ready'; payload: DeadlinePlanPayload; history?: DeadlinePlanHistoryView }
+  | {
+    // Detail view for a finalized plan in history. The page lands on the
+    // History tab and shows the entry's recorded plan snapshots instead of
+    // the live planner output.
+    status: 'history-detail';
+    entry: DeferredObjectivePlanHistoryEntry;
+    timeZone: string;
+    history?: DeadlinePlanHistoryView;
+  }
+  | {
+    // The URL referenced a historyId that no longer exists (entry rolled off
+    // the cap, or settings were cleared). Lands on History so the user can
+    // see what is still available.
+    status: 'history-missing';
+    history?: DeadlinePlanHistoryView;
+  };
 
 const chipClass = (tone: DeadlinePlanChipTone): string => `plan-chip plan-chip--${tone}`;
 
@@ -638,6 +656,12 @@ const CurrentPlanContent = ({ loadState }: { loadState: DeadlinePlanLoadState })
       </section>
     );
   }
+  if (loadState.status === 'history-detail' || loadState.status === 'history-missing') {
+    // History-only routes hide the tab strip entirely (see DeadlinePlanRoot),
+    // so this branch is unreachable in practice. Returning null keeps the
+    // type narrowed without rendering anything if it ever is.
+    return null;
+  }
   return (
     <>
       <DeadlineHero payload={loadState.payload} />
@@ -658,6 +682,35 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
   useEffect(() => {
     if (loadState.status === 'completed') setActiveTab('history');
   }, [loadState.status]);
+  // History-only routes (`history-detail`, `history-missing`) target one
+  // specific past plan — there is no live "Current plan" to switch to, so
+  // skip the tab strip entirely. Without this short-circuit the Current tab
+  // would render nothing, looking like a broken page.
+  if (loadState.status === 'history-detail') {
+    return <DeadlinePlanHistoryDetail entry={loadState.entry} timeZone={loadState.timeZone} />;
+  }
+  if (loadState.status === 'history-missing') {
+    // Still surface other history entries below the not-found card so the
+    // user can recover in-page when one entry rolled off but siblings exist.
+    // The hero stays even when the list is empty because it explains *why*
+    // the page is showing this state.
+    const missingHistory = loadState.history;
+    const hasOtherEntries = (missingHistory?.entries.length ?? 0) > 0;
+    return (
+      <>
+        <section class="pels-surface-card budget-redesign-card">
+          <h1 class="plan-card__title">Plan not found</h1>
+          <p class="pels-card-supporting">This past plan is no longer recorded. Older entries roll off as new ones are saved.</p>
+        </section>
+        {hasOtherEntries && missingHistory && (
+          <DeadlinePlanHistory
+            entries={missingHistory.entries}
+            timeZone={missingHistory.timeZone}
+          />
+        )}
+      </>
+    );
+  }
   const history = loadState.history;
   return (
     <>

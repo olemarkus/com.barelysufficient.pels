@@ -9,7 +9,7 @@ import { DeferredObjectivePlanHistoryRecorder } from '../lib/plan/deferredObject
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
-import type { DeferredObjectivePlanHistoryV2 } from '../packages/contracts/src/deferredObjectivePlanHistory';
+import type { DeferredObjectivePlanHistoryV3 } from '../packages/contracts/src/deferredObjectivePlanHistory';
 
 const HOUR_MS = 60 * 60 * 1000;
 const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
@@ -127,9 +127,9 @@ const buildPowerTracker = (overrides: Partial<PowerTrackerState> = {}): PowerTra
 
 const buildHistoryRecorder = (): {
   recorder: DeferredObjectivePlanHistoryRecorder;
-  saved: () => DeferredObjectivePlanHistoryV2 | null;
+  saved: () => DeferredObjectivePlanHistoryV3 | null;
 } => {
-  let saved: DeferredObjectivePlanHistoryV2 | null = null;
+  let saved: DeferredObjectivePlanHistoryV3 | null = null;
   return {
     recorder: new DeferredObjectivePlanHistoryRecorder({
       load: () => null,

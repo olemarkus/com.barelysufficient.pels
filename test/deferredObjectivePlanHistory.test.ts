@@ -8,7 +8,7 @@ import type {
 } from '../lib/plan/deferredObjectives';
 import type {
   DeferredObjectivePlanHistoryEntry,
-  DeferredObjectivePlanHistoryV2,
+  DeferredObjectivePlanHistoryV3,
 } from '../packages/contracts/src/deferredObjectivePlanHistory';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -63,11 +63,11 @@ const makeDiag = (
   ...overrides,
 });
 
-const buildPersistDeps = (initial?: DeferredObjectivePlanHistoryV2): {
+const buildPersistDeps = (initial?: DeferredObjectivePlanHistoryV3): {
   deps: PlanHistoryPersistDeps;
-  saved: () => DeferredObjectivePlanHistoryV2 | null;
+  saved: () => DeferredObjectivePlanHistoryV3 | null;
 } => {
-  let saved: DeferredObjectivePlanHistoryV2 | null = null;
+  let saved: DeferredObjectivePlanHistoryV3 | null = null;
   return {
     deps: {
       load: () => initial ?? null,
@@ -589,10 +589,11 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
   });
 
   it('hydrates from persisted history on construction', () => {
-    const initial: DeferredObjectivePlanHistoryV2 = {
-      version: 2,
+    const initial: DeferredObjectivePlanHistoryV3 = {
+      version: 3,
       entries: [
         {
+          id: 'hydration-entry-1',
           deviceId: 'dev',
           deviceName: 'Water Heater',
           objectiveKind: 'temperature',
@@ -612,6 +613,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           usedPolicyAvoid: false,
           observedIntervals: [{ fromMs: 0, toMs: HOUR_MS }],
           discoveredFrom: 'observation',
+          originalPlan: null,
+          finalPlan: null,
         } satisfies DeferredObjectivePlanHistoryEntry,
       ],
     };
@@ -731,6 +734,113 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entries).toHaveLength(1);
       expect(entries[0]!.deviceId).toBe('dev-a');
       expect(entries[0]!.outcome).toBe('abandoned');
+    });
+  });
+
+  describe('v3 plan snapshots', () => {
+    const buildActivePlans = (
+      params: { deviceId: string; deadlineAtMs: number; originalKwh?: number; latestKwh?: number },
+    ) => ({
+      version: 1 as const,
+      plansByDeviceId: {
+        [params.deviceId]: {
+          deviceId: params.deviceId,
+          deviceName: 'Water Heater',
+          objectiveKind: 'temperature' as const,
+          targetTemperatureC: 65,
+          targetPercent: null,
+          deadlineAtMs: params.deadlineAtMs,
+          startedAtMs: 0,
+          pending: false,
+          objectiveSignature: 'sig',
+          original: {
+            revision: 1,
+            revisedAtMs: 0,
+            computedFromPricesUpTo: null,
+            reason: 'flow_card' as const,
+            hours: [{ startsAtMs: 0, plannedKWh: params.originalKwh ?? 1.0 }],
+            energyNeededKWh: 2.0,
+            planStatus: 'on_track' as const,
+          },
+          latest: {
+            revision: 2,
+            revisedAtMs: HOUR_MS,
+            computedFromPricesUpTo: null,
+            reason: 'prices_revised' as const,
+            hours: [{ startsAtMs: HOUR_MS, plannedKWh: params.latestKwh ?? 2.0 }],
+            energyNeededKWh: 2.0,
+            planStatus: 'on_track' as const,
+          },
+        },
+      },
+    });
+
+    it('captures original + final plan snapshots and assigns a stable uuid on finalize', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      // First cycle: only original revision exists (latest matches it). The recorder should
+      // capture this as both original and final at start time.
+      const firstPlans = buildActivePlans({ deviceId: 'dev', deadlineAtMs, originalKwh: 1.0, latestKwh: 1.0 });
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
+        0,
+        firstPlans,
+      );
+      // Second cycle: replanning produced a different `latest`. The final snapshot must
+      // reflect the new latest while the original snapshot stays at the first observed plan.
+      const revisedPlans = buildActivePlans({ deviceId: 'dev', deadlineAtMs, originalKwh: 1.0, latestKwh: 3.5 });
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60 })],
+        2 * HOUR_MS,
+        revisedPlans,
+      );
+      // Deadline sweep finalizes the run.
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(typeof entry.id).toBe('string');
+      expect(entry.id.length).toBeGreaterThan(10);
+      expect(entry.originalPlan).not.toBeNull();
+      expect(entry.finalPlan).not.toBeNull();
+      // Original captured at first observation: 1.0 kWh in hour 0.
+      expect(entry.originalPlan!.hours[0]!.plannedKWh).toBeCloseTo(1.0);
+      // Final reflects the revised latest: 3.5 kWh in hour 1.
+      expect(entry.finalPlan!.hours[0]!.plannedKWh).toBeCloseTo(3.5);
+    });
+
+    it('leaves plan snapshots null when no active plan exists during observation', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.id.length).toBeGreaterThan(0);
+      expect(entry.originalPlan).toBeNull();
+      expect(entry.finalPlan).toBeNull();
+    });
+
+    it('assigns distinct ids to entries finalized at the same millisecond', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      recorder.observe([
+        makeDiag({ deviceId: 'dev-a', deadlineAtMs, currentTemperatureC: 50 }),
+        makeDiag({ deviceId: 'dev-b', deadlineAtMs, currentTemperatureC: 40 }),
+      ], 0);
+      recorder.observe([], deadlineAtMs); // both finalize on the same sweep
+      recorder.flushIfDirty();
+
+      const entries = saved()!.entries;
+      expect(entries).toHaveLength(2);
+      expect(entries[0]!.id).not.toBe(entries[1]!.id);
     });
   });
 });
