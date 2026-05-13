@@ -2,7 +2,6 @@ import type { DeviceCapabilityMap } from './deviceManagerControl';
 import type {
   FlowReportedCapabilitiesForDevice,
   FlowReportedCapabilityEntry,
-  FlowReportedCapabilityId,
 } from './flowReportedCapabilities';
 import type { DeviceStateOfChargeSnapshot, TargetDeviceSnapshot } from '../utils/types';
 
@@ -15,12 +14,9 @@ export const EV_SOC_NATIVE_CAPABILITY_IDS = [
 
 const EV_SOC_STALE_MS = 40 * 60 * 1000;
 
-type StateOfChargeSource = DeviceStateOfChargeSnapshot['source'];
-
 type StateOfChargeCandidate = {
   percent: number;
   observedAtMs?: number;
-  source: StateOfChargeSource;
   capabilityId: string;
 };
 
@@ -28,29 +24,22 @@ export function resolveStateOfChargeSnapshot(params: {
   deviceClassKey: string;
   nowMs: number;
   capabilityObj: DeviceCapabilityMap;
-  flowBackedCapabilityIds: readonly FlowReportedCapabilityId[];
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
 }): DeviceStateOfChargeSnapshot | undefined {
   const {
     deviceClassKey,
     nowMs,
     capabilityObj,
-    flowBackedCapabilityIds,
     reportedCapabilities,
   } = params;
   if (deviceClassKey !== 'evcharger') return undefined;
 
-  const candidate = resolveStateOfChargeCandidate({
-    capabilityObj,
-    flowBackedCapabilityIds,
-    reportedCapabilities,
-  });
+  const candidate = resolveStateOfChargeCandidate({ capabilityObj });
   if (!candidate) return undefined;
 
   return buildStateOfChargeSnapshot({
     percent: candidate.percent,
     observedAtMs: candidate.observedAtMs,
-    source: candidate.source,
     capabilityId: candidate.capabilityId,
     capabilityObj,
     reportedCapabilities,
@@ -100,7 +89,6 @@ export function updateStateOfChargeFromRealtimeCapability(params: {
   const next = buildStateOfChargeSnapshot({
     percent,
     observedAtMs,
-    source: 'capability',
     capabilityId,
     capabilityObj: {
       evcharger_charging_state: {
@@ -210,23 +198,17 @@ function shouldStartNewSession(
 
 function resolveStateOfChargeCandidate(params: {
   capabilityObj: DeviceCapabilityMap;
-  flowBackedCapabilityIds: readonly FlowReportedCapabilityId[];
-  reportedCapabilities: FlowReportedCapabilitiesForDevice;
 }): StateOfChargeCandidate | null {
-  const { capabilityObj, flowBackedCapabilityIds } = params;
+  const { capabilityObj } = params;
   for (const capabilityId of EV_SOC_NATIVE_CAPABILITY_IDS) {
     const capability = capabilityObj[capabilityId];
     const percent = normalizeStateOfChargePercent(capability?.value);
     if (percent === undefined) continue;
-    const candidate: StateOfChargeCandidate = {
+    return {
       percent,
       observedAtMs: getCapabilityLastUpdatedMs(capabilityObj, capabilityId),
-      source: flowBackedCapabilityIds.includes(capabilityId as FlowReportedCapabilityId)
-        ? 'flow'
-        : 'capability',
       capabilityId,
     };
-    return candidate;
   }
   return null;
 }
@@ -234,7 +216,6 @@ function resolveStateOfChargeCandidate(params: {
 function buildStateOfChargeSnapshot(params: {
   percent: number;
   observedAtMs?: number;
-  source: StateOfChargeSource;
   capabilityId: string;
   capabilityObj: DeviceCapabilityMap;
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
@@ -243,7 +224,6 @@ function buildStateOfChargeSnapshot(params: {
   const {
     percent,
     observedAtMs,
-    source,
     capabilityId,
     capabilityObj,
     reportedCapabilities,
@@ -260,7 +240,6 @@ function buildStateOfChargeSnapshot(params: {
     percent,
     ...(observedAtMs ? { observedAtMs } : {}),
     status,
-    source,
     capabilityId,
     ...(session.sessionStartedAtMs ? { sessionStartedAtMs: session.sessionStartedAtMs } : {}),
     ...(session.invalidatedAtMs ? { invalidatedAtMs: session.invalidatedAtMs } : {}),
