@@ -9,6 +9,7 @@ import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from '../plan/plan
 import type { TargetDeviceSnapshot } from '../utils/types';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/src/powerFreshness';
+import type { PowerCalibrationStore } from './appPowerCalibrationWiring';
 
 export type PowerTrackerPersistReason =
   | 'scheduled'
@@ -69,6 +70,7 @@ export async function recordPowerSampleForApp(params: {
   schedulePlanRebuild: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
   objectiveProfileDebugStructured?: StructuredDebugEmitter;
+  powerCalibrationStore?: PowerCalibrationStore;
 }): Promise<void> {
   const snapshotStart = Date.now();
   const {
@@ -81,6 +83,7 @@ export async function recordPowerSampleForApp(params: {
     schedulePlanRebuild,
     saveState,
     objectiveProfileDebugStructured,
+    powerCalibrationStore,
   } = params;
   const hourBudgetKWh = Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
   const snapshot = getLatestTargetSnapshot();
@@ -100,6 +103,9 @@ export async function recordPowerSampleForApp(params: {
     nowMs,
     debugStructured: objectiveProfileDebugStructured,
   });
+  if (powerCalibrationStore && snapshot.length > 0) {
+    powerCalibrationStore.ingestDevices(snapshot, nowMs);
+  }
   addPerfDuration('power_sample_snapshot_ms', Date.now() - snapshotStart);
   await recordPowerSampleCore({
     state: profilingState,

@@ -39,3 +39,4 @@ export const FLOW_REPORTED_DEVICE_CAPABILITIES = 'flow_reported_device_capabilit
 export const HOMEY_PRICES_TODAY = 'homey_prices_today';
 export const HOMEY_PRICES_TOMORROW = 'homey_prices_tomorrow';
 export const HOMEY_PRICES_CURRENCY = 'homey_prices_currency';
+export const POWER_CALIBRATION = 'power_calibration';

@@ -105,6 +105,8 @@ export type DevicePlanDevice = {
   lastFreshDataMs?: number;
   lastLocalWriteMs?: number;
   pendingTargetCommand?: PendingTargetCommandSummary;
+  stepPowerCalibration?: Record<string, StepPowerCalibrationView>;
+  hasRecentObservedDrawAtSelectedStep?: boolean;
 };
 
 export type DevicePlan = {
@@ -227,4 +229,25 @@ export type PlanInputDevice = {
   binaryCommandPending?: boolean;
   binaryCommandPendingDesired?: boolean;
   binaryControlObservation?: BinaryControlObservation;
+  /**
+   * Per-step calibrated power view, populated at plan-build time from the
+   * persisted power-calibration store. When a `(deviceId, stepId)` pair has
+   * confident observations, `admissionPowerKw` carries the
+   * conservative-high estimate and `deliveryPowerKw` the conservative-low.
+   * Missing entries mean the planner should fall back to `planningPowerW`
+   * from the profile.
+   */
+  stepPowerCalibration?: Record<string, StepPowerCalibrationView>;
+  /**
+   * True when the calibration store has a recent positive observation at the
+   * device's currently reported step. Used by boost-driven stepped escalation
+   * to avoid escalating a device that isn't accepting load at its current
+   * step.
+   */
+  hasRecentObservedDrawAtSelectedStep?: boolean;
+};
+
+export type StepPowerCalibrationView = {
+  admissionPowerKw: number;
+  deliveryPowerKw: number;
 };

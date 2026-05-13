@@ -10,6 +10,7 @@ import type { PlanInputDevice } from '../planTypes';
 import { isDeviceObservationTrusted } from '../../observer/observationTrust';
 import { formatDeadlineLocalTime } from './deadline';
 import { planDeferredObjectiveHorizon } from './horizonPlanner';
+import { resolveStepDeliveryUsefulKw } from './objectiveStepPower';
 import {
   buildDeferredObjectivePolicyHorizon,
   type DeferredObjectivePolicyHorizonResult,
@@ -481,15 +482,12 @@ const resolveObjectiveSteps = (device: PlanInputDevice): DeferredObjectiveStep[]
   if (profile) {
     return sortSteppedLoadSteps(profile.steps).map((step) => ({
       id: step.id,
-      usefulPowerKw: step.planningPowerW / 1000,
+      usefulPowerKw: resolveStepDeliveryUsefulKw(device, step.id, step.planningPowerW / 1000),
     }));
   }
-  if (
-    typeof device.planningPowerKw === 'number'
-    && Number.isFinite(device.planningPowerKw)
-    && device.planningPowerKw > 0
-  ) {
-    return [{ id: 'charge', usefulPowerKw: device.planningPowerKw }];
+  const planning = device.planningPowerKw;
+  if (typeof planning === 'number' && Number.isFinite(planning) && planning > 0) {
+    return [{ id: 'charge', usefulPowerKw: planning }];
   }
   return [];
 };

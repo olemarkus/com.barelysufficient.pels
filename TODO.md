@@ -138,16 +138,11 @@ file.
       Synthetic SoC keeps writing to native Homey capability ids; the
       `pels_`-prefixed-capability alternative is documented in
       `notes/ev-soc-layering.md` with explicit triggers for revisiting.
-- [ ] Gate boost-driven stepped escalation on recent observed draw at the current step.
-      Boost currently bypasses the shed-invariant block and enables swap regardless of measured
-      power, so the planner can try to escalate `medium → max` on a device that has been drawing
-      ~0 kW at its current step. If the device is holding back on its own (e.g. tank near the
-      element's internal setpoint), going higher provides no real load and just churns headroom
-      accounting. Require a non-zero draw observation at the current step within a recent window
-      (outside of meter-settling) before allowing boost to escalate beyond the current step.
-      Files: `lib/plan/planRestoreHelpers.ts` (`canUseSwapForSteppedRestore`,
-      `blockSteppedRestoreForShedInvariant`), `lib/plan/planSteppedLoad.ts`,
-      boost / stepped restore tests.
+- [x] Gate boost-driven stepped escalation on recent observed draw at the current step.
+      `blockSteppedRestoreForShedInvariant` / `canUseSwapForSteppedRestore` now consult
+      `device.hasRecentObservedDrawAtSelectedStep`, derived from the per-step calibration
+      store. Calibration-confirmed `false` blocks the boost bypass; `undefined` keeps the
+      legacy bypass intact so newly-paired devices are not penalised during warmup.
 - [ ] Clamp stale EV boost stepped-load intent after boost deactivates.
       When EV boost admits a higher charger step and a later SoC update turns boost off, the next
       plan can briefly carry the old higher `desiredStepId` even when the shed-invariant reason says

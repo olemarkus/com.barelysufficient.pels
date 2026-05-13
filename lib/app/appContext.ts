@@ -34,6 +34,7 @@ import type { RefreshTargetDevicesSnapshotOptions, AppSnapshotHelpers } from './
 import type { TimerRegistry } from './timerRegistry';
 import type { FlowReportedCapabilitiesForDevice, FlowReportedCapabilityId } from '../core/flowReportedCapabilities';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
+import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 
 export type FlowBackedCapabilityReportOutcome = {
   kind: 'state_changed' | 'freshness_only' | 'noop';
@@ -130,6 +131,7 @@ export type AppContext = {
   getCombinedHourlyPrices: () => unknown;
   getDailyBudgetUiPayload: () => DailyBudgetUiPayload | null;
   getLatestPlanSnapshotForUi: () => SettingsUiPlanSnapshot | null;
+  getPowerCalibrationSnapshot: () => PowerCalibrationSnapshot;
   get powerTracker(): PowerTrackerState;
   set powerTracker(value: PowerTrackerState);
   get capacitySettings(): { limitKw: number; marginKw: number };
