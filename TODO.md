@@ -15,6 +15,42 @@ file.
 - **P3:** future capability, optional hardening, or exploratory cleanup with no current correctness
   or supportability pressure.
 
+## P0 Release Blockers
+
+- [ ] Fix the at-risk flow status collapse before Smart tasks v1 releases.
+      The flow-card boundary maps `at_risk` to `on_track`
+      (`flowCards/deadlineObjectiveCards.ts:17-19,109-111,130-132`). Triggers watching for
+      at-risk transitions never fire; conditions matching `at_risk` never match. Affects
+      temperature and EV deadlines equally.
+      Why P0: this is a landed flow/status surface that can tell users a deadline is on track
+      when the planner believes it is at risk.
+      Minimum acceptable completion: extend `SmartTaskActiveFlowStatus` to include `at_risk`,
+      drop the case-fallthrough in both status mappers, update the trigger/condition dropdowns,
+      and add a transition test for `deadline_status_changed` plus a condition test for
+      `deadline_status_is = at_risk`.
+      Files: `flowCards/deadlineObjectiveCards.ts`,
+      `.homeycompose/flow/triggers/deadline_status_changed.json`,
+      `.homeycompose/flow/conditions/deadline_status_is.json`, status-mapping tests.
+- [ ] Make EV deadline plans actually control the charger.
+      Admission produces a decision for EV diagnostics but no command path exists:
+      `buildDeferredTargetOverrides` skips EV (`lib/plan/deferredObjectives/admission.ts:80-92`)
+      and the binary restore lane only fires for `currentOn === false` while
+      `plugged_in_paused` reports `currentOn: true`
+      (`lib/core/deviceManagerControl.ts:51-60`, `lib/executor/binaryExecutor.ts:56`). Add
+      EV-aware executor intent (`ev_resume` / `ev_pause`) emitted when the admission decision
+      flips between planned and idle. Honor existing cooldowns and the stale-power failsafe.
+      Replace the `test/evDevices.integration.test.ts:292` "no command for paused EV" assertion
+      with the new expected behavior.
+      Why P0: the `set_ev_charge_deadline` flow card is registered and exposed to users today
+      ("Charge [[device]] to [[target_percent]] % by [[ready_by]]"). Firing it succeeds and
+      writes a plan, but no command reaches the charger.
+      Minimum acceptable completion: a planned EV bucket resumes/starts a paused plugged-in
+      charger, an idle bucket pauses/limits it through the normal control path, capacity safety is
+      retained, and integration tests cover both the resume and idle transitions.
+      Design: `notes/ev-ready-by/README.md`.
+      Files: `lib/plan/deferredObjectives/admission.ts`, `lib/executor/`,
+      `lib/core/deviceManagerControl.ts`, `test/evDevices.integration.test.ts`.
+
 ## P1 Correctness, Data Integrity, and Supported UX
 
 - [ ] Make Settings UI device refresh await in-flight snapshot refreshes. `/ui_refresh_devices`
@@ -107,6 +143,34 @@ file.
       pending swap target during restore cooldown while its swapped-out source is still on.
       Files: `lib/plan/planRestore.ts`, `lib/plan/planRestoreHelpers.ts`,
       stepped swap / restore-cooldown tests.
+- [ ] Surface EV deadline device-card state.
+      `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx:63` shows only the Smart task chip.
+      Once EV actuation lands, the device card should explain what PELS thinks the charger is
+      doing. Add a next-planned-start line ("Waiting · charging starts 01:00"), an
+      active-charging finish line ("Charging · planned finish 05:30"), and a plug-out paused
+      line ("Charging plan paused — car unplugged"). Pull start / finish from the active-plan
+      recorder's `latest.hours`; pull the paused state from the existing
+      `objective_invalid_session` reason emitted by `resolveEvObjectiveProgress`
+      (`lib/plan/deferredObjectives/diagnosticsBridge.ts:380-402`), which fires when the
+      observation layer reports `stateOfCharge.status === 'invalid'`.
+      Why P1: this is not a P0 blocker, but it is the first support-facing clarity gap once EV
+      deadlines actually control charging.
+      Design: `notes/ev-ready-by/README.md`.
+      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
+      `lib/plan/deferredObjectives/diagnosticsBridge.ts`,
+      `packages/contracts/src/` (diagnostic reason additions), device-card tests.
+- [ ] Show planning speed and estimated duration on the EV deadline-plan page.
+      `packages/settings-ui/src/ui/deadlinePlan.ts:153,164` shows kWh and hours-until-deadline.
+      Add "Planning speed: X.X kW" and "Estimated time: Yh Zm" near the energy line, tagged
+      with a speed-mode badge ("Auto" / "Learning…" today; "Manual" / "Conservative" once P3
+      lands). Plumb the EV side of the existing per-step power calibration view
+      (`lib/app/appInit.ts:468-487`, either a synthetic 1-step profile or an EV-specific
+      branch) so `resolveStepDeliveryUsefulKw` serves Automatic mode without duplication.
+      Why P1: this is not a P0 blocker for the flow-card percent deadline, but it is the core
+      trust signal users need soon after the actuation fix.
+      Design: `notes/ev-ready-by/README.md`.
+      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`, `lib/app/appInit.ts`,
+      `lib/plan/deferredObjectives/diagnosticsBridge.ts`, calibration view tests.
 
 ## P2 Product, Observability, and Maintainability
 
@@ -241,6 +305,44 @@ file.
 - [ ] Land low-risk file consolidations once their target files have headroom. Merge tiny helpers
       only where doing so reduces directory surface without hiding real subsystem boundaries.
       Files: `lib/plan/**`, `lib/app/appRealtimeDeviceReconcile*`.
+- [ ] Support a kWh target on the EV deadline flow card.
+      `packages/contracts/src/deferredObjectiveSettings.ts:14-16` accepts only `targetPercent`
+      for the `ev_soc` variant. The kWh target is the only EV deadline path that does not
+      depend on SoC observation at all — no native capability, no session validity, no
+      freshness window. Discriminate the `ev_soc` variant to accept either `targetPercent` or
+      `targetEnergyKwh`, add a `target_kwh` arg path to `set_ev_charge_deadline`, and teach
+      the diagnostics bridge to compute `energyNeededKwh` directly from `targetEnergyKwh` when
+      present.
+      Why P2: stand-alone feature; broadens supported chargers (no SoC integration required)
+      and removes a fragile dependency for chargers that do report SoC. Not a prerequisite for
+      the v1 EV release unless the release copy promises "add X kWh before HH:mm".
+      Design: `notes/ev-ready-by/README.md`.
+      Files: `packages/contracts/src/deferredObjectiveSettings.ts`,
+      `flowCards/deadlineObjectiveCards.ts`,
+      `lib/plan/deferredObjectives/diagnosticsBridge.ts`,
+      `.homeycompose/flow/actions/set_ev_charge_deadline.json`, contract and bridge tests.
+- [ ] Make `enforcement: 'hard'` actually bypass daily-budget pressure on EV deadlines.
+      `lib/plan/planBuilder.ts:258` uses `min(capacitySoftLimit, dailySoftLimit)` uniformly,
+      so the `hard` flag accepted by the flow card has no behavioral effect. Plumb a "hard
+      objective active" signal from admission into the soft-limit selector and apply only to
+      EV chargers admitted under `enforcement: 'hard'`; bypass the daily-tightened soft limit
+      while still respecting the hard cap. Until this lands, the EV flow card should default to
+      `soft` and hide the `hard` option from users.
+      Design: `notes/ev-ready-by/README.md`.
+      Files: `lib/plan/planBuilder.ts`, `lib/plan/deferredObjectives/admission.ts`,
+      `flowCards/deadlineObjectiveCards.ts`, headroom and admission tests.
+- [ ] Close the EV deadline observability loop: measured deviation and richer trigger tokens.
+      Two connected items: (a) emit the `measured_deviation` revision reserved in
+      `activePlanRecorder.ts:379-380` by comparing observed delivery (read from the calibration
+      EMA via `getDeliveryPowerKw`) against the planned bucket allocation; (b) expand
+      `buildTriggerTokens` (`flowCards/deadlineObjectiveCards.ts:161-179`) with
+      `planned_start_local`, `planned_finish_local`, `required_kwh`, `planning_speed_kw`,
+      `estimated_duration_text`, and `risk_reason`. The active-plan recorder already carries
+      `energyNeededKWh`, `planStatus`, `kwhPerUnitSource`, and the bucket allocation needed.
+      Design: `notes/ev-ready-by/README.md`.
+      Files: `lib/plan/deferredObjectives/activePlanRecorder.ts`,
+      `flowCards/deadlineObjectiveCards.ts`,
+      `.homeycompose/flow/triggers/deadline_status_changed.json`, related tests.
 
 ## P3 Future and Exploratory Work
 
@@ -270,3 +372,24 @@ file.
 - [ ] Keep the remaining future feature ideas small and design-driven: configurable per-device
       cooldowns, explicit available-power reservations, richer price explainability,
       weather-aware budget context, and small per-device action history in the UI.
+- [ ] Add EV deadline automation: per-charger defaults and plug-in auto-trigger.
+      Per-charger automation profile (enabled, target percent or kWh, ready-by time,
+      enforcement, speed mode, optional manual kW and derating) plus a hook on the
+      `sessionStartedAtMs` boundary in `lib/core/deviceStateOfCharge.ts` that materializes the
+      defaults into a `DeferredObjectiveSettingsV1` entry through the same upsert path the flow
+      card uses. Persistence must align with the shared `PersistedSettingsState<T>` helper from
+      `notes/persisted-settings-state.md`.
+      Why P3: stand-alone polish; removes the per-session friction of firing
+      `set_ev_charge_deadline` manually, but the v1 flow-card path is workable without it.
+      Design: `notes/ev-ready-by/README.md`.
+      Files: new `packages/contracts/src/evChargerDefaults.ts`,
+      new `lib/app/evChargerDefaultsWiring.ts`, `lib/core/deviceStateOfCharge.ts`,
+      defaults / auto-trigger tests.
+- [ ] EV deadline polish: manual override actions and urgency rule.
+      Add `charge_now` and `pause_until_next_planned_slot` flow actions. Add a
+      deadline-imminent emergency rule that forces planned admission when
+      `(deadline − now) < requiredHours + 1h buffer`. (Notification delivery is the user's own
+      flow — PELS supplies the trigger tokens needed to compose useful messages; the work for
+      those tokens lives in the P2 observability entry above, not here.)
+      Design: `notes/ev-ready-by/README.md`.
+      Files: new flow action JSONs and registrations.
