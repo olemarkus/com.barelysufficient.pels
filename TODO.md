@@ -195,18 +195,14 @@ has computed an allocation. The replan policy is documented in
       reasons.
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`, ECharts series wiring,
       e2e + screenshot coverage.
-- [ ] Auto-refresh the per-device deadline-plan page on `plan_updated` / `devices_updated`.
-      `mountDeadlinePlan` (`packages/settings-ui/src/ui/deadlinePlan.ts`) runs once at page
-      load and never re-subscribes. A user sitting on `deadline-plan.html` keeps seeing the
-      state at mount time until they reload — every render branch is affected, but the
-      `already_satisfied` and `device_data_missing` reasons make this especially visible
-      because the page lingers on a transient state (e.g. temperature drops back below
-      target, but the page still says "Already at target"). Wire a lightweight refresh that
-      re-runs the bootstrap → `resolveRenderInput` → `renderDeadlinePlan` pipeline on the
-      same Homey events the main settings UI already listens to (`packages/settings-ui/src/
-      ui/realtime.ts`), debounced to avoid thrashing while the user scrolls the chart.
-      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`,
-      `packages/settings-ui/src/ui/realtime.ts`, focused e2e for the refresh path.
+- [x] Auto-refresh the per-device deadline-plan page on `plan_updated` / `devices_updated`.
+      `mountDeadlinePlan` (`packages/settings-ui/src/ui/deadlinePlanMount.ts`) now subscribes to
+      `plan_updated`, `devices_updated`, and `prices_updated`, then debounces/coalesces a
+      bootstrap/devices/prices refresh before re-running `resolveRenderInput` →
+      `renderDeadlinePlan`. The focused e2e mutates the open page state and verifies the event
+      burst refreshes the page without a reload.
+      Files: `packages/settings-ui/src/ui/deadlinePlanMount.ts`,
+      `packages/settings-ui/tests/e2e/deadline-plan.spec.ts`.
 - [ ] Per-device per-hour actuals overlay (deferred). `dailyBudget.buckets.actualKWh` is
       aggregate across background and all controlled devices, so we cannot reliably show
       *this device's* measured kWh per hour without device-level energy logging or a

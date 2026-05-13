@@ -1026,6 +1026,9 @@
       emitSettingsSet: (key) => {
         emit('settings.set', key);
       },
+      emitHomeyEvent: (event, ...args) => {
+        emit(event, ...args);
+      },
       setSetting: (key, value) => {
         settings[key] = value;
       },

@@ -1,4 +1,16 @@
 import { expect, test, type Page } from './fixtures/test';
+import type { DeferredObjectiveSettingsV1 } from '../../../contracts/src/deferredObjectiveSettings.ts';
+
+type DeadlinePlanStubWindow = Window & {
+  Homey: {
+    __stub: {
+      emitHomeyEvent: (event: string, ...args: unknown[]) => void;
+      getApiCallCount: (key: string) => number;
+      getSetting: (key: 'deferred_objectives') => DeferredObjectiveSettingsV1;
+      setSetting: (key: 'deferred_objectives', value: DeferredObjectiveSettingsV1) => void;
+    };
+  };
+};
 
 const openDeadlinePlan = async (page: Page) => {
   await page.goto('/deadline-plan.html?deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
@@ -84,6 +96,43 @@ test.describe('Deadline plan', () => {
 
     await expect(page.getByText('Price horizon', { exact: true })).toBeVisible();
     await expect(page.locator('.deadline-horizon-chart svg')).toBeVisible();
+  });
+
+  test('refreshes the open page when plan and device events arrive', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 860 });
+    await openDeadlinePlan(page);
+    await expect(page.locator('.plan-hero__subline').first()).toContainText('Target 65 °C');
+
+    const initialBootstrapCalls = await page.evaluate(() => (
+      (window as unknown as DeadlinePlanStubWindow).Homey.__stub.getApiCallCount('GET /ui_bootstrap')
+    ));
+
+    await page.evaluate(() => {
+      const homey = (window as unknown as DeadlinePlanStubWindow).Homey;
+      const current = homey.__stub.getSetting('deferred_objectives');
+      const objective = current.objectivesByDeviceId.dev_connected300;
+      if (!objective || objective.kind !== 'temperature') {
+        throw new Error('Expected Connected 300 temperature objective in Homey stub');
+      }
+      homey.__stub.setSetting('deferred_objectives', {
+        ...current,
+        objectivesByDeviceId: {
+          ...current.objectivesByDeviceId,
+          dev_connected300: {
+            ...objective,
+            targetTemperatureC: 70,
+          },
+        },
+      });
+      homey.__stub.emitHomeyEvent('plan_updated', { plan: null });
+      homey.__stub.emitHomeyEvent('devices_updated');
+    });
+
+    await expect(page.locator('.plan-hero__subline').first()).toContainText('Target 70 °C');
+    const refreshedBootstrapCalls = await page.evaluate(() => (
+      (window as unknown as DeadlinePlanStubWindow).Homey.__stub.getApiCallCount('GET /ui_bootstrap')
+    ));
+    expect(refreshedBootstrapCalls).toBe(initialBootstrapCalls + 1);
   });
 
   test('shows the error state when the device has no objective', async ({ page }) => {
