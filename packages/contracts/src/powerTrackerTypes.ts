@@ -21,6 +21,8 @@ export type PowerTrackerState = {
   controlledHourlyAverages?: Record<string, { sum: number; count: number }>;
   uncontrolledHourlyAverages?: Record<string, { sum: number; count: number }>;
   exemptHourlyAverages?: Record<string, { sum: number; count: number }>;
+  deviceBuckets?: Record<string, Record<string, number>>;
+  lastDevicePowerWById?: Record<string, number>;
   unreliablePeriods?: Array<{ start: number; end: number }>;
   objectiveProfiles?: Record<string, DeviceObjectiveProfile>;
 };

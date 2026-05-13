@@ -12,7 +12,12 @@ const isOffLikeId = (id: string | undefined): boolean => {
   return n === '' || n === 'off';
 };
 
-const isOffLikeState = (state: string | undefined): boolean => {
+// Broader than the shared `isOffLikeState` in `deviceStatePredicates.ts`:
+// also treats empty / `'disappeared'` as off-for-display so the stepped card
+// renders "Off now" when the device has no fresh observation. Intentionally
+// not unified — the shared predicate is the strict off-or-unknown semantic
+// used elsewhere; this one is display-only.
+const isSteppedCardOffLikeState = (state: string | undefined): boolean => {
   const n = (state ?? '').trim().toLowerCase();
   return n === '' || n === 'off' || n === 'unknown' || n === 'disappeared';
 };
@@ -59,7 +64,7 @@ const isPoweredStep = (profile: SteppedLoadProfile, stepId: string | null): bool
 };
 
 export const resolveSteppedStateLabel = (device: SteppedCardDevice): string => {
-  if (isOffLikeState(device.currentState)) return 'Off now';
+  if (isSteppedCardOffLikeState(device.currentState)) return 'Off now';
   const stepId = resolveCurrentStepId(device);
   if (!stepId) return 'Level unknown';
   if (isOffLikeId(stepId)) return 'Off now';
@@ -70,7 +75,7 @@ export const resolveSteppedActiveStepId = (
   device: SteppedCardDevice,
   profile: SteppedLoadProfile,
 ): string | null => {
-  if (isOffLikeState(device.currentState)) {
+  if (isSteppedCardOffLikeState(device.currentState)) {
     const offStep = profile.steps.find((s) => s.id.toLowerCase() === 'off');
     return offStep?.id ?? 'off';
   }
@@ -201,7 +206,7 @@ const resolveTransitStatusLine = (device: SteppedDevice, profile: SteppedLoadPro
   const targetId = resolveTargetStepId(device);
   if (!isPoweredStep(profile, targetId)) return 'Turning off to stay below limit';
   const label = findStepLabel(profile, targetId);
-  if (isOffLikeState(device.currentState)) {
+  if (isSteppedCardOffLikeState(device.currentState)) {
     return label ? `Turning on to ${label}` : 'Turning on';
   }
   const currentId = resolveCurrentStepId(device);
@@ -215,7 +220,7 @@ const resolveTransitStatusLine = (device: SteppedDevice, profile: SteppedLoadPro
 const resolveBlockedStatusLine = (device: SteppedDevice, profile: SteppedLoadProfile): string | null => {
   const targetId = resolveTargetStepId(device);
   if (!targetId || !isPoweredStep(profile, targetId)) return null;
-  if (isOffLikeState(device.currentState)) {
+  if (isSteppedCardOffLikeState(device.currentState)) {
     const gap = resolveHeadroomGapKw(device.reason);
     return gap !== null ? `Waiting to resume · ${gap.toFixed(1)} kW more needed` : null;
   }
@@ -257,7 +262,7 @@ export const resolveSteppedStatusLine = (
   }
   const blocked = resolveBlockedStatusLine(device, profile);
   if (blocked !== null) return blocked;
-  if (isOffLikeState(device.currentState)) return resolveOffStatusLine(device);
+  if (isSteppedCardOffLikeState(device.currentState)) return resolveOffStatusLine(device);
   const stepId = resolveCurrentStepId(device);
   return stepId && !isOffLikeId(stepId) ? 'Maintaining level' : null;
 };

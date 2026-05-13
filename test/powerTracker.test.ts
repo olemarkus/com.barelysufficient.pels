@@ -9,6 +9,7 @@ import {
   formatDateUtc,
   getUtcDayOfWeek,
   getUtcHour,
+  aggregateAndPruneHistory,
   recordPowerSample,
 } from '../lib/core/powerTracker';
 import { getHourBucketKey, truncateToUtcHour } from '../lib/utils/dateUtils';
@@ -251,5 +252,182 @@ describe('power tracker integration', () => {
     const bucketKey = new Date(Date.UTC(2025, 0, 1, 0, 0, 0)).toISOString();
     const snapshot = state as any;
     expect(snapshot.exemptBuckets[bucketKey]).toBeCloseTo(0.2, 3);
+  });
+
+  it('tracks per-device measured buckets when provided on both samples', async () => {
+    const state = {};
+    const saveState = (nextState: any) => Object.assign(state, nextState);
+    const rebuildPlanFromCache = vi.fn();
+    const start = Date.UTC(2025, 0, 1, 0, 0, 0);
+
+    await recordPowerSample({
+      state,
+      currentPowerW: 2000,
+      currentDevicePowerWById: { heater: 1200, ev: 0 },
+      nowMs: start,
+
+      rebuildPlanFromCache,
+      saveState,
+      capacityGuard: undefined,
+    });
+
+    await recordPowerSample({
+      state,
+      currentPowerW: 2000,
+      currentDevicePowerWById: { heater: 1200, ev: 0 },
+      nowMs: start + 30 * 60 * 1000,
+
+      rebuildPlanFromCache,
+      saveState,
+      capacityGuard: undefined,
+    });
+
+    const bucketKey = new Date(Date.UTC(2025, 0, 1, 0, 0, 0)).toISOString();
+    const snapshot = state as any;
+    expect(snapshot.deviceBuckets.heater[bucketKey]).toBeCloseTo(0.6, 3);
+    expect(snapshot.deviceBuckets.ev[bucketKey]).toBe(0);
+    expect(snapshot.lastDevicePowerWById).toEqual({ heater: 1200, ev: 0 });
+  });
+
+  it('splits per-device measured buckets across hour boundaries', async () => {
+    const state = {};
+    const saveState = (nextState: any) => Object.assign(state, nextState);
+    const rebuildPlanFromCache = vi.fn();
+    const start = Date.UTC(2025, 0, 1, 0, 50, 0);
+
+    await recordPowerSample({
+      state,
+      currentPowerW: 2000,
+      currentDevicePowerWById: { heater: 1800 },
+      nowMs: start,
+
+      rebuildPlanFromCache,
+      saveState,
+      capacityGuard: undefined,
+    });
+
+    await recordPowerSample({
+      state,
+      currentPowerW: 2000,
+      currentDevicePowerWById: { heater: 1800 },
+      nowMs: start + 20 * 60 * 1000,
+
+      rebuildPlanFromCache,
+      saveState,
+      capacityGuard: undefined,
+    });
+
+    const bucket0 = new Date(Date.UTC(2025, 0, 1, 0, 0, 0)).toISOString();
+    const bucket1 = new Date(Date.UTC(2025, 0, 1, 1, 0, 0)).toISOString();
+    const snapshot = state as any;
+    expect(snapshot.deviceBuckets.heater[bucket0]).toBeCloseTo(0.3, 3);
+    expect(snapshot.deviceBuckets.heater[bucket1]).toBeCloseTo(0.3, 3);
+  });
+
+  it('does not infer per-device buckets when current measured evidence is missing', async () => {
+    const state = {};
+    const saveState = (nextState: any) => Object.assign(state, nextState);
+    const rebuildPlanFromCache = vi.fn();
+    const start = Date.UTC(2025, 0, 1, 0, 0, 0);
+
+    await recordPowerSample({
+      state,
+      currentPowerW: 2000,
+      currentDevicePowerWById: { heater: 1200 },
+      nowMs: start,
+
+      rebuildPlanFromCache,
+      saveState,
+      capacityGuard: undefined,
+    });
+
+    await recordPowerSample({
+      state,
+      currentPowerW: 2000,
+      currentDevicePowerWById: {},
+      nowMs: start + 30 * 60 * 1000,
+
+      rebuildPlanFromCache,
+      saveState,
+      capacityGuard: undefined,
+    });
+
+    const snapshot = state as any;
+    expect(snapshot.deviceBuckets?.heater).toBeUndefined();
+    expect(snapshot.lastDevicePowerWById).toEqual({});
+  });
+
+  it('omits per-device buckets when no measured device energy is retained', async () => {
+    const state = {};
+    const saveState = (nextState: any) => Object.assign(state, nextState);
+    const rebuildPlanFromCache = vi.fn();
+    const start = Date.UTC(2025, 0, 1, 0, 0, 0);
+
+    await recordPowerSample({
+      state,
+      currentPowerW: 2000,
+      nowMs: start,
+
+      rebuildPlanFromCache,
+      saveState,
+      capacityGuard: undefined,
+    });
+
+    await recordPowerSample({
+      state,
+      currentPowerW: 2000,
+      nowMs: start + 30 * 60 * 1000,
+
+      rebuildPlanFromCache,
+      saveState,
+      capacityGuard: undefined,
+    });
+
+    expect((state as any).deviceBuckets).toBeUndefined();
+  });
+
+  it('prunes old per-device measured buckets', () => {
+    vi.useFakeTimers();
+    try {
+      const now = Date.UTC(2025, 1, 15, 0, 0, 0);
+      vi.setSystemTime(now);
+      const freshBucket = new Date(now - 2 * 60 * 60 * 1000).toISOString();
+      const staleBucket = new Date(now - 40 * 24 * 60 * 60 * 1000).toISOString();
+
+      const pruned = aggregateAndPruneHistory({
+        buckets: { [freshBucket]: 1 },
+        deviceBuckets: {
+          heater: { [freshBucket]: 0.5, [staleBucket]: 1.2 },
+          ev: { [staleBucket]: 2 },
+        },
+        lastDevicePowerWById: { heater: 1200, ev: 0 },
+      });
+
+      expect(pruned.deviceBuckets).toEqual({ heater: { [freshBucket]: 0.5 } });
+      expect(pruned.lastDevicePowerWById).toEqual({ heater: 1200, ev: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('omits per-device buckets when pruning removes every device bucket', () => {
+    vi.useFakeTimers();
+    try {
+      const now = Date.UTC(2025, 1, 15, 0, 0, 0);
+      vi.setSystemTime(now);
+      const staleBucket = new Date(now - 40 * 24 * 60 * 60 * 1000).toISOString();
+
+      const pruned = aggregateAndPruneHistory({
+        buckets: {},
+        deviceBuckets: {
+          heater: { [staleBucket]: 1.2 },
+          ev: { [staleBucket]: 2 },
+        },
+      });
+
+      expect(pruned.deviceBuckets).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

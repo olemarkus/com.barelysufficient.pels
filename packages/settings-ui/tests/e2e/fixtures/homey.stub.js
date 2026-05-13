@@ -99,6 +99,7 @@
   const buildSamplePowerTracker = () => {
     const now = new Date();
     const endMs = startOfUtcHourMs(now) + 3600 * 1000;
+    const currentHourIso = new Date(startOfUtcHourMs(now)).toISOString();
     const startMs = endMs - 14 * 24 * 3600 * 1000;
 
     const buckets = Object.create(null);
@@ -132,6 +133,14 @@
       buckets,
       controlledBuckets,
       uncontrolledBuckets,
+      deviceBuckets: {
+        dev_connected300: {
+          [currentHourIso]: 0.8,
+        },
+      },
+      lastDevicePowerWById: {
+        dev_connected300: 1500,
+      },
       objectiveProfiles: {
         dev_connected300: {
           kind: 'temperature',

@@ -30,6 +30,7 @@ type DeadlinePlanHour = {
     backgroundKwh: number;
     originalDeviceKwh: number;
     deviceKwh: number;
+    actualDeviceKwh: number | null;
   };
   progress: number;
 };
@@ -117,6 +118,7 @@ type DeadlineChartPalette = {
   priceExpensive: string;
   background: string;
   device: string;
+  actualDevice: string;
   progress: string;
   grid: string;
   text: string;
@@ -146,6 +148,7 @@ const resolvePalette = (element: HTMLElement): DeadlineChartPalette => ({
   priceExpensive: cssVar(element, '--color-base-warning-default'),
   background: cssVar(element, '--pels-text-supporting-color'),
   device: cssVar(element, '--color-base-accent-default'),
+  actualDevice: cssVar(element, '--color-base-success-default', '#2e7d32'),
   progress: cssVar(element, '--color-base-info-default'),
   grid: cssVar(element, '--pels-surface-outline'),
   text: cssVar(element, '--text'),
@@ -192,12 +195,16 @@ const buildTooltip = (payload: DeadlinePlanPayload, rawParams: unknown): string 
   const originalLine = hour.changed
     ? `${labels.originalDeviceSeriesName} ${hour.usage.originalDeviceKwh.toFixed(1)} kWh`
     : null;
+  const actualLine = hour.usage.actualDeviceKwh !== null
+    ? `${labels.actualDeviceSeriesName} ${hour.usage.actualDeviceKwh.toFixed(1)} kWh`
+    : null;
   return [
     `<strong>${encodeHtml(hour.time)}</strong>`,
     `Price ${encodeHtml(hour.price)}`,
     `${encodeHtml(labels.backgroundSeriesName)} ${hour.usage.backgroundKwh.toFixed(1)} kWh`,
     ...(originalLine ? [encodeHtml(originalLine)] : []),
     `${encodeHtml(labels.deviceSeriesName)} ${hour.usage.deviceKwh.toFixed(1)} kWh`,
+    ...(actualLine ? [encodeHtml(actualLine)] : []),
     `Plan ${encodeHtml(planLabel)}`,
     `Progress ${formatProgressValue(hour.progress, labels.targetUnit)}`,
   ].join('<br>');
@@ -224,9 +231,13 @@ const buildChartOption = (
   const priceRange = priceMax - priceMin;
   const priceAxisMin = priceRange > 0.01 ? priceMin : 0;
   const stackedMax = Math.max(0.5, ...payload.timeline.hours.map((hour) => (
-    hour.usage.backgroundKwh + Math.max(hour.usage.originalDeviceKwh, hour.usage.deviceKwh)
+    Math.max(
+      hour.usage.backgroundKwh + Math.max(hour.usage.originalDeviceKwh, hour.usage.deviceKwh),
+      hour.usage.actualDeviceKwh ?? 0,
+    )
   )));
   const originalSeriesName = payload.labels.originalDeviceSeriesName;
+  const hasActualDeviceSeries = payload.timeline.hours.some((hour) => hour.usage.actualDeviceKwh !== null);
 
   const axisBase = {
     type: 'category' as const,
@@ -272,12 +283,18 @@ const buildChartOption = (
   return {
     animation: false,
     backgroundColor: 'transparent',
-    color: [palette.background, palette.device, palette.progress],
+    color: [palette.background, palette.device, palette.actualDevice, palette.progress],
     textStyle: { color: palette.text, fontFamily: 'inherit' },
     legend: {
       top: 0,
       left: 0,
-      data: [payload.labels.backgroundSeriesName, payload.labels.deviceSeriesName, originalSeriesName, 'Target progress'],
+      data: [
+        payload.labels.backgroundSeriesName,
+        payload.labels.deviceSeriesName,
+        originalSeriesName,
+        ...(hasActualDeviceSeries ? [payload.labels.actualDeviceSeriesName] : []),
+        'Target progress',
+      ],
       itemWidth: 12,
       itemHeight: 8,
       icon: 'roundRect',
@@ -444,6 +461,18 @@ const buildChartOption = (
           },
         })),
       },
+      ...(hasActualDeviceSeries ? [{
+        name: payload.labels.actualDeviceSeriesName,
+        type: 'line' as const,
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        symbol: 'circle',
+        symbolSize: 7,
+        connectNulls: false,
+        lineStyle: { color: palette.actualDevice, width: 2, type: 'dotted' as const },
+        itemStyle: { color: palette.actualDevice },
+        data: payload.timeline.hours.map((hour) => hour.usage.actualDeviceKwh),
+      }] : []),
       {
         name: 'Target progress',
         type: 'line',

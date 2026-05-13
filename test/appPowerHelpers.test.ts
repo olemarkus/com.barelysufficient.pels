@@ -1903,6 +1903,115 @@ describe('recordPowerSampleForApp', () => {
     expect(tracker.exemptBuckets?.[bucketKey]).toBe(0);
   });
 
+  it('records per-device buckets only from fresh measured device power', async () => {
+    let tracker: PowerTrackerState = {};
+    const start = Date.UTC(2025, 0, 1, 0, 0, 0);
+    let observedAtMs = start;
+    const getLatestTargetSnapshot = () => ([
+      {
+        id: 'fresh-heater',
+        name: 'Fresh heater',
+        targets: [],
+        measuredPowerKw: 1.2,
+        measuredPowerObservedAtMs: observedAtMs,
+      },
+      {
+        id: 'stale-heater',
+        name: 'Stale heater',
+        targets: [],
+        measuredPowerKw: 0.8,
+        measuredPowerObservedAtMs: observedAtMs - 61_000,
+      },
+      {
+        id: 'future-heater',
+        name: 'Future heater',
+        targets: [],
+        measuredPowerKw: 0.9,
+        measuredPowerObservedAtMs: observedAtMs + 1,
+      },
+      {
+        id: 'estimated-heater',
+        name: 'Estimated heater',
+        targets: [],
+        expectedPowerKw: 0.5,
+      },
+    ]);
+
+    await recordPowerSampleForApp({
+      currentPowerW: 2500,
+      nowMs: start,
+      capacitySettings: { limitKw: 10, marginKw: 0.2 },
+      getLatestTargetSnapshot,
+      powerTracker: tracker,
+      schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
+      saveState: (nextState) => {
+        tracker = nextState;
+      },
+    });
+
+    observedAtMs = start + 30 * 60 * 1000;
+    await recordPowerSampleForApp({
+      currentPowerW: 2500,
+      nowMs: start + 30 * 60 * 1000,
+      capacitySettings: { limitKw: 10, marginKw: 0.2 },
+      getLatestTargetSnapshot,
+      powerTracker: tracker,
+      schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
+      saveState: (nextState) => {
+        tracker = nextState;
+      },
+    });
+
+    const bucketKey = new Date(start).toISOString();
+    expect(tracker.deviceBuckets?.['fresh-heater']?.[bucketKey]).toBeCloseTo(0.6, 3);
+    expect(tracker.deviceBuckets?.['stale-heater']).toBeUndefined();
+    expect(tracker.deviceBuckets?.['future-heater']).toBeUndefined();
+    expect(tracker.deviceBuckets?.['estimated-heater']).toBeUndefined();
+  });
+
+  it('records measured zero as a per-device bucket', async () => {
+    let tracker: PowerTrackerState = {};
+    const start = Date.UTC(2025, 0, 1, 0, 0, 0);
+    let observedAtMs = start;
+    const getLatestTargetSnapshot = () => ([
+      {
+        id: 'idle-heater',
+        name: 'Idle heater',
+        targets: [],
+        measuredPowerKw: 0,
+        measuredPowerObservedAtMs: observedAtMs,
+      },
+    ]);
+
+    await recordPowerSampleForApp({
+      currentPowerW: 500,
+      nowMs: start,
+      capacitySettings: { limitKw: 10, marginKw: 0.2 },
+      getLatestTargetSnapshot,
+      powerTracker: tracker,
+      schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
+      saveState: (nextState) => {
+        tracker = nextState;
+      },
+    });
+
+    observedAtMs = start + 30 * 60 * 1000;
+    await recordPowerSampleForApp({
+      currentPowerW: 500,
+      nowMs: start + 30 * 60 * 1000,
+      capacitySettings: { limitKw: 10, marginKw: 0.2 },
+      getLatestTargetSnapshot,
+      powerTracker: tracker,
+      schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
+      saveState: (nextState) => {
+        tracker = nextState;
+      },
+    });
+
+    const bucketKey = new Date(start).toISOString();
+    expect(tracker.deviceBuckets?.['idle-heater']?.[bucketKey]).toBe(0);
+  });
+
   it('leaves controlled power unknown when no snapshot devices are available', async () => {
     let tracker: PowerTrackerState = {};
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);

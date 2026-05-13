@@ -7,6 +7,7 @@ import type {
   DeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlansV1,
 } from '../../contracts/src/deferredObjectiveActivePlans.ts';
+import { deadlineLabels } from '../../shared-domain/src/deadlineLabels.ts';
 
 const atLocalHour = (base: Date, hourOffset: number): Date => {
   const date = new Date(base);
@@ -20,6 +21,11 @@ const expectOk = (result: ReturnType<typeof testExports.buildObjectivePayload>) 
   }
   return result.payload;
 };
+
+it('uses domain-specific measured series labels', () => {
+  expect(deadlineLabels('temperature').actualDeviceSeriesName).toBe('Measured Heating');
+  expect(deadlineLabels('ev_soc').actualDeviceSeriesName).toBe('Measured Charging');
+});
 
 const buildActivePlans = (
   plan: DeferredObjectiveActivePlanV1 | null,
@@ -607,6 +613,74 @@ describe('deadline plan page payload', () => {
       planned: true,
       usage: { originalDeviceKwh: 0, deviceKwh: 2 },
     });
+  });
+
+  it('maps measured per-device buckets into deadline timeline actuals', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 4);
+    const actualHour = atLocalHour(now, 1).toISOString();
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 4 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const bootstrap = buildBootstrap({
+      capacity_limit_kw: 8,
+      deferred_objectives: {
+        version: 1,
+        objectivesByDeviceId: {
+          heater: {
+            enabled: true,
+            kind: 'temperature',
+            enforcement: 'soft',
+            targetTemperatureC: 22,
+            deadlineAtMs: deadline.getTime(),
+          },
+        },
+      },
+    }, buildHeaterActivePlan({
+      now,
+      deadline,
+      plannedHourOffsets: [1],
+      plannedKWhPerHour: 2,
+    }));
+    bootstrap.power.tracker = {
+      ...bootstrap.power.tracker,
+      deviceBuckets: {
+        heater: { [actualHour]: 1.25 },
+      },
+    };
+
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap,
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+
+    expect(payload.labels.actualDeviceSeriesName).toBe('Measured Heating');
+    expect(payload.timeline.hours[0]?.usage.actualDeviceKwh).toBeNull();
+    expect(payload.timeline.hours[1]?.usage.actualDeviceKwh).toBe(1.25);
   });
 
   it('surfaces planInputs for a temperature device using the learned rate and the lowest step', () => {
