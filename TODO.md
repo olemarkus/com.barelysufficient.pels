@@ -5,12 +5,13 @@ file.
 
 ## Priority Rubric
 
-- **P0:** release-blocking correctness, control-integrity, startup, validation, or data-loss issue
-  that can affect current runtime behavior without another feature or broad refactor landing first.
-- **P1:** next-release correctness or data-integrity work: bounded planner/executor risks, settings
-  writes that can corrupt persisted state, supported-width UI breakage, or missing validation around
-  commandable device contracts.
-- **P2:** important product, observability, documentation, and maintainability work where current
+- **P0:** next-release blocker: release-blocking correctness, control-integrity, startup,
+  validation, or data-loss issue that can affect current runtime behavior without another feature
+  or broad refactor landing first.
+- **P1:** next patch-release correctness or data-integrity work after the next release: bounded
+  planner/executor risks, settings writes that can corrupt persisted state, supported-width UI
+  breakage, or missing validation around commandable device contracts.
+- **P2:** later product, observability, documentation, and maintainability work where current
   behavior is usable or has a workaround, but the gap increases support cost or slows future work.
 - **P3:** future capability, optional hardening, or exploratory cleanup with no current correctness
   or supportability pressure.
@@ -157,6 +158,34 @@ file.
       Design: `notes/ev-ready-by/README.md`.
       Files: `packages/settings-ui/src/ui/deadlinePlan.ts`, `lib/app/appInit.ts`,
       `lib/plan/deferredObjectives/diagnosticsBridge.ts`, calibration view tests.
+- [ ] Surface built-in device control when it blocks device management.
+      The control still exists (`packages/settings-ui/public/index.html:1017-1029`) and is wired
+      by `packages/settings-ui/src/ui/deviceDetail/nativeWiring.ts`, but it is conditional and
+      lives inside the collapsed Setup section. Meanwhile unsupported activation can leave
+      "Managed by PELS" disabled with only a tooltip and list-row explanation. For native-wiring
+      required devices, users can reasonably miss the hidden switch and think the option is gone.
+      Minimum acceptable completion: when a device requires built-in device control before it can
+      be managed, the device detail panel makes that action visible near the disabled management
+      control or automatically opens or highlights the Setup section, and tests cover the blocked
+      management path.
+      Files: `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/src/ui/deviceDetail/nativeWiring.ts`,
+      `packages/settings-ui/src/ui/deviceDetail/index.ts`,
+      `packages/settings-ui/src/ui/devices.ts`, device-detail tests.
+- [ ] Apply Norgespris to historical price rows instead of falling back to spot pricing.
+      `buildCombinedHourlyPricesNorway()` currently skips the Norgespris adjustment for every
+      hour before the current hour (`lib/price/priceServiceNorway.ts:221-239`). That avoids
+      consuming the forward-looking monthly cap estimate, but it also makes past rows under the
+      Norgespris model show spot-price totals. Split "display the fixed-price model" from
+      "consume estimated remaining cap" so historical rows still use Norgespris while only current
+      and future rows affect the remaining-cap projection.
+      Why P1: cost history and any UI using past combined prices can show the wrong price model
+      after the user selects Norgespris.
+      Minimum acceptable completion: past same-month rows under `norway_price_model = norgespris`
+      include a Norgespris adjustment and total, past rows do not reduce current /
+      future cap eligibility, and strømstøtte behavior is unchanged.
+      Files: `lib/price/priceServiceNorway.ts`, `test/norgesprisPriceService.test.ts`,
+      price UI/widget tests that render past combined prices.
 
 ## P2 Product, Observability, and Maintainability
 
@@ -178,6 +207,77 @@ file.
       Files: `packages/settings-ui/src/ui/materialWeb.ts`,
       `packages/settings-ui/src/ui/views/materialWebJSX.tsx`, `packages/settings-ui/public/style.css`,
       generated `settings/`, focused visual/e2e coverage.
+- [ ] Make the device-detail "When limiting" selection explicit for stepped loads.
+      The action segmented control shows `Set to step "<lowest active step>"` via
+      `updateSetStepOptionLabel()`, but the dedicated `Limited step` row is always hidden
+      (`packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts:332-352`) and saving `set_step`
+      stores only `{ action: 'set_step' }` rather than a visible `stepId`
+      (`packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts:365-371`,
+      `packages/settings-ui/src/ui/deviceDetail/steppedLoadDraft.ts:302-315`). That means users
+      cannot inspect the current limited step as its own setting; they must infer it from the
+      segmented label and the stepped-load profile.
+      Minimum acceptable completion: the Power limiting section clearly displays the effective
+      limited step for stepped-load devices, updates when the profile draft changes, and keeps the
+      runtime behavior of using the lowest active step unless an explicit product decision
+      reintroduces a configurable limited-step selector.
+      Files: `packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts`,
+      `packages/settings-ui/src/ui/deviceDetail/steppedLoadDraft.ts`,
+      `packages/settings-ui/public/index.html`, device-detail tests.
+- [ ] Consider moving Temperature boost into its own device-detail card.
+      `device-detail-temperature-boost` currently renders inside the Stepped load profile section,
+      after the step editor and save/reset controls (`packages/settings-ui/public/index.html:925-943`).
+      The setting is a runtime behavior rule and can be more operationally important than editing
+      the stepped-load profile itself, so testing feedback suggests it is too easy to miss when it
+      sits below the profile editor.
+      Minimum acceptable completion: decide whether Temperature boost remains grouped with stepped
+      loads or becomes a separate, higher-priority card; if moved, keep it visible only for
+      eligible stepped temperature devices, preserve existing persistence behavior, and update
+      screenshots/tests.
+      Files: `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/src/ui/deviceDetail/temperatureBoost.ts`,
+      `packages/settings-ui/src/ui/deviceDetail/index.ts`, device-detail tests/screenshots.
+- [ ] Rework device detail into focused sections or a dedicated setup page.
+      The current device detail side sheet is a long mixed surface: mode targets, smart task,
+      price response, power limiting, stepped-load profile, boost controls, setup toggles,
+      control model, native wiring, SoC, and diagnostics all live in one scroll path
+      (`packages/settings-ui/public/index.html:741-1067`). Setup and Advanced diagnostics are
+      already collapsed by default, but important setup controls can still feel hidden, while
+      diagnostics is a dense read-only support surface that may deserve its own destination
+      instead of sitting at the bottom of the operational device controls.
+      Minimum acceptable completion: choose an information architecture for device detail, such as
+      a concise per-device overview with separate Behavior / Setup / Diagnostics subpages or tabs;
+      keep the common operational controls reachable without long scrolling, move advanced setup
+      controls and diagnostics out of the primary path, preserve lazy diagnostics loading, and
+      update mobile screenshots/e2e coverage.
+      Files: `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/src/ui/deviceDetail/**`, device-detail e2e tests/screenshots.
+- [ ] Evaluate whether Usage needs both 7-day and 14-day daily-history views.
+      The Usage history card defaults to "Last 14 days" and exposes a 7 / 14 day segmented
+      range toggle (`packages/settings-ui/public/index.html:408-412`,
+      `packages/settings-ui/src/ui/power.ts:45,48,242,400-413`). Daily history is already capped
+      at 14 days in the UI, so this is mainly a product and layout question: whether the 14-day
+      option adds enough value over a simpler 7-day view to justify the extra control.
+      Minimum acceptable completion: decide whether to keep both ranges, make 7 days the only
+      daily-history view, or keep 14 days as an advanced/secondary option; update the title, range
+      hint, toggle, chart tests, and screenshots to match.
+      Files: `packages/settings-ui/public/index.html`, `packages/settings-ui/src/ui/power.ts`,
+      usage chart tests/screenshots.
+- [ ] Improve dropdown menu UX in the redesigned Settings UI.
+      The Planning behavior card still uses compact `md-filled-select` controls for short option
+      sets (`packages/settings-ui/src/ui/views/BudgetOverview.tsx:560-599`). In the Homey-sized
+      WebView, the opened menu can feel cramped and visually ambiguous: the popup is nearly the
+      same width as the field, overlaps the next row, and the selected/current value is not clearly
+      distinguished from hovered or adjacent options. Existing select coverage only checks theme
+      tokens/readability for the price-source dropdown
+      (`packages/settings-ui/tests/e2e/material-select.spec.ts`) and does not assert budget-card
+      menu geometry, selected-state clarity, or mobile screenshots.
+      Minimum acceptable completion: evaluate replacing these short dropdowns with segmented
+      controls/radio rows or improve the shared Material select styling so menus have clear
+      selected and hover states, adequate width, predictable overlay placement, and no confusing
+      overlap in 320px / 480px Homey WebView screenshots.
+      Files: `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
+      `packages/settings-ui/public/style.css`,
+      `packages/settings-ui/tests/e2e/material-select.spec.ts`, budget/settings screenshots.
 - [ ] Update the Settings UI Homey API mock to stop serving devices from
       `target_devices_snapshot`. Production now serves `/ui_devices` and `/ui_refresh_devices`
       from runtime app state, so the mock should model live device data explicitly and avoid
@@ -199,6 +299,22 @@ file.
       runtime semantics for EV and heater objectives: already-met targets are live `satisfied`
       states until the deadline, and a later below-target reading returns to tracking. Keep
       terminology aligned with `notes/ui-terminology.md`.
+- [ ] Make past smart-task plans enterable from history.
+      The deadline-plan route is keyed only by `deviceId` (`packages/settings-ui/src/ui/deadlineUrls.ts`),
+      and `resolveObjectiveContext()` only builds the detailed chart from the active objective /
+      active-plan recorder (`packages/settings-ui/src/ui/deadlinePlan.ts:247-281`). Past entries
+      render as static summary cards with no link or detailed route
+      (`packages/settings-ui/src/ui/views/DeadlinePlanHistory.tsx:27-44`). As a result, once a
+      task has moved to history, the user cannot open that specific plan view; they can only see
+      the summary card.
+      Minimum acceptable completion: history entries have a stable route keyed by the history
+      entry identity, the deadline-plan page can reconstruct the detailed chart from the history
+      record plus available price/usage buckets, and missing historical detail degrades to a clear
+      summary state instead of the generic current-plan unavailable card.
+      Files: `packages/settings-ui/src/ui/deadlineUrls.ts`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistory.tsx`,
+      `packages/contracts/src/deferredObjectivePlanHistory.ts`, deadline-plan history tests.
 - [ ] Add missing swap lifecycle coverage from the pre-release review. Cover completed stepped
       swap cleanup with a stepped target and requested step, assert approved stepped swaps persist
       the stale-cleanup timestamp, and add an `applyRestorePlan()` integration test for orphan
