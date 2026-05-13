@@ -210,11 +210,11 @@ Individual device cards show cooldown timers, reason text, and step details.
 
 ### Device card state styling (M3 tonal containers)
 
-Device cards encode state with a tonal-container background plus the leading state chip — no colored left-edge stripe (that pattern is M2 / iOS / Bootstrap-alert, not M3). State mapping uses the centralized `--pels-status-*-surface` tokens (a stronger variant of the chip's `*-container`, sized for full-card surfaces):
+Device cards encode state with a tonal-container background plus the leading state chip — no colored left-edge stripe (that pattern is M2 / iOS / Bootstrap-alert, not M3). State mapping reads flat colour-role tokens via the deprecated `--pels-status-*-surface` shims (kept until the chart-token P0 in `TODO.md` migrates the chart consumers off them; new rules should bind directly to `--color-state-*-bg`):
 
-- `held` → `--pels-status-limited-surface` background, `--pels-status-limited-border` border.
-- `resuming` → `--pels-status-warning-surface` / `-border`.
-- `unavailable` → `--pels-status-critical-surface` / `-border` plus 0.78 opacity.
+- `held` → warning tone: `--color-state-warning-bg` / `-border`. (Held is an intentional power-shedding state, not a failure — warn, not danger.)
+- `resuming` → warning tone (same as `held`).
+- `unavailable` → danger tone: `--color-state-negative-bg` / `-border` plus 0.78 opacity.
 - `active`, `idle`, `manual` → default outlined surface. `idle` and `manual` apply `.plan-card--dim` (0.74 opacity).
 
 For most card types (`PlanGenericCard`, `PlanSteppedCard`) state is also conveyed by the leading `.plan-state-chip` so colour never carries meaning alone. `PlanTemperatureCard` is an exception: it does not render a state chip, so the surface tint + dim opacity + the existing temperature/setpoint readout carry the signal.

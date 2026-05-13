@@ -131,9 +131,7 @@ hr {
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(120% 120% at 20% 20%, var(--color-gradient-accent-radial), transparent),
-    radial-gradient(100% 100% at 80% 0%, var(--color-gradient-accent-radial-blue), transparent),
-    var(--bg);
+  background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
   line-height: 1.6;
@@ -653,7 +651,7 @@ md-primary-tab.tab[active]:hover {
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
   background:
-    linear-gradient(135deg, var(--color-state-positive-bg-muted), transparent 42%),
+    linear-gradient(135deg, var(--color-state-positive-bg), transparent 42%),
     var(--color-surface-2);
   box-shadow: var(--shadow-card);
 }
@@ -1085,11 +1083,11 @@ md-primary-tab.tab[active]:hover {
 /* SortableJS styles */
 .sortable-ghost {
   opacity: 0.4;
-  background: var(--color-state-success-bg-muted);
+  background: var(--color-state-positive-bg);
 }
 
 .sortable-chosen {
-  background: var(--color-state-success-bg);
+  background: var(--color-state-positive-bg);
 }
 
 .sortable-drag {
@@ -2562,7 +2560,7 @@ md-primary-tab.tab[active]:hover {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
   flex: 0 0 auto;
-  background: var(--color-state-positive-bg-strong);
+  background: var(--color-state-positive-bg);
   color: var(--color-state-positive-text);
   border: 1px solid var(--color-state-positive-border);
   border-radius: var(--radius-sm);
@@ -2608,13 +2606,13 @@ md-primary-tab.tab[active]:hover {
 }
 
 .chip--ok {
-  background: var(--color-state-success-bg-muted);
-  border-color: var(--color-state-success-bg);
+  background: var(--color-state-positive-bg);
+  border-color: var(--color-state-positive-border);
 }
 
 .chip--boost {
-  background: var(--color-state-warning-bg-muted);
-  border-color: var(--color-state-warning-border-muted);
+  background: var(--color-state-warning-bg);
+  border-color: var(--color-state-warning-border);
   color: var(--color-state-warning-text);
 }
 
@@ -2625,8 +2623,8 @@ md-primary-tab.tab[active]:hover {
 }
 
 .chip--alert {
-  background: var(--color-state-warning-bg-muted);
-  border-color: var(--color-state-warning-border-muted);
+  background: var(--color-state-warning-bg);
+  border-color: var(--color-state-warning-border);
   color: var(--color-state-warning-text);
 }
 
@@ -2848,7 +2846,7 @@ md-primary-tab.tab[active]:hover {
 }
 
 .price-row.current-hour {
-  background: var(--color-state-positive-bg-muted);
+  background: var(--color-state-positive-bg);
   border-radius: var(--radius-md);
   margin: -4px -8px;
   padding: var(--spacing-2);
@@ -3017,8 +3015,8 @@ md-primary-tab.tab[active]:hover {
   font-size: var(--font-size-sm);
   padding: var(--spacing-3);
   margin-top: var(--spacing-3);
-  background: var(--color-state-warning-bg-muted);
-  border: 1px solid var(--color-state-warning-border-muted);
+  background: var(--color-state-warning-bg);
+  border: 1px solid var(--color-state-warning-border);
   border-radius: var(--radius-md);
 }
 

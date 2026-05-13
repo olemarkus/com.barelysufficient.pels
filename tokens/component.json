@@ -51,6 +51,38 @@
           "line-height": { "value": "{font.lineHeight.tight}" }
         }
       },
+      "display": {
+        "color": { "value": "{pels.text.primary}" },
+        "font": {
+          "size": { "value": "{font.size.display-sm}" },
+          "weight": { "value": "{font.weight.normal}" },
+          "line-height": { "value": "{font.lineHeight.tight}" }
+        }
+      },
+      "headline": {
+        "color": { "value": "{pels.text.primary}" },
+        "font": {
+          "size": { "value": "{font.size.headline-md}" },
+          "weight": { "value": "{font.weight.normal}" },
+          "line-height": { "value": "{font.lineHeight.tight}" }
+        }
+      },
+      "section-headline": {
+        "color": { "value": "{pels.text.primary}" },
+        "font": {
+          "size": { "value": "{font.size.headline-sm}" },
+          "weight": { "value": "{font.weight.normal}" },
+          "line-height": { "value": "{font.lineHeight.tight}" }
+        }
+      },
+      "title": {
+        "color": { "value": "{pels.text.primary}" },
+        "font": {
+          "size": { "value": "{font.size.title-md}" },
+          "weight": { "value": "{font.weight.medium}" },
+          "line-height": { "value": "{font.lineHeight.tight}" }
+        }
+      },
       "card-supporting": {
         "color": { "value": "{pels.text.secondary}" },
         "font": {
@@ -95,7 +127,7 @@
         }
       },
       "selected": {
-        "background": { "value": "rgba(16, 185, 129, 0.42)" },
+        "background": { "value": "rgba({color.base.accent.default-rgb}, 0.42)" },
         "text": { "value": "{pels.text.primary}" },
         "outline": { "value": "{pels.status.good-border}" }
       }
