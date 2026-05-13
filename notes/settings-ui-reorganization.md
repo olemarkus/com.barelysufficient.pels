@@ -33,6 +33,7 @@ Target top-level destinations:
 - `Overview`
 - `Budget`
 - `Usage`
+- `Smart tasks`
 - `Settings`
 
 This is a navigation simplification, not a change in ownership semantics.
@@ -44,6 +45,7 @@ The top level should answer:
 | What is happening now? | `Overview` |
 | What is the plan? | `Budget` |
 | What happened historically? | `Usage` |
+| What readiness tasks are scheduled? | `Smart tasks` |
 | How is PELS configured? | `Settings` |
 
 Do not rename `Overview` to `Today`. The page is about current operating state, not primarily a
@@ -105,6 +107,7 @@ The strict boundary to protect:
 Overview = understand now.
 Budget = plan and preview daily energy.
 Usage = learn from history.
+Smart tasks = track deadline/readiness tasks.
 Settings = reach configuration areas.
 ```
 
@@ -168,10 +171,11 @@ Recommended local Budget views:
 Price is not a Budget sub-page in the target navigation because price can be used without daily
 budget. Budget may still show price context when price affects the plan.
 
-Deadline objectives are per-device readiness plans, not daily-budget settings. Their detailed plan
-view should live with the device that owns the objective. Budget may later summarize aggregate
-impact, such as EV deadline charging reserving cheap hours tonight, but should not become the
-primary editor or explanation surface for a specific charger's target.
+Deadline objectives are per-device readiness plans, not daily-budget settings. The aggregate entry
+point lives under `Smart tasks`; the detailed plan view still belongs to the device that owns the
+objective. Budget may later summarize aggregate impact, such as EV deadline charging reserving
+cheap hours tonight, but should not become the primary editor or explanation surface for a
+specific charger's target.
 
 ### Budget > Plan
 
@@ -325,6 +329,29 @@ Recommended order:
 Data-management actions do not belong to Usage. Usage may link to
 `Settings > Advanced > Data management`, but destructive or maintenance actions such as
 `Reset usage statistics` should live there.
+
+## Smart Tasks
+
+`Smart tasks` is the top-level surface for deadline/readiness objectives such as heating a water
+heater or charging an EV by a chosen time.
+
+It answers:
+
+- which readiness tasks are active?
+- is each task on track, pending prices, at risk, or missed?
+- what hours are planned, and how did the current plan differ from the original plan?
+- which device owns the detailed task view?
+
+Smart tasks should not contain:
+
+- daily-budget configuration
+- global price setup
+- generic device behavior settings
+- raw diagnostics
+
+The detailed plan and history page remains device-scoped because the objective belongs to one
+device. The top-level page is the aggregate entry point and should route to the owning device's
+deadline-plan detail.
 
 ## Limits & Safety
 
@@ -555,7 +582,8 @@ This direction should be delivered as a stacked series of focused PRs, not one l
 Suggested sequence:
 
 1. Product note and terminology updates.
-2. Navigation shell: top-level `Overview`, `Budget`, `Usage`, `Settings`; Settings card/list.
+2. Navigation shell: top-level `Overview`, `Budget`, `Usage`, `Smart tasks`, `Settings`;
+   Settings card/list.
 3. Settings sections: `Limits & safety`, `Devices`, `Modes`, `Electricity prices`,
    `Price-aware devices`, `Simulation mode`, `Advanced`.
 4. Budget `Plan` and `Adjust` views, with comparison + Apply/Discard inside `Adjust`.
