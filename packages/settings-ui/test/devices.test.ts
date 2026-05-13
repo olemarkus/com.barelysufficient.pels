@@ -12,7 +12,6 @@ const setupDom = () => {
   const refreshBtn = document.createElement('button');
   refreshBtn.id = 'refresh-button';
   root.append(deviceListEl, cardListEl, emptyStateEl, refreshBtn);
-  root.dataset.uiVariant = 'legacy';
 };
 
 const mockSharedModules = () => {
@@ -132,8 +131,6 @@ describe('devices render — redesign shell', () => {
   });
 
   const importDevicesInRedesign = async () => {
-    const uiVariant = await import('../src/ui/uiVariant.ts');
-    uiVariant.applySettingsUiVariant('redesign');
     return import('../src/ui/devices.ts');
   };
 

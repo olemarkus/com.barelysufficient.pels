@@ -1,17 +1,9 @@
 import './materialWeb.ts';
 import {
   emptyState,
-  tabs,
   refreshButton,
   electricityPricesSurface,
   priceAwareDevicesSurface,
-  advancedOverviewRedesignEnabledInput,
-  advancedOverviewRedesignRow,
-  capacityForm,
-  capacityLimitInput,
-  capacityMarginInput,
-  capacityDryRunInput,
-  powerSourceSelect,
   settingsLimitsForm,
   settingsCapacityLimitInput,
   settingsCapacityMarginInput,
@@ -21,6 +13,7 @@ import {
   type MdCheckboxElement,
   priorityForm,
   resetStatsButton,
+  tabs,
 } from './dom.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
@@ -43,7 +36,6 @@ import {
   loadCapacitySettings,
   loadAdvancedSettings,
   loadStaleDataStatus,
-  saveCapacitySettings,
   saveSettingsLimitsSettings,
   saveSimulationModeSettings,
 } from './capacity.ts';
@@ -62,7 +54,6 @@ import {
 import { initElectricityPricesView, initPriceAwareDevicesView } from './priceConfig.ts';
 import {
   initDailyBudgetHandlers,
-  loadDailyBudgetSettings,
   refreshDailyBudgetPlan,
 } from './dailyBudget.ts';
 import { loadBudgetAdjust } from './budgetAdjustController.ts';
@@ -100,12 +91,6 @@ import {
   showTab,
   startStaleDataRefreshInterval,
 } from './realtime.ts';
-import { refreshPlan } from './plan.ts';
-import {
-  applySettingsUiVariant,
-  applyStoredOverviewRedesignPreference,
-  setStoredOverviewRedesignPreference,
-} from './uiVariant.ts';
 import {
   isDeadlinePlanPage,
   mountDeadlinePlan,
@@ -122,20 +107,7 @@ const initTabHandlers = () => {
   });
 };
 
-const initCapacityHandlers = () => {
-  const autoSaveCapacity = async () => {
-    try {
-      await saveCapacitySettings();
-    } catch (error) {
-      await logSettingsError('Failed to save capacity settings', error, 'autoSaveCapacity');
-      await showToastError(error, 'Failed to save capacity settings.');
-    }
-  };
-  capacityLimitInput?.addEventListener('change', autoSaveCapacity);
-  capacityMarginInput?.addEventListener('change', autoSaveCapacity);
-  capacityDryRunInput?.addEventListener('change', autoSaveCapacity);
-  powerSourceSelect?.addEventListener('change', autoSaveCapacity);
-  capacityForm.addEventListener('submit', (event) => event.preventDefault());
+const initLimitsAndSimulationHandlers = () => {
   const autoSaveSettingsLimits = async () => {
     try {
       await saveSettingsLimitsSettings();
@@ -170,11 +142,10 @@ const initCapacityHandlers = () => {
   refreshButton.addEventListener('click', () => {
     void refreshDevices();
   });
-  /* 2-step confirmation logic */
   if (resetStatsButton) {
     resetStatsButton.addEventListener('click', () => handleResetStats(resetStatsButton));
   } else {
-    void logSettingsWarn('Reset stats button not found', undefined, 'initCapacityHandlers');
+    void logSettingsWarn('Reset stats button not found', undefined, 'initLimitsAndSimulationHandlers');
   }
 };
 
@@ -215,31 +186,6 @@ const initAdvancedHandlers = () => {
     });
   });
 
-  advancedOverviewRedesignEnabledInput?.addEventListener('change', async () => {
-    try {
-      advancedOverviewRedesignEnabledInput.checked = true;
-      setStoredOverviewRedesignPreference(true);
-      applySettingsUiVariant('redesign');
-      // Re-render device-dependent lists so the just-revealed shell's
-      // container is populated; otherwise users who viewed Devices before
-      // toggling see a blank panel until reload.
-      if (state.devicesLoaded) {
-        renderDevices(state.latestDevices);
-        renderPriorities(state.latestDevices);
-      }
-      showTab('advanced');
-      await refreshPlan();
-      await showToast('New UI is always on.', 'ok');
-    } catch (error) {
-      await logSettingsError(
-        'Failed to update new UI preference',
-        error,
-        'advancedOverviewRedesignEnabledInput',
-      );
-      await showToastError(error, 'Failed to update new UI preference.');
-    }
-  });
-
   initAdvancedDeviceCleanupHandlers();
   initAdvancedDeviceLoggerHandlers();
   initDailyBudgetTuningHandlers();
@@ -263,17 +209,6 @@ const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
   }
 };
 
-const applyOverviewRedesignBootstrap = (bootstrap: SettingsUiBootstrap | null) => {
-  state.canToggleOverviewRedesign = bootstrap?.featureAccess?.canToggleOverviewRedesign === true;
-  if (advancedOverviewRedesignRow) {
-    advancedOverviewRedesignRow.hidden = true;
-  }
-  if (advancedOverviewRedesignEnabledInput) {
-    advancedOverviewRedesignEnabledInput.checked = true;
-  }
-  applyStoredOverviewRedesignPreference(state.canToggleOverviewRedesign);
-};
-
 const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   // Phase 1: Load mode/priorities FIRST to populate managedMap before any rendering
   // This prevents the race condition where users see empty checkboxes
@@ -283,7 +218,6 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   const [usage] = await Promise.all([
     getPowerUsage(),
     loadCapacitySettings(),
-    loadDailyBudgetSettings(),
     loadDailyBudgetTuningSettings(),
     loadBudgetAdjust(),
     loadStaleDataStatus(),
@@ -314,8 +248,7 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   }
 };
 
-const initializeBootHandlers = (bootstrap: SettingsUiBootstrap | null) => {
-  applyOverviewRedesignBootstrap(bootstrap);
+const initializeBootHandlers = (_bootstrap: SettingsUiBootstrap | null) => {
   initTooltips();
   initDebouncedSaveFlush();
   initRealtimeListeners();
@@ -323,7 +256,7 @@ const initializeBootHandlers = (bootstrap: SettingsUiBootstrap | null) => {
   initTabHandlers();
   initDeviceDetailHandlers();
   initModeHandlers();
-  initCapacityHandlers();
+  initLimitsAndSimulationHandlers();
   initDailyBudgetHandlers();
   if (electricityPricesSurface) {
     void initElectricityPricesView(electricityPricesSurface);

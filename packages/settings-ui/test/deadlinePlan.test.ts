@@ -91,7 +91,6 @@ const buildBootstrap = (
   settings,
   dailyBudget: null,
   deferredObjectiveActivePlans: buildActivePlans(activePlan),
-  featureAccess: { canToggleOverviewRedesign: true },
   plan: null,
   power: {
     tracker: {

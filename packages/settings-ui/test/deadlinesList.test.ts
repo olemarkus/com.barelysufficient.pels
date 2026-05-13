@@ -144,7 +144,7 @@ describe('resolveDeadlinesListCards', () => {
       createdAtMs: T0,
       firstActionAtMs: T0 + 3 * HOUR_MS,
       deadlineAtMs: T0 + 12 * HOUR_MS,
-      href: './deadline-plan.html?deviceId=dev_a&ui=redesign',
+      href: './deadline-plan.html?deviceId=dev_a',
       pending: false,
     });
   });
@@ -168,7 +168,7 @@ describe('resolveDeadlinesListCards', () => {
     expect(cards).toHaveLength(1);
     expect(cards[0].deviceId).toBe('dev_a');
     expect(cards[0].deviceName).toBe('Living-room heater');
-    expect(cards[0].href).toBe('./deadline-plan.html?deviceId=dev_a&ui=redesign');
+    expect(cards[0].href).toBe('./deadline-plan.html?deviceId=dev_a');
   });
 
   it('falls back to plan.deviceName when the device is missing from the devices payload', () => {

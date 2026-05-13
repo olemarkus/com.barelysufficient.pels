@@ -47,7 +47,6 @@ export type UiState = {
   evBoostSettings: EvBoostSettings;
   deferredObjectiveSettings: DeferredObjectiveSettingsV1;
   priceOptimizationSettings: Record<string, PriceOptimizationConfig>;
-  canToggleOverviewRedesign: boolean;
 };
 
 export const defaultPriceOptimizationConfig: PriceOptimizationConfig = {
@@ -79,7 +78,6 @@ export const state: UiState = {
   evBoostSettings: {},
   deferredObjectiveSettings: createEmptyDeferredObjectiveSettings(),
   priceOptimizationSettings: {},
-  canToggleOverviewRedesign: false,
 };
 
 export const resolveManagedState = (deviceId: string): boolean => {

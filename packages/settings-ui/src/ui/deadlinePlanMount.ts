@@ -14,15 +14,11 @@ import {
 } from './deadlinePlanHistoryFetch.ts';
 import { renderDeadlinePlan } from './views/DeadlinePlan.tsx';
 import { resolveDeadlinePlanLoadState, resolveRenderInput } from './deadlinePlan.ts';
-import { setStoredOverviewRedesignPreference } from './uiVariant.ts';
 import type { MdButtonElement } from './dom.ts';
 
 const DEADLINE_PLAN_REFRESH_DEBOUNCE_MS = 200;
 
 const closeDeadlinePlanPage = (): void => {
-  if (new URLSearchParams(window.location.search).get('ui') === 'redesign') {
-    setStoredOverviewRedesignPreference(true);
-  }
   if (window.history.length > 1) {
     window.history.back();
     return;

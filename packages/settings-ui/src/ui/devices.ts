@@ -1,5 +1,5 @@
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
-import { deviceCardList, deviceList, emptyState, refreshButton } from './dom.ts';
+import { deviceCardList, emptyState, refreshButton } from './dom.ts';
 import {
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_PLAN_PATH,
@@ -12,8 +12,7 @@ import { state } from './state.ts';
 import { renderPriorities } from './modes.ts';
 import { refreshPlan } from './plan.ts';
 import { renderPriceOptimization, savePriceOptimizationSettings } from './priceOptimization.ts';
-import { createDeviceRow, createCheckboxLabel, createIconToggle } from './components.ts';
-import { getCurrentSettingsUiVariant } from './uiVariant.ts';
+import { createIconToggle } from './components.ts';
 import { logSettingsError, logSettingsWarn } from './logging.ts';
 import { debouncedSetSetting } from './utils.ts';
 import { setTooltip } from './tooltips.ts';
@@ -133,67 +132,6 @@ const buildPriceToggleHandler = (deviceId: string) => withInitialLoadGuard('pric
     await showToastError(error, 'Failed to update price optimization settings.');
   }
 });
-
-const buildDeviceRowItem = (device: TargetDeviceSnapshot): HTMLElement => {
-  const manageability = resolveDeviceManageability(device);
-  const isLoadingComplete = state.initialLoadComplete;
-
-  const managedCheckbox = createCheckboxLabel({
-    title: getManagedTitle(
-      isLoadingComplete,
-      manageability.supportsManage,
-      manageability.nativeWiringRequired,
-    ),
-    checked: manageability.isManaged,
-    disabled: !isLoadingComplete || !manageability.canManage,
-    onChange: buildManagedToggleHandler(device.id),
-  });
-
-  const ctrlCheckbox = createCheckboxLabel({
-    title: getCapacityTitle({
-      isLoadingComplete,
-      supportsPower: manageability.supportsPower,
-      isManaged: manageability.isManaged,
-    }),
-    checked: manageability.supportsPower && state.controllableMap[device.id] === true,
-    disabled: !isLoadingComplete || !manageability.supportsPower || !manageability.isManaged,
-    onChange: buildControllableToggleHandler(device.id),
-  });
-
-  const priceOptCheckbox = createCheckboxLabel({
-    title: getPriceTitle({
-      isLoadingComplete,
-      supportsTemperature: manageability.supportsTemperature,
-      isManaged: manageability.isManaged,
-    }),
-    checked: manageability.supportsTemperature
-      && manageability.isManaged
-      && state.priceOptimizationSettings[device.id]?.enabled === true,
-    disabled: !isLoadingComplete || !manageability.supportsTemperature || !manageability.isManaged,
-    onChange: buildPriceToggleHandler(device.id),
-  });
-
-  const row = createDeviceRow({
-    id: device.id,
-    name: device.name,
-    className: 'control-row',
-    controls: [managedCheckbox, ctrlCheckbox, priceOptCheckbox],
-    onClick: () => {
-      const openEvent = new CustomEvent('open-device-detail', { detail: { deviceId: device.id } });
-      document.dispatchEvent(openEvent);
-    },
-  });
-
-  const nameWrap = row.querySelector<HTMLElement>('.device-row__name');
-  if (!nameWrap) return row;
-  const nameText = document.createElement('span');
-  nameText.className = 'device-row__title';
-  nameText.textContent = device.name;
-
-  nameWrap.replaceChildren(nameText);
-  appendDeviceStateChips(nameWrap, device);
-  return row;
-};
 
 const buildRedesignSwitchCell = (
   switchEl: HTMLElement,
@@ -366,7 +304,7 @@ const buildDeviceClassCard = (group: DeviceGroup): HTMLElement => {
   return card;
 };
 
-const renderDevicesRedesign = (devices: TargetDeviceSnapshot[]) => {
+export const renderDevices = (devices: TargetDeviceSnapshot[]) => {
   const target = deviceCardList;
   if (!target) return;
   target.replaceChildren();
@@ -388,43 +326,6 @@ const renderDevicesRedesign = (devices: TargetDeviceSnapshot[]) => {
     fragment.appendChild(buildDeviceClassCard(group));
   });
   target.appendChild(fragment);
-};
-
-const renderDevicesLegacy = (devices: TargetDeviceSnapshot[]) => {
-  deviceList.replaceChildren();
-  if (!devices.length) {
-    emptyState.hidden = false;
-    return;
-  }
-  emptyState.hidden = true;
-
-  if (!state.initialLoadComplete) {
-    const loadingNotice = document.createElement('li');
-    loadingNotice.className = 'device-loading-notice';
-    loadingNotice.textContent = 'Loading device settings...';
-    deviceList.appendChild(loadingNotice);
-  }
-
-  const fragment = document.createDocumentFragment();
-  groupDevicesByClass(devices).forEach((group) => {
-    const header = document.createElement('li');
-    header.className = 'device-group-header';
-    header.textContent = group.label;
-    fragment.appendChild(header);
-    group.devices.forEach((device) => {
-      fragment.appendChild(buildDeviceRowItem(device));
-    });
-  });
-
-  deviceList.appendChild(fragment);
-};
-
-export const renderDevices = (devices: TargetDeviceSnapshot[]) => {
-  if (getCurrentSettingsUiVariant() === 'redesign' && deviceCardList) {
-    renderDevicesRedesign(devices);
-    return;
-  }
-  renderDevicesLegacy(devices);
 };
 
 export const refreshDevices = async (options?: { render?: boolean }) => {

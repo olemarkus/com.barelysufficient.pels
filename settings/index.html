@@ -14,21 +14,7 @@
 <body>
   <main class="screen">
     <header class="hero">
-      <div id="legacy-shell-copy">
-        <p class="eyebrow">PELS · App control</p>
-        <h1>Control center</h1>
-        <p class="lede">Manage devices, modes, budgets, and usage.</p>
-      </div>
-      <md-tabs class="tabs" id="legacy-shell-nav" role="tablist" aria-label="PELS settings sections">
-        <md-primary-tab class="tab active" data-tab="overview" role="tab" aria-selected="true" active>Overview</md-primary-tab>
-        <md-primary-tab class="tab" data-tab="devices" role="tab" aria-selected="false">Devices</md-primary-tab>
-        <md-primary-tab class="tab" data-tab="modes" role="tab" aria-selected="false">Modes</md-primary-tab>
-        <md-primary-tab class="tab" data-tab="budget" role="tab" aria-selected="false">Budget</md-primary-tab>
-        <md-primary-tab class="tab" data-tab="usage" role="tab" aria-selected="false">Usage</md-primary-tab>
-        <md-primary-tab class="tab" data-tab="electricity-prices" role="tab" aria-selected="false">Prices</md-primary-tab>
-        <md-primary-tab class="tab" data-tab="advanced" role="tab" aria-selected="false">Advanced</md-primary-tab>
-      </md-tabs>
-      <md-tabs class="tabs redesign-shell-nav" id="redesign-shell-nav" role="tablist" aria-label="PELS settings sections" hidden>
+      <md-tabs class="tabs" id="shell-nav" role="tablist" aria-label="PELS settings sections">
         <md-primary-tab class="tab active" data-tab="overview" role="tab" aria-selected="true" active>Overview</md-primary-tab>
         <md-primary-tab class="tab" data-tab="budget" role="tab" aria-selected="false">Budget</md-primary-tab>
         <md-primary-tab class="tab" data-tab="usage" role="tab" aria-selected="false">Usage</md-primary-tab>
@@ -39,9 +25,8 @@
 
     <div id="dry-run-banner" class="banner banner--warning" hidden>
       <span class="banner__icon">⚠️</span>
-      <span class="banner__text dry-run-banner__legacy">Dry-run mode is enabled. Devices will not be switched automatically.</span>
-      <span class="banner__text dry-run-banner__redesign">Simulation mode is enabled. PELS will not switch devices automatically.</span>
-      <md-outlined-button type="button" class="btn secondary dry-run-banner__redesign dry-run-banner__action" id="simulation-disable-button">Turn off simulation</md-outlined-button>
+      <span class="banner__text">Simulation mode is enabled. PELS will not switch devices automatically.</span>
+      <md-outlined-button type="button" class="btn secondary dry-run-banner__action" id="simulation-disable-button">Turn off simulation</md-outlined-button>
     </div>
 
     <div id="stale-data-banner" class="banner banner--warning" hidden>
@@ -50,41 +35,12 @@
     </div>
 
     <section class="card panel hidden" id="devices-panel" data-panel="devices">
-      <md-text-button type="button" class="btn ghost settings-back-button settings-back-button--redesign-only" data-settings-target="settings">‹ Settings</md-text-button>
+      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">‹ Settings</md-text-button>
       <div class="card__header">
         <div>
           <p class="eyebrow">Devices</p>
           <h2>Device control</h2>
         </div>
-      </div>
-      <div class="toggle-row legacy-device-settings">
-        <label class="toggle-label">
-          <md-checkbox id="capacity-dry-run" name="capacity_dry_run" checked></md-checkbox>
-          <span>Disable device control (dry run)</span>
-        </label>
-        <small class="field__hint">PELS will only monitor devices while this is enabled.</small>
-      </div>
-      <form class="form-grid legacy-device-settings">
-        <label class="field">
-          <span class="field__label">Power source</span>
-          <md-filled-select id="power-source" name="power_source">
-            <md-select-option value="flow" selected><div slot="headline">Flow card</div></md-select-option>
-            <md-select-option value="homey_energy"><div slot="headline">Homey Energy</div></md-select-option>
-          </md-filled-select>
-          <small class="field__hint">Where whole-home power readings come from.</small>
-        </label>
-      </form>
-      <div class="legacy-device-settings">
-        <div class="device-table-header">
-          <span>Device</span>
-          <span data-tooltip="Managed by PELS">Managed</span>
-          <span data-tooltip="Power-limit control">
-            <span class="legacy-ui-copy">Limit</span>
-            <span class="redesign-ui-copy">Limit</span>
-          </span>
-          <span data-tooltip="Price-based control">Price</span>
-        </div>
-        <ul id="device-list" class="device-list"></ul>
       </div>
       <template id="pels-icon-managed">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -104,7 +60,7 @@
           <path d="M12 6.5v1.5M12 15.5v1.5"></path>
         </svg>
       </template>
-      <details id="device-control-legend" class="redesign-device-settings device-control-legend">
+      <details id="device-control-legend" class="device-control-legend">
         <summary class="device-control-legend__summary">
           <span class="device-control-legend__pill">
             <span class="device-control-legend__icon" aria-hidden="true">
@@ -177,19 +133,15 @@
           </li>
         </ul>
       </details>
-      <div id="device-card-list" class="redesign-device-settings"></div>
+      <div id="device-card-list"></div>
       <p id="empty-state" class="muted" hidden>No compatible devices found. PELS requires devices with power measurement and either temperature control or on/off capability.</p>
       <div class="list__footer">
-        <md-outlined-button type="button" class="btn secondary" id="refresh-button">
-          <span class="legacy-ui-copy">Refresh</span>
-          <span class="redesign-ui-copy">Fetch device list from Homey</span>
-        </md-outlined-button>
-        <p class="muted legacy-device-settings">Managed devices participate in modes and optimization. Temperature &amp; priority live in the Modes tab.</p>
+        <md-outlined-button type="button" class="btn secondary" id="refresh-button">Fetch device list from Homey</md-outlined-button>
       </div>
     </section>
 
     <section class="card panel hidden" id="modes-panel" data-panel="modes">
-      <md-text-button type="button" class="btn ghost settings-back-button settings-back-button--redesign-only" data-settings-target="settings">‹ Settings</md-text-button>
+      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">‹ Settings</md-text-button>
       <div class="card__header">
         <div>
           <p class="eyebrow">Modes</p>
@@ -218,109 +170,9 @@
       <div class="card__header">
         <div>
           <p class="eyebrow">Budget</p>
-          <h2>
-            <span class="legacy-ui-copy">Capacity &amp; daily budget</span>
-            <span class="redesign-ui-copy">Daily budget</span>
-          </h2>
+          <h2>Daily budget</h2>
         </div>
       </div>
-      <div class="legacy-budget-surface">
-        <details class="settings-collapse legacy-budget-capacity-settings" open>
-          <summary>
-            <h3 class="section-title">Capacity</h3>
-            <span class="section-hint">Hourly kW cap</span>
-          </summary>
-          <div class="collapse-content">
-            <form id="capacity-form" class="form-grid">
-              <label class="field">
-                <span class="field__label">Capacity limit (kW)</span>
-                <md-filled-text-field id="capacity-limit" name="capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required></md-filled-text-field>
-              </label>
-              <label class="field">
-                <span class="field__label">Safety margin (kW)</span>
-                <md-filled-text-field id="capacity-margin" name="capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required></md-filled-text-field>
-                <small class="field__hint">PELS reacts at the hard cap minus this safety margin.</small>
-              </label>
-            </form>
-          </div>
-        </details>
-
-        <details class="settings-collapse" open>
-          <summary>
-            <h3 class="section-title">Daily budget</h3>
-            <span class="section-hint">
-              <span class="legacy-ui-copy">Soft kWh/day guide</span>
-              <span class="redesign-ui-copy">Daily kWh plan</span>
-            </span>
-          </summary>
-          <div class="collapse-content">
-            <form id="daily-budget-form" class="form-grid">
-              <label class="field checkbox-field">
-                <md-checkbox id="daily-budget-enabled" name="daily_budget_enabled"></md-checkbox>
-                <span class="field__label">Enable daily energy budget</span>
-              </label>
-              <label class="field">
-                <span class="field__label">Daily budget (kWh)</span>
-                <md-filled-text-field id="daily-budget-kwh" name="daily_budget_kwh" type="number" step="0.1" inputmode="decimal" autocomplete="off"></md-filled-text-field>
-                <small class="field__hint">Daily energy target used to build the plan.</small>
-              </label>
-              <label class="field checkbox-field">
-                <md-checkbox id="daily-budget-price-shaping" name="daily_budget_price_shaping_enabled" checked></md-checkbox>
-                <span class="field__label">Price-shape today plan</span>
-              </label>
-            </form>
-
-            <div class="daily-budget-header day-view-header">
-              <div>
-                <h4 id="daily-budget-title">Today plan</h4>
-                <p class="muted" id="daily-budget-day">--</p>
-              </div>
-              <div class="daily-budget-actions day-view-actions">
-                <md-outlined-button type="button" class="btn secondary" id="daily-budget-recompute">Preview changes</md-outlined-button>
-                <md-filled-button type="button" class="btn primary" id="daily-budget-apply" hidden>Apply changes</md-filled-button>
-                <md-text-button type="button" class="btn ghost" id="daily-budget-discard" hidden>Discard preview</md-text-button>
-                <div id="daily-budget-toggle-mount"></div>
-                <div class="pill" id="daily-budget-status-pill">No data</div>
-              </div>
-            </div>
-
-            <div class="usage-summary daily-budget-summary">
-              <div class="summary-card">
-                <span class="summary-label">Remaining</span>
-                <span class="summary-value" id="daily-budget-remaining">-- kWh</span>
-              </div>
-              <div class="summary-card">
-                <span class="summary-label">Deviation</span>
-                <span class="summary-value" id="daily-budget-deviation">-- kWh</span>
-              </div>
-              <div class="summary-card">
-                <span class="summary-label" id="daily-budget-cost-label">Estimated cost</span>
-                <span class="summary-value" id="daily-budget-cost">-- kr</span>
-              </div>
-            </div>
-
-            <div id="daily-budget-chart" class="daily-budget-chart day-view-chart">
-              <div class="daily-budget-bars-wrap day-view-bars-wrap">
-                <div id="daily-budget-bars" class="daily-budget-bars day-view-bars"></div>
-              </div>
-              <div id="daily-budget-labels" class="daily-budget-labels day-view-labels"></div>
-            </div>
-
-            <p id="daily-budget-empty" class="muted" hidden>Daily budget data not available yet.</p>
-
-            <div id="daily-budget-meta" class="daily-budget-meta">
-              <div id="daily-budget-confidence" class="chip" hidden>Confidence --</div>
-            </div>
-
-            <div id="daily-budget-allocation-warning" class="banner banner--warning daily-budget-warning" hidden>
-              <span class="banner__text"></span>
-            </div>
-
-            <p class="muted">Refreshes every 60s. Uses local day boundaries.</p>
-          </div>
-        </details>
-      </div>
-
       <div class="budget-redesign-surface" id="budget-redesign-surface"></div>
     </section>
 
@@ -581,22 +433,7 @@
     </section>
 
     <section class="card panel" id="overview-panel" data-panel="overview">
-      <div id="plan-legacy-surface">
-        <div class="card__header">
-          <div>
-            <p class="eyebrow">Overview</p>
-            <h2>Planned device states</h2>
-          </div>
-        </div>
-        <div class="overview-stats">
-          <div class="section-header">
-            <h3 class="section-title">Quick stats</h3>
-          </div>
-          <div class="pill" id="plan-meta">Awaiting data…</div>
-        </div>
-        <ul id="plan-list" class="device-list"></ul>
-      </div>
-      <div id="plan-redesign-surface" hidden>
+      <div id="plan-redesign-surface">
         <div id="plan-hero" class="plan-hero" aria-live="polite">
           <p class="plan-hero__placeholder muted">Awaiting data…</p>
         </div>
@@ -607,30 +444,13 @@
     </section>
 
     <section class="card panel hidden" id="advanced-panel" data-panel="advanced">
-      <md-text-button type="button" class="btn ghost settings-back-button settings-back-button--redesign-only" data-settings-target="settings">‹ Settings</md-text-button>
+      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">‹ Settings</md-text-button>
       <div class="card__header">
         <div>
           <p class="eyebrow">Advanced</p>
           <h2>Device diagnostics</h2>
         </div>
       </div>
-      <details class="settings-collapse" open>
-        <summary>
-          <h3 class="section-title">Experimental features</h3>
-          <span class="section-hint">Opt-in support</span>
-        </summary>
-        <div class="collapse-content">
-          <div class="form-grid">
-            <div class="field checkbox-field" id="advanced-overview-redesign-row" hidden>
-              <md-checkbox id="advanced-overview-redesign-enabled"></md-checkbox>
-              <span class="checkbox-field__content">
-                <span class="field__label">Enable new UI</span>
-                <small class="field__hint">Opt into the new Overview dashboard and Settings navigation in this browser.</small>
-              </span>
-            </div>
-          </div>
-        </div>
-      </details>
       <details class="settings-collapse" open>
         <summary>
           <h3 class="section-title">Debug logging</h3>

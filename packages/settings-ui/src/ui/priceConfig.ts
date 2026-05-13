@@ -47,7 +47,6 @@ import {
   renderPriceAwareDevicesView,
   type PriceAwareDevicesViewProps,
 } from './views/PriceAwareDevicesView.tsx';
-import { getCurrentSettingsUiVariant } from './uiVariant.ts';
 import type {
   FlowStatus,
   HomeyStatus,
@@ -186,7 +185,7 @@ const renderElectricityPrices = () => {
     flowStatus: configState.flowStatus,
     homeyStatus: configState.homeyStatus,
     gridCompanyOptions: getGridCompanyOptions(configState.countyCode),
-    showPriceAwareDevicesLink: getCurrentSettingsUiVariant() !== 'redesign',
+    showPriceAwareDevicesLink: false,
     onSchemeChange: handleSchemeChange,
     onNorwayModelChange: handleNorwayModelChange,
     onPriceAreaChange: handlePriceAreaChange,
