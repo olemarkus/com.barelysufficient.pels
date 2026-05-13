@@ -913,7 +913,6 @@
       settings: buildBootstrapSettings(),
       dailyBudget: resolveDailyBudgetPayload(),
       deferredObjectiveActivePlans: buildSampleActivePlans(),
-      featureAccess: initialOverrides.featureAccess ?? { canToggleOverviewRedesign: true },
       devices: settings.target_devices_snapshot,
       plan: settings.plan_snapshot,
       power: buildPowerPayload(),

@@ -42,7 +42,7 @@ describe('DeadlineChip', () => {
     const link = renderChip('connected-300').querySelector('a');
     expect(link).not.toBeNull();
     expect(link?.textContent).toBe('Smart task');
-    expect(link?.getAttribute('href')).toBe('./deadline-plan.html?deviceId=connected-300&ui=redesign');
+    expect(link?.getAttribute('href')).toBe('./deadline-plan.html?deviceId=connected-300');
     expect(link?.classList.contains('plan-chip--link')).toBe(true);
   });
 

@@ -2,9 +2,9 @@ import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 import type { Mock } from 'vitest';
 
 type Harness = {
-  managedCheckbox: HTMLInputElement;
-  controllableCheckbox: HTMLInputElement;
-  priceOptCheckbox: HTMLInputElement;
+  managedCheckbox: HTMLElement;
+  controllableCheckbox: HTMLElement;
+  priceOptCheckbox: HTMLElement;
   debouncedSetSetting: Mock;
   logSettingsWarn: Mock;
   savePriceOptimizationSettings: Mock;
@@ -12,7 +12,7 @@ type Harness = {
 
 const setupDom = () => {
   document.body.innerHTML = `
-    <div id="device-list"></div>
+    <div id="device-card-list"></div>
     <div id="empty-state"></div>
     <md-outlined-button id="refresh-button"></md-outlined-button>
   `;
@@ -73,16 +73,16 @@ const setupHarness = async (options: {
 
   renderDevices([device]);
 
-  const deviceList = document.getElementById('device-list');
-  const checkboxes = deviceList?.querySelectorAll<HTMLInputElement>('md-checkbox') ?? [];
+  const deviceList = document.getElementById('device-card-list');
+  const checkboxes = deviceList?.querySelectorAll<HTMLElement>('.pels-icon-toggle') ?? [];
   const managedCheckbox = checkboxes[0];
   const controllableCheckbox = checkboxes[1];
   const priceOptCheckbox = checkboxes[2];
   if (!managedCheckbox) {
-    throw new Error('Managed checkbox not found in device list.');
+    throw new Error('Managed toggle not found in device list.');
   }
   if (!controllableCheckbox || !priceOptCheckbox) {
-    throw new Error('Expected controllable and price optimization checkboxes.');
+    throw new Error('Expected controllable and price optimization toggles.');
   }
 
   return {
@@ -105,15 +105,15 @@ describe('device settings initial load guard', () => {
     const {
       managedCheckbox,
       debouncedSetSetting,
-      logSettingsWarn,
     } = await setupHarness({ initialLoadComplete: false, isManaged: true });
 
-    managedCheckbox.checked = true;
-    managedCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+    // While the initial load is pending, the toggle is rendered with aria-disabled
+    // so clicks are ignored before reaching the change handler.
+    expect(managedCheckbox.getAttribute('aria-disabled')).toBe('true');
+    managedCheckbox.click();
     await Promise.resolve();
 
     expect(debouncedSetSetting).not.toHaveBeenCalled();
-    expect(logSettingsWarn).toHaveBeenCalledTimes(1);
   });
 
   it('disables toggles while initial load is pending', async () => {
@@ -123,9 +123,9 @@ describe('device settings initial load guard', () => {
       priceOptCheckbox,
     } = await setupHarness({ initialLoadComplete: false, isManaged: true });
 
-    expect(managedCheckbox.disabled).toBe(true);
-    expect(controllableCheckbox.disabled).toBe(true);
-    expect(priceOptCheckbox.disabled).toBe(true);
+    expect(managedCheckbox.getAttribute('aria-disabled')).toBe('true');
+    expect(controllableCheckbox.getAttribute('aria-disabled')).toBe('true');
+    expect(priceOptCheckbox.getAttribute('aria-disabled')).toBe('true');
   });
 
   it('allows managed toggle after initial load completes', async () => {
@@ -134,8 +134,8 @@ describe('device settings initial load guard', () => {
       deviceOverrides: { powerCapable: true },
     });
 
-    managedCheckbox.checked = false;
-    managedCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+    // Initial state is unmanaged (not in managedMap), click will set to managed=true
+    managedCheckbox.click();
     await Promise.resolve();
 
     expect(logSettingsWarn).not.toHaveBeenCalled();
@@ -143,7 +143,7 @@ describe('device settings initial load guard', () => {
     const [[key, getValue]] = debouncedSetSetting.mock.calls;
     expect(key).toBe('managed_devices');
     expect(typeof getValue).toBe('function');
-    expect(getValue()).toEqual({ 'device-1': false });
+    expect(getValue()).toEqual({ 'device-1': true });
   });
 
   it('blocks controllable and price toggles before initial load completes', async () => {
@@ -151,19 +151,17 @@ describe('device settings initial load guard', () => {
       controllableCheckbox,
       priceOptCheckbox,
       debouncedSetSetting,
-      logSettingsWarn,
       savePriceOptimizationSettings,
     } = await setupHarness({ initialLoadComplete: false, isManaged: true });
 
-    controllableCheckbox.checked = true;
-    controllableCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
-    priceOptCheckbox.checked = true;
-    priceOptCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(controllableCheckbox.getAttribute('aria-disabled')).toBe('true');
+    expect(priceOptCheckbox.getAttribute('aria-disabled')).toBe('true');
+    controllableCheckbox.click();
+    priceOptCheckbox.click();
     await Promise.resolve();
 
     expect(debouncedSetSetting).not.toHaveBeenCalled();
     expect(savePriceOptimizationSettings).not.toHaveBeenCalled();
-    expect(logSettingsWarn).toHaveBeenCalledTimes(2);
   });
 
   it('enables controllable and price toggles after initial load completes', async () => {
@@ -174,13 +172,11 @@ describe('device settings initial load guard', () => {
       savePriceOptimizationSettings,
     } = await setupHarness({ initialLoadComplete: true, isManaged: true, deviceOverrides: { powerCapable: true } });
 
-    expect(controllableCheckbox.disabled).toBe(false);
-    expect(priceOptCheckbox.disabled).toBe(false);
+    expect(controllableCheckbox.getAttribute('aria-disabled')).not.toBe('true');
+    expect(priceOptCheckbox.getAttribute('aria-disabled')).not.toBe('true');
 
-    controllableCheckbox.checked = false;
-    controllableCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
-    priceOptCheckbox.checked = true;
-    priceOptCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+    controllableCheckbox.click();
+    priceOptCheckbox.click();
     await Promise.resolve();
 
     expect(debouncedSetSetting).toHaveBeenCalledTimes(1);
@@ -199,9 +195,9 @@ describe('device settings initial load guard', () => {
       deviceOverrides: { powerCapable: false },
     });
 
-    expect(managedCheckbox.checked).toBe(true);
-    expect(managedCheckbox.disabled).toBe(false);
-    expect(controllableCheckbox.disabled).toBe(true);
-    expect(priceOptCheckbox.disabled).toBe(false);
+    expect(managedCheckbox.getAttribute('aria-checked')).toBe('true');
+    expect(managedCheckbox.getAttribute('aria-disabled')).not.toBe('true');
+    expect(controllableCheckbox.getAttribute('aria-disabled')).toBe('true');
+    expect(priceOptCheckbox.getAttribute('aria-disabled')).not.toBe('true');
   });
 });

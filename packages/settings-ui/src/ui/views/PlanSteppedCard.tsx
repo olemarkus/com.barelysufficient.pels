@@ -138,6 +138,9 @@ export const PlanSteppedCard = ({
         </div>
         <div class="plan-card__chips">
           {chip && <span class={`plan-chip plan-chip--${chip.tone}`}>{chip.label}</span>}
+          {displayDev.budgetExempt === true && (
+            <span class="plan-chip plan-chip--muted">Always on</span>
+          )}
           {displayDev.temperatureBoostActive === true && (
             <span class="plan-chip plan-chip--ok" data-tooltip="Temperature boost is active">Boost</span>
           )}

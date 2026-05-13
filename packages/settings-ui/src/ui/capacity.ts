@@ -1,14 +1,9 @@
 import {
-  capacityLimitInput,
-  capacityMarginInput,
-  capacityDryRunInput,
-  powerSourceSelect,
   settingsCapacityLimitInput,
   settingsCapacityMarginInput,
   settingsCapacityReactionHint,
   settingsPowerSourceSelect,
   settingsSimulationModeInput,
-  advancedOverviewRedesignEnabledInput,
   dryRunBanner,
   type MdCheckboxElement,
   type MdFilledTextFieldElement,
@@ -34,7 +29,6 @@ import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../../shared-domain/src/powe
 import type { SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
 import { showToast } from './toast.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
-import { resolveOverviewRedesignPreference } from './uiVariant.ts';
 
 type PowerSource = 'flow' | 'homey_energy';
 
@@ -64,7 +58,7 @@ const normalizePowerSource = (raw: unknown): PowerSource => (
 );
 
 const getStaleDataHint = (): string => {
-  const source = powerSourceSelect?.value;
+  const source = settingsPowerSourceSelect?.value;
   if (source === 'homey_energy') {
     return 'Check that a device with "Tracks total home energy consumption" is enabled in Homey Energy.';
   }
@@ -93,14 +87,6 @@ const syncCapacityControls = (
   isDryRun: boolean,
   powerSource: PowerSource,
 ) => {
-  capacityLimitInput.value = limit.toString();
-  capacityMarginInput.value = margin.toString();
-  if (capacityDryRunInput) {
-    capacityDryRunInput.checked = isDryRun;
-  }
-  if (powerSourceSelect) {
-    powerSourceSelect.value = powerSource;
-  }
   if (settingsCapacityLimitInput) {
     settingsCapacityLimitInput.value = limit.toString();
   }
@@ -225,15 +211,6 @@ const saveCapacitySettingsPatch = async (
   await showToast(successMessage, 'ok');
 };
 
-export const saveCapacitySettings = async () => {
-  await saveCapacitySettingsPatch({
-    limit: readNumberInput(capacityLimitInput, 'Limit'),
-    margin: readNumberInput(capacityMarginInput, 'Margin'),
-    dryRun: capacityDryRunInput ? capacityDryRunInput.checked : true,
-    powerSource: normalizePowerSource(powerSourceSelect?.value),
-  });
-};
-
 export const saveSettingsLimitsSettings = async () => {
   await saveCapacitySettingsPatch({
     limit: readNumberInput(settingsCapacityLimitInput, 'Hard cap'),
@@ -264,7 +241,4 @@ export const loadAdvancedSettings = async () => {
     const topic = el.dataset.debugTopic;
     el.checked = typeof topic === 'string' && isDebugLoggingTopic(topic) && enabledTopics.includes(topic);
   });
-  if (advancedOverviewRedesignEnabledInput) {
-    advancedOverviewRedesignEnabledInput.checked = resolveOverviewRedesignPreference();
-  }
 };

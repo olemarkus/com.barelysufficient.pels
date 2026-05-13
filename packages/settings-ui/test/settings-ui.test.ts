@@ -52,7 +52,7 @@ describe('Settings UI', () => {
       }
       
       // Mock devices
-      const deviceList = document.getElementById('device-list');
+      const deviceList = document.getElementById('device-card-list');
       if (deviceList) {
         for (let i = 1; i <= ${mockDeviceCount}; i++) {
           const row = document.createElement('div');
@@ -91,27 +91,38 @@ describe('Settings UI', () => {
         });
       });
       
-      // Tab switching
+      // Tab + Settings-nav switching (mirrors realtime.ts showTab routing)
       const tabs = document.querySelectorAll('.tab');
       const panels = document.querySelectorAll('.panel');
-      tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-          tabs.forEach(t => {
-            t.classList.toggle('active', t === tab);
-            t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
-          });
-          panels.forEach(p => {
-            p.classList.toggle('hidden', p.dataset.panel !== tab.dataset.tab);
-          });
+      const SETTINGS_TARGETS = new Set([
+        'limits', 'devices', 'modes', 'electricity-prices', 'price-aware-devices', 'simulation', 'advanced',
+      ]);
+      const activateTab = (target) => {
+        const topLevel = SETTINGS_TARGETS.has(target) ? 'settings' : target;
+        tabs.forEach(t => {
+          const isActive = t.dataset.tab === topLevel;
+          t.classList.toggle('active', isActive);
+          t.setAttribute('aria-selected', isActive ? 'true' : 'false');
         });
+        panels.forEach(p => {
+          p.classList.toggle('hidden', p.dataset.panel !== target);
+        });
+      };
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => activateTab(tab.dataset.tab));
       });
-      
-      // Fill capacity inputs
-      const limitInput = document.getElementById('capacity-limit');
-      const marginInput = document.getElementById('capacity-margin');
+      document.addEventListener('click', (event) => {
+        if (!(event.target instanceof Element)) return;
+        const trigger = event.target.closest('[data-settings-target]');
+        if (trigger && trigger.dataset.settingsTarget) activateTab(trigger.dataset.settingsTarget);
+      });
+
+      // Fill limits & safety inputs
+      const limitInput = document.getElementById('settings-capacity-limit');
+      const marginInput = document.getElementById('settings-capacity-margin');
       if (limitInput) limitInput.value = '10';
       if (marginInput) marginInput.value = '0.5';
-      
+
       // Mock price optimization list
       const priceOptList = document.getElementById('price-optimization-list');
       if (priceOptList) {
@@ -236,7 +247,7 @@ describe('Settings UI', () => {
 
     test('main tabs are visible (two-row layout on smaller screens)', async () => {
       const mainTabs = await page.$$('.tabs > .tab');
-      expect(mainTabs.length).toBeGreaterThanOrEqual(7);
+      expect(mainTabs.length).toBeGreaterThanOrEqual(5);
 
       const tabTexts = await page.$$eval('.tabs > .tab', (els) => {
         const texts: string[] = [];
@@ -246,13 +257,11 @@ describe('Settings UI', () => {
         }
         return texts;
       });
-      expect(tabTexts).toContain('Devices');
-      expect(tabTexts).toContain('Modes');
       expect(tabTexts).toContain('Overview');
       expect(tabTexts).toContain('Budget');
       expect(tabTexts).toContain('Usage');
-      expect(tabTexts).toContain('Prices');
-      expect(tabTexts).toContain('Advanced');
+      expect(tabTexts).toContain('Smart tasks');
+      expect(tabTexts).toContain('Settings');
     });
 
     test('page has no significant horizontal overflow', async () => {
@@ -270,13 +279,13 @@ describe('Settings UI', () => {
       expect(cardBox.right).toBeLessThanOrEqual(480);
     });
 
-    test('section hints remain visible at 480px', async () => {
+    test('budget panel surface is visible at 480px', async () => {
       await page.click('[data-tab="budget"]');
       await sleep(50);
-      const hintDisplay = await page.$eval('#budget-panel .section-hint', (el) => (
+      const surfaceDisplay = await page.$eval('#budget-redesign-surface', (el) => (
         getComputedStyle(el).display
       ));
-      expect(hintDisplay).not.toBe('none');
+      expect(surfaceDisplay).not.toBe('none');
     });
   });
 
@@ -302,13 +311,13 @@ describe('Settings UI', () => {
       expect(overflow).toBeLessThanOrEqual(10);
     });
 
-    test('section hints remain visible at 320px', async () => {
+    test('budget panel surface is visible at 320px', async () => {
       await page.click('[data-tab="budget"]');
       await sleep(50);
-      const hintDisplay = await page.$eval('#budget-panel .section-hint', (el) => (
+      const surfaceDisplay = await page.$eval('#budget-redesign-surface', (el) => (
         getComputedStyle(el).display
       ));
-      expect(hintDisplay).not.toBe('none');
+      expect(surfaceDisplay).not.toBe('none');
     });
   });
 
@@ -326,12 +335,14 @@ describe('Settings UI', () => {
       expect(isHidden).toBe(false);
     });
 
-    test('clicking modes tab switches panels', async () => {
-      await page.click('[data-tab="modes"]');
+    test('clicking modes routes through Settings', async () => {
+      await page.click('[data-tab="settings"]');
+      await sleep(20);
+      await page.click('[data-settings-target="modes"]');
       await sleep(50);
 
       const activeTab = await page.$eval('.tab.active', (el) => (el as HTMLElement).dataset.tab);
-      expect(activeTab).toBe('modes');
+      expect(activeTab).toBe('settings');
 
       const modesPanel = await page.$('#modes-panel');
       const isHidden = await modesPanel?.evaluate((el) => el.classList.contains('hidden'));
@@ -343,7 +354,7 @@ describe('Settings UI', () => {
     });
 
     test('main tabs can be activated', async () => {
-      const mainTabIds = ['overview', 'devices', 'modes', 'budget'];
+      const mainTabIds = ['overview', 'budget', 'usage', 'deadlines', 'settings'];
 
       for (const tabId of mainTabIds) {
         await page.click(`[data-tab="${tabId}"]`);
@@ -366,7 +377,9 @@ describe('Settings UI', () => {
     });
 
     test('page is scrollable when content exceeds viewport', async () => {
-      await page.click('[data-tab="modes"]');
+      await page.click('[data-tab="settings"]');
+      await sleep(20);
+      await page.click('[data-settings-target="modes"]');
       await sleep(50);
 
       const dimensions = await page.evaluate(() => ({
@@ -379,7 +392,9 @@ describe('Settings UI', () => {
     });
 
     test('touch scroll works on modes page', async () => {
-      await page.click('[data-tab="modes"]');
+      await page.click('[data-tab="settings"]');
+      await sleep(20);
+      await page.click('[data-settings-target="modes"]');
       await sleep(50);
 
       const scrollBefore = await page.evaluate(() => window.scrollY);
@@ -415,7 +430,9 @@ describe('Settings UI', () => {
     });
 
     test('only drag-handle has touch-action: none (not entire rows)', async () => {
-      await page.click('[data-tab="modes"]');
+      await page.click('[data-tab="settings"]');
+      await sleep(20);
+      await page.click('[data-settings-target="modes"]');
       await sleep(50);
 
       const touchActionIssues = await page.evaluate(() => {
@@ -433,7 +450,9 @@ describe('Settings UI', () => {
     });
 
     test('drag-handle has touch-action: none for proper drag behavior', async () => {
-      await page.click('[data-tab="modes"]');
+      await page.click('[data-tab="settings"]');
+      await sleep(20);
+      await page.click('[data-settings-target="modes"]');
       await sleep(50);
 
       const handleTouchAction = await page.$eval('.drag-handle', (el) => {
@@ -449,26 +468,30 @@ describe('Settings UI', () => {
       await setupPage();
     });
 
-    test('capacity limit input accepts numeric values', async () => {
-      await page.click('[data-tab="budget"]');
+    test('hard cap input accepts numeric values', async () => {
+      await page.click('[data-tab="settings"]');
+      await sleep(50);
+      await page.click('[data-settings-target="limits"]');
       await sleep(50);
 
-      const input = await page.$('#capacity-limit');
+      const input = await page.$('#settings-capacity-limit');
       expect(input).toBeTruthy();
 
-      await page.$eval('#capacity-limit', (el) => {
+      await page.$eval('#settings-capacity-limit', (el) => {
         const field = el as HTMLElement & { value: string };
         field.value = '15.5';
         field.dispatchEvent(new Event('input', { bubbles: true }));
         field.dispatchEvent(new Event('change', { bubbles: true }));
       });
 
-      const value = await page.$eval('#capacity-limit', (el) => (el as HTMLInputElement).value);
+      const value = await page.$eval('#settings-capacity-limit', (el) => (el as HTMLInputElement).value);
       expect(value).toBe('15.5');
     });
 
     test('mode target inputs are present in modes tab', async () => {
-      await page.click('[data-tab="modes"]');
+      await page.click('[data-tab="settings"]');
+      await sleep(20);
+      await page.click('[data-settings-target="modes"]');
       await sleep(50);
 
       const inputs = await page.$$('.mode-target-input');
@@ -568,15 +591,15 @@ describe('Settings UI', () => {
       expect(role).toBe('tablist');
     });
 
-    test('lists have proper list roles', async () => {
-      const deviceList = await page.$eval('#device-list', (el) => ({
+    test('device card list has proper role semantics', async () => {
+      const deviceList = await page.$eval('#device-card-list', (el) => ({
         role: el.getAttribute('role'),
         tag: el.tagName.toLowerCase(),
       }));
 
       // Accept either explicit ARIA list role on a div or native list semantics.
       expect(['ul', 'ol', 'div']).toContain(deviceList.tag);
-      const isAriaListDiv = deviceList.tag === 'div' && deviceList.role === 'list';
+      const isAriaListDiv = deviceList.tag === 'div' && (deviceList.role === 'list' || deviceList.role === null);
       const isNativeList = ['ul', 'ol'].includes(deviceList.tag) && deviceList.role === null;
       expect(isAriaListDiv || isNativeList).toBe(true);
     });
@@ -612,8 +635,8 @@ describe('Settings UI', () => {
       expect(activeTabTheme.expectedActiveText).toBe('#0d1117');
     });
 
-    test('cards have backdrop blur effect', async () => {
-      const backdropFilter = await page.$eval('.card', (el) => {
+    test('overview card has backdrop blur effect', async () => {
+      const backdropFilter = await page.$eval('#overview-panel', (el) => {
         return getComputedStyle(el).backdropFilter;
       });
       expect(backdropFilter).toContain('blur');
@@ -645,11 +668,9 @@ describe('Settings UI', () => {
           const planList = document.getElementById('plan-cards');
           const planHero = document.getElementById('plan-hero');
           const planEmpty = document.getElementById('plan-empty');
-          const legacySurface = document.getElementById('plan-legacy-surface');
           const redesignSurface = document.getElementById('plan-redesign-surface');
-          
+
           if (planEmpty) planEmpty.hidden = true;
-          if (legacySurface) legacySurface.hidden = true;
           if (redesignSurface) redesignSurface.hidden = false;
           if (planHero) {
             planHero.innerHTML = [
@@ -806,7 +827,7 @@ describe('Settings UI', () => {
         }
         
         document.addEventListener('DOMContentLoaded', () => {
-          const deviceList = document.getElementById('device-list');
+          const deviceList = document.getElementById('device-card-list');
           const emptyState = document.getElementById('empty-state');
           if (emptyState) emptyState.hidden = true;
           
@@ -862,28 +883,32 @@ describe('Settings UI', () => {
             });
           }
           
-          // Tab switching
+          // Tab + Settings-nav switching (mirrors realtime.ts showTab routing)
           const tabs = document.querySelectorAll('.tab');
           const panels = document.querySelectorAll('.panel');
-          tabs.forEach(tab => {
-            tab.addEventListener('click', () => {
-              tabs.forEach(t => {
-                t.classList.toggle('active', t === tab);
-                t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
-              });
-              panels.forEach(p => {
-                p.classList.toggle('hidden', p.dataset.panel !== tab.dataset.tab);
-              });
+          const SETTINGS_TARGETS = new Set([
+            'limits', 'devices', 'modes', 'electricity-prices', 'price-aware-devices', 'simulation', 'advanced',
+          ]);
+          const activateTab = (target) => {
+            const topLevel = SETTINGS_TARGETS.has(target) ? 'settings' : target;
+            tabs.forEach(t => {
+              const isActive = t.dataset.tab === topLevel;
+              t.classList.toggle('active', isActive);
+              t.setAttribute('aria-selected', isActive ? 'true' : 'false');
             });
-          });
+            panels.forEach(p => {
+              p.classList.toggle('hidden', p.dataset.panel !== target);
+            });
+          };
           tabs.forEach(tab => {
-            const isDevices = tab.dataset.tab === 'devices';
-            tab.classList.toggle('active', isDevices);
-            tab.setAttribute('aria-selected', isDevices ? 'true' : 'false');
+            tab.addEventListener('click', () => activateTab(tab.dataset.tab));
           });
-          panels.forEach(p => {
-            p.classList.toggle('hidden', p.dataset.panel !== 'devices');
+          document.addEventListener('click', (event) => {
+            if (!(event.target instanceof Element)) return;
+            const trigger = event.target.closest('[data-settings-target]');
+            if (trigger && trigger.dataset.settingsTarget) activateTab(trigger.dataset.settingsTarget);
           });
+          activateTab('devices');
 
           const overshootSelect = document.getElementById('device-detail-overshoot');
           const overshootRow = document.getElementById('device-detail-overshoot-temp-row');

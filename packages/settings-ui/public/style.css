@@ -199,17 +199,12 @@ md-text-button {
 }
 
 .screen {
-  max-width: 960px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--spacing-8);
-}
-
-body[data-ui-variant="redesign"] .screen {
   width: min(100%, 480px);
   max-width: 480px;
+  margin: 0 auto;
   box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--spacing-4);
   padding: clamp(6px, 2vw, 10px);
 }
@@ -220,17 +215,13 @@ body[data-ui-variant="redesign"] .screen {
 
 .hero h1 {
   margin: 0 0 6px 0;
-  font-size: clamp(28px, 4vw, 40px);
+  font-size: clamp(24px, 7vw, 34px);
   letter-spacing: -0.02em;
 }
 
 .hero .lede {
   margin: 0;
   color: var(--muted);
-}
-
-body[data-ui-variant="redesign"] .hero h1 {
-  font-size: clamp(24px, 7vw, 34px);
 }
 
 .tabs {
@@ -265,41 +256,18 @@ body[data-ui-variant="redesign"] .hero h1 {
   --md-primary-tab-active-hover-state-layer-color: var(--pels-shell-nav-tab-selected-text);
 }
 
-.redesign-shell-nav {
+#shell-nav {
   margin-top: 0;
   box-shadow: inset 0 0 0 1px var(--pels-shell-nav-container-border);
 }
 
-.redesign-shell-nav > md-primary-tab {
+#shell-nav > md-primary-tab {
   flex: 1 1 0;
   min-width: 0;
 }
 
-.redesign-shell-nav > md-primary-tab:not(:last-child) {
+#shell-nav > md-primary-tab:not(:last-child) {
   margin-inline-end: 2px;
-}
-
-/* Table header for device lists */
-.device-table-header {
-  display: grid;
-  grid-template-columns: 1fr 80px 40px 40px;
-  gap: 8px;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--panel-border);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-}
-
-.device-table-header span {
-  text-align: center;
-}
-
-.device-table-header span:first-child {
-  text-align: left;
 }
 
 .device-group-header {
@@ -332,6 +300,7 @@ body[data-ui-variant="redesign"] .hero h1 {
 .tab {
   min-width: 0;
   padding: 0 var(--pels-shell-nav-tab-padding-inline);
+  padding-inline: var(--pels-shell-nav-tab-padding-inline);
   overflow: hidden;
   font-weight: var(--pels-shell-nav-tab-label-weight);
   font-size: var(--pels-shell-nav-tab-label-size);
@@ -339,7 +308,16 @@ body[data-ui-variant="redesign"] .hero h1 {
   text-overflow: ellipsis;
 }
 
-.redesign-shell-nav .tab {
+.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.tab:hover:not(.active) {
+  color: var(--text);
+}
+
+#shell-nav .tab {
   --md-primary-tab-container-height: var(--pels-shell-nav-tab-height);
   display: inline-flex;
   align-items: center;
@@ -350,24 +328,7 @@ body[data-ui-variant="redesign"] .hero h1 {
   min-width: 0;
 }
 
-.tab:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-body[data-ui-variant="redesign"] .tab {
-  padding-inline: var(--pels-shell-nav-tab-padding-inline);
-}
-
-body[data-ui-variant="redesign"] .tab[data-tab="advanced"] {
-  margin-left: auto;
-  padding: var(--spacing-1) var(--spacing-2);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-normal);
-  opacity: 0.7;
-}
-
-body[data-ui-variant="redesign"] .redesign-shell-nav .tab[data-tab="settings"] {
+#shell-nav .tab[data-tab="settings"] {
   margin-left: 0;
   padding-inline: var(--pels-shell-nav-tab-padding-inline);
   font-size: var(--pels-shell-nav-tab-label-size);
@@ -375,18 +336,11 @@ body[data-ui-variant="redesign"] .redesign-shell-nav .tab[data-tab="settings"] {
   opacity: 1;
 }
 
-body[data-ui-variant="redesign"] .tab[data-tab="advanced"]:focus-visible,
-body[data-ui-variant="redesign"] .tab[data-tab="advanced"]:hover:not(.active) {
-  opacity: 1;
-}
-
-.tab:hover:not(.active) {
-  color: var(--text);
-}
-
 md-primary-tab.tab.active,
 md-primary-tab.tab[active] {
   --md-primary-tab-container-color: var(--pels-shell-nav-tab-selected-background);
+  color: var(--pels-shell-nav-tab-selected-text);
+  font-weight: var(--font-weight-semibold);
 }
 
 md-primary-tab.tab.active:hover,
@@ -394,29 +348,7 @@ md-primary-tab.tab[active]:hover {
   --md-primary-tab-container-color: var(--pels-shell-nav-tab-selected-hover-background);
 }
 
-body[data-ui-variant="redesign"] md-primary-tab.tab.active,
-body[data-ui-variant="redesign"] md-primary-tab.tab[active] {
-  color: var(--pels-shell-nav-tab-selected-text);
-  font-weight: var(--font-weight-semibold);
-}
-
-.dry-run-banner__redesign {
-  display: none;
-}
-
-.redesign-ui-copy {
-  display: none;
-}
-
-body[data-ui-variant="redesign"] .dry-run-banner__legacy {
-  display: none;
-}
-
-body[data-ui-variant="redesign"] .dry-run-banner__redesign {
-  display: inline;
-}
-
-body[data-ui-variant="redesign"] #dry-run-banner {
+#dry-run-banner {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
@@ -425,7 +357,7 @@ body[data-ui-variant="redesign"] #dry-run-banner {
   color: var(--text);
 }
 
-body[data-ui-variant="redesign"] .dry-run-banner__action {
+.dry-run-banner__action {
   display: inline-flex;
   grid-column: 2;
   justify-self: start;
@@ -434,28 +366,6 @@ body[data-ui-variant="redesign"] .dry-run-banner__action {
   background: var(--pels-surface-container-highest) !important;
   border: 1px solid var(--pels-surface-outline) !important;
   color: var(--text) !important;
-}
-
-body[data-ui-variant="redesign"] .legacy-ui-copy,
-body[data-ui-variant="redesign"] .legacy-device-settings,
-body[data-ui-variant="redesign"] .legacy-budget-capacity-settings {
-  display: none;
-}
-
-body[data-ui-variant="redesign"] .redesign-ui-copy {
-  display: inline;
-}
-
-.redesign-device-settings {
-  display: none;
-}
-
-body[data-ui-variant="redesign"] .redesign-device-settings {
-  display: grid;
-  gap: var(--spacing-3);
-  min-width: 0;
-  max-width: 100%;
-  margin-top: var(--spacing-2);
 }
 
 .device-control-legend {
@@ -720,14 +630,6 @@ body[data-ui-variant="redesign"] .redesign-device-settings {
 }
 
 .budget-redesign-surface {
-  display: none;
-}
-
-body[data-ui-variant="redesign"] .legacy-budget-surface {
-  display: none;
-}
-
-body[data-ui-variant="redesign"] .budget-redesign-surface {
   display: grid;
   gap: var(--spacing-3);
 }
@@ -736,17 +638,9 @@ body[data-ui-variant="redesign"] .budget-redesign-surface {
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius);
-  padding: 20px;
+  padding: clamp(14px, 3vw, 16px);
   backdrop-filter: blur(8px);
   box-shadow: var(--shadow-card);
-}
-
-body[data-ui-variant="redesign"] .card {
-  padding: clamp(14px, 3vw, 16px);
-}
-
-body[data-ui-variant="redesign"] #overview-panel {
-  padding: 6px;
 }
 
 .settings-home-panel {
@@ -894,14 +788,6 @@ body[data-ui-variant="redesign"] #overview-panel {
 .settings-back-button {
   justify-self: start;
   padding: var(--spacing-2) var(--spacing-3) !important;
-}
-
-.settings-back-button--redesign-only {
-  display: none;
-}
-
-body[data-ui-variant="redesign"] .settings-back-button--redesign-only {
-  display: inline-flex;
 }
 
 .settings-form-card {
@@ -1071,21 +957,6 @@ body[data-ui-variant="redesign"] .settings-back-button--redesign-only {
   font-size: var(--font-size-sm);
   border: 1px solid var(--panel-border);
   white-space: nowrap;
-}
-
-#plan-meta {
-  white-space: normal;
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-xs);
-  line-height: var(--font-line-height-normal);
-  text-align: left;
-  display: grid;
-  gap: var(--spacing-2);
-  width: 100%;
-}
-
-.overview-stats {
-  margin-bottom: var(--spacing-4);
 }
 
 .plan-meta-section {
@@ -2304,13 +2175,13 @@ body[data-ui-variant="redesign"] .settings-back-button--redesign-only {
 }
 
 @media (max-width: 480px) {
-  body[data-ui-variant="redesign"] .tabs {
+  .tabs {
     gap: 4px;
     --md-primary-tab-container-height: var(--pels-shell-nav-tab-height-compact);
     --md-primary-tab-label-text-size: var(--pels-shell-nav-tab-label-size-compact);
   }
 
-  body[data-ui-variant="redesign"] .tab {
+  .tab {
     text-align: center;
     justify-content: center;
     padding-inline: var(--pels-shell-nav-tab-padding-inline-compact);
@@ -2318,70 +2189,70 @@ body[data-ui-variant="redesign"] .settings-back-button--redesign-only {
     min-width: 0;
   }
 
-  body[data-ui-variant="redesign"] .card__header {
+  .card__header {
     margin-bottom: 14px;
   }
 
-  body[data-ui-variant="redesign"] .plan-hero {
+  .plan-hero {
     gap: var(--pels-hero-gap);
     padding: var(--pels-hero-padding);
   }
 
-  body[data-ui-variant="redesign"] .plan-card__title {
+  .plan-card__title {
     font-size: var(--font-size-md);
   }
 
-  body[data-ui-variant="redesign"] .plan-hero__status {
+  .plan-hero__status {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
   }
 
-  body[data-ui-variant="redesign"] .plan-hero__legend {
+  .plan-hero__legend {
     font-size: var(--font-size-xs);
   }
 
-  body[data-ui-variant="redesign"] .plan-cards {
+  .plan-cards {
     margin-top: var(--spacing-2);
   }
 
-  body[data-ui-variant="redesign"] .plan-card {
+  .plan-card {
     padding: var(--spacing-3);
   }
 
-  body[data-ui-variant="redesign"] #overview-panel,
-  body[data-ui-variant="redesign"] #budget-panel {
+  #overview-panel,
+  #budget-panel {
     padding: 0;
   }
 
-  body[data-ui-variant="redesign"] .plan-card__header {
+  .plan-card__header {
     align-items: flex-start;
   }
 
-  body[data-ui-variant="redesign"] .plan-card__load {
+  .plan-card__load {
     grid-template-columns: 1fr;
     gap: var(--spacing-2);
   }
 
-  body[data-ui-variant="redesign"] .plan-card__load-label {
+  .plan-card__load-label {
     white-space: normal;
   }
 
-  body[data-ui-variant="redesign"] .plan-card__metric {
+  .plan-card__metric {
     grid-template-columns: 1fr;
     gap: 6px;
   }
 
-  body[data-ui-variant="redesign"] .plan-card__metric-readout {
+  .plan-card__metric-readout {
     justify-content: space-between;
     width: 100%;
   }
 
-  body[data-ui-variant="redesign"] .plan-card__metric-label {
+  .plan-card__metric-label {
     white-space: normal;
   }
 
-  body[data-ui-variant="redesign"] .plan-card__metric-aside {
+  .plan-card__metric-aside {
     padding-left: 0;
     border-left: 0;
   }
@@ -2739,20 +2610,15 @@ body[data-ui-variant="redesign"] .settings-back-button--redesign-only {
   flex-wrap: wrap;
 }
 
-body.overview-redesign-enabled :where(#overview-panel) {
+#overview-panel {
   background: transparent;
   border-color: transparent;
   box-shadow: none;
   padding: 0;
 }
 
-body[data-ui-variant="redesign"].overview-redesign-enabled #overview-panel {
-  padding: 0;
-}
-
-body.overview-redesign-enabled :where(#overview-panel) > :where(.card__header),
-body.overview-redesign-enabled :where(#overview-panel) > :where(.overview-stats),
-body.overview-redesign-enabled :where(#overview-panel) > :where(.list__footer) {
+#overview-panel > .card__header,
+#overview-panel > .list__footer {
   padding: var(--spacing-4);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
@@ -2760,49 +2626,17 @@ body.overview-redesign-enabled :where(#overview-panel) > :where(.list__footer) {
   box-shadow: var(--shadow-sm);
 }
 
-body.overview-redesign-enabled :where(#overview-panel) > :where(.card__header),
-body.overview-redesign-enabled :where(#overview-panel) > :where(.overview-stats) {
+#overview-panel > .card__header {
   margin-bottom: var(--spacing-3);
 }
 
-body.overview-redesign-enabled :where(#overview-panel) :where(#plan-list) {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--spacing-3);
-  margin-bottom: var(--spacing-3);
-}
-
-body.overview-redesign-enabled :where(#overview-panel) :where(.plan-row) {
-  min-height: 160px;
-  display: grid;
-  align-content: start;
-  gap: var(--spacing-3);
-  padding: var(--spacing-4);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  background: var(--panel);
-  box-shadow: var(--shadow-sm);
-}
-
-body.overview-redesign-enabled :where(#overview-panel) :where(.plan-row:last-child) {
-  border-bottom: 1px solid var(--panel-border);
-}
-
-body.overview-redesign-enabled :where(#overview-panel) :where(.plan-row__name) {
-  margin-bottom: 0;
-  font-size: var(--font-size-md);
-}
-
-body.overview-redesign-enabled :where(#overview-panel) :where(.plan-row__meta) {
-  gap: var(--spacing-2);
-}
-
-body.overview-redesign-enabled :where(#overview-panel) :where(.plan-meta-line) {
+#overview-panel .plan-meta-line {
   display: grid;
   grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
   gap: var(--spacing-2);
 }
 
-body.overview-redesign-enabled :where(#overview-panel) :where(.plan-label) {
+#overview-panel .plan-label {
   min-width: 0;
 }
 
@@ -3152,7 +2986,7 @@ body.overview-redesign-enabled :where(#overview-panel) :where(.plan-label) {
   flex-shrink: 0;
 }
 
-body[data-ui-variant="redesign"] #dry-run-banner .banner__icon {
+#dry-run-banner .banner__icon {
   color: var(--color-base-warning-default);
   font-size: var(--font-size-md);
 }
@@ -4300,8 +4134,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 /* Day view foundation */
-.day-view-header,
-.daily-budget-header {
+.day-view-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -4310,13 +4143,11 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   flex-wrap: wrap;
 }
 
-.day-view-header .muted,
-.daily-budget-header .muted {
+.day-view-header .muted {
   margin: 0;
 }
 
-.day-view-actions,
-.daily-budget-actions {
+.day-view-actions {
   display: flex;
   align-items: center;
   gap: var(--spacing-2);
@@ -4345,7 +4176,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   cursor: pointer;
 }
 
-:where(.budget-redesign-surface, body[data-ui-variant="redesign"] #usage-panel) .day-view-toggle__button {
+:where(.budget-redesign-surface, #usage-panel) .day-view-toggle__button {
   color: var(--pels-segmented-label-color) !important;
   font-weight: var(--pels-segmented-label-font-weight);
 }
@@ -4357,7 +4188,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-weight: var(--font-weight-semibold);
 }
 
-:where(.budget-redesign-surface, body[data-ui-variant="redesign"] #usage-panel) .day-view-toggle__button.is-active {
+:where(.budget-redesign-surface, #usage-panel) .day-view-toggle__button.is-active {
   background-color: var(--pels-segmented-selected-background) !important;
   color: var(--pels-segmented-selected-text) !important;
   box-shadow:
@@ -4377,7 +4208,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   cursor: not-allowed;
 }
 
-:where(.budget-redesign-surface, body[data-ui-variant="redesign"] #usage-panel) .day-view-toggle {
+:where(.budget-redesign-surface, #usage-panel) .day-view-toggle {
   padding: 3px;
   border-color: var(--pels-surface-outline);
   background: var(--pels-surface-container-low);
@@ -4405,10 +4236,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   justify-content: flex-end;
 }
 
-.daily-budget-summary {
-  margin-bottom: var(--spacing-4);
-}
-
 #budget-panel {
   --pels-chart-actual: var(--text);
   --pels-chart-plan: var(--pels-status-good);
@@ -4428,9 +4255,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   --day-view-color-normal: var(--color-surface-5);
   --day-view-color-expensive: var(--pels-status-critical);
   --day-view-color-now: var(--color-state-info-border);
-}
-
-body[data-ui-variant="redesign"] #budget-panel {
   padding: 0;
   border-color: transparent;
   background: transparent;
@@ -4438,11 +4262,23 @@ body[data-ui-variant="redesign"] #budget-panel {
   backdrop-filter: none;
 }
 
-body[data-ui-variant="redesign"] #budget-panel > .card__header {
+#budget-panel > .card__header {
   display: none;
 }
 
-body[data-ui-variant="redesign"] #devices-panel > .card__header {
+#device-control-legend,
+#device-card-list {
+  min-width: 0;
+  max-width: 100%;
+}
+
+#device-card-list {
+  display: grid;
+  gap: var(--spacing-3);
+  margin-top: var(--spacing-2);
+}
+
+#devices-panel > .card__header {
   display: none;
 }
 
@@ -4462,8 +4298,7 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
   margin-bottom: var(--spacing-4);
 }
 
-.day-view-chart,
-.daily-budget-chart {
+.day-view-chart {
   display: grid;
   gap: var(--spacing-2);
   margin-bottom: var(--spacing-4);
@@ -4477,15 +4312,7 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
   overflow: hidden;
 }
 
-.daily-budget-bars-wrap {
-  position: relative;
-  height: 176px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.day-view-bars,
-.daily-budget-bars {
+.day-view-bars {
   height: 100%;
   width: 100%;
   max-width: 100%;
@@ -4495,17 +4322,6 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
   grid-auto-columns: 1fr;
   align-items: end;
   gap: 4px;
-}
-
-.daily-budget-bars--echarts {
-  display: block;
-  position: relative;
-  min-height: 100%;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  overflow: hidden;
-  -webkit-tap-highlight-color: transparent;
 }
 
 .usage-day-bars--echarts {
@@ -4603,8 +4419,7 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
   background: var(--day-view-color-warn, var(--color-base-warning-default));
 }
 
-.day-view-chart.is-disabled .day-view-bar__segment,
-.daily-budget-chart.is-disabled .daily-budget-bar__segment {
+.day-view-chart.is-disabled .day-view-bar__segment {
   background: var(--color-surface-4);
   opacity: 0.6;
 }
@@ -4639,8 +4454,7 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
   background: var(--day-view-color-warn, var(--color-state-negative-border));
 }
 
-.day-view-chart.is-disabled .day-view-marker,
-.daily-budget-chart.is-disabled .daily-budget-dot {
+.day-view-chart.is-disabled .day-view-marker {
   opacity: 0.4;
 }
 
@@ -4715,8 +4529,7 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
   border: 2px solid var(--color-surface-1);
 }
 
-.day-view-labels,
-.daily-budget-labels {
+.day-view-labels {
   display: grid;
   width: 100%;
   max-width: 100%;
@@ -4732,17 +4545,9 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
   overflow: hidden;
 }
 
-.day-view-label,
-.daily-budget-label {
+.day-view-label {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-}
-
-.daily-budget-meta {
-  display: flex;
-  gap: var(--spacing-2);
-  flex-wrap: wrap;
-  margin-bottom: var(--spacing-2);
 }
 
 /* Usage stats charts */
@@ -5286,12 +5091,12 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
   gap: var(--spacing-1);
 }
 
-:where(body[data-ui-variant="redesign"]) #usage-panel .day-view-toggle {
+#usage-panel .day-view-toggle {
   min-height: 40px;
   border-radius: var(--radius-lg);
 }
 
-:where(body[data-ui-variant="redesign"]) #usage-panel .day-view-toggle__button {
+#usage-panel .day-view-toggle__button {
   min-height: 32px;
   border-radius: calc(var(--radius-lg) - 4px);
 }
@@ -5413,7 +5218,7 @@ body[data-ui-variant="redesign"] #devices-panel > .card__header {
 
 /* stylelint-disable no-descending-specificity */
 /* Settings redesign detail overrides */
-body[data-ui-variant="redesign"] .card.panel:where(
+.card.panel:where(
   #devices-panel,
   #modes-panel,
   #limits-panel,
@@ -5432,7 +5237,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
   backdrop-filter: none;
 }
 
-body[data-ui-variant="redesign"] .card.panel:where(
+.card.panel:where(
   #devices-panel,
   #modes-panel,
   #limits-panel,
@@ -5445,7 +5250,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
   display: none;
 }
 
-:where(body[data-ui-variant="redesign"]) :where(
+:where(
   #devices-panel,
   #modes-panel,
   #limits-panel,
@@ -5453,11 +5258,11 @@ body[data-ui-variant="redesign"] .card.panel:where(
   #usage-panel,
   #advanced-panel
 ) > .card__header,
-:where(body[data-ui-variant="redesign"]) :where(
+:where(
   #electricity-prices-surface,
   #price-aware-devices-surface
 ) > .card__header,
-:where(body[data-ui-variant="redesign"]) #device-detail-panel .device-detail-heading {
+#device-detail-panel .device-detail-heading {
   margin: 0;
   padding: var(--spacing-4);
   border: 1px solid var(--panel-border);
@@ -5466,11 +5271,11 @@ body[data-ui-variant="redesign"] .card.panel:where(
   box-shadow: var(--shadow-sm);
 }
 
-:where(body[data-ui-variant="redesign"]) #usage-panel > .card__header {
+#usage-panel > .card__header {
   display: none;
 }
 
-:where(body[data-ui-variant="redesign"]) :where(
+:where(
   #devices-panel,
   #modes-panel,
   #limits-panel,
@@ -5490,7 +5295,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
   box-shadow: none;
 }
 
-:where(body[data-ui-variant="redesign"]) :where(
+:where(
   #electricity-prices-surface,
   #price-aware-devices-surface
 ) {
@@ -5499,14 +5304,14 @@ body[data-ui-variant="redesign"] .card.panel:where(
   min-width: 0;
 }
 
-:where(body[data-ui-variant="redesign"]) :where(
+:where(
   #limits-panel,
   #simulation-panel,
   #electricity-prices-panel,
   #price-aware-devices-panel
 ) .settings-form-card,
-:where(body[data-ui-variant="redesign"]) #modes-panel > .form-grid,
-:where(body[data-ui-variant="redesign"]) :where(#modes-panel) :where(#priority-form) {
+#modes-panel > .form-grid,
+:where(#modes-panel) :where(#priority-form) {
   display: grid;
   gap: var(--spacing-3);
   margin: 0;
@@ -5517,11 +5322,11 @@ body[data-ui-variant="redesign"] .card.panel:where(
   box-shadow: var(--shadow-sm);
 }
 
-:where(body[data-ui-variant="redesign"]) :where(
+:where(
   #advanced-panel,
   #device-detail-panel
 ) .settings-collapse,
-:where(body[data-ui-variant="redesign"]) #device-detail-panel .detail-diagnostics-card {
+#device-detail-panel .detail-diagnostics-card {
   margin: 0;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
@@ -5530,11 +5335,11 @@ body[data-ui-variant="redesign"] .card.panel:where(
   overflow: hidden;
 }
 
-:where(body[data-ui-variant="redesign"]) :where(
+:where(
   #advanced-panel,
   #device-detail-panel
 ) .settings-collapse summary,
-:where(body[data-ui-variant="redesign"]) :where(
+:where(
   #advanced-panel,
   #device-detail-panel
 ) .settings-collapse-header {
@@ -5543,7 +5348,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
   background: var(--color-surface-2);
 }
 
-:where(body[data-ui-variant="redesign"]) :where(
+:where(
   #advanced-panel,
   #device-detail-panel
 ) .settings-collapse .collapse-content {
@@ -5553,7 +5358,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
   background: var(--pels-surface-container-low);
 }
 
-:where(body[data-ui-variant="redesign"]) :where(
+:where(
   #limits-panel,
   #simulation-panel,
   #advanced-panel,
@@ -5565,7 +5370,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
   margin-bottom: 0;
 }
 
-:where(body[data-ui-variant="redesign"]) :where(
+:where(
   #limits-panel,
   #simulation-panel,
   #advanced-panel,
@@ -5578,7 +5383,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
   line-height: var(--font-line-height-tight);
 }
 
-:where(body[data-ui-variant="redesign"]) :where(
+:where(
   #limits-panel,
   #simulation-panel,
   #advanced-panel,
@@ -5591,7 +5396,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
   line-height: var(--font-line-height-normal);
 }
 
-:where(body[data-ui-variant="redesign"]) :where(
+:where(
   #limits-panel,
   #modes-panel,
   #advanced-panel,
@@ -5602,7 +5407,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
   min-height: 44px;
 }
 
-:where(body[data-ui-variant="redesign"]) :where(
+:where(
   #limits-panel,
   #simulation-panel,
   #advanced-panel,
@@ -5617,7 +5422,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
   background: var(--color-surface-3);
 }
 
-:where(body[data-ui-variant="redesign"]) :where(
+:where(
   #limits-panel,
   #simulation-panel,
   #advanced-panel,
@@ -5630,7 +5435,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
   margin-top: 2px;
 }
 
-:where(body[data-ui-variant="redesign"]) :where(
+:where(
   #devices-panel,
   #modes-panel
 ) .device-list {
@@ -5641,11 +5446,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
   list-style: none;
 }
 
-:where(body[data-ui-variant="redesign"]) #devices-panel .device-table-header {
-  display: none;
-}
-
-:where(body[data-ui-variant="redesign"]) #devices-panel .device-group-header {
+#devices-panel .device-group-header {
   margin: var(--spacing-2) 0 0;
   padding: var(--spacing-2) var(--spacing-1) 0;
   border-bottom: 0;
@@ -5653,7 +5454,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
   letter-spacing: 0.04em;
 }
 
-:where(body[data-ui-variant="redesign"]) #devices-panel .control-row {
+#devices-panel .control-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) repeat(3, minmax(44px, 64px));
   gap: var(--spacing-2);
@@ -5666,22 +5467,22 @@ body[data-ui-variant="redesign"] .card.panel:where(
   box-shadow: var(--shadow-sm);
 }
 
-:where(body[data-ui-variant="redesign"]) #devices-panel .control-row:last-child {
+#devices-panel .control-row:last-child {
   border-bottom: 1px solid var(--panel-border);
 }
 
-:where(body[data-ui-variant="redesign"]) #devices-panel .device-row__name {
+#devices-panel .device-row__name {
   margin: 0;
   min-width: 0;
 }
 
-:where(body[data-ui-variant="redesign"]) #devices-panel .device-row__title {
+#devices-panel .device-row__title {
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
 }
 
-:where(body[data-ui-variant="redesign"]) #devices-panel .device-row__inputs .checkbox-icon {
+#devices-panel .device-row__inputs .checkbox-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5692,11 +5493,11 @@ body[data-ui-variant="redesign"] .card.panel:where(
   background: var(--color-surface-3);
 }
 
-:where(body[data-ui-variant="redesign"]) #devices-panel .device-row.clickable:hover {
+#devices-panel .device-row.clickable:hover {
   background: var(--color-surface-2);
 }
 
-:where(body[data-ui-variant="redesign"]) #devices-panel .list__footer {
+#devices-panel .list__footer {
   align-items: flex-start;
   margin-top: var(--spacing-1);
   padding: var(--spacing-3);
@@ -5705,18 +5506,18 @@ body[data-ui-variant="redesign"] .card.panel:where(
   background: var(--color-surface-2);
 }
 
-:where(body[data-ui-variant="redesign"]) #modes-panel .inline-actions {
+#modes-panel .inline-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr) repeat(3, auto);
   gap: var(--spacing-2);
   margin-top: var(--spacing-1);
 }
 
-:where(body[data-ui-variant="redesign"]) #modes-panel .inline-actions md-filled-text-field {
+#modes-panel .inline-actions md-filled-text-field {
   min-width: 0;
 }
 
-:where(body[data-ui-variant="redesign"]) #modes-panel .mode-row {
+#modes-panel .mode-row {
   grid-template-columns: auto minmax(0, 1fr) minmax(80px, 96px) auto;
   gap: var(--spacing-3);
   padding: var(--spacing-3);
@@ -5726,46 +5527,46 @@ body[data-ui-variant="redesign"] .card.panel:where(
   box-shadow: var(--shadow-sm);
 }
 
-:where(body[data-ui-variant="redesign"]) #modes-panel .mode-row:last-child {
+#modes-panel .mode-row:last-child {
   border-bottom: 1px solid var(--panel-border);
 }
 
-:where(body[data-ui-variant="redesign"]) #modes-panel .drag-handle {
+#modes-panel .drag-handle {
   width: 32px;
   height: 32px;
   padding: 0;
   border-radius: var(--radius-md);
 }
 
-:where(body[data-ui-variant="redesign"]) #modes-panel .mode-target-input {
+#modes-panel .mode-target-input {
   width: 100%;
 }
 
-:where(body[data-ui-variant="redesign"]) #modes-panel .priority-badge {
+#modes-panel .priority-badge {
   margin-left: 0;
 }
 
-:where(body[data-ui-variant="redesign"]) #device-detail-panel.slide-panel {
+#device-detail-panel.slide-panel {
   max-width: 480px;
   background: var(--bg);
 }
 
-:where(body[data-ui-variant="redesign"]) #device-detail-panel .slide-panel__header {
+#device-detail-panel .slide-panel__header {
   padding: var(--spacing-3);
   background: var(--color-surface-2);
 }
 
-:where(body[data-ui-variant="redesign"]) #device-detail-panel .slide-panel__content {
+#device-detail-panel .slide-panel__content {
   display: grid;
   gap: var(--spacing-3);
   padding: var(--spacing-3);
 }
 
-:where(body[data-ui-variant="redesign"]) #device-detail-panel .detail-section {
+#device-detail-panel .detail-section {
   margin: 0;
 }
 
-:where(body[data-ui-variant="redesign"]) #device-detail-panel .segmented {
+#device-detail-panel .segmented {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
   width: 100%;
@@ -5773,7 +5574,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
   background: var(--color-surface-4);
 }
 
-:where(body[data-ui-variant="redesign"]) #device-detail-panel .segmented__option {
+#device-detail-panel .segmented__option {
   min-height: 48px;
   min-width: 0;
   height: auto;
@@ -5783,7 +5584,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
   --md-text-button-container-height: 48px;
 }
 
-:where(body[data-ui-variant="redesign"]) #device-detail-panel :where(
+#device-detail-panel :where(
   .detail-mode-row,
   .detail-stepped-row
 ) {
@@ -5793,24 +5594,24 @@ body[data-ui-variant="redesign"] .card.panel:where(
   background: var(--color-surface-3);
 }
 
-:where(body[data-ui-variant="redesign"]) #device-detail-panel .detail-mode-list,
-:where(body[data-ui-variant="redesign"]) #device-detail-panel .detail-stepped-list {
+#device-detail-panel .detail-mode-list,
+#device-detail-panel .detail-stepped-list {
   display: grid;
   gap: var(--spacing-2);
 }
 
-:where(body[data-ui-variant="redesign"]) #device-detail-panel .detail-stepped-actions,
-:where(body[data-ui-variant="redesign"]) #device-detail-panel .detail-actions,
-:where(body[data-ui-variant="redesign"]) #device-detail-panel .form__actions {
+#device-detail-panel .detail-stepped-actions,
+#device-detail-panel .detail-actions,
+#device-detail-panel .form__actions {
   gap: var(--spacing-2);
 }
 
-:where(body[data-ui-variant="redesign"]) #price-aware-devices-panel .value-adjuster {
+#price-aware-devices-panel .value-adjuster {
   background: var(--color-surface-3);
 }
 
 @media (max-width: 430px) {
-  :where(body[data-ui-variant="redesign"]) :where(
+  :where(
     #devices-panel,
     #modes-panel,
     #limits-panel,
@@ -5822,30 +5623,30 @@ body[data-ui-variant="redesign"] .card.panel:where(
     gap: var(--spacing-2);
   }
 
-  :where(body[data-ui-variant="redesign"]) #devices-panel .control-row {
+  #devices-panel .control-row {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  :where(body[data-ui-variant="redesign"]) #devices-panel .pels-device-card__row {
+  #devices-panel .pels-device-card__row {
     grid-template-columns: repeat(3, minmax(0, 1fr)) var(--pels-device-detail-col-width);
     gap: var(--spacing-1);
     padding-block: var(--spacing-2);
   }
 
-  :where(body[data-ui-variant="redesign"]) #devices-panel .control-row .device-row__name {
+  #devices-panel .control-row .device-row__name {
     grid-column: 1 / -1;
   }
 
-  :where(body[data-ui-variant="redesign"]) #devices-panel .pels-device-card__name {
+  #devices-panel .pels-device-card__name {
     grid-column: 1 / -1;
   }
 
-  :where(body[data-ui-variant="redesign"]) #devices-panel .pels-device-card__cell {
+  #devices-panel .pels-device-card__cell {
     justify-content: center;
     min-height: 40px;
   }
 
-  :where(body[data-ui-variant="redesign"]) #devices-panel .device-row__inputs .checkbox-icon {
+  #devices-panel .device-row__inputs .checkbox-icon {
     flex-direction: column;
     gap: var(--spacing-1);
     min-height: 52px;
@@ -5855,42 +5656,42 @@ body[data-ui-variant="redesign"] .card.panel:where(
     line-height: 1;
   }
 
-  :where(body[data-ui-variant="redesign"]) #devices-panel .device-row__inputs .checkbox-icon:nth-child(1)::after {
+  #devices-panel .device-row__inputs .checkbox-icon:nth-child(1)::after {
     content: "Managed";
   }
 
-  :where(body[data-ui-variant="redesign"]) #devices-panel .device-row__inputs .checkbox-icon:nth-child(2)::after {
+  #devices-panel .device-row__inputs .checkbox-icon:nth-child(2)::after {
     content: "Limit";
   }
 
-  :where(body[data-ui-variant="redesign"]) #devices-panel .device-row__inputs .checkbox-icon:nth-child(3)::after {
+  #devices-panel .device-row__inputs .checkbox-icon:nth-child(3)::after {
     content: "Price";
   }
 
-  :where(body[data-ui-variant="redesign"]) #modes-panel .inline-actions {
+  #modes-panel .inline-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  :where(body[data-ui-variant="redesign"]) #modes-panel .inline-actions md-filled-text-field {
+  #modes-panel .inline-actions md-filled-text-field {
     grid-column: 1 / -1;
   }
 
-  :where(body[data-ui-variant="redesign"]) #modes-panel .inline-actions .btn {
+  #modes-panel .inline-actions .btn {
     width: 100%;
     min-width: 0;
     padding-inline: var(--spacing-2);
   }
 
-  :where(body[data-ui-variant="redesign"]) #modes-panel .mode-row {
+  #modes-panel .mode-row {
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: var(--spacing-2);
   }
 
-  :where(body[data-ui-variant="redesign"]) #modes-panel .mode-row .device-row__name {
+  #modes-panel .mode-row .device-row__name {
     white-space: normal;
   }
 
-  :where(body[data-ui-variant="redesign"]) #modes-panel :where(
+  #modes-panel :where(
     .mode-target-input,
     .mode-target-placeholder
   ) {
@@ -5899,22 +5700,22 @@ body[data-ui-variant="redesign"] .card.panel:where(
     justify-self: stretch;
   }
 
-  :where(body[data-ui-variant="redesign"]) #device-detail-panel.slide-panel {
+  #device-detail-panel.slide-panel {
     max-width: 100%;
   }
 
-  :where(body[data-ui-variant="redesign"]) :where(
+  :where(
     #advanced-panel,
     #device-detail-panel
   ) .settings-collapse summary,
-  :where(body[data-ui-variant="redesign"]) :where(
+  :where(
     #advanced-panel,
     #device-detail-panel
   ) .settings-collapse-header {
     align-items: flex-start;
   }
 
-  :where(body[data-ui-variant="redesign"]) #device-detail-panel :where(
+  #device-detail-panel :where(
     .detail-deltas,
     .target-power-grid,
     .detail-deadline-form .form-grid
@@ -5922,7 +5723,7 @@ body[data-ui-variant="redesign"] .card.panel:where(
     grid-template-columns: 1fr;
   }
 
-  :where(body[data-ui-variant="redesign"]) #device-detail-panel .segmented--power-limiting {
+  #device-detail-panel .segmented--power-limiting {
     grid-template-columns: 1fr;
   }
 }

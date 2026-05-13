@@ -53,7 +53,6 @@ export type MockHomeyUiState = {
   dailyBudget?: unknown;
   deferredObjectiveHistory?: unknown;
   deviceDiagnostics?: unknown;
-  featureAccess?: unknown;
   homeyDevices?: unknown;
   plan?: unknown;
   power?: unknown;
@@ -239,7 +238,6 @@ const buildUiBootstrap = async (homey: MockHomeyClient) => ({
     SETTINGS_UI_BOOTSTRAP_KEYS.map(async (key) => [key, await getHomeySetting(homey, key)]),
   )),
   dailyBudget: getUiOverride(homey, 'dailyBudget') ?? null,
-  featureAccess: getUiOverride(homey, 'featureAccess') ?? { canToggleOverviewRedesign: false },
   plan: await buildUiPlan(homey),
   power: await buildUiPower(homey),
   prices: await buildUiPrices(homey),

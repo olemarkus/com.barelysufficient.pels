@@ -50,10 +50,7 @@ import {
   renderPriorities,
 } from './modes.ts';
 import { refreshPriceConfigView, reloadPriceConfigSettings, updatePriceConfigDevices } from './priceConfig.ts';
-import {
-  loadDailyBudgetSettings,
-  refreshDailyBudgetPlan,
-} from './dailyBudget.ts';
+import { refreshDailyBudgetPlan } from './dailyBudget.ts';
 import { discardBudgetAdjust, refreshBudgetAdjust } from './budgetAdjustController.ts';
 import { loadDailyBudgetTuningSettings } from './dailyBudgetTuning.ts';
 import { parsePlanSnapshot, refreshPlan, renderPlan, updatePlanPower, type PlanSnapshot } from './plan.ts';
@@ -63,7 +60,6 @@ import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
 import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
 import { state } from './state.ts';
 import { logSettingsError, logSettingsWarn } from './logging.ts';
-import { getCurrentSettingsUiVariant } from './uiVariant.ts';
 import { refreshDeadlinesList } from './deadlinesList.ts';
 
 const DAILY_BUDGET_REFRESH_KEYS = new Set([
@@ -243,7 +239,6 @@ const refreshModeAndDeviceControls = () => {
 const refreshDailyBudgetSettings = (key: string) => {
   if (!DAILY_BUDGET_REFRESH_KEYS.has(key)) return;
   if (DAILY_BUDGET_SETTINGS_KEYS.has(key)) {
-    runLoggedTask(loadDailyBudgetSettings(), 'Failed to load daily budget settings', 'settings.set');
     runLoggedTask(refreshBudgetAdjust(), 'Failed to refresh adjust draft', 'settings.set');
   }
   if (DAILY_BUDGET_TUNING_KEYS.has(key)) {
@@ -405,11 +400,7 @@ const discardBudgetAdjustOnLeave = (nextTabId: string) => {
 };
 
 export const showTab = (tabId: string) => {
-  const activeTopLevelTab = (
-    getCurrentSettingsUiVariant() === 'redesign' && REDESIGN_SETTINGS_SECTIONS.has(tabId)
-  )
-    ? 'settings'
-    : tabId;
+  const activeTopLevelTab = REDESIGN_SETTINGS_SECTIONS.has(tabId) ? 'settings' : tabId;
   discardBudgetAdjustOnLeave(tabId);
   for (const tab of tabs) {
     const isActive = tab.dataset.tab === activeTopLevelTab;
