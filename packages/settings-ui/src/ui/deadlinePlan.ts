@@ -10,6 +10,8 @@ import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import {
   deadlineLabels,
   type DeadlineLabels,
+  type DeadlinePendingContext,
+  type DeadlinePendingPriceSource,
   type DeadlinePlanPendingReason,
   type DeadlinePlanUnavailableReason,
 } from '../../../shared-domain/src/deadlineLabels.ts';
@@ -280,16 +282,45 @@ const resolvePendingReason = (
   activePlan: DeferredObjectiveActivePlanV1 | null,
 ): DeadlinePlanPendingReason => activePlan?.pendingReason ?? 'awaiting_horizon_plan';
 
+// Narrow the unknown `combinedPrices` payload to the two fields we care about
+// for pending-hero copy. Returns 'unknown' / null when the payload is missing
+// or unrecognised so the copy falls back to neutral wording.
+const resolvePendingContext = (prices: SettingsUiPricesPayload): DeadlinePendingContext => {
+  const combined = prices.combinedPrices;
+  if (!combined || typeof combined !== 'object') {
+    return { priceSource: 'unknown', lastFetchedShort: null };
+  }
+  const record = combined as { priceScheme?: unknown; lastFetched?: unknown };
+  return {
+    priceSource: resolvePriceSource(record.priceScheme),
+    lastFetchedShort: formatLastFetched(record.lastFetched),
+  };
+};
+
+const resolvePriceSource = (scheme: unknown): DeadlinePendingPriceSource => {
+  if (scheme === 'flow') return 'external_flow';
+  if (scheme === 'norway' || scheme === 'homey') return 'managed';
+  return 'unknown';
+};
+
+const formatLastFetched = (raw: unknown): string | null => {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  const ms = new Date(raw).getTime();
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+};
+
 const buildPendingHero = (params: {
   device: TargetDeviceSnapshot;
   objective: DeferredObjectiveSettingsEntry;
   labels: DeadlineLabels;
   deadlineAtMs: number;
   pendingReason: DeadlinePlanPendingReason;
+  pendingContext: DeadlinePendingContext;
 }): DeadlinePlanPendingPayload['hero'] => {
   const target = formatTarget(params.objective);
   const deadline = formatDeadlineFull(params.deadlineAtMs);
-  const copy = params.labels.pendingHeroByReason[params.pendingReason];
+  const copy = params.labels.pendingHeroByReason[params.pendingReason](params.pendingContext);
   return {
     chips: [
       { text: params.labels.waitingChipLabel, tone: 'info' },
@@ -302,7 +333,10 @@ const buildPendingHero = (params: {
   };
 };
 
-const buildPendingPayload = (ctx: ResolvedObjectiveContext): DeadlinePlanPendingPayload => {
+const buildPendingPayload = (
+  ctx: ResolvedObjectiveContext,
+  pendingContext: DeadlinePendingContext,
+): DeadlinePlanPendingPayload => {
   const labels = deadlineLabels(ctx.objective.kind);
   return {
     kind: ctx.objective.kind,
@@ -313,6 +347,7 @@ const buildPendingPayload = (ctx: ResolvedObjectiveContext): DeadlinePlanPending
       labels,
       deadlineAtMs: ctx.deadlineAtMs,
       pendingReason: resolvePendingReason(ctx.activePlan),
+      pendingContext,
     }),
   };
 };
@@ -455,9 +490,10 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
   if (ctxResult.kind === 'absent') return { status: 'absent' };
   if (ctxResult.kind === 'completed') return { status: 'completed', kind: ctxResult.objectiveKind };
   const ctx = ctxResult.context;
+  const pendingContext = resolvePendingContext(params.prices);
   // No persisted record yet OR record is explicitly pending → pending hero.
   if (!ctx.activePlan || ctx.activePlan.pending || !ctx.activePlan.latest) {
-    return { status: 'pending', pending: buildPendingPayload(ctx) };
+    return { status: 'pending', pending: buildPendingPayload(ctx, pendingContext) };
   }
   const result = buildObjectivePayload(params);
   if (!result) return { status: 'absent' };
@@ -465,7 +501,7 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
     return { status: 'unavailable', kind: ctx.objective.kind, reason: result.reason };
   }
   if (result.kind === 'awaiting_prices') {
-    return { status: 'pending', pending: buildPendingPayload(ctx) };
+    return { status: 'pending', pending: buildPendingPayload(ctx, pendingContext) };
   }
   return { status: 'ready', payload: result.payload };
 };
