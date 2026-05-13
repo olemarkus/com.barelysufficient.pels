@@ -64,4 +64,93 @@ describe('showToast with action', () => {
     await pending;
     expect(toastEl.classList.contains('show')).toBe(false);
   });
+
+  it('uses the fallback message for Homey API transport errors', async () => {
+    const toastEl = setupDom();
+    const { showToastError } = await import('../src/ui/toast.ts');
+    let pending = showToastError(
+      new Error('Homey api POST /ui_refresh_prices failed: Missing app ID'),
+      'Failed to refresh spot prices. If this keeps happening, send a diagnostics report.',
+    );
+
+    expect(toastEl.textContent).toContain('Failed to refresh spot prices.');
+    expect(toastEl.textContent).toContain('send a diagnostics report');
+    expect(toastEl.textContent).not.toContain('/ui_refresh_prices');
+    expect(toastEl.textContent).not.toContain('app ID');
+
+    await vi.runAllTimersAsync();
+    await pending;
+
+    pending = showToastError(
+      new Error('Cannot POST /api/app/com.barelysufficient.pels/ui_refresh_prices'),
+      'Failed to refresh spot prices. If this keeps happening, send a diagnostics report.',
+    );
+
+    expect(toastEl.textContent).toContain('Failed to refresh spot prices.');
+    expect(toastEl.textContent).not.toContain('/api/app/');
+
+    await vi.runAllTimersAsync();
+    await pending;
+
+    pending = showToastError(
+      new Error('Homey SDK not ready'),
+      'Failed to refresh spot prices. If this keeps happening, send a diagnostics report.',
+    );
+
+    expect(toastEl.textContent).toContain('Failed to refresh spot prices.');
+    expect(toastEl.textContent).not.toContain('Homey SDK');
+
+    await vi.runAllTimersAsync();
+    await pending;
+
+    pending = showToastError(
+      new Error('Homey api POST /ui_refresh_prices not available'),
+      'Failed to refresh spot prices. If this keeps happening, send a diagnostics report.',
+    );
+
+    expect(toastEl.textContent).toContain('Failed to refresh spot prices.');
+    expect(toastEl.textContent).not.toContain('/ui_refresh_prices');
+    expect(toastEl.textContent).not.toContain('not available');
+
+    await vi.runAllTimersAsync();
+    await pending;
+  });
+
+  it('keeps local validation messages visible', async () => {
+    const toastEl = setupDom();
+    const { showToastError } = await import('../src/ui/toast.ts');
+    let pending = showToastError(
+      new Error('Provider surcharge must be between -100 and 100 øre.'),
+      'Failed to save price settings.',
+    );
+
+    expect(toastEl.textContent).toContain('Provider surcharge must be between -100 and 100 øre.');
+
+    await vi.runAllTimersAsync();
+    await pending;
+
+    pending = showToastError(
+      new Error('Homey api POST /daily_budget failed: Daily budget must be at least 1 kWh.'),
+      'Failed to apply daily budget changes.',
+    );
+
+    expect(toastEl.textContent).toContain('Daily budget must be at least 1 kWh.');
+    expect(toastEl.textContent).not.toContain('Failed to apply daily budget changes.');
+
+    await vi.runAllTimersAsync();
+    await pending;
+
+    pending = showToastError(
+      new Error(
+        'Homey api POST /ui_refresh_prices failed: Refresh prices functionality is not available in the app.',
+      ),
+      'Failed to refresh spot prices.',
+    );
+
+    expect(toastEl.textContent).toContain('Refresh prices functionality is not available in the app.');
+    expect(toastEl.textContent).not.toContain('Failed to refresh spot prices.');
+
+    await vi.runAllTimersAsync();
+    await pending;
+  });
 });

@@ -1,6 +1,7 @@
 import type { SettingsUiLogEntry, SettingsUiLogLevel } from '../../../contracts/src/types.ts';
 import { SETTINGS_UI_LOG_PATH } from '../../../contracts/src/settingsUiApi.ts';
 import { callApi } from './homey.ts';
+import { isHomeyTransportErrorMessage } from './homeyTransportErrors.ts';
 
 const pendingLogs: SettingsUiLogEntry[] = [];
 const NETWORK_FAILURE_WINDOW_MS = 5_000;
@@ -45,13 +46,8 @@ const normalizeErrorSummary = (error: unknown): string => {
 };
 
 const isNetworkFailure = (message: string, detail?: string): boolean => {
-  const text = `${message} ${detail || ''}`.toLowerCase();
-  return text.includes('homey api')
-    || text.includes('homey sdk not ready')
-    || text.includes('cannot get /api/app/')
-    || text.includes('cannot post /api/app/')
-    || text.includes('cannot put /api/app/')
-    || text.includes('cannot delete /api/app/');
+  const text = `${message} ${detail || ''}`;
+  return isHomeyTransportErrorMessage(text);
 };
 
 const buildNetworkFailureKey = (message: string, error: unknown, context?: string): string => (
