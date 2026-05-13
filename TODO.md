@@ -23,21 +23,18 @@ file.
 
 ## P1 Observability and runtime diagnostics
 
-- [ ] Normalize comparable `restoreNeed` / `insufficientHeadroom` kW fields so small
+- [x] Normalize comparable `restoreNeed` / `insufficientHeadroom` kW fields so small
       admission-metric jitter does not churn detail signatures, overview transitions, or restore
       debug dedupe while the device remains in the same restore-admission posture.
-      Why P1: unlike `shortfall`, these reasons still need coarse device-specific magnitude in the
-      comparable path, but raw float noise can still create repeated plan/detail churn when the
-      admission decision did not materially change.
-      Files: `packages/shared-domain/src/planReasonComparable.ts`, `test/planService.test.ts`,
-      `test/deviceOverview.test.ts`, restore debug dedupe tests.
-- [ ] Separate observed power from estimated / planning power in headroom state and diagnostics.
-      Headroom usage should not prefer `expectedPowerKw` over live or measured usage while carrying
-      freshness that looks observational.
-      Why P1: estimated planner inputs and observed load have different trust levels; merging them
-      makes overshoot and cooldown diagnostics harder to reason about.
-      Files: `lib/plan/planHeadroomSupport.ts`, `lib/plan/planHeadroomState.ts`,
-      `lib/plan/planPowerResolution.ts`, headroom diagnostics tests.
+      Closed by `planReasonComparable.quantizeKwToW`: the comparable now carries integer
+      watts in 100 W buckets (`needW`, `headroomW`, `availableW`, etc.) instead of raw float
+      kW. See `notes/units.md` for the broader "prefer W internally, kW only at the UI"
+      convention this slice formalizes.
+- [x] Separate observed power from estimated / planning power in headroom state and diagnostics.
+      Closed by Observer slice 7: `planHeadroomState` reads `getMeasuredDrawKw(device) ?? 0`
+      for transition tracking and `evaluateHeadroomForDevice` composes
+      `getMeasuredDrawKw` + `getHighestKnownPowerKw` + `isDeviceObservationStale` for the
+      Flow-card path. `planPowerResolution.ts` was previously inlined and no longer exists.
 - [x] Move remaining plan-side `observationStale` branches into Observer-emitted resolved values.
       Closed by `lib/observer/observationTrust.ts` (`isDeviceObservationTrusted`,
       `getTrustedCurrentTemperatureC`, `getTrustedStateOfCharge`). Six plan-side gating sites

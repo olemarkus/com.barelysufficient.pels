@@ -22,17 +22,17 @@ export type ComparablePlanReason =
   | (ComparablePlanReasonBase & {
     fromTarget: string | null;
     toTarget: string | null;
-    needKw: number;
-    headroomKw: number | null;
+    needW: number;
+    headroomW: number | null;
   })
   | (ComparablePlanReasonBase & {
-    needKw: number;
-    availableKw: number | null;
-    postReserveMarginKw: number | null;
-    minimumRequiredPostReserveMarginKw: number | null;
-    penaltyExtraKw: number | null;
-    swapReserveKw: number | null;
-    effectiveAvailableKw: number | null;
+    needW: number;
+    availableW: number | null;
+    postReserveMarginW: number | null;
+    minimumRequiredPostReserveMarginW: number | null;
+    penaltyExtraW: number | null;
+    swapReserveW: number | null;
+    effectiveAvailableW: number | null;
     swapTargetName: string | null;
   })
   | (ComparablePlanReasonBase & {
@@ -88,6 +88,22 @@ function isCodeOnlyReason(reason: DeviceReason): reason is CodeOnlyReason {
   return CODE_ONLY_REASONS.has(reason.code);
 }
 
+/**
+ * Quantize a kW value to the nearest 100 W and return integer watts. Comparable
+ * reasons feed JSON.stringify-based signatures (overview transitions, restore
+ * debug dedupe). Raw kW float jitter below 100 W can churn the signature even
+ * when the admission decision did not materially change. Integer watts are an
+ * exact dedupe key and remove float-equality fuzziness entirely; the 100 W
+ * bucket preserves device-specific coarse magnitude. See `notes/units.md` for
+ * the general "prefer W internally, kW only at the UI" principle.
+ */
+function quantizeKwToW(value: number): number;
+function quantizeKwToW(value: number | null): number | null;
+function quantizeKwToW(value: number | null): number | null {
+  if (value === null) return null;
+  return Math.round(value * 10) * 100;
+}
+
 function isDetailComparableReason(reason: DeviceReason): reason is DetailComparableReason {
   return reason.code === PLAN_REASON_CODES.keep
     || reason.code === PLAN_REASON_CODES.inactive
@@ -113,19 +129,19 @@ export function buildComparableDeviceReason(reason: DeviceReason | undefined): C
         code: reason.code,
         fromTarget: reason.fromTarget,
         toTarget: reason.toTarget,
-        needKw: reason.needKw,
-        headroomKw: reason.headroomKw,
+        needW: quantizeKwToW(reason.needKw),
+        headroomW: quantizeKwToW(reason.headroomKw),
       };
     case PLAN_REASON_CODES.insufficientHeadroom:
       return {
         code: reason.code,
-        needKw: reason.needKw,
-        availableKw: reason.availableKw,
-        postReserveMarginKw: reason.postReserveMarginKw,
-        minimumRequiredPostReserveMarginKw: reason.minimumRequiredPostReserveMarginKw,
-        penaltyExtraKw: reason.penaltyExtraKw,
-        swapReserveKw: reason.swapReserveKw,
-        effectiveAvailableKw: reason.effectiveAvailableKw,
+        needW: quantizeKwToW(reason.needKw),
+        availableW: quantizeKwToW(reason.availableKw),
+        postReserveMarginW: quantizeKwToW(reason.postReserveMarginKw),
+        minimumRequiredPostReserveMarginW: quantizeKwToW(reason.minimumRequiredPostReserveMarginKw),
+        penaltyExtraW: quantizeKwToW(reason.penaltyExtraKw),
+        swapReserveW: quantizeKwToW(reason.swapReserveKw),
+        effectiveAvailableW: quantizeKwToW(reason.effectiveAvailableKw),
         swapTargetName: reason.swapTargetName,
       };
     case PLAN_REASON_CODES.setTarget:
