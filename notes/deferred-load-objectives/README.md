@@ -902,6 +902,26 @@ For v1, the horizon scheduler can be conservative and simple:
 Required-average kW remains useful as a diagnostic, but horizon scheduling is the mechanism that
 makes soft objectives budget-aware instead of just "boost immediately."
 
+### Rate Bootstrap (EV SoC only)
+
+EV SoC objectives need a kWh-per-percent value to convert "target 80%" into "X kWh required" before
+the horizon planner can allocate buckets. The value is normally learned from observed charging
+samples (`lib/core/objectiveProfiles.ts`), but SoC reporting depends on a plugged-in charge session,
+so a learned profile is often unavailable when the user first sets a deadline.
+
+To unblock the first cycle, the diagnostic falls back to `BOOTSTRAP_EV_SOC_KWH_PER_PERCENT` (1.0,
+from `packages/shared-domain/src/objectiveProfileBootstrap.ts`) when no learned `kwhPerUnit` exists.
+This is intentionally conservative-high — over-booking is harmless because the device stops at
+target SoC; under-booking risks missing the deadline. Each diagnostic carries `kwhPerUnitSource:
+'learned' | 'bootstrap' | null`, and the active-plan recorder writes a `rate_refined` revision the
+first time it observes the source flip from `bootstrap` to `learned` after the initial sample lands.
+
+Temperature objectives do not get a bootstrap default. Thermal mass varies by orders of magnitude
+across devices (a small radiator vs a 200 L water tank), so no single constant is safe. Temperature
+profiles also start learning on day one for any device with `measure_power` (or a configured
+stepped-load profile with `planningPowerW`), because `updateObjectiveProfilesFromSnapshot` runs
+every power sample on the whole device snapshot — not gated on an objective being set.
+
 ## Deadline Plan Visibility
 
 The user-facing deadline plan should be inspectable before actuation is exposed broadly. The first

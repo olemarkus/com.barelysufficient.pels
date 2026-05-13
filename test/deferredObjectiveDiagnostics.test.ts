@@ -819,20 +819,77 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
   });
 
-  it('does not infer energy when learned kWh per percent is missing', () => {
+  it('falls back to the bootstrap kWh-per-percent for EV SoC when no learned profile exists', () => {
+    // Target = current + 2% so a bootstrap of 1.0 kWh/% yields a feasible 2 kWh
+    // within the ~4h horizon of the default test deadline.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
-      settings: normalizeDeferredObjectiveSettings(buildSettings()),
+      settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 42 })),
       powerTracker: {},
-      dailyBudgetSnapshot: buildSnapshot(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic).toMatchObject({
+      // 2% remaining × 1.0 kWh/% bootstrap = 2 kWh; planner can schedule that
+      // within the horizon and reports on_track. The crucial assertion is that
+      // status is no longer `unknown` and the source is `bootstrap`.
+      status: 'on_track',
+      energyNeededKWh: 2,
+      kWhPerPercent: 1,
+      kwhPerUnitSource: 'bootstrap',
+      rateConfidence: null,
+    });
+  });
+
+  it('uses the learned profile (not bootstrap) when kWh-per-percent is known', () => {
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic).toMatchObject({
+      kWhPerPercent: 0.2,
+      kwhPerUnitSource: 'learned',
+      rateConfidence: 'medium',
+    });
+  });
+
+  it('still reports missing_capacity for temperature objectives without a learned profile (bootstrap is EV-only)', () => {
+    const heaterDevice = buildTemperatureDevice({ currentTemperature: 40 });
+    const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [heaterDevice],
+      settings: {
+        version: 1,
+        objectivesByDeviceId: {
+          'heater-1': {
+            enabled: true,
+            kind: 'temperature',
+            enforcement: 'soft',
+            targetTemperatureC: 55,
+            deadlineAtMs,
+          },
+        },
+      },
+      powerTracker: {},
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
       priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({
       status: 'unknown',
       reasonCode: 'objective_missing_capacity',
+      kwhPerUnitSource: null,
     });
   });
 
