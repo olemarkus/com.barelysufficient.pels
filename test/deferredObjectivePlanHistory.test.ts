@@ -56,6 +56,7 @@ const makeDiag = (
   kWhPerPercent: null,
   kWhPerDegreeC: 1.5,
   rateConfidence: 'high',
+  kwhPerUnitSource: 'learned',
   horizonBucketCount: 6,
   requestedMinimumStepId: 'low',
   horizonPlan: makeHorizon(),

@@ -1,0 +1,36 @@
+import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
+
+export const buildDeferredObjectiveDebugPayload = (
+  diagnostic: DeferredObjectiveDiagnostic,
+): Record<string, unknown> => ({
+  event: diagnostic.status === 'unknown' ? 'deferred_objective_unknown' : 'deferred_objective_horizon_planned',
+  deviceId: diagnostic.deviceId,
+  ...(diagnostic.deviceName ? { deviceName: diagnostic.deviceName } : {}),
+  objectiveId: diagnostic.objectiveId,
+  objectiveKind: diagnostic.objectiveKind,
+  enforcement: diagnostic.enforcement,
+  status: diagnostic.status,
+  reasonCode: diagnostic.reasonCode,
+  targetPercent: diagnostic.targetPercent,
+  currentPercent: diagnostic.currentPercent,
+  targetTemperatureC: diagnostic.targetTemperatureC,
+  currentTemperatureC: diagnostic.currentTemperatureC,
+  energyNeededKWh: diagnostic.energyNeededKWh,
+  kWhPerPercent: diagnostic.kWhPerPercent,
+  kWhPerDegreeC: diagnostic.kWhPerDegreeC,
+  rateConfidence: diagnostic.rateConfidence,
+  kwhPerUnitSource: diagnostic.kwhPerUnitSource,
+  deadlineAtMs: diagnostic.deadlineAtMs,
+  deadlineLocalTime: diagnostic.deadlineLocalTime,
+  horizonBucketCount: diagnostic.horizonBucketCount,
+  requestedMinimumStepId: diagnostic.requestedMinimumStepId,
+  plannedUsefulEnergyKWh: diagnostic.horizonPlan?.plannedUsefulEnergyKWh ?? null,
+  unplannedUsefulEnergyKWh: diagnostic.horizonPlan?.unplannedUsefulEnergyKWh ?? null,
+  usesDeadlineReserve: diagnostic.horizonPlan?.usesDeadlineReserve ?? null,
+  usesPolicyAvoid: diagnostic.horizonPlan?.usesPolicyAvoid ?? null,
+  plannedBuckets: diagnostic.horizonPlan?.plannedBuckets.map((bucket) => ({
+    id: bucket.id, startMs: bucket.startMs, endMs: bucket.endMs,
+    preference: bucket.preference, reserve: bucket.reserve, current: bucket.current,
+    plannedUsefulEnergyKWh: bucket.plannedUsefulEnergyKWh,
+  })) ?? null,
+});

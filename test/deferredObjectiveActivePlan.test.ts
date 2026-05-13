@@ -3,6 +3,9 @@ import {
   type ActivePlanFlowCardSeed,
   type ActivePlanPersistDeps,
 } from '../lib/plan/deferredObjectives/activePlanRecorder';
+import {
+  normalizeDeferredObjectiveActivePlans,
+} from '../lib/plan/deferredObjectives/activePlanSettings';
 import type {
   DeferredObjectiveDiagnostic,
   DeferredObjectiveHorizonPlan,
@@ -81,6 +84,7 @@ const makeDiag = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   kWhPerPercent: null,
   kWhPerDegreeC: 1.5,
   rateConfidence: 'high',
+  kwhPerUnitSource: 'learned',
   horizonBucketCount: 3,
   requestedMinimumStepId: 'low',
   horizonPlan: makeHorizon([
@@ -311,6 +315,161 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan?.original?.revision).toBe(1);
   });
 
+  it('emits a rate_refined revision when the kwhPerUnit source flips bootstrap → learned', () => {
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // First observe: planner used the bootstrap fallback (no learned profile yet).
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      kwhPerUnitSource: 'bootstrap',
+    })], HOUR_MS);
+    expect(recorder.getPlanForTests('dev')?.latest?.kwhPerUnitSource).toBe('bootstrap');
+
+    // Second observe: profile lands. Allocation shifts (different kWh/unit), and
+    // the user-meaningful reason is the rate refinement — not prices.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      kwhPerUnitSource: 'learned',
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 0.5),
+        makeBucket(3 * HOUR_MS, 0.5),
+        makeBucket(4 * HOUR_MS, 0.5),
+      ]),
+    })], 2 * HOUR_MS);
+
+    const plan = recorder.getPlanForTests('dev');
+    expect(plan?.latest?.reason).toBe('rate_refined');
+    expect(plan?.latest?.kwhPerUnitSource).toBe('learned');
+    expect(plan?.latest?.revision).toBe(2);
+  });
+
+  it('stays on prices_revised when source is unchanged across a price shift', () => {
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      kwhPerUnitSource: 'learned',
+    })], HOUR_MS);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      kwhPerUnitSource: 'learned',
+      horizonPlan: makeHorizon([
+        makeBucket(HOUR_MS, 1.5),
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(5 * HOUR_MS, 1.5),
+      ]),
+    })], 2 * HOUR_MS);
+
+    expect(recorder.getPlanForTests('dev')?.latest?.reason).toBe('prices_revised');
+  });
+
+  it('does not emit rate_refined for the learned → bootstrap regression (rare profile loss)', () => {
+    // Profile loss is unusual but possible (retention prune, kind change). Treat
+    // it as a plain prices_revised: there's no "refinement" to report.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      kwhPerUnitSource: 'learned',
+    })], HOUR_MS);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      kwhPerUnitSource: 'bootstrap',
+      horizonPlan: makeHorizon([
+        makeBucket(HOUR_MS, 1.5),
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(5 * HOUR_MS, 1.5),
+      ]),
+    })], 2 * HOUR_MS);
+
+    expect(recorder.getPlanForTests('dev')?.latest?.reason).toBe('prices_revised');
+  });
+
+  it('does not fire rate_refined when a bootstrap plan becomes satisfied (null source)', () => {
+    // Regression for PR #708 review: when the EV crosses the target SoC
+    // during a bootstrap-planned cycle, the diagnostic's
+    // `kwhPerUnitSource` is null (resolver short-circuits energy resolution
+    // because the target is already met). Coalescing that null into 'learned'
+    // and treating it as `bootstrap → learned` would persist a misleading
+    // `rate_refined` revision even though nothing was learned. The recorder
+    // must instead treat null as "no source consulted" and label the
+    // allocation-change revision `prices_revised`.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      kwhPerUnitSource: 'bootstrap',
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+      ]),
+    })], HOUR_MS);
+    expect(recorder.getPlanForTests('dev')?.latest?.kwhPerUnitSource).toBe('bootstrap');
+
+    // Satisfied diagnostic: horizon plan has no buckets, source is null.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      kwhPerUnitSource: null,
+      status: 'satisfied',
+      reasonCode: 'energy_already_met',
+      energyNeededKWh: 0,
+      horizonPlan: makeHorizon([], { status: 'satisfied', statusDetail: 'energy_already_met', energyNeededKWh: 0, plannedUsefulEnergyKWh: 0 }),
+    })], 2 * HOUR_MS);
+
+    const plan = recorder.getPlanForTests('dev');
+    expect(plan?.latest?.reason).toBe('prices_revised');
+    expect(plan?.latest?.kwhPerUnitSource).toBeUndefined();
+    expect(plan?.latest?.revision).toBe(2);
+  });
+
+  it('writes a prices_revised revision when source flips learned→bootstrap even with identical hours', () => {
+    // Regression for PR #708 review: if the profile is pruned (or the device
+    // is removed/re-added) and the bucket allocation happens to be
+    // byte-identical across the source flip, the recorder must still write a
+    // revision so persisted `kwhPerUnitSource` does not stay stale at
+    // 'learned' while the planner is using bootstrap.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    const sharedPlan = makeHorizon([
+      makeBucket(2 * HOUR_MS, 1.5),
+      makeBucket(3 * HOUR_MS, 1.5),
+      makeBucket(4 * HOUR_MS, 1.5),
+    ]);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      kwhPerUnitSource: 'learned',
+      horizonPlan: sharedPlan,
+    })], HOUR_MS);
+    expect(recorder.getPlanForTests('dev')?.latest?.kwhPerUnitSource).toBe('learned');
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      kwhPerUnitSource: 'bootstrap',
+      horizonPlan: sharedPlan,
+    })], 2 * HOUR_MS);
+
+    const plan = recorder.getPlanForTests('dev');
+    expect(plan?.latest?.reason).toBe('prices_revised');
+    expect(plan?.latest?.kwhPerUnitSource).toBe('bootstrap');
+    expect(plan?.latest?.revision).toBe(2);
+  });
+
   it('drops the record once the deadline passes', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
@@ -456,5 +615,82 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const { deps } = buildPersistDeps(persisted);
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
     expect(recorder.getActivePlansSnapshot().plansByDeviceId.dev?.latest?.revision).toBe(1);
+  });
+
+  describe('normalizeDeferredObjectiveActivePlans (persisted-plan round trip)', () => {
+    const baseRevision = {
+      revision: 1,
+      revisedAtMs: HOUR_MS,
+      computedFromPricesUpTo: 6 * HOUR_MS,
+      hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 }],
+      energyNeededKWh: 1.5,
+      planStatus: 'on_track' as const,
+    };
+    const basePlan = (
+      revisionOverrides: Record<string, unknown> = {},
+    ): Record<string, unknown> => ({
+      deviceId: 'dev',
+      deviceName: 'Garage EV',
+      objectiveKind: 'ev_soc',
+      targetTemperatureC: null,
+      targetPercent: 60,
+      deadlineAtMs: 6 * HOUR_MS,
+      startedAtMs: HOUR_MS,
+      pending: false,
+      objectiveSignature: 'sig',
+      original: { ...baseRevision, reason: 'flow_card', ...revisionOverrides },
+      latest: { ...baseRevision, reason: 'flow_card', ...revisionOverrides },
+    });
+
+    it('preserves a rate_refined revision through the validator', () => {
+      // Regression: previously the VALID_REASONS allowlist omitted 'rate_refined',
+      // so any persisted plan whose latest revision had been bootstrap→learned
+      // refined was silently discarded on app restart.
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: basePlan({ reason: 'rate_refined', kwhPerUnitSource: 'learned' }),
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev?.latest?.reason).toBe('rate_refined');
+      expect(normalized.plansByDeviceId.dev?.latest?.kwhPerUnitSource).toBe('learned');
+    });
+
+    it('preserves a bootstrap-source revision', () => {
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: basePlan({ reason: 'flow_card', kwhPerUnitSource: 'bootstrap' }),
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev?.latest?.kwhPerUnitSource).toBe('bootstrap');
+    });
+
+    it('accepts legacy revisions without a kwhPerUnitSource field', () => {
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: basePlan({ reason: 'prices_revised' }),
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev?.latest?.reason).toBe('prices_revised');
+      expect(normalized.plansByDeviceId.dev?.latest?.kwhPerUnitSource).toBeUndefined();
+    });
+
+    it('drops plans whose kwhPerUnitSource is present but malformed', () => {
+      // Defensive: a corrupt persisted value should not bleed an unknown source
+      // value into downstream typed code.
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: basePlan({ reason: 'flow_card', kwhPerUnitSource: 'totally_invalid' }),
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev).toBeUndefined();
+    });
   });
 });
