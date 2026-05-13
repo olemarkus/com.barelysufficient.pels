@@ -25,7 +25,6 @@ const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice 
   stateOfCharge: {
     percent: 40,
     status: 'fresh',
-    source: 'capability',
     observedAtMs: NOW_MS,
   },
   steppedLoadProfile: {
@@ -619,7 +618,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         stateOfCharge: {
           percent: 40,
           status: 'stale',
-          source: 'capability',
           observedAtMs: NOW_MS - HOUR_MS,
         },
       })],
@@ -648,7 +646,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         stateOfCharge: {
           percent: 70,
           status: 'fresh',
-          source: 'capability',
           observedAtMs: NOW_MS,
         },
       })],
@@ -664,7 +661,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         stateOfCharge: {
           percent: 40,
           status: 'stale',
-          source: 'capability',
           observedAtMs: NOW_MS,
         },
       })],
@@ -698,7 +694,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         stateOfCharge: {
           percent: 70,
           status: 'fresh',
-          source: 'capability',
           observedAtMs: NOW_MS,
         },
       })],
@@ -727,7 +722,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         stateOfCharge: {
           percent: 70,
           status: 'fresh',
-          source: 'capability',
           observedAtMs: NOW_MS,
         },
       })],
@@ -788,7 +782,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         stateOfCharge: {
           percent: 70,
           status: 'fresh',
-          source: 'capability',
           observedAtMs: NOW_MS,
         },
       })],
@@ -804,7 +797,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         stateOfCharge: {
           percent: 40,
           status: 'fresh',
-          source: 'capability',
           observedAtMs: NOW_MS,
         },
       })],
@@ -852,7 +844,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         stateOfCharge: {
           percent: 70,
           status: 'fresh',
-          source: 'capability',
           observedAtMs: NOW_MS,
         },
         steppedLoadProfile: undefined,

@@ -118,13 +118,13 @@ file.
       `packages/settings-ui/src/ui/deviceUtils.ts`,
       `packages/settings-ui/src/ui/planLegacy.ts`,
       `packages/contracts/src/settingsUiApi.ts`.
-- [ ] Tighten EV SoC layer boundaries before expanding EV objectives.
-      Keep synthetic/report-source metadata (`source` and any future flow-only SoC markers) in the
-      observation layer unless another layer has a concrete behavioral need, and
-      decide whether a synthetic SoC input should move to a `pels_`-prefixed capability instead of
-      reusing Homey/native-looking capability ids.
-      Files: `lib/core/deviceStateOfCharge.ts`, `lib/core/deviceManagerObservation.ts`,
-      `lib/core/flowReportedCapabilities.ts`, EV SoC contracts/UI surfaces.
+- [x] Tighten EV SoC layer boundaries before expanding EV objectives.
+      Closed by dropping `source: 'capability' | 'flow'` from the public
+      `DeviceStateOfChargeSnapshot` contract: nothing outside the producer was reading
+      it, so source-of-evidence stays internal to `lib/core/deviceStateOfCharge.ts`.
+      Synthetic SoC keeps writing to native Homey capability ids; the
+      `pels_`-prefixed-capability alternative is documented in
+      `notes/ev-soc-layering.md` with explicit triggers for revisiting.
 - [ ] Gate boost-driven stepped escalation on recent observed draw at the current step.
       Boost currently bypasses the shed-invariant block and enables swap regardless of measured
       power, so the planner can try to escalate `medium → max` on a device that has been drawing

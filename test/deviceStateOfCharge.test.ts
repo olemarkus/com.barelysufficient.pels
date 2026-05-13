@@ -17,7 +17,6 @@ describe('resolveStateOfChargeSnapshot', () => {
           lastUpdated: '2026-03-20T06:00:01.000Z',
         },
       },
-      flowBackedCapabilityIds: ['measure_battery'],
       reportedCapabilities: {
         measure_battery: {
           value: 42,
@@ -29,7 +28,6 @@ describe('resolveStateOfChargeSnapshot', () => {
 
     expect(snapshot).toEqual(expect.objectContaining({
       percent: 55,
-      source: 'capability',
       capabilityId: 'measure_soc_level',
       status: 'fresh',
     }));

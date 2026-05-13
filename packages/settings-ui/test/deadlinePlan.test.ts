@@ -1327,7 +1327,7 @@ describe('deadline plan page payload', () => {
       id: 'ev',
       name: 'Garage EV',
       currentOn: false,
-      stateOfCharge: { percent: 40, status: 'fresh', source: 'capability' },
+      stateOfCharge: { percent: 40, status: 'fresh' },
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }];
