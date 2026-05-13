@@ -117,6 +117,7 @@ export type TargetDeviceSnapshot = {
     temperatureBoost?: TemperatureBoostConfig;
     evBoost?: EvBoostConfig;
     measuredPowerKw?: number;
+    measuredPowerObservedAtMs?: number;
     reportedStepId?: string;
     targetStepId?: string;
     desiredStepId?: string;

@@ -8,6 +8,7 @@ import type { StructuredDebugEmitter } from '../logging/logger';
 import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from '../plan/planUsage';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
+import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/src/powerFreshness';
 
 export type PowerTrackerPersistReason =
   | 'scheduled'
@@ -35,6 +36,28 @@ export function recordDailyBudgetCap(params: {
   const nextCaps = { ...(powerTracker.dailyBudgetCaps || {}), [bucketKey]: plannedKWh };
   return { ...powerTracker, dailyBudgetCaps: nextCaps };
 }
+
+const buildFreshMeasuredDevicePowerWById = (params: {
+  devices: TargetDeviceSnapshot[];
+  nowMs: number;
+}): Record<string, number> | undefined => {
+  const entries = params.devices.flatMap((device) => {
+    const measuredPowerKw = device.measuredPowerKw;
+    const observedAtMs = device.measuredPowerObservedAtMs;
+    if (
+      typeof measuredPowerKw !== 'number'
+      || !Number.isFinite(measuredPowerKw)
+      || typeof observedAtMs !== 'number'
+      || !Number.isFinite(observedAtMs)
+      || observedAtMs > params.nowMs
+      || params.nowMs - observedAtMs >= POWER_SAMPLE_STALE_THRESHOLD_MS
+    ) {
+      return [];
+    }
+    return [[device.id, Math.max(0, measuredPowerKw * 1000)] as const];
+  });
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+};
 
 export async function recordPowerSampleForApp(params: {
   currentPowerW: number;
@@ -70,6 +93,7 @@ export async function recordPowerSampleForApp(params: {
   const exemptKw = snapshot.length ? sumBudgetExemptLiveUsageKw(snapshot) : null;
   const controlledPowerW = controlledKw !== null ? Math.max(0, controlledKw * 1000) : undefined;
   const exemptPowerW = exemptKw !== null ? Math.max(0, exemptKw * 1000) : undefined;
+  const currentDevicePowerWById = buildFreshMeasuredDevicePowerWById({ devices: snapshot, nowMs });
   const profilingState = updateObjectiveProfilesFromSnapshot({
     state: powerTracker,
     devices: snapshot,
@@ -82,6 +106,7 @@ export async function recordPowerSampleForApp(params: {
     currentPowerW,
     controlledPowerW,
     exemptPowerW,
+    currentDevicePowerWById,
     nowMs,
     capacityGuard,
     hourBudgetKWh,
