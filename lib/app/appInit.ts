@@ -1,4 +1,10 @@
 import { isDeviceObservationStale } from '../observer/observationFreshness';
+import {
+  getAdmissionPowerKw,
+  getDeliveryPowerKw,
+  hasRecentDrawAt,
+  isStepCalibrationConfident,
+} from '../observer/devicePowerCalibration';
 import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
 import { PlanService } from '../plan/planService';
 import { PriceCoordinator } from '../price/priceCoordinator';
@@ -6,6 +12,7 @@ import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import { COMBINED_PRICES } from '../utils/settingsKeys';
 import { resolveHomeyEnergyApiFromSdk } from '../utils/homeyEnergy';
 import type { FlowHomeyLike, TargetDeviceSnapshot } from '../utils/types';
+import type { StepPowerCalibrationView } from '../plan/planTypes';
 import { DeviceDiagnosticsService, type DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { AppContext } from './appContext';
 import {
@@ -428,10 +435,17 @@ function resolveHasBinaryControl(device: TargetDeviceSnapshot): boolean {
   return device.capabilities.some((capabilityId) => capabilityId === 'onoff' || capabilityId === 'evcharger_charging');
 }
 
-function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
+const BOOST_RECENT_DRAW_WINDOW_MS = 10 * 60 * 1000;
+
+export function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
   const pendingBinaryCommand = ctx.planEngine?.getPendingBinaryCommandForDevice?.(
     device.id,
     device.communicationModel,
+  );
+  const calibration = buildStepPowerCalibrationView(ctx, device);
+  const hasRecentObservedDrawAtSelectedStep = resolveHasRecentObservedDrawAtSelectedStep(
+    ctx,
+    device,
   );
   return {
     ...device,
@@ -444,5 +458,59 @@ function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
     evBoost: ctx.getEvBoostConfig?.(device.id),
     binaryCommandPending: pendingBinaryCommand !== null && pendingBinaryCommand !== undefined,
     binaryCommandPendingDesired: pendingBinaryCommand?.desired,
+    ...(calibration ? { stepPowerCalibration: calibration } : {}),
+    ...(hasRecentObservedDrawAtSelectedStep !== undefined
+      ? { hasRecentObservedDrawAtSelectedStep }
+      : {}),
   };
+}
+
+function buildStepPowerCalibrationView(
+  ctx: AppContext,
+  device: TargetDeviceSnapshot,
+): Record<string, StepPowerCalibrationView> | undefined {
+  const profile = device.steppedLoadProfile;
+  if (!profile || !Array.isArray(profile.steps) || profile.steps.length === 0) return undefined;
+  const snapshot = ctx.getPowerCalibrationSnapshot();
+  const deviceEntry = snapshot.devices[device.id];
+  if (!deviceEntry) return undefined;
+  const entries = profile.steps.flatMap((step): Array<[string, StepPowerCalibrationView]> => {
+    if (!step || typeof step.id !== 'string') return [];
+    if (step.planningPowerW <= 0) return [];
+    if (!deviceEntry.steps[step.id]) return [];
+    const nameplateKw = step.planningPowerW / 1000;
+    return [[step.id, {
+      admissionPowerKw: getAdmissionPowerKw(snapshot, device.id, step.id, nameplateKw),
+      deliveryPowerKw: getDeliveryPowerKw(snapshot, device.id, step.id, nameplateKw),
+    }]];
+  });
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function resolveHasRecentObservedDrawAtSelectedStep(
+  ctx: AppContext,
+  device: TargetDeviceSnapshot,
+): boolean | undefined {
+  // Use the observed step (reportedStepId) only. Falling back to
+  // `selectedStepId` would convert "no observation yet" into a concrete
+  // `false` for a step the device may never have visited, blocking boost
+  // escalation during the warmup window — the gate's contract treats
+  // `undefined` as "no calibration opinion, keep the legacy bypass."
+  const stepId = device.reportedStepId;
+  if (typeof stepId !== 'string' || stepId.length === 0) return undefined;
+  const snapshot = ctx.getPowerCalibrationSnapshot();
+  // Warm-up samples (below the confidence threshold) must not produce a
+  // concrete `false` — the gate would treat that as authoritative and
+  // suppress boost escalation for newly-paired devices.
+  if (!isStepCalibrationConfident(snapshot, device.id, stepId)) return undefined;
+  // Use the AppContext clock so the planner can be tested deterministically
+  // and so this stays consistent with other plan-input enrichment helpers
+  // (per state-management/AGENTS.md "use a single clock per cycle").
+  return hasRecentDrawAt({
+    snapshot,
+    deviceId: device.id,
+    stepId,
+    windowMs: BOOST_RECENT_DRAW_WINDOW_MS,
+    nowMs: ctx.getNow().getTime(),
+  });
 }

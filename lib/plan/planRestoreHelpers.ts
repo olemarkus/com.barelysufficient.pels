@@ -593,7 +593,7 @@ function blockSteppedRestoreForShedInvariant(params: {
   restoreDebugKey: string;
 }): boolean {
   const { dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, debugStructured, restoreDebugKey } = params;
-  if (dev.temperatureBoostActive === true || dev.evBoostActive === true) return false;
+  if (isBoostEffectiveForEscalation(dev)) return false;
   if (!lowestNonZeroStep || nextStep.planningPowerW <= lowestNonZeroStep.planningPowerW) return false;
   const shedDeviceCount = countShedDevices(deviceMap, dev.id);
   if (shedDeviceCount === 0) return false;
@@ -664,7 +664,24 @@ function canUseSwapForSteppedRestore(params: {
   const { dev, nextStep, lowestNonZeroStep } = params;
   if (lowestNonZeroStep === null) return false;
   if (isObservedOff(dev) && nextStep.id === lowestNonZeroStep.id) return true;
-  return dev.temperatureBoostActive === true || dev.evBoostActive === true;
+  return isBoostEffectiveForEscalation(dev);
+}
+
+/**
+ * True when a boost is active *and* there is no evidence that the device is
+ * idle at its current step. Calibration-confident `false` for
+ * `hasRecentObservedDrawAtSelectedStep` blocks the boost-driven bypass —
+ * boost should not escalate a device past its current step when the device
+ * has not been accepting load there (e.g. a Hoiax holding at its element
+ * setpoint, or a thermostat in a room already at target). When the
+ * calibration store has no opinion (undefined), the bypass behaves as
+ * before so newly-paired devices are not penalized during warm-up.
+ */
+function isBoostEffectiveForEscalation(dev: DevicePlanDevice): boolean {
+  const boostActive = dev.temperatureBoostActive === true || dev.evBoostActive === true;
+  if (!boostActive) return false;
+  if (dev.hasRecentObservedDrawAtSelectedStep === false) return false;
+  return true;
 }
 
 function rejectSteppedRestoreForInsufficientHeadroom(params: {

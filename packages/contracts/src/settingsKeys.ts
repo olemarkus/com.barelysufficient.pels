@@ -35,3 +35,4 @@ export const FLOW_PRICES_TOMORROW = 'flow_prices_tomorrow';
 export const HOMEY_PRICES_TODAY = 'homey_prices_today';
 export const HOMEY_PRICES_TOMORROW = 'homey_prices_tomorrow';
 export const HOMEY_PRICES_CURRENCY = 'homey_prices_currency';
+export const POWER_CALIBRATION = 'power_calibration';

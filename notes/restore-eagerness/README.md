@@ -27,6 +27,14 @@ Field behavior still needs monitoring for this narrower case:
 This is no longer the broad "restore logic is wrong" problem from the earlier investigation. It
 is now a calibration and observability problem around delayed power visibility.
 
+Per-device-per-step calibration (`lib/observer/devicePowerCalibration.ts`) is one of the signals
+available to the restore-admission path: stepped-load helpers consult the conservative-high
+admission view (`max(observed, nameplate)`) when sizing restore deltas, so a device that
+historically draws more than its nameplate at a given step reserves more headroom on restore.
+Calibration does not directly address the "second restore admitted before the first ramps"
+race — admission still uses the nameplate-bounded estimate during the warmup window — but it
+narrows the upper-bound estimate as evidence accrues.
+
 ## Bounded Restore Batching
 
 PELS may restore more than one binary device in a single planning cycle only when whole-home power

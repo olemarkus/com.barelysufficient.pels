@@ -354,6 +354,18 @@ function buildBasePlanDevice(params: {
     shedAction,
     shedTemperature,
     shedStepId,
+    ...pickStepCalibrationFields(dev),
+  };
+}
+
+function pickStepCalibrationFields(
+  dev: Pick<PlanInputDevice, 'stepPowerCalibration' | 'hasRecentObservedDrawAtSelectedStep'>,
+): Partial<Pick<DevicePlanDevice, 'stepPowerCalibration' | 'hasRecentObservedDrawAtSelectedStep'>> {
+  return {
+    ...(dev.stepPowerCalibration ? { stepPowerCalibration: dev.stepPowerCalibration } : {}),
+    ...(dev.hasRecentObservedDrawAtSelectedStep !== undefined
+      ? { hasRecentObservedDrawAtSelectedStep: dev.hasRecentObservedDrawAtSelectedStep }
+      : {}),
   };
 }
 function isRecentlyRestored(lastRestoreMs: number | undefined): boolean {

@@ -56,6 +56,12 @@ import {
   recordPowerSampleForApp,
   schedulePlanRebuildFromSignal,
 } from './lib/app/appPowerHelpers';
+import {
+  PowerCalibrationStore,
+  loadPowerCalibrationStore,
+  persistPowerCalibrationFlush,
+  persistPowerCalibrationIfDue,
+} from './lib/app/appPowerCalibrationWiring';
 import { shouldSkipShortfallRebuildFromPlanSummary } from './lib/app/appPowerRebuildShortfallSuppression';
 import { PlanRebuildScheduler, type RebuildIntent } from './lib/app/planRebuildScheduler';
 import {
@@ -211,6 +217,7 @@ function resolveFlowBackedCapabilityReportOutcome(update: {
 
 class PelsApp extends Homey.App {
   private powerTracker: PowerTrackerState = {};
+  private powerCalibrationStore: PowerCalibrationStore = new PowerCalibrationStore();
   private capacityGuard?: CapacityGuard;
   private readonly deferredObjectiveStatusBus: DeferredObjectiveStatusBus = createDeferredObjectiveStatusBus();
   private capacitySettings = { limitKw: 10, marginKw: 0.2 };
@@ -622,6 +629,7 @@ class PelsApp extends Homey.App {
       getCombinedHourlyPrices: () => app.getCombinedHourlyPrices(),
       getDailyBudgetUiPayload: () => app.getDailyBudgetUiPayload(),
       getLatestPlanSnapshotForUi: () => app.getLatestPlanSnapshotForUi(),
+      getPowerCalibrationSnapshot: () => app.powerCalibrationStore.getSnapshot(),
       get powerTracker() { return app.powerTracker; },
       set powerTracker(value) { appRef.powerTracker = value; },
       get capacitySettings() { return app.capacitySettings; },
@@ -749,6 +757,11 @@ class PelsApp extends Homey.App {
     await runStartupStep('initCapacityGuardProviders', () => this.initCapacityGuardProviders(), logStartupStepFailure);
     await runStartupStep('initSettingsHandler', () => this.initSettingsHandler(), logStartupStepFailure);
     this.lastNotifiedOperatingMode = this.operatingMode;
+    await runStartupStep(
+      'loadPowerCalibrationStore',
+      () => this.loadPowerCalibrationStore(),
+      logStartupStepFailure,
+    );
     await runStartupStep('startAppServices', () => startAppServices(this.ctx), logStartupStepFailure);
     await runStartupStep(
       'startPriceLowestTriggerChecker',
@@ -1021,6 +1034,10 @@ class PelsApp extends Homey.App {
     this.deferredObjectivePlanHistoryRecorder?.flushIfDirty();
     this.deferredObjectiveActivePlanRecorder?.flushIfDirty();
     this.flushDailyBudgetStateOnUninit();
+    // Flush bypasses the debounce window so any samples accepted since the
+    // last persist tick reach settings before shutdown. Without this, samples
+    // recorded inside the persist-debounce window are lost on restart.
+    this.flushPowerCalibration();
     // Mark how far we've observed; back-fill on next startup picks up from here. Skipped if
     // the recorder is still dirty (save failed), so the next start re-scans the missed window.
     persistDeferredObjectiveObservationWatermark(this.ctx, this.deferredObjectivePlanHistoryRecorder);
@@ -1149,9 +1166,34 @@ class PelsApp extends Homey.App {
     this.lastNotifiedOperatingMode = trimmed;
   }
   private loadPowerTracker(options: { skipDailyBudgetUpdate?: boolean } = {}): void {
+    // `power_tracker_state` is rewritten every persist tick, so the global
+    // settings listener re-runs `loadPowerTracker` continuously at runtime.
+    // The calibration store is NOT reloaded here — doing so would discard the
+    // in-memory dirty samples that haven't crossed the persist debounce
+    // window yet, stalling calibration convergence. The startup load happens
+    // exactly once in `onInit` via `loadPowerCalibrationStore`.
     const stored = this.homey.settings.get('power_tracker_state') as unknown;
     if (isPowerTrackerState(stored)) this.powerTracker = stored;
     if (options.skipDailyBudgetUpdate !== true) this.dailyBudgetService.updateState({ refreshObservedStats: false });
+  }
+  private loadPowerCalibrationStore(): void {
+    this.powerCalibrationStore = loadPowerCalibrationStore({ homey: this.homey });
+  }
+  private persistPowerCalibrationIfDue(nowMs: number = Date.now()): void {
+    persistPowerCalibrationIfDue({
+      homey: this.homey,
+      store: this.powerCalibrationStore,
+      nowMs,
+      error: (msg, err) => this.error(msg, err),
+    });
+  }
+  private flushPowerCalibration(nowMs: number = Date.now()): void {
+    persistPowerCalibrationFlush({
+      homey: this.homey,
+      store: this.powerCalibrationStore,
+      nowMs,
+      error: (msg, err) => this.error(msg, err),
+    });
   }
   private migrateManagedDevices(): void {
     migrateManagedDevicesHelper({ homey: this.homey, log: this.log.bind(this) });
@@ -1284,6 +1326,14 @@ class PelsApp extends Homey.App {
       error: (msg, err) => this.error(msg, err),
     });
     this.persistPowerTrackerState('prune');
+    // Piggyback on the power-tracker prune tick so the calibration store
+    // never grows unbounded across device lifecycles. Flush bypasses the
+    // debounce / load-grace gates so the pruned snapshot lands on disk
+    // immediately — otherwise a restart inside the persist debounce window
+    // would resurrect the pruned device entries from the previous write.
+    if (this.powerCalibrationStore.prune(Date.now())) {
+      this.flushPowerCalibration(Date.now());
+    }
   }
   private startPowerTrackerPruning(): void {
     this.timers.registerTimeout('powerTrackerPruneInitial', setTimeout(() => {
@@ -1322,6 +1372,8 @@ class PelsApp extends Homey.App {
     const uiStart = Date.now();
     emitSettingsUiPowerUpdatedForApp(this.homey, this.powerTracker, (message, error) => this.error(message, error));
     addPerfDuration('power_sample_ui_ms', Date.now() - uiStart);
+
+    this.persistPowerCalibrationIfDue(nextState.lastTimestamp ?? Date.now());
   }
   public replacePowerTrackerForUi(nextState: PowerTrackerState): void {
     this.powerTracker = nextState;
@@ -1364,6 +1416,7 @@ class PelsApp extends Homey.App {
         getLatestTargetSnapshot: () => this.latestTargetSnapshot,
         powerTracker: this.powerTracker,
         capacityGuard: this.capacityGuard,
+        powerCalibrationStore: this.powerCalibrationStore,
         objectiveProfileDebugStructured: this.getStructuredDebugEmitter('objective_profiles', 'objective_profiles'),
         schedulePlanRebuild: async () => {
           await schedulePlanRebuildFromSignal({

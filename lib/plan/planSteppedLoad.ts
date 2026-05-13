@@ -31,6 +31,7 @@ type StepCapableDevice = Pick<
   | 'assumedStepId'
   | 'actualStepSource'
   | 'measuredPowerKw'
+  | 'stepPowerCalibration'
 >;
 type StepIdentityFields = Pick<
 StepCapableDevice,
@@ -286,8 +287,15 @@ export const resolveSteppedLoadPlanningKw = (
   return resolveSteppedLoadPlanningPowerKw(profile, stepId) ?? 0;
 };
 
+type ImmediateReliefDevice =
+  & Pick<
+    StepCapableDevice,
+    'controlModel' | 'steppedLoadProfile' | 'measuredPowerKw' | 'stepPowerCalibration'
+  >
+  & StepIdentityFields;
+
 export const resolveSteppedLoadImmediateReliefKw = (params: {
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'measuredPowerKw'> & StepIdentityFields;
+  device: ImmediateReliefDevice;
   fromStepId?: string;
   toStepId?: string;
 }): number => {
@@ -298,24 +306,88 @@ export const resolveSteppedLoadImmediateReliefKw = (params: {
   const measured = typeof device.measuredPowerKw === 'number' && Number.isFinite(device.measuredPowerKw)
     ? Math.max(0, device.measuredPowerKw)
     : 0;
-  const fromContribution = Math.min(measured, resolveSteppedLoadPlanningKw(device, effectiveFromStepId));
-  const toContribution = Math.min(measured, resolveSteppedLoadPlanningKw(device, toStepId));
+  const fromConservativeKw = resolveStepDeliveryKw(device, effectiveFromStepId);
+  const toConservativeKw = resolveStepAdmissionKw(device, toStepId);
+  // Cap by measured so the relief estimate cannot exceed what the meter is
+  // actually carrying right now; cap by calibrated delivery so transient
+  // spikes do not over-state the steady-state benefit of the step-down.
+  const fromContribution = Math.min(measured, fromConservativeKw);
+  const toContribution = Math.min(measured, toConservativeKw);
   return Math.max(0, fromContribution - toContribution);
 };
 
+type RestoreDeltaDevice =
+  & Pick<
+    StepCapableDevice,
+    'controlModel' | 'steppedLoadProfile' | 'measuredPowerKw' | 'stepPowerCalibration'
+  >
+  & { currentState?: string };
+
 export const resolveSteppedLoadRestoreDeltaKw = (params: {
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'> & { currentState?: string };
+  device: RestoreDeltaDevice;
   fromStepId?: string;
   toStepId?: string;
 }): number => {
   const { device, fromStepId, toStepId } = params;
   if (!isSteppedLoadDevice(device)) return 0;
-  const currentPlanningKw = isObservedOff(device)
-    ? 0
-    : resolveSteppedLoadPlanningKw(device, fromStepId);
-  const nextPlanningKw = resolveSteppedLoadPlanningKw(device, toStepId);
-  return Math.max(0, nextPlanningKw - currentPlanningKw);
+  // From-side: observed-off ⇒ 0; otherwise use the conservative-low delivery
+  // estimate for the current step so the restore delta does not under-count
+  // the new commitment when the device is briefly drawing more than its
+  // calibrated baseline.
+  const measured = typeof device.measuredPowerKw === 'number'
+    && Number.isFinite(device.measuredPowerKw)
+    ? Math.max(0, device.measuredPowerKw)
+    : null;
+  const deliveryFromKw = resolveStepDeliveryKw(device, fromStepId);
+  const currentDrawKw = resolveRestoreFromContribution({
+    device,
+    measured,
+    deliveryFromKw,
+  });
+  const nextKw = resolveStepAdmissionKw(device, toStepId);
+  return Math.max(0, nextKw - currentDrawKw);
 };
+
+function resolveRestoreFromContribution(params: {
+  device: RestoreDeltaDevice;
+  measured: number | null;
+  deliveryFromKw: number;
+}): number {
+  // Only override with measured when it is *positive* — a zero or missing
+  // reading is not evidence that the device is currently idle at this step
+  // (it may be mid-cycle, throttled, or reporting stale data). In those
+  // cases the calibrated delivery / nameplate estimate is the safer proxy
+  // for "what this device contributes right now."
+  const { device, measured, deliveryFromKw } = params;
+  if (isObservedOff(device)) return 0;
+  if (measured !== null && measured > 0) return Math.min(measured, deliveryFromKw);
+  return deliveryFromKw;
+}
+
+// Per the "resolution belongs in producer" rule, the producer
+// (`appInit.buildStepPowerCalibrationView`) has already bound each
+// calibrated value against the nameplate (admission floors at nameplate,
+// delivery caps at nameplate). The plan layer trusts the view; helpers
+// here only fall back to nameplate when no view entry is present.
+function resolveStepAdmissionKw(
+  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'stepPowerCalibration'>,
+  stepId: string | undefined,
+): number {
+  if (stepId === undefined) return resolveSteppedLoadPlanningKw(device, stepId);
+  const calibrated = device.stepPowerCalibration?.[stepId]?.admissionPowerKw;
+  if (typeof calibrated === 'number' && Number.isFinite(calibrated)) return calibrated;
+  return resolveSteppedLoadPlanningKw(device, stepId);
+}
+
+function resolveStepDeliveryKw(
+  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'stepPowerCalibration'>,
+  stepId: string | undefined,
+): number {
+  if (stepId === undefined) return resolveSteppedLoadPlanningKw(device, stepId);
+  const calibrated = device.stepPowerCalibration?.[stepId]?.deliveryPowerKw;
+  if (typeof calibrated === 'number' && Number.isFinite(calibrated)) return calibrated;
+  return resolveSteppedLoadPlanningKw(device, stepId);
+}
 
 function resolveUnconfirmedLowerDesiredStep(params: {
   device: StepSheddingCapableDevice;
@@ -366,6 +438,14 @@ export function resolveSteppedCandidatePower(
   if (measured > 0) return measured;
   const hasMeasuredPower = typeof device.measuredPowerKw === 'number' && Number.isFinite(device.measuredPowerKw);
   if (!hasMeasuredPower) {
+    // Fall back to calibrated delta when available, else nameplate delta —
+    // both bound by zero so a calibrated "to" estimate that exceeds the
+    // calibrated "from" estimate yields zero relief rather than a negative
+    // contribution.
+    const fromKw = resolveStepDeliveryKw(device, selectedStep.id);
+    const toKw = resolveStepAdmissionKw(device, targetStep.id);
+    const fallbackDelta = Math.max(0, fromKw - toKw);
+    if (fallbackDelta > 0) return fallbackDelta;
     return Math.max(0, (selectedStep.planningPowerW - targetStep.planningPowerW) / 1000);
   }
   return measured;
