@@ -239,7 +239,7 @@ export function parseDevice(params: {
         evCharging,
         evChargingState,
         stateOfCharge: resolveParsedSoc(
-            deviceClassKey, now, capabilityObj, flowBackedCapabilityIds, reportedCapabilities,
+            deviceClassKey, now, capabilityObj, reportedCapabilities,
         ),
         currentTemperature,
         capabilities,
@@ -294,14 +294,12 @@ function resolveParsedSoc(
     deviceClassKey: string,
     nowMs: number,
     capabilityObj: DeviceCapabilityMap,
-    flowBackedCapabilityIds: readonly FlowReportedCapabilityId[],
     reportedCapabilities: FlowReportedCapabilitiesForDevice,
 ): TargetDeviceSnapshot['stateOfCharge'] {
     return resolveStateOfChargeSnapshot({
         deviceClassKey,
         nowMs,
         capabilityObj,
-        flowBackedCapabilityIds,
         reportedCapabilities,
     });
 }

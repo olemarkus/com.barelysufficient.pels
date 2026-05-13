@@ -141,7 +141,7 @@ const NorwaySection = ({
 }) => (
   <>
     <p class="eyebrow eyebrow--inline">Grid tariff</p>
-    <label class="field">
+    <div class="field">
       <span class="field__label">County</span>
       <MdFilledSelect
         value={countyCode}
@@ -164,8 +164,8 @@ const NorwaySection = ({
         <MdSelectOption value="56"><div slot="headline">Finnmark</div></MdSelectOption>
       </MdFilledSelect>
       <small class="field__hint">Your county for grid tariff lookup.</small>
-    </label>
-    <label class="field">
+    </div>
+    <div class="field">
       <span class="field__label">Grid company</span>
       <MdFilledSelect
         value={organizationNumber}
@@ -179,8 +179,8 @@ const NorwaySection = ({
         ))}
       </MdFilledSelect>
       <small class="field__hint">Filtered by county.</small>
-    </label>
-    <label class="field">
+    </div>
+    <div class="field">
       <span class="field__label">Tariff group</span>
       <MdFilledSelect
         value={tariffGroup}
@@ -191,7 +191,7 @@ const NorwaySection = ({
           <div slot="headline">Cabin and holiday home</div>
         </MdSelectOption>
       </MdFilledSelect>
-    </label>
+    </div>
     <div class="form__actions">
       <MdOutlinedButton type="button" class="btn ghost" onClick={onRefreshGridTariff}>
         Refresh tariffs
@@ -199,7 +199,7 @@ const NorwaySection = ({
     </div>
 
     <p class="eyebrow eyebrow--inline">Spot price</p>
-    <label class="field">
+    <div class="field">
       <span class="field__label">Norway pricing model</span>
       <MdFilledSelect
         value={norwayPriceModel}
@@ -215,14 +215,14 @@ const NorwaySection = ({
       <small class="field__hint">
         Choose whether Norway prices use the Electricity Subsidy Scheme or Norway Price (Norgespris).
       </small>
-    </label>
+    </div>
     {norwayPriceModel === 'norgespris' && (
       <p class="muted">
         Official Norgespris rules are applied automatically: fixed spot target 50 øre/kWh incl. VAT.
         Monthly cap: household 5000 kWh, cabin 1000 kWh.
       </p>
     )}
-    <label class="field">
+    <div class="field">
       <span class="field__label">Price area</span>
       <MdFilledSelect
         value={priceArea}
@@ -235,7 +235,7 @@ const NorwaySection = ({
         <MdSelectOption value="NO5"><div slot="headline">NO5 — Bergen / West Norway</div></MdSelectOption>
       </MdFilledSelect>
       <small class="field__hint">Your electricity price area (hvakosterstrommen.no).</small>
-    </label>
+    </div>
     <label class="field">
       <span class="field__label">Provider surcharge (øre/kWh, incl. VAT)</span>
       <MdFilledTextField
@@ -263,8 +263,9 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
   return (
     <form class="form-grid settings-form-card" onSubmit={(e) => e.preventDefault()}>
       <h3 class="section-title">Price source</h3>
-      <label class="field">
+      <div class="field">
         <MdFilledSelect
+          id="price-source-select"
           aria-label="Price source"
           value={props.priceScheme}
           onChange={(e) => props.onSchemeChange(readValue(e) as PriceScheme)}
@@ -280,7 +281,7 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
           </MdSelectOption>
         </MdFilledSelect>
         <small class="field__hint">Where PELS fetches price data.</small>
-      </label>
+      </div>
 
       {note && <p class="muted">{note}</p>}
       {isFlow && props.flowStatus && <FlowStatusBlock status={props.flowStatus} />}

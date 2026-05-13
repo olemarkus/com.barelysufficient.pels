@@ -411,7 +411,6 @@ describe('device detail managed state saves', () => {
         percent: 42,
         observedAtMs: Date.parse('2026-03-11T10:00:00Z'),
         status: 'stale',
-        source: 'flow',
       },
     })];
     state.managedMap = { 'ev-1': true };
@@ -1032,7 +1031,6 @@ describe('device detail managed state saves', () => {
       stateOfCharge: {
         percent: 32,
         status: 'fresh',
-        source: 'flow',
       },
     })];
     state.managedMap = { 'charger-1': true };
@@ -1366,7 +1364,6 @@ describe('device detail managed state saves', () => {
       stateOfCharge: {
         percent: 32,
         status: 'fresh',
-        source: 'flow',
       },
       steppedLoadProfile: {
         model: 'stepped_load',
@@ -1466,7 +1463,6 @@ describe('device detail managed state saves', () => {
       stateOfCharge: {
         percent: 32,
         status: 'fresh',
-        source: 'flow',
       },
     })];
     state.managedMap = { 'charger-1': true };
@@ -1551,7 +1547,6 @@ describe('device detail managed state saves', () => {
       stateOfCharge: {
         percent: 32,
         status: 'fresh',
-        source: 'flow',
       },
     })];
     state.managedMap = { 'charger-1': true };
@@ -1618,7 +1613,6 @@ describe('device detail managed state saves', () => {
       stateOfCharge: {
         percent: 32,
         status: 'fresh',
-        source: 'flow',
       },
     })];
     state.managedMap = { 'charger-1': true };
@@ -1691,7 +1685,6 @@ describe('device detail managed state saves', () => {
       stateOfCharge: {
         percent: 32,
         status: 'fresh',
-        source: 'flow',
       },
     })];
     state.managedMap = { 'charger-1': true };
@@ -1822,7 +1815,6 @@ describe('device detail managed state saves', () => {
       stateOfCharge: {
         percent: 32,
         status: 'stale',
-        source: 'flow',
       },
       steppedLoadProfile: {
         model: 'stepped_load',

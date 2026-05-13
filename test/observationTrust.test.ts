@@ -44,7 +44,6 @@ describe('observation trust', () => {
     const freshSoC = {
       percent: 42,
       status: 'fresh' as const,
-      source: 'capability' as const,
     };
 
     it('returns the snapshot when fresh', () => {
