@@ -255,8 +255,7 @@ export function parseDevice(params: {
             { capabilityObj, controlCapabilityId, controlObservationCapabilityId },
         ),
         available,
-        reportedStepId,
-        suggestedSteppedLoadProfile,
+        reportedStepId, suggestedSteppedLoadProfile, measuredPowerObservedAtMs: measuredPower.observedAtMs,
         lastFreshDataMs,
         lastLocalWriteMs: resolveLatestLocalWriteMs(deviceId),
     });
@@ -332,6 +331,7 @@ function buildParsedDeviceSnapshot(params: {
     available: boolean;
     reportedStepId?: string;
     suggestedSteppedLoadProfile?: TargetDeviceSnapshot['suggestedSteppedLoadProfile'];
+    measuredPowerObservedAtMs?: number;
     lastFreshDataMs?: number;
     lastLocalWriteMs?: number;
 }): TargetDeviceSnapshot {
@@ -363,6 +363,7 @@ function buildParsedDeviceSnapshot(params: {
         available,
         reportedStepId,
         suggestedSteppedLoadProfile,
+        measuredPowerObservedAtMs,
         lastFreshDataMs,
         lastLocalWriteMs,
     } = params;
@@ -389,6 +390,7 @@ function buildParsedDeviceSnapshot(params: {
         stateOfCharge,
         currentTemperature,
         measuredPowerKw: powerEstimate.measuredPowerKw,
+        measuredPowerObservedAtMs,
         zone: resolveZoneLabel(device),
         capabilities,
         controlAdapter,

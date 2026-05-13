@@ -57,8 +57,10 @@ test.describe('Deadline plan', () => {
     await expect(page.getByText('Price horizon', { exact: true })).toBeVisible();
     await expect(page.getByLabel(/Deadline plan/).getByText('Heating', { exact: true })).toBeVisible();
     await expect(page.getByLabel(/Deadline plan/).getByText('Original Heating', { exact: true })).toBeVisible();
+    await expect(page.getByLabel(/Deadline plan/).getByText('Measured Heating', { exact: true })).toBeVisible();
     await expect(page.getByLabel(/Deadline plan/).getByText('Background usage', { exact: true })).toBeVisible();
     await expect(page.getByLabel(/Deadline plan/).getByText('Charging', { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel(/Deadline plan/).getByText('Measured Charging', { exact: true })).toHaveCount(0);
     await expect(page.locator('.deadline-horizon-chart svg')).toBeVisible();
     await expectNoPageOverflow(page);
   });

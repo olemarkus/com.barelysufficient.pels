@@ -78,8 +78,15 @@ const formatTarget = (objective: DeferredObjectiveSettingsEntry): string => (
     : `${objective.targetPercent}%`
 );
 
-
-
+const resolveActualDeviceKwh = (params: {
+  bootstrap: SettingsUiBootstrap;
+  deviceId: string;
+  startsAtMs: number;
+}): number | null => {
+  const bucketKey = new Date(params.startsAtMs).toISOString();
+  const value = params.bootstrap.power.tracker?.deviceBuckets?.[params.deviceId]?.[bucketKey];
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : null;
+};
 
 const resolvePriceTone = (hour: HorizonHour): DeadlinePlanPayload['timeline']['hours'][number]['tone'] => {
   if (hour.isCheap === true) return 'cheap';
@@ -186,6 +193,8 @@ const formatMaxPowerLabel = (lowestStepKw: number | null): string | null => (
 
 const buildTimeline = (params: {
   device: TargetDeviceSnapshot;
+  bootstrap: SettingsUiBootstrap;
+  deviceId: string;
   hours: HorizonHour[];
   originalChargeByStartMs: Map<number, number>;
   currentChargeByStartMs: Map<number, number>;
@@ -234,6 +243,11 @@ const buildTimeline = (params: {
           backgroundKwh: Math.max(0, hour.plannedOtherKWh),
           originalDeviceKwh: originalKwh,
           deviceKwh: currentKwh,
+          actualDeviceKwh: resolveActualDeviceKwh({
+            bootstrap: params.bootstrap,
+            deviceId: params.deviceId,
+            startsAtMs: hour.startsAtMs,
+          }),
         },
         progress: projectedProgress,
       };
@@ -387,6 +401,7 @@ const resolveShortfall = (params: {
 
 type ObjectivePayloadReady = {
   ctx: ResolvedObjectiveContext;
+  bootstrap: SettingsUiBootstrap;
   profile: ReturnType<typeof resolveProfile>;
   progress: NonNullable<ReturnType<typeof resolveProgress>>;
   hours: HorizonHour[];
@@ -418,12 +433,19 @@ const prepareObjectivePayload = (
   });
   if (hours.length === 0) return { kind: 'awaiting_prices' };
 
-  return { ctx, profile, progress, hours, energy: resolveEnergyNeededKWh({ profile, activePlan: ctx.activePlan }) };
+  return {
+    ctx,
+    bootstrap: params.bootstrap,
+    profile,
+    progress,
+    hours,
+    energy: resolveEnergyNeededKWh({ profile, activePlan: ctx.activePlan }),
+  };
 };
 
 const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload => {
-  const { ctx, profile, progress, hours, energy } = input;
-  const { device, objective, deadlineAtMs, activePlan, nowMs } = ctx;
+  const { ctx, bootstrap, profile, progress, hours, energy } = input;
+  const { device, objective, deviceId, deadlineAtMs, activePlan, nowMs } = ctx;
   const latest = activePlan!.latest!;
   const labels = deadlineLabels(objective.kind);
   const energyNeededKWh = energy?.energyNeededKWh ?? 0;
@@ -455,6 +477,8 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
     }),
     timeline: buildTimeline({
       device,
+      bootstrap,
+      deviceId,
       hours,
       originalChargeByStartMs,
       currentChargeByStartMs,
