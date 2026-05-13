@@ -160,6 +160,26 @@ md-filled-select {
   --md-filled-select-text-field-focus-active-indicator-color: var(--accent);
   --md-filled-select-text-field-hover-active-indicator-color: var(--text-secondary);
   --md-filled-select-text-field-active-indicator-color: var(--panel-border);
+  --md-menu-container-color: var(--pels-surface-container-highest);
+  --md-menu-container-shape: var(--radius-md);
+  --md-menu-container-elevation: 3;
+  --md-menu-item-container-color: var(--pels-surface-container-highest);
+  --md-menu-item-label-text-color: var(--text);
+  --md-menu-item-hover-state-layer-color: var(--accent);
+  --md-menu-item-pressed-state-layer-color: var(--accent);
+  --md-menu-item-selected-container-color: var(--color-surface-3);
+  --md-menu-item-selected-label-text-color: var(--text);
+  --md-menu-item-leading-space: var(--spacing-4);
+  --md-menu-item-trailing-space: var(--spacing-4);
+}
+
+md-select-option {
+  --md-menu-item-container-color: var(--pels-surface-container-highest);
+  --md-menu-item-label-text-color: var(--text);
+  --md-menu-item-hover-state-layer-color: var(--accent);
+  --md-menu-item-pressed-state-layer-color: var(--accent);
+  --md-menu-item-selected-container-color: var(--color-surface-3);
+  --md-menu-item-selected-label-text-color: var(--text);
 }
 
 md-checkbox {
