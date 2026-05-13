@@ -245,6 +245,9 @@ describe('resolveDeadlinesHistoryEntries', () => {
     usedPolicyAvoid: false,
     observedIntervals: [],
     discoveredFrom: 'observation' as const,
+    id: `entry-${deviceId}-${finalizedAtMs}`,
+    originalPlan: null,
+    finalPlan: null,
   });
 
   it('returns an empty list when payload is null', () => {

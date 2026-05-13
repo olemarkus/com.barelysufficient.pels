@@ -4,6 +4,9 @@ import { DeadlinePlanHistory } from '../src/ui/views/DeadlinePlanHistory.tsx';
 import type { DeferredObjectivePlanHistoryEntry } from '../../contracts/src/deferredObjectivePlanHistory';
 
 const buildEntry = (overrides: Partial<DeferredObjectivePlanHistoryEntry> = {}): DeferredObjectivePlanHistoryEntry => ({
+  id: 'entry-test-1',
+  originalPlan: null,
+  finalPlan: null,
   deviceId: 'dev_water_heater',
   deviceName: 'Connected 300',
   objectiveKind: 'temperature',

@@ -23,7 +23,7 @@ const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryListState 
       <div class="plan-history-list">
         {state.entries.map((entry) => (
           <PlanHistoryCard
-            key={`${entry.deviceId}-${entry.deadlineAtMs}-${entry.finalizedAtMs}`}
+            key={entry.id}
             entry={entry}
             timeZone={state.timeZone}
           />

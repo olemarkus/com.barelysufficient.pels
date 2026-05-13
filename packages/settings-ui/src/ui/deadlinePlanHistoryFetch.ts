@@ -19,6 +19,12 @@ export const resolveBrowserTimeZone = (): string => (
 export const fetchDeadlinePlanHistory = async (
   deviceId: string | null,
   timeZone: string,
+  // When `true`, propagate API failures to the caller instead of degrading to
+  // an empty list. The live deadline-plan route (where History is a secondary
+  // tab) swallows so a transient backend hiccup doesn't blank the page; the
+  // history-detail route opts in so it can distinguish a real "entry rolled
+  // off" miss from a transient fetch failure.
+  throwOnError = false,
 ): Promise<DeadlinePlanHistoryView> => {
   if (!deviceId) return { entries: [], timeZone };
   try {
@@ -27,7 +33,8 @@ export const fetchDeadlinePlanHistory = async (
       SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
     );
     return { entries: payload.entriesByDeviceId[deviceId] ?? [], timeZone };
-  } catch {
+  } catch (error) {
+    if (throwOnError) throw error;
     return { entries: [], timeZone };
   }
 };

@@ -428,22 +428,15 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       runtime semantics for EV and heater objectives: already-met targets are live `satisfied`
       states until the deadline, and a later below-target reading returns to tracking. Keep
       terminology aligned with `notes/ui-terminology.md`.
-- [ ] Make past smart-task plans enterable from history.
-      The deadline-plan route is keyed only by `deviceId` (`packages/settings-ui/src/ui/deadlineUrls.ts`),
-      and `resolveObjectiveContext()` only builds the detailed chart from the active objective /
-      active-plan recorder (`packages/settings-ui/src/ui/deadlinePlan.ts:247-281`). Past entries
-      render as static summary cards with no link or detailed route
-      (`packages/settings-ui/src/ui/views/DeadlinePlanHistory.tsx:27-44`). As a result, once a
-      task has moved to history, the user cannot open that specific plan view; they can only see
-      the summary card.
-      Minimum acceptable completion: history entries have a stable route keyed by the history
-      entry identity, the deadline-plan page can reconstruct the detailed chart from the history
-      record plus available price/usage buckets, and missing historical detail degrades to a clear
-      summary state instead of the generic current-plan unavailable card.
-      Files: `packages/settings-ui/src/ui/deadlineUrls.ts`,
-      `packages/settings-ui/src/ui/deadlinePlan.ts`,
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistory.tsx`,
-      `packages/contracts/src/deferredObjectivePlanHistory.ts`, deadline-plan history tests.
+- [ ] Bring the smart-task history detail view to full live-plan chart parity.
+      The history detail page currently renders a summary card plus original/final planned-hour
+      tables (`packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`). The live
+      `DeadlinePlan` view shows a richer hour-by-hour chart with price tone, projected progress,
+      and original-vs-current charge overlay. Reconciling the two would let users compare past
+      runs apples-to-apples with the current plan instead of switching mental models.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts` (synthesise a `DeadlinePlanPayload` from a
+      history entry without depending on stale bootstrap prices/profile).
 - [ ] Add PELS-side unit tests for EV kWhPerUnit learning. Cover: a plan with no learned profile
       uses the bootstrap estimate; an accepted SoC rise records a `kWhPerUnit` sample; subsequent
       plans switch from bootstrap to the learned estimate; and rejection reasons fire as expected
