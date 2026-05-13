@@ -15,6 +15,7 @@ import {
   type DeadlinePlanPendingReason,
   type DeadlinePlanUnavailableReason,
 } from '../../../shared-domain/src/deadlineLabels.ts';
+import { buildPlanInputs } from './deadlinePlanInputs.ts';
 import {
   collectHorizonHours,
   ONE_HOUR_MS,
@@ -22,7 +23,6 @@ import {
 } from './deadlinePlanData.ts';
 import {
   resolveEnergyNeededKWh,
-  resolveLowestActiveStepKw,
   resolveProfile,
   resolveProgress,
 } from './deadlinePlanResolvers.ts';
@@ -169,20 +169,6 @@ const buildHero = (params: {
     metaLine,
   };
 };
-
-const formatPerUnitRateLabel = (
-  kwhPerUnitMean: number | null | undefined,
-  unitSuffix: DeadlineLabels['perUnitRateUnit'],
-): string | null => {
-  if (typeof kwhPerUnitMean !== 'number' || !Number.isFinite(kwhPerUnitMean) || kwhPerUnitMean <= 0) {
-    return null;
-  }
-  return `${kwhPerUnitMean.toFixed(2)} ${unitSuffix}`;
-};
-
-const formatMaxPowerLabel = (lowestStepKw: number | null): string | null => (
-  lowestStepKw === null ? null : `${lowestStepKw.toFixed(1)} kW`
-);
 
 const buildTimeline = (params: {
   device: TargetDeviceSnapshot;
@@ -464,10 +450,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       progressUnit: progress.unit,
       deadlineAtMs,
     }),
-    planInputs: {
-      perUnitRateLabel: formatPerUnitRateLabel(profile?.kwhPerUnit?.mean, labels.perUnitRateUnit),
-      maxPowerLabel: formatMaxPowerLabel(resolveLowestActiveStepKw(device)),
-    },
+    planInputs: buildPlanInputs({ latest, profile, labels, objectiveKind: objective.kind, device }),
   };
 };
 

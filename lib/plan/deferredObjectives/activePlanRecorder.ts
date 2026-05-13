@@ -171,6 +171,11 @@ const buildRevision = (params: {
   // Callers only invoke buildRevision after `buildHoursFromHorizonPlan` returned
   // non-null, which guarantees `horizonPlan` is present.
   const horizonPlan = params.diag.horizonPlan as NonNullable<typeof params.diag.horizonPlan>;
+  // Persist `kwhPerUnitSource` only when the diagnostic actually consulted a
+  // profile (or its bootstrap fallback). `null` means the resolver short-
+  // circuited (e.g. target already met) — omit the field rather than write
+  // a misleading value.
+  const source = params.diag.kwhPerUnitSource;
   return {
     revision: params.revision,
     revisedAtMs: params.nowMs,
@@ -179,8 +184,15 @@ const buildRevision = (params: {
     hours: params.hours,
     energyNeededKWh: horizonPlan.energyNeededKWh,
     planStatus: horizonPlan.status,
+    ...(source !== null ? { kwhPerUnitSource: source } : {}),
   };
 };
+
+// Treat absence as `learned` so legacy persisted revisions don't appear to
+// transition to `learned` on the first observation after upgrade.
+const resolveLatestKwhPerUnitSource = (
+  latest: DeferredObjectiveActivePlanRevisionV1,
+): 'learned' | 'bootstrap' => latest.kwhPerUnitSource ?? 'learned';
 
 export class DeferredObjectiveActivePlanRecorder {
   private plans: Record<string, DeferredObjectiveActivePlanV1>;
@@ -348,12 +360,30 @@ export class DeferredObjectiveActivePlanRecorder {
     const latest = current.latest as DeferredObjectiveActivePlanRevisionV1;
     const objectiveChanged = current.objectiveSignature !== signature;
     const allocationChanged = hoursSignature(latest.hours) !== hoursSignature(hours);
+    // Any kwhPerUnitSource change is a replan trigger so persisted metadata
+    // (`kwhPerUnitSource`, `energyNeededKWh`, `planStatus`) cannot go stale
+    // when the bucket allocation happens to be byte-identical across a source
+    // flip. The reason is only `rate_refined` for the bootstrap→learned
+    // direction; the rarer learned→bootstrap regression (profile pruned at
+    // retention or device removed) falls through to `prices_revised`.
+    //
+    // `null` means the resolver did not consult a profile (e.g. target is
+    // already satisfied so `energyNeededKWh = 0`). Treat that as "no source
+    // change" rather than coercing it to `'learned'` — otherwise a bootstrap
+    // revision followed by a satisfied diagnostic would spuriously fire
+    // `rate_refined` even though nothing was learned.
+    const previousSource = resolveLatestKwhPerUnitSource(latest);
+    const nextSource = diag.kwhPerUnitSource;
+    const sourceChanged = nextSource !== null && previousSource !== nextSource;
+    const sourceRefined = previousSource === 'bootstrap' && nextSource === 'learned';
     // TODO: device_unavailable + measured_deviation triggers — wired here once
     // device-level metering exists. For now those reasons are not used.
-    if (!objectiveChanged && !allocationChanged) return;
-    const reason: DeferredObjectiveActivePlanRevisionReason = objectiveChanged
-      ? 'objective_changed'
-      : 'prices_revised';
+    if (!objectiveChanged && !allocationChanged && !sourceChanged) return;
+    const reason: DeferredObjectiveActivePlanRevisionReason = (() => {
+      if (objectiveChanged) return 'objective_changed';
+      if (sourceRefined) return 'rate_refined';
+      return 'prices_revised';
+    })();
     const nextRevision = latest.revision + 1;
     const revision = buildRevision({ diag, hours, revision: nextRevision, reason, nowMs });
     this.plans[diag.deviceId] = {

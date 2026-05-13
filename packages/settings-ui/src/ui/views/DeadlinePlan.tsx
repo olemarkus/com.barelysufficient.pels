@@ -54,6 +54,7 @@ export type DeadlinePlanPayload = {
   };
   planInputs: {
     perUnitRateLabel: string | null;
+    perUnitRateNote: string | null;
     maxPowerLabel: string | null;
   };
 };
@@ -500,7 +501,7 @@ const HorizonCard = ({ payload }: { payload: DeadlinePlanPayload }) => (
 );
 
 const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
-  const { perUnitRateLabel, maxPowerLabel } = payload.planInputs;
+  const { perUnitRateLabel, perUnitRateNote, maxPowerLabel } = payload.planInputs;
   if (perUnitRateLabel === null && maxPowerLabel === null) return null;
   return (
     <section class="pels-surface-card budget-redesign-card" aria-labelledby="deadline-plan-inputs-title">
@@ -511,7 +512,12 @@ const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
         {perUnitRateLabel !== null && (
           <div class="plan-inputs__row">
             <dt class="plan-inputs__row-label">{payload.labels.planInputsRateRowLabel}</dt>
-            <dd class="plan-inputs__row-value">{perUnitRateLabel}</dd>
+            <dd class="plan-inputs__row-value">
+              {perUnitRateLabel}
+              {perUnitRateNote !== null && (
+                <div class="plan-inputs__row-note">{perUnitRateNote}</div>
+              )}
+            </dd>
           </div>
         )}
         {maxPowerLabel !== null && (

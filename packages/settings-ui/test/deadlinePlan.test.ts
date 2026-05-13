@@ -1397,6 +1397,189 @@ describe('deadline plan page payload', () => {
     expect(renderInput.pending.hero.headline).toBe('Waiting for tomorrow’s prices');
   });
 
+  it('shows the bootstrap kWh-per-percent value and refining note when the latest revision was sourced from bootstrap', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'ev',
+      name: 'Garage EV',
+      currentOn: false,
+      stateOfCharge: { percent: 40, status: 'fresh' },
+      planningPowerKw: 7,
+      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 6 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const bootstrapRevision = {
+      revision: 1,
+      revisedAtMs: now.getTime(),
+      computedFromPricesUpTo: deadline.getTime(),
+      reason: 'flow_card' as const,
+      hours: [
+        { startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 7 },
+        { startsAtMs: atLocalHour(now, 1).getTime(), plannedKWh: 7 },
+        { startsAtMs: atLocalHour(now, 2).getTime(), plannedKWh: 6 },
+      ],
+      energyNeededKWh: 20,
+      planStatus: 'on_track' as const,
+      kwhPerUnitSource: 'bootstrap' as const,
+    };
+    const activePlan: DeferredObjectiveActivePlanV1 = {
+      deviceId: 'ev',
+      deviceName: 'Garage EV',
+      objectiveKind: 'ev_soc',
+      targetTemperatureC: null,
+      targetPercent: 60,
+      deadlineAtMs: deadline.getTime(),
+      startedAtMs: now.getTime(),
+      pending: false,
+      objectiveSignature: 'sig',
+      original: bootstrapRevision,
+      latest: bootstrapRevision,
+    };
+    const bootstrap = buildBootstrap({
+      capacity_limit_kw: 8,
+      deferred_objectives: {
+        version: 1,
+        objectivesByDeviceId: {
+          ev: {
+            enabled: true,
+            kind: 'ev_soc',
+            enforcement: 'soft',
+            targetPercent: 60,
+            deadlineAtMs: deadline.getTime(),
+          },
+        },
+      },
+    }, activePlan);
+    // No learned EV profile — only the heater placeholder.
+    bootstrap.power.tracker = { objectiveProfiles: {} };
+
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap,
+      deviceId: 'ev',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+
+    expect(payload.planInputs.perUnitRateLabel).toBe('1.00 kWh/%');
+    expect(payload.planInputs.perUnitRateNote).toBe('Estimated — refining as PELS observes charging.');
+  });
+
+  it('omits the bootstrap note once the revision has been refined to learned data', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'ev',
+      name: 'Garage EV',
+      currentOn: false,
+      stateOfCharge: { percent: 40, status: 'fresh' },
+      planningPowerKw: 7,
+      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 6 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const learnedRevision = {
+      revision: 2,
+      revisedAtMs: now.getTime(),
+      computedFromPricesUpTo: deadline.getTime(),
+      reason: 'rate_refined' as const,
+      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 3 }],
+      energyNeededKWh: 3,
+      planStatus: 'on_track' as const,
+      kwhPerUnitSource: 'learned' as const,
+    };
+    const activePlan: DeferredObjectiveActivePlanV1 = {
+      deviceId: 'ev',
+      deviceName: 'Garage EV',
+      objectiveKind: 'ev_soc',
+      targetTemperatureC: null,
+      targetPercent: 60,
+      deadlineAtMs: deadline.getTime(),
+      startedAtMs: now.getTime(),
+      pending: false,
+      objectiveSignature: 'sig',
+      original: { ...learnedRevision, revision: 1, reason: 'flow_card' as const, kwhPerUnitSource: 'bootstrap' as const },
+      latest: learnedRevision,
+    };
+    const bootstrap = buildBootstrap({
+      capacity_limit_kw: 8,
+      deferred_objectives: {
+        version: 1,
+        objectivesByDeviceId: {
+          ev: {
+            enabled: true,
+            kind: 'ev_soc',
+            enforcement: 'soft',
+            targetPercent: 60,
+            deadlineAtMs: deadline.getTime(),
+          },
+        },
+      },
+    }, activePlan);
+    // Learned profile now present for the EV.
+    bootstrap.power.tracker = {
+      objectiveProfiles: {
+        ev: {
+          kind: 'ev_soc',
+          updatedAtMs: now.getTime(),
+          lastSample: { observedAtMs: now.getTime(), value: 41, unit: 'percent' },
+          kwhPerUnit: {
+            sampleCount: 3,
+            mean: 0.15,
+            m2: 0,
+            min: 0.15,
+            max: 0.15,
+            confidence: 'low',
+            lastUpdatedMs: now.getTime(),
+          },
+          acceptedSamples: 3,
+          rejectedSamples: 0,
+        },
+      },
+    };
+
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap,
+      deviceId: 'ev',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+
+    expect(payload.planInputs.perUnitRateLabel).toBe('0.15 kWh/%');
+    expect(payload.planInputs.perUnitRateNote).toBeNull();
+  });
+
   it('totals every allocated hour into "Needs X kWh", including hours that have already elapsed', () => {
     // Pins the semantics noted in deadlinePlanResolvers.ts: when a plan has past hours, the
     // hero reports the total allocation the planner sized, not just the future portion.

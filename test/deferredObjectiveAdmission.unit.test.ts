@@ -19,6 +19,7 @@ const buildDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & { dev
   kWhPerPercent: null,
   kWhPerDegreeC: 0.5,
   rateConfidence: 'high',
+  kwhPerUnitSource: 'learned',
   horizonBucketCount: 6,
   requestedMinimumStepId: 'low',
   ...overrides,

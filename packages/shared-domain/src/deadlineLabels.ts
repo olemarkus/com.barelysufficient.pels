@@ -49,6 +49,10 @@ export type DeadlineLabels = {
   planInputsRateRowLabel: string;
   planInputsMaxPowerRowLabel: string;
   perUnitRateUnit: 'kWh/°C' | 'kWh/%';
+  // Subtext shown next to the "Energy per unit" row when the planner is using
+  // a bootstrap kWh-per-unit value (no learned profile yet). `null` when the
+  // kind has no bootstrap path — only EV SoC ships with one in v1.
+  planInputsRateBootstrapNote: string | null;
 };
 
 const withLastFetched = (base: string, lastFetchedShort: string | null): string => (
@@ -126,6 +130,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     planInputsRateRowLabel: 'Energy per unit',
     planInputsMaxPowerRowLabel: 'Max power per hour',
     perUnitRateUnit: 'kWh/°C',
+    planInputsRateBootstrapNote: null,
   },
   ev_soc: {
     kindChipLabel: 'EV',
@@ -173,6 +178,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     planInputsRateRowLabel: 'Energy per unit',
     planInputsMaxPowerRowLabel: 'Max power per hour',
     perUnitRateUnit: 'kWh/%',
+    planInputsRateBootstrapNote: 'Estimated — refining as PELS observes charging.',
   },
 };
 

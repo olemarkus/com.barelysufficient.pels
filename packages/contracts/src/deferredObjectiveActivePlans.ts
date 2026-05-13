@@ -7,8 +7,14 @@ export type DeferredObjectiveActivePlanRevisionReason =
   | 'prices_arrived'
   | 'objective_changed'
   | 'prices_revised'
+  | 'rate_refined'
   | 'device_unavailable'
   | 'measured_deviation';
+
+// Identifies whether the kWh-per-unit value used for the revision came from a
+// learned profile or the bootstrap fallback. Optional so older persisted
+// plans (without the field) continue to load.
+export type DeferredObjectiveActivePlanKwhPerUnitSource = 'learned' | 'bootstrap';
 
 export type DeferredObjectiveActivePlanHourV1 = {
   startsAtMs: number;
@@ -39,6 +45,12 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // Planner status. UI surfaces a "Can't fully meet" chip when this is
   // `cannot_meet` or `at_risk`.
   planStatus: DeferredObjectiveActivePlanStatusV1;
+  // Source of the kWh-per-unit value the planner used. `bootstrap` means a
+  // conservative default was used because no learned profile was available
+  // yet; the next accepted sample will flip this to `learned`. Optional for
+  // backward compatibility — older persisted revisions don't carry it and the
+  // UI should treat absence as `learned`.
+  kwhPerUnitSource?: DeferredObjectiveActivePlanKwhPerUnitSource;
 };
 
 export type DeferredObjectiveActivePlanPendingReason =

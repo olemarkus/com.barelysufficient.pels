@@ -14,9 +14,14 @@ const VALID_REASONS: ReadonlySet<DeferredObjectiveActivePlanRevisionReason> = ne
   'prices_arrived',
   'objective_changed',
   'prices_revised',
+  'rate_refined',
   'device_unavailable',
   'measured_deviation',
 ]);
+
+const isKwhPerUnitSource = (value: unknown): value is 'learned' | 'bootstrap' => (
+  value === 'learned' || value === 'bootstrap'
+);
 
 export const createEmptyActivePlans = (): DeferredObjectiveActivePlansV1 => ({
   version: DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION,
@@ -50,7 +55,11 @@ const isRevision = (value: unknown): value is DeferredObjectiveActivePlanRevisio
     && isFiniteOrNull(v.computedFromPricesUpTo)
     && isReason(v.reason)
     && Array.isArray(v.hours)
-    && v.hours.every(isPlanHour);
+    && v.hours.every(isPlanHour)
+    // `kwhPerUnitSource` is optional for backward compatibility with revisions
+    // persisted before the bootstrap rate fallback shipped. Allow absence, but
+    // if present require a known value rather than silently keeping garbage.
+    && (v.kwhPerUnitSource === undefined || isKwhPerUnitSource(v.kwhPerUnitSource));
 };
 
 const isRevisionOrNull = (value: unknown): value is DeferredObjectiveActivePlanRevisionV1 | null => (
