@@ -1353,39 +1353,10 @@ md-primary-tab.tab[active]:hover {
   gap: var(--spacing-2);
 }
 
-/* Deadline-plan tab strip (Current plan / History). Material text buttons styled
-   as an Android-style segmented control. Uses design tokens only. */
+/* Deadline-plan tab strip (Current plan / History) uses the canonical
+   `.segmented` primitive; only layout overrides live here. */
 .plan-tabs {
-  display: flex;
-  gap: var(--spacing-1);
   margin-bottom: var(--spacing-3);
-  padding: var(--spacing-1);
-  border-radius: var(--radius-md);
-  background: var(--pels-surface-container-low);
-  border: 1px solid var(--pels-surface-outline);
-}
-
-.plan-tabs__tab {
-  flex: 1;
-  padding: var(--spacing-2) var(--spacing-3);
-  font: inherit;
-  font-weight: var(--font-weight-semibold);
-  color: var(--pels-text-secondary);
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background-color var(--transition-fast), color var(--transition-fast);
-}
-
-.plan-tabs__tab:hover {
-  color: var(--pels-text-primary);
-}
-
-.plan-tabs__tab--active {
-  background: var(--pels-surface-container);
-  color: var(--pels-text-primary);
-  box-shadow: var(--shadow-sm);
 }
 
 /* Past plans list (History tab). Stacks vertically; each entry is a card. */
@@ -3532,14 +3503,20 @@ md-primary-tab.tab[active]:hover {
   font-weight: var(--font-weight-semibold);
 }
 
+/* Canonical M3 outlined segmented buttons. Used everywhere a view filter
+   needs a small-set, mutually-exclusive choice: Plan/Adjust, Yesterday/Today/
+   Tomorrow, Progress/Hourly plan, 7d/14d, All/Weekday/Weekend, Current/History
+   plan, device-detail When-limiting. Top-level navigation stays on `md-tabs`. */
 .segmented {
   display: inline-flex;
-  flex-wrap: wrap;
-  gap: 0;
-  padding: 2px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-4);
+  width: 100%;
+  min-height: 40px;
+  padding: 0;
+  gap: 1px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--pels-segmented-container-border);
+  background: var(--pels-segmented-container-border);
+  overflow: hidden;
 }
 
 .segmented__option {
@@ -3548,26 +3525,29 @@ md-primary-tab.tab[active]:hover {
   min-height: var(--pels-touch-target-min);
   appearance: none;
   border: 0;
-  background: transparent;
-  color: var(--text-secondary);
+  background: var(--pels-segmented-container-background);
+  color: var(--pels-segmented-label-color);
   font: inherit;
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  font-weight: var(--pels-segmented-label-font-weight);
   padding: var(--spacing-2) var(--spacing-3);
-  border-radius: calc(var(--radius-md) - 2px);
   cursor: pointer;
   text-align: center;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: var(--font-line-height-tight);
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 
-.segmented__option[aria-checked="true"] {
-  background: var(--accent);
-  color: var(--bg);
+.segmented__option[aria-checked="true"],
+.segmented__option[aria-pressed="true"] {
+  background: var(--pels-segmented-selected-background);
+  color: var(--pels-segmented-selected-text);
 }
 
 .segmented__option:focus-visible {
   outline: 2px solid var(--color-focus-ring);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 
 .segmented__option:disabled,
@@ -3575,14 +3555,14 @@ md-primary-tab.tab[active]:hover {
   cursor: not-allowed;
 }
 
-.segmented__option:disabled:not([aria-checked="true"]) {
-  color: var(--muted);
+.segmented__option:disabled:not([aria-checked="true"]):not([aria-pressed="true"]) {
+  color: var(--pels-text-muted);
   opacity: 0.6;
 }
 
-.segmented__option:hover:not(:disabled):not([aria-checked="true"]) {
-  color: var(--text);
-  background: var(--color-surface-3);
+.segmented__option:hover:not(:disabled):not([aria-checked="true"]):not([aria-pressed="true"]) {
+  color: var(--pels-text-primary);
+  background: color-mix(in srgb, var(--pels-segmented-selected-background) 40%, transparent);
 }
 
 .segmented__option[hidden] {
@@ -4394,81 +4374,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   flex-wrap: wrap;
 }
 
-.day-view-toggle,
-.daily-budget-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border-strong);
-  background: var(--color-surface-2);
-}
-
-.day-view-toggle__button,
-.daily-budget-toggle__button {
-  border: none;
-  background-color: transparent !important;
-  color: var(--muted) !important;
-  padding: 4px 10px;
-  min-height: var(--pels-touch-target-min);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-xs);
-  cursor: pointer;
-}
-
-:where(.budget-redesign-surface, #usage-panel) .day-view-toggle__button {
-  color: var(--pels-segmented-label-color) !important;
-  font-weight: var(--pels-segmented-label-font-weight);
-}
-
-.day-view-toggle__button.is-active,
-.daily-budget-toggle__button.is-active {
-  background-color: var(--color-surface-4) !important;
-  color: var(--text) !important;
-  font-weight: var(--font-weight-semibold);
-}
-
-:where(.budget-redesign-surface, #usage-panel) .day-view-toggle__button.is-active {
-  background-color: var(--pels-segmented-selected-background) !important;
-  color: var(--pels-segmented-selected-text) !important;
-  box-shadow:
-    inset 0 0 0 1px var(--pels-segmented-selected-outline),
-    inset 0 -2px 0 0 var(--accent);
-}
-
-.day-view-toggle__button:focus-visible,
-.daily-budget-toggle__button:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: 2px;
-}
-
-.day-view-toggle__button:disabled,
-.daily-budget-toggle__button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-:where(.budget-redesign-surface, #usage-panel) .day-view-toggle {
-  padding: 3px;
-  border-color: var(--pels-surface-outline);
-  background: var(--pels-surface-container-low);
-  --pels-segmented-selected-background: var(--pels-surface-container-highest);
-  --pels-segmented-selected-outline: var(--pels-surface-outline);
-}
-
-.budget-redesign-surface .day-view-toggle {
-  width: 100%;
-  justify-content: stretch;
-}
-
-.budget-redesign-surface .day-view-toggle__button {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
-.budget-chart-card .budget-card-header .day-view-toggle {
-  max-width: 190px;
+.budget-chart-card .budget-card-header .segmented {
+  max-width: 220px;
   justify-self: start;
 }
 
@@ -5336,17 +5243,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   gap: var(--spacing-1);
 }
 
-#usage-panel .day-view-toggle {
-  min-height: 40px;
-  border-radius: var(--radius-lg);
-}
-
-#usage-panel .day-view-toggle__button {
-  min-height: 32px;
-  border-radius: calc(var(--radius-lg) - 4px);
-}
-
-/* Material Web Secondary Tabs as our segmented control. */
 .usage-footer {
   display: flex;
   flex-direction: column;
@@ -5814,19 +5710,13 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 #device-detail-panel .segmented {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
-  width: 100%;
-  border-color: var(--panel-border);
-  background: var(--color-surface-4);
 }
 
 #device-detail-panel .segmented__option {
   min-height: 48px;
-  min-width: 0;
-  height: auto;
   line-height: var(--font-line-height-tight);
   white-space: normal;
   overflow-wrap: anywhere;
-  --md-text-button-container-height: 48px;
 }
 
 #device-detail-panel :where(

@@ -137,7 +137,7 @@
     "segmented": {
       "container": {
         "background": { "value": "{pels.surface-container-low}" },
-        "border": { "value": "{pels.status.good-border}" }
+        "border": { "value": "{pels.surface-outline}" }
       },
       "label": {
         "color": { "value": "{pels.text.secondary}" },
@@ -146,9 +146,8 @@
         }
       },
       "selected": {
-        "background": { "value": "rgba({color.base.accent.default-rgb}, 0.42)" },
-        "text": { "value": "{pels.text.primary}" },
-        "outline": { "value": "{pels.status.good-border}" }
+        "background": { "value": "rgba({color.base.accent.default-rgb}, 0.28)" },
+        "text": { "value": "{pels.text.primary}" }
       }
     },
     "shell-nav": {

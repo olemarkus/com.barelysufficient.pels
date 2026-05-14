@@ -919,7 +919,7 @@ describe('Settings UI', () => {
             overshootSegmented.replaceChildren();
             Array.from(overshootSelect.querySelectorAll('md-select-option')).forEach((option) => {
               const optionValue = option.getAttribute('value') || '';
-              const btn = document.createElement('md-text-button');
+              const btn = document.createElement('button');
               btn.setAttribute('type', 'button');
               btn.className = 'segmented__option';
               btn.dataset.value = optionValue;
