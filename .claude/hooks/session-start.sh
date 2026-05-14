@@ -7,17 +7,16 @@ fi
 
 cd "$CLAUDE_PROJECT_DIR"
 
-# Playwright browser binaries are served from cdn.playwright.dev /
-# playwright.download.prss.microsoft.com, which are not in the Claude Code on
-# the web egress allowlist. Skip browser downloads during npm install and
-# signal to the agent that ci:test:playwright / test:e2e cannot run here.
+# cdn.playwright.dev / playwright.download.prss.microsoft.com are not in the
+# Claude Code on the web egress allowlist. Belt-and-suspenders against any
+# transitive browser-download attempt during install.
 export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-grep -q "^export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=" "$CLAUDE_ENV_FILE" 2>/dev/null \
+grep -q "^export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1" "$CLAUDE_ENV_FILE" 2>/dev/null \
   || echo "export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1" >> "$CLAUDE_ENV_FILE"
-grep -q "^export PELS_SKIP_PLAYWRIGHT=" "$CLAUDE_ENV_FILE" 2>/dev/null \
-  || echo "export PELS_SKIP_PLAYWRIGHT=1" >> "$CLAUDE_ENV_FILE"
 
 echo "[pels session-start] installing workspace dependencies..."
-npm install --no-audit --no-fund
+if ! npm install --no-audit --no-fund; then
+  echo "[pels session-start] WARN: npm install failed; continuing with existing node_modules (if any). Re-run manually if tests/lint break." >&2
+fi
 
-echo "[pels session-start] done. Note: Playwright e2e tests (npm run test:e2e / ci:test:playwright) are unavailable on Claude Code on the web because the Playwright CDN is not allowlisted. Use unit/UI tests instead; e2e runs in GitHub Actions."
+echo "[pels session-start] done. Playwright e2e (test:e2e / ci:test:playwright) does not run here; use unit/UI tests, e2e runs in GitHub Actions."
