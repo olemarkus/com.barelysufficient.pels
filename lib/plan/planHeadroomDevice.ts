@@ -31,6 +31,11 @@ export {
  * The Flow card is asking permission to *add* load, so we never synthesize
  * draw the device hasn't proven it consumes:
  *
+ *  - Device unavailable → 0. Homey reports `available === false` for devices
+ *    that are offline / unreachable / removed from the mesh. Crediting their
+ *    declared load would let activations through against capacity that the
+ *    device cannot actually be consuming. Mirrors `isActivelyDrawing` in
+ *    `lib/observer/observedPower.ts`.
  *  - Measured draw present → that value (including 0 — a real zero-measurement
  *    is authoritative).
  *  - Observed-off → 0.
@@ -47,12 +52,13 @@ export {
  * thermostat steady at setpoint can age out of `STALE_DEVICE_OBSERVATION_MS`
  * while still being on and drawing exactly its configured load. Returning 0
  * for that case under-credited known load and blocked legitimate activations.
- * The `currentOn === false` and zero-measured branches above already cover the
- * conservative cases.
+ * The `available === false`, `currentOn === false`, and zero-measured branches
+ * above already cover the conservative cases.
  */
 const resolveObservedHeadroomDeviceKw = (
   device: HeadroomCardDeviceLike,
 ): number => {
+  if (device.available === false) return 0;
   const measured = getMeasuredDrawKw(device);
   if (measured !== null) return measured;
   if (device.currentOn === false) return 0;
