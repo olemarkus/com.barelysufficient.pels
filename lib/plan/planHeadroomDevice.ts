@@ -10,37 +10,6 @@ import {
   syncHeadroomCardState,
 } from './planHeadroomState';
 import { getHighestKnownPowerKw, getMeasuredDrawKw } from '../observer/observedPower';
-import { isDeviceObservationStale } from '../observer/observationFreshness';
-
-/**
- * Conservative read of a device's current draw for headroom-for-device math.
- * The Flow card is asking permission to *add* load, so we never synthesize
- * draw the device hasn't proven it consumes:
- *
- *  - Stale observation → 0. Staleness is derived from `lastFreshDataMs` so
- *    this works for both planner state (`DevicePlanDevice`) and Flow-card
- *    snapshots (`TargetDeviceSnapshot`), neither of which carries a
- *    precomputed `observationStale` field on the public contract.
- *  - Measured draw present → that value (including 0 — a real zero-measurement
- *    is authoritative).
- *  - Fresh-off → 0.
- *  - Running with no measurement → highest known configured demand (expected /
- *    planning / configured `powerKw`) so non-metered relays still credit
- *    their declared load. If none of those are configured either, fall back
- *    to 0 — we explicitly avoid Observer's generic 1.0 kW / EV 1.38 kW
- *    fallback because that would overstate `headroom + observedKw` and let
- *    activations through that should be blocked.
- */
-const resolveObservedHeadroomDeviceKw = (
-  device: HeadroomCardDeviceLike,
-  nowTs: number,
-): number => {
-  if (isDeviceObservationStale(device, nowTs)) return 0;
-  const measured = getMeasuredDrawKw(device);
-  if (measured !== null) return measured;
-  if (device.currentOn === false) return 0;
-  return getHighestKnownPowerKw(device)?.kw ?? 0;
-};
 import type {
   HeadroomCardCooldownSource,
   HeadroomCardDeviceLike,
@@ -56,6 +25,39 @@ export {
   syncHeadroomCardState,
   syncHeadroomUsageObservation,
 } from './planHeadroomState';
+
+/**
+ * Conservative read of a device's current draw for headroom-for-device math.
+ * The Flow card is asking permission to *add* load, so we never synthesize
+ * draw the device hasn't proven it consumes:
+ *
+ *  - Measured draw present → that value (including 0 — a real zero-measurement
+ *    is authoritative).
+ *  - Observed-off → 0.
+ *  - Otherwise (running, with or without a fresh measurement) → highest known
+ *    configured demand (expected / planning / configured `powerKw`) so
+ *    non-metered relays still credit their declared load. If none of those
+ *    are configured either, fall back to 0 — we explicitly avoid Observer's
+ *    generic 1.0 kW / EV 1.38 kW fallback because that would overstate
+ *    `headroom + observedKw` and let activations through that should be
+ *    blocked.
+ *
+ * Observation staleness is intentionally NOT a short-circuit here. Many Homey
+ * drivers only republish per-capability `lastUpdated` on value change, so a
+ * thermostat steady at setpoint can age out of `STALE_DEVICE_OBSERVATION_MS`
+ * while still being on and drawing exactly its configured load. Returning 0
+ * for that case under-credited known load and blocked legitimate activations.
+ * The `currentOn === false` and zero-measured branches above already cover the
+ * conservative cases.
+ */
+const resolveObservedHeadroomDeviceKw = (
+  device: HeadroomCardDeviceLike,
+): number => {
+  const measured = getMeasuredDrawKw(device);
+  if (measured !== null) return measured;
+  if (device.currentOn === false) return 0;
+  return getHighestKnownPowerKw(device)?.kw ?? 0;
+};
 
 export type HeadroomForDeviceDecision = {
   allowed: boolean;
@@ -110,7 +112,7 @@ export const evaluateHeadroomForDevice = (params: {
   });
   emitActivationTransitions(diagnostics, device.name, penaltyInfo.transitions);
 
-  const observedKw = resolveObservedHeadroomDeviceKw(device, nowTs);
+  const observedKw = resolveObservedHeadroomDeviceKw(device);
   const calculatedHeadroomForDeviceKw = headroom + observedKw;
   const penalty = applyActivationPenalty({
     baseRequiredKw: requiredKw,

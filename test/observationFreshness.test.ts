@@ -1,5 +1,6 @@
 import {
   STALE_DEVICE_OBSERVATION_MS,
+  getDeviceObservationFreshness,
   getLatestDeviceObservationMs,
   isDeviceObservationStale,
   isDeviceObservationStaleByAge,
@@ -63,6 +64,33 @@ describe('observation freshness', () => {
       expect(isDeviceObservationStaleByAge({
         lastFreshDataMs: nowMs - 1_000,
       }, nowMs)).toBe(false);
+    });
+  });
+
+  describe('getDeviceObservationFreshness', () => {
+    it('returns "unknown" for a device that has never produced a trusted observation', () => {
+      const nowMs = Date.UTC(2026, 2, 26, 12, 0, 0);
+
+      expect(getDeviceObservationFreshness({}, nowMs)).toBe('unknown');
+      expect(getDeviceObservationFreshness({
+        lastLocalWriteMs: nowMs - 1_000,
+      }, nowMs)).toBe('unknown');
+    });
+
+    it('returns "stale" when an observation exists but has aged past the threshold', () => {
+      const nowMs = Date.UTC(2026, 2, 26, 12, 0, 0);
+
+      expect(getDeviceObservationFreshness({
+        lastFreshDataMs: nowMs - STALE_DEVICE_OBSERVATION_MS - 1_000,
+      }, nowMs)).toBe('stale');
+    });
+
+    it('returns "fresh" for a recent observation', () => {
+      const nowMs = Date.UTC(2026, 2, 26, 12, 0, 0);
+
+      expect(getDeviceObservationFreshness({
+        lastFreshDataMs: nowMs - 1_000,
+      }, nowMs)).toBe('fresh');
     });
   });
 });

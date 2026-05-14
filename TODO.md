@@ -606,6 +606,29 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `lib/plan/deferredObjectives/activePlanRecorder.ts`,
       `flowCards/deadlineObjectiveCards.ts`,
       `.homeycompose/flow/triggers/deadline_status_changed.json`, related tests.
+- [ ] Quiet repeated `stale_device_observation_refresh` log entries that never resolve.
+      The headroom-for-device fix (Unit 4) makes stale-but-stable devices contribute their
+      configured load to headroom math, but the snapshot-refresh fallback in
+      `appSnapshotHelpers.ts` still wakes every 60s, refreshes those devices, and emits the
+      same `stale_device_observation_refresh` event with `freshAfterRefreshDevices: 0` whenever
+      a Homey driver only republishes per-capability `lastUpdated` on value change. Add a
+      backoff or one-shot per-device "still stale after refresh" log so the stream doesn't
+      grow proportionally to uptime, and consider whether `'unknown'` (never observed)
+      devices should also stop triggering the refresh loop after one attempt.
+      Files: `lib/app/appSnapshotHelpers.ts`, `lib/observer/observationFreshness.ts`,
+      snapshot-refresh tests.
+- [ ] Mark stale-on devices `available=false` when Homey's own availability signal goes false.
+      The headroom-for-device path now credits configured load for stale-on devices on the
+      assumption that they are still in their last-seen state. A device that has been
+      physically disconnected (long comm gap, removed from Z-Wave/Zigbee mesh) but still
+      reports `currentOn=true` from a cached snapshot can over-credit headroom. Verify that
+      Homey's `available` flag flips on real disconnects and that `isActivelyDrawing` /
+      headroom-for-device correctly drop the contribution when `available === false`. If the
+      `available` signal is unreliable, consider degrading stale-on credit to 0 after a
+      second, longer threshold (e.g. 4 hours) where the device has had no observation
+      whatsoever.
+      Files: `lib/observer/observedPower.ts`, `lib/plan/planHeadroomDevice.ts`, related
+      activation/headroom tests.
 
 ## P3 Future and Exploratory Work
 
