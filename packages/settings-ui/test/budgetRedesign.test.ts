@@ -176,6 +176,25 @@ describe('resolveHeroData', () => {
     const hero = resolveHeroData(buildPayload({ enabled: true }), 'today', costDisplay, 'within', false);
     expect(hero.comparison).toBe('Daily budget off');
     expect(hero.decision).toBe('Enable daily budget to build a daily plan.');
+    expect(hero.headlineLabel).toBeNull();
+  });
+
+  it('labels the today headline as projected so it does not read as used-so-far', () => {
+    const payload = buildPayload();
+    const hero = resolveHeroData(payload, 'today', costDisplay, 'within', true);
+    expect(hero.headlineLabel).toBe('Projected today');
+  });
+
+  it("labels yesterday's headline as a finished total", () => {
+    const payload = buildPayload();
+    const hero = resolveHeroData(payload, 'yesterday', costDisplay, 'within', true);
+    expect(hero.headlineLabel).toBe("Yesterday's total");
+  });
+
+  it("labels tomorrow's headline as planned", () => {
+    const payload = buildPayload();
+    const hero = resolveHeroData(payload, 'tomorrow', costDisplay, 'within', true);
+    expect(hero.headlineLabel).toBe('Planned for tomorrow');
   });
 });
 
