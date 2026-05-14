@@ -1,6 +1,5 @@
 import { panels, tabListEntries, tabs, type MdTabElement } from './dom.ts';
 import {
-  SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
   SETTINGS_UI_PLAN_PATH,
@@ -381,8 +380,6 @@ const runTabActivationSideEffects = (tabId: string) => {
     return;
   }
   if (tabId === 'deadlines') {
-    invalidateApiCache(SETTINGS_UI_BOOTSTRAP_PATH);
-    invalidateApiCache(SETTINGS_UI_DEVICES_PATH);
     runLoggedTask(refreshDeadlinesList(), 'Failed to load deadlines list', 'showTab');
     return;
   }

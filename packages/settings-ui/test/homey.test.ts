@@ -92,12 +92,14 @@ describe('waitForHomey', () => {
 
 describe('callApi', () => {
   afterEach(async () => {
+    vi.useRealTimers();
     const { setHomeyClient } = await import('../src/ui/homey.ts');
     setHomeyClient(null);
     vi.resetModules();
   });
 
   it('wraps callback errors with endpoint context', async () => {
+    vi.useFakeTimers();
     const api = vi.fn((
       _method: string,
       _uri: string,
@@ -110,9 +112,79 @@ describe('callApi', () => {
     const { callApi, setHomeyClient } = await import('../src/ui/homey.ts');
     setHomeyClient(createClient({ api }));
 
-    await expect(callApi('GET', '/ui_power')).rejects.toThrow(
+    const pending = callApi('GET', '/ui_power');
+    const settled = expect(pending).rejects.toThrow(
       'Homey api GET /ui_power failed: socket hang up',
     );
+    // Retry schedule fires at 250ms then 750ms; advance past both to surface
+    // the final rejection.
+    await vi.advanceTimersByTimeAsync(1100);
+    await settled;
+    expect(api).toHaveBeenCalledTimes(3);
+  });
+
+  it('retries transient GET failures and resolves on a later attempt', async () => {
+    vi.useFakeTimers();
+    let attempts = 0;
+    const api = vi.fn((
+      _method: string,
+      _uri: string,
+      bodyOrCallback: unknown,
+      callback?: HomeyCallback<unknown>,
+    ) => {
+      attempts += 1;
+      const cb = typeof bodyOrCallback === 'function' ? bodyOrCallback : callback;
+      if (attempts === 1) {
+        cb?.(new Error('Network request failed'));
+        return;
+      }
+      cb?.(null, { ok: true });
+    });
+    const { callApi, setHomeyClient } = await import('../src/ui/homey.ts');
+    setHomeyClient(createClient({ api }));
+
+    const pending = callApi('GET', '/ui_bootstrap');
+    await vi.advanceTimersByTimeAsync(250);
+    await expect(pending).resolves.toEqual({ ok: true });
+    expect(api).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry non-transient GET failures', async () => {
+    const api = vi.fn((
+      _method: string,
+      _uri: string,
+      bodyOrCallback: unknown,
+      callback?: HomeyCallback<unknown>,
+    ) => {
+      const cb = typeof bodyOrCallback === 'function' ? bodyOrCallback : callback;
+      cb?.(new Error('boom'));
+    });
+    const { callApi, setHomeyClient } = await import('../src/ui/homey.ts');
+    setHomeyClient(createClient({ api }));
+
+    await expect(callApi('GET', '/ui_power')).rejects.toThrow(
+      'Homey api GET /ui_power failed: boom',
+    );
+    expect(api).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry POST requests on transient transport failures', async () => {
+    const api = vi.fn((
+      _method: string,
+      _uri: string,
+      bodyOrCallback: unknown,
+      callback?: HomeyCallback<unknown>,
+    ) => {
+      const cb = typeof bodyOrCallback === 'function' ? bodyOrCallback : callback;
+      cb?.(new Error('Network request failed'));
+    });
+    const { callApi, setHomeyClient } = await import('../src/ui/homey.ts');
+    setHomeyClient(createClient({ api }));
+
+    await expect(callApi('POST', '/ui_log', { level: 'info' })).rejects.toThrow(
+      'Homey api POST /ui_log failed: Network request failed',
+    );
+    expect(api).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to an empty body for GET when the SDK rejects the callback-only signature', async () => {
@@ -159,11 +231,17 @@ describe('callApi', () => {
   });
 
   it('rejects with endpoint context when the API function is missing', async () => {
+    vi.useFakeTimers();
     const { callApi, setHomeyClient } = await import('../src/ui/homey.ts');
     setHomeyClient(createClient());
 
-    await expect(callApi('GET', '/ui_bootstrap')).rejects.toThrow(
+    const pending = callApi('GET', '/ui_bootstrap');
+    const settled = expect(pending).rejects.toThrow(
       'Homey api GET /ui_bootstrap not available',
     );
+    // "Homey api ... not available" is treated as a transient SDK-warmup error,
+    // so the GET path retries 2x before surfacing the final rejection.
+    await vi.advanceTimersByTimeAsync(1100);
+    await settled;
   });
 });

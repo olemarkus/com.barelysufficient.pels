@@ -77,7 +77,7 @@ export type DeadlinePlanPendingPayload = {
 };
 
 export type DeadlinePlanLoadState =
-  | { status: 'error'; message: string; history?: DeadlinePlanHistoryView }
+  | { status: 'error'; message: string; onRetry?: () => void; history?: DeadlinePlanHistoryView }
   | { status: 'loading'; history?: DeadlinePlanHistoryView }
   | { status: 'pending'; pending: DeadlinePlanPendingPayload; history?: DeadlinePlanHistoryView }
   | {
@@ -628,10 +628,16 @@ const CurrentPlanContent = ({ loadState }: { loadState: DeadlinePlanLoadState })
     );
   }
   if (loadState.status === 'error') {
+    const onRetry = loadState.onRetry;
     return (
       <section class="pels-surface-card budget-redesign-card">
         <h1 class="plan-card__title">Smart task plan unavailable</h1>
         <p class="pels-card-supporting">{loadState.message}</p>
+        {onRetry && (
+          <MdTextButton class="plan-card__retry" onClick={onRetry}>
+            Try again
+          </MdTextButton>
+        )}
       </section>
     );
   }

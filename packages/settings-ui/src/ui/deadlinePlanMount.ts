@@ -37,10 +37,14 @@ const closeDeadlinePlanPage = (): void => {
   window.close();
 };
 
+let closeHandlerBound = false;
+
 const initDeadlinePlanClose = (): void => {
-  document
-    .querySelector<MdButtonElement>('[data-deadline-plan-close]')
-    ?.addEventListener('click', closeDeadlinePlanPage);
+  if (closeHandlerBound) return;
+  const button = document.querySelector<MdButtonElement>('[data-deadline-plan-close]');
+  if (!button) return;
+  button.addEventListener('click', closeDeadlinePlanPage);
+  closeHandlerBound = true;
 };
 
 export type DeadlinePlanBoot = {
@@ -79,6 +83,10 @@ const mountHistoryDetail = async (
   historyId: string,
   timeZone: string,
 ): Promise<void> => {
+  // Swap to the loading state synchronously so the "Try again" button is
+  // removed before the new fetch starts. Without this, fast double-clicks
+  // would queue duplicate fetches (and duplicate logSettingsError calls).
+  renderDeadlinePlan(surface, { status: 'loading' });
   let history: DeadlinePlanHistoryView;
   try {
     history = await fetchDeadlinePlanHistory(deviceId, timeZone, true);
@@ -91,6 +99,7 @@ const mountHistoryDetail = async (
     renderDeadlinePlan(surface, {
       status: 'error',
       message: buildBootErrorMessage(error),
+      onRetry: () => { void mountHistoryDetail(surface, deviceId, historyId, timeZone); },
     });
     return;
   }
@@ -147,6 +156,7 @@ export const mountDeadlinePlan = async (): Promise<void> => {
     renderDeadlinePlan(surface, {
       status: 'error',
       message: buildBootErrorMessage(error),
+      onRetry: () => { void mountDeadlinePlan(); },
     });
     return;
   }

@@ -5,6 +5,13 @@ import {
   countHomeySet,
   countSettingsCacheHit,
 } from './perf.ts';
+import { isRetryableHomeyTransportErrorMessage } from './homeyTransportErrors.ts';
+
+// Backoff schedule for transient Homey-API transport failures (e.g. "Network
+// request failed", "socket hang up", or "Homey api ... not available" while
+// the SDK adapter is still wiring up). The retry only applies to GET so we
+// don't replay non-idempotent writes.
+const CALL_API_RETRY_DELAYS_MS = [250, 750] as const;
 
 export type HomeyCallback<T> = (err: Error | null, value?: T) => void;
 
@@ -156,13 +163,13 @@ const buildApiError = (method: string, uri: string, error: unknown) => {
   return new Error(`Homey api ${method} ${uri} failed: ${message}`);
 };
 
-export const callApi = <T>(method: 'DELETE' | 'GET' | 'POST' | 'PUT', uri: string, body?: unknown): Promise<T> => {
+const callApiOnce = async <T>(method: 'DELETE' | 'GET' | 'POST' | 'PUT', uri: string, body?: unknown): Promise<T> => {
   const client = homeyClient;
   const api = client?.api;
   if (!api || typeof api !== 'function') {
-    return Promise.reject(new Error(`Homey api ${method} ${uri} not available`));
+    throw new Error(`Homey api ${method} ${uri} not available`);
   }
-  return new Promise((resolve, reject) => {
+  return new Promise<T>((resolve, reject) => {
     countHomeyApi(method, uri);
     const callback: HomeyCallback<unknown> = (err, value) => {
       if (err) {
@@ -191,6 +198,27 @@ export const callApi = <T>(method: 'DELETE' | 'GET' | 'POST' | 'PUT', uri: strin
       reject(buildApiError(method, uri, error));
     }
   });
+};
+
+export const callApi = async <T>(
+  method: 'DELETE' | 'GET' | 'POST' | 'PUT',
+  uri: string,
+  body?: unknown,
+): Promise<T> => {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await callApiOnce<T>(method, uri, body);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const canRetry = method === 'GET'
+        && attempt < CALL_API_RETRY_DELAYS_MS.length
+        && isRetryableHomeyTransportErrorMessage(message);
+      if (!canRetry) throw error;
+      await sleep(CALL_API_RETRY_DELAYS_MS[attempt]!);
+      attempt += 1;
+    }
+  }
 };
 
 export const getApiReadModel = async <T>(uri: string): Promise<T> => {
