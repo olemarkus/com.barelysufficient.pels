@@ -112,7 +112,11 @@ describe('readPriceStore', () => {
     expect(requestRefetch).not.toHaveBeenCalled();
   });
 
-  test('migration of empty V1 payload still produces a V2 store and skips refetch', () => {
+  test('migration of empty V1 payload produces a V2 store and requests refetch', () => {
+    // V1 with empty prices (or all entries outside the 3-day window) migrates
+    // to an empty V2 store. Without a refetch, price_level would stay UNKNOWN
+    // until an external refresh, since the periodic refresher can skip the
+    // combined-prices rebuild for non-Norway schemes.
     const legacy = {
       prices: [],
       avgPrice: 0,
@@ -130,7 +134,7 @@ describe('readPriceStore', () => {
     expect(result!.days).toEqual({});
     expect(result!.priceScheme).toBe('flow');
     expect(homey.settings.set).toHaveBeenCalledTimes(1);
-    expect(requestRefetch).not.toHaveBeenCalled();
+    expect(requestRefetch).toHaveBeenCalledTimes(1);
   });
 
   test('returns null and does not refetch when settings is null', () => {
