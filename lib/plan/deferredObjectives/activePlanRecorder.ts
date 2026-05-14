@@ -216,15 +216,24 @@ const buildRevision = (params: {
   // circuited (e.g. target already met) — omit the field rather than write
   // a misleading value.
   const source = params.diag.kwhPerUnitSource;
+  // Only persist `dailyBudgetExhaustedBucketCount` when non-zero so older
+  // persisted plans without the field stay byte-stable across revisions and
+  // consumers that haven't been updated keep falling back to zero.
+  const exhaustedBuckets = params.diag.dailyBudgetExhaustedBucketCount;
   return {
     revision: params.revision,
     revisedAtMs: params.nowMs,
     computedFromPricesUpTo: resolveComputedFromPricesUpTo(params.diag),
     reason: params.reason,
     hours: params.hours,
-    energyNeededKWh: horizonPlan.energyNeededKWh,
+    // Round to milliWh to match `plannedKWh`. Without rounding, multiplication
+    // noise (energyNeededKWh = remainingUnits × kWhPerUnit.mean) can produce
+    // ~1e-15 kWh drift that would appear in persisted output even when the
+    // underlying allocation is byte-identical.
+    energyNeededKWh: roundKWh(horizonPlan.energyNeededKWh),
     planStatus: horizonPlan.status,
     ...(source !== null ? { kwhPerUnitSource: source } : {}),
+    ...(exhaustedBuckets > 0 ? { dailyBudgetExhaustedBucketCount: exhaustedBuckets } : {}),
   };
 };
 
@@ -240,6 +249,28 @@ const seedScheduledStarts = (plan: DeferredObjectiveActivePlanV1): Set<number> =
 const resolveLatestKwhPerUnitSource = (
   latest: DeferredObjectiveActivePlanRevisionV1,
 ): 'learned' | 'bootstrap' => latest.kwhPerUnitSource ?? 'learned';
+
+// Caller already established `sameHourSchedule(latest.hours, hours)`. Returns
+// true when consumer-visible status fields drifted across the same set of
+// charging hours: `planStatus` transitions (on_track <-> at_risk <-> cannot_meet)
+// drive the "Can't fully meet" chip, and `dailyBudgetExhaustedBucketCount`
+// drives the per-bucket headroom explanation. Per-cycle drift in `plannedKWh`
+// / `energyNeededKWh` is intentionally NOT a persist trigger: an actively
+// charging EV shrinks `energyNeededKWh` monotonically every plan cycle
+// (~30s), and writing the persisted setting on every cycle was filling the
+// Homey settings I/O budget for no user-visible benefit. Treats missing
+// `dailyBudgetExhaustedBucketCount` as zero so legacy persisted revisions
+// don't thrash on the first cycle after upgrade.
+const hasMetadataDriftedWithinSchedule = (params: {
+  latest: DeferredObjectiveActivePlanRevisionV1;
+  horizonPlan: NonNullable<DeferredObjectiveDiagnostic['horizonPlan']>;
+  diag: DeferredObjectiveDiagnostic;
+}): boolean => {
+  const { latest, horizonPlan, diag } = params;
+  const previousExhausted = latest.dailyBudgetExhaustedBucketCount ?? 0;
+  return latest.planStatus !== horizonPlan.status
+    || previousExhausted !== diag.dailyBudgetExhaustedBucketCount;
+};
 
 export class DeferredObjectiveActivePlanRecorder {
   private plans: Record<string, DeferredObjectiveActivePlanV1>;
@@ -436,24 +467,21 @@ export class DeferredObjectiveActivePlanRecorder {
     // Schedule change = user-visible "new plan" (set of charging hours).
     // Drives the `deadline_plan_changed` flow trigger.
     const scheduleChanged = !sameHourSchedule(latest.hours, hours);
-    // `planStatus` transitions (on_track <-> at_risk <-> cannot_meet) drive
-    // the "Can't fully meet" chip in Settings UI, so they must persist even
-    // when the schedule is unchanged. Per-cycle drift in `plannedKWh` /
-    // `energyNeededKWh` is intentionally NOT a persist trigger: an actively
-    // charging EV shrinks `energyNeededKWh` monotonically every plan cycle
-    // (~30s), and writing the persisted setting on every cycle was filling
-    // the Homey settings I/O budget for no user-visible benefit. The
-    // settings UI reads `activePlan.latest.energyNeededKWh` as authoritative
-    // but tolerates the slightly stale value — the original starting energy
-    // is more meaningful to the user than a near-zero final value.
-    const statusChanged = !scheduleChanged && latest.planStatus !== horizonPlan.status;
-    // Any kwhPerUnitSource change is a replan trigger so the persisted
-    // `kwhPerUnitSource` cannot stay stale at e.g. 'learned' while the
-    // planner is using bootstrap, even when the bucket allocation happens
-    // to be byte-identical across a source flip. The reason is only
-    // `rate_refined` for the bootstrap→learned direction; the rarer
-    // learned→bootstrap regression (profile pruned at retention or device
-    // removed) falls through to `prices_revised`.
+    // Same charging hours but consumer-visible status fields drifted — see
+    // `hasMetadataDriftedWithinSchedule` for the field list. Covers
+    // `planStatus` transitions (drives the "Can't fully meet" chip) and
+    // `dailyBudgetExhaustedBucketCount` (drives the per-bucket headroom
+    // explanation). Per-cycle drift in `plannedKWh` / `energyNeededKWh` is
+    // intentionally excluded to keep settings I/O budget in check on actively
+    // charging EVs.
+    const metadataDriftedWithinSchedule = !scheduleChanged
+      && hasMetadataDriftedWithinSchedule({ latest, horizonPlan, diag });
+    // Any kwhPerUnitSource change is a replan trigger so persisted metadata
+    // (`kwhPerUnitSource`, `energyNeededKWh`, `planStatus`) cannot go stale
+    // when the bucket allocation happens to be byte-identical across a source
+    // flip. The reason is only `rate_refined` for the bootstrap→learned
+    // direction; the rarer learned→bootstrap regression (profile pruned at
+    // retention or device removed) falls through to `prices_revised`.
     //
     // `null` means the resolver did not consult a profile (e.g. target is
     // already satisfied so `energyNeededKWh = 0`). Treat that as "no source
@@ -466,7 +494,7 @@ export class DeferredObjectiveActivePlanRecorder {
     const sourceRefined = previousSource === 'bootstrap' && nextSource === 'learned';
     // TODO: device_unavailable + measured_deviation triggers — wired here once
     // device-level metering exists. For now those reasons are not used.
-    if (!objectiveChanged && !scheduleChanged && !statusChanged && !sourceChanged) return;
+    if (!objectiveChanged && !scheduleChanged && !metadataDriftedWithinSchedule && !sourceChanged) return;
     const reason: DeferredObjectiveActivePlanRevisionReason = (() => {
       if (objectiveChanged) return 'objective_changed';
       if (sourceRefined) return 'rate_refined';

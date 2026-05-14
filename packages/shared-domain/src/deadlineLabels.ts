@@ -44,6 +44,13 @@ export type DeadlineLabels = {
   unavailableByReason: Record<DeadlinePlanUnavailableReason, { headline: string; body: string }>;
   cannotMeetShortfall: (shortfallLabel: string) => string;
   cannotMeetFallback: string;
+  // Replaces the shortfall/fallback cannot-meet copy when the diagnostic
+  // reports that the daily budget cap had been hit before the deadline.
+  // Surfaces the budget — not the device or schedule — as the constraint so
+  // the user knows where to look. The hard-cap-is-physical guideline forbids
+  // suggesting the user raise their capacity hard cap; the recommended remedy
+  // is a lower daily budget so future days reserve available power earlier.
+  cannotMeetDailyBudgetExhausted: string;
   completedHero: { headline: string; body: string };
   targetUnit: '°C' | '%';
   planInputsCardTitle: string;
@@ -123,6 +130,9 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       `There may not be enough time or available power to finish. Short by about ${shortfallLabel}.`
     ),
     cannotMeetFallback: 'There may not be enough time or available power to finish.',
+    cannotMeetDailyBudgetExhausted: 'The daily energy budget is already used up for the rest of the day, so '
+      + 'PELS can\'t reserve more for heating before the deadline. Lower the daily budget so future '
+      + 'days reserve available power earlier, or move the deadline to a later day.',
     completedHero: {
       headline: 'Smart task finished',
       body: 'See History for the outcome.',
@@ -172,6 +182,9 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       `There may not be enough time or available power to finish. Short by about ${shortfallLabel}.`
     ),
     cannotMeetFallback: 'There may not be enough time or available power to finish.',
+    cannotMeetDailyBudgetExhausted: 'The daily energy budget is already used up for the rest of the day, so '
+      + 'PELS can\'t reserve more for charging before the deadline. Lower the daily budget so future '
+      + 'days reserve available power earlier, or move the deadline to a later day.',
     completedHero: {
       headline: 'Smart task finished',
       body: 'See History for the outcome.',

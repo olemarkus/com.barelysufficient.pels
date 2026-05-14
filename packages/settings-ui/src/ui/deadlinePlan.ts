@@ -145,6 +145,7 @@ const buildHero = (params: {
   cannotMeet: boolean;
   shortfallUnits: number;
   shortfallUnit: '°C' | '%';
+  dailyBudgetExhausted: boolean;
 }): DeadlinePlanPayload['hero'] => {
   const headline = resolveHeroHeadline(params);
   const target = formatTarget(params.objective);
@@ -156,9 +157,9 @@ const buildHero = (params: {
   // on-track "Needs X kWh • Y hours left" copy — that contradicts the chip.
   // A zero shortfall under cannot_meet means rounding has flattened the gap;
   // surface a softer body line instead so the two pieces stay consistent.
-  const cannotMeetMeta = params.shortfallUnits > 0
-    ? params.labels.cannotMeetShortfall(formatShortfallLabel(params.shortfallUnits, params.shortfallUnit))
-    : params.labels.cannotMeetFallback;
+  // When the planner reports daily-budget exhaustion as the cause, prefer
+  // that explanation so the user looks at the budget instead of the device.
+  const cannotMeetMeta = resolveCannotMeetMeta(params);
   const metaLine = params.cannotMeet
     ? cannotMeetMeta
     : `Needs ${energy} • ${params.hoursLeft} ${hourWord} left`;
@@ -175,6 +176,19 @@ const buildHero = (params: {
     subline,
     metaLine,
   };
+};
+
+const resolveCannotMeetMeta = (params: {
+  labels: DeadlineLabels;
+  shortfallUnits: number;
+  shortfallUnit: '°C' | '%';
+  dailyBudgetExhausted: boolean;
+}): string => {
+  if (params.dailyBudgetExhausted) return params.labels.cannotMeetDailyBudgetExhausted;
+  if (params.shortfallUnits > 0) {
+    return params.labels.cannotMeetShortfall(formatShortfallLabel(params.shortfallUnits, params.shortfallUnit));
+  }
+  return params.labels.cannotMeetFallback;
 };
 
 const buildTimeline = (params: {
@@ -443,6 +457,12 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   const { cannotMeetUnits } = resolveShortfall({ progress, allocatedKWh, progressPerKWh });
   const firstChargingHour = hours.find((hour) => currentChargeByStartMs.has(hour.startsAtMs));
   const hoursLeft = Math.max(0, Math.ceil((deadlineAtMs - nowMs) / ONE_HOUR_MS));
+  // Older persisted revisions don't carry the count; treat absence as zero so
+  // the budget-exhausted explanation only fires when the recorder actually
+  // saw it. Restricted to the cannot-meet path so an at-risk plan that still
+  // allocates against limited buckets keeps the shortfall copy.
+  const dailyBudgetExhausted = latest.planStatus === 'cannot_meet'
+    && (latest.dailyBudgetExhaustedBucketCount ?? 0) > 0;
 
   return {
     kind: objective.kind,
@@ -460,6 +480,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       cannotMeet,
       shortfallUnits: cannotMeetUnits,
       shortfallUnit: progress.unit,
+      dailyBudgetExhausted,
     }),
     timeline: buildTimeline({
       device,

@@ -427,6 +427,44 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
       expect(bucket.maxUsefulEnergyKWh).toBeUndefined();
     }
   });
+
+  it('counts buckets whose per-bucket cap collapsed because the daily budget is exhausted', () => {
+    // dailyBudgetKWh defaults to 20. allowedCumKWh plateaus at 20 from index 9
+    // onwards, simulating `buildAllowedCumKWh` clamping the cumulative once it
+    // reaches the cap. NOW_MS is hour 17 UTC, so all four buckets in the
+    // horizon (17–20) sit on the plateau and the diagnostic should be able to
+    // explain that the daily budget cap — not background load — caused the
+    // zero capacity.
+    const plateauedAllowed = Array.from({ length: 24 }, (_, index) => Math.min((index + 1) * 2, 20));
+    const result = buildDeferredObjectivePolicyHorizon({
+      nowMs: NOW_MS,
+      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
+      priceOptimizationEnabled: true,
+      dailyBudgetSnapshot: buildSnapshot({
+        allowedCumKWh: plateauedAllowed,
+        plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
+      }),
+    });
+    expect(result.reasonCode).toBeNull();
+    expect(result.dailyBudgetExhaustedBucketCount).toBe(4);
+    for (const bucket of result.buckets) {
+      expect(bucket.maxUsefulEnergyKWh).toBe(0);
+    }
+  });
+
+  it('does not flag exhaustion when the per-bucket cap is non-zero', () => {
+    const result = buildDeferredObjectivePolicyHorizon({
+      nowMs: NOW_MS,
+      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
+      priceOptimizationEnabled: true,
+      dailyBudgetSnapshot: buildSnapshot({
+        allowedCumKWh: Array.from({ length: 24 }, (_, index) => (index + 1) * 3),
+        plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
+      }),
+    });
+    expect(result.reasonCode).toBeNull();
+    expect(result.dailyBudgetExhaustedBucketCount).toBe(0);
+  });
 });
 
 describe('buildDeferredObjectiveDiagnostics', () => {
@@ -530,6 +568,46 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(diagnostic?.energyNeededKWh).toBeCloseTo(27.9);
     expect(diagnostic?.status).toBe('cannot_meet');
     expect(diagnostic?.horizonPlan?.unplannedUsefulEnergyKWh).toBeGreaterThan(0);
+  });
+
+  it('surfaces dailyBudgetExhaustedBucketCount on cannot_meet so the UI can explain the constraint', () => {
+    // allowedCumKWh plateaus at the 20 kWh daily cap from index 9 onwards, so
+    // every horizon bucket (17–20 with the default 21:00 deadline) inherits a
+    // 0 kWh per-bucket cap purely because the daily budget cap was already hit
+    // before now. The diagnostic must carry that signal so the UI can tell the
+    // user the budget — not the device or schedule — is the constraint.
+    const plateauedAllowed = Array.from({ length: 24 }, (_, index) => Math.min((index + 1) * 2, 20));
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings: normalizeDeferredObjectiveSettings(buildSettings()),
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({
+        prices: Array.from({ length: 24 }, () => 5),
+        allowedCumKWh: plateauedAllowed,
+        plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
+      }),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic?.status).toBe('cannot_meet');
+    expect(diagnostic?.dailyBudgetExhaustedBucketCount).toBe(4);
+  });
+
+  it('reports zero exhausted buckets when the daily budget is not yet exhausted', () => {
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings: normalizeDeferredObjectiveSettings(buildSettings()),
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic?.status).toBe('on_track');
+    expect(diagnostic?.dailyBudgetExhaustedBucketCount).toBe(0);
   });
 
   it('does not plan a temperature objective from stale progress', () => {

@@ -23,6 +23,7 @@ export const buildDeferredObjectiveDebugPayload = (
   deadlineAtMs: diagnostic.deadlineAtMs,
   deadlineLocalTime: diagnostic.deadlineLocalTime,
   horizonBucketCount: diagnostic.horizonBucketCount,
+  dailyBudgetExhaustedBucketCount: diagnostic.dailyBudgetExhaustedBucketCount,
   requestedMinimumStepId: diagnostic.requestedMinimumStepId,
   plannedUsefulEnergyKWh: diagnostic.horizonPlan?.plannedUsefulEnergyKWh ?? null,
   unplannedUsefulEnergyKWh: diagnostic.horizonPlan?.unplannedUsefulEnergyKWh ?? null,

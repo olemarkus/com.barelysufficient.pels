@@ -51,6 +51,12 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // backward compatibility — older persisted revisions don't carry it and the
   // UI should treat absence as `learned`.
   kwhPerUnitSource?: DeferredObjectiveActivePlanKwhPerUnitSource;
+  // Number of horizon buckets whose per-bucket cap collapsed to zero because
+  // the daily budget cap had already been reached. Lets the UI explain a
+  // `cannot_meet` outcome that would otherwise look like a device or schedule
+  // problem. Optional for backward compatibility — older persisted revisions
+  // don't carry it and the UI should treat absence as zero.
+  dailyBudgetExhaustedBucketCount?: number;
 };
 
 export type DeferredObjectiveActivePlanPendingReason =

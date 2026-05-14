@@ -86,6 +86,7 @@ const makeDiag = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   rateConfidence: 'high',
   kwhPerUnitSource: 'learned',
   horizonBucketCount: 3,
+  dailyBudgetExhaustedBucketCount: 0,
   requestedMinimumStepId: 'low',
   horizonPlan: makeHorizon([
     makeBucket(2 * HOUR_MS, 1.5),
@@ -712,6 +713,42 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan?.latest?.reason).toBe('prices_revised');
     expect(plan?.latest?.kwhPerUnitSource).toBeUndefined();
     expect(plan?.latest?.revision).toBe(2);
+  });
+
+  it('persists dailyBudgetExhaustedBucketCount only when the diagnostic flagged exhaustion', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      dailyBudgetExhaustedBucketCount: 0,
+    })], HOUR_MS);
+    recorder.flushIfDirty();
+    const onTrack = saved()!.plansByDeviceId.dev;
+    expect(onTrack.latest?.dailyBudgetExhaustedBucketCount).toBeUndefined();
+
+    // Simulate the cycle where the daily budget plateaus mid-horizon: the
+    // count rises from 0 to 3, the planner now reports cannot_meet, and the
+    // recorder must persist the count so the UI can explain it.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      status: 'cannot_meet',
+      reasonCode: 'target_cannot_be_met',
+      dailyBudgetExhaustedBucketCount: 3,
+      horizonPlan: makeHorizon([], {
+        status: 'cannot_meet',
+        statusDetail: 'target_cannot_be_met',
+        plannedUsefulEnergyKWh: 0,
+        unplannedUsefulEnergyKWh: 4.5,
+      }),
+    })], 2 * HOUR_MS);
+    recorder.flushIfDirty();
+    const exhausted = saved()!.plansByDeviceId.dev;
+    expect(exhausted.latest?.planStatus).toBe('cannot_meet');
+    expect(exhausted.latest?.dailyBudgetExhaustedBucketCount).toBe(3);
+    expect(exhausted.latest?.revision).toBe(2);
   });
 
   it('writes a prices_revised revision when source flips learned→bootstrap even with identical hours', () => {

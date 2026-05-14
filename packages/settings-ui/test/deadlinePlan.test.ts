@@ -43,6 +43,7 @@ const buildHeaterActivePlan = (params: {
   targetTemperatureC?: number;
   energyNeededKWh?: number;
   planStatus?: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied';
+  dailyBudgetExhaustedBucketCount?: number;
 }): DeferredObjectiveActivePlanV1 => {
   const revisedAtMs = params.now.getTime();
   const buildHours = (offsets: number[]) => offsets.map((offset) => ({
@@ -59,6 +60,9 @@ const buildHeaterActivePlan = (params: {
     energyNeededKWh: params.energyNeededKWh
       ?? params.plannedHourOffsets.length * params.plannedKWhPerHour,
     planStatus: params.planStatus ?? ('on_track' as const),
+    ...(params.dailyBudgetExhaustedBucketCount !== undefined
+      ? { dailyBudgetExhaustedBucketCount: params.dailyBudgetExhaustedBucketCount }
+      : {}),
   };
   const latestRevision = params.latestHourOffsets
     ? {
@@ -935,6 +939,78 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish' && chip.tone === 'warn')).toBe(true);
     expect(payload.hero.metaLine).toMatch(/not be enough time or available power/i);
     expect(payload.hero.metaLine).toMatch(/short by about/i);
+  });
+
+  it('explains a cannot-meet plan with daily-budget-exhausted hint when the recorder flagged it', () => {
+    // When the diagnostic reports that one or more horizon buckets had zero
+    // headroom because the daily budget cap was already reached, the meta
+    // line must point the user at the budget — not the device — and offer
+    // the lower-the-budget remedy.
+    const now = new Date(2026, 0, 1, 19, 0, 0, 0);
+    const deadline = atLocalHour(now, 3);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 3 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 50 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const bootstrap = buildBootstrap({
+      capacity_limit_kw: 8,
+      deferred_objectives: {
+        version: 1,
+        objectivesByDeviceId: {
+          heater: {
+            enabled: true,
+            kind: 'temperature',
+            enforcement: 'soft',
+            targetTemperatureC: 22,
+            deadlineAtMs: deadline.getTime(),
+          },
+        },
+      },
+    }, buildHeaterActivePlan({
+      now,
+      deadline,
+      plannedHourOffsets: [],
+      plannedKWhPerHour: 0,
+      targetTemperatureC: 22,
+      energyNeededKWh: 4,
+      planStatus: 'cannot_meet',
+      dailyBudgetExhaustedBucketCount: 3,
+    }));
+
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap,
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+
+    expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish' && chip.tone === 'warn')).toBe(true);
+    expect(payload.hero.metaLine).toMatch(/daily energy budget is already used up/i);
+    expect(payload.hero.metaLine).toMatch(/lower the daily budget/i);
+    // The shortfall copy must not also appear — the budget message is the
+    // chosen explanation when the recorder flagged the cause.
+    expect(payload.hero.metaLine).not.toMatch(/short by about/i);
   });
 
   it('routes a passed deadline to the completed state on the History tab', () => {

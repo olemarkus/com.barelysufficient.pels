@@ -26,6 +26,7 @@ const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   kWhPerDegreeC: 0.3,
   rateConfidence: null,
   horizonBucketCount: 1,
+  dailyBudgetExhaustedBucketCount: 0,
   requestedMinimumStepId: null,
   ...overrides,
 });
