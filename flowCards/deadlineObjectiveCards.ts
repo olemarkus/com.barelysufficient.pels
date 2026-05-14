@@ -3,6 +3,7 @@ import {
   normalizeDeferredObjectiveSettings,
   resolveDeferredObjectiveDeadline,
   type DeferredObjectivePlanRevisionEvent,
+  type DeferredObjectivePublicOutcome,
   type DeferredObjectiveSettingsEntry,
   type DeferredObjectiveSettingsV1,
   type DeferredObjectiveStatusSnapshot,
@@ -10,6 +11,7 @@ import {
 import { DEFERRED_OBJECTIVES_SETTINGS } from '../lib/utils/settingsKeys';
 import type { TargetDeviceSnapshot } from '../lib/utils/types';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
+import { buildEndedTokens, normalizeOutcomeArg } from './deadlineEndedTokens';
 import type { FlowCardDeps } from './registerFlowCards';
 
 const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -183,19 +185,6 @@ const buildTriggerTokens = (
   kind: snapshot.kind,
 });
 
-const buildMissedTokens = (snapshot: DeferredObjectiveStatusSnapshot): Record<string, unknown> => ({
-  device_name: snapshot.deviceName ?? snapshot.deviceId,
-  kind: snapshot.kind,
-  target_text: snapshot.targetText,
-  deadline_local_time: snapshot.deadlineLocalTime,
-  // `shortfall_text` carries the qualitative answer ("5 °C below target",
-  // "30 % below target", or '' when the device-side delta is unknown). Flows
-  // that need to distinguish "unknown" from a real "0 kWh" shortfall should
-  // gate on `shortfall_text` rather than `shortfall_kwh`, because the Homey
-  // SDK enforces `number` for the numeric token and rejects `null`.
-  shortfall_text: snapshot.shortfallText ?? '',
-  shortfall_kwh: snapshot.shortfallKwh ?? 0,
-});
 
 export function registerDeadlineObjectiveCards(deps: FlowCardDeps): void {
   // Shared between the trigger registration and `clear_deadline` so wiping a
@@ -205,7 +194,7 @@ export function registerDeadlineObjectiveCards(deps: FlowCardDeps): void {
   registerSetEvChargeDeadlineCard(deps);
   registerClearDeadlineCard(deps, lastFlowStatusByDeviceId);
   registerDeadlineStatusChangedTrigger(deps, lastFlowStatusByDeviceId);
-  registerDeadlineMissedTrigger(deps);
+  registerDeadlineEndedTrigger(deps);
   registerDeadlinePlanChangedTrigger(deps);
   registerDeadlineStatusIsCondition(deps);
   registerHasActiveDeadlineCondition(deps);
@@ -438,24 +427,40 @@ const resolvePreviousFlowStatus = (
   return mapPreviousStatusToFlowStatus(snapshot.previousStatus);
 };
 
-function registerDeadlineMissedTrigger(deps: FlowCardDeps): void {
-  const card = deps.homey.flow.getTriggerCard('deadline_missed');
+function registerDeadlineEndedTrigger(deps: FlowCardDeps): void {
+  const card = deps.homey.flow.getTriggerCard('deadline_ended');
   card.registerRunListener(async (args: unknown, state?: unknown) => {
-    const payload = args as { device?: RawFlowDeviceArg } | null;
-    const stateRecord = (state ?? {}) as { deviceId?: string };
+    const payload = args as { device?: RawFlowDeviceArg; outcome?: DropdownArg } | null;
+    const stateRecord = (state ?? {}) as {
+      deviceId?: string;
+      outcome?: DeferredObjectivePublicOutcome;
+    };
     const wantedDeviceId = getDeviceIdFromFlowArg(payload?.device);
-    return Boolean(wantedDeviceId && wantedDeviceId === stateRecord.deviceId);
+    if (!wantedDeviceId || wantedDeviceId !== stateRecord.deviceId) return false;
+    const wantedOutcome = normalizeOutcomeArg(payload?.outcome);
+    if (wantedOutcome === null) return false;
+    if (wantedOutcome === 'any') return true;
+    return wantedOutcome === stateRecord.outcome;
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
     const snapshot = await deps.getSnapshot();
     return buildDeviceAutocompleteOptions(snapshot, query);
   });
 
-  const bus = deps.getDeferredObjectiveStatusBus?.();
+  const bus = deps.getDeferredObjectiveEndedBus?.();
   if (!bus) return;
-  bus.onMissed((snapshot) => {
-    void card.trigger?.(buildMissedTokens(snapshot), { deviceId: snapshot.deviceId })
-      .catch((err: Error) => deps.error('Failed to trigger deadline_missed', err));
+  bus.onEnded((event) => {
+    let tokens: Record<string, unknown>;
+    try {
+      tokens = buildEndedTokens(event, deps.getTimeZone());
+    } catch (err) {
+      // Swallow listener-side errors so a malformed event cannot unwind back
+      // into the plan-history finalization that published it.
+      deps.error('Failed to build deadline_ended tokens', err);
+      return;
+    }
+    void card.trigger?.(tokens, { deviceId: event.deviceId, outcome: event.outcome })
+      .catch((err: Error) => deps.error('Failed to trigger deadline_ended', err));
   });
 }
 

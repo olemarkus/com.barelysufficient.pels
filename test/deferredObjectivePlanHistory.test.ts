@@ -274,6 +274,56 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     expect(entry.finalProgressC).toBe(55);
   });
 
+  it('publishes ended events to the bus on finalization for met / missed / abandoned only', () => {
+    // Three runs in parallel: one reaches target, one misses, one disappears.
+    // A fourth user-replace and a backfilled entry must stay quiet.
+    const events: Array<{ deviceId: string; outcome: string }> = [];
+    const { deps: persist } = buildPersistDeps();
+    const recorder = new DeferredObjectivePlanHistoryRecorder({
+      ...persist,
+      endedBus: {
+        publish: (event) => events.push({ deviceId: event.deviceId, outcome: event.outcome }),
+        onEnded: () => () => undefined,
+      },
+    });
+    const deadlineAtMs = 6 * HOUR_MS;
+
+    // met: hits target during the run.
+    recorder.observe([makeDiag({
+      deviceId: 'met-dev', deadlineAtMs, status: 'satisfied', currentTemperatureC: 70,
+    })], HOUR_MS);
+    // missed: progress stays below target until the deadline sweep.
+    recorder.observe([makeDiag({
+      deviceId: 'missed-dev', deadlineAtMs, currentTemperatureC: 55,
+    })], HOUR_MS);
+    // abandoned-via-user: cleared explicitly.
+    recorder.observe([makeDiag({ deviceId: 'abandoned-dev', deadlineAtMs })], HOUR_MS);
+    recorder.finalizeForUserChange('abandoned-dev', 2 * HOUR_MS, 'abandoned');
+    // replaced-via-user: must NOT publish (run continues under new params).
+    recorder.observe([makeDiag({ deviceId: 'replaced-dev', deadlineAtMs })], HOUR_MS);
+    recorder.finalizeForUserChange('replaced-dev', 2 * HOUR_MS, 'replaced');
+    // Deadline sweep finalizes the met and missed runs.
+    recorder.observe([], 6 * HOUR_MS);
+
+    expect(events).toEqual([
+      { deviceId: 'abandoned-dev', outcome: 'abandoned' },
+      { deviceId: 'met-dev', outcome: 'succeeded' },
+      { deviceId: 'missed-dev', outcome: 'missed' },
+    ]);
+
+    // Backfill entries describe deadlines that elapsed before PELS observed
+    // them — they must never reach the bus retroactively.
+    recorder.backfillFromConfig([{
+      deviceId: 'backfill-dev',
+      deviceName: 'Back-filled',
+      objectiveKind: 'temperature',
+      deadlineAtMs: 5 * HOUR_MS,
+      targetTemperatureC: 65,
+      targetPercent: null,
+    }], 0, 7 * HOUR_MS);
+    expect(events).toHaveLength(3);
+  });
+
   it('preserves `usedPolicyAvoid` once a backup hour was used and rolls it into the entry', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectivePlanHistoryRecorder(deps);

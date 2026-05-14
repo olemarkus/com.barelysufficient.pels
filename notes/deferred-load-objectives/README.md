@@ -200,7 +200,13 @@ revision on these triggers:
 4. **`prices_revised`** — The hour signature of the planner's allocation differs from
    the stored `latest.hours` while the objective signature is unchanged. (The most
    common cause is Nordpool publishing a revised series that shifts which hours are
-   cheapest.) Replaces `latest`.
+   cheapest.) Replaces `latest`. The user-facing `deadline_plan_changed` flow trigger
+   is gated further: it only fires when the *number* of planned hours changes and the
+   new schedule is non-empty. Same-count hour swaps still persist a revision (Settings
+   UI needs fresh metadata) but stay quiet on the flow bus, and empty schedules
+   (satisfied / cannot_meet / invalid) are surfaced via `deadline_status_changed`
+   instead, since the plan-changed notification template needs `projectedFinishAtMs`
+   to render.
 5. **`rate_refined`** — A learned kWh-per-unit value replaces a conservative bootstrap fallback,
    or otherwise changes the energy basis enough to produce a different stable allocation.
 6. **`device_unavailable`** — The diagnostic stops appearing for an extended period
@@ -259,8 +265,13 @@ capture per-(device, deadline) outcomes for the Settings UI History tab on
 - The Settings UI fetches this via `/ui_deferred_objective_history` and renders
   per-device cards in the History tab next to the existing current-plan view.
 
-The missed-deadline trigger is wired. A separate goal-met trigger remains future work; consumers can
-observe the existing status-change trigger when a task reaches `satisfied`.
+End-of-run events for smart tasks are surfaced via the unified `deadline_ended` flow trigger,
+published by the plan history recorder at finalization. The trigger carries an `outcome` arg
+(`succeeded` / `missed` / `abandoned`) and corresponding tokens (target text, deadline local time,
+finished-at local time when succeeded, shortfall text when missed). `replaced` (user changed the
+deadline) and `unknown` (PELS never observed enough to classify) outcomes are intentionally
+suppressed — they do not fire the trigger. Backfill entries reconstructed from settings after a
+PELS-off window also stay quiet so users do not receive retroactive notifications.
 
 Original design semantics (still authoritative for future slices):
 

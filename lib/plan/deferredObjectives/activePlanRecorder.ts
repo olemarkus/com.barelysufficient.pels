@@ -130,6 +130,25 @@ const resolveComputedFromPricesUpTo = (
 // during the same set of charging hours) redistributes kWh across the same
 // hours without changing the user-visible schedule, and must not fire a
 // "new plan" notification.
+// User-facing notification gate. Fires only when the number of charging
+// hours actually changes — same-count swaps still persist a revision but
+// stay quiet on the flow bus. Empty schedules split by intent: a
+// `satisfied` collapse is suppressed (target met — no plan to notify about,
+// and the token template would render as the malformed "…reach goal at .
+// 0 kWh remaining"); a `cannot_meet` or `invalid` collapse fires so
+// automations see "your plan blew up" even when the planner stays in the
+// same status across a statusDetail worsening (e.g.
+// cannot_meet/target_cannot_be_met → cannot_meet/no_bucket_capacity).
+const shouldFireNotification = (
+  previousHourCount: number,
+  nextHourCount: number,
+  planStatus: DeferredObjectiveActivePlanRevisionV1['planStatus'],
+): boolean => {
+  if (previousHourCount === nextHourCount) return false;
+  if (nextHourCount > 0) return true;
+  return planStatus === 'cannot_meet' || planStatus === 'invalid';
+};
+
 const sameHourSchedule = (
   a: readonly DeferredObjectiveActivePlanHourV1[],
   b: readonly DeferredObjectiveActivePlanHourV1[],
@@ -486,7 +505,7 @@ export class DeferredObjectiveActivePlanRecorder {
       reason,
       hourCount: hours.length,
     });
-    if (scheduleChanged) {
+    if (shouldFireNotification(latest.hours.length, hours.length, horizonPlan.status)) {
       this.deps.onRevisionWritten?.({
         deviceId: diag.deviceId,
         deviceName: diag.deviceName ?? current.deviceName,

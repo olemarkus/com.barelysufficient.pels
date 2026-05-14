@@ -1,8 +1,11 @@
 import { registerDeadlineObjectiveCards } from '../flowCards/deadlineObjectiveCards';
 import {
+  createDeferredObjectiveEndedBus,
   createDeferredObjectivePlanRevisionBus,
   createDeferredObjectiveStatusBus,
   createEmptyDeferredObjectiveSettings,
+  type DeferredObjectiveEndedBus,
+  type DeferredObjectiveEndedEvent,
   type DeferredObjectivePlanRevisionBus,
   type DeferredObjectiveSettingsV1,
   type DeferredObjectiveStatusBus,
@@ -67,6 +70,7 @@ const buildDeps = (overrides: {
   snapshot: TargetDeviceSnapshot[];
   bus?: DeferredObjectiveStatusBus;
   planRevisionBus?: DeferredObjectivePlanRevisionBus;
+  endedBus?: DeferredObjectiveEndedBus;
   rebuildPlan?: ReturnType<typeof vi.fn>;
 }): { deps: FlowCardDeps; mock: ReturnType<typeof createMockHomey> } => {
   const mock = createMockHomey();
@@ -103,6 +107,7 @@ const buildDeps = (overrides: {
     error: () => {},
     getDeferredObjectiveStatusBus: () => overrides.bus,
     getDeferredObjectivePlanRevisionBus: () => overrides.planRevisionBus,
+    getDeferredObjectiveEndedBus: () => overrides.endedBus,
   } as unknown as FlowCardDeps;
   return { deps, mock };
 };
@@ -703,87 +708,61 @@ describe('deadline objective flow cards', () => {
     expect(trigger.trigger).toHaveBeenCalledTimes(1);
   });
 
-  it('publishes missed through the legacy missed trigger, not active status', async () => {
-    const bus = createDeferredObjectiveStatusBus();
+  it('publishes deadline_ended with outcome-specific tokens', async () => {
+    const endedBus = createDeferredObjectiveEndedBus();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      bus,
+      endedBus,
     });
     registerDeadlineObjectiveCards(deps);
-    const statusTrigger = mock.triggers.get('deadline_status_changed')!;
-    const missedTrigger = mock.triggers.get('deadline_missed')!;
-    const condition = mock.conditions.get('deadline_status_is')!;
-    const transition: DeferredObjectiveStatusSnapshot = {
+    const trigger = mock.triggers.get('deadline_ended')!;
+
+    const missedEvent: DeferredObjectiveEndedEvent = {
       deviceId: 'heater-1',
       deviceName: 'Boiler',
-      kind: 'temperature',
-      status: 'cannot_meet',
-      previousStatus: 'on_track',
-      targetText: '55 °C',
-      deadlineLocalTime: '07:00',
+      objectiveKind: 'temperature',
+      outcome: 'missed',
+      targetTemperatureC: 55,
+      targetPercent: null,
       deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
-      deadlineMissed: true,
-      shortfallKwh: 1.2,
-      shortfallText: '5 °C below target',
+      finalizedAtMs: HH_MM_TO_UTC_MS(7, 1),
+      metAtMs: null,
+      finalProgressC: 50,
+      finalProgressPercent: null,
     };
-    bus.publishMissed(transition);
+    endedBus.publish(missedEvent);
 
-    expect(statusTrigger.trigger).not.toHaveBeenCalled();
-    expect(missedTrigger.trigger).toHaveBeenCalledTimes(1);
-    const [tokens, state] = missedTrigger.trigger.mock.calls[0]!;
+    expect(trigger.trigger).toHaveBeenCalledTimes(1);
+    const [tokens, state] = trigger.trigger.mock.calls[0]!;
     expect(tokens).toMatchObject({
       device_name: 'Boiler',
+      outcome: 'Missed',
       kind: 'temperature',
-      shortfall_kwh: 1.2,
-      shortfall_text: '5 °C below target',
+      target_text: '55.0 °C',
+      deadline_local_time: '07:00',
+      finished_at_local_time: '',
+      shortfall_text: '5.0 °C below target',
     });
-    expect(state).toEqual({ deviceId: 'heater-1' });
-    expect(await missedTrigger.run!({ device: 'heater-1' }, state)).toBe(true);
-    expect(await condition.run!({ device: 'heater-1', status: 'missed' })).toBe(false);
-    expect(await condition.run!({ device: 'heater-1', status: 'unachievable' })).toBe(false);
+    expect(state).toEqual({ deviceId: 'heater-1', outcome: 'missed' });
 
-    bus.publish({
-      ...transition,
-      status: 'cannot_meet',
-      previousStatus: 'on_track',
-    });
-    expect(statusTrigger.trigger).not.toHaveBeenCalled();
+    // Run listener: device + outcome must both match the arg.
+    expect(await trigger.run!({ device: 'heater-1', outcome: 'missed' }, state)).toBe(true);
+    expect(await trigger.run!({ device: 'heater-1', outcome: 'succeeded' }, state)).toBe(false);
+    expect(await trigger.run!({ device: 'heater-1', outcome: 'any' }, state)).toBe(true);
 
-    bus.publishMissed({
-      ...transition,
-      deadlineAtMs: HH_MM_TO_UTC_MS(8, 0),
-      deadlineLocalTime: '08:00',
+    // A succeeded event populates finished_at and clears the shortfall.
+    endedBus.publish({
+      ...missedEvent,
+      outcome: 'succeeded',
+      metAtMs: HH_MM_TO_UTC_MS(6, 30),
+      finalProgressC: 55,
     });
-    expect(missedTrigger.trigger).toHaveBeenCalledTimes(2);
-  });
-
-  it('emits an empty shortfall_text when the device-side shortfall is unknown', () => {
-    const bus = createDeferredObjectiveStatusBus();
-    const { deps, mock } = buildDeps({
-      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      bus,
+    expect(trigger.trigger).toHaveBeenCalledTimes(2);
+    expect(trigger.trigger.mock.calls[1]![0]).toMatchObject({
+      outcome: 'Succeeded',
+      finished_at_local_time: '06:30',
+      shortfall_text: '',
     });
-    registerDeadlineObjectiveCards(deps);
-    const missedTrigger = mock.triggers.get('deadline_missed')!;
-    bus.publishMissed({
-      deviceId: 'heater-1',
-      deviceName: 'Boiler',
-      kind: 'temperature',
-      status: 'cannot_meet',
-      previousStatus: 'on_track',
-      targetText: '55 °C',
-      deadlineLocalTime: '07:00',
-      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
-      deadlineMissed: true,
-      // Unknown shortfall: the Homey SDK rejects `null` for `number`-typed
-      // tokens, so the numeric token still falls back to `0` and flows are
-      // expected to gate "unknown" via the (empty) `shortfall_text` instead.
-      shortfallKwh: null,
-      shortfallText: null,
-    });
-    const [tokens] = missedTrigger.trigger.mock.calls[0]!;
-    expect(tokens.shortfall_text).toBe('');
-    expect(tokens.shortfall_kwh).toBe(0);
   });
 
   it('publishes deadline_plan_changed with kWh, charge hours and projected finish tokens', async () => {
