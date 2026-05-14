@@ -179,6 +179,10 @@ export const resolveDeltaPill = (
 const SPLIT_COVERAGE_THRESHOLD = 0.5;
 const BACKGROUND_SHARE_GAP = 0.1;
 
+const HEADLINE_LABEL_BY_VIEW: Record<BudgetDayView, string> = {
+  yesterday: "Yesterday's total", today: 'Projected today', tomorrow: 'Planned for tomorrow',
+};
+
 const sumElapsed = (values: number[], buckets: number): number => {
   let total = 0;
   for (let index = 0; index < buckets && index < values.length; index += 1) {
@@ -309,6 +313,7 @@ export const resolveHeroData = (
 ): BudgetHeroData => {
   if (!budgetEnabled || !viewPayload || viewPayload.budget.enabled !== true || status === 'noPlan') {
     return {
+      headlineLabel: null,
       comparison: budgetEnabled ? 'Waiting for daily budget data' : 'Daily budget off',
       delta: null,
       headroomLine: null,
@@ -319,6 +324,7 @@ export const resolveHeroData = (
     };
   }
   return {
+    headlineLabel: HEADLINE_LABEL_BY_VIEW[view],
     comparison: formatComparisonLine(viewPayload, view),
     delta: resolveDeltaPill(viewPayload, view, status),
     headroomLine: view === 'today' ? resolveHeadroomLine(viewPayload, costDisplay) : null,

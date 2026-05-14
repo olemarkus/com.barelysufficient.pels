@@ -36,6 +36,7 @@ export type BudgetStatus = 'noPlan' | 'within' | 'tight' | 'over';
 export type BudgetDeltaTone = 'ok' | 'warn' | 'alert';
 
 export type BudgetHeroData = {
+  headlineLabel: string | null;
   comparison: string;
   delta: { label: string; tone: BudgetDeltaTone } | null;
   headroomLine: string | null;
@@ -149,6 +150,9 @@ const deltaChipClass = (tone: BudgetDeltaTone): string => {
 const BudgetHero = ({ hero }: { hero: BudgetHeroData }) => (
   <section class="plan-hero" data-tone={hero.heroTone}>
     <div id="budget-plan-summary" class="plan-hero__section">
+      {hero.headlineLabel !== null && (
+        <span class="plan-hero__section-label">{hero.headlineLabel}</span>
+      )}
       <div class="plan-hero__headline-row">
         <div id="budget-redesign-comparison" class="plan-hero__headline">{hero.comparison}</div>
         {hero.delta && (
