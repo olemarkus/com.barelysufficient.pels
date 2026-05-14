@@ -210,13 +210,13 @@ export function loadPowerCalibrationStore(params: {
   const rawRead = readPersistedSnapshot(params.homey);
   const initialSnapshot = normalizePowerCalibrationSnapshot(rawRead.value);
   const rawIsPlausible = !rawRead.threw && isPlausiblePersistedSnapshot(rawRead.value);
-  // Treat a thrown snapshot read as a transient miss (raw absent, marker
-  // assumed present) — the only safe interpretation when we cannot tell
-  // whether prior history exists. `rawIsAbsent` covers both genuine absence
-  // and the thrown case.
-  const rawIsAbsent = rawRead.threw
-    || rawRead.value === undefined
-    || rawRead.value === null;
+  // Distinguish "raw genuinely absent" from "raw read threw". A throw means
+  // we cannot tell whether prior history exists, so it must NOT collapse
+  // into the fresh-install branch even when the marker is also absent —
+  // that combination would otherwise overwrite an upgrading user's history
+  // (marker may legitimately be missing on first post-upgrade boot).
+  const rawIsAbsent = !rawRead.threw
+    && (rawRead.value === undefined || rawRead.value === null);
   const markerRead = readInitMarker(params.homey);
   // Treat a thrown marker read as marker-present. Pairing a thrown marker
   // read with an absent snapshot would otherwise misclassify an existing
@@ -234,6 +234,7 @@ export function loadPowerCalibrationStore(params: {
   const loadGraceMs = params.options?.loadGraceMs ?? resolveLoadGraceMs({
     rawIsPlausible,
     rawIsAbsent,
+    rawReadThrew: rawRead.threw,
     hasInitMarker,
   });
   return new PowerCalibrationStore({
@@ -260,6 +261,10 @@ function readPersistedSnapshot(homey: Homey.App['homey']): SettingsReadResult<un
 /**
  * Decide whether to engage the abandon-grace window after loading.
  *  - Plausible raw → no grace; the loaded snapshot is authoritative.
+ *  - Raw read threw → engage grace regardless of marker. A throw means the
+ *    SDK refused to answer, and an upgrading install may legitimately have
+ *    no marker yet — collapsing into the fresh-install branch would
+ *    overwrite prior history on the next persist.
  *  - Raw absent AND marker absent → fresh install; no grace, write
  *    immediately so brand-new EMAs aren't lost to a crash inside the window.
  *  - Raw absent AND marker present → transient SDK miss; engage grace so a
@@ -271,6 +276,7 @@ function readPersistedSnapshot(homey: Homey.App['homey']): SettingsReadResult<un
 function resolveLoadGraceMs(args: {
   rawIsPlausible: boolean;
   rawIsAbsent: boolean;
+  rawReadThrew: boolean;
   hasInitMarker: boolean;
 }): number {
   if (args.rawIsPlausible) return 0;
