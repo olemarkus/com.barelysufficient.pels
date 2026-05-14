@@ -424,12 +424,15 @@ const buildPlanChangedTokens = (
   event: DeferredObjectivePlanRevisionEvent,
   timeZone: string,
 ): Record<string, unknown> => {
-  const { hours, energyNeededKWh } = event.revision;
+  const { energyNeededKWh } = event.revision;
   const finishAtMs = event.projectedFinishAtMs;
   return {
     device_name: event.deviceName ?? event.deviceId,
     remaining_kwh: Math.round(energyNeededKWh * 1000) / 1000,
-    planned_hours: hours.length,
+    // Monotonic over the plan's lifetime (resets on objective change). Built
+    // from a union of every hour ever scheduled, so the count never decreases
+    // as elapsed buckets drop off the horizon planner's future window.
+    planned_hours: event.accumulatedHourCount,
     projected_finish_local_time: finishAtMs === null ? '' : formatDeadlineLocalTime(finishAtMs, timeZone),
   };
 };

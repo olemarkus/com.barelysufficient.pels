@@ -124,9 +124,34 @@ const resolveComputedFromPricesUpTo = (
   return latest;
 };
 
-const hoursSignature = (hours: readonly DeferredObjectiveActivePlanHourV1[]): string => (
-  JSON.stringify(hours.map((h) => [h.startsAtMs, h.plannedKWh]))
-);
+// Schedule comparison: two hour lists are equivalent iff they cover the same
+// set of hour-aligned `startsAtMs` values, in order. `plannedKWh` is
+// deliberately excluded — a shrinking `energyNeededKWh` (e.g. consumption
+// during the same set of charging hours) redistributes kWh across the same
+// hours without changing the user-visible schedule, and must not fire a
+// "new plan" notification.
+const sameHourSchedule = (
+  a: readonly DeferredObjectiveActivePlanHourV1[],
+  b: readonly DeferredObjectiveActivePlanHourV1[],
+): boolean => {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i]!.startsAtMs !== b[i]!.startsAtMs) return false;
+  }
+  return true;
+};
+
+// Pre-condition: caller has already established `sameHourSchedule(a, b)`, so
+// both arrays are aligned by index.
+const samePlannedKWh = (
+  a: readonly DeferredObjectiveActivePlanHourV1[],
+  b: readonly DeferredObjectiveActivePlanHourV1[],
+): boolean => {
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i]!.plannedKWh !== b[i]!.plannedKWh) return false;
+  }
+  return true;
+};
 
 const createPlanFromSeed = (seed: ActivePlanFlowCardSeed, nowMs: number): DeferredObjectiveActivePlanV1 => ({
   deviceId: seed.deviceId,
@@ -215,6 +240,13 @@ const buildRevision = (params: {
   };
 };
 
+const seedScheduledStarts = (plan: DeferredObjectiveActivePlanV1): Set<number> => {
+  const starts = new Set<number>();
+  for (const hour of plan.original?.hours ?? []) starts.add(hour.startsAtMs);
+  for (const hour of plan.latest?.hours ?? []) starts.add(hour.startsAtMs);
+  return starts;
+};
+
 // Treat absence as `learned` so legacy persisted revisions don't appear to
 // transition to `learned` on the first observation after upgrade.
 const resolveLatestKwhPerUnitSource = (
@@ -230,6 +262,14 @@ export class DeferredObjectiveActivePlanRecorder {
   // restart does not delete persisted plans.
   private lastSeenAtMs: Map<string, number>;
 
+  // In-memory only. Per-device union of every `startsAtMs` ever scheduled
+  // during the current plan's lifetime, used to drive the monotonic
+  // `accumulatedHourCount` on revision events. Reset when the objective
+  // signature changes or the plan is cleared. Reseeded on construction from
+  // `original.hours ∪ latest.hours` of any persisted plan — the best
+  // available approximation after a restart drops mid-plan history.
+  private scheduledHourStarts: Map<string, Set<number>>;
+
   private dirty = false;
 
   constructor(private readonly deps: ActivePlanPersistDeps) {
@@ -237,6 +277,9 @@ export class DeferredObjectiveActivePlanRecorder {
     this.plans = loaded ? { ...loaded.plansByDeviceId } : {};
     const constructedAtMs = Date.now();
     this.lastSeenAtMs = new Map(Object.keys(this.plans).map((id) => [id, constructedAtMs]));
+    this.scheduledHourStarts = new Map(
+      Object.entries(this.plans).map(([id, plan]) => [id, seedScheduledStarts(plan)]),
+    );
   }
 
   // Called from the flow card handler so the UI shows a pending hero immediately,
@@ -258,6 +301,7 @@ export class DeferredObjectiveActivePlanRecorder {
     }
     this.plans[seed.deviceId] = createPlanFromSeed(seed, nowMs);
     this.lastSeenAtMs.set(seed.deviceId, nowMs);
+    this.scheduledHourStarts.delete(seed.deviceId);
     this.dirty = true;
   }
 
@@ -266,7 +310,19 @@ export class DeferredObjectiveActivePlanRecorder {
     if (this.plans[deviceId] === undefined) return;
     delete this.plans[deviceId];
     this.lastSeenAtMs.delete(deviceId);
+    this.scheduledHourStarts.delete(deviceId);
     this.dirty = true;
+  }
+
+  private recordScheduledHours(
+    deviceId: string,
+    hours: readonly DeferredObjectiveActivePlanHourV1[],
+    resetFirst: boolean,
+  ): number {
+    const starts = resetFirst ? new Set<number>() : (this.scheduledHourStarts.get(deviceId) ?? new Set<number>());
+    for (const hour of hours) starts.add(hour.startsAtMs);
+    this.scheduledHourStarts.set(deviceId, starts);
+    return starts.size;
   }
 
   // Per-cycle observation. Reads `horizonPlan` from each diagnostic and updates
@@ -287,6 +343,7 @@ export class DeferredObjectiveActivePlanRecorder {
     // A previous record for a different deadline is stale — replace it.
     if (existing && existing.deadlineAtMs !== diag.deadlineAtMs) {
       delete this.plans[diag.deviceId];
+      this.scheduledHourStarts.delete(diag.deviceId);
     }
     const candidateHours = buildHoursFromHorizonPlan(diag);
     if (candidateHours === null) {
@@ -366,6 +423,7 @@ export class DeferredObjectiveActivePlanRecorder {
       latest: revision,
     };
     this.dirty = true;
+    this.recordScheduledHours(diag.deviceId, hours, true);
     this.emit({
       event: 'active_plan_revision_written',
       deviceId: diag.deviceId,
@@ -385,8 +443,22 @@ export class DeferredObjectiveActivePlanRecorder {
     // Caller (`observeDiagnostic`) already returns early when `current.latest`
     // is null, so we can dereference it directly here.
     const latest = current.latest as DeferredObjectiveActivePlanRevisionV1;
+    const horizonPlan = diag.horizonPlan as NonNullable<typeof diag.horizonPlan>;
     const objectiveChanged = current.objectiveSignature !== signature;
-    const allocationChanged = hoursSignature(latest.hours) !== hoursSignature(hours);
+    // Schedule change = user-visible "new plan" (set of charging hours).
+    // Drives the `deadline_plan_changed` flow trigger.
+    const scheduleChanged = !sameHourSchedule(latest.hours, hours);
+    // Same charging hours but consumer-visible revision metadata drifted —
+    // either kWh redistributed across the unchanged hours, or
+    // `energyNeededKWh` / `planStatus` shifted (Settings UI reads
+    // `activePlan.latest.energyNeededKWh` as authoritative). Persist a new
+    // revision so consumers stay in sync, but do not fire the flow bus —
+    // there is no new schedule for the user to act on.
+    const metadataDriftedWithinSchedule = !scheduleChanged && (
+      !samePlannedKWh(latest.hours, hours)
+      || latest.energyNeededKWh !== horizonPlan.energyNeededKWh
+      || latest.planStatus !== horizonPlan.status
+    );
     // Any kwhPerUnitSource change is a replan trigger so persisted metadata
     // (`kwhPerUnitSource`, `energyNeededKWh`, `planStatus`) cannot go stale
     // when the bucket allocation happens to be byte-identical across a source
@@ -405,7 +477,7 @@ export class DeferredObjectiveActivePlanRecorder {
     const sourceRefined = previousSource === 'bootstrap' && nextSource === 'learned';
     // TODO: device_unavailable + measured_deviation triggers — wired here once
     // device-level metering exists. For now those reasons are not used.
-    if (!objectiveChanged && !allocationChanged && !sourceChanged) return;
+    if (!objectiveChanged && !scheduleChanged && !metadataDriftedWithinSchedule && !sourceChanged) return;
     const reason: DeferredObjectiveActivePlanRevisionReason = (() => {
       if (objectiveChanged) return 'objective_changed';
       if (sourceRefined) return 'rate_refined';
@@ -423,6 +495,7 @@ export class DeferredObjectiveActivePlanRecorder {
       latest: revision,
     };
     this.dirty = true;
+    const accumulatedHourCount = this.recordScheduledHours(diag.deviceId, hours, objectiveChanged);
     this.emit({
       event: 'active_plan_revision_written',
       deviceId: diag.deviceId,
@@ -430,15 +503,16 @@ export class DeferredObjectiveActivePlanRecorder {
       reason,
       hourCount: hours.length,
     });
-    if (allocationChanged) {
+    if (scheduleChanged) {
       this.deps.onRevisionWritten?.({
         deviceId: diag.deviceId,
         deviceName: diag.deviceName ?? current.deviceName,
         objectiveKind: diag.objectiveKind,
         revision,
         reason,
-        allocationChanged,
+        allocationChanged: true,
         projectedFinishAtMs: resolveProjectedFinishAtMs(diag),
+        accumulatedHourCount,
       });
     }
   }
@@ -448,6 +522,7 @@ export class DeferredObjectiveActivePlanRecorder {
       if (plan.deadlineAtMs <= nowMs) {
         delete this.plans[deviceId];
         this.lastSeenAtMs.delete(deviceId);
+        this.scheduledHourStarts.delete(deviceId);
         this.dirty = true;
         this.emit({ event: 'active_plan_dropped', deviceId, reason: 'deadline_passed' });
         continue;
@@ -462,6 +537,7 @@ export class DeferredObjectiveActivePlanRecorder {
       if (nowMs - lastSeen >= ABANDON_GRACE_MS) {
         delete this.plans[deviceId];
         this.lastSeenAtMs.delete(deviceId);
+        this.scheduledHourStarts.delete(deviceId);
         this.dirty = true;
         this.emit({ event: 'active_plan_dropped', deviceId, reason: 'objective_inactive' });
       }
