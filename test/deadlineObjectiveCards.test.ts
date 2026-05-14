@@ -185,13 +185,15 @@ describe('deadline objective flow cards', () => {
     });
   });
 
-  it('honors legacy EV enforcement args while the visible input is removed', async () => {
+  it('ignores any stray enforcement arg and persists soft enforcement', async () => {
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'ev-1', name: 'Charger', deviceClass: 'evcharger' })],
       rebuildPlan: vi.fn(),
     });
     registerDeadlineObjectiveCards(deps);
     const card = mock.actions.get('set_ev_charge_deadline')!;
+    // The action JSON no longer declares an `enforcement` arg, but a stray
+    // value from a stale flow definition must not change the stored entry.
     await card.run!({
       device: { id: 'ev-1' },
       target_percent: 80,
@@ -199,7 +201,7 @@ describe('deadline objective flow cards', () => {
       enforcement: { id: 'hard' },
     });
     const stored = mock.settings.get('deferred_objectives') as DeferredObjectiveSettingsV1;
-    expect(stored.objectivesByDeviceId['ev-1']?.enforcement).toBe('hard');
+    expect(stored.objectivesByDeviceId['ev-1']?.enforcement).toBe('soft');
   });
 
   it('rejects set_ev_charge_deadline when the device is not in the snapshot', async () => {
@@ -560,7 +562,7 @@ describe('deadline objective flow cards', () => {
     expect(state).toEqual({ deviceId: 'heater-1', status: 'waiting' });
   });
 
-  it('does not suppress a recreated task with the same deadline time', async () => {
+  it('does not fire on the first observation of a freshly created task', async () => {
     const bus = createDeferredObjectiveStatusBus();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
@@ -573,6 +575,9 @@ describe('deadline objective flow cards', () => {
       deviceName: 'Boiler',
       kind: 'temperature',
       status: 'on_track',
+      // `previousStatus = 'none'` means the bus had no record before — i.e. a
+      // freshly added (or re-added after `clear_deadline`) task. The trigger
+      // is "status changed", not "task created", so this must not fire.
       previousStatus: 'none',
       targetText: '55 °C',
       deadlineLocalTime: '07:00',
@@ -583,10 +588,75 @@ describe('deadline objective flow cards', () => {
     };
 
     bus.publish(snapshot);
+    expect(trigger.trigger).not.toHaveBeenCalled();
+
+    // Subsequent real status change (now bus has prior status `on_track`).
+    bus.publish({
+      ...snapshot,
+      status: 'at_risk',
+      previousStatus: 'on_track',
+    });
     expect(trigger.trigger).toHaveBeenCalledTimes(1);
-    bus.forgetDevice('heater-1');
-    bus.publish(snapshot);
-    expect(trigger.trigger).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not fire after clear_deadline + re-add even when the bus reports the same status', async () => {
+    const bus = createDeferredObjectiveStatusBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      bus,
+      rebuildPlan: vi.fn(),
+    });
+    mock.settings.set('deferred_objectives', {
+      version: 1,
+      objectivesByDeviceId: {
+        'heater-1': {
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 55,
+          deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+        },
+      },
+    });
+    registerDeadlineObjectiveCards(deps);
+    const trigger = mock.triggers.get('deadline_status_changed')!;
+
+    // First create: bus publishes on_track with a real prior status — fires.
+    bus.publish({
+      deviceId: 'heater-1',
+      deviceName: 'Boiler',
+      kind: 'temperature',
+      status: 'on_track',
+      previousStatus: 'unknown',
+      targetText: '55 °C',
+      deadlineLocalTime: '07:00',
+      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      deadlineMissed: false,
+      shortfallKwh: null,
+      shortfallText: null,
+    });
+    expect(trigger.trigger).toHaveBeenCalledTimes(1);
+
+    // Clear via the action — wipes the bus and the trigger's cache.
+    await mock.actions.get('clear_deadline')!.run!({ device: 'heater-1' });
+
+    // Re-add at a different deadline time. Bus publishes with no prior
+    // status; the now-empty cache must NOT fall back to firing because a
+    // recreate is task creation, not a status change.
+    bus.publish({
+      deviceId: 'heater-1',
+      deviceName: 'Boiler',
+      kind: 'temperature',
+      status: 'on_track',
+      previousStatus: 'none',
+      targetText: '55 °C',
+      deadlineLocalTime: '08:00',
+      deadlineAtMs: HH_MM_TO_UTC_MS(8, 0),
+      deadlineMissed: false,
+      shortfallKwh: null,
+      shortfallText: null,
+    });
+    expect(trigger.trigger).toHaveBeenCalledTimes(1);
   });
 
   it('publishes missed through the legacy missed trigger, not active status', async () => {
@@ -643,6 +713,35 @@ describe('deadline objective flow cards', () => {
     expect(missedTrigger.trigger).toHaveBeenCalledTimes(2);
   });
 
+  it('emits an empty shortfall_text when the device-side shortfall is unknown', () => {
+    const bus = createDeferredObjectiveStatusBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      bus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const missedTrigger = mock.triggers.get('deadline_missed')!;
+    bus.publishMissed({
+      deviceId: 'heater-1',
+      deviceName: 'Boiler',
+      kind: 'temperature',
+      status: 'cannot_meet',
+      previousStatus: 'on_track',
+      targetText: '55 °C',
+      deadlineLocalTime: '07:00',
+      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      deadlineMissed: true,
+      // Unknown shortfall: the Homey SDK rejects `null` for `number`-typed
+      // tokens, so the numeric token still falls back to `0` and flows are
+      // expected to gate "unknown" via the (empty) `shortfall_text` instead.
+      shortfallKwh: null,
+      shortfallText: null,
+    });
+    const [tokens] = missedTrigger.trigger.mock.calls[0]!;
+    expect(tokens.shortfall_text).toBe('');
+    expect(tokens.shortfall_kwh).toBe(0);
+  });
+
   it('publishes deadline_plan_changed with kWh, charge hours and projected finish tokens', async () => {
     const planRevisionBus = createDeferredObjectivePlanRevisionBus();
     const { deps, mock } = buildDeps({
@@ -665,7 +764,6 @@ describe('deadline objective flow cards', () => {
       reason: 'prices_revised',
       allocationChanged: true,
       projectedFinishAtMs,
-      accumulatedHourCount: 3,
       revision: {
         revision: 2,
         revisedAtMs: hourStartA,
@@ -702,7 +800,6 @@ describe('deadline objective flow cards', () => {
       reason: 'rate_refined',
       allocationChanged: false,
       projectedFinishAtMs,
-      accumulatedHourCount: 3,
       revision: {
         revision: 3,
         revisedAtMs: hourStartA,
@@ -718,6 +815,66 @@ describe('deadline objective flow cards', () => {
       },
     });
     expect(trigger.trigger).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits planned_hours that drops as the schedule shrinks', async () => {
+    const planRevisionBus = createDeferredObjectivePlanRevisionBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'ev-1', name: 'Garage charger', deviceClass: 'evcharger' })],
+      planRevisionBus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const trigger = mock.triggers.get('deadline_plan_changed')!;
+    const hourStartA = Date.UTC(2026, 0, 1, 1, 0, 0);
+    const hourStartB = Date.UTC(2026, 0, 1, 2, 0, 0);
+    const hourStartC = Date.UTC(2026, 0, 1, 5, 0, 0);
+
+    // First revision: 3 planned hours.
+    planRevisionBus.publish({
+      deviceId: 'ev-1',
+      deviceName: 'Garage charger',
+      objectiveKind: 'ev_soc',
+      reason: 'prices_revised',
+      allocationChanged: true,
+      projectedFinishAtMs: hourStartC,
+      revision: {
+        revision: 1,
+        revisedAtMs: hourStartA,
+        computedFromPricesUpTo: hourStartC + 3600000,
+        reason: 'prices_revised',
+        planStatus: 'on_track',
+        energyNeededKWh: 5.0,
+        hours: [
+          { startsAtMs: hourStartA, plannedKWh: 2.0 },
+          { startsAtMs: hourStartB, plannedKWh: 2.0 },
+          { startsAtMs: hourStartC, plannedKWh: 1.0 },
+        ],
+      },
+    });
+    expect(trigger.trigger.mock.calls[0]![0]).toMatchObject({ planned_hours: 3 });
+
+    // Later revision: schedule shrunk to a single remaining hour. The token
+    // must reflect the current schedule rather than the historic peak.
+    planRevisionBus.publish({
+      deviceId: 'ev-1',
+      deviceName: 'Garage charger',
+      objectiveKind: 'ev_soc',
+      reason: 'prices_revised',
+      allocationChanged: true,
+      projectedFinishAtMs: hourStartC,
+      revision: {
+        revision: 2,
+        revisedAtMs: hourStartC,
+        computedFromPricesUpTo: hourStartC + 3600000,
+        reason: 'prices_revised',
+        planStatus: 'on_track',
+        energyNeededKWh: 1.0,
+        hours: [
+          { startsAtMs: hourStartC, plannedKWh: 1.0 },
+        ],
+      },
+    });
+    expect(trigger.trigger.mock.calls[1]![0]).toMatchObject({ planned_hours: 1 });
   });
 
   it('swallows token-build errors so a bad plan-revision event cannot crash the publisher', () => {
@@ -739,7 +896,6 @@ describe('deadline objective flow cards', () => {
       allocationChanged: true,
       // Force buildPlanChangedTokens to throw by giving it a malformed revision.
       projectedFinishAtMs: 0,
-      accumulatedHourCount: 0,
       revision: null as unknown as never,
     })).not.toThrow();
     expect(trigger.trigger).not.toHaveBeenCalled();

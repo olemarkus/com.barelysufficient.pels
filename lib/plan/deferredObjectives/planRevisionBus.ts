@@ -14,11 +14,6 @@ export type DeferredObjectivePlanRevisionEvent = {
   // plan, derived from the last bucket's fill ratio (plannedKWh / capacityKWh).
   // Null when no bucket is planned or capacity is unknown.
   projectedFinishAtMs: number | null;
-  // Count of distinct hour slots scheduled at any point during this plan's
-  // lifetime. Grows as the plan re-allocates; never decreases until the
-  // objective itself changes. Used by `deadline_plan_changed` so the
-  // `planned_hours` flow token stays monotonic for a given deadline.
-  accumulatedHourCount: number;
 };
 
 type Listener = (event: DeferredObjectivePlanRevisionEvent) => void;

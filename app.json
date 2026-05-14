@@ -146,7 +146,6 @@
         "id": "capacity_shortfall"
       },
       {
-        "deprecated": true,
         "title": {
           "en": "Smart task missed"
         },
