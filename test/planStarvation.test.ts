@@ -25,7 +25,7 @@ describe('planStarvation', () => {
     };
 
     expect(formatStarvationBadge(starvation)).toEqual({
-      label: 'Waiting for power',
+      label: 'Low power',
       tone: 'warn',
       tooltip: 'Waiting for available power',
     });
@@ -72,7 +72,7 @@ describe('planStarvation', () => {
           startedAtMs: null,
         },
       },
-    ])).toBe('2 devices waiting for power');
+    ])).toBe('2 devices limited');
 
     expect(summarizeStarvation([
       {
@@ -91,6 +91,6 @@ describe('planStarvation', () => {
           startedAtMs: null,
         },
       },
-    ])).toBe('2 devices waiting for power');
+    ])).toBe('2 devices limited');
   });
 });

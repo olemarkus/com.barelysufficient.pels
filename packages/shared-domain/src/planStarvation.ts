@@ -18,10 +18,10 @@ const resolveTone = (cause: SettingsUiPlanDeviceStarvation['cause']): PlanStarva
 };
 
 const resolveBadgeLabel = (cause: SettingsUiPlanDeviceStarvation['cause']): string => {
-  if (cause === 'capacity') return 'Waiting for power';
+  if (cause === 'capacity') return 'Low power';
   if (cause === 'budget') return 'Budget limited';
-  if (cause === 'manual') return 'Held by manual control';
-  return 'Waiting on service';
+  if (cause === 'manual') return 'Manual hold';
+  return 'Waiting';
 };
 
 const resolveStarvationMessage = (
@@ -69,5 +69,5 @@ export const summarizeStarvation = (
     ))
     .length;
   if (count === 0) return null;
-  return count === 1 ? '1 device waiting for power' : `${count} devices waiting for power`;
+  return count === 1 ? '1 device limited' : `${count} devices limited`;
 };
