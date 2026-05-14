@@ -142,9 +142,10 @@ const NorwaySection = ({
   <>
     <p class="eyebrow eyebrow--inline">Grid tariff</p>
     <div class="field">
-      <span class="field__label">County</span>
+      <span class="field__label" id="electricity-prices-county-label">County</span>
       <MdFilledSelect
         value={countyCode}
+        aria-labelledby="electricity-prices-county-label"
         onChange={(e) => onCountyChange(readValue(e))}
       >
         <MdSelectOption value="03"><div slot="headline">Oslo</div></MdSelectOption>
@@ -166,9 +167,10 @@ const NorwaySection = ({
       <small class="field__hint">Your county for grid tariff lookup.</small>
     </div>
     <div class="field">
-      <span class="field__label">Grid company</span>
+      <span class="field__label" id="electricity-prices-grid-company-label">Grid company</span>
       <MdFilledSelect
         value={organizationNumber}
+        aria-labelledby="electricity-prices-grid-company-label"
         onChange={(e) => onOrganizationChange(readValue(e))}
       >
         <MdSelectOption value=""><div slot="headline">Select grid company</div></MdSelectOption>
@@ -181,9 +183,10 @@ const NorwaySection = ({
       <small class="field__hint">Filtered by county.</small>
     </div>
     <div class="field">
-      <span class="field__label">Tariff group</span>
+      <span class="field__label" id="electricity-prices-tariff-group-label">Tariff group</span>
       <MdFilledSelect
         value={tariffGroup}
+        aria-labelledby="electricity-prices-tariff-group-label"
         onChange={(e) => onTariffGroupChange(readValue(e))}
       >
         <MdSelectOption value="Husholdning"><div slot="headline">Household</div></MdSelectOption>
@@ -200,9 +203,10 @@ const NorwaySection = ({
 
     <p class="eyebrow eyebrow--inline">Spot price</p>
     <div class="field">
-      <span class="field__label">Norway pricing model</span>
+      <span class="field__label" id="electricity-prices-norway-model-label">Norway pricing model</span>
       <MdFilledSelect
         value={norwayPriceModel}
+        aria-labelledby="electricity-prices-norway-model-label"
         onChange={(e) => onNorwayModelChange(readValue(e) as NorwayPriceModel)}
       >
         <MdSelectOption value="stromstotte">
@@ -223,9 +227,10 @@ const NorwaySection = ({
       </p>
     )}
     <div class="field">
-      <span class="field__label">Price area</span>
+      <span class="field__label" id="electricity-prices-price-area-label">Price area</span>
       <MdFilledSelect
         value={priceArea}
+        aria-labelledby="electricity-prices-price-area-label"
         onChange={(e) => onPriceAreaChange(readValue(e))}
       >
         <MdSelectOption value="NO1"><div slot="headline">NO1 — Oslo / East Norway</div></MdSelectOption>
@@ -234,16 +239,21 @@ const NorwaySection = ({
         <MdSelectOption value="NO4"><div slot="headline">NO4 — Tromsø / North Norway (no VAT)</div></MdSelectOption>
         <MdSelectOption value="NO5"><div slot="headline">NO5 — Bergen / West Norway</div></MdSelectOption>
       </MdFilledSelect>
-      <small class="field__hint">Your electricity price area (hvakosterstrommen.no).</small>
+      <small class="field__hint">
+        {'Your electricity price area ('}
+        <a href="https://www.hvakosterstrommen.no/" target="_blank" rel="noopener noreferrer">hvakosterstrommen.no</a>
+        {').'}
+      </small>
     </div>
     <label class="field">
-      <span class="field__label">Provider surcharge (øre/kWh, incl. VAT)</span>
+      <span class="field__label" id="electricity-prices-provider-surcharge-label">Provider surcharge (øre/kWh, incl. VAT)</span>
       <MdFilledTextField
         type="number"
         value={String(providerSurcharge)}
         step="0.1"
         min="-100"
         max="100"
+        aria-labelledby="electricity-prices-provider-surcharge-label"
         onChange={(e) => {
           const val = readFiniteNumber(e);
           if (val !== null) onProviderSurchargeChange(val);
@@ -334,13 +344,14 @@ const ThresholdForm = ({
     <h3 class="section-title">Cheap and expensive hours</h3>
     <p class="muted">Defines what counts as cheap or expensive.</p>
     <label class="field">
-      <span class="field__label">Price threshold (%)</span>
+      <span class="field__label" id="electricity-prices-threshold-label">Price threshold (%)</span>
       <MdFilledTextField
         type="number"
         value={String(thresholdPercent)}
         min="5"
         max="50"
         step="1"
+        aria-labelledby="electricity-prices-threshold-label"
         onChange={(e) => {
           const val = readFiniteNumber(e);
           if (val !== null) onThresholdChange(val);
@@ -349,7 +360,7 @@ const ThresholdForm = ({
       <small class="field__hint">Hours this % below or above average are marked cheap or expensive.</small>
     </label>
     <label class="field">
-      <span class="field__label">
+      <span class="field__label" id="electricity-prices-min-diff-label">
         {isExternal ? 'Minimum price difference' : 'Minimum price difference (øre/kWh)'}
       </span>
       <MdFilledTextField
@@ -359,6 +370,7 @@ const ThresholdForm = ({
         max="1000"
         step="any"
         inputmode="decimal"
+        aria-labelledby="electricity-prices-min-diff-label"
         onChange={(e) => {
           const val = readFiniteNumber(e);
           if (val !== null) onMinDiffChange(val);

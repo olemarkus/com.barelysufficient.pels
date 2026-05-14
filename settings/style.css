@@ -845,6 +845,12 @@ md-primary-tab.tab[active]:hover {
   color: var(--muted);
 }
 
+.field__hint a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .form__actions {
   display: flex;
   gap: 12px;
@@ -3573,8 +3579,6 @@ md-primary-tab.tab[active]:hover {
   padding: 0 0 var(--spacing-2);
   border-bottom: 1px solid var(--panel-border);
   font-size: var(--font-size-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
   color: var(--muted);
 }
 

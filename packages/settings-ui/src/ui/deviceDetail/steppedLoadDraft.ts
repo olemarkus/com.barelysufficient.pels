@@ -117,7 +117,7 @@ const buildSteppedLoadStepRow = (params: {
   const planningInput = document.createElement('md-filled-text-field') as HTMLElement & {
     value: string; disabled: boolean;
   };
-  planningInput.setAttribute('label', 'Planning');
+  planningInput.setAttribute('label', 'Planning (W)');
   planningInput.setAttribute('type', 'number');
   planningInput.setAttribute('step', '50');
   planningInput.setAttribute('min', '0');
