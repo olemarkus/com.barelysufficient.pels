@@ -169,7 +169,7 @@ export default defineConfig({
         text: 'Advanced Usage',
         items: [
           {
-            text: 'Wire a Flow-Controlled Load Device',
+            text: 'Wire a Flow-Based Load Device',
             link: '/how-to-headroom-expected-power-flow-control',
           },
           { text: 'Configure an EV Charger', link: '/ev-charger' },

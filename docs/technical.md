@@ -5,7 +5,7 @@ description: Internal planner behavior, budget logic, cooldowns, estimation rule
 
 # PELS - Technical Documentation
 
-This document explains the internal logic and assumptions PELS uses to manage your devices.
+This document explains the internal logic and assumptions PELS uses to manage your devices. It uses the public vocabulary from the user guide in headings and prose. Raw planner terms are shown only in code-style text or where they are still part of diagnostics, metrics, or existing Homey Flow card names.
 
 ## Table of Contents
 
@@ -15,8 +15,8 @@ This document explains the internal logic and assumptions PELS uses to manage yo
 - [Hour Transitions](#hour-transitions)
 - [Cooldown Logic](#cooldown-logic)
 - [Priority Swapping](#priority-swapping)
-- [Shedding Order](#shedding-order)
-- [Restoration Order](#restoration-order)
+- [Limiting Order](#limiting-order)
+- [Resume Order](#resume-order)
 - [Power Estimation](#power-estimation)
 - [Per-Device Diagnostics](#per-device-diagnostics)
 - [Power Usage Data Retention](#power-usage-data-retention)
@@ -49,17 +49,19 @@ Canonical terminology and unit definitions are maintained in the user guide:
 
 This technical document uses those same definitions.
 
-### Hard Cap vs Soft Limit
+### Hard Cap and Hourly Safe Pace
 
 - **Hard cap**: Your contracted grid capacity limit (`limitKw`). This corresponds to an hourly hard-cap energy budget of `limitKw` kWh for each hour. Exceeding this for a full hour triggers penalties.
-- **Soft limit**: A dynamic run-rate limit derived from the hourly soft budget `(limitKw - marginKw)` and time remaining. PELS starts shedding when power exceeds this, giving time to react.
-- **Shortfall**: Triggers when PELS projects an hourly hard-cap budget breach at current run rate AND no more devices can be shed. This is the emergency "panic" state.
+- **Hourly safe pace**: A dynamic run-rate limit derived from the hourly budget after the safety margin and the time remaining. PELS starts limiting managed devices when power exceeds this, giving time to react.
+- **Manual action needed**: Triggered when PELS projects an hourly hard-cap budget breach at the current run rate and cannot limit any more devices. Diagnostics may still call this `shortfall`.
 
-### Dynamic Soft Limit
+The Overview label **Safe pace now** can come from the hourly safe pace, daily budget pace, or both. This section describes the hourly capacity side.
 
-Rather than simply comparing instantaneous power against your limit, PELS calculates a "soft limit" that adapts throughout each hour:
+### Dynamic Hourly Safe Pace
 
-1. **Soft budget**: Your limit minus margin (e.g., 10 kW - 0.2 kW = 9.8 kWh soft budget per hour)
+Rather than simply comparing instantaneous power against your hard cap, PELS calculates an hourly safe pace that adapts throughout each hour. Internal code and diagnostics may call this the `softLimit`.
+
+1. **Hourly budget after safety margin**: Your hard cap minus margin (e.g., 10 kW - 0.2 kW = 9.8 kWh per hour)
 2. **Used**: Energy already consumed this hour (tracked via power samples)
 3. **Remaining**: Budget minus used energy
 4. **Time left**: Minutes remaining until the hour ends
@@ -72,9 +74,9 @@ Rather than simply comparing instantaneous power against your limit, PELS calcul
 
 ### Sustainable Rate Cap (Hourly Capacity Only)
 
-To prevent "end of hour bursting" where devices ramp up to use remaining budget then overshoot the next hour, the hourly soft limit is capped at the sustainable rate (your hourly soft budget in kW) during the last ~10 minutes. This means even if you have headroom at 11:55, you won't turn on 5 kW of heaters that would overshoot noon.
+To prevent "end of hour bursting" where devices ramp up to use remaining budget then overshoot the next hour, the hourly safe pace is capped at the sustainable rate during the last ~10 minutes. This means even if there is available power at 11:55, PELS will not turn on 5 kW of heaters that would overshoot noon.
 
-**Note:** This end-of-hour capping only applies to the hourly capacity soft limit, not the daily budget soft limit. Daily budget violations are not time-critical in the same way – there's no grid penalty for exceeding a daily budget at any particular minute.
+**Note:** This end-of-hour capping only applies to the hourly capacity safe pace, not the daily budget pace. Daily budget violations are not time-critical in the same way – there's no grid penalty for exceeding a daily budget at any particular minute.
 
 ---
 
@@ -83,8 +85,8 @@ To prevent "end of hour bursting" where devices ramp up to use remaining budget 
 When a new hour begins:
 
 1. Energy tracking resets (new bucket starts at 0 kWh)
-2. The soft limit recalculates based on a full hour of remaining time
-3. Devices that were shed may become eligible for restoration
+2. The hourly safe pace recalculates based on a full hour of remaining time
+3. Devices that were limited may become eligible to resume
 4. Any "hourly budget exhausted" state is cleared
 
 PELS handles this automatically—there's no manual intervention needed.
@@ -95,16 +97,16 @@ PELS handles this automatically—there's no manual intervention needed.
 
 The daily energy budget is a **soft constraint** that helps pace energy use throughout the day. Unlike the hourly capacity limit:
 
-- **Never triggers shortfall/panic**: If PELS cannot shed enough devices to meet the daily budget, it continues operating without emergency alarms.
-- **No end-of-hour capping**: Daily budget soft limits are not time-critical, so they don't apply the sustainable rate cap.
-- **Combined with hourly**: The planner uses the smaller of the hourly soft limit and daily soft limit for shedding decisions.
-- **Budget exemption is control-only**: Budget-exempt devices are ignored by daily soft-limit control, but their real usage still appears in reporting and they still count for hourly capacity protection.
+- **Never triggers manual-action alarms**: If PELS cannot limit enough devices to meet the daily budget, it continues operating without emergency alarms.
+- **No end-of-hour capping**: Daily budget pacing is not time-critical, so it does not apply the sustainable rate cap.
+- **Combined with hourly**: The planner uses the smaller of the hourly safe pace and daily budget pace for limiting decisions.
+- **Budget exemption is control-only**: Budget-exempt devices are ignored by daily-budget control, but their real usage still appears in reporting and they still count for hourly capacity protection.
 
 See [Daily Energy Budget](daily-budget.md) for detailed documentation.
 
 ## Daily Budget Weighting Math
 
-Advanced daily-budget tuning (unmanaged reserve, managed device flexibility, and confidence blending) is documented in:
+Advanced daily-budget tuning (background usage reserve, managed device flexibility, and confidence blending) is documented in:
 
 - [Daily Budget Weighting Math (Advanced)](daily-budget-weights.md)
 
@@ -116,71 +118,71 @@ That document includes the exact formulas used in code and numeric examples for 
 
 To prevent rapid on/off cycling that could damage equipment or annoy occupants, PELS enforces cooldown periods:
 
-### SHED_COOLDOWN (60 seconds)
+### Limit Cooldown (60 seconds)
 
-- After shedding any device, wait 60 seconds before considering restoring devices
+- After limiting any device, wait 60 seconds before considering whether devices can resume
 - Also applies after detecting overshoot conditions
 - Prevents oscillation when power measurements fluctuate
 
-### RESTORE_COOLDOWN (base 60 seconds)
+### Resume Cooldown (base 60 seconds)
 
-- After restoring a device, wait at least 60 seconds for power measurements to stabilize
-- If a restore is followed by overshoot or new shedding, this cooldown backs off exponentially up to 5 minutes
-- Only one device is restored per planning cycle
-- Prevents "restore avalanche" where multiple devices turn on simultaneously
+- After resuming a device, wait at least 60 seconds for power measurements to stabilize
+- If a resume is followed by overshoot or new limiting, this cooldown delays the next restart by increasing amounts up to 5 minutes
+- Only one device is resumed per planning cycle
+- Prevents multiple devices turning on simultaneously before measurements settle
 
-### Headroom Card Step-Down Cooldown (60 seconds)
+### Available-Power Flow Card Step-Down Cooldown (60 seconds)
 
-- The **"Is there headroom for device?"** Flow condition tracks the same device's **expected/usable** power estimate (prefers `expectedPowerKw` over raw `measuredPowerKw` when available)
+- The legacy **"Is there headroom for device?"** Flow condition checks available power for the selected device. The card tracks the same device's **expected/usable** power estimate (prefers `expectedPowerKw` over raw `measuredPowerKw` when available)
 - If that tracked/expected usable draw drops by at least 0.15 kW, the condition stays `false` for 60 seconds before allowing another increase
 - Pure measurement-only dips that do not change the tracked/expected usable draw do **not** start this cooldown
-- The same card also respects recent same-device PELS shed/restore cooldowns
-- Repeated failed re-activations on the same device also increase the headroom requirement before the card returns `true`
+- The same card also respects recent same-device PELS limit/resume cooldowns
+- Repeated failed re-activations on the same device also increase the available-power requirement before the card returns `true`
 - This is intended to absorb charger and water-heater step changes without forcing users to build manual hysteresis ladders in Homey flows
 
 ### Why These Timers Matter
 
-Power measurements have inherent latency and variance. A heater turning on takes time to ramp up and be reflected in meter readings. Without cooldowns, PELS might see "headroom available", restore a device, then immediately see overshoot before the measurement stabilizes.
+Power measurements have inherent latency and variance. A heater turning on takes time to ramp up and be reflected in meter readings. Without cooldowns, PELS might see available power, resume a device, then immediately see overshoot before the measurement stabilizes.
 
 ---
 
 ## Priority Swapping
 
-When a high-priority device is off and there isn't enough headroom to restore it, PELS can **swap** it with lower-priority devices that are currently on:
+When a high-priority device is off and there isn't enough available power to resume it, PELS can make room by limiting lower-priority devices that are currently on:
 
 1. Find the off device with the highest priority (lowest number)
-2. Calculate how much headroom is needed to restore it
+2. Calculate how much available power is needed to resume it
 3. Look for ON devices with lower priority (higher numbers)
-4. If shedding those lower-priority devices would free enough headroom, do the swap
-5. The swapped-out devices are tracked and won't restore until the high-priority device is back on
+4. If limiting those lower-priority devices would free enough power, do the swap
+5. The lower-priority devices are tracked and will not resume until the high-priority device is back on
 
-**Example**: Your kid's room heater (priority 1) is off, bathroom heater (priority 3) is on. If there's not enough headroom for both, PELS will turn off the bathroom to heat the kid's room.
+**Example**: Your kid's room heater (priority 1) is off, bathroom heater (priority 3) is on. If there's not enough available power for both, PELS will turn off the bathroom to heat the kid's room.
 
 ---
 
-## Shedding Order
+## Limiting Order
 
-When power exceeds the soft limit, devices are shed in priority order:
+When power exceeds the safe pace, devices are limited in priority order:
 
-1. **Lowest priority first** (highest number): Priority 5 sheds before priority 3
-2. **Multiple devices per plan**: PELS may shed more than one device in a single plan to cover the overshoot; actions are still throttled per device
+1. **Lowest priority first** (highest number): Priority 5 is limited before priority 3
+2. **Multiple devices per plan**: PELS may limit more than one device in a single plan to cover the overshoot; actions are still throttled per device
 3. **Respect cooldowns**: No rapid toggling
-4. **Restore grace**: Recently restored devices are protected from re-shedding for ~3 minutes unless overshoot is severe (≥ 0.5 kW)
-5. **Optional min temperature**: A device can be configured to drop to a minimum setpoint instead of turning fully off. Devices already at the shed temperature are skipped.
+4. **Resume grace**: Recently resumed devices are protected from being limited again for ~3 minutes unless overshoot is severe (>= 0.5 kW)
+5. **Optional minimum temperature**: A device can be configured to drop to a minimum setpoint instead of turning fully off. Devices already at that temperature are skipped.
 
 ---
 
-## Restoration Order
+## Resume Order
 
-When headroom becomes available:
+When available power returns:
 
-1. **Highest priority first** (lowest number): Priority 1 restores before priority 3
-2. **One device per cycle**: Wait for power measurement after each restore
-3. **Hysteresis buffer**: Require extra headroom beyond the device's power draw to prevent immediate re-shedding. A hard minimum post-reserve margin of 0.25 kW is enforced on every restore regardless of device size.
-4. **Failed-activation backoff**: Devices that are restored and then quickly need to be limited again require increasingly more headroom before the next restore attempt
-5. **Respect swap targets**: If a device was swapped out for a higher-priority device, the high-priority one must restore first
+1. **Highest priority first** (lowest number): Priority 1 resumes before priority 3
+2. **One device per cycle**: Wait for power measurement after each resume
+3. **Hysteresis buffer**: Require extra available power beyond the device's power draw to prevent immediate limiting. A hard minimum post-reserve margin of 0.25 kW is enforced on every resume regardless of device size.
+4. **Delayed restart after failed activation**: Devices that are resumed and then quickly need to be limited again require increasingly more available power before the next resume attempt
+5. **Respect swap targets**: If a lower-priority device was limited for a higher-priority device, the high-priority one must resume first
 
-For EV chargers, restoration is only attempted when the charger is currently resumable. Chargers that are unplugged, discharging, missing a usable EV charging state, or missing a usable power estimate are marked `inactive` instead of `shed`. This keeps capacity suppression distinct from device unavailability.
+For EV chargers, resume is only attempted when the charger is currently resumable. Chargers that are unplugged, discharging, missing a usable EV charging state, or missing a usable power estimate are marked `inactive` instead of limited. This keeps capacity suppression distinct from device unavailability.
 
 ---
 
@@ -200,24 +202,24 @@ PELS needs to estimate how much power a device will draw when turned on:
    - Fallback to `W` when the device is not explicitly off
 6. **Fallback**: Assume 1 kW if no better estimate is available
 
-For devices configured with the built-in **stepped load** control model, restore planning uses the configured per-step **planning power** instead of this generic estimator. In that mode:
+For devices configured with the built-in **stepped load** control model, resume planning uses the configured per-step **planning power** instead of this generic estimator. In that mode:
 - The selected step, measured power, and planning power are intentionally separate values.
 - `measure_power = 0` does **not** imply the device is set to `off`; it only means the device is not drawing right now.
 - The **Set expected power for device** Flow action is rejected for stepped-load devices.
-- Capacity shedding uses the device’s normal **When shedding** behavior: either `Turn off` or `Set to step`.
-- Step restore starts at the lowest active step and only climbs toward the highest step when headroom and budget allow it.
+- Capacity limiting uses the device's normal **When limiting** behavior: either `Turn off` or `Set to step`.
+- Step resume starts at the lowest active step and only climbs toward the highest step when available power and budget allow it.
 - PELS expects vendor-specific flows to report the selected step back through **Report stepped load for [device] as [step]** or **Report stepped load for [device] matching [power]** unless the device exposes that state generically.
 
 Official EV chargers are supported only when they expose both `evcharger_charging` and `evcharger_charging_state`. PELS uses `evcharger_charging` for pause/resume control and never falls back to generic `onoff` for EV actuation.
 
 This estimation is inherently imperfect, which is why PELS:
-- Restores only one device at a time
-- Waits for actual measurements before restoring more
+- Resumes only one device at a time
+- Waits for actual measurements before resuming more
 - Uses a hysteresis buffer for safety
 
-For shedding decisions, devices reporting `measure_power = 0` are treated as non-contributing and are skipped rather than falling back to expected power.
+For limiting decisions, devices reporting `measure_power = 0` are treated as non-contributing and are skipped rather than falling back to expected power.
 
-For stepped-load devices, shedding relief is computed conservatively from **live measured power**, while restore/step-up budgeting uses the configured **planning power** of the target step. While any other managed device is still shed, stepped devices are capped at their **lowest non-zero step** — restoring from off to that step is allowed, but climbing higher is blocked until all shed devices have recovered.
+For stepped-load devices, limiting relief is computed conservatively from **live measured power**, while resume/step-up budgeting uses the configured **planning power** of the target step. While any other managed device is still limited, stepped devices are capped at their **lowest non-zero step** — resuming from off to that step is allowed, but climbing higher is blocked until all limited devices have recovered.
 
 For `meter_power`, PELS computes an average kW from the change in kWh over time and updates the peak. If the counter decreases (reset/rollover), the delta is ignored and the baseline is reset.
 
@@ -239,23 +241,23 @@ For temperature devices, unmet demand means the desired target exceeds the curre
 
 Blocked unmet-demand time is split into:
 
-- **Blocked by headroom**: insufficient effective headroom under the current active soft limit. This includes cases where the daily budget lowers the effective limit.
-- **Blocked by cooldown/backoff**: global restore cooldown, shed cooldown, restore throttling, or per-device failed-activation backoff.
+- **Blocked by available power**: insufficient available power under the current active safe pace. This includes cases where the daily budget lowers the effective pace.
+- **Blocked by cooldown/delayed restart**: global resume cooldown, limit cooldown, resume throttling, or per-device failed-activation delay.
 
 ### EV Scope
 
-EV chargers are intentionally excluded from unmet-demand and starvation metrics in v1. PELS can tell whether it paused or resumed an EV charger, but it does **not** know the charger’s real charging objective such as target SoC or deadline.
+EV chargers are intentionally excluded from unmet-demand and starvation metrics in v1. PELS can tell whether it paused or resumed an EV charger, but it does **not** know the charger's real charging objective such as target SoC or ready-by time.
 
 EV chargers are still included in:
 
-- **Hysteresis metrics** such as `shed -> restore` and `restore -> setback`
+- **Hysteresis metrics** such as internal `shed -> restore` and `restore -> setback` cycles
 - **Penalty metrics** such as penalty bump count, current penalty level, and max penalty level seen
 
 ### Hysteresis And Penalty Metrics
 
 PELS tracks:
 
-- Shed count and restore count
+- Limit count and resume count
 - Average `shed -> restore` duration
 - Average, shortest, and longest `restore -> setback` duration
 - Failed activation count and stable activation count
@@ -272,7 +274,7 @@ When enabled, it logs:
 - skipped attribution after long observation gaps
 - unmet-demand start/end transitions
 - block-cause changes between `headroom`, `cooldown_backoff`, and `not_blocked`
-- shed/restore cycle completions
+- limit/resume cycle completions
 - activation attempt lifecycle transitions and penalty changes
 
 ---
@@ -300,26 +302,26 @@ Aggregation happens automatically when power data is saved—you don't need to m
 
 PELS only manages devices that expose the capabilities it needs:
 
-- **Capacity-controlled devices**: need a usable power estimate path (`measure_power`/`meter_power`, `settings.load`, device Energy settings, Homey Energy metadata, or Homey live `values.W`).
+- **Devices with power-limit control**: need a usable power estimate path (`measure_power`/`meter_power`, `settings.load`, device Energy settings, Homey Energy metadata, or Homey live `values.W`).
 - **Price-only temperature devices**: `target_temperature` + `measure_temperature` is sufficient for mode/price optimization, even when no usable power estimate exists.
 - **On/off devices**: `onoff` plus a usable power estimate path.
 
 Devices are **disabled by default**. You must explicitly enable management and control in the Devices tab.
 
-Devices without any usable power estimate are listed for visibility and forced non-controllable for capacity. Temperature devices can still stay managed for mode/price-only behavior; non-temperature devices remain unmanaged until a usable estimate becomes available.
+Devices without any usable power estimate are listed for visibility and cannot use power-limit control. Temperature devices can still stay managed for mode/price-only behavior; non-temperature devices remain unmanaged until a usable estimate becomes available.
 
-### Headroom check for capacity-controlled loads
+### Available-Power Check For Devices With Power-Limit Control
 
-The **"Is there headroom for device?"** Flow condition is intended for capacity-controlled devices such as EV chargers and water heaters. It answers "Can this device safely draw another _X_ kW right now?" by calculating:
+The legacy **"Is there headroom for device?"** Flow condition is intended for devices with power-limit control, such as EV chargers and water heaters. It answers "Can this device safely draw another _X_ kW right now?" by calculating:
 
-- Current headroom (soft limit minus current load)
-- Same-device cooldown state after recent step-downs or recent PELS shed/restore events
+- Current available power (safe pace minus current load)
+- Same-device cooldown state after recent step-downs or recent PELS limit/resume events
 - Device's expected usage (estimator order: flow override → `settings.load` → measured peak from `measure_power`/`meter_power`/Homey live `values.W` → device Energy settings (`energy_value_on`/`energy_value_off`) → Homey Energy metadata (`usageOn-usageOff`, `usageOn`, `W`) → fallback **1 kW**). If `settings.load` is configured for a device, the Flow action will not set an override and `settings.load` is used directly.
 - A conservative fallback of **1 kW** when no estimate exists, to avoid over-promising capacity
 
-Using 0 kW as a fallback would risk reporting that capacity exists when the actual load is unknown, so PELS never reports headroom based on a zero/unknown estimate.
+Using 0 kW as a fallback would risk reporting that capacity exists when the actual load is unknown, so PELS never reports available power based on a zero/unknown estimate.
 
-When the card is blocked by that cooldown, the Overview status line shows a matching `headroom cooldown (...)` reason so the user can see why capacity increases are temporarily being held back.
+When the card is blocked by that cooldown, diagnostics may show a `headroom cooldown (...)` reason. The user-facing status line should describe this as waiting for the power reading to stabilise.
 
 ### Thermostats and Water Heaters
 
@@ -339,7 +341,7 @@ Currently PELS is reactive—it responds to actual power consumption, not predic
 
 ### Single Hour Focus
 
-The budget model focuses on the current hour. It doesn't "save up" headroom from previous hours or plan ahead for the next hour (except via the sustainable rate cap).
+The budget model focuses on the current hour. It doesn't "save up" available power from previous hours or plan ahead for the next hour (except via the sustainable rate cap).
 
 ### Local Control Only
 

@@ -17,7 +17,7 @@ If you are already using Homey Energy, here is what PELS gives you on top:
 
 ### Automatic capacity control
 
-PELS watches your total power consumption and automatically turns down heaters, water tanks, or EV charging before you exceed your hourly limit. When there is room again, it resumes them in the right order, based on priority. This keeps you within your grid tariff step (effekttrinn) without you having to watch the meter.
+PELS watches your total power consumption and automatically lowers, pauses, or turns off heaters, water tanks, or EV charging before you exceed your hourly limit. When there is available power again, it resumes them in the right order, based on priority. This keeps you within your grid tariff step (effekttrinn) without you having to watch the meter.
 
 Read more: [Getting Started](/getting-started) · [Configuration](/configuration)
 
@@ -25,13 +25,13 @@ Read more: [Getting Started](/getting-started) · [Configuration](/configuration
 
 PELS reads hourly electricity prices and shifts heating to the cheapest hours of the day. During expensive hours it reduces temperatures; during cheap hours it preheats. You set the temperature adjustments per device and PELS handles the rest.
 
-Read more: [Configuration — Price tab](/configuration#price-tab)
+Read more: [Configuration — Settings > Electricity prices](/configuration#settings-electricity-prices)
 
 ### Modes and priorities
 
 Set up profiles like Home, Away, Night, or Vacation with different target temperatures and priorities. PELS switches between them automatically via Flow cards, so your comfort settings adapt to your schedule.
 
-Read more: [Configuration — Modes tab](/configuration#modes-tab)
+Read more: [Configuration — Settings > Modes](/configuration#settings-modes)
 
 ### Daily energy budgets
 
@@ -52,7 +52,7 @@ Homey Energy already knows your total home consumption. Instead of creating a Fl
 ### Setup
 
 1. Open **Apps > PELS > Settings**.
-2. Go to the **Devices** tab.
+2. Go to **Settings > Limits & safety**.
 3. Change **Power source** to **Homey Energy**.
 
 ![Power source set to Homey Energy](images/power-source-homey-energy.png)
@@ -89,9 +89,8 @@ This is especially useful if you are **outside Norway**. PELS has a built-in Nor
 ### Setup
 
 1. Open **Apps > PELS > Settings**.
-2. Go to the **Price** tab.
-3. Expand **Price settings**.
-4. Change **Price source** to **Homey Energy (dynamic prices)**.
+2. Go to **Settings > Electricity prices**.
+3. Change **Price source** to **Homey Energy (dynamic prices)**.
 
 ![Price source set to Homey Energy](images/price-source-homey-energy.png)
 
@@ -105,7 +104,7 @@ PELS uses the prices as-is — it does not add grid tariffs, taxes, or surcharge
 
 Each hour is classified as cheap, normal, or expensive based on a configurable threshold (default: 25% from average). You then set per-device temperature adjustments — for example, +4 degrees during cheap hours and -4 during expensive hours. PELS applies these automatically.
 
-Read more: [Configuration — Price tab](/configuration#price-tab)
+Read more: [Configuration — Settings > Electricity prices](/configuration#settings-electricity-prices)
 
 ### When to keep using Norway pricing
 
@@ -115,10 +114,10 @@ If you are in Norway and want PELS to calculate the full cost including grid tar
 
 You can use Homey Energy for both power metering and electricity prices at the same time:
 
-- **Power source** is on the **Devices** tab.
-- **Price source** is on the **Price** tab.
+- **Power source** is in **Settings > Limits & safety**.
+- **Price source** is in **Settings > Electricity prices**.
 
-A typical setup for someone outside Norway: set both to Homey Energy and you are done — no Flows needed for basic operation. From there, configure your [capacity limit](/getting-started#step-2-set-your-capacity-limit), [pick which devices to control](/getting-started#step-3-choose-which-devices-pels-controls), and set up [price deltas](/configuration#price-tab).
+A typical setup for someone outside Norway: set both to Homey Energy and you are done — no Flows needed for basic operation. From there, configure your [hard cap](/getting-started#step-2-set-your-capacity-limit), [pick which devices to control](/getting-started#step-3-choose-which-devices-pels-controls), and set up [price response](/configuration#settings-price-aware-devices).
 
 ## Next steps
 

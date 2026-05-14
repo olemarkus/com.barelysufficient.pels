@@ -1,29 +1,29 @@
 ---
 title: Daily Budget Weighting Math
-description: Exact formulas for unmanaged reserve, managed-device price flexibility, confidence, and observed hourly caps in the daily-budget planner.
+description: Exact formulas for background usage reserve, managed-device price flexibility, confidence, and observed hourly caps in the daily-budget planner.
 ---
 
 # Daily Budget Weighting Math (Advanced)
 
-This document explains the exact math behind:
+This advanced reference explains the exact math behind:
 
-- **Unmanaged usage reserve** (Advanced tab)
+- **Unmanaged usage reserve** in **Settings > Advanced**, also shown as **Background usage reserve** on the Budget page
 - **Managed device flexibility** (Advanced tab)
 - **Observed hourly peak caps** (split-budget safety)
 - **Confidence** (backtested forecast-skill score shown in the UI)
 - **Profile blend confidence** (how quickly learned behavior influences the plan internally)
 
-The formulas here match the current implementation in `lib/dailyBudget`.
+The formulas here match the current implementation in `lib/dailyBudget`. Variable names such as `controlled` and `uncontrolled` mirror internal data structures. In user-facing prose, those correspond to **managed device usage** and **background usage**.
 
 ## 1) Inputs used by the planner
 
 For each local hour `h` (0-23), PELS works with:
 
 - `D[h]`: default profile weight (baseline day shape), normalized to sum to 1
-- `U[h]`: learned **uncontrolled** weight, normalized to sum to 1
-- `C[h]`: learned **controlled** weight, normalized to sum to 1
-- `s`: learned controlled share of total energy (`0..1`)
-- `r`: unmanaged reserve mode (`0 = balanced`, `1 = conservative`)
+- `U[h]`: learned **uncontrolled/background** weight, normalized to sum to 1
+- `C[h]`: learned **controlled/managed** weight, normalized to sum to 1
+- `s`: learned managed-device share of total energy (`0..1`)
+- `r`: background usage reserve mode (`0 = balanced`, `1 = conservative`)
 - `w`: internal managed-load floor/profile weight (current implementation: `0.30`)
 - `p`: managed device price flexibility (`0.30 = low`, `0.60 = medium`, `0.85 = high`)
 - `Umax[h]`: robust upper observed uncontrolled kWh envelope for local hour `h` (hourly quantile)
@@ -41,7 +41,7 @@ For each local hour `h` (0-23), PELS works with:
 
 ## 2) How daily learning updates profiles
 
-At day rollover, PELS splits each bucket into uncontrolled and controlled kWh (if controlled split data exists), then builds daily hour weights:
+At day rollover, PELS splits each bucket into background and managed-device kWh when split data exists, then builds daily hour weights:
 
 - `dayU[h] = hourlyUncontrolled[h] / totalUncontrolled`
 - `dayC[h] = hourlyControlled[h] / totalControlled`
@@ -52,7 +52,7 @@ Each profile is a running average:
 nextWeight[h] = (prevWeight[h] * sampleCount + dayWeight[h]) / (sampleCount + 1)
 ```
 
-Controlled share is also a running average:
+Managed-device share is also a running average:
 
 ```text
 dayShare = totalControlled / (totalControlled + totalUncontrolled)
@@ -84,9 +84,9 @@ nextCmin[h] = min(... where > 0)
 
 ## 3) Managed-load profile weight (`w`) math
 
-`w` is no longer exposed as a normal user setting. The Advanced tab exposes **Unmanaged usage reserve** instead; that mode affects unmanaged reserve floors, not the learned controlled/uncontrolled profile split.
+`w` is no longer exposed as a normal user setting. The UI exposes the background-usage reserve mode instead; that mode affects background reserve floors, not the learned managed/background profile split.
 
-Internally, `w` is fixed at the default value and scales the contribution of the controlled profile relative to uncontrolled, using learned controlled share `s`.
+Internally, `w` is fixed at the default value and scales the contribution of the managed profile relative to background usage, using learned managed share `s`.
 
 ```text
 denom = (1 - s) + s * w
@@ -100,15 +100,15 @@ learnedCombined[h]     = normalize(learnedUncontrolled[h] + learnedControlled[h]
 
 Internal behavior:
 
-- lower `w`: less controlled history influences the learned shape
-- higher `w`: controlled contribution follows more of measured share `s`
-- current implementation: fixed default, so changing **Unmanaged usage reserve** does not reshape controlled history
+- lower `w`: less managed-device history influences the learned shape
+- higher `w`: managed-device contribution follows more of measured share `s`
+- current implementation: fixed default, so changing the background usage reserve does not reshape managed-device history
 
 ### Example A: managed-load profile weighting
 
 Assume:
 
-- `s = 0.40` (40% controlled energy historically)
+- `s = 0.40` (40% managed-device energy historically)
 - `w = 0.30` (default)
 
 Then:
@@ -119,7 +119,7 @@ uncontrolledScale = 0.60 / 0.72 = 0.8333
 controlledScale   = 0.12 / 0.72 = 0.1667
 ```
 
-So even though controlled energy share is 40%, the learned shape uses about 16.7% controlled influence internally.
+So even though managed-device energy share is 40%, the learned shape uses about 16.7% managed-device influence internally.
 
 ## 4) Confidence
 
@@ -145,11 +145,11 @@ Implications:
 
 - Early days: plan stays close to default profile
 - As profile blend confidence grows: learned behavior gradually takes over
-- Controlled contribution ramps with profile blend confidence
+- Managed-device contribution ramps with profile blend confidence
 
 ### 4b) Budget confidence (UI-facing)
 
-Budget confidence is a backtested forecast-skill score computed from the last 30 complete local days (excluding today and days overlapping unreliable periods). This is the value shown in the Budget tab.
+Budget confidence is a backtested forecast-skill score computed from the last 30 complete local days (excluding today and days overlapping unreliable periods). This is the value shown on the Budget page.
 
 It has two components:
 
@@ -167,7 +167,7 @@ regularityScore = mean(dayScores) * clamp(validActualDays / 14, 0, 1)
 
 #### Adaptability score
 
-Measures how well the home follows shifted budget plans when controlled load exists. Only uses days with near-complete plan data (≥90% of hourly buckets).
+Measures how well the home follows shifted budget plans when managed load exists. Only uses days with near-complete plan data (≥90% of hourly buckets).
 
 ```text
 For each valid planned day:
@@ -193,7 +193,7 @@ confidence = regularityScore * (1 - adaptabilityInfluence)
 
 If there is no valid planned-day data or total day weight is zero, confidence falls back to regularity score alone.
 
-This makes adaptability dominate only when the home historically has meaningful controlled share; otherwise confidence is mostly whole-home regularity.
+This makes adaptability dominate only when the home historically has meaningful managed-device share; otherwise confidence is mostly whole-home regularity.
 
 A bootstrap confidence interval (5th/95th percentile, 500 iterations) is computed for debug/validation but is not shown in the UI.
 
@@ -231,7 +231,7 @@ Final bucket cap is the minimum of:
 - capacity per-hour cap (if configured), and
 - total observed-peak cap above.
 
-`w` does not affect the cap. Controlled usage is still available as flexible headroom above the
+`w` does not affect the cap. Managed-device usage is still available as flexible room above the
 floor even when `w = 0`.
 
 ## 5b) Observed hourly minimum floors (split-budget safety)
@@ -246,7 +246,7 @@ Ufloor[h] = max(0, Umin[h] * (1 - m))
 Cfloor[h] = max(0, Cmin[h] * (1 - m))
 ```
 
-The floor always includes the uncontrolled minimum. The **Unmanaged usage reserve** mode controls how defensively this unmanaged floor is reserved. Controlled minimums are added with the fixed internal managed-load floor weight `w`:
+The floor always includes the background-usage minimum. The background-usage reserve mode controls how defensively this floor is reserved. Managed-device minimums are added with the fixed internal managed-load floor weight `w`:
 
 ```text
 floor[h] = Ufloor[h] + w * Cfloor[h]
@@ -256,10 +256,10 @@ Important behavior:
 
 - Floors are enforced only while budget remains; if floors exceed remaining budget,
   all floors are scaled down proportionally to fit the budget.
-- Balanced unmanaged reserve keeps the unmanaged floor closer to the learned minimum.
-- Conservative unmanaged reserve raises the unmanaged floor toward the robust reserve envelope.
-- Controlled service-floor influence stays fixed when changing unmanaged reserve mode.
-- Controlled load between the floor and cap remains flexible budget headroom.
+- Balanced background usage reserve keeps the background floor closer to the learned minimum.
+- Conservative background usage reserve raises the background floor toward the robust reserve envelope.
+- Managed service-floor influence stays fixed when changing background-usage reserve mode.
+- Managed load between the floor and cap remains flexible budget room.
 
 ## 6) Managed device flexibility (`p`) math
 
@@ -341,12 +341,12 @@ full-flex allocation.
 
 - Keep defaults unless you have stable data and a clear tuning goal.
 - Change one setting at a time and observe at least one full day.
-- If unmanaged household load regularly causes budget misses, use **Conservative** unmanaged reserve.
-- If too much budget is held back from managed devices, use **Balanced** unmanaged reserve.
+- If background household usage regularly causes budget misses, use **Conservative** background usage reserve.
+- If too much budget is held back from managed devices, use **Balanced** background usage reserve.
 - If plan movement by price is too aggressive, lower **Managed device flexibility**.
 - If the budget cannot be fully allocated under capacity and historical caps, the Budget UI shows
   an allocation warning; lower the daily budget or raise the relevant capacity/load assumptions.
-- If confidence stays low, verify regular power reporting and controlled/uncontrolled split data.
+- If confidence stays low, verify regular power reporting and managed/background split data.
 
 ## 8) Debug fields to inspect
 
@@ -371,7 +371,7 @@ With debug logging enabled for daily budget, these fields are useful:
 - `confidenceRegularity` — regularity score (0..1)
 - `confidenceAdaptability` — adaptability score (0..1)
 - `confidenceAdaptabilityInfluence` — weight of adaptability in combined score (0..0.85)
-- `confidenceWeightedControlledShare` — controlled share weighted by shift-demand
+- `confidenceWeightedControlledShare` — managed-device share weighted by shift-demand
 - `confidenceValidActualDays` — number of valid days used for regularity
 - `confidenceValidPlannedDays` — number of valid planned days used for adaptability
 - `confidenceBootstrapLow` — 5th percentile bootstrap interval (debug only)

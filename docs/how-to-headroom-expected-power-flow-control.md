@@ -1,9 +1,9 @@
 ---
-title: Wire a Flow-Controlled Load Device
+title: Wire a Flow-Based Load Device
 description: Use PELS stepped-load profiles and generic Flow cards to connect devices such as Høiax Connected 300 without vendor-specific code in PELS.
 ---
 
-# How-To: Wire a Flow-Controlled Load Device to PELS
+# How-To: Wire a Flow-Based Load Device to PELS
 
 Use this pattern when a real Homey device has its own stepped power modes, but PELS should still decide which step to use.
 
