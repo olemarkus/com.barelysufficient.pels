@@ -360,10 +360,9 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 - [ ] Do a bounded first-impression copy polish pass on the redesigned Settings UI.
       This should stay small and user-visible: change `Mode: Home` to `Home mode`, explain the
       `Safe pace now` tooltip from `softLimitSource`, replace `Price-shaped plan` with
-      `Cheaper-hour planning`, replace `Unmanaged usage reserve` with `Background usage reserve`,
-      avoid `model` in daily-budget success toasts, and refine device-card limited/off wording
-      such as `Paused by PELS` so it matches `notes/ui-terminology.md`. Do not rename internal
-      identifiers, fixtures, or log strings.
+      `Cheaper-hour planning`, avoid `model` in daily-budget success toasts, and refine device-card
+      limited/off wording such as `Paused by PELS` so it matches `notes/ui-terminology.md`. Do not
+      rename internal identifiers, fixtures, or log strings.
       Files: `packages/settings-ui/public/index.html`,
       `packages/settings-ui/src/ui/views/PlanHero.tsx`,
       `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,

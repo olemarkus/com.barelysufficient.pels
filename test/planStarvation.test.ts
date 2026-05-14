@@ -25,11 +25,11 @@ describe('planStarvation', () => {
     };
 
     expect(formatStarvationBadge(starvation)).toEqual({
-      label: 'Starved',
+      label: 'Waiting for power',
       tone: 'warn',
-      tooltip: 'Starved while waiting for available power',
+      tooltip: 'Waiting for available power',
     });
-    expect(formatStarvationReason(starvation)).toBe('Starved while waiting for available power');
+    expect(formatStarvationReason(starvation)).toBe('Waiting for available power');
   });
 
   it('maps budget/manual/external starvation to softer tones', () => {
@@ -50,7 +50,7 @@ describe('planStarvation', () => {
       accumulatedMs: 12 * 60 * 1000,
       cause: 'external',
       startedAtMs: null,
-    })).toBe('Starved while waiting on external service');
+    })).toBe('Waiting on external service');
   });
 
   it('summarizes all starved devices in the hero', () => {
@@ -72,7 +72,7 @@ describe('planStarvation', () => {
           startedAtMs: null,
         },
       },
-    ])).toBe('2 devices starved');
+    ])).toBe('2 devices waiting for power');
 
     expect(summarizeStarvation([
       {
@@ -91,6 +91,6 @@ describe('planStarvation', () => {
           startedAtMs: null,
         },
       },
-    ])).toBe('2 devices starved');
+    ])).toBe('2 devices waiting for power');
   });
 });

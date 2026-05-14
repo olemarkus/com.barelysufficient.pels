@@ -476,8 +476,8 @@ const BudgetAdjustView = ({
     ? Math.max(0, adjust.hardCapKw - adjust.safetyMarginKw)
     : null;
   const reactionText = usableCapacityKw !== null
-    ? `PELS reacts at ${formatKw(usableCapacityKw)}.`
-    : 'PELS reacts before reaching the hard cap.';
+    ? `Safe pace now ${formatKw(usableCapacityKw)} — hard cap minus safety margin.`
+    : 'Safe pace stays below the hard cap.';
   const recommendedMaxKWh = usableCapacityKw !== null && usableCapacityKw > 0
     ? Math.min(MAX_DAILY_BUDGET_KWH, usableCapacityKw * 24)
     : null;

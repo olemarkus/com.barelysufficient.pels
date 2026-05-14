@@ -241,8 +241,8 @@ describe('Redesign plan UI', () => {
   
       const badgeTexts = Array.from(document.querySelectorAll('[data-device-id="dev-starved"] .plan-chip'))
         .map((el) => el.textContent?.trim());
-      expect(badgeTexts).toContain('Starved');
-      expect(getReasonText('dev-starved')).toBe('Starved while waiting for available power');
+      expect(badgeTexts).toContain('Waiting for power');
+      expect(getReasonText('dev-starved')).toBe('Waiting for available power');
       // Starvation summary is shown on device card, not in hero
     });
   
