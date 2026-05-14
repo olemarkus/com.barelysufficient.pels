@@ -27,7 +27,7 @@ Without live power input, PELS cannot know how much power your home is using. Th
 
 **Option A: Homey Energy (recommended if your meter is already paired)**
 
-If your power meter is paired with Homey and has **Tracks total home energy consumption** enabled, go to the **Devices** tab and set **Power source** to **Homey Energy**. PELS will start polling automatically. See [Using Homey Energy](/homey-energy) for details.
+If your power meter is paired with Homey and has **Tracks total home energy consumption** enabled, go to **Settings > Limits & safety** and set **Power source** to **Homey Energy**. PELS will start polling automatically. See [Using Homey Energy](/homey-energy) for details.
 
 **Option B: Flow card**
 
@@ -35,34 +35,34 @@ Create a Homey Flow that calls **Report power usage** whenever your meter update
 
 Common meter sources are Tibber Pulse, AMS/HAN readers, or any device that reports total household watts.
 
-Once power data is flowing, the Overview tab starts showing real data.
+Once power data is flowing, the **Overview** page starts showing real data.
 
 ## Step 2: Set your capacity limit
 
-Go to the **Budget** tab and configure:
+Go to **Settings > Limits & safety** and configure:
 
-- **Capacity limit (kW)** — your hourly hard cap. This is the average power level you do not want to exceed within any given hour. Set this to match your grid tariff step (effekttrinn), for example 5 kW or 8 kW.
+- **Hard cap (kW)** — your hourly limit. This is the average power level you do not want to exceed within any given hour. Set this to match your grid tariff step (effekttrinn), for example 5 kW or 8 kW.
 - **Safety margin (kW)** — a buffer below the hard cap. PELS starts turning things down before you actually hit the limit. A margin of 0.3-0.5 kW is a reasonable starting point.
 
 ::: tip
-Enable **Dry run** in the Devices tab while you are getting started. PELS will calculate what it *would* do without actually controlling any devices. This lets you verify the setup is sensible before giving PELS real control.
+Enable **Simulation mode** in **Settings > Simulation mode** while you are getting started. PELS will calculate what it *would* do without actually controlling any devices. This lets you verify the setup is sensible before giving PELS real control.
 :::
 
 ## Step 3: Choose which devices PELS controls
 
-Go to the **Devices** tab. For each device you want PELS to manage, configure:
+Go to **Settings > Devices**. For each device you want PELS to manage, configure:
 
-| Checkbox | What it means |
+| Control | What it means |
 | --- | --- |
 | **Managed** | PELS includes the device in its planning. Unmanaged devices are treated as background load. |
-| **CAP** (Capacity) | PELS is allowed to turn this device down or off to stay within your capacity limit. |
-| **PRICE** | PELS adjusts this device's temperature targets based on electricity prices (only relevant for temperature devices). |
+| **Limit** | PELS is allowed to lower or turn this device off to stay within your hard cap. |
+| **Price** | PELS adjusts this device's temperature targets based on electricity prices (only relevant for temperature devices). |
 
 Good first candidates are water heaters, floor heating, panel heaters, and ventilation — devices that use a lot of power but can tolerate being turned down for a while.
 
 ## Step 4: Set up modes, priorities, and targets
 
-Modes are the core of how PELS decides what to do. Each mode stores a separate set of priorities and target temperatures for your devices. Go to the **Modes** tab to configure them.
+Modes are the core of how PELS decides what to do. Each mode stores a separate set of priorities and target temperatures for your devices. Go to **Settings > Modes** to configure them.
 
 ### Create your modes
 
@@ -98,15 +98,15 @@ Re-sending the current mode is also a simple way to reapply targets if a device 
 
 ## Step 5: Add price optimization (optional)
 
-If you want PELS to shift heating to cheaper hours, go to the **Price** tab:
+If you want PELS to shift heating to cheaper hours, go to **Settings > Electricity prices**:
 
-1. Enable **Price-based optimization**.
-2. Choose your price source — **Norway (spot + grid tariff)** if you are in Norway, or **Homey Energy** / **Flow tag** for other sources.
+1. Choose your price source — **Norway (spot + grid tariff)** if you are in Norway, or **Homey Energy** / **Flow tag** for other sources.
+2. Make sure the price status shows that data is available.
 3. If using the Norway source, select your county, grid company, and tariff group.
 
-Then go back to the **Devices** tab and tick the **PRICE** checkbox for devices that should participate in price optimization. Water heaters and floor heating are usually the best candidates — they have thermal mass that makes shifting worthwhile.
+Then go to **Settings > Devices**, open each temperature device that should participate, and enable **Price** or **Setup > Price-based control**. Water heaters and floor heating are usually the best candidates — they have thermal mass that makes shifting worthwhile.
 
-In the Price tab you can also set per-device temperature adjustments:
+After at least one device has price response enabled, use **Settings > Price-aware devices** to turn **Respond to prices** on or off globally and set per-device temperature adjustments:
 - **Cheap-hour boost (°C)** — temperature boost during cheap hours, for example +2 °C.
 - **Expensive-hour reduction (°C)** — temperature reduction during expensive hours, for example -2 °C.
 
@@ -125,18 +125,18 @@ Smart tasks are created with Homey Flow action cards such as **Add charging task
 Once you have worked through the steps above, verify:
 
 1. Your power meter Flow is running and the Overview shows current usage.
-2. A capacity limit and safety margin are set in the Budget tab.
-3. At least a few devices are marked as Managed and have Capacity enabled.
+2. A hard cap and safety margin are set in **Settings > Limits & safety**.
+3. At least a few devices are marked as Managed and have Limit enabled.
 4. You have at least one mode with sensible priorities and targets.
 5. You have Flows to switch between modes.
 6. Optional Smart task Flows are configured for devices that need a target by a ready-by time.
-7. Dry run is disabled when you are ready for PELS to take real control.
+7. Simulation mode is disabled when you are ready for PELS to take real control.
 
 ## Terminology and units
 
 - **Power** is instantaneous load, measured in **W** or **kW**.
 - **Energy** is usage over time, measured in **kWh**.
-- **Capacity limit (hard cap)** — your maximum average power for any hour, in **kW**.
+- **Hard cap** — your maximum average power for any hour, in **kW**.
 - **Safety margin** — a buffer below the hard cap where PELS starts reacting, in **kW**.
 - **Available power** — how much more load PELS can fit right now before it reaches the current safe pace, in **kW**.
 - **Daily budget** — an optional soft guide for total energy in a day, in **kWh**. This never overrides the hourly hard cap.

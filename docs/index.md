@@ -53,7 +53,7 @@ editLink: false
       <article class="landing-card landing-card-with-screenshot">
         <img class="landing-card-screenshot" src="/screenshots/landing-devices.png" alt="PELS device list showing managed devices" />
         <h3>Device control</h3>
-        <p>Pick the devices PELS can control, set your power limit, and choose how it should behave in different situations — like daytime vs. nighttime.</p>
+        <p>Pick the devices PELS can control, set your hard cap, and choose how it should behave in different situations — like daytime vs. nighttime.</p>
         <a href="configuration.html">Open configuration docs</a>
       </article>
       <article class="landing-card landing-card-with-screenshot">
@@ -70,7 +70,7 @@ editLink: false
       </article>
       <article class="landing-card">
         <h3>Smart tasks</h3>
-        <p>Tell PELS that a charger, room, or water heater should be ready by a specific time, and it plans useful hours before the deadline.</p>
+        <p>Tell PELS that a charger, room, or water heater should be ready by a specific time, and it plans useful hours before the ready-by time.</p>
         <a href="smart-tasks.html">Open Smart tasks docs</a>
       </article>
     </div>

@@ -1,116 +1,86 @@
 ---
 title: Plan States and Status Lines
-description: How the Overview tab derives device state and status text from the planner output.
+description: How the Overview page maps planner output to user-facing device state and status text.
 ---
 
 # Plan States and Status Lines
 
-This document describes how the Overview tab derives device state and the status text shown per device.
-Only managed devices are included in the plan snapshot; unmanaged devices are hidden from the Overview tab.
+The **Overview** page shows user-facing device state, not raw planner internals. This page explains the mapping so you can interpret what PELS is doing.
 
-## Core State Fields (per device)
+Only managed devices are included in the plan snapshot. Unmanaged devices are treated as background usage and do not appear as managed-device cards.
 
-- currentState: "on" | "off" | "unknown" | "not_applicable"
-  - Derived from device on/off state when available. `not_applicable` is used for temperature-only devices without `onoff`.
-- plannedState: "keep" | "shed" | "inactive"
-  - "keep" means allow device to stay in its current state or restore if off.
-  - "shed" means device should be off or set to its shed temperature because PELS is actively suppressing it for capacity reasons.
-  - "inactive" means the device is not currently activatable, but PELS is not suppressing it. This is used for EV chargers that are unplugged, discharging, missing a usable state, or missing a usable power estimate.
-- shedAction: "turn_off" | "set_temperature"
-- shedTemperature: number | null
-- plannedTarget: number | null (target temperature if applicable)
-- reason: string (shown as the Status line in the Overview tab)
+## Overview State Chips
 
-## State Transitions (high level)
+The redesigned Overview uses a compact state chip on each device card:
 
-- Normal active (plannedState = "keep"):
-  - plannedState = "keep"
-  - reason = "keep" (or "keep (recently restored)")
-- Shedding due to overshoot:
-  - If headroom < 0, lowest-priority devices are added to shedSet.
-  - plannedState = "shed", reason reflects the active cap:
-    - "shed due to capacity"
-    - "shed due to daily budget"
-  - When both constraints are effectively aligned, reason is still reported as "shed due to capacity".
-- Hourly budget exhausted:
-  - plannedState = "shed"
-  - reason = "shed due to hourly budget"
-- Device is off and can be restored:
-  - If not in shortfall and enough headroom:
-    - plannedState = "keep"
-    - reason = "restore (need XkW, headroom YkW)"
-  - If in shortfall:
-    - plannedState = "shed"
-    - reason = "shortfall (need XkW, headroom YkW)"
-    - Note: this headroom is operational plan headroom (effective soft limit context), while shortfall entry itself is based on projected hourly hard-cap budget breach.
-- Cooldown / stabilization:
-  - After shedding or restoring, restoration is throttled.
-  - plannedState = "shed"
-  - reason = cooldown or stabilization messages (see list below).
-- EV unavailable / not resumable:
-  - If an EV charger is unplugged, discharging, has an unknown charging state, or lacks a usable power estimate:
-    - plannedState = "inactive"
-    - reason reflects the availability issue, for example:
-      - "inactive (charger is unplugged)"
-      - "inactive (charger is discharging)"
-      - "inactive (charger state unknown)"
-      - "inactive (charger power unknown)"
-- Swap-based restore:
-  - If a higher-priority device needs restore but headroom is insufficient:
-    - Lower-priority on devices are marked "shed" to free headroom.
-    - The higher-priority device becomes a pending swap target until restored.
+| Overview label | What it means |
+| --- | --- |
+| **Running** | The device is on, charging, heating, or otherwise active. |
+| **Idle** | The device is currently off or not available to run, and PELS is not holding it back. |
+| **Limited** | PELS is currently lowering, pausing, or turning off the device to stay within the hard cap or daily budget pace. |
+| **Resuming** | PELS is trying to bring the device back when there is available power. |
+| **Manual** | The device is managed, but PELS cannot use power-limit control for it right now. |
+| **Unavailable** | PELS cannot currently trust the device state enough to plan with it. |
+| **Unknown** | PELS does not have enough current state to choose a more specific label. |
 
-## Overview Tab "State" Line (UI)
+Some cards add a more specific readout below the chip. For example, a limited device may say **Paused by PELS** when it was turned off, or **Limited by PELS** when PELS lowered a target or step. A stepped-load card may show **Off now**, **Level unknown**, or **Level: Max** to describe the reported step.
 
-The Overview tab shows a State line derived from plannedState and currentState:
+## Common Status Lines
 
-- Shed (powered off): plannedState === "shed" and shedAction === "turn_off"
-- Shed (lowered temperature): plannedState === "shed" and shedAction === "set_temperature"
-- Inactive: plannedState === "inactive"
-- Restoring: plannedState === "keep" and currentState is "off" or "unknown"
-- Active: plannedState === "keep" and currentState is "on"
-- Active (temperature-managed): plannedState === "keep" and currentState is "not_applicable"
-- Capacity control off: controllable === false
-- Unknown: fallback if state is not clear
+Chips stay short. The status line below a chip explains why a device is waiting, limited, or resuming.
 
-## Overview Tab "Status" Line (reason values)
+| Status wording | Meaning |
+| --- | --- |
+| **Waiting for available power** | The device needs more available power before PELS can resume or increase it. |
+| **Limited — staying under the hard cap** | PELS is lowering or pausing the device to protect the hourly hard cap. |
+| **Limited — staying within today's budget** | Daily budget pacing is currently the tighter constraint. |
+| **Limited — this hour is near the hard cap** | The current hour is close enough to the hard cap that PELS is holding the device back. |
+| **Manual action needed — hard cap may be exceeded** | PELS projects an hourly hard-cap breach and cannot limit any more load. Use the **Capacity guard: manual action needed** trigger for alerts. |
+| **Waiting before resuming** | PELS is respecting a cooldown so devices do not rapidly cycle. |
+| **Waiting for power reading to stabilise** | PELS recently changed or observed a device and is waiting for meter readings to settle. |
+| **Delaying restart after recent failed attempt** | A previous resume caused new pressure, so PELS is waiting longer before trying again. |
+| **Making room for higher-priority device** | PELS is limiting a lower-priority device so a higher-priority one can run. |
+| **Manual** | The device is managed, but PELS is not allowed to limit or resume it for power. |
 
-These are the main reason strings generated by the planner. The UI shows reason or "Waiting for headroom".
-Parentheses indicate dynamic values.
+## Raw Planner Fields
 
-- keep
-- keep (recently restored)
-- capacity control off
-- restore (need XkW, headroom YkW)
-- shed due to capacity
-- shed due to daily budget
-- shed due to hourly budget
-- shortfall (need XkW, headroom YkW)
-- cooldown (shedding, Ss remaining)
-- cooldown (restore, Ss remaining)
-- headroom cooldown (Ss remaining; usage X -> YkW)
-- headroom cooldown (Ss remaining; recent PELS shed)
-- headroom cooldown (Ss remaining; recent PELS restore)
-- swap pending
-- swap pending (NAME)
-- swapped out for NAME
-- insufficient headroom (need XkW, headroom YkW)
-- shedding active
-- restore throttled
-- inactive (charger is unplugged)
-- inactive (charger is discharging)
-- inactive (charger state unknown)
-- inactive (unknown charging state 'VALUE')
-- inactive (charger power unknown; configure expected power or let PELS observe a charging peak)
+The raw plan still uses older internal identifiers. These are implementation terms, not preferred UI copy:
 
-## State vs Status
+| Raw field/value | User-facing meaning |
+| --- | --- |
+| `plannedState: "keep"` | Usually shown as **Running** or **Resuming**, depending on current device state. |
+| `plannedState: "shed"` | Usually shown as **Limited**. PELS may turn the device off, lower temperature, or reduce a step. |
+| `plannedState: "inactive"` | Usually shown as **Idle**. The device is not currently available, and PELS is not limiting it. |
+| `shedAction: "turn_off"` | Turn off while limiting. |
+| `shedAction: "set_temperature"` | Lower target temperature while limiting. |
+| `reason: "shed due to capacity"` | Limited — staying under the hard cap. |
+| `reason: "shed due to daily budget"` | Limited — staying within today's budget. |
+| `reason: "restore (...)"` | Waiting to resume, with the required and available power shown internally. |
+| `reason: "shortfall (...)"` | Manual action needed — hard cap may be exceeded. |
+| `reason: "headroom cooldown (...)"` | Waiting for power readings to stabilise after recent change. |
 
-The State line carries the on/off vs shed distinction (including "Shed (powered off)" vs "Shed (lowered temperature)").
-Status lines are now simplified and avoid repeating the state, focusing on why the device is blocked or changing.
+These raw strings may still appear in diagnostics, logs, tests, or older Homey capability values. Normal docs and UI should use the user-facing wording above.
 
-`shed` is reserved for capacity suppression and its short stabilization/cooldown period. `inactive` is neutral and means the device is not currently available for restoration, but not because PELS is suppressing it.
+## EV Availability
 
-## Notes on min-temperature shedding
+For EV chargers, PELS keeps capacity suppression separate from charger availability:
 
-Devices configured with shedAction "set_temperature" are still marked as plannedState "shed".
-They share the same reason strings as turn-off shedding, including "shortfall (need XkW, headroom YkW)" when in shortfall.
+| Situation | Overview result |
+| --- | --- |
+| Charger is unplugged | **Idle** with an unplugged or not-charging explanation where available. |
+| Charger is discharging | **Idle** with a discharging explanation where available. |
+| Charger state is unknown | **Idle**, **Unknown**, or **Unavailable** until the state becomes usable. |
+| Charger power estimate is missing | **Idle** or **Manual** until PELS observes or is configured with a usable estimate. |
+| Charger is paused and can resume | PELS may resume it when the plan allows and there is available power. |
+
+## Why Devices Do Not Resume Immediately
+
+PELS resumes carefully:
+
+1. Higher-priority devices resume first.
+2. Only one device is resumed or increased per planning cycle.
+3. Extra available power is required beyond the device's expected draw.
+4. Recent limiting and recent failed restart attempts delay another resume.
+5. A lower-priority device may stay limited until a higher-priority device has successfully resumed.
+
+That behavior is deliberate. It avoids rapid cycling and gives the power meter time to reflect what actually happened.
