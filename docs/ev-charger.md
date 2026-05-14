@@ -39,7 +39,7 @@ This is more convenient than a manual stepped-load setup because PELS can expose
 Then configure the charger as a normal managed device:
 
 1. Enable **Managed by PELS**.
-2. Enable **Capacity-based control**.
+2. Enable **Power-limit control**.
 3. Set a priority that matches how important EV charging is compared with heaters, water tanks, and other managed devices.
 
 Lower priority numbers are more important. Devices with higher numbers are limited first when PELS needs to stay under the hard cap.
@@ -109,7 +109,7 @@ Start with dry run if you are still tuning the rest of PELS. Then verify:
 | Problem | What to check |
 | --- | --- |
 | The charger is not listed in PELS | Confirm the charger is paired in Homey and refresh the Devices tab. |
-| The Flow does not trigger | Confirm the charger is managed, capacity control is enabled, and PELS has live whole-home power data. |
+| The Flow does not trigger | Confirm the charger is managed, power-limit control is enabled, and PELS has live whole-home power data. |
 | The charger receives the wrong current | Check that the device uses the correct **EV 1-phase** or **EV 3-phase** control mode. |
 | Battery level does not update in PELS | Check that the battery reporting Flow uses the same charger device as the current-control Flow. |
 | PELS never limits the charger | Check the charger priority, capacity limit, safety margin, and whether dry run is still enabled. |

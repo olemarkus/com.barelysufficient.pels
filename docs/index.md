@@ -1,7 +1,7 @@
 ---
 title: PELS
 titleTemplate: false
-description: Homey Pro app that keeps your power usage under control and moves heating to cheaper hours — automatically.
+description: Homey Pro app that keeps your power usage under control, plans Smart tasks, and moves flexible load to cheaper hours.
 aside: false
 outline: false
 editLink: false
@@ -12,7 +12,7 @@ editLink: false
     <p class="landing-kicker">For Homey Pro</p>
     <h1 class="landing-title">Intelligent, automatic power management for Homey Pro.</h1>
     <p class="landing-app-type">Homey app for Homey Pro</p>
-    <p class="landing-lead">PELS watches your total power usage and automatically turns down heaters, water tanks, ventilation, or EV charging before you hit your hourly limit. When there is room again, it turns them back on — in the right order. It can also move heating to the cheapest hours of the day.</p>
+    <p class="landing-lead">PELS watches your total power usage and automatically turns down heaters, water tanks, ventilation, or EV charging before you hit your hourly limit. When there is room again, it turns them back on in the right order. It can also plan Smart tasks and move flexible load to cheaper hours.</p>
     <div class="landing-actions">
       <a class="VPButton brand" href="https://homey.app/a/com.barelysufficient.pels">Get the app on the Homey App Store</a>
       <a class="VPButton alt" href="#is-pels-a-fit">See if PELS fits your home</a>
@@ -39,17 +39,17 @@ editLink: false
         <p>If you are on a grid tariff where going over your hourly limit bumps you to a more expensive step, PELS can keep you under the limit automatically.</p>
       </article>
       <article class="landing-card">
-        <h3>You want heating to run when power is cheap</h3>
-        <p>PELS can move heating to the cheapest hours of the day based on spot prices, so you spend less without having to check prices yourself.</p>
+        <h3>You want flexible load to run when power is cheap</h3>
+        <p>PELS can move heating, charging, and task-based load toward cheaper hours, so you spend less without having to check prices yourself.</p>
       </article>
     </div>
   </section>
 
   <section class="landing-section" id="how-pels-fits-into-homey">
     <p class="landing-section-kicker">Inside Homey</p>
-    <h2 class="landing-section-title">Three things you use in practice</h2>
-    <p class="landing-section-text">PELS lives entirely inside Homey. You configure it in the settings page, connect it with a few Flows, and check what it is doing in the overview.</p>
-    <div class="landing-grid landing-grid-three">
+    <h2 class="landing-section-title">Four things you use in practice</h2>
+    <p class="landing-section-text">PELS lives entirely inside Homey. You configure it in the settings page, connect it with a few Flows, add Smart tasks when something must be ready, and check what it is doing in the overview.</p>
+    <div class="landing-grid landing-grid-two">
       <article class="landing-card landing-card-with-screenshot">
         <img class="landing-card-screenshot" src="/screenshots/landing-devices.png" alt="PELS device list showing managed devices" />
         <h3>Device control</h3>
@@ -65,8 +65,13 @@ editLink: false
       <article class="landing-card landing-card-with-screenshot">
         <img class="landing-card-screenshot" src="/screenshots/landing-price.png" alt="PELS price tab showing cheap and expensive hours" />
         <h3>Price optimization</h3>
-        <p>PELS knows when electricity is cheap or expensive and shifts heating to save money — automatically, based on spot prices.</p>
+        <p>PELS knows when electricity is cheap or expensive and shifts flexible load to save money automatically, based on spot prices.</p>
         <a href="flow-cards.html">See available Flow cards</a>
+      </article>
+      <article class="landing-card">
+        <h3>Smart tasks</h3>
+        <p>Tell PELS that a charger, room, or water heater should be ready by a specific time, and it plans useful hours before the deadline.</p>
+        <a href="smart-tasks.html">Open Smart tasks docs</a>
       </article>
     </div>
   </section>
@@ -88,8 +93,8 @@ editLink: false
       </article>
       <article class="landing-card">
         <h3>Going deeper</h3>
-        <p>Set a daily energy budget, control EV charging step by step, or fine-tune how PELS distributes energy across the day.</p>
-        <a href="daily-budget.html">Open advanced guides</a>
+        <p>Compare the cost-saving functions, set a daily energy budget, book cheap hours with Flows, or fine-tune EV charging.</p>
+        <a href="cost-saving-functions.html">Compare cost-saving functions</a>
       </article>
     </div>
     <p class="landing-note">Looking for the source code or want to contribute? See <a href="contributor-setup.html">Contributor Setup</a> or <a href="https://github.com/olemarkus/com.barelysufficient.pels">GitHub</a>.</p>

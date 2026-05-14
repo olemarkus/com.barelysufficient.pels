@@ -5,21 +5,21 @@ description: What each PELS settings tab does and which controls matter most for
 
 # Configuration
 
-The PELS settings UI is organized by task. Most users spend the most time in **Devices**, **Modes**, **Budget**, and **Price**.
+The PELS settings UI is organized by task. Most users spend the most time in **Devices**, **Modes**, **Budget**, **Price**, and **Smart tasks**.
 
 ## Devices tab
 
 The Devices tab shows temperature devices, on-off devices, and supported EV chargers.
 
-- Devices without a usable power estimate cannot be capacity-controlled.
-- Temperature devices can still be managed for mode and price behavior even when capacity control is unavailable.
+- Devices without a usable power estimate cannot use power-limit control.
+- Temperature devices can still be managed for mode and price behavior even when power-limit control is unavailable.
 
 | Setting | What it does |
 | --- | --- |
 | **Managed by PELS** | Includes the device in modes and price optimization. Unmanaged devices stay out of the Overview plan and are treated as background usage. |
-| **Capacity-based control** | Allows PELS to turn the device down or off, then resume it when there is room again. Requires a usable power estimate. |
+| **Power-limit control** | Allows PELS to turn the device down or off, then resume it when there is room again. Requires a usable power estimate. |
 | **Price optimization** | Applies cheap-hour or expensive-hour temperature deltas on managed temperature devices. |
-| **When shedding** | Chooses whether PELS turns the device off or drops it to a configured minimum temperature when limiting it. |
+| **When limiting** | Chooses whether PELS turns the device off or drops it to a configured minimum temperature when limiting it. |
 
 Notes:
 
@@ -37,7 +37,7 @@ For each managed device in a mode:
 
 | Setting | What it does |
 | --- | --- |
-| **Desired deg C** | Target temperature for the mode |
+| **Desired temperature** | Target temperature for the mode |
 | **Priority** | Lower number means higher priority. These devices stay on longer and resume first. |
 
 Typical approach:
@@ -57,7 +57,7 @@ The Overview tab shows the current plan: what PELS wants each managed device to 
 | **Device** | Device name |
 | **Temperature** | Current and target temperature where relevant |
 | **Power** | Current to planned on-off state |
-| **State** | Active, Restoring, Shed, Inactive, or Capacity control off |
+| **State** | Running, Resuming, Limited, Inactive, or Power-limit control off |
 | **Usage** | Current measured power and expected power |
 | **Status** | The reason for the current plan or current blocker |
 
@@ -74,7 +74,7 @@ This is where the core capacity logic lives.
 | Setting | What it does |
 | --- | --- |
 | **Capacity limit (kW)** | Your hourly hard-cap limit. This is the line you do not want to average above for the current hour. |
-| **Soft margin (kW)** | Buffer below the hard cap. PELS starts reacting before you hit the hard-cap budget. |
+| **Safety margin (kW)** | Buffer below the hard cap. PELS starts reacting before you hit the hard-cap budget. |
 | **Dry run** | Calculates the plan without actually controlling devices. Useful during initial tuning. |
 
 Important:
@@ -87,10 +87,24 @@ Important:
 The daily budget is a soft pacing layer on top of hourly control.
 
 - It never replaces the hourly hard cap.
-- It never triggers shortfall alarms by itself.
+- It never triggers urgent manual-action Flows by itself.
 - It can delay resumes earlier in the day if you are already over plan.
 
 Read [Daily Energy Budget](/daily-budget) before changing the advanced tuning values.
+
+## Smart tasks tab
+
+Smart tasks show devices with an active target and ready-by time. Tasks are created from Homey Flow cards, then shown in the settings UI so you can inspect the plan and history.
+
+| Card or view | What it does |
+| --- | --- |
+| **Add charging task** | Plans EV charging toward a target battery percentage by a ready-by time. |
+| **Add heating task** | Plans heating toward a target temperature by a ready-by time. |
+| **Smart tasks list** | Shows current tasks, targets, and ready-by times. |
+| **Task plan page** | Shows the selected hours and progress for a task. |
+| **Past tasks** | Shows previous task outcomes. |
+
+See [Smart Tasks](/smart-tasks) for behavior details and [Book Cheap Hours With Flows](/how-to-book-cheap-hours-with-flows) if you prefer a fixed number of cheapest hours instead of a target-based task.
 
 ## Usage tab
 
@@ -131,8 +145,8 @@ If you use external flow tags:
 
 | Setting | What it does |
 | --- | --- |
-| **Cheap delta** | Temperature boost during cheap hours |
-| **Expensive delta** | Temperature reduction during expensive hours |
+| **Cheap-hour boost (°C)** | Temperature boost during cheap hours |
+| **Expensive-hour reduction (°C)** | Temperature reduction during expensive hours |
 
 Water heaters and similar thermal loads are usually the best first candidates.
 
@@ -145,9 +159,9 @@ The Advanced tab is for diagnostics, cleanup, and expert tuning.
 | **Debug logging topics** | Chooses which internal topics emit debug logs. |
 | **Unmanaged usage reserve** | Tunes how much daily budget PELS holds back for household usage it cannot move. |
 | **Managed device flexibility** | Tunes how freely PELS may shift managed-device usage toward cheaper feasible hours. |
-| **Show daily budget breakdown in chart** | Splits the plan chart into controlled and uncontrolled portions. |
+| **Show daily budget breakdown in chart** | Splits the plan chart into managed and background portions. |
 
-Only change the daily-budget tuning values if you understand the tradeoff. They can materially change shed timing and restore timing.
+Only change the daily-budget tuning values if you understand the tradeoff. They can materially change when devices are limited and resumed.
 
 For the exact formulas, see [Daily Budget Weighting Math](/daily-budget-weights).
 
@@ -158,5 +172,6 @@ For the exact formulas, see [Daily Budget Weighting Math](/daily-budget-weights)
 3. Tune priorities and capacity settings.
 4. Add price optimization.
 5. Add daily budget pacing if you want softer whole-day guidance.
+6. Add Smart tasks for devices that must reach a target by a ready-by time.
 
 For EV charging, add [EV charger current control](/ev-charger) after the meter Flow and capacity settings are working.
