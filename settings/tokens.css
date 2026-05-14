@@ -139,6 +139,12 @@
   --pels-text-title-font-size: var(--font-size-title-md);
   --pels-text-title-font-weight: var(--font-weight-medium);
   --pels-text-title-font-line-height: var(--font-line-height-tight);
+  --pels-text-body-font-size: var(--font-size-md);
+  --pels-text-body-font-weight: var(--font-weight-normal);
+  --pels-text-body-font-line-height: var(--font-line-height-normal);
+  --pels-text-caption-font-size: var(--font-size-xs);
+  --pels-text-caption-font-weight: var(--font-weight-medium);
+  --pels-text-caption-font-line-height: var(--font-line-height-tight);
   --pels-text-card-supporting-font-size: var(--font-size-sm);
   --pels-text-card-supporting-font-line-height: var(--font-line-height-normal);
   --pels-text-settings-label-font-weight: var(--font-weight-semibold);
@@ -215,6 +221,8 @@
   --pels-text-headline-color: var(--pels-text-primary);
   --pels-text-section-headline-color: var(--pels-text-primary);
   --pels-text-title-color: var(--pels-text-primary);
+  --pels-text-body-color: var(--pels-text-primary);
+  --pels-text-caption-color: var(--pels-text-secondary);
   --pels-text-card-supporting-color: var(--pels-text-secondary);
   --pels-text-settings-label-color: var(--pels-text-primary);
   --pels-text-settings-trailing-color: var(--pels-text-primary);

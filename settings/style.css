@@ -140,6 +140,62 @@ body {
   overflow-x: hidden;
 }
 
+/* ─── Typography role utilities ─────────────────────────────────────────────
+ * Role-based classes that map directly to the published role tokens. Use these
+ * (or rebind primitive selectors to the same tokens) instead of reaching for
+ * `--font-size-*` directly so the type scale stays a single source of truth.
+ *
+ *   .text-hero-number       36 / 400 / tight   big hero stat (e.g. "2.9 kW")
+ *   .text-page-headline     28 / 400 / tight   page-level KPI / banner figure
+ *   .text-section-headline  24 / 400 / tight   section <h2> headings
+ *   .text-title             16 / 500 / tight   card titles, sub-headings
+ *   .text-section-label     13 / 600 / tight   label rows above values
+ *   .text-body              15 / 400 / normal  default supporting copy
+ *   .text-caption           11 / 500 / tight   helper / meta text, eyebrows
+ * --------------------------------------------------------------------------- */
+
+.text-hero-number {
+  font-size: var(--pels-text-display-font-size);
+  font-weight: var(--pels-text-display-font-weight);
+  line-height: var(--pels-text-display-font-line-height);
+}
+
+.text-page-headline {
+  font-size: var(--pels-text-headline-font-size);
+  font-weight: var(--pels-text-headline-font-weight);
+  line-height: var(--pels-text-headline-font-line-height);
+}
+
+.text-section-headline {
+  font-size: var(--pels-text-section-headline-font-size);
+  font-weight: var(--pels-text-section-headline-font-weight);
+  line-height: var(--pels-text-section-headline-font-line-height);
+}
+
+.text-title {
+  font-size: var(--pels-text-title-font-size);
+  font-weight: var(--pels-text-title-font-weight);
+  line-height: var(--pels-text-title-font-line-height);
+}
+
+.text-section-label {
+  font-size: var(--pels-text-section-label-font-size);
+  font-weight: var(--pels-text-section-label-font-weight);
+  line-height: var(--pels-text-section-label-font-line-height);
+}
+
+.text-body {
+  font-size: var(--pels-text-body-font-size);
+  font-weight: var(--pels-text-body-font-weight);
+  line-height: var(--pels-text-body-font-line-height);
+}
+
+.text-caption {
+  font-size: var(--pels-text-caption-font-size);
+  font-weight: var(--pels-text-caption-font-weight);
+  line-height: var(--pels-text-caption-font-line-height);
+}
+
 md-filled-text-field,
 md-filled-select {
   width: 100%;
@@ -695,9 +751,10 @@ md-primary-tab.tab[active]:hover {
 
 .settings-current-mode__summary h3 {
   margin: 0;
-  color: var(--text);
-  font-size: var(--font-size-lg);
-  line-height: var(--font-line-height-tight);
+  color: var(--pels-text-title-color);
+  font-size: var(--pels-text-title-font-size);
+  font-weight: var(--pels-text-title-font-weight);
+  line-height: var(--pels-text-title-font-line-height);
   letter-spacing: 0;
 }
 
@@ -820,18 +877,19 @@ md-primary-tab.tab[active]:hover {
 
 .card h2 {
   margin: 4px 0 0;
-  color: var(--pels-text-title-color);
-  font-size: var(--pels-text-title-font-size);
-  font-weight: var(--pels-text-title-font-weight);
-  line-height: var(--pels-text-title-font-line-height);
+  color: var(--pels-text-section-headline-color);
+  font-size: var(--pels-text-section-headline-font-size);
+  font-weight: var(--pels-text-section-headline-font-weight);
+  line-height: var(--pels-text-section-headline-font-line-height);
 }
 
 .eyebrow {
   margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  font-weight: var(--font-weight-medium);
   font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--font-line-height-tight);
   color: var(--muted);
 }
 
@@ -2975,9 +3033,10 @@ md-primary-tab.tab[active]:hover {
 
 .section-title {
   margin: 0;
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text);
+  font-size: var(--pels-text-title-font-size);
+  font-weight: var(--pels-text-title-font-weight);
+  line-height: var(--pels-text-title-font-line-height);
+  color: var(--pels-text-title-color);
 }
 
 .section-hint {
@@ -5117,8 +5176,9 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 .deadlines-history__heading {
   margin: 0;
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--pels-text-title-font-size);
+  font-weight: var(--pels-text-title-font-weight);
+  line-height: var(--pels-text-title-font-line-height);
   color: var(--muted);
   border-top: 1px solid var(--panel-border);
   padding-top: var(--spacing-4);
@@ -5153,16 +5213,18 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .usage-hero__stat-label {
-  font-size: var(--font-size-xs, 0.75rem);
+  font-size: var(--pels-text-section-label-font-size);
+  font-weight: var(--pels-text-section-label-font-weight);
+  line-height: var(--pels-text-section-label-font-line-height);
   letter-spacing: 0;
   color: var(--pels-text-secondary);
 }
 
 .usage-hero__stat-value {
-  color: var(--pels-text-title-color);
-  font-size: var(--pels-text-title-font-size);
-  font-weight: var(--pels-text-title-font-weight);
-  line-height: var(--pels-text-title-font-line-height);
+  color: var(--pels-text-section-headline-color);
+  font-size: var(--pels-text-section-headline-font-size);
+  font-weight: var(--pels-text-section-headline-font-weight);
+  line-height: var(--pels-text-section-headline-font-line-height);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: hidden;
@@ -5299,7 +5361,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
     gap: var(--spacing-1);
   }
   .usage-hero__stat-value {
-    font-size: var(--font-size-sm, 0.875rem);
+    font-size: var(--pels-text-title-font-size);
   }
 }
 
