@@ -822,4 +822,91 @@ describe('DailyBudgetService', () => {
 
     expect(perfCount('settings_set.daily_budget_state_reason.reset_total')).toBe(reasonBefore + 1);
   });
+
+  it('re-seeds adjacent days when only price tier flags flip on existing entries', () => {
+    // A price-threshold or surcharge change can rebuild combined_prices with the
+    // same horizon (entry count and bounds unchanged) but flip per-entry
+    // isCheap/isExpensive flags. Without folding those flags into the
+    // signature, the cached tomorrow keeps stale price-tier metadata until the
+    // next includeAdjacentDays caller forces a rebuild.
+    const service = buildService();
+    const today = buildDayPayload({ dateKey: '2025-03-15', confidence: 0.72 });
+    const tomorrow = buildDayPayload({ dateKey: '2025-03-16', confidence: 0.3 });
+    const baseEntries = [
+      { startsAt: '2025-03-15T00:00:00Z', total: 1, isCheap: false, isExpensive: false },
+      { startsAt: '2025-03-16T00:00:00Z', total: 1, isCheap: false, isExpensive: false },
+    ];
+    (service as any).buildTomorrowPreview = vi.fn(() => tomorrow);
+    (service as any).buildYesterdayHistory = vi.fn(() => null);
+    (service as any).setDaySnapshot(today, NOW_MS, { prices: baseEntries });
+    expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');
+
+    const builderSpy = vi.spyOn(service as any, 'rebuildSnapshotWithAdjacentDays');
+    // Same entry count, same first/last startsAt — only the price-tier flags differ.
+    const flippedEntries = [
+      { startsAt: '2025-03-15T00:00:00Z', total: 1, isCheap: true, isExpensive: false },
+      { startsAt: '2025-03-16T00:00:00Z', total: 1, isCheap: false, isExpensive: true },
+    ];
+    (service as any).setDaySnapshot(today, NOW_MS, { prices: flippedEntries });
+    expect(builderSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-seeds adjacent days when only per-entry totals change on existing entries', () => {
+    // A surcharge/tariff/raw-price refresh can rebuild combined_prices with the
+    // same horizon (entry count and bounds unchanged) and the same tier flags
+    // but shifted per-entry `total` values. Those totals drive `buckets.price`,
+    // `priceFactor`, and planned allocation in the rebuilt tomorrow/yesterday
+    // snapshots, so the cached preview must be re-seeded when they move.
+    const service = buildService();
+    const today = buildDayPayload({ dateKey: '2025-03-15', confidence: 0.72 });
+    const tomorrow = buildDayPayload({ dateKey: '2025-03-16', confidence: 0.3 });
+    const baseEntries = [
+      { startsAt: '2025-03-15T00:00:00Z', total: 1, isCheap: false, isExpensive: false },
+      { startsAt: '2025-03-16T00:00:00Z', total: 1, isCheap: false, isExpensive: false },
+    ];
+    (service as any).buildTomorrowPreview = vi.fn(() => tomorrow);
+    (service as any).buildYesterdayHistory = vi.fn(() => null);
+    (service as any).setDaySnapshot(today, NOW_MS, { prices: baseEntries });
+    expect(service.getSnapshot()?.tomorrowKey).toBe('2025-03-16');
+
+    const builderSpy = vi.spyOn(service as any, 'rebuildSnapshotWithAdjacentDays');
+    // Same horizon and tier flags — only the totals differ (e.g., surcharge bump).
+    const shiftedTotals = [
+      { startsAt: '2025-03-15T00:00:00Z', total: 1.25, isCheap: false, isExpensive: false },
+      { startsAt: '2025-03-16T00:00:00Z', total: 1.25, isCheap: false, isExpensive: false },
+    ];
+    (service as any).setDaySnapshot(today, NOW_MS, { prices: shiftedTotals });
+    expect(builderSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('forces a daily-budget state flush across an hour boundary even with low-priority reasons', () => {
+    // Without an hour-boundary bypass, `runtime`/`plan` writes are throttled
+    // for 10 minutes. On a crash inside that window, the in-memory
+    // lastUsedNowKWh increment since the last persist is lost. Hour-boundary
+    // forcing caps that loss at the most recent hour bucket of accumulation,
+    // which matches how the daily budget reconstructs (in hour buckets).
+    const service = buildService();
+    const set = (service as any).deps.homey.settings.set as ReturnType<typeof vi.fn>;
+    let exportIndex = 0;
+    (service as any).manager.update = vi.fn(() => ({
+      snapshot: buildDayPayload({
+        dateKey: '2025-03-15',
+        confidence: 0.72,
+        confidenceDebug: buildConfidenceDebug(),
+      }),
+      persistReason: 'runtime',
+    }));
+    (service as any).manager.exportState = vi.fn(() => ({ lastUsedNowKWh: exportIndex++ }));
+
+    // First persist happens at 10:55. Subsequent samples land within the 10-min
+    // throttle window but cross the 11:00 hour boundary.
+    const firstPersistMs = new Date('2025-03-15T10:55:00Z').getTime();
+    service.updateState({ nowMs: firstPersistMs }); // first persist
+    service.updateState({ nowMs: firstPersistMs + 1 * 60_000 }); // 10:56, throttled
+    service.updateState({ nowMs: firstPersistMs + 6 * 60_000 }); // 11:01, hour boundary -> persist
+    service.updateState({ nowMs: firstPersistMs + 8 * 60_000 }); // 11:03, throttled (same new hour)
+
+    expect(dailyBudgetStateSetCount(set)).toBe(2);
+    expect(set).toHaveBeenLastCalledWith('daily_budget_state', { lastUsedNowKWh: 2 });
+  });
 });

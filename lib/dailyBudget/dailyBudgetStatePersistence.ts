@@ -4,6 +4,7 @@ import { DAILY_BUDGET_STATE } from '../utils/settingsKeys';
 import type { DailyBudgetState, DailyBudgetStatePersistReason } from './dailyBudgetTypes';
 
 const LOW_PRIORITY_PERSIST_INTERVAL_MS = 10 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
 
 const LOW_PRIORITY_REASONS = new Set<DailyBudgetStatePersistReason>(['runtime', 'plan']);
 
@@ -63,7 +64,14 @@ export class DailyBudgetStatePersistencePolicy {
   private shouldThrottle(reason: DailyBudgetStatePersistReason, nowMs: number): boolean {
     if (!isLowPriorityDailyBudgetPersistReason(reason)) return false;
     if (this.lastPersistMs === 0) return false;
-    return nowMs - this.lastPersistMs < LOW_PRIORITY_PERSIST_INTERVAL_MS;
+    if (nowMs - this.lastPersistMs >= LOW_PRIORITY_PERSIST_INTERVAL_MS) return false;
+    // Hour boundary bypass: if the UTC wall-clock hour rolled over since
+    // the last persist, allow the write through. This caps crash-loss of
+    // unflushed `lastUsedNowKWh` accumulation to under one hour. It adds at
+    // most ~24 hour-boundary-forced writes per day on top of whatever the
+    // 10-minute throttle already allows (which on its own permits up to
+    // ~144 low-priority writes per day when samples are frequent).
+    return Math.floor(nowMs / HOUR_MS) === Math.floor(this.lastPersistMs / HOUR_MS);
   }
 }
 

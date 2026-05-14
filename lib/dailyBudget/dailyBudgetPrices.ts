@@ -7,6 +7,13 @@ import {
 export type CombinedPriceEntry = {
   startsAt: string;
   total: number;
+  // Optional price-tier flags. Present on the canonical price store entries
+  // (see lib/price/priceTypes.ts) and consumed by the snapshot signature so
+  // that threshold/surcharge changes which only flip these flags still
+  // re-seed adjacent days. Optional here because legacy/test data may omit
+  // them.
+  isCheap?: boolean;
+  isExpensive?: boolean;
 };
 
 export type CombinedPriceData = {
