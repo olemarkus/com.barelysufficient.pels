@@ -4,7 +4,15 @@ import { PriceLevel } from './priceLevels';
 import PriceService from './priceService';
 import { PRICE_OPTIMIZATION_ENABLED } from '../utils/settingsKeys';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
+import { getNextLocalDayStartUtcMs } from '../utils/dateUtils';
 import type { Logger as PinoLogger } from '../logging/logger';
+
+// Fire shortly after local midnight so the local-day key has rolled over before
+// the rotation reads it. 30s leaves room for clock skew and timer drift.
+const MIDNIGHT_ROTATION_OFFSET_MS = 30 * 1000;
+// Floor on the scheduled delay to avoid scheduling tight back-to-back timers
+// if the previous fire ran slightly early (e.g. 23:59:59.998 local).
+const MIDNIGHT_ROTATION_MIN_DELAY_MS = 1000;
 
 export type PriceCoordinatorDeps = {
   homey: Homey.App['homey'];
@@ -21,6 +29,7 @@ export class PriceCoordinator {
   private priceService: PriceService;
   private priceOptimizer?: PriceOptimizer;
   private priceRefreshInterval?: ReturnType<typeof setInterval>;
+  private midnightRotationTimeout?: ReturnType<typeof setTimeout>;
   private priceOptimizationEnabled = true;
   private priceOptimizationSettings: Record<string, {
     enabled: boolean;
@@ -99,6 +108,10 @@ export class PriceCoordinator {
       clearInterval(this.priceRefreshInterval);
       this.priceRefreshInterval = undefined;
     }
+    if (this.midnightRotationTimeout) {
+      clearTimeout(this.midnightRotationTimeout);
+      this.midnightRotationTimeout = undefined;
+    }
     this.priceOptimizer?.stop();
   }
 
@@ -113,6 +126,34 @@ export class PriceCoordinator {
       this.refreshSpotPrices().catch(() => {});
       this.refreshGridTariffData().catch(() => {});
     }, refreshIntervalMs);
+    // Flow-scheme price slots only rotate when an external trigger (push, settings change,
+    // UI fetch) calls updateCombinedPrices. Without a midnight nudge, COMBINED_PRICES keeps
+    // yesterday's isCheap/isExpensive classification until the next push, so flow-only users
+    // see stale price tiers post-midnight. Schedule a one-shot nudge per local midnight.
+    this.scheduleNextMidnightRotation();
+  }
+
+  private scheduleNextMidnightRotation(): void {
+    if (this.midnightRotationTimeout) {
+      clearTimeout(this.midnightRotationTimeout);
+      this.midnightRotationTimeout = undefined;
+    }
+    const delayMs = this.computeMidnightRotationDelayMs(new Date());
+    this.midnightRotationTimeout = setTimeout(() => {
+      this.midnightRotationTimeout = undefined;
+      try {
+        this.updateCombinedPrices();
+      } catch (error) {
+        this.deps.error('Midnight price rotation failed', error);
+      }
+      this.scheduleNextMidnightRotation();
+    }, delayMs);
+  }
+
+  private computeMidnightRotationDelayMs(now: Date): number {
+    const timeZone = this.deps.homey.clock.getTimezone();
+    const targetMs = getNextLocalDayStartUtcMs(now.getTime(), timeZone) + MIDNIGHT_ROTATION_OFFSET_MS;
+    return Math.max(MIDNIGHT_ROTATION_MIN_DELAY_MS, targetMs - now.getTime());
   }
 
   async refreshSpotPrices(forceRefresh = false): Promise<void> {
