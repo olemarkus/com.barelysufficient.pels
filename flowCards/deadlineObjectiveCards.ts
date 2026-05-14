@@ -420,6 +420,13 @@ const resolvePreviousFlowStatus = (
   snapshot: DeferredObjectiveStatusSnapshot,
   lastFlowStatusByDeviceId: Map<string, LastSmartTaskFlowStatus>,
 ): SmartTaskActiveFlowStatus | null => {
+  // Bus reports `'none'` whenever the device was forgotten (`forgetDevice`),
+  // which happens from clear_deadline, transition sweeps, and runtime disable
+  // paths. Only clear_deadline also clears `lastFlowStatusByDeviceId`, so the
+  // cache may still hold a same-deadline entry from a prior fire. Trust the
+  // bus's `'none'` signal first — otherwise a recreated/reappearing task
+  // emits a spurious status-change trigger on its first observation.
+  if (snapshot.previousStatus === 'none') return null;
   const previousFlowStatus = lastFlowStatusByDeviceId.get(snapshot.deviceId);
   // Cached entry for the same deadline is the highest-trust prior — it
   // reflects the last fired flow status, which may differ from the bus's
@@ -427,8 +434,7 @@ const resolvePreviousFlowStatus = (
   if (previousFlowStatus?.deadlineAtMs === snapshot.deadlineAtMs) {
     return previousFlowStatus.status;
   }
-  // Otherwise rely on the bus's reported previous internal status. `'none'`
-  // means the bus has no record either — treat as no prior.
+  // Otherwise rely on the bus's reported previous internal status.
   return mapPreviousStatusToFlowStatus(snapshot.previousStatus);
 };
 

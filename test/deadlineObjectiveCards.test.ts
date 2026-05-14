@@ -599,6 +599,50 @@ describe('deadline objective flow cards', () => {
     expect(trigger.trigger).toHaveBeenCalledTimes(1);
   });
 
+  it('does not fire when the bus forgets a device but the cache still holds the same deadline', () => {
+    // Regression: `statusBus.forgetDevice()` is called from paths other than
+    // `clear_deadline` (transition sweeps, runtime disable in appInit). Those
+    // paths leave `lastFlowStatusByDeviceId` populated. When the device next
+    // reappears with `previousStatus: 'none'` AND the cached entry happens to
+    // match the same deadlineAtMs, the trigger would otherwise reuse the
+    // stale cached status and emit a spurious status-change event.
+    const bus = createDeferredObjectiveStatusBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      bus,
+      rebuildPlan: vi.fn(),
+    });
+    registerDeadlineObjectiveCards(deps);
+    const trigger = mock.triggers.get('deadline_status_changed')!;
+
+    // Initial: bus publishes on_track with a real prior status — fires once
+    // and populates the cache.
+    const snapshot: DeferredObjectiveStatusSnapshot = {
+      deviceId: 'heater-1',
+      deviceName: 'Boiler',
+      kind: 'temperature',
+      status: 'on_track',
+      previousStatus: 'unknown',
+      targetText: '55 °C',
+      deadlineLocalTime: '07:00',
+      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      deadlineMissed: false,
+      shortfallKwh: null,
+      shortfallText: null,
+    };
+    bus.publish(snapshot);
+    expect(trigger.trigger).toHaveBeenCalledTimes(1);
+
+    // Bus forgets the device via a non-clear path (e.g. transition sweep).
+    // The trigger's cache is NOT cleared by this path.
+    bus.forgetDevice('heater-1');
+
+    // Re-publish with the same deadlineAtMs and previousStatus=none. Without
+    // the fix, the cache match would suppress the 'none' signal and re-fire.
+    bus.publish({ ...snapshot, previousStatus: 'none' });
+    expect(trigger.trigger).toHaveBeenCalledTimes(1);
+  });
+
   it('does not fire after clear_deadline + re-add even when the bus reports the same status', async () => {
     const bus = createDeferredObjectiveStatusBus();
     const { deps, mock } = buildDeps({
