@@ -79,7 +79,7 @@ const computeMissedTransition = (params: {
   previous: DeferredObjectiveStatusSnapshot | null;
   nextStatus: DeferredObjectivePublishedStatus;
   nowMs: number;
-}): { deadlineMissed: boolean; deadlineJustPassed: boolean } => {
+}): { deadlineMissed: boolean } => {
   const { diagnostic, previous, nextStatus, nowMs } = params;
   const previousMissed = previous?.deadlineMissed === true;
   const deadlineInFuture = diagnostic.deadlineAtMs !== null
@@ -91,7 +91,7 @@ const computeMissedTransition = (params: {
     && diagnostic.deadlineAtMs !== null
     && nowMs >= diagnostic.deadlineAtMs
     && nextStatus !== 'satisfied';
-  return { deadlineMissed: carriedMissed || deadlineJustPassed, deadlineJustPassed };
+  return { deadlineMissed: carriedMissed || deadlineJustPassed };
 };
 
 const processDiagnosticTransition = (params: {
@@ -104,7 +104,7 @@ const processDiagnosticTransition = (params: {
   const previous = statusBus.getCurrent(diagnostic.deviceId);
   const previousStatus = previous?.status ?? 'none';
   const nextStatus: DeferredObjectivePublishedStatus = diagnostic.status;
-  const { deadlineMissed, deadlineJustPassed } = computeMissedTransition({
+  const { deadlineMissed } = computeMissedTransition({
     diagnostic,
     previous,
     nextStatus,
@@ -119,20 +119,17 @@ const processDiagnosticTransition = (params: {
   } else {
     statusBus.setCurrent(snapshot);
   }
-  if (deadlineJustPassed) {
-    statusBus.publishMissed(buildSnapshot({
-      diagnostic,
-      status: nextStatus,
-      previousStatus,
-      deadlineMissed: true,
-    }));
-  }
+  // The sticky `deadlineMissed` snapshot flag still drives the status-change
+  // trigger's "don't fire while missed" gate. The dedicated "ended" Flow
+  // trigger is published separately from `planHistory.ts` when the run
+  // finalizes (outcome `missed`), so we no longer fan-out a duplicate missed
+  // event from here.
+  //
   // Auto-disable as soon as the deadline has passed, regardless of whether
-  // the device reached `satisfied` first. `deadlineJustPassed` is gated on
-  // `nextStatus !== 'satisfied'` to suppress duplicate missed events, but a
-  // satisfied-at-deadline objective must still be disarmed so it does not
-  // linger as enabled forever. The callback is idempotent on enabled=false
-  // entries, so firing it on each post-deadline cycle is harmless.
+  // the device reached `satisfied` first. A satisfied-at-deadline objective
+  // must still be disarmed so it does not linger as enabled forever. The
+  // callback is idempotent on enabled=false entries, so firing it on each
+  // post-deadline cycle is harmless.
   if (
     onDeadlinePassed
     && diagnostic.deadlineAtMs !== null

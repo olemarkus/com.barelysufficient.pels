@@ -26,33 +26,25 @@ export type DeferredObjectiveStatusSnapshot = {
 };
 
 type Listener = (transition: DeferredObjectiveStatusSnapshot) => void;
-type MissedListener = (transition: DeferredObjectiveStatusSnapshot) => void;
 
 export type DeferredObjectiveStatusBus = {
   publish: (transition: DeferredObjectiveStatusSnapshot) => void;
-  publishMissed: (transition: DeferredObjectiveStatusSnapshot) => void;
   setCurrent: (snapshot: DeferredObjectiveStatusSnapshot) => void;
   forgetDevice: (deviceId: string) => void;
   getCurrent: (deviceId: string) => DeferredObjectiveStatusSnapshot | null;
   hasActive: (deviceId: string) => boolean;
   listDeviceIds: () => string[];
   onTransition: (listener: Listener) => () => void;
-  onMissed: (listener: MissedListener) => () => void;
 };
 
 export const createDeferredObjectiveStatusBus = (): DeferredObjectiveStatusBus => {
   const current = new Map<string, DeferredObjectiveStatusSnapshot>();
   const transitionListeners = new Set<Listener>();
-  const missedListeners = new Set<MissedListener>();
 
   return {
     publish: (transition) => {
       current.set(transition.deviceId, transition);
       for (const listener of transitionListeners) listener(transition);
-    },
-    publishMissed: (transition) => {
-      current.set(transition.deviceId, transition);
-      for (const listener of missedListeners) listener(transition);
     },
     setCurrent: (snapshot) => {
       current.set(snapshot.deviceId, snapshot);
@@ -66,10 +58,6 @@ export const createDeferredObjectiveStatusBus = (): DeferredObjectiveStatusBus =
     onTransition: (listener) => {
       transitionListeners.add(listener);
       return () => { transitionListeners.delete(listener); };
-    },
-    onMissed: (listener) => {
-      missedListeners.add(listener);
-      return () => { missedListeners.delete(listener); };
     },
   };
 };

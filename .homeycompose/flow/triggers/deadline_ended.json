@@ -1,0 +1,73 @@
+{
+  "title": {
+    "en": "Smart task ended"
+  },
+  "titleFormatted": {
+    "en": "Smart task ended with outcome [[outcome]] for [[device]]"
+  },
+  "hint": {
+    "en": "Fires once when a smart task run concludes — succeeded (target reached and held), missed (deadline passed below target), or abandoned (cleared by the user or device dropped out for an extended period). Reschedules and unobservable runs stay quiet."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select device"
+      }
+    },
+    {
+      "name": "outcome",
+      "type": "dropdown",
+      "title": {
+        "en": "Outcome"
+      },
+      "values": [
+        { "id": "any", "title": { "en": "Any outcome" } },
+        { "id": "succeeded", "title": { "en": "Succeeded" } },
+        { "id": "missed", "title": { "en": "Missed" } },
+        { "id": "abandoned", "title": { "en": "Abandoned" } }
+      ]
+    }
+  ],
+  "tokens": [
+    {
+      "name": "device_name",
+      "type": "string",
+      "title": { "en": "Device" }
+    },
+    {
+      "name": "outcome",
+      "type": "string",
+      "title": { "en": "Outcome" }
+    },
+    {
+      "name": "kind",
+      "type": "string",
+      "title": { "en": "Kind" }
+    },
+    {
+      "name": "target_text",
+      "type": "string",
+      "title": { "en": "Target" }
+    },
+    {
+      "name": "deadline_local_time",
+      "type": "string",
+      "title": { "en": "Ready by" }
+    },
+    {
+      "name": "finished_at_local_time",
+      "type": "string",
+      "title": { "en": "Reached at" }
+    },
+    {
+      "name": "shortfall_text",
+      "type": "string",
+      "title": { "en": "Shortfall" }
+    }
+  ]
+}

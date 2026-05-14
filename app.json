@@ -147,13 +147,13 @@
       },
       {
         "title": {
-          "en": "Smart task missed"
+          "en": "Smart task ended"
         },
         "titleFormatted": {
-          "en": "[[device]] did not finish its smart task in time"
+          "en": "Smart task ended with outcome [[outcome]] for [[device]]"
         },
         "hint": {
-          "en": "Fires when the selected time passes before the task target is reached."
+          "en": "Fires once when a smart task run concludes — succeeded (target reached and held), missed (deadline passed below target), or abandoned (cleared by the user or device dropped out for an extended period). Reschedules and unobservable runs stay quiet."
         },
         "args": [
           {
@@ -165,6 +165,39 @@
             "placeholder": {
               "en": "Select device"
             }
+          },
+          {
+            "name": "outcome",
+            "type": "dropdown",
+            "title": {
+              "en": "Outcome"
+            },
+            "values": [
+              {
+                "id": "any",
+                "title": {
+                  "en": "Any outcome"
+                }
+              },
+              {
+                "id": "succeeded",
+                "title": {
+                  "en": "Succeeded"
+                }
+              },
+              {
+                "id": "missed",
+                "title": {
+                  "en": "Missed"
+                }
+              },
+              {
+                "id": "abandoned",
+                "title": {
+                  "en": "Abandoned"
+                }
+              }
+            ]
           }
         ],
         "tokens": [
@@ -173,6 +206,13 @@
             "type": "string",
             "title": {
               "en": "Device"
+            }
+          },
+          {
+            "name": "outcome",
+            "type": "string",
+            "title": {
+              "en": "Outcome"
             }
           },
           {
@@ -197,31 +237,31 @@
             }
           },
           {
-            "name": "shortfall_text",
+            "name": "finished_at_local_time",
             "type": "string",
             "title": {
-              "en": "Remaining"
+              "en": "Reached at"
             }
           },
           {
-            "name": "shortfall_kwh",
-            "type": "number",
+            "name": "shortfall_text",
+            "type": "string",
             "title": {
-              "en": "Remaining energy"
+              "en": "Shortfall"
             }
           }
         ],
-        "id": "deadline_missed"
+        "id": "deadline_ended"
       },
       {
         "title": {
-          "en": "Smart task plan changed"
+          "en": "Smart task planned hours changed"
         },
         "titleFormatted": {
-          "en": "[[device]] smart task plan changed"
+          "en": "Smart task planned hours changed for [[device]]"
         },
         "hint": {
-          "en": "Fires when the scheduled hours for the chosen device's smart task are revised (e.g. after new prices arrive)."
+          "en": "Fires when the smart task is replanned with a different number of hours — for example when new prices arrive, or when the device runs faster than estimated. Hour swaps that keep the same total and kWh-only redistributions stay quiet."
         },
         "args": [
           {

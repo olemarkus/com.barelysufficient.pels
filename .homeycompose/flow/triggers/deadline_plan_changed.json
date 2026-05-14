@@ -1,12 +1,12 @@
 {
   "title": {
-    "en": "Smart task plan changed"
+    "en": "Smart task planned hours changed"
   },
   "titleFormatted": {
-    "en": "[[device]] smart task plan changed"
+    "en": "Smart task planned hours changed for [[device]]"
   },
   "hint": {
-    "en": "Fires when the scheduled hours for the chosen device's smart task are revised (e.g. after new prices arrive)."
+    "en": "Fires when the smart task is replanned with a different number of hours — for example when new prices arrive, or when the device runs faster than estimated. Hour swaps that keep the same total and kWh-only redistributions stay quiet."
   },
   "args": [
     {

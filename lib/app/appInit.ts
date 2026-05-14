@@ -113,6 +113,7 @@ export function createDeferredObjectivePlanHistoryRecorder(
         return false;
       }
     },
+    endedBus: ctx.deferredObjectiveEndedBus,
   });
   runStartupBackfill(ctx, recorder);
   return recorder;
@@ -403,6 +404,7 @@ export function registerAppFlowCards(ctx: AppContext): void {
     },
     getDeferredObjectiveStatusBus: () => ctx.deferredObjectiveStatusBus,
     getDeferredObjectivePlanRevisionBus: () => ctx.deferredObjectivePlanRevisionBus,
+    getDeferredObjectiveEndedBus: () => ctx.deferredObjectiveEndedBus,
     applyDeferredObjectiveChange: (params) => {
       const activeRecorder = requireDeferredObjectiveActivePlanRecorder(ctx);
       const historyRecorder = requireDeferredObjectivePlanHistoryRecorder(ctx);

@@ -47,10 +47,11 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
     expect(transitions).toEqual(['on_track', 'at_risk']);
   });
 
-  it('publishes deadline_missed when the deadline has passed without satisfaction', () => {
+  it('sets the sticky deadlineMissed flag once the deadline has passed without satisfaction', () => {
+    // The dedicated "ended" Flow trigger is published from planHistory.ts now;
+    // statusTransitions only carries the sticky snapshot flag that gates the
+    // status-change trigger from firing once a run has missed.
     const bus = createDeferredObjectiveStatusBus();
-    const missed: string[] = [];
-    bus.onMissed((snapshot) => missed.push(snapshot.deviceId));
 
     const diag = baseDiagnostic({
       deviceId: 'heater-1',
@@ -58,31 +59,26 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
       deadlineAtMs: 1_000,
     });
     emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 999 });
-    expect(missed).toEqual([]);
+    expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(false);
     emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 1_000 });
-    expect(missed).toEqual(['heater-1']);
+    expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(true);
     emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 1_500 });
-    expect(missed).toEqual(['heater-1']); // not duplicated
+    expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(true);
   });
 
-  it('does not publish missed when status reaches satisfied', () => {
+  it('does not set deadlineMissed when status reaches satisfied at the deadline', () => {
     const bus = createDeferredObjectiveStatusBus();
-    const missed: string[] = [];
-    bus.onMissed((snapshot) => missed.push(snapshot.deviceId));
-
     const diag = baseDiagnostic({
       deviceId: 'heater-1',
       status: 'satisfied',
       deadlineAtMs: 1_000,
     });
     emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 5_000 });
-    expect(missed).toEqual([]);
+    expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(false);
   });
 
-  it('keeps the missed flag sticky across later status changes (no duplicate emission)', () => {
+  it('keeps deadlineMissed sticky across later status changes', () => {
     const bus = createDeferredObjectiveStatusBus();
-    const missed: string[] = [];
-    bus.onMissed((snapshot) => missed.push(snapshot.deviceId));
 
     const atRisk = baseDiagnostic({
       deviceId: 'heater-1',
@@ -90,7 +86,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
       deadlineAtMs: 1_000,
     });
     emitDeferredObjectiveStatusTransitions({ diagnostics: [atRisk], statusBus: bus, nowMs: 1_500 });
-    expect(missed).toEqual(['heater-1']);
+    expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(true);
 
     const cannotMeet = baseDiagnostic({
       deviceId: 'heater-1',
@@ -98,17 +94,14 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
       deadlineAtMs: 1_000,
     });
     emitDeferredObjectiveStatusTransitions({ diagnostics: [cannotMeet], statusBus: bus, nowMs: 1_600 });
-    expect(missed).toEqual(['heater-1']); // status changed, but missed must not re-fire
     expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(true);
 
     emitDeferredObjectiveStatusTransitions({ diagnostics: [cannotMeet], statusBus: bus, nowMs: 1_700 });
-    expect(missed).toEqual(['heater-1']);
+    expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(true);
   });
 
-  it('clears the missed flag and re-fires when the deadline is rescheduled to the future', () => {
+  it('clears deadlineMissed when the deadline is rescheduled to the future', () => {
     const bus = createDeferredObjectiveStatusBus();
-    const missed: string[] = [];
-    bus.onMissed((snapshot) => missed.push(snapshot.deviceId));
 
     const initialDeadline = baseDiagnostic({
       deviceId: 'heater-1',
@@ -116,7 +109,7 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
       deadlineAtMs: 1_000,
     });
     emitDeferredObjectiveStatusTransitions({ diagnostics: [initialDeadline], statusBus: bus, nowMs: 1_500 });
-    expect(missed).toEqual(['heater-1']);
+    expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(true);
 
     // User reschedules to a future time without changing status.
     const rescheduled = baseDiagnostic({
@@ -127,8 +120,9 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
     emitDeferredObjectiveStatusTransitions({ diagnostics: [rescheduled], statusBus: bus, nowMs: 2_000 });
     expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(false);
 
+    // Once the new deadline elapses without satisfaction, the sticky flag flips back on.
     emitDeferredObjectiveStatusTransitions({ diagnostics: [rescheduled], statusBus: bus, nowMs: 5_000 });
-    expect(missed).toEqual(['heater-1', 'heater-1']);
+    expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(true);
   });
 
   it('invokes onDeadlinePassed once the deadline has passed (any non-trivial status)', () => {

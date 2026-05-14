@@ -325,25 +325,27 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
     expect(events).toEqual([]);
 
-    // Second observe shifts the bucket allocation. Last bucket starts at
-    // 5h and fills 1.0 of its 3.0 kWh capacity → finish 1/3 of an hour in.
+    // Second observe shrinks the hour count from 3 to 2 (count change is the
+    // notification trigger). Last bucket starts at 5h and fills 1.0 of its
+    // 3.0 kWh capacity → finish 1/3 of an hour in.
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
       horizonPlan: makeHorizon([
         makeBucket(HOUR_MS, 1.5),
-        makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(5 * HOUR_MS, 1.0),
       ]),
     })], 2 * HOUR_MS);
 
     expect(events).toHaveLength(1);
+    // First revision had startsAtMs {2h, 3h, 4h}; second has {1h, 5h} — hour
+    // count dropped from 3 to 2, which is what fires the trigger.
     expect(events[0]).toEqual({
       deviceId: 'dev',
       reason: 'prices_revised',
       allocationChanged: true,
-      hours: 3,
-      energyNeededKWh: 4.0,
+      hours: 2,
+      energyNeededKWh: 2.5,
       projectedFinishAtMs: 5 * HOUR_MS + Math.round((1.0 / 3.0) * HOUR_MS),
     });
 
@@ -353,7 +355,6 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       deadlineAtMs: 6 * HOUR_MS,
       horizonPlan: makeHorizon([
         makeBucket(HOUR_MS, 1.5),
-        makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(5 * HOUR_MS, 1.0),
       ]),
     })], 3 * HOUR_MS);
@@ -501,12 +502,12 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // Seed at nowMs=1h with three planned hours [2h, 3h, 4h]. No event.
     recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
 
-    // Replan at nowMs=2h shifts allocation to [3h, 4h, 5h] (still 3 hours).
+    // Replan at nowMs=2h shrinks future allocation to [4h, 5h] (count 3 → 2
+    // fires the trigger).
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
       horizonPlan: makeHorizon([
-        makeBucket(3 * HOUR_MS, 1.5),
         makeBucket(4 * HOUR_MS, 1.5),
         makeBucket(5 * HOUR_MS, 1.5),
       ]),
@@ -524,12 +525,123 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     })], 4 * HOUR_MS);
 
     expect(events).toEqual([
-      { reason: 'prices_revised', hours: 3 },
+      { reason: 'prices_revised', hours: 2 },
       { reason: 'prices_revised', hours: 1 },
     ]);
     expect(recorder.getPlanForTests('dev')?.latest?.hours).toEqual([
       { startsAtMs: 5 * HOUR_MS, plannedKWh: 1.5 },
     ]);
+  });
+
+  it('does not emit onRevisionWritten when the set of charging hours swaps within the same count', () => {
+    // The replanner can pick a different set of cheap hours of the same width
+    // (e.g. price ranking shuffles equally-cheap slots). Without a
+    // "significant time change" detector we cannot distinguish a real plan
+    // shift from a near-equivalent reshuffle, so the bus stays quiet. The
+    // revision is still persisted so the Settings UI sees fresh metadata.
+    const events: Array<{ reason: string }> = [];
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder({
+      ...deps,
+      onRevisionWritten: (event) => { events.push({ reason: event.reason }); },
+    });
+
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      // Same count (3), entirely different startsAtMs.
+      horizonPlan: makeHorizon([
+        makeBucket(HOUR_MS, 1.5),
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(5 * HOUR_MS, 1.5),
+      ]),
+    })], 2 * HOUR_MS);
+
+    expect(events).toEqual([]);
+    expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
+  });
+
+  it('does not emit onRevisionWritten when the schedule empties because the objective was satisfied', () => {
+    // Once the device reaches its target the horizon plan reports zero
+    // remaining energy and the planned buckets all carry 0 useful kWh,
+    // collapsing the schedule to []. Firing here would produce a malformed
+    // "…reach goal at . 0 kWh remaining" notification (no projected finish,
+    // no remaining energy), so the bus stays quiet.
+    const events: Array<{ reason: string }> = [];
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder({
+      ...deps,
+      onRevisionWritten: (event) => { events.push({ reason: event.reason }); },
+    });
+
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      status: 'satisfied',
+      reasonCode: 'energy_already_met',
+      energyNeededKWh: 0,
+      horizonPlan: makeHorizon([], {
+        status: 'satisfied',
+        statusDetail: 'energy_already_met',
+        energyNeededKWh: 0,
+        plannedUsefulEnergyKWh: 0,
+      }),
+    })], 2 * HOUR_MS);
+
+    expect(events).toEqual([]);
+    // Revision is still persisted so the Settings UI reflects the satisfied
+    // state — the suppression is for the notification path only.
+    expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
+    expect(recorder.getPlanForTests('dev')?.latest?.energyNeededKWh).toBe(0);
+  });
+
+  it('emits onRevisionWritten when the schedule collapses to empty because the plan cannot meet the deadline', () => {
+    // Regression for the gap Codex flagged on PR #730: a planner transition
+    // like `cannot_meet/target_cannot_be_met` (with partial buckets) →
+    // `cannot_meet/no_bucket_capacity` (no buckets) stays within the same
+    // `cannot_meet` status, so `deadline_status_changed` does not fire. The
+    // `deadline_plan_changed` trigger must therefore still emit on collapses
+    // backed by a degraded plan status, even though the `projectedFinishAtMs`
+    // token will be empty in that case. Satisfied collapses remain suppressed
+    // (see the satisfied test) because the target is met — there is no plan
+    // to talk about and the notification template would render badly.
+    const events: Array<{ reason: string; hours: number; planStatus: string }> = [];
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder({
+      ...deps,
+      onRevisionWritten: (event) => {
+        events.push({
+          reason: event.reason,
+          hours: event.revision.hours.length,
+          planStatus: event.revision.planStatus,
+        });
+      },
+    });
+
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      status: 'cannot_meet',
+      reasonCode: 'no_bucket_capacity',
+      energyNeededKWh: 4.5,
+      horizonPlan: makeHorizon([], {
+        status: 'cannot_meet',
+        statusDetail: 'no_bucket_capacity',
+        energyNeededKWh: 4.5,
+        plannedUsefulEnergyKWh: 0,
+      }),
+    })], 2 * HOUR_MS);
+
+    expect(events).toEqual([
+      { reason: 'prices_revised', hours: 0, planStatus: 'cannot_meet' },
+    ]);
+    // Revision still persists so the Settings UI sees the cannot_meet state.
+    expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
+    expect(recorder.getPlanForTests('dev')?.latest?.energyNeededKWh).toBe(4.5);
+    expect(recorder.getPlanForTests('dev')?.latest?.planStatus).toBe('cannot_meet');
   });
 
   it('emits a prices_revised revision when the bucket plan shifts but the objective is unchanged', () => {

@@ -12,6 +12,7 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION } from './planHistorySettings';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
+import { buildEndedEventFromEntry, type DeferredObjectiveEndedBus } from './endedEventBus';
 import { randomUUID } from 'node:crypto';
 // Cap the rolling buffer. One deferred objective produces at most one entry per deadline run
 // (per-day for HH:mm objectives), so 30 entries covers ~one month of history per device for a
@@ -369,6 +370,11 @@ export type PlanHistoryPersistDeps = {
   // so a later flush retries, and lets callers gate side-effects (like advancing the
   // observation watermark) on real persistence success.
   save: (history: DeferredObjectivePlanHistoryV3) => boolean;
+  // Optional bus the recorder publishes ended events to as runs finalize. The
+  // recorder filters by `discoveredFrom === 'observation'` and public outcome
+  // (`met`/`missed`/`abandoned`) before publishing — backfill entries and
+  // `replaced`/`unknown` outcomes never reach the bus.
+  endedBus?: DeferredObjectiveEndedBus;
 };
 
 export class DeferredObjectivePlanHistoryRecorder {
@@ -486,6 +492,10 @@ export class DeferredObjectivePlanHistoryRecorder {
     this.entries.push(entry);
     this.trimEntries();
     this.dirty = true;
+    const endedEvent = buildEndedEventFromEntry(entry);
+    if (endedEvent !== null) {
+      this.deps.endedBus?.publish(endedEvent);
+    }
   }
 
   private trimEntries(): void {

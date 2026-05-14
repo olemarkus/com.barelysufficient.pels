@@ -32,6 +32,7 @@ import { registerFlowBackedDeviceCards } from './flowBackedDeviceCards';
 import { registerDeadlineObjectiveCards } from './deadlineObjectiveCards';
 import type {
   DeferredObjectiveChangeInput,
+  DeferredObjectiveEndedBus,
   DeferredObjectivePlanRevisionBus,
   DeferredObjectiveSettingsV1,
   DeferredObjectiveStatusBus,
@@ -83,6 +84,7 @@ export type FlowCardDeps = {
   setDeferredObjectiveSettings?: (next: DeferredObjectiveSettingsV1) => void;
   getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
   getDeferredObjectivePlanRevisionBus?: () => DeferredObjectivePlanRevisionBus | undefined;
+  getDeferredObjectiveEndedBus?: () => DeferredObjectiveEndedBus | undefined;
   applyDeferredObjectiveChange?: (params: DeferredObjectiveChangeInput) => void;
   evaluateHeadroomForDevice: (params: {
     devices: HeadroomCardDeviceLike[];
