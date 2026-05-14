@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildExecutableObservedDeviceState,
   buildExecutablePlan,
+  hasExecutableShedDevices,
 } from '../lib/executor/executablePlanProjection';
 import {
   buildExecutableTargetIntent,
@@ -10,6 +11,7 @@ import {
 import type { DevicePlan } from '../lib/plan/planTypes';
 import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
+import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
 
 const planWithDevices = (devices: DevicePlan['devices']): DevicePlan => ({
   meta: {
@@ -141,6 +143,54 @@ describe('planExecutablePlan', () => {
     });
 
     expect(executablePlan.devices[0]?.ev).toBeNull();
+  });
+
+  describe('hasExecutableShedDevices', () => {
+    const shedReason = legacyDeviceReason('shed due to capacity')!;
+
+    it('detects shed posture from binary shed intent', () => {
+      const executablePlan = buildExecutablePlan(planWithDevices([
+        buildPlanDevice({
+          id: 'binary-shed',
+          plannedState: 'shed',
+          controlModel: 'binary_power',
+          reason: shedReason,
+        }),
+      ]));
+      expect(hasExecutableShedDevices(executablePlan)).toBe(true);
+    });
+
+    it('detects shed posture from stepped shed intent', () => {
+      const executablePlan = buildExecutablePlan(planWithDevices([
+        steppedPlanDevice({
+          id: 'stepped-shed',
+          plannedState: 'shed',
+          shedAction: 'turn_off',
+          selectedStepId: 'low',
+          reason: shedReason,
+        }),
+      ]));
+      expect(hasExecutableShedDevices(executablePlan)).toBe(true);
+    });
+
+    it('does not count an underspecified set_step shed because its executable intent is null', () => {
+      const executablePlan = buildExecutablePlan(planWithDevices([
+        steppedPlanDevice({
+          id: 'underspecified',
+          plannedState: 'shed',
+          shedAction: 'set_step',
+          selectedStepId: undefined,
+          desiredStepId: undefined,
+          reason: shedReason,
+        }),
+      ]));
+      expect(hasExecutableShedDevices(executablePlan)).toBe(false);
+    });
+
+    it('returns false for a plan with only keep devices', () => {
+      const executablePlan = buildExecutablePlan(planWithDevices([buildPlanDevice()]));
+      expect(hasExecutableShedDevices(executablePlan)).toBe(false);
+    });
   });
 
   it('uses observed state when projecting target updates', () => {

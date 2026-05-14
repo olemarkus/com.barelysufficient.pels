@@ -11,6 +11,7 @@ import type {
   ExecutableBinaryIntent,
   ExecutableEvIntent,
   ExecutableObservedDeviceState,
+  ExecutablePlan,
   ExecutableSteppedLoadDevice,
   ExecutableSteppedLoadIntent,
   ExecutableTargetIntent,
@@ -58,6 +59,8 @@ import {
   buildExecutableObservedDeviceState,
   buildExecutableObservedState,
   buildExecutablePlan,
+  findDroppedSteppedShedIntents,
+  hasExecutableShedDevices,
 } from './executablePlanProjection';
 import { buildExecutableSteppedLoadDevice } from './executableSteppedLoadProjection';
 import {
@@ -66,7 +69,6 @@ import {
 } from './executableTargetProjection';
 import { isObservedOff } from '../observer/observedState';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
-import { hasPlannedShedDevices } from '../plan/planShedPosture';
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
@@ -521,7 +523,7 @@ export class PlanExecutor {
     action: ExecutableSteppedLoadDevice | null,
     snapshot: TargetDeviceSnapshot | undefined,
     mode: PlanActuationMode,
-    hasPlannerShedDevices: boolean,
+    hasShedDevices: boolean,
     options: { preRestoreStepIssued?: boolean } = {},
   ): Promise<boolean> {
     return action
@@ -530,7 +532,7 @@ export class PlanExecutor {
         action,
         snapshot,
         mode,
-        hasPlannerShedDevices,
+        hasShedDevices,
         options,
       )
       : false;
@@ -663,7 +665,8 @@ export class PlanExecutor {
       const observedState = buildExecutableObservedState(this.latestTargetSnapshot);
       const observedMap = new Map(observedState.devices.map((entry) => [entry.id, entry]));
       const logCapacityDebug = (...args: unknown[]) => this.logDebug(...args);
-      const hasPlannerShedDevices = hasPlannedShedDevices(plan);
+      const hasShedDevices = hasExecutableShedDevices(executablePlan);
+      this.logUnderspecifiedSteppedShedDevices(plan, executablePlan);
       let deviceWriteCount = 0;
       let commandRequestCount = 0;
       for (const intent of executablePlan.devices) {
@@ -707,7 +710,7 @@ export class PlanExecutor {
               steppedAction,
               snapshot,
               mode,
-              hasPlannerShedDevices,
+              hasShedDevices,
               { preRestoreStepIssued },
             );
             if (
@@ -726,7 +729,7 @@ export class PlanExecutor {
             if (await this.applySteppedLoadShedOff(steppedAction, snapshot, mode)) {
               deviceWriteCount += 1;
             }
-            await this.applySteppedLoadRestore(steppedAction, snapshot, mode, hasPlannerShedDevices);
+            await this.applySteppedLoadRestore(steppedAction, snapshot, mode, hasShedDevices);
             if (await this.applyTargetIntent(intent.target, observed, mode)) deviceWriteCount += 1;
             continue;
           }
@@ -764,6 +767,17 @@ export class PlanExecutor {
     if (!lastShedMs) return 'current_plan';
     const lastRestoreMs = this.state.lastDeviceRestoreMs[deviceId];
     return !lastRestoreMs || lastRestoreMs < lastShedMs ? 'shed_state' : 'current_plan';
+  }
+
+  private logUnderspecifiedSteppedShedDevices(plan: DevicePlan, executablePlan: ExecutablePlan): void {
+    if (!this.deps.debugStructured) return;
+    for (const dropped of findDroppedSteppedShedIntents(plan, executablePlan)) {
+      this.deps.debugStructured({
+        event: 'stepped_load_shed_intent_dropped',
+        reasonCode: 'underspecified_set_step',
+        ...dropped,
+      });
+    }
   }
 }
 

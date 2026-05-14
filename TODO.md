@@ -105,6 +105,11 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `ExecutableObservedState`. In particular, stepped `set_step` limiting should either carry a
       concrete requested step or be represented as non-executable before drift/dispatch code sees
       it.
+      Update: keep-invariant gate now reads `hasExecutableShedDevices` from the executable plan
+      so a dropped underspecified set_step shed no longer phantom-blocks unrelated stepped
+      restores; dropped intents are also surfaced via the `stepped_load_shed_intent_dropped`
+      structured debug event. The deeper refactor of removing observed current state from intents
+      is still outstanding.
       Files: `lib/executor/executableSteppedLoadProjection.ts`, `lib/executor/executablePlan.ts`,
       `lib/executor/planExecutionDrift.ts`, stepped executable projection/drift tests.
 - [ ] Add typed schemas/parsers for settings maps and flow-card args before values enter app

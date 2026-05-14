@@ -64,6 +64,61 @@ export function buildExecutableObservedState(
   };
 }
 
+/**
+ * Executor-facing shed posture: only counts devices that have an executable shed intent.
+ *
+ * The keep-invariant gate must read this rather than the planner shed set, otherwise an
+ * underspecified stepped `set_step` shed (projection returned `null`) would phantom-block
+ * unrelated stepped restores at the lowest non-zero step.
+ */
+export function hasExecutableShedDevices(plan: ExecutablePlan): boolean {
+  return plan.devices.some(hasExecutableShedIntent);
+}
+
+const hasExecutableShedIntent = (device: ExecutableDeviceIntent): boolean => (
+  device.binary?.kind === 'shed'
+  || device.target?.purpose === 'shed_temperature'
+  || device.steppedLoad?.purpose === 'shed'
+);
+
+export type DroppedSteppedShedIntent = {
+  deviceId: string;
+  deviceName: string;
+  shedAction: PlanDevice['shedAction'];
+  selectedStepId: string | null;
+  desiredStepId: string | null;
+};
+
+/**
+ * Stepped-load shed intents the planner emitted but the executor projection could not turn
+ * into an executable command. Surfacing these makes silent drops detectable in production
+ * and prevents the keep-invariant gate from diverging from execution state.
+ *
+ * Returns an empty array when no planner-shed stepped device was dropped (the common case),
+ * avoiding the `Map` build on every plan tick.
+ */
+export function findDroppedSteppedShedIntents(
+  plan: DevicePlan,
+  executablePlan: ExecutablePlan,
+): DroppedSteppedShedIntent[] {
+  const candidates = plan.devices.filter(isPlannedSteppedShed);
+  if (candidates.length === 0) return [];
+  const executableById = new Map(executablePlan.devices.map((entry) => [entry.id, entry]));
+  return candidates
+    .filter((planDevice) => executableById.get(planDevice.id)?.steppedLoad?.purpose !== 'shed')
+    .map((planDevice) => ({
+      deviceId: planDevice.id,
+      deviceName: planDevice.name,
+      shedAction: planDevice.shedAction,
+      selectedStepId: planDevice.selectedStepId ?? null,
+      desiredStepId: planDevice.desiredStepId ?? null,
+    }));
+}
+
+const isPlannedSteppedShed = (planDevice: PlanDevice): boolean => (
+  planDevice.plannedState === 'shed' && planDevice.controlModel === 'stepped_load'
+);
+
 export function buildExecutableObservedDeviceState(
   snapshot: TargetDeviceSnapshot,
 ): ExecutableObservedDeviceState {
