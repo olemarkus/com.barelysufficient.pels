@@ -118,6 +118,150 @@ describe('Redesign plan UI', () => {
       expect(deviceNames).toEqual(['First', 'Second']);
     });
 
+    it('renders the hero info button with the kW-vs-kWh tooltip', async () => {
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 1.2,
+          softLimitKw: 6,
+          headroomKw: 4.8,
+          powerFreshnessState: 'fresh',
+          usedKWh: 0.8,
+          hourBudgetKWh: 5,
+          minutesRemaining: 30,
+        },
+        devices: [],
+      });
+      const infoButton = document.querySelector('.plan-hero__info-button') as HTMLElement | null;
+      expect(infoButton).not.toBeNull();
+      expect(infoButton?.getAttribute('aria-label')).toBe('About this card');
+      expect(infoButton?.getAttribute('data-tooltip')).toMatch(/kW is speed\. kWh is distance\./);
+    });
+
+    it('renders segmented power-bar fills for managed and background draw', async () => {
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 5.0,
+          softLimitKw: 8,
+          headroomKw: 3.0,
+          hardCapLimitKw: 10,
+          hardCapHeadroomKw: 5.0,
+          controlledKw: 3.0,
+          uncontrolledKw: 2.0,
+          powerFreshnessState: 'fresh',
+          usedKWh: 0.8,
+          hourBudgetKWh: 5,
+          minutesRemaining: 30,
+        },
+        devices: [],
+      });
+      const segments = Array.from(document.querySelectorAll('.pels-meter-segments__seg'));
+      expect(segments).toHaveLength(2);
+      expect(segments[0]?.className).toContain('pels-meter-segments__seg--managed');
+      expect(segments[1]?.className).toContain('pels-meter-segments__seg--background');
+    });
+
+    it('writes the spec decision sentence when nothing is being limited', async () => {
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 1.2,
+          softLimitKw: 6,
+          headroomKw: 4.8,
+          hardCapLimitKw: 8,
+          hardCapHeadroomKw: 6.8,
+          powerFreshnessState: 'fresh',
+          usedKWh: 0.8,
+          hourBudgetKWh: 5,
+          minutesRemaining: 38,
+        },
+        devices: [],
+      });
+      expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
+        .toBe('No action needed — this hour is on track.');
+    });
+
+    it('writes the hard-cap decision sentence when power is over the configured maximum', async () => {
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 9.5,
+          softLimitKw: 6,
+          headroomKw: -3.5,
+          hardCapLimitKw: 8,
+          hardCapHeadroomKw: -1.5,
+          powerFreshnessState: 'fresh',
+          usedKWh: 0.8,
+          hourBudgetKWh: 5,
+          minutesRemaining: 38,
+        },
+        devices: [
+          { id: 'dev-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', stateKind: 'held' },
+        ],
+      });
+      expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
+        .toBe('Hard cap exceeded — limiting devices now.');
+    });
+
+    it('writes the actively-limiting decision sentence when one device is held below safe pace', async () => {
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 4.0,
+          softLimitKw: 5,
+          headroomKw: 1.0,
+          hardCapLimitKw: 7,
+          hardCapHeadroomKw: 3.0,
+          powerFreshnessState: 'fresh',
+          usedKWh: 0.8,
+          hourBudgetKWh: 5,
+          minutesRemaining: 30,
+        },
+        devices: [
+          { id: 'dev-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', stateKind: 'held' },
+        ],
+      });
+      expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
+        .toBe('Limiting 1 device — staying below the safe pace.');
+    });
+
+    it('uses "above the safe pace" wording when limiting and current power is above safe pace', async () => {
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 7.0,
+          softLimitKw: 5,
+          headroomKw: -2.0,
+          hardCapLimitKw: 10,
+          hardCapHeadroomKw: 3.0,
+          powerFreshnessState: 'fresh',
+          usedKWh: 0.8,
+          hourBudgetKWh: 5,
+          minutesRemaining: 30,
+        },
+        devices: [
+          { id: 'dev-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', stateKind: 'held' },
+        ],
+      });
+      expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
+        .toBe('Limiting 1 device — current power is above the safe pace.');
+    });
+
+    it('reflects projected-over-budget in the decision sentence so it does not contradict the Above budget chip', async () => {
+      await renderPlanSnapshot({
+        meta: {
+          // currentKw 4.5 × 30/60 = 2.25 → projected 5.05 kWh, above 4.5 budget
+          totalKw: 4.5,
+          softLimitKw: 6,
+          headroomKw: 1.5,
+          hardCapLimitKw: 8,
+          hardCapHeadroomKw: 3.5,
+          powerFreshnessState: 'fresh',
+          usedKWh: 2.8,
+          hourBudgetKWh: 4.5,
+          minutesRemaining: 30,
+        },
+        devices: [],
+      });
+      expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
+        .toBe('This hour is projected to go over budget.');
+    });
+
     it('uses only the explicit backend hour budget for the energy hero', async () => {
       await renderPlanSnapshot({
         meta: {
