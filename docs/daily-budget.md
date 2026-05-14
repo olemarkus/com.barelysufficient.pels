@@ -96,9 +96,9 @@ Use **Preview changes** before applying. PELS shows the candidate plan so you ca
 
 ### Advanced Tuning
 
-The same advanced tuning controls also appear under **Settings > Advanced > Daily budget tuning**. The Advanced page still uses the older label **Unmanaged usage reserve** for the same background usage reserve:
+The same advanced tuning controls also appear under **Settings > Advanced > Daily budget tuning**:
 
-- **Unmanaged usage reserve**: current Advanced label for background usage reserve. It controls how much daily budget PELS holds back for household usage it cannot move, such as appliances, lights, and unmanaged devices. `Balanced` uses the normal reserve. `Conservative` reserves more, which can reduce daily-budget misses but leaves less budget for managed devices.
+- **Background usage reserve**: how much daily budget PELS holds back for household usage it cannot move, such as appliances, lights, and unmanaged devices. `Balanced` uses the normal reserve. `Conservative` reserves more, which can reduce daily-budget misses but leaves less budget for managed devices.
 - **Managed device flexibility**: how freely PELS may shift managed-device usage toward cheaper hours after preserving minimum service. `Low` stays close to normal managed-device usage, `Medium` shifts some usage, and `High` shifts more aggressively toward cheaper feasible hours.
 - **Show daily budget breakdown in the chart**: stacks background usage and managed device usage in the chart.
 

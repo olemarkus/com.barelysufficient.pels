@@ -77,8 +77,9 @@ const updateDryRunBanner = (isDryRun: boolean) => {
 
 const updateCapacityReactionHint = (limit: number, margin: number) => {
   if (!settingsCapacityReactionHint) return;
-  const reactionAt = Math.max(0, limit - margin);
-  settingsCapacityReactionHint.textContent = `PELS reacts at ${reactionAt.toFixed(1)} kW.`;
+  const reactionAt = Math.max(0, limit - margin).toFixed(1);
+  settingsCapacityReactionHint.textContent
+    = `Safe pace now ${reactionAt} kW — hard cap minus safety margin.`;
 };
 
 const syncCapacityControls = (

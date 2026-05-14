@@ -200,7 +200,7 @@ Advanced is for diagnostics, cleanup, and expert tuning.
 | Setting | What it does |
 | --- | --- |
 | **Debug logging topics** | Chooses which internal topics emit debug logs. |
-| **Unmanaged usage reserve** | Current Advanced label for the background usage reserve. Tunes how much daily budget PELS holds back for household usage it cannot move. |
+| **Background usage reserve** | Tunes how much daily budget PELS holds back for household usage it cannot move. |
 | **Managed device flexibility** | Tunes how freely PELS may shift managed-device usage toward cheaper feasible hours. |
 | **Show daily budget breakdown in chart** | Splits the plan chart into managed and background portions. |
 | **Reset usage history** | Clears hourly samples, daily totals, and weekday/weekend averages. |

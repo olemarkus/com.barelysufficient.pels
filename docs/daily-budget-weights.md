@@ -7,7 +7,7 @@ description: Exact formulas for background usage reserve, managed-device price f
 
 This advanced reference explains the exact math behind:
 
-- **Unmanaged usage reserve** in **Settings > Advanced**, also shown as **Background usage reserve** on the Budget page
+- **Background usage reserve** in **Settings > Advanced** and on the Budget page
 - **Managed device flexibility** (Advanced tab)
 - **Observed hourly peak caps** (split-budget safety)
 - **Confidence** (backtested forecast-skill score shown in the UI)

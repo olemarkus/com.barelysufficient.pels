@@ -17,8 +17,11 @@ const resolveTone = (cause: SettingsUiPlanDeviceStarvation['cause']): PlanStarva
   return 'muted';
 };
 
-const resolveTooltip = (starvation: SettingsUiPlanDeviceStarvation): string => {
-  return resolveStarvationMessage(starvation.cause, { manualSubject: 'the device' });
+const resolveBadgeLabel = (cause: SettingsUiPlanDeviceStarvation['cause']): string => {
+  if (cause === 'capacity') return 'Waiting for power';
+  if (cause === 'budget') return 'Budget limited';
+  if (cause === 'manual') return 'Held by manual control';
+  return 'Waiting on service';
 };
 
 const resolveStarvationMessage = (
@@ -26,15 +29,15 @@ const resolveStarvationMessage = (
   options: { manualSubject: 'the device' | 'this device' },
 ): string => {
   if (cause === 'capacity') {
-    return 'Starved while waiting for available power';
+    return 'Waiting for available power';
   }
   if (cause === 'budget') {
-    return "Starved while today's budget is limiting service";
+    return "Limited to stay within today's budget";
   }
   if (cause === 'manual') {
-    return `Starved while manual control is holding ${options.manualSubject}`;
+    return `Manual control is holding ${options.manualSubject}`;
   }
-  return 'Starved while waiting on external service';
+  return 'Waiting on external service';
 };
 
 export const formatStarvationBadge = (
@@ -42,9 +45,9 @@ export const formatStarvationBadge = (
 ): PlanStarvationBadgeView | null => {
   if (!starvation?.isStarved) return null;
   return {
-    label: 'Starved',
+    label: resolveBadgeLabel(starvation.cause),
     tone: resolveTone(starvation.cause),
-    tooltip: resolveTooltip(starvation),
+    tooltip: resolveStarvationMessage(starvation.cause, { manualSubject: 'the device' }),
   };
 };
 
@@ -66,5 +69,5 @@ export const summarizeStarvation = (
     ))
     .length;
   if (count === 0) return null;
-  return count === 1 ? '1 device starved' : `${count} devices starved`;
+  return count === 1 ? '1 device waiting for power' : `${count} devices waiting for power`;
 };
