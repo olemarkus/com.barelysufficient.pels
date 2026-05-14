@@ -69,10 +69,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
       `packages/settings-ui/src/ui/views/PlanModes.tsx`,
       `packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts`, related styles.
-- [ ] Switch Advanced behavioural settings from `md-checkbox` to `md-switch`. M3: checkboxes are
-      for selection (forms, lists); switches are for on/off settings. All 12 Advanced toggles
-      are textbook switch use cases. Component-level change. Files:
-      `packages/settings-ui/public/index.html`, `packages/settings-ui/src/ui/advanced.ts`.
 - [x] Align every chart series, heatmap cell, and tooltip with the same flat tokens the rest of
       the UI uses. *(landed — `resolveCssColor` in `budgetRedesignChart.ts`,
       `usageDayChartEcharts.ts`, `usageStatsChartsEcharts.ts`, and `powerWeekChartEcharts.ts`

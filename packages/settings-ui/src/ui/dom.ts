@@ -102,7 +102,7 @@ export const settingsPowerSourceSelect = document.querySelector(
 ) as MdFilledSelectElement | null;
 export const settingsSimulationModeInput = document.querySelector(
   '#settings-simulation-mode',
-) as MdCheckboxElement | null;
+) as MdSwitchElement | null;
 export const dailyBudgetAdvancedForm = document.querySelector('#daily-budget-advanced-form') as HTMLFormElement;
 export const dailyBudgetControlledWeightInput = document.querySelector(
   '#daily-budget-controlled-weight',
@@ -110,7 +110,7 @@ export const dailyBudgetControlledWeightInput = document.querySelector(
 export const dailyBudgetPriceFlexShareInput = document.querySelector(
   '#daily-budget-price-flex-share',
 ) as MdFilledSelectElement;
-export const dailyBudgetBreakdownInput = document.querySelector('#daily-budget-breakdown') as MdCheckboxElement;
+export const dailyBudgetBreakdownInput = document.querySelector('#daily-budget-breakdown') as MdSwitchElement;
 export const dryRunBanner = qs('#dry-run-banner');
 export const simulationDisableButton = document.querySelector('#simulation-disable-button') as MdButtonElement | null;
 export const staleDataBanner = qs('#stale-data-banner');

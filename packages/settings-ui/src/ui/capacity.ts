@@ -5,7 +5,7 @@ import {
   settingsPowerSourceSelect,
   settingsSimulationModeInput,
   dryRunBanner,
-  type MdCheckboxElement,
+  type MdSwitchElement,
   type MdFilledTextFieldElement,
   staleDataBanner,
   staleDataBannerText,
@@ -97,7 +97,7 @@ const syncCapacityControls = (
     settingsPowerSourceSelect.value = powerSource;
   }
   if (settingsSimulationModeInput) {
-    settingsSimulationModeInput.checked = isDryRun;
+    settingsSimulationModeInput.selected = isDryRun;
   }
   updateCapacityReactionHint(limit, margin);
 };
@@ -220,7 +220,7 @@ export const saveSettingsLimitsSettings = async () => {
 };
 
 export const saveSimulationModeSettings = async (
-  enabled = settingsSimulationModeInput ? settingsSimulationModeInput.checked : true,
+  enabled = settingsSimulationModeInput ? settingsSimulationModeInput.selected : true,
 ) => {
   await saveCapacitySettingsPatch({
     dryRun: enabled,
@@ -236,9 +236,9 @@ export const loadAdvancedSettings = async () => {
   if (enabledTopics.length === 0 && legacyEnabled === true) {
     enabledTopics = [...ALL_DEBUG_LOGGING_TOPICS];
   }
-  document.querySelectorAll<MdCheckboxElement>('[data-debug-topic]').forEach((input) => {
+  document.querySelectorAll<MdSwitchElement>('[data-debug-topic]').forEach((input) => {
     const el = input;
     const topic = el.dataset.debugTopic;
-    el.checked = typeof topic === 'string' && isDebugLoggingTopic(topic) && enabledTopics.includes(topic);
+    el.selected = typeof topic === 'string' && isDebugLoggingTopic(topic) && enabledTopics.includes(topic);
   });
 };

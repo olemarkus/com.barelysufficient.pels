@@ -120,7 +120,7 @@ test.describe('Settings UI (smoke)', () => {
 
     await page.getByRole('tab', { name: 'Settings' }).click();
     await page.locator('[data-settings-target="simulation"]').click();
-    await expect(page.locator('#settings-simulation-mode')).toHaveJSProperty('checked', false);
+    await expect(page.locator('#settings-simulation-mode')).toHaveJSProperty('selected', false);
 
     const stored = await page.evaluate(() => new Promise<unknown>((resolve, reject) => {
       (window as any).Homey.get('capacity_dry_run', (error: Error | null, value?: unknown) => {

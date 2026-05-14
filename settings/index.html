@@ -423,10 +423,10 @@
           <h2 id="simulation-title">Test without switching devices</h2>
         </div>
       </div>
-      <div class="field checkbox-field settings-form-card">
-        <md-checkbox id="settings-simulation-mode" name="settings_simulation_mode"></md-checkbox>
-        <span class="checkbox-field__content">
-          <span class="field__label">Simulation mode</span>
+      <div class="md-switch-row settings-form-card">
+        <md-switch id="settings-simulation-mode" name="settings_simulation_mode" aria-labelledby="settings-simulation-mode-label"></md-switch>
+        <span class="md-switch-row__content">
+          <span class="md-switch-row__label" id="settings-simulation-mode-label">Simulation mode</span>
           <small class="field__hint">PELS shows what it would do, but devices are not switched automatically.</small>
         </span>
       </div>
@@ -485,10 +485,10 @@
               </md-filled-select>
               <small class="field__hint">How freely PELS may shift managed-device usage toward cheaper hours after preserving minimum service.</small>
             </label>
-            <div class="field checkbox-field">
-              <md-checkbox id="daily-budget-breakdown"></md-checkbox>
-              <span class="checkbox-field__content">
-                <span class="field__label">Show daily budget breakdown in the chart</span>
+            <div class="md-switch-row">
+              <md-switch id="daily-budget-breakdown" aria-labelledby="daily-budget-breakdown-label"></md-switch>
+              <span class="md-switch-row__content">
+                <span class="md-switch-row__label" id="daily-budget-breakdown-label">Show daily budget breakdown in the chart</span>
                 <small class="field__hint">Stack background usage and managed device usage.</small>
               </span>
             </div>

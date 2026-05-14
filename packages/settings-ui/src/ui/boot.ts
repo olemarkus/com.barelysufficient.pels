@@ -10,7 +10,7 @@ import {
   settingsPowerSourceSelect,
   settingsSimulationModeInput,
   simulationDisableButton,
-  type MdCheckboxElement,
+  type MdSwitchElement,
   priorityForm,
   resetStatsButton,
   tabs,
@@ -85,7 +85,7 @@ import {
 import { initTooltips } from './tooltips.ts';
 import { initDebouncedSaveFlush } from './utils.ts';
 import { handleResetStats } from './resetStats.ts';
-import { createCheckboxField } from './components.ts';
+import { createSwitchField } from './components.ts';
 import {
   initRealtimeListeners,
   showTab,
@@ -150,12 +150,12 @@ const initLimitsAndSimulationHandlers = () => {
 };
 
 
-const initDebugLoggingCheckboxes = () => {
+const initDebugLoggingSwitches = () => {
   const mount = document.getElementById('debug-logging-checkboxes');
   if (!mount) return;
   mount.replaceChildren();
   AVAILABLE_DEBUG_LOGGING_TOPICS.forEach(({ id, label, description }) => {
-    const { element, input } = createCheckboxField({ id: `debug-topic-${id}`, label, hint: description });
+    const { element, input } = createSwitchField({ id: `debug-topic-${id}`, label, hint: description });
     input.dataset.debugTopic = id;
     mount.appendChild(element);
   });
@@ -164,9 +164,9 @@ const initDebugLoggingCheckboxes = () => {
 const initAdvancedHandlers = () => {
   const saveDebugTopics = async () => {
     try {
-      const inputs = Array.from(document.querySelectorAll<MdCheckboxElement>('[data-debug-topic]'));
+      const inputs = Array.from(document.querySelectorAll<MdSwitchElement>('[data-debug-topic]'));
       const selected = inputs
-        .filter((input) => input.checked && typeof input.dataset.debugTopic === 'string')
+        .filter((input) => input.selected && typeof input.dataset.debugTopic === 'string')
         .map((input) => input.dataset.debugTopic as string);
       await setSetting(DEBUG_LOGGING_TOPICS_SETTING, selected);
       await setSetting('debug_logging_enabled', selected.length > 0);
@@ -180,7 +180,7 @@ const initAdvancedHandlers = () => {
     }
   };
 
-  document.querySelectorAll<MdCheckboxElement>('[data-debug-topic]').forEach((input) => {
+  document.querySelectorAll<MdSwitchElement>('[data-debug-topic]').forEach((input) => {
     input.addEventListener('change', () => {
       void saveDebugTopics();
     });
@@ -264,7 +264,7 @@ const initializeBootHandlers = (_bootstrap: SettingsUiBootstrap | null) => {
   if (priceAwareDevicesSurface) {
     void initPriceAwareDevicesView(priceAwareDevicesSurface);
   }
-  initDebugLoggingCheckboxes();
+  initDebugLoggingSwitches();
   initAdvancedHandlers();
   markSettingsUi('boot:handlers-ready');
 };
