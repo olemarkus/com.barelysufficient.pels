@@ -43,16 +43,16 @@ const createModeOption = (value: string, selected: boolean): MaterialSelectOptio
   const option = document.createElement('md-select-option') as MaterialSelectOptionElement;
   option.value = value;
   option.setAttribute('value', value);
-  // Mirror the selection onto the attribute so md-filled-select picks up the
-  // initial selection on first render even when options are added via
-  // replaceChildren (the property setter suppresses request-selection during
-  // the option's first update).
-  if (selected) option.setAttribute('selected', '');
-  option.selected = selected;
+  // Append the headline slot content before committing selection so
+  // md-filled-select can read a non-empty displayText when it picks up the
+  // initial selection — otherwise the closed field renders blank even though
+  // the option is highlighted in the open list.
   const headline = document.createElement('div');
   headline.slot = 'headline';
   headline.textContent = value;
   option.appendChild(headline);
+  if (selected) option.setAttribute('selected', '');
+  option.selected = selected;
   return option;
 };
 
