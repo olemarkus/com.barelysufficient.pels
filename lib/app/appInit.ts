@@ -353,8 +353,8 @@ export function createPlanService(ctx: AppContext): PlanService {
     // would resolve to UNKNOWN.
     getCombinedPrices: () => readPriceStore(
       { homey: ctx.homey, requestRefetch: () => ctx.priceCoordinator?.updateCombinedPrices() },
-      new Date(),
-      ctx.homey.clock.getTimezone(),
+      ctx.getNow(),
+      ctx.getTimeZone(),
     ),
     getLastPowerUpdate: () => ctx.powerTracker.lastTimestamp ?? null,
     schedulePostActuationRefresh: () => ctx.snapshotHelpers.schedulePostActuationRefresh(),
