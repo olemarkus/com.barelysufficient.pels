@@ -110,7 +110,7 @@ const initApp = async (app: any) => {
   const appInstance = app as any;
   appInstance.updateDebugLoggingEnabled();
   appInstance.initPriceCoordinator();
-  appInstance.migrateManagedDevices();
+  appInstance.runStartupSettingsMigrations();
   appInstance.loadCapacitySettings();
   appInstance.initDailyBudgetService();
   appInstance.loadPowerTracker();
