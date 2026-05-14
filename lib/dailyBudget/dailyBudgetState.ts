@@ -344,6 +344,7 @@ export const buildDailyBudgetSnapshot = (params: {
   budget: BudgetState;
   frozen: boolean;
   confidenceDebug?: ConfidenceDebug;
+  usableCapacityKw?: number;
 }): DailyBudgetDayPayload => {
   const {
     context,
@@ -356,12 +357,14 @@ export const buildDailyBudgetSnapshot = (params: {
     budget,
     frozen,
     confidenceDebug,
+    usableCapacityKw,
   } = params;
   const allocationPressure = computeAllocationPressure({
     dailyBudgetKWh: settings.dailyBudgetKWh,
     enabled,
     context,
     plannedKWh,
+    usableCapacityKw,
   });
 
   return {
@@ -404,13 +407,19 @@ export const buildDailyBudgetSnapshot = (params: {
   };
 };
 
+const HOURS_PER_DAY = 24;
+
 function computeAllocationPressure(params: {
   dailyBudgetKWh: number;
   enabled: boolean;
   context: DayContext;
   plannedKWh: number[];
+  usableCapacityKw?: number;
 }) {
-  const { dailyBudgetKWh, enabled, context, plannedKWh } = params;
+  const { dailyBudgetKWh, enabled, context, plannedKWh, usableCapacityKw } = params;
+  const maxFittingDailyBudgetKWh = Number.isFinite(usableCapacityKw) && usableCapacityKw! > 0
+    ? usableCapacityKw! * HOURS_PER_DAY
+    : 0;
   if (context.currentBucketIndex >= plannedKWh.length) {
     return {
       requestedBudgetKWh: 0,
@@ -418,6 +427,7 @@ function computeAllocationPressure(params: {
       unallocatedBudgetKWh: 0,
       saturationRatio: 1,
       constrained: false,
+      maxFittingDailyBudgetKWh,
     };
   }
 
@@ -439,6 +449,7 @@ function computeAllocationPressure(params: {
     unallocatedBudgetKWh,
     saturationRatio,
     constrained: enabled && unallocatedBudgetKWh > meaningfulGapKWh,
+    maxFittingDailyBudgetKWh,
   };
 }
 

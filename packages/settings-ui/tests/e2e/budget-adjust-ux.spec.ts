@@ -57,7 +57,7 @@ test('budget adjust → preview → apply walkthrough', async ({ page }, testInf
   await shot(page, '02-adjust-clean');
 
   // 2a. The kWh helper text shows the supported range.
-  const hintRange = page.locator('.field__hint-range');
+  const hintRange = page.locator('.field__hint-range').first();
   await expect(hintRange).toContainText('20');
   await expect(hintRange).toContainText('360');
 

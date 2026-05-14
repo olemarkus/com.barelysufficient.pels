@@ -57,6 +57,7 @@ export type DailyBudgetAllocationPressure = {
   unallocatedBudgetKWh: number;
   saturationRatio: number;
   constrained: boolean;
+  maxFittingDailyBudgetKWh: number;
 };
 
 export type DailyBudgetDayPayload = {

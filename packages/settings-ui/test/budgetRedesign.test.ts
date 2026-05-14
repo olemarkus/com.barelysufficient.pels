@@ -494,11 +494,12 @@ describe('resolveAllocationWarning', () => {
       unallocatedBudgetKWh: 0,
       saturationRatio: 0,
       constrained: false,
+      maxFittingDailyBudgetKWh: 48,
     };
     expect(resolveAllocationWarning(payload)).toBeNull();
   });
 
-  it('returns layman title and body when constrained', () => {
+  it('quotes the fitting daily budget when usable capacity is known', () => {
     const payload = buildPayload({ budgetKWh: 60 });
     (payload.state as { allocationPressure?: unknown }).allocationPressure = {
       requestedBudgetKWh: 12,
@@ -506,11 +507,45 @@ describe('resolveAllocationWarning', () => {
       unallocatedBudgetKWh: 7.5,
       saturationRatio: 0.375,
       constrained: true,
+      maxFittingDailyBudgetKWh: 48,
     };
     const result = resolveAllocationWarning(payload);
     expect(result?.title).toContain('larger than your hourly limit');
-    expect(result?.body).toContain('daily budget of 60.0 kWh');
+    expect(result?.body).toContain('60.0 kWh');
+    expect(result?.body).toContain('48.0 kWh');
+    expect(result?.body).toContain('shift usage to cheaper hours');
+  });
+
+  it('suppresses the warning when constrained but the configured budget is below the ceiling', () => {
+    // `constrained` can fire on remaining-day saturation even when the configured
+    // daily budget is below the full-day ceiling (e.g., budget burned early).
+    // Lowering the setting would not help that case, so suppress the warning.
+    const payload = buildPayload({ budgetKWh: 12 });
+    (payload.state as { allocationPressure?: unknown }).allocationPressure = {
+      requestedBudgetKWh: 8,
+      plannedBudgetKWh: 2,
+      unallocatedBudgetKWh: 6,
+      saturationRatio: 0.25,
+      constrained: true,
+      maxFittingDailyBudgetKWh: 48,
+    };
+    expect(resolveAllocationWarning(payload)).toBeNull();
+  });
+
+  it('falls back to a generic body when usable capacity is unavailable', () => {
+    const payload = buildPayload({ budgetKWh: 60 });
+    (payload.state as { allocationPressure?: unknown }).allocationPressure = {
+      requestedBudgetKWh: 12,
+      plannedBudgetKWh: 4.5,
+      unallocatedBudgetKWh: 7.5,
+      saturationRatio: 0.375,
+      constrained: true,
+      maxFittingDailyBudgetKWh: 0,
+    };
+    const result = resolveAllocationWarning(payload);
+    expect(result?.body).toContain('60.0 kWh');
     expect(result?.body).toContain('Lower the daily budget');
+    expect(result?.body).not.toContain('48.0');
   });
 
   it('quotes the configured daily budget, not the remaining requestedBudgetKWh', () => {
@@ -525,6 +560,7 @@ describe('resolveAllocationWarning', () => {
       unallocatedBudgetKWh: 15,
       saturationRatio: 0.25,
       constrained: true,
+      maxFittingDailyBudgetKWh: 48,
     };
     const result = resolveAllocationWarning(payload);
     expect(result?.body).toContain('60.0 kWh');
