@@ -138,6 +138,7 @@ export default defineConfig({
       channelSwitcher,
       { text: 'Getting Started', link: '/getting-started' },
       { text: 'Configuration', link: '/configuration' },
+      { text: 'Smart Tasks', link: '/smart-tasks' },
       { text: 'Flow Cards', link: '/flow-cards' },
     ],
     search: {
@@ -157,10 +158,18 @@ export default defineConfig({
         ],
       },
       {
+        text: 'Smart Tasks',
+        items: [
+          { text: 'Compare Cost-Saving Functions', link: '/cost-saving-functions' },
+          { text: 'Smart Tasks', link: '/smart-tasks' },
+          { text: 'Book Cheap Hours With Flows', link: '/how-to-book-cheap-hours-with-flows' },
+        ],
+      },
+      {
         text: 'Advanced Usage',
         items: [
           {
-            text: 'Wire a Stepped Load Device',
+            text: 'Wire a Flow-Controlled Load Device',
             link: '/how-to-headroom-expected-power-flow-control',
           },
           { text: 'Configure an EV Charger', link: '/ev-charger' },

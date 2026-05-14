@@ -1,9 +1,9 @@
 ---
-title: Wire a Stepped Load Device
+title: Wire a Flow-Controlled Load Device
 description: Use PELS stepped-load profiles and generic Flow cards to connect devices such as Høiax Connected 300 without vendor-specific code in PELS.
 ---
 
-# How-To: Wire a Stepped Load Device to PELS
+# How-To: Wire a Flow-Controlled Load Device to PELS
 
 Use this pattern when a real Homey device has its own stepped power modes, but PELS should still decide which step to use.
 
@@ -65,7 +65,7 @@ If your device app exposes a direct level trigger, prefer reporting the step dir
 
 1. In the PELS device settings, set `Control model` to `Stepped load`.
 2. Define the device steps and planning power values.
-3. Choose the normal `When shedding` behavior:
+3. Choose the normal **When limiting** behavior:
    `Turn off` or `Set to step`
 4. Create the outbound Flow from **Desired stepped load changed for [device]** to the vendor action cards.
 5. Create the inbound feedback Flow with either:

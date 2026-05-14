@@ -27,8 +27,10 @@ Without this action, the planner cannot behave correctly.
 | **Capacity guard: manual action needed** | Fires when PELS projects that your hourly hard-cap budget will be breached at the current run rate and no more devices can be limited. |
 | **Operating mode changed to...** | Fires when the current PELS operating mode changes to the selected mode. |
 | **Price level changed to...** | Fires when the price level changes between Cheap, Normal, Expensive, or Unknown. |
-| **Deadline status changed** | Fires when the planner re-evaluates a deadline objective for a device and the outcome changes (e.g. on track → at risk). |
-| **Deadline missed** | Fires the next time PELS evaluates a deadline that has already passed without reaching its target. |
+| **Current price is one of today's lowest** | Fires when the current hour is among the selected number of cheapest hours today. |
+| **Current price is one of the lowest before a time** | Fires when the current hour is among the selected number of cheapest hours in a window before a chosen end hour. |
+| **Smart task status changed** | Fires when PELS re-evaluates a Smart task for a device and the status changes, such as **On track** to **At risk**. |
+| **Smart task missed** | Fires the next time PELS evaluates a Smart task that has already passed without reaching its target. |
 
 Use **Capacity guard: manual action needed** for urgent notifications, not for normal daily pacing.
 
@@ -40,8 +42,10 @@ Use **Capacity guard: manual action needed** for urgent notifications, not for n
 | **Is there headroom for device?** | Checks if current available power can fit the device's estimated draw plus a specified extra load. Useful for stepped devices. |
 | **Operating mode is...** | Checks which mode is active. |
 | **Price level is...** | Checks the current price bucket. |
-| **Deadline status is...** | True when the most recent deadline evaluation for the chosen device matches the chosen status (`on_track`, `at_risk`, `cannot_meet`, `satisfied`, or `none`). |
-| **Has an active deadline** | True when the device has a stored deadline objective. |
+| **Current price is one of today's lowest** | True when the current hour is among the selected number of cheapest hours today. |
+| **Current price is one of the lowest before a time** | True when the current hour is among the selected number of cheapest hours in a window before a chosen end hour. |
+| **Smart task status is...** | True when the current Smart task status for the chosen device matches the chosen status: **Waiting**, **On track**, **At risk**, **Cannot finish**, or **Satisfied**. |
+| **Has smart task** | True when the device has a stored Smart task. |
 
 The device-aware condition already includes built-in hysteresis after recent limiting or resume events on the same device.
 
@@ -53,13 +57,13 @@ The device-aware condition already includes built-in hysteresis after recent lim
 | **Set capacity limit** | Changes the configured hard-cap limit dynamically. |
 | **Set operating mode** | Switches between stored modes such as Home or Night. |
 | **Set expected power for device** | Temporarily sets a device's expected draw in watts. Fails if the device already has a configured `settings.load`. |
-| **Enable capacity control for device** | Turns on capacity-based control for one device. |
-| **Disable capacity control for device** | Turns off capacity-based control for one device. |
+| **Enable capacity control for device** | Turns on power-limit control for one device. |
+| **Disable capacity control for device** | Turns off power-limit control for one device. |
 | **Set external prices (today)** | Stores today's hourly prices from a Flow tag payload. |
 | **Set external prices (tomorrow)** | Stores tomorrow's hourly prices from a Flow tag payload. |
-| **Set temperature deadline** | Stores a target temperature and ready-by time for a thermal device. PELS picks the cheapest hours before the deadline to heat toward the target. |
-| **Set EV charge deadline** | Stores a target SoC and ready-by time for an EV charger, with soft or hard enforcement. |
-| **Clear deadline** | Removes any active deadline objective for a device. |
+| **Add heating task** | Stores a target temperature and ready-by time for a temperature device. PELS picks useful cheaper hours before the ready-by time. |
+| **Add charging task** | Stores a target battery percentage and ready-by time for an EV charger. |
+| **Clear smart task** | Removes any active Smart task for a device. |
 
 ## Common automation patterns
 
@@ -75,9 +79,41 @@ For water heaters and similar non-EV devices using the built-in stepped-load mod
 2. Use **Desired stepped load changed for [device]** to map PELS intent to vendor actions.
 3. Report the resulting step back through one of the stepped-load feedback cards.
 
-The full worked example lives in [Wire a stepped load device](/how-to-headroom-expected-power-flow-control).
+The full worked example lives in [Wire a Flow-Controlled Load Device](/how-to-headroom-expected-power-flow-control).
 
 For EV chargers, prefer the EV charger control mode and wire the **EV charger current (A)** tag directly to the charger app's available-current action. See [Configure an EV Charger](/ev-charger). Zaptec-specific notes live in [Configure a Zaptec EV Charger](/zaptec-ev-charger).
+
+### Smart tasks
+
+Use Smart task cards when one device should reach a target by a ready-by time.
+
+| Goal | Action card |
+| --- | --- |
+| Charge an EV to a target battery percentage | **Add charging task** |
+| Heat a temperature device to a target temperature | **Add heating task** |
+| Remove the current task for a device | **Clear smart task** |
+
+Use **Smart task status changed** for notifications and **Has smart task** when another Flow should behave differently while a task is active.
+
+See [Smart Tasks](/smart-tasks) for setup examples.
+
+### Book cheap hours before a time
+
+Use **Current price is one of the lowest before a time** when you want a Flow to allow a device during a fixed number of cheap hours before a deadline-like end time.
+
+Example:
+
+| Argument | Value |
+| --- | --- |
+| **Hours** | `12` |
+| **Lowest count** | `5` |
+| **End hour** | `7` |
+
+This matches the 5 cheapest hours in the 12 hours before 07:00. The window can cross midnight.
+
+Pair that condition or trigger with **Enable capacity control for device** and **Disable capacity control for device** so your Flow chooses the booked hours while PELS still protects the hard cap.
+
+See [Book Cheap Hours With Flows](/how-to-book-cheap-hours-with-flows).
 
 ### Price feed import
 
