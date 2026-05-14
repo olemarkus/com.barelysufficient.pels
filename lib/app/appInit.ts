@@ -183,6 +183,7 @@ export function createDeferredObjectiveActivePlanRecorder(
       }
     },
     debugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
+    onRevisionWritten: (event) => ctx.deferredObjectivePlanRevisionBus.publish(event),
   });
 }
 
@@ -392,6 +393,7 @@ export function registerAppFlowCards(ctx: AppContext): void {
       ctx.homey.settings.set(DEFERRED_OBJECTIVES_SETTINGS, next);
     },
     getDeferredObjectiveStatusBus: () => ctx.deferredObjectiveStatusBus,
+    getDeferredObjectivePlanRevisionBus: () => ctx.deferredObjectivePlanRevisionBus,
     applyDeferredObjectiveChange: (params) => {
       const activeRecorder = requireDeferredObjectiveActivePlanRecorder(ctx);
       const historyRecorder = requireDeferredObjectivePlanHistoryRecorder(ctx);

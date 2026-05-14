@@ -4,6 +4,11 @@ export {
   emitDeferredObjectiveDiagnostics,
 } from './diagnosticsBridge';
 export { createDeferredObjectiveStatusBus } from './statusBus';
+export { createDeferredObjectivePlanRevisionBus } from './planRevisionBus';
+export type {
+  DeferredObjectivePlanRevisionBus,
+  DeferredObjectivePlanRevisionEvent,
+} from './planRevisionBus';
 export { emitDeferredObjectiveStatusTransitions } from './statusTransitions';
 export type {
   DeferredObjectiveStatusBus,
@@ -26,7 +31,7 @@ export {
   type DeferredObjectiveChangeInput,
 } from './objectiveChange';
 export { normalizeDeferredObjectiveActivePlans } from './activePlanSettings';
-export { resolveDeferredObjectiveDeadline } from './deadline';
+export { formatDeadlineLocalTime, resolveDeferredObjectiveDeadline } from './deadline';
 export { buildDeferredObjectivePolicyHorizon } from './policyHorizon';
 export {
   createEmptyDeferredObjectiveSettings,
