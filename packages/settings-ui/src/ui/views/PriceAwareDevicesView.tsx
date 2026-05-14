@@ -1,6 +1,7 @@
 import { render } from 'preact';
 import type { PriceOptDevice } from '../priceConfigTypes.ts';
 import { MdIconButton, MdSwitch, MdTextButton } from './materialWebJSX.tsx';
+import { ArrowBackIcon } from './icons.tsx';
 
 export type PriceAwareDevicesViewProps = {
   optimizationEnabled: boolean;
@@ -112,7 +113,8 @@ const Header = () => (
       class="btn ghost settings-back-button"
       data-settings-target="settings"
     >
-      ‹ Settings
+      <ArrowBackIcon slot="icon" />
+      Settings
     </MdTextButton>
     <div class="card__header">
       <div>

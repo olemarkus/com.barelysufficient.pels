@@ -208,10 +208,16 @@ const createRedesignDetailButton = (device: TargetDeviceSnapshot): HTMLElement =
   button.setAttribute('aria-label', `Open settings for ${device.name}`);
   setTooltip(button, `Open settings for ${device.name}`);
 
-  const icon = document.createElement('span');
-  icon.className = 'pels-device-card__detail-icon';
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const icon = document.createElementNS(SVG_NS, 'svg');
+  icon.setAttribute('class', 'pels-device-card__detail-icon');
+  icon.setAttribute('viewBox', '0 0 24 24');
   icon.setAttribute('aria-hidden', 'true');
-  icon.textContent = '›';
+  icon.setAttribute('focusable', 'false');
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('d', 'm8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z');
+  path.setAttribute('fill', 'currentColor');
+  icon.appendChild(path);
   button.appendChild(icon);
 
   button.addEventListener('click', () => {
