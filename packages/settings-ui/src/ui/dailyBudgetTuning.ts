@@ -54,7 +54,7 @@ export const loadDailyBudgetTuningSettings = async () => {
   setSelectValue(dailyBudgetControlledWeightInput, reserveModeValue(controlledWeight));
   setSelectValue(dailyBudgetPriceFlexShareInput, priceFlexModeValue(priceFlexShare));
   if (dailyBudgetBreakdownInput) {
-    dailyBudgetBreakdownInput.checked = breakdownRaw === true;
+    dailyBudgetBreakdownInput.selected = breakdownRaw === true;
   }
 };
 
@@ -102,7 +102,7 @@ const savePriceFlexShare = async () => {
 };
 
 const saveDailyBudgetBreakdownSetting = async () => {
-  const breakdownEnabled = dailyBudgetBreakdownInput?.checked ?? false;
+  const breakdownEnabled = dailyBudgetBreakdownInput?.selected ?? false;
   const currentBreakdown = await getSetting(DAILY_BUDGET_BREAKDOWN_ENABLED);
 
   const writes: Array<Promise<void>> = [];
@@ -117,7 +117,7 @@ const saveDailyBudgetBreakdownSetting = async () => {
   }
 
   if (dailyBudgetBreakdownInput) {
-    dailyBudgetBreakdownInput.checked = breakdownEnabled;
+    dailyBudgetBreakdownInput.selected = breakdownEnabled;
   }
   rerenderDailyBudget();
 };

@@ -70,6 +70,11 @@ export type MaterialCheckboxElement = HTMLElement & {
     disabled: boolean;
 };
 
+export type MaterialSwitchElement = HTMLElement & {
+    selected: boolean;
+    disabled: boolean;
+};
+
 export type MaterialTextFieldElement = HTMLElement & {
     value: string;
     disabled: boolean;
@@ -424,19 +429,19 @@ export const createToggleGroup = <T extends string>(
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Checkbox Field
+// Switch Field
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type CheckboxFieldOptions = {
+export type SwitchFieldOptions = {
     id: string;
     label: string;
     hint?: string;
-    checked?: boolean;
+    selected?: boolean;
 };
 
-export type CheckboxFieldResult = {
+export type SwitchFieldResult = {
     element: HTMLElement;
-    input: MaterialCheckboxElement;
+    input: MaterialSwitchElement;
 };
 
 export type FieldOptions = {
@@ -450,24 +455,27 @@ export type FieldOptions = {
 };
 
 /**
- * Creates a labeled checkbox with optional hint text (.field.checkbox-field pattern).
- * Returns the wrapper element and the input so callers can read/set .checked directly.
+ * Creates a labeled M3 switch with optional hint text (.md-switch-row pattern).
+ * Use for binary on/off settings (M3 reserves checkboxes for selection).
  */
-export const createCheckboxField = (options: CheckboxFieldOptions): CheckboxFieldResult => {
-    const { id, label, hint, checked = false } = options;
+export const createSwitchField = (options: SwitchFieldOptions): SwitchFieldResult => {
+    const { id, label, hint, selected = false } = options;
 
     const wrapper = document.createElement('div');
-    wrapper.className = 'field checkbox-field';
+    wrapper.className = 'md-switch-row';
 
-    const input = document.createElement('md-checkbox') as MaterialCheckboxElement;
+    const labelId = `${id}-label`;
+    const input = document.createElement('md-switch') as MaterialSwitchElement;
     input.id = id;
-    input.checked = checked;
+    input.selected = selected;
+    input.setAttribute('aria-labelledby', labelId);
 
     const content = document.createElement('span');
-    content.className = 'checkbox-field__content';
+    content.className = 'md-switch-row__content';
 
     const labelSpan = document.createElement('span');
-    labelSpan.className = 'field__label';
+    labelSpan.className = 'md-switch-row__label';
+    labelSpan.id = labelId;
     labelSpan.textContent = label;
     content.appendChild(labelSpan);
 

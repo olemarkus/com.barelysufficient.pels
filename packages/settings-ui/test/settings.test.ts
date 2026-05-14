@@ -88,7 +88,7 @@ const buildDom = () => {
       </form>
     </section>
     <section class="panel hidden" id="simulation-panel" data-panel="simulation">
-      <md-checkbox id="settings-simulation-mode"></md-checkbox>
+      <md-switch id="settings-simulation-mode"></md-switch>
     </section>
     <section class="panel hidden" id="overview-panel" data-panel="overview">
       <div id="plan-redesign-surface">
@@ -191,7 +191,7 @@ const buildDom = () => {
           <md-select-option value="0.6"><div slot="headline">Medium</div></md-select-option>
           <md-select-option value="0.85"><div slot="headline">High</div></md-select-option>
         </md-filled-select>
-        <md-checkbox id="daily-budget-breakdown"></md-checkbox>
+        <md-switch id="daily-budget-breakdown"></md-switch>
       </form>
     </section>
     <div id="device-detail-overlay" hidden>
@@ -326,7 +326,7 @@ describe('settings script', () => {
 
     expect((document.querySelector('#settings-capacity-limit') as HTMLInputElement).value).toBe('7');
     expect((document.querySelector('#settings-capacity-margin') as HTMLInputElement).value).toBe('0.3');
-    expect((document.querySelector('#settings-simulation-mode') as HTMLInputElement).checked).toBe(false);
+    expect((document.querySelector('#settings-simulation-mode') as HTMLElement & { selected: boolean }).selected).toBe(false);
     const fetchedKeys = homey.get.mock.calls.map(([key]) => key);
     expect(fetchedKeys).not.toContain('capacity_limit_kw');
     expect(fetchedKeys).not.toContain('capacity_margin_kw');
@@ -353,7 +353,7 @@ describe('settings script', () => {
     expect(rows.length).toBe(1);
     expect((document.querySelector('#settings-capacity-limit') as HTMLInputElement).value).toBe('8');
     expect((document.querySelector('#settings-capacity-margin') as HTMLInputElement).value).toBe('0.4');
-    expect((document.querySelector('#settings-simulation-mode') as HTMLInputElement).checked).toBe(false);
+    expect((document.querySelector('#settings-simulation-mode') as HTMLElement & { selected: boolean }).selected).toBe(false);
   });
 
   it('renders all debug logging topics including overview', async () => {
