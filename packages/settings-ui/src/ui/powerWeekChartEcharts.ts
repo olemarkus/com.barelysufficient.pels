@@ -1,3 +1,4 @@
+import { attachTabShownResize } from './chartVisibilityResize.ts';
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
 import { formatDateInTimeZone } from './timezone.ts';
 import type { UsageDayEntry } from './usageDayView.ts';
@@ -49,10 +50,16 @@ const resolvePalette = (container: HTMLElement): HeatmapPalette => ({
   heatmapHigh: resolveCssColor(container, '--color-role-danger'),
 });
 
+let detachTabShownResize: (() => void) | null = null;
+
 export const disposePowerWeekChart = () => {
   if (plotResizeObserver) {
     plotResizeObserver.disconnect();
     plotResizeObserver = null;
+  }
+  if (detachTabShownResize) {
+    detachTabShownResize();
+    detachTabShownResize = null;
   }
   if (plot) {
     plot.dispose();
@@ -83,6 +90,8 @@ const ensurePlot = (container: HTMLElement): EChartsType => {
     });
     plotResizeObserver.observe(container);
   }
+
+  detachTabShownResize = attachTabShownResize({ container, chart: plot, resolveSize: resolveChartSize });
 
   return plot;
 };
