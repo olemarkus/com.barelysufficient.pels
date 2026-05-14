@@ -21,16 +21,27 @@ type WidgetApiContext = {
   };
 };
 
-const flattenStoreToCombinedPriceData = (value: unknown): CombinedPriceData | null => {
-  if (!value || typeof value !== 'object') return null;
-  const record = value as { days?: unknown; lastFetched?: unknown; priceUnit?: unknown };
-  if (!record.days || typeof record.days !== 'object' || Array.isArray(record.days)) return null;
-  const days = record.days as Record<string, unknown>;
-  const collected: CombinedPriceEntry[] = Object.values(days).flatMap((day) => {
+const collectV2Hours = (days: Record<string, unknown>): CombinedPriceEntry[] => (
+  Object.values(days).flatMap((day) => {
     if (!day || typeof day !== 'object') return [];
     const hours = (day as { hours?: unknown }).hours;
     return Array.isArray(hours) ? hours as CombinedPriceEntry[] : [];
-  });
+  })
+);
+
+const flattenStoreToCombinedPriceData = (value: unknown): CombinedPriceData | null => {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as { days?: unknown; prices?: unknown; lastFetched?: unknown; priceUnit?: unknown };
+  // The widget runs in a separate JS context; if it loads before the app has
+  // had a chance to persist the V1 → V2 migration via readPriceStore, accept
+  // the legacy `{ prices: [...] }` shape directly so charts render instead of
+  // staying empty.
+  const isV2 = record.days && typeof record.days === 'object' && !Array.isArray(record.days);
+  const isV1 = Array.isArray(record.prices);
+  if (!isV2 && !isV1) return null;
+  const collected = isV2
+    ? collectV2Hours(record.days as Record<string, unknown>)
+    : record.prices as CombinedPriceEntry[];
   const prices = [...collected].sort(
     (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
   );

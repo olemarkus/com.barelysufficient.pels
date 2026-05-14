@@ -24,16 +24,18 @@ __export(api_exports, {
 module.exports = __toCommonJS(api_exports);
 var import_planPriceWidgetPayload = require("./planPriceWidgetPayload");
 const COMBINED_PRICES_SETTING = "combined_prices";
+const collectV2Hours = (days) => Object.values(days).flatMap((day) => {
+  if (!day || typeof day !== "object") return [];
+  const hours = day.hours;
+  return Array.isArray(hours) ? hours : [];
+});
 const flattenStoreToCombinedPriceData = (value) => {
   if (!value || typeof value !== "object") return null;
   const record = value;
-  if (!record.days || typeof record.days !== "object" || Array.isArray(record.days)) return null;
-  const days = record.days;
-  const collected = Object.values(days).flatMap((day) => {
-    if (!day || typeof day !== "object") return [];
-    const hours = day.hours;
-    return Array.isArray(hours) ? hours : [];
-  });
+  const isV2 = record.days && typeof record.days === "object" && !Array.isArray(record.days);
+  const isV1 = Array.isArray(record.prices);
+  if (!isV2 && !isV1) return null;
+  const collected = isV2 ? collectV2Hours(record.days) : record.prices;
   const prices = [...collected].sort(
     (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
   );

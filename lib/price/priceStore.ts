@@ -3,17 +3,20 @@ import { COMBINED_PRICES } from '../utils/settingsKeys';
 import {
   type CombinedPriceEntry,
   type CombinedPricesV2,
+  isCombinedPricesV1,
   isCombinedPricesV2,
 } from './priceTypes';
-import { pruneCombinedPricesV2 } from './priceServiceCombined';
+import { migrateLegacyCombinedPrices, pruneCombinedPricesV2 } from './priceServiceCombined';
 
 export type PriceStoreDeps = {
   homey: Homey.App['homey'];
   /**
-   * Triggered when COMBINED_PRICES is missing or not in V2 form. Implementation
-   * should rebuild combined_prices from raw scheme data (see
-   * PriceCoordinator.updateCombinedPrices). Re-entrant calls within the same
-   * read are guarded by `refetchInFlight`.
+   * Triggered when COMBINED_PRICES is missing or has an unrecognised shape so
+   * the coordinator can rebuild from raw scheme data (see
+   * PriceCoordinator.updateCombinedPrices). Not invoked for the V1 → V2
+   * migration path: V1 already carries every entry, so we migrate in place
+   * synchronously. Re-entrant calls within the same read are guarded by
+   * `refetchInFlight`.
    */
   requestRefetch: () => void;
 };
@@ -35,9 +38,19 @@ const guardedRequestRefetch = (deps: PriceStoreDeps): void => {
 export const readPriceStore = (deps: PriceStoreDeps, now: Date, timeZone: string): CombinedPricesV2 | null => {
   const raw = deps.homey.settings.get(COMBINED_PRICES) as unknown;
   if (isCombinedPricesV2(raw)) return pruneCombinedPricesV2(raw, now, timeZone);
-  // Legacy/malformed payload: drop it and ask the coordinator to rebuild.
-  // Plain null/undefined is the normal pre-refresh state and not actionable
-  // here — the periodic refresher will populate combined_prices on its own.
+  // Legacy V1 payload: migrate synchronously so callers see prices immediately
+  // instead of a UNKNOWN-price-level gap until the next refetch lands. Persist
+  // the V2 form so direct (non-readPriceStore) consumers also see V2 from now
+  // on, and so we don't run the migration on every read.
+  if (isCombinedPricesV1(raw)) {
+    const migrated = migrateLegacyCombinedPrices(raw, now, timeZone);
+    deps.homey.settings.set(COMBINED_PRICES, migrated);
+    return migrated;
+  }
+  // Anything else (truly malformed, foreign shape): drop and ask the
+  // coordinator to rebuild. Plain null/undefined is the normal pre-refresh
+  // state and not actionable here — the periodic refresher will populate
+  // combined_prices on its own.
   if (raw !== null && raw !== undefined) {
     deps.homey.settings.set(COMBINED_PRICES, null);
     guardedRequestRefetch(deps);

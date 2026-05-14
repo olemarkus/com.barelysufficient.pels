@@ -84,3 +84,33 @@ export const isCombinedPricesV2 = (value: unknown): value is CombinedPricesV2 =>
   if (!record.days || typeof record.days !== 'object' || Array.isArray(record.days)) return false;
   return Object.values(record.days as Record<string, unknown>).every(isDayEntry);
 };
+
+/**
+ * Pre-V2 shape (`{ prices: [...], avgPrice, lowThreshold, highThreshold,
+ * priceScheme, priceUnit, ... }`) persisted in `combined_prices` before
+ * `COMBINED_PRICES_VERSION` was introduced. Detected on first read after
+ * upgrade so the V1 → V2 migration can run synchronously.
+ */
+export type CombinedPricesV1 = {
+  prices: CombinedPriceEntry[];
+  avgPrice: number;
+  lowThreshold: number;
+  highThreshold: number;
+  priceScheme: PriceScheme;
+  priceUnit: string;
+  thresholdPercent?: number;
+  minDiffOre?: number;
+  lastFetched?: string;
+};
+
+export const isCombinedPricesV1 = (value: unknown): value is CombinedPricesV1 => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  // V1 lacks `version` and has a `prices` array; V2 has `version: 2` and `days`.
+  if (record.version !== undefined) return false;
+  if (!Array.isArray(record.prices)) return false;
+  if (!record.prices.every(isHourEntry)) return false;
+  if (!isFiniteNumber(record.avgPrice)) return false;
+  if (!isFiniteNumber(record.lowThreshold) || !isFiniteNumber(record.highThreshold)) return false;
+  return typeof record.priceScheme === 'string' && typeof record.priceUnit === 'string';
+};
