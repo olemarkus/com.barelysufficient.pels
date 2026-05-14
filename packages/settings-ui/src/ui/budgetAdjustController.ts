@@ -309,7 +309,7 @@ export const applyBudgetAdjust = async (): Promise<void> => {
     await refreshActivePlan({ payload, appliedSettings: settings });
     const undoActionable = !draftsEqual(previousActive, activeDraft);
     void showToast(
-      'Daily budget model applied.',
+      'Daily budget updated.',
       'ok',
       undoActionable
         ? {

@@ -291,11 +291,28 @@ const resolvePowerTone = (scale: BarScale): 'good' | 'warning' | 'critical' => {
   return 'good';
 };
 
-const PowerMeter = ({ scale }: { scale: BarScale }) => {
-  const safePaceTooltip = [
-    `Safe pace now ${scale.safePaceKw.toFixed(1)} kW —`,
-    'PELS limits managed devices above this threshold.',
-  ].join(' ');
+type SoftLimitSource = NonNullable<PlanMetaSnapshot['softLimitSource']>;
+
+const SAFE_PACE_SOURCE_TOOLTIP: Record<SoftLimitSource, string> = {
+  capacity: 'From your hard cap minus the safety margin.',
+  daily: "From today's daily budget — daily pacing is the tighter constraint right now.",
+  both: 'Both the hard cap and daily budget are constraining PELS right now.',
+};
+
+const resolveSafePaceTooltip = (
+  safePaceKw: number,
+  source: SoftLimitSource | undefined,
+): string => {
+  const head = `Safe pace now ${safePaceKw.toFixed(1)} kW —`;
+  const tail = source ? SAFE_PACE_SOURCE_TOOLTIP[source] : 'PELS limits managed devices above this threshold.';
+  return `${head} ${tail}`;
+};
+
+const PowerMeter = ({ scale, softLimitSource }: {
+  scale: BarScale;
+  softLimitSource: SoftLimitSource | undefined;
+}) => {
+  const safePaceTooltip = resolveSafePaceTooltip(scale.safePaceKw, softLimitSource);
   const hardCapTooltip = scale.hardCapKw !== null
     ? [`Hard cap ${scale.hardCapKw.toFixed(1)} kW —`, 'your configured maximum.'].join(' ')
     : undefined;
@@ -365,7 +382,7 @@ const PowerSection = ({
               } · Background {scale.uncontrolled.toFixed(1)} kW
             </span>
           </div>
-          <PowerMeter scale={scale} />
+          <PowerMeter scale={scale} softLimitSource={meta.softLimitSource} />
         </div>
       )}
     </div>
