@@ -5,6 +5,7 @@ import {
 } from '../lib/core/deviceManagerObservation';
 import type { LiveFeedHealth } from '../lib/core/deviceLiveFeed';
 import type { HomeyDeviceLike, TargetDeviceSnapshot } from '../lib/utils/types';
+import { isManagedFilterActive } from '../lib/app/appDeviceSupport';
 import {
     mockHomeyInstance,
 } from './mocks/homey';
@@ -486,7 +487,7 @@ describe('DeviceManager', () => {
             const explicitDecisions: Record<string, boolean> = { dev1: false, dev2: false };
             const dm = new DeviceManager(homeyMock, loggerMock, {
                 getManaged: (deviceId) => explicitDecisions[deviceId] === true,
-                isManagedFilterActive: () => Object.values(explicitDecisions).some((v) => v === true),
+                isManagedFilterActive: () => isManagedFilterActive(explicitDecisions),
             });
             await dm.init();
             mockApiGet.mockResolvedValue({

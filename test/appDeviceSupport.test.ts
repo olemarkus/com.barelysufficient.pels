@@ -119,6 +119,34 @@ describe('disableUnsupportedDevices', () => {
     expect(logDebug).not.toHaveBeenCalled();
   });
 
+  it('does not re-emit the price-only log on repeated refreshes for fresh-install price-only devices', () => {
+    // Regression: when `controllable_devices[id]` is absent (fresh install),
+    // the demotion path correctly skips the no-op write — but the
+    // `changedPriceOnly` log must still be edge-triggered. Otherwise the
+    // "Price-only support enabled..." line fires on every snapshot refresh,
+    // creating persistent operational log noise.
+    const settings = makeSettings({});
+    const logDebug = vi.fn();
+
+    disableUnsupportedDevices({
+      snapshot: [buildPriceOnlyDevice()],
+      settings: settings as any,
+      logDebug,
+    });
+    expect(logDebug.mock.calls.flat().some(
+      (entry) => typeof entry === 'string' && entry.includes('Price-only support enabled'),
+    )).toBe(false);
+
+    // Second refresh with the same (still-absent) settings: still no log.
+    logDebug.mockClear();
+    disableUnsupportedDevices({
+      snapshot: [buildPriceOnlyDevice()],
+      settings: settings as any,
+      logDebug,
+    });
+    expect(logDebug).not.toHaveBeenCalled();
+  });
+
   it('writes managed/controllable false only when the user previously enabled the device', () => {
     // EV-by-default migration set { ev1: true }; the device turns out to be
     // unsupported. We must demote it to false. After that demotion, the next
