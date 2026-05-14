@@ -1,4 +1,5 @@
 import { attachTabShownResize } from './chartVisibilityResize.ts';
+import { readChartPalette } from './dayViewChart.ts';
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
 import { formatDateInTimeZone } from './timezone.ts';
 import type { UsageDayEntry } from './usageDayView.ts';
@@ -10,11 +11,11 @@ type HeatmapPalette = {
   border: string;
   muted: string;
   grid: string;
+  heatmapLow: string;
+  heatmapHigh: string;
   tooltipBackground: string;
   tooltipText: string;
   tooltipBorder: string;
-  heatmapLow: string;
-  heatmapHigh: string;
 };
 
 const DEFAULT_CHART_HEIGHT = 240;
@@ -23,9 +24,6 @@ const DEFAULT_CHART_WIDTH = 480;
 let plot: EChartsType | null = null;
 let plotContainer: HTMLElement | null = null;
 let plotResizeObserver: ResizeObserver | null = null;
-
-const resolveCssColor = (element: HTMLElement, variable: string) =>
-  getComputedStyle(element).getPropertyValue(variable).trim();
 
 const resolveChartSize = (element: HTMLElement) => {
   const width = element.clientWidth > 0
@@ -38,17 +36,21 @@ const resolveChartSize = (element: HTMLElement) => {
   return { width: width > 0 ? width : fallbackWidth, height: DEFAULT_CHART_HEIGHT };
 };
 
-const resolvePalette = (container: HTMLElement): HeatmapPalette => ({
-  cellUnreliable: resolveCssColor(container, '--color-surface-5'),
-  border: resolveCssColor(container, '--color-surface-1'),
-  muted: resolveCssColor(container, '--muted'),
-  grid: resolveCssColor(container, '--color-border-strong'),
-  tooltipBackground: resolveCssColor(container, '--color-overlay-toast'),
-  tooltipText: resolveCssColor(container, '--color-semantic-text-primary'),
-  tooltipBorder: resolveCssColor(container, '--color-border-medium'),
-  heatmapLow: resolveCssColor(container, '--color-role-info'),
-  heatmapHigh: resolveCssColor(container, '--color-role-danger'),
-});
+const HEATMAP_PALETTE_VARS = {
+  cellUnreliable: '--pels-chart-unreliable-cell',
+  border: '--pels-chart-heatmap-border',
+  muted: '--pels-chart-muted',
+  grid: '--pels-chart-grid',
+  heatmapLow: '--pels-chart-heatmap-low',
+  heatmapHigh: '--pels-chart-heatmap-high',
+  tooltipBackground: '--pels-chart-tooltip-bg',
+  tooltipText: '--pels-chart-tooltip-text',
+  tooltipBorder: '--pels-chart-tooltip-border',
+} as const satisfies Record<keyof HeatmapPalette, string>;
+
+const resolvePalette = (container: HTMLElement): HeatmapPalette => (
+  readChartPalette<HeatmapPalette>(container, HEATMAP_PALETTE_VARS)
+);
 
 let detachTabShownResize: (() => void) | null = null;
 

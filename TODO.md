@@ -493,12 +493,14 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
       `packages/settings-ui/public/style.css`,
       `packages/settings-ui/tests/e2e/material-select.spec.ts`, budget/settings screenshots.
-- [ ] Finish chart-test hardening from the first-impression UI audit. The colour-token subset is
-      now P0 (see above); this P2 entry covers the remaining non-colour test surface: deterministic
-      visual assertions for legend text matching rendered series, explicit axis/tooltip units,
-      price-unit normalization, SVG bounds, and no deadline legend/axis overlap at 320 / 480 px.
+- [ ] Finish chart-test hardening from the first-impression UI audit. The colour-token subset
+      landed (charts now read `--pels-chart-*` role-token aliases, no remaining hex literals).
+      This P2 entry covers the remaining non-colour test surface: deterministic visual assertions
+      for legend text matching rendered series, explicit axis/tooltip units, price-unit
+      normalization, SVG bounds, and no deadline legend/axis overlap at 320 / 480 px. A
+      token-resolution regression test that asserts `--pels-chart-plan` resolves to the same hex
+      as the on-page Plan legend swatch would also belong here.
       Files: `packages/settings-ui/src/ui/budgetRedesignChart.ts`,
-      `packages/settings-ui/src/ui/dailyBudgetChartEcharts.ts`,
       `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
       `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,
       `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,

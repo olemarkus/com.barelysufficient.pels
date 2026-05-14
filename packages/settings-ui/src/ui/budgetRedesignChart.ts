@@ -2,7 +2,7 @@ import type { DailyBudgetDayPayload } from '../../../contracts/src/dailyBudgetTy
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType, type SeriesOption } from './echartsRegistry.ts';
 import type { CostDisplay } from './dailyBudgetCost.ts';
 import { formatKWh } from './dailyBudgetFormat.ts';
-import { formatHourAxisLabel, resolveLabelEvery } from './dayViewChart.ts';
+import { formatHourAxisLabel, readChartPalette, resolveLabelEvery } from './dayViewChart.ts';
 import { resolvePriceUnitLabel } from './priceUnit.ts';
 import { attachTabShownResize } from './chartVisibilityResize.ts';
 
@@ -12,6 +12,7 @@ export type BudgetRedesignDayView = 'today' | 'tomorrow' | 'yesterday';
 type BudgetChartPalette = {
   actual: string;
   plan: string;
+  planFill: string;
   background: string;
   managed: string;
   forecast: string;
@@ -43,9 +44,6 @@ const chartHandles = new WeakMap<HTMLElement, ChartHandle>();
 
 const DEFAULT_CHART_HEIGHT = 210;
 const DEFAULT_CHART_WIDTH = 480;
-
-const resolveCssColor = (element: HTMLElement, variable: string) =>
-  getComputedStyle(element).getPropertyValue(variable).trim();
 
 const resolveChartSize = (element: HTMLElement) => {
   const width = element.clientWidth > 0
@@ -91,20 +89,25 @@ const ensureChart = (container: HTMLElement): EChartsType => {
   return chart;
 };
 
-const resolvePalette = (container: HTMLElement): BudgetChartPalette => ({
-  actual: resolveCssColor(container, '--pels-chart-actual'),
-  plan: resolveCssColor(container, '--pels-chart-plan'),
-  background: resolveCssColor(container, '--day-view-color-background-usage'),
-  managed: resolveCssColor(container, '--day-view-color-managed-usage'),
-  forecast: resolveCssColor(container, '--pels-chart-forecast'),
-  priceLine: resolveCssColor(container, '--pels-chart-price-line'),
-  priceFill: resolveCssColor(container, '--pels-chart-price-fill'),
-  muted: resolveCssColor(container, '--muted'),
-  grid: resolveCssColor(container, '--color-border-strong'),
-  tooltipBackground: resolveCssColor(container, '--color-overlay-toast'),
-  tooltipText: resolveCssColor(container, '--color-semantic-text-primary'),
-  tooltipBorder: resolveCssColor(container, '--color-border-medium'),
-});
+const BUDGET_CHART_PALETTE_VARS = {
+  actual: '--pels-chart-actual',
+  plan: '--pels-chart-plan',
+  planFill: '--pels-chart-plan-fill',
+  background: '--pels-chart-background',
+  managed: '--pels-chart-managed',
+  forecast: '--pels-chart-forecast',
+  priceLine: '--pels-chart-price-line',
+  priceFill: '--pels-chart-price-fill',
+  muted: '--pels-chart-muted',
+  grid: '--pels-chart-grid',
+  tooltipBackground: '--pels-chart-tooltip-bg',
+  tooltipText: '--pels-chart-tooltip-text',
+  tooltipBorder: '--pels-chart-tooltip-border',
+} as const satisfies Record<keyof BudgetChartPalette, string>;
+
+const resolvePalette = (container: HTMLElement): BudgetChartPalette => (
+  readChartPalette<BudgetChartPalette>(container, BUDGET_CHART_PALETTE_VARS)
+);
 
 const cumulative = (values: number[]): number[] => {
   let total = 0;
@@ -339,7 +342,7 @@ const buildProgressOption = (
       showSymbol: false,
       smooth: true,
       lineStyle: { color: palette.plan, width: 3 },
-      areaStyle: { color: 'rgba(16, 185, 129, 0.08)' },
+      areaStyle: { color: palette.planFill },
       emphasis: { disabled: true },
     },
   ];
