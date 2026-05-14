@@ -59,6 +59,14 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Why P1: a single draft can bleed between device detail sessions and makes fallback chains
       depend on whichever device wrote the draft last.
       Files: `packages/settings-ui/src/ui/deviceDetail/steppedLoadDraft.ts`.
+- [ ] Handle App Not Ready during PELS restart as a retry/loading state in the Settings UI rather
+      than an error. Observed from `/ui_power` immediately after restarting the app: the UI
+      currently surfaces the not-ready response as a hard error, which looks like a failure during
+      the normal startup window. Detect the not-ready signal at the API boundary and degrade to a
+      loading state with bounded retry/backoff until the runtime responds, instead of rendering an
+      error toast or empty error card.
+      Files: `packages/settings-ui/src/ui/**` API call sites for `/ui_power` and related routes,
+      `lib/app/settingsUiApi.ts` not-ready response shape, settings UI loading/error tests.
 - [ ] Fix redesigned top navigation at 320px. The current five-destination shell can truncate or
       collide, especially `Smart tasks`, on narrow Homey WebView widths. Make the control behave
       like a polished mobile navigation surface: no clipped labels, predictable horizontal
@@ -150,9 +158,15 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       branch) so `resolveStepDeliveryUsefulKw` serves Automatic mode without duplication.
       Why P1: this is not a P0 blocker for the flow-card percent deadline, but it is the core
       trust signal users need soon after the actuation fix.
+      Also surface the kWhPerUnit provenance the planner is using so users do not need to read
+      logs or settings to understand EV learning state: whether the current plan is using the
+      bootstrap estimate or the learned profile, the learned `kWhPerUnit` value, accepted sample
+      count, confidence, and the last accepted sample timestamp. The active-plan recorder
+      already carries `kwhPerUnitSource`; the rest comes from the EV learning store.
       Design: `notes/ev-ready-by/README.md`.
       Files: `packages/settings-ui/src/ui/deadlinePlan.ts`, `lib/app/appInit.ts`,
-      `lib/plan/deferredObjectives/diagnosticsBridge.ts`, calibration view tests.
+      `lib/plan/deferredObjectives/diagnosticsBridge.ts`, EV learning store, calibration view
+      tests.
 - [ ] Surface built-in device control when it blocks device management.
       The control still exists (`packages/settings-ui/public/index.html:1017-1029`) and is wired
       by `packages/settings-ui/src/ui/deviceDetail/nativeWiring.ts`, but it is conditional and
@@ -430,6 +444,40 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `packages/settings-ui/src/ui/deadlinePlan.ts`,
       `packages/settings-ui/src/ui/views/DeadlinePlanHistory.tsx`,
       `packages/contracts/src/deferredObjectivePlanHistory.ts`, deadline-plan history tests.
+- [ ] Add PELS-side unit tests for EV kWhPerUnit learning. Cover: a plan with no learned profile
+      uses the bootstrap estimate; an accepted SoC rise records a `kWhPerUnit` sample; subsequent
+      plans switch from bootstrap to the learned estimate; and rejection reasons fire as expected
+      for no-progress samples, duplicate samples, and SoC rises below the minimum-delta threshold.
+      Files: EV learning store / sample acceptance code under
+      `lib/plan/deferredObjectives/**` or `lib/core/**`, new EV learning tests under `test/`.
+- [ ] Hide duplicate responsive tab controls from the accessibility tree. Playwright snapshots
+      showed duplicate tab labels, indicating both the desktop and mobile navigation surfaces are
+      exposed simultaneously rather than the inactive one being hidden via `aria-hidden` or
+      removed from the DOM. Decide whether to render only the active surface or mark the inactive
+      one as inert, and assert in an a11y test that each destination appears exactly once in the
+      accessibility tree at 320px and 480px.
+      Files: `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/public/style.css`, navigation shell code under
+      `packages/settings-ui/src/ui/**`, a11y / e2e tests.
+- [ ] Debounce or sequence plan rebuilds around budget/price-shaping toggle changes. Toggling daily
+      budget or price-shaping briefly produced `objective_missing_price_horizon` plan reasons
+      before recovering. The reason is correct in isolation, but the transient flash makes the
+      planner look unhealthy to users watching a live UI during settings edits. Either debounce
+      the rebuild until the dependent settings are coherent, or show an explicit "applying"
+      loading state on the plan surface so the user sees a pending state instead of an odd
+      reason. Confirm the recovery still happens within one rebuild cycle once settled.
+      Files: `lib/plan/planService.ts`, `lib/app/planRebuildScheduler.ts`,
+      settings UI plan view loading states, plan-reason regression tests.
+- [ ] Clarify log severity and wording for expected planner states. Several normal outcomes look
+      like failures in log review: `cannot_meet` on a deadline objective, `failed: false` fields
+      where `false` is the success path, and expected EV learning sample rejections
+      (`no_progress`, `duplicate`, `too_small_rise`). Choose log severities that match real
+      operational impact (likely `info` or `debug` for expected states, reserve `warn`/`error`
+      for actual control or data faults), and reshape wording so logs read as state transitions
+      rather than failures. Keep field semantics stable; only adjust level and human-readable
+      messages.
+      Files: `lib/logging/**`, `lib/plan/deferredObjectives/**`, EV learning sample-rejection
+      sites, log/wording regression tests.
 - [ ] Add missing swap lifecycle coverage from the pre-release review. Cover completed stepped
       swap cleanup with a stepped target and requested step, assert approved stepped swaps persist
       the stale-cleanup timestamp, and add an `applyRestorePlan()` integration test for orphan
@@ -586,6 +634,13 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 - [ ] Auto-adjust daily budget from past eligible exemptions using the policy in
       `notes/daily-budget-auto-adjust/README.md`.
       Files: daily budget state/service/UI/settings/diagnostics.
+- [ ] Add a scripted regression runner for the SHS test scenario. The manual runbook works but
+      automation would make repeat runs safer and faster. Snapshot relevant settings before
+      starting, drive the Settings UI / API checks the runbook covers, exercise the EV learning
+      acceptance and rejection paths, collect logs and any UI artifacts, and restore the
+      pre-run settings on completion regardless of pass/fail. Keep the runner out of the
+      pre-commit CI path; treat it as an on-demand validation tool for release prep.
+      Files: new top-level `scripts/` runner, supporting fixtures, possibly Playwright helpers.
 - [ ] Keep the remaining future feature ideas small and design-driven: configurable per-device
       cooldowns, explicit available-power reservations, richer price explainability,
       weather-aware budget context, and small per-device action history in the UI.
