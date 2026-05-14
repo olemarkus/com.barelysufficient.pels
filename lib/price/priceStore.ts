@@ -45,6 +45,14 @@ export const readPriceStore = (deps: PriceStoreDeps, now: Date, timeZone: string
   if (isCombinedPricesV1(raw)) {
     const migrated = migrateLegacyCombinedPrices(raw, now, timeZone);
     deps.homey.settings.set(COMBINED_PRICES, migrated);
+    // If the V1 payload had no entries inside the 3-day window (empty
+    // legacy.prices, or all entries outside the window), the migrated store
+    // is empty and price_level would otherwise stay UNKNOWN until an external
+    // refresh arrives. Trigger a refetch so the coordinator rebuilds from
+    // raw scheme data.
+    if (Object.keys(migrated.days).length === 0) {
+      guardedRequestRefetch(deps);
+    }
     return migrated;
   }
   // Anything else (truly malformed, foreign shape): drop and ask the
