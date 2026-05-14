@@ -874,3 +874,11 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       those tokens lives in the P2 observability entry above, not here.)
       Design: `notes/ev-ready-by/README.md`.
       Files: new flow action JSONs and registrations.
+- [ ] Once Unit 4's tri-state observer freshness signal lands, replace the
+      `binaryControlObservation`-based projection in
+      `lib/executor/executablePlanProjection.ts:resolveObservedBinaryStateFromSnapshot`
+      with the observer-resolved discriminator. The current projection re-derives
+      "trusted binary observation" from raw snapshot fields, which duplicates
+      what the observer freshness layer should own.
+      Files: `lib/executor/executablePlanProjection.ts`, `lib/executor/executablePlan.ts`,
+      `lib/executor/planExecutionDrift.ts`.

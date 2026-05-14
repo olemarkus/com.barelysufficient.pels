@@ -5,6 +5,7 @@ import {
 } from '../lib/app/appRealtimeDeviceReconcile';
 import { shouldQueueRealtimeDeviceReconcile } from '../lib/app/appRealtimeDeviceReconcileRuntime';
 import type { Logger, StructuredDebugEmitter } from '../lib/logging/logger';
+import { buildBinaryObservation } from './utils/binaryObservationTestUtils';
 
 describe('appRealtimeDeviceReconcile', () => {
   const createDebugStructuredMock = (): StructuredDebugEmitter => vi.fn() as unknown as StructuredDebugEmitter;
@@ -142,6 +143,7 @@ describe('appRealtimeDeviceReconcile', () => {
         name: 'Heater',
         currentOn: false,
         hasBinaryControl: true,
+        binaryControlObservation: buildBinaryObservation('onoff', false),
         currentTemperature: 21,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
       }],
@@ -221,6 +223,7 @@ describe('appRealtimeDeviceReconcile', () => {
         name: 'Heater',
         hasBinaryControl: true,
         currentOn: false,
+        binaryControlObservation: buildBinaryObservation('onoff', false),
         currentTemperature: 21,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
       }],
@@ -257,6 +260,7 @@ describe('appRealtimeDeviceReconcile', () => {
         name: 'Heater',
         hasBinaryControl: true,
         currentOn: true,
+        binaryControlObservation: buildBinaryObservation('onoff', true),
         currentTemperature: 21,
         targets: [],
       }],
