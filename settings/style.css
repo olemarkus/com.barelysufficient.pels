@@ -134,7 +134,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
-  line-height: 1.6;
+  line-height: var(--font-line-height-comfortable);
   /* Override Homey's body padding (we handle our own layout spacing). */
   padding: 0 !important;
   overflow-x: hidden;
@@ -212,8 +212,11 @@ md-text-button {
 }
 
 .hero h1 {
-  margin: 0 0 6px 0;
-  font-size: clamp(24px, 7vw, 34px);
+  margin: 0 0 var(--spacing-1) 0;
+  color: var(--pels-text-headline-color);
+  font-size: var(--pels-text-headline-font-size);
+  font-weight: var(--pels-text-headline-font-weight);
+  line-height: var(--pels-text-headline-font-line-height);
   letter-spacing: -0.02em;
 }
 
@@ -240,7 +243,7 @@ md-text-button {
   --md-primary-tab-active-indicator-height: 0;
   --md-primary-tab-label-text-font: var(--font-sans);
   --md-primary-tab-label-text-size: var(--pels-shell-nav-tab-label-size);
-  --md-primary-tab-label-text-line-height: 1;
+  --md-primary-tab-label-text-line-height: var(--font-line-height-flat);
   --md-primary-tab-label-text-weight: var(--pels-shell-nav-tab-label-weight);
   --md-primary-tab-label-text-color: var(--pels-shell-nav-tab-label-color);
   --md-primary-tab-hover-label-text-color: var(--pels-shell-nav-tab-label-hover-color);
@@ -322,7 +325,7 @@ md-text-button {
   justify-content: center;
   height: var(--pels-shell-nav-tab-height);
   min-height: var(--pels-shell-nav-tab-height);
-  line-height: 1;
+  line-height: var(--font-line-height-flat);
   min-width: 0;
 }
 
@@ -412,7 +415,7 @@ md-primary-tab.tab[active]:hover {
 .device-control-legend__chevron {
   font-size: var(--font-size-sm);
   transition: transform var(--transition-fast);
-  line-height: 1;
+  line-height: var(--font-line-height-flat);
 }
 
 .device-control-legend[open] .device-control-legend__chevron {
@@ -446,7 +449,7 @@ md-primary-tab.tab[active]:hover {
 .device-control-legend__item p {
   margin: var(--spacing-1) 0 0;
   font-size: var(--font-size-sm);
-  line-height: 1.4;
+  line-height: var(--font-line-height-cozy);
 }
 
 .device-control-legend__icon {
@@ -622,8 +625,8 @@ md-primary-tab.tab[active]:hover {
 
 .pels-device-card__detail-icon {
   display: block;
-  font-size: 28px;
-  line-height: 1;
+  font-size: var(--font-size-headline-md);
+  line-height: var(--font-line-height-flat);
   transform: translateY(-1px);
 }
 
@@ -658,8 +661,10 @@ md-primary-tab.tab[active]:hover {
 
 .settings-home-hero h2 {
   margin: 0 0 var(--spacing-2) 0;
-  font-size: var(--font-size-lg);
-  line-height: var(--font-line-height-tight);
+  color: var(--pels-text-section-headline-color);
+  font-size: var(--pels-text-section-headline-font-size);
+  font-weight: var(--pels-text-section-headline-font-weight);
+  line-height: var(--pels-text-section-headline-font-line-height);
   letter-spacing: 0;
 }
 
@@ -762,20 +767,20 @@ md-primary-tab.tab[active]:hover {
   color: var(--text);
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-bold);
-  line-height: 1.25;
+  line-height: var(--font-line-height-snug);
 }
 
 .settings-nav-card__description {
   color: var(--muted);
   font-size: var(--font-size-sm);
-  line-height: 1.35;
+  line-height: var(--font-line-height-cozy);
 }
 
 .settings-nav-card__chevron {
   justify-self: end;
   color: var(--muted);
   font-size: var(--spacing-6);
-  line-height: 1;
+  line-height: var(--font-line-height-flat);
 }
 
 .settings-detail-panel {
@@ -805,7 +810,10 @@ md-primary-tab.tab[active]:hover {
 
 .card h2 {
   margin: 4px 0 0;
-  font-size: var(--font-size-lg);
+  color: var(--pels-text-title-color);
+  font-size: var(--pels-text-title-font-size);
+  font-weight: var(--pels-text-title-font-weight);
+  line-height: var(--pels-text-title-font-line-height);
 }
 
 .eyebrow {
@@ -925,7 +933,7 @@ md-primary-tab.tab[active]:hover {
 
 .btn:not(:disabled):active {
   transform: translateY(0);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-inset-soft);
 }
 
 .btn.is-busy {
@@ -1067,7 +1075,7 @@ md-primary-tab.tab[active]:hover {
   align-items: center;
   justify-content: center;
   font-size: var(--font-size-sm);
-  line-height: 1;
+  line-height: var(--font-line-height-flat);
 }
 
 .drag-handle:hover {
@@ -1133,12 +1141,12 @@ md-primary-tab.tab[active]:hover {
 .plan-row__chip {
   padding: 2px 8px;
   font-size: var(--font-size-xs);
-  line-height: 1.1;
+  line-height: var(--font-line-height-compact);
 }
 
 .plan-state-indicator {
   display: inline-block;
-  line-height: 1;
+  line-height: var(--font-line-height-flat);
   transform: translateY(-1px);
 }
 
@@ -1613,10 +1621,11 @@ md-primary-tab.tab[active]:hover {
 }
 
 .plan-hero__headline {
-  color: var(--pels-text-answer-color);
-  font-size: var(--pels-text-answer-font-size);
-  font-weight: var(--pels-text-answer-font-weight);
-  line-height: var(--pels-text-answer-font-line-height);
+  color: var(--pels-text-display-color);
+  font-size: var(--pels-text-display-font-size);
+  font-weight: var(--pels-text-display-font-weight);
+  line-height: var(--pels-text-display-font-line-height);
+  letter-spacing: -0.01em;
 }
 
 .plan-hero__headline[data-tone="good"] {
@@ -1701,12 +1710,8 @@ md-primary-tab.tab[active]:hover {
   isolation: isolate;
   border: 1px solid var(--pels-surface-outline);
   border-radius: var(--pels-card-radius);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--pels-surface-container-high) 96%, transparent),
-    var(--pels-surface-container)
-  );
-  transition: --md-elevation-level 180ms cubic-bezier(0.2, 0, 0, 1);
+  background: var(--color-surface-1);
+  transition: --md-elevation-level var(--transition-default);
 }
 
 .plan-card {
@@ -1739,8 +1744,12 @@ md-primary-tab.tab[active]:hover {
 }
 
 .plan-card[data-state-kind="resuming"] {
-  background: var(--pels-status-warning-surface);
-  border-color: var(--pels-status-warning-border);
+  background: var(--pels-status-good-surface);
+  border-color: var(--pels-status-good-border);
+}
+
+.plan-card[data-state-kind="unknown"] {
+  opacity: 0.6;
 }
 
 .plan-card[data-state-kind="unavailable"] {
@@ -1958,7 +1967,7 @@ md-primary-tab.tab[active]:hover {
   color: var(--muted);
   font-size: 0.62rem;
   font-weight: var(--font-weight-semibold);
-  line-height: 1;
+  line-height: var(--font-line-height-flat);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2021,8 +2030,8 @@ md-primary-tab.tab[active]:hover {
 
 .plan-card__stepped-direction {
   flex: 0 0 auto;
-  font-size: 14px;
-  line-height: 1;
+  font-size: var(--font-size-sm);
+  line-height: var(--font-line-height-flat);
   color: var(--accent);
 }
 
@@ -2087,7 +2096,7 @@ md-primary-tab.tab[active]:hover {
   margin: 0;
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  line-height: 1.45;
+  line-height: var(--font-line-height-relaxed);
 }
 
 /* ── Temperature card (binary thermostats, heat pumps, water heaters) ────────── */
@@ -2118,7 +2127,7 @@ md-primary-tab.tab[active]:hover {
   margin: 0;
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  line-height: 1.4;
+  line-height: var(--font-line-height-cozy);
   position: relative;
   z-index: 1;
 }
@@ -2127,7 +2136,7 @@ md-primary-tab.tab[active]:hover {
   margin: 0;
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  line-height: 1.4;
+  line-height: var(--font-line-height-cozy);
   position: relative;
   z-index: 1;
 }
@@ -2172,14 +2181,14 @@ md-primary-tab.tab[active]:hover {
 .plan-card__secondary-line {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  line-height: 1.4;
+  line-height: var(--font-line-height-cozy);
 }
 
 .plan-card__status-line {
   margin: 0;
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  line-height: 1.4;
+  line-height: var(--font-line-height-cozy);
 }
 
 .plan-card__step-rail {
@@ -2201,7 +2210,7 @@ md-primary-tab.tab[active]:hover {
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
   white-space: nowrap;
-  line-height: 1;
+  line-height: var(--font-line-height-flat);
   transform: translateX(-50%);
 }
 
@@ -2571,7 +2580,7 @@ md-primary-tab.tab[active]:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: var(--font-size-sm);
-  line-height: 1.2;
+  line-height: var(--font-line-height-tight);
 }
 
 .device-row__title {
@@ -2584,7 +2593,7 @@ md-primary-tab.tab[active]:hover {
 .device-row__state-chip {
   padding: 2px 8px;
   font-size: var(--font-size-xs);
-  line-height: 1.1;
+  line-height: var(--font-line-height-compact);
 }
 
 .panel.hidden {
@@ -2764,7 +2773,7 @@ md-primary-tab.tab[active]:hover {
   margin: calc(var(--spacing-1) * -1) calc(var(--spacing-1) * -1) calc(var(--spacing-1) * -1) 0;
   color: var(--accent);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   cursor: pointer;
@@ -2976,7 +2985,7 @@ md-primary-tab.tab[active]:hover {
 .price-details summary::before {
   content: '▸ ';
   display: inline-block;
-  transition: transform 0.2s;
+  transition: transform var(--transition-default);
 }
 
 .price-details[open] summary::before {
@@ -3032,7 +3041,7 @@ md-primary-tab.tab[active]:hover {
 }
 
 .flow-status-label {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .flow-status-value.ok {
@@ -3054,6 +3063,7 @@ md-primary-tab.tab[active]:hover {
   flex-wrap: wrap;
   gap: var(--spacing-2);
   padding: var(--spacing-3) var(--spacing-4);
+  background: var(--pels-surface-container-highest);
   border-radius: var(--radius-md);
   font-size: var(--font-size-sm);
 }
@@ -3178,7 +3188,7 @@ md-primary-tab.tab[active]:hover {
   content: "▸";
   color: var(--muted);
   font-size: var(--font-size-xs);
-  transition: transform 0.2s ease;
+  transition: transform var(--transition-default);
 }
 
 .settings-collapse[open] summary::after {
@@ -3249,7 +3259,7 @@ md-primary-tab.tab[active]:hover {
   z-index: 1000;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.25s ease, visibility 0.25s ease;
+  transition: opacity var(--transition-slow), visibility var(--transition-slow);
 }
 
 .overlay:not([hidden]) {
@@ -3264,11 +3274,11 @@ md-primary-tab.tab[active]:hover {
   bottom: 0;
   width: 100%;
   max-width: 480px;
-  background: var(--bg);
+  background: var(--pels-surface-container-high);
   display: flex;
   flex-direction: column;
   transform: translateX(100%);
-  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  transition: transform var(--transition-panel);
   box-shadow: var(--shadow-panel);
 }
 
@@ -3301,8 +3311,10 @@ md-primary-tab.tab[active]:hover {
 
 .device-detail-heading h2 {
   margin: 4px 0 0;
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
+  color: var(--pels-text-section-headline-color);
+  font-size: var(--pels-text-section-headline-font-size);
+  font-weight: var(--pels-text-section-headline-font-weight);
+  line-height: var(--pels-text-section-headline-font-line-height);
   overflow-wrap: anywhere;
 }
 
@@ -3423,7 +3435,7 @@ md-primary-tab.tab[active]:hover {
   cursor: pointer;
   text-align: center;
   white-space: nowrap;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .segmented__option[aria-checked="true"] {
@@ -4150,7 +4162,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   border-radius: 50%;
   background: color-mix(in srgb, var(--pels-deadline-close-background) 86%, transparent);
   box-shadow: var(--shadow-sm);
-  line-height: 1;
+  line-height: var(--font-line-height-flat);
   --md-icon-button-icon-color: var(--pels-deadline-close-text);
   --md-icon-button-hover-icon-color: var(--pels-deadline-close-text);
   --md-icon-button-focus-icon-color: var(--pels-deadline-close-text);
@@ -4165,8 +4177,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 .deadline-page-close__icon {
   display: inline-block;
   color: var(--pels-deadline-close-text);
-  font-size: 24px;
-  line-height: 1;
+  font-size: var(--font-size-headline-sm);
+  line-height: var(--font-line-height-flat);
 }
 
 #deadline-plan-root {
@@ -4327,7 +4339,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   --pels-chart-plan: var(--pels-status-good);
   --pels-chart-forecast: var(--info);
   --pels-chart-price-line: var(--warning);
-  --pels-chart-price-fill: rgba(245, 158, 11, 0.14);
+  --pels-chart-price-fill: color-mix(in srgb, var(--color-role-warn) 14%, transparent);
   --day-view-color-primary: var(--pels-status-good);
   --day-view-color-planned: var(--pels-status-good);
   --day-view-color-background-usage: var(--info);
@@ -4626,7 +4638,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-size: var(--font-size-xs);
   color: var(--muted);
   text-align: center;
-  line-height: 1.2;
+  line-height: var(--font-line-height-tight);
   padding-top: 4px;
   overflow: hidden;
 }
@@ -4750,7 +4762,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   color: var(--pels-text-primary);
-  line-height: 1.25;
+  line-height: var(--font-line-height-snug);
   overflow-wrap: anywhere;
 }
 
@@ -4949,7 +4961,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   margin: 0;
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-bold);
-  line-height: 1.25;
+  line-height: var(--font-line-height-snug);
   color: var(--text);
   min-width: 0;
   overflow-wrap: anywhere;
@@ -4961,7 +4973,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   align-self: center;
   color: var(--muted);
   font-size: var(--spacing-6);
-  line-height: 1;
+  line-height: var(--font-line-height-flat);
 }
 
 .deadline-list-card__target {
@@ -5063,9 +5075,10 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .usage-hero__stat-value {
-  font-size: var(--font-size-md, 1rem);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text);
+  color: var(--pels-text-title-color);
+  font-size: var(--pels-text-title-font-size);
+  font-weight: var(--pels-text-title-font-weight);
+  line-height: var(--pels-text-title-font-line-height);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: hidden;
@@ -5152,7 +5165,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-size: 1.25rem;
   color: var(--pels-text-secondary);
   transition: transform var(--transition-fast);
-  line-height: 1;
+  line-height: var(--font-line-height-flat);
 }
 
 .usage-card--collapsible[open] .usage-card__summary-affordance {
@@ -5739,7 +5752,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
     padding: var(--spacing-2) var(--spacing-1);
     color: var(--pels-text-muted);
     font-size: var(--font-size-xs);
-    line-height: 1;
+    line-height: var(--font-line-height-flat);
   }
 
   #devices-panel .device-row__inputs .checkbox-icon:nth-child(1)::after {

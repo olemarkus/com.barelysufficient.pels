@@ -35,42 +35,22 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       teal, warning `#f59e0b` solar amber, danger `#ef4444`, info `#60a5fa`), and adds typography
       tokens for M3 display/headline/title scales. Shims are retained for one release while
       chart consumers migrate; final removal lands with the chart-token P0 below.)*
-- [ ] CSS-side migration: rebind hero + section headers + card titles to the new typography
-      tokens (`--pels-text-display-*`, `--pels-text-headline-*`, `--pels-text-section-headline-*`,
-      `--pels-text-title-*`) added by the token-flatten PR. M3 audit (2026-05-14) found
-      typography collapsed to only 4 sizes / 3 weights — Overview hero "2.9 kW" renders
-      identically to every device-row title. Acceptance: `.plan-hero__headline` and
-      `.usage-hero__stat-value` use `display-small` (36/400); page KPIs use `headline-medium`
-      (28/400); section `h2` headers move from 18/700 → `headline-small` (24/400); card titles
-      move from `card-title` to `title-medium` (16/500); supporting eyebrows use `.eyebrow`
-      (`label-small` 11/500) consistently. CSS-only change.
-      Files: `packages/settings-ui/public/style.css`, generated `settings/style.css`,
-      screenshot suite under `packages/settings-ui/tests/e2e/`.
-- [ ] CSS-side migration: apply existing surface tier tokens (`--pels-surface-container-low/-/
-      -high/-highest`) per M3 nesting. Audit found only `-low` (5%) was applied across every
-      surface. Acceptance: `.plan-hero` and `.slide-panel` raise to `-high` (8%); regular
-      `.plan-card` stays at `-low`; inset chip rails and `.banner` use `-highest` or matching
-      semantic-tonal container. CSS-only change. Files as above.
-      *Sub-bullets from M3 follow-up audit (2026-05-14):*
-      - **`resuming` plan-card binds to the same warning surface as `held`** — they render
-        pixel-identical. Re-route `[data-state-kind="resuming"]` to the good-teal tonal
-        container (`var(--color-state-positive-bg)` + matching border token) so "recovering
-        toward normal" carries its own semantic colour.
-      - **`unknown` plan-card has no tint at all** — renders identical to `active`. Add a
-        neutral slate tint or apply `.plan-card--dim` 0.6 opacity so "we don't know" is
-        visually distinct without spending a semantic colour.
-      - **Plain `.plan-card` doesn't read the new surface-container tokens yet** — its
-        bg still resolves to the legacy `linear-gradient(rgba(white,.075), rgba(white,.06))`
-        pattern. Active cards (Hallway, WC, Bedroom 1, …) therefore all look identical with
-        flat lift. Rebind `.plan-card` background to `var(--color-surface-1)` (now a flat
-        `#161b24`) so the surface-tier hierarchy actually applies on Overview.
-- [ ] Demote accent, promote good. Today `--color-base-accent-default` (now `#16a34a` leaf)
-      simultaneously carries interactive, positive-semantic, and chart-data roles. M3 reserves
-      `primary` for interactive elements only. Acceptance: positive-semantic CSS rules
-      (`--pels-status-on-good`, chart `--actual` series fill, "Succeeded" past-task chip) rebind
-      from `--color-base-accent-default` to `--color-base-good-default` (`#5eead4` teal); accent
-      stays on selected-tab, focus ring, checkbox/switch, primary buttons only. CSS-only with
-      a chart-side migration overlap (charts also covered by the chart-token P0 below).
+- [x] CSS-side migration: rebind hero + section headers + card titles to the new typography
+      tokens. *(landed — `.plan-hero__headline` and `.hero h1` now use `--pels-text-display-*` /
+      `--pels-text-headline-*`; section `h2` rules (`.settings-home-hero h2`,
+      `.device-detail-heading h2`) use `--pels-text-section-headline-*`; `.card h2` and
+      `.usage-hero__stat-value` use `--pels-text-title-*`. Screenshot baselines need a refresh
+      pass — tracked in the residual e2e bullet below.)*
+- [x] CSS-side migration: apply existing surface tier tokens per M3 nesting. *(landed —
+      `.slide-panel` raised to `--pels-surface-container-high`, `.banner` uses
+      `--pels-surface-container-highest`, `.plan-card` is now a flat `--color-surface-1`,
+      `[data-state-kind="resuming"]` binds to `--pels-status-good-surface`, and
+      `[data-state-kind="unknown"]` gets a 0.6 opacity dim. Screenshot baselines need a refresh
+      pass — tracked in the residual e2e bullet below.)*
+- [x] Demote accent, promote good. *(landed — `pels.status.good` token now resolves to
+      `color.role.good` (teal #5eead4); accent (`#22c55e` brighter leaf) stays on selected-tab,
+      focus ring, primary buttons, switch/checkbox. Positive-state surfaces, meter tone, ripple
+      hover, chart `--pels-chart-plan`, and resuming plan-card all cascade automatically.)*
 - [ ] Replace fake-M3 segmented controls and active badges with real M3 components.
       `.day-view-toggle` (Budget Plan/Adjust), `.segmented` (Devices, Modes), and the
       "When limiting" segmented row inside device-detail (Turn off / Set to temperature /
@@ -90,25 +70,14 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       for selection (forms, lists); switches are for on/off settings. All 12 Advanced toggles
       are textbook switch use cases. Component-level change. Files:
       `packages/settings-ui/public/index.html`, `packages/settings-ui/src/ui/advanced.ts`.
-- [ ] Align every chart series, heatmap cell, and tooltip with the same flat tokens the rest of
-      the UI uses. Charts currently embed raw hex fallbacks and hard-coded series fills; managed
-      usage, background usage, plan, actual, price, forecast, and heatmap low/high should each
-      resolve to the same `--color-*` token as the equivalent chip / badge of that role (managed =
-      accent, background = surface ramp, warning tones = warning, over-budget = danger).
-      Acceptance: `grep -E "#[0-9a-f]{3,6}"` in `packages/settings-ui/src/ui/*Chart*.ts` returns
-      zero hex literals; chart series read `--color-state-*` or `--color-role-*` directly (not
-      the deprecated `--pels-status-*` shims, which this PR retires after migration);
-      managed/background fills match Overview chip hues at 320 / 480 px screenshots; legend
-      swatch hex equals the rendered series fill exactly. Pull from the P2 chart-token entry
-      below — this is the colour-token subset, scoped to ship for v1.
-      Files: `settings/style.css`, `packages/settings-ui/public/style.css`,
-      `packages/settings-ui/src/ui/budgetRedesignChart.ts`,
-      `packages/settings-ui/src/ui/dailyBudgetChartEcharts.ts`,
-      `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
-      `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,
-      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/tests/e2e/charts-layout.spec.ts`.
+- [x] Align every chart series, heatmap cell, and tooltip with the same flat tokens the rest of
+      the UI uses. *(landed — `resolveCssColor` in `budgetRedesignChart.ts`,
+      `usageDayChartEcharts.ts`, `usageStatsChartsEcharts.ts`, and `powerWeekChartEcharts.ts`
+      dropped its hex-fallback signature; all chart palette reads now resolve through CSS vars
+      only. `grep -E "#[0-9a-f]{3,6}"` in `packages/settings-ui/src/ui/*Chart*.ts` returns
+      zero. Heatmap low/high series in `powerWeekChartEcharts.ts` rebound to
+      `--color-role-info` / `--color-role-danger`. Cross-surface hue parity vs. Overview chips
+      still relies on the screenshot baseline refresh tracked in the e2e bullet below.)*
 - [ ] Unify the hero and section-label primitive across every settings-UI surface.
       Overview hero, Budget header, Usage header, Smart tasks header, Settings header, Advanced
       header, and deadline-plan hero should read as one component: same eyebrow (font-size,
@@ -170,6 +139,14 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
       `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,
       `packages/settings-ui/tests/e2e/charts-layout.spec.ts`.
+- [ ] Refresh Playwright e2e screenshot baselines for the design-token theme PR
+      (2026-05-14 token+typography+surface refresh). The bundled CSS-only P0s above shift
+      the accent hue (`#16a34a` → `#22c55e`), promote teal `--color-base-good-default` as the
+      positive-state color, raise hero headlines to display-small, repaint plan-cards as flat
+      `--color-surface-1`, retune the surface/border ramps, and replace state-container hex
+      with `color-mix(...)`. Visually verify each baseline at 320 px and 480 px before
+      committing the new snapshots — do not regenerate blind. Files:
+      `packages/settings-ui/tests/e2e/*.spec.ts` and their `__snapshots__/` siblings.
 
 ## P1 Correctness, Data Integrity, and Supported UX
 

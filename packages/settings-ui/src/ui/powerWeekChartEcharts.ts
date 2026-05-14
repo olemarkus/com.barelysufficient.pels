@@ -12,6 +12,8 @@ type HeatmapPalette = {
   tooltipBackground: string;
   tooltipText: string;
   tooltipBorder: string;
+  heatmapLow: string;
+  heatmapHigh: string;
 };
 
 const DEFAULT_CHART_HEIGHT = 240;
@@ -21,10 +23,8 @@ let plot: EChartsType | null = null;
 let plotContainer: HTMLElement | null = null;
 let plotResizeObserver: ResizeObserver | null = null;
 
-const resolveCssColor = (element: HTMLElement, variable: string, fallback: string) => {
-  const raw = getComputedStyle(element).getPropertyValue(variable).trim();
-  return raw || fallback;
-};
+const resolveCssColor = (element: HTMLElement, variable: string) =>
+  getComputedStyle(element).getPropertyValue(variable).trim();
 
 const resolveChartSize = (element: HTMLElement) => {
   const width = element.clientWidth > 0
@@ -37,17 +37,16 @@ const resolveChartSize = (element: HTMLElement) => {
   return { width: width > 0 ? width : fallbackWidth, height: DEFAULT_CHART_HEIGHT };
 };
 
-const HEATMAP_COLOR_LOW = '#64B5F6';
-const HEATMAP_COLOR_HIGH = '#E57373';
-
 const resolvePalette = (container: HTMLElement): HeatmapPalette => ({
-  cellUnreliable: resolveCssColor(container, '--color-surface-5', '#4A5C56'),
-  border: resolveCssColor(container, '--color-surface-1', '#151F1B'),
-  muted: resolveCssColor(container, '--muted', '#9FB2A7'),
-  grid: resolveCssColor(container, '--color-border-strong', '#34423B'),
-  tooltipBackground: resolveCssColor(container, '--color-overlay-toast', 'rgba(12, 17, 27, 0.92)'),
-  tooltipText: resolveCssColor(container, '--color-semantic-text-primary', '#E6ECF5'),
-  tooltipBorder: resolveCssColor(container, '--color-border-medium', 'rgba(255, 255, 255, 0.15)'),
+  cellUnreliable: resolveCssColor(container, '--color-surface-5'),
+  border: resolveCssColor(container, '--color-surface-1'),
+  muted: resolveCssColor(container, '--muted'),
+  grid: resolveCssColor(container, '--color-border-strong'),
+  tooltipBackground: resolveCssColor(container, '--color-overlay-toast'),
+  tooltipText: resolveCssColor(container, '--color-semantic-text-primary'),
+  tooltipBorder: resolveCssColor(container, '--color-border-medium'),
+  heatmapLow: resolveCssColor(container, '--color-role-info'),
+  heatmapHigh: resolveCssColor(container, '--color-role-danger'),
 });
 
 export const disposePowerWeekChart = () => {
@@ -223,7 +222,7 @@ const buildOption = (params: {
       text: [`${globalMaxKWh.toFixed(1)}`, `${globalMinKWh.toFixed(1)}`],
       textStyle: { color: palette.muted, fontSize: 9 },
       inRange: {
-        color: [HEATMAP_COLOR_LOW, HEATMAP_COLOR_HIGH],
+        color: [palette.heatmapLow, palette.heatmapHigh],
       },
     },
     xAxis: {

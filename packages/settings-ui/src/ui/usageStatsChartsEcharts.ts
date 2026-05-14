@@ -48,18 +48,16 @@ const dailyHistoryState: PlotState = {
 };
 type PlotKind = 'hourly' | 'daily';
 
-const resolveCssColor = (element: HTMLElement, variable: string, fallback: string) => {
-  const raw = getComputedStyle(element).getPropertyValue(variable).trim();
-  return raw || fallback;
-};
+const resolveCssColor = (element: HTMLElement, variable: string) =>
+  getComputedStyle(element).getPropertyValue(variable).trim();
 
 const resolvePalette = (container: HTMLElement): UsageStatsPalette => ({
-  bar: resolveCssColor(container, '--day-view-color-primary', '#64B5F6'),
-  muted: resolveCssColor(container, '--muted', '#9FB2A7'),
-  grid: resolveCssColor(container, '--color-border-strong', '#34423B'),
-  tooltipBackground: resolveCssColor(container, '--color-overlay-toast', 'rgba(12, 17, 27, 0.92)'),
-  tooltipText: resolveCssColor(container, '--color-semantic-text-primary', '#E6ECF5'),
-  tooltipBorder: resolveCssColor(container, '--color-border-medium', 'rgba(255, 255, 255, 0.15)'),
+  bar: resolveCssColor(container, '--day-view-color-primary'),
+  muted: resolveCssColor(container, '--muted'),
+  grid: resolveCssColor(container, '--color-border-strong'),
+  tooltipBackground: resolveCssColor(container, '--color-overlay-toast'),
+  tooltipText: resolveCssColor(container, '--color-semantic-text-primary'),
+  tooltipBorder: resolveCssColor(container, '--color-border-medium'),
 });
 
 const resolveChartSize = (element: HTMLElement) => {
