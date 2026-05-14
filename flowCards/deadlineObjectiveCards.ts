@@ -39,6 +39,14 @@ type InternalTaskStatus =
   | DeferredObjectiveStatusSnapshot['status']
   | DeferredObjectiveStatusSnapshot['previousStatus'];
 
+// Status the user effectively sees while the planner has not yet produced a
+// horizon plan for an enabled task (e.g. waiting for prices). Mirrors the
+// `'waiting'` value the trigger emits when the bus transitions to an
+// `unknown` snapshot from a non-`none` prior status. (First observations
+// where the prior is `none` are suppressed as task creation, not a status
+// change.)
+const PENDING_FLOW_STATUS: SmartTaskActiveFlowStatus = 'waiting';
+
 const getDropdownId = (raw: DropdownArg | undefined): string => (
   (typeof raw === 'object' && raw !== null ? raw.id : raw) ?? ''
 ).trim();
@@ -180,15 +188,23 @@ const buildMissedTokens = (snapshot: DeferredObjectiveStatusSnapshot): Record<st
   kind: snapshot.kind,
   target_text: snapshot.targetText,
   deadline_local_time: snapshot.deadlineLocalTime,
+  // `shortfall_text` carries the qualitative answer ("5 °C below target",
+  // "30 % below target", or '' when the device-side delta is unknown). Flows
+  // that need to distinguish "unknown" from a real "0 kWh" shortfall should
+  // gate on `shortfall_text` rather than `shortfall_kwh`, because the Homey
+  // SDK enforces `number` for the numeric token and rejects `null`.
   shortfall_text: snapshot.shortfallText ?? '',
   shortfall_kwh: snapshot.shortfallKwh ?? 0,
 });
 
 export function registerDeadlineObjectiveCards(deps: FlowCardDeps): void {
+  // Shared between the trigger registration and `clear_deadline` so wiping a
+  // task wipes the trigger's suppression cache too.
+  const lastFlowStatusByDeviceId = new Map<string, LastSmartTaskFlowStatus>();
   registerSetTemperatureDeadlineCard(deps);
   registerSetEvChargeDeadlineCard(deps);
-  registerClearDeadlineCard(deps);
-  registerDeadlineStatusChangedTrigger(deps);
+  registerClearDeadlineCard(deps, lastFlowStatusByDeviceId);
+  registerDeadlineStatusChangedTrigger(deps, lastFlowStatusByDeviceId);
   registerDeadlineMissedTrigger(deps);
   registerDeadlinePlanChangedTrigger(deps);
   registerDeadlineStatusIsCondition(deps);
@@ -249,7 +265,6 @@ function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
       device?: RawFlowDeviceArg;
       target_percent?: unknown;
       ready_by?: unknown;
-      enforcement?: DropdownArg;
     } | null;
     const deviceId = getDeviceIdFromFlowArg(payload?.device);
     if (!deviceId) throw new Error('EV charger must be provided.');
@@ -262,17 +277,13 @@ function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
     const targetPercent = validateNumberInRange(payload?.target_percent, 'Target battery (%)', 1, 100);
     const deadlineLocalTime = validateReadyBy(payload?.ready_by);
     const deadlineAtMs = resolveReadyByToDeadlineAtMs(deps, deadlineLocalTime);
-    const legacyEnforcement = getDropdownId(payload?.enforcement);
-    if (legacyEnforcement && legacyEnforcement !== 'soft' && legacyEnforcement !== 'hard') {
-      throw new Error('Enforcement must be "soft" or "hard".');
-    }
     const accessors = requireSettingsAccessors(deps);
     const settings = accessors.read();
     const prevEntry = settings.objectivesByDeviceId[deviceId];
     const nextEntry: DeferredObjectiveSettingsEntry = {
       enabled: true,
       kind: 'ev_soc',
-      enforcement: legacyEnforcement === 'hard' ? 'hard' : 'soft',
+      enforcement: 'soft',
       targetPercent,
       deadlineAtMs,
     };
@@ -325,7 +336,10 @@ const notifyObjectiveChange = (deps: FlowCardDeps, params: {
   });
 };
 
-function registerClearDeadlineCard(deps: FlowCardDeps): void {
+function registerClearDeadlineCard(
+  deps: FlowCardDeps,
+  lastFlowStatusByDeviceId: Map<string, LastSmartTaskFlowStatus>,
+): void {
   const card = deps.homey.flow.getActionCard('clear_deadline');
   card.registerRunListener(async (args: unknown) => {
     const payload = args as { device?: RawFlowDeviceArg } | null;
@@ -336,6 +350,10 @@ function registerClearDeadlineCard(deps: FlowCardDeps): void {
     const prevEntry = settings.objectivesByDeviceId[deviceId];
     accessors.write(removeObjective(settings, deviceId));
     deps.getDeferredObjectiveStatusBus?.()?.forgetDevice(deviceId);
+    // Drop the trigger's per-device suppression cache so a later re-added task
+    // is treated as a fresh observation rather than continuing a stale prior
+    // status comparison.
+    lastFlowStatusByDeviceId.delete(deviceId);
     deps.applyDeferredObjectiveChange?.({
       deviceId,
       deviceName: prevEntry ? await resolveDeviceName(deps, deviceId) : null,
@@ -357,9 +375,11 @@ function registerClearDeadlineCard(deps: FlowCardDeps): void {
   });
 }
 
-function registerDeadlineStatusChangedTrigger(deps: FlowCardDeps): void {
+function registerDeadlineStatusChangedTrigger(
+  deps: FlowCardDeps,
+  lastFlowStatusByDeviceId: Map<string, LastSmartTaskFlowStatus>,
+): void {
   const card = deps.homey.flow.getTriggerCard('deadline_status_changed');
-  const lastFlowStatusByDeviceId = new Map<string, LastSmartTaskFlowStatus>();
   card.registerRunListener(async (args: unknown, state?: unknown) => {
     const payload = args as { device?: RawFlowDeviceArg; status?: DropdownArg } | null;
     const stateRecord = (state ?? {}) as { deviceId?: string; status?: DropdownArg };
@@ -380,24 +400,37 @@ function registerDeadlineStatusChangedTrigger(deps: FlowCardDeps): void {
   bus.onTransition((snapshot) => {
     if (snapshot.deadlineMissed) return;
     const flowStatus = mapSnapshotToFlowStatus(snapshot);
-    const previousFlowStatus = lastFlowStatusByDeviceId.get(snapshot.deviceId);
-    let previousStatus: SmartTaskActiveFlowStatus | null;
-    if (snapshot.previousStatus === 'none') {
-      previousStatus = null;
-    } else if (previousFlowStatus?.deadlineAtMs === snapshot.deadlineAtMs) {
-      previousStatus = previousFlowStatus.status;
-    } else {
-      previousStatus = mapPreviousStatusToFlowStatus(snapshot.previousStatus);
-    }
-    if (previousStatus === flowStatus) return;
+    const previousStatus = resolvePreviousFlowStatus(snapshot, lastFlowStatusByDeviceId);
+    // Always cache the latest status so future transitions have a comparison
+    // point, even when we suppress this fire.
     lastFlowStatusByDeviceId.set(snapshot.deviceId, {
       status: flowStatus,
       deadlineAtMs: snapshot.deadlineAtMs,
     });
+    // No prior status (first observation of a new task, or after `clear_deadline`
+    // wiped the cache) is task creation, not a status change — don't fire.
+    if (previousStatus === null) return;
+    if (previousStatus === flowStatus) return;
     void card.trigger?.(buildTriggerTokens(snapshot, flowStatus), { deviceId: snapshot.deviceId, status: flowStatus })
       .catch((err: Error) => deps.error('Failed to trigger deadline_status_changed', err));
   });
 }
+
+const resolvePreviousFlowStatus = (
+  snapshot: DeferredObjectiveStatusSnapshot,
+  lastFlowStatusByDeviceId: Map<string, LastSmartTaskFlowStatus>,
+): SmartTaskActiveFlowStatus | null => {
+  const previousFlowStatus = lastFlowStatusByDeviceId.get(snapshot.deviceId);
+  // Cached entry for the same deadline is the highest-trust prior — it
+  // reflects the last fired flow status, which may differ from the bus's
+  // internal status mapping.
+  if (previousFlowStatus?.deadlineAtMs === snapshot.deadlineAtMs) {
+    return previousFlowStatus.status;
+  }
+  // Otherwise rely on the bus's reported previous internal status. `'none'`
+  // means the bus has no record either — treat as no prior.
+  return mapPreviousStatusToFlowStatus(snapshot.previousStatus);
+};
 
 function registerDeadlineMissedTrigger(deps: FlowCardDeps): void {
   const card = deps.homey.flow.getTriggerCard('deadline_missed');
@@ -424,15 +457,15 @@ const buildPlanChangedTokens = (
   event: DeferredObjectivePlanRevisionEvent,
   timeZone: string,
 ): Record<string, unknown> => {
-  const { energyNeededKWh } = event.revision;
+  const { energyNeededKWh, hours } = event.revision;
   const finishAtMs = event.projectedFinishAtMs;
   return {
     device_name: event.deviceName ?? event.deviceId,
     remaining_kwh: Math.round(energyNeededKWh * 1000) / 1000,
-    // Monotonic over the plan's lifetime (resets on objective change). Built
-    // from a union of every hour ever scheduled, so the count never decreases
-    // as elapsed buckets drop off the horizon planner's future window.
-    planned_hours: event.accumulatedHourCount,
+    // Count of charging hours still ahead in the current schedule. Reflects the
+    // active plan, so a flow comparing "Planned hours > 4" tracks the present
+    // allocation rather than a cumulative-over-the-task-lifetime total.
+    planned_hours: hours.length,
     projected_finish_local_time: finishAtMs === null ? '' : formatDeadlineLocalTime(finishAtMs, timeZone),
   };
 };
@@ -483,16 +516,35 @@ function registerDeadlineStatusIsCondition(deps: FlowCardDeps): void {
     const current = bus?.getCurrent(deviceId) ?? null;
     const settings = requireSettingsAccessors(deps).read();
     const hasEntry = Boolean(settings.objectivesByDeviceId[deviceId]?.enabled);
-    if (wantedStatus === 'waiting' && current === null) return hasEntry;
-    if (!current) return false;
-    if (current.deadlineMissed) return false;
-    return mapSnapshotToFlowStatus(current) === wantedStatus;
+    const effectiveStatus = resolveEffectiveStatus(current, hasEntry);
+    return effectiveStatus !== null && effectiveStatus === wantedStatus;
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
     const snapshot = await deps.getSnapshot();
     return buildDeviceAutocompleteOptions(snapshot, query);
   });
 }
+
+// Resolves what the user effectively sees as the current smart task status.
+// Four cases:
+//   1. Bus has a current snapshot AND deadline already missed → no active
+//      status matches; the missed trigger is the right surface for that event.
+//   2. Bus has a current snapshot → use the mapped flow status.
+//   3. No bus snapshot AND task is enabled in settings → the planner has not
+//      produced a horizon yet (e.g. waiting for prices); the user-facing
+//      status is `waiting`.
+//   4. Otherwise → no task; nothing matches.
+const resolveEffectiveStatus = (
+  current: DeferredObjectiveStatusSnapshot | null,
+  hasEntry: boolean,
+): SmartTaskActiveFlowStatus | null => {
+  if (current) {
+    if (current.deadlineMissed) return null;
+    return mapSnapshotToFlowStatus(current);
+  }
+  if (hasEntry) return PENDING_FLOW_STATUS;
+  return null;
+};
 
 function registerHasActiveDeadlineCondition(deps: FlowCardDeps): void {
   const card = deps.homey.flow.getConditionCard('has_active_deadline');

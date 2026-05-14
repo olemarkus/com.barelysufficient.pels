@@ -643,6 +643,14 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `lib/plan/deferredObjectives/activePlanRecorder.ts`, `lib/app/settingsUiApi.ts`,
       `packages/settings-ui/src/ui/deadlinePlan.ts`,
       `packages/settings-ui/src/ui/deadlinePlanResolvers.ts`.
+- [ ] Distinguish "missed by an unknown amount" from "missed by exactly 0 kWh" on the
+      `deadline_missed` flow trigger. The Homey SDK rejects `null` for `number`-typed tokens
+      (see `homey-apps-sdk-v3/lib/FlowCardTrigger.js`), so `shortfall_kwh` currently falls back
+      to `0` when the device-side delta is unknown. Today `shortfall_text` carries the
+      qualitative fallback (empty string for unknown), but a dedicated `shortfall_known: boolean`
+      token would let user flows gate numeric comparisons cleanly.
+      Files: `flowCards/deadlineObjectiveCards.ts`, `.homeycompose/flow/triggers/deadline_missed.json`,
+      flow-card tests.
 - [ ] Track per-device step changes with the same 30-day hourly retention model, so measured
       usage history can explain which step or mode was active during each measured period.
       Files: future device-level step-change tracker; usage-history UI.

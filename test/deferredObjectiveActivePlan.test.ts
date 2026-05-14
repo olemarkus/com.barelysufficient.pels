@@ -305,7 +305,6 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       hours: number;
       energyNeededKWh: number;
       projectedFinishAtMs: number | null;
-      accumulatedHourCount: number;
     }> = [];
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder({
@@ -318,7 +317,6 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
           hours: event.revision.hours.length,
           energyNeededKWh: event.revision.energyNeededKWh,
           projectedFinishAtMs: event.projectedFinishAtMs,
-          accumulatedHourCount: event.accumulatedHourCount,
         });
       },
     });
@@ -340,8 +338,6 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     })], 2 * HOUR_MS);
 
     expect(events).toHaveLength(1);
-    // First revision had startsAtMs {2h, 3h, 4h}; second has {1h, 2h, 5h}.
-    // Union is 5 distinct hours.
     expect(events[0]).toEqual({
       deviceId: 'dev',
       reason: 'prices_revised',
@@ -349,7 +345,6 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       hours: 3,
       energyNeededKWh: 4.0,
       projectedFinishAtMs: 5 * HOUR_MS + Math.round((1.0 / 3.0) * HOUR_MS),
-      accumulatedHourCount: 5,
     });
 
     // Third observe with identical hours — no further notification.
@@ -490,8 +485,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(firstRevision);
   });
 
-  it('emits a monotonic accumulatedHourCount as elapsed hours drop off the horizon', () => {
-    const events: Array<{ reason: string; hours: number; accumulatedHourCount: number }> = [];
+  it('emits the current schedule hour count on each revision rather than a lifetime accumulation', () => {
+    const events: Array<{ reason: string; hours: number }> = [];
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder({
       ...deps,
@@ -499,7 +494,6 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         events.push({
           reason: event.reason,
           hours: event.revision.hours.length,
-          accumulatedHourCount: event.accumulatedHourCount,
         });
       },
     });
@@ -507,8 +501,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // Seed at nowMs=1h with three planned hours [2h, 3h, 4h]. No event.
     recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
 
-    // Replan at nowMs=2h shifts future allocation to [3h, 4h, 5h] — first
-    // elapsed/dropped hour (2h) is still counted in the accumulated total.
+    // Replan at nowMs=2h shifts allocation to [3h, 4h, 5h] (still 3 hours).
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
@@ -519,7 +512,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       ]),
     })], 2 * HOUR_MS);
 
-    // Replan at nowMs=4h drops to a single future hour [5h].
+    // Replan at nowMs=4h shrinks to a single remaining hour [5h] — the
+    // emitted hour count must drop with the schedule, not stay latched at
+    // its peak.
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
@@ -529,47 +524,11 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     })], 4 * HOUR_MS);
 
     expect(events).toEqual([
-      { reason: 'prices_revised', hours: 3, accumulatedHourCount: 4 },
-      { reason: 'prices_revised', hours: 1, accumulatedHourCount: 4 },
+      { reason: 'prices_revised', hours: 3 },
+      { reason: 'prices_revised', hours: 1 },
     ]);
-    // revision.hours stays future-only — settings UI and other consumers
-    // continue to see "remaining allocation", not a lifetime hour log.
     expect(recorder.getPlanForTests('dev')?.latest?.hours).toEqual([
       { startsAtMs: 5 * HOUR_MS, plannedKWh: 1.5 },
-    ]);
-  });
-
-  it('resets accumulatedHourCount when the objective itself changes', () => {
-    const events: Array<{ reason: string; accumulatedHourCount: number }> = [];
-    const { deps } = buildPersistDeps();
-    const recorder = new DeferredObjectiveActivePlanRecorder({
-      ...deps,
-      onRevisionWritten: (event) => {
-        events.push({ reason: event.reason, accumulatedHourCount: event.accumulatedHourCount });
-      },
-    });
-
-    // Seed with target 65°C, deadline 6h.
-    recorder.observe([makeDiag({
-      deviceId: 'dev',
-      deadlineAtMs: 6 * HOUR_MS,
-      targetTemperatureC: 65,
-    })], HOUR_MS);
-
-    // User raises target to 70°C at nowMs=4h. Same deadline, different
-    // objective signature → the accumulated counter resets.
-    recorder.observe([makeDiag({
-      deviceId: 'dev',
-      deadlineAtMs: 6 * HOUR_MS,
-      targetTemperatureC: 70,
-      horizonPlan: makeHorizon([
-        makeBucket(4 * HOUR_MS, 1.5),
-        makeBucket(5 * HOUR_MS, 1.5),
-      ]),
-    })], 4 * HOUR_MS);
-
-    expect(events).toEqual([
-      { reason: 'objective_changed', accumulatedHourCount: 2 },
     ]);
   });
 
