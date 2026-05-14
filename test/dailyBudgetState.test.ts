@@ -231,6 +231,47 @@ describe('daily budget state helpers', () => {
     });
   });
 
+  it('exposes the daily ceiling derived from usable hourly capacity', () => {
+    const context = buildSnapshotContext({
+      currentBucketIndex: 2,
+      budgetControlBucketUsage: [0, 0, 1, 0],
+      budgetControlUsedNowKWh: 2,
+      usedNowKWh: 2,
+    });
+    const snapshot = buildDailyBudgetSnapshot({
+      context,
+      settings: buildSettings({ dailyBudgetKWh: 12 }),
+      enabled: true,
+      plannedKWh: [0, 0, 3, 2],
+      priceData: { priceShapingActive: true },
+      budget: buildBudgetState({ remainingKWh: 10 }),
+      frozen: false,
+      usableCapacityKw: 2,
+    });
+
+    expect(snapshot.state.allocationPressure?.maxFittingDailyBudgetKWh).toBeCloseTo(48, 6);
+  });
+
+  it('reports a zero daily ceiling when usable capacity is missing', () => {
+    const context = buildSnapshotContext({
+      currentBucketIndex: 2,
+      budgetControlBucketUsage: [0, 0, 1, 0],
+      budgetControlUsedNowKWh: 2,
+      usedNowKWh: 2,
+    });
+    const snapshot = buildDailyBudgetSnapshot({
+      context,
+      settings: buildSettings({ dailyBudgetKWh: 12 }),
+      enabled: true,
+      plannedKWh: [0, 0, 3, 2],
+      priceData: { priceShapingActive: true },
+      budget: buildBudgetState({ remainingKWh: 10 }),
+      frozen: false,
+    });
+
+    expect(snapshot.state.allocationPressure?.maxFittingDailyBudgetKWh).toBe(0);
+  });
+
   it('does not report allocation pressure after the day has ended', () => {
     const context = buildSnapshotContext({
       currentBucketIndex: 4,

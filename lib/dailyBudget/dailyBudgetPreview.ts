@@ -196,5 +196,6 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     priceData,
     budget,
     frozen: false,
+    usableCapacityKw: capacityBudgetKWh,
   });
 };

@@ -45,6 +45,7 @@ export function buildSnapshot(params: {
   context: DayContext;
   defaultProfile: number[];
   confidenceDebug?: ConfidenceDebug;
+  usableCapacityKw?: number;
 }): DailyBudgetDayPayload {
   const {
     state,
@@ -55,6 +56,7 @@ export function buildSnapshot(params: {
     context,
     defaultProfile,
     confidenceDebug,
+    usableCapacityKw,
   } = params;
   const profileData = getEffectiveProfileData(state, settings, defaultProfile);
   const breakdown = plan.plannedUncontrolledKWh && plan.plannedControlledKWh
@@ -78,6 +80,7 @@ export function buildSnapshot(params: {
     budget,
     frozen: Boolean(state.frozen),
     confidenceDebug,
+    usableCapacityKw,
   });
 }
 
@@ -111,7 +114,17 @@ export function buildSnapshotAndLogDebug(params: {
   } = params;
   const shouldLog = plan.shouldLog && (deps.isDebugTopicEnabled?.('daily_budget') ?? true);
   logBudgetSummaryIfNeeded({ logDebug: deps.logDebug, shouldLog, context, budget });
-  const snapshot = buildSnapshot({ state, settings, enabled, plan, budget, context, defaultProfile, confidenceDebug });
+  const snapshot = buildSnapshot({
+    state,
+    settings,
+    enabled,
+    plan,
+    budget,
+    context,
+    defaultProfile,
+    confidenceDebug,
+    usableCapacityKw: capacityBudgetKWh,
+  });
   logPlanDebugIfNeeded({
     logDebug: deps.logDebug,
     shouldLog,

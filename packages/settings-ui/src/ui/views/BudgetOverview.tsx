@@ -457,9 +457,15 @@ const BudgetAdjustView = ({
     status,
     busy,
   } = adjust;
-  const reactionText = Number.isFinite(adjust.hardCapKw) && Number.isFinite(adjust.safetyMarginKw)
-    ? `PELS reacts at ${Math.max(0, adjust.hardCapKw - adjust.safetyMarginKw).toFixed(1)} kW.`
+  const usableCapacityKw = Number.isFinite(adjust.hardCapKw) && Number.isFinite(adjust.safetyMarginKw)
+    ? Math.max(0, adjust.hardCapKw - adjust.safetyMarginKw)
+    : null;
+  const reactionText = usableCapacityKw !== null
+    ? `PELS reacts at ${formatKw(usableCapacityKw)}.`
     : 'PELS reacts before reaching the hard cap.';
+  const recommendedMaxKWh = usableCapacityKw !== null && usableCapacityKw > 0
+    ? Math.min(MAX_DAILY_BUDGET_KWH, usableCapacityKw * 24)
+    : null;
   const reserveValueText = `${reserveLabelFor(draft.controlledWeight)} reserve`;
   const flexibilityValueText = `${flexibilityLabelFor(draft.priceFlexShare)} flexibility`;
   const comparisonRows = candidate ? computeComparison(active, candidate) : [];
@@ -515,6 +521,9 @@ const BudgetAdjustView = ({
               <FieldHint>
                 The selected day's energy plan.
                 <span class="field__hint-range">{` Range ${MIN_DAILY_BUDGET_KWH}–${MAX_DAILY_BUDGET_KWH} kWh.`}</span>
+                {recommendedMaxKWh !== null && recommendedMaxKWh < MAX_DAILY_BUDGET_KWH ? (
+                  <span class="field__hint-range">{` Recommended up to ${formatKWh(recommendedMaxKWh, 1)} (hourly limit × 24h).`}</span>
+                ) : null}
               </FieldHint>
             </span>
             <MdFilledTextField
