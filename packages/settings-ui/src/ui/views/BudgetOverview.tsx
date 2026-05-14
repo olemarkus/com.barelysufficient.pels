@@ -51,6 +51,10 @@ export type BudgetChartData = {
   mode: BudgetRedesignChartMode;
   showPrice: boolean;
   showProjection: boolean;
+  // True when the hourly chart renders the planned-load split as two stacked
+  // series (Background + Managed) instead of the single Plan series. The
+  // legend follows this so its labels match the rendered fills.
+  showSplit: boolean;
   costDisplay: CostDisplay;
   chartTitle: string;
   chartSubtitle: string;
@@ -205,14 +209,24 @@ const ChartLegend = ({
   view,
   showProjection,
   showPrice,
+  showSplit,
 }: {
   view: BudgetRedesignDayView;
   showProjection: boolean;
   showPrice: boolean;
+  showSplit: boolean;
 }) => {
   const items: LegendItem[] = [
     ...(view !== 'tomorrow' ? [{ label: 'Actual', cls: 'budget-chart-legend__swatch--actual' }] : []),
-    { label: 'Plan', cls: '' },
+    // When the chart renders the planned-load split, the bars are Background +
+    // Managed; show those swatches instead of the single Plan swatch so the
+    // legend always names what the user actually sees.
+    ...(showSplit
+      ? [
+        { label: 'Background', cls: 'budget-chart-legend__swatch--background' },
+        { label: 'Managed', cls: 'budget-chart-legend__swatch--managed' },
+      ]
+      : [{ label: 'Plan', cls: '' }]),
     ...(showProjection ? [{ label: 'Projection', cls: 'budget-chart-legend__swatch--forecast' }] : []),
     ...(showPrice ? [{ label: 'Price', cls: 'budget-chart-legend__swatch--price' }] : []),
   ];
@@ -282,6 +296,7 @@ const BudgetChartCard = ({
         view={chart.view}
         showProjection={chart.showProjection}
         showPrice={chart.showPrice}
+        showSplit={chart.showSplit}
       />
       <EChartsCanvas chart={chart} />
       {chart.caveat !== null && (

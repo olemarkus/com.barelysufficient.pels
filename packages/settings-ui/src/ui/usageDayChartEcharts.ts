@@ -1,5 +1,6 @@
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
 import { formatHourAxisLabel, resolveLabelEvery, type DayViewBar } from './dayViewChart.ts';
+import { attachTabShownResize } from './chartVisibilityResize.ts';
 
 type AxisFormatterParam = {
   dataIndex?: number;
@@ -32,6 +33,7 @@ const DEFAULT_CHART_WIDTH = 480;
 let plot: EChartsType | null = null;
 let plotContainer: HTMLElement | null = null;
 let plotResizeObserver: ResizeObserver | null = null;
+let detachTabShownResize: (() => void) | null = null;
 
 const resolveCssColor = (element: HTMLElement, variable: string) =>
   getComputedStyle(element).getPropertyValue(variable).trim();
@@ -58,6 +60,10 @@ const disposePlot = () => {
   if (plotResizeObserver) {
     plotResizeObserver.disconnect();
     plotResizeObserver = null;
+  }
+  if (detachTabShownResize) {
+    detachTabShownResize();
+    detachTabShownResize = null;
   }
   if (plot) {
     plot.dispose();
@@ -91,6 +97,7 @@ const ensurePlot = (container: HTMLElement): EChartsType => {
     });
     plotResizeObserver.observe(container);
   }
+  detachTabShownResize = attachTabShownResize({ container, chart: plot, resolveSize: resolveChartSize });
 
   return plot;
 };

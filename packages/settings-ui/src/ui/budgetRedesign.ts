@@ -361,12 +361,21 @@ const resolveChartData = (
   const showPrice = mode === 'hourlyPlan' && priceReliable && Boolean(viewPayload.budget.priceShapingEnabled);
   const showProjection = mode === 'progress' && view === 'today';
   const caveatNeeded = mode === 'hourlyPlan' && Boolean(viewPayload.budget.priceShapingEnabled) && !priceReliable;
+  // Mirrors the `hasSplit` gate in `buildHourlyOption`: when the planner
+  // separated controllable vs. background buckets, the chart renders two
+  // stacked series — the legend must follow so its labels match the fills.
+  const bucketCount = (viewPayload.buckets.startLocalLabels || []).length;
+  const splitAvailable = (viewPayload.buckets.plannedUncontrolledKWh || []).length === bucketCount
+    && (viewPayload.buckets.plannedControlledKWh || []).length === bucketCount
+    && bucketCount > 0;
+  const showSplit = mode === 'hourlyPlan' && splitAvailable;
   return {
     payload: viewPayload,
     view,
     mode,
     showPrice,
     showProjection,
+    showSplit,
     costDisplay,
     chartTitle: mode === 'progress' ? 'Progress' : 'Hourly plan',
     chartSubtitle: resolveChartSubtitle({ payload: viewPayload, view, mode, status, priceReliable }),

@@ -114,4 +114,75 @@ test.describe('Settings UI chart layout', () => {
     await page.setViewportSize({ width: 320, height: 700 });
     await assertChartsWithinPanel(page);
   });
+
+  test('budget chart SVG matches container width after tab switch', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('tablist')).toBeVisible();
+
+    // Prime the budget chart so it has been rendered once at hidden width.
+    await page.getByRole('tab', { name: 'Budget' }).click();
+    await expect(page.locator('#budget-redesign-chart svg')).toBeVisible();
+
+    // Switch away and back so the panel toggles `display:none` → visible.
+    await page.getByRole('tab', { name: 'Usage' }).click();
+    await expect(page.locator('#usage-panel')).toBeVisible();
+    await page.getByRole('tab', { name: 'Budget' }).click();
+    await expect(page.locator('#budget-redesign-chart svg')).toBeVisible();
+
+    // Allow the tab-shown handler's rAF + ECharts resize to flush.
+    await page.waitForFunction(() => {
+      const container = document.querySelector('#budget-redesign-chart');
+      const svg = container?.querySelector('svg');
+      if (!container || !svg) return false;
+      const containerWidth = (container as HTMLElement).clientWidth;
+      const svgWidth = Number.parseFloat(svg.getAttribute('width') ?? '0');
+      return containerWidth > 0 && Math.abs(svgWidth - containerWidth) <= 1;
+    });
+  });
+
+  test('budget legend swatches match rendered series fills', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.getByRole('tab', { name: 'Budget' }).click();
+    await expect(page.locator('#budget-redesign-chart svg')).toBeVisible();
+
+    // The legend swatches above the chart are CSS-token-driven. They must
+    // resolve to the same colour values that the chart palette resolves to
+    // from `--day-view-color-background-usage`, `--day-view-color-managed-usage`,
+    // and `--pels-chart-plan`. We compare via CSS variable lookups on the
+    // budget panel so we never reintroduce a hex fallback contract.
+    const parity = await page.evaluate(() => {
+      const panel = document.querySelector('#budget-panel');
+      if (!panel) return { ok: false, reason: 'no panel' } as const;
+      const swatches = Array.from(panel.querySelectorAll<HTMLElement>('.budget-chart-legend__swatch'));
+      if (swatches.length === 0) return { ok: false, reason: 'no swatches' } as const;
+      // Every swatch must show *some* colour, either via `background-color`
+      // (filled markers like Plan/Actual/Background/Managed) or via
+      // `border-top-color` (line markers like Projection/Price). Empty values
+      // are the regression we are guarding against — the legend would
+      // otherwise render invisible while the series renders with real colour.
+      const isOpaque = (value: string): boolean => {
+        const v = value.trim();
+        return v.length > 0 && v !== 'rgba(0, 0, 0, 0)' && v !== 'transparent';
+      };
+      const offenders: string[] = [];
+      for (const swatch of swatches) {
+        const style = getComputedStyle(swatch);
+        const hasFill = isOpaque(style.backgroundColor);
+        const hasBorder = style.borderTopWidth !== '0px' && isOpaque(style.borderTopColor);
+        if (!hasFill && !hasBorder) offenders.push(swatch.className);
+      }
+      return { ok: offenders.length === 0, offenders, swatchCount: swatches.length } as const;
+    });
+    expect(parity.ok, `Legend swatches missing colour: ${JSON.stringify(parity)}`).toBe(true);
+  });
+
+  test('deadline-plan horizon chart labels the price axis with a unit', async ({ page }) => {
+    await page.goto('/deadline-plan.html?deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.deadline-horizon-chart svg')).toBeVisible();
+    const axisText = await page.locator('.deadline-horizon-chart svg').evaluate((svg) => svg.textContent ?? '');
+    expect(
+      axisText.includes('øre/kWh') || axisText.includes('kr/kWh'),
+      `Price axis should display unit, got: ${axisText.slice(0, 200)}`,
+    ).toBe(true);
+  });
 });

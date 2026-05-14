@@ -3840,6 +3840,14 @@ md-primary-tab.tab[active]:hover {
   background: var(--pels-chart-actual);
 }
 
+.budget-chart-legend__swatch--background {
+  background: var(--day-view-color-background-usage);
+}
+
+.budget-chart-legend__swatch--managed {
+  background: var(--day-view-color-managed-usage);
+}
+
 .budget-chart-legend__swatch--forecast {
   height: 2px;
   border-top: 2px dashed var(--pels-chart-forecast);

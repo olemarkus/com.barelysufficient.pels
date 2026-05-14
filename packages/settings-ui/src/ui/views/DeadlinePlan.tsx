@@ -40,6 +40,10 @@ type DeadlinePlanHour = {
 export type DeadlinePlanPayload = {
   kind: DeferredObjectiveSettingsKind;
   labels: DeadlineLabels;
+  // Axis/tooltip label for hourly prices, e.g. `øre/kWh` or `kr/kWh`. Sourced
+  // from the same combined-prices payload that drives the Budget chart so the
+  // two surfaces never disagree on units.
+  priceUnitLabel: string;
   hero: {
     chips: DeadlinePlanChip[];
     sectionLabel: string;
@@ -218,7 +222,7 @@ const buildTooltip = (payload: DeadlinePlanPayload, rawParams: unknown): string 
     : null;
   return [
     `<strong>${encodeHtml(hour.time)}</strong>`,
-    `Price ${encodeHtml(hour.price)}`,
+    `Price ${encodeHtml(hour.price)} ${encodeHtml(payload.priceUnitLabel)}`,
     `${encodeHtml(labels.backgroundSeriesName)} ${hour.usage.backgroundKwh.toFixed(1)} kWh`,
     ...(originalLine ? [encodeHtml(originalLine)] : []),
     `${encodeHtml(labels.deviceSeriesName)} ${hour.usage.deviceKwh.toFixed(1)} kWh`,
@@ -341,7 +345,7 @@ const buildChartOption = (
         ...valueAxisBase,
         gridIndex: 0,
         position: 'right',
-        name: 'Price',
+        name: payload.priceUnitLabel,
         nameLocation: 'middle',
         nameGap: GRID_RIGHT - 12,
         nameRotate: 0,

@@ -415,6 +415,10 @@ export const showTab = (tabId: string) => {
   panels.forEach((panel) => {
     panel.classList.toggle('hidden', panel.dataset.panel !== tabId);
   });
+  // Notify charts so they can resize against the now-visible panel width.
+  // ResizeObserver alone does not reliably fire when a parent flips from
+  // `display:none` → visible, leaving SVG widths stuck at the 480 px fallback.
+  document.dispatchEvent(new CustomEvent('pels:tab-shown', { detail: { tabId } }));
   runTabActivationSideEffects(tabId);
   if (DEVICE_DEPENDENT_TABS.has(tabId) && !state.devicesLoaded && !state.devicesLoading) {
     loadDevicesOnce();
