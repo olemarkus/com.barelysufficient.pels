@@ -3333,6 +3333,91 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     }));
   });
 
+  it('does not block keep restore when a planner-shed stepped device has no executable shed intent', async () => {
+    // Bug regression: when a stepped shed device has shedAction='set_step' but no resolvable
+    // step (no commandStepId, no plannedStepId), its executable steppedLoad intent is null.
+    // The keep-invariant gate must read the executable shed set, not the planner shed set,
+    // so this phantom shed does not block unrelated restores.
+    const snapshot = buildSnapshot({
+      currentOn: false,
+      selectedStepId: 'max',
+      reportedStepId: 'max',
+      actualStepId: 'max',
+      actualStepSource: 'reported',
+    });
+    const state = createPlanEngineState();
+    const structuredLog = { info: vi.fn() };
+    const debugStructured = vi.fn();
+    const { executor, deviceManager } = buildExecutor(state, snapshot, {
+      structuredLog: structuredLog as any,
+      debugStructured,
+    });
+
+    const plan: DevicePlan = {
+      meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+      devices: [
+        {
+          // Underspecified stepped shed: set_step but no resolvable step.
+          // buildExecutableSteppedLoadIntent returns null for this device.
+          id: 'shed-1',
+          name: 'Heater',
+          currentState: 'off',
+          plannedState: 'shed',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+          reason: CAPACITY_REASON,
+          controlModel: 'stepped_load' as const,
+          steppedLoadProfile: steppedProfile,
+          shedAction: 'set_step',
+          selectedStepId: undefined,
+          desiredStepId: undefined,
+        },
+        {
+          // Keep device that drifted off: planner thought it was on at max, snapshot says off.
+          // Step is materialized at 'max' in the snapshot, so the binary restore can proceed.
+          // Projection produces desired.on=true, desired.stepId='max', so the keep-invariant
+          // gate would fire if it consulted the planner shed set rather than the executable
+          // shed set.
+          id: 'dev-1',
+          name: 'Tank',
+          currentState: 'on',
+          plannedState: 'keep',
+          currentTarget: null,
+          plannedTarget: null,
+          controllable: true,
+          reason: KEEP_REASON,
+          controlModel: 'stepped_load' as const,
+          steppedLoadProfile: steppedProfile,
+          selectedStepId: 'max',
+          desiredStepId: 'max',
+        },
+      ],
+    };
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    // Restore must NOT be gated by the phantom shed-1.
+    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+      deviceId: 'dev-1',
+    }));
+    expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+      deviceId: 'dev-1',
+    }));
+    // Binary restore should be issued for dev-1.
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    // The dropped underspecified shed intent must be surfaced via structured log,
+    // including the actuation mode so plan vs reconcile drops stay distinguishable.
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_shed_intent_dropped',
+      reasonCode: 'underspecified_set_step',
+      actuationMode: 'reconcile',
+      deviceId: 'shed-1',
+    }));
+  });
+
   // -------------------------------------------------------------------------
   // Group 3: stepped-load turn_on (keep) actuation semantics
   // Tests marked it.fails() document desired behavior not yet implemented.

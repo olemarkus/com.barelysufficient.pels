@@ -22,7 +22,6 @@ describe('priceServiceFlowHelpers DST date keys', () => {
       },
       logDebug,
       label: 'Flow prices',
-      allowTomorrowAsToday: false,
     });
 
     expect(result.some((entry) => entry.totalPrice === 4)).toBe(true);
@@ -72,21 +71,19 @@ describe('purgeStaleFlowPriceSlots', () => {
       timeZone,
       todayPayload: { dateKey: todayKey, pricesByHour: { '0': 1 }, updatedAt: now.toISOString() },
       tomorrowPayload: { dateKey: tomorrowKey, pricesByHour: { '0': 2 }, updatedAt: now.toISOString() },
-      allowTomorrowAsToday: true,
     });
     expect(result.changes).toEqual([]);
     expect(result.todayPayload?.dateKey).toBe(todayKey);
     expect(result.tomorrowPayload?.dateKey).toBe(tomorrowKey);
   });
 
-  it('promotes a stale tomorrow payload dated today when today slot is empty and allowed', () => {
+  it('promotes a stale tomorrow payload dated today when today slot is empty', () => {
     const stalePayload = { dateKey: todayKey, pricesByHour: { '0': 5 }, updatedAt: now.toISOString() };
     const result = purgeStaleFlowPriceSlots({
       now,
       timeZone,
       todayPayload: null,
       tomorrowPayload: stalePayload,
-      allowTomorrowAsToday: true,
     });
     expect(result.todayPayload).toBe(stalePayload);
     expect(result.tomorrowPayload).toBeNull();
@@ -101,7 +98,6 @@ describe('purgeStaleFlowPriceSlots', () => {
       timeZone,
       todayPayload: { dateKey: todayKey, pricesByHour: { '0': 1 }, updatedAt: now.toISOString() },
       tomorrowPayload: { dateKey: todayKey, pricesByHour: { '0': 2 }, updatedAt: now.toISOString() },
-      allowTomorrowAsToday: true,
     });
     expect(result.tomorrowPayload).toBeNull();
     expect(result.changes).toEqual([
@@ -116,27 +112,10 @@ describe('purgeStaleFlowPriceSlots', () => {
       timeZone,
       todayPayload: { dateKey: yesterday, pricesByHour: { '0': 1 }, updatedAt: now.toISOString() },
       tomorrowPayload: null,
-      allowTomorrowAsToday: true,
     });
     expect(result.todayPayload).toBeNull();
     expect(result.changes).toEqual([
       { slot: 'today', action: 'cleared', from: yesterday },
-    ]);
-  });
-
-  it('does not promote when allowTomorrowAsToday is false', () => {
-    const stalePayload = { dateKey: todayKey, pricesByHour: { '0': 5 }, updatedAt: now.toISOString() };
-    const result = purgeStaleFlowPriceSlots({
-      now,
-      timeZone,
-      todayPayload: null,
-      tomorrowPayload: stalePayload,
-      allowTomorrowAsToday: false,
-    });
-    expect(result.todayPayload).toBeNull();
-    expect(result.tomorrowPayload).toBeNull();
-    expect(result.changes).toEqual([
-      { slot: 'tomorrow', action: 'cleared', from: todayKey },
     ]);
   });
 });

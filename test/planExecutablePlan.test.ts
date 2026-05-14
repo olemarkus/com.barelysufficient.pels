@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildExecutableObservedDeviceState,
   buildExecutablePlan,
+  hasExecutableShedDevices,
 } from '../lib/executor/executablePlanProjection';
 import {
   buildExecutableTargetIntent,
@@ -10,6 +11,7 @@ import {
 import type { DevicePlan } from '../lib/plan/planTypes';
 import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
+import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
 
 const planWithDevices = (devices: DevicePlan['devices']): DevicePlan => ({
   meta: {
@@ -141,6 +143,82 @@ describe('planExecutablePlan', () => {
     });
 
     expect(executablePlan.devices[0]?.ev).toBeNull();
+  });
+
+  describe('hasExecutableShedDevices', () => {
+    const shedReason = legacyDeviceReason('shed due to capacity')!;
+
+    it('detects shed posture from binary shed intent', () => {
+      const plan = planWithDevices([
+        buildPlanDevice({
+          id: 'binary-shed',
+          plannedState: 'shed',
+          controlModel: 'binary_power',
+          reason: shedReason,
+        }),
+      ]);
+      expect(hasExecutableShedDevices(plan, buildExecutablePlan(plan))).toBe(true);
+    });
+
+    it('detects shed posture from stepped shed intent', () => {
+      const plan = planWithDevices([
+        steppedPlanDevice({
+          id: 'stepped-shed',
+          plannedState: 'shed',
+          shedAction: 'turn_off',
+          selectedStepId: 'low',
+          reason: shedReason,
+        }),
+      ]);
+      expect(hasExecutableShedDevices(plan, buildExecutablePlan(plan))).toBe(true);
+    });
+
+    it('detects shed posture from shed_temperature target intent', () => {
+      const plan = planWithDevices([
+        buildPlanDevice({
+          id: 'thermostat-shed',
+          plannedState: 'shed',
+          shedAction: 'set_temperature',
+          currentTarget: 21,
+          plannedTarget: 16,
+          reason: shedReason,
+        }),
+      ]);
+      expect(hasExecutableShedDevices(plan, buildExecutablePlan(plan))).toBe(true);
+    });
+
+    it('does not count an underspecified set_step shed because its executable intent is null', () => {
+      const plan = planWithDevices([
+        steppedPlanDevice({
+          id: 'underspecified',
+          plannedState: 'shed',
+          shedAction: 'set_step',
+          selectedStepId: undefined,
+          desiredStepId: undefined,
+          reason: shedReason,
+        }),
+      ]);
+      expect(hasExecutableShedDevices(plan, buildExecutablePlan(plan))).toBe(false);
+    });
+
+    it('counts a planner-shed device held by restore admission (cooldown) as shed posture', () => {
+      // Cooldown-held shed devices are uncommandable but still semantically shed; the gate
+      // must keep them in posture so unrelated stepped restores remain bounded.
+      const plan = planWithDevices([
+        buildPlanDevice({
+          id: 'held-shed',
+          plannedState: 'shed',
+          controlModel: 'binary_power',
+          reason: legacyDeviceReason('meter settling (30s remaining)')!,
+        }),
+      ]);
+      expect(hasExecutableShedDevices(plan, buildExecutablePlan(plan))).toBe(true);
+    });
+
+    it('returns false for a plan with only keep devices', () => {
+      const plan = planWithDevices([buildPlanDevice()]);
+      expect(hasExecutableShedDevices(plan, buildExecutablePlan(plan))).toBe(false);
+    });
   });
 
   it('uses observed state when projecting target updates', () => {

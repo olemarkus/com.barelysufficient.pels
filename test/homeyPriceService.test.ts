@@ -268,6 +268,48 @@ describe('Homey price service', () => {
     );
   });
 
+  it('promotes a stale Homey tomorrow payload dated today into the today slot', () => {
+    // Regression: the Homey path used to wipe both slots at local midnight
+    // before the next periodic refresh, dropping the daily-budget shaper back
+    // to uniform (objective_missing_price_horizon). At the moment of rollover,
+    // today still holds yesterday's payload and tomorrow holds today's — both
+    // slots must rotate together, not be wiped.
+    vi.useFakeTimers().setSystemTime(fixedNow);
+    const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
+    const yesterdayKey = shiftDateKey(todayKey, -1);
+
+    mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
+    const yesterdayPayload = {
+      dateKey: yesterdayKey,
+      pricesByHour: { '0': 9.9, '1': 8.8 },
+      updatedAt: fixedNow.toISOString(),
+    };
+    const stalePayload = {
+      dateKey: todayKey,
+      pricesByHour: { '0': 1.1, '1': 2.2 },
+      updatedAt: fixedNow.toISOString(),
+    };
+    mockHomeyInstance.settings.set(HOMEY_PRICES_TODAY, yesterdayPayload);
+    mockHomeyInstance.settings.set(HOMEY_PRICES_TOMORROW, stalePayload);
+
+    const logDebug = vi.fn();
+    const service = new PriceService(
+      mockHomeyInstance as unknown as Homey.App['homey'],
+      () => {},
+      logDebug,
+      () => {},
+    );
+
+    const prices = service.getCombinedHourlyPrices();
+
+    expect(prices.length).toBeGreaterThan(0);
+    expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TODAY)).toEqual(stalePayload);
+    expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TOMORROW)).toBeNull();
+    expect(logDebug).toHaveBeenCalledWith(
+      `Homey prices: Promoted stored tomorrow data (${todayKey}) into today slot`,
+    );
+  });
+
   it('persists refreshed lastFetched when combined prices are otherwise unchanged', () => {
     vi.useFakeTimers().setSystemTime(fixedNow);
     const todayKey = getDateKeyInTimeZone(fixedNow, timeZone);
