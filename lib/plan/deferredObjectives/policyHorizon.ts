@@ -9,11 +9,18 @@ export type DeferredObjectivePolicyHorizonResult =
   | {
     buckets: DeferredObjectiveHorizonBucket[];
     horizonBucketCount: number;
+    // Number of buckets in the horizon whose per-bucket headroom collapsed to
+    // zero because the daily budget cap had already been reached at the start
+    // of the bucket. Surfaces as a diagnostic field so the UI can explain a
+    // `cannot_meet` outcome that would otherwise look like a device or
+    // schedule problem.
+    dailyBudgetExhaustedBucketCount: number;
     reasonCode: null;
   }
   | {
     buckets: [];
     horizonBucketCount: 0;
+    dailyBudgetExhaustedBucketCount: 0;
     reasonCode: DeferredObjectivePolicyHorizonUnavailableReason;
   };
 
@@ -30,6 +37,11 @@ type PolicyBucketSource = {
   priceFactor: number | null;
   backgroundKWh: number | null;
   perBucketBudgetKWh: number | null;
+  // True when the per-bucket budget collapsed to 0 specifically because
+  // `buildAllowedCumKWh` plateaued at the daily budget cap (i.e. the cumulative
+  // had already hit `dailyBudgetKWh` before this bucket). Distinguishes the
+  // budget-cap cause from the legacy "no allowedCumKWh data" path.
+  dailyBudgetExhausted: boolean;
 };
 
 export const buildDeferredObjectivePolicyHorizon = (params: {
@@ -58,15 +70,21 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
   return {
     buckets: mapPolicyBuckets(sourceBuckets),
     horizonBucketCount: sourceBuckets.length,
+    dailyBudgetExhaustedBucketCount: countDailyBudgetExhausted(sourceBuckets),
     reasonCode: null,
   };
 };
+
+const countDailyBudgetExhausted = (buckets: PolicyBucketSource[]): number => (
+  buckets.reduce((count, bucket) => count + (bucket.dailyBudgetExhausted ? 1 : 0), 0)
+);
 
 const unavailable = (
   reasonCode: DeferredObjectivePolicyHorizonUnavailableReason,
 ): DeferredObjectivePolicyHorizonResult => ({
   buckets: [],
   horizonBucketCount: 0,
+  dailyBudgetExhaustedBucketCount: 0,
   reasonCode,
 });
 
@@ -104,6 +122,7 @@ const collectDayPriceBuckets = (day: DailyBudgetDayPayload): PolicyBucketSource[
   if (!Array.isArray(starts) || !Array.isArray(prices)) return [];
   const allowedCumKWh = day.buckets.allowedCumKWh;
   const plannedUncontrolledKWh = day.buckets.plannedUncontrolledKWh;
+  const dailyBudgetKWh = day.budget.enabled ? day.budget.dailyBudgetKWh : null;
   return starts.flatMap((startIso, index) => {
     const startMs = new Date(startIso).getTime();
     const endMs = resolveBucketEndMs(starts, index);
@@ -118,6 +137,7 @@ const collectDayPriceBuckets = (day: DailyBudgetDayPayload): PolicyBucketSource[
       return [];
     }
     const priceFactor = day.buckets.priceFactor?.[index] ?? null;
+    const perBucketBudgetKWh = resolvePerBucketBudget(allowedCumKWh, index);
     return [{
       id: startIso,
       startMs,
@@ -125,7 +145,13 @@ const collectDayPriceBuckets = (day: DailyBudgetDayPayload): PolicyBucketSource[
       price,
       priceFactor: typeof priceFactor === 'number' && Number.isFinite(priceFactor) ? priceFactor : null,
       backgroundKWh: finiteOrNull(plannedUncontrolledKWh?.[index]),
-      perBucketBudgetKWh: resolvePerBucketBudget(allowedCumKWh, index),
+      perBucketBudgetKWh,
+      dailyBudgetExhausted: isDailyBudgetExhausted({
+        allowedCumKWh,
+        index,
+        perBucketBudgetKWh,
+        dailyBudgetKWh,
+      }),
     }];
   });
 };
@@ -144,6 +170,32 @@ const resolvePerBucketBudget = (
   const previous = index > 0 ? allowedCumKWh[index - 1] : 0;
   if (typeof previous !== 'number' || !Number.isFinite(previous)) return null;
   return Math.max(0, current - previous);
+};
+
+// True when the per-bucket budget is 0 specifically because the cumulative
+// allowed already reached `dailyBudgetKWh` before this bucket. `buildAllowedCumKWh`
+// clamps `total` at the cap, so plateau buckets always share the same value as
+// the previous one. We require both the plateau and a meeting/exceeding-cap
+// reading so the legacy "no budget data" path (perBucketBudgetKWh === null)
+// stays distinguishable.
+const DAILY_BUDGET_CAP_EPSILON_KWH = 1e-6;
+const isDailyBudgetExhausted = (params: {
+  allowedCumKWh: number[] | undefined;
+  index: number;
+  perBucketBudgetKWh: number | null;
+  dailyBudgetKWh: number | null;
+}): boolean => {
+  const { allowedCumKWh, index, perBucketBudgetKWh, dailyBudgetKWh } = params;
+  // `perBucketBudgetKWh` is the difference of two cumulative floats; the
+  // `Math.max(0, ...)` in `resolvePerBucketBudget` clamps negative noise but
+  // leaves tiny positive residues. Treat anything within the daily-budget
+  // epsilon as a plateau so precision drift doesn't hide an exhausted bucket.
+  if (perBucketBudgetKWh === null || perBucketBudgetKWh > DAILY_BUDGET_CAP_EPSILON_KWH) return false;
+  if (dailyBudgetKWh === null || dailyBudgetKWh <= 0) return false;
+  if (!Array.isArray(allowedCumKWh)) return false;
+  const current = allowedCumKWh[index];
+  if (typeof current !== 'number' || !Number.isFinite(current)) return false;
+  return current >= dailyBudgetKWh - DAILY_BUDGET_CAP_EPSILON_KWH;
 };
 
 const resolveBucketEndMs = (starts: string[], index: number): number => {

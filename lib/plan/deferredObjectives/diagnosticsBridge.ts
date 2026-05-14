@@ -60,6 +60,11 @@ export type DeferredObjectiveDiagnostic = {
   rateConfidence: string | null;
   kwhPerUnitSource: DeferredObjectiveKwhPerUnitSource | null;
   horizonBucketCount: number;
+  // Number of buckets in the horizon whose per-bucket cap collapsed to zero
+  // because the daily budget cap had already been reached at the start of the
+  // bucket. Lets the UI explain a `cannot_meet` outcome that would otherwise
+  // look like a device or schedule problem.
+  dailyBudgetExhaustedBucketCount: number;
   requestedMinimumStepId: string | null;
   horizonPlan?: DeferredObjectiveHorizonPlan;
 };
@@ -187,7 +192,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
       powerTracker,
       base: withDeadline,
       progress,
-      policyHorizon: { buckets: [], horizonBucketCount: 0, reasonCode: null },
+      policyHorizon: { buckets: [], horizonBucketCount: 0, dailyBudgetExhaustedBucketCount: 0, reasonCode: null },
       deadlineAtMs: objective.deadlineAtMs,
     });
   }
@@ -208,6 +213,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
     return withUnknown({
       ...knownInputs,
       horizonBucketCount: policyHorizon.horizonBucketCount,
+      dailyBudgetExhaustedBucketCount: policyHorizon.dailyBudgetExhaustedBucketCount,
     }, policyHorizon.reasonCode);
   }
 
@@ -242,6 +248,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
       currentPercent: progress.currentPercent,
       currentTemperatureC: progress.currentTemperatureC,
       horizonBucketCount: policyHorizon.horizonBucketCount,
+      dailyBudgetExhaustedBucketCount: policyHorizon.dailyBudgetExhaustedBucketCount,
     }, progress.reasonCode);
   }
 
@@ -265,6 +272,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
       currentPercent: progress.currentPercent,
       currentTemperatureC: progress.currentTemperatureC,
       horizonBucketCount: policyHorizon.horizonBucketCount,
+      dailyBudgetExhaustedBucketCount: policyHorizon.dailyBudgetExhaustedBucketCount,
     }, profileEnergy.reasonCode);
   }
 
@@ -280,6 +288,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
       rateConfidence: profileEnergy.rateConfidence,
       kwhPerUnitSource: profileEnergy.kwhPerUnitSource,
       horizonBucketCount: policyHorizon.horizonBucketCount,
+      dailyBudgetExhaustedBucketCount: policyHorizon.dailyBudgetExhaustedBucketCount,
     }, 'objective_missing_charge_rate');
   }
 
@@ -308,6 +317,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     rateConfidence: profileEnergy.rateConfidence,
     kwhPerUnitSource: profileEnergy.kwhPerUnitSource,
     horizonBucketCount: policyHorizon.horizonBucketCount,
+    dailyBudgetExhaustedBucketCount: policyHorizon.dailyBudgetExhaustedBucketCount,
     requestedMinimumStepId: horizonPlan.requestedMinimumStepId,
     horizonPlan,
   };
@@ -349,6 +359,7 @@ const buildDiagnosticBase = (params: {
     rateConfidence: params.rateConfidence,
     kwhPerUnitSource: params.kwhPerUnitSource,
     horizonBucketCount: 0,
+    dailyBudgetExhaustedBucketCount: 0,
     requestedMinimumStepId: null,
   };
 };

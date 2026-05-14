@@ -58,6 +58,7 @@ const makeDiag = (
   rateConfidence: 'high',
   kwhPerUnitSource: 'learned',
   horizonBucketCount: 6,
+  dailyBudgetExhaustedBucketCount: 0,
   requestedMinimumStepId: 'low',
   horizonPlan: makeHorizon(),
   ...overrides,
