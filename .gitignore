@@ -31,7 +31,10 @@ node_modules/
 /tmp/
 
 # Claude Code
-/.claude/
+/.claude/*
+!/.claude/settings.json
+!/.claude/hooks/
+/.claude/settings.local.json
 /.codex/
 /.codex
 
