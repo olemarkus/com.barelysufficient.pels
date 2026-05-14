@@ -1,7 +1,9 @@
 import { registerDeadlineObjectiveCards } from '../flowCards/deadlineObjectiveCards';
 import {
+  createDeferredObjectivePlanRevisionBus,
   createDeferredObjectiveStatusBus,
   createEmptyDeferredObjectiveSettings,
+  type DeferredObjectivePlanRevisionBus,
   type DeferredObjectiveSettingsV1,
   type DeferredObjectiveStatusBus,
   type DeferredObjectiveStatusSnapshot,
@@ -64,6 +66,7 @@ const buildDevice = (overrides: Partial<TargetDeviceSnapshot> & { id: string; na
 const buildDeps = (overrides: {
   snapshot: TargetDeviceSnapshot[];
   bus?: DeferredObjectiveStatusBus;
+  planRevisionBus?: DeferredObjectivePlanRevisionBus;
   rebuildPlan?: ReturnType<typeof vi.fn>;
 }): { deps: FlowCardDeps; mock: ReturnType<typeof createMockHomey> } => {
   const mock = createMockHomey();
@@ -99,6 +102,7 @@ const buildDeps = (overrides: {
     logDebug: () => {},
     error: () => {},
     getDeferredObjectiveStatusBus: () => overrides.bus,
+    getDeferredObjectivePlanRevisionBus: () => overrides.planRevisionBus,
   } as unknown as FlowCardDeps;
   return { deps, mock };
 };
@@ -637,6 +641,107 @@ describe('deadline objective flow cards', () => {
       deadlineLocalTime: '08:00',
     });
     expect(missedTrigger.trigger).toHaveBeenCalledTimes(2);
+  });
+
+  it('publishes deadline_plan_changed with kWh, charge hours and projected finish tokens', async () => {
+    const planRevisionBus = createDeferredObjectivePlanRevisionBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'ev-1', name: 'Garage charger', deviceClass: 'evcharger' })],
+      planRevisionBus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const trigger = mock.triggers.get('deadline_plan_changed')!;
+
+    const hourStartA = Date.UTC(2026, 0, 1, 1, 0, 0);
+    const hourStartB = Date.UTC(2026, 0, 1, 2, 0, 0);
+    const hourStartC = Date.UTC(2026, 0, 1, 5, 0, 0);
+    // Last bucket fills 36 minutes of its hour (1.5 of 2.5 kWh capacity), so
+    // projected finish lands at 05:36 — the producer already resolved the ms.
+    const projectedFinishAtMs = hourStartC + Math.round((1.5 / 2.5) * 3600000);
+    planRevisionBus.publish({
+      deviceId: 'ev-1',
+      deviceName: 'Garage charger',
+      objectiveKind: 'ev_soc',
+      reason: 'prices_revised',
+      allocationChanged: true,
+      projectedFinishAtMs,
+      revision: {
+        revision: 2,
+        revisedAtMs: hourStartA,
+        computedFromPricesUpTo: hourStartC + 3600000,
+        reason: 'prices_revised',
+        planStatus: 'on_track',
+        energyNeededKWh: 6.5,
+        hours: [
+          { startsAtMs: hourStartA, plannedKWh: 2.5 },
+          { startsAtMs: hourStartB, plannedKWh: 2.5 },
+          { startsAtMs: hourStartC, plannedKWh: 1.5 },
+        ],
+      },
+    });
+
+    expect(trigger.trigger).toHaveBeenCalledTimes(1);
+    const [tokens, state] = trigger.trigger.mock.calls[0]!;
+    expect(tokens).toMatchObject({
+      device_name: 'Garage charger',
+      remaining_kwh: 6.5,
+      planned_hours: 3,
+      projected_finish_local_time: '05:36',
+    });
+    expect(tokens).not.toHaveProperty('projected_finish_at_ms');
+    expect(state).toEqual({ deviceId: 'ev-1' });
+    expect(await trigger.run!({ device: 'ev-1' }, state)).toBe(true);
+    expect(await trigger.run!({ device: 'ev-2' }, state)).toBe(false);
+
+    // allocationChanged === false should not fire the trigger.
+    planRevisionBus.publish({
+      deviceId: 'ev-1',
+      deviceName: 'Garage charger',
+      objectiveKind: 'ev_soc',
+      reason: 'rate_refined',
+      allocationChanged: false,
+      projectedFinishAtMs,
+      revision: {
+        revision: 3,
+        revisedAtMs: hourStartA,
+        computedFromPricesUpTo: hourStartC + 3600000,
+        reason: 'rate_refined',
+        planStatus: 'on_track',
+        energyNeededKWh: 6.5,
+        hours: [
+          { startsAtMs: hourStartA, plannedKWh: 2.5 },
+          { startsAtMs: hourStartB, plannedKWh: 2.5 },
+          { startsAtMs: hourStartC, plannedKWh: 1.5 },
+        ],
+      },
+    });
+    expect(trigger.trigger).toHaveBeenCalledTimes(1);
+  });
+
+  it('swallows token-build errors so a bad plan-revision event cannot crash the publisher', () => {
+    const planRevisionBus = createDeferredObjectivePlanRevisionBus();
+    const errors: unknown[][] = [];
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'ev-1', name: 'Garage charger', deviceClass: 'evcharger' })],
+      planRevisionBus,
+    });
+    (deps as { error: (...args: unknown[]) => void }).error = (...args: unknown[]) => { errors.push(args); };
+    registerDeadlineObjectiveCards(deps);
+    const trigger = mock.triggers.get('deadline_plan_changed')!;
+
+    expect(() => planRevisionBus.publish({
+      deviceId: 'ev-1',
+      deviceName: 'Garage charger',
+      objectiveKind: 'ev_soc',
+      reason: 'prices_revised',
+      allocationChanged: true,
+      // Force buildPlanChangedTokens to throw by giving it a malformed revision.
+      projectedFinishAtMs: 0,
+      revision: null as unknown as never,
+    })).not.toThrow();
+    expect(trigger.trigger).not.toHaveBeenCalled();
+    expect(errors).toHaveLength(1);
+    expect(String(errors[0][0])).toMatch(/Failed to build deadline_plan_changed tokens/);
   });
 
   it('has_active_deadline returns true only when an enabled entry exists', async () => {

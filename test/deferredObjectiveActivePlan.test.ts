@@ -293,6 +293,69 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan?.original?.hours[0]?.plannedKWh).toBe(1.5);
   });
 
+  it('calls onRevisionWritten with allocationChanged=true and projectedFinishAtMs from last bucket fill', () => {
+    const events: Array<{
+      deviceId: string;
+      reason: string;
+      allocationChanged: boolean;
+      hours: number;
+      energyNeededKWh: number;
+      projectedFinishAtMs: number | null;
+    }> = [];
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder({
+      ...deps,
+      onRevisionWritten: (event) => {
+        events.push({
+          deviceId: event.deviceId,
+          reason: event.reason,
+          allocationChanged: event.allocationChanged,
+          hours: event.revision.hours.length,
+          energyNeededKWh: event.revision.energyNeededKWh,
+          projectedFinishAtMs: event.projectedFinishAtMs,
+        });
+      },
+    });
+
+    // First observe seeds the plan — no revision-written notification (only replans fire).
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+    expect(events).toEqual([]);
+
+    // Second observe shifts the bucket allocation. Last bucket starts at
+    // 5h and fills 1.0 of its 3.0 kWh capacity → finish 1/3 of an hour in.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: makeHorizon([
+        makeBucket(HOUR_MS, 1.5),
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(5 * HOUR_MS, 1.0),
+      ]),
+    })], 2 * HOUR_MS);
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toEqual({
+      deviceId: 'dev',
+      reason: 'prices_revised',
+      allocationChanged: true,
+      hours: 3,
+      energyNeededKWh: 4.0,
+      projectedFinishAtMs: 5 * HOUR_MS + Math.round((1.0 / 3.0) * HOUR_MS),
+    });
+
+    // Third observe with identical hours — no further notification.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: makeHorizon([
+        makeBucket(HOUR_MS, 1.5),
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(5 * HOUR_MS, 1.0),
+      ]),
+    })], 3 * HOUR_MS);
+    expect(events).toHaveLength(1);
+  });
+
   it('emits a prices_revised revision when the bucket plan shifts but the objective is unchanged', () => {
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);

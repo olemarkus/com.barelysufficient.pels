@@ -1,0 +1,45 @@
+{
+  "title": {
+    "en": "Smart task plan changed"
+  },
+  "titleFormatted": {
+    "en": "[[device]] smart task plan changed"
+  },
+  "hint": {
+    "en": "Fires when the scheduled hours for the chosen device's smart task are revised (e.g. after new prices arrive)."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select device"
+      }
+    }
+  ],
+  "tokens": [
+    {
+      "name": "device_name",
+      "type": "string",
+      "title": { "en": "Device" }
+    },
+    {
+      "name": "remaining_kwh",
+      "type": "number",
+      "title": { "en": "Remaining kWh" }
+    },
+    {
+      "name": "planned_hours",
+      "type": "number",
+      "title": { "en": "Planned hours" }
+    },
+    {
+      "name": "projected_finish_local_time",
+      "type": "string",
+      "title": { "en": "Finishes at" }
+    }
+  ]
+}

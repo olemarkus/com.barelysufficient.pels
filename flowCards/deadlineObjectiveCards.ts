@@ -1,6 +1,8 @@
 import {
+  formatDeadlineLocalTime,
   normalizeDeferredObjectiveSettings,
   resolveDeferredObjectiveDeadline,
+  type DeferredObjectivePlanRevisionEvent,
   type DeferredObjectiveSettingsEntry,
   type DeferredObjectiveSettingsV1,
   type DeferredObjectiveStatusSnapshot,
@@ -188,6 +190,7 @@ export function registerDeadlineObjectiveCards(deps: FlowCardDeps): void {
   registerClearDeadlineCard(deps);
   registerDeadlineStatusChangedTrigger(deps);
   registerDeadlineMissedTrigger(deps);
+  registerDeadlinePlanChangedTrigger(deps);
   registerDeadlineStatusIsCondition(deps);
   registerHasActiveDeadlineCondition(deps);
 }
@@ -414,6 +417,51 @@ function registerDeadlineMissedTrigger(deps: FlowCardDeps): void {
   bus.onMissed((snapshot) => {
     void card.trigger?.(buildMissedTokens(snapshot), { deviceId: snapshot.deviceId })
       .catch((err: Error) => deps.error('Failed to trigger deadline_missed', err));
+  });
+}
+
+const buildPlanChangedTokens = (
+  event: DeferredObjectivePlanRevisionEvent,
+  timeZone: string,
+): Record<string, unknown> => {
+  const { hours, energyNeededKWh } = event.revision;
+  const finishAtMs = event.projectedFinishAtMs;
+  return {
+    device_name: event.deviceName ?? event.deviceId,
+    remaining_kwh: Math.round(energyNeededKWh * 1000) / 1000,
+    planned_hours: hours.length,
+    projected_finish_local_time: finishAtMs === null ? '' : formatDeadlineLocalTime(finishAtMs, timeZone),
+  };
+};
+
+function registerDeadlinePlanChangedTrigger(deps: FlowCardDeps): void {
+  const card = deps.homey.flow.getTriggerCard('deadline_plan_changed');
+  card.registerRunListener(async (args: unknown, state?: unknown) => {
+    const payload = args as { device?: RawFlowDeviceArg } | null;
+    const stateRecord = (state ?? {}) as { deviceId?: string };
+    const wantedDeviceId = getDeviceIdFromFlowArg(payload?.device);
+    return Boolean(wantedDeviceId && wantedDeviceId === stateRecord.deviceId);
+  });
+  card.registerArgumentAutocompleteListener('device', async (query: string) => {
+    const snapshot = await deps.getSnapshot();
+    return buildDeviceAutocompleteOptions(snapshot, query);
+  });
+
+  const bus = deps.getDeferredObjectivePlanRevisionBus?.();
+  if (!bus) return;
+  bus.onRevision((event) => {
+    if (!event.allocationChanged) return;
+    let tokens: Record<string, unknown>;
+    try {
+      tokens = buildPlanChangedTokens(event, deps.getTimeZone());
+    } catch (err) {
+      // Swallow listener-side errors so a malformed event cannot unwind back
+      // into the plan-engine cycle that published it.
+      deps.error('Failed to build deadline_plan_changed tokens', err);
+      return;
+    }
+    void card.trigger?.(tokens, { deviceId: event.deviceId })
+      .catch((err: Error) => deps.error('Failed to trigger deadline_plan_changed', err));
   });
 }
 

@@ -9,6 +9,7 @@ import type {
 import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION } from './activePlanSettings';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
+import type { DeferredObjectivePlanRevisionEvent } from './planRevisionBus';
 
 const KWH_ROUNDING_FACTOR = 1000;
 const ONE_HOUR_MS = 60 * 60 * 1000;
@@ -26,6 +27,7 @@ export type ActivePlanPersistDeps = {
   load: () => DeferredObjectiveActivePlansV1 | null;
   save: (plans: DeferredObjectiveActivePlansV1) => void;
   debugStructured?: StructuredDebugEmitter;
+  onRevisionWritten?: (event: DeferredObjectivePlanRevisionEvent) => void;
 };
 
 export type ActivePlanFlowCardSeed = {
@@ -83,6 +85,31 @@ const buildHoursFromHorizonPlan = (
   return [...byHour.entries()]
     .map(([startsAtMs, plannedKWh]) => ({ startsAtMs, plannedKWh: roundKWh(plannedKWh) }))
     .sort((left, right) => left.startsAtMs - right.startsAtMs);
+};
+
+const resolveProjectedFinishAtMs = (
+  diag: DeferredObjectiveDiagnostic,
+): number | null => {
+  const horizonPlan = diag.horizonPlan;
+  if (!horizonPlan) return null;
+  // The last planned bucket may be only partially used; estimate finish time
+  // from its fill ratio so the trigger token reflects realistic completion,
+  // not just the hour boundary.
+  let lastPlannedBucket: typeof horizonPlan.plannedBuckets[number] | null = null;
+  for (const bucket of horizonPlan.plannedBuckets) {
+    if (bucket.plannedUsefulEnergyKWh <= 0) continue;
+    if (lastPlannedBucket === null || bucket.startMs > lastPlannedBucket.startMs) {
+      lastPlannedBucket = bucket;
+    }
+  }
+  if (lastPlannedBucket === null) return null;
+  const bucketDurationMs = lastPlannedBucket.endMs - lastPlannedBucket.startMs;
+  if (bucketDurationMs <= 0) return null;
+  const capacity = lastPlannedBucket.usefulEnergyCapacityKWh;
+  const fraction = capacity > 0
+    ? Math.min(1, Math.max(0, lastPlannedBucket.plannedUsefulEnergyKWh / capacity))
+    : 1;
+  return Math.round(lastPlannedBucket.startMs + fraction * bucketDurationMs);
 };
 
 const resolveComputedFromPricesUpTo = (
@@ -403,6 +430,17 @@ export class DeferredObjectiveActivePlanRecorder {
       reason,
       hourCount: hours.length,
     });
+    if (allocationChanged) {
+      this.deps.onRevisionWritten?.({
+        deviceId: diag.deviceId,
+        deviceName: diag.deviceName ?? current.deviceName,
+        objectiveKind: diag.objectiveKind,
+        revision,
+        reason,
+        allocationChanged,
+        projectedFinishAtMs: resolveProjectedFinishAtMs(diag),
+      });
+    }
   }
 
   private dropExpiredAndAbandoned(nowMs: number): void {
