@@ -629,10 +629,10 @@ describe('Settings UI', () => {
           expectedContainer: style.getPropertyValue('--pels-shell-nav-tab-selected-background').trim(),
         };
       });
-      expect(activeTabTheme.container).toBe('rgb(22, 163, 74)');
-      expect(activeTabTheme.activeText).toBe('rgb(13, 17, 23)');
-      expect(activeTabTheme.expectedContainer).toBe('#16a34a');
-      expect(activeTabTheme.expectedActiveText).toBe('#0d1117');
+      expect(activeTabTheme.container).toBe('rgb(34, 197, 94)');
+      expect(activeTabTheme.activeText).toBe('rgb(12, 22, 16)');
+      expect(activeTabTheme.expectedContainer).toBe('#22c55e');
+      expect(activeTabTheme.expectedActiveText).toBe('#0c1610');
     });
 
     test('overview card has backdrop blur effect', async () => {

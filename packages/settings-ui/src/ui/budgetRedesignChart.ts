@@ -38,10 +38,8 @@ const chartHandles = new WeakMap<HTMLElement, ChartHandle>();
 const DEFAULT_CHART_HEIGHT = 210;
 const DEFAULT_CHART_WIDTH = 480;
 
-const resolveCssColor = (element: HTMLElement, variable: string, fallback: string) => {
-  const raw = getComputedStyle(element).getPropertyValue(variable).trim();
-  return raw || fallback;
-};
+const resolveCssColor = (element: HTMLElement, variable: string) =>
+  getComputedStyle(element).getPropertyValue(variable).trim();
 
 const resolveChartSize = (element: HTMLElement) => {
   const width = element.clientWidth > 0
@@ -86,18 +84,18 @@ const ensureChart = (container: HTMLElement): EChartsType => {
 };
 
 const resolvePalette = (container: HTMLElement): BudgetChartPalette => ({
-  actual: resolveCssColor(container, '--pels-chart-actual', '#e6ecf5'),
-  plan: resolveCssColor(container, '--pels-chart-plan', '#10b981'),
-  background: resolveCssColor(container, '--day-view-color-background-usage', '#64b5f6'),
-  managed: resolveCssColor(container, '--day-view-color-managed-usage', '#f59e0b'),
-  forecast: resolveCssColor(container, '--pels-chart-forecast', '#64b5f6'),
-  priceLine: resolveCssColor(container, '--pels-chart-price-line', '#f59e0b'),
-  priceFill: resolveCssColor(container, '--pels-chart-price-fill', 'rgba(245, 158, 11, 0.14)'),
-  muted: resolveCssColor(container, '--muted', '#9fb2a7'),
-  grid: resolveCssColor(container, '--color-border-strong', 'rgba(255, 255, 255, 0.20)'),
-  tooltipBackground: resolveCssColor(container, '--color-overlay-toast', 'rgba(12, 17, 27, 0.92)'),
-  tooltipText: resolveCssColor(container, '--color-semantic-text-primary', '#e6ecf5'),
-  tooltipBorder: resolveCssColor(container, '--color-border-medium', 'rgba(255, 255, 255, 0.15)'),
+  actual: resolveCssColor(container, '--pels-chart-actual'),
+  plan: resolveCssColor(container, '--pels-chart-plan'),
+  background: resolveCssColor(container, '--day-view-color-background-usage'),
+  managed: resolveCssColor(container, '--day-view-color-managed-usage'),
+  forecast: resolveCssColor(container, '--pels-chart-forecast'),
+  priceLine: resolveCssColor(container, '--pels-chart-price-line'),
+  priceFill: resolveCssColor(container, '--pels-chart-price-fill'),
+  muted: resolveCssColor(container, '--muted'),
+  grid: resolveCssColor(container, '--color-border-strong'),
+  tooltipBackground: resolveCssColor(container, '--color-overlay-toast'),
+  tooltipText: resolveCssColor(container, '--color-semantic-text-primary'),
+  tooltipBorder: resolveCssColor(container, '--color-border-medium'),
 });
 
 const cumulative = (values: number[]): number[] => {

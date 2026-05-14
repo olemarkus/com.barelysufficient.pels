@@ -6,38 +6,37 @@
       "white": { "value": "#ffffff" },
       "gray": {
         "50": { "value": "#e6ecf5" },
-        "100": { "value": "#cdd6e1" },
-        "200": { "value": "#d1d8e0" },
+        "100": { "value": "#9ba6b7" },
+        "300": { "value": "#6b7280" },
         "900": { "value": "#0d1117" }
       },
       "accent": {
         "light": { "value": "#4ade80" },
-        "default": { "value": "#16a34a" },
-        "default-rgb": { "value": "22, 163, 74" },
-        "dark": { "value": "#15803d" }
+        "default": { "value": "#22c55e" },
+        "default-rgb": { "value": "34, 197, 94" },
+        "dark": { "value": "#15803d" },
+        "on": { "value": "#0c1610" }
       },
       "good": {
         "default": { "value": "#5eead4" }
       },
       "danger": {
         "default": { "value": "#ef4444" },
-        "light": { "value": "#ffb4b4" },
-        "dark": { "value": "#e57373" }
+        "soft": { "value": "#e57373" },
+        "strong": { "value": "#b91c1c" }
       },
       "warning": {
         "default": { "value": "#f59e0b" },
-        "light": { "value": "#fcd34d" }
+        "soft": { "value": "#fcd34d" },
+        "strong": { "value": "#b45309" }
       },
       "info": {
         "default": { "value": "#60a5fa" }
-      },
-      "success": {
-        "default": { "value": "#4ed2cc" }
       }
     },
     "role": {
       "accent": { "value": "{color.base.accent.default}" },
-      "on-accent": { "value": "{color.base.gray.900}" },
+      "on-accent": { "value": "{color.base.accent.on}" },
       "good": { "value": "{color.base.good.default}" },
       "warn": { "value": "{color.base.warning.default}" },
       "danger": { "value": "{color.base.danger.default}" },
@@ -48,8 +47,8 @@
       "text": {
         "primary": { "value": "{color.base.gray.50}" },
         "secondary": { "value": "{color.base.gray.100}" },
-        "muted": { "value": "{color.base.gray.200}" },
-        "inverse": { "value": "{color.base.gray.900}" }
+        "muted": { "value": "{color.base.gray.300}" },
+        "inverse": { "value": "{color.base.accent.on}" }
       },
       "accent": { "value": "{color.base.accent.default}" },
       "accent-strong": { "value": "{color.base.accent.dark}" },
@@ -58,37 +57,37 @@
       "info": { "value": "{color.base.info.default}" }
     },
     "surface": {
-      "1": { "value": "#161b24" },
-      "2": { "value": "#181d26" },
-      "3": { "value": "#1b1f29" },
-      "4": { "value": "#1f242d" },
-      "5": { "value": "#292e36" },
+      "1": { "value": "#141923" },
+      "2": { "value": "#181e29" },
+      "3": { "value": "#1d2430" },
+      "4": { "value": "#232b38" },
+      "5": { "value": "#2a3242" },
       "elevated": { "value": "#1a1a1a" }
     },
     "border": {
-      "default": { "value": "#2d3239" },
-      "medium": { "value": "#30353d" },
-      "strong": { "value": "#3d4149" }
+      "default": { "value": "#2a3340" },
+      "medium": { "value": "#3a4555" },
+      "strong": { "value": "#56627a" }
     },
     "state": {
       "positive": {
-        "bg": { "value": "#183237" },
-        "border": { "value": "#2d6865" },
+        "bg": { "value": "color-mix(in srgb, {color.base.good.default} 14%, {color.surface.1})" },
+        "border": { "value": "color-mix(in srgb, {color.base.good.default} 40%, transparent)" },
         "text": { "value": "{color.role.good}" }
       },
       "negative": {
-        "bg": { "value": "#2e1921" },
-        "border": { "value": "#5b2329" },
-        "text": { "value": "{color.base.danger.light}" }
+        "bg": { "value": "color-mix(in srgb, {color.base.danger.default} 14%, {color.surface.1})" },
+        "border": { "value": "color-mix(in srgb, {color.base.danger.default} 40%, transparent)" },
+        "text": { "value": "{color.base.danger.soft}" }
       },
       "warning": {
-        "bg": { "value": "#2f2619" },
-        "border": { "value": "#694915" },
-        "text": { "value": "{color.base.warning.light}" }
+        "bg": { "value": "color-mix(in srgb, {color.base.warning.default} 14%, {color.surface.1})" },
+        "border": { "value": "color-mix(in srgb, {color.base.warning.default} 40%, transparent)" },
+        "text": { "value": "{color.base.warning.soft}" }
       },
       "info": {
-        "bg": { "value": "#142031" },
-        "border": { "value": "#253d5e" },
+        "bg": { "value": "color-mix(in srgb, {color.base.info.default} 14%, {color.surface.1})" },
+        "border": { "value": "color-mix(in srgb, {color.base.info.default} 40%, transparent)" },
         "text": { "value": "{color.role.info}" }
       }
     },
@@ -102,7 +101,7 @@
   },
   "pels": {
     "status": {
-      "good": { "value": "{color.role.accent}" },
+      "good": { "value": "{color.role.good}" },
       "on-good": { "value": "{color.role.good}" },
       "good-container": { "value": "{color.state.positive.bg}" },
       "good-surface": { "value": "{color.state.positive.bg}" },
@@ -117,7 +116,7 @@
       "limited-container": { "value": "{color.state.warning.bg}" },
       "limited-surface": { "value": "{color.state.warning.bg}" },
       "limited-border": { "value": "{color.state.warning.border}" },
-      "critical": { "value": "{color.base.danger.dark}" },
+      "critical": { "value": "{color.role.danger}" },
       "on-critical": { "value": "{color.state.negative.text}" },
       "critical-container": { "value": "{color.state.negative.bg}" },
       "critical-surface": { "value": "{color.state.negative.bg}" },

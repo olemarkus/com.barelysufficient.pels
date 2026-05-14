@@ -33,10 +33,8 @@ let plot: EChartsType | null = null;
 let plotContainer: HTMLElement | null = null;
 let plotResizeObserver: ResizeObserver | null = null;
 
-const resolveCssColor = (element: HTMLElement, variable: string, fallback: string) => {
-  const raw = getComputedStyle(element).getPropertyValue(variable).trim();
-  return raw || fallback;
-};
+const resolveCssColor = (element: HTMLElement, variable: string) =>
+  getComputedStyle(element).getPropertyValue(variable).trim();
 
 const resolveChartSize = (element: HTMLElement) => {
   const width = element.clientWidth > 0
@@ -98,15 +96,15 @@ const ensurePlot = (container: HTMLElement): EChartsType => {
 };
 
 const resolvePalette = (barsEl: HTMLElement): UsageDayPalette => ({
-  measured: resolveCssColor(barsEl, '--day-view-color-primary', '#64B5F6'),
-  warn: resolveCssColor(barsEl, '--day-view-color-warn', '#F26B6B'),
-  disabled: resolveCssColor(barsEl, '--color-surface-4', '#4D5652'),
-  muted: resolveCssColor(barsEl, '--muted', '#9FB2A7'),
-  grid: resolveCssColor(barsEl, '--color-border-strong', '#34423B'),
-  currentBorder: resolveCssColor(barsEl, '--color-state-info-border', '#64B5F6'),
-  tooltipBackground: resolveCssColor(barsEl, '--color-overlay-toast', 'rgba(12, 17, 27, 0.92)'),
-  tooltipText: resolveCssColor(barsEl, '--color-semantic-text-primary', '#E6ECF5'),
-  tooltipBorder: resolveCssColor(barsEl, '--color-border-medium', 'rgba(255, 255, 255, 0.15)'),
+  measured: resolveCssColor(barsEl, '--day-view-color-primary'),
+  warn: resolveCssColor(barsEl, '--day-view-color-warn'),
+  disabled: resolveCssColor(barsEl, '--color-surface-4'),
+  muted: resolveCssColor(barsEl, '--muted'),
+  grid: resolveCssColor(barsEl, '--color-border-strong'),
+  currentBorder: resolveCssColor(barsEl, '--color-state-info-border'),
+  tooltipBackground: resolveCssColor(barsEl, '--color-overlay-toast'),
+  tooltipText: resolveCssColor(barsEl, '--color-semantic-text-primary'),
+  tooltipBorder: resolveCssColor(barsEl, '--color-border-medium'),
 });
 
 const resolveBarOpacity = (enabled: boolean): number => (enabled ? 1 : 0.6);
