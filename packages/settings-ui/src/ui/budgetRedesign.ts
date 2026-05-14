@@ -349,6 +349,16 @@ const resolveChartSubtitle = (params: {
   return 'On track to finish within budget.';
 };
 
+// Mirrors the `hasSplit` gate in `buildHourlyOption`: when the planner
+// separated controllable vs. background buckets, the chart renders two
+// stacked series — the legend must follow so its labels match the fills.
+const hasPlannedSplitBuckets = (payload: DailyBudgetDayPayload): boolean => {
+  const bucketCount = (payload.buckets.startLocalLabels || []).length;
+  if (bucketCount <= 0) return false;
+  return (payload.buckets.plannedUncontrolledKWh || []).length === bucketCount
+    && (payload.buckets.plannedControlledKWh || []).length === bucketCount;
+};
+
 const resolveChartData = (
   viewPayload: DailyBudgetDayPayload | null,
   view: BudgetDayView,
@@ -358,28 +368,19 @@ const resolveChartData = (
 ): BudgetChartData => {
   if (!viewPayload || viewPayload.budget.enabled !== true || status === 'noPlan') return null;
   const priceReliable = isPriceReliable(viewPayload);
-  const showPrice = mode === 'hourlyPlan' && priceReliable && Boolean(viewPayload.budget.priceShapingEnabled);
-  const showProjection = mode === 'progress' && view === 'today';
-  const caveatNeeded = mode === 'hourlyPlan' && Boolean(viewPayload.budget.priceShapingEnabled) && !priceReliable;
-  // Mirrors the `hasSplit` gate in `buildHourlyOption`: when the planner
-  // separated controllable vs. background buckets, the chart renders two
-  // stacked series — the legend must follow so its labels match the fills.
-  const bucketCount = (viewPayload.buckets.startLocalLabels || []).length;
-  const splitAvailable = (viewPayload.buckets.plannedUncontrolledKWh || []).length === bucketCount
-    && (viewPayload.buckets.plannedControlledKWh || []).length === bucketCount
-    && bucketCount > 0;
-  const showSplit = mode === 'hourlyPlan' && splitAvailable;
+  const priceShaping = Boolean(viewPayload.budget.priceShapingEnabled);
+  const isHourly = mode === 'hourlyPlan';
   return {
     payload: viewPayload,
     view,
     mode,
-    showPrice,
-    showProjection,
-    showSplit,
+    showPrice: isHourly && priceReliable && priceShaping,
+    showProjection: mode === 'progress' && view === 'today',
+    showSplit: isHourly && hasPlannedSplitBuckets(viewPayload),
     costDisplay,
-    chartTitle: mode === 'progress' ? 'Progress' : 'Hourly plan',
+    chartTitle: isHourly ? 'Hourly plan' : 'Progress',
     chartSubtitle: resolveChartSubtitle({ payload: viewPayload, view, mode, status, priceReliable }),
-    caveat: caveatNeeded
+    caveat: isHourly && priceShaping && !priceReliable
       ? 'Price alignment unavailable. Add or refresh prices to show cheaper-hour context.'
       : null,
   };
