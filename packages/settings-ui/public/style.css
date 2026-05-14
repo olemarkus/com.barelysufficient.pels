@@ -196,6 +196,14 @@ md-text-button {
   font-weight: var(--font-weight-bold);
 }
 
+/* M3 destructive text button: foreground (label, ripple, focus, icon) uses
+   the error role. Used for irreversible actions such as removing a
+   stepped-load row. Scoping --md-sys-color-primary to this selector
+   cascades through every md-text-button-* default that resolves to primary. */
+md-text-button.md-text-button--destructive {
+  --md-sys-color-primary: var(--md-sys-color-error);
+}
+
 .screen {
   width: min(100%, 480px);
   max-width: 480px;
@@ -2583,7 +2591,7 @@ md-primary-tab.tab[active]:hover {
   background: var(--color-state-positive-bg);
   color: var(--color-state-positive-text);
   border: 1px solid var(--color-state-positive-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
 }
 
 .mode-row .device-row__name {
@@ -3497,7 +3505,7 @@ md-primary-tab.tab[active]:hover {
   padding: 2px 6px;
   background: var(--accent);
   color: var(--bg);
-  border-radius: 4px;
+  border-radius: var(--radius-full);
   font-weight: var(--font-weight-semibold);
 }
 

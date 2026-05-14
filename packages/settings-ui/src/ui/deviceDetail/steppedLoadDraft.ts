@@ -130,6 +130,7 @@ const buildSteppedLoadStepRow = (params: {
   attachDraftSyncOnChange(params.onDraftChanged, idInput, planningInput);
 
   const removeButton = document.createElement('md-text-button') as HTMLElement & { disabled: boolean };
+  removeButton.classList.add('md-text-button--destructive');
   removeButton.textContent = 'Remove';
   removeButton.disabled = disabled;
   removeButton.setAttribute('aria-label', `Remove step ${params.step.id}`);
