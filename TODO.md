@@ -416,6 +416,17 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] Cold-start catch-up for flow-scheme combined-prices rotation. `startPriceRefresh()`
+      only schedules the next local midnight via `getNextLocalDayStartUtcMs(now)`, so if the
+      app boots after midnight the first rotation is delayed until the following midnight.
+      In flow mode both periodic refresh calls are no-ops, so yesterday's `combined_prices`
+      classification can persist all day. A naive immediate `updateCombinedPrices()` at boot
+      was previously tried and reverted because it broke the
+      "should throttle restoration of set_temperature devices to one per cycle" plan test
+      (the unconditional rebuild fires settings handlers that perturb the test's cooldown
+      state). A conditional catch-up — only when `combined_prices` is from a prior local
+      day — should be safe; verify it does not regress the plan throttle test.
+      Files: `lib/price/priceCoordinator.ts`, `test/plan.test.ts`, plan throttle tests.
 - [ ] Finish the starvation rollout beyond the current diagnostics implementation: add
       per-episode / duration-threshold flow triggers, verify insights coverage, and close any
       remaining snapshot/UI contract gaps against `notes/starvation/README.md`.
