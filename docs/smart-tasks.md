@@ -7,7 +7,7 @@ description: Use PELS Smart tasks to charge, heat, or prepare a managed device b
 
 Smart tasks tell PELS that one device should reach a target by a ready-by time.
 
-Instead of simply allowing the device to run whenever there is available power, PELS plans the useful hours before the deadline. It prefers cheaper hours when prices are available, while still using the device priority, daily budget, power-limit control, and hard cap settings from the rest of your setup.
+Instead of simply allowing the device to run whenever there is available power, PELS plans the useful hours before the ready-by time. It prefers cheaper hours when prices are available, while still using the device priority, daily budget, power-limit control, and hard cap settings from the rest of your setup.
 
 ## What Smart Tasks Are For
 
@@ -43,7 +43,7 @@ For each active task, PELS evaluates:
 - the daily budget and hard cap
 - the device priority and normal admission rules
 
-The Smart task plan chooses hours before the deadline. If prices are available for the whole window, cheaper hours are preferred. If tomorrow's prices are needed but not available yet, the task can remain pending until the price window is complete.
+The Smart task plan chooses hours before the ready-by time. If prices are available for the whole window, cheaper hours are preferred. If tomorrow's prices are needed but not available yet, the task can remain pending until the price window is complete.
 
 ![Smart task plan showing selected hours before a ready-by time](screenshots/deadline-plan/480.png)
 *Figure 1. A Smart task plan shows the selected price horizon, expected device work, background usage, and target progress.*
@@ -96,7 +96,7 @@ The Smart tasks view shows current tasks and past tasks. Flow cards can also rea
 | **On track** | PELS currently expects the task to reach the target. |
 | **At risk** | PELS has a plan, but there is limited time or room left. |
 | **Cannot finish** | PELS does not currently see enough usable time or energy delivery before the ready-by time. |
-| **Satisfied** | The observed target is already met. If a later reading drops below the target before the deadline, PELS returns to tracking it. |
+| **Satisfied** | The observed target is already met. If a later reading drops below the target before the ready-by time, PELS returns to tracking it. |
 
 If no active task is stored for a device, that device simply has no Smart task status.
 
@@ -143,4 +143,4 @@ This is useful for rooms or water heaters where the exact ready time matters mor
 | The EV task does not change charger current | Confirm the charger is configured as EV 1-phase or EV 3-phase and the Flow uses **EV charger current (A)**. |
 | The task starts too early | Check whether **Power-limit control** is on; with it on, normal PELS behavior can still run the device outside planned task hours. |
 | The task cannot meet the target | Check target size, ready-by time, planning power/current, daily budget, and device priority. |
-| A completed task starts tracking again | This is expected if a fresh reading drops below the target before the deadline. |
+| A completed task starts tracking again | This is expected if a fresh reading drops below the target before the ready-by time. |

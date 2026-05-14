@@ -23,7 +23,7 @@ The Insights device exposes these useful readings. Some Homey capability labels 
 | **Operating mode** | Current PELS mode selected in settings or by Flow |
 | **Capacity guard** | Whether PELS projects an hourly hard-cap breach and cannot limit any more load |
 | **Available power** | Extra power PELS can fit before the current safe pace |
-| **Current limit** | Current effective limit used for power limiting |
+| **Safe pace now** | Current effective pace used for power limiting |
 | **Used this hour** | Energy consumed so far in the current hour |
 | **Daily budget remaining** | Remaining daily budget, when daily pacing is enabled |
 | **Daily budget exceeded** | Whether the daily plan is currently over target |
@@ -55,5 +55,5 @@ That makes it appropriate for urgent notifications and manual intervention.
 The Insights device is a status surface, not a full configuration tool.
 
 - Use the **Overview** tab to inspect the detailed plan.
-- Use the **Budget** tab for capacity and daily-budget tuning.
+- Use **Settings > Limits & safety** for capacity tuning and **Budget** for daily-budget tuning.
 - Use **Flow Cards** when you need automations around state changes.

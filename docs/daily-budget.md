@@ -73,39 +73,52 @@ The daily plan shifts more of the remaining allowance to cheap hours, which rais
 ### 5) Daily budget off
 Daily budget disabled means PELS uses only hourly capacity and price optimization, if enabled. There is no daily pacing.
 
-## Settings
+## Where To Configure It
 
-The daily budget controls live in the **Budget** tab.
+The main daily budget surface is the **Budget** page.
 
-- **Enable daily energy budget**: turns the feature on/off.
-- **Daily budget (kWh)**: target daily energy use. Range: 20–360 kWh.
-- **Price-shape today plan**: when price optimization is enabled, the plan is weighted toward cheaper remaining hours.
-- **Reset learning**: clears the learned usage profile for future plans.
+The page has two local views:
 
-### Advanced tab tuning (expert)
+| View | What it does |
+| --- | --- |
+| **Plan** | Shows the selected day's progress, hourly plan, confidence, and current status. |
+| **Adjust** | Lets you preview and apply daily-budget changes before they become active. |
 
-The **Advanced** tab includes two daily-budget tuning controls:
+The **Adjust** view includes:
 
-- **Unmanaged usage reserve**: how much daily budget PELS holds back for household usage it cannot move, such as appliances, lights, and unmanaged devices. `Balanced` uses the normal reserve. `Conservative` reserves more, which can reduce daily-budget misses but leaves less budget for managed devices.
+- **Enable daily budget**: turns the feature on/off.
+- **Daily budget (kWh)**: target daily energy use. Range: 20-360 kWh.
+- **Use cheaper hours**: when price optimization is enabled and prices are reliable, the plan is weighted toward cheaper remaining hours.
+- **Background usage reserve**: how much daily budget PELS holds back for household usage it cannot move, such as appliances, lights, and unmanaged devices.
+- **Managed device flexibility**: how freely PELS may shift managed-device usage toward cheaper hours after preserving minimum service.
+
+Use **Preview changes** before applying. PELS shows the candidate plan so you can compare it with the current plan.
+
+### Advanced Tuning
+
+The same advanced tuning controls also appear under **Settings > Advanced > Daily budget tuning**. The Advanced page still uses the older label **Unmanaged usage reserve** for the same background usage reserve:
+
+- **Unmanaged usage reserve**: current Advanced label for background usage reserve. It controls how much daily budget PELS holds back for household usage it cannot move, such as appliances, lights, and unmanaged devices. `Balanced` uses the normal reserve. `Conservative` reserves more, which can reduce daily-budget misses but leaves less budget for managed devices.
 - **Managed device flexibility**: how freely PELS may shift managed-device usage toward cheaper hours after preserving minimum service. `Low` stays close to normal managed-device usage, `Medium` shifts some usage, and `High` shifts more aggressively toward cheaper feasible hours.
+- **Show daily budget breakdown in the chart**: stacks background usage and managed device usage in the chart.
 
 **Warning:** these controls can significantly change pacing behavior and when devices are limited or resumed. Keep defaults unless you are deliberately tuning behavior. If you change them, adjust one parameter at a time and observe at least a full day.
 
 For exact formulas and worked examples, see [Daily Budget Weighting Math (Advanced)](daily-budget-weights.md).
 
-## Today Plan View
+## Plan View
 
-The Budget tab shows a "Today plan" chart and live stats:
+The **Plan** view shows a selected-day chart and live stats:
 
 - **Used**: kWh used so far today (local time).
-- **Allowed now**: cumulative kWh that the plan allows up to the current hour.
+- **Allowed now** or **Budget this hour**: cumulative or hourly kWh that the plan allows up to the current hour.
 - **Remaining**: daily budget minus used (can be negative).
 - **Deviation**: used minus allowed so far (positive means over plan).
-- **Confidence**: backtested forecast-skill score - how regular the home's hourly usage is, and how well it follows shifted budget plans when managed load exists.
-- **Price shaping**: shows whether price shaping is active.
+- **Plan confidence**: backtested forecast-skill score - how regular the home's hourly usage is, and how well it follows shifted budget plans when managed load exists.
+- **Use cheaper hours**: shows whether price-aware shaping is active.
 - **Plan frozen**: appears while budget-managed load is over plan; exempt devices can leave reporting over plan without freezing the daily plan.
 
-The chart shows planned kWh per hour as bars, with actual kWh per hour as dots for completed hours.
+The chart can show **Progress** or **Hourly plan**. Progress focuses on whether the selected day is on track. Hourly plan shows the planned kWh per hour, with actual kWh for completed hours when available.
 
 ### Buckets and DST
 

@@ -7,18 +7,21 @@ description: What each PELS Homey Flow card does and which ones matter most for 
 
 Flow cards are how PELS connects to the rest of your Homey setup.
 
-If you only build one Flow, make it **Report power usage**. Everything else depends on having current load data.
+If you only build one Flow, make it **Report power usage**. Everything else depends on having current load data unless you use **Homey Energy** as the power source.
 
-## Required starter Flow
+Some older card names still use "headroom" or "capacity control" in Homey. In these docs, read **headroom** as **available power**: how much more load PELS can fit before the current safe pace. Read **capacity control** as **power-limit control**.
+
+## Required Starter Flow
 
 ### Report power usage
 
 Use the **Report power usage** action whenever your power meter updates.
 
-- Input is current power in **watts**
-- This is the data PELS uses to track hourly usage, calculate available power, and decide whether devices should be limited or resumed
+- Input is current power in **watts**.
+- This is the data PELS uses to track hourly usage, calculate available power, and decide whether devices should be limited or resumed.
+- You do not need this Flow when **Settings > Limits & safety > Power source** is set to **Homey Energy**.
 
-Without this action, the planner cannot behave correctly.
+Without whole-home power data, the planner cannot behave correctly.
 
 ## Triggers
 
@@ -29,8 +32,10 @@ Without this action, the planner cannot behave correctly.
 | **Price level changed to...** | Fires when the price level changes between Cheap, Normal, Expensive, or Unknown. |
 | **Current price is one of today's lowest** | Fires when the current hour is among the selected number of cheapest hours today. |
 | **Current price is one of the lowest before a time** | Fires when the current hour is among the selected number of cheapest hours in a window before a chosen end hour. |
+| **Desired stepped load changed for** | Fires when PELS wants a stepped-load device, including EV charger control modes, to move to another configured step. |
 | **Smart task status changed** | Fires when PELS re-evaluates a Smart task for a device and the status changes, such as **On track** to **At risk**. |
-| **Smart task missed** | Fires the next time PELS evaluates a Smart task that has already passed without reaching its target. |
+| **Smart task plan changed** | Fires when the scheduled hours for a Smart task are revised, for example after new prices arrive. |
+| **Smart task missed** | Legacy trigger that fires when the selected time passes before the task target is reached. Prefer **Smart task status changed** for new notification Flows unless you specifically need the missed-task trigger. |
 
 Use **Capacity guard: manual action needed** for urgent notifications, not for normal daily pacing.
 
@@ -38,38 +43,63 @@ Use **Capacity guard: manual action needed** for urgent notifications, not for n
 
 | Card | What it does |
 | --- | --- |
-| **Is there enough headroom?** | Checks if the current available power can fit a specified extra load in kW. |
-| **Is there headroom for device?** | Checks if current available power can fit the device's estimated draw plus a specified extra load. Useful for stepped devices. |
+| **Is there enough headroom?** | Legacy label. Checks whether current available power can fit a specified extra load in kW. |
+| **Is there headroom for device?** | Legacy label. Checks whether current available power can fit the selected device's estimated draw plus a specified extra load. Useful for stepped devices. |
 | **Operating mode is...** | Checks which mode is active. |
 | **Price level is...** | Checks the current price bucket. |
 | **Current price is one of today's lowest** | True when the current hour is among the selected number of cheapest hours today. |
 | **Current price is one of the lowest before a time** | True when the current hour is among the selected number of cheapest hours in a window before a chosen end hour. |
-| **Smart task status is...** | True when the current Smart task status for the chosen device matches the chosen status: **Waiting**, **On track**, **At risk**, **Cannot finish**, or **Satisfied**. |
+| **Is device managed by PELS?** | Checks whether PELS currently manages the selected device. |
+| **Is device capacity controlled?** | Legacy label. Checks whether power-limit control is enabled for the selected device. |
+| **Does device have budget exemption?** | Checks whether the selected device is ignored by daily-budget control while still counting in real usage and hourly hard-cap protection. |
+| **Smart task status is...** | True when the current Smart task status for the chosen device matches **Waiting**, **On track**, **At risk**, **Cannot finish**, or **Satisfied**. |
 | **Has smart task** | True when the device has a stored Smart task. |
 
-The device-aware condition already includes built-in hysteresis after recent limiting or resume events on the same device.
+The device-aware available-power condition includes built-in hysteresis after recent limiting or resume events on the same device.
 
 ## Actions
 
 | Card | What it does |
 | --- | --- |
-| **Report power usage** | Feeds live meter data into PELS. Required. |
-| **Set capacity limit** | Changes the configured hard-cap limit dynamically. |
+| **Report power usage** | Feeds live meter data into PELS. Required unless the power source is Homey Energy. |
+| **Set capacity limit** | Changes the configured hard cap dynamically. |
 | **Set operating mode** | Switches between stored modes such as Home or Night. |
-| **Set expected power for device** | Temporarily sets a device's expected draw in watts. Fails if the device already has a configured `settings.load`. |
+| **Set daily budget** | Sets the daily budget from a Flow. Use `0` to disable daily budget. |
+| **Add budget exemption for device** | Makes a device skip daily-budget control. Real usage still counts in charts and hourly hard-cap protection. |
+| **Remove budget exemption for device** | Makes a device follow daily-budget control again. |
 | **Enable capacity control for device** | Turns on power-limit control for one device. |
 | **Disable capacity control for device** | Turns off power-limit control for one device. |
+| **Set expected power for device** | Legacy/manual override of a device's expected draw in watts. Fails if the device already has configured load or a stepped-load profile. |
 | **Set external prices (today)** | Stores today's hourly prices from a Flow tag payload. |
 | **Set external prices (tomorrow)** | Stores tomorrow's hourly prices from a Flow tag payload. |
+| **Report stepped load** as **step** | Reports the selected stepped-load level directly, usually after a vendor-specific action card. |
+| **Report stepped load** matching **power** | Reports a power value and lets PELS match it to the configured stepped-load planning power. Accepts values such as `1750` or `1750 W`. |
+| **Report battery level for charger** | Stores battery percentage for a managed charger when the car or charger app exposes that value. Used by charge boost and charging Smart tasks. |
 | **Add heating task** | Stores a target temperature and ready-by time for a temperature device. PELS picks useful cheaper hours before the ready-by time. |
 | **Add charging task** | Stores a target battery percentage and ready-by time for an EV charger. |
 | **Clear smart task** | Removes any active Smart task for a device. |
 
-## Common automation patterns
+## Common Automation Patterns
 
 ### Mode switching
 
 Use **Set operating mode** from schedules or presence events to move between comfort profiles without changing every device manually.
+
+### Daily-budget automation
+
+Use **Set daily budget** when the daily target should vary by season, tariff, occupancy, or manual Homey controls.
+
+Use **Add budget exemption for device** for a device that should not cause other devices to be limited just to compensate for its daily energy use. Exempt devices still count in real usage and hourly hard-cap protection.
+
+### Device state checks
+
+Use the device-state conditions to avoid duplicate actions:
+
+| Goal | Condition |
+| --- | --- |
+| Only enable control when a device is managed | **Is device managed by PELS?** |
+| Check whether a Flow-booked device is currently allowed | **Is device capacity controlled?** |
+| Check whether daily-budget control currently ignores a device | **Does device have budget exemption?** |
 
 ### Stepped load control
 
@@ -79,9 +109,13 @@ For water heaters and similar non-EV devices using the built-in stepped-load mod
 2. Use **Desired stepped load changed for [device]** to map PELS intent to vendor actions.
 3. Report the resulting step back through one of the stepped-load feedback cards.
 
-The full worked example lives in [Wire a Flow-Controlled Load Device](/how-to-headroom-expected-power-flow-control).
+The full worked example lives in [Wire a Flow-Based Load Device](/how-to-headroom-expected-power-flow-control).
 
 For EV chargers, prefer the EV charger control mode and wire the **EV charger current (A)** tag directly to the charger app's available-current action. See [Configure an EV Charger](/ev-charger). Zaptec-specific notes live in [Configure a Zaptec EV Charger](/zaptec-ev-charger).
+
+### EV battery reporting
+
+Use **Report battery level for charger** when a car or charger app reports battery percentage. This is optional for basic current control, but it is needed for charge boost and charging Smart tasks that depend on battery progress.
 
 ### Smart tasks
 
@@ -93,13 +127,13 @@ Use Smart task cards when one device should reach a target by a ready-by time.
 | Heat a temperature device to a target temperature | **Add heating task** |
 | Remove the current task for a device | **Clear smart task** |
 
-Use **Smart task status changed** for notifications and **Has smart task** when another Flow should behave differently while a task is active.
+Use **Smart task status changed** for notifications, **Smart task plan changed** when you care that the scheduled hours moved, and **Has smart task** when another Flow should behave differently while a task is active.
 
 See [Smart Tasks](/smart-tasks) for setup examples.
 
 ### Book cheap hours before a time
 
-Use **Current price is one of the lowest before a time** when you want a Flow to allow a device during a fixed number of cheap hours before a deadline-like end time.
+Use **Current price is one of the lowest before a time** when you want a Flow to allow a device during a fixed number of cheap hours before a ready-by-style end time.
 
 Example:
 
@@ -123,10 +157,11 @@ If you use an external price provider:
 2. Send tomorrow's full-day JSON to **Set external prices (tomorrow)**.
 3. Let PELS use whichever price window is currently available.
 
-## Units to keep straight
+## Units To Keep Straight
 
-- Available-power checks use **kW**
-- Expected power overrides use **W**
-- Hourly and daily budget values use **kWh**
+- Available-power checks use **kW**.
+- Expected power overrides use **W**.
+- Hourly and daily budget values use **kWh**.
+- EV charger current tags use **A**.
 
 Mixing these units is the most common Flow mistake.

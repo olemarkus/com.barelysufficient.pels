@@ -96,7 +96,7 @@ After this Flow is running, PELS has battery reporting for the charger. EV boost
 
 ## Step 5: Check the Setup
 
-Start with dry run if you are still tuning the rest of PELS. Then verify:
+Start with **Simulation mode** if you are still tuning the rest of PELS. Then verify:
 
 1. The charger is visible as a managed device in PELS.
 2. The charger uses **EV 1-phase** or **EV 3-phase** control mode.
@@ -112,7 +112,7 @@ Start with dry run if you are still tuning the rest of PELS. Then verify:
 | The Flow does not trigger | Confirm the charger is managed, power-limit control is enabled, and PELS has live whole-home power data. |
 | The charger receives the wrong current | Check that the device uses the correct **EV 1-phase** or **EV 3-phase** control mode. |
 | Battery level does not update in PELS | Check that the battery reporting Flow uses the same charger device as the current-control Flow. |
-| PELS never limits the charger | Check the charger priority, capacity limit, safety margin, and whether dry run is still enabled. |
+| PELS never limits the charger | Check the charger priority, hard cap, safety margin, and whether Simulation mode is still enabled. |
 
 ## Related Pages
 

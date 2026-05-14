@@ -16,7 +16,7 @@ Use this page when you are deciding whether to rely on power limiting, daily bud
 | **Power limiting** | Staying below a grid tariff step or breaker limit | Pauses, lowers, or resumes managed devices when the home gets close to the hard cap | Hourly hard cap |
 | **Daily budget** | Shaping total whole-home energy through the day | Gives more room to cheap or useful hours and less room to expensive hours | Daily kWh budget plus hourly hard cap |
 | **Price-based temperature shift** | Moving heating or cooling on devices with thermal mass | Raises targets in cheap hours and lowers targets in expensive hours | Temperature comfort range |
-| **Smart tasks** | Getting a specific device ready by a time | Plans the cheapest useful hours before the ready-by time | Target, deadline, prices, budget, and hard cap |
+| **Smart tasks** | Getting a specific device ready by a time | Plans the cheapest useful hours before the ready-by time | Target, ready-by time, prices, budget, and hard cap |
 | **Flow-booked hours** | Custom "run for X cheap hours before Y" automation | Your Flow enables power-limit control only during selected hours | Your Flow logic plus hard cap |
 
 ![PELS overview showing live power, safe pace, and managed devices](/screenshots/landing-overview.png)
@@ -61,7 +61,7 @@ Use it when:
 
 - The device has thermal mass.
 - Comfort can drift a little without becoming a problem.
-- You want a simple setup without a deadline.
+- You want a simple setup without a ready-by time.
 
 Good candidates are floor heating, water heaters, and rooms that stay warm for a while after heating stops. Poor candidates are rooms where the temperature must be exact at a specific time.
 
