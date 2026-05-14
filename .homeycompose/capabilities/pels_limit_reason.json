@@ -4,7 +4,7 @@
     "en": "Limit reason"
   },
   "desc": {
-    "en": "Why PELS is currently limiting device restores or shedding"
+    "en": "Why PELS is currently limiting devices or delaying resume"
   },
   "getable": true,
   "setable": false,

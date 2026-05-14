@@ -6,7 +6,7 @@
     "en": "Disable capacity control for [[device]]"
   },
   "hint": {
-    "en": "Keep PELS from shedding or restoring this device while capacity control is disabled."
+    "en": "Keep PELS from limiting or resuming this device while capacity control is disabled."
   },
   "args": [
     {

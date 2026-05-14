@@ -6,7 +6,7 @@
     "en": "Enable capacity control for [[device]]"
   },
   "hint": {
-    "en": "Allow PELS to shed or restore this device based on capacity limits."
+    "en": "Allow PELS to limit or resume this device based on capacity limits."
   },
   "args": [
     {

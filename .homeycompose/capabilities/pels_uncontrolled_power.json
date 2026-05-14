@@ -1,10 +1,10 @@
 {
   "type": "number",
   "title": {
-    "en": "Uncontrolled load"
+    "en": "Background usage"
   },
   "desc": {
-    "en": "Current uncontrolled load"
+    "en": "Current background (unmanaged) usage"
   },
   "units": {
     "en": "kW"
