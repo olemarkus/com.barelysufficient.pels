@@ -153,8 +153,9 @@ export class PriceCoordinator {
         this.updateCombinedPrices();
       } catch (error) {
         this.deps.error('Midnight price rotation failed', error);
+      } finally {
+        this.scheduleNextMidnightRotation();
       }
-      this.scheduleNextMidnightRotation();
     }, delayMs);
   }
 
