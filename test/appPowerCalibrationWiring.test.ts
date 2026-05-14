@@ -526,6 +526,36 @@ describe('fresh-install vs transient-miss discriminator', () => {
     expect(wrote).toBe(false);
   });
 
+  it('engages grace when the snapshot read throws even if the marker is absent', () => {
+    // Regression: an upgrading install legitimately has no marker on first
+    // post-upgrade boot. If the snapshot read also throws transiently, the
+    // loader must NOT collapse into the fresh-install branch (rawIsAbsent &&
+    // !hasInitMarker) — that would overwrite prior history on the next
+    // persist. A thrown read forces grace regardless of marker state.
+    const homey = {
+      settings: {
+        get: (key: string): unknown => {
+          if (key === POWER_CALIBRATION) throw new Error('transient SDK miss');
+          if (key === POWER_CALIBRATION_INITIALIZED) return undefined;
+          return undefined;
+        },
+        set: () => undefined,
+      },
+    };
+    const store = loadPowerCalibrationStore({
+      homey: homey as never,
+      options: { persistDebounceMs: 0, nowMs: 1_000 },
+    });
+    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    const wrote = persistPowerCalibrationIfDue({
+      homey: homey as never,
+      store,
+      nowMs: 1_500,
+      error: () => undefined,
+    });
+    expect(wrote).toBe(false);
+  });
+
   it('engages grace when both snapshot and marker reads throw', () => {
     // Paired SDK throws on startup must not be misclassified as a fresh
     // install. The marker read throw is the load-bearing detail here: if
