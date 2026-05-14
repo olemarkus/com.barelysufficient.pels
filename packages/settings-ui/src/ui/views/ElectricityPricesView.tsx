@@ -13,6 +13,7 @@ import {
   MdSelectOption,
   MdTextButton,
 } from './materialWebJSX.tsx';
+import { ArrowBackIcon } from './icons.tsx';
 
 type ValueElement = HTMLElement & { value: string };
 
@@ -56,7 +57,8 @@ const Header = () => (
       class="btn ghost settings-back-button"
       data-settings-target="settings"
     >
-      ‹ Settings
+      <ArrowBackIcon slot="icon" />
+      Settings
     </MdTextButton>
     <div class="card__header">
       <div>

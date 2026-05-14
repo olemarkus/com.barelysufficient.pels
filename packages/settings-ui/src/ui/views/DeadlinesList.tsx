@@ -1,5 +1,6 @@
 import { render } from 'preact';
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
+import { ChevronRightIcon } from './icons.tsx';
 import { deadlineLabels } from '../../../../shared-domain/src/deadlineLabels.ts';
 import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/deferredObjectiveSettings.ts';
 
@@ -79,7 +80,7 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
           <dd>{formatWhen(card.deadlineAtMs)}</dd>
         </div>
       </dl>
-      <span class="deadline-list-card__chevron" aria-hidden="true">›</span>
+      <ChevronRightIcon class="deadline-list-card__chevron" />
     </a>
   );
 };

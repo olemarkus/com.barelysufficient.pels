@@ -35,7 +35,10 @@
     </div>
 
     <section class="card panel hidden" id="devices-panel" data-panel="devices">
-      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">‹ Settings</md-text-button>
+      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">
+        <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+        Settings
+      </md-text-button>
       <div class="card__header">
         <div>
           <p class="eyebrow">Devices</p>
@@ -91,7 +94,7 @@
           </span>
           <span class="device-control-legend__action" aria-hidden="true">
             <span class="device-control-legend__action-label">Explain</span>
-            <span class="device-control-legend__chevron">▸</span>
+            <svg class="device-control-legend__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
           </span>
         </summary>
         <ul class="device-control-legend__list">
@@ -141,7 +144,10 @@
     </section>
 
     <section class="card panel hidden" id="modes-panel" data-panel="modes">
-      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">‹ Settings</md-text-button>
+      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">
+        <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+        Settings
+      </md-text-button>
       <div class="card__header">
         <div>
           <p class="eyebrow">Modes</p>
@@ -250,7 +256,7 @@
         <md-elevation aria-hidden="true"></md-elevation>
         <div class="usage-card__header">
           <div class="usage-card__heading">
-            <h3 class="plan-card__title" id="usage-history-title">Last 14 days</h3>
+            <h3 class="plan-card__title" id="usage-history-title">Daily usage</h3>
             <p class="pels-card-supporting" id="daily-history-range-hint">Last 14 days</p>
           </div>
           <div class="usage-card__actions">
@@ -292,14 +298,18 @@
             <span class="plan-card__title plan-card__title--inline">Detailed hourly view</span>
             <span class="pels-card-supporting" id="power-week-label">This week</span>
           </span>
-          <span class="usage-card__summary-affordance" aria-hidden="true">›</span>
+          <svg class="usage-card__summary-affordance" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
         </summary>
         <md-elevation aria-hidden="true"></md-elevation>
         <div class="usage-card__collapsible-content">
           <div class="usage-card__actions usage-card__actions--standalone">
             <div class="usage-week-nav" role="group" aria-label="Hourly detail week">
-              <md-text-button id="power-week-prev" aria-label="Previous week">‹</md-text-button>
-              <md-text-button id="power-week-next" aria-label="Next week">›</md-text-button>
+              <md-text-button id="power-week-prev" aria-label="Previous week">
+                <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15.41 16.59 10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z" fill="currentColor"/></svg>
+              </md-text-button>
+              <md-text-button id="power-week-next" aria-label="Next week">
+                <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
+              </md-text-button>
             </div>
           </div>
           <ul id="power-list" class="device-list usage-list"></ul>
@@ -362,43 +372,46 @@
         <md-list-item type="button" class="settings-nav-card" data-settings-target="limits">
           <span slot="headline" class="settings-nav-card__title">Limits &amp; safety</span>
           <span slot="supporting-text" class="settings-nav-card__description">Hard cap, safety margin, power source</span>
-          <span slot="end" class="settings-nav-card__chevron" aria-hidden="true">›</span>
+          <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
         </md-list-item>
         <md-list-item type="button" class="settings-nav-card" data-settings-target="devices">
           <span slot="headline" class="settings-nav-card__title">Devices</span>
           <span slot="supporting-text" class="settings-nav-card__description">Managed devices and per-device behavior</span>
-          <span slot="end" class="settings-nav-card__chevron" aria-hidden="true">›</span>
+          <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
         </md-list-item>
         <md-list-item type="button" class="settings-nav-card" data-settings-target="modes">
           <span slot="headline" class="settings-nav-card__title">Modes</span>
           <span slot="supporting-text" class="settings-nav-card__description">Priorities and temperatures</span>
-          <span slot="end" class="settings-nav-card__chevron" aria-hidden="true">›</span>
+          <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
         </md-list-item>
         <md-list-item type="button" class="settings-nav-card" data-settings-target="electricity-prices">
           <span slot="headline" class="settings-nav-card__title">Electricity prices</span>
           <span slot="supporting-text" class="settings-nav-card__description">Source, tariffs, cheap and expensive hours</span>
-          <span slot="end" class="settings-nav-card__chevron" aria-hidden="true">›</span>
+          <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
         </md-list-item>
         <md-list-item type="button" class="settings-nav-card" data-settings-target="price-aware-devices">
           <span slot="headline" class="settings-nav-card__title">Price-aware devices</span>
           <span slot="supporting-text" class="settings-nav-card__description">Devices that respond to cheap and expensive hours</span>
-          <span slot="end" class="settings-nav-card__chevron" aria-hidden="true">›</span>
+          <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
         </md-list-item>
         <md-list-item type="button" class="settings-nav-card" data-settings-target="simulation">
           <span slot="headline" class="settings-nav-card__title">Simulation mode</span>
           <span slot="supporting-text" class="settings-nav-card__description">Test behavior without switching devices</span>
-          <span slot="end" class="settings-nav-card__chevron" aria-hidden="true">›</span>
+          <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
         </md-list-item>
         <md-list-item type="button" class="settings-nav-card settings-nav-card--quiet" data-settings-target="advanced">
           <span slot="headline" class="settings-nav-card__title">Advanced</span>
           <span slot="supporting-text" class="settings-nav-card__description">Diagnostics, cleanup, logs, experiments</span>
-          <span slot="end" class="settings-nav-card__chevron" aria-hidden="true">›</span>
+          <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
         </md-list-item>
       </md-list>
     </section>
 
     <section class="card panel hidden settings-detail-panel" id="limits-panel" data-panel="limits" aria-labelledby="limits-title">
-      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">‹ Settings</md-text-button>
+      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">
+        <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+        Settings
+      </md-text-button>
       <div class="card__header">
         <div>
           <p class="eyebrow">Limits &amp; safety</p>
@@ -428,7 +441,10 @@
     </section>
 
     <section class="card panel hidden settings-detail-panel" id="simulation-panel" data-panel="simulation" aria-labelledby="simulation-title">
-      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">‹ Settings</md-text-button>
+      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">
+        <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+        Settings
+      </md-text-button>
       <div class="card__header">
         <div>
           <p class="eyebrow">Simulation mode</p>
@@ -456,7 +472,10 @@
     </section>
 
     <section class="card panel hidden" id="advanced-panel" data-panel="advanced">
-      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">‹ Settings</md-text-button>
+      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">
+        <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+        Settings
+      </md-text-button>
       <div class="card__header">
         <div>
           <p class="eyebrow">Advanced</p>
@@ -579,7 +598,8 @@
     <div id="device-detail-panel" class="slide-panel">
       <div class="slide-panel__header">
         <md-text-button id="device-detail-close" class="settings-back-button" aria-label="Back to devices">
-          <span aria-hidden="true">‹</span>&nbsp;Devices
+          <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+          Devices
         </md-text-button>
       </div>
 

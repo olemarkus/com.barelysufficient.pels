@@ -477,13 +477,14 @@ md-primary-tab.tab[active]:hover {
 }
 
 .device-control-legend__chevron {
-  font-size: var(--font-size-sm);
+  width: 0.875rem;
+  height: 0.875rem;
   transition: transform var(--transition-fast);
-  line-height: var(--font-line-height-flat);
+  flex-shrink: 0;
 }
 
 .device-control-legend[open] .device-control-legend__chevron {
-  transform: rotate(90deg);
+  transform: rotate(180deg);
 }
 
 .device-control-legend__list {
@@ -528,6 +529,19 @@ md-primary-tab.tab[active]:hover {
 .device-control-legend__icon svg {
   width: 20px;
   height: 20px;
+}
+
+/* At 320px the legend's three pills plus "Explain" overflow by ~2px because of
+   the action label's uppercase letter-spacing. Drop the text and keep the chevron
+   alone — the open/close affordance is still clear. */
+@media (max-width: 360px) {
+  .device-control-legend__summary {
+    gap: var(--spacing-2);
+  }
+
+  .device-control-legend__action-label {
+    display: none;
+  }
 }
 
 .pels-device-card {
@@ -689,9 +703,8 @@ md-primary-tab.tab[active]:hover {
 
 .pels-device-card__detail-icon {
   display: block;
-  font-size: var(--font-size-headline-md);
-  line-height: var(--font-line-height-flat);
-  transform: translateY(-1px);
+  width: 1.5rem;
+  height: 1.5rem;
 }
 
 .budget-redesign-surface {
@@ -844,8 +857,8 @@ md-primary-tab.tab[active]:hover {
 .settings-nav-card__chevron {
   justify-self: end;
   color: var(--muted);
-  font-size: var(--spacing-6);
-  line-height: var(--font-line-height-flat);
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .settings-detail-panel {
@@ -3059,46 +3072,6 @@ md-primary-tab.tab[active]:hover {
   opacity: 0.5;
 }
 
-/* Collapsible price details */
-.price-details {
-  margin-top: 8px;
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.price-details summary {
-  padding: 10px 12px;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  color: var(--muted);
-  background: var(--panel-bg);
-  cursor: pointer;
-  list-style: none;
-}
-
-.price-details summary::-webkit-details-marker {
-  display: none;
-}
-
-.price-details summary::before {
-  content: '▸ ';
-  display: inline-block;
-  transition: transform var(--transition-default);
-}
-
-.price-details[open] summary::before {
-  transform: rotate(90deg);
-}
-
-.price-details :where(summary:hover) {
-  background: var(--panel-hover);
-}
-
-.price-details .device-row {
-  border-top: 1px solid var(--panel-border);
-}
-
 .price-notice {
   padding: 16px 0;
   text-align: center;
@@ -3284,14 +3257,18 @@ md-primary-tab.tab[active]:hover {
 }
 
 .settings-collapse summary::after {
-  content: "▸";
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
   color: var(--muted);
-  font-size: var(--font-size-xs);
-  transition: transform var(--transition-default);
+  transform: rotate(45deg);
+  transition: transform var(--transition-fast);
 }
 
 .settings-collapse[open] summary::after {
-  transform: rotate(90deg);
+  transform: rotate(225deg);
 }
 
 .settings-collapse .collapse-content {
@@ -5024,8 +5001,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   grid-row: 1 / -1;
   align-self: center;
   color: var(--muted);
-  font-size: var(--spacing-6);
-  line-height: var(--font-line-height-flat);
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .deadline-list-card__target {
@@ -5217,14 +5194,14 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .usage-card__summary-affordance {
-  font-size: 1.25rem;
+  width: 1.25rem;
+  height: 1.25rem;
   color: var(--pels-text-secondary);
   transition: transform var(--transition-fast);
-  line-height: var(--font-line-height-flat);
 }
 
 .usage-card--collapsible[open] .usage-card__summary-affordance {
-  transform: rotate(90deg);
+  transform: rotate(180deg);
 }
 
 .usage-card__collapsible-content {
