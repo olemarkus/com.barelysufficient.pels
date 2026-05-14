@@ -2,6 +2,7 @@ import { render } from 'preact';
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import { deadlineLabels } from '../../../../shared-domain/src/deadlineLabels.ts';
 import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/deferredObjectiveSettings.ts';
+import { cardLinkClickHandler } from '../cardLinkActivation.ts';
 
 export type DeadlinesListCard = {
   deviceId: string;
@@ -49,7 +50,12 @@ const formatTarget = (card: DeadlinesListCard): string => {
 const Card = ({ card }: { card: DeadlinesListCard }) => {
   const labels = deadlineLabels(card.kind);
   return (
-    <a class="deadline-list-card clickable" href={card.href} data-device-id={card.deviceId}>
+    <a
+      class="deadline-list-card clickable"
+      href={card.href}
+      data-device-id={card.deviceId}
+      onClick={cardLinkClickHandler(card.href)}
+    >
       <MdElevation aria-hidden="true" />
       <MdRipple aria-hidden="true" />
       <div class="deadline-list-card__header">

@@ -9,6 +9,7 @@ import {
   shouldShowBackupHoursPill,
 } from '../../../../shared-domain/src/deferredPlanHistory.ts';
 import { buildDeadlineHistoryHref } from '../deadlineUrls.ts';
+import { cardLinkClickHandler } from '../cardLinkActivation.ts';
 
 type DeadlinePlanHistoryProps = {
   entries: DeferredObjectivePlanHistoryEntry[];
@@ -25,11 +26,13 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
   const progressLine = formatPlanHistoryProgressLine(entry);
   const reachedAtLine = formatPlanHistoryReachedAtLine(entry, timeZone);
   const coverageLine = formatPlanHistoryObservedCoverage(entry);
+  const href = buildDeadlineHistoryHref(entry.deviceId, entry.id);
   return (
     <a
       class="plan-history-card plan-history-card--link"
       aria-label={`Past plan ${deadlineLine}`}
-      href={buildDeadlineHistoryHref(entry.deviceId, entry.id)}
+      href={href}
+      onClick={cardLinkClickHandler(href)}
     >
       <header class="plan-history-card__header">
         <span class="plan-history-card__deadline">{deadlineLine}</span>

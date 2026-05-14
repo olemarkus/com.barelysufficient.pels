@@ -156,4 +156,35 @@ describe('DeadlinePlanHistory', () => {
     const chip = mount.querySelector('.plan-chip--muted');
     expect(chip?.textContent).toBe('Abandoned');
   });
+
+  it('navigates programmatically on tap so anchor clicks always open the detail page', () => {
+    // Regression: some Homey WebView builds did not act on the browser's
+    // default anchor navigation, leaving past task cards visually tappable
+    // but inert. A JS click handler that calls `window.location.assign` makes
+    // taps reliable while keeping `href` for right-click and accessibility.
+    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [buildEntry()], timeZone: 'UTC' }));
+    const link = mount.querySelector<HTMLAnchorElement>('a.plan-history-card--link');
+    expect(link?.getAttribute('href')).toMatch(/deadline-plan\.html\?deviceId=/);
+    // jsdom's `window.location.assign` is not configurable via spyOn — swap
+    // the whole `location` object out so we can observe the call.
+    const original = window.location;
+    const calls: string[] = [];
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { ...original, assign: (url: string) => { calls.push(url); } },
+    });
+    try {
+      const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+      link?.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+      expect(calls).toEqual([link!.getAttribute('href')]);
+    } finally {
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        writable: true,
+        value: original,
+      });
+    }
+  });
 });

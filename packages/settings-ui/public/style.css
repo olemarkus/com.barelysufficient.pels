@@ -4924,6 +4924,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   box-shadow: var(--shadow-md);
   color: var(--text);
   text-decoration: none;
+  cursor: pointer;
   overflow: hidden;
 }
 
