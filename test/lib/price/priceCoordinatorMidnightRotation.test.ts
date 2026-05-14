@@ -33,7 +33,9 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     const updateSpy = vi.spyOn(coordinator, 'updateCombinedPrices');
 
     coordinator.startPriceRefresh();
-    expect(updateSpy).not.toHaveBeenCalled();
+    // Boot triggers an immediate cold-start rotation; reset to focus on the scheduled fire.
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    updateSpy.mockClear();
 
     // Just before the scheduled fire.
     vi.advanceTimersByTime(90 * 60 * 1000 + 29 * 1000);
@@ -53,6 +55,8 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     const updateSpy = vi.spyOn(coordinator, 'updateCombinedPrices');
 
     coordinator.startPriceRefresh();
+    // Discard the immediate cold-start call so the assertions track scheduled fires only.
+    updateSpy.mockClear();
 
     // Advance past the first midnight (00:00:30 local on 2026-05-11).
     vi.advanceTimersByTime(91 * 60 * 1000);
@@ -77,11 +81,16 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
       logDebug: () => undefined,
       error: errorLog,
     });
-    const updateSpy = vi.spyOn(coordinator, 'updateCombinedPrices').mockImplementationOnce(() => {
+    const updateSpy = vi.spyOn(coordinator, 'updateCombinedPrices');
+
+    // Let the cold-start call run normally, then arm the next call (the midnight fire) to throw.
+    coordinator.startPriceRefresh();
+    updateSpy.mockClear();
+    errorLog.mockClear();
+    updateSpy.mockImplementationOnce(() => {
       throw new Error('boom');
     });
 
-    coordinator.startPriceRefresh();
     vi.advanceTimersByTime(91 * 60 * 1000);
     expect(updateSpy).toHaveBeenCalledTimes(1);
     expect(errorLog).toHaveBeenCalledWith('Midnight price rotation failed', expect.any(Error));
@@ -100,10 +109,67 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     const updateSpy = vi.spyOn(coordinator, 'updateCombinedPrices');
 
     coordinator.startPriceRefresh();
+    // Boot rotation fires; clear so we only observe post-stop activity.
+    updateSpy.mockClear();
     coordinator.stop();
 
     vi.advanceTimersByTime(48 * 60 * 60 * 1000);
     expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not invoke updateCombinedPrices from a pending rotation timer that fires after stop()', () => {
+    // Guards the race window between stop() running clearTimeout and an already-queued
+    // setTimeout callback executing. The `stopped` flag must short-circuit the callback body.
+    vi.useFakeTimers().setSystemTime(new Date('2026-05-10T20:30:00.000Z'));
+
+    // Capture the rotation callback as it's scheduled so we can fire it manually after stop().
+    const capturedCallbacks: TimerHandler[] = [];
+    const setTimeoutSpy = vi.spyOn(global, 'setTimeout').mockImplementation(((handler: TimerHandler) => {
+      capturedCallbacks.push(handler);
+      // Return an opaque handle; clearTimeout is also stubbed below so it's never used.
+      return { __captured: true } as never;
+    }) as typeof setTimeout);
+    const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout').mockImplementation(() => undefined);
+
+    const coordinator = createCoordinator();
+    const updateSpy = vi.spyOn(coordinator, 'updateCombinedPrices');
+
+    coordinator.startPriceRefresh();
+    // Drop the immediate boot call so assertions only track the scheduled timer.
+    updateSpy.mockClear();
+
+    // The midnight rotation must have been scheduled.
+    const rotationCallback = capturedCallbacks.at(-1);
+    expect(typeof rotationCallback).toBe('function');
+
+    // stop() flips the flag (and would call clearTimeout, but our stub no-ops).
+    coordinator.stop();
+
+    // Simulate the race: the already-queued timer fires after stop().
+    if (typeof rotationCallback === 'function') {
+      rotationCallback();
+    }
+
+    expect(updateSpy).not.toHaveBeenCalled();
+
+    setTimeoutSpy.mockRestore();
+    clearTimeoutSpy.mockRestore();
+  });
+
+  it('runs an immediate updateCombinedPrices on startPriceRefresh (cold-start catch-up)', () => {
+    // If the app boots after midnight, the cached COMBINED_PRICES still carries
+    // yesterday's classification until the next midnight. The boot-time call rotates it now.
+    vi.useFakeTimers().setSystemTime(new Date('2026-05-10T20:30:00.000Z'));
+
+    const coordinator = createCoordinator();
+    const updateSpy = vi.spyOn(coordinator, 'updateCombinedPrices');
+
+    coordinator.startPriceRefresh();
+
+    // The immediate call must happen synchronously, before any timer advances.
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+
+    coordinator.stop();
   });
 
   it('rotates flow-scheme combined prices on midnight without external triggers', () => {
@@ -123,8 +189,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
 
     const coordinator = createCoordinator();
     coordinator.startPriceRefresh();
-    // Initial publish so we have a baseline to compare against.
-    coordinator.updateCombinedPrices();
+    // startPriceRefresh now performs the initial publish; no need to call manually.
 
     const beforeMidnight = mockHomeyInstance.settings.get(COMBINED_PRICES) as
       | { days?: Record<string, unknown> }

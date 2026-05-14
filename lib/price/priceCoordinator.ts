@@ -30,6 +30,10 @@ export class PriceCoordinator {
   private priceOptimizer?: PriceOptimizer;
   private priceRefreshInterval?: ReturnType<typeof setInterval>;
   private midnightRotationTimeout?: ReturnType<typeof setTimeout>;
+  // Guards midnight-rotation re-entry. A pending setTimeout may still fire
+  // briefly after stop() before clearTimeout takes effect; without this flag
+  // the callback would call updateCombinedPrices and reschedule itself.
+  private stopped = false;
   private priceOptimizationEnabled = true;
   private priceOptimizationSettings: Record<string, {
     enabled: boolean;
@@ -104,6 +108,7 @@ export class PriceCoordinator {
   }
 
   stop(): void {
+    this.stopped = true;
     if (this.priceRefreshInterval) {
       clearInterval(this.priceRefreshInterval);
       this.priceRefreshInterval = undefined;
@@ -116,6 +121,7 @@ export class PriceCoordinator {
   }
 
   startPriceRefresh(): void {
+    this.stopped = false;
     // Refresh prices every 3 hours
     const refreshIntervalMs = 3 * 60 * 60 * 1000;
 
@@ -130,10 +136,18 @@ export class PriceCoordinator {
     // UI fetch) calls updateCombinedPrices. Without a midnight nudge, COMBINED_PRICES keeps
     // yesterday's isCheap/isExpensive classification until the next push, so flow-only users
     // see stale price tiers post-midnight. Schedule a one-shot nudge per local midnight.
+    // Also rotate once on boot: if the app (re)started after midnight, the cached
+    // COMBINED_PRICES still carries yesterday's classification until the *next* midnight.
+    try {
+      this.updateCombinedPrices();
+    } catch (error) {
+      this.deps.error('Initial price rotation failed', error);
+    }
     this.scheduleNextMidnightRotation();
   }
 
   private scheduleNextMidnightRotation(): void {
+    if (this.stopped) return;
     if (this.midnightRotationTimeout) {
       clearTimeout(this.midnightRotationTimeout);
       this.midnightRotationTimeout = undefined;
@@ -141,6 +155,7 @@ export class PriceCoordinator {
     const delayMs = this.computeMidnightRotationDelayMs(new Date());
     this.midnightRotationTimeout = setTimeout(() => {
       this.midnightRotationTimeout = undefined;
+      if (this.stopped) return;
       try {
         this.updateCombinedPrices();
       } catch (error) {
