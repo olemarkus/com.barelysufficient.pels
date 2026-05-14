@@ -477,11 +477,16 @@ describe('DeviceManager', () => {
             dm.destroy();
         });
 
-        it('treats explicit-false-only managedDevices as filter-active so explicit-false stays out of runtime and visible in picker', async () => {
+        it('treats an all-false managedDevices map as filter-inactive so implicit-managed devices stay visible', async () => {
+            // Regression: when `disableUnsupportedDevices` writes `{id: false}`
+            // entries on first boot, the filter must NOT activate from those
+            // writes alone. Otherwise any device that had no key in the map
+            // (implicitly managed) would silently drop out of the runtime
+            // snapshot the moment the first unsupported device gets demoted.
             const explicitDecisions: Record<string, boolean> = { dev1: false, dev2: false };
             const dm = new DeviceManager(homeyMock, loggerMock, {
                 getManaged: (deviceId) => explicitDecisions[deviceId] === true,
-                isManagedFilterActive: () => Object.keys(explicitDecisions).length > 0,
+                isManagedFilterActive: () => Object.values(explicitDecisions).some((v) => v === true),
             });
             await dm.init();
             mockApiGet.mockResolvedValue({
@@ -489,8 +494,11 @@ describe('DeviceManager', () => {
                 dev2: buildDevice('dev2', true),
             });
             await dm.refreshSnapshot();
-            expect(dm.getSnapshot().map((d) => d.id)).toEqual([]);
-            expect(dm.getUiPickerDevices().map((d) => d.id).sort()).toEqual(['dev1', 'dev2']);
+            // Filter inactive → both devices remain in the runtime snapshot
+            // (with `managed === false`). The settings UI shows them in the
+            // managed list with the toggle off so the user can re-enable.
+            expect(dm.getSnapshot().map((d) => d.id).sort()).toEqual(['dev1', 'dev2']);
+            expect(dm.getUiPickerDevices()).toEqual([]);
             dm.destroy();
         });
 

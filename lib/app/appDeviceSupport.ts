@@ -31,6 +31,16 @@ function parseBooleanMap(value: unknown): BooleanMap {
   return isBooleanMap(value) ? value : {};
 }
 
+// Filter is active iff at least one device is explicitly opted-in (`true`).
+// Explicit `false` keys (written by `disableUnsupportedDevices`) must NOT
+// activate the filter on their own — otherwise a fresh-install user would
+// flip from "all devices visible" to "only the explicit-true devices visible"
+// the moment the first unsupported device is auto-disabled, silently dropping
+// every implicitly-managed device from the runtime snapshot.
+export function isManagedFilterActive(managedDevices: BooleanMap): boolean {
+  return Object.values(managedDevices).some((value) => value === true);
+}
+
 function parsePriceSettings(value: unknown): PriceSettings | null {
   return value && typeof value === 'object' ? value as PriceSettings : null;
 }
@@ -74,9 +84,14 @@ function applyFalseOverrides(params: {
   ids: string[];
 }): boolean {
   const { settings, key, current, ids } = params;
-  const changed = ids.some((id) => current[id] !== false);
-  if (!changed) return false;
-  const overrides = Object.fromEntries(ids.map((id) => [id, false] as const));
+  // Only demote IDs whose current value is explicitly `true`. An absent key
+  // ("implicitly managed") and an explicit `false` are both treated as
+  // unmanaged downstream, so writing `undefined → false` would change nothing
+  // observably while still firing the settings handler — which then triggers
+  // a recursive snapshot refresh on first boot. See appSnapshotHelpers.
+  const idsToDemote = ids.filter((id) => current[id] === true);
+  if (idsToDemote.length === 0) return false;
+  const overrides = Object.fromEntries(idsToDemote.map((id) => [id, false] as const));
   settings.set(key, { ...current, ...overrides });
   return true;
 }
