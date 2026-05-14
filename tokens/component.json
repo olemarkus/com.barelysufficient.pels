@@ -86,6 +86,22 @@
           "line-height": { "value": "{font.lineHeight.tight}" }
         }
       },
+      "body": {
+        "color": { "value": "{pels.text.primary}" },
+        "font": {
+          "size": { "value": "{font.size.md}" },
+          "weight": { "value": "{font.weight.normal}" },
+          "line-height": { "value": "{font.lineHeight.normal}" }
+        }
+      },
+      "caption": {
+        "color": { "value": "{pels.text.secondary}" },
+        "font": {
+          "size": { "value": "{font.size.xs}" },
+          "weight": { "value": "{font.weight.medium}" },
+          "line-height": { "value": "{font.lineHeight.tight}" }
+        }
+      },
       "card-supporting": {
         "color": { "value": "{pels.text.secondary}" },
         "font": {

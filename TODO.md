@@ -37,13 +37,19 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       chart consumers migrate; final removal lands with the chart-token P0 below.)*
 - [x] CSS-side migration: rebind hero + section headers + card titles to the new typography
       tokens. *(landed — `.plan-hero__headline` and `.hero h1` now use `--pels-text-display-*` /
-      `--pels-text-headline-*`; section `h2` rules (`.settings-home-hero h2`,
-      `.device-detail-heading h2`) use `--pels-text-section-headline-*`; `.card h2` and
-      `.usage-hero__stat-value` use `--pels-text-title-*` (the spec's display-small for
-      `.usage-hero__stat-value` was rejected — three 36 px values cannot fit the 3-column
-      stat grid at 320 px; revisit only if the grid is restructured to wrap). `.eyebrow`
-      moved from semibold to medium per the M3 label-small weight. Screenshot baselines need
-      a refresh pass — tracked in the residual e2e bullet below.)*
+      `--pels-text-headline-*`; section `h2` rules (`.settings-home-hero h2`, `.card h2`,
+      `.device-detail-heading h2`) use `--pels-text-section-headline-*` 24/400, with
+      `.usage-hero__stat-value` also bound to section-headline 24/400 and compressed to
+      `--pels-text-title-*` 16 px at `<380 px` so three stats still fit the row (the spec's
+      display-small 36 px was rejected — three 36 px values cannot fit the 3-column stat grid
+      at 320 px). `.section-title`, `.deadlines-history__heading`, and
+      `.settings-current-mode__summary h3` use `--pels-text-title-*` 16/500. `.eyebrow` moved
+      from semibold to medium per the M3 label-small weight and now binds `line-height` to
+      `--font-line-height-tight`. Role utility classes `.text-hero-number / -page-headline /
+      -section-headline / -title / -section-label / -body / -caption` published in `style.css`
+      as the documented entry points for new surfaces; `.text-body` and `.text-caption` bind to
+      the corresponding `--pels-text-*` role tokens. Screenshot baselines need a refresh pass —
+      tracked in the residual e2e bullet below.)*
 - [x] CSS-side migration: apply existing surface tier tokens per M3 nesting. *(landed —
       `.slide-panel` raised to `--pels-surface-container-high`, `.banner` uses
       `--pels-surface-container-highest`, `.plan-card` is now a flat `--color-surface-1`,
