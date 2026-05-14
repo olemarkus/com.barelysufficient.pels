@@ -90,4 +90,46 @@ describe('mountDeadlinePlan boot failure', () => {
       'mountHistoryDetail',
     );
   });
+
+  it('history-detail error renders a Try again control that re-fetches', async () => {
+    setLocation('?deviceId=dev_test&historyId=entry-1');
+    const cause = new Error('Homey api GET /ui_deferred_objective_history failed: Network request failed');
+    callApiMock.mockRejectedValueOnce(cause);
+    callApiMock.mockResolvedValueOnce({ entriesByDeviceId: { dev_test: [] } });
+
+    await mountDeadlinePlan();
+
+    const surface = document.getElementById('deadline-plan-root');
+    const retry = surface?.querySelector<HTMLElement>('.plan-card__retry');
+    expect(retry).not.toBeNull();
+    retry?.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(callApiMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('clicking Try again swaps to loading so the retry control cannot fire twice', async () => {
+    setLocation('?deviceId=dev_test&historyId=entry-1');
+    const cause = new Error('Homey api GET /ui_deferred_objective_history failed: Network request failed');
+    // Initial fetch fails, the retry fetch never resolves so the loading
+    // surface persists. A second click against the same captured handler
+    // would still fire if the button stayed in the DOM; the assertion below
+    // proves the button is gone after the first click.
+    callApiMock.mockRejectedValueOnce(cause);
+    callApiMock.mockReturnValueOnce(new Promise(() => {}));
+
+    await mountDeadlinePlan();
+
+    const surface = document.getElementById('deadline-plan-root');
+    const retry = surface?.querySelector<HTMLElement>('.plan-card__retry');
+    expect(retry).not.toBeNull();
+    retry?.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(surface?.querySelector('.plan-card__retry')).toBeNull();
+    expect(surface?.textContent ?? '').toContain('Loading smart task plan');
+    expect(callApiMock).toHaveBeenCalledTimes(2);
+  });
 });
