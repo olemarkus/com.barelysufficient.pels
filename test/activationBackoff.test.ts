@@ -134,14 +134,17 @@ describe('activation backoff', () => {
     expect(decision?.allowed).toBe(true);
   });
 
-  it('treats a stale-observation device with no measurement as drawing zero in headroom math', () => {
-    // Regression: Flow-card snapshots (`TargetDeviceSnapshot`) carry
-    // `lastFreshDataMs` but no precomputed `observationStale` field. Staleness
-    // for the headroom guard must be derived from the timestamp so the
-    // conservative path actually fires during comms gaps.
+  it('credits configured load for a stale-observation device with stable real values', () => {
+    // Regression for TODO P1 stale-observation refresh loop: Many Homey drivers
+    // only advance per-capability `lastUpdated` on value change, so a
+    // thermostat that has been steady at setpoint for 40+ minutes ages past
+    // `STALE_DEVICE_OBSERVATION_MS` while still being on and drawing exactly
+    // its configured load. The previous behavior returned 0 here, dropped the
+    // configured-fallback path, and blocked legitimate activations even
+    // though `headroom + observedKw` math would otherwise admit them.
     const state = createPlanEngineState();
     const start = Date.now();
-    const staleDevice = {
+    const staleStableDevice = {
       id: 'dev-1',
       name: 'Heater',
       currentOn: true,
@@ -152,16 +155,16 @@ describe('activation backoff', () => {
     };
     const decision = evaluateHeadroomForDevice({
       state,
-      devices: [staleDevice as any],
+      devices: [staleStableDevice as any],
       deviceId: 'dev-1',
-      device: staleDevice as any,
-      headroom: 0.5,
-      requiredKw: 1.0,
+      device: staleStableDevice as any,
+      headroom: 0.3,
+      requiredKw: 1.2,
       nowTs: start,
     });
-    expect(decision?.observedKw).toBe(0);
-    expect(decision?.calculatedHeadroomForDeviceKw).toBe(0.5);
-    expect(decision?.allowed).toBe(false);
+    expect(decision?.observedKw).toBe(1.2);
+    expect(decision?.calculatedHeadroomForDeviceKw).toBeCloseTo(1.5);
+    expect(decision?.allowed).toBe(true);
   });
 
   it('bumps penalty only once per activation attempt', () => {
