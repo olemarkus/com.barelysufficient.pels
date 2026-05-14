@@ -145,6 +145,13 @@ test.describe('Settings UI chart layout', () => {
     await page.getByRole('tab', { name: 'Budget' }).click();
     await expect(page.locator('#budget-redesign-chart svg')).toBeVisible();
 
+    // The Background/Managed split swatches only render in the hourly-plan
+    // view; the default `progress` view renders a single combined Plan
+    // series. Switch to Hourly plan so the parity check actually exercises
+    // the split colours this PR introduces.
+    await page.locator('#budget-panel .day-view-toggle__button').filter({ hasText: 'Hourly plan' }).click();
+    await expect(page.locator('#budget-redesign-chart svg')).toBeVisible();
+
     // The legend swatches above the chart are CSS-token-driven. They must
     // resolve to the same colour values that the chart palette resolves to
     // from `--day-view-color-background-usage`, `--day-view-color-managed-usage`,
