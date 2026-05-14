@@ -172,12 +172,11 @@ export const getSettingsUiDeviceDiagnosticsPayload = ({ homey }: ApiContext): Se
   if (!app?.getDeviceDiagnosticsUiPayload) {
     return buildEmptyDeviceDiagnosticsPayload();
   }
-  try {
-    return app.getDeviceDiagnosticsUiPayload();
-  } catch (error) {
-    app.error?.('Device diagnostics API failed', error as Error);
-    return buildEmptyDeviceDiagnosticsPayload();
-  }
+  // No try/catch: let exceptions bubble to the api.ts wrapper so the client
+  // sees the real failure and the cause lands in `/tmp/pels` via app.error.
+  // Returning an empty payload here would silently strip diagnostics from the
+  // device-detail page without any explanation.
+  return app.getDeviceDiagnosticsUiPayload();
 };
 
 export const getSettingsUiDeferredObjectivePlanHistoryPayload = (
@@ -187,12 +186,10 @@ export const getSettingsUiDeferredObjectivePlanHistoryPayload = (
   if (!app?.getDeferredObjectivePlanHistoryUiPayload) {
     return { version: 1, entriesByDeviceId: {} };
   }
-  try {
-    return app.getDeferredObjectivePlanHistoryUiPayload();
-  } catch (error) {
-    app.error?.('Deferred-objective plan-history API failed', error as Error);
-    return { version: 1, entriesByDeviceId: {} };
-  }
+  // No try/catch: let exceptions bubble to the api.ts wrapper. Swallowing
+  // here used to render the Smart tasks past-tasks list and the deadline-plan
+  // history tab as empty when the recorder threw, hiding the failure.
+  return app.getDeferredObjectivePlanHistoryUiPayload();
 };
 
 export const refreshSettingsUiDevices = async ({ homey }: ApiContext): Promise<SettingsUiDevicesPayload> => {
@@ -222,12 +219,8 @@ export const resetSettingsUiPowerStats = async ({ homey }: ApiContext): Promise<
 export const recomputeSettingsUiDailyBudget = ({ homey }: ApiContext): DailyBudgetUiPayload | null => {
   const app = getApp(homey);
   if (!app?.recomputeDailyBudgetToday) return null;
-  try {
-    return app.recomputeDailyBudgetToday();
-  } catch (error) {
-    app?.error?.('Daily budget recompute API failed', error as Error);
-    throw error;
-  }
+  // No try/catch: let exceptions bubble to the api.ts wrapper for logging.
+  return app.recomputeDailyBudgetToday();
 };
 
 export const previewSettingsUiDailyBudgetModel = (
