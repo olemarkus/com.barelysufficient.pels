@@ -166,7 +166,7 @@ const resolvePalette = (element: HTMLElement): DeadlineChartPalette => ({
   priceExpensive: cssVar(element, '--color-base-warning-default'),
   background: cssVar(element, '--pels-text-supporting-color'),
   device: cssVar(element, '--color-base-accent-default'),
-  actualDevice: cssVar(element, '--color-base-success-default', '#2e7d32'),
+  actualDevice: cssVar(element, '--color-role-good'),
   progress: cssVar(element, '--color-base-info-default'),
   grid: cssVar(element, '--pels-surface-outline'),
   text: cssVar(element, '--text'),
