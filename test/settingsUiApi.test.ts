@@ -282,7 +282,10 @@ describe('settingsUiApi', () => {
     expect(applied?.todayKey).toBe('2026-03-03');
   });
 
-  it('rethrows daily budget recompute failures after logging them', () => {
+  it('rethrows daily budget recompute failures so the api wrapper can log them', () => {
+    // Logging now lives in `api.ts`'s `withApiLogging` wrapper so every UI API
+    // surfaces a single, consistent error log. The helper itself stays
+    // throw-through.
     const homey = createHomey();
     const error = new Error('recompute failed');
     homey.recomputeDailyBudgetToday.mockImplementation(() => {
@@ -290,7 +293,6 @@ describe('settingsUiApi', () => {
     });
 
     expect(() => recomputeSettingsUiDailyBudget({ homey: homey as never })).toThrow(error);
-    expect(homey.error).toHaveBeenCalledWith('Daily budget recompute API failed', error);
   });
 
   it('builds dedicated read payloads for the remaining volatile UI models', () => {
@@ -340,18 +342,17 @@ describe('settingsUiApi', () => {
     });
   });
 
-  it('returns an empty diagnostics payload when the diagnostics API throws', () => {
+  it('rethrows diagnostics API failures so the api wrapper can log them', () => {
+    // Previously this helper swallowed the throw and returned an empty
+    // payload, which silently stripped diagnostics from the device-detail
+    // page. Logging + recovery now belongs to the `api.ts` wrapper so the
+    // failure reaches `/tmp/pels` and the client sees the real error.
     const homey = createHomey();
     homey.getDeviceDiagnosticsUiPayload.mockImplementation(() => {
       throw new Error('diagnostics not ready');
     });
 
-    expect(getSettingsUiDeviceDiagnosticsPayload({ homey: homey as never })).toEqual({
-      generatedAt: expect.any(Number),
-      windowDays: 21,
-      diagnosticsByDeviceId: {},
-    });
-    expect(homey.error).toHaveBeenCalledWith('Device diagnostics API failed', expect.any(Error));
+    expect(() => getSettingsUiDeviceDiagnosticsPayload({ homey: homey as never })).toThrow('diagnostics not ready');
   });
 
   it('prefers the live in-memory plan snapshot over the persisted settings snapshot', async () => {

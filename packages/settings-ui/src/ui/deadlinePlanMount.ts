@@ -14,7 +14,18 @@ import {
 } from './deadlinePlanHistoryFetch.ts';
 import { renderDeadlinePlan } from './views/DeadlinePlan.tsx';
 import { resolveDeadlinePlanLoadState, resolveRenderInput } from './deadlinePlan.ts';
+import { logSettingsError } from './logging.ts';
 import type { MdButtonElement } from './dom.ts';
+
+const describeError = (error: unknown): string => {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error.length > 0) return error;
+  try { return JSON.stringify(error); } catch { return String(error); }
+};
+
+const buildBootErrorMessage = (error: unknown): string => (
+  `Smart task plan data could not be loaded: ${describeError(error)}`
+);
 
 const DEADLINE_PLAN_REFRESH_DEBOUNCE_MS = 200;
 
@@ -71,10 +82,15 @@ const mountHistoryDetail = async (
   let history: DeadlinePlanHistoryView;
   try {
     history = await fetchDeadlinePlanHistory(deviceId, timeZone, true);
-  } catch {
+  } catch (error) {
+    await logSettingsError(
+      'Failed to load smart task history detail',
+      error,
+      'mountHistoryDetail',
+    );
     renderDeadlinePlan(surface, {
       status: 'error',
-      message: 'Smart task plan data is not available for this device.',
+      message: buildBootErrorMessage(error),
     });
     return;
   }
@@ -122,10 +138,15 @@ export const mountDeadlinePlan = async (): Promise<void> => {
 
   try {
     lastBoot = await fetchDeadlinePlanBoot();
-  } catch {
+  } catch (error) {
+    await logSettingsError(
+      'Failed to load smart task plan boot data',
+      error,
+      'mountDeadlinePlan',
+    );
     renderDeadlinePlan(surface, {
       status: 'error',
-      message: 'Smart task plan data is not available for this device.',
+      message: buildBootErrorMessage(error),
     });
     return;
   }
@@ -133,53 +154,11 @@ export const mountDeadlinePlan = async (): Promise<void> => {
   // History fills in shortly after.
   renderWith(lastBoot, lastHistory);
 
-  // Resubscribe to runtime change events so the page reflects new plan
-  // revisions and device updates without a manual reload. Mirrors the
-  // refresh strategy in `realtime.ts`, which only runs on the main settings
-  // page.
-  const homey = getHomeyClient();
-  if (homey && typeof homey.on === 'function') {
-    let refreshing = false;
-    let refreshQueued = false;
-    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
-    const refresh = async (): Promise<void> => {
-      if (refreshing) {
-        refreshQueued = true;
-        return;
-      }
-      refreshing = true;
-      try {
-        const next = await fetchDeadlinePlanBoot();
-        lastBoot = next;
-        renderWith(next, lastHistory);
-      } catch {
-        // Ignore transient failures; the next event tick will retry.
-      } finally {
-        refreshing = false;
-        if (refreshQueued && isDeadlinePlanPage()) {
-          refreshQueued = false;
-          scheduleRefresh();
-        }
-      }
-    };
-    const scheduleRefresh = (): void => {
-      if (!isDeadlinePlanPage()) return;
-      refreshQueued = true;
-      if (refreshTimer !== null) return;
-      refreshTimer = setTimeout(() => {
-        refreshTimer = null;
-        if (!isDeadlinePlanPage()) {
-          refreshQueued = false;
-          return;
-        }
-        refreshQueued = false;
-        void refresh();
-      }, DEADLINE_PLAN_REFRESH_DEBOUNCE_MS);
-    };
-    homey.on('plan_updated', scheduleRefresh);
-    homey.on('devices_updated', scheduleRefresh);
-    homey.on('prices_updated', scheduleRefresh);
-  }
+  subscribeToRuntimeRefresh({
+    getLastHistory: () => lastHistory,
+    onBoot: (next) => { lastBoot = next; },
+    renderWith,
+  });
 
   // Warm history in the background so the History tab is populated when the
   // user clicks it (or when the completed-deadline path auto-selects it).
@@ -187,4 +166,63 @@ export const mountDeadlinePlan = async (): Promise<void> => {
     lastHistory = history;
     if (lastBoot) renderWith(lastBoot, history);
   });
+};
+
+// Resubscribe to runtime change events so the page reflects new plan
+// revisions and device updates without a manual reload. Mirrors the refresh
+// strategy in `realtime.ts`, which only runs on the main settings page.
+const subscribeToRuntimeRefresh = (params: {
+  getLastHistory: () => DeadlinePlanHistoryView | undefined;
+  onBoot: (next: DeadlinePlanBoot) => void;
+  renderWith: (boot: DeadlinePlanBoot, history: DeadlinePlanHistoryView | undefined) => void;
+}): void => {
+  const homey = getHomeyClient();
+  if (!homey || typeof homey.on !== 'function') return;
+  let refreshing = false;
+  let refreshQueued = false;
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  const refresh = async (): Promise<void> => {
+    if (refreshing) {
+      refreshQueued = true;
+      return;
+    }
+    refreshing = true;
+    try {
+      const next = await fetchDeadlinePlanBoot();
+      params.onBoot(next);
+      params.renderWith(next, params.getLastHistory());
+    } catch (error) {
+      // Background refresh: do not blow away the rendered current view, but
+      // do log the failure so a recurring transient is visible in
+      // `/tmp/pels` instead of silent.
+      await logSettingsError(
+        'Background refresh of smart task plan failed',
+        error,
+        'mountDeadlinePlan.refresh',
+      );
+    } finally {
+      refreshing = false;
+      if (refreshQueued && isDeadlinePlanPage()) {
+        refreshQueued = false;
+        scheduleRefresh();
+      }
+    }
+  };
+  const scheduleRefresh = (): void => {
+    if (!isDeadlinePlanPage()) return;
+    refreshQueued = true;
+    if (refreshTimer !== null) return;
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      if (!isDeadlinePlanPage()) {
+        refreshQueued = false;
+        return;
+      }
+      refreshQueued = false;
+      void refresh();
+    }, DEADLINE_PLAN_REFRESH_DEBOUNCE_MS);
+  };
+  homey.on('plan_updated', scheduleRefresh);
+  homey.on('devices_updated', scheduleRefresh);
+  homey.on('prices_updated', scheduleRefresh);
 };
