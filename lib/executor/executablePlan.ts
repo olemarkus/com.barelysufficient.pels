@@ -32,6 +32,14 @@ export type ExecutableObservedDeviceState = {
   snapshot: TargetDeviceSnapshot;
   available: boolean | null;
   currentOn: boolean;
+  /**
+   * Discriminated binary observation for drift comparison. `'unknown'` means
+   * no trusted binary observation has been recorded yet (e.g. after a Homey
+   * restart, before any snapshot refresh). Drift detection skips binary
+   * comparisons in that case so a defaulted `currentOn` cannot trigger a
+   * spurious reapply against a never-observed device.
+   */
+  observedBinaryState: 'on' | 'off' | 'unknown';
   target: ExecutableObservedTargetState | null;
   steppedLoad: ExecutableObservedSteppedLoadState | null;
 };

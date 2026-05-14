@@ -181,7 +181,13 @@ function hasBinaryStateDrift(params: {
   const { expectedBinaryState, observed, pendingBinary } = params;
   if (!expectedBinaryState) return false;
   if (isPendingBinaryCommandMatchingExpected(pendingBinary, expectedBinaryState)) return false;
-  return resolveObservedBinaryState(observed) !== expectedBinaryState;
+  const observedBinaryState = observed.observedBinaryState;
+  // `'unknown'` means no trusted binary observation has been recorded yet
+  // (e.g. after a Homey restart, before any snapshot refresh). Treating a
+  // defaulted `currentOn` as observation truth would re-actuate against
+  // never-observed devices, so skip drift here and wait for real evidence.
+  if (observedBinaryState === 'unknown') return false;
+  return observedBinaryState !== expectedBinaryState;
 }
 
 function resolveExpectedBinaryStateForIntent(intent: ExecutableDeviceIntent): BinaryState | undefined {
@@ -205,10 +211,6 @@ function resolveExpectedBinaryStateForSteppedIntent(
   if (intent.purpose === 'keep') return 'on';
   if (intent.shedAction !== 'set_step') return 'off';
   return undefined;
-}
-
-function resolveObservedBinaryState(observed: ExecutableObservedDeviceState): BinaryState {
-  return observed.currentOn ? 'on' : 'off';
 }
 
 function isPendingBinaryCommandMatchingExpected(
@@ -272,8 +274,9 @@ function isObservedBinaryStateForTransition(
   transition: ExecutableSteppedLoadTransition,
   observed: ExecutableObservedDeviceState,
 ): boolean {
-  if (transition.effectiveTransition === 'restore_from_off_at_low') return observed.currentOn === false;
-  if (transition.effectiveTransition === 'full_shed_to_off') return observed.currentOn === true;
+  if (observed.observedBinaryState === 'unknown') return false;
+  if (transition.effectiveTransition === 'restore_from_off_at_low') return observed.observedBinaryState === 'off';
+  if (transition.effectiveTransition === 'full_shed_to_off') return observed.observedBinaryState === 'on';
   return false;
 }
 

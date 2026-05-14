@@ -9,6 +9,7 @@ import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../packages/shared-domain/src/p
 import { formatDeviceOverview } from '../packages/shared-domain/src/deviceOverview';
 import type { DeviceReason } from '../packages/shared-domain/src/planReasonSemantics';
 import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
+import { buildBinaryObservation } from './utils/binaryObservationTestUtils';
 
 const LEGACY_PLAN_SNAPSHOT_SETTING = ['device', 'plan', 'snapshot'].join('_');
 
@@ -932,6 +933,7 @@ describe('PlanService', () => {
         deviceType: 'temperature',
         hasBinaryControl: true,
         currentOn: false,
+        binaryControlObservation: buildBinaryObservation('onoff', false),
         currentTemperature: 21,
       }],
       getCapacityDryRun: () => false,
@@ -1473,6 +1475,7 @@ describe('PlanService', () => {
         deviceType: 'temperature',
         hasBinaryControl: true,
         currentOn: true,
+        binaryControlObservation: buildBinaryObservation('onoff', true),
         currentTemperature: 21,
       }],
       getCapacityDryRun: () => false,
@@ -1601,6 +1604,7 @@ describe('PlanService', () => {
         deviceType: 'temperature',
         hasBinaryControl: true,
         currentOn: false,
+        binaryControlObservation: buildBinaryObservation('onoff', false),
         currentTemperature: 21,
       }],
       getCapacityDryRun: () => false,
@@ -1671,6 +1675,7 @@ describe('PlanService', () => {
         deviceType: 'temperature',
         hasBinaryControl: true,
         currentOn: false,
+        binaryControlObservation: buildBinaryObservation('onoff', false),
         currentTemperature: 21,
       }],
       getCapacityDryRun: () => false,
@@ -1727,6 +1732,7 @@ describe('PlanService', () => {
         deviceType: 'temperature',
         hasBinaryControl: true,
         currentOn: false,
+        binaryControlObservation: buildBinaryObservation('onoff', false),
         currentTemperature: 21,
       }],
       getCapacityDryRun: () => false,
@@ -2292,6 +2298,7 @@ describe('PlanService', () => {
         deviceType: 'temperature',
         hasBinaryControl: true,
         currentOn,
+        binaryControlObservation: buildBinaryObservation('onoff', currentOn),
         currentTemperature: 21,
       }],
       getCapacityDryRun: () => false,
@@ -2696,6 +2703,7 @@ describe('PlanService', () => {
     let liveDevices = [{
       ...liveDeviceBase,
       currentOn: true,
+      binaryControlObservation: buildBinaryObservation('onoff', true),
     }];
 
     const planEngine = {
@@ -2744,6 +2752,7 @@ describe('PlanService', () => {
     liveDevices = [{
       ...liveDeviceBase,
       currentOn: false,
+      binaryControlObservation: buildBinaryObservation('onoff', false),
     }];
 
     await service.rebuildPlanFromCache('detail_only_live_off');
@@ -3182,6 +3191,7 @@ describe('PlanService', () => {
         deviceType: 'temperature',
         hasBinaryControl: true,
         currentOn: false,
+        binaryControlObservation: buildBinaryObservation('onoff', false),
         currentTemperature: 21,
       }],
       getCapacityDryRun: () => false,
@@ -3228,6 +3238,7 @@ describe('PlanService', () => {
         deviceType: 'temperature',
         hasBinaryControl: true,
         currentOn: false,
+        binaryControlObservation: buildBinaryObservation('onoff', false),
         currentTemperature: 21,
       }],
       getCapacityDryRun: () => false,
@@ -3344,6 +3355,7 @@ describe('PlanService', () => {
         deviceType: 'temperature',
         hasBinaryControl: true,
         currentOn: false,
+        binaryControlObservation: buildBinaryObservation('onoff', false),
         currentTemperature: 21,
       }],
       getCapacityDryRun: () => false,

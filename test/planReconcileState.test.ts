@@ -6,6 +6,7 @@ import {
   buildLiveStatePlan,
 } from '../lib/plan/planReconcileState';
 import { hasPlanExecutionDriftForDevice as hasExecutorPlanExecutionDriftForDevice } from '../lib/executor/planExecutionDrift';
+import { buildBinaryObservation } from './utils/binaryObservationTestUtils';
 
 const steppedProfile = {
   model: 'stepped_load' as const,
@@ -120,6 +121,7 @@ describe('planReconcileState stepped device drift', () => {
         name: 'Heater',
         currentOn: false,
         hasBinaryControl: true,
+        binaryControlObservation: buildBinaryObservation('onoff', false),
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       }];
 
@@ -247,6 +249,7 @@ describe('planReconcileState stepped device drift', () => {
         name: 'Heater',
         currentOn: false,
         hasBinaryControl: true,
+        binaryControlObservation: buildBinaryObservation('onoff', false),
         binaryCommandPending: true,
         binaryCommandPendingDesired: false,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
@@ -265,10 +268,32 @@ describe('planReconcileState stepped device drift', () => {
         name: 'Heater',
         currentOn: false,
         hasBinaryControl: true,
+        binaryControlObservation: buildBinaryObservation('onoff', false),
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       }];
 
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
+    });
+
+    it('does not treat a never-observed device as drift, even when planner intent is keep', () => {
+      // Regression: after a Homey restart, the observer has not yet recorded
+      // any trusted binary observation. The snapshot's `currentOn` is a
+      // default (no `binaryControlObservation` evidence), so drift detection
+      // must not re-actuate against state we have not observed yet.
+      const plan = buildPlan([buildBinaryDevice({
+        currentState: 'on',
+        plannedState: 'keep',
+      })]);
+      const liveDevices: PlanInputDevice[] = [{
+        id: 'dev-2',
+        name: 'Heater',
+        currentOn: false,
+        hasBinaryControl: true,
+        // No binaryControlObservation — never-observed device.
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      }];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);
     });
 
     it('treats paused EV state as drift when a deadline resume is expected', () => {
@@ -375,6 +400,9 @@ describe('planReconcileState stepped device drift', () => {
         currentOn: false,
         hasBinaryControl: true,
         observationStale: true,
+        // Stale observation still counts as evidence — `binaryControlObservation`
+        // is present, just old.
+        binaryControlObservation: buildBinaryObservation('onoff', false),
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       }];
 
@@ -391,6 +419,7 @@ describe('planReconcileState stepped device drift', () => {
         targets: [],
         controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfile,
+        binaryControlObservation: buildBinaryObservation('onoff', false),
       }];
 
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(true);
@@ -442,6 +471,7 @@ describe('planReconcileState stepped device drift', () => {
         targets: [],
         controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfile,
+        binaryControlObservation: buildBinaryObservation('onoff', false),
         stepCommandPending: true,
         binaryCommandPending: true,
         binaryCommandPendingDesired: true,
@@ -490,6 +520,7 @@ describe('planReconcileState stepped device drift', () => {
         targets: [],
         controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfile,
+        binaryControlObservation: buildBinaryObservation('onoff', true),
       }];
 
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(true);
@@ -557,12 +588,13 @@ describe('planReconcileState stepped device drift', () => {
         targets: [{ id: 'target_temperature', value: 23, unit: '°C' }],
         controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfile,
+        binaryControlObservation: buildBinaryObservation('onoff', true),
       }];
 
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(false);
       expect(hasPlanExecutionDriftForDevice(
         plan,
-        [{ ...liveDevices[0], currentOn: false }],
+        [{ ...liveDevices[0], currentOn: false, binaryControlObservation: buildBinaryObservation('onoff', false) }],
         'dev-1',
       )).toBe(true);
     });
@@ -928,16 +960,24 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
 
   const buildLiveInput = (
     overrides: Partial<PlanInputDevice> = {},
-  ): PlanInputDevice => ({
-    id: 'dev-1',
-    name: 'Tank',
-    targets: [],
-    currentOn: true,
-    controlModel: 'stepped_load',
-    steppedLoadProfile: steppedProfile,
-    selectedStepId: 'low',
-    ...overrides,
-  });
+  ): PlanInputDevice => {
+    const merged: PlanInputDevice = {
+      id: 'dev-1',
+      name: 'Tank',
+      targets: [],
+      currentOn: true,
+      controlModel: 'stepped_load',
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'low',
+      ...overrides,
+    };
+    // Group 4 covers the binary-state side of stepped drift detection. Each
+    // case toggles `currentOn` to model an observed binary value, so default
+    // a matching `binaryControlObservation` unless an override supplies one.
+    return merged.binaryControlObservation
+      ? merged
+      : { ...merged, binaryControlObservation: buildBinaryObservation('onoff', merged.currentOn) };
+  };
 
   const buildPlanWith = (device: DevicePlan['devices'][number]): DevicePlan => ({
     meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
