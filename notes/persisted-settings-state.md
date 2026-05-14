@@ -58,7 +58,13 @@ A single `PersistedSettingsState<T>` (or `RecorderState<T>`) class encapsulating
    without hand-rolling timers.
 4. **Abandon-grace window** parameterised on load: when the raw read failed the
    plausibility check, the state refuses to persist for `loadGraceMs` so a
-   subsequent recovery read can still rebuild from disk.
+   subsequent recovery read can still rebuild from disk. A separate
+   "we've-written-before" marker setting distinguishes a true fresh install
+   (no marker, raw absent → no grace; first sample persists immediately) from
+   a transient SDK miss (marker set, raw absent → grace engages); a malformed
+   raw payload always engages grace regardless of marker. The calibration
+   wiring uses `power_calibration_initialized` for this; the shared helper
+   should accept a marker-key option.
 5. **Plausibility predicate** supplied by the consumer (the schema). Generic
    default rejects only `undefined`/`null`/non-object; consumers tighten via a
    `Strict<T>` validator. Crucially, the strict validator must recurse to match

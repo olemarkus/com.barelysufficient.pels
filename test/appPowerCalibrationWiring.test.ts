@@ -10,7 +10,7 @@ import {
   createEmptyPowerCalibrationSnapshot,
 } from '../lib/observer/devicePowerCalibration';
 import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../lib/utils/types';
-import { POWER_CALIBRATION } from '../lib/utils/settingsKeys';
+import { POWER_CALIBRATION, POWER_CALIBRATION_INITIALIZED } from '../lib/utils/settingsKeys';
 
 const CONNECTED_300_PROFILE: SteppedLoadProfile = {
   model: 'stepped_load',
@@ -385,6 +385,169 @@ describe('abandon-grace on missing settings load', () => {
       homey: homey as never,
       options: { persistDebounceMs: 0, nowMs: 1_000 },
     });
+    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    const wrote = persistPowerCalibrationIfDue({
+      homey: homey as never,
+      store,
+      nowMs: 1_500,
+      error: () => undefined,
+    });
+    expect(wrote).toBe(false);
+  });
+});
+
+describe('fresh-install vs transient-miss discriminator', () => {
+  it('treats a brand-new install (no marker, raw missing) as fresh — no grace', () => {
+    // No marker has ever been written and no calibration data exists. There
+    // is nothing on disk to preserve, so the load-grace window must NOT
+    // engage; the first sample should persist immediately. Otherwise per-step
+    // EMAs collected in the first 5 minutes after install/restart are lost
+    // if the app crashes during the grace window.
+    const homeyStore = new Map<string, unknown>();
+    const homey = mockHomey(homeyStore);
+    const store = loadPowerCalibrationStore({
+      homey: homey as never,
+      options: { persistDebounceMs: 0, nowMs: 1_000 },
+    });
+    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    const wrote = persistPowerCalibrationIfDue({
+      homey: homey as never,
+      store,
+      nowMs: 1_500,
+      error: () => undefined,
+    });
+    expect(wrote).toBe(true);
+    expect(homeyStore.get(POWER_CALIBRATION)).toBeDefined();
+  });
+
+  it('engages grace when the marker is set but raw is missing (transient SDK miss)', () => {
+    // The marker indicates we have persisted before, so a missing raw value
+    // is a transient SDK read failure, not a fresh install. The grace window
+    // must engage to avoid overwriting prior history with a freshly-empty
+    // in-memory snapshot.
+    const homeyStore = new Map<string, unknown>([
+      [POWER_CALIBRATION_INITIALIZED, true],
+    ]);
+    const homey = mockHomey(homeyStore);
+    const store = loadPowerCalibrationStore({
+      homey: homey as never,
+      options: { persistDebounceMs: 0, nowMs: 1_000 },
+    });
+    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    const wrote = persistPowerCalibrationIfDue({
+      homey: homey as never,
+      store,
+      nowMs: 1_500,
+      error: () => undefined,
+    });
+    expect(wrote).toBe(false);
+    expect(homeyStore.get(POWER_CALIBRATION)).toBeUndefined();
+  });
+
+  it('writes the marker on first successful persist', () => {
+    const homeyStore = new Map<string, unknown>();
+    const homey = mockHomey(homeyStore);
+    const store = loadPowerCalibrationStore({
+      homey: homey as never,
+      options: { persistDebounceMs: 0, nowMs: 1_000 },
+    });
+    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    persistPowerCalibrationIfDue({
+      homey: homey as never,
+      store,
+      nowMs: 1_500,
+      error: () => undefined,
+    });
+    expect(homeyStore.get(POWER_CALIBRATION_INITIALIZED)).toBe(true);
+  });
+
+  it('sets the marker when loading a plausible existing snapshot (upgrade migration)', () => {
+    // Existing users who upgrade may have valid persisted data but no marker
+    // yet. The first load should set the marker so subsequent transient
+    // misses are recognised as such rather than misclassified as fresh.
+    const homeyStore = new Map<string, unknown>([
+      [POWER_CALIBRATION, { version: 1, devices: {} }],
+    ]);
+    const homey = mockHomey(homeyStore);
+    loadPowerCalibrationStore({
+      homey: homey as never,
+      options: { persistDebounceMs: 0, nowMs: 1_000 },
+    });
+    expect(homeyStore.get(POWER_CALIBRATION_INITIALIZED)).toBe(true);
+  });
+
+  it('still engages grace on malformed raw regardless of marker state', () => {
+    // A malformed object (not just missing) is always treated as a corrupt
+    // read — grace engages to avoid overwriting history with the rebuilt
+    // empty snapshot.
+    const homeyStore = new Map<string, unknown>([
+      [POWER_CALIBRATION, { version: 1, devices: 'bad' }],
+    ]);
+    const homey = mockHomey(homeyStore);
+    const store = loadPowerCalibrationStore({
+      homey: homey as never,
+      options: { persistDebounceMs: 0, nowMs: 1_000 },
+    });
+    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    const wrote = persistPowerCalibrationIfDue({
+      homey: homey as never,
+      store,
+      nowMs: 1_500,
+      error: () => undefined,
+    });
+    expect(wrote).toBe(false);
+  });
+
+  it('engages grace when the snapshot read throws (does not crash startup)', () => {
+    // A transient SDK throw must not propagate out of the loader; the
+    // throw is also treated as a missing read so the grace window engages
+    // and a subsequent recovery read can rebuild the prior history.
+    const homey = {
+      settings: {
+        get: (key: string): unknown => {
+          if (key === POWER_CALIBRATION) throw new Error('transient SDK miss');
+          if (key === POWER_CALIBRATION_INITIALIZED) return true;
+          return undefined;
+        },
+        set: () => undefined,
+      },
+    };
+    const store = loadPowerCalibrationStore({
+      homey: homey as never,
+      options: { persistDebounceMs: 0, nowMs: 1_000 },
+    });
+    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    const wrote = persistPowerCalibrationIfDue({
+      homey: homey as never,
+      store,
+      nowMs: 1_500,
+      error: () => undefined,
+    });
+    expect(wrote).toBe(false);
+  });
+
+  it('engages grace when both snapshot and marker reads throw', () => {
+    // Paired SDK throws on startup must not be misclassified as a fresh
+    // install. The marker read throw is the load-bearing detail here: if
+    // the loader treated a thrown marker read as "marker absent", the
+    // combined absent-raw + absent-marker would skip the grace window and
+    // the next persist would overwrite the persisted history with the
+    // freshly-empty in-memory snapshot.
+    let getCallCount = 0;
+    const homey = {
+      settings: {
+        get: (): unknown => {
+          getCallCount += 1;
+          throw new Error('SDK unavailable');
+        },
+        set: () => undefined,
+      },
+    };
+    const store = loadPowerCalibrationStore({
+      homey: homey as never,
+      options: { persistDebounceMs: 0, nowMs: 1_000 },
+    });
+    expect(getCallCount).toBeGreaterThanOrEqual(2);
     store.ingestDevices([baseDeviceSnapshot()], 1_500);
     const wrote = persistPowerCalibrationIfDue({
       homey: homey as never,

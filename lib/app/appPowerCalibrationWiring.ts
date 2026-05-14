@@ -20,7 +20,7 @@ import {
   pruneStale,
   recordSample,
 } from '../observer/devicePowerCalibration';
-import { POWER_CALIBRATION } from '../utils/settingsKeys';
+import { POWER_CALIBRATION, POWER_CALIBRATION_INITIALIZED } from '../utils/settingsKeys';
 import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../utils/types';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 
@@ -183,25 +183,99 @@ export class PowerCalibrationStore {
 }
 
 /**
- * Load a calibration store from Homey settings. Treats missing or malformed
- * values as an empty store rather than throwing, and applies an abandon-grace
- * window when the raw value was unparseable so a transient empty SDK read on
- * startup does not wipe persisted history (per the "Homey SDK reads can
- * transiently fail" rule).
+ * Load a calibration store from Homey settings. Treats missing, malformed,
+ * or thrown reads as an empty store rather than propagating the error, and
+ * applies an abandon-grace window when the raw value was unparseable (or
+ * unreadable) so a transient empty SDK read on startup does not wipe
+ * persisted history (per the "Homey SDK reads can transiently fail" rule).
+ *
+ * Distinguishes a true fresh install (no persisted data and no
+ * "we've-written-before" marker) from a transient SDK read miss (marker is
+ * set, but the snapshot read returned null). On a fresh install there is no
+ * history to preserve, so the grace window is skipped and the first sample
+ * persists immediately — otherwise per-step EMAs collected in the first 5
+ * minutes after restart can be lost if the app crashes before the grace
+ * window elapses.
+ *
+ * A thrown snapshot read is treated as `raw absent`; a thrown marker read
+ * is treated as `marker present`. The combination forces the cautious
+ * branch (engage grace) when the SDK is unwilling to answer either query
+ * — otherwise paired throws on startup would misclassify an existing
+ * install as fresh.
  */
 export function loadPowerCalibrationStore(params: {
   homey: Homey.App['homey'];
   options?: PowerCalibrationStoreOptions;
 }): PowerCalibrationStore {
-  const raw: unknown = params.homey.settings.get(POWER_CALIBRATION);
-  const initialSnapshot = normalizePowerCalibrationSnapshot(raw);
-  const rawWasMissingOrInvalid = !isPlausiblePersistedSnapshot(raw);
-  const loadGraceMs = params.options?.loadGraceMs ?? (rawWasMissingOrInvalid ? DEFAULT_LOAD_GRACE_MS : 0);
+  const rawRead = readPersistedSnapshot(params.homey);
+  const initialSnapshot = normalizePowerCalibrationSnapshot(rawRead.value);
+  const rawIsPlausible = !rawRead.threw && isPlausiblePersistedSnapshot(rawRead.value);
+  // Treat a thrown snapshot read as a transient miss (raw absent, marker
+  // assumed present) — the only safe interpretation when we cannot tell
+  // whether prior history exists. `rawIsAbsent` covers both genuine absence
+  // and the thrown case.
+  const rawIsAbsent = rawRead.threw
+    || rawRead.value === undefined
+    || rawRead.value === null;
+  const markerRead = readInitMarker(params.homey);
+  // Treat a thrown marker read as marker-present. Pairing a thrown marker
+  // read with an absent snapshot would otherwise misclassify an existing
+  // install as fresh and bypass the load-grace window — exactly the
+  // data-loss case the marker is designed to prevent.
+  const hasInitMarker = markerRead.threw ? true : markerRead.value;
+  // Pre-existing users upgrading from a version without the marker should
+  // have it backfilled now, so a subsequent transient miss is recognised as
+  // such rather than misclassified as a fresh install. Skip the backfill if
+  // the marker read threw — we have no signal about whether it's actually
+  // missing.
+  if (rawIsPlausible && !markerRead.threw && !markerRead.value) {
+    writeInitMarkerBestEffort(params.homey);
+  }
+  const loadGraceMs = params.options?.loadGraceMs ?? resolveLoadGraceMs({
+    rawIsPlausible,
+    rawIsAbsent,
+    hasInitMarker,
+  });
   return new PowerCalibrationStore({
     ...(params.options ?? {}),
     initialSnapshot,
     loadGraceMs,
   });
+}
+
+type SettingsReadResult<T> = { value: T; threw: false } | { value: undefined; threw: true };
+
+function readPersistedSnapshot(homey: Homey.App['homey']): SettingsReadResult<unknown> {
+  // The Homey SDK reads can transiently throw on startup. A throw is treated
+  // as a missing-with-marker-present read so the load-grace window engages
+  // and a subsequent recovery read can rebuild the prior history (per the
+  // "Homey SDK reads can transiently fail" rule).
+  try {
+    return { value: homey.settings.get(POWER_CALIBRATION) as unknown, threw: false };
+  } catch {
+    return { value: undefined, threw: true };
+  }
+}
+
+/**
+ * Decide whether to engage the abandon-grace window after loading.
+ *  - Plausible raw → no grace; the loaded snapshot is authoritative.
+ *  - Raw absent AND marker absent → fresh install; no grace, write
+ *    immediately so brand-new EMAs aren't lost to a crash inside the window.
+ *  - Raw absent AND marker present → transient SDK miss; engage grace so a
+ *    subsequent recovery read can rebuild the prior history.
+ *  - Raw is a malformed object → preserve grace regardless of marker. A
+ *    malformed payload signals partial corruption; the next persist could
+ *    overwrite still-recoverable history with the rebuilt-empty snapshot.
+ */
+function resolveLoadGraceMs(args: {
+  rawIsPlausible: boolean;
+  rawIsAbsent: boolean;
+  hasInitMarker: boolean;
+}): number {
+  if (args.rawIsPlausible) return 0;
+  if (args.rawIsAbsent && !args.hasInitMarker) return 0;
+  return DEFAULT_LOAD_GRACE_MS;
 }
 
 function isPlausiblePersistedSnapshot(value: unknown): boolean {
@@ -266,10 +340,42 @@ function writeAndMark(
   try {
     params.homey.settings.set(POWER_CALIBRATION, snapshot);
     params.store.markPersisted(params.nowMs);
-    return true;
   } catch (err) {
     params.error('Failed to persist power calibration', err as Error);
     return false;
+  }
+  // Mark "we've written before" so a subsequent boot with a missing snapshot
+  // read is recognised as a transient SDK miss rather than a fresh install.
+  // Outside the snapshot-write try/catch so a marker read/write failure does
+  // not get reported as a snapshot-persist failure (the snapshot is already
+  // durable at this point). If the read threw we skip the write attempt —
+  // the next persist will retry, and the marker is idempotent.
+  const markerRead = readInitMarker(params.homey);
+  if (!markerRead.threw && !markerRead.value) {
+    writeInitMarkerBestEffort(params.homey);
+  }
+  return true;
+}
+
+function readInitMarker(homey: Homey.App['homey']): SettingsReadResult<boolean> {
+  // A thrown read leaves the caller unable to distinguish "marker absent"
+  // from "we couldn't ask". Surface the throw so the caller can pick the
+  // conservative interpretation (treat as marker present → engage grace)
+  // rather than misclassifying an existing install as a fresh one.
+  try {
+    return { value: homey.settings.get(POWER_CALIBRATION_INITIALIZED) === true, threw: false };
+  } catch {
+    return { value: undefined, threw: true };
+  }
+}
+
+function writeInitMarkerBestEffort(homey: Homey.App['homey']): void {
+  // Best-effort: failure means the next load or persist retries the write,
+  // which is harmless because the marker is idempotent.
+  try {
+    homey.settings.set(POWER_CALIBRATION_INITIALIZED, true);
+  } catch {
+    // Non-fatal — the main calibration snapshot is unaffected.
   }
 }
 
