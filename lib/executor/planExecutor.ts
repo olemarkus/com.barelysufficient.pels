@@ -665,8 +665,8 @@ export class PlanExecutor {
       const observedState = buildExecutableObservedState(this.latestTargetSnapshot);
       const observedMap = new Map(observedState.devices.map((entry) => [entry.id, entry]));
       const logCapacityDebug = (...args: unknown[]) => this.logDebug(...args);
-      const hasShedDevices = hasExecutableShedDevices(executablePlan);
-      this.logUnderspecifiedSteppedShedDevices(plan, executablePlan);
+      const hasShedDevices = hasExecutableShedDevices(plan, executablePlan);
+      this.logUnderspecifiedSteppedShedDevices(plan, executablePlan, mode);
       let deviceWriteCount = 0;
       let commandRequestCount = 0;
       for (const intent of executablePlan.devices) {
@@ -769,12 +769,13 @@ export class PlanExecutor {
     return !lastRestoreMs || lastRestoreMs < lastShedMs ? 'shed_state' : 'current_plan';
   }
 
-  private logUnderspecifiedSteppedShedDevices(plan: DevicePlan, executablePlan: ExecutablePlan): void {
+  private logUnderspecifiedSteppedShedDevices(plan: DevicePlan, exec: ExecutablePlan, mode: PlanActuationMode): void {
     if (!this.deps.debugStructured) return;
-    for (const dropped of findDroppedSteppedShedIntents(plan, executablePlan)) {
+    for (const dropped of findDroppedSteppedShedIntents(plan, exec)) {
       this.deps.debugStructured({
         event: 'stepped_load_shed_intent_dropped',
         reasonCode: 'underspecified_set_step',
+        actuationMode: mode,
         ...dropped,
       });
     }
