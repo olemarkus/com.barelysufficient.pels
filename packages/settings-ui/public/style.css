@@ -820,7 +820,7 @@ md-primary-tab.tab[active]:hover {
   margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--font-weight-medium);
   font-size: var(--font-size-xs);
   color: var(--muted);
 }
@@ -990,8 +990,8 @@ md-primary-tab.tab[active]:hover {
 }
 
 .pill.ok {
-  color: var(--color-semantic-text-inverse);
-  background: var(--accent);
+  color: var(--color-semantic-bg);
+  background: var(--color-base-good-default);
   border-color: transparent;
 }
 
@@ -1711,7 +1711,7 @@ md-primary-tab.tab[active]:hover {
   border: 1px solid var(--pels-surface-outline);
   border-radius: var(--pels-card-radius);
   background: var(--color-surface-1);
-  transition: --md-elevation-level var(--transition-default);
+  transition: --md-elevation-level var(--transition-emphasized);
 }
 
 .plan-card {

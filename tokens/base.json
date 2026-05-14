@@ -57,6 +57,7 @@
     "fast": { "value": "0.15s ease" },
     "default": { "value": "0.2s ease" },
     "slow": { "value": "0.25s ease" },
+    "emphasized": { "value": "0.2s cubic-bezier(0.2, 0, 0, 1)" },
     "panel": { "value": "0.3s cubic-bezier(0.32, 0.72, 0, 1)" }
   },
   "opacity": {

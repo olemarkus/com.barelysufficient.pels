@@ -72,22 +72,22 @@
     "state": {
       "positive": {
         "bg": { "value": "color-mix(in srgb, {color.base.good.default} 14%, {color.surface.1})" },
-        "border": { "value": "color-mix(in srgb, {color.base.good.default} 40%, transparent)" },
+        "border": { "value": "color-mix(in srgb, {color.base.good.default} 55%, {color.surface.3})" },
         "text": { "value": "{color.role.good}" }
       },
       "negative": {
         "bg": { "value": "color-mix(in srgb, {color.base.danger.default} 14%, {color.surface.1})" },
-        "border": { "value": "color-mix(in srgb, {color.base.danger.default} 40%, transparent)" },
+        "border": { "value": "{color.base.danger.strong}" },
         "text": { "value": "{color.base.danger.soft}" }
       },
       "warning": {
         "bg": { "value": "color-mix(in srgb, {color.base.warning.default} 14%, {color.surface.1})" },
-        "border": { "value": "color-mix(in srgb, {color.base.warning.default} 40%, transparent)" },
+        "border": { "value": "{color.base.warning.strong}" },
         "text": { "value": "{color.base.warning.soft}" }
       },
       "info": {
         "bg": { "value": "color-mix(in srgb, {color.base.info.default} 14%, {color.surface.1})" },
-        "border": { "value": "color-mix(in srgb, {color.base.info.default} 40%, transparent)" },
+        "border": { "value": "color-mix(in srgb, {color.base.info.default} 55%, {color.surface.3})" },
         "text": { "value": "{color.role.info}" }
       }
     },

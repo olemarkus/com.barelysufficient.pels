@@ -39,8 +39,11 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       tokens. *(landed — `.plan-hero__headline` and `.hero h1` now use `--pels-text-display-*` /
       `--pels-text-headline-*`; section `h2` rules (`.settings-home-hero h2`,
       `.device-detail-heading h2`) use `--pels-text-section-headline-*`; `.card h2` and
-      `.usage-hero__stat-value` use `--pels-text-title-*`. Screenshot baselines need a refresh
-      pass — tracked in the residual e2e bullet below.)*
+      `.usage-hero__stat-value` use `--pels-text-title-*` (the spec's display-small for
+      `.usage-hero__stat-value` was rejected — three 36 px values cannot fit the 3-column
+      stat grid at 320 px; revisit only if the grid is restructured to wrap). `.eyebrow`
+      moved from semibold to medium per the M3 label-small weight. Screenshot baselines need
+      a refresh pass — tracked in the residual e2e bullet below.)*
 - [x] CSS-side migration: apply existing surface tier tokens per M3 nesting. *(landed —
       `.slide-panel` raised to `--pels-surface-container-high`, `.banner` uses
       `--pels-surface-container-highest`, `.plan-card` is now a flat `--color-surface-1`,

@@ -43,6 +43,7 @@
   --transition-fast: 0.15s ease;
   --transition-default: 0.2s ease;
   --transition-slow: 0.25s ease;
+  --transition-emphasized: 0.2s cubic-bezier(0.2, 0, 0, 1);
   --transition-panel: 0.3s cubic-bezier(0.32, 0.72, 0, 1);
   --opacity-disabled: 0.5;
   --color-base-black: #0c111b;
@@ -98,15 +99,15 @@
   --color-semantic-warning: var(--color-base-warning-default);
   --color-semantic-info: var(--color-base-info-default);
   --color-state-positive-bg: color-mix(in srgb, var(--color-base-good-default) 14%, var(--color-surface-1));
-  --color-state-positive-border: color-mix(in srgb, var(--color-base-good-default) 40%, transparent);
+  --color-state-positive-border: color-mix(in srgb, var(--color-base-good-default) 55%, var(--color-surface-3));
   --color-state-negative-bg: color-mix(in srgb, var(--color-base-danger-default) 14%, var(--color-surface-1));
-  --color-state-negative-border: color-mix(in srgb, var(--color-base-danger-default) 40%, transparent);
+  --color-state-negative-border: var(--color-base-danger-strong);
   --color-state-negative-text: var(--color-base-danger-soft);
   --color-state-warning-bg: color-mix(in srgb, var(--color-base-warning-default) 14%, var(--color-surface-1));
-  --color-state-warning-border: color-mix(in srgb, var(--color-base-warning-default) 40%, transparent);
+  --color-state-warning-border: var(--color-base-warning-strong);
   --color-state-warning-text: var(--color-base-warning-soft);
   --color-state-info-bg: color-mix(in srgb, var(--color-base-info-default) 14%, var(--color-surface-1));
-  --color-state-info-border: color-mix(in srgb, var(--color-base-info-default) 40%, transparent);
+  --color-state-info-border: color-mix(in srgb, var(--color-base-info-default) 55%, var(--color-surface-3));
   --color-focus-ring: rgba(var(--color-base-accent-default-rgb), 0.6);
   --color-overlay-toast: rgba(var(--color-base-black-rgb), 0.9);
   --pels-surface-container-low: var(--color-surface-2);
