@@ -120,6 +120,11 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
 const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => {
   const priceArea = homey.settings.get('price_area') as unknown;
   const homeyCurrency = homey.settings.get('homey_prices_currency') as unknown;
+  // The settings-UI client (`deadlinePlanData.getCombinedPrices`) accepts
+  // both the legacy V1 `{ prices: [...] }` and V2 `{ days: {...} }` shapes,
+  // so the raw persisted value is forwarded as-is. A first read through
+  // `readPriceStore` (daily-budget service, PlanStatusWriter) migrates V1 to
+  // V2 in place; later bootstrap calls then see V2 here.
   return {
     combinedPrices: homey.settings.get('combined_prices') as unknown ?? null,
     electricityPrices: homey.settings.get('electricity_prices') as unknown ?? null,

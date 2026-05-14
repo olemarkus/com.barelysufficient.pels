@@ -3,6 +3,7 @@ import {
   type CombinedHourlyPrice,
   type CombinedPriceDayEntries,
   type CombinedPriceEntry,
+  type CombinedPricesV1,
   type CombinedPricesV2,
   type PriceScheme,
 } from './priceTypes';
@@ -147,4 +148,36 @@ export const buildCombinedPricePayload = (params: {
     priceScheme,
     priceUnit,
   };
+};
+
+/**
+ * Convert a legacy V1 `combined_prices` payload (`{ prices: [...], avgPrice,
+ * ... }`) into the date-keyed V2 shape, applying the rolling 3-day window.
+ * The V1 entries already carry the resolved `total`, `isCheap`, `isExpensive`
+ * fields, so no recomputation against thresholds is needed — we just regroup.
+ */
+export const migrateLegacyCombinedPrices = (
+  legacy: CombinedPricesV1,
+  now: Date,
+  timeZone: string,
+): CombinedPricesV2 => {
+  const windowKeys = new Set(priceStoreWindowDateKeys(now, timeZone));
+  const days = groupEntriesByDateKey(legacy.prices, timeZone, windowKeys);
+  const base: CombinedPricesV2 = {
+    version: COMBINED_PRICES_VERSION,
+    days,
+    avgPrice: legacy.avgPrice,
+    lowThreshold: legacy.lowThreshold,
+    highThreshold: legacy.highThreshold,
+    priceScheme: legacy.priceScheme,
+    priceUnit: legacy.priceUnit,
+  };
+  const extra: Partial<CombinedPricesV2> = {
+    ...(typeof legacy.thresholdPercent === 'number' && Number.isFinite(legacy.thresholdPercent)
+      ? { thresholdPercent: legacy.thresholdPercent } : {}),
+    ...(typeof legacy.minDiffOre === 'number' && Number.isFinite(legacy.minDiffOre)
+      ? { minDiffOre: legacy.minDiffOre } : {}),
+    ...(typeof legacy.lastFetched === 'string' ? { lastFetched: legacy.lastFetched } : {}),
+  };
+  return { ...base, ...extra };
 };

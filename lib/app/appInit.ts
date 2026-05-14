@@ -8,8 +8,8 @@ import {
 import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
 import { PlanService } from '../plan/planService';
 import { PriceCoordinator } from '../price/priceCoordinator';
+import { readPriceStore } from '../price/priceStore';
 import { registerFlowCards } from '../../flowCards/registerFlowCards';
-import { COMBINED_PRICES } from '../utils/settingsKeys';
 import { resolveHomeyEnergyApiFromSdk } from '../utils/homeyEnergy';
 import type { FlowHomeyLike, TargetDeviceSnapshot } from '../utils/types';
 import type { StepPowerCalibrationView } from '../plan/planTypes';
@@ -347,7 +347,15 @@ export function createPlanService(ctx: AppContext): PlanService {
     error: (...args: unknown[]) => ctx.error(...args),
     isCurrentHourCheap: () => ctx.isCurrentHourCheap(),
     isCurrentHourExpensive: () => ctx.isCurrentHourExpensive(),
-    getCombinedPrices: () => ctx.homey.settings.get(COMBINED_PRICES) as unknown,
+    // Use readPriceStore so a legacy V1 payload is migrated to V2 on first
+    // read; otherwise hasPrices()/hasCombinedPrices() (which only know V2)
+    // would return false during the post-upgrade window and price_level
+    // would resolve to UNKNOWN.
+    getCombinedPrices: () => readPriceStore(
+      { homey: ctx.homey, requestRefetch: () => ctx.priceCoordinator?.updateCombinedPrices() },
+      new Date(),
+      ctx.homey.clock.getTimezone(),
+    ),
     getLastPowerUpdate: () => ctx.powerTracker.lastTimestamp ?? null,
     schedulePostActuationRefresh: () => ctx.snapshotHelpers.schedulePostActuationRefresh(),
     structuredLog: ctx.getStructuredLogger('plan'),

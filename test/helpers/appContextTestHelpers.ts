@@ -19,6 +19,10 @@ type MockHomey = FlowHomeyLike & {
     on: (event: string, listener: (...args: unknown[]) => void) => void;
     off: (event: string, listener: (...args: unknown[]) => void) => void;
   };
+  clock: {
+    getTimezone: () => string;
+    getTimezoneOffset: () => number;
+  };
 };
 
 type AppContextMockOptions = Omit<Partial<AppContext>, 'latestTargetSnapshot' | 'priceOptimizationEnabled' | 'priceOptimizationSettings'> & {
@@ -46,6 +50,10 @@ export function createHomeyMock(): { appHomey: AppContext['homey']; flowHomey: M
       set: vi.fn(),
       on: vi.fn(),
       off: vi.fn(),
+    },
+    clock: {
+      getTimezone: () => 'Europe/Oslo',
+      getTimezoneOffset: () => -60,
     },
   };
   return {
