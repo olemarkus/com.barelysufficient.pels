@@ -4,10 +4,10 @@
     "en": "Manual action needed"
   },
   "desc": {
-    "en": "Whether PELS projects an hourly hard-cap breach and has no managed devices left to limit"
+    "en": "Whether PELS projects an hourly hard cap breach and has no managed devices left to limit"
   },
   "insightsTitleTrue": {
-    "en": "Manual action needed: projected hard-cap breach"
+    "en": "Manual action needed: projected hard cap breach"
   },
   "insightsTitleFalse": {
     "en": "Manual action no longer needed: back within hard cap"
