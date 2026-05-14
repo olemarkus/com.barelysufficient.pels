@@ -20,19 +20,10 @@ type CombinedPayloadParams = {
   tomorrowPayload: FlowPricePayload | null;
   logDebug: (...args: unknown[]) => void;
   label: 'Flow prices' | 'Homey prices';
-  allowTomorrowAsToday: boolean;
 };
 
 export const buildCombinedHourlyPricesFromPayloads = (params: CombinedPayloadParams): BaseHourlyPrice[] => {
-  const {
-    now,
-    timeZone,
-    todayPayload,
-    tomorrowPayload,
-    logDebug,
-    label,
-    allowTomorrowAsToday,
-  } = params;
+  const { now, timeZone, todayPayload, tomorrowPayload, logDebug, label } = params;
   const todayKey = getDateKeyInTimeZone(now, timeZone);
   // Compare payloads by local calendar day instead of adding 24h to the current instant.
   const tomorrowKey = shiftDateKey(todayKey, 1);
@@ -45,7 +36,7 @@ export const buildCombinedHourlyPricesFromPayloads = (params: CombinedPayloadPar
   };
 
   const todayResult = resolvePayload(todayPayload, todayKey);
-  const useTomorrowAsToday = allowTomorrowAsToday && !todayResult.used && tomorrowPayload?.dateKey === todayKey;
+  const useTomorrowAsToday = !todayResult.used && tomorrowPayload?.dateKey === todayKey;
   const todayEntries = useTomorrowAsToday && tomorrowPayload
     ? buildFlowEntries(tomorrowPayload, timeZone)
     : todayResult.entries;
@@ -71,7 +62,6 @@ type PurgeStaleFlowSlotsParams = {
   timeZone: string;
   todayPayload: FlowPricePayload | null;
   tomorrowPayload: FlowPricePayload | null;
-  allowTomorrowAsToday: boolean;
 };
 
 export type PurgeStaleFlowSlotsResult = {
@@ -101,7 +91,7 @@ const resolveTomorrowChange = (
 export const purgeStaleFlowPriceSlots = (
   params: PurgeStaleFlowSlotsParams,
 ): PurgeStaleFlowSlotsResult => {
-  const { now, timeZone, todayPayload, tomorrowPayload, allowTomorrowAsToday } = params;
+  const { now, timeZone, todayPayload, tomorrowPayload } = params;
   const todayKey = getDateKeyInTimeZone(now, timeZone);
   const tomorrowKey = shiftDateKey(todayKey, 1);
 
@@ -110,7 +100,6 @@ export const purgeStaleFlowPriceSlots = (
 
   const canPromoteTomorrow = tomorrowPayload !== null
     && tomorrowPayload.dateKey === todayKey
-    && allowTomorrowAsToday
     && afterTodayClear === null;
 
   const tomorrowChange = resolveTomorrowChange(tomorrowPayload, tomorrowKey, canPromoteTomorrow);
