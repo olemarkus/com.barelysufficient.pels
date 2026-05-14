@@ -212,9 +212,13 @@ const stubHistory = (entriesByDeviceId: Record<string, DeferredObjectivePlanHist
   };
 };
 
-const openHistory = async (page: Page, deviceId: string) => {
-  await page.goto(`/deadline-plan.html?deviceId=${deviceId}`, { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'History' }).click();
+// Past plans are surfaced on the Smart tasks tab (Past tasks section). The
+// per-device deadline-plan view no longer carries an in-page History tab —
+// duplicating that list inside an individual plan view was confusing and
+// kept showing empty for new devices.
+const openHistory = async (page: Page) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('tab', { name: 'Smart tasks' }).click();
 };
 
 test.describe('Deadline recorder → history UI round-trip', () => {
@@ -227,10 +231,13 @@ test.describe('Deadline recorder → history UI round-trip', () => {
     expect(entriesByDeviceId['dev_connected300'][0].startProgressC).toBe(50);
     expect(entriesByDeviceId['dev_connected300'][0].finalProgressC).toBe(65);
 
-    await page.addInitScript(stubHistory, entriesByDeviceId);
-    await openHistory(page, 'dev_connected300');
+    // Only stub the entries for this device — the Smart tasks tab renders
+    // history across every device, so leaving sibling devices in the stub
+    // would pull in additional cards unrelated to this assertion.
+    await page.addInitScript(stubHistory, { dev_connected300: entriesByDeviceId['dev_connected300'] });
+    await openHistory(page);
 
-    const list = page.getByLabel('Past plans');
+    const list = page.locator('.deadlines-history');
     await expect(list).toBeVisible();
     const cards = list.locator('.plan-history-card');
     await expect(cards).toHaveCount(1);
@@ -245,10 +252,10 @@ test.describe('Deadline recorder → history UI round-trip', () => {
     expect(entriesByDeviceId['dev_pool_pump'][0].outcome).toBe('missed');
     expect(entriesByDeviceId['dev_pool_pump'][0].finalProgressC).toBe(58);
 
-    await page.addInitScript(stubHistory, entriesByDeviceId);
-    await openHistory(page, 'dev_pool_pump');
+    await page.addInitScript(stubHistory, { dev_pool_pump: entriesByDeviceId['dev_pool_pump'] });
+    await openHistory(page);
 
-    const list = page.getByLabel('Past plans');
+    const list = page.locator('.deadlines-history');
     await expect(list).toBeVisible();
     const cards = list.locator('.plan-history-card');
     await expect(cards).toHaveCount(1);

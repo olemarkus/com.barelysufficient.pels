@@ -6,9 +6,10 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const SCREENSHOT_DIR = path.resolve(SCRIPT_DIR, '../../../../docs/screenshots/deadline-plan');
 
 const openDeadlinePlan = async (page: Page) => {
-  await page.goto('/deadline-plan.html?deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('.plan-hero__headline')).toBeVisible();
-  await expect(page.locator('.deadline-horizon-chart svg')).toBeVisible();
+  await page.goto('/?page=deadline-plan&deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
+  const panel = page.locator('#deadline-plan-panel');
+  await expect(panel.locator('.plan-hero__headline')).toBeVisible();
+  await expect(panel.locator('.deadline-horizon-chart svg')).toBeVisible();
 };
 
 test.describe('Deadline plan screenshots', () => {

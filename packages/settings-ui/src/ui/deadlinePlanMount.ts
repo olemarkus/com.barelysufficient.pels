@@ -29,22 +29,21 @@ const buildBootErrorMessage = (error: unknown): string => (
 
 const DEADLINE_PLAN_REFRESH_DEBOUNCE_MS = 200;
 
-const closeDeadlinePlanPage = (): void => {
-  if (window.history.length > 1) {
-    window.history.back();
-    return;
-  }
-  window.close();
+// Resolved by `boot.ts` so the close button can return to whichever tab the
+// user came from (almost always Smart tasks). Kept as a module-local instead
+// of a parameter on `mountDeadlinePlan` so the close button stays bound across
+// the SPA's lifetime even when the deadline-plan view is re-mounted.
+let onCloseDeadlinePlan: () => void = () => {};
+
+export const setDeadlinePlanCloseHandler = (handler: () => void): void => {
+  onCloseDeadlinePlan = handler;
 };
 
-let closeHandlerBound = false;
-
 const initDeadlinePlanClose = (): void => {
-  if (closeHandlerBound) return;
   const button = document.querySelector<MdButtonElement>('[data-deadline-plan-close]');
-  if (!button) return;
-  button.addEventListener('click', closeDeadlinePlanPage);
-  closeHandlerBound = true;
+  if (!button || button.dataset.deadlinePlanCloseBound === 'true') return;
+  button.dataset.deadlinePlanCloseBound = 'true';
+  button.addEventListener('click', () => onCloseDeadlinePlan());
 };
 
 export type DeadlinePlanBoot = {
@@ -70,9 +69,7 @@ const fetchDeadlinePlanBoot = async (): Promise<DeadlinePlanBoot> => {
   return { bootstrap, devicesPayload, prices: prices ?? bootstrap.prices };
 };
 
-export const isDeadlinePlanPage = (): boolean => (
-  document.getElementById('deadline-plan-root') !== null
-);
+export const isDeadlinePlanPage = (): boolean => activeMount !== null;
 
 // History-detail route does not need bootstrap/devices/prices — rendering a
 // finalized plan reads only from the persisted history entry. Fetch history
@@ -82,6 +79,7 @@ const mountHistoryDetail = async (
   deviceId: string | null,
   historyId: string,
   timeZone: string,
+  isStale: () => boolean,
 ): Promise<void> => {
   // Swap to the loading state synchronously so the "Try again" button is
   // removed before the new fetch starts. Without this, fast double-clicks
@@ -91,6 +89,7 @@ const mountHistoryDetail = async (
   try {
     history = await fetchDeadlinePlanHistory(deviceId, timeZone, true);
   } catch (error) {
+    if (isStale()) return;
     await logSettingsError(
       'Failed to load smart task history detail',
       error,
@@ -99,10 +98,14 @@ const mountHistoryDetail = async (
     renderDeadlinePlan(surface, {
       status: 'error',
       message: buildBootErrorMessage(error),
-      onRetry: () => { void mountHistoryDetail(surface, deviceId, historyId, timeZone); },
+      // Re-enter through `mountDeadlinePlan` so the retry gets a fresh
+      // generation / `isStale` guard instead of inheriting this call's
+      // closures and potentially racing the new fetch.
+      onRetry: () => { void mountDeadlinePlan(); },
     });
     return;
   }
+  if (isStale()) return;
   const entry = history.entries.find((candidate) => candidate.id === historyId);
   if (!entry) {
     renderDeadlinePlan(surface, { status: 'history-missing', history });
@@ -116,6 +119,35 @@ const mountHistoryDetail = async (
   });
 };
 
+// Active mount tracks the deviceId + historyId the panel is currently
+// showing, plus the latest boot/history payloads. The runtime-refresh
+// subscription (bound once on first mount) reads from this so re-renders
+// stay aligned with the current URL even after the user navigates to a
+// different smart task without a full page reload.
+type ActiveMount = {
+  surface: HTMLElement;
+  deviceId: string | null;
+  historyId: string | null;
+  timeZone: string;
+  generation: number;
+  lastBoot: DeadlinePlanBoot | null;
+  lastHistory: DeadlinePlanHistoryView | undefined;
+};
+let activeMount: ActiveMount | null = null;
+let runtimeRefreshBound = false;
+
+const renderActiveMount = (): void => {
+  const m = activeMount;
+  if (!m || !m.lastBoot) return;
+  const renderInput = resolveRenderInput({
+    bootstrap: m.lastBoot.bootstrap,
+    deviceId: m.deviceId,
+    devices: m.lastBoot.devicesPayload.devices,
+    prices: m.lastBoot.prices,
+  });
+  renderDeadlinePlan(m.surface, resolveDeadlinePlanLoadState(renderInput, m.lastHistory));
+};
+
 export const mountDeadlinePlan = async (): Promise<void> => {
   const surface = document.getElementById('deadline-plan-root');
   if (!surface) return;
@@ -124,30 +156,33 @@ export const mountDeadlinePlan = async (): Promise<void> => {
   const deviceId = params.get('deviceId');
   const historyId = params.get('historyId');
   const timeZone = resolveBrowserTimeZone();
+  const generation = (activeMount?.generation ?? 0) + 1;
+  activeMount = {
+    surface, deviceId, historyId, timeZone, generation, lastBoot: null, lastHistory: undefined,
+  };
+  const isStale = (): boolean => activeMount?.generation !== generation;
 
   initDeadlinePlanClose();
+  // Bind runtime refresh once per SPA session, *before* any awaitable work,
+  // so a failed first boot does not leave the rest of the session without
+  // event-driven refresh. The handler reads `activeMount` at fire time so
+  // subscribing this early is harmless when no view is open.
+  if (!runtimeRefreshBound) {
+    runtimeRefreshBound = subscribeToRuntimeRefresh();
+  }
   renderDeadlinePlan(surface, { status: 'loading' });
 
   if (historyId !== null) {
-    await mountHistoryDetail(surface, deviceId, historyId, timeZone);
+    await mountHistoryDetail(surface, deviceId, historyId, timeZone, isStale);
     return;
   }
 
-  let lastBoot: DeadlinePlanBoot | null = null;
-  let lastHistory: DeadlinePlanHistoryView | undefined;
-  const renderWith = (boot: DeadlinePlanBoot, history: DeadlinePlanHistoryView | undefined): void => {
-    const renderInput = resolveRenderInput({
-      bootstrap: boot.bootstrap,
-      deviceId,
-      devices: boot.devicesPayload.devices,
-      prices: boot.prices,
-    });
-    renderDeadlinePlan(surface, resolveDeadlinePlanLoadState(renderInput, history));
-  };
-
   try {
-    lastBoot = await fetchDeadlinePlanBoot();
+    const boot = await fetchDeadlinePlanBoot();
+    if (isStale()) return;
+    activeMount.lastBoot = boot;
   } catch (error) {
+    if (isStale()) return;
     await logSettingsError(
       'Failed to load smart task plan boot data',
       error,
@@ -160,34 +195,30 @@ export const mountDeadlinePlan = async (): Promise<void> => {
     });
     return;
   }
-  // First paint without waiting on history — Current tab is the default and
-  // History fills in shortly after.
-  renderWith(lastBoot, lastHistory);
+  renderActiveMount();
 
-  subscribeToRuntimeRefresh({
-    getLastHistory: () => lastHistory,
-    onBoot: (next) => { lastBoot = next; },
-    renderWith,
-  });
-
-  // Warm history in the background so the History tab is populated when the
-  // user clicks it (or when the completed-deadline path auto-selects it).
   void fetchDeadlinePlanHistory(deviceId, timeZone).then((history) => {
-    lastHistory = history;
-    if (lastBoot) renderWith(lastBoot, history);
+    if (isStale()) return;
+    activeMount!.lastHistory = history;
+    renderActiveMount();
   });
 };
 
-// Resubscribe to runtime change events so the page reflects new plan
-// revisions and device updates without a manual reload. Mirrors the refresh
-// strategy in `realtime.ts`, which only runs on the main settings page.
-const subscribeToRuntimeRefresh = (params: {
-  getLastHistory: () => DeadlinePlanHistoryView | undefined;
-  onBoot: (next: DeadlinePlanBoot) => void;
-  renderWith: (boot: DeadlinePlanBoot, history: DeadlinePlanHistoryView | undefined) => void;
-}): void => {
+export const unmountDeadlinePlan = (): void => {
+  activeMount = null;
+};
+
+// Resubscribe to runtime change events so the panel reflects new plan
+// revisions and device updates without a manual reload. Reads the current
+// active mount on each tick so re-renders track URL changes after the SPA
+// navigates between deadline-plan deep links.
+// Returns true iff event subscriptions were installed; lets the caller hold
+// off on flipping the `runtimeRefreshBound` latch until the Homey client is
+// actually available, so a transient early-mount with no SDK does not silence
+// later refreshes for the whole session.
+const subscribeToRuntimeRefresh = (): boolean => {
   const homey = getHomeyClient();
-  if (!homey || typeof homey.on !== 'function') return;
+  if (!homey || typeof homey.on !== 'function') return false;
   let refreshing = false;
   let refreshQueued = false;
   let refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -196,15 +227,14 @@ const subscribeToRuntimeRefresh = (params: {
       refreshQueued = true;
       return;
     }
+    if (!activeMount || activeMount.historyId !== null) return;
     refreshing = true;
     try {
       const next = await fetchDeadlinePlanBoot();
-      params.onBoot(next);
-      params.renderWith(next, params.getLastHistory());
+      if (!activeMount || activeMount.historyId !== null) return;
+      activeMount.lastBoot = next;
+      renderActiveMount();
     } catch (error) {
-      // Background refresh: do not blow away the rendered current view, but
-      // do log the failure so a recurring transient is visible in
-      // `/tmp/pels` instead of silent.
       await logSettingsError(
         'Background refresh of smart task plan failed',
         error,
@@ -235,4 +265,5 @@ const subscribeToRuntimeRefresh = (params: {
   homey.on('plan_updated', scheduleRefresh);
   homey.on('devices_updated', scheduleRefresh);
   homey.on('prices_updated', scheduleRefresh);
+  return true;
 };

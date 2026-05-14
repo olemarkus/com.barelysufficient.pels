@@ -1,5 +1,5 @@
 import { render } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useRef } from 'preact/hooks';
 import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/deferredObjectiveSettings.ts';
 import {
   deadlineLabels,
@@ -9,7 +9,6 @@ import {
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
 import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
-import { DeadlinePlanHistory } from './DeadlinePlanHistory.tsx';
 import { DeadlinePlanHistoryDetail } from './DeadlinePlanHistoryDetail.tsx';
 import { MdTextButton } from './materialWebJSX.tsx';
 
@@ -582,30 +581,6 @@ const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
   );
 };
 
-type DeadlinePlanTab = 'current' | 'history';
-
-const PlanTabStrip = ({ active, onChange }: {
-  active: DeadlinePlanTab;
-  onChange: (next: DeadlinePlanTab) => void;
-}) => (
-  <div class="plan-tabs" role="group" aria-label="Plan view tabs">
-    <MdTextButton
-      aria-pressed={active === 'current'}
-      class={`plan-tabs__tab${active === 'current' ? ' plan-tabs__tab--active' : ''}`}
-      onClick={() => onChange('current')}
-    >
-      Current plan
-    </MdTextButton>
-    <MdTextButton
-      aria-pressed={active === 'history'}
-      class={`plan-tabs__tab${active === 'history' ? ' plan-tabs__tab--active' : ''}`}
-      onClick={() => onChange('history')}
-    >
-      History
-    </MdTextButton>
-  </div>
-);
-
 const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
   <section class="plan-hero" data-tone="info" aria-labelledby="deadline-plan-pending-title">
     <div class="plan-hero__chips">
@@ -622,7 +597,18 @@ const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
   </section>
 );
 
-const CurrentPlanContent = ({ loadState }: { loadState: DeadlinePlanLoadState }) => {
+const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) => {
+  if (loadState.status === 'history-detail') {
+    return <DeadlinePlanHistoryDetail entry={loadState.entry} timeZone={loadState.timeZone} />;
+  }
+  if (loadState.status === 'history-missing') {
+    return (
+      <section class="pels-surface-card budget-redesign-card">
+        <h1 class="plan-card__title">Plan not found</h1>
+        <p class="pels-card-supporting">This past plan is no longer recorded. Older entries roll off as new ones are saved. Return to Smart tasks to see what is still available.</p>
+      </section>
+    );
+  }
   if (loadState.status === 'loading') {
     return (
       <section class="pels-surface-card budget-redesign-card">
@@ -662,77 +648,15 @@ const CurrentPlanContent = ({ loadState }: { loadState: DeadlinePlanLoadState })
     return (
       <section class="pels-surface-card budget-redesign-card">
         <h1 class="plan-card__title">{copy.headline}</h1>
-        <p class="pels-card-supporting">{copy.body}</p>
+        <p class="pels-card-supporting">{copy.body} Past plans are listed under Smart tasks.</p>
       </section>
     );
-  }
-  if (loadState.status === 'history-detail' || loadState.status === 'history-missing') {
-    // History-only routes hide the tab strip entirely (see DeadlinePlanRoot),
-    // so this branch is unreachable in practice. Returning null keeps the
-    // type narrowed without rendering anything if it ever is.
-    return null;
   }
   return (
     <>
       <DeadlineHero payload={loadState.payload} />
       <HorizonCard payload={loadState.payload} />
       <PlanInputsCard payload={loadState.payload} />
-    </>
-  );
-};
-
-const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) => {
-  // Completed deadlines land on History so the user sees outcomes immediately;
-  // the Current tab stays reachable as a debug surface. `useState`'s
-  // initializer fires only on first mount — and the first mount is always the
-  // `loading` state because the boot fetch runs after the initial render — so
-  // also force the switch with an effect when the status transitions to
-  // `completed`. After that the user can still click back to Current.
-  const [activeTab, setActiveTab] = useState<DeadlinePlanTab>('current');
-  useEffect(() => {
-    if (loadState.status === 'completed') setActiveTab('history');
-  }, [loadState.status]);
-  // History-only routes (`history-detail`, `history-missing`) target one
-  // specific past plan — there is no live "Current plan" to switch to, so
-  // skip the tab strip entirely. Without this short-circuit the Current tab
-  // would render nothing, looking like a broken page.
-  if (loadState.status === 'history-detail') {
-    return <DeadlinePlanHistoryDetail entry={loadState.entry} timeZone={loadState.timeZone} />;
-  }
-  if (loadState.status === 'history-missing') {
-    // Still surface other history entries below the not-found card so the
-    // user can recover in-page when one entry rolled off but siblings exist.
-    // The hero stays even when the list is empty because it explains *why*
-    // the page is showing this state.
-    const missingHistory = loadState.history;
-    const hasOtherEntries = (missingHistory?.entries.length ?? 0) > 0;
-    return (
-      <>
-        <section class="pels-surface-card budget-redesign-card">
-          <h1 class="plan-card__title">Plan not found</h1>
-          <p class="pels-card-supporting">This past plan is no longer recorded. Older entries roll off as new ones are saved.</p>
-        </section>
-        {hasOtherEntries && missingHistory && (
-          <DeadlinePlanHistory
-            entries={missingHistory.entries}
-            timeZone={missingHistory.timeZone}
-          />
-        )}
-      </>
-    );
-  }
-  const history = loadState.history;
-  return (
-    <>
-      <PlanTabStrip active={activeTab} onChange={setActiveTab} />
-      {activeTab === 'current' ? (
-        <CurrentPlanContent loadState={loadState} />
-      ) : (
-        <DeadlinePlanHistory
-          entries={history?.entries ?? []}
-          timeZone={history?.timeZone ?? 'UTC'}
-        />
-      )}
     </>
   );
 };

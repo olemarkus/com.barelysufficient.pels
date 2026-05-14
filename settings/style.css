@@ -4220,6 +4220,20 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   cursor: inherit;
 }
 
+.deadline-plan-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  background: transparent;
+  padding: 0;
+}
+
+.deadline-plan-panel__surface {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
 .deadline-page-close {
   position: fixed;
   z-index: 20;

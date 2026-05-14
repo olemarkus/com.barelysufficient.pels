@@ -233,8 +233,11 @@ plus chart when `latest` is populated.
 ### Plan history capture
 
 `lib/plan/deferredObjectives/planHistory.ts` runs alongside the diagnostics evaluator to
-capture per-(device, deadline) outcomes for the Settings UI History tab on
-`deadline-plan.html`:
+capture per-(device, deadline) outcomes for the Past tasks list on the Smart tasks tab and
+for the per-entry detail view at the `?page=deadline-plan&historyId=…` SPA route inside
+`index.html`. (The standalone `deadline-plan.html` sub-page was removed because the Homey
+mobile WebView does not inject the Homey SDK on sub-pages; the deadline-plan view now lives
+as an in-page route off `index.html`.):
 
 - The recorder observes the diagnostic stream once per plan cycle. It starts an in-progress
   record on the first plannable diagnostic for a `(deviceId, deadlineAtMs)` pair, refreshes
