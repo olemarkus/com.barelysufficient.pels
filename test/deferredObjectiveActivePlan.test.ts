@@ -109,14 +109,17 @@ const buildSeed = (overrides: Partial<ActivePlanFlowCardSeed> = {}): ActivePlanF
 const buildPersistDeps = (initial?: DeferredObjectiveActivePlansV1): {
   deps: ActivePlanPersistDeps;
   saved: () => DeferredObjectiveActivePlansV1 | null;
+  saveCount: () => number;
 } => {
   let saved: DeferredObjectiveActivePlansV1 | null = null;
+  let saveCount = 0;
   return {
     deps: {
       load: () => initial ?? null,
-      save: (next) => { saved = next; },
+      save: (next) => { saved = next; saveCount += 1; },
     },
     saved: () => saved,
+    saveCount: () => saveCount,
   };
 };
 
@@ -361,7 +364,13 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(events).toHaveLength(1);
   });
 
-  it('does not emit onRevisionWritten when plannedKWh shifts within the same set of charging hours, but persists fresh revision metadata', () => {
+  it('does not emit onRevisionWritten or write a new revision when only plannedKWh / energyNeededKWh shifts within the same hours', () => {
+    // Regression for the active-plan recorder settings churn bug: an actively
+    // charging EV reports a monotonically decreasing `energyNeededKWh` every
+    // ~30s plan cycle. Persisting that drift across an unchanged schedule
+    // wrote `DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING` every cycle, which is
+    // wasted Homey settings I/O — the user-visible plan (set of charging
+    // hours) hasn't changed.
     const events: Array<{ deviceId: string; reason: string }> = [];
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder({
@@ -377,11 +386,10 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(recorder.getPlanForTests('dev')?.latest?.energyNeededKWh).toBe(4.5);
     expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
 
-    // Same startsAtMs, lower plannedKWh / energyNeededKWh (e.g. remaining
-    // energy shrank as the device consumed during the same hours). The flow
-    // bus must stay quiet — no new schedule — but Settings UI reads
-    // `activePlan.latest.energyNeededKWh` as authoritative, so the persisted
-    // revision must still be updated.
+    // Same startsAtMs, same planStatus, lower plannedKWh / energyNeededKWh —
+    // a pure consumption decrement that does not change the user-visible
+    // schedule. Must not emit `onRevisionWritten` and must not bump the
+    // revision counter. The previous revision metadata is retained.
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
@@ -395,14 +403,74 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
 
     expect(events).toEqual([]);
     const plan = recorder.getPlanForTests('dev');
-    expect(plan?.latest?.revision).toBe(2);
-    expect(plan?.latest?.reason).toBe('prices_revised');
-    expect(plan?.latest?.energyNeededKWh).toBeCloseTo(3.6, 9);
+    expect(plan?.latest?.revision).toBe(1);
+    expect(plan?.latest?.reason).toBe('flow_card');
+    expect(plan?.latest?.energyNeededKWh).toBe(4.5);
     expect(plan?.latest?.hours).toEqual([
-      { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.2 },
-      { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.2 },
-      { startsAtMs: 4 * HOUR_MS, plannedKWh: 1.2 },
+      { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: 4 * HOUR_MS, plannedKWh: 1.5 },
     ]);
+  });
+
+  it('persists exactly once across many EV charge cycles when schedule and status are stable', () => {
+    // Regression for the active-plan recorder settings churn bug: simulates a
+    // multi-cycle EV charge where the schedule and status stay constant but
+    // `energyNeededKWh` decreases monotonically every cycle. Only the seed
+    // cycle should call `save`; subsequent cycles must be no-ops.
+    const { deps, saveCount } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    const HOURS = [2 * HOUR_MS, 3 * HOUR_MS, 4 * HOUR_MS] as const;
+    const seedDiag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+    recorder.observe([seedDiag], HOUR_MS);
+    recorder.flushIfDirty();
+    expect(saveCount()).toBe(1);
+
+    // 30 cycles with the same schedule and status, decreasing energyNeededKWh.
+    for (let i = 1; i <= 30; i += 1) {
+      const remainingKWh = 4.5 - i * 0.05;
+      const perHour = remainingKWh / HOURS.length;
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        energyNeededKWh: remainingKWh,
+        horizonPlan: makeHorizon(HOURS.map((startMs) => makeBucket(startMs, perHour))),
+      })], HOUR_MS + i * 30 * 1000);
+      recorder.flushIfDirty();
+    }
+
+    expect(saveCount()).toBe(1);
+  });
+
+  it('writes a new revision when planStatus transitions across the same set of hours', () => {
+    // planStatus transitions (on_track <-> at_risk <-> cannot_meet) drive a
+    // user-visible "Can't fully meet" chip in Settings UI, so they must
+    // persist even when the hour set is unchanged.
+    const { deps, saveCount } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+    recorder.flushIfDirty();
+    expect(saveCount()).toBe(1);
+
+    // Same schedule, status flips on_track -> at_risk.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      status: 'at_risk',
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+      ], { status: 'at_risk' }),
+    })], 2 * HOUR_MS);
+    recorder.flushIfDirty();
+
+    expect(saveCount()).toBe(2);
+    const plan = recorder.getPlanForTests('dev');
+    expect(plan?.latest?.planStatus).toBe('at_risk');
+    expect(plan?.latest?.revision).toBe(2);
   });
 
   it('skips both the revision and the bus when nothing observable changed', () => {

@@ -141,18 +141,6 @@ const sameHourSchedule = (
   return true;
 };
 
-// Pre-condition: caller has already established `sameHourSchedule(a, b)`, so
-// both arrays are aligned by index.
-const samePlannedKWh = (
-  a: readonly DeferredObjectiveActivePlanHourV1[],
-  b: readonly DeferredObjectiveActivePlanHourV1[],
-): boolean => {
-  for (let i = 0; i < a.length; i += 1) {
-    if (a[i]!.plannedKWh !== b[i]!.plannedKWh) return false;
-  }
-  return true;
-};
-
 const createPlanFromSeed = (seed: ActivePlanFlowCardSeed, nowMs: number): DeferredObjectiveActivePlanV1 => ({
   deviceId: seed.deviceId,
   deviceName: seed.deviceName,
@@ -448,23 +436,24 @@ export class DeferredObjectiveActivePlanRecorder {
     // Schedule change = user-visible "new plan" (set of charging hours).
     // Drives the `deadline_plan_changed` flow trigger.
     const scheduleChanged = !sameHourSchedule(latest.hours, hours);
-    // Same charging hours but consumer-visible revision metadata drifted —
-    // either kWh redistributed across the unchanged hours, or
-    // `energyNeededKWh` / `planStatus` shifted (Settings UI reads
-    // `activePlan.latest.energyNeededKWh` as authoritative). Persist a new
-    // revision so consumers stay in sync, but do not fire the flow bus —
-    // there is no new schedule for the user to act on.
-    const metadataDriftedWithinSchedule = !scheduleChanged && (
-      !samePlannedKWh(latest.hours, hours)
-      || latest.energyNeededKWh !== horizonPlan.energyNeededKWh
-      || latest.planStatus !== horizonPlan.status
-    );
-    // Any kwhPerUnitSource change is a replan trigger so persisted metadata
-    // (`kwhPerUnitSource`, `energyNeededKWh`, `planStatus`) cannot go stale
-    // when the bucket allocation happens to be byte-identical across a source
-    // flip. The reason is only `rate_refined` for the bootstrap→learned
-    // direction; the rarer learned→bootstrap regression (profile pruned at
-    // retention or device removed) falls through to `prices_revised`.
+    // `planStatus` transitions (on_track <-> at_risk <-> cannot_meet) drive
+    // the "Can't fully meet" chip in Settings UI, so they must persist even
+    // when the schedule is unchanged. Per-cycle drift in `plannedKWh` /
+    // `energyNeededKWh` is intentionally NOT a persist trigger: an actively
+    // charging EV shrinks `energyNeededKWh` monotonically every plan cycle
+    // (~30s), and writing the persisted setting on every cycle was filling
+    // the Homey settings I/O budget for no user-visible benefit. The
+    // settings UI reads `activePlan.latest.energyNeededKWh` as authoritative
+    // but tolerates the slightly stale value — the original starting energy
+    // is more meaningful to the user than a near-zero final value.
+    const statusChanged = !scheduleChanged && latest.planStatus !== horizonPlan.status;
+    // Any kwhPerUnitSource change is a replan trigger so the persisted
+    // `kwhPerUnitSource` cannot stay stale at e.g. 'learned' while the
+    // planner is using bootstrap, even when the bucket allocation happens
+    // to be byte-identical across a source flip. The reason is only
+    // `rate_refined` for the bootstrap→learned direction; the rarer
+    // learned→bootstrap regression (profile pruned at retention or device
+    // removed) falls through to `prices_revised`.
     //
     // `null` means the resolver did not consult a profile (e.g. target is
     // already satisfied so `energyNeededKWh = 0`). Treat that as "no source
@@ -477,7 +466,7 @@ export class DeferredObjectiveActivePlanRecorder {
     const sourceRefined = previousSource === 'bootstrap' && nextSource === 'learned';
     // TODO: device_unavailable + measured_deviation triggers — wired here once
     // device-level metering exists. For now those reasons are not used.
-    if (!objectiveChanged && !scheduleChanged && !metadataDriftedWithinSchedule && !sourceChanged) return;
+    if (!objectiveChanged && !scheduleChanged && !statusChanged && !sourceChanged) return;
     const reason: DeferredObjectiveActivePlanRevisionReason = (() => {
       if (objectiveChanged) return 'objective_changed';
       if (sourceRefined) return 'rate_refined';

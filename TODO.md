@@ -604,6 +604,17 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P3 Future and Exploratory Work
 
+- [ ] Revisit deadline-hero "Need X kWh" staleness if users find the original-vs-remaining
+      framing confusing. The active-plan recorder no longer persists `energyNeededKWh` /
+      `plannedKWh` decrements within an unchanged schedule (to avoid Homey settings churn on
+      every plan cycle), so the Settings UI hero reads the original starting energy until the
+      schedule, plan status, kWh-per-unit source, or objective changes. If the UX needs the
+      live remaining kWh, route it through a non-persisted live snapshot (e.g. include the
+      current diagnostic's `energyNeededKWh` in the UI bootstrap payload) rather than re-
+      enabling per-cycle persistence.
+      Files: `lib/plan/deferredObjectives/activePlanRecorder.ts`, `lib/app/settingsUiApi.ts`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts`,
+      `packages/settings-ui/src/ui/deadlinePlanResolvers.ts`.
 - [ ] Track per-device step changes with the same 30-day hourly retention model, so measured
       usage history can explain which step or mode was active during each measured period.
       Files: future device-level step-change tracker; usage-history UI.
