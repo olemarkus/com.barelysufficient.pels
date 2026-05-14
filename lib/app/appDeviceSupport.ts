@@ -242,7 +242,12 @@ export function disableUnsupportedDevices(params: {
   const controllable = parseBooleanMap(settings.get(CONTROLLABLE_DEVICES) as unknown);
   const priceSettings = parsePriceSettings(settings.get(PRICE_OPTIMIZATION_SETTINGS) as unknown);
   const overshootSettings = parseOvershootSettings(settings.get(OVERSHOOT_BEHAVIORS) as unknown);
-  const changedPriceOnly = priceOnly.filter((device) => controllable[device.id] !== false);
+  // Edge-trigger the price-only log: only emit when capacity was previously
+  // enabled (`true`) and we're demoting it to `false`. Absent keys are not a
+  // transition — they were already effectively unmanaged — so they must not
+  // re-fire the log on every snapshot refresh. This matches the demotion
+  // condition in `applyFalseOverrides`.
+  const changedPriceOnly = priceOnly.filter((device) => controllable[device.id] === true);
 
   const managedChanged = applyFalseOverrides({
     settings,
