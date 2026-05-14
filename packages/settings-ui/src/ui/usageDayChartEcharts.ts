@@ -1,5 +1,11 @@
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
-import { formatHourAxisLabel, resolveLabelEvery, type DayViewBar } from './dayViewChart.ts';
+import {
+  formatHourAxisLabel,
+  readChartPalette,
+  resolveLabelEvery,
+  roundedKWhAxisMax,
+  type DayViewBar,
+} from './dayViewChart.ts';
 import { attachTabShownResize } from './chartVisibilityResize.ts';
 
 type AxisFormatterParam = {
@@ -34,9 +40,6 @@ let plot: EChartsType | null = null;
 let plotContainer: HTMLElement | null = null;
 let plotResizeObserver: ResizeObserver | null = null;
 let detachTabShownResize: (() => void) | null = null;
-
-const resolveCssColor = (element: HTMLElement, variable: string) =>
-  getComputedStyle(element).getPropertyValue(variable).trim();
 
 const resolveChartSize = (element: HTMLElement) => {
   const width = element.clientWidth > 0
@@ -102,17 +105,21 @@ const ensurePlot = (container: HTMLElement): EChartsType => {
   return plot;
 };
 
-const resolvePalette = (barsEl: HTMLElement): UsageDayPalette => ({
-  measured: resolveCssColor(barsEl, '--day-view-color-primary'),
-  warn: resolveCssColor(barsEl, '--day-view-color-warn'),
-  disabled: resolveCssColor(barsEl, '--color-surface-4'),
-  muted: resolveCssColor(barsEl, '--muted'),
-  grid: resolveCssColor(barsEl, '--color-border-strong'),
-  currentBorder: resolveCssColor(barsEl, '--color-state-info-border'),
-  tooltipBackground: resolveCssColor(barsEl, '--color-overlay-toast'),
-  tooltipText: resolveCssColor(barsEl, '--color-semantic-text-primary'),
-  tooltipBorder: resolveCssColor(barsEl, '--color-border-medium'),
-});
+const USAGE_DAY_PALETTE_VARS = {
+  measured: '--pels-chart-measured',
+  warn: '--pels-chart-warn',
+  disabled: '--pels-chart-disabled-bar',
+  muted: '--pels-chart-muted',
+  grid: '--pels-chart-grid',
+  currentBorder: '--pels-chart-current-border',
+  tooltipBackground: '--pels-chart-tooltip-bg',
+  tooltipText: '--pels-chart-tooltip-text',
+  tooltipBorder: '--pels-chart-tooltip-border',
+} as const satisfies Record<keyof UsageDayPalette, string>;
+
+const resolvePalette = (barsEl: HTMLElement): UsageDayPalette => (
+  readChartPalette<UsageDayPalette>(barsEl, USAGE_DAY_PALETTE_VARS)
+);
 
 const resolveBarOpacity = (enabled: boolean): number => (enabled ? 1 : 0.6);
 
@@ -237,7 +244,7 @@ const buildOption = (params: UsageDayChartEchartsParams): EChartsOption => {
     yAxis: {
       type: 'value',
       min: 0,
-      max: getDataMax(bars) * 1.08,
+      max: roundedKWhAxisMax(getDataMax(bars)),
       splitNumber: 4,
       axisTick: { show: false },
       axisLine: { show: false },

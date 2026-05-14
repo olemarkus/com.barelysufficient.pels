@@ -1,5 +1,9 @@
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
-import { resolveLabelEvery } from './dayViewChart.ts';
+import {
+  readChartPalette,
+  resolveLabelEvery,
+  roundedKWhAxisMax,
+} from './dayViewChart.ts';
 import { formatDateInTimeZone } from './timezone.ts';
 import { attachTabShownResize } from './chartVisibilityResize.ts';
 
@@ -52,17 +56,18 @@ const dailyHistoryState: PlotState = {
 };
 type PlotKind = 'hourly' | 'daily';
 
-const resolveCssColor = (element: HTMLElement, variable: string) =>
-  getComputedStyle(element).getPropertyValue(variable).trim();
+const USAGE_STATS_PALETTE_VARS = {
+  bar: '--pels-chart-measured',
+  muted: '--pels-chart-muted',
+  grid: '--pels-chart-grid',
+  tooltipBackground: '--pels-chart-tooltip-bg',
+  tooltipText: '--pels-chart-tooltip-text',
+  tooltipBorder: '--pels-chart-tooltip-border',
+} as const satisfies Record<keyof UsageStatsPalette, string>;
 
-const resolvePalette = (container: HTMLElement): UsageStatsPalette => ({
-  bar: resolveCssColor(container, '--day-view-color-primary'),
-  muted: resolveCssColor(container, '--muted'),
-  grid: resolveCssColor(container, '--color-border-strong'),
-  tooltipBackground: resolveCssColor(container, '--color-overlay-toast'),
-  tooltipText: resolveCssColor(container, '--color-semantic-text-primary'),
-  tooltipBorder: resolveCssColor(container, '--color-border-medium'),
-});
+const resolvePalette = (container: HTMLElement): UsageStatsPalette => (
+  readChartPalette<UsageStatsPalette>(container, USAGE_STATS_PALETTE_VARS)
+);
 
 const resolveChartSize = (element: HTMLElement) => {
   const width = element.clientWidth > 0
@@ -198,7 +203,7 @@ const buildHourlyPatternOption = (params: {
     yAxis: {
       type: 'value',
       min: 0,
-      max: maxValue * 1.08,
+      max: roundedKWhAxisMax(maxValue),
       splitNumber: 4,
       axisTick: { show: false },
       axisLine: { show: false },
@@ -297,7 +302,7 @@ const buildDailyHistoryOption = (params: {
     yAxis: {
       type: 'value',
       min: 0,
-      max: maxValue * 1.08,
+      max: roundedKWhAxisMax(maxValue),
       splitNumber: 4,
       axisTick: { show: false },
       axisLine: { show: false },

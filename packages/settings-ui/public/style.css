@@ -4093,8 +4093,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .budget-redesign-comparison {
-  --pels-chart-price-line: var(--color-base-danger-default);
-  --pels-chart-price-fill: color-mix(in srgb, var(--color-base-danger-default) 14%, transparent);
+  --pels-chart-price-line: var(--color-role-danger);
+  --pels-chart-price-fill: color-mix(in srgb, var(--color-role-danger) 14%, transparent);
 }
 
 .budget-comparison__legend-swatch--price {
@@ -4385,15 +4385,10 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 #budget-panel {
-  --pels-chart-actual: var(--text);
-  --pels-chart-plan: var(--pels-status-good);
-  --pels-chart-forecast: var(--info);
-  --pels-chart-price-line: var(--warning);
-  --pels-chart-price-fill: color-mix(in srgb, var(--color-role-warn) 14%, transparent);
-  --day-view-color-primary: var(--pels-status-good);
-  --day-view-color-planned: var(--pels-status-good);
-  --day-view-color-background-usage: var(--info);
-  --day-view-color-managed-usage: var(--warning);
+  --day-view-color-primary: var(--color-role-good);
+  --day-view-color-planned: var(--color-role-good);
+  --day-view-color-background-usage: var(--color-role-info);
+  --day-view-color-managed-usage: var(--color-role-warn);
   --day-view-color-actual-background-usage: color-mix(in srgb, var(--day-view-color-background-usage) 45%, transparent);
   --day-view-color-actual-managed-usage: color-mix(in srgb, var(--day-view-color-managed-usage) 45%, transparent);
   --day-view-color-actual: var(--text);
@@ -4431,9 +4426,9 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 #usage-panel {
-  --day-view-color-primary: var(--color-base-info-default);
-  --day-view-color-budget: var(--color-base-accent-default);
-  --day-view-color-warn: var(--color-base-danger-default);
+  --day-view-color-primary: var(--color-role-info);
+  --day-view-color-budget: var(--color-role-accent);
+  --day-view-color-warn: var(--color-role-danger);
   --day-view-color-now: var(--color-state-info-border);
 }
 
