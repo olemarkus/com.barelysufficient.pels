@@ -149,19 +149,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
-- [ ] Give settings-form text-field / select controls an accessible name. M3 follow-up audit
-      (2026-05-14) re-checked the previous "duplicate visible labels" finding and corrected the
-      framing: `md-filled-text-field` and `md-filled-select` in `Limits & safety`,
-      `Electricity prices`, daily-budget advanced, and device-detail have **no `label`
-      attribute and no `aria-label` / `aria-labelledby` set anywhere**, so only one label
-      *renders* visually (the sibling `<span class="field__label">`). The bug is a11y, not
-      dual-rendering: 32 of 33 `.field__label` are bare `<span>` (not `<label for=>`), so the
-      M3 control has no accessible name at all to screen readers. Acceptance: every control
-      either receives the text via the component's `label=""` attribute or is bound to its
-      sibling label via `aria-labelledby` referencing a `.field__label[id]`. The visible
-      label rendering should stay the same as today.
-      Files: `packages/settings-ui/public/index.html`,
-      `packages/settings-ui/src/ui/deviceDetail/*.ts`, related layout tests.
 - [ ] Replace `.plan-hero__meta-row` "Home mode" plain text with a real `md-assist-chip`. M3
       audit found the element is named like a chip (`.plan-hero__meta-row`) but renders with
       `bg: transparent`, no border, no radius — visually indistinguishable from body text. Apply
