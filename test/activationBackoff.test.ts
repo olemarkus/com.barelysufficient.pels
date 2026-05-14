@@ -167,6 +167,37 @@ describe('activation backoff', () => {
     expect(decision?.allowed).toBe(true);
   });
 
+  it('skips headroom credit for an unavailable device even with configured load', () => {
+    // Regression: Homey reports `available === false` for devices that are
+    // offline / unreachable / removed from the mesh. Crediting their declared
+    // load would let activations through against capacity that the device
+    // cannot actually be consuming. Mirrors `isActivelyDrawing` in
+    // `lib/observer/observedPower.ts`.
+    const state = createPlanEngineState();
+    const start = Date.now();
+    const unavailableDevice = {
+      id: 'dev-1',
+      name: 'Offline heater',
+      currentOn: true,
+      available: false,
+      lastFreshDataMs: start,
+      expectedPowerKw: 1.5,
+      powerKw: 1.5,
+    };
+    const decision = evaluateHeadroomForDevice({
+      state,
+      devices: [unavailableDevice as any],
+      deviceId: 'dev-1',
+      device: unavailableDevice as any,
+      headroom: 0.3,
+      requiredKw: 1.5,
+      nowTs: start,
+    });
+    expect(decision?.observedKw).toBe(0);
+    expect(decision?.calculatedHeadroomForDeviceKw).toBeCloseTo(0.3);
+    expect(decision?.allowed).toBe(false);
+  });
+
   it('bumps penalty only once per activation attempt', () => {
     const state = createPlanEngineState();
     const now = Date.now();
