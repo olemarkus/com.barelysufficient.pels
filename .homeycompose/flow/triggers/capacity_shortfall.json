@@ -3,10 +3,10 @@
     "en": "Capacity guard: manual action needed"
   },
   "titleFormatted": {
-    "en": "Capacity guard predicts hourly hard-cap budget breach; manual action required"
+    "en": "Capacity guard predicts hourly hard cap breach; manual action needed"
   },
   "args": [],
   "hint": {
-    "en": "Triggers when PELS projects that the hourly hard cap will be breached at the current run rate and there are no managed devices left to limit. This is an emergency situation requiring immediate manual intervention. Note: This only triggers for hourly hard-cap breaches, never for daily budget violations."
+    "en": "Triggers when PELS projects that the hourly hard cap will be breached at the current run rate and there are no managed devices left to limit. This is an emergency situation requiring immediate manual intervention. Note: This only triggers for hourly hard cap breaches, never for daily budget violations."
   }
 }
