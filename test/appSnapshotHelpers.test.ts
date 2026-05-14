@@ -231,6 +231,58 @@ describe('appSnapshotHelpers', () => {
     });
   });
 
+  it('does not trigger a recursive snapshot refresh on fresh install when an unsupported device is present', async () => {
+    // Bug regression: on first boot, `disableUnsupportedDevices` used to write
+    // `{id: false}` for every unsupported device — even when the map had no
+    // existing key for that id. Each write fired the MANAGED_DEVICES settings
+    // handler, which queued another snapshot refresh, producing a recursive
+    // refresh on every fresh boot. Fix: only demote IDs whose current value
+    // is explicitly `true`.
+    const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
+    const snapshot = [{
+      id: 'socket-1',
+      name: 'Unsupported Socket',
+      deviceType: 'onoff',
+      powerCapable: false,
+      targets: [],
+    }];
+    const helper = new AppSnapshotHelpers({
+      homey: mockHomeyInstance as any,
+      timers: new TimerRegistry(),
+      getDeviceManager: () => ({ refreshSnapshot } as any),
+      getPlanEngine: () => undefined,
+      getPlanService: () => ({
+        syncLivePlanState: vi.fn().mockResolvedValue(undefined),
+        syncHeadroomCardState: vi.fn(),
+        getLatestPlanSnapshot: vi.fn(),
+      } as any),
+      getLatestTargetSnapshot: () => snapshot as any,
+      resolveManagedState: () => false,
+      isCapacityControlEnabled: () => false,
+      getStructuredLogger: () => undefined,
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      getNow: () => new Date('2026-03-21T10:00:00Z'),
+      logPeriodicStatus: vi.fn(),
+      disableUnsupportedDevices: (nextSnapshot) => disableUnsupportedDevices({
+        snapshot: nextSnapshot,
+        settings: mockHomeyInstance.settings as any,
+        logDebug: vi.fn(),
+      }),
+      getFlowReportedDeviceIds: vi.fn(() => []),
+      emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
+      emitSettingsUiDevicesUpdated: vi.fn(),
+      recordPowerSample: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await (helper as any).runSnapshotRefreshCycle({ refreshSnapshot } as any, { targeted: true });
+
+    // No write to MANAGED_DEVICES means the settings handler is never fired,
+    // so no recursive snapshot refresh is queued.
+    expect(mockHomeyInstance.settings.get(MANAGED_DEVICES)).toBeUndefined();
+    expect(mockHomeyInstance.settings.get(CONTROLLABLE_DEVICES)).toBeUndefined();
+  });
+
   it('emits flow-backed refresh requests only once across queued snapshot cycles', async () => {
     const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
     const helperRef: { current?: AppSnapshotHelpers } = {};

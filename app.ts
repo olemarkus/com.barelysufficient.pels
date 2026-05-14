@@ -85,6 +85,7 @@ import { buildDebugLoggingTopics } from './lib/app/appLoggingHelpers';
 import { initSettingsHandlerForApp, loadCapacitySettingsFromHomey } from './lib/app/appSettingsHelpers';
 import {
   disableUnsupportedDevices as disableUnsupportedDevicesHelper,
+  isManagedFilterActive as isManagedFilterActiveHelper,
 } from './lib/app/appDeviceSupport';
 import { runStartupStep, startAppServices } from './lib/app/appLifecycleHelpers';
 import { addPerfDuration, incPerfCounter, incPerfCounters } from './lib/utils/perfCounters';
@@ -1591,7 +1592,7 @@ class PelsApp extends Homey.App {
   private resolveModeName = (name: string) => resolveModeNameHelper(name, this.modeAliases);
   private getAllModes = () => getAllModesHelper(this.operatingMode, this.capacityPriorities, this.modeDeviceTargets);
   private resolveManagedState = (deviceId: string) => this.managedDevices[deviceId] === true;
-  private isManagedFilterActive = () => Object.keys(this.managedDevices).length > 0;
+  private isManagedFilterActive = () => isManagedFilterActiveHelper(this.managedDevices);
   private getCommunicationModel = (deviceId: string): 'local' | 'cloud' => (
     this.deviceCommunicationModels[deviceId] ?? 'local'
   );

@@ -1,5 +1,6 @@
 import {
   disableUnsupportedDevices,
+  isManagedFilterActive,
 } from '../lib/app/appDeviceSupport';
 import {
   CONTROLLABLE_DEVICES,
@@ -99,5 +100,81 @@ describe('disableUnsupportedDevices', () => {
     expect(logDebug.mock.calls.flat().some(
       (entry) => typeof entry === 'string' && entry.includes('Price-only support enabled'),
     )).toBe(false);
+  });
+
+  it('does not write managed/controllable settings when unsupported IDs were never user-managed', () => {
+    // Fresh-install scenario: managedDevices map is empty; an unsupported
+    // device shows up. Writing { id: false } would fire the settings handler
+    // and trigger a recursive snapshot refresh on first boot.
+    const settings = makeSettings({});
+    const logDebug = vi.fn();
+
+    disableUnsupportedDevices({
+      snapshot: [buildFullyUnsupportedDevice()],
+      settings: settings as any,
+      logDebug,
+    });
+
+    expect(settings.set).not.toHaveBeenCalled();
+    expect(logDebug).not.toHaveBeenCalled();
+  });
+
+  it('writes managed/controllable false only when the user previously enabled the device', () => {
+    // EV-by-default migration set { ev1: true }; the device turns out to be
+    // unsupported. We must demote it to false. After that demotion, the next
+    // refresh sees the false key and produces no further writes.
+    const settings = makeSettings({
+      [MANAGED_DEVICES]: { 'ev1': true, 'socket-1': true },
+      [CONTROLLABLE_DEVICES]: { 'ev1': true, 'socket-1': true },
+    });
+    const logDebug = vi.fn();
+    const evDevice: TargetDeviceSnapshot = {
+      id: 'ev1',
+      name: 'EV Charger',
+      deviceType: 'onoff',
+      powerCapable: false,
+      targets: [],
+    };
+
+    disableUnsupportedDevices({
+      snapshot: [evDevice],
+      settings: settings as any,
+      logDebug,
+    });
+
+    const writtenManaged = settings.set.mock.calls.find(([key]) => key === MANAGED_DEVICES)?.[1];
+    const writtenControllable = settings.set.mock.calls.find(([key]) => key === CONTROLLABLE_DEVICES)?.[1];
+    expect(writtenManaged).toEqual({ 'ev1': false, 'socket-1': true });
+    expect(writtenControllable).toEqual({ 'ev1': false, 'socket-1': true });
+
+    // Idempotence: a second pass with the new (post-demote) settings produces
+    // no further writes — the recursive refresh therefore terminates after at
+    // most one extra cycle.
+    settings.set.mockClear();
+    disableUnsupportedDevices({
+      snapshot: [evDevice],
+      settings: settings as any,
+      logDebug,
+    });
+    expect(settings.set).not.toHaveBeenCalled();
+  });
+});
+
+describe('isManagedFilterActive', () => {
+  it('reports inactive for an empty managed map', () => {
+    expect(isManagedFilterActive({})).toBe(false);
+  });
+
+  it('reports inactive for an all-false managed map', () => {
+    // Critical regression: `disableUnsupportedDevices` writes `{id: false}`
+    // entries on first boot. The filter must NOT activate from those writes —
+    // otherwise implicitly-managed (no-key) devices would suddenly disappear
+    // from the runtime snapshot mid-cycle.
+    expect(isManagedFilterActive({ 'vt-1': false, 'socket-1': false })).toBe(false);
+  });
+
+  it('reports active when at least one device is explicitly enabled', () => {
+    expect(isManagedFilterActive({ 'ev1': true })).toBe(true);
+    expect(isManagedFilterActive({ 'ev1': true, 'vt-1': false })).toBe(true);
   });
 });
