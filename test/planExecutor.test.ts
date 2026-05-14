@@ -3408,10 +3408,12 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     }));
     // Binary restore should be issued for dev-1.
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
-    // The dropped underspecified shed intent must be surfaced via structured log.
+    // The dropped underspecified shed intent must be surfaced via structured log,
+    // including the actuation mode so plan vs reconcile drops stay distinguishable.
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'stepped_load_shed_intent_dropped',
       reasonCode: 'underspecified_set_step',
+      actuationMode: 'reconcile',
       deviceId: 'shed-1',
     }));
   });

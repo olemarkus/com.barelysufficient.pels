@@ -65,21 +65,27 @@ export function buildExecutableObservedState(
 }
 
 /**
- * Executor-facing shed posture: only counts devices that have an executable shed intent.
+ * Executor-facing shed posture for the keep-invariant gate.
  *
- * The keep-invariant gate must read this rather than the planner shed set, otherwise an
- * underspecified stepped `set_step` shed (projection returned `null`) would phantom-block
- * unrelated stepped restores at the lowest non-zero step.
+ * Counts any planner-shed device EXCEPT the underspecified stepped `set_step` case where
+ * the executor projection cannot resolve a target step. Devices held off by restore
+ * admission (cooldown / meter settling) still count as shed posture: they are currently
+ * shed, just temporarily uncommandable. Excluding only the phantom underspecified
+ * `set_step` drop prevents it from blocking unrelated stepped restores at the lowest
+ * non-zero step, without losing posture for legitimate held-shed devices.
  */
-export function hasExecutableShedDevices(plan: ExecutablePlan): boolean {
-  return plan.devices.some(hasExecutableShedIntent);
+export function hasExecutableShedDevices(
+  plan: DevicePlan,
+  executablePlan: ExecutablePlan,
+): boolean {
+  for (let i = 0; i < plan.devices.length; i += 1) {
+    const planDevice = plan.devices[i];
+    if (planDevice.plannedState !== 'shed') continue;
+    if (isDroppedUnderspecifiedSetStepShed(planDevice, executablePlan.devices[i])) continue;
+    return true;
+  }
+  return false;
 }
-
-const hasExecutableShedIntent = (device: ExecutableDeviceIntent): boolean => (
-  device.binary?.kind === 'shed'
-  || device.target?.purpose === 'shed_temperature'
-  || device.steppedLoad?.purpose === 'shed'
-);
 
 export type DroppedSteppedShedIntent = {
   deviceId: string;
@@ -90,33 +96,46 @@ export type DroppedSteppedShedIntent = {
 };
 
 /**
- * Stepped-load shed intents the planner emitted but the executor projection could not turn
- * into an executable command. Surfacing these makes silent drops detectable in production
- * and prevents the keep-invariant gate from diverging from execution state.
+ * Stepped-load shed intents the planner emitted that the executor projection dropped
+ * specifically because the `set_step` target step could not be resolved. Surfacing these
+ * makes the silent drop detectable in production with a reliable reason code.
  *
- * Returns an empty array when no planner-shed stepped device was dropped (the common case),
- * avoiding the `Map` build on every plan tick.
+ * Other null-projection causes (restore admission hold, malformed profiles) are
+ * intentionally excluded so the `underspecified_set_step` diagnostic stays meaningful.
  */
 export function findDroppedSteppedShedIntents(
   plan: DevicePlan,
   executablePlan: ExecutablePlan,
 ): DroppedSteppedShedIntent[] {
-  const candidates = plan.devices.filter(isPlannedSteppedShed);
-  if (candidates.length === 0) return [];
-  const executableById = new Map(executablePlan.devices.map((entry) => [entry.id, entry]));
-  return candidates
-    .filter((planDevice) => executableById.get(planDevice.id)?.steppedLoad?.purpose !== 'shed')
-    .map((planDevice) => ({
+  const result: DroppedSteppedShedIntent[] = [];
+  for (let i = 0; i < plan.devices.length; i += 1) {
+    const planDevice = plan.devices[i];
+    if (!isDroppedUnderspecifiedSetStepShed(planDevice, executablePlan.devices[i])) continue;
+    // eslint-disable-next-line functional/immutable-data -- Local accumulator over plan devices.
+    result.push({
       deviceId: planDevice.id,
       deviceName: planDevice.name,
       shedAction: planDevice.shedAction,
       selectedStepId: planDevice.selectedStepId ?? null,
       desiredStepId: planDevice.desiredStepId ?? null,
-    }));
+    });
+  }
+  return result;
 }
 
-const isPlannedSteppedShed = (planDevice: PlanDevice): boolean => (
-  planDevice.plannedState === 'shed' && planDevice.controlModel === 'stepped_load'
+const isDroppedUnderspecifiedSetStepShed = (
+  planDevice: PlanDevice,
+  executableDevice: ExecutableDeviceIntent | undefined,
+): boolean => (
+  planDevice.plannedState === 'shed'
+  && planDevice.controlModel === 'stepped_load'
+  && planDevice.shedAction === 'set_step'
+  && executableDevice?.steppedLoad === null
+  && !isHeldByRestoreAdmission(planDevice)
+);
+
+const isHeldByRestoreAdmission = (planDevice: PlanDevice): boolean => (
+  Boolean(planDevice.reason && isRestoreAdmissionHoldReason(planDevice.reason))
 );
 
 export function buildExecutableObservedDeviceState(
