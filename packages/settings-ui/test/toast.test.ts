@@ -23,12 +23,12 @@ describe('showToast with action', () => {
     const { showToast } = await import('../src/ui/toast.ts');
     const onClick = vi.fn();
 
-    const pending = showToast('Daily budget model applied.', 'ok', {
+    const pending = showToast('Daily budget updated.', 'ok', {
       action: { label: 'Undo', onClick },
     });
 
     expect(toastEl.classList.contains('show')).toBe(true);
-    expect(toastEl.textContent).toContain('Daily budget model applied.');
+    expect(toastEl.textContent).toContain('Daily budget updated.');
     const actionButton = toastEl.querySelector<HTMLButtonElement>('.toast__action');
     expect(actionButton).not.toBeNull();
     expect(actionButton?.textContent).toBe('Undo');

@@ -1792,6 +1792,11 @@ md-primary-tab.tab[active]:hover {
   flex: 1 1 auto;
 }
 
+.plan-card__retry {
+  margin-top: var(--spacing-2);
+  align-self: flex-start;
+}
+
 .plan-card__chips {
   display: inline-flex;
   align-items: center;

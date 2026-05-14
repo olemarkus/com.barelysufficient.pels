@@ -238,7 +238,7 @@ const resolvePriceTagline = (
 ): string | null => {
   if (!payload || view === 'yesterday') return null;
   if (payload.budget.enabled !== true || payload.budget.priceShapingEnabled !== true) return null;
-  return isPriceReliable(payload) ? 'Price-shaped plan' : 'Price-shaped plan (price data unavailable)';
+  return isPriceReliable(payload) ? 'Cheaper-hour planning' : 'Cheaper-hour planning (price data unavailable)';
 };
 
 export const resolveHeadroomLine = (

@@ -84,8 +84,8 @@ const saveControlledWeight = async () => {
   await saveDailyBudgetTuningSetting({
     key: DAILY_BUDGET_CONTROLLED_WEIGHT,
     next,
-    successMessage: 'Unmanaged usage reserve saved.',
-    failureMessage: 'Failed to save unmanaged usage reserve.',
+    successMessage: 'Background usage reserve saved.',
+    failureMessage: 'Failed to save background usage reserve.',
     context: 'dailyBudgetTuningControlledWeight',
   });
 };
