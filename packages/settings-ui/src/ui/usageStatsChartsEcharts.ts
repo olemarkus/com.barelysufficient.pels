@@ -1,6 +1,7 @@
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
 import { resolveLabelEvery } from './dayViewChart.ts';
 import { formatDateInTimeZone } from './timezone.ts';
+import { attachTabShownResize } from './chartVisibilityResize.ts';
 
 type AxisFormatterParam = {
   dataIndex?: number;
@@ -29,6 +30,7 @@ type PlotState = {
   plot: EChartsType | null;
   container: HTMLElement | null;
   resizeObserver: ResizeObserver | null;
+  detachTabShown: (() => void) | null;
   className: string;
 };
 
@@ -38,12 +40,14 @@ const hourlyPatternState: PlotState = {
   plot: null,
   container: null,
   resizeObserver: null,
+  detachTabShown: null,
   className: 'hourly-pattern--echarts',
 };
 const dailyHistoryState: PlotState = {
   plot: null,
   container: null,
   resizeObserver: null,
+  detachTabShown: null,
   className: 'daily-history--echarts',
 };
 type PlotKind = 'hourly' | 'daily';
@@ -82,6 +86,10 @@ const disposePlot = (kind: PlotKind) => {
     state.resizeObserver.disconnect();
     state.resizeObserver = null;
   }
+  if (state.detachTabShown) {
+    state.detachTabShown();
+    state.detachTabShown = null;
+  }
   if (state.plot) {
     state.plot.dispose();
     state.plot = null;
@@ -115,6 +123,11 @@ const ensurePlot = (kind: PlotKind, container: HTMLElement): EChartsType => {
     });
     state.resizeObserver.observe(container);
   }
+  state.detachTabShown = attachTabShownResize({
+    container,
+    chart: state.plot,
+    resolveSize: resolveChartSize,
+  });
 
   return state.plot;
 };

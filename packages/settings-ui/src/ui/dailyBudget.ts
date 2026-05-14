@@ -5,25 +5,11 @@ import { type CostDisplay } from './dailyBudgetCost.ts';
 import { getPricesReadModel } from './prices.ts';
 import { initBudgetRedesignHandlers, renderBudgetRedesign, type BudgetDayView } from './budgetRedesign.ts';
 import { setBudgetAdjustRefresh } from './budgetAdjustController.ts';
-
-const DEFAULT_COST_UNIT = 'kr';
-const DEFAULT_COST_DIVISOR = 100;
+import { resolveCostDisplayFromCombinedPrices } from './priceUnit.ts';
 
 let currentDailyBudgetView: BudgetDayView = 'today';
 let latestDailyBudgetPayload: DailyBudgetUiPayload | null = null;
-let costDisplay: CostDisplay = { unit: DEFAULT_COST_UNIT, divisor: DEFAULT_COST_DIVISOR };
-
-const resolveCostDisplay = (combinedPrices: unknown | null): CostDisplay => {
-  if (!combinedPrices || typeof combinedPrices !== 'object') {
-    return { unit: DEFAULT_COST_UNIT, divisor: DEFAULT_COST_DIVISOR };
-  }
-  const { priceScheme, priceUnit } = combinedPrices as { priceScheme?: unknown; priceUnit?: unknown };
-  if (priceScheme === 'flow' || priceScheme === 'homey') {
-    const unit = typeof priceUnit === 'string' && priceUnit !== 'price units' ? priceUnit : '';
-    return { unit, divisor: 1 };
-  }
-  return { unit: DEFAULT_COST_UNIT, divisor: DEFAULT_COST_DIVISOR };
-};
+let costDisplay: CostDisplay = resolveCostDisplayFromCombinedPrices(null);
 
 const renderDailyBudget = (payload: DailyBudgetUiPayload | null) => {
   latestDailyBudgetPayload = payload;
@@ -43,7 +29,7 @@ export const refreshDailyBudgetPlan = async (payloadOverride?: DailyBudgetUiPayl
         : callApi<DailyBudgetUiPayload | null>('GET', '/daily_budget'),
       getPricesReadModel().then((prices) => prices.combinedPrices).catch(() => null),
     ]);
-    costDisplay = resolveCostDisplay(combinedPrices);
+    costDisplay = resolveCostDisplayFromCombinedPrices(combinedPrices);
     renderDailyBudget(payload);
   } catch (error) {
     await logSettingsError('Failed to load daily budget plan', error, 'refreshDailyBudgetPlan');

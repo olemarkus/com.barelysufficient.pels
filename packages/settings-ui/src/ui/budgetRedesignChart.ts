@@ -3,6 +3,8 @@ import { encodeHtml, initEcharts, type EChartsOption, type EChartsType, type Ser
 import type { CostDisplay } from './dailyBudgetCost.ts';
 import { formatKWh } from './dailyBudgetFormat.ts';
 import { formatHourAxisLabel, resolveLabelEvery } from './dayViewChart.ts';
+import { resolvePriceUnitLabel } from './priceUnit.ts';
+import { attachTabShownResize } from './chartVisibilityResize.ts';
 
 export type BudgetRedesignChartMode = 'progress' | 'hourlyPlan';
 export type BudgetRedesignDayView = 'today' | 'tomorrow' | 'yesterday';
@@ -32,7 +34,11 @@ type BudgetRedesignChartParams = {
   dataMaxOverride?: number;
 };
 
-type ChartHandle = { chart: EChartsType; resizeObserver?: ResizeObserver };
+type ChartHandle = {
+  chart: EChartsType;
+  resizeObserver?: ResizeObserver;
+  detachTabShown?: () => void;
+};
 const chartHandles = new WeakMap<HTMLElement, ChartHandle>();
 
 const DEFAULT_CHART_HEIGHT = 210;
@@ -58,6 +64,7 @@ export const clearBudgetRedesignChart = (container?: HTMLElement) => {
   const handle = chartHandles.get(container);
   if (!handle) return;
   handle.resizeObserver?.disconnect();
+  handle.detachTabShown?.();
   handle.chart.dispose();
   chartHandles.delete(container);
 };
@@ -79,7 +86,8 @@ const ensureChart = (container: HTMLElement): EChartsType => {
     });
     resizeObserver.observe(container);
   }
-  chartHandles.set(container, { chart, resizeObserver });
+  const detachTabShown = attachTabShownResize({ container, chart, resolveSize: resolveChartSize });
+  chartHandles.set(container, { chart, resizeObserver, detachTabShown });
   return chart;
 };
 
@@ -183,11 +191,9 @@ const resolvePriceYAxisScale = (prices: number[]): { min: number; max: number; i
   };
 };
 
-const resolvePriceAxisUnit = (display: CostDisplay): string => {
-  const unit = display.unit.trim();
-  if (!unit) return 'Price';
-  return unit.toLowerCase().includes('/kwh') ? unit : `${unit}/kWh`;
-};
+const resolvePriceAxisUnit = (display: CostDisplay): string => (
+  display.unit.trim() ? resolvePriceUnitLabel(display) : 'Price'
+);
 
 const normalizePriceValues = (
   prices: Array<number | null> | undefined,

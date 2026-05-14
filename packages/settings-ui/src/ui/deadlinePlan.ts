@@ -16,6 +16,7 @@ import {
   type DeadlinePlanUnavailableReason,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { buildPlanInputs } from './deadlinePlanInputs.ts';
+import { resolveCostDisplayFromCombinedPrices, resolvePriceUnitLabel } from './priceUnit.ts';
 import {
   collectHorizonHours,
   ONE_HOUR_MS,
@@ -406,6 +407,7 @@ type ObjectivePayloadReady = {
   progress: NonNullable<ReturnType<typeof resolveProgress>>;
   hours: HorizonHour[];
   energy: ReturnType<typeof resolveEnergyNeededKWh>;
+  priceUnitLabel: string;
 };
 
 const prepareObjectivePayload = (
@@ -440,6 +442,7 @@ const prepareObjectivePayload = (
     progress,
     hours,
     energy: resolveEnergyNeededKWh({ profile, activePlan: ctx.activePlan }),
+    priceUnitLabel: resolvePriceUnitLabel(resolveCostDisplayFromCombinedPrices(params.prices.combinedPrices)),
   };
 };
 
@@ -467,6 +470,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   return {
     kind: objective.kind,
     labels,
+    priceUnitLabel: input.priceUnitLabel,
     hero: buildHero({
       device,
       objective,
