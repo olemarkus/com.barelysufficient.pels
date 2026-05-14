@@ -17,13 +17,13 @@ If you are already using Homey Energy, here is what PELS gives you on top:
 
 ### Automatic capacity control
 
-PELS watches your total power consumption and automatically turns down heaters, water tanks, or EV charging before you exceed your hourly limit. When there is room again, it restores them — in the right order, based on priority. This keeps you within your grid tariff step (effekttrinn) without you having to watch the meter.
+PELS watches your total power consumption and automatically turns down heaters, water tanks, or EV charging before you exceed your hourly limit. When there is room again, it resumes them in the right order, based on priority. This keeps you within your grid tariff step (effekttrinn) without you having to watch the meter.
 
 Read more: [Getting Started](/getting-started) · [Configuration](/configuration)
 
 ### Price-based load shifting
 
-PELS reads hourly electricity prices and shifts heating to the cheapest hours of the day. During expensive hours it reduces temperatures; during cheap hours it preheats. You set the temperature deltas per device and PELS handles the rest.
+PELS reads hourly electricity prices and shifts heating to the cheapest hours of the day. During expensive hours it reduces temperatures; during cheap hours it preheats. You set the temperature adjustments per device and PELS handles the rest.
 
 Read more: [Configuration — Price tab](/configuration#price-tab)
 
@@ -35,7 +35,7 @@ Read more: [Configuration — Modes tab](/configuration#modes-tab)
 
 ### Daily energy budgets
 
-Set a daily kWh target and PELS paces your controlled load across the day. It front-loads heating to cheap hours and holds back when you are ahead of budget.
+Set a daily kWh target and PELS paces managed load across the day. It gives cheaper hours more room and holds back when you are ahead of budget.
 
 Read more: [Daily Energy Budget](/daily-budget)
 

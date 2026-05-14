@@ -5,7 +5,7 @@ description: Install PELS on Homey Pro, connect your power meter, set a capacity
 
 # Getting Started
 
-PELS is a Homey app that intelligently manages your heavy electrical loads. It keeps your power usage within your hourly limit, decides which devices to turn down first, and can shift heating to cheaper hours — all automatically.
+PELS is a Homey app that intelligently manages your heavy electrical loads. It keeps your power usage within your hourly limit, decides which devices to turn down first, can plan Smart tasks, and can shift flexible load to cheaper hours automatically.
 
 In practice, most users spend their time in **Apps -> PELS -> Settings** and a small number of Homey Flows.
 
@@ -42,7 +42,7 @@ Once power data is flowing, the Overview tab starts showing real data.
 Go to the **Budget** tab and configure:
 
 - **Capacity limit (kW)** — your hourly hard cap. This is the average power level you do not want to exceed within any given hour. Set this to match your grid tariff step (effekttrinn), for example 5 kW or 8 kW.
-- **Soft margin (kW)** — a buffer below the hard cap. PELS starts turning things down before you actually hit the limit. A margin of 0.3–0.5 kW is a reasonable starting point.
+- **Safety margin (kW)** — a buffer below the hard cap. PELS starts turning things down before you actually hit the limit. A margin of 0.3-0.5 kW is a reasonable starting point.
 
 ::: tip
 Enable **Dry run** in the Devices tab while you are getting started. PELS will calculate what it *would* do without actually controlling any devices. This lets you verify the setup is sensible before giving PELS real control.
@@ -76,7 +76,7 @@ Common modes are **Home**, **Night**, and **Away**. Think of them as profiles fo
 
 For each device in each mode, you configure two things:
 
-- **Priority** — a number where lower means more important. When PELS needs to turn things down, it starts with the highest-numbered (least important) devices and works its way up. When there is room again, it restores in the opposite order.
+- **Priority** — a number where lower means more important. When PELS needs to turn things down, it starts with the highest-numbered (least important) devices and works its way up. When there is room again, it resumes devices in the opposite order.
 - **Desired temperature** — the target temperature PELS will set for this device in this mode (for temperature devices).
 
 For example, in **Night** mode you might set:
@@ -107,33 +107,47 @@ If you want PELS to shift heating to cheaper hours, go to the **Price** tab:
 Then go back to the **Devices** tab and tick the **PRICE** checkbox for devices that should participate in price optimization. Water heaters and floor heating are usually the best candidates — they have thermal mass that makes shifting worthwhile.
 
 In the Price tab you can also set per-device temperature adjustments:
-- **Cheap delta** — temperature boost during cheap hours (e.g. +2 °C)
-- **Expensive delta** — temperature reduction during expensive hours (e.g. -2 °C)
+- **Cheap-hour boost (°C)** — temperature boost during cheap hours, for example +2 °C.
+- **Expensive-hour reduction (°C)** — temperature reduction during expensive hours, for example -2 °C.
+
+## Step 6: Add Smart tasks (optional)
+
+Use Smart tasks when one device must reach a target by a specific time. For example:
+
+- charge an EV to 80% by 07:00
+- heat a room to 21 °C by 06:30
+- heat a water heater before a busy morning
+
+Smart tasks are created with Homey Flow action cards such as **Add charging task** and **Add heating task**. See [Smart Tasks](/smart-tasks) for the full guide.
 
 ## Quick setup checklist
 
 Once you have worked through the steps above, verify:
 
 1. Your power meter Flow is running and the Overview shows current usage.
-2. A capacity limit and soft margin are set in the Budget tab.
+2. A capacity limit and safety margin are set in the Budget tab.
 3. At least a few devices are marked as Managed and have Capacity enabled.
 4. You have at least one mode with sensible priorities and targets.
 5. You have Flows to switch between modes.
-6. Dry run is disabled when you are ready for PELS to take real control.
+6. Optional Smart task Flows are configured for devices that need a target by a ready-by time.
+7. Dry run is disabled when you are ready for PELS to take real control.
 
 ## Terminology and units
 
 - **Power** is instantaneous load, measured in **W** or **kW**.
 - **Energy** is usage over time, measured in **kWh**.
 - **Capacity limit (hard cap)** — your maximum average power for any hour, in **kW**.
-- **Soft margin** — a buffer below the hard cap where PELS starts reacting, in **kW**.
-- **Headroom** — how much room you have before hitting the soft limit: `soft_limit - current_load`, in **kW**.
+- **Safety margin** — a buffer below the hard cap where PELS starts reacting, in **kW**.
+- **Available power** — how much more load PELS can fit right now before it reaches the current safe pace, in **kW**.
 - **Daily budget** — an optional soft guide for total energy in a day, in **kWh**. This never overrides the hourly hard cap.
 
 ## What to read next
 
 - [Configuration](/configuration) for the full settings reference
 - [Flow Cards](/flow-cards) for all available Homey automation cards
+- [Cost-Saving Functions](/cost-saving-functions) for choosing between power limiting, budget, price shift, tasks, and Flows
+- [Smart Tasks](/smart-tasks) for charging or heating a device by a ready-by time
+- [Book Cheap Hours With Flows](/how-to-book-cheap-hours-with-flows) for fixed cheapest-hour windows
 - [PELS Insights](/insights-device) for dashboards and quick status
 - [Configure an EV Charger](/ev-charger) for current-controlled EV charging
 - [Tips and Best Practices](/tips-and-best-practices) for tuning advice
