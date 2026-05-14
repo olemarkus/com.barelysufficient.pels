@@ -52,6 +52,11 @@ export class MockSettings extends EventEmitter {
     this.emit('set', key);
   }
 
+  unset(key: string) {
+    this.store.delete(key);
+    this.emit('unset', key);
+  }
+
   clear() {
     this.store.clear();
   }

@@ -95,6 +95,7 @@ import { getHourBucketKey } from './lib/utils/dateUtils';
 import { startResourceWarningListeners as startResourceWarnings } from './lib/app/appResourceWarningHelpers';
 import { installHeapSnapshotHandler } from './lib/app/heapSnapshotHandler';
 import { migrateManagedDevices as migrateManagedDevicesHelper } from './lib/app/appManagedDeviceMigration';
+import { runBootMigrations as runBootMigrationsHelper } from './lib/app/appBootMigrations';
 import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './lib/app/appPriceLowestTrigger';
 import * as realtimeReconcile from './lib/app/appRealtimeDeviceReconcile';
 import {
@@ -732,7 +733,11 @@ class PelsApp extends Homey.App {
     await runStartupStep('updateDebugLoggingEnabled', () => this.updateDebugLoggingEnabled(), logStartupStepFailure);
     this.startPerfLogging();
     await runStartupStep('initPriceCoordinator', () => this.initPriceCoordinator(), logStartupStepFailure);
-    await runStartupStep('migrateManagedDevices', () => this.migrateManagedDevices(), logStartupStepFailure);
+    await runStartupStep(
+      'runStartupSettingsMigrations',
+      () => this.runStartupSettingsMigrations(),
+      logStartupStepFailure,
+    );
     await runStartupStep('loadCapacitySettings', () => this.loadCapacitySettings(), logStartupStepFailure);
     await runStartupStep('initDailyBudgetService', () => this.initDailyBudgetService(), logStartupStepFailure);
     await runStartupStep(
@@ -1201,8 +1206,10 @@ class PelsApp extends Homey.App {
       error: (msg, err) => this.error(msg, err),
     });
   }
-  private migrateManagedDevices(): void {
-    migrateManagedDevicesHelper({ homey: this.homey, log: this.log.bind(this) });
+  private runStartupSettingsMigrations(): void {
+    const log = this.log.bind(this);
+    migrateManagedDevicesHelper({ homey: this.homey, log });
+    runBootMigrationsHelper({ homey: this.homey, log });
   }
   private areFlowBackedCardsAvailable(): boolean {
     if (typeof this.flowBackedCardsAvailable === 'boolean') {
