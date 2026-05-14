@@ -1,5 +1,8 @@
 {
   "pels": {
+    "touch-target": {
+      "min": { "value": "48px" }
+    },
     "on-surface": { "value": "{color.semantic.text.primary}" },
     "on-surface-variant": { "value": "{color.semantic.text.secondary}" },
     "on-surface-muted": { "value": "{color.semantic.text.muted}" },
@@ -141,8 +144,8 @@
         "gap": { "value": "{spacing.1}" }
       },
       "tab": {
-        "height": { "value": "36px" },
-        "height-compact": { "value": "32px" },
+        "height": { "value": "{pels.touch-target.min}" },
+        "height-compact": { "value": "{pels.touch-target.min}" },
         "padding-inline": { "value": "{spacing.2}" },
         "padding-inline-compact": { "value": "{spacing.1}" },
         "radius": { "value": "{radius.md}" },

@@ -799,6 +799,8 @@ md-primary-tab.tab[active]:hover {
 .settings-back-button {
   justify-self: start;
   padding: var(--spacing-2) var(--spacing-3) !important;
+  min-height: var(--pels-touch-target-min);
+  min-width: var(--pels-touch-target-min);
 }
 
 .settings-form-card {
@@ -870,6 +872,7 @@ md-primary-tab.tab[active]:hover {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: var(--pels-touch-target-min);
   cursor: pointer;
 }
 
@@ -2372,6 +2375,26 @@ md-primary-tab.tab[active]:hover {
   }
 }
 
+/* Narrow breakpoint: keep all five destinations on one row at ~320px.
+   Tightens padding and shrinks label size so labels truncate cleanly via
+   existing ellipsis on `.tab`. Touch target height stays at 48px via tokens. */
+@media (max-width: 360px) {
+  md-tabs[data-shell-nav-compact] {
+    gap: 2px;
+    padding: 2px;
+  }
+
+  md-tabs[data-shell-nav-compact] .tab {
+    padding-inline: 4px;
+    font-size: var(--font-size-xs);
+    letter-spacing: -0.01em;
+  }
+
+  md-tabs[data-shell-nav-compact] > md-primary-tab:not(:last-child) {
+    margin-inline-end: 0;
+  }
+}
+
 .plan-state-chip {
   display: inline-flex;
   align-items: center;
@@ -2808,6 +2831,7 @@ md-primary-tab.tab[active]:hover {
 .toggle-row {
   margin-bottom: var(--spacing-4);
   padding: var(--spacing-3) var(--spacing-4);
+  min-height: var(--pels-touch-target-min);
   background: var(--color-surface-1);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
@@ -2817,6 +2841,7 @@ md-primary-tab.tab[active]:hover {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-height: var(--pels-touch-target-min);
   cursor: pointer;
   font-weight: var(--font-weight-semibold);
 }
@@ -2835,6 +2860,7 @@ md-primary-tab.tab[active]:hover {
   gap: var(--spacing-4);
   margin-bottom: var(--spacing-4);
   padding: var(--spacing-3) var(--spacing-4);
+  min-height: var(--pels-touch-target-min);
   background: var(--color-surface-1);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
@@ -3443,6 +3469,7 @@ md-primary-tab.tab[active]:hover {
 .segmented__option {
   flex: 1 1 0;
   min-width: 0;
+  min-height: var(--pels-touch-target-min);
   appearance: none;
   border: 0;
   background: transparent;
@@ -4294,6 +4321,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   background-color: transparent !important;
   color: var(--muted) !important;
   padding: 4px 10px;
+  min-height: var(--pels-touch-target-min);
   border-radius: var(--radius-md);
   font-size: var(--font-size-xs);
   cursor: pointer;

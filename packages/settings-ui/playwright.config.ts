@@ -27,6 +27,10 @@ export default defineConfig({
       name: 'firefox-mobile-width',
       use: { browserName: 'firefox' },
     },
+    {
+      name: 'chromium-narrow-width',
+      use: { browserName: 'chromium', viewport: { width: 320, height: 900 } },
+    },
   ],
   webServer: {
     command: SHOULD_BUILD
