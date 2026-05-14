@@ -1,4 +1,4 @@
-import { expect, test, type Page } from './fixtures/test';
+import { expect, test, type Locator, type Page } from './fixtures/test';
 import type { DeferredObjectiveSettingsV1 } from '../../../contracts/src/deferredObjectiveSettings.ts';
 
 type DeadlinePlanStubWindow = Window & {
@@ -12,9 +12,17 @@ type DeadlinePlanStubWindow = Window & {
   };
 };
 
-const openDeadlinePlan = async (page: Page) => {
-  await page.goto('/deadline-plan.html?deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('.plan-hero__headline')).toBeVisible();
+// The deadline-plan view now lives as an in-page panel inside index.html, so
+// queries must be scoped to `#deadline-plan-panel` — otherwise selectors like
+// `.plan-hero__headline` collide with the Overview/Budget/Usage panels even
+// when those are hidden.
+const deadlinePanel = (page: Page): Locator => page.locator('#deadline-plan-panel');
+
+const openDeadlinePlan = async (page: Page): Promise<Locator> => {
+  await page.goto('/?page=deadline-plan&deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
+  const panel = deadlinePanel(page);
+  await expect(panel.locator('.plan-hero__headline')).toBeVisible();
+  return panel;
 };
 
 const expectNoPageOverflow = async (page: Page) => {
@@ -36,7 +44,7 @@ const expectNoPageOverflow = async (page: Page) => {
 
 test.describe('Deadline plan', () => {
   test('installs the Homey ready hook before loading homey.js', async ({ request }) => {
-    const response = await request.get('/deadline-plan.html');
+    const response = await request.get('/?page=deadline-plan');
     expect(response.ok()).toBeTruthy();
     const html = await response.text();
     const readyHookIndex = html.indexOf('window.__PELS_HOMEY_READY__');
@@ -49,37 +57,37 @@ test.describe('Deadline plan', () => {
 
   test('renders the temperature deadline plan at mobile width', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 780 });
-    await openDeadlinePlan(page);
+    const panel = await openDeadlinePlan(page);
 
-    await expect(page.locator('.plan-hero__section-label')).toHaveText(/Temperature plan/);
-    await expect(page.locator('.plan-hero__subline').first()).toContainText('Connected 300');
-    await expect(page.locator('.plan-hero__subline').first()).toContainText('°C');
-    await expect(page.getByText('Price horizon', { exact: true })).toBeVisible();
-    await expect(page.getByLabel(/Deadline plan/).getByText('Heating', { exact: true })).toBeVisible();
-    await expect(page.getByLabel(/Deadline plan/).getByText('Original Heating', { exact: true })).toBeVisible();
-    await expect(page.getByLabel(/Deadline plan/).getByText('Measured Heating', { exact: true })).toBeVisible();
-    await expect(page.getByLabel(/Deadline plan/).getByText('Background usage', { exact: true })).toBeVisible();
-    await expect(page.getByLabel(/Deadline plan/).getByText('Charging', { exact: true })).toHaveCount(0);
-    await expect(page.getByLabel(/Deadline plan/).getByText('Measured Charging', { exact: true })).toHaveCount(0);
-    await expect(page.locator('.deadline-horizon-chart svg')).toBeVisible();
+    await expect(panel.locator('.plan-hero__section-label')).toHaveText(/Temperature plan/);
+    await expect(panel.locator('.plan-hero__subline').first()).toContainText('Connected 300');
+    await expect(panel.locator('.plan-hero__subline').first()).toContainText('°C');
+    await expect(panel.getByText('Price horizon', { exact: true })).toBeVisible();
+    await expect(panel.getByLabel(/Deadline plan/).getByText('Heating', { exact: true })).toBeVisible();
+    await expect(panel.getByLabel(/Deadline plan/).getByText('Original Heating', { exact: true })).toBeVisible();
+    await expect(panel.getByLabel(/Deadline plan/).getByText('Measured Heating', { exact: true })).toBeVisible();
+    await expect(panel.getByLabel(/Deadline plan/).getByText('Background usage', { exact: true })).toBeVisible();
+    await expect(panel.getByLabel(/Deadline plan/).getByText('Charging', { exact: true })).toHaveCount(0);
+    await expect(panel.getByLabel(/Deadline plan/).getByText('Measured Charging', { exact: true })).toHaveCount(0);
+    await expect(panel.locator('.deadline-horizon-chart svg')).toBeVisible();
     await expectNoPageOverflow(page);
   });
 
   test('keeps the surface contained at 480px', async ({ page }) => {
     await page.setViewportSize({ width: 480, height: 900 });
-    await openDeadlinePlan(page);
+    const panel = await openDeadlinePlan(page);
 
-    await expect(page.getByLabel(/Deadline plan/)).toBeVisible();
+    await expect(panel.getByLabel(/Deadline plan/)).toBeVisible();
     await expectNoPageOverflow(page);
   });
 
   test('shows the temperature kind chip and confidence chip without duplicates', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 860 });
-    await openDeadlinePlan(page);
+    const panel = await openDeadlinePlan(page);
 
-    await expect(page.locator('.plan-chip', { hasText: 'Temperature' })).toBeVisible();
-    await expect(page.locator('.plan-chip', { hasText: 'Confidence high' })).toBeVisible();
-    const chipTexts = await page.locator('.plan-chip').allTextContents();
+    await expect(panel.locator('.plan-chip', { hasText: 'Temperature' })).toBeVisible();
+    await expect(panel.locator('.plan-chip', { hasText: 'Confidence high' })).toBeVisible();
+    const chipTexts = await panel.locator('.plan-chip').allTextContents();
     expect(new Set(chipTexts).size).toBe(chipTexts.length);
   });
 
@@ -94,16 +102,16 @@ test.describe('Deadline plan', () => {
       };
     });
     await page.setViewportSize({ width: 390, height: 860 });
-    await openDeadlinePlan(page);
+    const panel = await openDeadlinePlan(page);
 
-    await expect(page.getByText('Price horizon', { exact: true })).toBeVisible();
-    await expect(page.locator('.deadline-horizon-chart svg')).toBeVisible();
+    await expect(panel.getByText('Price horizon', { exact: true })).toBeVisible();
+    await expect(panel.locator('.deadline-horizon-chart svg')).toBeVisible();
   });
 
   test('refreshes the open page when plan and device events arrive', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 860 });
-    await openDeadlinePlan(page);
-    await expect(page.locator('.plan-hero__subline').first()).toContainText('Target 65 °C');
+    const panel = await openDeadlinePlan(page);
+    await expect(panel.locator('.plan-hero__subline').first()).toContainText('Target 65 °C');
 
     const initialBootstrapCalls = await page.evaluate(() => (
       (window as unknown as DeadlinePlanStubWindow).Homey.__stub.getApiCallCount('GET /ui_bootstrap')
@@ -130,7 +138,7 @@ test.describe('Deadline plan', () => {
       homey.__stub.emitHomeyEvent('devices_updated');
     });
 
-    await expect(page.locator('.plan-hero__subline').first()).toContainText('Target 70 °C');
+    await expect(panel.locator('.plan-hero__subline').first()).toContainText('Target 70 °C');
     const refreshedBootstrapCalls = await page.evaluate(() => (
       (window as unknown as DeadlinePlanStubWindow).Homey.__stub.getApiCallCount('GET /ui_bootstrap')
     ));
@@ -145,7 +153,7 @@ test.describe('Deadline plan', () => {
         },
       };
     });
-    await page.goto('/deadline-plan.html?deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
+    await page.goto('/?page=deadline-plan&deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
 
     await expect(page.getByRole('heading', { name: 'Smart task plan unavailable' })).toBeVisible();
     await expect(page.getByText('Smart task plan data is not available for this device.')).toBeVisible();

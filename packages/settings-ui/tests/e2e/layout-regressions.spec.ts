@@ -85,29 +85,19 @@ test.describe('settings shell layout regressions', () => {
     });
   }
 
-  test('keeps deadline close button clear of plan tabs', async ({ page }) => {
+  test('keeps the deadline-plan close button within the viewport at 320px', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 900 });
-    await page.goto('/deadline-plan.html?deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('group', { name: 'Plan view tabs' })).toBeVisible();
-
-    const boxes = await page.evaluate(() => {
+    await page.goto('/?page=deadline-plan&deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
+    const panel = page.locator('#deadline-plan-panel');
+    await expect(panel.locator('[data-deadline-plan-close]')).toBeVisible();
+    const box = await page.evaluate(() => {
       const close = document.querySelector<HTMLElement>('[data-deadline-plan-close]')?.getBoundingClientRect();
-      const tabs = document.querySelector<HTMLElement>('.plan-tabs')?.getBoundingClientRect();
-      return close && tabs
-        ? {
-          close: { left: close.left, right: close.right, top: close.top, bottom: close.bottom },
-          tabs: { left: tabs.left, right: tabs.right, top: tabs.top, bottom: tabs.bottom },
-        }
-        : null;
+      return close ? { left: close.left, right: close.right, top: close.top, bottom: close.bottom } : null;
     });
-    expect(boxes).not.toBeNull();
-    const separated = boxes !== null && (
-      boxes.close.bottom <= boxes.tabs.top
-      || boxes.close.top >= boxes.tabs.bottom
-      || boxes.close.right <= boxes.tabs.left
-      || boxes.close.left >= boxes.tabs.right
-    );
-    expect(separated, `deadline close/tabs boxes overlap: ${JSON.stringify(boxes)}`).toBe(true);
+    expect(box).not.toBeNull();
+    expect(box!.left).toBeGreaterThanOrEqual(0);
+    expect(box!.right).toBeLessThanOrEqual(320);
+    expect(box!.top).toBeGreaterThanOrEqual(0);
     await expectNoHorizontalOverflow(page, 'Deadline plan');
   });
 

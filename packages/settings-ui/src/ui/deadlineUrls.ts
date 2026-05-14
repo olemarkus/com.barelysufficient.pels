@@ -1,10 +1,28 @@
+// Smart-task plan is rendered as an in-page view inside `index.html`, selected
+// via the `page=deadline-plan` query string. Sub-page navigation used to live
+// in a separate `deadline-plan.html`, but Homey's mobile WebView does not
+// reliably inject the Homey SDK when the user navigates to a sub-page,
+// leaving the deadline-plan surface unable to call any API. Keeping the
+// deadline-plan view in the same document side-steps that lifecycle gap.
+
+export const DEADLINE_PLAN_PAGE_PARAM = 'deadline-plan';
+
 export const buildDeadlineHref = (deviceId: string): string => (
-  `./deadline-plan.html?deviceId=${encodeURIComponent(deviceId)}`
+  `./?page=${DEADLINE_PLAN_PAGE_PARAM}&deviceId=${encodeURIComponent(deviceId)}`
 );
 
 // Detail route for a finalized smart-task plan in history. Keyed by an opaque
 // stable id assigned at finalization (uuid) so a future "two identical plans
 // for the same device" scenario can never collide on a derived timestamp key.
-export const buildDeadlineHistoryHref = (deviceId: string, historyId: string): string => (
-  `./deadline-plan.html?deviceId=${encodeURIComponent(deviceId)}&historyId=${encodeURIComponent(historyId)}&ui=redesign`
+export const buildDeadlineHistoryHref = (deviceId: string, historyId: string): string => {
+  const params = new URLSearchParams({
+    page: DEADLINE_PLAN_PAGE_PARAM,
+    deviceId,
+    historyId,
+  });
+  return `./?${params.toString()}`;
+};
+
+export const isDeadlinePlanRoute = (search: string): boolean => (
+  new URLSearchParams(search).get('page') === DEADLINE_PLAN_PAGE_PARAM
 );

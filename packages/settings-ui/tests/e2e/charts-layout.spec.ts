@@ -184,9 +184,10 @@ test.describe('Settings UI chart layout', () => {
   });
 
   test('deadline-plan horizon chart labels the price axis with a unit', async ({ page }) => {
-    await page.goto('/deadline-plan.html?deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.deadline-horizon-chart svg')).toBeVisible();
-    const axisText = await page.locator('.deadline-horizon-chart svg').evaluate((svg) => svg.textContent ?? '');
+    await page.goto('/?page=deadline-plan&deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
+    const panel = page.locator('#deadline-plan-panel');
+    await expect(panel.locator('.deadline-horizon-chart svg')).toBeVisible();
+    const axisText = await panel.locator('.deadline-horizon-chart svg').evaluate((svg) => svg.textContent ?? '');
     expect(
       axisText.includes('øre/kWh') || axisText.includes('kr/kWh'),
       `Price axis should display unit, got: ${axisText.slice(0, 200)}`,

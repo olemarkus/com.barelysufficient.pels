@@ -92,9 +92,11 @@ import {
   startStaleDataRefreshInterval,
 } from './realtime.ts';
 import {
-  isDeadlinePlanPage,
   mountDeadlinePlan,
+  setDeadlinePlanCloseHandler,
+  unmountDeadlinePlan,
 } from './deadlinePlanMount.ts';
+import { initDeadlinePlanRouter } from './deadlinePlanRouter.ts';
 
 const initTabHandlers = () => {
   tabs.forEach((tab) => {
@@ -307,17 +309,6 @@ export const boot = async () => {
   resetSettingsUiPerf();
   markSettingsUi('boot:start');
   try {
-    if (isDeadlinePlanPage()) {
-      const found = await waitForHomey(200, 100);
-      if (found) {
-        await found.ready();
-        await flushSettingsLogs();
-      }
-      await mountDeadlinePlan();
-      markSettingsUiReady();
-      return;
-    }
-
     const hasHomey = await prepareHomeySdk();
     if (!hasHomey) {
       return;
@@ -326,6 +317,11 @@ export const boot = async () => {
     markSettingsUi('boot:bootstrap-loaded');
     initializeBootHandlers(bootstrap);
     await loadInitialData(bootstrap);
+    initDeadlinePlanRouter({
+      mount: mountDeadlinePlan,
+      unmount: unmountDeadlinePlan,
+      setCloseHandler: setDeadlinePlanCloseHandler,
+    });
     startStaleDataRefreshInterval();
     markBootComplete();
     startDailyBudgetRefreshInterval();
