@@ -665,6 +665,7 @@ describe('deadline objective flow cards', () => {
       reason: 'prices_revised',
       allocationChanged: true,
       projectedFinishAtMs,
+      accumulatedHourCount: 3,
       revision: {
         revision: 2,
         revisedAtMs: hourStartA,
@@ -701,6 +702,7 @@ describe('deadline objective flow cards', () => {
       reason: 'rate_refined',
       allocationChanged: false,
       projectedFinishAtMs,
+      accumulatedHourCount: 3,
       revision: {
         revision: 3,
         revisedAtMs: hourStartA,
@@ -737,6 +739,7 @@ describe('deadline objective flow cards', () => {
       allocationChanged: true,
       // Force buildPlanChangedTokens to throw by giving it a malformed revision.
       projectedFinishAtMs: 0,
+      accumulatedHourCount: 0,
       revision: null as unknown as never,
     })).not.toThrow();
     expect(trigger.trigger).not.toHaveBeenCalled();
