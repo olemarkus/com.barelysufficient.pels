@@ -364,7 +364,14 @@ export const PlanTemperatureCard = ({
         <span class="plan-card__output-power">{formatKw(displayDev.measuredPowerKw)} kW</span>
       </div>
 
-      {temperatureLine !== null && <p class="plan-card__temp-line">{temperatureLine}</p>}
+      {/* Always render the temperature line so cards keep a uniform height even
+          when current temperature or planned target is missing from the snapshot. */}
+      <p
+        class={`plan-card__temp-line${temperatureLine === null ? ' plan-card__temp-line--placeholder' : ''}`}
+        aria-hidden={temperatureLine === null ? 'true' : undefined}
+      >
+        {temperatureLine ?? ''}
+      </p>
       {reasonLine !== null && <p class="plan-card__temp-reason">{reasonLine}</p>}
     </article>
   );
