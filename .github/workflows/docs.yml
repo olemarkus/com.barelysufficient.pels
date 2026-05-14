@@ -4,6 +4,19 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      live_ref:
+        description: "Override production docs ref"
+        required: false
+        type: string
+      test_ref:
+        description: "Override test docs ref"
+        required: false
+        type: string
+      dev_ref:
+        description: "Override dev docs ref"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -22,6 +35,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
@@ -38,8 +53,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build docs site
-        run: npm run docs:build
+      - name: Build docs channels
+        run: npm run docs:build:channels
+        env:
+          PELS_DOCS_LIVE_REF: ${{ github.event.inputs.live_ref || vars.PELS_DOCS_LIVE_REF }}
+          PELS_DOCS_TEST_REF: ${{ github.event.inputs.test_ref || vars.PELS_DOCS_TEST_REF }}
+          PELS_DOCS_DEV_REF: ${{ github.event.inputs.dev_ref || vars.PELS_DOCS_DEV_REF }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
