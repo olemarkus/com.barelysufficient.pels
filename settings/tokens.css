@@ -76,8 +76,7 @@
   --color-border-medium: #3a4555;
   --color-border-strong: #56627a;
   --color-overlay-backdrop: rgba(0, 0, 0, 0.6);
-  --pels-shell-nav-tab-height: 36px;
-  --pels-shell-nav-tab-height-compact: 32px;
+  --pels-touch-target-min: 48px;
   --pels-deadline-close-size: 40px;
   --chip-padding-inline: 10px;
   --chip-border-width: 1px;
@@ -155,6 +154,8 @@
   --pels-shell-nav-container-radius: var(--radius-lg);
   --pels-shell-nav-container-padding: var(--spacing-1);
   --pels-shell-nav-container-gap: var(--spacing-1);
+  --pels-shell-nav-tab-height: var(--pels-touch-target-min);
+  --pels-shell-nav-tab-height-compact: var(--pels-touch-target-min);
   --pels-shell-nav-tab-padding-inline: var(--spacing-2);
   --pels-shell-nav-tab-padding-inline-compact: var(--spacing-1);
   --pels-shell-nav-tab-radius: var(--radius-md);
