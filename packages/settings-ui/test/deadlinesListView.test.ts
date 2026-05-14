@@ -42,6 +42,7 @@ describe('renderDeadlinesList', () => {
   afterEach(() => {
     restoreLocation?.();
     restoreLocation = null;
+    document.body.innerHTML = '';
   });
 
   it('navigates programmatically on tap so anchor clicks always open the detail page', () => {
