@@ -149,7 +149,7 @@ test.describe('Settings UI chart layout', () => {
     // view; the default `progress` view renders a single combined Plan
     // series. Switch to Hourly plan so the parity check actually exercises
     // the split colours this PR introduces.
-    await page.locator('#budget-panel .day-view-toggle__button').filter({ hasText: 'Hourly plan' }).click();
+    await page.locator('#budget-panel .segmented__option').filter({ hasText: 'Hourly plan' }).click();
     await expect(page.locator('#budget-redesign-chart svg')).toBeVisible();
 
     // The legend swatches above the chart are CSS-token-driven. They must

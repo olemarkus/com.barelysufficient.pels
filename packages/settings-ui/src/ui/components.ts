@@ -91,11 +91,6 @@ export type MaterialSelectOptionElement = HTMLElement & {
     disabled: boolean;
 };
 
-type MaterialButtonElement = HTMLElement & {
-    disabled: boolean;
-    focus: () => void;
-};
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Row Components
 // ─────────────────────────────────────────────────────────────────────────────
@@ -373,7 +368,7 @@ export const createSelectInput = (options: SelectInputOptions): MaterialSelectEl
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Toggle Group
+// Toggle Group (M3 segmented buttons)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type ToggleOption<T extends string> = {
@@ -387,13 +382,15 @@ export type ToggleGroupResult<T extends string> = {
 };
 
 /**
- * Creates a button-group toggle (day-view style). Returns the container element
- * and a setActive helper so callers never touch classes directly.
+ * Creates a view-filter toggle rendered as a canonical `.segmented` group
+ * (M3 outlined segmented buttons). Returns the container and a `setActive`
+ * helper so callers never touch classes directly.
  *
- * We deliberately keep this as a custom segmented control rather than reaching
- * for `md-tabs`: Material 3 secondary tabs are for switching between major
- * content views, not binary or small-set selectors, and Material Web does not
- * (yet) ship a segmented-button component. Usage and Budget share this look.
+ * Material Web does not (yet) ship a segmented-button component; this is the
+ * single bespoke primitive used everywhere a small-set, mutually-exclusive
+ * filter is needed (day toggles, Plan/Adjust, Progress/Hourly plan, 7d/14d,
+ * All/Weekday/Weekend, Current/History plan, device-detail When-limiting).
+ * Top navigation stays on `md-tabs`.
  */
 export const createToggleGroup = <T extends string>(
     options: ToggleOption<T>[],
@@ -401,15 +398,15 @@ export const createToggleGroup = <T extends string>(
     onSelect: (value: T) => void,
 ): ToggleGroupResult<T> => {
     const container = document.createElement('div');
-    container.className = 'day-view-toggle';
+    container.className = 'segmented';
     container.setAttribute('role', 'group');
     container.setAttribute('aria-label', ariaLabel);
 
-    const buttons = new Map<T, MaterialButtonElement>();
+    const buttons = new Map<T, HTMLButtonElement>();
     options.forEach(({ value, label }) => {
-        const btn = document.createElement('md-text-button') as MaterialButtonElement;
-        btn.setAttribute('type', 'button');
-        btn.className = 'day-view-toggle__button';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'segmented__option';
         btn.textContent = label;
         btn.setAttribute('aria-pressed', 'false');
         btn.addEventListener('click', () => onSelect(value));
@@ -419,9 +416,7 @@ export const createToggleGroup = <T extends string>(
 
     const setActive = (active: T | null) => {
         buttons.forEach((btn, value) => {
-            const isActive = value === active;
-            btn.classList.toggle('is-active', isActive);
-            btn.setAttribute('aria-pressed', String(isActive));
+            btn.setAttribute('aria-pressed', String(value === active));
         });
     };
 

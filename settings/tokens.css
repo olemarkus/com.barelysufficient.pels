@@ -156,7 +156,7 @@
   --pels-card-gap: var(--spacing-2);
   --pels-card-radius: var(--radius-lg);
   --pels-segmented-label-font-weight: var(--font-weight-semibold);
-  --pels-segmented-selected-background: rgba(var(--color-base-accent-default-rgb), 0.42);
+  --pels-segmented-selected-background: rgba(var(--color-base-accent-default-rgb), 0.28);
   --pels-shell-nav-container-radius: var(--radius-lg);
   --pels-shell-nav-container-padding: var(--spacing-1);
   --pels-shell-nav-container-gap: var(--spacing-1);
@@ -199,6 +199,7 @@
   --pels-on-surface-variant: var(--color-semantic-text-secondary);
   --pels-on-surface-muted: var(--color-semantic-text-muted);
   --pels-segmented-container-background: var(--pels-surface-container-low);
+  --pels-segmented-container-border: var(--pels-surface-outline);
   --pels-shell-nav-container-background: var(--pels-surface-container-low);
   --pels-shell-nav-container-border: var(--pels-surface-outline);
   --pels-shell-nav-tab-selected-background: var(--color-semantic-accent);
@@ -210,8 +211,6 @@
   --pels-text-secondary: var(--pels-on-surface-variant);
   --pels-text-muted: var(--pels-on-surface-muted);
   --pels-text-status-line-positive-color: var(--pels-status-on-good);
-  --pels-segmented-container-border: var(--pels-status-good-border);
-  --pels-segmented-selected-outline: var(--pels-status-good-border);
   --pels-text-section-label-color: var(--pels-text-secondary);
   --pels-text-answer-color: var(--pels-text-primary);
   --pels-text-supporting-color: var(--pels-text-secondary);

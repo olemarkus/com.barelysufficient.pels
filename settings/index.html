@@ -652,14 +652,14 @@
             </summary>
             <div class="collapse-content">
               <div class="field">
-                <span class="field__label">When limiting</span>
-                <div class="segmented segmented--power-limiting" id="device-detail-overshoot-segmented" role="radiogroup" aria-label="When limiting"></div>
+                <span class="field__label" id="device-detail-overshoot-segmented-label">What PELS does when limiting this device</span>
+                <div class="segmented segmented--power-limiting" id="device-detail-overshoot-segmented" role="radiogroup" aria-labelledby="device-detail-overshoot-segmented-label"></div>
                 <md-filled-select id="device-detail-overshoot" hidden aria-hidden="true">
                   <md-select-option value="turn_off"><div slot="headline">Turn off</div></md-select-option>
                   <md-select-option value="set_temperature"><div slot="headline">Set to temperature</div></md-select-option>
                   <md-select-option value="set_step"><div slot="headline">Set to step</div></md-select-option>
                 </md-filled-select>
-                <small class="field__hint">Choose what PELS does when power needs to be lowered.</small>
+                <small class="field__hint">PELS uses this action when it needs to lower power to stay under the hard cap or daily budget.</small>
               </div>
               <div class="md-field-row" id="device-detail-overshoot-temp-row" hidden>
                 <md-filled-text-field

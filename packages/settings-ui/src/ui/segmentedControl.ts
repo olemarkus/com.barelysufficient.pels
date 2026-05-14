@@ -8,10 +8,7 @@ type SegmentedOptionElement = HTMLElement & {
     disabled: boolean;
 };
 
-type MaterialButtonElement = HTMLElement & {
-    disabled: boolean;
-    focus: () => void;
-};
+type SegmentedButtonElement = HTMLButtonElement;
 
 /**
  * Binds a segmented control container ([role="radiogroup"]) to a sibling
@@ -19,15 +16,19 @@ type MaterialButtonElement = HTMLElement & {
  * hidden, and disabled state propagate to the visible buttons. Clicking a
  * button updates the select's value and dispatches a change event so existing
  * select-change handlers still work.
+ *
+ * Uses native `<button>` so the canonical `.segmented__option` token-driven
+ * style (M3 outlined segmented buttons) controls colour, not the `md-text-button`
+ * primary-accent default.
  */
 export const bindSegmentedToSelect = (params: {
     container: HTMLElement;
     select: MaterialSegmentedSelectElement;
 }): { refresh: () => void } => {
     const { container, select } = params;
-    const buttons = new Map<SegmentedOptionElement, MaterialButtonElement>();
+    const buttons = new Map<SegmentedOptionElement, SegmentedButtonElement>();
 
-    const isInteractive = (button: MaterialButtonElement) => !button.disabled && !button.hidden;
+    const isInteractive = (button: SegmentedButtonElement) => !button.disabled && !button.hidden;
 
     const getOptions = () => Array.from(
         select.querySelectorAll<SegmentedOptionElement>('md-select-option'),
@@ -75,9 +76,9 @@ export const bindSegmentedToSelect = (params: {
         if (target && target !== option) focusOption(target);
     };
 
-    const createButton = (option: SegmentedOptionElement): MaterialButtonElement => {
-        const button = document.createElement('md-text-button') as MaterialButtonElement;
-        button.setAttribute('type', 'button');
+    const createButton = (option: SegmentedOptionElement): SegmentedButtonElement => {
+        const button = document.createElement('button') as SegmentedButtonElement;
+        button.type = 'button';
         button.className = 'segmented__option';
         button.setAttribute('role', 'radio');
         button.dataset.value = option.value;

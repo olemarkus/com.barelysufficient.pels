@@ -171,6 +171,24 @@ test.describe('Device detail panel', () => {
     await expect(tempRow).toBeVisible();
     await setMdValue(page, '#device-detail-overshoot-temp', '12');
 
+    // Selected option must look distinct from unselected ones (regression
+    // guard for the pre-unification "all green text, no selected fill" bug).
+    const selectedSwatch = await segmented
+      .locator('.segmented__option[aria-checked="true"]')
+      .evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return { bg: cs.backgroundColor, color: cs.color };
+      });
+    const unselectedSwatch = await segmented
+      .locator('.segmented__option[aria-checked="false"]:not([hidden])')
+      .first()
+      .evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return { bg: cs.backgroundColor, color: cs.color };
+      });
+    expect(selectedSwatch.bg).not.toEqual(unselectedSwatch.bg);
+    expect(selectedSwatch.bg).not.toBe('rgba(0, 0, 0, 0)');
+
     await expect.poll(async () => {
       const behaviors = await readHomeySetting<Record<string, { action?: string; temperature?: number }>>(
         page,

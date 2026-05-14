@@ -60,21 +60,14 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `color.role.good` (teal #5eead4); accent (`#22c55e` brighter leaf) stays on selected-tab,
       focus ring, primary buttons, switch/checkbox. Positive-state surfaces, meter tone, ripple
       hover, chart `--pels-chart-plan`, and resuming plan-card all cascade automatically.)*
-- [ ] Replace fake-M3 segmented controls and active badges with real M3 components.
-      `.day-view-toggle` (Budget Plan/Adjust), `.segmented` (Devices, Modes), and the
-      "When limiting" segmented row inside device-detail (Turn off / Set to temperature /
-      Set to step) all reinvent `md-outlined-segmented-button` + `md-segmented-button`
-      without matching state layers — the device-detail one renders all three options as
-      leaf-green text on transparent with no selected-state surface fill (M3 follow-up
-      audit, 2026-05-14). `.active-badge` (device-detail per-mode priority rows) uses a
-      4 px square corner — inconsistent with the 9999 px `--chip-radius` everywhere else,
-      and under leaf-green the fill reads as "sticker" rather than "active". Replace with
-      `md-assist-chip` carrying tonal good-teal (`rgba(94,234,212,.15)` bg +
-      `#5eead4` text) so it matches Succeeded chips. Component-level change.
-      Files: `packages/settings-ui/public/index.html`,
-      `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
-      `packages/settings-ui/src/ui/views/PlanModes.tsx`,
-      `packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts`, related styles.
+- [ ] Replace `.active-badge` with a proper M3 chip primitive.
+      `.active-badge` (device-detail per-mode priority rows) uses a 4 px square corner —
+      inconsistent with the 9999 px `--chip-radius` everywhere else, and under leaf-green
+      the fill reads as "sticker" rather than "active". Replace with `md-assist-chip`
+      carrying tonal good-teal (`rgba(94,234,212,.15)` bg + `#5eead4` text) so it matches
+      Succeeded chips. Component-level change. Files:
+      `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/src/ui/views/PlanModes.tsx`, related styles.
 - [x] Align every chart series, heatmap cell, and tooltip with the same flat tokens the rest of
       the UI uses. *(landed — `resolveCssColor` in `budgetRedesignChart.ts`,
       `usageDayChartEcharts.ts`, `usageStatsChartsEcharts.ts`, and `powerWeekChartEcharts.ts`

@@ -123,18 +123,19 @@ const ToggleGroup = <T extends string>({
   ariaLabel: string;
   onChange: (v: T) => void;
 }) => (
-  <div class="day-view-toggle" role="group" aria-label={ariaLabel}>
+  <div class="segmented" role="group" aria-label={ariaLabel}>
     {options.map((opt) => (
-      <MdTextButton
+      <button
         key={opt.value}
-        class={`day-view-toggle__button${value === opt.value ? ' is-active' : ''}`}
+        type="button"
+        class="segmented__option"
         aria-pressed={value === opt.value}
         disabled={opt.disabled}
         title={opt.title}
         onClick={() => onChange(opt.value)}
       >
         {opt.label}
-      </MdTextButton>
+      </button>
     ))}
   </div>
 );

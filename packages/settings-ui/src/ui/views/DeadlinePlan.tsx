@@ -581,6 +581,7 @@ const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
   );
 };
 
+
 const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
   <section class="plan-hero" data-tone="info" aria-labelledby="deadline-plan-pending-title">
     <div class="plan-hero__chips">
