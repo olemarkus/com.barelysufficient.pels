@@ -2379,18 +2379,18 @@ md-primary-tab.tab[active]:hover {
    Tightens padding and shrinks label size so labels truncate cleanly via
    existing ellipsis on `.tab`. Touch target height stays at 48px via tokens. */
 @media (max-width: 360px) {
-  md-tabs[data-shell-nav-compact] {
-    gap: 2px;
+  #shell-nav[data-shell-nav-compact] {
+    gap: 0;
     padding: 2px;
   }
 
-  md-tabs[data-shell-nav-compact] .tab {
+  #shell-nav[data-shell-nav-compact] .tab {
     padding-inline: 4px;
     font-size: var(--font-size-xs);
     letter-spacing: -0.01em;
   }
 
-  md-tabs[data-shell-nav-compact] > md-primary-tab:not(:last-child) {
+  #shell-nav[data-shell-nav-compact] > md-primary-tab:not(:last-child) {
     margin-inline-end: 0;
   }
 }
