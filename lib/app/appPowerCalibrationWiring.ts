@@ -354,10 +354,14 @@ function writeAndMark(
   // read is recognised as a transient SDK miss rather than a fresh install.
   // Outside the snapshot-write try/catch so a marker read/write failure does
   // not get reported as a snapshot-persist failure (the snapshot is already
-  // durable at this point). If the read threw we skip the write attempt —
-  // the next persist will retry, and the marker is idempotent.
+  // durable at this point). Write whenever the marker is not confirmed
+  // present — including when the read threw — otherwise persistent marker-
+  // read failures would never write the marker, and a later boot with a
+  // transient snapshot-read miss would be misclassified as a fresh install
+  // (raw absent + marker absent) and overwrite prior history.
   const markerRead = readInitMarker(params.homey);
-  if (!markerRead.threw && !markerRead.value) {
+  const markerConfirmedPresent = !markerRead.threw && markerRead.value;
+  if (!markerConfirmedPresent) {
     writeInitMarkerBestEffort(params.homey);
   }
   return true;

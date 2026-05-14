@@ -461,6 +461,43 @@ describe('fresh-install vs transient-miss discriminator', () => {
     expect(homeyStore.get(POWER_CALIBRATION_INITIALIZED)).toBe(true);
   });
 
+  it('writes the marker on successful persist even when marker read throws', () => {
+    // Regression: if readInitMarker throws transiently after a successful
+    // persist, the marker write was previously skipped. Combined with a
+    // later boot where the snapshot read also throws (or returns null),
+    // the install would be misclassified as fresh and overwrite history.
+    // The marker must be written best-effort whenever it is not confirmed
+    // already present.
+    const writes: Array<[string, unknown]> = [];
+    const homey = {
+      settings: {
+        get: (key: string): unknown => {
+          if (key === POWER_CALIBRATION_INITIALIZED) throw new Error('transient SDK miss');
+          return undefined;
+        },
+        set: (key: string, value: unknown): void => {
+          writes.push([key, value]);
+        },
+      },
+    };
+    const store = loadPowerCalibrationStore({
+      homey: homey as never,
+      // loadGraceMs:0 to bypass the grace window so the persist runs and the
+      // marker-write path is exercised.
+      options: { persistDebounceMs: 0, nowMs: 1_000, loadGraceMs: 0 },
+    });
+    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    persistPowerCalibrationIfDue({
+      homey: homey as never,
+      store,
+      nowMs: 1_500,
+      error: () => undefined,
+    });
+    const markerWrites = writes.filter(([key]) => key === POWER_CALIBRATION_INITIALIZED);
+    expect(markerWrites).toHaveLength(1);
+    expect(markerWrites[0]?.[1]).toBe(true);
+  });
+
   it('sets the marker when loading a plausible existing snapshot (upgrade migration)', () => {
     // Existing users who upgrade may have valid persisted data but no marker
     // yet. The first load should set the marker so subsequent transient
