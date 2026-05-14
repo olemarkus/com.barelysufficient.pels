@@ -312,15 +312,13 @@ export default class PriceService {
     todaySettingKey: string;
     tomorrowSettingKey: string;
     label: 'Flow prices' | 'Homey prices';
-    allowTomorrowAsToday: boolean;
   }): { todayPayload: FlowPricePayload | null; tomorrowPayload: FlowPricePayload | null } {
-    const { now, timeZone, todaySettingKey, tomorrowSettingKey, label, allowTomorrowAsToday } = params;
+    const { now, timeZone, todaySettingKey, tomorrowSettingKey, label } = params;
     const purge = purgeStaleFlowPriceSlots({
       now,
       timeZone,
       todayPayload: getFlowPricePayload(this.getSettingValue(todaySettingKey)),
       tomorrowPayload: getFlowPricePayload(this.getSettingValue(tomorrowSettingKey)),
-      allowTomorrowAsToday,
     });
     purge.changes.forEach((change: FlowSlotChange) => {
       this.logDebug(describeFlowSlotChange(label, change));
@@ -338,9 +336,8 @@ export default class PriceService {
     todaySettingKey: string;
     tomorrowSettingKey: string;
     label: 'Flow prices' | 'Homey prices';
-    allowTomorrowAsToday: boolean;
   }): CombinedHourlyPrice[] {
-    const { todaySettingKey, tomorrowSettingKey, label, allowTomorrowAsToday } = params;
+    const { todaySettingKey, tomorrowSettingKey, label } = params;
     const now = new Date();
     const timeZone = this.homey.clock.getTimezone();
     const { todayPayload, tomorrowPayload } = this.rotateFlowPriceSlots({
@@ -349,7 +346,6 @@ export default class PriceService {
       todaySettingKey,
       tomorrowSettingKey,
       label,
-      allowTomorrowAsToday,
     });
     return buildCombinedHourlyPricesFromPayloads({
       now,
@@ -358,7 +354,6 @@ export default class PriceService {
       tomorrowPayload,
       logDebug: this.logDebug,
       label,
-      allowTomorrowAsToday,
     });
   }
 
@@ -367,7 +362,6 @@ export default class PriceService {
       todaySettingKey: FLOW_PRICES_TODAY,
       tomorrowSettingKey: FLOW_PRICES_TOMORROW,
       label: 'Flow prices',
-      allowTomorrowAsToday: true,
     });
   }
 
@@ -376,7 +370,6 @@ export default class PriceService {
       todaySettingKey: HOMEY_PRICES_TODAY,
       tomorrowSettingKey: HOMEY_PRICES_TOMORROW,
       label: 'Homey prices',
-      allowTomorrowAsToday: false,
     });
   }
 
