@@ -94,7 +94,9 @@ const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
   if (state.cards.length === 0) {
     return (
       <p class="muted">
-        No smart tasks. Add a task when something should be charged, heated, cooled, or run before a specific time.
+        No smart tasks yet. Add one from a Homey Flow using the
+        {' '}<strong>Add heating task</strong> or <strong>Add charging task</strong>{' '}
+        action to schedule a device for a specific ready-by time.
       </p>
     );
   }
