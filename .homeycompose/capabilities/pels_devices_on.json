@@ -4,7 +4,7 @@
     "en": "Devices active"
   },
   "desc": {
-    "en": "Number of controlled devices not currently shed"
+    "en": "Number of managed devices not currently limited"
   },
   "getable": true,
   "setable": false,

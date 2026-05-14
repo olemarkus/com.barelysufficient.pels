@@ -141,7 +141,7 @@
         },
         "args": [],
         "hint": {
-          "en": "Triggers when PELS projects that the hourly hard-cap budget will be breached at the current run rate and there are no controllable devices left to shed. This is an emergency situation requiring immediate manual intervention. Note: This only triggers for hourly hard-cap budget breaches, never for daily budget soft-limit violations."
+          "en": "Triggers when PELS projects that the hourly hard cap will be breached at the current run rate and there are no managed devices left to limit. This is an emergency situation requiring immediate manual intervention. Note: This only triggers for hourly hard-cap breaches, never for daily budget violations."
         },
         "id": "capacity_shortfall"
       },
@@ -709,10 +709,10 @@
       },
       {
         "title": {
-          "en": "Is there enough headroom?"
+          "en": "Is there enough available power?"
         },
         "titleFormatted": {
-          "en": "Is there enough headroom for [[required_kw]] kW?"
+          "en": "Is there enough available power for [[required_kw]] kW?"
         },
         "args": [
           {
@@ -726,16 +726,16 @@
           }
         ],
         "hint": {
-          "en": "Use this to check if current headroom is enough to add the requested load."
+          "en": "Use this to check if the current available power is enough to add the requested load."
         },
         "id": "has_capacity_for"
       },
       {
         "title": {
-          "en": "Is there headroom for device?"
+          "en": "Is there available power for device?"
         },
         "titleFormatted": {
-          "en": "Does [[device]] have headroom for [[required_kw]] kW?"
+          "en": "Does [[device]] have available power for [[required_kw]] kW?"
         },
         "args": [
           {
@@ -756,7 +756,7 @@
           }
         ],
         "hint": {
-          "en": "Checks if the current headroom plus the device's estimated usage is enough to add the requested load. Built-in hysteresis keeps this false for about 60 seconds after a meaningful step-down or recent PELS control on the same device, and repeated failed re-activations require extra headroom before it turns true again."
+          "en": "Checks if the current available power plus the device's estimated usage is enough to add the requested load. Built-in hysteresis keeps this false for about 60 seconds after a meaningful step-down or recent PELS control on the same device, and repeated failed re-activations require extra available power before it turns true again."
         },
         "id": "has_headroom_for_device"
       },
@@ -825,7 +825,7 @@
           }
         ],
         "hint": {
-          "en": "Use this to check if PELS can shed or restore the selected device based on capacity limits."
+          "en": "Use this to check if PELS may limit or resume the selected device based on capacity limits."
         },
         "id": "is_device_capacity_controlled"
       },
@@ -1018,7 +1018,7 @@
           "en": "Disable capacity control for [[device]]"
         },
         "hint": {
-          "en": "Keep PELS from shedding or restoring this device while capacity control is disabled."
+          "en": "Keep PELS from limiting or resuming this device while capacity control is disabled."
         },
         "args": [
           {
@@ -1042,7 +1042,7 @@
           "en": "Enable capacity control for [[device]]"
         },
         "hint": {
-          "en": "Allow PELS to shed or restore this device based on capacity limits."
+          "en": "Allow PELS to limit or resume this device based on capacity limits."
         },
         "args": [
           {
@@ -1551,10 +1551,10 @@
     "pels_controlled_power": {
       "type": "number",
       "title": {
-        "en": "Controlled load"
+        "en": "Managed device usage"
       },
       "desc": {
-        "en": "Current controlled load"
+        "en": "Current managed device usage"
       },
       "units": {
         "en": "kW"
@@ -1658,10 +1658,10 @@
     "pels_devices_off": {
       "type": "number",
       "title": {
-        "en": "Devices shed"
+        "en": "Devices limited"
       },
       "desc": {
-        "en": "Number of controlled devices currently shed (off or minimum temperature)"
+        "en": "Number of managed devices currently limited (turned off, paused, or lowered)"
       },
       "getable": true,
       "setable": false,
@@ -1676,7 +1676,7 @@
         "en": "Devices active"
       },
       "desc": {
-        "en": "Number of controlled devices not currently shed"
+        "en": "Number of managed devices not currently limited"
       },
       "getable": true,
       "setable": false,
@@ -1688,10 +1688,10 @@
     "pels_headroom": {
       "type": "number",
       "title": {
-        "en": "Headroom"
+        "en": "Available power"
       },
       "desc": {
-        "en": "Available power headroom before the current soft limit"
+        "en": "Available power before reaching the current hourly limit"
       },
       "units": {
         "en": "kW"
@@ -1706,10 +1706,10 @@
     "pels_hourly_limit_kw": {
       "type": "number",
       "title": {
-        "en": "Current soft limit"
+        "en": "Current hourly limit"
       },
       "desc": {
-        "en": "Current effective soft limit used for shedding (minimum of hourly soft limit and daily soft limit when enabled)"
+        "en": "Current effective hourly limit (minimum of hourly limit and daily limit when enabled)"
       },
       "units": {
         "en": "kW"
@@ -1757,7 +1757,7 @@
         "en": "Limit reason"
       },
       "desc": {
-        "en": "Why PELS is currently limiting device restores or shedding"
+        "en": "Why PELS is currently limiting devices or delaying resume"
       },
       "getable": true,
       "setable": false,
@@ -1805,10 +1805,10 @@
     "pels_shedding": {
       "type": "boolean",
       "title": {
-        "en": "Shedding"
+        "en": "Limiting devices"
       },
       "desc": {
-        "en": "Deprecated: use devices shed count."
+        "en": "Deprecated: use devices limited count."
       },
       "getable": true,
       "setable": false,
@@ -1819,16 +1819,16 @@
     "pels_shortfall": {
       "type": "boolean",
       "title": {
-        "en": "Capacity shortfall"
+        "en": "Manual action needed"
       },
       "desc": {
-        "en": "Whether PELS projects an hourly hard-cap budget breach and has no controllable devices left to shed"
+        "en": "Whether PELS projects an hourly hard-cap breach and has no managed devices left to limit"
       },
       "insightsTitleTrue": {
-        "en": "Capacity shortfall: projected hard-cap budget breach"
+        "en": "Manual action needed: projected hard-cap breach"
       },
       "insightsTitleFalse": {
-        "en": "Capacity shortfall resolved: back within hard-cap budget"
+        "en": "Manual action no longer needed: back within hard cap"
       },
       "getable": true,
       "setable": false,
@@ -1839,10 +1839,10 @@
     "pels_uncontrolled_power": {
       "type": "number",
       "title": {
-        "en": "Uncontrolled load"
+        "en": "Background usage"
       },
       "desc": {
-        "en": "Current uncontrolled load"
+        "en": "Current background (unmanaged) usage"
       },
       "units": {
         "en": "kW"

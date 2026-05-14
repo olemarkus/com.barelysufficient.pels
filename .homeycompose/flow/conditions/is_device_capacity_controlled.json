@@ -15,6 +15,6 @@
     }
   ],
   "hint": {
-    "en": "Use this to check if PELS can shed or restore the selected device based on capacity limits."
+    "en": "Use this to check if PELS may limit or resume the selected device based on capacity limits."
   }
 }

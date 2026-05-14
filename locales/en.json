@@ -7,16 +7,16 @@
       "title": "Operating mode"
     },
     "pels_headroom": {
-      "title": "Headroom"
+      "title": "Available power"
     },
     "pels_hourly_usage": {
       "title": "Used this hour"
     },
     "pels_hourly_limit_kw": {
-      "title": "Current soft limit"
+      "title": "Current hourly limit"
     },
     "pels_shortfall": {
-      "title": "Capacity shortfall"
+      "title": "Manual action needed"
     },
     "pels_price_level": {
       "title": "Price level",
@@ -31,7 +31,7 @@
       "title": "Devices active"
     },
     "pels_devices_off": {
-      "title": "Devices shed"
+      "title": "Devices limited"
     }
   }
 }

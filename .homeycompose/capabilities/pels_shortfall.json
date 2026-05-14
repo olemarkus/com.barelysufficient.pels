@@ -1,16 +1,16 @@
 {
   "type": "boolean",
   "title": {
-    "en": "Capacity shortfall"
+    "en": "Manual action needed"
   },
   "desc": {
-    "en": "Whether PELS projects an hourly hard-cap budget breach and has no controllable devices left to shed"
+    "en": "Whether PELS projects an hourly hard-cap breach and has no managed devices left to limit"
   },
   "insightsTitleTrue": {
-    "en": "Capacity shortfall: projected hard-cap budget breach"
+    "en": "Manual action needed: projected hard-cap breach"
   },
   "insightsTitleFalse": {
-    "en": "Capacity shortfall resolved: back within hard-cap budget"
+    "en": "Manual action no longer needed: back within hard cap"
   },
   "getable": true,
   "setable": false,

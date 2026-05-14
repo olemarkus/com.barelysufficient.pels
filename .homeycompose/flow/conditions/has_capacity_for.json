@@ -1,9 +1,9 @@
 {
   "title": {
-    "en": "Is there enough headroom?"
+    "en": "Is there enough available power?"
   },
   "titleFormatted": {
-    "en": "Is there enough headroom for [[required_kw]] kW?"
+    "en": "Is there enough available power for [[required_kw]] kW?"
   },
   "args": [
     {
@@ -17,6 +17,6 @@
     }
   ],
   "hint": {
-    "en": "Use this to check if current headroom is enough to add the requested load."
+    "en": "Use this to check if the current available power is enough to add the requested load."
   }
 }

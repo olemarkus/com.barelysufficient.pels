@@ -1,10 +1,10 @@
 {
   "type": "number",
   "title": {
-    "en": "Headroom"
+    "en": "Available power"
   },
   "desc": {
-    "en": "Available power headroom before the current soft limit"
+    "en": "Available power before reaching the current hourly limit"
   },
   "units": {
     "en": "kW"

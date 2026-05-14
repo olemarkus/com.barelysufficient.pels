@@ -7,6 +7,6 @@
   },
   "args": [],
   "hint": {
-    "en": "Triggers when PELS projects that the hourly hard-cap budget will be breached at the current run rate and there are no controllable devices left to shed. This is an emergency situation requiring immediate manual intervention. Note: This only triggers for hourly hard-cap budget breaches, never for daily budget soft-limit violations."
+    "en": "Triggers when PELS projects that the hourly hard cap will be breached at the current run rate and there are no managed devices left to limit. This is an emergency situation requiring immediate manual intervention. Note: This only triggers for hourly hard-cap breaches, never for daily budget violations."
   }
 }

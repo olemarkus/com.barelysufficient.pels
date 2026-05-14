@@ -1,9 +1,9 @@
 {
   "title": {
-    "en": "Is there headroom for device?"
+    "en": "Is there available power for device?"
   },
   "titleFormatted": {
-    "en": "Does [[device]] have headroom for [[required_kw]] kW?"
+    "en": "Does [[device]] have available power for [[required_kw]] kW?"
   },
   "args": [
     {
@@ -24,6 +24,6 @@
     }
   ],
   "hint": {
-    "en": "Checks if the current headroom plus the device's estimated usage is enough to add the requested load. Built-in hysteresis keeps this false for about 60 seconds after a meaningful step-down or recent PELS control on the same device, and repeated failed re-activations require extra headroom before it turns true again."
+    "en": "Checks if the current available power plus the device's estimated usage is enough to add the requested load. Built-in hysteresis keeps this false for about 60 seconds after a meaningful step-down or recent PELS control on the same device, and repeated failed re-activations require extra available power before it turns true again."
   }
 }

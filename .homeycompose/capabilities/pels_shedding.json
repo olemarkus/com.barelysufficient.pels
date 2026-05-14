@@ -1,10 +1,10 @@
 {
   "type": "boolean",
   "title": {
-    "en": "Shedding"
+    "en": "Limiting devices"
   },
   "desc": {
-    "en": "Deprecated: use devices shed count."
+    "en": "Deprecated: use devices limited count."
   },
   "getable": true,
   "setable": false,
