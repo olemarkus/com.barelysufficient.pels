@@ -1756,23 +1756,23 @@ md-primary-tab.tab[active]:hover {
 
 
 .plan-card[data-state-kind="held"] {
-  background: var(--pels-status-limited-surface);
-  border-color: var(--pels-status-limited-border);
+  background: var(--color-state-warning-bg);
+  border-color: var(--color-state-warning-border);
 }
 
 .plan-card[data-state-kind="resuming"] {
-  background: var(--pels-status-good-surface);
-  border-color: var(--pels-status-good-border);
+  background: var(--color-state-positive-bg);
+  border-color: var(--color-state-positive-border);
+}
+
+.plan-card[data-state-kind="unavailable"] {
+  background: var(--color-state-negative-bg);
+  border-color: var(--color-state-negative-border);
+  opacity: 0.78;
 }
 
 .plan-card[data-state-kind="unknown"] {
   opacity: 0.6;
-}
-
-.plan-card[data-state-kind="unavailable"] {
-  background: var(--pels-status-critical-surface);
-  border-color: var(--pels-status-critical-border);
-  opacity: 0.78;
 }
 
 .plan-card--dim {
@@ -1840,7 +1840,7 @@ md-primary-tab.tab[active]:hover {
 }
 
 .plan-state-chip__timer[data-tone="resuming"] {
-  --md-circular-progress-active-indicator-color: var(--pels-status-warning);
+  --md-circular-progress-active-indicator-color: var(--color-role-good);
 }
 
 .plan-state-chip__timer[data-tone="muted"] {
@@ -2138,6 +2138,15 @@ md-primary-tab.tab[active]:hover {
   color: var(--text);
 }
 
+/* Off readout is the headline signal for an idle temperature card; mute it so
+   the running siblings' "On" reads as the foreground state. Scoped to idle
+   only — manual cards can read "On" or "Off" and muting "On" on a manually-
+   controlled running thermostat would hide an active state. */
+.plan-card--temperature[data-state-kind="idle"] .plan-card__output-state {
+  color: var(--text-secondary);
+  font-weight: var(--font-weight-normal);
+}
+
 .plan-card--temperature .plan-card__output-power {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
@@ -2152,6 +2161,14 @@ md-primary-tab.tab[active]:hover {
   line-height: var(--font-line-height-cozy);
   position: relative;
   z-index: 1;
+  /* Reserve the line's vertical space even when temperatureLine is null so
+     every temperature card renders at the same height. Tracks the rule's own
+     font-size × line-height so changes to `cozy` cannot un-stick the two. */
+  min-height: calc(var(--font-size-sm) * var(--font-line-height-cozy));
+}
+
+.plan-card--temperature .plan-card__temp-line--placeholder {
+  visibility: hidden;
 }
 
 .plan-card--temperature .plan-card__temp-reason {
@@ -2409,21 +2426,21 @@ md-primary-tab.tab[active]:hover {
 }
 
 .plan-state-chip--active {
-  background: var(--pels-status-good-container);
-  border: 1px solid var(--pels-status-good-border);
-  color: var(--pels-status-on-good);
+  background: var(--color-state-positive-bg);
+  border: 1px solid var(--color-state-positive-border);
+  color: var(--color-state-positive-text);
 }
 
 .plan-state-chip--held {
-  background: var(--pels-status-limited-container);
-  border: 1px solid var(--pels-status-limited-border);
-  color: var(--pels-status-on-limited);
+  background: var(--color-state-warning-bg);
+  border: 1px solid var(--color-state-warning-border);
+  color: var(--color-state-warning-text);
 }
 
 .plan-state-chip--resuming {
-  background: var(--pels-status-warning-container);
-  border: 1px solid var(--pels-status-warning-border);
-  color: var(--pels-status-on-warning);
+  background: var(--color-state-positive-bg);
+  border: 1px solid var(--color-state-positive-border);
+  color: var(--color-state-positive-text);
 }
 
 .plan-state-chip--idle,
@@ -2433,9 +2450,9 @@ md-primary-tab.tab[active]:hover {
 }
 
 .plan-state-chip--warning {
-  background: var(--pels-status-critical-container);
-  border: 1px solid var(--pels-status-critical-border);
-  color: var(--pels-status-on-critical);
+  background: var(--color-state-negative-bg);
+  border: 1px solid var(--color-state-negative-border);
+  color: var(--color-state-negative-text);
 }
 
 .device-row:last-child {
