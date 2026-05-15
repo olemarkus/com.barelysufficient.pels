@@ -3252,19 +3252,23 @@ md-primary-tab.tab[active]:hover {
   display: none;
 }
 
-.settings-collapse summary::after {
-  content: "";
-  width: 8px;
-  height: 8px;
-  border-right: 1px solid currentColor;
-  border-bottom: 1px solid currentColor;
-  color: var(--muted);
-  transform: rotate(45deg);
+/* Shared chevron behavior for any disclosure that opts in via a Material
+   `expand_more` SVG marked with the `disclosure-chevron` class. Applies to
+   the 5 advanced settings disclosures and to the budget-confidence
+   "What this means" disclosure. */
+summary .disclosure-chevron {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
   transition: transform var(--transition-fast);
 }
 
-.settings-collapse[open] summary::after {
-  transform: rotate(225deg);
+.settings-collapse summary .disclosure-chevron {
+  color: var(--muted);
+}
+
+details[open] > summary .disclosure-chevron {
+  transform: rotate(180deg);
 }
 
 .settings-collapse .collapse-content {
@@ -3882,9 +3886,17 @@ md-primary-tab.tab[active]:hover {
 .budget-confidence-card__details summary {
   width: fit-content;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  list-style: none;
   color: var(--accent);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
+}
+
+.budget-confidence-card__details summary::-webkit-details-marker {
+  display: none;
 }
 
 .budget-confidence-card__explanation {
