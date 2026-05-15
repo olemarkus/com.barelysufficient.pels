@@ -684,8 +684,12 @@ export class PlanExecutor {
             continue;
           }
           if (intent.controllable === false) {
-            if (await this.applySteppedLoadCommand(steppedAction, mode, snapshot)) {
-              commandRequestCount += 1;
+            if (await this.applySteppedLoadCommand(steppedAction, mode, snapshot)) commandRequestCount += 1;
+            // Cap-off + deferred `ev_pause` is the satisfied terminal release path; skip
+            // uncontrolled-restore so we don't immediately re-enable the charger we just paused.
+            if (intent.ev?.kind === 'ev_pause') {
+              if (await this.applyDeferredEvIntent(intent.ev, observed, mode)) deviceWriteCount += 1;
+              continue;
             }
             if (await this.applyUncontrolledRestore(intent.binary, observed)) deviceWriteCount += 1;
             if (await this.applyTargetIntent(intent.target, observed, mode)) deviceWriteCount += 1;
@@ -723,12 +727,8 @@ export class PlanExecutor {
             continue;
           }
           if (intent.steppedLoad) {
-            if (await this.applySteppedLoadCommand(steppedAction, mode, snapshot)) {
-              commandRequestCount += 1;
-            }
-            if (await this.applySteppedLoadShedOff(steppedAction, snapshot, mode)) {
-              deviceWriteCount += 1;
-            }
+            if (await this.applySteppedLoadCommand(steppedAction, mode, snapshot)) commandRequestCount += 1;
+            if (await this.applySteppedLoadShedOff(steppedAction, snapshot, mode)) deviceWriteCount += 1;
             await this.applySteppedLoadRestore(steppedAction, snapshot, mode, hasShedDevices);
             if (await this.applyTargetIntent(intent.target, observed, mode)) deviceWriteCount += 1;
             continue;

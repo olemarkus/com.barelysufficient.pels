@@ -2,7 +2,7 @@ import type { PlanInputDevice } from '../planTypes';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 
 export type DeferredAdmissionDecision =
-  | { kind: 'inactive'; evCommandIntent?: undefined }
+  | { kind: 'inactive'; evCommandIntent?: 'ev_pause' }
   | { kind: 'planned'; requestedMinimumStepId: string | null; evCommandIntent?: 'ev_resume' }
   | { kind: 'idle'; evCommandIntent?: 'ev_pause' };
 
@@ -17,10 +17,30 @@ const PLANNABLE_STATUSES = new Set<DeferredObjectiveDiagnostic['status']>([
   'cannot_meet',
 ]);
 
+// Note's "EV Semantics" §"Power-limit control off": once the deadline objective is satisfied for a
+// cap-off charger, PELS should pause charging because the deferred objective was the only reason
+// PELS allowed charging at all. We emit a one-shot `ev_pause` whenever the diagnostic reports
+// `satisfied` and the device is cap-off; the executor guards against re-issuing pauses to an
+// already-paused charger so the per-cycle re-emission is idempotent. Cap-on chargers still rely on
+// normal managed admission, so the pause does not fire there.
+const shouldEmitSatisfiedPause = (
+  diagnostic: DeferredObjectiveDiagnostic,
+  device: PlanInputDevice | undefined,
+): boolean => (
+  diagnostic.status === 'satisfied'
+  && diagnostic.objectiveKind === 'ev_soc'
+  && device?.controllable === false
+);
+
 const resolveDecision = (
   diagnostic: DeferredObjectiveDiagnostic,
+  device: PlanInputDevice | undefined,
 ): DeferredAdmissionDecision => {
-  if (!PLANNABLE_STATUSES.has(diagnostic.status)) return { kind: 'inactive' };
+  if (!PLANNABLE_STATUSES.has(diagnostic.status)) {
+    return shouldEmitSatisfiedPause(diagnostic, device)
+      ? { kind: 'inactive', evCommandIntent: 'ev_pause' }
+      : { kind: 'inactive' };
+  }
   const horizonPlan = diagnostic.horizonPlan;
   if (!horizonPlan) return { kind: 'inactive' };
   const currentBucket = horizonPlan.currentBucket;
@@ -39,10 +59,12 @@ const resolveDecision = (
 
 export const applyDeferredObjectiveAdmission = (
   diagnostics: readonly DeferredObjectiveDiagnostic[],
+  devices: readonly PlanInputDevice[] = [],
 ): Map<string, DeferredAdmissionDecision> => {
+  const deviceById = new Map(devices.map((device) => [device.id, device]));
   const decisions = new Map<string, DeferredAdmissionDecision>();
   for (const diagnostic of diagnostics) {
-    decisions.set(diagnostic.deviceId, resolveDecision(diagnostic));
+    decisions.set(diagnostic.deviceId, resolveDecision(diagnostic, deviceById.get(diagnostic.deviceId)));
   }
   return decisions;
 };

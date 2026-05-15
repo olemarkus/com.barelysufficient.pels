@@ -198,7 +198,7 @@ export class PlanBuilder {
     ));
     this.deps.observeDeferredObjectivePlanHistory?.(deferredEvaluations, nowTs);
     this.deps.observeDeferredObjectiveActivePlans?.(deferredEvaluations, nowTs);
-    const deferredAdmission = applyDeferredObjectiveAdmission(deferredEvaluations);
+    const deferredAdmission = applyDeferredObjectiveAdmission(deferredEvaluations, devices);
     const { devices: admittedDevices, forceShedSet } = applyDeferredAdmissionToInput(devices, deferredAdmission);
     const deferredTargetTempByDeviceId = buildDeferredTargetOverrides(deferredEvaluations);
     const deferredEvCommandIntentByDeviceId = buildDeferredEvCommandIntents(deferredAdmission);

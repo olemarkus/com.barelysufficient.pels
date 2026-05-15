@@ -366,18 +366,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `packages/shared-domain/src/deadlineLabels.ts`,
       `lib/plan/deferredObjectives/diagnosticsBridge.ts` (confirm the reason flows into the
       pending-payload).
-- [ ] Verify EV `satisfied` + cap-off + Power-limit-off path produces a terminal `ev_pause`
-      intent. When an EV objective transitions to `satisfied` while Power-limit control is off,
-      admission returns `inactive` (`lib/plan/deferredObjectives/admission.ts:23`) with no
-      `ev_pause` intent. The shared note's intent for cap-off + Power-limit-off is that
-      "meeting the target removes that allowance and PELS should pause charging". Today, after
-      target met, the deferred-objective admission stops driving the charger but doesn't emit a
-      final pause — the charger may remain charging via other behavior. Add an integration test
-      that captures the cap-off + Power-limit-off case; if no terminal pause fires, emit one.
-      Why P1: the note's behavioral promise isn't verified; if the gap exists, users see
-      charging continue past their target.
-      Files: `lib/plan/deferredObjectives/admission.ts`, `lib/executor/binaryExecutor.ts`,
-      `test/evDevices.integration.test.ts`.
 - [ ] Disambiguate the "Waiting" chip across Smart task surfaces. Today the same chip text
       serves three meanings: plan still being built (`pending: true`), plan ready but charging
       not started yet (queued for first bucket), and (proposed via existing entry above) car
