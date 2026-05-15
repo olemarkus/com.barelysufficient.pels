@@ -4,8 +4,15 @@ This note defines the intended model for deadline-aware loads. It is design guid
 future implementation work. The soft temperature slice is current shipped behavior: PELS can plan
 deadline hours, make cap-off temperature devices visible during planned hours, keep them idle
 outside planned hours, and raise the planned setpoint to the deadline target while still respecting
-normal budget, capacity, priority, cooldown, and admission gates. Hard deadlines, EV admission,
-hard-boost rebalancing, multi-objective contention, and richer step escalation remain future work.
+normal budget, capacity, priority, cooldown, and admission gates. EV pause/resume admission and
+actuation are also shipped (`admission.ts` emits `ev_resume`/`ev_pause` intents;
+`lib/executor/binaryExecutor.ts` applies them) — see `notes/ev-ready-by/README.md` for the user-
+facing slice. Multi-objective contention and richer step escalation remain future work in this
+note. Hard deadlines and
+hard-boost rebalancing are deferred and moved to
+[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md); energy-based milestones and the
+priority-adjusted horizon-planning detail are deferred and moved to
+[`notes/planning-horizon-milestones/README.md`](../planning-horizon-milestones/README.md).
 
 The first concrete runtime slice started as a diagnostics-only EV SoC objective bridge because PELS
 already had native SoC snapshots and learned kWh-per-percent profiling. Connected 300-style
@@ -68,9 +75,13 @@ Storage rules:
 - Keep configured objective facts in settings and derived planning output out of settings.
 - One v1 objective is keyed by device id. Multiple objectives per device require a later schema.
 - Invalid or unsupported settings entries are ignored rather than interpreted with defaults.
-- `targetPercent` must be above 0 and at or below 100.
+- `targetPercent` must be at least 1 and at or below 100 (the EV flow card enforces this range;
+  the contract normalizer rejects sub-1% values).
 - `targetTemperatureC` must be finite and within the bounded settings range. The Settings UI should
   further constrain it to the device target capability range when that range is available.
+- Clearing a deadline for a device that has no objective is a safe no-op: `removeObjective`
+  returns settings unchanged, the status bus's `forgetDevice` and the trigger-suppression cache
+  delete both no-op cleanly.
 - `deadlineAtMs` is an absolute UTC timestamp. Flow cards take a `HH:mm` local-time argument and
   resolve it to the next future local moment **once at write time**; the persisted value never
   rolls forward on its own. When the deadline passes, the runtime auto-disables the entry
@@ -78,9 +89,9 @@ Storage rules:
   deadline never replans for the next day. Users re-arm by firing the flow card again.
 - Temperature objectives are soft-only for now. The Settings UI must not expose hard temperature
   deadlines until runtime semantics are explicitly designed.
-- `enforcement` records soft or hard intent for EV settings. Soft temperature objectives currently
-  affect admission and target temperature; EV admission and hard-deadline behavior remain future
-  planner work.
+- `enforcement` is persisted on EV entries (`'soft' | 'hard'`), but only `'soft'` has runtime
+  effect today and the EV flow card hardcodes `'soft'`. Hard enforcement is deferred — see
+  [`notes/hard-deadlines/README.md`](../hard-deadlines/README.md) for the design.
 
 The bridge reads this settings payload during plan construction, normalizes it, evaluates each
 enabled objective, and emits structured `deferred_objectives` debug diagnostics. The bridge also
@@ -137,8 +148,15 @@ and applied at the planner boundary in `PlanBuilder.buildPlanSnapshotWithTimings
   `buildBasePlanDevice` overwrites `plannedTarget` with the shed temperature when the device is
   in the shed-set.
 
-Cap-on, hard deadlines, hard-boost rebalancing, EV admission, and contention across multiple
-deferred objectives are still future work.
+Cap-on temperature admission and contention across multiple deferred objectives are still future
+work. EV pause/resume admission shipped — see `notes/ev-ready-by/README.md`. Hard deadlines and
+hard-boost rebalancing are deferred — see
+[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md).
+
+EV admission has one additional safety gate beyond the temperature path: `ev_resume` intents
+are dropped by `planBuilder.attachDeferredEvCommandIntents` when
+`context.powerFreshnessState !== 'fresh'`. Stale whole-home power readings can't justify
+restoring an EV charger — the gate is one-way (pause is always safe and isn't gated).
 
 ### Active plan persistence and replan policy
 
@@ -339,6 +357,14 @@ Persisted/reported objective state must be separate from derived planner evaluat
 the state-management rule that observed, planned, commanded, and effective planning state must not
 be collapsed into one object.
 
+> **Note:** the types below are forward-design types capturing the eventual planner contract.
+> The shipped persisted shape is `DeferredObjectiveSettingsV1` (see §"Persisted Settings Slice")
+> and the shipped evaluation type is `DeferredObjectiveDiagnostic` in
+> `lib/plan/deferredObjectives/diagnosticsBridge.ts`. Fields below that don't appear on the
+> shipped types (e.g. `stableStatus`, `requiredAverageKw`, `conservativeNetGainKw`) are
+> aspirational and may never ship as named. Mode-related fields have moved with the deferred
+> mode-override design to [`notes/hard-deadlines/README.md`](../hard-deadlines/README.md).
+
 ```ts
 type DeviceObjectiveState = {
   kind: 'thermal_storage' | 'ev_soc' | 'storage_percent' | 'manual_energy';
@@ -364,7 +390,6 @@ type DeviceObjectiveState = {
   capacitySource?: 'flow' | 'user' | 'capability' | 'settings' | 'native_profile' | 'learned';
 
   softDeadlineAtMs?: number;
-  hardDeadlineAtMs?: number;
 
   sessionStartedAtMs?: number;
   invalidatedAtMs?: number;
@@ -380,7 +405,7 @@ type DeviceObjectiveEvaluation = {
   status: 'unknown' | 'likely_to_meet' | 'at_risk' | 'cannot_be_met';
   stableStatus?: 'unknown' | 'likely_to_meet' | 'at_risk' | 'cannot_be_met';
 
-  activeMode: 'none' | 'soft' | 'hard';
+  activeMode: 'none' | 'soft';
   progressStatus: 'unknown' | 'fresh' | 'stale' | 'invalid_session';
 
   energyNeededKwh?: number;
@@ -393,12 +418,13 @@ type DeviceObjectiveEvaluation = {
   requestedMinimumStepId?: string;
   requestedStepReasonCode?: ObjectiveReasonCode;
 
-  requestedModeId?: string;
-  requestedModeReasonCode?: ObjectiveReasonCode;
-
   reasonCode?: ObjectiveReasonCode;
 };
 ```
+
+Mode-related request fields (`requestedModeId`, `requestedModeReasonCode`) live with the
+deferred mode-override design in
+[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md) §"Mode override".
 
 ```ts
 type ObjectiveRateEstimate = {
@@ -442,7 +468,6 @@ Future generic inputs may include:
 - set target temperature
 - set capacity in kWh
 - set soft deadline
-- set hard deadline
 - clear objective
 
 These cards should not be exposed until objective planning, diagnostics, and user-facing semantics
@@ -470,8 +495,9 @@ Native adapters own device-specific translation. Examples:
 
 The first implementation step is profiling, not deadline control. PELS should learn compact
 per-device conversion and rate facts from observed behavior before it tries to decide whether a
-deadline can be met. The EV settings bridge starts from that foundation: it may use learned
-kWh-per-percent to calculate required energy, but EV admission and actuation remain future work.
+deadline can be met. The EV settings bridge started from that foundation: it uses learned
+kWh-per-percent to calculate required energy. EV admission and pause/resume actuation have since
+shipped (see `notes/ev-ready-by/README.md`).
 
 For temperature devices, the useful learned unit is energy per degree:
 
@@ -521,14 +547,24 @@ Those may exist internally or diagnostically, but users will expect "hit tempera
 
 ### Thermal Energy Semantics
 
-For thermal storage, `currentEnergyKwh` means usable stored energy relative to an adapter-defined
-baseline, not vague total heat content.
+Shipped v1 uses a learned `kWhPerUnit` (kWh per 1°C) multiplied by the remaining `ΔT` to derive
+`energyNeededKWh`. The profile learns from observed temperature rises with credible energy
+evidence (`lib/core/objectiveProfiles.ts`). There is no anchored "baseline temperature" in the
+shipped path — the profile is unit-rate based and `ΔT` carries the rest:
 
-For Connected 300-style v1 diagnostics, prefer learned energy-per-degree over theoretical tank
-volume math. Tank volume based conversion is valid only for a native adapter or explicit user
-configuration that owns those assumptions.
+```ts
+energyNeededKwh = Math.max(0, kWhPerUnit.mean * (targetTemperatureC - currentTemperatureC));
+```
 
-For example:
+This is intentionally simpler than the tank-volume / baseline-temperature math required for
+explicit usable-stored-energy modeling. The baseline-anchored design below is preserved as
+future direction for a native adapter that owns trusted capacity facts (e.g. reports stored
+energy directly or carries a reserve baseline).
+
+#### Future native-adapter design (not the v1 path)
+
+For thermal storage, `currentEnergyKwh` *would* mean usable stored energy relative to an
+adapter-defined baseline rather than vague total heat content. A native adapter could compute:
 
 ```ts
 currentEnergyKwh = energyBetween(baselineTemperatureC, measuredTemperatureC);
@@ -536,55 +572,17 @@ targetEnergyKwh = energyBetween(baselineTemperatureC, targetTemperatureC);
 energyNeededKwh = Math.max(0, targetEnergyKwh - currentEnergyKwh);
 ```
 
-The baseline must be explicit in the adapter/profile. It might be a minimum useful temperature,
-reserve temperature, or another device-specific comfort/safety baseline.
+The baseline would need to be explicit in the adapter/profile (minimum useful temperature,
+reserve temperature, or another device-specific comfort/safety baseline). When a device reports
+stored energy directly, prefer that over a temperature-derived estimate. Temperature can still
+be used for UX, diagnostics, and fallback mapping. None of this ships today.
 
-When a device reports stored energy directly, prefer that over a temperature-derived estimate.
-Temperature can still be used for UX, diagnostics, and fallback mapping.
+### Mode-dependent capacity and mode override
 
-### Mode-Dependent Capacity
-
-For water heaters, mode can change the maximum allowed temperature, the usable capacity, and
-sometimes the charge rate. Capacity is therefore not a fixed device constant unless the mode is
-fixed.
-
-Model usable capacity against the active or requested mode:
-
-```ts
-usableCapacityKwh = energyBetween(baselineTemperatureC, modeMaxTemperatureC);
-```
-
-Target feasibility must account for mode:
-
-- If the current mode can reach `targetTemperatureC`, no mode change is required.
-- If the current mode cannot reach the target and deadline control is not allowed to change mode,
-  the objective is `cannot_be_met`.
-- If mode override is allowed, request the lowest mode that can safely reach the target.
-- If a higher mode is needed only for rate/deadline reasons, request it only when the objective is
-  hard/urgent enough.
-
-### Mode Override Rules
-
-Mode override should exist only in a native adapter that understands the device. Generic
-flow-backed devices should not receive automatic mode changes unless their flow integration
-implements them explicitly.
-
-Rules:
-
-- Soft deadlines should not override user/device mode by default.
-- Hard deadlines may request a mode change if the current mode cannot meet the target.
-- Override must be minimal: choose the lowest mode that can satisfy the target and deadline.
-- Never exceed configured safety or user maximum temperature.
-- Restore the previous mode after the target is met or the deadline window expires, unless the
-  user changed the mode manually.
-- Manual user mode changes should win unless the user explicitly enabled deadline mode control.
-
-Mode request is part of objective evaluation:
-
-```ts
-requestedModeId?: string;
-requestedModeReasonCode?: ObjectiveReasonCode;
-```
+Deferred — see [`notes/hard-deadlines/README.md`](../hard-deadlines/README.md)
+§"Mode override (water heaters and similar)" for the design (mode-aware
+capacity, override rules, request fields). The shipped runtime has no
+mode-change path.
 
 ### Step Selection
 
@@ -671,34 +669,16 @@ depends on the per-device Power-limit control setting:
 
 ## Energy Calculation
 
-Use the strongest available energy model.
-
-Direct remaining energy:
+Shipped v1 uses a single path:
 
 ```ts
-energyNeededKwh = Math.max(0, remainingEnergyKwh);
+energyNeededKwh = Math.max(0, kWhPerUnit.mean * remainingUnits);
 ```
 
-Current and target energy:
-
-```ts
-energyNeededKwh = Math.max(0, targetEnergyKwh - currentEnergyKwh);
-```
-
-Percent and capacity:
-
-```ts
-remainingPercent = Math.max(0, targetPercent - progressPercent);
-energyNeededKwh = remainingPercent / 100 * capacityKwh;
-```
-
-Temperature and thermal profile:
-
-```ts
-currentEnergyKwh = energyBetween(baselineTemperatureC, measuredTemperatureC);
-targetEnergyKwh = energyBetween(baselineTemperatureC, targetTemperatureC);
-energyNeededKwh = Math.max(0, targetEnergyKwh - currentEnergyKwh);
-```
+where `remainingUnits` is `(targetTemperatureC - currentTemperatureC)` for thermal or
+`(targetPercent - currentPercent)` for EV. The `kWhPerUnit` value comes from the learned
+profile, or for EV from the conservative bootstrap (`BOOTSTRAP_EV_SOC_KWH_PER_PERCENT = 1.0`)
+until learning matures. Source: `lib/plan/deferredObjectives/profileEnergyResolution.ts`.
 
 Available time:
 
@@ -707,30 +687,61 @@ availableHours = Math.max(0, (deadlineAtMs - nowMs) / 3_600_000);
 requiredAverageKw = energyNeededKwh / availableHours;
 ```
 
-If `energyNeededKwh <= 0`, the objective is met:
+If `energyNeededKwh <= 0`, the objective is met (status `satisfied` via `energy_already_met`).
+
+Missing, stale, invalid, or impossible inputs produce `unknown` or `cannot_meet`, never
+optimistic planning.
+
+#### Future input modes (not the v1 path)
+
+A more general objective model could accept any of these inputs and route through the same
+planner. These remain forward-design and are not exercised today:
 
 ```ts
-status = 'likely_to_meet';
-activeMode = 'none';
-requestedMinimumStepId = undefined;
-```
+// Direct remaining energy:
+energyNeededKwh = Math.max(0, remainingEnergyKwh);
 
-Missing, stale, invalid, or impossible inputs must produce `unknown` or `cannot_be_met`, never
-optimistic planning.
+// Current and target energy:
+energyNeededKwh = Math.max(0, targetEnergyKwh - currentEnergyKwh);
+
+// Percent and capacity:
+remainingPercent = Math.max(0, targetPercent - progressPercent);
+energyNeededKwh = remainingPercent / 100 * capacityKwh;
+
+// Temperature and thermal profile (baseline-anchored — see §"Thermal Energy Semantics" future
+// section):
+currentEnergyKwh = energyBetween(baselineTemperatureC, measuredTemperatureC);
+targetEnergyKwh = energyBetween(baselineTemperatureC, targetTemperatureC);
+energyNeededKwh = Math.max(0, targetEnergyKwh - currentEnergyKwh);
+```
 
 ## Conservative Net Rate
 
-Deadline feasibility must be based on conservative net useful-energy gain, not raw electrical
+Deadline feasibility is based on conservative net useful-energy gain, not raw electrical
 input.
 
 For water heaters, useful stored energy can fall while the element is on because of heat loss or
-hot-water use. The best estimate is learned or reported net stored-energy gain per step. If that is
-not available, use configured step planning power with a conservative derating.
+hot-water use. For EVs, charging may taper near high SoC; AC home charging is often
+charger-limited and close to flat for much of the session, but a flat rate to 100% can still be
+optimistic.
 
-For EVs, charging may taper near high SoC. AC home charging is often charger-limited and close to
-flat for much of the session, but a flat rate to 100% can still be optimistic.
+Shipped v1 uses one rate source plus EV bootstrap fallback:
 
-Rate estimate preference:
+1. Learned `kWhPerUnit` profile (`lib/core/objectiveProfiles.ts`), or
+2. For EV without a learned profile: `BOOTSTRAP_EV_SOC_KWH_PER_PERCENT = 1.0`
+   (`packages/shared-domain/src/objectiveProfileBootstrap.ts`). The recorder emits a
+   `rate_refined` revision when learning takes over.
+3. Otherwise → `objective_missing_capacity` (thermal) or `objective_missing_charge_rate` (no
+   step profile) status `unknown`; no optimistic planning.
+
+For stepped loads, per-step useful kW comes from `resolveStepDeliveryUsefulKw`
+(`lib/plan/deferredObjectives/objectiveStepPower.ts`), which prefers measured calibration
+(`lib/observer/devicePowerCalibration.ts`) over nameplate planning power. That governs how the
+horizon planner sizes bucket allocation, not the `energyNeededKwh` computation itself.
+
+#### Future rate-source preference (not the v1 path)
+
+The original design enumerated a five-tier preference order. None of tiers 1, 3, 4 ship today:
 
 1. Fresh direct remaining-time estimate.
 2. Learned net gain or session average, derated.
@@ -739,132 +750,56 @@ Rate estimate preference:
    device state.
 5. Unknown.
 
-Do not treat circuit maximum as sufficient for `likely_to_meet` unless a native adapter/profile can
+Do not treat circuit maximum as sufficient for `on_track` unless a native adapter/profile can
 prove it is a conservative planning estimate.
 
-For stepped loads, evaluate each candidate step independently:
+For stepped loads, the design intent is to evaluate each candidate step independently:
 
 ```ts
 projectedCompletionAtMs =
   nowMs + (energyNeededKwh / conservativeStepNetGainKw) * 3_600_000;
 ```
 
-## Confidence and Deadline Margins
+## Status Semantics
 
-Rate confidence should affect deadline margins.
+The shipped status values on the diagnostic
+(`lib/plan/deferredObjectives/diagnosticsBridge.ts`):
 
-Use conservative rate for `likely_to_meet`. A less conservative expected rate may explain
-`at_risk`, but it should not make the planner optimistic.
+- `unknown` — required inputs are missing, stale, invalid, or impossible to evaluate.
+- `on_track` — conservative projected completion is before the deadline minus the
+  deadline-reserve margin.
+- `at_risk` — projected completion is inside the reserve, or the plan relies on policy-avoid
+  hours to land.
+- `cannot_meet` — even the highest allowed hard-cap-safe behavior cannot plausibly meet the
+  target before the deadline. (`hard-cap-safe` here means within the physical capacity hard
+  cap.)
+- `satisfied` — current progress is at or above target. Live; if a later reading drops below
+  target, the next cycle returns to one of the values above.
 
-Initial margin model:
+Status transitions today fire immediately on change (no hysteresis); the flow trigger bus
+suppresses same-status re-fires. The shipped `deadlineMarginMs` is a flat reserve, not
+confidence-scaled.
 
-```ts
-baseDeadlineMarginMs = 15 * 60 * 1000;
-mediumConfidencePenaltyMs = 15 * 60 * 1000;
-lowConfidencePenaltyMs = 45 * 60 * 1000;
-```
+An internal `'invalid'` value exists on `DeferredObjectiveHorizonStatus` and the bus snapshot
+type (`statusBus.ts`), produced by the horizon planner when a precondition fails inside the
+planning step. `diagnosticsBridge` collapses `'invalid'` to `'unknown'` before it reaches the
+flow surface — user-facing status is always one of the five above. The internal value is
+retained for runtime branching only; tightening the bus type to `Exclude<…, 'invalid'>` is
+possible but cosmetic.
 
-Effective margin:
-
-```ts
-deadlineMarginMs = baseDeadlineMarginMs + confidencePenaltyMs + curveOrInstabilityPenaltyMs;
-```
-
-Suggested statuses:
-
-- `likely_to_meet`: conservative projected completion is before deadline minus margin.
-- `at_risk`: expected behavior may meet the deadline, margin is low, or only hard behavior can
-  plausibly meet it.
-- `cannot_be_met`: even the highest allowed hard-cap-safe behavior cannot plausibly meet the
-  target before the deadline.
-- `unknown`: required inputs are missing, stale, invalid, or impossible to evaluate.
-
-Hysteresis should stabilize UI and flow triggers, but must not blind the planner. The planner
-should consume the latest conservative evaluation. Flow triggers and user-visible stable state may
-use rules such as:
-
-- require two consecutive evaluations before downgrading from `likely_to_meet` to `at_risk`
-- allow immediate transition to `cannot_be_met`
-- require five minutes stable before upgrading from `at_risk` to `likely_to_meet`
+Hysteresis and confidence-scaled margin are deferred — see
+[`notes/status-hysteresis/README.md`](../status-hysteresis/README.md). Picked up only if real
+telemetry shows user-observable status flapping.
 
 ## Soft and Hard Deadlines
 
-Soft and hard deadlines are the same objective model with different admission authority. Both may
-request the minimum required boost, step, or mode needed to stay on plan.
+Soft enforcement is shipped v1 and respects normal PELS policy (effective soft limit, daily
+budget, priority, cooldowns, stepped progression, safety failsafes). Soft objective can use
+existing boost behavior; it must not shed a higher-priority device solely to meet the deadline.
 
-Deadline authority is separate from per-device Power-limit control. With no active objective,
-Power-limit control off means PELS leaves the device alone for normal capacity, budget, and price
-work: it should not start, resume, limit, or step the device just because normal policy has budget
-or available power. An active deadline objective is an explicit temporary exception for the minimum
-action needed to keep the objective on plan. When that objective is met, missed, cleared, stale, or
-invalid, the temporary authority ends.
-
-Soft objective means budget-aware boost. It may request boost or step-up behavior, but admission of
-that request remains inside normal PELS policy. It must respect:
-
-- effective soft limit
-- daily budget soft limit
-- device priority
-- restore cooldowns
-- one-restore-at-a-time behavior
-- stepped-load progression
-- stale power failsafe
-- pending command confirmation and backoff
-- existing safety/freshness rules
-
-Soft objective can use existing boost behavior. If that behavior sheds lower-priority devices to
-make room for a step-up, the objective may benefit from it. Soft objective must not shed a
-higher-priority device solely to meet the deadline.
-
-Hard objective means deadline-first boost. It may request the same minimum required boost, step, or
-mode as soft objective, but can use stronger admission rules when the deadline is at risk. It may
-bypass:
-
-- daily budget blocking
-- effective soft-limit blocking
-- normal priority ordering, if a future hard-boost lane explicitly allows shedding higher-priority
-  eligible devices
-
-It must still respect:
-
-- hard capacity cap and margin
-- live power freshness failsafe
-- device availability
-- actuator capability
-- EV connected/resumable state
-- stepped-load progression
-- pending-command confirmation and backoff
-- stale power failsafe
-
-Hard deadline admission should use margin-adjusted capacity-soft-limit headroom:
-
-```ts
-hardObjectiveAdmissionHeadroomKw = capacitySoftLimitKw - totalKw;
-```
-
-not the effective `softLimitKw` when daily budget has lowered it. Do not confuse this with the
-existing physical `hardCapHeadroomKw` concept, which is based on the absolute hard limit rather
-than the margin-adjusted capacity soft limit.
-
-Long term, hard objective mode may create hard-cap-safe headroom by rebalancing flexible devices.
-That rebalancing must:
-
-- protect only `requestedMinimumStepId`
-- preserve hard capacity safety
-- prefer keeping devices active where possible
-- shed or keep shed eligible flexible devices when needed
-- avoid shedding devices protected by equal or higher hard objectives
-- drop back once the objective is safe again
-- never skip configured stepped-load progression
-
-Hard objective is not a whole-home energy cap. The target remains device readiness:
-
-```text
-device X should reach state Y by time Z
-```
-
-The hard-mode difference is that budget and normal priority policy may yield to the device
-deadline. The hard capacity cap never yields.
+Hard enforcement is deferred — see
+[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md) for the design contract
+(admission lane, hard-objective admission headroom, hard-boost rebalancing).
 
 ## Planning Horizon and Milestones
 
@@ -874,58 +809,18 @@ Every deferred objective creates a planning horizon:
 now -> deadline
 ```
 
-Within that horizon, PELS should try to place the required useful energy in the best available
-windows while preserving enough margin to meet the deadline.
+Within that horizon, PELS allocates the required useful energy into hourly buckets, preferring
+cheap or budget-friendly windows while preserving deadline margin. Status resolves from the
+result using the reason codes `planned_with_margin`, `planned_using_deadline_reserve`,
+`planned_using_policy_avoid`, `target_cannot_be_met`, `no_bucket_capacity`, or
+`energy_already_met` (see §"Reason Codes"). The horizon planner recomputes on every relevant plan
+cycle and emits its current-bucket recommendation as `requestedMinimumStepId`.
 
-For soft objectives, "best" means normal PELS policy: daily budget state, expected price/budget
-pressure, device priority, and existing boost rules. Price is not a separate primitive here; it
-enters through the budget/price policy PELS already uses to decide when spending energy is
-acceptable. Soft objective should prefer cheap or budget-friendly windows when that does not create
-deadline risk.
-
-For hard objectives, the same horizon exists, but deadline feasibility outranks budget and normal
-priority policy. Hard objective should still prefer cheaper or budget-friendly windows when there
-is enough margin, but it should not miss the deadline merely because the remaining feasible window
-is expensive.
-
-Priority should affect horizon planning through admission risk, not by directly rewriting price
-ordering. A lower-priority device may be blocked by higher-priority managed devices during otherwise
-cheap windows, so those windows should count as less dependable for soft objectives. The planner can
-model that by reducing usable bucket capacity, increasing deadline reserve, or widening the number
-of candidate hours before the deadline. A higher-priority device can use more of its configured
-step capacity as dependable energy, while a lower-priority device should need more time or more
-margin to be considered on track.
-
-This risk adjustment is still a planning estimate. Actual admission remains a runtime decision made
-by normal PELS policy for soft objectives and by the hard-objective admission lane for hard
-objectives. If the current bucket's requested minimum step is blocked, the next evaluations should
-consume deadline margin, replan remaining energy, and eventually move the objective toward
-`at_risk` or `cannot_be_met`.
-
-The horizon plan should produce derived milestones. Milestones should be energy-based where
-possible, not arbitrary wall-clock percentages:
-
-```text
-by 01:00: planned useful energy added >= 0.5 kWh
-by 03:00: planned useful energy added >= 1.0 kWh
-by 05:00: planned useful energy added >= 4.5 kWh
-by 07:00: planned useful energy added >= 6.0 kWh
-```
-
-This allows soft mode to intentionally wait through expensive periods without being falsely marked
-behind, while still detecting when the plan has fallen behind enough to request a higher step.
-
-For v1, the horizon scheduler can be conservative and simple:
-
-1. Build coarse time buckets from now to the deadline.
-2. Estimate useful energy available per bucket for each configured step.
-3. Prefer buckets that normal policy already considers cheap or budget-friendly.
-4. Keep a confidence margin or fallback reserve near the end.
-5. Output the requested minimum step for the current bucket.
-6. Recompute on every relevant plan cycle.
-
-Required-average kW remains useful as a diagnostic, but horizon scheduling is the mechanism that
-makes soft objectives budget-aware instead of just "boost immediately."
+The priority-adjusted horizon model and the energy-based milestone framework are deferred — see
+[`notes/planning-horizon-milestones/README.md`](../planning-horizon-milestones/README.md). What
+shipped covers the same intent ("let soft objectives wait through expensive hours without
+flipping to at-risk") via the `planned_using_policy_avoid` reason and the deadline-reserve
+margin, without computing explicit milestones.
 
 ### Rate Bootstrap (EV SoC only)
 
@@ -949,9 +844,10 @@ every power sample on the whole device snapshot — not gated on an objective be
 
 ## Deadline Plan Visibility
 
-The user-facing deadline plan should be inspectable before actuation is exposed broadly. The first
-mockup lives as a standalone Settings UI page so the visual model can be reviewed before deciding
-where the page belongs in navigation.
+The user-facing deadline plan lives as an SPA route off the Settings UI `index.html`, rendered
+by `packages/settings-ui/src/ui/views/DeadlinePlan.tsx` (a standalone HTML page existed briefly
+during prototyping but was retired because the Homey mobile WebView does not inject the Homey
+SDK on sub-pages — see the corresponding note in §"Plan history capture").
 
 For EV chargers, the page should make the plan answer concrete questions from issue 147:
 
@@ -959,18 +855,20 @@ For EV chargers, the page should make the plan answer concrete questions from is
 - how many charging hours are expected
 - which hours are planned because they are cheap
 - which hours are kept as backup because charging may be blocked
-- where planning-window milestones sit before the final deadline
 - what assumptions affect backup hours and confidence
 
-The hourly strip should use price as the background layer and charging intent as the foreground
-layer. Planned charging hours, backup hours, planning windows, and the final deadline must be
-visible together. This keeps the behavior recognizable as cheapest-hour EV planning while showing
-the PELS difference: priority and background usage risk widen the plan or add backup hours, but
+The shipped chart uses two stacked ECharts grids: the upper grid shows hourly electricity prices
+tone-coded (cheap / normal / expensive); the lower grid stacks background usage, current planned
+charge, and an overlay of the *original* planned charge (dashed border) for hours where the plan
+revised. A progress target line sits on the left Y axis in the device's display unit (°C for
+temperature, % for EV), and observed device delivery is rendered as a dotted line when
+available. This keeps the behavior recognizable as cheapest-hour EV planning while showing the
+PELS difference: priority and background usage risk widen the plan or add backup hours, but
 they do not make expensive hours look cheap.
 
-The durable product home is expected to be per-device, because the deadline objective belongs to
-one charger or storage device. Budget may later show aggregate impact, but it should not own the
-full per-device objective plan.
+The durable product home is per-device, because the deadline objective belongs to one charger
+or storage device. Budget may later show aggregate impact, but it should not own the full
+per-device objective plan.
 
 ## Logging and Diagnostics
 
@@ -987,27 +885,32 @@ Use structured logs with stable field names. Logs should make it possible to ans
 
 - What target is this device trying to reach?
 - What horizon was evaluated?
-- Which energy buckets or milestones were planned?
+- Which energy buckets were planned?
 - Is the device on track, at risk, or impossible to finish?
 - What step/mode is being requested now, and why?
 - Did the device reach the target?
 - Did stale/missing input prevent planning?
 
-Initial log events:
+Log events:
+
+**Shipped today** (emitted from `lib/plan/deferredObjectives/diagnosticDebugPayload.ts`):
+
+- `deferred_objective_horizon_planned` — fired when the bridge can build a horizon plan.
+- `deferred_objective_unknown` — fired when required inputs are missing, stale, invalid, or
+  price-gated.
+
+**Planned, not yet emitted:**
 
 - `deferred_objective_evaluated`
-- `deferred_objective_horizon_planned`
-- `deferred_objective_milestone_status`
 - `deferred_objective_step_requested`
 - `deferred_objective_mode_requested`
 - `deferred_objective_goal_met`
 - `deferred_objective_deadline_missed`
-- `deferred_objective_unknown`
 
-The current settings-backed EV bridge emits `deferred_objective_horizon_planned` when a horizon plan
-can be built and `deferred_objective_unknown` when required inputs are missing, stale, invalid, or
-price-gated. Later planner integration can add milestone, step request, target met, and deadline
-missed lifecycle events once objectives can affect device behavior.
+Lifecycle events (target met, deadline missed) are currently surfaced through status transitions
+and the `deadline_ended` flow trigger outcome rather than as their own structured log events.
+Milestone-status logging is deferred — see
+[`notes/planning-horizon-milestones/README.md`](../planning-horizon-milestones/README.md).
 
 Useful fields:
 
@@ -1016,7 +919,6 @@ Useful fields:
 - `objectiveKind`
 - `activeMode`
 - `status`
-- `stableStatus`
 - `reasonCode`
 - `targetTemperatureC`
 - `targetPercent`
@@ -1040,8 +942,9 @@ Useful fields:
 - `deadlineMarginMs`
 - `projectedCompletionAtMs`
 - `requestedMinimumStepId`
-- `requestedModeId`
-- `milestoneStatus`
+- `dailyBudgetExhaustedBucketCount` (public diagnostic — number of horizon buckets the daily
+  budget reports as exhausted; UI consumes to explain `cannot_meet` outcomes due to budget vs.
+  device limits)
 
 Log the full bucket plan only when the debug topic is enabled. Normal structured info logs should
 be limited to lifecycle events such as target met, deadline missed, or a stable transition to
@@ -1064,7 +967,6 @@ Inputs:
 - totalKw and freshness
 - capacity soft limit
 - effective soft limit
-- hard objective admission headroom
 - expected/planning power
 - stepped profile
 - native adapter state, if present
@@ -1080,75 +982,115 @@ Planner behavior:
 
 - `none` or `likely_to_meet`: current behavior.
 - `soft`: normal restore lane; optional ordering pressure only.
-- `hard`: hard-cap admission lane; may bypass effective soft limit and daily soft limit while
-  preserving hard-cap safety.
 
-Hard mode may admit or advance the objective device one configured step at a time. It must not use
-stale/invalid progress, skip steps, exceed configured planning power, or treat missing data
-optimistically.
+Hard enforcement is deferred — see
+[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md) for the planner behavior under
+`hard` admission mode and the constraints around step progression and stale-data handling.
 
 ## Flow Triggers
 
-Future flow triggers should include:
+### Shipped today
 
-- objective became likely to meet
-- objective became at risk
-- objective became impossible to meet
-- objective target was met
-- objective deadline was missed
-- objective progress became stale
-- objective session became invalid
+Three trigger cards registered in `flowCards/deadlineObjectiveCards.ts`:
 
-Flow tags should include values where available:
+- **`deadline_status_changed`** — fires when the status bus reports a transition between
+  `waiting` / `on_track` / `at_risk` / `unachievable` / `satisfied`. First-observation and
+  same-status re-fires are suppressed. Tokens: `device_name`, `status` (display label),
+  `target_text`, `deadline_local_time`, `kind`. A sticky `deadlineMissed` flag on the snapshot
+  blocks re-fires once the deadline has passed (the missed transition is surfaced via
+  `deadline_ended` instead); the flag clears on `satisfied` or when the objective is rescheduled.
+- **`deadline_ended`** — fires once per run conclusion with `outcome` = `succeeded` /
+  `missed` / `abandoned`. Tokens: `device_name`, `outcome` (display label), `kind`,
+  `target_text`, `deadline_local_time`, `finished_at_local_time` (empty when not succeeded),
+  `shortfall_text`. `replaced` and `unknown` outcomes are intentionally suppressed.
+- **`deadline_plan_changed`** — fires when a replan changes the number of planned hours.
+  Tokens: `device_name`, `remaining_kwh`, `planned_hours`, `projected_finish_local_time`.
 
-- device
-- objective kind
-- progress percent
-- current stored energy kWh
-- remaining energy kWh
-- measured temperature C
-- target percent
-- target stored energy kWh
-- target temperature C
-- capacity kWh
-- soft deadline
-- hard deadline
-- deadline status
-- active mode
-- required average kW
-- projected completion
-- requested minimum step
-- requested mode
-- reason code
+Plus two condition cards:
+
+- **`deadline_status_is`** — true if the current effective status matches the chosen dropdown
+  value (`waiting` / `on_track` / `at_risk` / `unachievable` / `satisfied`). The runlistener
+  also accepts a legacy id set (`none`, `pending_prices`, `cannot_meet`, `cannot_finish`,
+  `done`) for backwards compatibility with older user flows; only the canonical ids are exposed
+  in today's dropdown JSON.
+- **`has_active_deadline`** — true if the device has an enabled objective entry.
+
+The `clear_deadline` action card's device autocomplete is filtered to devices with an active
+task; if no enabled tasks exist, it falls back to the full device list so the card remains
+usable.
+
+### Pending — proposed redesign
+
+The trigger cards above ship with `outcome` and `status` dropdown args that filter at trigger
+time. That design forces users into one flow per filtered value and makes the tokens emit
+English display labels rather than stable ids — fine for notification text, awkward for
+condition logic. A proposed redesign drops the dropdown args, exposes stable-id tokens
+(`outcome_id`, `status_id`, `previous_status_id`, `change_reason_id`) as public-API contract,
+adds numeric tokens for math/comparison, and adds a composed `notification_text` token to
+every trigger. See [`notes/smart-task-flow-cards/README.md`](../smart-task-flow-cards/README.md)
+for the full proposal. Tracked as P0 in `TODO.md`.
+
+The richer-tokens slice originally drafted as `ev-ready-by/README.md` §P2.3
+(`planned_start_local`, `planned_finish_local`, `required_kwh`, `planning_speed_kw`,
+`estimated_duration_text`, `risk_reason`, `notification_text`) is part of the same redesign.
 
 ## Reason Codes
 
-Use structured reason codes rather than prose as planner contract.
+Use structured reason codes rather than prose as planner contract. The live source-of-truth is
+the union in `lib/plan/deferredObjectives/types.ts` plus the per-module narrow types in
+`diagnosticsBridge.ts`, `policyHorizon.ts`, and `horizonPlanner.ts`.
 
-Initial codes:
+### Shipped today
 
-- `objective_unknown`
-- `objective_progress_stale`
+Diagnostics bridge (`diagnosticsBridge.ts`):
+
+- `objective_missing_device`
+- `objective_invalid_deadline`
 - `objective_invalid_session`
-- `objective_missing_capacity`
-- `objective_missing_target`
-- `objective_missing_deadline`
-- `objective_missing_charge_rate`
+- `objective_progress_stale`
 - `objective_missing_temperature`
-- `objective_missing_thermal_profile`
-- `objective_mode_cannot_reach_target`
-- `objective_mode_override_disabled`
-- `objective_likely_to_meet`
-- `objective_at_risk`
-- `objective_cannot_be_met`
-- `objective_soft_deadline_restore`
-- `objective_hard_deadline_restore`
-- `objective_hard_deadline_step_request`
-- `objective_hard_deadline_mode_request`
-- `objective_hard_deadline_rebalance`
-- `objective_hard_deadline_blocked_hard_cap`
-- `objective_target_met`
-- `objective_deadline_missed`
+- `objective_missing_charge_rate`
+- `objective_missing_capacity`
+
+Policy horizon (`policyHorizon.ts`):
+
+- `objective_price_feature_disabled`
+- `objective_missing_price_horizon`
+
+Horizon planner result (`horizonPlanner.ts`):
+
+- `energy_already_met`
+- `planned_with_margin`
+- `planned_using_deadline_reserve`
+- `planned_using_policy_avoid`
+- `target_cannot_be_met`
+- `no_bucket_capacity`
+
+Plus the generic `status: 'unknown' | 'on_track' | 'at_risk' | 'cannot_meet' | 'satisfied'`
+status field on the diagnostic — note that status is a separate field from the reason code.
+
+### Reserved for pending slices
+
+Design placeholders that are not yet emitted, and aren't shipped because today's narrower codes
+cover their cases (or because the slice they belong to is deferred):
+
+- `objective_unknown` — generic; today partially covered by `status: 'unknown'` + the more
+  specific `objective_missing_*` reasons.
+- `objective_missing_target`, `objective_missing_deadline` — design placeholders; today both
+  cases collapse to `objective_invalid_deadline`.
+- `objective_missing_thermal_profile` — design placeholder; today covered by
+  `objective_missing_capacity` (the thermal profile is how kWh-per-degree is learned).
+- `objective_mode_cannot_reach_target`, `objective_mode_override_disabled` — reserved for the
+  mode-override slice.
+- `objective_likely_to_meet`, `objective_at_risk`, `objective_cannot_be_met` — these belong on
+  the status field, not the reason field; included here only for backwards reference to the
+  original design.
+- `objective_soft_deadline_restore` — reserved for a possible future restore-lane reason.
+- `objective_target_met`, `objective_deadline_missed` — lifecycle codes; today covered by status
+  transitions and the `deadline_ended` outcome rather than a reason code.
+
+Hard-deadline reason codes are reserved separately — see
+[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md).
 
 ## Implementation Shape
 
@@ -1188,8 +1130,9 @@ Recommended implementation order:
    surfaces Smart tasks and per-device plan/history views; broader public docs still need refresh.
 7. Integrate soft objective through existing normal device behavior while preserving normal budget
    and priority policy.
-8. Add hard admission for already available hard objective admission capacity.
-9. Add hard-boost rebalancing as a follow-up if it touches limit planning deeply.
+
+Hard admission and hard-boost rebalancing are deferred — see
+[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md).
 
 The first Connected 300 implementation should focus on temperature-by-deadline UX, thermal energy
 mapping, per-step rate estimates, requested minimum step selection, and diagnostics.
@@ -1208,66 +1151,74 @@ Out of scope unless explicitly included:
 
 ## Acceptance Criteria
 
+Status legend: ✅ shipped, ⏳ pending, ⏸ deferred to a dedicated note.
+
 Core objective v1:
 
-- Objective state and evaluation are separate types or modules.
-- A native or semi-native adapter can set target temperature for a thermal storage objective.
-- Progress, energy, temperature, targets, deadlines, and freshness appear on snapshot/plan
+- ✅ Objective state and evaluation are separate types or modules.
+- ✅ A native or semi-native adapter can set target temperature for a thermal storage objective.
+- ✅ Progress, energy, temperature, targets, deadlines, and freshness appear on snapshot/plan
   diagnostics.
-- Missing or stale inputs produce `unknown`, not optimistic planning.
-- Public flow cards are not required for v1.
+- ✅ Missing or stale inputs produce `unknown`, not optimistic planning.
+- ✅ Public flow cards (`set_*_deadline`, `clear_deadline`, plus status/plan/ended triggers and
+  conditions) are the v1 user-facing surface for soft temperature smart tasks; the
+  short-lived device-detail Settings UI card has been retired.
 
 Connected 300-style behavior:
 
-- Target is expressed as temperature by deadline.
-- Current/target temperature can map to usable stored energy through a thermal profile.
-- Mode-dependent max temperature and usable capacity are accounted for.
-- Mode override is disabled by default for soft deadlines.
-- Hard deadline can request the minimum safe mode when override is explicitly allowed.
-- The horizon scheduler can choose budget-friendly buckets while maintaining deadline margin.
-- Stepped loads compute `requestedMinimumStepId`.
-- Stepped loads still ramp one configured step at a time.
-- Objective urgency protects only the requested minimum step.
-- If the objective is satisfied, the device does not request power merely because its physical max
-  step is high.
+- ✅ Target is expressed as temperature by deadline.
+- ⏸ Current/target temperature can map to usable stored energy through a thermal profile (the
+  baseline-anchored design — shipped path uses learned `kWhPerUnit × ΔT` directly).
+- ⏸ Mode-dependent max temperature and usable capacity are accounted for (deferred — see
+  [`notes/hard-deadlines/README.md`](../hard-deadlines/README.md) §"Mode override").
+- ⏸ Mode override is disabled by default for soft deadlines (deferred — no mode override
+  ships).
+- ✅ The horizon scheduler chooses budget-friendly buckets while maintaining deadline margin.
+- ✅ Stepped loads compute `requestedMinimumStepId`.
+- ✅ Stepped loads still ramp one configured step at a time.
+- ✅ Objective urgency protects only the requested minimum step.
+- ✅ If the objective is satisfied, the device does not request power merely because its
+  physical max step is high.
 
 EV behavior:
 
-- EV disconnect invalidates effective progress.
-- EV reconnect requires a fresh progress report newer than reconnect/session start.
-- Stale or invalid EV progress is not used for planning.
-- EV planning stays `unknown` when percent is available but capacity, remaining energy, or direct
-  remaining-time estimate is missing.
-- When the EV deadline target is met, PELS removes the deadline charging request.
-- If Power-limit control is on, normal managed charging may continue after the deadline target is
-  met, especially when the target is below 100%.
-- If Power-limit control is off, meeting the deadline target pauses charging if the objective was
-  the reason PELS allowed charging and no new deadline target, boost, or manual action grants
-  authority.
+- ✅ EV disconnect invalidates effective progress.
+- ✅ EV reconnect requires a fresh progress report newer than reconnect/session start.
+- ✅ Stale or invalid EV progress is not used for planning.
+- ✅ EV planning stays `unknown` when percent is available but capacity, remaining energy, or
+  direct remaining-time estimate is missing.
+- ✅ When the EV deadline target is met, PELS removes the deadline charging request (admission
+  resolves `satisfied` → `inactive`).
+- ⏳ If Power-limit control is on, normal managed charging may continue after the deadline
+  target is met, especially when the target is below 100%. (Behavior follows from normal
+  admission resuming after deferred admission drops out; not specifically tested.)
+- ⏳ If Power-limit control is off, meeting the deadline target pauses charging if the
+  objective was the reason PELS allowed charging. (Verification pending — see related TODO
+  entry on terminal `ev_pause` intent.)
 
 Deadline behavior:
 
-- Status is computed from energy needed, conservative net gain, confidence-adjusted margin, and
-  deadline.
-- Power-limit control off leaves the device alone for normal capacity, budget, and price work
-  unless an active objective grants temporary deadline authority.
-- Soft deadline may request boost/step-up, but does not bypass effective soft limit, daily budget,
-  priority, cooldowns, or stepped rules.
-- Hard deadline may bypass effective soft limit and daily budget soft limit.
-- Hard deadline never bypasses hard-cap safety.
-- Hard objective mode can eventually preserve or create hard-cap-safe headroom for the requested
-  minimum step.
-- Hard objective may eventually use a hard-boost lane that can shed higher-priority eligible
-  devices, but only when needed for the protected minimum step.
+- ✅ Status is computed from energy needed, conservative net gain, and deadline. (Note:
+  confidence-adjusted margin is deferred — see
+  [`notes/status-hysteresis/README.md`](../status-hysteresis/README.md).)
+- ✅ Power-limit control off leaves the device alone for normal capacity, budget, and price
+  work unless an active objective grants temporary deadline authority.
+- ✅ Soft deadline may request boost/step-up, but does not bypass effective soft limit, daily
+  budget, priority, cooldowns, or stepped rules.
+
+Hard-deadline acceptance items are tracked in
+[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md).
 
 Diagnostics and triggers:
 
 - Stable transitions can trigger likely, at-risk, cannot-meet, met, missed, stale, and invalid
   session events.
-- Logs/diagnostics include reason codes for unknown, blocked, hard deadline restore, hard deadline
-  rebalancing, requested step selection, and requested mode selection.
-- A dedicated deferred-objectives debug topic exposes horizon buckets, milestones, goal
-  achievement, and risk evaluation details without noisy default logs.
+- Logs/diagnostics include reason codes for unknown, blocked, requested step selection, and
+  requested mode selection. Hard-deadline-specific reason codes are reserved (see
+  [`notes/hard-deadlines/README.md`](../hard-deadlines/README.md)).
+- A dedicated deferred-objectives debug topic exposes horizon buckets, goal achievement, and
+  risk evaluation details without noisy default logs. Milestone-status logging is deferred — see
+  [`notes/planning-horizon-milestones/README.md`](../planning-horizon-milestones/README.md).
 
 ## Test Plan
 
@@ -1284,8 +1235,7 @@ Objective evaluator tests:
 - projected completion inside margin returns `at_risk`
 - projected completion after deadline at max rate returns `cannot_be_met`
 - medium/low confidence increases effective margin
-- horizon plan prefers budget-friendly buckets while maintaining deadline margin
-- horizon milestones allow intentional delay without marking the objective behind
+- horizon plan prefers cheap or budget-friendly hour buckets while maintaining deadline margin
 
 Connected 300-style tests:
 
@@ -1298,10 +1248,7 @@ Connected 300-style tests:
 - only max enough returns `requestedMinimumStepId: Max`
 - no step enough returns `cannot_be_met` and highest allowed step requested
 - objective met returns no requested step
-- hard mode does not skip configured step progression
-- hard mode does not exceed planning power for target step
 - soft objective requests boost through normal stepped-load policy
-- hard objective protects only the minimum requested step, not max
 
 EV tests:
 
@@ -1315,21 +1262,21 @@ Planner/admission tests:
 
 - soft objective does not bypass effective soft limit
 - soft objective does not bypass daily budget soft limit
-- hard objective bypasses effective soft limit when hard-cap safe
-- hard objective uses `capacitySoftLimitKw` rather than daily-budget-lowered `softLimitKw`
-- hard objective is blocked when hard objective admission headroom cannot be made safe
-- hard objective may keep or shed a lower-priority device to allow requested storage step
-- hard objective can use hard-boost policy to shed a higher-priority eligible device when
-  explicitly allowed
 - objective urgency protects only `requestedMinimumStepId`
 - higher-than-requested step remains opportunistic
 
+Hard-objective admission tests are tracked in
+[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md).
+
 Transition/trigger tests:
 
-- stable likely to at-risk emits trigger after hysteresis
-- cannot-meet emits immediately or according to chosen rule
-- at-risk to likely requires stable recovery period
+- on_track to at_risk emits trigger
+- cannot_meet emits immediately
+- at_risk to on_track emits trigger
 - target met emits trigger
 - deadline missed emits trigger
 - stale progress emits trigger
 - invalid session emits trigger
+
+Hysteresis-related transition tests (stable recovery, consecutive-evaluation gates) are
+deferred — see [`notes/status-hysteresis/README.md`](../status-hysteresis/README.md).

@@ -174,6 +174,10 @@ The deadline-plan surface (the per-device plan view that schedules charging or h
 
 Rule: a temperature device must never render the words *charge*, *charging*, or *EV* in user-facing text. Pull every label from `deadlineLabels(kind)` rather than hardcoding strings.
 
+### "Plan" vs "deadline" on smart-task surfaces
+
+The general rule (see [feedback_terminology_plan_vs_deadline](../../.claude/projects/-home-olemarkus-dev-pels/memory/feedback_terminology_plan_vs_deadline.md)) reserves *plan* for the planning layer and asks smart-task surfaces to prefer *deadline* / *objective* / *smart task*. There is one carve-out: when a smart-task surface displays inputs that the planner consumes to produce the smart-task allocation — e.g. the per-unit energy rate and the max power per hour on the Plan inputs card — using "plan inputs" is fine because the content *is* planner output that drives the smart task. The rule applies to lifecycle and identity language ("set a deadline", "smart task ended"), not to direct references to planner computation feeding a smart task.
+
 ## Settings labels worth updating
 
 Only update these when the screen is already being touched — don't rename for its own sake.
