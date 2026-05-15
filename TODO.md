@@ -486,6 +486,22 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
       `packages/settings-ui/public/style.css`,
       `packages/settings-ui/tests/e2e/material-select.spec.ts`, budget/settings screenshots.
+- [ ] Apply the `md-select-option` `displayText` / `typeaheadText` fix outside the mode selects.
+      `packages/settings-ui/src/ui/modes.ts:createModeOption` now sets both properties so the
+      closed select field reliably shows a non-empty label on first paint, but the same option
+      construction pattern still appears in
+      `packages/settings-ui/src/ui/advanced.ts:createSelectOption` and
+      `packages/settings-ui/src/ui/components.ts:createSelectInput`. They are vulnerable to the
+      same Material Web first-render race (the slot-walk for the headline can read empty before
+      the option's own first update). Extract a shared `createMdSelectOption(value, label,
+      selected?)` helper in `components.ts`, set `displayText` and `typeaheadText` explicitly,
+      and route the three callers through it. Extend the regression test in
+      `packages/settings-ui/tests/e2e/settings-smoke.spec.ts` (or add focused specs) to assert
+      non-empty headline text for Advanced and components-driven selects on first paint.
+      Files: `packages/settings-ui/src/ui/advanced.ts`,
+      `packages/settings-ui/src/ui/components.ts`,
+      `packages/settings-ui/src/ui/modes.ts`,
+      `packages/settings-ui/tests/e2e/settings-smoke.spec.ts`.
 - [ ] Finish chart-test hardening from the first-impression UI audit. The colour-token subset
       landed (charts now read `--pels-chart-*` role-token aliases, no remaining hex literals).
       This P2 entry covers the remaining non-colour test surface: deterministic visual assertions

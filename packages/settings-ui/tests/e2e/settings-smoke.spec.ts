@@ -1,5 +1,5 @@
 import { expect, test, type Page } from './fixtures/test';
-import { setMdValue } from './fixtures/materialWeb';
+import { readMdSelectHeadlineText, setMdValue } from './fixtures/materialWeb';
 
 const requestLegacyUi = async (page: Page) => {
   await page.addInitScript(() => {
@@ -84,6 +84,23 @@ test.describe('Settings UI (smoke)', () => {
 
     await openSettingsSection(page, 'advanced');
     await expect(page.locator('#advanced-panel')).toBeVisible();
+  });
+
+  test('renders the selected mode label inside the closed select field on first paint', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
+
+    await page.getByRole('tab', { name: 'Settings' }).click();
+    const activeSelect = page.locator('#active-mode-select');
+    await expect(activeSelect).toBeVisible();
+    await expect(activeSelect).toHaveJSProperty('value', 'Home');
+    await expect.poll(() => readMdSelectHeadlineText(page, '#active-mode-select')).toBe('Home');
+
+    await openSettingsSection(page, 'modes');
+    const modeSelect = page.locator('#mode-select');
+    await expect(modeSelect).toBeVisible();
+    await expect(modeSelect).toHaveJSProperty('value', 'Home');
+    await expect.poll(() => readMdSelectHeadlineText(page, '#mode-select')).toBe('Home');
   });
 
   test('shows and switches the current mode from Settings', async ({ page }) => {
