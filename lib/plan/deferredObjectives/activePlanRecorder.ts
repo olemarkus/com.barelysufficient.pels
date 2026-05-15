@@ -185,8 +185,6 @@ const createPlanFromSeed = (seed: ActivePlanFlowCardSeed, nowMs: number): Deferr
 // reading from the device", not "waiting for prices" — see the comment in `ensurePendingRecord`.
 const DEVICE_DATA_REASON_CODES: ReadonlySet<string> = new Set([
   'objective_invalid_deadline',
-  'objective_invalid_session',
-  'objective_missing_capacity',
   'objective_missing_charge_rate',
   'objective_missing_device',
   'objective_missing_temperature',
@@ -197,6 +195,15 @@ const resolvePendingReason = (
   diag: DeferredObjectiveDiagnostic,
 ): DeferredObjectiveActivePlanPendingReason => {
   if (diag.reasonCode === 'objective_price_feature_disabled') return 'price_feature_disabled';
+  // EV plugged-out / discharging session — surface a dedicated "paused —
+  // unplugged" copy variant so the user knows the plan resumes once they
+  // plug back in. Without this the hero said the generic "Waiting" with no
+  // hint that the action is on the user, not PELS.
+  if (diag.reasonCode === 'objective_invalid_session') return 'invalid_session';
+  // Thermal devices have no shipped bootstrap kWh/°C; tell the user that
+  // power readings are what unblock the plan instead of leaving them with an
+  // indefinite "Waiting" state.
+  if (diag.reasonCode === 'objective_missing_capacity') return 'missing_capacity';
   if (DEVICE_DATA_REASON_CODES.has(diag.reasonCode)) return 'device_data_missing';
   return 'awaiting_horizon_plan';
 };
@@ -239,6 +246,12 @@ const buildRevision = (params: {
   // persisted plans without the field stay byte-stable across revisions and
   // consumers that haven't been updated keep falling back to zero.
   const exhaustedBuckets = params.diag.dailyBudgetExhaustedBucketCount;
+  const energyNeededKWh = roundKWh(horizonPlan.energyNeededKWh);
+  const planningSpeedKw = params.diag.planningSpeedKw;
+  // Estimated duration is a derived field — the recorder is the right place
+  // to format it so the hero meta line and any downstream consumer (flow
+  // tokens) agree on the rounding/unit conventions.
+  const estimatedDurationText = formatEstimatedDuration(energyNeededKWh, planningSpeedKw);
   return {
     revision: params.revision,
     revisedAtMs: params.nowMs,
@@ -249,12 +262,59 @@ const buildRevision = (params: {
     // noise (energyNeededKWh = remainingUnits × kWhPerUnit.mean) can produce
     // ~1e-15 kWh drift that would appear in persisted output even when the
     // underlying allocation is byte-identical.
-    energyNeededKWh: roundKWh(horizonPlan.energyNeededKWh),
+    energyNeededKWh,
     planStatus: horizonPlan.status,
     ...(source !== null ? { kwhPerUnitSource: source } : {}),
     ...(exhaustedBuckets > 0 ? { dailyBudgetExhaustedBucketCount: exhaustedBuckets } : {}),
+    ...(typeof planningSpeedKw === 'number' && planningSpeedKw > 0 ? { planningSpeedKw } : {}),
+    ...(estimatedDurationText !== null ? { estimatedDurationText } : {}),
   };
 };
+
+// Formats kWh / kW into "Yh Zm" or "Zm" when sub-hour. Returns null when the
+// computation isn't useful (missing inputs or zero energy needed). Keeping
+// the formatting next to the recorder so all surfaces stay aligned.
+const formatEstimatedDuration = (
+  energyNeededKWh: number,
+  planningSpeedKw: number | null,
+): string | null => {
+  if (!Number.isFinite(energyNeededKWh) || energyNeededKWh <= 0) return null;
+  if (typeof planningSpeedKw !== 'number' || !Number.isFinite(planningSpeedKw) || planningSpeedKw <= 0) {
+    return null;
+  }
+  const totalMinutes = Math.max(1, Math.round((energyNeededKWh / planningSpeedKw) * 60));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes - hours * 60;
+  if (hours <= 0) return `${minutes}m`;
+  return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+};
+
+// Per-plan provenance is best-effort and only written when at least one
+// field has useful content; otherwise older consumers continue using the
+// fall-back lookup against the live profile store.
+const resolveProvenance = (
+  diag: DeferredObjectiveDiagnostic,
+): DeferredObjectiveActivePlanV1['kwhPerUnitProvenance'] | undefined => {
+  const source = diag.kwhPerUnitSource;
+  if (source === null) return undefined;
+  const learnedKwh = source === 'learned' ? (diag.kWhPerPercent ?? diag.kWhPerDegreeC) : null;
+  const confidence = source === 'learned' && isProvenanceConfidence(diag.rateConfidence)
+    ? diag.rateConfidence
+    : null;
+  return {
+    source,
+    kWhPerUnit: typeof learnedKwh === 'number' && Number.isFinite(learnedKwh) ? learnedKwh : null,
+    acceptedSamples: source === 'learned' ? diag.kwhPerUnitAcceptedSamples : 0,
+    confidence,
+    lastAcceptedAtMs: source === 'learned' ? diag.kwhPerUnitLastAcceptedAtMs : null,
+  };
+};
+
+const isProvenanceConfidence = (
+  value: string | null,
+): value is 'low' | 'medium' | 'high' => (
+  value === 'low' || value === 'medium' || value === 'high'
+);
 
 // Treat absence as `learned` so legacy persisted revisions don't appear to
 // transition to `learned` on the first observation after upgrade.
@@ -415,6 +475,7 @@ export class DeferredObjectiveActivePlanRecorder {
   ): void {
     const revision = buildRevision({ diag, hours, revision: 1, reason, nowMs });
     const startedAtMs = this.plans[diag.deviceId]?.startedAtMs ?? nowMs;
+    const provenance = resolveProvenance(diag);
     this.plans[diag.deviceId] = {
       deviceId: diag.deviceId,
       deviceName: diag.deviceName ?? null,
@@ -425,6 +486,7 @@ export class DeferredObjectiveActivePlanRecorder {
       startedAtMs,
       pending: false,
       objectiveSignature: signature,
+      ...(provenance ? { kwhPerUnitProvenance: provenance } : {}),
       original: revision,
       latest: revision,
     };
@@ -488,6 +550,14 @@ export class DeferredObjectiveActivePlanRecorder {
     })();
     const nextRevision = latest.revision + 1;
     const revision = buildRevision({ diag, hours, revision: nextRevision, reason, nowMs });
+    const provenance = resolveProvenance(diag);
+    // Provenance updates are best-effort; preserve the existing snapshot when
+    // the new diagnostic didn't resolve a profile so we don't clobber useful
+    // accepted-sample counts with a transient `null`. Don't carry the
+    // snapshot across an objective-kind change on the same device id —
+    // accepted-sample counts and confidence are kind-specific.
+    const nextProvenance = provenance
+      ?? (current.objectiveKind === diag.objectiveKind ? current.kwhPerUnitProvenance : undefined);
     this.plans[diag.deviceId] = {
       ...current,
       deviceName: diag.deviceName ?? current.deviceName,
@@ -495,6 +565,7 @@ export class DeferredObjectiveActivePlanRecorder {
       targetTemperatureC: diag.targetTemperatureC,
       targetPercent: diag.targetPercent,
       objectiveSignature: signature,
+      ...(nextProvenance ? { kwhPerUnitProvenance: nextProvenance } : {}),
       latest: revision,
     };
     this.dirty = true;

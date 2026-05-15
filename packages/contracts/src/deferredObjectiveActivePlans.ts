@@ -57,12 +57,46 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // problem. Optional for backward compatibility — older persisted revisions
   // don't carry it and the UI should treat absence as zero.
   dailyBudgetExhaustedBucketCount?: number;
+  // Planner's effective useful power (kW) used to estimate hours-of-work for
+  // the current plan. Surfaced in the hero meta line ("Y.Y kW") so the user
+  // can sanity-check estimated duration. Optional for backward compatibility.
+  planningSpeedKw?: number;
+  // Pre-formatted estimated duration ("Yh Zm") matching `planningSpeedKw`.
+  // Lives on the revision so all surfaces format consistently with the math
+  // the planner actually used. Optional for backward compatibility.
+  estimatedDurationText?: string;
 };
 
 export type DeferredObjectiveActivePlanPendingReason =
   | 'awaiting_horizon_plan'
   | 'price_feature_disabled'
-  | 'device_data_missing';
+  | 'device_data_missing'
+  // EV plugged-out / discharging — surfaced as a paused state in the UI.
+  | 'invalid_session'
+  // Thermal device with no learned `kWhPerUnit` profile yet — the planner has
+  // no shipped bootstrap rate for thermal kinds, so it sits pending until
+  // accepted samples produce a profile.
+  | 'missing_capacity';
+
+// Snapshot of the learned kWh-per-unit profile that produced the latest
+// revision. Lets the UI render provenance (learned value, accepted samples,
+// confidence, last accepted sample time) without the recorder fanning out to
+// the live profile store. Optional for backward compatibility.
+export type DeferredObjectiveKwhPerUnitProvenanceV1 = {
+  // 'bootstrap' when no learned profile exists yet (EV only ships a bootstrap);
+  // 'learned' once accepted samples produced a profile mean.
+  source: DeferredObjectiveActivePlanKwhPerUnitSource;
+  // Learned mean kWh per unit (°C or %). Null when no profile exists yet.
+  kWhPerUnit: number | null;
+  // Number of accepted samples that fed the learned profile. Zero when source
+  // is 'bootstrap'.
+  acceptedSamples: number;
+  // Confidence band of the learned profile (`low` / `medium` / `high`). Null
+  // when source is 'bootstrap'.
+  confidence: 'low' | 'medium' | 'high' | null;
+  // Last accepted sample timestamp; null when there is no profile yet.
+  lastAcceptedAtMs: number | null;
+};
 
 export type DeferredObjectiveActivePlanV1 = {
   deviceId: string;
@@ -73,6 +107,10 @@ export type DeferredObjectiveActivePlanV1 = {
   deadlineAtMs: number;
   startedAtMs: number;
   pending: boolean;
+  // Per-plan provenance snapshot. Optional so older persisted plans without
+  // the field continue to load; the UI should treat absence as "unknown" and
+  // fall back to the live `objectiveProfiles` lookup.
+  kwhPerUnitProvenance?: DeferredObjectiveKwhPerUnitProvenanceV1;
   // Only meaningful when `pending` is true. Identifies why the recorder
   // couldn't produce a revision (e.g. price-aware optimisation off vs prices
   // not yet covering the horizon). Optional so older persisted plans without

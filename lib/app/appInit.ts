@@ -13,6 +13,7 @@ import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import { resolveHomeyEnergyApiFromSdk } from '../utils/homeyEnergy';
 import type { FlowHomeyLike, TargetDeviceSnapshot } from '../utils/types';
 import type { StepPowerCalibrationView } from '../plan/planTypes';
+import { firstPositiveFinite } from '../plan/deferredObjectives/planningSpeed';
 import { DeviceDiagnosticsService, type DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { AppContext } from './appContext';
 import {
@@ -483,11 +484,30 @@ function buildStepPowerCalibrationView(
   device: TargetDeviceSnapshot,
 ): Record<string, StepPowerCalibrationView> | undefined {
   const profile = device.steppedLoadProfile;
-  if (!profile || !Array.isArray(profile.steps) || profile.steps.length === 0) return undefined;
+  if (profile && Array.isArray(profile.steps) && profile.steps.length > 0) {
+    return buildSteppedCalibrationView(ctx, device, profile.steps);
+  }
+  // EV chargers ship a single useful "charge" step rather than a stepped
+  // profile. The deferred-objective planner (`resolveObjectiveSteps`) and
+  // the hero planning-speed reading both go through
+  // `resolveStepDeliveryUsefulKw`, so producing a synthetic 1-step view here
+  // unifies the calibration path for both stepped and binary loads instead
+  // of duplicating the lookup logic.
+  if (device.deviceClass === 'evcharger') {
+    return buildEvChargerCalibrationView(ctx, device);
+  }
+  return undefined;
+}
+
+function buildSteppedCalibrationView(
+  ctx: AppContext,
+  device: TargetDeviceSnapshot,
+  steps: NonNullable<TargetDeviceSnapshot['steppedLoadProfile']>['steps'],
+): Record<string, StepPowerCalibrationView> | undefined {
   const snapshot = ctx.getPowerCalibrationSnapshot();
   const deviceEntry = snapshot.devices[device.id];
   if (!deviceEntry) return undefined;
-  const entries = profile.steps.flatMap((step): Array<[string, StepPowerCalibrationView]> => {
+  const entries = steps.flatMap((step): Array<[string, StepPowerCalibrationView]> => {
     if (!step || typeof step.id !== 'string') return [];
     if (step.planningPowerW <= 0) return [];
     if (!deviceEntry.steps[step.id]) return [];
@@ -498,6 +518,30 @@ function buildStepPowerCalibrationView(
     }]];
   });
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function buildEvChargerCalibrationView(
+  ctx: AppContext,
+  device: TargetDeviceSnapshot,
+): Record<string, StepPowerCalibrationView> | undefined {
+  const nameplateKw = firstPositiveFinite([
+    device.planningPowerKw,
+    device.expectedPowerKw,
+    device.powerKw,
+  ]);
+  if (nameplateKw === null) return undefined;
+  const snapshot = ctx.getPowerCalibrationSnapshot();
+  const stepId = 'charge';
+  // Even when no calibration entries exist yet we expose the nameplate
+  // values so the hero planning-speed reading has a useful default. The
+  // calibration accessors fall back to nameplate when no confident sample
+  // exists, so this stays consistent with stepped devices.
+  return {
+    [stepId]: {
+      admissionPowerKw: getAdmissionPowerKw(snapshot, device.id, stepId, nameplateKw),
+      deliveryPowerKw: getDeliveryPowerKw(snapshot, device.id, stepId, nameplateKw),
+    },
+  };
 }
 
 function resolveHasRecentObservedDrawAtSelectedStep(

@@ -1,7 +1,3 @@
-// Pending and ready payload builders share private helpers
-// (resolveObjectiveContext, format helpers, types) that would
-// create circular imports if split into separate modules.
-/* eslint-disable max-lines */
 import type {
   SettingsUiBootstrap,
   SettingsUiPricesPayload,
@@ -14,12 +10,21 @@ import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import {
   deadlineLabels,
   type DeadlineLabels,
+  type DeadlineLiveState,
   type DeadlinePendingContext,
   type DeadlinePendingPriceSource,
   type DeadlinePlanPendingReason,
   type DeadlinePlanUnavailableReason,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { buildPlanInputs } from './deadlinePlanInputs.ts';
+import { buildHero } from './deadlinePlanHero.ts';
+import {
+  formatDeadlineFull,
+  formatDeadlineShort,
+  formatHourLabel,
+  formatTarget,
+  formatTemperature,
+} from './deadlinePlanFormatters.ts';
 import { resolveCostDisplayFromCombinedPrices, resolvePriceUnitLabel } from './priceUnit.ts';
 import type { CostDisplay } from './dailyBudgetCost.ts';
 import {
@@ -51,37 +56,20 @@ type ObjectivePlanInput = {
   nowMs?: number;
 };
 
-const formatHourLabel = (startsAtMs: number): string => (
-  new Date(startsAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
-);
-
 const formatPrice = (total: number): string => total.toFixed(2);
 
-const formatDeadlineFull = (deadlineAtMs: number): string => (
-  new Date(deadlineAtMs).toLocaleString([], {
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
-);
+// Pending heroes share the hero chip ordering `[kind, state, …]`. The state
+// chip uses the same shared label map as the live hero so the three Smart-
+// task surfaces (list / hero / device card) never disagree on chip copy.
+const resolvePendingLiveState = (reason: DeadlinePlanPendingReason): DeadlineLiveState => {
+  if (reason === 'invalid_session') return 'paused_unplugged';
+  return 'building_plan';
+};
 
-const formatDeadlineShort = (deadlineAtMs: number): string => (
-  new Date(deadlineAtMs).toLocaleString([], {
-    weekday: 'short',
-    hour: '2-digit',
-    hour12: false,
-  })
-);
-
-const formatTemperature = (value: number): string => (
-  Number.isInteger(value) ? `${value} °C` : `${value.toFixed(1)} °C`
-);
-
-const formatTarget = (objective: DeferredObjectiveSettingsEntry): string => (
-  objective.kind === 'temperature'
-    ? formatTemperature(objective.targetTemperatureC)
-    : `${objective.targetPercent}%`
+const pendingChipTone = (
+  liveState: DeadlineLiveState,
+): DeadlinePlanPendingPayload['hero']['chips'][number]['tone'] => (
+  liveState === 'paused_unplugged' ? 'warn' : 'info'
 );
 
 const resolveActualDeviceKwh = (params: {
@@ -98,103 +86,6 @@ const resolvePriceTone = (hour: HorizonHour): DeadlinePlanPayload['timeline']['h
   if (hour.isCheap === true) return 'cheap';
   if (hour.isExpensive === true) return 'expensive';
   return 'normal';
-};
-
-const buildHeroChips = (params: {
-  labels: DeadlineLabels;
-  firstChargingHour: HorizonHour | undefined;
-  nowMs: number;
-  confidence: string | null;
-  cannotMeet: boolean;
-}): DeadlinePlanPayload['hero']['chips'] => {
-  const isActiveNow = params.firstChargingHour && params.firstChargingHour.startsAtMs <= params.nowMs;
-  return [
-    {
-      text: isActiveNow ? params.labels.activeChipLabel : params.labels.waitingChipLabel,
-      tone: 'ok',
-    },
-    { text: params.labels.kindChipLabel, tone: 'info' },
-    ...(params.cannotMeet ? [{ text: params.labels.cannotMeetChipLabel, tone: 'warn' as const }] : []),
-    ...(params.confidence ? [{ text: `Confidence ${params.confidence}`, tone: 'muted' as const }] : []),
-  ];
-};
-
-const resolveHeroHeadline = (params: {
-  labels: DeadlineLabels;
-  firstChargingHour: HorizonHour | undefined;
-  nowMs: number;
-  cannotMeet: boolean;
-}): string => {
-  if (params.cannotMeet) return params.labels.cannotMeetChipLabel;
-  if (!params.firstChargingHour) return 'On track';
-  if (params.firstChargingHour.startsAtMs <= params.nowMs) return `${params.labels.activeChipLabel} now`;
-  return `Waiting until ${formatHourLabel(params.firstChargingHour.startsAtMs)}`;
-};
-
-const formatShortfallLabel = (shortfallUnits: number, unit: '°C' | '%'): string => (
-  // For `%` clamp to ≥ 1 with `ceil` so a sub-1% shortfall does not render as
-  // "0%" while the warning chip says "Cannot finish" — that mismatch was
-  // flagged on the original PR (copilot review of `formatShortfallLabel`).
-  unit === '°C' ? `${shortfallUnits.toFixed(1)} °C` : `${Math.max(1, Math.ceil(shortfallUnits))}%`
-);
-
-const buildHero = (params: {
-  device: TargetDeviceSnapshot;
-  objective: DeferredObjectiveSettingsEntry;
-  labels: DeadlineLabels;
-  firstChargingHour: HorizonHour | undefined;
-  deadlineAtMs: number;
-  energyNeededKWh: number;
-  hoursLeft: number;
-  confidence: string | null;
-  nowMs: number;
-  cannotMeet: boolean;
-  shortfallUnits: number;
-  shortfallUnit: '°C' | '%';
-  dailyBudgetExhausted: boolean;
-}): DeadlinePlanPayload['hero'] => {
-  const headline = resolveHeroHeadline(params);
-  const target = formatTarget(params.objective);
-  const deadline = formatDeadlineFull(params.deadlineAtMs);
-  const subline = `${params.device.name} • Target ${target} by ${deadline}`;
-  const energy = `${params.energyNeededKWh.toFixed(1)} kWh`;
-  const hourWord = params.hoursLeft === 1 ? 'hour' : 'hours';
-  // When the chip says "Cannot finish" we must not fall back to the
-  // on-track "Needs X kWh • Y hours left" copy — that contradicts the chip.
-  // A zero shortfall under cannot_meet means rounding has flattened the gap;
-  // surface a softer body line instead so the two pieces stay consistent.
-  // When the planner reports daily-budget exhaustion as the cause, prefer
-  // that explanation so the user looks at the budget instead of the device.
-  const cannotMeetMeta = resolveCannotMeetMeta(params);
-  const metaLine = params.cannotMeet
-    ? cannotMeetMeta
-    : `Needs ${energy} • ${params.hoursLeft} ${hourWord} left`;
-  return {
-    chips: buildHeroChips({
-      labels: params.labels,
-      firstChargingHour: params.firstChargingHour,
-      nowMs: params.nowMs,
-      confidence: params.confidence,
-      cannotMeet: params.cannotMeet,
-    }),
-    sectionLabel: `${params.labels.kindChipLabel} plan`,
-    headline,
-    subline,
-    metaLine,
-  };
-};
-
-const resolveCannotMeetMeta = (params: {
-  labels: DeadlineLabels;
-  shortfallUnits: number;
-  shortfallUnit: '°C' | '%';
-  dailyBudgetExhausted: boolean;
-}): string => {
-  if (params.dailyBudgetExhausted) return params.labels.cannotMeetDailyBudgetExhausted;
-  if (params.shortfallUnits > 0) {
-    return params.labels.cannotMeetShortfall(formatShortfallLabel(params.shortfallUnits, params.shortfallUnit));
-  }
-  return params.labels.cannotMeetFallback;
 };
 
 const buildTimeline = (params: {
@@ -343,10 +234,11 @@ const buildPendingHero = (params: {
   const target = formatTarget(params.objective);
   const deadline = formatDeadlineFull(params.deadlineAtMs);
   const copy = params.labels.pendingHeroByReason[params.pendingReason](params.pendingContext);
+  const liveState = resolvePendingLiveState(params.pendingReason);
   return {
     chips: [
-      { text: params.labels.waitingChipLabel, tone: 'info' },
       { text: params.labels.kindChipLabel, tone: 'info' },
+      { text: params.labels.liveStateChipLabel[liveState], tone: pendingChipTone(liveState) },
     ],
     sectionLabel: `${params.labels.kindChipLabel} plan`,
     headline: copy.headline,
@@ -495,6 +387,20 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       shortfallUnits: cannotMeetUnits,
       shortfallUnit: progress.unit,
       dailyBudgetExhausted,
+      // Planner inputs the recorder persisted with the latest revision. These
+      // are optional because legacy persisted plans don't carry them; the
+      // hero falls back to the "Needs X kWh · N hours left" line when either
+      // is missing.
+      planningSpeedKw: typeof latest.planningSpeedKw === 'number'
+        && Number.isFinite(latest.planningSpeedKw)
+        && latest.planningSpeedKw > 0
+        ? latest.planningSpeedKw
+        : null,
+      estimatedDurationText: typeof latest.estimatedDurationText === 'string'
+        && latest.estimatedDurationText.length > 0
+        ? latest.estimatedDurationText
+        : null,
+      kwhPerUnitSource: latest.kwhPerUnitSource,
     }),
     timeline: buildTimeline({
       device,
