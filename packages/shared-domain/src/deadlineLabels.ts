@@ -7,7 +7,26 @@ export type DeadlinePlanUnavailableReason =
 export type DeadlinePlanPendingReason =
   | 'awaiting_horizon_plan'
   | 'price_feature_disabled'
-  | 'device_data_missing';
+  | 'device_data_missing'
+  // EV plugged-out / discharging session — runtime diagnostics emit
+  // `objective_invalid_session`; UI surfaces it as a paused state so the user
+  // knows the plan resumes once they plug back in.
+  | 'invalid_session'
+  // Thermal devices have no shipped bootstrap kWh/°C, so a new device sits
+  // pending until the energy profile is learned from power readings.
+  | 'missing_capacity';
+
+// Hero/list "live" status variants. Sits next to the kind chip and identifies
+// the current operational state in plain language. `building_plan` /
+// `queued` / `paused_unplugged` are the three disambiguated `Waiting` cases;
+// `active` covers "Charging now"/"Heating now"; `ok` is the on-track no-op
+// state when there is no active hour yet but a plan exists.
+export type DeadlineLiveState =
+  | 'active'
+  | 'building_plan'
+  | 'queued'
+  | 'paused_unplugged'
+  | 'ok';
 
 export type DeadlinePlanCompletedReason = 'deadline_passed';
 
@@ -32,8 +51,15 @@ export type DeadlinePendingCopyResolver = (ctx: DeadlinePendingContext) => Deadl
 export type DeadlineLabels = {
   kindChipLabel: string;
   activeChipLabel: string;
-  waitingChipLabel: string;
+  // Live-state chip labels (kind-aware). The hero, smart-task list, and device
+  // card all draw from this map so the three surfaces stay in sync. Replaces
+  // the prior single `waitingChipLabel`; see `DeadlineLiveState`.
+  liveStateChipLabel: Record<DeadlineLiveState, string>;
   cannotMeetChipLabel: string;
+  // Honest fallback for `Cannot finish` when no specific reason is available.
+  // Never paired with the chip alone — the meta line always names a reason so
+  // users are never left with a warning chip and no explanation.
+  cannotMeetUnknownReason: string;
   deviceSeriesName: string;
   originalDeviceSeriesName: string;
   actualDeviceSeriesName: string;
@@ -43,7 +69,6 @@ export type DeadlineLabels = {
   pendingHeroByReason: Record<DeadlinePlanPendingReason, DeadlinePendingCopyResolver>;
   unavailableByReason: Record<DeadlinePlanUnavailableReason, { headline: string; body: string }>;
   cannotMeetShortfall: (shortfallLabel: string) => string;
-  cannotMeetFallback: string;
   // Replaces the shortfall/fallback cannot-meet copy when the diagnostic
   // reports that the daily budget cap had been hit before the deadline.
   // Surfaces the budget — not the device or schedule — as the constraint so
@@ -95,8 +120,19 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
   temperature: {
     kindChipLabel: 'Temperature',
     activeChipLabel: 'Heating',
-    waitingChipLabel: 'Heat queued',
+    liveStateChipLabel: {
+      active: 'Heating',
+      building_plan: 'Building plan…',
+      queued: 'Queued',
+      // Thermal devices can't be unplugged; the variant is unreachable here
+      // and falls back to the generic queued copy if the resolver ever hands
+      // a stale value through.
+      paused_unplugged: 'Queued',
+      ok: 'On track',
+    },
     cannotMeetChipLabel: 'Cannot finish',
+    cannotMeetUnknownReason: 'PELS can\'t determine why this task is at risk. '
+      + 'Check this heater\'s power readings and setpoint range.',
     deviceSeriesName: 'Heating',
     originalDeviceSeriesName: 'Original Heating',
     actualDeviceSeriesName: 'Measured Heating',
@@ -114,6 +150,24 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
         body: 'PELS needs a current temperature, a useful capacity, or a recent observation '
           + 'from this heater before it can plan the smart task.',
       }),
+      // Thermal kinds can't go invalid the way an EV session can; if a future
+      // diagnostic ever surfaces this reason for a thermostat, treat it the
+      // same as `device_data_missing` rather than leaking EV-specific copy.
+      invalid_session: () => ({
+        headline: 'Waiting for a reading from the device',
+        body: 'PELS needs a current temperature, a useful capacity, or a recent observation '
+          + 'from this heater before it can plan the smart task.',
+      }),
+      // Thermal devices have no shipped bootstrap kWh/°C, so a new device sits
+      // pending until samples accumulate. Tell the user what's blocking and
+      // what unblocks it — without this they see "Waiting" indefinitely with
+      // no explanation.
+      missing_capacity: () => ({
+        headline: 'Learning energy use',
+        body: 'PELS needs power readings from this heater while it heats so it can learn how '
+          + 'many kWh raise the temperature by one degree. The plan will appear once that is '
+          + 'available.',
+      }),
     },
     unavailableByReason: {
       no_current_reading: {
@@ -129,7 +183,6 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     cannotMeetShortfall: (shortfallLabel) => (
       `There may not be enough time or available power to finish. Short by about ${shortfallLabel}.`
     ),
-    cannotMeetFallback: 'There may not be enough time or available power to finish.',
     cannotMeetDailyBudgetExhausted: 'The daily energy budget is already used up for the rest of the day, so '
       + 'PELS can\'t reserve more for heating before the deadline. Lower the daily budget so future '
       + 'days reserve available power earlier, or move the deadline to a later day.',
@@ -147,8 +200,16 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
   ev_soc: {
     kindChipLabel: 'EV',
     activeChipLabel: 'Charging',
-    waitingChipLabel: 'Charge queued',
+    liveStateChipLabel: {
+      active: 'Charging',
+      building_plan: 'Building plan…',
+      queued: 'Queued',
+      paused_unplugged: 'Paused — unplugged',
+      ok: 'On track',
+    },
     cannotMeetChipLabel: 'Cannot finish',
+    cannotMeetUnknownReason: 'PELS can\'t determine why this charging task is at risk. '
+      + 'Check the EV charger\'s power readings and charge-rate configuration.',
     deviceSeriesName: 'Charging',
     originalDeviceSeriesName: 'Original Charging',
     actualDeviceSeriesName: 'Measured Charging',
@@ -162,6 +223,24 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
         body: 'Enable price-aware optimisation in Settings → Electricity prices to compute a charging plan.',
       }),
       device_data_missing: () => ({
+        headline: 'Waiting for a reading from the EV',
+        body: 'PELS needs a current state of charge, a charge rate, or a recent observation '
+          + 'from this EV before it can plan the smart task.',
+      }),
+      // EV plugged out (or session reported as discharging). The plan is
+      // intentionally paused — it resumes the next time PELS sees a valid
+      // session. Telling the user this prevents the "is PELS broken?" worry
+      // when they plug back in and expect immediate charging.
+      invalid_session: () => ({
+        headline: 'Charging plan paused — EV unplugged',
+        body: 'PELS will resume the plan once the EV is plugged in and reports a valid charging '
+          + 'session.',
+      }),
+      // EV objectives always have the bootstrap kWh-per-percent fallback, so
+      // `missing_capacity` should never actually fire for EVs; keep an
+      // equivalent device-data-missing copy as a safety net in case the
+      // upstream invariant changes.
+      missing_capacity: () => ({
         headline: 'Waiting for a reading from the EV',
         body: 'PELS needs a current state of charge, a charge rate, or a recent observation '
           + 'from this EV before it can plan the smart task.',
@@ -181,7 +260,6 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     cannotMeetShortfall: (shortfallLabel) => (
       `There may not be enough time or available power to finish. Short by about ${shortfallLabel}.`
     ),
-    cannotMeetFallback: 'There may not be enough time or available power to finish.',
     cannotMeetDailyBudgetExhausted: 'The daily energy budget is already used up for the rest of the day, so '
       + 'PELS can\'t reserve more for charging before the deadline. Lower the daily budget so future '
       + 'days reserve available power earlier, or move the deadline to a later day.',

@@ -47,6 +47,14 @@ const isPlanHour = (value: unknown): value is DeferredObjectiveActivePlanHourV1 
   return isFiniteNumber(v.startsAtMs) && isFiniteNumber(v.plannedKWh);
 };
 
+const isOptionalFinitePositive = (value: unknown): boolean => (
+  value === undefined || (isFiniteNumber(value) && value > 0)
+);
+
+const isOptionalNonEmptyString = (value: unknown): boolean => (
+  value === undefined || (typeof value === 'string' && value.length > 0)
+);
+
 const isRevision = (value: unknown): value is DeferredObjectiveActivePlanRevisionV1 => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
@@ -59,7 +67,24 @@ const isRevision = (value: unknown): value is DeferredObjectiveActivePlanRevisio
     // `kwhPerUnitSource` is optional for backward compatibility with revisions
     // persisted before the bootstrap rate fallback shipped. Allow absence, but
     // if present require a known value rather than silently keeping garbage.
-    && (v.kwhPerUnitSource === undefined || isKwhPerUnitSource(v.kwhPerUnitSource));
+    && (v.kwhPerUnitSource === undefined || isKwhPerUnitSource(v.kwhPerUnitSource))
+    && isOptionalFinitePositive(v.planningSpeedKw)
+    && isOptionalNonEmptyString(v.estimatedDurationText);
+};
+
+const isProvenanceConfidence = (value: unknown): value is 'low' | 'medium' | 'high' | null => (
+  value === null || value === 'low' || value === 'medium' || value === 'high'
+);
+
+const isKwhPerUnitProvenance = (value: unknown): boolean => {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return isKwhPerUnitSource(v.source)
+    && (v.kWhPerUnit === null || isFiniteNumber(v.kWhPerUnit))
+    && isFiniteNumber(v.acceptedSamples)
+    && isProvenanceConfidence(v.confidence)
+    && (v.lastAcceptedAtMs === null || isFiniteNumber(v.lastAcceptedAtMs));
 };
 
 const isRevisionOrNull = (value: unknown): value is DeferredObjectiveActivePlanRevisionV1 | null => (
@@ -79,7 +104,8 @@ const isActivePlan = (value: unknown): value is DeferredObjectiveActivePlanV1 =>
     && typeof v.pending === 'boolean'
     && typeof v.objectiveSignature === 'string'
     && isRevisionOrNull(v.original)
-    && isRevisionOrNull(v.latest);
+    && isRevisionOrNull(v.latest)
+    && isKwhPerUnitProvenance(v.kwhPerUnitProvenance);
 };
 
 export const normalizeDeferredObjectiveActivePlans = (

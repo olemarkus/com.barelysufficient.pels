@@ -1,9 +1,5 @@
 import type { PowerTrackerState } from '../../core/powerTracker';
 import {
-  OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS,
-  OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS,
-} from '../../core/objectiveProfiles';
-import {
   resolveProfileEnergy,
   type DeferredObjectiveEnergyResolution,
   type DeferredObjectiveKwhPerUnitSource,
@@ -13,10 +9,14 @@ import type { DailyBudgetUiPayload } from '../../dailyBudget/dailyBudgetTypes';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { sortSteppedLoadSteps } from '../../utils/deviceControlProfiles';
 import type { PlanInputDevice } from '../planTypes';
-import { isDeviceObservationTrusted } from '../../observer/observationTrust';
 import { formatDeadlineLocalTime } from './deadline';
 import { planDeferredObjectiveHorizon } from './horizonPlanner';
 import { resolveStepDeliveryUsefulKw } from './objectiveStepPower';
+import { firstPositiveFinite, resolvePlanningSpeedKw } from './planningSpeed';
+import {
+  resolveObjectiveProgress,
+  type DeferredObjectiveProgressResolution,
+} from './diagnosticProgress';
 import {
   buildDeferredObjectivePolicyHorizon,
   type DeferredObjectivePolicyHorizonResult,
@@ -68,6 +68,19 @@ export type DeferredObjectiveDiagnostic = {
   kWhPerDegreeC: number | null;
   rateConfidence: string | null;
   kwhPerUnitSource: DeferredObjectiveKwhPerUnitSource | null;
+  // Number of accepted samples that produced the learned profile mean. Zero
+  // when `kwhPerUnitSource` is `bootstrap` or null. Surfaced so the UI can
+  // explain EV learning progress without re-reading the profile store.
+  kwhPerUnitAcceptedSamples: number;
+  // UTC ms of the last accepted sample. Null when no learned profile exists
+  // yet (bootstrap or unresolved).
+  kwhPerUnitLastAcceptedAtMs: number | null;
+  // The "useful" planning power in kW that the planner would commit per
+  // active hour. For stepped devices this is the lowest non-zero step's
+  // useful power; for binary devices (EV chargers) it is the single step's
+  // useful power. Null when no steps were resolvable. Surfaced as the
+  // "Y.Y kW" speed-mode reading in the hero meta line.
+  planningSpeedKw: number | null;
   horizonBucketCount: number;
   // Number of buckets in the horizon whose per-bucket cap collapsed to zero
   // because the daily budget cap had already been reached at the start of the
@@ -76,18 +89,6 @@ export type DeferredObjectiveDiagnostic = {
   dailyBudgetExhaustedBucketCount: number;
   requestedMinimumStepId: string | null;
   horizonPlan?: DeferredObjectiveHorizonPlan;
-};
-
-type DeferredObjectiveProgressResolution = {
-  remainingUnits: number;
-  currentPercent: number | null;
-  currentTemperatureC: number | null;
-  reasonCode: null;
-} | {
-  remainingUnits: 0;
-  currentPercent: number | null;
-  currentTemperatureC: number | null;
-  reasonCode: 'objective_invalid_session' | 'objective_missing_temperature' | 'objective_progress_stale';
 };
 
 export const buildDeferredObjectiveDiagnostics = (params: {
@@ -177,6 +178,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
     device,
     objective,
     timeZone,
+    powerTracker,
     currentPercent: null,
     currentTemperatureC: null,
     energyNeededKWh: null,
@@ -338,6 +340,7 @@ const buildDiagnosticBase = (params: {
   device?: PlanInputDevice;
   objective: DeferredObjectiveSettingsEntry;
   timeZone: string;
+  powerTracker: PowerTrackerState;
   currentPercent: number | null;
   currentTemperatureC: number | null;
   energyNeededKWh: number | null;
@@ -349,6 +352,11 @@ const buildDiagnosticBase = (params: {
   const deadlineAtMs = Number.isFinite(params.objective.deadlineAtMs) && params.objective.deadlineAtMs > 0
     ? params.objective.deadlineAtMs
     : null;
+  const profileSnapshot = resolveProfileSnapshot({
+    powerTracker: params.powerTracker,
+    deviceId: params.deviceId,
+    objectiveKind: params.objective.kind,
+  });
   return {
     deviceId: params.deviceId,
     deviceName: params.device?.name,
@@ -368,9 +376,31 @@ const buildDiagnosticBase = (params: {
     kWhPerDegreeC: params.kWhPerDegreeC,
     rateConfidence: params.rateConfidence,
     kwhPerUnitSource: params.kwhPerUnitSource,
+    kwhPerUnitAcceptedSamples: profileSnapshot.acceptedSamples,
+    kwhPerUnitLastAcceptedAtMs: profileSnapshot.lastAcceptedAtMs,
+    planningSpeedKw: resolvePlanningSpeedKw(params.device),
     horizonBucketCount: 0,
     dailyBudgetExhaustedBucketCount: 0,
     requestedMinimumStepId: null,
+  };
+};
+
+// Pulls accepted-sample provenance from the active learned profile. Returns
+// zeros / nulls when no profile or the profile's kind doesn't match the
+// objective so legacy callers see safe defaults.
+const resolveProfileSnapshot = (params: {
+  powerTracker: PowerTrackerState;
+  deviceId: string;
+  objectiveKind: DeferredObjectiveSettingsEntry['kind'];
+}): { acceptedSamples: number; lastAcceptedAtMs: number | null } => {
+  const profile = params.powerTracker.objectiveProfiles?.[params.deviceId];
+  if (!profile || profile.kind !== params.objectiveKind) {
+    return { acceptedSamples: 0, lastAcceptedAtMs: null };
+  }
+  const lastAcceptedAtMs = profile.kwhPerUnit?.lastUpdatedMs ?? null;
+  return {
+    acceptedSamples: profile.acceptedSamples,
+    lastAcceptedAtMs: Number.isFinite(lastAcceptedAtMs) ? lastAcceptedAtMs : null,
   };
 };
 
@@ -398,88 +428,6 @@ const buildKnownEnergyFields = (params: {
   kwhPerUnitSource: params.profileEnergy.kwhPerUnitSource,
 });
 
-const resolveEvObjectiveProgress = (
-  device: PlanInputDevice,
-): {
-  currentPercent: number;
-  reasonCode: null;
-} | {
-  currentPercent: number | null;
-  reasonCode: 'objective_invalid_session' | 'objective_progress_stale';
-} => {
-  if (device.evChargingState === 'plugged_out' || device.evChargingState === 'plugged_in_discharging') {
-    return { currentPercent: null, reasonCode: 'objective_invalid_session' };
-  }
-  const stateOfCharge = device.stateOfCharge;
-  if (!stateOfCharge || stateOfCharge.status !== 'fresh' || !Number.isFinite(stateOfCharge.percent)) {
-    return {
-      currentPercent: typeof stateOfCharge?.percent === 'number' && Number.isFinite(stateOfCharge.percent)
-        ? stateOfCharge.percent
-        : null,
-      reasonCode: stateOfCharge?.status === 'invalid' ? 'objective_invalid_session' : 'objective_progress_stale',
-    };
-  }
-  return { currentPercent: stateOfCharge.percent, reasonCode: null };
-};
-
-const resolveObjectiveProgress = (params: {
-  objective: DeferredObjectiveSettingsEntry;
-  device: PlanInputDevice;
-  nowMs: number;
-}): DeferredObjectiveProgressResolution => {
-  const { objective, device, nowMs } = params;
-  if (objective.kind === 'ev_soc') {
-    const progress = resolveEvObjectiveProgress(device);
-    if (progress.reasonCode) {
-      return {
-        remainingUnits: 0,
-        currentPercent: progress.currentPercent,
-        currentTemperatureC: null,
-        reasonCode: progress.reasonCode,
-      };
-    }
-    return {
-      remainingUnits: Math.max(0, objective.targetPercent - progress.currentPercent),
-      currentPercent: progress.currentPercent,
-      currentTemperatureC: null,
-      reasonCode: null,
-    };
-  }
-
-  const currentTemperatureC = device.currentTemperature;
-  if (!hasFreshTemperatureProgress({ device, nowMs })) {
-    return {
-      remainingUnits: 0,
-      currentPercent: null,
-      currentTemperatureC: typeof currentTemperatureC === 'number' && Number.isFinite(currentTemperatureC)
-        ? currentTemperatureC
-        : null,
-      reasonCode: typeof currentTemperatureC === 'number' && Number.isFinite(currentTemperatureC)
-        ? 'objective_progress_stale'
-        : 'objective_missing_temperature',
-    };
-  }
-  const freshTemperatureC = Number(device.currentTemperature);
-  return {
-    remainingUnits: Math.max(0, objective.targetTemperatureC - freshTemperatureC),
-    currentPercent: null,
-    currentTemperatureC: freshTemperatureC,
-    reasonCode: null,
-  };
-};
-
-const hasFreshTemperatureProgress = (params: {
-  device: PlanInputDevice;
-  nowMs: number;
-}): params is { device: PlanInputDevice & { currentTemperature: number; lastFreshDataMs: number }; nowMs: number } => {
-  const { device, nowMs } = params;
-  if (!isDeviceObservationTrusted(device)) return false;
-  if (typeof device.currentTemperature !== 'number' || !Number.isFinite(device.currentTemperature)) return false;
-  if (typeof device.lastFreshDataMs !== 'number' || !Number.isFinite(device.lastFreshDataMs)) return false;
-  if (device.lastFreshDataMs > nowMs + OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS) return false;
-  return nowMs - device.lastFreshDataMs <= OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS;
-};
-
 const resolveObjectiveSteps = (device: PlanInputDevice): DeferredObjectiveStep[] => {
   const profile = device.steppedLoadProfile;
   if (profile) {
@@ -488,23 +436,20 @@ const resolveObjectiveSteps = (device: PlanInputDevice): DeferredObjectiveStep[]
       usefulPowerKw: resolveStepDeliveryUsefulKw(device, step.id, step.planningPowerW / 1000),
     }));
   }
+  // EV chargers go through the same calibrated lookup as stepped devices so
+  // the allocator's per-step useful power agrees with the hero's planning-
+  // speed reading. Without this, a confident calibration below nameplate
+  // would let the allocator over-promise delivery while the hero shows a
+  // slower speed.
   const planning = device.planningPowerKw;
   if (typeof planning === 'number' && Number.isFinite(planning) && planning > 0) {
-    return [{ id: 'charge', usefulPowerKw: planning }];
+    return [{ id: 'charge', usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', planning) }];
   }
   if (device.deviceClass === 'evcharger') {
-    const expected = firstPositiveFinite([
-      device.expectedPowerKw,
-      device.powerKw,
-    ]);
-    if (expected !== null) return [{ id: 'charge', usefulPowerKw: expected }];
+    const expected = firstPositiveFinite([device.expectedPowerKw, device.powerKw]);
+    if (expected !== null) {
+      return [{ id: 'charge', usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', expected) }];
+    }
   }
   return [];
-};
-
-const firstPositiveFinite = (values: readonly unknown[]): number | null => {
-  for (const value of values) {
-    if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
-  }
-  return null;
 };
