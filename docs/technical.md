@@ -10,7 +10,7 @@ This document explains the internal logic and assumptions PELS uses to manage yo
 ## Table of Contents
 
 - [Permissions](#permissions)
-- [Capacity Budget Model](#capacity-budget-model)
+- [Capacity Budget Model](#capacity-budget-model-hourly)
 - [Terminology and Units](#terminology-and-units)
 - [Hour Transitions](#hour-transitions)
 - [Cooldown Logic](#cooldown-logic)

@@ -845,3 +845,13 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       what the observer freshness layer should own.
       Files: `lib/executor/executablePlanProjection.ts`, `lib/executor/executablePlan.ts`,
       `lib/executor/planExecutionDrift.ts`.
+- [ ] Retire the legacy-tag sidebar filter in `scripts/sidebarFilter.mjs` once it is dead code.
+      Multi-level nesting and the "first nested child swallows the section" case are covered
+      by `test/sidebarFilter.test.ts`. Residual fragility is narrower: `//` or `/*` comments
+      and template literals inside the rewritten `sidebar.mts` are not modelled. None of these
+      occur in the current `docs/.vitepress/sidebar.mts`, and once a release tag ships with
+      that file every future live build takes the verbatim-restore path and the filter is
+      never invoked. At that point prefer deleting `scripts/sidebarFilter.mjs` and the legacy
+      branch in `prepareDocsSource` outright.
+      Files: `scripts/sidebarFilter.mjs`, `scripts/build-docs-channels.mjs`,
+      `test/sidebarFilter.test.ts`.
