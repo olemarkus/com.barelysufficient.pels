@@ -153,4 +153,60 @@ describe('showToast with action', () => {
     await vi.runAllTimersAsync();
     await pending;
   });
+
+  it('strips the Homey api transport envelope so users see the server message verbatim', async () => {
+    const toastEl = setupDom();
+    const { showToastError } = await import('../src/ui/toast.ts');
+    const pending = showToastError(
+      new Error('Homey api POST /capacity_limit_kw failed: Safety margin cannot exceed the hard cap.'),
+      'Failed to save limits and safety settings.',
+    );
+
+    expect(toastEl.textContent).toContain('Safety margin cannot exceed the hard cap.');
+    expect(toastEl.textContent).not.toContain('Homey api');
+    expect(toastEl.textContent).not.toContain('failed:');
+    expect(toastEl.textContent).not.toContain('/capacity_limit_kw');
+
+    await vi.runAllTimersAsync();
+    await pending;
+  });
+
+  it('renders a generic save-failed message when both error and fallback are empty', async () => {
+    const toastEl = setupDom();
+    const { showToastError } = await import('../src/ui/toast.ts');
+    const pending = showToastError(new Error(''), '');
+
+    expect(toastEl.textContent?.trim()).not.toBe('');
+    expect(toastEl.textContent).toContain('Save failed');
+
+    await vi.runAllTimersAsync();
+    await pending;
+  });
+
+  it('falls back when the error is a non-Error value', async () => {
+    const toastEl = setupDom();
+    const { showToastError } = await import('../src/ui/toast.ts');
+    const pending = showToastError(undefined, 'Failed to save limits and safety settings.');
+
+    expect(toastEl.textContent).toContain('Failed to save limits and safety settings.');
+
+    await vi.runAllTimersAsync();
+    await pending;
+  });
+
+  it('keeps error toasts visible long enough to read', async () => {
+    const toastEl = setupDom();
+    const { showToastError } = await import('../src/ui/toast.ts');
+    const pending = showToastError(
+      new Error('Safety margin cannot exceed the hard cap.'),
+      'Failed to save limits and safety settings.',
+    );
+
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(toastEl.classList.contains('show')).toBe(true);
+
+    await vi.runAllTimersAsync();
+    await pending;
+    expect(toastEl.classList.contains('show')).toBe(false);
+  });
 });
