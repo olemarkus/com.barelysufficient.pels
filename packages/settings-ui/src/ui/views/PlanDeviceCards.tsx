@@ -21,6 +21,7 @@ import {
   resolveCooldownBaseSec,
   resolveCooldownRemainingSec,
 } from '../../../../shared-domain/src/planCooldown.ts';
+import { resolveEvCardStateLine } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { formatReasonSummary } from '../planReasonSummary.ts';
 import { cardActivationProps } from '../cardActivation.ts';
@@ -33,6 +34,25 @@ const hasActiveDeadlineObjective = (deviceId: string, nowMs: number): boolean =>
   const entry = state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId];
   if (!entry || !entry.enabled) return false;
   return Number.isFinite(entry.deadlineAtMs) && entry.deadlineAtMs > nowMs;
+};
+
+const formatEvCardTime = (ms: number): string => (
+  new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+);
+
+// Returns null when the device has no active ev_soc deadline or when no state
+// line applies (e.g. hours have already elapsed and the car is not unplugged).
+const resolveEvStateLineText = (deviceId: string, nowMs: number): string | null => {
+  const objective = state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId];
+  if (!objective || !objective.enabled || objective.kind !== 'ev_soc') return null;
+  if (!Number.isFinite(objective.deadlineAtMs) || objective.deadlineAtMs <= nowMs) return null;
+
+  const activePlan = state.deferredObjectiveActivePlans?.plansByDeviceId?.[deviceId];
+  const hours = activePlan?.latest?.hours ?? [];
+  const isPlugOutPaused = activePlan?.diagnosticReasonCode === 'objective_invalid_session';
+
+  const stateLine = resolveEvCardStateLine({ hours, nowMs, isPlugOutPaused, formatTime: formatEvCardTime });
+  return stateLine.kind === 'none' ? null : stateLine.text;
 };
 
 const stopActivation = (event: Event): void => {
@@ -73,6 +93,12 @@ export const DeadlineChip = ({ deviceId, nowMs }: { deviceId: string; nowMs: num
       Smart task
     </a>
   );
+};
+
+export const EvDeadlineStateLine = ({ deviceId, nowMs }: { deviceId: string; nowMs: number }) => {
+  const text = resolveEvStateLineText(deviceId, nowMs);
+  if (text === null) return null;
+  return <p class="plan-card__ev-state">{text}</p>;
 };
 
 const formatKw = (value: number | undefined): string => (
@@ -301,6 +327,7 @@ export const PlanGenericCard = ({
       )}
 
       {reasonText !== '' && <p class="plan-card__reason">{reasonText}</p>}
+      <EvDeadlineStateLine deviceId={dev.id} nowMs={nowMs} />
     </article>
   );
 };

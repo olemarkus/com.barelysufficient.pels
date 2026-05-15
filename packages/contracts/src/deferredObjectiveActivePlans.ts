@@ -98,6 +98,13 @@ export type DeferredObjectiveKwhPerUnitProvenanceV1 = {
   lastAcceptedAtMs: number | null;
 };
 
+// Subset of diagnostic reason codes surfaced in the active-plan contract so
+// the Settings UI can render specific device-card copy (e.g. "car unplugged")
+// without knowing runtime-internal reason code strings. Optional so older
+// persisted plans (without the field) continue to load.
+export type DeferredObjectiveActivePlanDiagnosticReason =
+  | 'objective_invalid_session';
+
 export type DeferredObjectiveActivePlanV1 = {
   deviceId: string;
   deviceName: string | null;
@@ -116,6 +123,11 @@ export type DeferredObjectiveActivePlanV1 = {
   // not yet covering the horizon). Optional so older persisted plans without
   // this field continue to load.
   pendingReason?: DeferredObjectiveActivePlanPendingReason;
+  // Narrow diagnostic reason code set on the pending record when the cause is
+  // a known specific device state (e.g. car unplugged). Undefined when the
+  // pending cause is generic or when the plan has an active revision. Optional
+  // for backward compatibility.
+  diagnosticReasonCode?: DeferredObjectiveActivePlanDiagnosticReason;
   // The signature of the objective settings that produced `latest`. Used to
   // detect `objective_changed` replans without re-deriving the hash on every
   // load.
