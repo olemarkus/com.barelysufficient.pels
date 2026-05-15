@@ -38,6 +38,7 @@ import type {
 } from '../../packages/contracts/src/settingsUiApi';
 import { normalizePlanMeta } from './planStatusHelpers';
 import { buildSettingsOverviewReadModel } from './settingsOverviewReadModel';
+import { createIdleClassifier, type IdleClassifier } from '../observer/idleClassifier';
 import { PlanStatusWriter } from './planStatusWriter';
 import {
   buildLiveStatePlan,
@@ -67,9 +68,11 @@ const SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS = 1500;
 const serializePlanForUi = (
   plan: DevicePlan | null,
   deps: PlanServiceDeps,
+  idleClassifier: IdleClassifier,
 ): SettingsUiPlanSnapshot | null => {
   return buildSettingsOverviewReadModel(plan, {
     getOverviewStarvation: (deviceId) => deps.deviceDiagnostics?.getOverviewStarvation?.(deviceId),
+    getIdleClassification: (deviceId) => idleClassifier.getClassification(deviceId),
   });
 };
 
@@ -179,8 +182,11 @@ export class PlanService {
   private queuedRebuilds = 0;
   private currentBuildReason: string | null = null;
   private planStatusWriter: PlanStatusWriter;
+  private idleClassifier: IdleClassifier;
+  private lastTickedPlanRef: DevicePlan | null = null;
 
   constructor(private deps: PlanServiceDeps) {
+    this.idleClassifier = createIdleClassifier({ structuredLog: deps.structuredLog });
     this.planStatusWriter = new PlanStatusWriter({
       homey: deps.homey,
       getCombinedPrices: deps.getCombinedPrices,
@@ -220,11 +226,11 @@ export class PlanService {
   }
 
   getLatestPlanSnapshotForUi(): SettingsUiPlanSnapshot | null {
-    return serializePlanForUi(this.latestPlanSnapshot, this.deps);
+    return serializePlanForUi(this.latestPlanSnapshot, this.deps, this.idleClassifier);
   }
 
   serializePlanSnapshotForUi(plan: DevicePlan | null): SettingsUiPlanSnapshot | null {
-    return serializePlanForUi(plan, this.deps);
+    return serializePlanForUi(plan, this.deps, this.idleClassifier);
   }
 
   getLatestPlanSnapshotUpdatedAtMs(): number | null {
@@ -523,6 +529,7 @@ export class PlanService {
   }
 
   private updatePlanSnapshot(plan: DevicePlan, changes: PlanChangeSet): void {
+    this.tickIdleClassifier(plan);
     const changed = changes.actionChanged || changes.detailChanged || changes.metaChanged;
     if (changed) {
       this.emitPlanUpdated(plan);
@@ -531,12 +538,19 @@ export class PlanService {
     }
   }
 
+  private tickIdleClassifier(plan: DevicePlan): void {
+    if (this.lastTickedPlanRef === plan) return;
+    this.lastTickedPlanRef = plan;
+    this.idleClassifier.classifyAll(plan.devices, Date.now());
+  }
+
   private emitPlanUpdated(plan: DevicePlan): void {
+    this.tickIdleClassifier(plan);
     this.emitOverviewTransitions(plan);
     const api = this.deps.homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
     const realtime = api?.realtime;
     if (typeof realtime === 'function') {
-      realtime.call(api, 'plan_updated', serializePlanForUi(plan, this.deps))
+      realtime.call(api, 'plan_updated', serializePlanForUi(plan, this.deps, this.idleClassifier))
         .catch((err: unknown) => this.deps.error('Failed to emit plan_updated event', normalizeError(err)));
     }
   }

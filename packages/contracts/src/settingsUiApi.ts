@@ -155,6 +155,7 @@ export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
   starvation?: SettingsUiPlanDeviceStarvation;
   pendingTargetCommand?: SettingsUiPlanPendingTargetCommand;
   steppedLoad?: SettingsUiPlanSteppedLoadState;
+  idleClassification?: 'near_target_idle' | 'unresponsive';
 };
 
 export type SettingsUiPlanDevice = SettingsUiPlanDeviceSnapshot;
