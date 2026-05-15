@@ -247,7 +247,7 @@
             "name": "shortfall_text",
             "type": "string",
             "title": {
-              "en": "Shortfall"
+              "en": "Below target"
             }
           }
         ],

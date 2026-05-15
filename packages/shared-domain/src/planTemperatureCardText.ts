@@ -91,5 +91,5 @@ export const resolveTemperatureReasonLine = (device: TemperatureDevice): string 
   if (reasonCode === PLAN_REASON_CODES.dailyBudget) return "Limited · staying within today's budget";
   if (reasonCode === PLAN_REASON_CODES.hourlyBudget) return "Limited · this hour is near the hard cap";
   if (isLimitedReason(reasonCode)) return 'Limited · staying under the hard cap';
-  return kind === 'held' ? 'Paused by PELS' : null;
+  return kind === 'held' ? 'Lowered by PELS' : null;
 };
