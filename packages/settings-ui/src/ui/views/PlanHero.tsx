@@ -1,3 +1,4 @@
+import type { ComponentChild } from 'preact';
 import {
   formatFreshnessChip,
   formatHeroHeadline,
@@ -6,6 +7,7 @@ import { formatModeLabel } from '../modeLabels.ts';
 import { resolveDisplayPlanDevices } from '../planLiveData.ts';
 import type { PlanDeviceSnapshot, PlanMetaSnapshot, PlanSnapshot } from '../planTypes.ts';
 import type { SettingsUiPowerStatus } from '../../../../contracts/src/settingsUiApi.ts';
+import { MdIconButton } from './materialWebJSX.tsx';
 
 type FreshnessState = NonNullable<SettingsUiPowerStatus['powerFreshnessState']>;
 type HeroStatus = 'on-track' | 'above-safe-pace' | 'projected-over-budget' | 'over-hard-cap' | 'dry-run' | 'no-data';
@@ -36,6 +38,23 @@ const HERO_STATUS_DATA_TONE: Record<HeroStatus, string> = {
   'no-data': 'alert',
 };
 
+const INFO_TOOLTIP_TEXT = [
+  'Power now is measured in kW — how fast electricity is being used right now.',
+  'Energy this hour is measured in kWh — how much has been used so far this hour.',
+  'Safe pace is the highest power rate that keeps this hour on track for the energy budget.',
+  'kW is speed. kWh is distance.',
+].join(' ');
+
+// Tooltips appended after "Safe pace now {N} kW — ", so each phrase starts in
+// lowercase. Source-specific copy mirrors `notes/ui-terminology.md`.
+const SAFE_PACE_TOOLTIP_BY_SOURCE: Record<NonNullable<PlanMetaSnapshot['softLimitSource']>, string> = {
+  capacity: 'hourly power limit minus safety margin, PELS starts reacting here.',
+  daily: 'slowed to stay within today’s budget — daily pacing is the tighter constraint right now.',
+  both: 'both capacity and daily pacing are constraining PELS right now.',
+};
+
+const HARD_CAP_TOOLTIP = 'your configured maximum, staying under this avoids tariff steps or breaker trips.';
+
 const resolveFreshnessState = (
   power: SettingsUiPowerStatus | null | undefined,
   meta: PlanMetaSnapshot,
@@ -54,8 +73,10 @@ const resolveHeroStatus = (
 ): HeroStatus => {
   if (freshnessState === 'stale_fail_closed') return 'no-data';
   if (headline.overHardLimit) return 'over-hard-cap';
-  const limitedCount = devices.filter(isLimitedDevice).length;
-  if (dryRun && limitedCount > 0) return 'dry-run';
+  // Surface the simulation-mode chip whenever there is anything the decision
+  // sentence has to phrase hypothetically — that includes devices stuck `held`
+  // from before simulation was enabled.
+  if (dryRun && devices.some((d) => isWouldLimitDevice(d) || isLimitedDevice(d))) return 'dry-run';
   if (headline.overSoftLimit) return 'above-safe-pace';
   if (projectionTone === 'warning' || projectionTone === 'critical') return 'projected-over-budget';
   return 'on-track';
@@ -71,70 +92,91 @@ const isResumingDevice = (device: PlanDeviceSnapshot): boolean => (
   device.stateKind === 'resuming' || Boolean(device.binaryCommandPending && device.currentState === 'off')
 );
 
-const formatProjectionStatus = (
-  scale: EnergyBarScale,
-  minutesRemaining: number | null,
-  startOfSentence: boolean,
-  includeValue = true,
-): string => {
-  const tone = resolveProjectionTone(scale);
-  const label = resolveProjectionLabel(tone, startOfSentence);
-  if (!includeValue) return label;
-  const value = `${scale.projectedKWh?.toFixed(2)} / ${scale.budgetKWh.toFixed(1)} kWh`;
-  return minutesRemaining !== null
-    ? `${label} · ${value} · ${Math.round(minutesRemaining)} min left`
-    : `${label} · ${value}`;
-};
+// In simulation mode the planner outputs `plannedState === 'shed'` but never
+// actually flips device state. Identify devices the planner *would* limit — i.e.
+// planner says shed and the device is not already in the held state.
+const isWouldLimitDevice = (device: PlanDeviceSnapshot): boolean => (
+  device.plannedState === 'shed' && device.stateKind !== 'held'
+);
 
-const buildHeroStatusLine = (
-  headline: NonNullable<ReturnType<typeof formatHeroHeadline>>,
-  devices: PlanDeviceSnapshot[],
-  freshnessState: FreshnessState | undefined,
-  dryRun: boolean,
-  energyScale: EnergyBarScale | null,
-  meta: PlanMetaSnapshot,
-): { text: string | null; positive: boolean } => {
+// Decision sentence priority order. Source of truth: `notes/overview-hero-spec.md`,
+// section "Decision sentence" — keep this ladder in sync. The projected-over-budget
+// branch is added on top so the conclusion never contradicts an "Above budget" chip
+// surfaced by `resolveHeroStatus`.
+const buildDecisionSentence = ({
+  devices,
+  freshnessState,
+  dryRun,
+  overHardLimit,
+  overSoftLimit,
+  projectionTone,
+}: {
+  devices: PlanDeviceSnapshot[];
+  freshnessState: FreshnessState | undefined;
+  dryRun: boolean;
+  overHardLimit: boolean;
+  overSoftLimit: boolean;
+  projectionTone: ProjectionTone | null;
+}): { text: string; positive: boolean } => {
+  // 1. No data
+  if (freshnessState === 'stale_fail_closed') {
+    return {
+      text: 'No live power data — keeping devices limited until readings return.',
+      positive: false,
+    };
+  }
+
+  // 2. Above hard cap
+  if (overHardLimit) {
+    return { text: 'Hard cap exceeded — limiting devices now.', positive: false };
+  }
+
   const limitedCount = devices.filter(isLimitedDevice).length;
   const restoringCount = devices.filter(isResumingDevice).length;
-  const minutesRemaining = typeof meta.minutesRemaining === 'number' ? meta.minutesRemaining : null;
-  const projectionText = energyScale?.projectedKWh !== null && energyScale
-    ? formatProjectionStatus(energyScale, minutesRemaining, false)
-    : null;
-  const projectionSummary = energyScale?.projectedKWh !== null && energyScale
-    ? formatProjectionStatus(energyScale, minutesRemaining, false, false)
-    : null;
-  const appendProjectionSummary = (text: string): string => projectionSummary ? `${text} · ${projectionSummary}` : text;
 
-  if (freshnessState === 'stale_fail_closed') {
-    return { text: 'No live power data — keeping devices limited until readings return.', positive: false };
-  }
-  if (headline.overHardLimit) {
-    const hardCapText = headline.hardLimitKw !== null
-      ? `Above hard cap of ${headline.hardLimitKw.toFixed(1)} kW`
-      : 'Above hard cap';
-    const limitingText = limitedCount > 0 ? `limiting ${plural(limitedCount, 'device')} now` : 'limiting devices now';
-    return { text: `${hardCapText} · ${limitingText}`, positive: false };
-  }
+  // 3. Simulation mode would act. Use `limitedCount` rather than `wouldLimitCount`
+  // so devices stuck in `held` from before simulation was enabled still produce
+  // hypothetical phrasing — per spec, the UI must never imply PELS acted in
+  // dry-run mode.
   if (dryRun && limitedCount > 0) {
-    return { text: appendProjectionSummary(`Would limit ${plural(limitedCount, 'device')} · simulation mode is enabled`), positive: false };
+    return {
+      text: `Would limit ${plural(limitedCount, 'device')} — simulation mode is enabled.`,
+      positive: false,
+    };
   }
-  if (headline.overSoftLimit) {
-    if (limitedCount > 0) {
-      return { text: appendProjectionSummary(`Above safe pace · limiting ${plural(limitedCount, 'device')}`), positive: false };
-    }
-    return { text: appendProjectionSummary('Above safe pace · limiting devices'), positive: false };
-  }
+
+  // 4. Actively limiting. When current power is below the safe pace (e.g. during
+  // cooldown after a recent shed) the "above the safe pace" copy is factually
+  // wrong; explain the action with the constraint that is actually binding.
   if (limitedCount > 0) {
-    return { text: appendProjectionSummary(`Limiting ${plural(limitedCount, 'device')}`), positive: false };
+    const reason = overSoftLimit
+      ? 'current power is above the safe pace'
+      : 'staying below the safe pace';
+    return {
+      text: `Limiting ${plural(limitedCount, 'device')} — ${reason}.`,
+      positive: false,
+    };
   }
+
+  // 5. Resuming
   if (restoringCount > 0) {
     return {
-      text: appendProjectionSummary(`Resuming ${plural(restoringCount, 'device')} · power has stayed below the safe pace`),
+      text: `Resuming ${plural(restoringCount, 'device')} — power has stayed below the safe pace.`,
       positive: true,
     };
   }
-  if (projectionText) return { text: formatProjectionStatus(energyScale as EnergyBarScale, minutesRemaining, true), positive: true };
-  return { text: 'Power is below safe pace', positive: true };
+
+  // 6. Projected over budget — keep the conclusion consistent with the
+  // "Above budget" status chip surfaced by `resolveHeroStatus`.
+  if (projectionTone === 'warning' || projectionTone === 'critical') {
+    return {
+      text: 'This hour is projected to go over budget.',
+      positive: false,
+    };
+  }
+
+  // 7. On track
+  return { text: 'No action needed — this hour is on track.', positive: true };
 };
 
 // ─── Power bar helpers ────────────────────────────────────────────────────────
@@ -149,16 +191,17 @@ type BarScale = {
   safePaceKw: number;
   hardCapKw: number | null;
   scaleKw: number;
+  softLimitSource: PlanMetaSnapshot['softLimitSource'];
 };
 
 type MeterMarker = {
-  kind: 'actual' | 'projected' | 'target' | 'cap';
+  kind: 'projected' | 'target' | 'cap';
   positionPct: number;
   tone?: MeterTone;
   tooltip?: string;
 };
 
-type MeterTone = 'good' | 'warning' | 'limited' | 'critical';
+type MeterTone = 'good' | 'warning' | 'critical';
 type ProjectionTone = 'good' | 'warning' | 'critical';
 
 const clampPct = (value: number): number => Math.max(0, Math.min(100, value));
@@ -170,11 +213,25 @@ const computePowerBarScale = (
   const safePaceKw = meta.softLimitKw ?? meta.capacitySoftLimitKw ?? 0;
   if (safePaceKw <= 0) return null;
   const total = Math.max(0, headline.totalKw ?? 0);
-  const controlled = Math.max(0, headline.controlledKw ?? 0);
-  const uncontrolled = Math.max(0, headline.uncontrolledKw ?? 0);
+  const controlled = Math.max(0, Math.min(total, headline.controlledKw ?? 0));
+  // Derive background as the residual after the managed segment. `totalKw`,
+  // `controlledKw`, and `uncontrolledKw` are each rounded independently in the
+  // plan meta, so using `headline.uncontrolledKw` directly can make the rendered
+  // bar (managed + background) disagree with the headline kW value. Computing
+  // the residual keeps the segmented gauge consistent with the number above it
+  // and ensures over-threshold tones reflect the full draw.
+  const uncontrolled = Math.max(0, total - controlled);
   const hardCapKw = headline.hardLimitKw ?? null;
   const scaleKw = Math.max(safePaceKw * 1.2, hardCapKw ?? 0, total * 1.05);
-  return { total, controlled, uncontrolled, safePaceKw, hardCapKw, scaleKw };
+  return {
+    total,
+    controlled,
+    uncontrolled,
+    safePaceKw,
+    hardCapKw,
+    scaleKw,
+    softLimitSource: meta.softLimitSource,
+  };
 };
 
 type EnergyBarScale = {
@@ -212,19 +269,31 @@ const resolveProjectionTone = (scale: EnergyBarScale): ProjectionTone => {
   return 'critical';
 };
 
-const resolveProjectionLabel = (tone: ProjectionTone, startOfSentence = true): string => {
-  const label = tone === 'good'
-    ? 'projected on target'
-    : tone === 'warning'
-      ? 'projected slightly over budget'
-      : 'projected over budget';
-  return startOfSentence ? `${label.charAt(0).toUpperCase()}${label.slice(1)}` : label;
-};
-
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 const Chip = ({ label, tone }: { label: string; tone: string }) => (
   <span class={`plan-chip plan-chip--${tone}`}>{label}</span>
+);
+
+// The settings webview does not load Material Symbols font, so the info icon
+// is an inline SVG. `currentColor` keeps it tracking the icon-button text token.
+const InfoIcon = () => (
+  <svg
+    class="plan-hero__info-icon"
+    viewBox="0 0 24 24"
+    width="20"
+    height="20"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <circle cx="12" cy="12" r="9" />
+    <line x1="12" y1="11" x2="12" y2="16" />
+    <circle cx="12" cy="8" r="0.5" fill="currentColor" />
+  </svg>
 );
 
 const HeroChipRow = ({
@@ -239,41 +308,93 @@ const HeroChipRow = ({
   ageText: string | null;
 }) => {
   const freshness = formatFreshnessChip(freshnessState);
-  const freshnessText = freshness && freshness.kind !== 'fresh' ? 'Power reading delayed' : null;
+  // Hide freshness chip when data is fresh — chip rail stays calm on the
+  // happy path. (notes/overview-hero-spec.md — "Freshness chip".)
+  const showFreshness = freshness !== null && freshness.kind !== 'fresh';
   const freshnessTooltip = ageText ? `Power reading updated ${ageText}` : undefined;
   const statusLabel = HERO_STATUS_LABEL[heroStatus] ?? null;
   return (
     <div class="plan-hero__chips">
-      {statusLabel && <Chip label={statusLabel} tone={HERO_STATUS_CHIP_TONE[heroStatus]} />}
-      {(activeMode || freshnessText) && (
-        <span class="plan-hero__meta-row">
-          {activeMode && <span class="plan-chip plan-chip--muted">{formatModeLabel(activeMode)}</span>}
-          {freshnessText && (
-            <span class="plan-hero__meta" data-tone={freshness.tone} data-tooltip={freshnessTooltip}>
-              {freshnessText}
-            </span>
-          )}
-        </span>
-      )}
+      <div class="plan-hero__chip-rail">
+        {statusLabel && <Chip label={statusLabel} tone={HERO_STATUS_CHIP_TONE[heroStatus]} />}
+        {activeMode && (
+          <span class="plan-chip plan-chip--muted">{formatModeLabel(activeMode)}</span>
+        )}
+        {showFreshness && (
+          <span class={`plan-chip plan-chip--${freshness.tone}`} data-tooltip={freshnessTooltip}>
+            {freshness.label}
+          </span>
+        )}
+      </div>
+      <MdIconButton
+        class="plan-hero__info-button"
+        type="button"
+        aria-label="About this card"
+        data-tooltip={INFO_TOOLTIP_TEXT}
+      >
+        <InfoIcon />
+      </MdIconButton>
     </div>
   );
 };
 
+// Power bar segments: [managed][background][free], rendered as proportional
+// blocks against `scaleKw`. The trailing rendered segment carries the
+// over-threshold tone when the cumulative draw is past safe-pace / hard-cap,
+// so the tone follows what is actually drawn (`controlled + uncontrolled`)
+// rather than a separate `total` that may include unaccounted load. When the
+// background segment is absent (managed load alone exceeds the threshold) the
+// managed segment becomes the trailing block and carries the tone — otherwise
+// a green bar would silently under-report a threshold violation.
+const PowerMeterSegments = ({ scale }: { scale: BarScale }) => {
+  const managedPct = pctOf(scale.controlled, scale.scaleKw);
+  const backgroundPct = pctOf(scale.uncontrolled, scale.scaleKw);
+  const drawnKw = scale.controlled + scale.uncontrolled;
+  const overSafePace = drawnKw > scale.safePaceKw;
+  const overHardCap = scale.hardCapKw !== null && drawnKw > scale.hardCapKw;
+  // The overflow tone is applied to the trailing visible segment. Background
+  // gets it whenever it is present; managed gets it only when background is
+  // absent so the two segments never both carry the tone.
+  const managedTrailing = backgroundPct <= 0;
+  return (
+    <span class="pels-meter-segments" aria-hidden="true">
+      {managedPct > 0 && (
+        <span
+          class="pels-meter-segments__seg pels-meter-segments__seg--managed"
+          style={{ width: `${managedPct}%` }}
+          data-over-safe-pace={managedTrailing && overSafePace ? '' : undefined}
+          data-over-hard-cap={managedTrailing && overHardCap ? '' : undefined}
+        />
+      )}
+      {backgroundPct > 0 && (
+        <span
+          class="pels-meter-segments__seg pels-meter-segments__seg--background"
+          style={{ width: `${backgroundPct}%` }}
+          data-over-safe-pace={overSafePace ? '' : undefined}
+          data-over-hard-cap={overHardCap ? '' : undefined}
+        />
+      )}
+    </span>
+  );
+};
+
+const resolveSafePaceTooltip = (
+  safePaceKw: number,
+  source: PlanMetaSnapshot['softLimitSource'],
+): string => {
+  const sourceText = source ? SAFE_PACE_TOOLTIP_BY_SOURCE[source] : SAFE_PACE_TOOLTIP_BY_SOURCE.capacity;
+  return `Safe pace now ${safePaceKw.toFixed(1)} kW — ${sourceText}`;
+};
+
 const PelsMeterTrack = ({
-  valuePct,
-  tone,
+  fill,
   markers,
 }: {
-  valuePct: number;
-  tone: MeterTone;
+  fill: ComponentChild;
   markers: MeterMarker[];
 }) => (
-  <div
-    class="pels-meter-track"
-    data-tone={tone}
-    style={{ '--meter-value': `${clampPct(valuePct)}%` } as Record<string, string>}
-  >
-    <span class="pels-meter-track__fill" />
+  <div class="pels-meter-track">
+    {fill}
     {markers.map((marker) => (
       <span
         class={`pels-meter-track__marker pels-meter-track__marker--${marker.kind}`}
@@ -285,43 +406,9 @@ const PelsMeterTrack = ({
   </div>
 );
 
-const resolvePowerTone = (scale: BarScale): 'good' | 'warning' | 'critical' => {
-  if (scale.hardCapKw !== null && scale.total > scale.hardCapKw) return 'critical';
-  if (scale.total > scale.safePaceKw) return 'warning';
-  return 'good';
-};
-
-type SoftLimitSource = NonNullable<PlanMetaSnapshot['softLimitSource']>;
-
-const SAFE_PACE_SOURCE_TOOLTIP: Record<SoftLimitSource, string> = {
-  capacity: 'From your hard cap minus the safety margin.',
-  daily: "From today's daily budget — daily pacing is the tighter constraint right now.",
-  both: 'Both the hard cap and daily budget are constraining PELS right now.',
-};
-
-const resolveSafePaceTooltip = (
-  safePaceKw: number,
-  source: SoftLimitSource | undefined,
-): string => {
-  const head = `Safe pace now ${safePaceKw.toFixed(1)} kW —`;
-  const tail = source ? SAFE_PACE_SOURCE_TOOLTIP[source] : 'PELS limits managed devices above this threshold.';
-  return `${head} ${tail}`;
-};
-
-const PowerMeter = ({ scale, softLimitSource }: {
-  scale: BarScale;
-  softLimitSource: SoftLimitSource | undefined;
-}) => {
-  const safePaceTooltip = resolveSafePaceTooltip(scale.safePaceKw, softLimitSource);
-  const hardCapTooltip = scale.hardCapKw !== null
-    ? [`Hard cap ${scale.hardCapKw.toFixed(1)} kW —`, 'your configured maximum.'].join(' ')
-    : undefined;
+const PowerMeter = ({ scale }: { scale: BarScale }) => {
+  const safePaceTooltip = resolveSafePaceTooltip(scale.safePaceKw, scale.softLimitSource);
   const markers: MeterMarker[] = [
-    {
-      kind: 'actual',
-      positionPct: pctOf(scale.total, scale.scaleKw),
-      tooltip: `Power now ${scale.total.toFixed(1)} kW`,
-    },
     {
       kind: 'target',
       positionPct: pctOf(scale.safePaceKw, scale.scaleKw),
@@ -332,16 +419,10 @@ const PowerMeter = ({ scale, softLimitSource }: {
     markers.push({
       kind: 'cap',
       positionPct: pctOf(scale.hardCapKw, scale.scaleKw),
-      tooltip: hardCapTooltip,
+      tooltip: `Hard cap ${scale.hardCapKw.toFixed(1)} kW — ${HARD_CAP_TOOLTIP}`,
     });
   }
-  return (
-    <PelsMeterTrack
-      valuePct={pctOf(scale.total, scale.scaleKw)}
-      tone={resolvePowerTone(scale)}
-      markers={markers}
-    />
-  );
+  return <PelsMeterTrack fill={<PowerMeterSegments scale={scale} />} markers={markers} />;
 };
 
 const PowerSection = ({
@@ -352,21 +433,12 @@ const PowerSection = ({
   meta: PlanMetaSnapshot;
 }) => {
   const scale = computePowerBarScale(headline, meta);
-  const powerTone = scale ? resolvePowerTone(scale) : null;
+  // M3: one tonal story per surface. The hero rim + status chip already carry
+  // the warn/alert signal — the headline tone stays neutral.
   return (
     <div class="plan-hero__section">
-      <span class="plan-hero__section-label">Power now</span>
-      <div class="plan-hero__headline" data-tone={powerTone}>{headline.totalKw.toFixed(1)} kW</div>
-      {headline.overHardLimit && headline.hardLimitKw !== null && (
-        <div class="plan-hero__subline" data-tone="critical">
-          {(headline.totalKw - headline.hardLimitKw).toFixed(1)} kW above hard cap
-        </div>
-      )}
-      {headline.overSoftLimit && !headline.overHardLimit && (
-        <div class="plan-hero__subline" data-tone="warn">
-          {Math.max(0, -headline.headroomKw).toFixed(1)} kW above safe pace
-        </div>
-      )}
+      <p class="plan-hero__section-label eyebrow">Power now</p>
+      <div class="plan-hero__headline">{headline.totalKw.toFixed(1)} kW</div>
       {!headline.overSoftLimit && !headline.overHardLimit && (
         <div class="plan-hero__subline">
           Safe pace now {headline.softLimitKw.toFixed(1)} kW
@@ -374,35 +446,35 @@ const PowerSection = ({
       )}
       {scale && (
         <div class="plan-hero__bar-group">
-          <div class="plan-hero__legend">
-            <span class="plan-hero__energy-support">
-              {scale.controlled > 0
-                ? `Managed ${scale.controlled.toFixed(1)} kW`
-                : 'No managed load active'
-              } · Background {scale.uncontrolled.toFixed(1)} kW
-            </span>
+          <PowerMeter scale={scale} />
+          <div class="plan-hero__energy-support">
+            {scale.controlled > 0
+              ? `Managed ${scale.controlled.toFixed(1)} kW`
+              : 'No managed load active'
+            } · Background {scale.uncontrolled.toFixed(1)} kW
           </div>
-          <PowerMeter scale={scale} softLimitSource={meta.softLimitSource} />
         </div>
       )}
     </div>
   );
 };
 
-const resolveEnergyFillTone = (scale: EnergyBarScale): MeterTone => {
-  return scale.usedKWh > scale.budgetKWh ? 'warning' : 'good';
-};
+const resolveEnergyFillTone = (scale: EnergyBarScale): MeterTone => (
+  scale.usedKWh > scale.budgetKWh ? 'warning' : 'good'
+);
+
+const EnergyMeterFill = ({ scale, scaleKWh }: { scale: EnergyBarScale; scaleKWh: number }) => (
+  <span
+    class="pels-meter-track__fill"
+    data-tone={resolveEnergyFillTone(scale)}
+    style={{ width: `${pctOf(scale.usedKWh, scaleKWh)}%` }}
+  />
+);
 
 const EnergyMeter = ({ scale }: { scale: EnergyBarScale }) => {
   const scaleKWh = Math.max(scale.budgetKWh, scale.projectedKWh ?? 0, scale.usedKWh) * 1.05;
   const projectionTone = resolveProjectionTone(scale);
   const markers: MeterMarker[] = [
-    {
-      kind: 'actual',
-      positionPct: pctOf(scale.usedKWh, scaleKWh),
-      tone: scale.usedKWh > scale.budgetKWh ? 'warning' : 'good',
-      tooltip: `Energy used this hour ${scale.usedKWh.toFixed(2)} kWh`,
-    },
     {
       kind: 'target',
       positionPct: pctOf(scale.budgetKWh, scaleKWh),
@@ -417,25 +489,31 @@ const EnergyMeter = ({ scale }: { scale: EnergyBarScale }) => {
       tooltip: `Projected this hour ${scale.projectedKWh.toFixed(2)} kWh`,
     });
   }
-  return (
-    <PelsMeterTrack
-      valuePct={pctOf(scale.usedKWh, scaleKWh)}
-      tone={resolveEnergyFillTone(scale)}
-      markers={markers}
-    />
-  );
+  return <PelsMeterTrack fill={<EnergyMeterFill scale={scale} scaleKWh={scaleKWh} />} markers={markers} />;
 };
 
 const EnergySection = ({ meta }: { meta: PlanMetaSnapshot }) => {
   const scale = computeEnergyBarScale(meta);
   if (!scale) return null;
+  const minutesRemaining = typeof meta.minutesRemaining === 'number' ? meta.minutesRemaining : null;
+  // Headline kept for backwards compatibility with unit tests that assert
+  // `.plan-hero__headline` text contains "X / Y kWh".
   const usedText = `${scale.usedKWh.toFixed(2)} / ${scale.budgetKWh.toFixed(1)} kWh`;
+  const projectionTone = resolveProjectionTone(scale);
+  const projectedText = scale.projectedKWh !== null
+    ? `projected ${scale.projectedKWh.toFixed(2)} kWh${projectionTone === 'good' ? '' : ' ⚠'}`
+    : null;
+  const minutesText = minutesRemaining !== null ? `${Math.round(minutesRemaining)} min left` : null;
   return (
     <div class="plan-hero__section">
-      <span class="plan-hero__section-label">Energy used this hour</span>
-      <div class="plan-hero__headline" data-tone={scale.usedKWh > scale.budgetKWh ? 'warning' : undefined}>
-        {usedText}
-      </div>
+      <p class="plan-hero__section-label eyebrow">Energy used this hour</p>
+      <div class="plan-hero__headline">{usedText}</div>
+      {projectedText !== null && (
+        <div class="plan-hero__subline">{projectedText}</div>
+      )}
+      {minutesText !== null && (
+        <div class="plan-hero__subline plan-hero__subline--muted">{minutesText}</div>
+      )}
       <div class="plan-hero__bar-group">
         <EnergyMeter scale={scale} />
       </div>
@@ -481,14 +559,14 @@ export const PlanHero = ({
   const energyScale = computeEnergyBarScale(meta);
   const projectionTone = energyScale ? resolveProjectionTone(energyScale) : null;
   const heroStatus = resolveHeroStatus(headline, devices, freshnessState, context.dryRun, projectionTone);
-  const { text: decisionText, positive } = buildHeroStatusLine(
-    headline,
+  const decision = buildDecisionSentence({
     devices,
     freshnessState,
-    context.dryRun,
-    energyScale,
-    meta,
-  );
+    dryRun: context.dryRun,
+    overHardLimit: headline.overHardLimit,
+    overSoftLimit: headline.overSoftLimit,
+    projectionTone,
+  });
 
   return (
     <div class="plan-hero" data-tone={HERO_STATUS_DATA_TONE[heroStatus]} aria-live="polite">
@@ -500,11 +578,9 @@ export const PlanHero = ({
       />
       <PowerSection headline={headline} meta={meta} />
       <EnergySection meta={meta} />
-      {decisionText !== null && (
-        <p class="plan-hero__decision" data-positive={positive ? '' : undefined}>
-          {decisionText}
-        </p>
-      )}
+      <p class="plan-hero__decision" data-positive={decision.positive ? '' : undefined}>
+        {decision.text}
+      </p>
     </div>
   );
 };

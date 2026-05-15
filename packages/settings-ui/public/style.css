@@ -1508,8 +1508,6 @@ md-primary-tab.tab[active]:hover {
 }
 
 .pels-meter-track {
-  --meter-value: 0%;
-  --meter-tone: var(--pels-status-good);
   position: relative;
   height: 14px;
   overflow: visible;
@@ -1517,25 +1515,61 @@ md-primary-tab.tab[active]:hover {
   background: color-mix(in srgb, var(--color-surface-5) 80%, transparent);
 }
 
-.pels-meter-track[data-tone="warning"] {
-  --meter-tone: var(--pels-status-warning);
-}
-
-.pels-meter-track[data-tone="limited"] {
-  --meter-tone: var(--pels-status-limited);
-}
-
-.pels-meter-track[data-tone="critical"] {
-  --meter-tone: var(--pels-status-critical);
-}
-
+/* Single-segment fill (energy meter). The width and tone are set inline by the
+   component because the width depends on the dynamic scale. */
 .pels-meter-track__fill {
   position: absolute;
   inset: 0 auto 0 0;
-  width: var(--meter-value);
   border-radius: inherit;
-  background: var(--meter-tone);
+  background: var(--pels-status-good);
   pointer-events: none;
+}
+
+.pels-meter-track__fill[data-tone="warning"] {
+  background: var(--pels-status-warning);
+}
+
+.pels-meter-track__fill[data-tone="critical"] {
+  background: var(--pels-status-critical);
+}
+
+/* Segmented power-bar fill: managed | background. Free space is the empty
+   track remainder. Safe-pace and hard-cap markers ride on top. */
+.pels-meter-segments {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pels-meter-segments__seg {
+  display: block;
+  height: 100%;
+}
+
+.pels-meter-segments__seg--managed {
+  background: var(--pels-status-good);
+}
+
+.pels-meter-segments__seg--background {
+  background: color-mix(in srgb, var(--pels-text-secondary) 55%, transparent);
+}
+
+/* When current power crosses safe pace / hard cap, the trailing rendered
+   segment carries the warning / critical tone so the over-threshold portion
+   reads as an overflow stripe. The tone applies to the background segment when
+   it is present, otherwise to the managed segment so a managed-only overflow
+   still surfaces visually. */
+.pels-meter-segments__seg--background[data-over-safe-pace],
+.pels-meter-segments__seg--managed[data-over-safe-pace] {
+  background: var(--pels-status-warning);
+}
+
+.pels-meter-segments__seg--background[data-over-hard-cap],
+.pels-meter-segments__seg--managed[data-over-hard-cap] {
+  background: var(--pels-status-critical);
 }
 
 .plan-hero__legend {
@@ -1577,14 +1611,6 @@ md-primary-tab.tab[active]:hover {
   inset: -8px;
 }
 
-.pels-meter-track__marker--actual {
-  width: 7px;
-  height: 7px;
-  border-radius: var(--radius-full);
-  background: var(--marker-tone);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--bg) 72%, transparent);
-}
-
 .pels-meter-track__marker--projected {
   width: 8px;
   height: 8px;
@@ -1609,37 +1635,41 @@ md-primary-tab.tab[active]:hover {
 }
 
 .plan-hero__chips {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
   gap: var(--spacing-1) var(--spacing-2);
   margin-bottom: var(--spacing-4);
-}
-
-.plan-hero__meta {
   min-width: 0;
-  color: var(--pels-text-supporting-color);
-  font-size: var(--pels-text-supporting-font-size);
-  line-height: var(--pels-text-supporting-font-line-height);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.plan-hero__meta-row {
+.plan-hero__chip-rail {
   display: flex;
-  gap: var(--spacing-2);
+  flex-wrap: wrap;
+  gap: var(--spacing-1) var(--spacing-2);
   align-items: center;
+  flex: 1 1 auto;
   min-width: 0;
-  overflow: hidden;
 }
 
-.plan-hero__meta[data-tone="warn"] {
-  color: var(--color-state-warning-text);
+/* Info-icon button anchored to the top-right of the chip row. The Material
+   icon-button state-layer fills the surrounding 36 px target. */
+.plan-hero__info-button {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  --md-icon-button-state-layer-height: 36px;
+  --md-icon-button-state-layer-width: 36px;
+  --md-icon-button-icon-size: 20px;
+  --md-icon-button-icon-color: var(--pels-text-secondary);
+  --md-icon-button-hover-icon-color: var(--pels-text-primary);
+  --md-icon-button-focus-icon-color: var(--pels-text-primary);
+  --md-icon-button-pressed-icon-color: var(--pels-text-primary);
 }
 
-.plan-hero__meta[data-tone="alert"] {
-  color: var(--color-state-negative-text);
+.plan-hero__info-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
 }
 
 .plan-hero__section {
@@ -1651,11 +1681,11 @@ md-primary-tab.tab[active]:hover {
   padding-top: calc(var(--spacing-4) + var(--spacing-1));
 }
 
+/* Hero section eyebrow. The element also carries `.eyebrow` so it shares
+   font-size, weight, letter-spacing, and text-transform with every other page
+   header. This rule only sets the colour token used inside the hero card. */
 .plan-hero__section-label {
   color: var(--pels-text-section-label-color);
-  font-size: var(--pels-text-section-label-font-size);
-  font-weight: var(--pels-text-section-label-font-weight);
-  line-height: var(--pels-text-section-label-font-line-height);
 }
 
 .plan-hero__headline-row {
@@ -1666,24 +1696,14 @@ md-primary-tab.tab[active]:hover {
   flex-wrap: wrap;
 }
 
+/* M3: one tonal story per surface. Hero rim + status chip carry the warn/alert
+   signal; the headline value stays neutral. */
 .plan-hero__headline {
   color: var(--pels-text-display-color);
   font-size: var(--pels-text-display-font-size);
   font-weight: var(--pels-text-display-font-weight);
   line-height: var(--pels-text-display-font-line-height);
   letter-spacing: -0.01em;
-}
-
-.plan-hero__headline[data-tone="good"] {
-  color: var(--text);
-}
-
-.plan-hero__headline[data-tone="warning"] {
-  color: var(--pels-status-warning);
-}
-
-.plan-hero__headline[data-tone="critical"] {
-  color: var(--pels-status-critical);
 }
 
 .plan-hero__subline {
@@ -1702,19 +1722,6 @@ md-primary-tab.tab[active]:hover {
 
 .plan-hero__subline--muted {
   color: var(--pels-text-supporting-color);
-}
-
-.plan-hero__projection-value {
-  color: inherit;
-  font-weight: var(--pels-text-section-label-font-weight);
-}
-
-.plan-hero__projection-value[data-tone="warning"] {
-  color: var(--pels-status-warning);
-}
-
-.plan-hero__projection-value[data-tone="critical"] {
-  color: var(--pels-status-critical);
 }
 
 .plan-hero__energy-support {

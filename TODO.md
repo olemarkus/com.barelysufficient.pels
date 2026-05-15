@@ -93,17 +93,12 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `packages/settings-ui/src/ui/power.ts`, generated `settings/`, screenshot suite under
       `packages/settings-ui/tests/e2e/`.
       *Sub-bullets from M3 visual pass (2026-05-14, after eco-palette landed):*
-      - **`.plan-hero[data-tone="alert"]` is visually overloaded.** In an over-hard-cap
-        state the hero stacks four semantic signals at once: red rim, red headline
-        ("5.6 kW"), red subline ("0.6 kW above hard cap"), red power-bar fill, plus an
-        amber over-budget sub-bar with a red end marker, plus an alert chip and a
-        muted chip in the same row. M3 wants one tonal-container story per surface — the
-        red rim alone communicates the alert. Drop the headline-red, keep the rim and one
-        alert chip; let the rest of the type stay neutral primary so the hero reads as
-        "elevated card in danger state", not "danger shouted four ways".
-      - **`0.6 kW above hard cap` subline** quadruples information already encoded by
-        rim + chip + headline colour + bar overshoot. Either remove it or convert to an
-        instruction (e.g. "Reduce load now").
+      - **Overview hero side landed (hero-rework PR):** headline tone no longer flips to
+        warning/critical, the redundant `"X kW above hard cap"` subline was dropped, the
+        power bar now renders segmented [managed][background] blocks on a single track,
+        and the section labels reuse the shared `.eyebrow` primitive. Budget / Usage /
+        Smart tasks / Settings / Advanced headers + the deadline-plan hero still need
+        the same rebind before this P0 closes.
       - **Info as a role is sparse on Overview** — only the Smart-task chip and the
         info-tinted histogram on Budget/Usage tabs. That's M3-appropriate (info is for
         neutral explanation), but worth confirming during hero work that we're not
@@ -148,11 +143,19 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
-- [ ] Replace `.plan-hero__meta-row` "Home mode" plain text with a real `md-assist-chip`. M3
-      audit found the element is named like a chip (`.plan-hero__meta-row`) but renders with
-      `bg: transparent`, no border, no radius — visually indistinguishable from body text. Apply
-      the existing `.chip` styles or migrate to `md-assist-chip`. Markup change in
-      `packages/settings-ui/src/ui/views/PlanHero.tsx`.
+- [ ] Give settings-form text-field / select controls an accessible name. M3 follow-up audit
+      (2026-05-14) re-checked the previous "duplicate visible labels" finding and corrected the
+      framing: `md-filled-text-field` and `md-filled-select` in `Limits & safety`,
+      `Electricity prices`, daily-budget advanced, and device-detail have **no `label`
+      attribute and no `aria-label` / `aria-labelledby` set anywhere**, so only one label
+      *renders* visually (the sibling `<span class="field__label">`). The bug is a11y, not
+      dual-rendering: 32 of 33 `.field__label` are bare `<span>` (not `<label for=>`), so the
+      M3 control has no accessible name at all to screen readers. Acceptance: every control
+      either receives the text via the component's `label=""` attribute or is bound to its
+      sibling label via `aria-labelledby` referencing a `.field__label[id]`. The visible
+      label rendering should stay the same as today.
+      Files: `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/src/ui/deviceDetail/*.ts`, related layout tests.
 - [ ] Lift touch targets to M3 minimum (48 px). Audit found `md-tabs` 36 px, segmented buttons
       40 px, back-buttons 38 px, `md-checkbox` 20 px visible with no extended hit area. The
       WebView is finger-touch at 480 px wide. CSS-only via `--md-primary-tab-container-height`
