@@ -47,6 +47,86 @@ const computeShortfall = (diagnostic: DeferredObjectiveDiagnostic): {
   return { shortfallKwh, shortfallText: null };
 };
 
+const resolveTargetValue = (diagnostic: DeferredObjectiveDiagnostic): number | null => {
+  if (diagnostic.objectiveKind === 'temperature') return diagnostic.targetTemperatureC;
+  if (diagnostic.objectiveKind === 'ev_soc') return diagnostic.targetPercent;
+  return null;
+};
+
+const formatDurationText = (hours: number): string | null => {
+  if (!Number.isFinite(hours) || hours <= 0) return null;
+  const totalMinutes = Math.round(hours * 60);
+  const wholeHours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (wholeHours === 0) return `${minutes} min`;
+  if (minutes === 0) return `${wholeHours} h`;
+  return `${wholeHours} h ${minutes} min`;
+};
+
+type PlanningSummary = {
+  plannedStartAtMs: number | null;
+  plannedFinishAtMs: number | null;
+  planningSpeedKw: number | null;
+  estimatedDurationText: string | null;
+};
+
+const summarisePlanningWindow = (diagnostic: DeferredObjectiveDiagnostic): PlanningSummary => {
+  const planned = diagnostic.horizonPlan?.plannedBuckets ?? [];
+  const charging = planned.filter((bucket) => bucket.plannedUsefulEnergyKWh > 0);
+  if (charging.length === 0) {
+    return {
+      plannedStartAtMs: null,
+      plannedFinishAtMs: null,
+      planningSpeedKw: null,
+      estimatedDurationText: null,
+    };
+  }
+  const start = charging[0]!;
+  const end = charging[charging.length - 1]!;
+  const totalKWh = charging.reduce((sum, bucket) => sum + bucket.plannedUsefulEnergyKWh, 0);
+  const totalHours = charging.reduce((sum, bucket) => sum + bucket.durationHours, 0);
+  const speed = totalHours > 0 ? totalKWh / totalHours : null;
+  return {
+    plannedStartAtMs: start.startMs,
+    plannedFinishAtMs: end.endMs,
+    planningSpeedKw: speed !== null ? Math.round(speed * 1000) / 1000 : null,
+    estimatedDurationText: formatDurationText(totalHours),
+  };
+};
+
+const STABLE_REASON_CODES: ReadonlySet<string> = new Set([
+  // From DeferredObjectiveDiagnosticReasonCode
+  'objective_missing_price_horizon',
+  'objective_price_feature_disabled',
+  'objective_invalid_deadline',
+  'objective_invalid_session',
+  'objective_missing_capacity',
+  'objective_missing_charge_rate',
+  'objective_missing_device',
+  'objective_missing_temperature',
+  'objective_progress_stale',
+  // From DeferredObjectiveHorizonStatusDetail (only the ones that map to risk)
+  'invalid_bucket_plan',
+  'invalid_deadline',
+  'invalid_energy',
+  'invalid_now',
+  'missing_active_step',
+  'no_bucket_capacity',
+  'target_cannot_be_met',
+  'deadline_passed',
+  'energy_already_met',
+]);
+
+const resolveRiskReason = (
+  diagnostic: DeferredObjectiveDiagnostic,
+  status: DeferredObjectivePublishedStatus,
+): string | null => {
+  if (status === 'on_track' || status === 'satisfied') return null;
+  const reason = diagnostic.reasonCode;
+  if (typeof reason !== 'string') return null;
+  return STABLE_REASON_CODES.has(reason) ? reason : null;
+};
+
 const buildSnapshot = (params: {
   diagnostic: DeferredObjectiveDiagnostic;
   status: DeferredObjectivePublishedStatus;
@@ -55,6 +135,11 @@ const buildSnapshot = (params: {
 }): DeferredObjectiveStatusSnapshot => {
   const { diagnostic } = params;
   const shortfall = computeShortfall(diagnostic);
+  const planning = summarisePlanningWindow(diagnostic);
+  const requiredKwh = typeof diagnostic.energyNeededKWh === 'number'
+    && Number.isFinite(diagnostic.energyNeededKWh)
+    ? Math.round(diagnostic.energyNeededKWh * 1000) / 1000
+    : null;
   return {
     deviceId: diagnostic.deviceId,
     deviceName: diagnostic.deviceName ?? null,
@@ -62,11 +147,18 @@ const buildSnapshot = (params: {
     status: params.status,
     previousStatus: params.previousStatus,
     targetText: formatTargetText(diagnostic),
+    targetValue: resolveTargetValue(diagnostic),
     deadlineLocalTime: diagnostic.deadlineLocalTime,
     deadlineAtMs: diagnostic.deadlineAtMs,
     deadlineMissed: params.deadlineMissed,
     shortfallKwh: shortfall.shortfallKwh,
     shortfallText: shortfall.shortfallText,
+    plannedStartAtMs: planning.plannedStartAtMs,
+    plannedFinishAtMs: planning.plannedFinishAtMs,
+    requiredKwh,
+    planningSpeedKw: planning.planningSpeedKw,
+    estimatedDurationText: planning.estimatedDurationText,
+    riskReason: resolveRiskReason(diagnostic, params.status),
   };
 };
 

@@ -75,25 +75,19 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       zero. Heatmap low/high series in `powerWeekChartEcharts.ts` rebound to
       `--color-role-info` / `--color-role-danger`. Cross-surface hue parity vs. Overview chips
       is now reflected in the refreshed Playwright baselines.)*
-- [ ] Revise smart task flow cards: single trigger per lifecycle event, stable-id tokens, richer
-      token set. Drop the `outcome` dropdown arg from `deadline_ended` and the `status` dropdown
-      arg from `deadline_status_changed`; add stable-id tokens (`outcome_id`, `status_id`,
-      `previous_status_id`, `change_reason_id`) alongside existing display-label tokens; add
-      numeric tokens (`target_value`, `final_progress_value`, `delivered_kwh`, numeric
-      `shortfall_value` + `shortfall_unit`); add composed `notification_text` token to all three
-      triggers; add `planned_start_local_time`, `planned_finish_local_time`, `required_kwh`,
-      `planning_speed_kw`, `estimated_duration_text`, `risk_reason` to
-      `deadline_status_changed`. Treat the stable-id literal values as a public-API contract.
-      Why P0: today users filter by trigger arg (forcing one flow per outcome/status), and tokens
-      emit English display labels rather than stable ids, so downstream condition logic compares
-      brittle strings. The redesign serves common flow scenarios with one trigger and condition
-      filtering; it also unblocks the ev-ready-by §P2.3 token-richness work that the EV release
-      depends on. Migration is breaking for user flows that use the dropdowns — release planning
-      to decide hard cut vs soft deprecation. Design: `notes/smart-task-flow-cards/README.md`.
-      Files: `.homeycompose/flow/triggers/{deadline_ended,deadline_status_changed,deadline_plan_changed}.json`,
-      `flowCards/deadlineObjectiveCards.ts`, `flowCards/deadlineEndedTokens.ts`,
-      `lib/plan/deferredObjectives/activePlanRecorder.ts` and `planHistory.ts` (numeric field
-      sources), `test/deadlineObjectiveCards.test.ts`.
+- [x] Revise smart task flow cards: single trigger per lifecycle event, stable-id tokens, richer
+      token set. *(landed — dropped the `outcome` arg from `deadline_ended` and the `status` arg
+      from `deadline_status_changed`; added stable-id tokens (`outcome_id`, `status_id`,
+      `change_reason_id`) alongside their display-label tokens, numeric tokens
+      (`target_value`, `final_progress_value`, `shortfall_value`, `required_kwh`,
+      `planning_speed_kw`), `planned_start_local_time` / `planned_finish_local_time` /
+      `estimated_duration_text` / `risk_reason` on `deadline_status_changed`, and a composed
+      `notification_text` token on `deadline_ended` and `deadline_plan_changed`. Shared token
+      bag lives in `flowCards/smartTaskTokens.ts`; `flowCards/deadlineEndedTokens.ts` was
+      folded into it. `previous_status_id` and per-status `notification_text` were
+      intentionally deferred. `delivered_kwh` and `revisions_count` were dropped from this PR
+      and re-tracked as a P2 entry below — both require a `planHistory` schema bump or new
+      compute on `observedIntervals`, which fits the history-detail revision PR instead.)*
 - [ ] Unify the hero and section-label primitive across every settings-UI surface.
       Overview hero, Budget header, Usage header, Smart tasks header, Settings header, Advanced
       header, and deadline-plan hero should read as one component: same eyebrow (font-size,
@@ -503,6 +497,21 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/src/ui/boot.ts`, `lib/app/settingsUiApi.ts`,
       `packages/contracts/src/settingsUiApi.ts` (a streaming endpoint or pull-with-version
       contract).
+- [ ] Surface `delivered_kwh` and `revisions_count` on the `deadline_ended` flow trigger.
+      The smart-task flow-card redesign deferred these two tokens because the data isn't
+      currently on `DeferredObjectivePlanHistoryEntry` — there's no per-run revision count
+      and no measured-energy-delivered field. Reaching them needs either a v3→v4 history
+      schema bump (add `revisions: RevisionSnapshot[]` + `deliveredKWh`) or a derived
+      compute on `observedIntervals` for delivered kWh plus an in-memory counter in the
+      active-plan recorder for revisions. Bundle with the Smart task history-detail revision
+      work below — that PR is already touching the history schema.
+      Why P2: the existing token bag is enough for "did it succeed?", "by how much?",
+      "ready-to-use notification text"; the missing tokens are nice-to-have for
+      power-user flows ("only alarm if it took more than 3 replans"). Not blocking.
+      Files: `packages/contracts/src/deferredObjectivePlanHistory.ts`,
+      `lib/plan/deferredObjectives/planHistory.ts`,
+      `lib/plan/deferredObjectives/endedEventBus.ts`,
+      `flowCards/smartTaskTokens.ts`, `.homeycompose/flow/triggers/deadline_ended.json`.
 - [ ] Cold-start catch-up for flow-scheme combined-prices rotation. `startPriceRefresh()`
       only schedules the next local midnight via `getNextLocalDayStartUtcMs(now)`, so if the
       app boots after midnight the first rotation is delayed until the following midnight.

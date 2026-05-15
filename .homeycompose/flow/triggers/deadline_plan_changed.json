@@ -27,6 +27,11 @@
       "title": { "en": "Device" }
     },
     {
+      "name": "kind",
+      "type": "string",
+      "title": { "en": "Kind (id)" }
+    },
+    {
       "name": "remaining_kwh",
       "type": "number",
       "title": { "en": "Remaining kWh" }
@@ -40,6 +45,16 @@
       "name": "projected_finish_local_time",
       "type": "string",
       "title": { "en": "Finishes at" }
+    },
+    {
+      "name": "change_reason_id",
+      "type": "string",
+      "title": { "en": "Change reason (id)" }
+    },
+    {
+      "name": "notification_text",
+      "type": "string",
+      "title": { "en": "Notification text" }
     }
   ]
 }

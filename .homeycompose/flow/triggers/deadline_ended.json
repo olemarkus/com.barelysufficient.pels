@@ -3,10 +3,10 @@
     "en": "Smart task ended"
   },
   "titleFormatted": {
-    "en": "Smart task ended with outcome [[outcome]] for [[device]]"
+    "en": "Smart task ended for [[device]]"
   },
   "hint": {
-    "en": "Fires once when a smart task run concludes — succeeded (target reached and held), missed (deadline passed below target), or abandoned (cleared by the user or device dropped out for an extended period). Reschedules and unobservable runs stay quiet."
+    "en": "Fires once when a smart task run concludes — succeeded (target reached and held), missed (deadline passed below target), or abandoned (cleared by the user or device dropped out for an extended period). Filter the outcome with a condition card on the outcome_id token (stable ids: succeeded / missed / abandoned)."
   },
   "args": [
     {
@@ -18,19 +18,6 @@
       "placeholder": {
         "en": "Select device"
       }
-    },
-    {
-      "name": "outcome",
-      "type": "dropdown",
-      "title": {
-        "en": "Outcome"
-      },
-      "values": [
-        { "id": "any", "label": { "en": "Any outcome" } },
-        { "id": "succeeded", "label": { "en": "Succeeded" } },
-        { "id": "missed", "label": { "en": "Missed" } },
-        { "id": "abandoned", "label": { "en": "Abandoned" } }
-      ]
     }
   ],
   "tokens": [
@@ -45,14 +32,34 @@
       "title": { "en": "Outcome" }
     },
     {
-      "name": "kind",
+      "name": "outcome_id",
       "type": "string",
-      "title": { "en": "Kind" }
+      "title": { "en": "Outcome (id)" }
+    },
+    {
+      "name": "target_value",
+      "type": "number",
+      "title": { "en": "Target" }
     },
     {
       "name": "target_text",
       "type": "string",
-      "title": { "en": "Target" }
+      "title": { "en": "Target (text)" }
+    },
+    {
+      "name": "final_progress_value",
+      "type": "number",
+      "title": { "en": "Final progress" }
+    },
+    {
+      "name": "shortfall_value",
+      "type": "number",
+      "title": { "en": "Shortfall" }
+    },
+    {
+      "name": "shortfall_text",
+      "type": "string",
+      "title": { "en": "Shortfall (text)" }
     },
     {
       "name": "deadline_local_time",
@@ -65,9 +72,9 @@
       "title": { "en": "Reached at" }
     },
     {
-      "name": "shortfall_text",
+      "name": "notification_text",
       "type": "string",
-      "title": { "en": "Below target" }
+      "title": { "en": "Notification text" }
     }
   ]
 }

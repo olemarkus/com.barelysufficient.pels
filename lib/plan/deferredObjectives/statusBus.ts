@@ -18,11 +18,20 @@ export type DeferredObjectiveStatusSnapshot = {
   status: DeferredObjectivePublishedStatus;
   previousStatus: DeferredObjectiveStatus;
   targetText: string;
+  targetValue: number | null;
   deadlineLocalTime: string;
   deadlineAtMs: number | null;
   deadlineMissed: boolean;
   shortfallKwh: number | null;
   shortfallText: string | null;
+  plannedStartAtMs: number | null;
+  plannedFinishAtMs: number | null;
+  requiredKwh: number | null;
+  planningSpeedKw: number | null;
+  estimatedDurationText: string | null;
+  // Stable lowercase reason id surfaced when status is `at_risk` /
+  // `cannot_meet` / `invalid`. Null when on track or satisfied.
+  riskReason: string | null;
 };
 
 type Listener = (transition: DeferredObjectiveStatusSnapshot) => void;

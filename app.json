@@ -150,10 +150,10 @@
           "en": "Smart task ended"
         },
         "titleFormatted": {
-          "en": "Smart task ended with outcome [[outcome]] for [[device]]"
+          "en": "Smart task ended for [[device]]"
         },
         "hint": {
-          "en": "Fires once when a smart task run concludes — succeeded (target reached and held), missed (deadline passed below target), or abandoned (cleared by the user or device dropped out for an extended period). Reschedules and unobservable runs stay quiet."
+          "en": "Fires once when a smart task run concludes — succeeded (target reached and held), missed (deadline passed below target), or abandoned (cleared by the user or device dropped out for an extended period). Filter the outcome with a condition card on the outcome_id token (stable ids: succeeded / missed / abandoned)."
         },
         "args": [
           {
@@ -165,39 +165,6 @@
             "placeholder": {
               "en": "Select device"
             }
-          },
-          {
-            "name": "outcome",
-            "type": "dropdown",
-            "title": {
-              "en": "Outcome"
-            },
-            "values": [
-              {
-                "id": "any",
-                "label": {
-                  "en": "Any outcome"
-                }
-              },
-              {
-                "id": "succeeded",
-                "label": {
-                  "en": "Succeeded"
-                }
-              },
-              {
-                "id": "missed",
-                "label": {
-                  "en": "Missed"
-                }
-              },
-              {
-                "id": "abandoned",
-                "label": {
-                  "en": "Abandoned"
-                }
-              }
-            ]
           }
         ],
         "tokens": [
@@ -216,17 +183,45 @@
             }
           },
           {
-            "name": "kind",
+            "name": "outcome_id",
             "type": "string",
             "title": {
-              "en": "Kind"
+              "en": "Outcome (id)"
+            }
+          },
+          {
+            "name": "target_value",
+            "type": "number",
+            "title": {
+              "en": "Target"
             }
           },
           {
             "name": "target_text",
             "type": "string",
             "title": {
-              "en": "Target"
+              "en": "Target (text)"
+            }
+          },
+          {
+            "name": "final_progress_value",
+            "type": "number",
+            "title": {
+              "en": "Final progress"
+            }
+          },
+          {
+            "name": "shortfall_value",
+            "type": "number",
+            "title": {
+              "en": "Shortfall"
+            }
+          },
+          {
+            "name": "shortfall_text",
+            "type": "string",
+            "title": {
+              "en": "Shortfall (text)"
             }
           },
           {
@@ -244,10 +239,10 @@
             }
           },
           {
-            "name": "shortfall_text",
+            "name": "notification_text",
             "type": "string",
             "title": {
-              "en": "Below target"
+              "en": "Notification text"
             }
           }
         ],
@@ -284,6 +279,13 @@
             }
           },
           {
+            "name": "kind",
+            "type": "string",
+            "title": {
+              "en": "Kind (id)"
+            }
+          },
+          {
             "name": "remaining_kwh",
             "type": "number",
             "title": {
@@ -303,6 +305,20 @@
             "title": {
               "en": "Finishes at"
             }
+          },
+          {
+            "name": "change_reason_id",
+            "type": "string",
+            "title": {
+              "en": "Change reason (id)"
+            }
+          },
+          {
+            "name": "notification_text",
+            "type": "string",
+            "title": {
+              "en": "Notification text"
+            }
           }
         ],
         "id": "deadline_plan_changed"
@@ -312,10 +328,10 @@
           "en": "Smart task status changed"
         },
         "titleFormatted": {
-          "en": "[[device]] smart task became [[status]]"
+          "en": "Smart task status changed for [[device]]"
         },
         "hint": {
-          "en": "Fires when the smart task status changes for the chosen device."
+          "en": "Fires when the smart task status transitions for the chosen device. Filter the new status with a condition card on the status_id token (stable ids: waiting / on_track / at_risk / unachievable / satisfied)."
         },
         "args": [
           {
@@ -327,45 +343,6 @@
             "placeholder": {
               "en": "Select device"
             }
-          },
-          {
-            "name": "status",
-            "type": "dropdown",
-            "title": {
-              "en": "Status"
-            },
-            "values": [
-              {
-                "id": "waiting",
-                "label": {
-                  "en": "Waiting"
-                }
-              },
-              {
-                "id": "on_track",
-                "label": {
-                  "en": "On track"
-                }
-              },
-              {
-                "id": "at_risk",
-                "label": {
-                  "en": "At risk"
-                }
-              },
-              {
-                "id": "unachievable",
-                "label": {
-                  "en": "Cannot finish"
-                }
-              },
-              {
-                "id": "satisfied",
-                "label": {
-                  "en": "Satisfied"
-                }
-              }
-            ]
           }
         ],
         "tokens": [
@@ -377,6 +354,13 @@
             }
           },
           {
+            "name": "kind",
+            "type": "string",
+            "title": {
+              "en": "Kind (id)"
+            }
+          },
+          {
             "name": "status",
             "type": "string",
             "title": {
@@ -384,10 +368,24 @@
             }
           },
           {
+            "name": "status_id",
+            "type": "string",
+            "title": {
+              "en": "Status (id)"
+            }
+          },
+          {
+            "name": "target_value",
+            "type": "number",
+            "title": {
+              "en": "Target"
+            }
+          },
+          {
             "name": "target_text",
             "type": "string",
             "title": {
-              "en": "Target"
+              "en": "Target (text)"
             }
           },
           {
@@ -398,10 +396,45 @@
             }
           },
           {
-            "name": "kind",
+            "name": "planned_start_local_time",
             "type": "string",
             "title": {
-              "en": "Kind"
+              "en": "Planned start"
+            }
+          },
+          {
+            "name": "planned_finish_local_time",
+            "type": "string",
+            "title": {
+              "en": "Planned finish"
+            }
+          },
+          {
+            "name": "required_kwh",
+            "type": "number",
+            "title": {
+              "en": "Required (kWh)"
+            }
+          },
+          {
+            "name": "planning_speed_kw",
+            "type": "number",
+            "title": {
+              "en": "Planning speed (kW)"
+            }
+          },
+          {
+            "name": "estimated_duration_text",
+            "type": "string",
+            "title": {
+              "en": "Estimated duration"
+            }
+          },
+          {
+            "name": "risk_reason",
+            "type": "string",
+            "title": {
+              "en": "Risk reason (id)"
             }
           }
         ],
