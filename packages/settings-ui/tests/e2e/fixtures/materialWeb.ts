@@ -13,6 +13,20 @@ export const readMdValue = async (page: Page, selector: string): Promise<string>
   page.locator(selector).evaluate((el) => (el as HTMLElement & { value: string }).value)
 );
 
+/**
+ * Read the text rendered inside the closed field of an `md-filled-select`.
+ *
+ * Material Web renders the selected option's headline into `#label` in the
+ * select's shadow root, sourced from `this.displayText`. A blank string here
+ * means the field is rendering empty — the regression we're guarding against.
+ */
+export const readMdSelectHeadlineText = async (page: Page, selector: string): Promise<string> => (
+  page.locator(selector).evaluate((el) => {
+    const labelEl = el.shadowRoot?.querySelector('#label') as HTMLElement | null;
+    return (labelEl?.textContent ?? '').trim();
+  })
+);
+
 export const setMdSwitch = async (page: Page, selector: string, selected: boolean) => {
   await page.locator(selector).evaluate((el, nextSelected) => {
     const target = el as HTMLElement & { selected: boolean };

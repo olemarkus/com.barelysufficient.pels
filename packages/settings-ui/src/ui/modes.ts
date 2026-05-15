@@ -37,16 +37,26 @@ type MaterialTextFieldElement = HTMLElement & {
   inputMode: string;
   placeholder: string;
 };
-type MaterialSelectOptionElement = HTMLElement & { value: string; selected: boolean };
+type MaterialSelectOptionElement = HTMLElement & {
+  value: string;
+  selected: boolean;
+  displayText: string;
+  typeaheadText: string;
+};
 
 const createModeOption = (value: string, selected: boolean): MaterialSelectOptionElement => {
   const option = document.createElement('md-select-option') as MaterialSelectOptionElement;
   option.value = value;
   option.setAttribute('value', value);
-  // Append the headline slot content before committing selection so
-  // md-filled-select can read a non-empty displayText when it picks up the
-  // initial selection — otherwise the closed field renders blank even though
-  // the option is highlighted in the open list.
+  // md-select reads `firstSelectedOption.displayText` synchronously while
+  // resolving its initial value. By default that getter walks the option's
+  // `[slot="headline"]` assignedElements, which are only available after the
+  // option's own first render — a race that leaves the closed field blank.
+  // Setting `displayText` (and `typeaheadText` for keyboard typeahead) as
+  // properties bypasses the slot lookup and guarantees a non-empty label on
+  // first paint regardless of child-render ordering.
+  option.displayText = value;
+  option.typeaheadText = value;
   const headline = document.createElement('div');
   headline.slot = 'headline';
   headline.textContent = value;
