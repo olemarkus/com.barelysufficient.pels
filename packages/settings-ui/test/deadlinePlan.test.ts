@@ -2457,4 +2457,209 @@ describe('deadline plan page payload', () => {
     const chipTexts = renderInput.pending.hero.chips.map((chip) => chip.text);
     expect(chipTexts).toEqual(['Temperature', 'Building plan…']);
   });
+
+  it('omits revisionReason on hours that have not changed', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 4);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 4 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap: buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: {
+          version: 1,
+          objectivesByDeviceId: {
+            heater: {
+              enabled: true,
+              kind: 'temperature',
+              enforcement: 'soft',
+              targetTemperatureC: 22,
+              deadlineAtMs: deadline.getTime(),
+            },
+          },
+        },
+      }, buildHeaterActivePlan({
+        now,
+        deadline,
+        plannedHourOffsets: [1],
+        plannedKWhPerHour: 2,
+      })),
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+    for (const hour of payload.timeline.hours) {
+      expect(hour.revisionReason).toBeNull();
+      expect(hour.changed).toBe(false);
+    }
+  });
+
+  it('sets revisionReason on changed hours and null on unchanged hours', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 6 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap: buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: {
+          version: 1,
+          objectivesByDeviceId: {
+            heater: {
+              enabled: true,
+              kind: 'temperature',
+              enforcement: 'soft',
+              targetTemperatureC: 22,
+              deadlineAtMs: deadline.getTime(),
+            },
+          },
+        },
+      }, buildHeaterActivePlan({
+        now,
+        deadline,
+        plannedHourOffsets: [1],
+        latestHourOffsets: [2],
+        plannedKWhPerHour: 2,
+      })),
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+    const changedHours = payload.timeline.hours.filter((h) => h.changed);
+    const unchangedHours = payload.timeline.hours.filter((h) => !h.changed);
+    expect(changedHours.length).toBeGreaterThan(0);
+    for (const hour of changedHours) {
+      expect(hour.revisionReason).toBe('prices_revised');
+    }
+    for (const hour of unchangedHours) {
+      expect(hour.revisionReason).toBeNull();
+    }
+  });
+});
+
+describe('buildChartOption original-series suppression', () => {
+  const stubPalette = {
+    priceCheap: '#0f0', priceNormal: '#888', priceExpensive: '#f00',
+    background: '#333', device: '#0ff', actualDevice: '#0f0', progress: '#00f',
+    grid: '#444', text: '#fff', muted: '#aaa',
+    tooltipBackground: '#000', tooltipText: '#fff', tooltipBorder: '#555',
+  };
+  const stubTypography = { labelFontSize: 11, axisNameFontSize: 11, axisNameFontWeight: 700 };
+
+  const buildMinimalPayload = (
+    hours: Array<{ originalDeviceKwh: number; deviceKwh: number }>,
+  ): import('../src/ui/views/DeadlinePlan.tsx').DeadlinePlanPayload => {
+    const labels = deadlineLabels('ev_soc');
+    return {
+      kind: 'ev_soc',
+      labels,
+      priceUnitLabel: 'øre/kWh',
+      hero: { chips: [], sectionLabel: 'EV plan', headline: 'On track', subline: '', metaLine: '' },
+      timeline: {
+        ariaLabel: 'EV plan',
+        progressFloor: 0,
+        progressCeilingValue: 80,
+        progressCeilingLabel: '80%',
+        deadlineLabel: 'Mon 06',
+        hours: hours.map((h, i) => {
+          const hourChanged = Math.abs(h.originalDeviceKwh - h.deviceKwh) > 0.001;
+          return {
+            time: `${13 + i}:00`,
+            price: '100.00',
+            priceValue: 100,
+            tone: 'normal' as const,
+            planned: h.deviceKwh > 0,
+            changed: hourChanged,
+            revisionReason: hourChanged ? 'prices_revised' as const : null,
+            usage: {
+              backgroundKwh: 0,
+              originalDeviceKwh: h.originalDeviceKwh,
+              deviceKwh: h.deviceKwh,
+              actualDeviceKwh: null,
+            },
+            progress: 40,
+          };
+        }),
+      },
+      planInputs: { perUnitRateLabel: null, perUnitRateNote: null, maxPowerLabel: null },
+    };
+  };
+
+  it('suppresses original series in legend and series when no hour has been revised', async () => {
+    const { buildChartOption } = await import('../src/ui/views/DeadlinePlan.tsx');
+    const payload = buildMinimalPayload([
+      { originalDeviceKwh: 5, deviceKwh: 5 },
+      { originalDeviceKwh: 5, deviceKwh: 5 },
+    ]);
+    const option = buildChartOption(payload, stubPalette, stubTypography) as {
+      legend: { data: Array<{ name: string }> };
+      series: Array<{ name: string }>;
+    };
+    const legendNames = option.legend.data.map((d) => d.name);
+    expect(legendNames).not.toContain(payload.labels.originalDeviceSeriesName);
+    const seriesNames = option.series.map((s) => s.name);
+    expect(seriesNames).not.toContain(payload.labels.originalDeviceSeriesName);
+  });
+
+  it('shows original series in legend and series when at least one hour differs', async () => {
+    const { buildChartOption } = await import('../src/ui/views/DeadlinePlan.tsx');
+    const payload = buildMinimalPayload([
+      { originalDeviceKwh: 5, deviceKwh: 0 },
+      { originalDeviceKwh: 0, deviceKwh: 5 },
+    ]);
+    const option = buildChartOption(payload, stubPalette, stubTypography) as {
+      legend: { data: Array<{ name: string }> };
+      series: Array<{ name: string }>;
+    };
+    const legendNames = option.legend.data.map((d) => d.name);
+    expect(legendNames).toContain(payload.labels.originalDeviceSeriesName);
+    const seriesNames = option.series.map((s) => s.name);
+    expect(seriesNames).toContain(payload.labels.originalDeviceSeriesName);
+  });
 });

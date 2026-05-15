@@ -46,6 +46,7 @@ import {
 import type {
   DeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlanRevisionV1,
+  DeferredObjectiveActivePlanRevisionReason,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 
 type ObjectivePlanInput = {
@@ -95,6 +96,7 @@ const buildTimeline = (params: {
   hours: HorizonHour[];
   originalChargeByStartMs: Map<number, number>;
   currentChargeByStartMs: Map<number, number>;
+  latestRevisionReason: DeferredObjectiveActivePlanRevisionReason | null;
   progressStart: number;
   progressTarget: number;
   progressPerKWh: number;
@@ -131,13 +133,15 @@ const buildTimeline = (params: {
         projectedProgress = Math.min(params.progressTarget, projectedProgress + currentKwh * params.progressPerKWh);
       }
       const displayPrice = hour.price / Math.max(1, params.costDisplay.divisor);
+      const hourChanged = Math.abs(originalKwh - currentKwh) > 0.001;
       return {
         time: formatHourLabel(hour.startsAtMs),
         price: formatPrice(displayPrice),
         priceValue: displayPrice,
         tone: resolvePriceTone(hour),
         planned: currentKwh > 0,
-        changed: Math.abs(originalKwh - currentKwh) > 0.001,
+        changed: hourChanged,
+        revisionReason: hourChanged ? params.latestRevisionReason : null,
         usage: {
           backgroundKwh: Math.max(0, hour.plannedOtherKWh),
           originalDeviceKwh: originalKwh,
@@ -403,12 +407,9 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       kwhPerUnitSource: latest.kwhPerUnitSource,
     }),
     timeline: buildTimeline({
-      device,
-      bootstrap,
-      deviceId,
-      hours,
-      originalChargeByStartMs,
-      currentChargeByStartMs,
+      device, bootstrap, deviceId, hours,
+      originalChargeByStartMs, currentChargeByStartMs,
+      latestRevisionReason: latest.reason,
       progressStart: progress.currentValue,
       progressTarget: progress.targetValue,
       progressPerKWh,
