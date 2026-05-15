@@ -3,6 +3,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { rewriteSidebarSource } from './sidebarFilter.mjs';
+
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const docsDir = path.join(rootDir, 'docs');
 const vitePressDir = path.join(docsDir, '.vitepress');
@@ -96,11 +98,65 @@ async function prepareDocsSource(channel, tmpDir) {
   await fs.mkdir(checkoutDir, { recursive: true });
   await run('git', ['archive', '--format=tar', `--output=${archivePath}`, '--', channel.ref, 'docs']);
   await run('tar', ['-xf', archivePath, '-C', checkoutDir]);
+
+  const taggedSidebarPath = path.join(sourceDir, '.vitepress', 'sidebar.mts');
+  const taggedSidebar = await readFileIfExists(taggedSidebarPath);
+
   await fs.rm(path.join(sourceDir, '.vitepress'), { recursive: true, force: true });
   await copyVitePressConfig(path.join(sourceDir, '.vitepress'));
+
+  const sidebarPath = path.join(sourceDir, '.vitepress', 'sidebar.mts');
+  if (taggedSidebar !== undefined) {
+    await fs.writeFile(sidebarPath, taggedSidebar);
+  } else {
+    await filterSidebarToExistingPages(sidebarPath, sourceDir);
+  }
+
   await rewriteRootRelativeHtmlLinks(sourceDir, channel.base);
 
   return sourceDir;
+}
+
+async function readFileIfExists(filePath) {
+  try {
+    return await fs.readFile(filePath, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') return undefined;
+    throw error;
+  }
+}
+
+async function pageExists(sourceDir, link) {
+  if (link === '/') {
+    return (await readFileIfExists(path.join(sourceDir, 'index.md'))) !== undefined;
+  }
+
+  const trimmed = link.replace(/^\/+/, '').replace(/\/+$/, '');
+  if (trimmed.length === 0) {
+    return (await readFileIfExists(path.join(sourceDir, 'index.md'))) !== undefined;
+  }
+
+  const candidates = [
+    path.join(sourceDir, `${trimmed}.md`),
+    path.join(sourceDir, trimmed, 'index.md'),
+  ];
+
+  for (const candidate of candidates) {
+    if ((await readFileIfExists(candidate)) !== undefined) return true;
+  }
+
+  return false;
+}
+
+async function filterSidebarToExistingPages(sidebarPath, sourceDir) {
+  const source = await readFileIfExists(sidebarPath);
+  if (source === undefined) return;
+
+  const rewritten = await rewriteSidebarSource(source, (link) => pageExists(sourceDir, link));
+
+  if (rewritten !== source) {
+    await fs.writeFile(sidebarPath, rewritten);
+  }
 }
 
 async function copyVitePressConfig(targetDir) {
