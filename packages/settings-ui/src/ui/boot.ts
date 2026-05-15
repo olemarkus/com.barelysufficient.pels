@@ -208,6 +208,9 @@ const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
     primeApiCache(SETTINGS_UI_PLAN_PATH, { plan: bootstrap.plan ?? null });
     primeApiCache(SETTINGS_UI_POWER_PATH, bootstrap.power);
     primeApiCache(SETTINGS_UI_PRICES_PATH, bootstrap.prices);
+    // Persist active plans so device cards can read EV schedule state without
+    // re-fetching the full bootstrap on every render cycle.
+    state.deferredObjectiveActivePlans = bootstrap.deferredObjectiveActivePlans ?? null;
     return bootstrap;
   } catch {
     return null;

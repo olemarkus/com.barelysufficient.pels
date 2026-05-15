@@ -246,6 +246,86 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan.pendingReason).toBe('price_feature_disabled');
   });
 
+  it('sets diagnosticReasonCode to objective_invalid_session when the EV session is invalid', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+    delete (diag as { horizonPlan?: unknown }).horizonPlan;
+    diag.reasonCode = 'objective_invalid_session';
+
+    recorder.observe([diag], HOUR_MS);
+    recorder.flushIfDirty();
+
+    const plan = saved()!.plansByDeviceId.dev;
+    expect(plan.pending).toBe(true);
+    expect(plan.pendingReason).toBe('invalid_session');
+    expect(plan.diagnosticReasonCode).toBe('objective_invalid_session');
+  });
+
+  it('clears diagnosticReasonCode when the session becomes valid again', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // First cycle: EV is unplugged → invalid session.
+    const invalidDiag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+    delete (invalidDiag as { horizonPlan?: unknown }).horizonPlan;
+    invalidDiag.reasonCode = 'objective_invalid_session';
+    recorder.observe([invalidDiag], HOUR_MS);
+    recorder.flushIfDirty();
+
+    expect(saved()!.plansByDeviceId.dev.diagnosticReasonCode).toBe('objective_invalid_session');
+
+    // Second cycle: price horizon not yet available (generic pending, no specific code).
+    const horizonMissingDiag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+    delete (horizonMissingDiag as { horizonPlan?: unknown }).horizonPlan;
+    horizonMissingDiag.reasonCode = 'objective_missing_price_horizon';
+    recorder.observe([horizonMissingDiag], 2 * HOUR_MS);
+    recorder.flushIfDirty();
+
+    const plan = saved()!.plansByDeviceId.dev;
+    expect(plan.pending).toBe(true);
+    expect(plan.diagnosticReasonCode).toBeUndefined();
+  });
+
+  it('does not set diagnosticReasonCode for other device-data reason codes', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+    delete (diag as { horizonPlan?: unknown }).horizonPlan;
+    diag.reasonCode = 'objective_missing_temperature';
+
+    recorder.observe([diag], HOUR_MS);
+    recorder.flushIfDirty();
+
+    const plan = saved()!.plansByDeviceId.dev;
+    expect(plan.pending).toBe(true);
+    expect(plan.pendingReason).toBe('device_data_missing');
+    expect(plan.diagnosticReasonCode).toBeUndefined();
+  });
+
+  it('clears diagnosticReasonCode when a revision is written', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // First cycle: invalid session.
+    const invalidDiag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+    delete (invalidDiag as { horizonPlan?: unknown }).horizonPlan;
+    invalidDiag.reasonCode = 'objective_invalid_session';
+    recorder.observe([invalidDiag], HOUR_MS);
+    recorder.flushIfDirty();
+    expect(saved()!.plansByDeviceId.dev.diagnosticReasonCode).toBe('objective_invalid_session');
+
+    // Next cycle: plan resolves with actual hours.
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], 2 * HOUR_MS);
+    recorder.flushIfDirty();
+
+    const plan = saved()!.plansByDeviceId.dev;
+    expect(plan.pending).toBe(false);
+    expect(plan.diagnosticReasonCode).toBeUndefined();
+  });
+
   it('transitions pending -> first revision with prices_arrived when prices show up', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);

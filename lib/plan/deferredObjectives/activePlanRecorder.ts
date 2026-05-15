@@ -1,4 +1,5 @@
 import type {
+  DeferredObjectiveActivePlanDiagnosticReason,
   DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlanPendingReason,
   DeferredObjectiveActivePlanRevisionReason,
@@ -208,24 +209,36 @@ const resolvePendingReason = (
   return 'awaiting_horizon_plan';
 };
 
+// Narrow diagnostic reason codes that the UI needs to render specific copy
+// (e.g. "car unplugged") beyond what `pendingReason` alone can express.
+const resolveDiagnosticReasonCode = (
+  diag: DeferredObjectiveDiagnostic,
+): DeferredObjectiveActivePlanDiagnosticReason | undefined => (
+  diag.reasonCode === 'objective_invalid_session' ? 'objective_invalid_session' : undefined
+);
+
 const createPlanFromDiagnostic = (
   diag: DeferredObjectiveDiagnostic,
   signature: string,
   nowMs: number,
-): DeferredObjectiveActivePlanV1 => ({
-  deviceId: diag.deviceId,
-  deviceName: diag.deviceName ?? null,
-  objectiveKind: diag.objectiveKind,
-  targetTemperatureC: diag.targetTemperatureC,
-  targetPercent: diag.targetPercent,
-  deadlineAtMs: diag.deadlineAtMs as number,
-  startedAtMs: nowMs,
-  pending: true,
-  pendingReason: resolvePendingReason(diag),
-  objectiveSignature: signature,
-  original: null,
-  latest: null,
-});
+): DeferredObjectiveActivePlanV1 => {
+  const diagnosticReasonCode = resolveDiagnosticReasonCode(diag);
+  return {
+    deviceId: diag.deviceId,
+    deviceName: diag.deviceName ?? null,
+    objectiveKind: diag.objectiveKind,
+    targetTemperatureC: diag.targetTemperatureC,
+    targetPercent: diag.targetPercent,
+    deadlineAtMs: diag.deadlineAtMs as number,
+    startedAtMs: nowMs,
+    pending: true,
+    pendingReason: resolvePendingReason(diag),
+    ...(diagnosticReasonCode !== undefined ? { diagnosticReasonCode } : {}),
+    objectiveSignature: signature,
+    original: null,
+    latest: null,
+  };
+};
 
 const buildRevision = (params: {
   diag: DeferredObjectiveDiagnostic;
@@ -445,14 +458,27 @@ export class DeferredObjectiveActivePlanRecorder {
     nowMs: number,
   ): void {
     const pendingReason = resolvePendingReason(diag);
+    const diagnosticReasonCode = resolveDiagnosticReasonCode(diag);
     const existing = this.plans[diag.deviceId];
     if (existing !== undefined) {
-      // Refresh `pendingReason` so the UI reflects the current cause even when
-      // the record was first seeded by a flow card (no diagnostic context) or
-      // when the cause transitions, e.g. user toggles price-aware optimisation
-      // off while waiting for the price horizon.
-      if (existing.pending && existing.pendingReason !== pendingReason) {
-        this.plans[diag.deviceId] = { ...existing, pendingReason };
+      // Refresh `pendingReason` (pending records only — it's meaningless for
+      // executed plans) and `diagnosticReasonCode` (always — must surface the
+      // current cause even on non-pending plans). The non-pending path matters
+      // for the unplug-mid-schedule case: an EV with a persisted revision that
+      // transitions to `objective_invalid_session` needs to drive the
+      // "Charging plan paused — car unplugged" state on the device card.
+      const reasonChanged = existing.pending && existing.pendingReason !== pendingReason;
+      const diagChanged = existing.diagnosticReasonCode !== diagnosticReasonCode;
+      if (reasonChanged || diagChanged) {
+        const updated: DeferredObjectiveActivePlanV1 = existing.pending
+          ? { ...existing, pendingReason }
+          : { ...existing };
+        if (diagnosticReasonCode !== undefined) {
+          updated.diagnosticReasonCode = diagnosticReasonCode;
+        } else {
+          delete updated.diagnosticReasonCode;
+        }
+        this.plans[diag.deviceId] = updated;
         this.dirty = true;
       }
       return;

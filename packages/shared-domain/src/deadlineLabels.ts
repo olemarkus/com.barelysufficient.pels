@@ -277,3 +277,58 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
 };
 
 export const deadlineLabels = (kind: DeferredObjectiveSettingsKind): DeadlineLabels => DEADLINE_LABELS[kind];
+
+// ─── EV device-card state lines ───────────────────────────────────────────────
+
+const EV_CARD_HOUR_MS = 60 * 60 * 1000;
+
+export type EvCardStateLine =
+  | { kind: 'next_start'; text: string }
+  | { kind: 'active_charging'; text: string }
+  | { kind: 'plug_out_paused'; text: string }
+  | { kind: 'none' };
+
+// Resolve the most-actionable EV state line for a device card.
+//
+// Priority (most actionable first):
+//   1. Active charging: current bucket is planned → show planned finish time.
+//   2. Next planned start: a future first bucket exists → show its start time.
+//   3. Plug-out paused: session is invalid (car unplugged) → static message.
+//
+// `isPlugOutPaused` comes from the diagnostic reason `objective_invalid_session`.
+// `formatTime` is supplied by the caller (UI layer) so shared-domain stays
+// free of locale/Date helpers — see the rule on `DeadlinePendingContext`.
+export const resolveEvCardStateLine = (params: {
+  hours: ReadonlyArray<{ startsAtMs: number }>;
+  nowMs: number;
+  isPlugOutPaused: boolean;
+  formatTime: (ms: number) => string;
+}): EvCardStateLine => {
+  const { hours, nowMs, isPlugOutPaused, formatTime } = params;
+
+  if (hours.length > 0) {
+    const lastHour = hours[hours.length - 1];
+    const lastHourEndMs = lastHour.startsAtMs + EV_CARD_HOUR_MS;
+    // Active charging requires `nowMs` to fall inside one of the planned
+    // hour buckets, not just between first and last. EV schedules can be
+    // non-contiguous (e.g. planned hours at 01:00 and 05:00 with `now` at
+    // 03:00); during a gap the card should show "Waiting · charging starts
+    // HH:MM" with the next planned hour, not the active-charging line.
+    const insidePlannedHour = hours.some(
+      (hour) => hour.startsAtMs <= nowMs && hour.startsAtMs + EV_CARD_HOUR_MS > nowMs,
+    );
+    if (insidePlannedHour) {
+      return { kind: 'active_charging', text: `Charging · planned finish ${formatTime(lastHourEndMs)}` };
+    }
+    const nextHour = hours.find((hour) => hour.startsAtMs > nowMs);
+    if (nextHour !== undefined) {
+      return { kind: 'next_start', text: `Waiting · charging starts ${formatTime(nextHour.startsAtMs)}` };
+    }
+  }
+
+  if (isPlugOutPaused) {
+    return { kind: 'plug_out_paused', text: 'Charging plan paused — car unplugged' };
+  }
+
+  return { kind: 'none' };
+};

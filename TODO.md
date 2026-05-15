@@ -491,6 +491,18 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] Refresh `state.deferredObjectiveActivePlans` on plan revision events. Today the field
+      is populated once during `loadBootstrapData` in `packages/settings-ui/src/ui/boot.ts`
+      and never updates from runtime emissions. `EvDeadlineStateLine` reads the field every
+      render, so later replans, session changes (e.g. unplug mid-schedule), and updated
+      start/finish hours are not reflected on Overview device cards until the user reloads
+      the page. The runtime emits revision events via the active-plan recorder
+      (`active_plan_revision_written` / `active_plan_revision_pending`); subscribe at the
+      settings-UI API boundary and update the cached state, then re-render the affected
+      cards. Surfaced by Codex on PR #793 review.
+      Files: `packages/settings-ui/src/ui/boot.ts`, `lib/app/settingsUiApi.ts`,
+      `packages/contracts/src/settingsUiApi.ts` (a streaming endpoint or pull-with-version
+      contract).
 - [ ] Cold-start catch-up for flow-scheme combined-prices rotation. `startPriceRefresh()`
       only schedules the next local midnight via `getNextLocalDayStartUtcMs(now)`, so if the
       app boots after midnight the first rotation is delayed until the following midnight.

@@ -9,6 +9,7 @@ import {
   createEmptyDeferredObjectiveSettings,
   type DeferredObjectiveSettingsV1,
 } from '../../../contracts/src/deferredObjectiveSettings.ts';
+import type { DeferredObjectiveActivePlansV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import { DEFAULT_MODE_NAME } from './modeLabels.ts';
 
 export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
@@ -46,6 +47,7 @@ export type UiState = {
   temperatureBoostSettings: TemperatureBoostSettings;
   evBoostSettings: EvBoostSettings;
   deferredObjectiveSettings: DeferredObjectiveSettingsV1;
+  deferredObjectiveActivePlans: DeferredObjectiveActivePlansV1 | null;
   priceOptimizationSettings: Record<string, PriceOptimizationConfig>;
 };
 
@@ -77,6 +79,7 @@ export const state: UiState = {
   temperatureBoostSettings: {},
   evBoostSettings: {},
   deferredObjectiveSettings: createEmptyDeferredObjectiveSettings(),
+  deferredObjectiveActivePlans: null,
   priceOptimizationSettings: {},
 };
 
