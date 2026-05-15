@@ -248,7 +248,7 @@ md-checkbox {
 md-filled-button,
 md-outlined-button,
 md-text-button {
-  min-height: 40px;
+  min-height: var(--pels-touch-target-min);
   font-weight: var(--font-weight-bold);
 }
 
@@ -3490,7 +3490,7 @@ md-primary-tab.tab[active]:hover {
 .segmented {
   display: inline-flex;
   width: 100%;
-  min-height: 40px;
+  min-height: var(--pels-touch-target-min);
   padding: 0;
   gap: 1px;
   border-radius: var(--radius-full);
@@ -5254,12 +5254,14 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 /* Switch row: switch on the left, label + hint stacked beside it.
  * Mirrors the M3 list-with-trailing-control pattern but with the switch on
- * the leading side, which fits the PELS dense settings list. */
+ * the leading side, which fits the PELS dense settings list. The row's
+ * `min-height` keeps the whole tap surface at the M3 48 px minimum. */
 .md-switch-row {
   display: flex;
   align-items: flex-start;
   gap: var(--spacing-3);
   padding: var(--spacing-2) 0;
+  min-height: var(--pels-touch-target-min);
   cursor: pointer;
 }
 
@@ -5384,7 +5386,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   #device-detail-panel
 ) .settings-back-button {
   justify-self: start;
-  min-height: 36px;
+  min-height: var(--pels-touch-target-min);
   padding: var(--spacing-2) var(--spacing-3) !important;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md) !important;
@@ -5585,7 +5587,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   align-items: center;
   justify-content: center;
   min-width: 0;
-  min-height: 40px;
+  min-height: var(--pels-touch-target-min);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
   background: var(--color-surface-3);
