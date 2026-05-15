@@ -92,7 +92,7 @@
       }
     },
     "focus": {
-      "ring": { "value": "rgba({color.base.accent.default-rgb}, 0.6)" }
+      "ring": { "value": "{color.base.accent.default}" }
     },
     "overlay": {
       "backdrop": { "value": "rgba(0, 0, 0, 0.6)" },

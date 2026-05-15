@@ -374,12 +374,13 @@ md-text-button.md-text-button--destructive {
 }
 
 .tab:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 
 .tab:hover:not(.active) {
   color: var(--text);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 #shell-nav .tab {
@@ -596,7 +597,7 @@ md-primary-tab.tab[active]:hover {
 }
 
 .pels-device-card__row:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: -2px;
 }
 
@@ -665,7 +666,7 @@ md-primary-tab.tab[active]:hover {
 }
 
 .pels-icon-toggle:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 
@@ -699,6 +700,11 @@ md-primary-tab.tab[active]:hover {
 .pels-device-card__detail-button:hover {
   color: var(--text-primary);
   background: color-mix(in srgb, var(--pels-surface-container-high) 70%, transparent);
+}
+
+.pels-device-card__detail-button:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 .pels-device-card__detail-icon {
@@ -804,7 +810,7 @@ md-primary-tab.tab[active]:hover {
 }
 
 .settings-nav-card:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 
@@ -982,7 +988,7 @@ md-primary-tab.tab[active]:hover {
 }
 
 .btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 
@@ -1005,12 +1011,23 @@ md-primary-tab.tab[active]:hover {
   color: var(--color-semantic-danger);
 }
 
-.btn.confirming:hover {
-  transform: none;
-}
-
 .btn:not(:disabled):hover {
   transform: translateY(-1px);
+  background-color: color-mix(in srgb, var(--accent) 8%, var(--color-surface-4));
+}
+
+.btn.primary:not(:disabled):hover {
+  /* Primary already uses a gradient; reinforce with a subtle brightness lift. */
+  filter: brightness(1.08);
+}
+
+.btn.ghost:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--accent) 8%, var(--color-surface-1));
+}
+
+.btn.confirming:not(:disabled):hover {
+  transform: none;
+  background-color: color-mix(in srgb, var(--color-semantic-danger) 12%, var(--color-surface-4));
 }
 
 .pill {
@@ -1140,6 +1157,11 @@ md-primary-tab.tab[active]:hover {
 .drag-handle:hover {
   background: var(--color-surface-5);
   color: var(--text);
+}
+
+.drag-handle:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 .draggable {
@@ -1354,7 +1376,7 @@ md-primary-tab.tab[active]:hover {
 }
 
 .plan-chip--link:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 
@@ -1433,7 +1455,7 @@ md-primary-tab.tab[active]:hover {
   text-decoration: none;
   color: inherit;
   cursor: pointer;
-  transition: background-color var(--motion-fast) ease;
+  transition: background-color var(--transition-fast);
 }
 
 .plan-history-card--link:hover,
@@ -1442,7 +1464,7 @@ md-primary-tab.tab[active]:hover {
 }
 
 .plan-history-card--link:focus-visible {
-  outline: 2px solid var(--pels-accent);
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 
@@ -1791,6 +1813,11 @@ md-primary-tab.tab[active]:hover {
 .plan-card:hover,
 .plan-card:focus-visible {
   --md-elevation-level: 3;
+}
+
+.plan-card:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 .plan-card:active {
@@ -2895,7 +2922,7 @@ md-primary-tab.tab[active]:hover {
 }
 
 .toast__action:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 
@@ -3018,6 +3045,12 @@ md-primary-tab.tab[active]:hover {
 
 #tibber-token-field a:hover {
   text-decoration: underline;
+}
+
+#tibber-token-field a:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .section-header {
@@ -3725,7 +3758,7 @@ details[open] > summary .disclosure-chevron {
 }
 
 .device-row.clickable:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
   background: var(--color-surface-2);
 }
@@ -4928,8 +4961,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .value-adjuster__btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 .value-adjuster__btn:hover:not(:disabled) {
@@ -4961,7 +4994,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .value-adjuster__value:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
@@ -5003,7 +5036,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .deadline-list-card:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 

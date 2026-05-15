@@ -107,7 +107,7 @@
   --color-state-warning-text: var(--color-base-warning-soft);
   --color-state-info-bg: color-mix(in srgb, var(--color-base-info-default) 14%, var(--color-surface-1));
   --color-state-info-border: color-mix(in srgb, var(--color-base-info-default) 55%, var(--color-surface-3));
-  --color-focus-ring: rgba(var(--color-base-accent-default-rgb), 0.6);
+  --color-focus-ring: var(--color-base-accent-default);
   --color-overlay-toast: rgba(var(--color-base-black-rgb), 0.9);
   --pels-surface-container-low: var(--color-surface-2);
   --pels-surface-container: var(--color-surface-3);
