@@ -60,6 +60,14 @@ export type DeferredObjectivePlanHistoryEntry = {
   // as `originalPlan`. When `originalPlan === finalPlan` shape-wise, the run
   // never replanned.
   finalPlan: DeferredObjectivePlanHistoryRevisionSnapshot | null;
+  // Total number of revisions the active-plan recorder wrote for this run
+  // (i.e. `plan.latest.revision` at finalization). `1` means the planner never
+  // replanned; higher values indicate one or more `prices_revised`,
+  // `rate_refined`, or `objective_changed` revisions on top of the original.
+  // Optional so v3 entries persisted before this field was added continue to
+  // load — the history detail treats absence as "unknown" and falls back to
+  // a generic copy.
+  revisionCount?: number;
 };
 
 export type DeferredObjectivePlanHistoryV3 = {

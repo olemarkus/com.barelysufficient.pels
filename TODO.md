@@ -736,13 +736,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
       `packages/settings-ui/src/ui/deadlinePlan.ts`,
       `packages/shared-domain/src/deadlineLabels.ts`.
-- [ ] Add "Replanned N times" line to history detail. Recorder tracks revisions but history
-      detail shows only original + final. A simple count line on the detail card answers "was
-      this run stable?" without building a full revision timeline. Pair with the chart-parity
-      work above if convenient.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
-      `lib/plan/deferredObjectives/planHistory.ts` (confirm revision count surfaces on the
-      history entry shape).
 - [ ] Reassess `isLegacyNoneStatusMatch` in `flowCards/deadlineObjectiveCards.ts:167-175`.
       The runlistener accepts legacy dropdown ids (`'none'`, `'pending_prices'`, `'cannot_meet'`,
       `'cannot_finish'`, `'done'`) that don't appear in the shipped dropdown JSON for the
