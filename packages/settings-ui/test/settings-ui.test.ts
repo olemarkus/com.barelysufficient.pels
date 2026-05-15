@@ -289,6 +289,63 @@ describe('Settings UI', () => {
     });
   });
 
+  describe('Touch targets meet M3 48px minimum', () => {
+    const MIN_TOUCH_TARGET_PX = 48;
+    const measureHeights = (selector: string) => page.evaluate((sel) => {
+      const list = Array.from(document.querySelectorAll(sel));
+      return list.map((el) => (el as HTMLElement).getBoundingClientRect().height);
+    }, selector);
+
+    const expectAllAtLeast = (heights: number[]) => {
+      expect(heights.length).toBeGreaterThan(0);
+      for (const height of heights) {
+        expect(height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+      }
+    };
+
+    beforeAll(async () => {
+      await setupPage({ viewport: { width: 480, height: 800 } });
+      // Reveal the hidden settings-detail panel so its markup (back button +
+      // md-switch-row) participates in layout. Inject a representative
+      // segmented control inside the always-visible overview panel because
+      // the production segmented controls are built by the mocked-out script.
+      await page.evaluate(() => {
+        document.querySelector('#simulation-panel')?.classList.remove('hidden');
+        const host = document.querySelector('#overview-panel');
+        if (!host) return;
+        const segmented = document.createElement('div');
+        segmented.className = 'segmented';
+        segmented.setAttribute('role', 'radiogroup');
+        for (const label of ['One', 'Two']) {
+          const opt = document.createElement('button');
+          opt.type = 'button';
+          opt.className = 'segmented__option';
+          opt.setAttribute('role', 'radio');
+          opt.textContent = label;
+          segmented.appendChild(opt);
+        }
+        host.appendChild(segmented);
+      });
+      await sleep(20);
+    });
+
+    test('top-level navigation tabs', async () => {
+      expectAllAtLeast(await measureHeights('.tabs > .tab'));
+    });
+
+    test('switch rows', async () => {
+      expectAllAtLeast(await measureHeights('#simulation-panel .md-switch-row'));
+    });
+
+    test('settings back button', async () => {
+      expectAllAtLeast(await measureHeights('#simulation-panel .settings-back-button'));
+    });
+
+    test('segmented options', async () => {
+      expectAllAtLeast(await measureHeights('#overview-panel .segmented__option'));
+    });
+  });
+
   describe('Layout at 320px (narrow viewport)', () => {
     beforeAll(async () => {
       await setupPage({ viewport: { width: 320, height: 600 } });

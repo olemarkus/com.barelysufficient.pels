@@ -146,12 +146,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       label rendering should stay the same as today.
       Files: `packages/settings-ui/public/index.html`,
       `packages/settings-ui/src/ui/deviceDetail/*.ts`, related layout tests.
-- [ ] Lift touch targets to M3 minimum (48 px). Audit found `md-tabs` 36 px, segmented buttons
-      40 px, back-buttons 38 px, `md-checkbox` 20 px visible with no extended hit area. The
-      WebView is finger-touch at 480 px wide. CSS-only via `--md-primary-tab-container-height`
-      and `min-height` on custom controls; wrap `md-checkbox` rows in a 48 px-min `.toggle-row`
-      surface so the row catches taps. Files: `packages/settings-ui/public/style.css`,
-      `packages/settings-ui/public/index.html`.
 - [ ] Refresh the PELS leaf icon to match the new eco palette. The current app icon and any
       in-UI leaf graphic should align with the leaf-green primary (`#16a34a`) rather than the
       previous emerald (`#10b981`). Out of scope for the redesigned settings UI; touches Homey
