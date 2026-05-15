@@ -665,7 +665,11 @@ depends on the per-device Power-limit control setting:
 - Power-limit control off: PELS leaves the charger alone for normal capacity, budget, and price
   work. If the deadline objective was the reason PELS allowed charging, meeting the target removes
   that allowance and PELS should pause charging. It should not restart charging unless a new or
-  changed deadline target, boost, or manual/user action asks for it.
+  changed deadline target, boost, or manual/user action asks for it. Implementation:
+  `applyDeferredObjectiveAdmission` (`lib/plan/deferredObjectives/admission.ts`) emits a terminal
+  `ev_pause` for `satisfied + ev_soc + controllable=false`. The `planExecutor` cap-off branch
+  routes that intent through `applyDeferredEvCommand`; the executor short-circuits when the
+  charger is already paused, so per-cycle re-emission is idempotent.
 
 ## Energy Calculation
 
@@ -1196,9 +1200,11 @@ EV behavior:
 - ⏳ If Power-limit control is on, normal managed charging may continue after the deadline
   target is met, especially when the target is below 100%. (Behavior follows from normal
   admission resuming after deferred admission drops out; not specifically tested.)
-- ⏳ If Power-limit control is off, meeting the deadline target pauses charging if the
-  objective was the reason PELS allowed charging. (Verification pending — see related TODO
-  entry on terminal `ev_pause` intent.)
+- ✅ If Power-limit control is off, meeting the deadline target pauses charging. Admission
+  emits a terminal `ev_pause` for the cap-off + `satisfied` + `ev_soc` case, and the executor's
+  cap-off branch routes that intent through `applyDeferredEvCommand`. The pause is re-emitted
+  per cycle while `satisfied`; the executor short-circuits when the charger is already paused
+  so re-emission is idempotent.
 
 Deadline behavior:
 

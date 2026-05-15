@@ -103,10 +103,10 @@ class EaseeMockCharger extends MockDevice {
 
   private chargePowerW: number;
 
-  async seedState(state: EaseeChargingState): Promise<void> {
+  async seedState(state: EaseeChargingState, options?: { socPercent?: number }): Promise<void> {
     await super.setCapabilityValue('target_charger_current', 0);
     await super.setCapabilityValue('target_circuit_current', 0);
-    await super.setCapabilityValue('measure_battery', 40);
+    await super.setCapabilityValue('measure_battery', options?.socPercent ?? 40);
     await this.applyObservedState(state);
   }
 
@@ -343,6 +343,74 @@ describe('EV charger integration', () => {
     }));
   });
 
+  // Note's "EV Semantics" §"Power-limit control off": meeting the deadline target removes the
+  // deferred-objective allowance and PELS should pause the charger. Without a terminal pause,
+  // a cap-off charger would keep running past the user's target.
+  it('emits a terminal ev_pause when the EV reaches target with Power-limit control off', async () => {
+    currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
+    const charger = new EaseeMockCharger();
+    // SoC already at 80, target 42 → diagnostic resolves to `satisfied` immediately.
+    await charger.seedState('plugged_in_charging', { socPercent: 80 });
+    const app = await createEvApp(charger, [charger], {
+      // Prices irrelevant once satisfied, but pricing payload still required by the bridge.
+      evDeadlinePricesByRelativeHour: [1, 1, 1, 1],
+      // Power-limit control off for this device.
+      controllableOverrides: { [charger.idValue]: false },
+      evDeadlineTargetPercent: 42,
+    });
+
+    const plan = await rebuildPlan(app, { totalPowerKw: 7.2, softLimitKw: 10.0 });
+    const evPlan = getPlanEntry(plan, charger.idValue);
+
+    expect(evPlan.deferredEvCommandIntent).toBe('ev_pause');
+    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:false']);
+
+    const snapshot = await refreshSnapshot(app);
+    const entry = getSnapshotEntry(snapshot, charger.idValue);
+    expect(entry).toEqual(expect.objectContaining({
+      currentOn: true,
+      evChargingState: 'plugged_in_paused',
+    }));
+  });
+
+  // Counter-case: same satisfied + already paused scenario must NOT re-issue the pause command.
+  // Once the charger is paused, the executor's pause intent is a no-op.
+  it('does not re-pause an already-paused charger that has reached target with Power-limit control off', async () => {
+    currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
+    const charger = new EaseeMockCharger();
+    await charger.seedState('plugged_in_paused', { socPercent: 80 });
+    const app = await createEvApp(charger, [charger], {
+      evDeadlinePricesByRelativeHour: [1, 1, 1, 1],
+      controllableOverrides: { [charger.idValue]: false },
+      evDeadlineTargetPercent: 42,
+    });
+
+    await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
+
+    // Pause intent is plumbed so the executor can act on a future flip back to charging,
+    // but no new command should be issued while the charger is already paused.
+    expect(charger.getCommandSequence()).toEqual([]);
+  });
+
+  // Counter-case: Power-limit control ON + satisfied must NOT emit a deferred ev_pause. Normal
+  // managed charging behavior takes over once admission drops out. The note's pause guarantee
+  // is specific to the cap-off path.
+  it('does not emit a deferred ev_pause when satisfied while Power-limit control is on', async () => {
+    currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
+    const charger = new EaseeMockCharger();
+    await charger.seedState('plugged_in_charging', { socPercent: 80 });
+    const app = await createEvApp(charger, [charger], {
+      evDeadlinePricesByRelativeHour: [1, 1, 1, 1],
+      // Default controllable=true (Power-limit control on)
+      evDeadlineTargetPercent: 42,
+    });
+
+    const plan = await rebuildPlan(app, { totalPowerKw: 7.2, softLimitKw: 10.0 });
+    const evPlan = getPlanEntry(plan, charger.idValue);
+
+    expect(evPlan.deferredEvCommandIntent).toBeUndefined();
+  });
+
   it('skips planned EV deadline resume when power is stale-fail-closed', async () => {
     currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
     const charger = new EaseeMockCharger();
@@ -464,6 +532,8 @@ async function createEvApp(
   options?: {
     capacityPriorities?: Record<string, Record<string, number>>;
     evDeadlinePricesByRelativeHour?: number[];
+    controllableOverrides?: Record<string, boolean>;
+    evDeadlineTargetPercent?: number;
   },
 ): Promise<InternalApp> {
   setMockDrivers({
@@ -474,9 +544,13 @@ async function createEvApp(
   mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
   mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.2);
   mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+  const controllableMap = Object.fromEntries(devices.map((device) => [device.idValue, true]));
+  if (options?.controllableOverrides) {
+    Object.assign(controllableMap, options.controllableOverrides);
+  }
   mockHomeyInstance.settings.set(
     CONTROLLABLE_DEVICES,
-    Object.fromEntries(devices.map((device) => [device.idValue, true])),
+    controllableMap,
   );
   mockHomeyInstance.settings.set(
     MANAGED_DEVICES,
@@ -491,7 +565,9 @@ async function createEvApp(
     app.dailyBudgetService.getSnapshot = () => buildEvDeadlineDailyBudgetSnapshot(options.evDeadlinePricesByRelativeHour!);
   }
   await app.refreshTargetDevicesSnapshot({ fast: false });
-  if (options?.evDeadlinePricesByRelativeHour) configureEvDeadlineObjective(charger);
+  if (options?.evDeadlinePricesByRelativeHour) {
+    configureEvDeadlineObjective(charger, options.evDeadlineTargetPercent);
+  }
   charger.clearCommandLog();
   return app;
 }
@@ -559,7 +635,7 @@ function buildEvDeadlineDay(params: {
   };
 }
 
-function configureEvDeadlineObjective(charger: EaseeMockCharger): void {
+function configureEvDeadlineObjective(charger: EaseeMockCharger, targetPercent: number = 42): void {
   mockHomeyInstance.settings.set(DEFERRED_OBJECTIVES_SETTINGS, {
     version: 1,
     objectivesByDeviceId: {
@@ -567,7 +643,7 @@ function configureEvDeadlineObjective(charger: EaseeMockCharger): void {
         enabled: true,
         kind: 'ev_soc',
         enforcement: 'soft',
-        targetPercent: 42,
+        targetPercent,
         deadlineAtMs: currentTimeMs + 3 * HOUR_MS,
       },
     },

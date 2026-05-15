@@ -1,6 +1,17 @@
 import { applyDeferredObjectiveAdmission } from '../lib/plan/deferredObjectives/admission';
 import type { DeferredObjectiveDiagnostic } from '../lib/plan/deferredObjectives';
 import type { DeferredObjectiveHorizonPlan } from '../lib/plan/deferredObjectives';
+import type { PlanInputDevice } from '../lib/plan/planTypes';
+
+const buildEvDevice = (overrides: Partial<PlanInputDevice> & { id: string }): PlanInputDevice => ({
+  id: overrides.id,
+  name: overrides.id,
+  targets: [],
+  deviceClass: 'evcharger',
+  controlCapabilityId: 'evcharger_charging',
+  currentOn: true,
+  ...overrides,
+});
 
 const buildDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & { deviceId: string }): DeferredObjectiveDiagnostic => ({
   deviceId: overrides.deviceId,
@@ -131,6 +142,42 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
     expect(decisions.get('dev1')).toEqual({ kind: 'inactive' });
+  });
+
+  it('emits a terminal ev_pause when an EV objective is satisfied and the device is cap-off', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'ev1',
+      objectiveKind: 'ev_soc',
+      status: 'satisfied',
+      horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
+    });
+    const device = buildEvDevice({ id: 'ev1', controllable: false });
+    const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
+    expect(decisions.get('ev1')).toEqual({ kind: 'inactive', evCommandIntent: 'ev_pause' });
+  });
+
+  it('keeps inactive without a pause intent for a satisfied EV when the device is cap-on', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'ev1',
+      objectiveKind: 'ev_soc',
+      status: 'satisfied',
+      horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
+    });
+    const device = buildEvDevice({ id: 'ev1', controllable: true });
+    const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
+    expect(decisions.get('ev1')).toEqual({ kind: 'inactive' });
+  });
+
+  it('keeps inactive without a pause intent for a satisfied temperature objective on a cap-off device', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'heater1',
+      objectiveKind: 'temperature',
+      status: 'satisfied',
+      horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
+    });
+    const device = buildEvDevice({ id: 'heater1', controllable: false });
+    const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
+    expect(decisions.get('heater1')).toEqual({ kind: 'inactive' });
   });
 
   it('returns inactive for unknown / invalid statuses', () => {
