@@ -20,6 +20,14 @@ export type DeviceObjectiveProfile = {
   unitPerHour?: ObjectiveProfileStat;
   acceptedSamples: number;
   rejectedSamples: number;
+  // Refill-cycle exclusion: when a temperature sensor records a sharp drop
+  // (e.g., hot-water draw introducing cold water at the bottom of the tank),
+  // the subsequent rebuild from that displaced thermal state is not
+  // representative of normal heating. While `recoveryTargetValue` is set,
+  // accepted-sample updates are suspended; it clears once the value climbs
+  // back to that pre-drop level or the 24h safety timeout elapses.
+  recoveryTargetValue?: number;
+  recoveryArmedAtMs?: number;
 };
 
 export type DeviceObjectiveProfileSample = {
