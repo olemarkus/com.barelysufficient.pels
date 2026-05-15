@@ -903,10 +903,19 @@ md-primary-tab.tab[active]:hover {
   color: var(--muted);
 }
 
+.field__hint[hidden] {
+  display: none;
+}
+
 .field__hint a {
   color: var(--accent);
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+.field__hint--alert {
+  color: var(--color-state-warning-text);
+  font-weight: var(--font-weight-medium);
 }
 
 .form__actions {
