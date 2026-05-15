@@ -114,6 +114,25 @@ const removeObjective = (
   return { version: settings.version, objectivesByDeviceId: rest };
 };
 
+// Maps a raw dropdown arg to the canonical SmartTaskActiveFlowStatus used
+// internally by the condition and trigger run-listeners.
+//
+// Backward-compat aliases accepted here:
+//   - 'pending_prices'  → 'waiting'    (internal name used briefly during
+//                                        development; never in a shipped
+//                                        dropdown but can appear in test-only
+//                                        flows or programmatic trigger calls)
+//   - 'cannot_meet'     → 'unachievable' (dropdown id from the initial May 10
+//                                        release of deadline_status_is; removed
+//                                        May 12 when the dropdown was renamed)
+//   - 'cannot_finish'   → 'unachievable' (defensive alias — never exposed in
+//                                        a shipped dropdown; mirrors the
+//                                        label text "Cannot finish")
+//   - 'done'            → 'satisfied'  (defensive alias — never in a shipped
+//                                        dropdown)
+//
+// 'none' is intentionally excluded here; it is handled separately by
+// `isLegacyNoneStatusMatch` before this function is called.
 const normalizeSmartTaskStatusArg = (raw: DropdownArg | undefined): SmartTaskActiveFlowStatus | null => {
   const status = getDropdownId(raw);
   switch (status) {
@@ -164,14 +183,22 @@ const mapPreviousStatusToFlowStatus = (
   previousStatus: DeferredObjectiveStatusSnapshot['previousStatus'],
 ): SmartTaskActiveFlowStatus | null => mapInternalTaskStatusToFlowStatus(previousStatus);
 
+// Handles the 'none' dropdown value that was shipped in the initial
+// `deadline_status_is` condition card from May 10–12 2026 (before the
+// dropdown was refactored to the canonical 5-value set). Users who created
+// flows during that window may have 'none' persisted as their chosen status.
+//
+// Semantics: 'none' means "no active smart task for this device", i.e. the
+// device has no enabled objective entry in settings. Returns `null` for any
+// other raw status so the caller can fall through to the canonical path.
+// `hasEntry` must be pre-resolved by the caller to avoid a redundant settings
+// read (the caller needs it for the canonical path as well).
 const isLegacyNoneStatusMatch = (
-  deps: FlowCardDeps,
-  deviceId: string,
   rawStatus: string,
+  hasEntry: boolean,
 ): boolean | null => {
   if (rawStatus !== 'none') return null;
-  const settings = requireSettingsAccessors(deps).read();
-  return !settings.objectivesByDeviceId[deviceId]?.enabled;
+  return !hasEntry;
 };
 
 const buildTriggerTokens = (
@@ -519,14 +546,14 @@ function registerDeadlineStatusIsCondition(deps: FlowCardDeps): void {
     const deviceId = getDeviceIdFromFlowArg(payload?.device);
     if (!deviceId) return false;
     const rawStatus = getDropdownId(payload?.status);
-    const legacyNoneMatch = isLegacyNoneStatusMatch(deps, deviceId, rawStatus);
+    const settings = requireSettingsAccessors(deps).read();
+    const hasEntry = Boolean(settings.objectivesByDeviceId[deviceId]?.enabled);
+    const legacyNoneMatch = isLegacyNoneStatusMatch(rawStatus, hasEntry);
     if (legacyNoneMatch !== null) return legacyNoneMatch;
     const wantedStatus = normalizeSmartTaskStatusArg(payload?.status);
     if (!wantedStatus) return false;
     const bus = deps.getDeferredObjectiveStatusBus?.();
     const current = bus?.getCurrent(deviceId) ?? null;
-    const settings = requireSettingsAccessors(deps).read();
-    const hasEntry = Boolean(settings.objectivesByDeviceId[deviceId]?.enabled);
     const effectiveStatus = resolveEffectiveStatus(current, hasEntry);
     return effectiveStatus !== null && effectiveStatus === wantedStatus;
   });

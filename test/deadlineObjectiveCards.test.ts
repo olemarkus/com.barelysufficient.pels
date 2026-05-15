@@ -459,7 +459,12 @@ describe('deadline objective flow cards', () => {
     expect(await condition.run!({ device: 'heater-1', status: 'done' })).toBe(true);
   });
 
-  it('deadline_status_is preserves the legacy none status for cleared tasks', async () => {
+  // Backward-compat regression: the initial release of `deadline_status_is`
+  // (May 10–12 2026) exposed 'none' in its dropdown to mean "no active smart
+  // task". Users who built flows during that window have 'none' persisted as
+  // the chosen status. The `isLegacyNoneStatusMatch` guard keeps those flows
+  // working after the dropdown was replaced with the canonical 5-value set.
+  it('deadline_status_is accepts legacy none id as "no active task" from initial release', async () => {
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
     });
@@ -482,6 +487,32 @@ describe('deadline objective flow cards', () => {
       },
     });
     expect(await condition.run!({ device: 'heater-1', status: 'none' })).toBe(false);
+  });
+
+  it('deadline_status_is returns false for completely unknown status ids', async () => {
+    const bus = createDeferredObjectiveStatusBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      bus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const condition = mock.conditions.get('deadline_status_is')!;
+    bus.publish({
+      deviceId: 'heater-1',
+      deviceName: 'Boiler',
+      kind: 'temperature',
+      status: 'on_track',
+      previousStatus: 'none',
+      targetText: '55 °C',
+      deadlineLocalTime: '07:00',
+      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      deadlineMissed: false,
+      shortfallKwh: null,
+      shortfallText: null,
+    });
+    expect(await condition.run!({ device: 'heater-1', status: 'missed' })).toBe(false);
+    expect(await condition.run!({ device: 'heater-1', status: 'unknown_future_id' })).toBe(false);
+    expect(await condition.run!({ device: 'heater-1', status: '' })).toBe(false);
   });
 
   it('publishes triggers for at-risk status transitions filtered by device and status args', async () => {
