@@ -75,19 +75,20 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       zero. Heatmap low/high series in `powerWeekChartEcharts.ts` rebound to
       `--color-role-info` / `--color-role-danger`. Cross-surface hue parity vs. Overview chips
       is now reflected in the refreshed Playwright baselines.)*
-- [x] Revise smart task flow cards: single trigger per lifecycle event, stable-id tokens, richer
-      token set. *(landed — dropped the `outcome` arg from `deadline_ended` and the `status` arg
-      from `deadline_status_changed`; added stable-id tokens (`outcome_id`, `status_id`,
-      `change_reason_id`) alongside their display-label tokens, numeric tokens
-      (`target_value`, `final_progress_value`, `shortfall_value`, `required_kwh`,
-      `planning_speed_kw`), `planned_start_local_time` / `planned_finish_local_time` /
-      `estimated_duration_text` / `risk_reason` on `deadline_status_changed`, and a composed
-      `notification_text` token on `deadline_ended` and `deadline_plan_changed`. Shared token
-      bag lives in `flowCards/smartTaskTokens.ts`; `flowCards/deadlineEndedTokens.ts` was
-      folded into it. `previous_status_id` and per-status `notification_text` were
-      intentionally deferred. `delivered_kwh` and `revisions_count` were dropped from this PR
-      and re-tracked as a P2 entry below — both require a `planHistory` schema bump or new
-      compute on `observedIntervals`, which fits the history-detail revision PR instead.)*
+- [x] Revise smart task flow cards: single trigger per lifecycle event, stable-id tokens.
+      *(landed in two steps — PR #798 dropped the `outcome` / `status` dropdown args and
+      introduced stable-id token values. A follow-up then trimmed the bag to the minimum
+      that matches other Homey apps' conventions (Easee, Home Connect, Power by the Hour):
+      `deadline_ended` → `device_name` + `outcome` + `shortfall`; `deadline_status_changed`
+      → `device_name` + `status`; `deadline_plan_changed` → `device_name` +
+      `remaining_kwh` + `planned_hours` + `projected_finish_local_time`. Token values for
+      `outcome` and `status` are the stable lowercase ids (`succeeded`/`missed`/`abandoned`
+      and `waiting`/`on_track`/`at_risk`/`unachievable`/`satisfied`); display formatting
+      and composed notification text are user-side concerns. Diagnostic introspection
+      tokens — `risk_reason`, planned start/finish, `required_kwh`, `planning_speed_kw`,
+      `estimated_duration_text`, `kind`, `change_reason_id` — were not Homey-conventional
+      on triggers; if future demand surfaces, expose them as device capabilities, not
+      tokens. Shared bag lives in `flowCards/smartTaskTokens.ts`.)*
 - [ ] Unify the hero and section-label primitive across every settings-UI surface.
       Overview hero, Budget header, Usage header, Smart tasks header, Settings header, Advanced
       header, and deadline-plan hero should read as one component: same eyebrow (font-size,
@@ -497,21 +498,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/src/ui/boot.ts`, `lib/app/settingsUiApi.ts`,
       `packages/contracts/src/settingsUiApi.ts` (a streaming endpoint or pull-with-version
       contract).
-- [ ] Surface `delivered_kwh` and `revisions_count` on the `deadline_ended` flow trigger.
-      The smart-task flow-card redesign deferred these two tokens because the data isn't
-      currently on `DeferredObjectivePlanHistoryEntry` — there's no per-run revision count
-      and no measured-energy-delivered field. Reaching them needs either a v3→v4 history
-      schema bump (add `revisions: RevisionSnapshot[]` + `deliveredKWh`) or a derived
-      compute on `observedIntervals` for delivered kWh plus an in-memory counter in the
-      active-plan recorder for revisions. Bundle with the Smart task history-detail revision
-      work below — that PR is already touching the history schema.
-      Why P2: the existing token bag is enough for "did it succeed?", "by how much?",
-      "ready-to-use notification text"; the missing tokens are nice-to-have for
-      power-user flows ("only alarm if it took more than 3 replans"). Not blocking.
-      Files: `packages/contracts/src/deferredObjectivePlanHistory.ts`,
-      `lib/plan/deferredObjectives/planHistory.ts`,
-      `lib/plan/deferredObjectives/endedEventBus.ts`,
-      `flowCards/smartTaskTokens.ts`, `.homeycompose/flow/triggers/deadline_ended.json`.
 - [ ] Cold-start catch-up for flow-scheme combined-prices rotation. `startPriceRefresh()`
       only schedules the next local midnight via `getNextLocalDayStartUtcMs(now)`, so if the
       app boots after midnight the first rotation is delayed until the following midnight.

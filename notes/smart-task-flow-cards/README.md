@@ -13,21 +13,37 @@ It also folds in the token gaps surfaced in
 `notes/ev-ready-by/README.md` §P2.3 (richer tokens for notification text) so
 the same change can land them together.
 
-**Status:** shipped (2026-05-15) with two intentional deviations. The
-delivered token bag matches the per-card target shape below, except:
+**Status:** shipped (2026-05-15), then trimmed (2026-05-15) after
+comparing token counts against installed Homey apps (Easee, Home Connect,
+myUplink, Power by the Hour). The "stable-id + display-label" duo, the
+composed `notification_text`, and the diagnostic-grade introspection
+tokens (`risk_reason`, `planned_start/finish_local_time`, `required_kwh`,
+`planning_speed_kw`, `estimated_duration_text`) had no equivalent in any
+other app — convention is "trigger emits the thing that changed, full
+stop." The per-card target shape in this note therefore overshot;
+delivered shape is the minimum below.
 
-- `deadline_ended` does **not** ship `kind`, `target_unit`,
-  `final_progress_unit`, or `shortfall_unit`. The device picker selects a
-  specific device whose kind is fixed, so unit/kind is already known by
-  the flow author; carrying redundant tokens just bloats the picker.
-- `deadline_ended` does **not** ship `delivered_kwh` or `revisions_count`.
-  Both require either a `planHistory` schema bump or new measured-energy
-  compute on `observedIntervals`. Tracked as a P2 in `TODO.md` to bundle
-  with the Smart task history-detail revision work.
-- `deadline_status_changed` does **not** ship `previous_status_id` (no
-  concrete flow demand yet) or `notification_text` (the useful one-liner
-  shape varies too much across status values; users compose from
-  `device_name` + `status` + `risk_reason`).
+**Delivered token bag (minimum):**
+
+- `deadline_ended` — `device_name` (string), `outcome` (string, stable
+  lowercase id: `succeeded` / `missed` / `abandoned`), `shortfall`
+  (number, 0 when succeeded).
+- `deadline_status_changed` — `device_name` (string), `status` (string,
+  stable lowercase id: `waiting` / `on_track` / `at_risk` /
+  `unachievable` / `satisfied`).
+- `deadline_plan_changed` — `device_name` (string), `remaining_kwh`
+  (number), `planned_hours` (number), `projected_finish_local_time`
+  (string).
+
+The stable lowercase token values stay a public API contract; renaming
+one is a breaking change. Display formatting (e.g. capitalised "Missed")
+is composed in the user's flow via Logic / text concatenation — same
+convention every other Homey app uses.
+
+If flow authors need diagnostic detail (`risk_reason`, planned start /
+finish, charging rate, estimated duration), the future home for those is
+**device capabilities** on the PELS device, surfaced via standard
+`<capability>_changed` triggers — not as trigger tokens.
 
 The shared token-bag implementation lives in
 `flowCards/smartTaskTokens.ts`; the previous `flowCards/deadlineEndedTokens.ts`

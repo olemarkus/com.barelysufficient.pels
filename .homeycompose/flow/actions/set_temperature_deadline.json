@@ -31,12 +31,9 @@
     },
     {
       "name": "ready_by",
-      "type": "text",
+      "type": "time",
       "title": {
         "en": "Ready by"
-      },
-      "placeholder": {
-        "en": "07:00"
       }
     }
   ]

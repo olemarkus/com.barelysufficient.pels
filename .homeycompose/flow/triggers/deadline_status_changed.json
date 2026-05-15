@@ -6,7 +6,7 @@
     "en": "Smart task status changed for [[device]]"
   },
   "hint": {
-    "en": "Fires when the smart task status transitions for the chosen device. Filter the new status with a condition card on the status_id token (stable ids: waiting / on_track / at_risk / unachievable / satisfied)."
+    "en": "Fires when the smart task status transitions for the chosen device. Filter on the [[status]] tag downstream; values are stable lowercase ids: waiting / on_track / at_risk / unachievable / satisfied."
   },
   "args": [
     {
@@ -27,64 +27,9 @@
       "title": { "en": "Device" }
     },
     {
-      "name": "kind",
-      "type": "string",
-      "title": { "en": "Kind (id)" }
-    },
-    {
       "name": "status",
       "type": "string",
       "title": { "en": "Status" }
-    },
-    {
-      "name": "status_id",
-      "type": "string",
-      "title": { "en": "Status (id)" }
-    },
-    {
-      "name": "target_value",
-      "type": "number",
-      "title": { "en": "Target" }
-    },
-    {
-      "name": "target_text",
-      "type": "string",
-      "title": { "en": "Target (text)" }
-    },
-    {
-      "name": "deadline_local_time",
-      "type": "string",
-      "title": { "en": "Ready by" }
-    },
-    {
-      "name": "planned_start_local_time",
-      "type": "string",
-      "title": { "en": "Planned start" }
-    },
-    {
-      "name": "planned_finish_local_time",
-      "type": "string",
-      "title": { "en": "Planned finish" }
-    },
-    {
-      "name": "required_kwh",
-      "type": "number",
-      "title": { "en": "Required (kWh)" }
-    },
-    {
-      "name": "planning_speed_kw",
-      "type": "number",
-      "title": { "en": "Planning speed (kW)" }
-    },
-    {
-      "name": "estimated_duration_text",
-      "type": "string",
-      "title": { "en": "Estimated duration" }
-    },
-    {
-      "name": "risk_reason",
-      "type": "string",
-      "title": { "en": "Risk reason (id)" }
     }
   ]
 }
