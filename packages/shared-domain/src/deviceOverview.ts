@@ -1,6 +1,6 @@
 import {
   buildComparableDeviceReason,
-  formatDeviceReason,
+  formatDeviceReasonUserFacing,
   PLAN_REASON_CODES,
   type DeviceReason,
 } from './planReasonSemantics.js';
@@ -194,23 +194,6 @@ const resolveStateMsg = (device: DeviceOverviewSnapshot): string => {
   return 'Unknown';
 };
 
-export const formatOverviewStatus = (reason: DeviceReason): string => {
-  switch (reason.code) {
-    case PLAN_REASON_CODES.meterSettling:
-      return `waiting for meter to settle (${reason.remainingSec}s remaining)`;
-    case PLAN_REASON_CODES.headroomCooldown:
-      if (reason.kind === 'recent_pels_restore') {
-        return `stabilizing after recent PELS restore (${reason.remainingSec}s remaining)`;
-      }
-      if (reason.kind === 'recent_pels_shed') {
-        return `stabilizing after recent PELS shed (${reason.remainingSec}s remaining)`;
-      }
-      return `stabilizing after recent usage step-down (${reason.remainingSec}s remaining)`;
-    default:
-      return formatDeviceReason(reason);
-  }
-};
-
 const formatEvSocStatus = (
   stateOfCharge: DeviceOverviewSnapshot['stateOfCharge'],
 ): string | null => {
@@ -240,9 +223,12 @@ export const getDeviceOverviewExpectedPowerKw = (device: DeviceOverviewSnapshot)
   isSteppedLoadDevice(device) ? (device.planningPowerKw ?? device.expectedPowerKw) : device.expectedPowerKw
 );
 
+const WAITING_FOR_AVAILABLE_POWER = 'Waiting for available power';
+
 const appendOverviewStatus = (statusMsg: string, extraStatus: string | null): string => {
   if (!extraStatus) return statusMsg;
-  return statusMsg === 'Waiting for headroom' ? extraStatus : `${statusMsg} - ${extraStatus}`;
+  if (statusMsg === '' || statusMsg === WAITING_FOR_AVAILABLE_POWER) return extraStatus;
+  return `${statusMsg} - ${extraStatus}`;
 };
 
 export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOverviewStrings => {
@@ -263,13 +249,12 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
     if (stepText) usageMsg = `${usageMsg} (${stepText})`;
   }
 
-  let statusMsg = 'Waiting for headroom';
-  if (device.reason.code !== PLAN_REASON_CODES.none) {
-    statusMsg = device.plannedState === 'keep' || device.reason.code === PLAN_REASON_CODES.meterSettling
-      ? formatOverviewStatus(device.reason)
-      : formatDeviceReason(device.reason);
-  }
-  statusMsg = appendOverviewStatus(statusMsg, formatEvSocStatus(device.stateOfCharge));
+  const statusMsg = appendOverviewStatus(
+    device.reason.code === PLAN_REASON_CODES.none
+      ? WAITING_FOR_AVAILABLE_POWER
+      : formatDeviceReasonUserFacing(device.reason),
+    formatEvSocStatus(device.stateOfCharge),
+  );
 
   return {
     powerMsg,

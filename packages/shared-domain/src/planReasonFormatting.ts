@@ -256,3 +256,149 @@ export function formatDeviceReason(reason: DeviceReason): string {
     }
   }
 }
+
+// ─── User-facing reason text ─────────────────────────────────────────────────
+//
+// `formatDeviceReason` above is the diagnostic/log format. The helpers below
+// produce user-facing text per `notes/ui-terminology.md`. They never expose
+// internal planner terms (`shed`, `restore`, `headroom`, `shortfall`,
+// `backoff`, `invariant`, `soft limit`) and translate the `(need X kW,
+// headroom Y kW)` template to `needs X kW, Y kW available`.
+
+function normalizeDetailSentence(detail: string): string {
+  return detail.length > 0 ? `${detail.charAt(0).toUpperCase()}${detail.slice(1)}` : detail;
+}
+
+function appendUserDetail(text: string, detail: string | null | undefined): string {
+  return detail ? `${text}. ${normalizeDetailSentence(detail)}` : text;
+}
+
+function formatNeedAvailableSuffix(needKw: number, availableKw: number | null): string | null {
+  if (!Number.isFinite(needKw)) return null;
+  if (availableKw === null || !Number.isFinite(availableKw)) return null;
+  // Clamp negative headroom to 0 kW so users do not see confusing minus signs;
+  // negative values mean the system is already over the limit.
+  const safeAvailable = Math.max(0, availableKw);
+  return `needs ${needKw.toFixed(1)} kW, ${safeAvailable.toFixed(1)} kW available`;
+}
+
+export function formatShortfallReason(opts: {
+  needKw: number | null;
+  headroomKw: number | null;
+}): string {
+  const base = 'Manual action needed — hard cap may be exceeded';
+  if (opts.needKw === null || opts.headroomKw === null) return base;
+  const suffix = formatNeedAvailableSuffix(opts.needKw, opts.headroomKw);
+  return suffix ? `Manual action needed — ${suffix}` : base;
+}
+
+function formatRestoreNeedUserFacing(
+  reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.restoreNeed }>,
+): string {
+  if (reason.fromTarget !== null && reason.toTarget !== null) {
+    return `Raising target ${reason.fromTarget} to ${reason.toTarget}`;
+  }
+  const suffix = formatNeedAvailableSuffix(reason.needKw, reason.headroomKw);
+  return suffix ? `Waiting to resume — ${suffix}` : 'Waiting for available power';
+}
+
+function formatInsufficientHeadroomUserFacing(
+  reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.insufficientHeadroom }>,
+): string {
+  const available = reason.effectiveAvailableKw ?? reason.availableKw;
+  const suffix = formatNeedAvailableSuffix(reason.needKw, available);
+  if (reason.swapTargetName) {
+    const base = `Not enough available power to make room for ${reason.swapTargetName}`;
+    return suffix ? `${base} — ${suffix}` : base;
+  }
+  return suffix ? `Not enough available power to resume — ${suffix}` : 'Not enough available power to resume';
+}
+
+const TIMED_REASON_LABELS = {
+  [PLAN_REASON_CODES.cooldownShedding]: 'Waiting after limiting device',
+  [PLAN_REASON_CODES.cooldownRestore]: 'Waiting before resuming',
+  [PLAN_REASON_CODES.meterSettling]: 'Waiting for power meter to stabilise',
+  [PLAN_REASON_CODES.activationBackoff]: 'Delaying restart after recent failed attempt',
+  [PLAN_REASON_CODES.restorePending]: 'Resume pending',
+} as const;
+
+function formatStaticReasonUserFacing(reason: StaticReason): string {
+  switch (reason.code) {
+    case PLAN_REASON_CODES.none:
+      return '';
+    case PLAN_REASON_CODES.restoreThrottled:
+      return 'Delaying restart to avoid rapid cycling';
+    case PLAN_REASON_CODES.waitingForOtherDevices:
+      return 'Waiting for other devices to settle';
+    case PLAN_REASON_CODES.neutralStartupHold:
+      return 'Left off after startup';
+    case PLAN_REASON_CODES.startupStabilization:
+      return 'Waiting after startup';
+    case PLAN_REASON_CODES.capacityControlOff:
+      return 'Power-limit control off';
+    default: {
+      const exhaustive: never = reason;
+      return exhaustive;
+    }
+  }
+}
+
+function formatDetailReasonUserFacing(reason: DetailReason): string {
+  switch (reason.code) {
+    case PLAN_REASON_CODES.keep:
+      return reason.detail ? normalizeDetailSentence(reason.detail) : '';
+    case PLAN_REASON_CODES.hourlyBudget:
+      return appendUserDetail('Limited — this hour is near the hard cap', reason.detail);
+    case PLAN_REASON_CODES.dailyBudget:
+      return appendUserDetail("Limited — staying within today's budget", reason.detail);
+    case PLAN_REASON_CODES.sheddingActive:
+      return appendUserDetail('Currently limiting devices', reason.detail);
+    case PLAN_REASON_CODES.inactive:
+      return reason.detail ? `Off for now (${reason.detail})` : 'Off for now';
+    case PLAN_REASON_CODES.capacity:
+      return appendUserDetail('Limited — staying under the hard cap', reason.detail);
+    default: {
+      const exhaustive: never = reason;
+      return exhaustive;
+    }
+  }
+}
+
+function formatTimedReasonUserFacing(reason: TimedReason): string {
+  return `${TIMED_REASON_LABELS[reason.code]} (${formatRemainingSec(reason.remainingSec)}s)`;
+}
+
+export function formatDeviceReasonUserFacing(reason: DeviceReason): string {
+  if (isStaticReason(reason)) return formatStaticReasonUserFacing(reason);
+  if (isDetailReason(reason)) return formatDetailReasonUserFacing(reason);
+  if (isTimedReason(reason)) return formatTimedReasonUserFacing(reason);
+
+  switch (reason.code) {
+    case PLAN_REASON_CODES.restoreNeed:
+      return formatRestoreNeedUserFacing(reason);
+    case PLAN_REASON_CODES.setTarget:
+      return `Changing target to ${reason.targetText}`;
+    case PLAN_REASON_CODES.swapPending:
+      return reason.targetName
+        ? `Making room for higher-priority device (${reason.targetName})`
+        : 'Making room for higher-priority device';
+    case PLAN_REASON_CODES.swappedOut:
+      return reason.targetName
+        ? `Limited so ${reason.targetName} can run`
+        : 'Limited so another device can run';
+    case PLAN_REASON_CODES.shortfall:
+      return formatShortfallReason({ needKw: reason.needKw, headroomKw: reason.headroomKw });
+    case PLAN_REASON_CODES.headroomCooldown:
+      return 'Waiting for power reading to stabilise';
+    case PLAN_REASON_CODES.insufficientHeadroom:
+      return formatInsufficientHeadroomUserFacing(reason);
+    case PLAN_REASON_CODES.shedInvariant:
+      return 'Blocked by safety rule';
+    case PLAN_REASON_CODES.other:
+      return reason.text;
+    default: {
+      const exhaustive: never = reason;
+      return exhaustive;
+    }
+  }
+}

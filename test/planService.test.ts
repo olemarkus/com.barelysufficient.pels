@@ -317,7 +317,7 @@ describe('PlanService', () => {
       currentState: 'on',
       plannedState: 'keep',
       reasonCode: 'keep',
-      reasonText: 'keep',
+      reasonText: '',
       measuredPowerKw: 0,
       expectedPowerKw: 3,
       reportedStepId: null,
@@ -627,7 +627,7 @@ describe('PlanService', () => {
       powerMsg: 'on',
       stateMsg: 'Active',
       usageMsg: 'Measured: 0.25 kW / Expected: 3.00 kW',
-      statusMsg: 'keep',
+      statusMsg: '',
     }));
   });
 
