@@ -1,6 +1,7 @@
 import { render } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/deferredObjectiveSettings.ts';
+import type { DeferredObjectiveActivePlanRevisionReason } from '../../../../contracts/src/deferredObjectiveActivePlans.ts';
 import {
   deadlineLabels,
   type DeadlineLabels,
@@ -28,6 +29,8 @@ type DeadlinePlanHour = {
   tone: DeadlinePlanHourTone;
   planned: boolean;
   changed: boolean;
+  // Populated on changed hours from the latest revision's reason; null otherwise.
+  revisionReason: DeferredObjectiveActivePlanRevisionReason | null;
   usage: {
     backgroundKwh: number;
     originalDeviceKwh: number;
@@ -135,7 +138,7 @@ const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
   </section>
 );
 
-type DeadlineChartPalette = {
+export type DeadlineChartPalette = {
   priceCheap: string;
   priceNormal: string;
   priceExpensive: string;
@@ -181,7 +184,7 @@ const resolvePalette = (element: HTMLElement): DeadlineChartPalette => ({
   tooltipBorder: cssVar(element, '--color-border-medium'),
 });
 
-type ChartTypography = {
+export type ChartTypography = {
   labelFontSize: number;
   axisNameFontSize: number;
   axisNameFontWeight: number;
@@ -221,6 +224,9 @@ const buildTooltip = (payload: DeadlinePlanPayload, rawParams: unknown): string 
   const actualLine = hour.usage.actualDeviceKwh !== null
     ? `${labels.actualDeviceSeriesName} ${hour.usage.actualDeviceKwh.toFixed(1)} kWh`
     : null;
+  const revisionLine = hour.changed && hour.revisionReason !== null
+    ? (labels.revisionReasonTooltipLine[hour.revisionReason] ?? null)
+    : null;
   return [
     `<strong>${encodeHtml(hour.time)}</strong>`,
     `Price ${encodeHtml(hour.price)} ${encodeHtml(payload.priceUnitLabel)}`,
@@ -230,6 +236,7 @@ const buildTooltip = (payload: DeadlinePlanPayload, rawParams: unknown): string 
     ...(actualLine ? [encodeHtml(actualLine)] : []),
     `Plan ${encodeHtml(planLabel)}`,
     `Progress ${formatProgressValue(hour.progress, labels.targetUnit)}`,
+    ...(revisionLine ? [encodeHtml(revisionLine)] : []),
   ].join('<br>');
 };
 
@@ -241,7 +248,7 @@ const LOAD_GRID_HEIGHT = 84;
 const GRID_LEFT = 36;
 const GRID_RIGHT = 56;
 
-const buildChartOption = (
+export const buildChartOption = (
   payload: DeadlinePlanPayload,
   palette: DeadlineChartPalette,
   typography: ChartTypography,
@@ -266,6 +273,13 @@ const buildChartOption = (
   )));
   const originalSeriesName = payload.labels.originalDeviceSeriesName;
   const hasActualDeviceSeries = payload.timeline.hours.some((hour) => hour.usage.actualDeviceKwh !== null);
+  // Suppress the original-series legend and overlay bars when the plan has never
+  // been revised: every hour's originalDeviceKwh equals deviceKwh, so rendering
+  // both series produces duplicate legend entries with no informational gain.
+  // Matches the suppression logic in DeadlinePlanHistoryDetail.
+  const hasOriginalSeries = payload.timeline.hours.some(
+    (hour) => Math.abs(hour.usage.originalDeviceKwh - hour.usage.deviceKwh) > 0.001,
+  );
 
   const axisBase = {
     type: 'category' as const,
@@ -323,15 +337,17 @@ const buildChartOption = (
       data: [
         { name: payload.labels.backgroundSeriesName, itemStyle: { color: palette.background } },
         { name: payload.labels.deviceSeriesName, itemStyle: { color: palette.device } },
-        {
-          name: originalSeriesName,
-          itemStyle: {
-            color: 'transparent',
-            borderColor: palette.device,
-            borderWidth: 2,
-            borderType: 'dashed' as const,
-          },
-        },
+        ...(hasOriginalSeries
+          ? [{
+              name: originalSeriesName,
+              itemStyle: {
+                color: 'transparent',
+                borderColor: palette.device,
+                borderWidth: 2,
+                borderType: 'dashed' as const,
+              },
+            }]
+          : []),
         ...(hasActualDeviceSeries
           ? [{ name: payload.labels.actualDeviceSeriesName, itemStyle: { color: palette.actualDevice } }]
           : []),
@@ -472,40 +488,42 @@ const buildChartOption = (
           },
         })),
       },
-      {
-        name: payload.labels.backgroundSeriesName,
-        type: 'bar',
-        stack: 'original-load',
-        xAxisIndex: 1,
-        yAxisIndex: 1,
-        barMaxWidth: 18,
-        barGap: '-100%',
-        silent: true,
-        tooltip: { show: false },
-        itemStyle: { color: 'transparent', borderColor: 'transparent' },
-        emphasis: { disabled: true },
-        data: payload.timeline.hours.map((hour) => hour.usage.backgroundKwh),
-      },
-      {
-        name: originalSeriesName,
-        type: 'bar',
-        stack: 'original-load',
-        xAxisIndex: 1,
-        yAxisIndex: 1,
-        barMaxWidth: 18,
-        barGap: '-100%',
-        itemStyle: { color: 'transparent', borderColor: palette.device, borderWidth: 2 },
-        data: payload.timeline.hours.map((hour) => ({
-          value: hour.usage.originalDeviceKwh,
-          itemStyle: {
-            color: 'transparent',
-            borderColor: hour.usage.originalDeviceKwh > 0 ? palette.device : 'transparent',
-            borderWidth: hour.usage.originalDeviceKwh > 0 ? 2 : 0,
-            borderType: hour.changed ? 'dashed' as const : 'solid' as const,
-            borderRadius: [3, 3, 0, 0],
-          },
-        })),
-      },
+      ...(hasOriginalSeries ? [
+        {
+          name: payload.labels.backgroundSeriesName,
+          type: 'bar' as const,
+          stack: 'original-load',
+          xAxisIndex: 1,
+          yAxisIndex: 1,
+          barMaxWidth: 18,
+          barGap: '-100%',
+          silent: true,
+          tooltip: { show: false },
+          itemStyle: { color: 'transparent', borderColor: 'transparent' },
+          emphasis: { disabled: true },
+          data: payload.timeline.hours.map((hour) => hour.usage.backgroundKwh),
+        },
+        {
+          name: originalSeriesName,
+          type: 'bar' as const,
+          stack: 'original-load',
+          xAxisIndex: 1,
+          yAxisIndex: 1,
+          barMaxWidth: 18,
+          barGap: '-100%',
+          itemStyle: { color: 'transparent', borderColor: palette.device, borderWidth: 2 },
+          data: payload.timeline.hours.map((hour) => ({
+            value: hour.usage.originalDeviceKwh,
+            itemStyle: {
+              color: 'transparent',
+              borderColor: hour.usage.originalDeviceKwh > 0 ? palette.device : 'transparent',
+              borderWidth: hour.usage.originalDeviceKwh > 0 ? 2 : 0,
+              borderType: hour.changed ? 'dashed' as const : 'solid' as const,
+              borderRadius: [3, 3, 0, 0],
+            },
+          })),
+        },
+      ] : []),
       ...(hasActualDeviceSeries ? [{
         name: payload.labels.actualDeviceSeriesName,
         type: 'line' as const,

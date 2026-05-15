@@ -1,5 +1,8 @@
 import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings.js';
-import type { DeferredObjectiveActivePlanPendingReason } from '../../contracts/src/deferredObjectiveActivePlans.js';
+import type {
+  DeferredObjectiveActivePlanPendingReason,
+  DeferredObjectiveActivePlanRevisionReason,
+} from '../../contracts/src/deferredObjectiveActivePlans.js';
 
 export type DeadlinePlanUnavailableReason =
   | 'no_current_reading'
@@ -147,6 +150,21 @@ export type DeadlineLabels = {
   // a bootstrap kWh-per-unit value (no learned profile yet). `null` when the
   // kind has no bootstrap path — only EV SoC ships with one in v1.
   planInputsRateBootstrapNote: string | null;
+  // User-friendly tooltip line for hours that were revised. Keys are the
+  // revision reasons emitted by the active-plan recorder. Reasons that are not
+  // expected to appear on revised hours (device_unavailable, measured_deviation)
+  // are omitted; callers fall back to null for unknown keys.
+  revisionReasonTooltipLine: Partial<Record<DeferredObjectiveActivePlanRevisionReason, string>>;
+};
+
+// Shared across all objective kinds — revision reasons are recorder-level
+// concepts that don't vary by device category.
+const REVISION_REASON_TOOLTIP_LINE: Partial<Record<DeferredObjectiveActivePlanRevisionReason, string>> = {
+  flow_card: 'Revised because a flow card fired',
+  prices_arrived: 'Revised because prices became available',
+  objective_changed: 'Revised because the target changed',
+  prices_revised: 'Revised because new prices arrived',
+  rate_refined: 'Revised because rates were refined',
 };
 
 const withLastFetched = (base: string, lastFetchedShort: string | null): string => (
@@ -257,6 +275,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     planInputsMaxPowerRowLabel: 'Max power per hour',
     perUnitRateUnit: 'kWh/°C',
     planInputsRateBootstrapNote: null,
+    revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE,
   },
   ev_soc: {
     kindChipLabel: 'EV',
@@ -334,6 +353,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     planInputsMaxPowerRowLabel: 'Max power per hour',
     perUnitRateUnit: 'kWh/%',
     planInputsRateBootstrapNote: 'Estimated — refining as PELS observes charging.',
+    revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE,
   },
 };
 
