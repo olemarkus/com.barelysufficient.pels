@@ -12,7 +12,6 @@ import {
   buildSmartTaskEndedTokens,
   buildSmartTaskPlanChangedTokens,
   buildSmartTaskStatusTokens,
-  toSmartTaskChangeReasonId,
   type SmartTaskStatusId,
 } from './smartTaskTokens';
 import type { FlowCardDeps } from './registerFlowCards';
@@ -403,7 +402,7 @@ function registerDeadlineStatusChangedTrigger(
     if (previousStatus === flowStatus) return;
     let tokens: Record<string, unknown>;
     try {
-      tokens = buildSmartTaskStatusTokens(snapshot, flowStatus, deps.getTimeZone());
+      tokens = buildSmartTaskStatusTokens(snapshot, flowStatus);
     } catch (err) {
       deps.error('Failed to build deadline_status_changed tokens', err);
       return;
@@ -453,7 +452,7 @@ function registerDeadlineEndedTrigger(deps: FlowCardDeps): void {
   bus.onEnded((event) => {
     let tokens: Record<string, unknown>;
     try {
-      tokens = buildSmartTaskEndedTokens(event, deps.getTimeZone());
+      tokens = buildSmartTaskEndedTokens(event);
     } catch (err) {
       // Swallow listener-side errors so a malformed event cannot unwind back
       // into the plan-history finalization that published it.
@@ -482,8 +481,6 @@ function registerDeadlinePlanChangedTrigger(deps: FlowCardDeps): void {
   if (!bus) return;
   bus.onRevision((event) => {
     if (!event.allocationChanged) return;
-    // Skip plan *creation* reasons — the trigger reports plan *changes*.
-    if (toSmartTaskChangeReasonId(event.reason) === null) return;
     let tokens: Record<string, unknown>;
     try {
       tokens = buildSmartTaskPlanChangedTokens(event, deps.getTimeZone());

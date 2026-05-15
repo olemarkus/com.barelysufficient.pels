@@ -153,7 +153,7 @@
           "en": "Smart task ended for [[device]]"
         },
         "hint": {
-          "en": "Fires once when a smart task run concludes — succeeded (target reached and held), missed (deadline passed below target), or abandoned (cleared by the user or device dropped out for an extended period). Filter the outcome with a condition card on the outcome_id token (stable ids: succeeded / missed / abandoned)."
+          "en": "Fires once when a smart task run concludes — succeeded (target reached and held), missed (deadline passed below target), or abandoned (cleared by the user or device dropped out for an extended period). Filter on the [[outcome]] tag downstream; values are stable lowercase ids: succeeded / missed / abandoned."
         },
         "args": [
           {
@@ -183,66 +183,10 @@
             }
           },
           {
-            "name": "outcome_id",
-            "type": "string",
-            "title": {
-              "en": "Outcome (id)"
-            }
-          },
-          {
-            "name": "target_value",
-            "type": "number",
-            "title": {
-              "en": "Target"
-            }
-          },
-          {
-            "name": "target_text",
-            "type": "string",
-            "title": {
-              "en": "Target (text)"
-            }
-          },
-          {
-            "name": "final_progress_value",
-            "type": "number",
-            "title": {
-              "en": "Final progress"
-            }
-          },
-          {
-            "name": "shortfall_value",
+            "name": "shortfall",
             "type": "number",
             "title": {
               "en": "Shortfall"
-            }
-          },
-          {
-            "name": "shortfall_text",
-            "type": "string",
-            "title": {
-              "en": "Shortfall (text)"
-            }
-          },
-          {
-            "name": "deadline_local_time",
-            "type": "string",
-            "title": {
-              "en": "Ready by"
-            }
-          },
-          {
-            "name": "finished_at_local_time",
-            "type": "string",
-            "title": {
-              "en": "Reached at"
-            }
-          },
-          {
-            "name": "notification_text",
-            "type": "string",
-            "title": {
-              "en": "Notification text"
             }
           }
         ],
@@ -279,13 +223,6 @@
             }
           },
           {
-            "name": "kind",
-            "type": "string",
-            "title": {
-              "en": "Kind (id)"
-            }
-          },
-          {
             "name": "remaining_kwh",
             "type": "number",
             "title": {
@@ -305,20 +242,6 @@
             "title": {
               "en": "Finishes at"
             }
-          },
-          {
-            "name": "change_reason_id",
-            "type": "string",
-            "title": {
-              "en": "Change reason (id)"
-            }
-          },
-          {
-            "name": "notification_text",
-            "type": "string",
-            "title": {
-              "en": "Notification text"
-            }
           }
         ],
         "id": "deadline_plan_changed"
@@ -331,7 +254,7 @@
           "en": "Smart task status changed for [[device]]"
         },
         "hint": {
-          "en": "Fires when the smart task status transitions for the chosen device. Filter the new status with a condition card on the status_id token (stable ids: waiting / on_track / at_risk / unachievable / satisfied)."
+          "en": "Fires when the smart task status transitions for the chosen device. Filter on the [[status]] tag downstream; values are stable lowercase ids: waiting / on_track / at_risk / unachievable / satisfied."
         },
         "args": [
           {
@@ -354,87 +277,10 @@
             }
           },
           {
-            "name": "kind",
-            "type": "string",
-            "title": {
-              "en": "Kind (id)"
-            }
-          },
-          {
             "name": "status",
             "type": "string",
             "title": {
               "en": "Status"
-            }
-          },
-          {
-            "name": "status_id",
-            "type": "string",
-            "title": {
-              "en": "Status (id)"
-            }
-          },
-          {
-            "name": "target_value",
-            "type": "number",
-            "title": {
-              "en": "Target"
-            }
-          },
-          {
-            "name": "target_text",
-            "type": "string",
-            "title": {
-              "en": "Target (text)"
-            }
-          },
-          {
-            "name": "deadline_local_time",
-            "type": "string",
-            "title": {
-              "en": "Ready by"
-            }
-          },
-          {
-            "name": "planned_start_local_time",
-            "type": "string",
-            "title": {
-              "en": "Planned start"
-            }
-          },
-          {
-            "name": "planned_finish_local_time",
-            "type": "string",
-            "title": {
-              "en": "Planned finish"
-            }
-          },
-          {
-            "name": "required_kwh",
-            "type": "number",
-            "title": {
-              "en": "Required (kWh)"
-            }
-          },
-          {
-            "name": "planning_speed_kw",
-            "type": "number",
-            "title": {
-              "en": "Planning speed (kW)"
-            }
-          },
-          {
-            "name": "estimated_duration_text",
-            "type": "string",
-            "title": {
-              "en": "Estimated duration"
-            }
-          },
-          {
-            "name": "risk_reason",
-            "type": "string",
-            "title": {
-              "en": "Risk reason (id)"
             }
           }
         ],
@@ -1347,12 +1193,9 @@
           },
           {
             "name": "ready_by",
-            "type": "text",
+            "type": "time",
             "title": {
               "en": "Ready by"
-            },
-            "placeholder": {
-              "en": "07:00"
             }
           }
         ],
@@ -1473,12 +1316,9 @@
           },
           {
             "name": "ready_by",
-            "type": "text",
+            "type": "time",
             "title": {
               "en": "Ready by"
-            },
-            "placeholder": {
-              "en": "07:00"
             }
           }
         ],

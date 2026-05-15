@@ -71,17 +71,10 @@ const buildSnapshot = (
 ): DeferredObjectiveStatusSnapshot => ({
   deviceName: null,
   targetText: '',
-  targetValue: null,
   deadlineLocalTime: '',
   deadlineMissed: false,
   shortfallKwh: null,
   shortfallText: null,
-  plannedStartAtMs: null,
-  plannedFinishAtMs: null,
-  requiredKwh: null,
-  planningSpeedKw: null,
-  estimatedDurationText: null,
-  riskReason: null,
   ...overrides,
 });
 
@@ -531,7 +524,7 @@ describe('deadline objective flow cards', () => {
     expect(await condition.run!({ device: 'heater-1', status: '' })).toBe(false);
   });
 
-  it('publishes status_changed triggers with stable status_id and the planning token bag', async () => {
+  it('publishes status_changed triggers with the stable lowercase status id', async () => {
     const bus = createDeferredObjectiveStatusBus();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
@@ -545,80 +538,23 @@ describe('deadline objective flow cards', () => {
       kind: 'temperature',
       status: 'at_risk',
       previousStatus: 'on_track',
-      targetText: '55 °C',
-      targetValue: 55,
-      deadlineLocalTime: '07:00',
       deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
-      plannedStartAtMs: HH_MM_TO_UTC_MS(6, 0),
-      plannedFinishAtMs: HH_MM_TO_UTC_MS(7, 0),
-      requiredKwh: 2.5,
-      planningSpeedKw: 2.5,
-      estimatedDurationText: '1 h',
-      riskReason: 'no_bucket_capacity',
     });
     bus.publish(transition);
     expect(trigger.trigger).toHaveBeenCalledTimes(1);
     const [tokens, state] = trigger.trigger.mock.calls[0]!;
-    expect(tokens).toMatchObject({
-      device_name: 'Boiler',
-      kind: 'temperature',
-      status: 'At risk',
-      status_id: 'at_risk',
-      target_value: 55,
-      target_text: '55 °C',
-      deadline_local_time: '07:00',
-      planned_start_local_time: '06:00',
-      planned_finish_local_time: '07:00',
-      required_kwh: 2.5,
-      planning_speed_kw: 2.5,
-      estimated_duration_text: '1 h',
-      risk_reason: 'no_bucket_capacity',
-    });
+    expect(tokens).toEqual({ device_name: 'Boiler', status: 'at_risk' });
     expect(state).toEqual({ deviceId: 'heater-1' });
-    // Run listener now matches on device only — no status dropdown.
     expect(await trigger.run!({ device: 'heater-1' }, state)).toBe(true);
     expect(await trigger.run!({ device: 'heater-2' }, state)).toBe(false);
 
-    bus.publish({ ...transition, status: 'on_track', previousStatus: 'at_risk', riskReason: null });
+    bus.publish({ ...transition, status: 'on_track', previousStatus: 'at_risk' });
     expect(trigger.trigger).toHaveBeenCalledTimes(2);
-    expect(trigger.trigger.mock.calls[1]![0]).toMatchObject({
-      status: 'On track', status_id: 'on_track', risk_reason: '',
-    });
+    expect(trigger.trigger.mock.calls[1]![0]).toEqual({ device_name: 'Boiler', status: 'on_track' });
 
     bus.publish({ ...transition, status: 'cannot_meet', previousStatus: 'on_track' });
     expect(trigger.trigger).toHaveBeenCalledTimes(3);
-    expect(trigger.trigger.mock.calls[2]![0]).toMatchObject({
-      status: 'Cannot finish', status_id: 'unachievable',
-    });
-  });
-
-  it('coerces null planning numbers to 0 because Homey number tokens reject null', () => {
-    const bus = createDeferredObjectiveStatusBus();
-    const { deps, mock } = buildDeps({
-      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      bus,
-    });
-    registerDeadlineObjectiveCards(deps);
-    const trigger = mock.triggers.get('deadline_status_changed')!;
-    // Initial publish to seed the prior-status cache; second publish is the
-    // transition we assert on.
-    const base = buildSnapshot({
-      deviceId: 'heater-1',
-      deviceName: 'Boiler',
-      kind: 'temperature',
-      status: 'on_track',
-      previousStatus: 'unknown',
-      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
-    });
-    bus.publish(base);
-    bus.publish({ ...base, status: 'at_risk', previousStatus: 'on_track' });
-    expect(trigger.trigger).toHaveBeenCalledTimes(2);
-    const tokens = trigger.trigger.mock.calls[1]![0] as Record<string, unknown>;
-    expect(tokens.target_value).toBe(0);
-    expect(tokens.required_kwh).toBe(0);
-    expect(tokens.planning_speed_kw).toBe(0);
-    expect(tokens.estimated_duration_text).toBe('');
-    expect(tokens.risk_reason).toBe('');
+    expect(trigger.trigger.mock.calls[2]![0]).toEqual({ device_name: 'Boiler', status: 'unachievable' });
   });
 
   it('publishes unknown as waiting when the active smart task status changes', async () => {
@@ -645,7 +581,7 @@ describe('deadline objective flow cards', () => {
 
     expect(trigger.trigger).toHaveBeenCalledTimes(1);
     const [tokens, state] = trigger.trigger.mock.calls[0]!;
-    expect(tokens).toMatchObject({ device_name: 'Boiler', status: 'Waiting', status_id: 'waiting', kind: 'temperature' });
+    expect(tokens).toEqual({ device_name: 'Boiler', status: 'waiting' });
     expect(state).toEqual({ deviceId: 'heater-1' });
   });
 
@@ -790,7 +726,7 @@ describe('deadline objective flow cards', () => {
     expect(trigger.trigger).toHaveBeenCalledTimes(1);
   });
 
-  it('publishes deadline_ended with outcome-specific tokens', async () => {
+  it('publishes deadline_ended with stable outcome and numeric shortfall', async () => {
     const endedBus = createDeferredObjectiveEndedBus();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
@@ -816,36 +752,16 @@ describe('deadline objective flow cards', () => {
 
     expect(trigger.trigger).toHaveBeenCalledTimes(1);
     const [tokens, state] = trigger.trigger.mock.calls[0]!;
-    expect(tokens).toMatchObject({
+    expect(tokens).toEqual({
       device_name: 'Boiler',
-      outcome: 'Missed',
-      outcome_id: 'missed',
-      target_value: 55,
-      target_text: '55.0 °C',
-      final_progress_value: 50,
-      shortfall_value: 5,
-      shortfall_text: '5.0 °C below target',
-      deadline_local_time: '07:00',
-      finished_at_local_time: '',
+      outcome: 'missed',
+      shortfall: 5,
     });
-    // Stable-id contract: token must be the exact literal value.
-    expect(tokens.outcome_id).toBe('missed');
-    // Kind and unit tokens are intentionally omitted — the device picker
-    // already disambiguates kind, so flow authors don't need them on the
-    // ended trigger.
-    expect(tokens).not.toHaveProperty('kind');
-    expect(tokens).not.toHaveProperty('target_unit');
-    expect(tokens).not.toHaveProperty('shortfall_unit');
-    // Composed notification text is ready to drop into a push body.
-    expect(tokens.notification_text).toMatch(/Boiler smart task missed deadline 07:00/);
     expect(state).toEqual({ deviceId: 'heater-1' });
-
-    // Run listener: device-only match — the outcome dropdown is gone.
     expect(await trigger.run!({ device: 'heater-1' }, state)).toBe(true);
     expect(await trigger.run!({ device: 'heater-2' }, state)).toBe(false);
 
-    // A succeeded event populates finished_at, zeroes the shortfall, and
-    // composes a succeeded-shape notification.
+    // Succeeded zeroes the shortfall.
     endedBus.publish({
       ...missedEvent,
       outcome: 'succeeded',
@@ -853,16 +769,11 @@ describe('deadline objective flow cards', () => {
       finalProgressC: 55,
     });
     expect(trigger.trigger).toHaveBeenCalledTimes(2);
-    const succeededTokens = trigger.trigger.mock.calls[1]![0] as Record<string, unknown>;
-    expect(succeededTokens).toMatchObject({
-      outcome: 'Succeeded',
-      outcome_id: 'succeeded',
-      finished_at_local_time: '06:30',
-      shortfall_text: '',
-      shortfall_value: 0,
-      final_progress_value: 55,
+    expect(trigger.trigger.mock.calls[1]![0]).toEqual({
+      device_name: 'Boiler',
+      outcome: 'succeeded',
+      shortfall: 0,
     });
-    expect(succeededTokens.notification_text).toMatch(/succeeded at 06:30/);
   });
 
   it('publishes deadline_plan_changed with kWh, charge hours and projected finish tokens', async () => {
@@ -904,16 +815,12 @@ describe('deadline objective flow cards', () => {
 
     expect(trigger.trigger).toHaveBeenCalledTimes(1);
     const [tokens, state] = trigger.trigger.mock.calls[0]!;
-    expect(tokens).toMatchObject({
+    expect(tokens).toEqual({
       device_name: 'Garage charger',
-      kind: 'ev_soc',
       remaining_kwh: 6.5,
       planned_hours: 3,
       projected_finish_local_time: '05:36',
-      change_reason_id: 'prices_revised',
     });
-    expect(tokens.notification_text).toMatch(/replanned \(prices revised\); 6.5 kWh, finish by 05:36/);
-    expect(tokens).not.toHaveProperty('projected_finish_at_ms');
     expect(state).toEqual({ deviceId: 'ev-1' });
     expect(await trigger.run!({ device: 'ev-1' }, state)).toBe(true);
     expect(await trigger.run!({ device: 'ev-2' }, state)).toBe(false);
@@ -938,27 +845,6 @@ describe('deadline objective flow cards', () => {
           { startsAtMs: hourStartB, plannedKWh: 2.5 },
           { startsAtMs: hourStartC, plannedKWh: 1.5 },
         ],
-      },
-    });
-    expect(trigger.trigger).toHaveBeenCalledTimes(1);
-
-    // Plan creation reasons (`flow_card`, `prices_arrived`) describe a new
-    // plan, not a change — they must not fire deadline_plan_changed.
-    planRevisionBus.publish({
-      deviceId: 'ev-1',
-      deviceName: 'Garage charger',
-      objectiveKind: 'ev_soc',
-      reason: 'flow_card',
-      allocationChanged: true,
-      projectedFinishAtMs,
-      revision: {
-        revision: 4,
-        revisedAtMs: hourStartA,
-        computedFromPricesUpTo: hourStartC + 3600000,
-        reason: 'flow_card',
-        planStatus: 'on_track',
-        energyNeededKWh: 6.5,
-        hours: [{ startsAtMs: hourStartA, plannedKWh: 2.5 }],
       },
     });
     expect(trigger.trigger).toHaveBeenCalledTimes(1);

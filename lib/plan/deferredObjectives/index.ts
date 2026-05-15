@@ -9,9 +9,6 @@ export type {
   DeferredObjectivePlanRevisionBus,
   DeferredObjectivePlanRevisionEvent,
 } from './planRevisionBus';
-export type {
-  DeferredObjectiveActivePlanRevisionReason,
-} from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 export { createDeferredObjectiveEndedBus } from './endedEventBus';
 export type {
   DeferredObjectiveEndedBus,
