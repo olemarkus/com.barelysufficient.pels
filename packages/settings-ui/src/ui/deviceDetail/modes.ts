@@ -113,9 +113,15 @@ const buildDeviceDetailModeRow = (mode: string, device: TargetDeviceSnapshot) =>
   header.appendChild(nameSpan);
 
   if (mode === state.activeMode) {
-    const badge = document.createElement('span');
-    badge.className = 'active-badge';
-    badge.textContent = 'Active';
+    // Visual-only status pill. Hidden from assistive tech because the same
+    // information is already conveyed by the row representing the user's
+    // active mode; exposing this chip as a button would add a phantom
+    // interactive element to keyboard and screen-reader navigation.
+    const badge = document.createElement('md-assist-chip');
+    badge.className = 'detail-mode-row__active-chip';
+    badge.setAttribute('label', 'Active');
+    badge.setAttribute('aria-hidden', 'true');
+    badge.tabIndex = -1;
     header.appendChild(badge);
   }
   nameWrap.appendChild(header);
