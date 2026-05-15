@@ -1,7 +1,6 @@
 import { h } from 'preact';
 import { useRef, useLayoutEffect } from 'preact/hooks';
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
-import { formatDeviceOverview } from '../../../../shared-domain/src/deviceOverview.ts';
 import { PLAN_REASON_CODES } from '../../../../shared-domain/src/planReasonSemanticsCore.ts';
 import {
   PLAN_STATE_LABEL,
@@ -127,7 +126,9 @@ const resolveReasonText = (dev: PlanDeviceSnapshot): string => {
   }
   if (isDeviceReason(dev.reason)) return formatReasonSummary(dev.reason);
   if (kind === 'held') return 'Limited · staying under the hard cap';
-  return formatDeviceOverview(dev).statusMsg;
+  // Final fallback for malformed snapshots — keep it user-facing so internal
+  // planner terms never leak when the upstream reason payload is missing.
+  return '';
 };
 
 const isDrawing = (dev: PlanDeviceSnapshot): boolean => (
@@ -188,7 +189,7 @@ const isReportedLoadConflict = (dev: PlanDeviceSnapshot, kind: PlanStateKind): b
 );
 
 const resolveHeldStateLabel = (dev: PlanDeviceSnapshot): string => (
-  dev.shedAction === 'turn_off' ? 'Paused by PELS' : 'Limited by PELS'
+  dev.shedAction === 'turn_off' ? 'Turned off by PELS' : 'Limited by PELS'
 );
 
 const normalizeInlineDetail = (detail: unknown): string | null => (

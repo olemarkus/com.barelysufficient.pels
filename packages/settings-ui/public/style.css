@@ -4064,6 +4064,26 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   min-width: 0;
 }
 
+/* Stacked variant: short option sets (2-3 values) render as a full-width
+   segmented control under the label, giving the selected state clear contrast
+   and a predictable hit area at 480px / 320px webviews. */
+.budget-setting-row--stacked {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--spacing-2);
+  align-items: start;
+}
+
+.budget-setting-row--stacked > span:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.budget-setting-row--stacked > .segmented {
+  width: 100%;
+}
+
 @media (max-width: 380px) {
   #budget-redesign-adjust-view .budget-setting-row--editable {
     grid-template-columns: minmax(0, 1fr);

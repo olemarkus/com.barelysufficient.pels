@@ -3,10 +3,8 @@ import { useRef, useLayoutEffect } from 'preact/hooks';
 import {
   MdElevation,
   MdFilledButton,
-  MdFilledSelect,
   MdFilledTextField,
   MdOutlinedButton,
-  MdSelectOption,
   MdSwitch,
   MdTextButton,
 } from './materialWebJSX.tsx';
@@ -508,15 +506,13 @@ const BudgetAdjustView = ({
     if (!Number.isFinite(parsed)) return;
     onAdjustFieldChange({ dailyBudgetKWh: parsed });
   };
-  const onReserveChange = (event: Event) => {
-    const target = event.currentTarget as HTMLElement & { value?: string };
-    const parsed = Number.parseFloat(target.value ?? '');
+  const onReserveChange = (value: string) => {
+    const parsed = Number.parseFloat(value);
     if (!Number.isFinite(parsed)) return;
     onAdjustFieldChange({ controlledWeight: parsed });
   };
-  const onFlexChange = (event: Event) => {
-    const target = event.currentTarget as HTMLElement & { value?: string };
-    const parsed = Number.parseFloat(target.value ?? '');
+  const onFlexChange = (value: string) => {
+    const parsed = Number.parseFloat(value);
     if (!Number.isFinite(parsed)) return;
     onAdjustFieldChange({ priceFlexShare: parsed });
   };
@@ -589,48 +585,36 @@ const BudgetAdjustView = ({
         </summary>
         <MdElevation aria-hidden="true" />
         <div class="budget-settings-list">
-          <div class="budget-setting-row budget-setting-row--editable">
+          <div class="budget-setting-row budget-setting-row--stacked" id="budget-redesign-controlled-weight">
             <span>
               <span class="budget-setting-row__label">Background usage reserve</span>
               <FieldHint>Daily budget held back for household usage PELS cannot move.</FieldHint>
             </span>
-            <MdFilledSelect
-              id="budget-redesign-controlled-weight"
-              class="budget-redesign-field budget-redesign-field--select"
-              aria-label="Background usage reserve"
+            <ToggleGroup
+              options={[
+                { value: String(UNMANAGED_RESERVE_BALANCED_MODE), label: 'Balanced' },
+                { value: String(UNMANAGED_RESERVE_CONSERVATIVE_MODE), label: 'Conservative' },
+              ]}
               value={String(draft.controlledWeight)}
+              ariaLabel="Background usage reserve"
               onChange={onReserveChange}
-            >
-              <MdSelectOption value={String(UNMANAGED_RESERVE_BALANCED_MODE)}>
-                <div slot="headline">Balanced</div>
-              </MdSelectOption>
-              <MdSelectOption value={String(UNMANAGED_RESERVE_CONSERVATIVE_MODE)}>
-                <div slot="headline">Conservative</div>
-              </MdSelectOption>
-            </MdFilledSelect>
+            />
           </div>
-          <div class="budget-setting-row budget-setting-row--editable">
+          <div class="budget-setting-row budget-setting-row--stacked" id="budget-redesign-price-flex-share">
             <span>
               <span class="budget-setting-row__label">Managed device flexibility</span>
               <FieldHint>How freely PELS may shift managed-device usage toward cheaper hours.</FieldHint>
             </span>
-            <MdFilledSelect
-              id="budget-redesign-price-flex-share"
-              class="budget-redesign-field budget-redesign-field--select"
-              aria-label="Managed device flexibility"
+            <ToggleGroup
+              options={[
+                { value: String(PRICE_FLEX_LOW), label: 'Low' },
+                { value: String(PRICE_FLEX_MEDIUM), label: 'Medium' },
+                { value: String(PRICE_FLEX_HIGH), label: 'High' },
+              ]}
               value={String(draft.priceFlexShare)}
+              ariaLabel="Managed device flexibility"
               onChange={onFlexChange}
-            >
-              <MdSelectOption value={String(PRICE_FLEX_LOW)}>
-                <div slot="headline">Low</div>
-              </MdSelectOption>
-              <MdSelectOption value={String(PRICE_FLEX_MEDIUM)}>
-                <div slot="headline">Medium</div>
-              </MdSelectOption>
-              <MdSelectOption value={String(PRICE_FLEX_HIGH)}>
-                <div slot="headline">High</div>
-              </MdSelectOption>
-            </MdFilledSelect>
+            />
           </div>
         </div>
       </details>

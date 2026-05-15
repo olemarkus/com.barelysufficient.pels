@@ -75,12 +75,9 @@ test('budget adjust → preview → apply walkthrough', async ({ page }, testInf
   await page.waitForTimeout(150);
 
   // 4. Switch managed device flexibility to High (0.85).
-  const flexSelect = page.locator('#budget-redesign-price-flex-share');
-  await flexSelect.scrollIntoViewIfNeeded();
-  await flexSelect.evaluate((el: HTMLElement & { value?: string }) => {
-    el.value = '0.85';
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-  });
+  const flexGroup = page.locator('#budget-redesign-price-flex-share');
+  await flexGroup.scrollIntoViewIfNeeded();
+  await flexGroup.getByRole('button', { name: 'High' }).click();
   await page.waitForTimeout(150);
 
   await shot(page, '03-adjust-dirty');
