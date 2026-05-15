@@ -48,14 +48,14 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `--font-line-height-tight`. Role utility classes `.text-hero-number / -page-headline /
       -section-headline / -title / -section-label / -body / -caption` published in `style.css`
       as the documented entry points for new surfaces; `.text-body` and `.text-caption` bind to
-      the corresponding `--pels-text-*` role tokens. Screenshot baselines need a refresh pass —
-      tracked in the residual e2e bullet below.)*
+      the corresponding `--pels-text-*` role tokens. Screenshot baselines refreshed in a
+      follow-up PR.)*
 - [x] CSS-side migration: apply existing surface tier tokens per M3 nesting. *(landed —
       `.slide-panel` raised to `--pels-surface-container-high`, `.banner` uses
       `--pels-surface-container-highest`, `.plan-card` is now a flat `--color-surface-1`,
       `[data-state-kind="resuming"]` binds to `--pels-status-good-surface`, and
-      `[data-state-kind="unknown"]` gets a 0.6 opacity dim. Screenshot baselines need a refresh
-      pass — tracked in the residual e2e bullet below.)*
+      `[data-state-kind="unknown"]` gets a 0.6 opacity dim. Screenshot baselines refreshed in
+      a follow-up PR.)*
 - [x] Demote accent, promote good. *(landed — `pels.status.good` token now resolves to
       `color.role.good` (teal #5eead4); accent (`#22c55e` brighter leaf) stays on selected-tab,
       focus ring, primary buttons, switch/checkbox. Positive-state surfaces, meter tone, ripple
@@ -74,7 +74,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       only. `grep -E "#[0-9a-f]{3,6}"` in `packages/settings-ui/src/ui/*Chart*.ts` returns
       zero. Heatmap low/high series in `powerWeekChartEcharts.ts` rebound to
       `--color-role-info` / `--color-role-danger`. Cross-surface hue parity vs. Overview chips
-      still relies on the screenshot baseline refresh tracked in the e2e bullet below.)*
+      is now reflected in the refreshed Playwright baselines.)*
 - [ ] Unify the hero and section-label primitive across every settings-UI surface.
       Overview hero, Budget header, Usage header, Smart tasks header, Settings header, Advanced
       header, and deadline-plan hero should read as one component: same eyebrow (font-size,
@@ -131,15 +131,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
       `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,
       `packages/settings-ui/tests/e2e/charts-layout.spec.ts`.
-- [ ] Refresh Playwright e2e screenshot baselines for the design-token theme PR
-      (2026-05-14 token+typography+surface refresh). The bundled CSS-only P0s above shift
-      the accent hue (`#16a34a` → `#22c55e`), promote teal `--color-base-good-default` as the
-      positive-state color, raise hero headlines to display-small, repaint plan-cards as flat
-      `--color-surface-1`, retune the surface/border ramps, and replace state-container hex
-      with `color-mix(...)`. Visually verify each baseline at 320 px and 480 px before
-      committing the new snapshots — do not regenerate blind. Files:
-      `packages/settings-ui/tests/e2e/*.spec.ts` and their `__snapshots__/` siblings.
-
 ## P1 Correctness, Data Integrity, and Supported UX
 
 - [ ] Give settings-form text-field / select controls an accessible name. M3 follow-up audit
