@@ -16,6 +16,11 @@ export type ToastOptions = {
 
 const DEFAULT_DURATION_MS = 1800;
 const ACTION_DURATION_MS = 6000;
+const ERROR_DURATION_MS = 5000;
+const GENERIC_ERROR_FALLBACK = 'Save failed — try again.';
+// Wrap added by buildApiError in homey.ts. Strip so users see the inner
+// server-authored message instead of the transport envelope.
+const HOMEY_API_ERROR_PREFIX_REGEX = /^Homey api (?:DELETE|GET|POST|PUT) \S+ failed: /;
 let hideToken = 0;
 
 const clearToast = () => {
@@ -71,8 +76,22 @@ export const showToast = async (
   clearToast();
 };
 
+const extractErrorMessage = (error: unknown): string => {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error.trim()) return error.trim();
+  return '';
+};
+
+const stripHomeyApiPrefix = (message: string): string => (
+  message.replace(HOMEY_API_ERROR_PREFIX_REGEX, '')
+);
+
 export const showToastError = async (error: unknown, fallback: string): Promise<void> => {
-  const rawMessage = error instanceof Error && error.message ? error.message : '';
-  const message = rawMessage && !isHomeyTransportErrorMessage(rawMessage) ? rawMessage : fallback;
-  await showToast(message, 'warn');
+  const rawMessage = extractErrorMessage(error);
+  const unwrapped = stripHomeyApiPrefix(rawMessage);
+  // Hide low-signal transport errors behind the caller's fallback. The user
+  // sees an actionable message instead of "socket hang up" or similar.
+  const candidate = unwrapped && !isHomeyTransportErrorMessage(unwrapped) ? unwrapped : fallback;
+  const message = candidate.trim() || GENERIC_ERROR_FALLBACK;
+  await showToast(message, 'warn', { durationMs: ERROR_DURATION_MS });
 };

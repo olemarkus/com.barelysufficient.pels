@@ -2865,6 +2865,16 @@ md-primary-tab.tab[active]:hover {
   transform: translate(-50%, 0);
 }
 
+.toast[data-tone="ok"] {
+  border-color: var(--accent);
+}
+
+.toast[data-tone="warn"] {
+  background: var(--color-state-negative-bg);
+  border-color: var(--color-state-negative-border);
+  color: var(--color-state-negative-text);
+}
+
 .toast__message {
   flex: 1;
   min-width: 0;

@@ -224,6 +224,31 @@ test.describe('Settings UI (smoke)', () => {
     await expect(genericEvDeviceRow).toBeVisible();
   });
 
+  test('surfaces the validation error verbatim when safety margin exceeds the hard cap', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
+
+    await openSettingsSection(page, 'limits');
+    await expect(page.locator('#limits-panel')).toBeVisible();
+
+    // Margin (5) > hard cap (8 in the stub) is invalid only when the cap is small,
+    // so first drop the cap to 3 — this save succeeds.
+    await setMdValue(page, '#settings-capacity-limit', '3');
+    await expect(page.locator('#toast')).toContainText('Limits & safety saved.');
+
+    // Now attempt margin = 5 with limit = 3 — front-end validation must reject
+    // and the toast must surface the validation message verbatim (no transport envelope,
+    // no empty body).
+    await setMdValue(page, '#settings-capacity-margin', '5');
+    const toast = page.locator('#toast');
+    await expect(toast).toContainText('Safety margin cannot exceed the hard cap.');
+    await expect(toast).not.toContainText('Homey api');
+    await expect(toast).not.toContainText('failed:');
+    await expect(toast).toHaveAttribute('data-tone', 'warn');
+    const toastText = (await toast.textContent())?.trim() ?? '';
+    expect(toastText.length).toBeGreaterThan(0);
+  });
+
   test('keeps stubbed daily budget API payloads in sync with settings writes', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
