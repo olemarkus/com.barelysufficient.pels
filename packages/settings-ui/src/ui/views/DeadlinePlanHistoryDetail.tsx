@@ -12,6 +12,7 @@ import {
   getPlanHistoryOutcomeTone,
 } from '../../../../shared-domain/src/deferredPlanHistory.ts';
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from '../echartsRegistry.ts';
+import { attachTabShownResize } from '../chartVisibilityResize.ts';
 
 type Props = {
   entry: DeferredObjectivePlanHistoryEntry;
@@ -164,10 +165,23 @@ export const buildHistoryDetailChartOption = (
     legend: {
       top: 0,
       left: 0,
+      // The "Original plan" series renders as a `transparent` fill + dashed
+      // device-coloured border. Pin its legend swatch to that same border so
+      // the swatch is visible and matches the bar shown on the chart.
       data: [
-        ...(hasOriginalSeries ? ['Original plan'] : []),
-        ...(hasFinalSeries ? ['Final plan'] : []),
-        ...(hasObservedSeries ? ['Observed charging'] : []),
+        ...(hasOriginalSeries
+          ? [{
+            name: 'Original plan',
+            itemStyle: {
+              color: 'transparent',
+              borderColor: palette.device,
+              borderWidth: 2,
+              borderType: 'dashed' as const,
+            },
+          }]
+          : []),
+        ...(hasFinalSeries ? [{ name: 'Final plan', itemStyle: { color: palette.device } }] : []),
+        ...(hasObservedSeries ? [{ name: 'Observed charging', itemStyle: { color: palette.observed } }] : []),
       ],
       itemWidth: 12,
       itemHeight: 8,
@@ -278,8 +292,13 @@ const PlanComparisonChart = ({ rows, hasOriginalSeries, hasFinalSeries }: {
       ? new ResizeObserver(() => chart.resize(resolveChartSize(container)))
       : null;
     resizeObserver?.observe(container);
+    // Cold-mount path: the chart may be initialized while its panel is still
+    // `display:none`, so `clientWidth` was the 480 px fallback. Resize on the
+    // next `pels:tab-shown` so the SVG settles to the real visible width.
+    const detachTabShown = attachTabShownResize({ container, chart, resolveSize: resolveChartSize });
     return () => {
       resizeObserver?.disconnect();
+      detachTabShown();
       chart.dispose();
       if (chartInstanceRef.current === chart) chartInstanceRef.current = null;
     };

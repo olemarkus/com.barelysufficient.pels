@@ -253,7 +253,9 @@ describe('deadline plan page payload', () => {
     const hours = payload.timeline.hours;
     expect(hours[hours.length - 1]?.time).toBe(`${String(deadline.getHours() - 1).padStart(2, '0')}:00`);
     expect(payload.timeline.hours.some((hour) => hour.planned)).toBe(true);
-    expect(payload.timeline.hours.some((hour) => hour.planned && hour.price === '10.00')).toBe(true);
+    // Prices are normalized to the same kr/kWh display the Budget chart uses,
+    // so a raw 10 øre/kWh value shows as 0.10 kr/kWh here.
+    expect(payload.timeline.hours.some((hour) => hour.planned && hour.price === '0.10')).toBe(true);
   });
 
   it('uses the learned objective sample when live temperature is missing', () => {

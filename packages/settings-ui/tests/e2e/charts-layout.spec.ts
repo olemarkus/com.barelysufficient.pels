@@ -152,35 +152,77 @@ test.describe('Settings UI chart layout', () => {
     await page.locator('#budget-panel .segmented__option').filter({ hasText: 'Hourly plan' }).click();
     await expect(page.locator('#budget-redesign-chart svg')).toBeVisible();
 
-    // The legend swatches above the chart are CSS-token-driven. They must
-    // resolve to the same colour values that the chart palette resolves to
-    // from `--day-view-color-background-usage`, `--day-view-color-managed-usage`,
-    // and `--pels-chart-plan`. We compare via CSS variable lookups on the
-    // budget panel so we never reintroduce a hex fallback contract.
+    // Each legend swatch must (a) render with an opaque colour, and (b) match
+    // the same `--pels-chart-*` token the chart palette uses for the rendered
+    // series. The split swatches and the line swatches read from the same
+    // single source of truth so future palette tweaks cannot drift them
+    // apart.
     const parity = await page.evaluate(() => {
-      const panel = document.querySelector('#budget-panel');
+      const panel = document.querySelector<HTMLElement>('#budget-panel');
       if (!panel) return { ok: false, reason: 'no panel' } as const;
       const swatches = Array.from(panel.querySelectorAll<HTMLElement>('.budget-chart-legend__swatch'));
       if (swatches.length === 0) return { ok: false, reason: 'no swatches' } as const;
-      // Every swatch must show *some* colour, either via `background-color`
-      // (filled markers like Plan/Actual/Background/Managed) or via
-      // `border-top-color` (line markers like Projection/Price). Empty values
-      // are the regression we are guarding against — the legend would
-      // otherwise render invisible while the series renders with real colour.
+      const panelStyle = getComputedStyle(panel);
+      const resolveVar = (variable: string): string => panelStyle.getPropertyValue(variable).trim();
+      const expectedByClass: Record<string, { fill?: string; border?: string }> = {
+        'budget-chart-legend__swatch--actual': { fill: resolveVar('--pels-chart-actual') },
+        'budget-chart-legend__swatch--background': { fill: resolveVar('--pels-chart-background') },
+        'budget-chart-legend__swatch--managed': { fill: resolveVar('--pels-chart-managed') },
+        'budget-chart-legend__swatch--forecast': { border: resolveVar('--pels-chart-forecast') },
+        'budget-chart-legend__swatch--price': { border: resolveVar('--pels-chart-price-line') },
+      };
       const isOpaque = (value: string): boolean => {
         const v = value.trim();
         return v.length > 0 && v !== 'rgba(0, 0, 0, 0)' && v !== 'transparent';
       };
-      const offenders: string[] = [];
+      const offenders: Array<{ cls: string; reason: string }> = [];
       for (const swatch of swatches) {
         const style = getComputedStyle(swatch);
         const hasFill = isOpaque(style.backgroundColor);
         const hasBorder = style.borderTopWidth !== '0px' && isOpaque(style.borderTopColor);
-        if (!hasFill && !hasBorder) offenders.push(swatch.className);
+        if (!hasFill && !hasBorder) {
+          offenders.push({ cls: swatch.className, reason: 'no colour' });
+          continue;
+        }
+        const variant = Object.keys(expectedByClass).find((cls) => swatch.classList.contains(cls));
+        if (!variant) continue;
+        const expected = expectedByClass[variant];
+        if (expected.fill !== undefined && expected.fill && style.backgroundColor !== expected.fill) {
+          offenders.push({ cls: variant, reason: `fill ${style.backgroundColor} != ${expected.fill}` });
+        }
+        if (expected.border !== undefined && expected.border && style.borderTopColor !== expected.border) {
+          offenders.push({ cls: variant, reason: `border ${style.borderTopColor} != ${expected.border}` });
+        }
       }
       return { ok: offenders.length === 0, offenders, swatchCount: swatches.length } as const;
     });
-    expect(parity.ok, `Legend swatches missing colour: ${JSON.stringify(parity)}`).toBe(true);
+    expect(parity.ok, `Legend swatches mismatch: ${JSON.stringify(parity)}`).toBe(true);
+  });
+
+  test('usage charts have non-zero size on first tab activation', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('tablist')).toBeVisible();
+
+    // Cold-mount path: the Usage panel was hidden during boot, so charts can
+    // initialize with the 480 px fallback width. Activate the Usage tab and
+    // wait for each ECharts SVG to settle to its real visible size. A
+    // 0 × 0 SVG indicates the tab-shown resize handler did not run, and a
+    // wider-than-container SVG indicates the resize did not match the panel.
+    await page.getByRole('tab', { name: 'Usage' }).click();
+    await expect(page.locator('#usage-panel')).toBeVisible();
+
+    const targets = ['#usage-day-bars', '#hourly-pattern', '#daily-list'];
+    await page.waitForFunction((selectors) => (
+      selectors.every((selector) => {
+        const container = document.querySelector<HTMLElement>(selector);
+        if (!container || container.clientWidth <= 0 || container.clientHeight <= 0) return false;
+        const svg = container.querySelector('svg');
+        if (!svg) return false;
+        const svgWidth = Number.parseFloat(svg.getAttribute('width') ?? '0');
+        const svgHeight = Number.parseFloat(svg.getAttribute('height') ?? '0');
+        return svgWidth > 0 && svgHeight > 0 && Math.abs(svgWidth - container.clientWidth) <= 1;
+      })
+    ), targets);
   });
 
   test('deadline-plan horizon chart labels the price axis with a unit', async ({ page }) => {
