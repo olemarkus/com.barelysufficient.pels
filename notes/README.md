@@ -22,11 +22,25 @@ Current notes:
   work; core diagnostics/service pieces now exist, but flows/insights are still the main gap.
 - `daily-budget-auto-adjust/README.md`: planned daily-budget auto-adjust policy based on eligible exempted energy from completed days.
 - `deferred-load-objectives/README.md`: deadline-aware objective model for loads that need to
-  reach a ready state; the soft temperature runtime slice has shipped, while hard deadlines,
-  richer EV admission, step-change history, and contention handling remain future work.
+  reach a ready state; the soft temperature runtime slice has shipped, while richer EV admission,
+  step-change history, and contention handling remain future work in this note. Hard deadlines
+  and energy-based milestones are deferred and moved to dedicated notes (see below).
 - `ev-ready-by/README.md`: product framing, release-readiness analysis, and prioritized task
   plan for the user-facing EV charging deadline feature built on the deferred-load-objectives
   model.
+- `hard-deadlines/README.md`: deferred-from-v1 design for hard-enforcement deadlines, the
+  hard-objective admission lane, hard-boost rebalancing, and the temperature-side mode-override
+  subsystem. Soft enforcement is what ships today.
+- `planning-horizon-milestones/README.md`: deferred-from-v1 design for energy-based milestones
+  and the priority-adjusted horizon-scheduling model. The shipped horizon planner covers the
+  same intent via deadline-reserve and `planned_using_policy_avoid` reasons.
+- `smart-task-flow-cards/README.md`: redesign proposal for the smart-task trigger cards —
+  drop dropdown filtering args, expose stable-id tokens as public-API contract, add numeric
+  tokens and a composed `notification_text` token. Tracked as P0 in `TODO.md`.
+- `status-hysteresis/README.md`: deferred-from-v1 design for hysteresis on smart-task status
+  transitions and confidence-scaled deadline margins. Trigger to revisit is real telemetry
+  showing user-observable flapping; a target-boundary deadband is the smaller alternative
+  fix for the only edge case the shipped flow-trigger dedup doesn't already cover.
 - `ev-soc-layering.md`: decision record for keeping SoC source-of-evidence metadata inside the
   observation layer.
 - `overview-hero-spec.md`: current Overview hero and device-card design reference.

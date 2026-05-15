@@ -75,6 +75,25 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       zero. Heatmap low/high series in `powerWeekChartEcharts.ts` rebound to
       `--color-role-info` / `--color-role-danger`. Cross-surface hue parity vs. Overview chips
       is now reflected in the refreshed Playwright baselines.)*
+- [ ] Revise smart task flow cards: single trigger per lifecycle event, stable-id tokens, richer
+      token set. Drop the `outcome` dropdown arg from `deadline_ended` and the `status` dropdown
+      arg from `deadline_status_changed`; add stable-id tokens (`outcome_id`, `status_id`,
+      `previous_status_id`, `change_reason_id`) alongside existing display-label tokens; add
+      numeric tokens (`target_value`, `final_progress_value`, `delivered_kwh`, numeric
+      `shortfall_value` + `shortfall_unit`); add composed `notification_text` token to all three
+      triggers; add `planned_start_local_time`, `planned_finish_local_time`, `required_kwh`,
+      `planning_speed_kw`, `estimated_duration_text`, `risk_reason` to
+      `deadline_status_changed`. Treat the stable-id literal values as a public-API contract.
+      Why P0: today users filter by trigger arg (forcing one flow per outcome/status), and tokens
+      emit English display labels rather than stable ids, so downstream condition logic compares
+      brittle strings. The redesign serves common flow scenarios with one trigger and condition
+      filtering; it also unblocks the ev-ready-by §P2.3 token-richness work that the EV release
+      depends on. Migration is breaking for user flows that use the dropdowns — release planning
+      to decide hard cut vs soft deprecation. Design: `notes/smart-task-flow-cards/README.md`.
+      Files: `.homeycompose/flow/triggers/{deadline_ended,deadline_status_changed,deadline_plan_changed}.json`,
+      `flowCards/deadlineObjectiveCards.ts`, `flowCards/deadlineEndedTokens.ts`,
+      `lib/plan/deferredObjectives/activePlanRecorder.ts` and `planHistory.ts` (numeric field
+      sources), `test/deadlineObjectiveCards.test.ts`.
 - [ ] Unify the hero and section-label primitive across every settings-UI surface.
       Overview hero, Budget header, Usage header, Smart tasks header, Settings header, Advanced
       header, and deadline-plan hero should read as one component: same eyebrow (font-size,
@@ -297,6 +316,140 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/src/ui/deadlinePlan.ts`, `lib/app/appInit.ts`,
       `lib/plan/deferredObjectives/diagnosticsBridge.ts`, EV learning store, calibration view
       tests.
+- [ ] Bring the smart-task history detail view to full live-plan chart parity.
+      The history detail page currently renders a summary card plus original/final planned-hour
+      tables (`packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`). The live
+      `DeadlinePlan` view shows a richer hour-by-hour chart with price tone, projected progress,
+      and original-vs-current charge overlay. Reconciling the two would let users compare past
+      runs apples-to-apples with the current plan instead of switching mental models.
+      Why P1: history is the surface users return to when a deadline missed or partially
+      delivered, and "why did this run miss?" can't be answered without the price layer that
+      live plan shows. Without parity, users switch mental models between live and history
+      views, losing trust in the system's explanation.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts` (synthesise a `DeadlinePlanPayload` from a
+      history entry without depending on stale bootstrap prices/profile).
+- [ ] Add status to Smart tasks list cards. `DeadlinesList.tsx` today shows device name, kind
+      chip, target, and date rows — no status, no progress. With multiple active smart tasks
+      users have to tap into each one to find a task in trouble. Add a status chip
+      (`waiting`/`on_track`/`at_risk`/`unachievable`/`satisfied`) sourced from the status bus
+      snapshot, plus an optional progress indicator (current temp / current SoC vs target) per
+      card.
+      Why P1: the list is the "are my tasks healthy?" front door; as inventory-only it forces
+      drill-down for every check.
+      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
+      `packages/settings-ui/src/ui/deadlinesList.ts`,
+      `lib/plan/deferredObjectives/statusBus.ts` (status snapshot wiring through the settings UI
+      bootstrap), list-card tests.
+- [ ] Make "Cannot finish" hero copy always name a reason. `deadlinePlan.ts:resolveCannotMeetMeta`
+      has three branches: `cannotMeetDailyBudgetExhausted`, `cannotMeetShortfall(text)`, and a
+      bare `cannotMeetFallback`. The fallback path renders the warning chip with no reasoned
+      explanation, which is the worst combination — user sees a problem signal but cannot tell
+      what's wrong.
+      Why P1: copy bug that undermines trust precisely in the moment users need it. Replace the
+      fallback with either a named reason from the diagnostic (e.g. plan-status reason code) or
+      escalate to logging + show a generic-but-honest copy ("PELS can't determine why this task
+      is at risk — check the device's setup").
+      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`,
+      `packages/shared-domain/src/deadlineLabels.ts`.
+- [ ] Surface `objective_invalid_session` (car unplugged) on hero and list. The diagnostics
+      bridge already emits `objective_invalid_session` when SoC reads invalid (car unplugged or
+      session ended), and the user-facing flow status maps to `'waiting'`. The hero and list
+      both render "Waiting" without explanation. Add a copy branch — "Charging plan paused —
+      car unplugged" — to the pending-reason handling in `deadlinePlan.ts` and to the list-card
+      status chip (extension of the entry above).
+      Why P1: users plug back in expecting PELS to resume; with no signal they may think the
+      task is broken. Companion to the existing P1 entry "Surface EV deadline device-card
+      state" which already covers the device card.
+      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
+      `packages/shared-domain/src/deadlineLabels.ts`,
+      `lib/plan/deferredObjectives/diagnosticsBridge.ts` (confirm the reason flows into the
+      pending-payload).
+- [ ] Verify EV `satisfied` + cap-off + Power-limit-off path produces a terminal `ev_pause`
+      intent. When an EV objective transitions to `satisfied` while Power-limit control is off,
+      admission returns `inactive` (`lib/plan/deferredObjectives/admission.ts:23`) with no
+      `ev_pause` intent. The shared note's intent for cap-off + Power-limit-off is that
+      "meeting the target removes that allowance and PELS should pause charging". Today, after
+      target met, the deferred-objective admission stops driving the charger but doesn't emit a
+      final pause — the charger may remain charging via other behavior. Add an integration test
+      that captures the cap-off + Power-limit-off case; if no terminal pause fires, emit one.
+      Why P1: the note's behavioral promise isn't verified; if the gap exists, users see
+      charging continue past their target.
+      Files: `lib/plan/deferredObjectives/admission.ts`, `lib/executor/binaryExecutor.ts`,
+      `test/evDevices.integration.test.ts`.
+- [ ] Disambiguate the "Waiting" chip across Smart task surfaces. Today the same chip text
+      serves three meanings: plan still being built (`pending: true`), plan ready but charging
+      not started yet (queued for first bucket), and (proposed via existing entry above) car
+      unplugged. Split into `Building plan…` / `Queued` / `Paused — unplugged` chip variants
+      so users can tell at a glance which is active. Pair with the
+      `objective_invalid_session` entry above so the unplugged variant lands in the same pass.
+      Why P1: trust signal — three indistinguishable "Waiting" states erode confidence in what
+      PELS is doing right now.
+      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts`,
+      `packages/shared-domain/src/deadlineLabels.ts`.
+- [ ] Suppress live-plan original-series in legend and chart when identical to current.
+      `DeadlinePlanHistoryDetail.tsx:317-320` already gates `hasOriginalSeries` on
+      `Math.abs(originalKwh - finalKwh) > 0.001`. The live `DeadlinePlan.tsx` always renders the
+      original-series legend entry plus the dashed-border bar (with transparent fill when
+      `originalDeviceKwh === 0`), producing two visually near-identical legend entries on
+      first-load plans that haven't revised. Mirror the history-detail suppression: hide the
+      series and the legend entry when every hour's `originalDeviceKwh === deviceKwh`.
+      Why P1: chart clutter on the most common case (first-load, never-revised plan) — small UI
+      fix with measurable first-impression payoff.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+- [ ] Canonicalize chip ordering across Smart task surfaces. Today three orderings ship:
+      list card `[kind, ?Waiting]`, pending hero `[Waiting, kind]`, live hero `[state, kind,
+      ?cannotMeet, ?confidence]`. Pick one canonical order — suggested: kind first as identity,
+      state second as live signal — and apply uniformly so glance-scanning the same chip across
+      surfaces lands on the same position.
+      Why P1: first-impression consistency; inconsistent ordering hurts glance comprehension
+      of a multi-surface feature.
+      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts`.
+- [ ] Hero headline indicates planned start window when not currently active. Today when
+      `firstChargingHour` exists but its `startsAtMs > nowMs`, `resolveHeroHeadline`
+      (`packages/settings-ui/src/ui/deadlinePlan.ts`) returns `Waiting until HH:MM`. When the
+      hero is in the active-now branch it returns `Charging now` / `Heating now`. The bare
+      "On track" branch can fire when there's no `firstChargingHour` at all; consider whether
+      that branch should instead say something like "On track — no action needed yet" or
+      similar. Audit and tighten the headline so users always get a concrete time or status
+      cue rather than a bare status label.
+      Why P1: hero is the top-line user signal; bare "On track" is the weakest possible answer
+      to "what's happening?".
+      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`.
+- [ ] Rename `deadline_ended.json` dropdown option keys from `title` to `label`. Sibling
+      trigger / condition JSONs (`deadline_status_changed.json`, `deadline_status_is.json`,
+      condition `outcome`-typed cards across the project) all use `label: { en: … }` on
+      dropdown option objects. `deadline_ended.json` uses `title` — non-standard per the
+      Homey SDK convention and may render raw ids (`succeeded`/`missed`/`abandoned`) in the
+      mobile UI instead of the localized labels. ~1-minute fix.
+      Files: `.homeycompose/flow/triggers/deadline_ended.json`.
+- [ ] Decide `deadlineMarginMs` deadline-reserve: arm a flat reserve or remove the unused
+      path. `horizonPlanner.ts:266-270` normalizes incoming `deadlineMarginMs` but no
+      production caller passes a non-zero value, so `planningEndMs = max(now, deadline - 0)
+      = deadline` and the `planned_using_deadline_reserve` status detail is unreachable. Two
+      options: (a) wire a small flat reserve consistently in the bridge (e.g. 15 min) so the
+      reserve-based status branch matters, or (b) remove the parameter and the
+      `planned_using_deadline_reserve` status branch as dead code. The decision affects what
+      `at_risk` semantics actually mean for users.
+      Why P1: design integrity — `planned_using_deadline_reserve` is documented as a shipped
+      reason code (notes §"Reason Codes" Shipped today) but is structurally unreachable in
+      production. The notes claim something the runtime doesn't deliver.
+      Files: `lib/plan/deferredObjectives/horizonPlanner.ts`,
+      `lib/plan/deferredObjectives/diagnosticsBridge.ts`,
+      `lib/plan/deferredObjectives/types.ts`, related tests.
+- [ ] Decouple Smart tasks list empty-state copy from flow-card action titles.
+      `DeadlinesList.tsx:99-100` hard-codes "Add heating task" / "Add charging task" as the
+      action names. The flow-card redesign P0 may rename or unify the actions; this copy
+      would then silently go stale. Either extract action titles to a shared label constant
+      consumed by both the `.homeycompose/flow/actions/*.json` source and the UI, or drop the
+      names entirely (e.g. "Open the Flow editor to schedule a heating or charging task").
+      Why P1 polish: depends on flow-card redesign sequencing; bundle with that work for
+      single-PR safety.
+      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
+      `.homeycompose/flow/actions/set_*_deadline.json` (if shared constants).
 - [ ] Surface built-in device control when it blocks device management.
       The control still exists (`packages/settings-ui/public/index.html:1017-1029`) and is wired
       by `packages/settings-ui/src/ui/deviceDetail/nativeWiring.ts`, but it is conditional and
@@ -568,15 +721,52 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       runtime semantics for EV and heater objectives: already-met targets are live `satisfied`
       states until the deadline, and a later below-target reading returns to tracking. Keep
       terminology aligned with `notes/ui-terminology.md`.
-- [ ] Bring the smart-task history detail view to full live-plan chart parity.
-      The history detail page currently renders a summary card plus original/final planned-hour
-      tables (`packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`). The live
-      `DeadlinePlan` view shows a richer hour-by-hour chart with price tone, projected progress,
-      and original-vs-current charge overlay. Reconciling the two would let users compare past
-      runs apples-to-apples with the current plan instead of switching mental models.
+- [ ] Add `objective_missing_capacity` user-facing copy for thermal smart tasks. A new water
+      heater (or any thermal device without `measure_power`) never builds a `kWhPerUnit`
+      profile, so the diagnostics bridge emits `objective_missing_capacity` and the task sits
+      "Waiting" indefinitely with no explanation. Thermal objectives intentionally have no
+      bootstrap rate (thermal mass varies orders of magnitude across devices), so the only fix
+      is to tell the user. One-line copy fix on the pending-reason path: "Learning energy use
+      — needs power readings from this device."
+      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`,
+      `packages/shared-domain/src/deadlineLabels.ts`,
+      `packages/contracts/src/deferredObjectiveActivePlans.ts` (if a new pending-reason value is
+      needed).
+- [ ] Surface revision reason in the deadline-plan tooltip. The active-plan recorder already
+      classifies each revision (`flow_card`/`prices_arrived`/`prices_revised`/`rate_refined`/
+      `objective_changed`); per-hour tooltips currently show only the kWh and price. Adding
+      "Revised because rates were refined" or similar in the tooltip, on hours that differ
+      from original, closes the fuzzy "what does original even mean?" gap. Small change with
+      genuine clarity payoff.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts`,
+      `packages/shared-domain/src/deadlineLabels.ts`.
+- [ ] Add "Replanned N times" line to history detail. Recorder tracks revisions but history
+      detail shows only original + final. A simple count line on the detail card answers "was
+      this run stable?" without building a full revision timeline. Pair with the chart-parity
+      work above if convenient.
       Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
-      `packages/settings-ui/src/ui/deadlinePlan.ts` (synthesise a `DeadlinePlanPayload` from a
-      history entry without depending on stale bootstrap prices/profile).
+      `lib/plan/deferredObjectives/planHistory.ts` (confirm revision count surfaces on the
+      history entry shape).
+- [ ] Reassess `isLegacyNoneStatusMatch` in `flowCards/deadlineObjectiveCards.ts:167-175`.
+      The runlistener accepts legacy dropdown ids (`'none'`, `'pending_prices'`, `'cannot_meet'`,
+      `'cannot_finish'`, `'done'`) that don't appear in the shipped dropdown JSON for the
+      `deadline_status_is` condition. Either confirm older PELS releases stored these ids in
+      user flows (in which case keep the compatibility layer and add a comment + note entry
+      documenting the accepted ids) or remove it as dead code. The current state — code accepts
+      ids that have never been part of the public API — is technically harmless but invites
+      future confusion.
+      Files: `flowCards/deadlineObjectiveCards.ts`, `.homeycompose/flow/conditions/deadline_status_is.json`
+      (for documentation only).
+- [ ] "Plan inputs" card title in smart task plan view — rename or clarify terminology rule.
+      The card title shared by both kinds (`packages/shared-domain/src/deadlineLabels.ts`:
+      `planInputsCardTitle = "Plan inputs"`) uses "plan", which the project's terminology rule
+      (memory: `feedback_terminology_plan_vs_deadline`) reserves for the planning layer. The
+      card's content (per-unit rate, max power per hour) is genuinely planner output that
+      drives the smart task, so the rule may need a clarifying carve-out. Alternative: rename
+      to "Estimation inputs" or "Smart task inputs" to keep "plan" off the smart-task surface.
+      Files: `packages/shared-domain/src/deadlineLabels.ts`,
+      `notes/ui-terminology.md` (rule clarification if kept).
 - [ ] Add PELS-side unit tests for EV kWhPerUnit learning. Cover: a plan with no learned profile
       uses the bootstrap estimate; an accepted SoC rise records a `kWhPerUnit` sample; subsequent
       plans switch from bootstrap to the learned estimate; and rejection reasons fire as expected
@@ -767,6 +957,33 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P3 Future and Exploratory Work
 
+- [ ] Always show observed coverage on smart-task history cards. Today
+      `formatPlanHistoryObservedCoverage` returns nothing when no charging was observed,
+      hiding the case where the planner thought a device was active but it drew no power.
+      Flip to always show "Observed N of M planned hours" — N=0 is the actionable case.
+      Files: `packages/shared-domain/src/deferredPlanHistory.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistory.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
+- [ ] Cross-kind copy sharing in `deadlineLabels.ts` — revisit when first kind-specific
+      divergence lands. Temperature and EV share byte-identical `cannotMeetShortfall` and
+      `cannotMeetFallback` strings (only `cannotMeetDailyBudgetExhausted` differs by the noun).
+      When the first kind-specific branch arrives — likely the unplugged-EV copy from the P1
+      "objective_invalid_session" entry — audit whether the shared helpers still make sense or
+      if the kinds should split fully. No action until the first divergence.
+      Files: `packages/shared-domain/src/deadlineLabels.ts`.
+- [ ] Document recurring smart-task usage in `set_*_deadline` flow card hints. The action
+      auto-disables the objective after deadline passes (correct, prevents silent replans), but
+      the user-facing card hint doesn't explain that users need a daily trigger (e.g.
+      "when EV plugged in") to re-arm. One sentence in the JSON `hint` field.
+      Files: `.homeycompose/flow/actions/set_ev_charge_deadline.json`,
+      `.homeycompose/flow/actions/set_temperature_deadline.json`.
+- [ ] Add DST fall-back ambiguity regression test for deadline resolution.
+      `lib/plan/deferredObjectives/deadline.ts:112-146` handles DST rigorously (probes timezone
+      at ±36h, ±12h, 0h to find valid UTC candidates matching local HH:mm), but the fall-back
+      ambiguous hour (e.g. 2:30 AM existing twice) currently selects earliest-future without an
+      explicit test. Add the regression.
+      Files: `lib/plan/deferredObjectives/deadline.ts`,
+      `test/deferredObjectiveDeadline*.test.ts` or similar.
 - [ ] Revisit deadline-hero "Need X kWh" staleness if users find the original-vs-remaining
       framing confusing. The active-plan recorder no longer persists `energyNeededKWh` /
       `plannedKWh` decrements within an unchanged schedule (to avoid Homey settings churn on
