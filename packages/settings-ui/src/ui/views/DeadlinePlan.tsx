@@ -118,14 +118,14 @@ export type DeadlinePlanLoadState =
 const chipClass = (tone: DeadlinePlanChipTone): string => `plan-chip plan-chip--${tone}`;
 
 const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
-  <section class="plan-hero" data-tone="ok" aria-labelledby="deadline-plan-title">
+  <section class="plan-hero pels-hero" data-tone="ok" aria-labelledby="deadline-plan-title">
     <div class="plan-hero__chips">
       {payload.hero.chips.map((chip) => (
         <span key={chip.text} class={chipClass(chip.tone)}>{chip.text}</span>
       ))}
     </div>
     <div class="plan-hero__section">
-      <span class="plan-hero__section-label" id="deadline-plan-title">{payload.hero.sectionLabel}</span>
+      <span class="plan-hero__section-label eyebrow" id="deadline-plan-title">{payload.hero.sectionLabel}</span>
       <div class="plan-hero__headline">{payload.hero.headline}</div>
       <div class="plan-hero__subline">{payload.hero.subline}</div>
       <div class="plan-hero__subline plan-hero__subline--muted">{payload.hero.metaLine}</div>
@@ -583,14 +583,14 @@ const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
 
 
 const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
-  <section class="plan-hero" data-tone="info" aria-labelledby="deadline-plan-pending-title">
+  <section class="plan-hero pels-hero" data-tone="info" aria-labelledby="deadline-plan-pending-title">
     <div class="plan-hero__chips">
       {pending.hero.chips.map((chip) => (
         <span key={chip.text} class={chipClass(chip.tone)}>{chip.text}</span>
       ))}
     </div>
     <div class="plan-hero__section">
-      <span class="plan-hero__section-label" id="deadline-plan-pending-title">{pending.hero.sectionLabel}</span>
+      <span class="plan-hero__section-label eyebrow" id="deadline-plan-pending-title">{pending.hero.sectionLabel}</span>
       <div class="plan-hero__headline">{pending.hero.headline}</div>
       <div class="plan-hero__subline">{pending.hero.subline}</div>
       <div class="plan-hero__subline plan-hero__subline--muted">{pending.hero.metaLine}</div>

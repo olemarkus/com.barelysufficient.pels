@@ -726,29 +726,6 @@ md-primary-tab.tab[active]:hover {
   gap: var(--spacing-3);
 }
 
-.settings-home-hero {
-  padding: var(--spacing-4);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  background:
-    linear-gradient(135deg, var(--color-state-positive-bg), transparent 42%),
-    var(--color-surface-2);
-  box-shadow: var(--shadow-card);
-}
-
-.settings-home-hero h2 {
-  margin: 0 0 var(--spacing-2) 0;
-  color: var(--pels-text-section-headline-color);
-  font-size: var(--pels-text-section-headline-font-size);
-  font-weight: var(--pels-text-section-headline-font-weight);
-  line-height: var(--pels-text-section-headline-font-line-height);
-  letter-spacing: 0;
-}
-
-.settings-home-hero p:last-child {
-  margin-bottom: 0;
-}
-
 .settings-current-mode {
   display: grid;
   gap: var(--spacing-3);
@@ -880,21 +857,15 @@ md-primary-tab.tab[active]:hover {
   background: var(--color-surface-3);
 }
 
-.card__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.card h2 {
+.card h2,
+.pels-hero h2 {
   margin: 4px 0 0;
   color: var(--pels-text-section-headline-color);
   font-size: var(--pels-text-section-headline-font-size);
   font-weight: var(--pels-text-section-headline-font-weight);
   line-height: var(--pels-text-section-headline-font-line-height);
 }
+
 
 .eyebrow {
   margin: 0;
@@ -1255,12 +1226,20 @@ md-primary-tab.tab[active]:hover {
 }
 
 .plan-hero,
+.pels-hero,
 .plan-hour-strip,
 .plan-cards {
   min-width: 0;
 }
 
-.plan-hero {
+/* `.pels-hero` is the canonical hero / section-header primitive. `.plan-hero`
+   is the historical alias — they resolve to the same rules so the existing
+   Overview / Usage / Deadline-plan surfaces keep working unchanged while
+   Budget / Smart tasks / Settings / Limits / Simulation / Advanced headers
+   adopt the same look via the shared selector. Tone bindings use the flat
+   `--color-state-{positive,warning,negative,info}-{bg,border}` tokens. */
+.plan-hero,
+.pels-hero {
   display: grid;
   gap: var(--pels-hero-gap);
   padding: var(--pels-hero-padding);
@@ -1274,20 +1253,42 @@ md-primary-tab.tab[active]:hover {
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-base-white) 10%, transparent);
 }
 
-.plan-hero[data-tone="warn"] {
-  border-color: var(--pels-status-warning-border);
+.plan-hero[data-tone="good"],
+.pels-hero[data-tone="good"] {
+  border-color: var(--color-state-positive-border);
   background: linear-gradient(
     180deg,
-    var(--pels-status-warning-container),
+    var(--color-state-positive-bg),
     color-mix(in srgb, var(--color-surface-3) 98%, transparent)
   );
 }
 
-.plan-hero[data-tone="alert"] {
-  border-color: var(--pels-status-critical-border);
+.plan-hero[data-tone="warn"],
+.pels-hero[data-tone="warn"] {
+  border-color: var(--color-state-warning-border);
   background: linear-gradient(
     180deg,
-    var(--pels-status-critical-container),
+    var(--color-state-warning-bg),
+    color-mix(in srgb, var(--color-surface-3) 98%, transparent)
+  );
+}
+
+.plan-hero[data-tone="alert"],
+.pels-hero[data-tone="alert"] {
+  border-color: var(--color-state-negative-border);
+  background: linear-gradient(
+    180deg,
+    var(--color-state-negative-bg),
+    color-mix(in srgb, var(--color-surface-3) 98%, transparent)
+  );
+}
+
+.plan-hero[data-tone="info"],
+.pels-hero[data-tone="info"] {
+  border-color: var(--color-state-info-border);
+  background: linear-gradient(
+    180deg,
+    var(--color-state-info-bg),
     color-mix(in srgb, var(--color-surface-3) 98%, transparent)
   );
 }
@@ -1725,12 +1726,15 @@ md-primary-tab.tab[active]:hover {
   line-height: var(--pels-text-supporting-font-line-height);
 }
 
-.plan-hero__subline[data-tone="warn"] {
+/* M3: one tonal story per surface. The hero rim + status chip + power-bar
+   overshoot carry the warn/alert signal — the subline stays neutral primary.
+   `data-tone` is still honoured on the warn rung so projection sublines (which
+   never escalate beyond warn) remain legible at a glance, but the critical /
+   alert rung renders identical to the default subline copy: red headline +
+   red subline + red chip + red rim was four redundant tonal voices. */
+.plan-hero__subline[data-tone="warn"],
+.pels-hero__subline[data-tone="warn"] {
   color: var(--pels-status-on-warning);
-}
-
-.plan-hero__subline[data-tone="critical"] {
-  color: var(--pels-status-critical);
 }
 
 .plan-hero__subline--muted {
@@ -2372,11 +2376,8 @@ md-primary-tab.tab[active]:hover {
     min-width: 0;
   }
 
-  .card__header {
-    margin-bottom: 14px;
-  }
-
-  .plan-hero {
+  .plan-hero,
+  .pels-hero {
     gap: var(--pels-hero-gap);
     padding: var(--pels-hero-padding);
   }
@@ -2820,17 +2821,12 @@ md-primary-tab.tab[active]:hover {
   padding: 0;
 }
 
-#overview-panel > .card__header,
 #overview-panel > .list__footer {
   padding: var(--spacing-4);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
   background: var(--panel);
   box-shadow: var(--shadow-sm);
-}
-
-#overview-panel > .card__header {
-  margin-bottom: var(--spacing-3);
 }
 
 #overview-panel .plan-meta-line {
@@ -4400,10 +4396,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   backdrop-filter: none;
 }
 
-#budget-panel > .card__header {
-  display: none;
-}
-
 #device-control-legend,
 #device-card-list {
   min-width: 0;
@@ -4414,10 +4406,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   display: grid;
   gap: var(--spacing-3);
   margin-top: var(--spacing-2);
-}
-
-#devices-panel > .card__header {
-  display: none;
 }
 
 #usage-panel {
@@ -5381,30 +5369,9 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   display: none;
 }
 
-:where(
-  #devices-panel,
-  #modes-panel,
-  #limits-panel,
-  #simulation-panel,
-  #usage-panel,
-  #advanced-panel
-) > .card__header,
-:where(
-  #electricity-prices-surface,
-  #price-aware-devices-surface
-) > .card__header,
-#device-detail-panel .device-detail-heading {
-  margin: 0;
-  padding: var(--spacing-4);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  background: var(--pels-surface-container-low);
-  box-shadow: var(--shadow-sm);
-}
-
-#usage-panel > .card__header {
-  display: none;
-}
+/* Device-detail heading now consumes the shared `.pels-hero` primitive; this
+   selector is retained only as a hook for the device-detail-specific identity
+   (no extra styling needed beyond the base hero rule). */
 
 :where(
   #devices-panel,

@@ -149,10 +149,10 @@ const deltaChipClass = (tone: BudgetDeltaTone): string => {
 };
 
 const BudgetHero = ({ hero }: { hero: BudgetHeroData }) => (
-  <section class="plan-hero" data-tone={hero.heroTone}>
+  <section class="plan-hero pels-hero" data-tone={hero.heroTone}>
     <div id="budget-plan-summary" class="plan-hero__section">
       {hero.headlineLabel !== null && (
-        <span class="plan-hero__section-label">{hero.headlineLabel}</span>
+        <span class="plan-hero__section-label eyebrow">{hero.headlineLabel}</span>
       )}
       <div class="plan-hero__headline-row">
         <div id="budget-redesign-comparison" class="plan-hero__headline">{hero.comparison}</div>

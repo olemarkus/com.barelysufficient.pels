@@ -60,12 +60,12 @@ const Header = () => (
       <ArrowBackIcon slot="icon" />
       Settings
     </MdTextButton>
-    <div class="card__header">
+    <header class="pels-hero">
       <div>
         <p class="eyebrow">Electricity prices</p>
         <h2>Source and rules</h2>
       </div>
-    </div>
+    </header>
   </>
 );
 
