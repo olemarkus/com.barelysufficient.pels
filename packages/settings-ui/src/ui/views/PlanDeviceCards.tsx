@@ -22,6 +22,7 @@ import {
   resolveCooldownRemainingSec,
 } from '../../../../shared-domain/src/planCooldown.ts';
 import { resolveEvCardStateLine } from '../../../../shared-domain/src/deadlineLabels.ts';
+import { formatIdleClassificationCopy } from '../../../../shared-domain/src/idleClassificationCopy.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { formatReasonSummary } from '../planReasonSummary.ts';
 import { cardActivationProps } from '../cardActivation.ts';
@@ -99,6 +100,41 @@ export const EvDeadlineStateLine = ({ deviceId, nowMs }: { deviceId: string; now
   const text = resolveEvStateLineText(deviceId, nowMs);
   if (text === null) return null;
   return <p class="plan-card__ev-state">{text}</p>;
+};
+
+const resolveIdleCopy = (dev: PlanDeviceSnapshot) => {
+  if (dev.idleClassification !== 'near_target_idle' && dev.idleClassification !== 'unresponsive') {
+    return null;
+  }
+  return formatIdleClassificationCopy({
+    classification: dev.idleClassification,
+    currentTemperatureC: typeof dev.currentTemperature === 'number' ? dev.currentTemperature : undefined,
+    targetTemperatureC: typeof dev.currentTarget === 'number' ? dev.currentTarget : undefined,
+  });
+};
+
+export const IdleClassificationLine = ({ dev }: { dev: PlanDeviceSnapshot }) => {
+  const copy = resolveIdleCopy(dev);
+  if (!copy) return null;
+  return (
+    <p
+      class={`plan-card__idle-line plan-card__idle-line--${copy.tone}`}
+      data-tooltip={copy.detail}
+    >
+      {copy.statusLine}
+    </p>
+  );
+};
+
+export const IdleClassificationChip = ({ dev }: { dev: PlanDeviceSnapshot }) => {
+  if (dev.idleClassification !== 'unresponsive') return null;
+  const copy = resolveIdleCopy(dev);
+  if (!copy) return null;
+  return (
+    <span class="plan-chip plan-chip--warn" data-tooltip={copy.detail}>
+      Not responding
+    </span>
+  );
 };
 
 const formatKw = (value: number | undefined): string => (
@@ -383,6 +419,7 @@ export const PlanTemperatureCard = ({
               {starvationBadge.label}
             </span>
           )}
+          <IdleClassificationChip dev={displayDev} />
           <DeadlineChip deviceId={dev.id} nowMs={nowMs} />
         </div>
       </div>
@@ -401,6 +438,7 @@ export const PlanTemperatureCard = ({
         {temperatureLine ?? ''}
       </p>
       {reasonLine !== null && <p class="plan-card__temp-reason">{reasonLine}</p>}
+      <IdleClassificationLine dev={displayDev} />
     </article>
   );
 };

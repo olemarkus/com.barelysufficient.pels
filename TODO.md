@@ -854,6 +854,18 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] Idle classifier: surface a signal when a device has a temperature setpoint but no
+      `currentTemperature` reading. Today `lib/observer/idleDetector.ts` requires
+      `hasTemperatureSetpoint` but allows `currentTemperature` to be absent — `gap` then
+      resolves to `undefined` and the classifier short-circuits to `active`. The exact
+      fault case the `unresponsive` warning is meant to catch (a sensor stopping
+      reporting on a heater that should be heating) silently produces no signal. Either
+      tighten eligibility to require both readings and emit a distinct
+      `device_sensor_missing` event, or have `classifyByGapAndDuration` return
+      `unresponsive` (with undefined `temperatureGapC`) past the long window when
+      `gap === undefined`.
+      Files: `lib/observer/idleDetector.ts`, `lib/observer/idleClassifier.ts`,
+      `packages/shared-domain/src/idleClassificationCopy.ts`, tests.
 - [ ] Refresh `state.deferredObjectiveActivePlans` on plan revision events. Today the field
       is populated once during `loadBootstrapData` in `packages/settings-ui/src/ui/boot.ts`
       and never updates from runtime emissions. `EvDeadlineStateLine` reads the field every

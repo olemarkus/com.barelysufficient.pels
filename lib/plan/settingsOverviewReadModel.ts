@@ -17,6 +17,7 @@ import type { DevicePlan } from './planTypes';
 
 export type SettingsOverviewReadModelDeps = {
   getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceStarvation | null | undefined;
+  getIdleClassification?: (deviceId: string) => 'near_target_idle' | 'unresponsive' | undefined;
 };
 
 function resolveFiniteKWh(value: number | undefined): number | undefined {
@@ -109,6 +110,7 @@ export function buildSettingsOverviewDeviceReadModel(
     reason: device.reason,
     starvation: deps.getOverviewStarvation?.(device.id) ?? undefined,
     steppedLoad: buildSteppedLoadReadState(device),
+    idleClassification: deps.getIdleClassification?.(device.id),
   };
 }
 

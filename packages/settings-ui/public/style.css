@@ -2269,6 +2269,22 @@ md-primary-tab.tab[active]:hover {
   z-index: 1;
 }
 
+.plan-card__idle-line {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: var(--font-line-height-cozy);
+  position: relative;
+  z-index: 1;
+}
+
+.plan-card__idle-line--neutral {
+  color: var(--text-secondary);
+}
+
+.plan-card__idle-line--warning {
+  color: var(--pels-status-on-warning);
+}
+
 /* ── Stepped card (Connected 300 and other stepped load devices) ────────────── */
 
 .plan-card--stepped .plan-card__stepped-body {
