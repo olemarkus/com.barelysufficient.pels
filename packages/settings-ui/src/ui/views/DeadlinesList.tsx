@@ -1,7 +1,12 @@
 import { render } from 'preact';
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import { ChevronRightIcon } from './icons.tsx';
-import { deadlineLabels } from '../../../../shared-domain/src/deadlineLabels.ts';
+import {
+  deadlineLabels,
+  SMART_TASK_LIST_STATUS_LABELS,
+  SMART_TASK_LIST_STATUS_CHIP_VARIANT,
+  type SmartTaskListStatusId,
+} from '../../../../shared-domain/src/deadlineLabels.ts';
 import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/deferredObjectiveSettings.ts';
 
 export type DeadlinesListCard = {
@@ -14,7 +19,7 @@ export type DeadlinesListCard = {
   firstActionAtMs: number | null;
   deadlineAtMs: number;
   href: string;
-  pending: boolean;
+  statusId: SmartTaskListStatusId;
 };
 
 export type DeadlinesListState =
@@ -47,6 +52,15 @@ const formatTarget = (card: DeadlinesListCard): string => {
   return '—';
 };
 
+const StatusChip = ({ statusId }: { statusId: SmartTaskListStatusId }) => {
+  const label = SMART_TASK_LIST_STATUS_LABELS[statusId];
+  const variant = SMART_TASK_LIST_STATUS_CHIP_VARIANT[statusId];
+  return (
+    <span class={`plan-chip plan-chip--${variant}`}>{label}</span>
+  );
+};
+
+// Canonical chip order: [kind (identity), status (live signal)].
 const Card = ({ card }: { card: DeadlinesListCard }) => {
   const labels = deadlineLabels(card.kind);
   return (
@@ -56,9 +70,7 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
       <div class="deadline-list-card__header">
         <h3 class="deadline-list-card__title">{card.deviceName}</h3>
         <span class="plan-chip plan-chip--info">{labels.kindChipLabel}</span>
-        {card.pending && (
-          <span class="plan-chip plan-chip--muted">Waiting</span>
-        )}
+        <StatusChip statusId={card.statusId} />
       </div>
       <div class="deadline-list-card__target">
         <span class="deadline-list-card__target-label">Target</span>
@@ -95,9 +107,8 @@ const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
   if (state.cards.length === 0) {
     return (
       <p class="muted">
-        No smart tasks yet. Add one from a Homey Flow using the
-        {' '}<strong>Add heating task</strong> or <strong>Add charging task</strong>{' '}
-        action to schedule a device for a specific ready-by time.
+        No smart tasks yet. Open the Flow editor and add a heating or charging smart task
+        to schedule a device for a specific ready-by time.
       </p>
     );
   }

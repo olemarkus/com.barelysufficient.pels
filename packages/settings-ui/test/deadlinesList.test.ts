@@ -80,6 +80,7 @@ describe('resolveDeadlinesListCards', () => {
       activePlans: { version: 1, plansByDeviceId: {} },
       objectiveSettings: buildObjectiveSettings({}),
       devices,
+      nowMs: T0,
     });
     expect(cards).toEqual([]);
   });
@@ -89,32 +90,35 @@ describe('resolveDeadlinesListCards', () => {
       activePlans: null,
       objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
       devices,
+      nowMs: T0,
     });
     expect(cards).toEqual([]);
   });
 
-  it('includes pending plans with pending=true and firstActionAtMs=null', () => {
+  it('assigns building_plan status for pending plans with no latest revision', () => {
     const cards = resolveDeadlinesListCards({
       activePlans: buildActivePlans([buildPlan({ pending: true, latest: null })]),
       objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
       devices,
+      nowMs: T0,
     });
     expect(cards).toHaveLength(1);
     expect(cards[0]).toMatchObject({
       deviceId: 'dev_a',
-      pending: true,
+      statusId: 'building_plan',
       firstActionAtMs: null,
     });
   });
 
-  it('includes plans with no latest revision as pending', () => {
+  it('assigns building_plan status when latest is null regardless of pending flag', () => {
     const cards = resolveDeadlinesListCards({
       activePlans: buildActivePlans([buildPlan({ latest: null })]),
       objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
       devices,
+      nowMs: T0,
     });
     expect(cards).toHaveLength(1);
-    expect(cards[0].pending).toBe(true);
+    expect(cards[0].statusId).toBe('building_plan');
     expect(cards[0].firstActionAtMs).toBeNull();
   });
 
@@ -125,15 +129,18 @@ describe('resolveDeadlinesListCards', () => {
         dev_a: { ...enabledTemperatureEntry, enabled: false },
       }),
       devices,
+      nowMs: T0,
     });
     expect(cards).toEqual([]);
   });
 
   it('builds a card with start/end timestamps and device name from devices payload', () => {
+    const nowMs = T0; // first hour at T0 + 3h is in the future
     const cards = resolveDeadlinesListCards({
       activePlans: buildActivePlans([buildPlan({})]),
       objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
       devices,
+      nowMs,
     });
     expect(cards).toHaveLength(1);
     expect(cards[0]).toMatchObject({
@@ -145,8 +152,107 @@ describe('resolveDeadlinesListCards', () => {
       firstActionAtMs: T0 + 3 * HOUR_MS,
       deadlineAtMs: T0 + 12 * HOUR_MS,
       href: './?page=deadline-plan&deviceId=dev_a',
-      pending: false,
+      statusId: 'queued', // first hour is in the future relative to nowMs
     });
+  });
+
+  it('assigns on_track when first hour has already started', () => {
+    const nowMs = T0 + 3 * HOUR_MS + 1; // past first hour start
+    const cards = resolveDeadlinesListCards({
+      activePlans: buildActivePlans([buildPlan({})]),
+      objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
+      devices,
+      nowMs,
+    });
+    expect(cards[0].statusId).toBe('on_track');
+  });
+
+  it('assigns at_risk when planStatus is at_risk', () => {
+    const nowMs = T0 + 5 * HOUR_MS; // past all planned hours
+    const cards = resolveDeadlinesListCards({
+      activePlans: buildActivePlans([
+        buildPlan({
+          latest: {
+            revision: 1,
+            revisedAtMs: T0,
+            computedFromPricesUpTo: T0 + 24 * HOUR_MS,
+            reason: 'flow_card',
+            hours: [{ startsAtMs: T0 + HOUR_MS, plannedKWh: 1 }],
+            energyNeededKWh: 2,
+            planStatus: 'at_risk',
+          },
+        }),
+      ]),
+      objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
+      devices,
+      nowMs,
+    });
+    expect(cards[0].statusId).toBe('at_risk');
+  });
+
+  it('assigns cannot_meet when planStatus is cannot_meet', () => {
+    const nowMs = T0 + 5 * HOUR_MS;
+    const cards = resolveDeadlinesListCards({
+      activePlans: buildActivePlans([
+        buildPlan({
+          latest: {
+            revision: 1,
+            revisedAtMs: T0,
+            computedFromPricesUpTo: T0 + 24 * HOUR_MS,
+            reason: 'flow_card',
+            hours: [],
+            energyNeededKWh: 4,
+            planStatus: 'cannot_meet',
+          },
+        }),
+      ]),
+      objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
+      devices,
+      nowMs,
+    });
+    expect(cards[0].statusId).toBe('cannot_meet');
+  });
+
+  it('assigns satisfied when planStatus is satisfied', () => {
+    const nowMs = T0 + 5 * HOUR_MS;
+    const cards = resolveDeadlinesListCards({
+      activePlans: buildActivePlans([
+        buildPlan({
+          latest: {
+            revision: 1,
+            revisedAtMs: T0,
+            computedFromPricesUpTo: T0 + 24 * HOUR_MS,
+            reason: 'flow_card',
+            hours: [],
+            energyNeededKWh: 0,
+            planStatus: 'satisfied',
+          },
+        }),
+      ]),
+      objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
+      devices,
+      nowMs,
+    });
+    expect(cards[0].statusId).toBe('satisfied');
+  });
+
+  it('assigns paused_unplugged for EV with invalid_session pending reason', () => {
+    const cards = resolveDeadlinesListCards({
+      activePlans: buildActivePlans([
+        buildPlan({
+          objectiveKind: 'ev_soc',
+          targetTemperatureC: null,
+          targetPercent: 80,
+          pending: true,
+          pendingReason: 'invalid_session',
+          latest: null,
+        }),
+      ]),
+      objectiveSettings: buildObjectiveSettings({ dev_a: enabledEvEntry }),
+      devices,
+      nowMs: T0,
+    });
+    expect(cards[0].statusId).toBe('paused_unplugged');
   });
 
   it('resolves the device name by the map key, not by plan.deviceId, so a corrupted record cannot mis-name the card', () => {
@@ -164,6 +270,7 @@ describe('resolveDeadlinesListCards', () => {
         { id: 'dev_a', name: 'Living-room heater', targets: [], currentOn: false },
         { id: 'dev_other', name: 'Other device', targets: [], currentOn: false },
       ],
+      nowMs: T0,
     });
     expect(cards).toHaveLength(1);
     expect(cards[0].deviceId).toBe('dev_a');
@@ -176,6 +283,7 @@ describe('resolveDeadlinesListCards', () => {
       activePlans: buildActivePlans([buildPlan({ deviceId: 'dev_x', deviceName: 'Fallback' })]),
       objectiveSettings: buildObjectiveSettings({ dev_x: enabledTemperatureEntry }),
       devices,
+      nowMs: T0,
     });
     expect(cards[0].deviceName).toBe('Fallback');
   });
@@ -197,6 +305,7 @@ describe('resolveDeadlinesListCards', () => {
       ]),
       objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
       devices,
+      nowMs: T0,
     });
     expect(cards[0].firstActionAtMs).toBeNull();
   });
@@ -219,6 +328,7 @@ describe('resolveDeadlinesListCards', () => {
         dev_b: enabledEvEntry,
       }),
       devices,
+      nowMs: T0,
     });
     expect(cards.map((card) => card.deviceId)).toEqual(['dev_b', 'dev_a']);
   });

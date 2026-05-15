@@ -19,6 +19,7 @@ import type { DeferredObjectivePlanHistoryEntry } from '../../../contracts/src/d
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import { buildDeadlineHref } from './deadlineUrls.ts';
 import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
+import { resolveSmartTaskListStatus } from '../../../shared-domain/src/deadlineLabels.ts';
 import {
   renderDeadlinesList,
   type DeadlinesListCard,
@@ -38,7 +39,9 @@ export const resolveDeadlinesListCards = (params: {
   activePlans: DeferredObjectiveActivePlansV1 | null;
   objectiveSettings: DeferredObjectiveSettingsV1;
   devices: readonly TargetDeviceSnapshot[];
+  nowMs?: number;
 }): DeadlinesListCard[] => {
+  const nowMs = params.nowMs ?? Date.now();
   const plans = params.activePlans?.plansByDeviceId ?? {};
   const deviceNamesById = new Map(params.devices.map((device) => [device.id, device.name]));
   const cards: DeadlinesListCard[] = [];
@@ -46,6 +49,13 @@ export const resolveDeadlinesListCards = (params: {
     if (!isObjectiveEnabled(params.objectiveSettings, deviceId)) continue;
     const pending = plan.pending || plan.latest === null;
     const firstHour = plan.latest?.hours[0]?.startsAtMs ?? null;
+    const statusId = resolveSmartTaskListStatus({
+      pending,
+      pendingReason: plan.pendingReason,
+      planStatus: plan.latest?.planStatus,
+      firstActionAtMs: firstHour,
+      nowMs,
+    });
     cards.push({
       deviceId,
       deviceName: deviceNamesById.get(deviceId) ?? plan.deviceName ?? deviceId,
@@ -56,7 +66,7 @@ export const resolveDeadlinesListCards = (params: {
       firstActionAtMs: firstHour,
       deadlineAtMs: plan.deadlineAtMs,
       href: buildDeadlineHref(deviceId),
-      pending,
+      statusId,
     });
   }
   cards.sort((a, b) => a.deadlineAtMs - b.deadlineAtMs);

@@ -1,4 +1,5 @@
 import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings.js';
+import type { DeferredObjectiveActivePlanPendingReason } from '../../contracts/src/deferredObjectiveActivePlans.js';
 
 export type DeadlinePlanUnavailableReason =
   | 'no_current_reading'
@@ -27,6 +28,66 @@ export type DeadlineLiveState =
   | 'queued'
   | 'paused_unplugged'
   | 'ok';
+
+// Display label for a smart task list card's status chip.
+export type SmartTaskListStatusId =
+  | 'building_plan'   // pending, no allocation yet
+  | 'queued'          // plan ready, first hour in the future
+  | 'paused_unplugged' // EV: car unplugged / session ended
+  | 'on_track'
+  | 'at_risk'
+  | 'cannot_meet'
+  | 'satisfied';
+
+// Stable chip label strings for list card status — kind-agnostic.
+// Sourced here (shared-domain) so runtime logging and UI use the same strings.
+export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string> = {
+  building_plan: 'Building plan…',
+  queued: 'Queued',
+  paused_unplugged: 'Paused — unplugged',
+  on_track: 'On track',
+  at_risk: 'At risk',
+  cannot_meet: 'Cannot finish',
+  satisfied: 'Satisfied',
+};
+
+// CSS modifier class suffix for each list status id (appended to `plan-chip--`).
+export const SMART_TASK_LIST_STATUS_CHIP_VARIANT: Record<SmartTaskListStatusId, string> = {
+  building_plan: 'muted',
+  queued: 'muted',
+  paused_unplugged: 'warn',
+  on_track: 'ok',
+  at_risk: 'warn',
+  cannot_meet: 'alert',
+  satisfied: 'ok',
+};
+
+// Resolve the list card status id from plan data.
+// `nowMs` is used to distinguish "Queued" (plan ready, first action in future)
+// from other non-pending states.
+export const resolveSmartTaskListStatus = (params: {
+  pending: boolean;
+  pendingReason: DeferredObjectiveActivePlanPendingReason | undefined;
+  planStatus: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied' | undefined;
+  firstActionAtMs: number | null;
+  nowMs: number;
+}): SmartTaskListStatusId => {
+  const { pending, pendingReason, planStatus, firstActionAtMs, nowMs } = params;
+
+  if (pending || planStatus === undefined) {
+    if (pendingReason === 'invalid_session') return 'paused_unplugged';
+    return 'building_plan';
+  }
+
+  // Plan is ready — check if the first action is in the future (queued).
+  if (firstActionAtMs !== null && firstActionAtMs > nowMs) return 'queued';
+
+  if (planStatus === 'satisfied') return 'satisfied';
+  if (planStatus === 'cannot_meet') return 'cannot_meet';
+  if (planStatus === 'at_risk') return 'at_risk';
+  // 'invalid' collapses to on_track at the list level; the detail page shows more.
+  return 'on_track';
+};
 
 export type DeadlinePlanCompletedReason = 'deadline_passed';
 
