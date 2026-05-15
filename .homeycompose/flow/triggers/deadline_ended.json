@@ -26,10 +26,10 @@
         "en": "Outcome"
       },
       "values": [
-        { "id": "any", "title": { "en": "Any outcome" } },
-        { "id": "succeeded", "title": { "en": "Succeeded" } },
-        { "id": "missed", "title": { "en": "Missed" } },
-        { "id": "abandoned", "title": { "en": "Abandoned" } }
+        { "id": "any", "label": { "en": "Any outcome" } },
+        { "id": "succeeded", "label": { "en": "Succeeded" } },
+        { "id": "missed", "label": { "en": "Missed" } },
+        { "id": "abandoned", "label": { "en": "Abandoned" } }
       ]
     }
   ],
