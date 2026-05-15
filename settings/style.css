@@ -3580,7 +3580,7 @@ md-primary-tab.tab[active]:hover {
   --md-assist-chip-outline-color: transparent;
   --md-assist-chip-hover-state-layer-color: transparent;
   --md-assist-chip-pressed-state-layer-color: transparent;
-  --md-assist-chip-label-text-font: var(--font-family-base);
+  --md-assist-chip-label-text-font: var(--font-family-sans);
   --md-assist-chip-label-text-size: var(--font-size-xs);
   --md-assist-chip-label-text-weight: var(--font-weight-semibold);
   --md-assist-chip-container-height: 22px;
