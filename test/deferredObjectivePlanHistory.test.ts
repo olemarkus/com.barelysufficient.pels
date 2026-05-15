@@ -958,6 +958,38 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.id.length).toBeGreaterThan(0);
       expect(entry.originalPlan).toBeNull();
       expect(entry.finalPlan).toBeNull();
+      // Without a plan we never observed a revision; the field stays absent so
+      // legacy entries persisted before this field shipped remain byte-stable.
+      expect(entry.revisionCount).toBeUndefined();
+    });
+
+    it('captures the recorder revision count on the entry so the history detail can render "Replanned N times"', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      const plans = buildActivePlans({ deviceId: 'dev', deadlineAtMs, originalKwh: 1.0, latestKwh: 2.0 });
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, plans);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      // `buildActivePlans` sets `latest.revision = 2` so the count tracks
+      // "original + 1 replan" — the UI renders this as "Replanned once".
+      expect(entry.revisionCount).toBe(2);
+    });
+
+    it('does not write revisionCount when the run never had a plannable revision', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      // No `activePlans` argument: recorder never sees a revision.
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      expect(saved()!.entries[0]!.revisionCount).toBeUndefined();
     });
 
     it('assigns distinct ids to entries finalized at the same millisecond', () => {

@@ -37,7 +37,13 @@ type InProgressKey = string; // `${deviceId}|${deadlineAtMs}`
 
 type InProgressRecord = Omit<
   DeferredObjectivePlanHistoryEntry,
-  'id' | 'finalizedAtMs' | 'outcome' | 'discoveredFrom' | 'originalPlan' | 'finalPlan'
+  'id'
+  | 'finalizedAtMs'
+  | 'outcome'
+  | 'discoveredFrom'
+  | 'originalPlan'
+  | 'finalPlan'
+  | 'revisionCount'
 > & {
   satisfied: boolean;
   // True original plan for this run, captured the first cycle an active plan
@@ -51,6 +57,11 @@ type InProgressRecord = Omit<
   // cycle that carries a fresh revision so finalization snapshots the truly
   // final plan, not the first one.
   finalPlan: DeferredObjectivePlanHistoryRevisionSnapshot | null;
+  // Highest `plan.latest.revision` index observed for this run. Tracks the
+  // total number of revisions written by the active-plan recorder so the
+  // history detail can show "Replanned N times". 0 when no plannable
+  // revision was ever observed.
+  revisionCount: number;
 };
 
 const captureRevisionSnapshot = (
@@ -206,16 +217,39 @@ const startRecord = (
     // cycles refine via `refreshPlanSnapshots`.
     originalPlan: pickRicherSnapshot(originalSnapshot, finalSnapshot),
     finalPlan: finalSnapshot,
+    revisionCount: resolveRevisionCount(plan),
   };
+};
+
+// Highest `latest.revision` index observed for this plan. The recorder
+// increments revisions monotonically (see `activePlanRecorder.maybeWriteReplanRevision`),
+// so reading `latest.revision` is the same as counting revisions written. Falls
+// back to `original.revision` when only `original` is set (mid-run pickup
+// before the first `latest` write). Returns 0 when no revision is recorded
+// yet so the count stays consistent with "never replanned" copy.
+const resolveRevisionCount = (
+  plan: DeferredObjectiveActivePlanV1 | undefined,
+): number => {
+  if (!plan) return 0;
+  const candidate = plan.latest?.revision ?? plan.original?.revision ?? 0;
+  return Math.max(0, candidate);
 };
 
 const refreshPlanSnapshots = (
   record: InProgressRecord,
   plan: DeferredObjectiveActivePlanV1 | undefined,
-): Pick<InProgressRecord, 'originalPlan' | 'finalPlan'> => {
+): Pick<InProgressRecord, 'originalPlan' | 'finalPlan' | 'revisionCount'> => {
   const finalRevision = pickRevisionForFinal(plan);
+  // Revision count is monotonic. Track the highest index ever observed so a
+  // transient `plan` regression (planner cleared `latest` after a settings
+  // glitch, mid-run pickup) does not reset the count we hand to history.
+  const nextRevisionCount = Math.max(record.revisionCount, resolveRevisionCount(plan));
   if (!finalRevision) {
-    return { originalPlan: record.originalPlan, finalPlan: record.finalPlan };
+    return {
+      originalPlan: record.originalPlan,
+      finalPlan: record.finalPlan,
+      revisionCount: nextRevisionCount,
+    };
   }
   const finalSnapshot = captureRevisionSnapshot(finalRevision);
   // `originalPlan` tracks the richest schedule the planner ever achieved for
@@ -234,7 +268,11 @@ const refreshPlanSnapshots = (
     pickRicherSnapshot(record.originalPlan, originalCandidate),
     finalSnapshot,
   );
-  return { originalPlan: nextOriginal, finalPlan: finalSnapshot };
+  return {
+    originalPlan: nextOriginal,
+    finalPlan: finalSnapshot,
+    revisionCount: nextRevisionCount,
+  };
 };
 
 const mergeRecord = (
@@ -348,6 +386,11 @@ const finalizeRecord = (
   discoveredFrom: 'observation',
   originalPlan: record.originalPlan,
   finalPlan: record.finalPlan,
+  // Persist `revisionCount` only when the recorder actually observed at least
+  // one revision. Zero means "never plannable" — the UI treats that the same
+  // as a missing field (no "replanned" copy) so suppressing it keeps existing
+  // entries byte-stable and avoids zero-vs-undefined drift.
+  ...(record.revisionCount > 0 ? { revisionCount: record.revisionCount } : {}),
 });
 
 export type DeferredObjectiveBackfillConfig = {

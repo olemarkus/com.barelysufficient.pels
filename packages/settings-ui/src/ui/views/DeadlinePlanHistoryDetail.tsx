@@ -354,6 +354,9 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone }: Props) => {
           </p>
         )}
         {coverageLine && <p class="pels-card-supporting">{coverageLine}</p>}
+        {typeof entry.revisionCount === 'number' && entry.revisionCount > 1 && (
+          <p class="pels-card-supporting">Replanned {entry.revisionCount - 1} {entry.revisionCount === 2 ? 'time' : 'times'}.</p>
+        )}
       </section>
       {entry.originalPlan === null && entry.finalPlan === null ? (
         <section class="pels-surface-card">
