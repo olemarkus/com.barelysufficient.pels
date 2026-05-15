@@ -426,20 +426,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Homey SDK convention and may render raw ids (`succeeded`/`missed`/`abandoned`) in the
       mobile UI instead of the localized labels. ~1-minute fix.
       Files: `.homeycompose/flow/triggers/deadline_ended.json`.
-- [ ] Decide `deadlineMarginMs` deadline-reserve: arm a flat reserve or remove the unused
-      path. `horizonPlanner.ts:266-270` normalizes incoming `deadlineMarginMs` but no
-      production caller passes a non-zero value, so `planningEndMs = max(now, deadline - 0)
-      = deadline` and the `planned_using_deadline_reserve` status detail is unreachable. Two
-      options: (a) wire a small flat reserve consistently in the bridge (e.g. 15 min) so the
-      reserve-based status branch matters, or (b) remove the parameter and the
-      `planned_using_deadline_reserve` status branch as dead code. The decision affects what
-      `at_risk` semantics actually mean for users.
-      Why P1: design integrity — `planned_using_deadline_reserve` is documented as a shipped
-      reason code (notes §"Reason Codes" Shipped today) but is structurally unreachable in
-      production. The notes claim something the runtime doesn't deliver.
-      Files: `lib/plan/deferredObjectives/horizonPlanner.ts`,
-      `lib/plan/deferredObjectives/diagnosticsBridge.ts`,
-      `lib/plan/deferredObjectives/types.ts`, related tests.
 - [ ] Decouple Smart tasks list empty-state copy from flow-card action titles.
       `DeadlinesList.tsx:99-100` hard-codes "Add heating task" / "Add charging task" as the
       action names. The flow-card redesign P0 may rename or unify the actions; this copy

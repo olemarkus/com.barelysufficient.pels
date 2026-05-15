@@ -28,6 +28,15 @@ import type {
   DeferredObjectiveStep,
 } from './types';
 
+// Reserve a flat 1-hour safety buffer before the deadline. The horizon planner
+// allocates into the primary window (now → deadline − reserve) first and only
+// dips into the reserve hour when every earlier hour is fully booked. Crossing
+// into the reserve flips the diagnostic to `at_risk` so users see "your plan
+// has no slack left" before they actually miss the deadline. A 1-hour reserve
+// is the smallest buffer that gives users actionable warning time for the
+// EV-overnight / heater-morning use cases this slice targets.
+const DEFAULT_DEADLINE_RESERVE_MS = 60 * 60 * 1000;
+
 export type DeferredObjectiveDiagnosticReasonCode =
   | DeferredObjectivePolicyHorizonUnavailableReason
   | 'objective_invalid_deadline'
@@ -300,6 +309,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
       enforcement: objective.enforcement,
       energyNeededKWh: profileEnergy.energyNeededKWh,
       deadlineAtMs,
+      deadlineMarginMs: DEFAULT_DEADLINE_RESERVE_MS,
     },
     steps,
     buckets: policyHorizon.buckets,

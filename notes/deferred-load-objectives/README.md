@@ -766,19 +766,23 @@ The shipped status values on the diagnostic
 (`lib/plan/deferredObjectives/diagnosticsBridge.ts`):
 
 - `unknown` — required inputs are missing, stale, invalid, or impossible to evaluate.
-- `on_track` — conservative projected completion is before the deadline minus the
-  deadline-reserve margin.
-- `at_risk` — projected completion is inside the reserve, or the plan relies on policy-avoid
-  hours to land.
-- `cannot_meet` — even the highest allowed hard-cap-safe behavior cannot plausibly meet the
-  target before the deadline. (`hard-cap-safe` here means within the physical capacity hard
-  cap.)
+- `on_track` — the plan fits entirely before the deadline minus a 1-hour reserve (the
+  planner's safety buffer); every earlier hour has enough headroom to land the required
+  energy.
+- `at_risk` — the planner has dipped into the reserved final hour to land the required
+  energy (every earlier hour is fully booked at planning power), or the plan relies on
+  policy-avoid hours to land.
+- `cannot_meet` — even using the reserve hour at the highest allowed hard-cap-safe
+  behavior cannot plausibly meet the target before the deadline. (`hard-cap-safe` here
+  means within the physical capacity hard cap.)
 - `satisfied` — current progress is at or above target. Live; if a later reading drops below
   target, the next cycle returns to one of the values above.
 
 Status transitions today fire immediately on change (no hysteresis); the flow trigger bus
-suppresses same-status re-fires. The shipped `deadlineMarginMs` is a flat reserve, not
-confidence-scaled.
+suppresses same-status re-fires. The shipped `deadlineMarginMs = 1 hour` is a flat reserve,
+not confidence-scaled. Deadlines closer than the reserve window collapse to a fully-reserve
+horizon: any allocation reads as `at_risk` (or `cannot_meet` if the energy still doesn't
+fit), never `on_track`.
 
 An internal `'invalid'` value exists on `DeferredObjectiveHorizonStatus` and the bus snapshot
 type (`statusBus.ts`), produced by the horizon planner when a precondition fails inside the
