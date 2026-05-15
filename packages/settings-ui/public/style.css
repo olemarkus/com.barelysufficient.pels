@@ -3509,7 +3509,16 @@ md-primary-tab.tab[active]:hover {
   overflow: hidden;
 }
 
-.segmented__option {
+/* Specificity note: Homey injects a host stylesheet (`_base.css`) inside the
+   settings WebView with default light-theme button rules that out-weighed the
+   single-class `.segmented__option` selector, so neither the base background
+   nor the selected tonal fill rendered, making Plan vs Adjust look identical.
+   The selected-state selectors below use the duplicate attribute trick
+   (`[aria-pressed="true"][aria-pressed]`) plus the `.segmented` parent class
+   to reach specificity (0,4,0) — decisive over the host rules without
+   `!important`. The base, hover, and disabled selectors keep the same parent
+   qualifier so they sit on the same specificity tier as the selected rule. */
+.segmented .segmented__option {
   flex: 1 1 0;
   min-width: 0;
   min-height: var(--pels-touch-target-min);
@@ -3529,33 +3538,33 @@ md-primary-tab.tab[active]:hover {
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 
-.segmented__option[aria-checked="true"],
-.segmented__option[aria-pressed="true"] {
+.segmented .segmented__option[aria-checked="true"][aria-checked],
+.segmented .segmented__option[aria-pressed="true"][aria-pressed] {
   background: var(--pels-segmented-selected-background);
   color: var(--pels-segmented-selected-text);
 }
 
-.segmented__option:focus-visible {
+.segmented .segmented__option:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: -2px;
 }
 
-.segmented__option:disabled,
-.segmented__option[hidden] {
+.segmented .segmented__option:disabled,
+.segmented .segmented__option[hidden] {
   cursor: not-allowed;
 }
 
-.segmented__option:disabled:not([aria-checked="true"]):not([aria-pressed="true"]) {
+.segmented .segmented__option:disabled:not([aria-checked="true"]):not([aria-pressed="true"]) {
   color: var(--pels-text-muted);
   opacity: 0.6;
 }
 
-.segmented__option:hover:not(:disabled):not([aria-checked="true"]):not([aria-pressed="true"]) {
+.segmented .segmented__option:hover:not(:disabled):not([aria-checked="true"]):not([aria-pressed="true"]) {
   color: var(--pels-text-primary);
   background: color-mix(in srgb, var(--pels-segmented-selected-background) 40%, transparent);
 }
 
-.segmented__option[hidden] {
+.segmented .segmented__option[hidden] {
   display: none;
 }
 

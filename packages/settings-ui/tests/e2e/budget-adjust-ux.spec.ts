@@ -139,3 +139,38 @@ test('budget adjust → preview → apply walkthrough', async ({ page }, testInf
   await page.waitForTimeout(500);
   await shot(page, '07-plan-after-apply');
 });
+
+/**
+ * Regression guard for the Plan/Adjust segmented control: Homey injects a host
+ * stylesheet in the settings WebView and the previous single-class selector
+ * (`.segmented__option[aria-pressed="true"]`) lost the cascade fight, so the
+ * selected option rendered identically to the unselected one. The CSS now uses
+ * a `.segmented` parent + duplicate-attribute trick to win specificity without
+ * `!important`. This test asserts the computed selected vs unselected swatches
+ * actually differ — guarding against any future host-CSS regression.
+ */
+test('Budget Plan/Adjust segmented: selected option is visually distinct', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('tablist')).toBeVisible();
+  await page.getByRole('tab', { name: 'Budget' }).click();
+  await expect(page.locator('#budget-redesign-surface')).toBeVisible();
+
+  const planBtn = page.getByRole('button', { name: 'Plan', exact: true });
+  const adjustBtn = page.getByRole('button', { name: 'Adjust', exact: true });
+
+  // Plan is the default selected option.
+  await expect(planBtn).toHaveAttribute('aria-pressed', 'true');
+  await expect(adjustBtn).toHaveAttribute('aria-pressed', 'false');
+
+  const readBackground = (locator: typeof planBtn) => locator.evaluate(
+    (el) => getComputedStyle(el).backgroundColor,
+  );
+
+  const selectedBg = await readBackground(planBtn);
+  const unselectedBg = await readBackground(adjustBtn);
+
+  // Selected must render a real (non-transparent) tonal fill that differs
+  // from the unselected sibling's background.
+  expect(selectedBg).not.toBe('rgba(0, 0, 0, 0)');
+  expect(selectedBg).not.toBe(unselectedBg);
+});
