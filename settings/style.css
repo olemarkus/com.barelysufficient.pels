@@ -3567,13 +3567,24 @@ md-primary-tab.tab[active]:hover {
   gap: 8px;
 }
 
-.detail-mode-row__header .active-badge {
-  font-size: var(--font-size-xs);
-  padding: 2px 6px;
-  background: var(--accent);
-  color: var(--bg);
-  border-radius: var(--radius-full);
-  font-weight: var(--font-weight-semibold);
+/* Non-interactive "Active" indicator on the currently-active mode row.
+   Uses the canonical M3 md-assist-chip primitive so shape, padding, and
+   typography come from the chip system; tonal teal via custom-property
+   overrides matches the eco-palette good-state surface. */
+.detail-mode-row__header .detail-mode-row__active-chip {
+  --md-assist-chip-label-text-color: var(--color-base-good-default);
+  --md-assist-chip-hover-label-text-color: var(--color-base-good-default);
+  --md-assist-chip-focus-label-text-color: var(--color-base-good-default);
+  --md-assist-chip-pressed-label-text-color: var(--color-base-good-default);
+  --md-assist-chip-container-color: color-mix(in srgb, var(--color-base-good-default) 15%, transparent);
+  --md-assist-chip-outline-color: transparent;
+  --md-assist-chip-hover-state-layer-color: transparent;
+  --md-assist-chip-pressed-state-layer-color: transparent;
+  --md-assist-chip-label-text-font: var(--font-family-base);
+  --md-assist-chip-label-text-size: var(--font-size-xs);
+  --md-assist-chip-label-text-weight: var(--font-weight-semibold);
+  --md-assist-chip-container-height: 22px;
+  pointer-events: none;
 }
 
 .detail-mode-row md-filled-text-field {

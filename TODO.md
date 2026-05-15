@@ -60,14 +60,13 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `color.role.good` (teal #5eead4); accent (`#22c55e` brighter leaf) stays on selected-tab,
       focus ring, primary buttons, switch/checkbox. Positive-state surfaces, meter tone, ripple
       hover, chart `--pels-chart-plan`, and resuming plan-card all cascade automatically.)*
-- [ ] Replace `.active-badge` with a proper M3 chip primitive.
-      `.active-badge` (device-detail per-mode priority rows) uses a 4 px square corner —
-      inconsistent with the 9999 px `--chip-radius` everywhere else, and under leaf-green
-      the fill reads as "sticker" rather than "active". Replace with `md-assist-chip`
-      carrying tonal good-teal (`rgba(94,234,212,.15)` bg + `#5eead4` text) so it matches
-      Succeeded chips. Component-level change. Files:
-      `packages/settings-ui/public/index.html`,
-      `packages/settings-ui/src/ui/views/PlanModes.tsx`, related styles.
+- [x] Replace `.active-badge` with a proper M3 chip primitive. *(landed — the
+      per-mode "Active" indicator now renders as `md-assist-chip` with tonal-teal
+      custom-property overrides (`--color-base-good-default` text on
+      `color-mix(... 15%, transparent)` background, M3 default 9999 px radius). Chip
+      is `aria-hidden` + `tabindex="-1"` because it is a non-interactive status
+      pill — the same information is already conveyed by the row representing the
+      user's active mode. `md-assist-chip` is now registered in `materialWeb.ts`.)*
 - [x] Align every chart series, heatmap cell, and tooltip with the same flat tokens the rest of
       the UI uses. *(landed — `resolveCssColor` in `budgetRedesignChart.ts`,
       `usageDayChartEcharts.ts`, `usageStatsChartsEcharts.ts`, and `powerWeekChartEcharts.ts`
