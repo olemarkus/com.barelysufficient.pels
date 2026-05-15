@@ -36,6 +36,7 @@ import {
   loadCapacitySettings,
   loadAdvancedSettings,
   loadStaleDataStatus,
+  refreshLimitsValidationHints,
   saveSettingsLimitsSettings,
   saveSimulationModeSettings,
 } from './capacity.ts';
@@ -118,6 +119,8 @@ const initLimitsAndSimulationHandlers = () => {
       await showToastError(error, 'Failed to save limits and safety settings.');
     }
   };
+  settingsCapacityLimitInput?.addEventListener('input', refreshLimitsValidationHints);
+  settingsCapacityMarginInput?.addEventListener('input', refreshLimitsValidationHints);
   settingsCapacityLimitInput?.addEventListener('change', autoSaveSettingsLimits);
   settingsCapacityMarginInput?.addEventListener('change', autoSaveSettingsLimits);
   settingsPowerSourceSelect?.addEventListener('change', autoSaveSettingsLimits);

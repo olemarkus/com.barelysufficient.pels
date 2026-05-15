@@ -1,6 +1,7 @@
 import {
   settingsCapacityLimitInput,
   settingsCapacityMarginInput,
+  settingsCapacityMarginAlert,
   settingsCapacityReactionHint,
   settingsPowerSourceSelect,
   settingsSimulationModeInput,
@@ -82,6 +83,30 @@ const updateCapacityReactionHint = (limit: number, margin: number) => {
     = `Safe pace now ${reactionAt} kW — hard cap minus safety margin.`;
 };
 
+export const MARGIN_NOT_BELOW_LIMIT_MESSAGE
+  = 'Safety margin must be less than the hard cap. Lower the margin to continue.';
+
+// Stays silent when either number is empty or non-finite so partially-typed
+// values don't flash an error mid-edit.
+const getMarginVsLimitError = (limit: number, margin: number): string | null => {
+  if (!Number.isFinite(limit) || limit <= 0) return null;
+  if (!Number.isFinite(margin) || margin < 0) return null;
+  if (margin >= limit) return MARGIN_NOT_BELOW_LIMIT_MESSAGE;
+  return null;
+};
+
+const renderMarginAlert = (message: string | null) => {
+  if (!settingsCapacityMarginAlert) return;
+  settingsCapacityMarginAlert.textContent = message ?? '';
+  settingsCapacityMarginAlert.hidden = message === null;
+};
+
+export const refreshLimitsValidationHints = () => {
+  const limit = Number.parseFloat(settingsCapacityLimitInput?.value ?? '');
+  const margin = Number.parseFloat(settingsCapacityMarginInput?.value ?? '');
+  renderMarginAlert(getMarginVsLimitError(limit, margin));
+};
+
 const syncCapacityControls = (
   limit: number,
   margin: number,
@@ -101,6 +126,7 @@ const syncCapacityControls = (
     settingsSimulationModeInput.selected = isDryRun;
   }
   updateCapacityReactionHint(limit, margin);
+  renderMarginAlert(getMarginVsLimitError(limit, margin));
 };
 
 const readNumberInput = (input: MdFilledTextFieldElement | null, label: string): number => {
@@ -136,7 +162,10 @@ const validateCapacitySettings = ({ limit, margin }: ResolvedCapacitySettings) =
 
   // Validate margin: must be a finite non-negative number within reasonable bounds.
   if (!Number.isFinite(margin) || margin < 0) throw new Error('Safety margin must be non-negative.');
-  if (margin > limit) throw new Error('Safety margin cannot exceed the hard cap.');
+  if (margin >= limit) {
+    renderMarginAlert(MARGIN_NOT_BELOW_LIMIT_MESSAGE);
+    throw new Error(MARGIN_NOT_BELOW_LIMIT_MESSAGE);
+  }
 };
 
 const updateStaleDataBanner = (lastPowerUpdate: number | null) => {

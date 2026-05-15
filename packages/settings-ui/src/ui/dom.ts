@@ -97,6 +97,9 @@ export const settingsCapacityMarginInput = document.querySelector(
 export const settingsCapacityReactionHint = document.querySelector(
   '#settings-capacity-reaction',
 ) as HTMLElement | null;
+export const settingsCapacityMarginAlert = document.querySelector(
+  '#settings-capacity-margin-alert',
+) as HTMLElement | null;
 export const settingsPowerSourceSelect = document.querySelector(
   '#settings-power-source',
 ) as MdFilledSelectElement | null;
