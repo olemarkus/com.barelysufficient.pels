@@ -39,12 +39,12 @@
         <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
         Settings
       </md-text-button>
-      <div class="card__header">
+      <header class="pels-hero">
         <div>
           <p class="eyebrow">Devices</p>
           <h2>Device control</h2>
         </div>
-      </div>
+      </header>
       <template id="pels-icon-managed">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="9"></circle>
@@ -148,12 +148,12 @@
         <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
         Settings
       </md-text-button>
-      <div class="card__header">
+      <header class="pels-hero">
         <div>
           <p class="eyebrow">Modes</p>
           <h2>Per-mode priorities &amp; temperatures</h2>
         </div>
-      </div>
+      </header>
       <form id="priority-form" class="form-grid">
         <div class="field">
           <label class="field__label" for="mode-select">Edit mode</label>
@@ -173,24 +173,24 @@
     </section>
 
     <section class="card panel hidden" id="budget-panel" data-panel="budget">
-      <div class="card__header">
+      <header class="pels-hero">
         <div>
           <p class="eyebrow">Budget</p>
           <h2>Daily budget</h2>
         </div>
-      </div>
+      </header>
       <div class="budget-redesign-surface" id="budget-redesign-surface"></div>
     </section>
 
     <section class="card panel hidden" id="usage-panel" data-panel="usage" aria-labelledby="usage-title">
-      <div class="card__header">
+      <header class="pels-hero">
         <div>
           <p class="eyebrow">Usage</p>
           <h2 id="usage-title">Energy history</h2>
         </div>
-      </div>
+      </header>
 
-      <section class="plan-hero usage-hero" id="usage-hero" data-tone="ok" aria-labelledby="usage-hero-headline">
+      <section class="plan-hero pels-hero usage-hero" id="usage-hero" data-tone="ok" aria-labelledby="usage-hero-headline">
         <div class="plan-hero__section">
           <div class="plan-hero__headline-row">
             <div class="plan-hero__headline" id="usage-hero-headline">-- kWh today</div>
@@ -329,12 +329,12 @@
     </section>
 
     <section class="card panel hidden" id="deadlines-panel" data-panel="deadlines" aria-labelledby="deadlines-title">
-      <div class="card__header">
+      <header class="pels-hero">
         <div>
           <p class="eyebrow">Smart tasks</p>
           <h2 id="deadlines-title">Smart tasks</h2>
         </div>
-      </div>
+      </header>
       <div id="deadlines-list-root"></div>
       <div id="deadlines-history-root"></div>
     </section>
@@ -352,11 +352,11 @@
     </section>
 
     <section class="panel hidden settings-home-panel" id="settings-panel" data-panel="settings" aria-labelledby="settings-title">
-      <div class="settings-home-hero">
+      <header class="pels-hero">
         <p class="eyebrow">Settings</p>
         <h2 id="settings-title">Configure PELS</h2>
         <p class="muted">Choose what to adjust. Everyday planning stays in Budget; rare recovery tools stay in Advanced.</p>
-      </div>
+      </header>
       <section class="settings-form-card settings-current-mode" aria-labelledby="settings-current-mode-label">
         <div class="settings-current-mode__summary">
           <p class="eyebrow" id="settings-current-mode-label">Current mode</p>
@@ -412,12 +412,12 @@
         <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
         Settings
       </md-text-button>
-      <div class="card__header">
+      <header class="pels-hero">
         <div>
           <p class="eyebrow">Limits &amp; safety</p>
           <h2 id="limits-title">Hard cap and safety margin</h2>
         </div>
-      </div>
+      </header>
       <form id="settings-limits-form" class="form-grid settings-form-card">
         <label class="field">
           <span class="field__label">Hard cap (kW)</span>
@@ -445,12 +445,12 @@
         <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
         Settings
       </md-text-button>
-      <div class="card__header">
+      <header class="pels-hero">
         <div>
           <p class="eyebrow">Simulation mode</p>
           <h2 id="simulation-title">Test without switching devices</h2>
         </div>
-      </div>
+      </header>
       <div class="md-switch-row settings-form-card">
         <md-switch id="settings-simulation-mode" name="settings_simulation_mode" aria-labelledby="settings-simulation-mode-label"></md-switch>
         <span class="md-switch-row__content">
@@ -462,7 +462,7 @@
 
     <section class="card panel" id="overview-panel" data-panel="overview">
       <div id="plan-redesign-surface">
-        <div id="plan-hero" class="plan-hero" aria-live="polite">
+        <div id="plan-hero" class="plan-hero pels-hero" aria-live="polite">
           <p class="plan-hero__placeholder muted">Awaiting data…</p>
         </div>
         <div id="plan-hour-strip" class="plan-hour-strip" hidden></div>
@@ -476,12 +476,12 @@
         <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
         Settings
       </md-text-button>
-      <div class="card__header">
+      <header class="pels-hero">
         <div>
           <p class="eyebrow">Advanced</p>
           <h2>Device diagnostics</h2>
         </div>
-      </div>
+      </header>
       <details class="settings-collapse" open>
         <summary>
           <h3 class="section-title">Debug logging</h3>
@@ -604,7 +604,7 @@
       </div>
 
       <div class="slide-panel__content">
-        <header class="card__header device-detail-heading">
+        <header class="pels-hero device-detail-heading">
           <div>
             <p class="eyebrow">Device</p>
             <h2 id="device-detail-title">Device</h2>

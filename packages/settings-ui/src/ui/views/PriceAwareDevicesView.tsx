@@ -116,12 +116,12 @@ const Header = () => (
       <ArrowBackIcon slot="icon" />
       Settings
     </MdTextButton>
-    <div class="card__header">
+    <header class="pels-hero">
       <div>
         <p class="eyebrow">Price-aware devices</p>
         <h2>Cheap-hour boost and expensive-hour reduction</h2>
       </div>
-    </div>
+    </header>
   </>
 );
 
