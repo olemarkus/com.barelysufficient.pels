@@ -13,8 +13,25 @@ It also folds in the token gaps surfaced in
 `notes/ev-ready-by/README.md` §P2.3 (richer tokens for notification text) so
 the same change can land them together.
 
-**Status:** proposal. The shipped cards work; this is a follow-up redesign,
-tracked as P0 in `TODO.md` for the flow-card revision.
+**Status:** shipped (2026-05-15) with two intentional deviations. The
+delivered token bag matches the per-card target shape below, except:
+
+- `deadline_ended` does **not** ship `kind`, `target_unit`,
+  `final_progress_unit`, or `shortfall_unit`. The device picker selects a
+  specific device whose kind is fixed, so unit/kind is already known by
+  the flow author; carrying redundant tokens just bloats the picker.
+- `deadline_ended` does **not** ship `delivered_kwh` or `revisions_count`.
+  Both require either a `planHistory` schema bump or new measured-energy
+  compute on `observedIntervals`. Tracked as a P2 in `TODO.md` to bundle
+  with the Smart task history-detail revision work.
+- `deadline_status_changed` does **not** ship `previous_status_id` (no
+  concrete flow demand yet) or `notification_text` (the useful one-liner
+  shape varies too much across status values; users compose from
+  `device_name` + `status` + `risk_reason`).
+
+The shared token-bag implementation lives in
+`flowCards/smartTaskTokens.ts`; the previous `flowCards/deadlineEndedTokens.ts`
+was folded into it.
 
 ## Cards in scope
 
