@@ -175,25 +175,25 @@
             "values": [
               {
                 "id": "any",
-                "title": {
+                "label": {
                   "en": "Any outcome"
                 }
               },
               {
                 "id": "succeeded",
-                "title": {
+                "label": {
                   "en": "Succeeded"
                 }
               },
               {
                 "id": "missed",
-                "title": {
+                "label": {
                   "en": "Missed"
                 }
               },
               {
                 "id": "abandoned",
-                "title": {
+                "label": {
                   "en": "Abandoned"
                 }
               }
