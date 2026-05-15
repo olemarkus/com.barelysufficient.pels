@@ -128,6 +128,37 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `packages/settings-ui/src/ui/views/materialWebJSX.tsx`,
       `packages/settings-ui/src/ui/materialWeb.ts`, generated `settings/`, focused visual/e2e
       coverage.
+- [ ] Hide the tab strip while a smart-task plan-detail page is open.
+      `deadlinePlanRouter.ts:14` toggles the `hidden` class on the `#shell-nav` element via
+      `classList.toggle('hidden', !visible)`, but `settings/style.css` has no matching
+      `#shell-nav.hidden { display: none }` rule — only `.panel.hidden` is defined. The tab strip
+      therefore stays fully visible and interactive while the plan detail overlay is open, and is
+      only "hidden" by the plan region scrolling it above the viewport (`top: -65px`). Effect: at
+      480 px the tab bar competes for attention with the plan hero; at 320 px the strip clips
+      ("Settings" off-screen, "Smart tasks" truncated to "Sm…") in a place no tabs should be
+      showing at all. Three audit units found this independently (Unit 5 F2, Unit 6 LF-01, Units
+      5+7 P2). Fix is a single CSS rule.
+      Files: `packages/settings-ui/public/style.css` (add `#shell-nav.hidden { display: none; }`),
+      `settings/style.css` (regen).
+- [ ] Drive the deadline-plan hero `data-tone` from the resolved plan status.
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx:126` hard-codes `data-tone="ok"` as a
+      string literal — it never updates with `planStatus`. Any CSS that targets
+      `[data-tone="error"]` or `[data-tone="cannot_meet"]` is dead, so a Cannot-finish hero renders
+      with the same green rim as a healthy "On track" hero. A user on the EV deep-link page can be
+      looking at a plan that physically cannot deliver and the page chrome says "looks fine".
+      Confirmed live (EV at SoC ≈ 30 %, target 80 % by 23:00).
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/public/style.css` (verify the tone variants are styled).
+- [ ] Suppress the liveState chip when the plan cannot finish.
+      `packages/settings-ui/src/ui/deadlinePlanHero.ts:31` `resolveLiveState` returns `'ok'`
+      whenever `firstChargingHour` is null. In a `cannot_meet` plan there are no scheduled hours,
+      so the live-state resolver always says `'ok'` and the hero ends up rendering both an
+      "On track" / "Active now" chip *and* a "Cannot finish" chip simultaneously. The contradiction
+      makes the planner look broken — the very moment we most need the user to trust PELS.
+      Gate the liveState chip on `cannotMeet === false`, or have the resolver short-circuit
+      `cannotMeet`-state plans before deriving live state.
+      Files: `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
 - [ ] Fix chart clarity issues from the first-impression Settings UI audit.
       Tighten the graphs users are most likely to inspect on first load. Normalize deadline-plan
       price values and units against the Budget chart convention (`kr/kWh` or `øre/kWh` shown
@@ -483,6 +514,343 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `packages/settings-ui/test/helpers/homeyApiMock.ts`,
       `packages/contracts/src/settingsUiApi.ts`,
       settings UI mock and browser smoke tests.
+- [ ] Sweep planner-noun "plan" leakage from smart-task user-facing surfaces.
+      A live-Homey pass on the smart-task UI surfaced several places where the planner-layer
+      noun "plan" leaks into copy a user reads. Per `notes/ui-terminology.md` §"Plan vs deadline
+      terminology", the user-facing surface is "smart task" / "schedule" / "ready-by", not "plan".
+      Hits to address: hero eyebrow `${kindChipLabel} plan` in `deadlinePlanHero.ts:161` and
+      `deadlinePlan.ts:247` (renders "EV plan" / "Temperature plan") — pull a kind-specific
+      `sectionLabel` from `deadlineLabels(kind)`; chart tooltip line `` `Plan ${planLabel}` ``
+      at `DeadlinePlan.tsx:237`; legend / series `'Target progress'` at `DeadlinePlan.tsx:354,
+      540` — make kind-aware ("Charge level" for EV, "Temperature" for thermal, driven by a new
+      `labels.progressSeriesName`); `"Plan not found"` heading at `DeadlinePlan.tsx:656` →
+      "Smart task record not found"; `"Plan vs observed"` card title at
+      `DeadlinePlanHistoryDetail.tsx:370` → "Scheduled vs observed"; `"Original plan"` /
+      `"Final plan"` series and `Original ${…} kWh` / `Final ${…} kWh` tooltip lines at
+      `DeadlinePlanHistoryDetail.tsx:174, 183, 235, 249` → "Initial schedule" / "Revised
+      schedule" or plain "Original" / "Final"; `"Replanned {n} times."` at
+      `DeadlinePlanHistoryDetail.tsx:358` → "Schedule updated {n} times.".
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts`,
+      `packages/shared-domain/src/deadlineLabels.ts` (add the new kind-aware label).
+- [ ] Drop recorder jargon from past-task fallback copy and align with the "Smart tasks" tab name.
+      `packages/shared-domain/src/deadlineLabels.ts:270, 348` set the body to
+      `"See History for the outcome."` and the past-plan unavailable fallback (rendered through
+      `DeadlinePlan.tsx`) reads
+      `"No plan detail was recorded for this run. It may have finalized before the planner
+      produced a revision, or it predates plan-snapshot tracking."` — "History" is not a tab
+      name (the canonical tab is **Smart tasks**), and "revision" / "plan-snapshot tracking" /
+      "planner" leak recorder-layer language a user never asked about. Also reword the
+      `Revised because …` tooltip lines at `deadlineLabels.ts:163–167` to `Updated after …`.
+      Suggest: `"See Smart tasks for the outcome."`, `"No hourly plan was saved for this run."`,
+      and `"Updated after the task was set"` / `"Updated as prices became available"` etc.
+      Files: `packages/shared-domain/src/deadlineLabels.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+- [ ] Scope the past-plan detail heading so deep-links land with context.
+      Past-task detail today renders just a timestamp ("Mon 11 May 23:00") as h1 with the device
+      name as a subline. A user who deep-links into the page (e.g. from a Homey notification or
+      shared URL) only sees "PELS" in the dialog title bar — no "Past plan" / "Smart task" eyebrow
+      explains what they are looking at. Add a section-label eyebrow above the timestamp and
+      consider folding the device name into the heading line. Live-UI verified.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
+- [ ] Drop the redundant "SMART TASKS" eyebrow above the same-named h2 on the Smart tasks tab.
+      The empty-state hero on the Smart tasks tab currently renders eyebrow "SMART TASKS" + h2
+      "Smart tasks" — the eyebrow says the same word as the heading. Either remove the eyebrow
+      on this tab or replace it with a per-state hint ("EMPTY" / "ACTIVE" depending on whether
+      a task is queued). Other tabs (Budget, Usage, Settings) use the eyebrow to name the panel,
+      so dropping it here keeps consistency: the tab itself already names the panel.
+      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
+      `packages/settings-ui/public/index.html`.
+- [ ] Reword the Smart tasks empty state to match what users see in the Flow action picker.
+      `packages/settings-ui/src/ui/views/DeadlinesList.tsx:110` says "add a heating or charging
+      smart task" and `.homeycompose/flow/actions/set_temperature_deadline.json` /
+      `set_ev_charge_deadline.json` have `title` `"Add heating task"` / `"Add charging task"`,
+      but Homey's action picker shows the `titleFormatted` body — "Heat Device to Target
+      temperature (°C) °C by Ready by" / "Charge EV charger to Target battery (%) % by Ready by".
+      A user reading the empty state and scanning the picker has no visible match. Suggest:
+      reference PELS's **Heat … by Ready by** / **Charge … by Ready by** actions (or quote the
+      `title` exactly: "Add heating task" / "Add charging task") so the empty state is findable
+      both by search and by visual scan. Live-UI verified.
+      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`.
+- [ ] Hide the "Temperature per mode" section on on/off devices.
+      Device detail for the Easee / Zaptec chargers (both on/off) today renders the full
+      "Temperature per mode" card with body "Temperature targets are not available for on/off
+      devices." Empty-state placeholder + card title is wasted real estate — the section should
+      not render at all when `device.controlModel === 'on_off'`. Same applies to any non-thermal
+      control model (stepped-load chargers don't take per-mode target temperatures either).
+      Live-UI verified on Easee and Zaptec.
+      Files: `packages/settings-ui/src/ui/deviceDetail/` (the section visibility gate),
+      `packages/settings-ui/public/index.html` (per-mode-temp card template).
+- [ ] Stop clipping the "New mode name" placeholder and per-device mode-temp inputs at narrow widths.
+      At 480 px the "New mode name" input shows "New mode nam" — placeholder clips because the
+      input column is narrower than the placeholder text. In the priorities list on the same
+      panel, the per-device per-mode temp spinner for a thermostat row shows just "6" with a
+      spinner arrow where the value should be "65" — the cell is too narrow to hold a two-digit
+      value plus the spinner. Both regressions are bounded to the Modes panel layout; widen the
+      input + adjust the priorities-row grid template at the supported widths (320 / 480).
+      Files: `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/public/style.css`.
+- [ ] Reword stepped-load copy that leaks "lower-priority devices" and "stepped-load device".
+      `Charge boost` / `Temperature boost` descriptions in `packages/settings-ui/public/index.html`
+      (around the existing "Step this charger up while the car stays below the minimum battery
+      level, using only lower-priority devices if room must be made." line) and the stepped-section
+      footer "When a limited stepped-load device resumes, PELS starts from the lowest active step
+      and only climbs higher when there is room for it." both leak internal classification
+      ("lower-priority devices" / "stepped-load device") into user copy. Suggest: "…drawing from
+      devices PELS is already allowed to lower." for the boost description; "When this charger is
+      limited and then starts again, PELS climbs back up step by step." for the footer.
+      Files: `packages/settings-ui/public/index.html`.
+- [ ] Reword "Managed devices ran above plan" budget-overflow line.
+      `packages/settings-ui/src/ui/budgetRedesign.ts:290` emits "Managed devices ran above plan —
+      check device priorities." — "above plan" reads as planner-noun usage, the same pattern this
+      pass is sweeping elsewhere. Suggest: "Managed devices used more than expected — check device
+      priorities." (or a kind-aware variant if the helper has access to per-device context).
+      Files: `packages/settings-ui/src/ui/budgetRedesign.ts`.
+- [ ] Clean up smart-task Flow card user-facing copy.
+      Surface jargon / inconsistencies the Flow audit found: in
+      `.homeycompose/flow/triggers/deadline_ended.json` rename token titles `"Shortfall"` →
+      `"Gap to target"` and `"Shortfall (text)"` → `"Gap to target (text)"`, and update the hint
+      "missed (deadline passed below target)" → "missed (ready-by time passed below target)".
+      In `.homeycompose/flow/triggers/deadline_plan_changed.json` rename trigger title
+      "Smart task planned hours changed" → "Smart task schedule changed" (sync `titleFormatted`)
+      and reword the hint "replanned with a different number of hours" → "rescheduled with a
+      different number of hours". In `.homeycompose/flow/triggers/deadline_status_changed.json`
+      add the `notification_text` token that the spec in `notes/smart-task-flow-cards/README.md`
+      lists as shipped but the JSON is missing. After updating, regenerate `app.json` with
+      `homey app validate` and commit it.
+      Files: `.homeycompose/flow/triggers/deadline_ended.json`,
+      `.homeycompose/flow/triggers/deadline_plan_changed.json`,
+      `.homeycompose/flow/triggers/deadline_status_changed.json`,
+      `app.json` (regenerated).
+- [ ] Give the Cannot-finish deadline-plan hero an actionable recourse path.
+      The body text correctly explains why ("Your daily budget is tight…" / "The deadline is too
+      close…") but it's plain prose with no affordance: no button, no inline deeplink to Budget
+      tab, no "Clear task" escape hatch. Users on Homey's mobile WebView land in a dead-end. Add
+      a small action row under the hero body that surfaces the right next step per cause —
+      typically "Open Budget", "Lower target", "Extend deadline", or "Clear task". For
+      `cannotMeetDailyBudgetExhausted`, link to the Budget tab; for shortfall cases, surface the
+      EV/heater settings.
+      Files: `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/public/style.css`,
+      `packages/shared-domain/src/deadlineLabels.ts` (per-cause recourse-action label).
+- [ ] Drop "Plan Charge" / "Plan Idle" / "Plan Heat" tooltip jargon from the deadline-plan chart.
+      The chart tooltip in `packages/settings-ui/src/ui/views/DeadlinePlan.tsx:232` prefixes the
+      `planLabel` with the planner-layer noun "Plan", rendering "Plan Charge", "Plan Idle",
+      "Plan Heat" as visible tooltip text. Drop the prefix or use a status verb: "Charging",
+      "Idle", "Heating". Source: `deadlineLabels.ts` `planTooltipActive` / `planTooltipIdle`
+      values feeding the formatter.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/shared-domain/src/deadlineLabels.ts`.
+- [ ] Add a CSS rule for `.plan-inputs__row-note`.
+      The Smart task inputs card emits the bootstrap caveat ("Estimated — refining as PELS
+      observes charging.") inside a `<dd>` with class `.plan-inputs__row-note`, but
+      `settings/style.css` has no matching rule. The note inherits parent `<dd>` styles
+      (semibold primary color) and renders visually indistinguishable from the actual value
+      it annotates. Add a small-size, supporting-color, normal-weight rule.
+      Files: `packages/settings-ui/public/style.css`,
+      `settings/style.css` (regen).
+- [ ] Overview at 320 px clips heavily; "About this card" button vanishes and falls below the
+      48 px touch target. `settings/style.css` deliberately sizes the info button at 36 × 36 px
+      (below the project's own `--pels-touch-target-min: 48px`), and at 320 px the layout
+      internal width (~454 px) overflows the viewport so the button itself ends up at x = 404,
+      completely off-screen. Same overflow clips power readings, stepped dots, and the decision
+      sentence. Fix: raise touch target + add narrow-width media query that compresses the hero
+      and device-card columns to fit ≤ 360 px.
+      Files: `packages/settings-ui/public/style.css`, `packages/settings-ui/src/ui/views/PlanHero.tsx`,
+      `settings/style.css` (regen).
+- [ ] Surface the "X kW above safe pace" subline on the Overview hero when above safe pace.
+      The hero spec (`notes/overview-hero-spec.md`) requires a quantitative subline whenever the
+      mode chip indicates "Above safe pace", but `PlanHero.tsx:465–469` only renders the matching
+      "Safe pace now X kW" subline in the on-track state. As a result, the above-pace state shows
+      a chip + "Power now X kW" but no overshoot figure. Add the missing branch.
+      Files: `packages/settings-ui/src/ui/views/PlanHero.tsx`.
+- [ ] Disambiguate the stepped-indicator unit on Overview device cards.
+      Stepped chargers (Easee, Zaptec) on the Overview render a strip like "Off 6a 8a 10a 12a
+      14a 16a 20a 24a 28a 32a". The lowercase "a" reads as "am" (6am, 8am…) but actually means
+      amperes (A). Replace with "6 A" (uppercase, space-separated) or a clearer label like
+      "Off · 6 / 8 / 10 / 12 A …". Also: at 320 px the right-hand entries ("32a") clip
+      off-screen. Fix as part of the same pass.
+      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
+      `packages/settings-ui/public/style.css`.
+- [ ] Show priority on Overview device cards.
+      Today priority is only visible in the device-detail drawer; the Overview cards show device
+      name + current state + draw + (for steppers) the level strip. Priority is the user's
+      mental model of "what gets shed first" — they shouldn't have to drill into each device to
+      see the shed order. Add a small priority chip ("#1", "#2", "#3") aligned with the device
+      name, matching the chip primitive already used in Modes priorities.
+      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
+      `packages/settings-ui/public/style.css`.
+- [ ] Make the energy-this-hour headline format consistent across the Overview hero.
+      `PlanHero.tsx:524` emits "0.95 / 0.9 kWh" but the spec says "0.95 of 0.9 kWh used" (or
+      "0.95 of 0.9 kWh" — readable English, not the math `/` separator). Decimal precision also
+      drifts within the same pair (`toFixed(2)` for the numerator, `toFixed(1)` for the
+      denominator). Pick "X of Y kWh used" and one precision (one decimal) and apply uniformly.
+      Files: `packages/settings-ui/src/ui/views/PlanHero.tsx`.
+- [ ] Add loading skeletons across the five panels.
+      Loading state today is a plain `<p class="muted">Awaiting data…</p>` in all panels —
+      identical wording, identical styling, no M3 shimmer / skeleton. First-paint after the
+      Configure dialog opens shows a flat grey wall until the bootstrap fetch resolves.
+      Standardize on a single M3 skeleton primitive (one shape per panel: hero placeholder +
+      card placeholders) and use it everywhere.
+      Files: `packages/settings-ui/src/ui/views/*.tsx`,
+      `packages/settings-ui/public/style.css`.
+- [ ] Sweep Budget panel for remaining planner-noun leakage and terminology drift.
+      Two sibling sites still leak `plan` as a planner noun: `budgetRedesign.ts:245` emits
+      "Cheaper-hour planning" (compare to the documented "Use cheaper hours" wording in the
+      Adjust view and `docs/daily-budget.md`); `BudgetOverview.tsx:582` uses the section heading
+      "Planning behavior" (consider "Shaping behavior" / "Budget shaping"). Both should align
+      with the rest of the planner-noun sweep landing alongside the smart-task copy work.
+      Files: `packages/settings-ui/src/ui/budgetRedesign.ts`,
+      `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
+      `packages/shared-domain/src/**` (if helpers exist there).
+- [ ] Fix word-wrap on Budget segmented controls at 480 px.
+      "Conservative" and "Medium" wrap mid-word ("Conservati ve", "Medi um") because the
+      segmented control uses `overflow-wrap: anywhere` and the options have no minimum width.
+      Live-confirmed at 480 px. Switch to `overflow-wrap: break-word` and set a per-option
+      `min-width` that fits the longest label.
+      Files: `packages/settings-ui/public/style.css`, `settings/style.css` (regen).
+- [ ] Fix Budget chart legend color collision between Managed and Price series.
+      `tokens.css:219, 224` both bind to `--color-role-warn` (orange). The two series are
+      distinguishable only by shape (filled circle vs line), which is fragile at small swatch
+      sizes. Reassign the Price series to a distinct semantic token (or extend the chart palette
+      with a dedicated `--pels-chart-price` hue that contrasts both Managed and Background).
+      Files: `tokens/component.json`, `settings/tokens.css` (regen),
+      `packages/settings-ui/src/ui/budgetRedesignChart.ts`.
+- [ ] Fix the "This month" usage stat truncation at 480 px.
+      The 24 px semibold "1642.1 kWh" overflows its 124 px column (scrollWidth 137 > clientWidth
+      124), rendering as "1641.7 k…". The responsive font reduction in `settings/style.css:5325`
+      only fires at ≤380 px but the Homey dialog is 480 px. Lower the breakpoint to ≤480 px so
+      the stat font drops to 16 px at the dialog's actual width.
+      Files: `packages/settings-ui/public/style.css`, `settings/style.css` (regen).
+- [ ] Remove the ghost "Warning" legend entry from the Usage day ECharts chart.
+      `packages/settings-ui/src/ui/usageDayChartEcharts.ts` registers `{ name: 'Warning', … }` in
+      the legend data but no series is named "Warning" — the single "Measured" series uses
+      per-item colors. ECharts silently drops the orphaned legend entry, so unreliable (orange)
+      bars render with no legend label. Fix: add a zero-data dummy series named "Warning" the
+      legend can bind to, or remove the orphaned legend item and rely on the heatmap legend for
+      the unreliable-cell explanation.
+      Files: `packages/settings-ui/src/ui/usageDayChartEcharts.ts`.
+- [ ] Surface confidence and progress on Smart-tasks list cards.
+      `DeadlinesListCard` shows kind chip + device + target + ready-by + status, but no
+      confidence indicator and no current-value indicator. A user scanning the list cannot tell
+      which queued task is in trouble without tapping into each one. Add a small confidence
+      chip ("Low" / "Medium" / "High" — matching the hero detail page's confidence chip) and a
+      "currently X" row line ("currently 18 °C", "currently 45 %") so the list answers "what's
+      at risk?" at a glance.
+      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
+      `packages/contracts/src/settingsUiApi.ts` (add `confidence` / `currentValue` to the list
+      card shape if not already there),
+      `packages/shared-domain/src/deadlineLabels.ts` (confidence label per kind).
+- [ ] Smart-tasks list: empty Past tasks section silently vanishes; date format inconsistent
+      between active and past cards.
+      The Past tasks region lives in `DeadlinesHistoryList.tsx`; when `historyEntries.length === 0`
+      it renders as `null` instead of an explanatory placeholder — leaves the user wondering where
+      the section is supposed to be. Same panel, active cards rendered in `DeadlinesList.tsx` use
+      `Sat 16 May, 06:50` (with comma) while past cards in `DeadlinesHistoryList.tsx` use
+      `Mon 11 May 23:00` (no comma). Pick one format helper and route both lists through it; add
+      an empty-state stanza for past tasks ("No completed tasks yet — they'll appear here after
+      a smart task finishes.").
+      Files: `packages/settings-ui/src/ui/views/DeadlinesHistoryList.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
+      `packages/shared-domain/src/dateFormat.ts` (or wherever the date helper lives).
+- [ ] Promote the History detail outcome chip and add a scoping eyebrow.
+      Today the past-plan detail opens with an 18 px semibold h1 timestamp ("Mon 11 May 23:00")
+      and an 11 px chip ("Succeeded") tucked to the right — the timestamp answers first and the
+      outcome (the thing the user came to confirm) is the quietest element. Also: no eyebrow
+      labels the surface as "Past plan" / "Smart task plan", so a user landing here from a
+      deep-link or notification has no scoping ("PELS" in the dialog title bar is not enough).
+      Fix: add a "Smart task plan" eyebrow above the heading, raise the outcome chip to be
+      visually at least the weight of the timestamp (or move it inline above), and bring the
+      device name onto the heading line.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `packages/settings-ui/public/style.css`.
+- [ ] Add `deliveredKWh` and `totalCost` to `DeferredObjectivePlanHistoryEntry`.
+      The History detail page is supposed to answer "how much did it cost?" and "by how much
+      did it succeed?" — but the contract has neither `deliveredKWh` nor `totalCost`, so the UI
+      cannot show them. The runtime recorder needs to capture these (sum observed kWh per hour,
+      multiply by hourly price), the contract needs the fields, and the view needs the
+      corresponding rows in the header card (e.g. "Delivered 5.4 kWh • 6.50 kr").
+      Files: `packages/contracts/src/deferredObjectiveActivePlans.ts`,
+      `lib/plan/deadlineRecorder.ts` (or equivalent),
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+- [ ] Rename History detail chart series and stop hardcoding "charging" for thermostat runs.
+      `DeadlinePlanHistoryDetail.tsx:174, 183, 235, 249` names the chart series `"Original plan"`
+      / `"Final plan"` and the tooltip line `Original ${…} kWh` / `Final ${…} kWh` — sweep the
+      planner-noun "plan" with the rest of the terminology pass. Suggest "Initial schedule" /
+      "Revised schedule" or plain "Original" / "Final" (chart title already supplies the
+      "vs observed" framing). Also: the "Observed charging" tooltip label is hardcoded — for
+      thermostat history runs it should read "Observed heating" (or the kind-aware label the
+      active chart already pulls from `deadlineLabels(kind).actualDeviceSeriesName`).
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `packages/shared-domain/src/deadlineLabels.ts`.
+- [ ] Show a real revision log on the History detail page.
+      Today the entire revision surface is the single line "Replanned N times." — no timestamps,
+      no per-revision reasons, no diff of which hours changed. The page's whole mission of
+      "did PELS change the plan and why?" goes unanswered. Render a chronological list of
+      revisions with: revision time, plain-English reason (from a kind-aware helper), and an
+      optional inline mini-diff showing hours added / removed.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `packages/shared-domain/src/deadlineLabels.ts` (revision-reason copy),
+      contract additions for per-revision metadata.
+- [ ] Unify hero structure across the five settings panels.
+      Every panel except Settings uses `<header class="pels-hero"><div><eyebrow><h2></div></header>`;
+      the Settings panel hero (`#settings-panel`) drops the inner `<div>` wrapper and puts the
+      eyebrow, h2, and supporting paragraph as direct grid children. The result is a different
+      vertical rhythm, most noticeable at 320 px where the Settings hero feels taller and looser
+      than its siblings. Fix: re-wrap Settings hero contents in the canonical `<div>`.
+      Files: `packages/settings-ui/public/index.html` (Settings panel hero),
+      `packages/settings-ui/public/style.css` (verify selector specificity still wins).
+- [ ] Unify the settings-UI icon vocabulary.
+      Icons in the device legend split between Feather-style strokes (`stroke-width="2"` on the
+      Managed / Limit icons) and Material-style fills (`fill="currentColor"` on the Price icon
+      and all navigation icons). Rendered side-by-side in the same row, they read as a mismatched
+      set. Pick one — Material Symbols are already the dominant family — and migrate the Feather
+      stragglers.
+      Files: `packages/settings-ui/public/index.html` (device legend icons),
+      `packages/settings-ui/src/ui/views/icons.tsx`.
+- [ ] Replace `&times;` close buttons with the Material `close` SVG icon.
+      The smart-task plan-detail close button is declared in `packages/settings-ui/public/index.html:331–332`
+      as `<md-icon-button class="deadline-page-close">` wrapping `<span class="deadline-page-close__icon">&times;</span>`.
+      The HTML entity has a different optical weight and size than every other icon in the app,
+      and visually collides with the outer Homey dialog `×` at 480 px (the two `×` buttons sit
+      within ~20 px vertically at the right edge — first-time-user confusion). Swap the inner
+      span for a Material `close` SVG so weight and size match the rest of the icon set, and
+      consider replacing the close affordance with a back-arrow to disambiguate from the outer
+      Homey dismiss.
+      Files: `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/public/style.css`.
+- [ ] Lift `.pels-icon-toggle` and `.pels-device-card__detail-button` to the 48 px touch
+      target. Both are sized at 36 × 36 px in CSS, below the project's own
+      `--pels-touch-target-min: 48px` token. They sit in the most-used interaction surface
+      (the device-card grid on Overview). Raise them, or expand the hit area beyond the visible
+      icon via padding.
+      Files: `packages/settings-ui/public/style.css`, `settings/style.css` (regen).
+- [ ] Replace the ⚠️ Unicode emoji in banners with a Material `warning` SVG.
+      The banner / warning primitives render the OS-native emoji glyph (`⚠️`), which has a
+      different color and shape across OSes (yellow Apple, orange Google, monochrome Microsoft),
+      while every other icon in the app is an SVG. Use a Material `warning` SVG so the banner
+      visual is consistent across platforms.
+      Files: `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/public/style.css`,
+      `packages/settings-ui/src/ui/views/icons.tsx`.
+- [ ] Switch the Flow card `target_percent` argument to Homey's `range` type.
+      `.homeycompose/flow/actions/set_ev_charge_deadline.json` currently declares
+      `"type": "number"` with min/max/step for `target_percent` — renders as a text/numeric
+      input. Homey supports `"type": "range"` which renders as a slider, a much better UX for
+      a bounded 0–100 % value. Audit other bounded-percentage arguments across `.homeycompose/`
+      (battery-level report condition / similar) and switch them too. Keep `target_temperature`
+      as `number` because the bounds are wider and exact values matter. Regenerate `app.json`
+      via `homey app validate` after the change.
+      Files: `.homeycompose/flow/actions/set_ev_charge_deadline.json`,
+      `.homeycompose/flow/conditions/*battery*.json` (audit),
+      `.homeycompose/flow/actions/report_battery_level.json` (audit),
+      `app.json` (regenerated).
 
 ## P2 Product, Observability, and Maintainability
 
@@ -923,6 +1291,80 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       whatsoever.
       Files: `lib/observer/observedPower.ts`, `lib/plan/planHeadroomDevice.ts`, related
       activation/headroom tests.
+- [ ] Animate the "Building plan…" chip so users can tell planning is alive.
+      The chip is static text rendered identically whether the planner just started or has been
+      stuck for two minutes (live-observed: both seeded tasks stayed in this state past 100 s
+      with zero visual change). Add a low-key M3 pulse / progress indicator alongside the chip
+      so users have a liveness signal. Same chip primitive across active and detail surfaces;
+      reuse the existing tokens.
+      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/public/style.css`.
+- [ ] Reconcile chip tone between the Smart tasks list and the plan detail.
+      For the same `Building plan…` state the list card uses `muted` tone but the plan-detail
+      pending hero uses `info` tone. Pick one and apply uniformly.
+      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+- [ ] Bring the pending-hero body copy up to action-text weight.
+      The "why it's blocked" explanation ("Waiting for a reading from the EV.", "Learning energy
+      use — heater needs power readings…") today renders inside `plan-hero__subline--muted` —
+      muted secondary color, low contrast. This is the most actionable text on the pending hero
+      and should not be demoted. Bump to default-weight body color.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/public/style.css`.
+- [ ] Highlight the correct tab when deep-linking into a smart-task plan from the Overview
+      device card. Today clicking a smart-task affordance from an Overview device card lands on
+      the plan-detail page but leaves the "Overview" tab marked as selected; the user lost the
+      visual breadcrumb that they're now under "Smart tasks". Wire the router so the tab
+      indicator follows the deep-link.
+      Files: `packages/settings-ui/src/ui/deadlinePlanRouter.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+- [ ] Add a budget-line overlay to the daily-usage 14-day chart.
+      Today the bar chart shows kWh values only; days that exceeded the daily budget or hard
+      cap are visually identical to compliant days. Add a horizontal budget reference line and
+      color over-budget bars in the warn tone so the user can spot bad days at a glance.
+      Files: `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`.
+- [ ] Fix the Usage heatmap "Unreliable data" swatch color.
+      The legend swatch in `#power-legend` uses `--color-surface-4` (`#232b38`) while the actual
+      heatmap cells use `--pels-chart-unreliable-cell` (`#2a3242`) — perceptibly different. Bind
+      the swatch to the same token. While there, delete the dead `.usage-legend__swatch--warn`
+      class (never instantiated, references the wrong negative-bg token).
+      Files: `packages/settings-ui/public/style.css`, `settings/style.css` (regen).
+- [ ] Collapse the Advanced "Data management" / "Daily budget tuning" disclosures by default.
+      Both currently render expanded on first view of the Settings → Advanced surface.
+      "Data management" lists destructive recovery tools (reset, refresh, etc.) and "Daily
+      budget tuning" surfaces low-level planner knobs — neither belongs open before the user
+      has asked for them.
+      Files: `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/src/ui/advanced.ts`.
+- [ ] Add a hero summary to the Electricity prices settings panel.
+      The panel today opens at the source/tariff configuration; the actual *current* price
+      tier and the cheap/expensive thresholds the user sees on Budget aren't visible at the top
+      of this panel. A user can't confirm "Yes, PELS thinks 18 öre is cheap right now" without
+      digging through the form. Add a small summary card at the panel top: current tier, cheap
+      threshold, expensive threshold, last-fetched timestamp.
+      Files: `packages/settings-ui/public/index.html` (Electricity prices panel hero),
+      `packages/settings-ui/src/ui/electricityPrices.ts`,
+      `packages/settings-ui/public/style.css`.
+- [ ] Link the Price-aware devices empty state to Settings → Devices.
+      Today the empty state references the "Settings > Devices" path as plain text. Make it a
+      direct link / button that navigates to the Devices sub-panel.
+      Files: `packages/settings-ui/src/ui/priceAwareDevices.ts`,
+      `packages/settings-ui/public/index.html`.
+- [ ] Consolidate the three near-identical pulse keyframe animations.
+      `settings/style.css` defines three pulse keyframes at 1.4 s / 1.5 s / 1.6 s — imperceptibly
+      different and not driven from a shared token. Pick one duration, expose as a token, and
+      route all three call sites through it.
+      Files: `packages/settings-ui/public/style.css`, `tokens/base.json` (add motion token),
+      `settings/tokens.css` + `settings/style.css` (regen).
+- [ ] Audit `settings/style.css` for hardcoded px / rem values that should bind to tokens.
+      Unit 9 catalogued: `gap: 12px`, `gap: 10px`, `padding: 12px`, `border-radius: 8px` in
+      `.price-summary`, `margin: 4px`, `font-size: 0.62rem` — none of which map to existing
+      tokens. Either bind to existing tokens or introduce missing ones (a `--font-size-xs` or
+      a `--spacing-1.5` if those are real gaps). Goal: zero hardcoded geometry/typography
+      values outside the token layer.
+      Files: `packages/settings-ui/public/style.css`,
+      `tokens/base.json`, `settings/tokens.css` (regen).
 
 ## P3 Future and Exploratory Work
 
