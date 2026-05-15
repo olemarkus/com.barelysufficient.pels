@@ -482,6 +482,128 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `packages/settings-ui/test/helpers/homeyApiMock.ts`,
       `packages/contracts/src/settingsUiApi.ts`,
       settings UI mock and browser smoke tests.
+- [ ] Sweep planner-noun "plan" leakage from smart-task user-facing surfaces.
+      A live-Homey pass on the smart-task UI surfaced several places where the planner-layer
+      noun "plan" leaks into copy a user reads. Per `notes/ui-terminology.md` §"Plan vs deadline
+      terminology", the user-facing surface is "smart task" / "schedule" / "ready-by", not "plan".
+      Hits to address: hero eyebrow `${kindChipLabel} plan` in `deadlinePlanHero.ts:161` and
+      `deadlinePlan.ts:247` (renders "EV plan" / "Temperature plan") — pull a kind-specific
+      `sectionLabel` from `deadlineLabels(kind)`; chart tooltip line `` `Plan ${planLabel}` ``
+      at `DeadlinePlan.tsx:237`; legend / series `'Target progress'` at `DeadlinePlan.tsx:354,
+      540` — make kind-aware ("Charge level" for EV, "Temperature" for thermal, driven by a new
+      `labels.progressSeriesName`); `"Plan not found"` heading at `DeadlinePlan.tsx:656` →
+      "Smart task record not found"; `"Plan vs observed"` card title at
+      `DeadlinePlanHistoryDetail.tsx:370` → "Scheduled vs observed"; `"Original plan"` /
+      `"Final plan"` series and `Original ${…} kWh` / `Final ${…} kWh` tooltip lines at
+      `DeadlinePlanHistoryDetail.tsx:174, 183, 235, 249` → "Initial schedule" / "Revised
+      schedule" or plain "Original" / "Final"; `"Replanned {n} times."` at
+      `DeadlinePlanHistoryDetail.tsx:358` → "Schedule updated {n} times.".
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts`,
+      `packages/shared-domain/src/deadlineLabels.ts` (add the new kind-aware label).
+- [ ] Drop recorder jargon from past-task fallback copy and align with the "Smart tasks" tab name.
+      `packages/shared-domain/src/deadlineLabels.ts:270, 348` set the body to
+      `"See History for the outcome."` and the past-plan unavailable fallback (rendered through
+      `DeadlinePlan.tsx`) reads
+      `"No plan detail was recorded for this run. It may have finalized before the planner
+      produced a revision, or it predates plan-snapshot tracking."` — "History" is not a tab
+      name (the canonical tab is **Smart tasks**), and "revision" / "plan-snapshot tracking" /
+      "planner" leak recorder-layer language a user never asked about. Also reword the
+      `Revised because …` tooltip lines at `deadlineLabels.ts:163–167` to `Updated after …`.
+      Suggest: `"See Smart tasks for the outcome."`, `"No hourly plan was saved for this run."`,
+      and `"Updated after the task was set"` / `"Updated as prices became available"` etc.
+      Files: `packages/shared-domain/src/deadlineLabels.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+- [ ] Scope the past-plan detail heading so deep-links land with context.
+      Past-task detail today renders just a timestamp ("Mon 11 May 23:00") as h1 with the device
+      name as a subline. A user who deep-links into the page (e.g. from a Homey notification or
+      shared URL) only sees "PELS" in the dialog title bar — no "Past plan" / "Smart task" eyebrow
+      explains what they are looking at. Add a section-label eyebrow above the timestamp and
+      consider folding the device name into the heading line. Live-UI verified.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
+- [ ] Drop the redundant "SMART TASKS" eyebrow above the same-named h2 on the Smart tasks tab.
+      The empty-state hero on the Smart tasks tab currently renders eyebrow "SMART TASKS" + h2
+      "Smart tasks" — the eyebrow says the same word as the heading. Either remove the eyebrow
+      on this tab or replace it with a per-state hint ("EMPTY" / "ACTIVE" depending on whether
+      a task is queued). Other tabs (Budget, Usage, Settings) use the eyebrow to name the panel,
+      so dropping it here keeps consistency: the tab itself already names the panel.
+      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
+      `packages/settings-ui/public/index.html`.
+- [ ] Reword the Smart tasks empty state to match what users see in the Flow action picker.
+      `packages/settings-ui/src/ui/views/DeadlinesList.tsx:110` says "add a heating or charging
+      smart task" and `.homeycompose/flow/actions/set_temperature_deadline.json` /
+      `set_ev_charge_deadline.json` have `title` `"Add heating task"` / `"Add charging task"`,
+      but Homey's action picker shows the `titleFormatted` body — "Heat Device to Target
+      temperature (°C) °C by Ready by" / "Charge EV charger to Target battery (%) % by Ready by".
+      A user reading the empty state and scanning the picker has no visible match. Suggest:
+      reference PELS's **Heat … by Ready by** / **Charge … by Ready by** actions (or quote the
+      `title` exactly: "Add heating task" / "Add charging task") so the empty state is findable
+      both by search and by visual scan. Live-UI verified.
+      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`.
+- [ ] Hide the "Temperature per mode" section on on/off devices.
+      Device detail for the Easee / Zaptec chargers (both on/off) today renders the full
+      "Temperature per mode" card with body "Temperature targets are not available for on/off
+      devices." Empty-state placeholder + card title is wasted real estate — the section should
+      not render at all when `device.controlModel === 'on_off'`. Same applies to any non-thermal
+      control model (stepped-load chargers don't take per-mode target temperatures either).
+      Live-UI verified on Easee and Zaptec.
+      Files: `packages/settings-ui/src/ui/deviceDetail/` (the section visibility gate),
+      `packages/settings-ui/public/index.html` (per-mode-temp card template).
+- [ ] Verify mode-select `displayText` fix renders on a freshly deployed Homey instance.
+      The live test Homey (SHS, app v2.6.3) renders both `#mode-select` ("Edit mode" in Modes
+      panel) and `#active-mode-select` ("Mode" on Settings home) as blank dropdowns even though
+      `packages/settings-ui/src/ui/modes.ts:createModeOption` already sets both
+      `option.displayText = value` and `option.typeaheadText = value` (PR #789). Either the test
+      Homey is running pre-#789 code (test-environment deploy lag — verify by redeploying current
+      `main`) or the property-setting approach does not actually win against the Material Web
+      build the test environment serves. If the latter, fall back to a `request-update` /
+      `await this.updateComplete` shim after attaching the headline slot.
+      Files: `packages/settings-ui/src/ui/modes.ts`,
+      `packages/settings-ui/tests/e2e/settings-smoke.spec.ts` (extend the regression).
+- [ ] Stop clipping the "New mode name" placeholder and per-device mode-temp inputs at narrow widths.
+      At 480 px the "New mode name" input shows "New mode nam" — placeholder clips because the
+      input column is narrower than the placeholder text. In the priorities list on the same
+      panel, the per-device per-mode temp spinner for a thermostat row shows just "6" with a
+      spinner arrow where the value should be "65" — the cell is too narrow to hold a two-digit
+      value plus the spinner. Both regressions are bounded to the Modes panel layout; widen the
+      input + adjust the priorities-row grid template at the supported widths (320 / 480).
+      Files: `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/public/style.css`.
+- [ ] Reword stepped-load copy that leaks "lower-priority devices" and "stepped-load device".
+      `Charge boost` / `Temperature boost` descriptions in `packages/settings-ui/public/index.html`
+      (around the existing "Step this charger up while the car stays below the minimum battery
+      level, using only lower-priority devices if room must be made." line) and the stepped-section
+      footer "When a limited stepped-load device resumes, PELS starts from the lowest active step
+      and only climbs higher when there is room for it." both leak internal classification
+      ("lower-priority devices" / "stepped-load device") into user copy. Suggest: "…drawing from
+      devices PELS is already allowed to lower." for the boost description; "When this charger is
+      limited and then starts again, PELS climbs back up step by step." for the footer.
+      Files: `packages/settings-ui/public/index.html`.
+- [ ] Reword "Managed devices ran above plan" budget-overflow line.
+      `packages/settings-ui/src/ui/budgetRedesign.ts:290` emits "Managed devices ran above plan —
+      check device priorities." — "above plan" reads as planner-noun usage, the same pattern this
+      pass is sweeping elsewhere. Suggest: "Managed devices used more than expected — check device
+      priorities." (or a kind-aware variant if the helper has access to per-device context).
+      Files: `packages/settings-ui/src/ui/budgetRedesign.ts`.
+- [ ] Clean up smart-task Flow card user-facing copy.
+      Surface jargon / inconsistencies the Flow audit found: in
+      `.homeycompose/flow/triggers/deadline_ended.json` rename token titles `"Shortfall"` →
+      `"Gap to target"` and `"Shortfall (text)"` → `"Gap to target (text)"`, and update the hint
+      "missed (deadline passed below target)" → "missed (ready-by time passed below target)".
+      In `.homeycompose/flow/triggers/deadline_plan_changed.json` rename trigger title
+      "Smart task planned hours changed" → "Smart task schedule changed" (sync `titleFormatted`)
+      and reword the hint "replanned with a different number of hours" → "rescheduled with a
+      different number of hours". In `.homeycompose/flow/triggers/deadline_status_changed.json`
+      add the `notification_text` token that the spec in `notes/smart-task-flow-cards/README.md`
+      lists as shipped but the JSON is missing. After updating, regenerate `app.json` with
+      `homey app validate` and commit it.
+      Files: `.homeycompose/flow/triggers/deadline_ended.json`,
+      `.homeycompose/flow/triggers/deadline_plan_changed.json`,
+      `.homeycompose/flow/triggers/deadline_status_changed.json`,
+      `app.json` (regenerated).
 
 ## P2 Product, Observability, and Maintainability
 
