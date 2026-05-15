@@ -189,6 +189,22 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan.pendingReason).toBe('device_data_missing');
   });
 
+  it('captures invalid_session on a pending record when the EV is unplugged', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+    delete (diag as { horizonPlan?: unknown }).horizonPlan;
+    diag.reasonCode = 'objective_invalid_session';
+
+    recorder.observe([diag], HOUR_MS);
+    recorder.flushIfDirty();
+
+    const plan = saved()!.plansByDeviceId.dev;
+    expect(plan.pending).toBe(true);
+    expect(plan.pendingReason).toBe('invalid_session');
+  });
+
   it('refreshes pendingReason when the diagnostic flips from missing-temperature to missing-prices', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
