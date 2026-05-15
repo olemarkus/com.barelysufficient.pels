@@ -758,15 +758,10 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       future confusion.
       Files: `flowCards/deadlineObjectiveCards.ts`, `.homeycompose/flow/conditions/deadline_status_is.json`
       (for documentation only).
-- [ ] "Plan inputs" card title in smart task plan view — rename or clarify terminology rule.
-      The card title shared by both kinds (`packages/shared-domain/src/deadlineLabels.ts`:
-      `planInputsCardTitle = "Plan inputs"`) uses "plan", which the project's terminology rule
-      (memory: `feedback_terminology_plan_vs_deadline`) reserves for the planning layer. The
-      card's content (per-unit rate, max power per hour) is genuinely planner output that
-      drives the smart task, so the rule may need a clarifying carve-out. Alternative: rename
-      to "Estimation inputs" or "Smart task inputs" to keep "plan" off the smart-task surface.
-      Files: `packages/shared-domain/src/deadlineLabels.ts`,
-      `notes/ui-terminology.md` (rule clarification if kept).
+- [x] "Plan inputs" card title in smart task plan view — rename or clarify terminology rule.
+      Renamed to "Smart task inputs" to remove ambiguity and keep the smart-task surface free
+      of "plan" terminology (Path A). The existing carve-out in notes/ui-terminology.md remains
+      correct for reference but is now moot.
 - [ ] Add PELS-side unit tests for EV kWhPerUnit learning. Cover: a plan with no learned profile
       uses the bootstrap estimate; an accepted SoC rise records a `kWhPerUnit` sample; subsequent
       plans switch from bootstrap to the learned estimate; and rejection reasons fire as expected
