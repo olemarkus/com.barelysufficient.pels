@@ -3988,11 +3988,11 @@ details[open] > summary .disclosure-chevron {
 }
 
 .budget-chart-legend__swatch--background {
-  background: var(--day-view-color-background-usage);
+  background: var(--pels-chart-background);
 }
 
 .budget-chart-legend__swatch--managed {
-  background: var(--day-view-color-managed-usage);
+  background: var(--pels-chart-managed);
 }
 
 .budget-chart-legend__swatch--forecast {

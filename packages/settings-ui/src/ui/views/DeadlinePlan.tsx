@@ -7,6 +7,7 @@ import {
   type DeadlinePlanUnavailableReason,
 } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
+import { attachTabShownResize } from '../chartVisibilityResize.ts';
 import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { DeadlinePlanHistoryDetail } from './DeadlinePlanHistoryDetail.tsx';
@@ -39,9 +40,10 @@ type DeadlinePlanHour = {
 export type DeadlinePlanPayload = {
   kind: DeferredObjectiveSettingsKind;
   labels: DeadlineLabels;
-  // Axis/tooltip label for hourly prices, e.g. `øre/kWh` or `kr/kWh`. Sourced
-  // from the same combined-prices payload that drives the Budget chart so the
-  // two surfaces never disagree on units.
+  // Axis/tooltip label for hourly prices. Prices are already scaled to this
+  // unit (e.g. divided by 100 to convert øre → kr/kWh) by the producer so the
+  // chart renders raw display values; the Budget chart uses the same
+  // CostDisplay so both surfaces show identical numbers.
   priceUnitLabel: string;
   hero: {
     chips: DeadlinePlanChip[];
@@ -247,8 +249,13 @@ const buildChartOption = (
   const hourCount = payload.timeline.hours.length;
   const labels = payload.timeline.hours.map((hour) => hour.time);
   const showLabelEvery = hourCount > 10 ? 3 : 2;
-  const priceMax = Math.max(1, ...payload.timeline.hours.map((hour) => hour.priceValue));
-  const priceMin = Math.min(...payload.timeline.hours.map((hour) => hour.priceValue));
+  // Use the natural max of the (already scaled) display values; do not clamp
+  // to a fixed floor like `1` — kr/kWh values are typically in the 0.5–2 range
+  // and clamping would squash the bars against the bottom of the price grid.
+  const priceValues = payload.timeline.hours.map((hour) => hour.priceValue);
+  const rawPriceMax = priceValues.length ? Math.max(...priceValues) : 0;
+  const priceMax = rawPriceMax > 0 ? rawPriceMax : 1;
+  const priceMin = priceValues.length ? Math.min(...priceValues) : 0;
   const priceRange = priceMax - priceMin;
   const priceAxisMin = priceRange > 0.01 ? priceMin : 0;
   const stackedMax = Math.max(0.5, ...payload.timeline.hours.map((hour) => (
@@ -309,12 +316,26 @@ const buildChartOption = (
     legend: {
       top: 0,
       left: 0,
+      // Explicit `itemStyle` per entry: the original-plan series renders its
+      // bars as `transparent` fill + colored border, which would otherwise
+      // produce an invisible legend swatch. Pin each legend swatch to the
+      // colour the user actually sees in the rendered series.
       data: [
-        payload.labels.backgroundSeriesName,
-        payload.labels.deviceSeriesName,
-        originalSeriesName,
-        ...(hasActualDeviceSeries ? [payload.labels.actualDeviceSeriesName] : []),
-        'Target progress',
+        { name: payload.labels.backgroundSeriesName, itemStyle: { color: palette.background } },
+        { name: payload.labels.deviceSeriesName, itemStyle: { color: palette.device } },
+        {
+          name: originalSeriesName,
+          itemStyle: {
+            color: 'transparent',
+            borderColor: palette.device,
+            borderWidth: 2,
+            borderType: 'dashed' as const,
+          },
+        },
+        ...(hasActualDeviceSeries
+          ? [{ name: payload.labels.actualDeviceSeriesName, itemStyle: { color: palette.actualDevice } }]
+          : []),
+        { name: 'Target progress', itemStyle: { color: palette.progress } },
       ],
       itemWidth: 12,
       itemHeight: 8,
@@ -351,7 +372,10 @@ const buildChartOption = (
         nameTextStyle: axisNameStyle,
         min: priceAxisMin,
         max: priceMax,
-        interval: Math.max(1, priceMax - priceAxisMin),
+        // Force a single tick at min / max so the axis labels stay readable in
+        // the narrow 56-px price grid — without this, kr/kWh values can fall
+        // into ECharts' default 5-tick layout and overlap.
+        interval: Math.max(0.01, priceMax - priceAxisMin),
         axisLabel: {
           ...valueAxisBase.axisLabel,
           formatter: (value: number) => {
@@ -530,9 +554,15 @@ const HorizonChart = ({ payload }: { payload: DeadlinePlanPayload }) => {
       ? new ResizeObserver(() => chart.resize(resolveChartSize(container)))
       : null;
     resizeObserver?.observe(container);
+    // Cold-mount path: the chart may be initialized while its panel is still
+    // `display:none`, so `clientWidth` was the 480 px fallback. Resize once on
+    // the next frame so the SVG settles to the real visible width before the
+    // user sees it, and re-resize whenever the chart's tab is shown again.
+    const detachTabShown = attachTabShownResize({ container, chart, resolveSize: resolveChartSize });
 
     return () => {
       resizeObserver?.disconnect();
+      detachTabShown();
       chart.dispose();
       if (chartInstanceRef.current === chart) chartInstanceRef.current = null;
     };

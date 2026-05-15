@@ -150,13 +150,14 @@ describe('DeadlinePlanHistoryDetail', () => {
 
     const option = buildHistoryDetailChartOption(rows, stubPalette, true, true) as {
       series: Array<{ name: string }>;
-      legend: { data: string[] };
+      legend: { data: Array<{ name: string }> };
     };
     const seriesNames = option.series.map((entry) => entry.name);
     expect(seriesNames).toContain('Original plan');
     expect(seriesNames).toContain('Final plan');
     expect(seriesNames).toContain('Observed charging');
-    expect(option.legend.data).toContain('Observed charging');
+    const legendNames = option.legend.data.map((entry) => entry.name);
+    expect(legendNames).toContain('Observed charging');
   });
 
   it('seeds every hour in the deadline window even when the plan covers only one', async () => {
@@ -188,9 +189,10 @@ describe('DeadlinePlanHistoryDetail', () => {
       deadlineAtMs: DEADLINE_MS,
     });
     const option = buildHistoryDetailChartOption(rows, stubPalette, false, true) as {
-      legend: { data: string[] };
+      legend: { data: Array<{ name: string }> };
     };
-    expect(option.legend.data).not.toContain('Observed charging');
+    const legendNames = option.legend.data.map((entry) => entry.name);
+    expect(legendNames).not.toContain('Observed charging');
   });
 
   it('y-axis uses multiple ticks instead of a single ceiling label', async () => {

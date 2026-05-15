@@ -16,7 +16,8 @@ import {
   type DeadlinePlanUnavailableReason,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { buildPlanInputs } from './deadlinePlanInputs.ts';
-import { resolveRawPriceUnitLabel } from './priceUnit.ts';
+import { resolveCostDisplayFromCombinedPrices, resolvePriceUnitLabel } from './priceUnit.ts';
+import type { CostDisplay } from './dailyBudgetCost.ts';
 import {
   collectHorizonHours,
   ONE_HOUR_MS,
@@ -204,6 +205,7 @@ const buildTimeline = (params: {
   progressPerKWh: number;
   progressUnit: '°C' | '%';
   deadlineAtMs: number;
+  costDisplay: CostDisplay;
 }): DeadlinePlanPayload['timeline'] => {
   let projectedProgress = params.progressStart;
   const progressFloor = Math.min(
@@ -233,10 +235,11 @@ const buildTimeline = (params: {
       if (currentKwh > 0) {
         projectedProgress = Math.min(params.progressTarget, projectedProgress + currentKwh * params.progressPerKWh);
       }
+      const displayPrice = hour.price / Math.max(1, params.costDisplay.divisor);
       return {
         time: formatHourLabel(hour.startsAtMs),
-        price: formatPrice(hour.price),
-        priceValue: hour.price,
+        price: formatPrice(displayPrice),
+        priceValue: displayPrice,
         tone: resolvePriceTone(hour),
         planned: currentKwh > 0,
         changed: Math.abs(originalKwh - currentKwh) > 0.001,
@@ -407,6 +410,7 @@ type ObjectivePayloadReady = {
   progress: NonNullable<ReturnType<typeof resolveProgress>>;
   hours: HorizonHour[];
   energy: ReturnType<typeof resolveEnergyNeededKWh>;
+  costDisplay: CostDisplay;
   priceUnitLabel: string;
 };
 
@@ -435,6 +439,7 @@ const prepareObjectivePayload = (
   });
   if (hours.length === 0) return { kind: 'awaiting_prices' };
 
+  const costDisplay = resolveCostDisplayFromCombinedPrices(params.prices.combinedPrices);
   return {
     ctx,
     bootstrap: params.bootstrap,
@@ -442,7 +447,8 @@ const prepareObjectivePayload = (
     progress,
     hours,
     energy: resolveEnergyNeededKWh({ profile, activePlan: ctx.activePlan }),
-    priceUnitLabel: resolveRawPriceUnitLabel(params.prices.combinedPrices),
+    costDisplay,
+    priceUnitLabel: resolvePriceUnitLabel(costDisplay),
   };
 };
 
@@ -498,6 +504,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       progressPerKWh,
       progressUnit: progress.unit,
       deadlineAtMs,
+      costDisplay: input.costDisplay,
     }),
     planInputs: buildPlanInputs({ latest, profile, labels, objectiveKind: objective.kind, device }),
   };
