@@ -21,7 +21,7 @@ describe('device overview formatter', () => {
       powerMsg: 'on',
       stateMsg: 'Active',
       usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW',
-      statusMsg: 'keep',
+      statusMsg: '',
     });
   });
 
@@ -34,7 +34,7 @@ describe('device overview formatter', () => {
       powerMsg: 'off',
       stateMsg: 'Inactive',
       usageMsg: 'Unknown',
-      statusMsg: 'inactive',
+      statusMsg: 'Off for now',
     });
   });
 
@@ -47,7 +47,7 @@ describe('device overview formatter', () => {
       powerMsg: 'off',
       stateMsg: 'Inactive',
       usageMsg: 'Unknown',
-      statusMsg: 'inactive (charger is unplugged)',
+      statusMsg: 'Off for now (charger is unplugged)',
     });
   });
 
@@ -62,7 +62,7 @@ describe('device overview formatter', () => {
         status: 'fresh',
       },
       reason: r('keep'),
-    }).statusMsg).toBe('keep - EV battery: 42 %');
+    }).statusMsg).toBe('EV battery: 42 %');
 
     expect(formatDeviceOverview({
       currentState: 'off',
@@ -74,7 +74,7 @@ describe('device overview formatter', () => {
         status: 'stale',
       },
       reason: r('inactive'),
-    }).statusMsg).toBe('inactive - EV battery: 42 %, stale');
+    }).statusMsg).toBe('Off for now - EV battery: 42 %, stale');
   });
 
   it('formats legacy keep devices blocked by meter settling without inventing shed state', () => {
@@ -86,7 +86,7 @@ describe('device overview formatter', () => {
       powerMsg: 'off',
       stateMsg: 'Restoring',
       usageMsg: 'Unknown',
-      statusMsg: 'waiting for meter to settle (10s remaining)',
+      statusMsg: 'Waiting for power meter to stabilise (10s)',
     });
 
     expect(formatDeviceOverview({
@@ -98,7 +98,7 @@ describe('device overview formatter', () => {
       powerMsg: 'on → off',
       stateMsg: 'Shed (powered off)',
       usageMsg: 'Unknown',
-      statusMsg: 'cooldown (restore, 10s remaining)',
+      statusMsg: 'Waiting before resuming (10s)',
     });
   });
 
@@ -112,7 +112,7 @@ describe('device overview formatter', () => {
       powerMsg: 'off',
       stateMsg: 'Shed (powered off)',
       usageMsg: 'Unknown',
-      statusMsg: 'waiting for meter to settle (10s remaining)',
+      statusMsg: 'Waiting for power meter to stabilise (10s)',
     });
   });
 
@@ -121,12 +121,12 @@ describe('device overview formatter', () => {
       currentState: 'on',
       plannedState: 'keep',
       reason: r('meter settling (10s remaining)'),
-    }).statusMsg).toBe('waiting for meter to settle (10s remaining)');
+    }).statusMsg).toBe('Waiting for power meter to stabilise (10s)');
     expect(formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
       reason: r('cooldown (restore, 10s remaining)'),
-    }).statusMsg).toBe('cooldown (restore, 10s remaining)');
+    }).statusMsg).toBe('Waiting before resuming (10s)');
   });
 
   it('formats stepped-load devices with desired step labels', () => {
@@ -143,7 +143,7 @@ describe('device overview formatter', () => {
       powerMsg: null,
       stateMsg: 'Shed to max',
       usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW (target: max)',
-      statusMsg: 'shed due to capacity',
+      statusMsg: 'Limited — staying under the hard cap',
     });
   });
 
@@ -174,7 +174,7 @@ describe('device overview formatter', () => {
       powerMsg: null,
       stateMsg: 'Active (low → max)',
       usageMsg: 'Measured: 0.60 kW / Expected: 3.00 kW (reported: low / target: max)',
-      statusMsg: 'cooldown (restore, 10s remaining)',
+      statusMsg: 'Waiting before resuming (10s)',
     });
   });
 
@@ -205,7 +205,7 @@ describe('device overview formatter', () => {
       powerMsg: null,
       stateMsg: 'Active',
       usageMsg: 'Measured: 0.40 kW / Expected: 1.25 kW (reported: low)',
-      statusMsg: 'keep',
+      statusMsg: '',
     });
   });
 
@@ -226,7 +226,7 @@ describe('device overview formatter', () => {
       powerMsg: null,
       stateMsg: 'State unknown',
       usageMsg: 'Measured: 0.60 kW / Expected: 3.00 kW (reported: low / target: max)',
-      statusMsg: 'cooldown (restore, 10s remaining)',
+      statusMsg: 'Waiting before resuming (10s)',
     });
   });
 
@@ -248,7 +248,7 @@ describe('device overview formatter', () => {
       powerMsg: null,
       stateMsg: 'Unavailable',
       usageMsg: 'Measured: 0.60 kW / Expected: 3.00 kW (reported: low / target: max)',
-      statusMsg: 'cooldown (restore, 10s remaining)',
+      statusMsg: 'Waiting before resuming (10s)',
     });
   });
 
@@ -291,7 +291,7 @@ describe('device overview formatter', () => {
       powerMsg: 'unknown',
       stateMsg: 'State unknown',
       usageMsg: 'Unknown',
-      statusMsg: 'Waiting for headroom',
+      statusMsg: 'Waiting for available power',
     });
   });
 });

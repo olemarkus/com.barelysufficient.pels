@@ -448,7 +448,7 @@ describe('Redesign plan UI', () => {
       const timer = document.querySelector(
         '[data-device-id="dev-restore-cooldown"] .plan-state-chip__timer',
       ) as (HTMLElement & { value?: number }) | null;
-      expect(getReasonText('dev-restore-cooldown')).toBe('Waiting before switching again (1s)');
+      expect(getReasonText('dev-restore-cooldown')).toBe('Waiting before resuming (1s)');
       expect(timer?.hidden).toBe(false);
       // Cooldown summary is shown on device card, not as a hero chip
 
