@@ -74,7 +74,7 @@
         "color": { "value": "{pels.text.primary}" },
         "font": {
           "size": { "value": "{font.size.headline-sm}" },
-          "weight": { "value": "{font.weight.normal}" },
+          "weight": { "value": "{font.weight.semibold}" },
           "line-height": { "value": "{font.lineHeight.tight}" }
         }
       },

@@ -10,6 +10,7 @@ import {
   MdSwitch,
   MdTextButton,
 } from './materialWebJSX.tsx';
+import { ExpandMoreIcon } from './icons.tsx';
 import {
   renderBudgetRedesignChart,
   clearBudgetRedesignChart,
@@ -331,7 +332,10 @@ const BudgetConfidenceCard = ({ confidence }: { confidence: BudgetConfidenceData
         </span>
       </div>
       <details class="budget-confidence-card__details">
-        <summary>What this means</summary>
+        <summary>
+          <span>What this means</span>
+          <ExpandMoreIcon class="disclosure-chevron" />
+        </summary>
         <p class="pels-card-supporting budget-confidence-card__explanation">
           Based on recent complete days. Higher confidence means your usage pattern has been regular
           and managed devices have followed earlier plans.

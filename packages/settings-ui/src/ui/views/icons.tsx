@@ -30,3 +30,12 @@ export const ChevronRightIcon = (props: IconProps) => (
     <path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" />
   </svg>
 );
+
+// Material `expand_more` glyph. Used as the disclosure chevron on `<details>`
+// summaries; the CSS rule `details[open] > summary .disclosure-chevron`
+// rotates it 180deg to mirror `expand_less` when the disclosure is open.
+export const ExpandMoreIcon = (props: IconProps) => (
+  <svg {...baseSvgProps(props)}>
+    <path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" />
+  </svg>
+);

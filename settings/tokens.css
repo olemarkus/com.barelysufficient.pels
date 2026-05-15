@@ -134,7 +134,7 @@
   --pels-text-headline-font-weight: var(--font-weight-normal);
   --pels-text-headline-font-line-height: var(--font-line-height-tight);
   --pels-text-section-headline-font-size: var(--font-size-headline-sm);
-  --pels-text-section-headline-font-weight: var(--font-weight-normal);
+  --pels-text-section-headline-font-weight: var(--font-weight-semibold);
   --pels-text-section-headline-font-line-height: var(--font-line-height-tight);
   --pels-text-title-font-size: var(--font-size-title-md);
   --pels-text-title-font-weight: var(--font-weight-medium);
