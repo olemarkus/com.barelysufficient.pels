@@ -6,17 +6,15 @@ import type { TargetDeviceSnapshot } from '../utils/types';
 import type {
   DeviceObjectiveProfile,
   DeviceObjectiveProfileSample,
-  ObjectiveProfileConfidence,
-  ObjectiveProfileStat,
 } from './objectiveProfileTypes';
 import type { PowerTrackerState } from './powerTrackerTypes';
 import { shouldEmitRejectedProfileSample } from './objectiveProfileRejectionLogging';
+import { resolveRecoveryState, type RecoveryAction } from './objectiveProfileRecovery';
+import { updateProfileStat } from './objectiveProfileStats';
 
 export type {
   DeviceObjectiveProfile,
   DeviceObjectiveProfileSample,
-  ObjectiveProfileConfidence,
-  ObjectiveProfileStat,
 } from './objectiveProfileTypes';
 
 export const OBJECTIVE_PROFILE_MAX_DEVICES = 64;
@@ -113,7 +111,47 @@ export function updateDeviceObjectiveProfile(params: {
   const previousSample = previous.lastSample;
   const intervalMs = getProfileIntervalMs(previousSample, sample);
   const valueDelta = getProfileValueDelta(previousSample, sample);
-  const rejectionReason = resolveProfileSampleRejectionReason({
+
+  // Timing checks (non-monotonic time, too-short/too-long intervals, unit
+  // changes) must run before recovery so a stale or out-of-order sample
+  // cannot arm a 24h recovery window or reset the EV baseline.
+  const intervalRejection = resolveProfileIntervalRejectionReason({
+    previousSample,
+    sample,
+    intervalMs,
+  });
+  if (intervalRejection) {
+    emitRejectedProfileSample({
+      previous,
+      deviceId,
+      deviceName,
+      debugStructured,
+      intervalMs,
+      valueDelta,
+      rejectionReason: intervalRejection,
+    });
+    return buildRejectedProfileSample({
+      previous,
+      sample,
+      rejectionReason: intervalRejection,
+    });
+  }
+
+  const recovery = resolveRecoveryState({ previous, sample });
+  if (recovery.action !== 'noop' && recovery.nextProfile) {
+    emitRecoveryStateEvent({
+      action: recovery.action,
+      previous,
+      nextProfile: recovery.nextProfile,
+      sample,
+      deviceId,
+      deviceName,
+      debugStructured,
+    });
+    return recovery.nextProfile;
+  }
+
+  const rejectionReason = resolveProfileValueOrEnergyRejectionReason({
     previousSample,
     sample,
     intervalMs,
@@ -203,7 +241,13 @@ function buildRejectedProfileSample(params: {
   rejectionReason: string;
 }): DeviceObjectiveProfile {
   const { previous, sample, rejectionReason } = params;
-  if (rejectionReason === 'objective_profile_interval_too_long') {
+  if (
+    rejectionReason === 'objective_profile_interval_too_long'
+    // Small falls below the sharp-fall threshold still need a fresh baseline so
+    // the next accepted rise is measured against the new low — otherwise the
+    // delta is computed against a stale pre-drop value and inflates kWh/unit.
+    || rejectionReason === 'objective_profile_value_fell'
+  ) {
     return {
       ...previous,
       updatedAtMs: sample.observedAtMs,
@@ -215,6 +259,34 @@ function buildRejectedProfileSample(params: {
     ...previous,
     rejectedSamples: previous.rejectedSamples + 1,
   };
+}
+
+function emitRecoveryStateEvent(params: {
+  action: RecoveryAction;
+  previous: DeviceObjectiveProfile;
+  nextProfile: DeviceObjectiveProfile;
+  sample: DeviceObjectiveProfileSample;
+  deviceId?: string;
+  deviceName?: string;
+  debugStructured?: ObjectiveProfileDebugEmitter;
+}): void {
+  const { action, previous, nextProfile, sample, deviceId, deviceName, debugStructured } = params;
+  if (!debugStructured) return;
+  // Prefer the post-state for the recovery target so `arm_recovery` reports
+  // the value being protected, not the (undefined) prior value.
+  const recoveryTargetValue = nextProfile.recoveryTargetValue
+    ?? previous.recoveryTargetValue
+    ?? null;
+  debugStructured({
+    event: 'objective_profile_recovery_state',
+    action,
+    deviceId,
+    ...(deviceName ? { deviceName } : {}),
+    profileKind: previous.kind,
+    sampleValue: sample.value,
+    previousValue: previous.lastSample.value,
+    recoveryTargetValue,
+  });
 }
 
 function emitRejectedProfileSample(params: {
@@ -320,14 +392,12 @@ function resolveCredibleDevicePower(
   return {};
 }
 
-function resolveProfileSampleRejectionReason(params: {
+function resolveProfileValueOrEnergyRejectionReason(params: {
   previousSample: DeviceObjectiveProfileSample;
   sample: DeviceObjectiveProfileSample;
   intervalMs: number;
   valueDelta: number;
 }): string | null {
-  const intervalReason = resolveProfileIntervalRejectionReason(params);
-  if (intervalReason) return intervalReason;
   const { previousSample, sample, intervalMs, valueDelta } = params;
   const valueReason = resolveProfileValueRejectionReason({ sample, intervalMs, valueDelta });
   if (valueReason) return valueReason;
@@ -434,51 +504,6 @@ function buildInitialProfile(sample: DeviceObjectiveProfileSample): DeviceObject
 
 function resolveKindForSample(sample: DeviceObjectiveProfileSample): DeviceObjectiveProfile['kind'] {
   return sample.unit === 'degree_c' ? 'temperature' : 'ev_soc';
-}
-
-function updateProfileStat(
-  previous: ObjectiveProfileStat | undefined,
-  value: number,
-  observedAtMs: number,
-): ObjectiveProfileStat {
-  if (!previous || previous.sampleCount <= 0) {
-    return {
-      sampleCount: 1,
-      mean: value,
-      m2: 0,
-      min: value,
-      max: value,
-      confidence: 'low',
-      lastUpdatedMs: observedAtMs,
-    };
-  }
-  const sampleCount = previous.sampleCount + 1;
-  const delta = value - previous.mean;
-  const mean = previous.mean + delta / sampleCount;
-  const nextDelta = value - mean;
-  const m2 = previous.m2 + delta * nextDelta;
-  return {
-    sampleCount,
-    mean,
-    m2,
-    min: Math.min(previous.min, value),
-    max: Math.max(previous.max, value),
-    confidence: resolveProfileConfidence({ sampleCount, mean, m2 }),
-    lastUpdatedMs: observedAtMs,
-  };
-}
-
-function resolveProfileConfidence(params: {
-  sampleCount: number;
-  mean: number;
-  m2: number;
-}): ObjectiveProfileConfidence {
-  const { sampleCount, mean, m2 } = params;
-  if (sampleCount < 4) return 'low';
-  const variance = sampleCount > 1 ? m2 / (sampleCount - 1) : 0;
-  const relativeStdDev = mean > 0 ? Math.sqrt(Math.max(0, variance)) / mean : Number.POSITIVE_INFINITY;
-  if (sampleCount >= 10 && relativeStdDev <= 0.35) return 'high';
-  return relativeStdDev <= 0.75 ? 'medium' : 'low';
 }
 
 function pruneObjectiveProfiles(params: {

@@ -167,7 +167,7 @@ describe('objective profiles', () => {
     expect(state.objectiveProfiles).toBeUndefined();
   });
 
-  it('rejects falling temperature samples without changing learned stats', () => {
+  it('rejects small falling temperature samples and reseeds the baseline so future rises measure from the new low', () => {
     const debugStructured = vi.fn();
     let state: PowerTrackerState = {};
     state = updateObjectiveProfilesFromSnapshot({
@@ -179,7 +179,7 @@ describe('objective profiles', () => {
     state = updateObjectiveProfilesFromSnapshot({
       state,
       devices: [temperatureDevice({
-        currentTemperature: 51,
+        currentTemperature: 51.5,
         lastFreshDataMs: startMs + hourMs,
       })],
       nowMs: startMs + hourMs,
@@ -190,7 +190,10 @@ describe('objective profiles', () => {
     expect(profile?.acceptedSamples).toBe(0);
     expect(profile?.rejectedSamples).toBe(1);
     expect(profile?.kwhPerUnit).toBeUndefined();
-    expect(profile?.lastSample.value).toBe(52);
+    // Baseline now tracks the post-fall low so the next rise computes a fresh
+    // delta instead of inflating the kWh-per-degree calculation against a
+    // stale pre-drop value.
+    expect(profile?.lastSample.value).toBe(51.5);
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'objective_profile_sample_rejected',
       reasonCode: 'objective_profile_value_fell',
@@ -216,12 +219,12 @@ describe('objective profiles', () => {
         devices: [
           temperatureDevice({
             id: 'heater-1',
-            currentTemperature: 51,
+            currentTemperature: 51.5,
             lastFreshDataMs: startMs + hourMs,
           }),
           temperatureDevice({
             id: 'heater-2',
-            currentTemperature: 51,
+            currentTemperature: 51.5,
             lastFreshDataMs: startMs + hourMs,
           }),
         ],
