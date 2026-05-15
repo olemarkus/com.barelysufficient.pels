@@ -5,6 +5,9 @@ import {
   normalizeDeferredObjectiveSettings,
   resolveDeferredObjectiveDeadline,
 } from '../lib/plan/deferredObjectives';
+import type {
+  DeferredObjectivePlannedBucket,
+} from '../lib/plan/deferredObjectives';
 import { DeferredObjectivePlanHistoryRecorder } from '../lib/plan/deferredObjectives/planHistory';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
@@ -247,6 +250,10 @@ const buildDay = (params: {
   };
 };
 
+const sumReserveAllocation = (plannedBuckets: readonly DeferredObjectivePlannedBucket[]): number => (
+  plannedBuckets.reduce((sum, bucket) => sum + (bucket.reserve ? bucket.plannedUsefulEnergyKWh : 0), 0)
+);
+
 describe('deferred objective settings', () => {
   const evDeadlineAtMs = resolveDeadlineAtMsFor('07:30');
   const tempDeadlineAtMs = resolveDeadlineAtMsFor('08:00');
@@ -469,11 +476,14 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
 
 describe('buildDeferredObjectiveDiagnostics', () => {
   it('plans a persisted EV SoC objective through price-shaped horizon buckets', () => {
+    // 4 kWh need at 1 kW low step needs 4 hours; the 1-hour deadline reserve
+    // adds one more hour, so deadline at 22:00 (5 hours after NOW_MS=17:00)
+    // keeps the plan on_track with the reserve untouched.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
-      settings: normalizeDeferredObjectiveSettings(buildSettings()),
+      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
       powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
       priceOptimizationEnabled: true,
@@ -487,7 +497,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       energyNeededKWh: 4,
       kWhPerPercent: 0.2,
       requestedMinimumStepId: 'low',
-      horizonBucketCount: 4,
+      horizonBucketCount: 5,
     });
     expect(diagnostic?.horizonPlan?.plannedBuckets.some((bucket) => bucket.preference === 'preferred')).toBe(true);
   });
@@ -596,11 +606,13 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   });
 
   it('reports zero exhausted buckets when the daily budget is not yet exhausted', () => {
+    // Use a 22:00 deadline so the 4 kWh need at 1 kW fits inside the primary
+    // window without dipping into the 1-hour deadline reserve.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildDevice()],
-      settings: normalizeDeferredObjectiveSettings(buildSettings()),
+      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
       powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
       priceOptimizationEnabled: true,
@@ -853,6 +865,12 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   });
 
   it('returns from satisfied to tracking when progress falls below target before the deadline', () => {
+    // Deadline at 22:00 keeps the 4 kWh / 1 kW EV plan on_track when progress
+    // drops back below target, with the 1-hour deadline reserve untouched.
+    const trackingSettings = normalizeDeferredObjectiveSettings(buildSettings({
+      targetPercent: 60,
+      deadlineLocalTime: '22:00',
+    }));
     const satisfied = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',
@@ -863,7 +881,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           observedAtMs: NOW_MS,
         },
       })],
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
+      settings: trackingSettings,
       powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
       priceOptimizationEnabled: true,
@@ -878,7 +896,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           observedAtMs: NOW_MS,
         },
       })],
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
+      settings: trackingSettings,
       powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
       priceOptimizationEnabled: true,
@@ -995,5 +1013,99 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       energyNeededKWh: 0,
       requestedMinimumStepId: null,
     });
+  });
+
+  it('arms a 1-hour reserve and reports on_track when energy fits before it', () => {
+    // 4 kWh needed at 1 kW = 4 charging hours; 5-hour horizon (17:00 → 22:00)
+    // leaves the final hour (21:00 → 22:00) as reserve. The plan lands in
+    // the four primary hours, so the reserve stays untouched.
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic).toMatchObject({
+      status: 'on_track',
+      reasonCode: 'planned_with_margin',
+    });
+    expect(diagnostic?.horizonPlan?.usesDeadlineReserve).toBe(false);
+    expect(diagnostic?.horizonPlan?.deadlineMarginMs).toBe(HOUR_MS);
+  });
+
+  it('flips to at_risk when the plan has to allocate into the reserve hour', () => {
+    // 4 kWh need at 1 kW with a 4-hour horizon (17:00 → 21:00): three primary
+    // hours can carry 3 kWh, so the final hour (the reserve) must absorb the
+    // remaining 1 kWh. That dip is exactly what at_risk should announce.
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '21:00' })),
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic).toMatchObject({
+      status: 'at_risk',
+      reasonCode: 'planned_using_deadline_reserve',
+    });
+    expect(diagnostic?.horizonPlan?.usesDeadlineReserve).toBe(true);
+    expect(diagnostic?.horizonPlan?.plannedUsefulEnergyKWh).toBeCloseTo(4);
+    // Every earlier hour is fully booked at planning power: 3 hours × 1 kW.
+    const reserveAllocated = sumReserveAllocation(diagnostic?.horizonPlan?.plannedBuckets ?? []);
+    expect(reserveAllocated).toBeCloseTo(1);
+  });
+
+  it('reports cannot_meet when even the reserve hour cannot absorb the shortfall', () => {
+    // 4 kWh need at 1 kW with only a 3-hour horizon: every hour (including
+    // the reserve hour at 19:00 → 20:00) is fully booked at planning power
+    // and 1 kWh is still unplanned. cannot_meet outranks the reserve flag.
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00' })),
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic).toMatchObject({
+      status: 'cannot_meet',
+      reasonCode: 'target_cannot_be_met',
+    });
+    expect(diagnostic?.horizonPlan?.unplannedUsefulEnergyKWh).toBeCloseTo(1);
+  });
+
+  it('treats deadlines closer than the reserve window as fully inside the reserve', () => {
+    // 30-minute horizon: reserve (1 h) is longer than time-to-deadline, so
+    // every available minute is reserve. Any allocation flips at_risk; the
+    // planner does not degrade to on_track just because no primary window
+    // exists. 0.2 kWh fits in 0.5 h of reserve at 1 kW.
+    const deadlineAtMs = NOW_MS + HOUR_MS / 2;
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings: normalizeDeferredObjectiveSettings(buildSettings({
+        deadlineAtMs,
+        targetPercent: 41,
+      })),
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic).toMatchObject({
+      status: 'at_risk',
+      reasonCode: 'planned_using_deadline_reserve',
+    });
+    expect(diagnostic?.horizonPlan?.usesDeadlineReserve).toBe(true);
   });
 });
