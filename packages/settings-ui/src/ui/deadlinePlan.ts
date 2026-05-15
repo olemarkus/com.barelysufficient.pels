@@ -1,3 +1,7 @@
+// Pending and ready payload builders share private helpers
+// (resolveObjectiveContext, format helpers, types) that would
+// create circular imports if split into separate modules.
+/* eslint-disable max-lines */
 import type {
   SettingsUiBootstrap,
   SettingsUiPricesPayload,

@@ -163,7 +163,20 @@ test.describe('Settings UI chart layout', () => {
       const swatches = Array.from(panel.querySelectorAll<HTMLElement>('.budget-chart-legend__swatch'));
       if (swatches.length === 0) return { ok: false, reason: 'no swatches' } as const;
       const panelStyle = getComputedStyle(panel);
-      const resolveVar = (variable: string): string => panelStyle.getPropertyValue(variable).trim();
+      // Normalise both sides through the browser's colour parser by
+      // round-tripping each value through `getComputedStyle.color`, so a
+      // hex token (`#60a5fa`) and an rgb computed style (`rgb(96, 165, 250)`)
+      // compare as the same colour without us doing the math.
+      const probe = document.createElement('span');
+      panel.appendChild(probe);
+      const normalise = (value: string): string => {
+        const v = value.trim();
+        if (!v) return '';
+        probe.style.color = '';
+        probe.style.color = v;
+        return getComputedStyle(probe).color;
+      };
+      const resolveVar = (variable: string): string => normalise(panelStyle.getPropertyValue(variable));
       const expectedByClass: Record<string, { fill?: string; border?: string }> = {
         'budget-chart-legend__swatch--actual': { fill: resolveVar('--pels-chart-actual') },
         'budget-chart-legend__swatch--background': { fill: resolveVar('--pels-chart-background') },
@@ -187,13 +200,16 @@ test.describe('Settings UI chart layout', () => {
         const variant = Object.keys(expectedByClass).find((cls) => swatch.classList.contains(cls));
         if (!variant) continue;
         const expected = expectedByClass[variant];
-        if (expected.fill !== undefined && expected.fill && style.backgroundColor !== expected.fill) {
-          offenders.push({ cls: variant, reason: `fill ${style.backgroundColor} != ${expected.fill}` });
+        const fillActual = normalise(style.backgroundColor);
+        const borderActual = normalise(style.borderTopColor);
+        if (expected.fill !== undefined && expected.fill && fillActual !== expected.fill) {
+          offenders.push({ cls: variant, reason: `fill ${fillActual} != ${expected.fill}` });
         }
-        if (expected.border !== undefined && expected.border && style.borderTopColor !== expected.border) {
-          offenders.push({ cls: variant, reason: `border ${style.borderTopColor} != ${expected.border}` });
+        if (expected.border !== undefined && expected.border && borderActual !== expected.border) {
+          offenders.push({ cls: variant, reason: `border ${borderActual} != ${expected.border}` });
         }
       }
+      probe.remove();
       return { ok: offenders.length === 0, offenders, swatchCount: swatches.length } as const;
     });
     expect(parity.ok, `Legend swatches mismatch: ${JSON.stringify(parity)}`).toBe(true);
