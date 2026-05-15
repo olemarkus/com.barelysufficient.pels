@@ -862,6 +862,89 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.finalPlan!.hours[0]!.plannedKWh).toBeCloseTo(3.5);
     });
 
+    it('adopts a richer latest as originalPlan when the planner expands the schedule mid-run', () => {
+      // Regression: a run where the planner's first written revision is a degenerate
+      // 1-hour allocation (prices arrived late) but a later replan expands to a full
+      // 8-hour schedule. The recorded `originalPlan` must reflect the richer
+      // intent ("we wanted 8 charging hours") rather than the first poor revision.
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 9 * HOUR_MS;
+
+      const skinnyPlans = {
+        version: 1 as const,
+        plansByDeviceId: {
+          dev: {
+            deviceId: 'dev',
+            deviceName: 'EV',
+            objectiveKind: 'ev_soc' as const,
+            targetTemperatureC: null,
+            targetPercent: 80,
+            deadlineAtMs,
+            startedAtMs: 0,
+            pending: false,
+            objectiveSignature: 'sig',
+            original: {
+              revision: 1, revisedAtMs: 0, computedFromPricesUpTo: null,
+              reason: 'prices_arrived' as const,
+              hours: [{ startsAtMs: 8 * HOUR_MS, plannedKWh: 2.0 }],
+              energyNeededKWh: 2.0, planStatus: 'cannot_meet' as const,
+            },
+            latest: {
+              revision: 1, revisedAtMs: 0, computedFromPricesUpTo: null,
+              reason: 'prices_arrived' as const,
+              hours: [{ startsAtMs: 8 * HOUR_MS, plannedKWh: 2.0 }],
+              energyNeededKWh: 2.0, planStatus: 'cannot_meet' as const,
+            },
+          },
+        },
+      };
+      const richPlans = {
+        ...skinnyPlans,
+        plansByDeviceId: {
+          dev: {
+            ...skinnyPlans.plansByDeviceId.dev,
+            latest: {
+              revision: 2, revisedAtMs: HOUR_MS, computedFromPricesUpTo: null,
+              reason: 'prices_revised' as const,
+              hours: Array.from({ length: 8 }, (_, i) => ({
+                startsAtMs: (i + 1) * HOUR_MS, plannedKWh: 1.5,
+              })),
+              energyNeededKWh: 12.0, planStatus: 'on_track' as const,
+            },
+          },
+        },
+      };
+      const collapsedPlans = {
+        ...skinnyPlans,
+        plansByDeviceId: {
+          dev: {
+            ...skinnyPlans.plansByDeviceId.dev,
+            latest: {
+              revision: 3, revisedAtMs: 7 * HOUR_MS, computedFromPricesUpTo: null,
+              reason: 'prices_revised' as const,
+              hours: [{ startsAtMs: 8 * HOUR_MS, plannedKWh: 1.5 }],
+              energyNeededKWh: 1.5, planStatus: 'cannot_meet' as const,
+            },
+          },
+        },
+      };
+
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentPercent: 30 })], 0, skinnyPlans);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentPercent: 35 })], HOUR_MS, richPlans);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentPercent: 40 })], 7 * HOUR_MS, collapsedPlans);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.originalPlan).not.toBeNull();
+      // The richest schedule the planner ever produced was 8 hours — preserve it
+      // so the past-plan view can show what the run was aiming for.
+      expect(entry.originalPlan!.hours).toHaveLength(8);
+      // Final reflects the actually-executed shape: collapsed back to 1 hour.
+      expect(entry.finalPlan!.hours).toHaveLength(1);
+    });
+
     it('leaves plan snapshots null when no active plan exists during observation', () => {
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);

@@ -93,7 +93,10 @@ describe('DeadlinePlanHistoryDetail', () => {
     // running inside JSDOM.
     const { buildHistoryDetailRows, buildHistoryDetailChartOption } =
       await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
-    const rows = buildHistoryDetailRows(revision, revision, [], 'UTC');
+    const rows = buildHistoryDetailRows(revision, revision, [], 'UTC', {
+      startedAtMs: DEADLINE_MS - 2 * HOUR_MS,
+      deadlineAtMs: DEADLINE_MS - HOUR_MS,
+    });
     const option = buildHistoryDetailChartOption(rows, stubPalette, false, true) as {
       series: Array<{ name: string }>;
     };
@@ -108,7 +111,10 @@ describe('DeadlinePlanHistoryDetail', () => {
     });
     const { buildHistoryDetailRows } =
       await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
-    const rows = buildHistoryDetailRows(original, null, [], 'UTC');
+    const rows = buildHistoryDetailRows(original, null, [], 'UTC', {
+      startedAtMs: DEADLINE_MS - 3 * HOUR_MS,
+      deadlineAtMs: DEADLINE_MS - 2 * HOUR_MS,
+    });
     // Only the original snapshot was recorded. The row's `finalKWh` mirrors
     // the original so the chart still draws bars (instead of an empty chart)
     // and the diff-based overlay gate stays suppressed.
@@ -133,17 +139,72 @@ describe('DeadlinePlanHistoryDetail', () => {
       final,
       [{ fromMs: DEADLINE_MS - 4 * HOUR_MS, toMs: DEADLINE_MS - 3 * HOUR_MS }],
       'UTC',
+      { startedAtMs: DEADLINE_MS - 4 * HOUR_MS, deadlineAtMs: DEADLINE_MS - HOUR_MS },
     );
-    expect(rows.map((row) => row.originalKWh)).toEqual([1, 0]);
-    expect(rows.map((row) => row.finalKWh)).toEqual([0, 3]);
-    expect(rows.map((row) => row.observed)).toEqual([true, false]);
+    // Window spans 3 hours; the gap hour at -3h is included with zeroes so
+    // the chart axis covers the deadline window even though no plan or
+    // observation touched that hour.
+    expect(rows.map((row) => row.originalKWh)).toEqual([1, 0, 0]);
+    expect(rows.map((row) => row.finalKWh)).toEqual([0, 0, 3]);
+    expect(rows.map((row) => row.observed)).toEqual([true, false, false]);
 
     const option = buildHistoryDetailChartOption(rows, stubPalette, true, true) as {
       series: Array<{ name: string }>;
+      legend: { data: string[] };
     };
     const seriesNames = option.series.map((entry) => entry.name);
     expect(seriesNames).toContain('Original plan');
     expect(seriesNames).toContain('Final plan');
     expect(seriesNames).toContain('Observed charging');
+    expect(option.legend.data).toContain('Observed charging');
+  });
+
+  it('seeds every hour in the deadline window even when the plan covers only one', async () => {
+    // Regression: a one-hour plan would previously render as a single floating
+    // bar with no temporal context. The chart must span [startedAtMs, deadlineAtMs)
+    // so the user sees the full window with the planned hour in context.
+    const { buildHistoryDetailRows } =
+      await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
+    const onlyHour = buildRevision({
+      hours: [{ startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 0.6 }],
+      energyNeededKWh: 0.6,
+    });
+    const rows = buildHistoryDetailRows(onlyHour, onlyHour, [], 'UTC', {
+      startedAtMs: DEADLINE_MS - 8 * HOUR_MS,
+      deadlineAtMs: DEADLINE_MS,
+    });
+    expect(rows).toHaveLength(8);
+    // The planned hour sits at the end of the window; every earlier hour is zero.
+    expect(rows.slice(0, 7).every((row) => row.finalKWh === 0)).toBe(true);
+    expect(rows[7]!.finalKWh).toBeCloseTo(0.6);
+  });
+
+  it('omits the Observed charging legend item when no hour was observed', async () => {
+    const { buildHistoryDetailRows, buildHistoryDetailChartOption } =
+      await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
+    const revision = buildRevision();
+    const rows = buildHistoryDetailRows(revision, revision, [], 'UTC', {
+      startedAtMs: DEADLINE_MS - 2 * HOUR_MS,
+      deadlineAtMs: DEADLINE_MS,
+    });
+    const option = buildHistoryDetailChartOption(rows, stubPalette, false, true) as {
+      legend: { data: string[] };
+    };
+    expect(option.legend.data).not.toContain('Observed charging');
+  });
+
+  it('y-axis uses multiple ticks instead of a single ceiling label', async () => {
+    const { buildHistoryDetailRows, buildHistoryDetailChartOption } =
+      await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
+    const revision = buildRevision();
+    const rows = buildHistoryDetailRows(revision, revision, [], 'UTC', {
+      startedAtMs: DEADLINE_MS - 2 * HOUR_MS,
+      deadlineAtMs: DEADLINE_MS,
+    });
+    const option = buildHistoryDetailChartOption(rows, stubPalette, false, true) as {
+      yAxis: { splitNumber?: number; interval?: number };
+    };
+    expect(option.yAxis.splitNumber).toBe(4);
+    expect(option.yAxis.interval).toBeUndefined();
   });
 });

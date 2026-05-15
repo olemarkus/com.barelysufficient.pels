@@ -159,6 +159,18 @@ const extendIntervals = (
   return [...intervals, { fromMs: nowMs, toMs: nowMs }];
 };
 
+// Returns whichever snapshot has the richer (longer) hour schedule. Ties keep
+// the existing snapshot so we don't churn identity on byte-equivalent
+// schedules. `null` always loses to a real snapshot.
+const pickRicherSnapshot = (
+  current: DeferredObjectivePlanHistoryRevisionSnapshot | null,
+  candidate: DeferredObjectivePlanHistoryRevisionSnapshot | null,
+): DeferredObjectivePlanHistoryRevisionSnapshot | null => {
+  if (!candidate) return current;
+  if (!current) return candidate;
+  return candidate.hours.length > current.hours.length ? candidate : current;
+};
+
 const startRecord = (
   diag: DeferredObjectiveDiagnostic,
   nowMs: number,
@@ -188,7 +200,11 @@ const startRecord = (
     usedPolicyAvoid: diag.horizonPlan?.usesPolicyAvoid ?? false,
     observedIntervals: [{ fromMs: nowMs, toMs: nowMs }],
     satisfied: currentlySatisfied,
-    originalPlan: originalSnapshot,
+    // Seed `originalPlan` with the richer of `plan.original` / `plan.latest`
+    // so a recorder picking up mid-run after the planner has already expanded
+    // the schedule does not anchor on a stale first revision. Subsequent
+    // cycles refine via `refreshPlanSnapshots`.
+    originalPlan: pickRicherSnapshot(originalSnapshot, finalSnapshot),
     finalPlan: finalSnapshot,
   };
 };
@@ -202,16 +218,23 @@ const refreshPlanSnapshots = (
     return { originalPlan: record.originalPlan, finalPlan: record.finalPlan };
   }
   const finalSnapshot = captureRevisionSnapshot(finalRevision);
-  if (record.originalPlan) {
-    return { originalPlan: record.originalPlan, finalPlan: finalSnapshot };
-  }
-  // No original captured yet: this is the first cycle on which a plan exists
-  // for this run. Capture both, preferring `plan.original` for the original
-  // slot so a recorder picking up mid-run still records the run's true
-  // starting shape rather than the current revision.
+  // `originalPlan` tracks the richest schedule the planner ever achieved for
+  // this run, not strictly the first revision. The first written revision can
+  // be a degenerate 1-hour allocation (prices arrived late, profile
+  // bootstrapping) that the planner later expands into the full intended
+  // window once it has more information. If we froze on the first revision,
+  // a run that later collapsed back to a short schedule by deadline would
+  // misrepresent both the intent ("we wanted 8 charging hours") and the
+  // outcome ("only 1 of those happened"). Compare against `plan.latest` too
+  // because intermediate replans frequently have more hours than
+  // `plan.original`.
   const originalRevision = pickRevisionForOriginal(plan);
-  const originalSnapshot = originalRevision ? captureRevisionSnapshot(originalRevision) : finalSnapshot;
-  return { originalPlan: originalSnapshot, finalPlan: finalSnapshot };
+  const originalCandidate = originalRevision ? captureRevisionSnapshot(originalRevision) : null;
+  const nextOriginal = pickRicherSnapshot(
+    pickRicherSnapshot(record.originalPlan, originalCandidate),
+    finalSnapshot,
+  );
+  return { originalPlan: nextOriginal, finalPlan: finalSnapshot };
 };
 
 const mergeRecord = (

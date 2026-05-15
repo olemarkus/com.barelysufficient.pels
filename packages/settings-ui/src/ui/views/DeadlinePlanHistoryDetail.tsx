@@ -41,11 +41,15 @@ const formatHourLabel = (startsAtMs: number, timeZone: string): string => (
   })
 );
 
+const floorToHour = (ms: number): number => Math.floor(ms / ONE_HOUR_MS) * ONE_HOUR_MS;
+const ceilToHour = (ms: number): number => Math.ceil(ms / ONE_HOUR_MS) * ONE_HOUR_MS;
+
 export const buildHistoryDetailRows = (
   original: DeferredObjectivePlanHistoryRevisionSnapshot | null,
   final: DeferredObjectivePlanHistoryRevisionSnapshot | null,
   observedIntervals: DeferredObjectivePlanHistoryEntry['observedIntervals'],
   timeZone: string,
+  window: { startedAtMs: number; deadlineAtMs: number },
 ): HourRow[] => {
   // `finalKWh` is the planner's last word and the "primary" bar series the
   // chart fills. When only one snapshot was recorded we fall back to it so a
@@ -66,6 +70,16 @@ export const buildHistoryDetailRows = (
     if (!overlay) upsert(hour.startsAtMs, 'original', hour.plannedKWh);
   });
   overlay?.hours.forEach((hour) => upsert(hour.startsAtMs, 'original', hour.plannedKWh));
+  // Seed every hour in the deadline window so the chart x-axis spans
+  // `[startedAtMs, deadlineAtMs]` even when the recorded plan only covers a
+  // subset. Without this, a degenerate 1-hour plan renders as a single
+  // floating bar with no temporal context. Iterate in absolute ms so DST
+  // 23/25-hour windows produce the right hour count automatically.
+  const windowStart = floorToHour(window.startedAtMs);
+  const windowEnd = Math.max(ceilToHour(window.deadlineAtMs), windowStart + ONE_HOUR_MS);
+  for (let ms = windowStart; ms < windowEnd; ms += ONE_HOUR_MS) {
+    if (!byStart.has(ms)) byStart.set(ms, { original: 0, final: 0 });
+  }
   const starts = [...byStart.keys()].sort((a, b) => a - b);
   return starts.map((startsAtMs) => {
     const values = byStart.get(startsAtMs)!;
@@ -142,10 +156,7 @@ export const buildHistoryDetailChartOption = (
   hasFinalSeries: boolean,
 ): EChartsOption => {
   const labels = rows.map((row) => row.displayLabel);
-  const stackedMax = Math.max(
-    0.5,
-    ...rows.map((row) => Math.max(row.originalKWh, row.finalKWh)),
-  );
+  const hasObservedSeries = rows.some((row) => row.observed);
   return {
     animation: false,
     backgroundColor: 'transparent',
@@ -156,7 +167,7 @@ export const buildHistoryDetailChartOption = (
       data: [
         ...(hasOriginalSeries ? ['Original plan'] : []),
         ...(hasFinalSeries ? ['Final plan'] : []),
-        'Observed charging',
+        ...(hasObservedSeries ? ['Observed charging'] : []),
       ],
       itemWidth: 12,
       itemHeight: 8,
@@ -182,21 +193,27 @@ export const buildHistoryDetailChartOption = (
       axisLabel: {
         color: palette.muted,
         fontSize: 11,
-        interval: (index: number) => index === labels.length - 1 || index % 2 === 0,
+        // Show roughly every-other-hour label for short windows and every third
+        // for long windows so the axis stays readable at 480px. Always keep
+        // the first and last labels so the chart's temporal extent is obvious.
+        interval: (index: number) => (
+          index === 0
+          || index === labels.length - 1
+          || index % (labels.length > 12 ? 3 : 2) === 0
+        ),
       },
     },
     yAxis: {
       type: 'value',
       min: 0,
-      max: stackedMax,
-      interval: stackedMax,
+      splitNumber: 4,
       splitLine: { lineStyle: { color: palette.grid, opacity: 0.55 } },
       axisLine: { show: false },
       axisTick: { show: false },
       axisLabel: {
         color: palette.text,
         fontSize: 11,
-        formatter: (value: number) => (Math.abs(value - stackedMax) < 0.001 ? `${stackedMax.toFixed(1)} kWh` : ''),
+        formatter: (value: number) => (value === 0 ? '' : `${value.toFixed(1)} kWh`),
       },
     },
     series: [
@@ -285,7 +302,13 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone }: Props) => {
   const progressLine = formatPlanHistoryProgressLine(entry);
   const reachedAtLine = formatPlanHistoryReachedAtLine(entry, timeZone);
   const coverageLine = formatPlanHistoryObservedCoverage(entry);
-  const rows = buildHistoryDetailRows(entry.originalPlan, entry.finalPlan, entry.observedIntervals, timeZone);
+  const rows = buildHistoryDetailRows(
+    entry.originalPlan,
+    entry.finalPlan,
+    entry.observedIntervals,
+    timeZone,
+    { startedAtMs: entry.startedAtMs, deadlineAtMs: entry.deadlineAtMs },
+  );
   // The chart always shows the final/as-executed plan when one exists,
   // falling back to the original when the run finalized before the planner
   // could revise. The original-plan series is only overlaid when the run
@@ -313,7 +336,7 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone }: Props) => {
         )}
         {coverageLine && <p class="pels-card-supporting">{coverageLine}</p>}
       </section>
-      {rows.length === 0 ? (
+      {entry.originalPlan === null && entry.finalPlan === null ? (
         <section class="pels-surface-card">
           <p class="pels-card-supporting">
             No plan detail was recorded for this run. It may have finalized before the planner produced a revision, or it predates plan-snapshot tracking.
