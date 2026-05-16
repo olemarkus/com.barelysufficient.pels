@@ -2894,9 +2894,22 @@ md-primary-tab.tab[active]:hover {
   border-color: var(--color-state-negative-border);
 }
 
+/*
+ * Match the heatmap cell shape exactly so the legend reads as "this is what
+ * that means" (TODO 573 — fixed v2.7.0). Heatmap cells in
+ * `powerWeekChartEcharts.ts` use:
+ *   background     = --pels-chart-unreliable-cell
+ *   border (1 px)  = --pels-chart-heatmap-border
+ *   border-radius  = 2 px
+ * Render the swatch as a 10x10 square (the cell is ~10 px tall at 240 px chart
+ * height) with the same fill + border + radius.
+ */
 .usage-legend__swatch--unreliable {
-  background: var(--color-surface-4);
-  border-color: var(--color-border-strong);
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--pels-chart-unreliable-cell);
+  border: 1px solid var(--pels-chart-heatmap-border);
 }
 
 .usage-bar {

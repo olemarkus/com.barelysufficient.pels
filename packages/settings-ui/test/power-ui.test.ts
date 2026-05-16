@@ -10,8 +10,15 @@ const buildPowerDom = () => {
     <div id="usage-today"></div>
     <div id="usage-week"></div>
     <div id="usage-month"></div>
-    <div id="usage-weekday-avg"></div>
-    <div id="usage-weekend-avg"></div>
+    <div id="usage-pattern-averages">
+      <div data-pattern-metric="weekday">
+        <span id="usage-weekday-avg"></span>
+      </div>
+      <div data-pattern-metric="weekend">
+        <span id="usage-weekend-avg"></span>
+      </div>
+    </div>
+    <div id="hourly-pattern-toggle-mount"></div>
     <div id="hourly-pattern"></div>
     <div id="hourly-pattern-meta"></div>
     <h4 id="usage-day-title"></h4>
@@ -99,6 +106,48 @@ describe('power page stats (buckets-only)', () => {
     expect(chartRoot).not.toBeNull();
     expect(chartRoot?.querySelector('svg')).not.toBeNull();
     expect(chartRoot?.querySelector('.usage-row--pattern')).toBeNull();
+  });
+
+  // Regression: TODO 585. The Typical-day Weekdays / Weekend segmented control
+  // must hide the non-selected metric from the stat strip so the strip
+  // reinforces which segment is active.
+  it('hides the weekend stat when Weekdays segment is selected', async () => {
+    // Use a 14-day window so weekday + weekend buckets both have data.
+    const buckets = buildBuckets('2025-01-06T00:00:00.000Z', 14 * 24, 1.2);
+    await installHomeyClient({ buckets });
+
+    const { renderPowerStats } = await import('../src/ui/power.ts');
+    await renderPowerStats();
+
+    const weekdayMetric = document.querySelector<HTMLElement>('[data-pattern-metric="weekday"]');
+    const weekendMetric = document.querySelector<HTMLElement>('[data-pattern-metric="weekend"]');
+    expect(weekdayMetric?.hidden).toBe(false);
+    expect(weekendMetric?.hidden).toBe(false);
+
+    // Click the Weekdays segmented option.
+    const weekdayBtn = Array.from(document.querySelectorAll('button.segmented__option'))
+      .find((btn) => btn.textContent === 'Weekdays') as HTMLButtonElement | undefined;
+    expect(weekdayBtn).toBeDefined();
+    weekdayBtn?.click();
+
+    expect(weekdayMetric?.hidden).toBe(false);
+    expect(weekendMetric?.hidden).toBe(true);
+
+    // Switch to Weekend.
+    const weekendBtn = Array.from(document.querySelectorAll('button.segmented__option'))
+      .find((btn) => btn.textContent === 'Weekend') as HTMLButtonElement | undefined;
+    weekendBtn?.click();
+
+    expect(weekdayMetric?.hidden).toBe(true);
+    expect(weekendMetric?.hidden).toBe(false);
+
+    // Switch back to All days.
+    const allBtn = Array.from(document.querySelectorAll('button.segmented__option'))
+      .find((btn) => btn.textContent === 'All days') as HTMLButtonElement | undefined;
+    allBtn?.click();
+
+    expect(weekdayMetric?.hidden).toBe(false);
+    expect(weekendMetric?.hidden).toBe(false);
   });
 
   it('renders daily history chart from buckets when dailyTotals are missing', async () => {
@@ -330,6 +379,139 @@ describe('power page stats (buckets-only)', () => {
     const barSeries = option.series?.find((series) => series.type === 'bar');
     expect(barSeries).toBeDefined();
     expect(option.series?.find((series) => series.type === 'scatter')).toBeUndefined();
+  });
+
+  // Regression: TODO 1122. Legend listed "Warning" but no series bound to it,
+  // so ECharts silently dropped the entry. The chart now adds a zero-data
+  // dummy series named "Warning" only when warn bars are present.
+  it('binds the Warning legend entry to a real series when warn bars exist', async () => {
+    const setOption = vi.fn();
+    const initEcharts = vi.fn(() => ({
+      setOption,
+      resize: vi.fn(),
+      dispose: vi.fn(),
+    }));
+    vi.doMock('../src/ui/echartsRegistry.ts', () => ({
+      initEcharts,
+      encodeHtml: (value: string) => value,
+    }));
+    const { renderUsageDayChartEcharts } = await import('../src/ui/usageDayChartEcharts.ts');
+    const barsEl = document.querySelector('#usage-day-bars') as HTMLElement;
+    const labelsEl = document.querySelector('#usage-day-labels') as HTMLElement;
+
+    const rendered = renderUsageDayChartEcharts({
+      bars: [
+        { label: '00:00', value: 1.2 },
+        { label: '01:00', value: 0.4, state: 'warn' },
+      ],
+      labels: ['00:00', '01:00'],
+      currentBucketIndex: 0,
+      enabled: true,
+      barsEl,
+      labelsEl,
+    });
+
+    expect(rendered).toBe(true);
+    const option = setOption.mock.calls[0][0] as {
+      legend?: { data?: Array<string | { name?: string }> };
+      series?: Array<{ name?: string; data?: unknown[] }>;
+    };
+    const legendNames = (option.legend?.data ?? []).map((entry) => (
+      typeof entry === 'string' ? entry : entry.name
+    ));
+    const seriesNames = (option.series ?? []).map((series) => series.name);
+    for (const name of legendNames) {
+      expect(seriesNames).toContain(name);
+    }
+    const warningSeries = option.series?.find((series) => series.name === 'Warning');
+    expect(warningSeries).toBeDefined();
+    expect(warningSeries?.data).toEqual([]);
+  });
+
+  // Regression: TODO 1122. Without warn bars the chart should not register a
+  // ghost "Warning" entry — the legend is a single-item row.
+  it('omits the Warning legend entry when no warn bars are present', async () => {
+    const setOption = vi.fn();
+    const initEcharts = vi.fn(() => ({
+      setOption,
+      resize: vi.fn(),
+      dispose: vi.fn(),
+    }));
+    vi.doMock('../src/ui/echartsRegistry.ts', () => ({
+      initEcharts,
+      encodeHtml: (value: string) => value,
+    }));
+    const { renderUsageDayChartEcharts } = await import('../src/ui/usageDayChartEcharts.ts');
+    const barsEl = document.querySelector('#usage-day-bars') as HTMLElement;
+    const labelsEl = document.querySelector('#usage-day-labels') as HTMLElement;
+
+    renderUsageDayChartEcharts({
+      bars: [
+        { label: '00:00', value: 1.2 },
+        { label: '01:00', value: 0.4 },
+      ],
+      labels: ['00:00', '01:00'],
+      currentBucketIndex: 0,
+      enabled: true,
+      barsEl,
+      labelsEl,
+    });
+
+    const option = setOption.mock.calls[0][0] as {
+      legend?: { data?: Array<string | { name?: string }> };
+      series?: Array<{ name?: string }>;
+    };
+    const legendNames = (option.legend?.data ?? []).map((entry) => (
+      typeof entry === 'string' ? entry : entry.name
+    ));
+    expect(legendNames).toEqual(['Measured']);
+    expect(option.series?.find((series) => series.name === 'Warning')).toBeUndefined();
+  });
+
+  // Regression: PR #842 review. `roundedAxisMaxToInterval` can pick a 0.25 step
+  // in the sub-kWh regime (e.g. dataMax=0.95 → max=1, interval=0.25), so a
+  // flat one-decimal axis formatter would render the 0.25 tick as "0.3" and
+  // the 0.75 tick as "0.8" — axis text drifting from tick position.
+  it('formats sub-kWh axis ticks at the interval precision (0.25 step keeps 2 decimals)', async () => {
+    const setOption = vi.fn();
+    const initEcharts = vi.fn(() => ({
+      setOption,
+      resize: vi.fn(),
+      dispose: vi.fn(),
+    }));
+    vi.doMock('../src/ui/echartsRegistry.ts', () => ({
+      initEcharts,
+      encodeHtml: (value: string) => value,
+    }));
+    const { renderUsageDayChartEcharts } = await import('../src/ui/usageDayChartEcharts.ts');
+    const barsEl = document.querySelector('#usage-day-bars') as HTMLElement;
+    const labelsEl = document.querySelector('#usage-day-labels') as HTMLElement;
+
+    renderUsageDayChartEcharts({
+      bars: [
+        // dataMax=0.95 → roundedAxisMaxToInterval picks max=1, interval=0.25.
+        { label: '00:00', value: 0.95 },
+        { label: '01:00', value: 0.4 },
+      ],
+      labels: ['00:00', '01:00'],
+      currentBucketIndex: 0,
+      enabled: true,
+      barsEl,
+      labelsEl,
+    });
+
+    const option = setOption.mock.calls[0][0] as {
+      yAxis?: { max?: number; interval?: number; axisLabel?: { formatter?: (value: number) => string } };
+    };
+    expect(option.yAxis?.max).toBe(1);
+    expect(option.yAxis?.interval).toBe(0.25);
+    const formatter = option.yAxis?.axisLabel?.formatter;
+    expect(formatter).toBeDefined();
+    expect(formatter?.(0)).toBe('0');
+    expect(formatter?.(0.25)).toBe('0.25');
+    expect(formatter?.(0.5)).toBe('0.5');
+    expect(formatter?.(0.75)).toBe('0.75');
+    expect(formatter?.(1)).toBe('1');
   });
 
   it('clears stale usage day chart DOM when bars are empty', async () => {

@@ -251,4 +251,46 @@ test.describe('Settings UI chart layout', () => {
       `Price axis should display unit, got: ${axisText.slice(0, 200)}`,
     ).toBe(true);
   });
+
+  // Regression: TODO 573. The unreliable-data legend swatch in `#power-legend`
+  // must read from the same `--pels-chart-*` tokens the heatmap cell uses, so
+  // a user pattern-matching legend → cell sees a single rectangle, not two
+  // different shapes/colours.
+  test('usage heatmap unreliable swatch matches the cell tokens', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.getByRole('tab', { name: 'Usage' }).click();
+    await expect(page.locator('#usage-panel')).toBeVisible();
+    // The legend swatch lives inside the collapsible "Detailed hourly view"
+    // section; expand it so the swatch and its computed style are actually
+    // present in the layout tree.
+    await page.locator('#usage-detail-section summary').click();
+    const swatch = page.locator('.usage-legend__swatch--unreliable');
+    await expect(swatch).toBeVisible();
+    const parity = await swatch.evaluate((node) => {
+      const panel = document.querySelector<HTMLElement>('#usage-panel');
+      if (!panel) return { ok: false, reason: 'no panel' } as const;
+      const probe = document.createElement('span');
+      panel.appendChild(probe);
+      const normalise = (value: string): string => {
+        probe.style.color = '';
+        probe.style.color = value.trim();
+        return getComputedStyle(probe).color;
+      };
+      const root = getComputedStyle(panel);
+      const expectedFill = normalise(root.getPropertyValue('--pels-chart-unreliable-cell'));
+      const expectedBorder = normalise(root.getPropertyValue('--pels-chart-heatmap-border'));
+      const style = getComputedStyle(node);
+      const actualFill = normalise(style.backgroundColor);
+      const actualBorder = normalise(style.borderTopColor);
+      probe.remove();
+      return {
+        ok: actualFill === expectedFill && actualBorder === expectedBorder,
+        actualFill,
+        expectedFill,
+        actualBorder,
+        expectedBorder,
+      } as const;
+    });
+    expect(parity.ok, `Unreliable swatch tokens drifted: ${JSON.stringify(parity)}`).toBe(true);
+  });
 });

@@ -1,9 +1,10 @@
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
 import {
+  formatAxisTick,
   formatHourAxisLabel,
   readChartPalette,
   resolveLabelEvery,
-  roundedKWhAxisMax,
+  roundedAxisMaxToInterval,
   type DayViewBar,
 } from './dayViewChart.ts';
 import { attachTabShownResize } from './chartVisibilityResize.ts';
@@ -53,11 +54,6 @@ const resolveChartSize = (element: HTMLElement) => {
   return { width: width > 0 ? width : fallbackWidth, height };
 };
 
-const formatAxisValue = (value: number): string => {
-  if (!Number.isFinite(value)) return '';
-  const rounded = Math.round(value * 10) / 10;
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
-};
 
 const disposePlot = () => {
   if (plotResizeObserver) {
@@ -173,6 +169,8 @@ const getDataMax = (bars: DayViewBar[]): number => (
   Math.max(1, ...bars.map((bar) => bar.value))
 );
 
+const Y_AXIS_SPLIT_NUMBER = 4;
+
 const buildOption = (params: UsageDayChartEchartsParams): EChartsOption => {
   const {
     bars,
@@ -185,6 +183,7 @@ const buildOption = (params: UsageDayChartEchartsParams): EChartsOption => {
   const axisLabels = labels.map((label) => formatHourAxisLabel(label));
   const labelEvery = resolveLabelEvery(bars.length);
   const hasWarnBars = bars.some((bar) => isWarnBar(bar));
+  const yAxis = roundedAxisMaxToInterval(getDataMax(bars), Y_AXIS_SPLIT_NUMBER);
 
   return {
     animation: false,
@@ -204,9 +203,7 @@ const buildOption = (params: UsageDayChartEchartsParams): EChartsOption => {
       itemWidth: 12,
       itemHeight: 8,
       itemGap: 16,
-      data: hasWarnBars
-        ? ['Measured', { name: 'Warning', itemStyle: { color: palette.warn } }]
-        : ['Measured'],
+      data: hasWarnBars ? ['Measured', 'Warning'] : ['Measured'],
       textStyle: {
         color: palette.muted,
         fontSize: 11,
@@ -244,14 +241,14 @@ const buildOption = (params: UsageDayChartEchartsParams): EChartsOption => {
     yAxis: {
       type: 'value',
       min: 0,
-      max: roundedKWhAxisMax(getDataMax(bars)),
-      splitNumber: 4,
+      max: yAxis.max,
+      interval: yAxis.interval,
       axisTick: { show: false },
       axisLine: { show: false },
       axisLabel: {
         color: palette.muted,
         fontSize: 11,
-        formatter: (value: number) => formatAxisValue(value),
+        formatter: (value: number) => formatAxisTick(value, yAxis.interval),
       },
       splitLine: { lineStyle: { color: palette.grid } },
     },
@@ -262,10 +259,31 @@ const buildOption = (params: UsageDayChartEchartsParams): EChartsOption => {
         data: buildMeasuredData({ bars, currentBucketIndex, enabled, palette }),
         barMaxWidth: 18,
         barMinHeight: 2,
+        itemStyle: { color: palette.measured },
         emphasis: { disabled: true },
         blur: { disabled: true },
         select: { disabled: true },
       },
+      // Zero-data dummy series so the legend's "Warning" entry has a real
+      // series to bind to. The "Measured" series colours warning bars
+      // per-item, so without this stub ECharts silently drops the legend
+      // label (TODO 1122 — fixed v2.7.0). Empty `data` produces no bars, so
+      // adding the series only affects the legend; the `barMaxWidth` cap on
+      // both series prevents any width competition with Measured. Only added
+      // when warn bars exist so the legend stays a single-item row in the
+      // common case.
+      ...(hasWarnBars
+        ? [{
+          name: 'Warning',
+          type: 'bar' as const,
+          data: [] as number[],
+          barMaxWidth: 18,
+          itemStyle: { color: palette.warn },
+          emphasis: { disabled: true },
+          blur: { disabled: true },
+          select: { disabled: true },
+        }]
+        : []),
     ],
   };
 };
