@@ -17,6 +17,7 @@ import {
   resolveObjectiveProgress,
   type DeferredObjectiveProgressResolution,
 } from './diagnosticProgress';
+import type { DeferredObjectiveKind } from './types';
 import {
   buildDeferredObjectivePolicyHorizon,
   type DeferredObjectivePolicyHorizonResult,
@@ -124,6 +125,25 @@ export const emitDeferredObjectiveDiagnostics = (params: {
   }
 };
 
+// Maps the progress resolution back to a single input-value for the banded
+// estimator. Temperature objectives integrate by °C, EV SoC objectives by %.
+// `generic_energy` has no profile-band path so we return undefined and the
+// estimator falls back to the global mean.
+export const progressCurrentValue = (params: {
+  progress: DeferredObjectiveProgressResolution;
+  objectiveKind: DeferredObjectiveKind;
+}): number | undefined => {
+  const { progress, objectiveKind } = params;
+  if (progress.reasonCode) return undefined;
+  if (objectiveKind === 'ev_soc') {
+    return typeof progress.currentPercent === 'number' ? progress.currentPercent : undefined;
+  }
+  if (objectiveKind === 'temperature') {
+    return typeof progress.currentTemperatureC === 'number' ? progress.currentTemperatureC : undefined;
+  }
+  return undefined;
+};
+
 const canReportFreshProgressWhileUnknown = (reasonCode: DeferredObjectiveDiagnosticReasonCode): boolean => (
   reasonCode === 'objective_missing_price_horizon'
     || reasonCode === 'objective_price_feature_disabled'
@@ -141,7 +161,13 @@ const buildPolicyGatedKnownInputs = (
 
   const profileEnergy = !progress.reasonCode && remainingUnits > 0
     && policyReasonCode === 'objective_missing_price_horizon'
-    ? resolveProfileEnergy({ powerTracker, deviceId, objectiveKind: objective.kind, remainingUnits })
+    ? resolveProfileEnergy({
+      powerTracker,
+      deviceId,
+      objectiveKind: objective.kind,
+      remainingUnits,
+      currentValue: progressCurrentValue({ progress, objectiveKind: objective.kind }),
+    })
     : null;
 
   return {
@@ -269,6 +295,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
       deviceId,
       objectiveKind: objective.kind,
       remainingUnits: progress.remainingUnits,
+      currentValue: progressCurrentValue({ progress, objectiveKind: objective.kind }),
     })
     : {
       energyNeededKWh: 0,
