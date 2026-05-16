@@ -24,7 +24,12 @@ import {
   computeDefaultAirtreatmentShedTemperature,
   normalizeShedTemperature,
 } from '../../../../shared-domain/src/utils/airtreatmentShedTemperature.ts';
-import { createSerializedAsyncRunner, readRecordSetting, writeFreshSetting } from './settingsWrite.ts';
+import {
+  createSerializedAsyncRunner,
+  readRecordSetting,
+  readRecordSettingStrict,
+  writeFreshSetting,
+} from './settingsWrite.ts';
 import { hasEvTargetPowerPreset } from './controlMode.ts';
 
 export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
@@ -56,8 +61,13 @@ export const writeShedBehaviors = async (params: ShedBehaviorWriteParams) => (
     context: params.context,
     logMessage: params.logMessage,
     toastMessage: params.toastMessage,
-    fallbackValue: {},
-    readFresh: readShedBehaviors,
+    // Use the live shed-behavior snapshot as the fallback so a transient
+    // null SDK read does not erase shed configurations for other devices.
+    // `readShedBehaviors` keeps the lenient default for load paths;
+    // `readRecordSettingStrict` here keeps the write path from accepting
+    // malformed SDK shapes.
+    fallbackValue: state.shedBehaviors,
+    readFresh: readRecordSettingStrict<PersistedShedBehavior>,
     mutate: params.mutate,
     commit: params.commit,
     rollback: params.rollback,

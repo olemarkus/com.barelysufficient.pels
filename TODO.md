@@ -160,7 +160,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       every plannable and non-plannable tick. Regression coverage added in
       `test/deferredObjectivePlanHistory.test.ts` under
       "back-fills start progress from the first non-null observation".
-- [ ] Make Settings UI device-setting writes fail closed when a fresh settings read is missing or
+- [x] Make Settings UI device-setting writes fail closed when a fresh settings read is missing or
       invalid. Avoid falling back to `{}` or caller-provided defaults and writing a partial object
       back as if it were the current state.
       Why P0 (promoted from P1 in release-review pass): fallback writes can erase or overwrite
@@ -1662,6 +1662,19 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/public/style.css`,
       `packages/settings-ui/tests/e2e/daily-budget-rollover.spec.ts`,
       `settings/style.css` (regen).
+- [ ] Extend the snapshot-fallback pattern used by `writeFreshSetting` callers in
+      `deviceDetail/index.ts` and `deviceDetail/shedBehavior.ts` to the remaining
+      settings-write call sites. `managedControl.ts`, `nativeWiring.ts`,
+      `targetPowerConfig.ts`, `evBoost.ts`, and `temperatureBoost.ts` still pass
+      `fallbackValue: {}` and would synthesise an empty map if the Homey SDK
+      transiently returned a non-null, non-object value (e.g. a string from
+      corrupted state). The helper already protects the realistic null transient
+      blip, so this is a defence-in-depth item, not a release blocker.
+      Files: `packages/settings-ui/src/ui/deviceDetail/managedControl.ts`,
+      `packages/settings-ui/src/ui/deviceDetail/nativeWiring.ts`,
+      `packages/settings-ui/src/ui/deviceDetail/targetPowerConfig.ts`,
+      `packages/settings-ui/src/ui/deviceDetail/evBoost.ts`,
+      `packages/settings-ui/src/ui/deviceDetail/temperatureBoost.ts`.
 
 ## P3 Future and Exploratory Work
 
