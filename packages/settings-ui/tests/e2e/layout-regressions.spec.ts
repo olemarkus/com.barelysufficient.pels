@@ -51,18 +51,31 @@ test.describe('settings shell layout regressions', () => {
     const tabMetrics = await page.getByRole('tablist', { name: 'PELS settings sections' }).locator('[role="tab"]')
       .evaluateAll((tabs) => tabs.map((tab) => {
         const rect = tab.getBoundingClientRect();
+        const renderedText = tab.textContent?.trim() ?? '';
         return {
-          text: tab.textContent?.trim(),
+          text: renderedText,
           width: Math.round(rect.width),
           height: Math.round(rect.height),
           right: Math.round(rect.right),
+          // Scroll width > client width signals the label is being clipped
+          // by overflow:hidden; the 320 px shell must not truncate labels.
+          scrollWidth: tab.scrollWidth,
+          clientWidth: tab.clientWidth,
         };
       }));
 
     expect(tabMetrics.map((tab) => tab.text)).toEqual(['Overview', 'Budget', 'Usage', 'Smart tasks', 'Settings']);
+    // Width bound is unchanged. Height bound rises to 72 px because
+    // "Smart tasks" wraps to two lines at 320 px — the wrap is the explicit
+    // remedy for the previous ellipsis-truncation regression. Touch target
+    // still ≥ 48 px via the tab container token.
     expect(
-      tabMetrics.every((tab) => tab.width <= 116 && tab.height <= 52),
+      tabMetrics.every((tab) => tab.width <= 116 && tab.height <= 72 && tab.height >= 48),
       JSON.stringify(tabMetrics),
+    ).toBe(true);
+    expect(
+      tabMetrics.every((tab) => tab.scrollWidth <= tab.clientWidth + 1),
+      `tab labels must not be horizontally clipped: ${JSON.stringify(tabMetrics)}`,
     ).toBe(true);
     await expectNoHorizontalOverflow(page, '320px shell nav');
   });

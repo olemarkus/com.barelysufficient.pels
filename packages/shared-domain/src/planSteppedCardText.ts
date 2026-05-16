@@ -7,6 +7,23 @@ const capitalize = (s: string): string => (
   s.length === 0 ? s : `${s.charAt(0).toUpperCase()}${s.slice(1)}`
 );
 
+// Match stored ampere step ids like `6a`, `16a`, `32a` (digits followed by a
+// lowercase `a`). The persisted stepId is the contract surface — log
+// schemas, plan signatures, and downstream consumers all read it — so this
+// helper only changes the *display* string for human-facing surfaces (step
+// rail, status lines). Numeric values are returned as `"N A"` (uppercase
+// ampere, separated with a space per the SI unit convention) so the label
+// cannot read as `"6 am"`.
+const AMPERE_STEP_PATTERN = /^([0-9]+)a$/i;
+
+const formatStepDisplayLabelInternal = (stepId: string): string => {
+  const trimmed = stepId.trim();
+  if (trimmed.length === 0) return '';
+  const match = AMPERE_STEP_PATTERN.exec(trimmed);
+  if (match) return `${match[1]} A`;
+  return capitalize(trimmed);
+};
+
 const isOffLikeId = (id: string | undefined): boolean => {
   const n = (id ?? '').trim().toLowerCase();
   return n === '' || n === 'off';
@@ -53,7 +70,7 @@ const findStepLabel = (profile: SteppedLoadProfile, stepId: string | null): stri
   const norm = normalizeStepId(stepId);
   if (!norm) return null;
   const step = profile.steps.find((s) => s.id.toLowerCase() === norm);
-  return step ? capitalize(step.id) : null;
+  return step ? formatStepDisplayLabelInternal(step.id) : null;
 };
 
 const isPoweredStep = (profile: SteppedLoadProfile, stepId: string | null): boolean => {
@@ -68,7 +85,7 @@ export const resolveSteppedStateLabel = (device: SteppedCardDevice): string => {
   const stepId = resolveCurrentStepId(device);
   if (!stepId) return 'Level unknown';
   if (isOffLikeId(stepId)) return 'Off now';
-  return `Level: ${capitalize(stepId)}`;
+  return `Level: ${formatStepDisplayLabelInternal(stepId)}`;
 };
 
 export const resolveSteppedActiveStepId = (
@@ -258,7 +275,9 @@ export const resolveSteppedStatusLine = (
   if (device.reason.code === PLAN_REASON_CODES.shedInvariant) {
     const r = device.reason;
     const n = r.shedDeviceCount;
-    return `Limited to ${capitalize(r.maxStep)} · ${n} ${n === 1 ? 'device' : 'devices'} still limited`;
+    const stepLabel = formatStepDisplayLabelInternal(r.maxStep);
+    const noun = n === 1 ? 'device' : 'devices';
+    return `Limited to ${stepLabel} · ${n} ${noun} still limited`;
   }
   const blocked = resolveBlockedStatusLine(device, profile);
   if (blocked !== null) return blocked;
@@ -303,3 +322,4 @@ export const resolveEvChargingStateLabel = (device: {
 };
 
 export { capitalize as capitalizeStepLabel };
+export { formatStepDisplayLabelInternal as formatStepDisplayLabel };
