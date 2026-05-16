@@ -120,7 +120,7 @@ export default defineConfig({
   },
   head: [
     ['link', { rel: 'icon', href: withBase('icon.svg'), type: 'image/svg+xml' }],
-    ['meta', { name: 'theme-color', content: '#eef6f2' }],
+    ['meta', { name: 'theme-color', content: '#f7faf7' }],
     ...(docsChannel === 'live' ? [] : [namedMeta('robots', 'noindex, nofollow')]),
     ...(docsChannel === 'live' ? [[
       'script',
