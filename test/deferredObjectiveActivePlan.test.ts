@@ -393,6 +393,149 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan?.original?.hours[0]?.plannedKWh).toBe(1.5);
   });
 
+  it('freezes initialPlanningSpeedKw and initialEstimatedDurationText at first-revision time', () => {
+    // Regression for TODO 597: the recorder formats `estimatedDurationText`
+    // from `energyNeededKWh / planningSpeedKw` on every revision and
+    // `energyNeededKWh` shrinks every cycle as the device consumes energy
+    // (`diagnosticsBridge.ts` recomputes it from `progress.remainingUnits`).
+    // The plan-level total duration must stay frozen at first-revision time
+    // so the hero meta line shows the user's original commitment, not the
+    // shrinking remaining estimate.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // First revision: 4.5 kWh @ 1.5 kW → 3h.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      planningSpeedKw: 1.5,
+    })], HOUR_MS);
+
+    const firstPlan = recorder.getPlanForTests('dev');
+    expect(firstPlan?.initialPlanningSpeedKw).toBe(1.5);
+    expect(firstPlan?.initialEstimatedDurationText).toBe('3h');
+    expect(firstPlan?.latest?.estimatedDurationText).toBe('3h');
+
+    // Replan revision after the device has consumed half the energy and
+    // re-prices land. Latest revision's estimatedDurationText shrinks to
+    // 1h 30m; the plan-level snapshot must stay 3h.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      energyNeededKWh: 2.25,
+      planningSpeedKw: 1.5,
+      horizonPlan: makeHorizon([
+        // Different schedule to trigger a replan revision.
+        makeBucket(3 * HOUR_MS, 1.125),
+        makeBucket(4 * HOUR_MS, 1.125),
+      ]),
+    })], 2 * HOUR_MS);
+
+    const replannedPlan = recorder.getPlanForTests('dev');
+    expect(replannedPlan?.latest?.revision).toBe(2);
+    expect(replannedPlan?.latest?.estimatedDurationText).toBe('1h 30m');
+    // The plan-level snapshot stayed frozen.
+    expect(replannedPlan?.initialPlanningSpeedKw).toBe(1.5);
+    expect(replannedPlan?.initialEstimatedDurationText).toBe('3h');
+  });
+
+  it('resets the plan-level duration snapshot when the objective changes', () => {
+    // Regression for TODO 597: `objective_changed` represents a fresh plan
+    // from the user's perspective (target/deadline shift). The plan-level
+    // snapshot must follow the new revision so the hero meta line reflects
+    // the new commitment, not the stale prior plan.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      planningSpeedKw: 1.5,
+    })], HOUR_MS);
+    expect(recorder.getPlanForTests('dev')?.initialEstimatedDurationText).toBe('3h');
+
+    // Target shift: 65 → 80°C grows the plan to 9 kWh @ 1.5 kW → 6h.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      targetTemperatureC: 80,
+      energyNeededKWh: 9,
+      planningSpeedKw: 1.5,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 3),
+        makeBucket(3 * HOUR_MS, 3),
+        makeBucket(4 * HOUR_MS, 3),
+      ]),
+    })], 2 * HOUR_MS);
+
+    const plan = recorder.getPlanForTests('dev');
+    expect(plan?.latest?.reason).toBe('objective_changed');
+    expect(plan?.initialPlanningSpeedKw).toBe(1.5);
+    expect(plan?.initialEstimatedDurationText).toBe('6h');
+  });
+
+  it('backfills the plan-level snapshot when a legacy persisted plan hits its first replan', () => {
+    // Legacy persisted plans (recorded before this snapshot shipped) carry no
+    // `initialPlanningSpeedKw` / `initialEstimatedDurationText`. The next
+    // replan revision must backfill from the new revision so the hero meta
+    // line stops falling back to the shrinking per-revision value.
+    const legacyPlan: DeferredObjectiveActivePlansV1 = {
+      version: 1,
+      plansByDeviceId: {
+        dev: {
+          deviceId: 'dev',
+          deviceName: 'Water Heater',
+          objectiveKind: 'temperature',
+          targetTemperatureC: 65,
+          targetPercent: null,
+          deadlineAtMs: 6 * HOUR_MS,
+          startedAtMs: HOUR_MS,
+          pending: false,
+          objectiveSignature: '["temperature",65,null,21600000,"soft"]',
+          original: {
+            revision: 1,
+            revisedAtMs: HOUR_MS,
+            computedFromPricesUpTo: 5 * HOUR_MS,
+            reason: 'flow_card',
+            hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 }],
+            energyNeededKWh: 1.5,
+            planStatus: 'on_track',
+          },
+          latest: {
+            revision: 1,
+            revisedAtMs: HOUR_MS,
+            computedFromPricesUpTo: 5 * HOUR_MS,
+            reason: 'flow_card',
+            hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 }],
+            energyNeededKWh: 1.5,
+            planStatus: 'on_track',
+          },
+        },
+      },
+    };
+    const { deps } = buildPersistDeps(legacyPlan);
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+    expect(recorder.getPlanForTests('dev')?.initialEstimatedDurationText).toBeUndefined();
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      planningSpeedKw: 2,
+      energyNeededKWh: 4.5,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+      ]),
+    })], 2 * HOUR_MS);
+
+    const plan = recorder.getPlanForTests('dev');
+    expect(plan?.latest?.revision).toBe(2);
+    expect(plan?.initialPlanningSpeedKw).toBe(2);
+    // 4.5 kWh / 2 kW = 2h 15m
+    expect(plan?.initialEstimatedDurationText).toBe('2h 15m');
+  });
+
   it('calls onRevisionWritten with allocationChanged=true and projectedFinishAtMs from last bucket fill', () => {
     const events: Array<{
       deviceId: string;
@@ -1170,6 +1313,36 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         version: 1,
         plansByDeviceId: {
           dev: basePlan({ reason: 'flow_card', kwhPerUnitSource: 'totally_invalid' }),
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev).toBeUndefined();
+    });
+
+    it('round-trips initialPlanningSpeedKw + initialEstimatedDurationText on the plan', () => {
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: {
+            ...basePlan({ reason: 'flow_card' }),
+            initialPlanningSpeedKw: 1.5,
+            initialEstimatedDurationText: '3h',
+          },
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev?.initialPlanningSpeedKw).toBe(1.5);
+      expect(normalized.plansByDeviceId.dev?.initialEstimatedDurationText).toBe('3h');
+    });
+
+    it('drops a plan whose initialPlanningSpeedKw is non-positive', () => {
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: {
+            ...basePlan({ reason: 'flow_card' }),
+            initialPlanningSpeedKw: 0,
+          },
         },
       };
       const normalized = normalizeDeferredObjectiveActivePlans(persisted);

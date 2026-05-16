@@ -417,12 +417,19 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       // hero's headline-reason resolver can branch on "prices not through
       // deadline yet" without re-deriving the comparison at the view layer.
       computedFromPricesUpTo: resolveFiniteNumber(latest.computedFromPricesUpTo),
-      // Planner inputs the recorder persisted with the latest revision. These
-      // are optional because legacy persisted plans don't carry them; the
-      // hero falls back to the "Needs X kWh · N hours left" line when either
-      // is missing.
-      planningSpeedKw: resolvePositiveNumber(latest.planningSpeedKw),
-      estimatedDurationText: resolveNonEmptyString(latest.estimatedDurationText),
+      // Plan-level snapshot frozen at first-revision time. Read from the
+      // plan, not the latest revision, so the hero meta line shows the
+      // "total duration" the user agreed to at plan creation rather than
+      // shrinking as energy is consumed each cycle. Legacy persisted plans
+      // (recorded before this snapshot shipped) fall back to the per-revision
+      // values so the surface stays populated; the snapshot will land the
+      // first time those plans hit a replan revision.
+      planningSpeedKw: resolvePositiveNumber(
+        activePlan!.initialPlanningSpeedKw ?? latest.planningSpeedKw,
+      ),
+      estimatedDurationText: resolveNonEmptyString(
+        activePlan!.initialEstimatedDurationText ?? latest.estimatedDurationText,
+      ),
       kwhPerUnitSource: latest.kwhPerUnitSource,
       tone: resolveHeroTone(latest.planStatus),
     }),

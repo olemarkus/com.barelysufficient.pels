@@ -2546,6 +2546,99 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.metaLine).toContain('Auto');
   });
 
+  it('prefers the plan-level snapshot over the shrinking latest-revision duration', () => {
+    // Regression for TODO 597: the recorder formats `estimatedDurationText`
+    // from `energyNeededKWh / planningSpeedKw` every revision, and
+    // `energyNeededKWh` shrinks every cycle as the device consumes energy.
+    // The hero meta line must read from the plan-level snapshot frozen at
+    // first-revision time so the user sees the original plan-level duration,
+    // not the shrinking "remaining" amount.
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 6 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    // Latest revision says 1h (shrunk after the device consumed half the
+    // original 4 kWh plan); the plan-level snapshot says 2h (the original
+    // commitment). The hero must show the snapshot.
+    const latestRevision = {
+      revision: 2,
+      revisedAtMs: now.getTime(),
+      computedFromPricesUpTo: deadline.getTime(),
+      reason: 'prices_revised' as const,
+      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 2 }],
+      energyNeededKWh: 2,
+      planStatus: 'on_track' as const,
+      kwhPerUnitSource: 'learned' as const,
+      planningSpeedKw: 2,
+      estimatedDurationText: '1h',
+    };
+    const activePlan: DeferredObjectiveActivePlanV1 = {
+      deviceId: 'heater',
+      deviceName: 'Connected 300',
+      objectiveKind: 'temperature',
+      targetTemperatureC: 22,
+      targetPercent: null,
+      deadlineAtMs: deadline.getTime(),
+      startedAtMs: now.getTime(),
+      pending: false,
+      objectiveSignature: 'sig',
+      initialPlanningSpeedKw: 2,
+      initialEstimatedDurationText: '2h',
+      original: latestRevision,
+      latest: latestRevision,
+    };
+
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap: buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: {
+          version: 1,
+          objectivesByDeviceId: {
+            heater: {
+              enabled: true,
+              kind: 'temperature',
+              enforcement: 'soft',
+              targetTemperatureC: 22,
+              deadlineAtMs: deadline.getTime(),
+            },
+          },
+        },
+      }, activePlan),
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+
+    // Frozen plan-level "2h" wins over the latest-revision "1h". Match on
+    // the leading `·` separator so the assertion doesn't trip on substrings
+    // of other duration formats (e.g. "1h 23m").
+    expect(payload.hero.metaLine).toContain('· 2h ·');
+    expect(payload.hero.metaLine).not.toContain('· 1h');
+  });
+
   it('uses the Learning… speed-mode badge when the latest revision sources from bootstrap', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);

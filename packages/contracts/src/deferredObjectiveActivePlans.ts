@@ -132,6 +132,18 @@ export type DeferredObjectiveActivePlanV1 = {
   // detect `objective_changed` replans without re-deriving the hash on every
   // load.
   objectiveSignature: string;
+  // Snapshot of the planner's effective useful power (kW) at plan creation —
+  // the value used when the *first* revision landed. Stable across subsequent
+  // revisions so the hero meta line reflects the plan-level total duration the
+  // user agreed to, not the shrinking "remaining" amount that drops as energy
+  // is consumed each cycle. Optional for backward compatibility — older
+  // persisted plans (or `objective_changed` replans, which reset the snapshot)
+  // continue to load and the hero falls back to the per-revision values.
+  initialPlanningSpeedKw?: number;
+  // Pre-formatted "Yh Zm" snapshot matching `initialPlanningSpeedKw`. Frozen
+  // at first-revision time alongside the speed so the meta-line surface stays
+  // consistent across revisions. Optional for backward compatibility.
+  initialEstimatedDurationText?: string;
   original: DeferredObjectiveActivePlanRevisionV1 | null;
   latest: DeferredObjectiveActivePlanRevisionV1 | null;
 };

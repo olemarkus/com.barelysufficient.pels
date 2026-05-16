@@ -91,10 +91,12 @@ const isRevisionOrNull = (value: unknown): value is DeferredObjectiveActivePlanR
   value === null || isRevision(value)
 );
 
-const isActivePlan = (value: unknown): value is DeferredObjectiveActivePlanV1 => {
-  if (!value || typeof value !== 'object') return false;
-  const v = value as Record<string, unknown>;
-  return typeof v.deviceId === 'string'
+// Identity-and-target fields the persisted plan must carry verbatim. Split
+// out so `isActivePlan` keeps its complexity score below the codebase ceiling
+// — the optional-snapshot / revision / provenance checks all live in their
+// own helpers so the top-level guard stays readable.
+const hasValidPlanIdentity = (v: Record<string, unknown>): boolean => (
+  typeof v.deviceId === 'string'
     && (v.deviceName === null || typeof v.deviceName === 'string')
     && isObjectiveKind(v.objectiveKind)
     && isFiniteOrNull(v.targetTemperatureC)
@@ -103,9 +105,25 @@ const isActivePlan = (value: unknown): value is DeferredObjectiveActivePlanV1 =>
     && isFiniteNumber(v.startedAtMs)
     && typeof v.pending === 'boolean'
     && typeof v.objectiveSignature === 'string'
+);
+
+// Plan-level duration snapshot (`initialPlanningSpeedKw` +
+// `initialEstimatedDurationText`) is optional for backward compatibility with
+// plans persisted before the snapshot shipped. Validates both fields together
+// so a corrupt half-snapshot doesn't slip into typed downstream code.
+const hasValidPlanLevelDurationSnapshot = (v: Record<string, unknown>): boolean => (
+  isOptionalFinitePositive(v.initialPlanningSpeedKw)
+    && isOptionalNonEmptyString(v.initialEstimatedDurationText)
+);
+
+const isActivePlan = (value: unknown): value is DeferredObjectiveActivePlanV1 => {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return hasValidPlanIdentity(v)
     && isRevisionOrNull(v.original)
     && isRevisionOrNull(v.latest)
-    && isKwhPerUnitProvenance(v.kwhPerUnitProvenance);
+    && isKwhPerUnitProvenance(v.kwhPerUnitProvenance)
+    && hasValidPlanLevelDurationSnapshot(v);
 };
 
 export const normalizeDeferredObjectiveActivePlans = (
