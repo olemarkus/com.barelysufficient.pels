@@ -1848,3 +1848,12 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
       `packages/settings-ui/src/ui/deadlinePlan.ts` (recent-miss query against
       `DeferredObjectivePlanHistoryEntry`).
+- [ ] Extract the shared `start` / `start:local` / `install-app` shell preamble into a
+      single wrapper script (e.g. `scripts/run-with-logging.mjs`) so `log_dir`, `branch`,
+      and `homey_id` derivation lives in one place instead of three near-identical zsh
+      one-liners in `package.json`. Surfaced by gemini-code-assist on PR #818; deferred
+      because three occurrences is still on the right side of premature abstraction and
+      the wrapper would need to preserve `tee`-to-both-streams behavior and zsh-only
+      parameter expansion (`${PWD:t}`).
+      Files: `package.json` (scripts: `start`, `install-app`, `start:local`),
+      `scripts/resolve-homey-id.mjs`.
