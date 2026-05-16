@@ -5,6 +5,7 @@ import type {
 } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import {
   formatPlanHistoryDeadlineLine,
+  formatPlanHistoryMissedReason,
   formatPlanHistoryObservedCoverage,
   formatPlanHistoryProgressLine,
   formatPlanHistoryReachedAtLine,
@@ -359,6 +360,12 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone }: Props) => {
   const progressLine = formatPlanHistoryProgressLine(entry);
   const reachedAtLine = formatPlanHistoryReachedAtLine(entry, timeZone);
   const coverageLine = formatPlanHistoryObservedCoverage(entry);
+  // Missed-only postmortem sentence ("Daily budget was used up before…" /
+  // "PELS couldn't reserve enough energy in time"). Null for non-missed
+  // outcomes so the succeeded path keeps its receipt-shape rendering. Sits
+  // immediately under the progress line so the user sees "what happened"
+  // before "why" — same reading order as the succeeded "reached at" stamp.
+  const missedReason = formatPlanHistoryMissedReason(entry);
   const rows = buildHistoryDetailRows(
     entry.originalPlan,
     entry.finalPlan,
@@ -403,6 +410,9 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone }: Props) => {
             {progressLine}
             {reachedAtLine && <span class="plan-history-detail__reached">  ·  {reachedAtLine}</span>}
           </p>
+        )}
+        {missedReason && (
+          <p class="plan-history-detail__missed-reason">{missedReason}</p>
         )}
         {coverageLine && <p class="pels-card-supporting">{coverageLine}</p>}
         {typeof entry.revisionCount === 'number' && entry.revisionCount > 1 && (

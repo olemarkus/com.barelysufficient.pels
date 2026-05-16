@@ -70,6 +70,37 @@ describe('DeadlinesList', () => {
     });
     expect(mount.querySelector('.deadline-list-card__current')).toBeNull();
   });
+
+  // Status-tone parity on the "Ready by" row: an active card with a
+  // `cannot_meet` chip used to render the deadline in success-green, which
+  // contradicted the alert pill. The accent row now mirrors the chip tone.
+  it('renders the "Ready by" row with the alert variant on cannot_meet cards', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ statusId: 'cannot_meet' })],
+    });
+    expect(mount.querySelector('.deadline-list-card__when-row--accent')).toBeNull();
+    expect(mount.querySelector('.deadline-list-card__when-row--alert')).not.toBeNull();
+  });
+
+  it('renders the "Ready by" row with the warn variant on at_risk cards', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ statusId: 'at_risk' })],
+    });
+    expect(mount.querySelector('.deadline-list-card__when-row--warn')).not.toBeNull();
+  });
+
+  it('keeps the accent variant on healthy on_track cards', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ statusId: 'on_track' })],
+    });
+    expect(mount.querySelector('.deadline-list-card__when-row--accent')).not.toBeNull();
+  });
 });
 
 describe('DeadlinesHistoryList', () => {

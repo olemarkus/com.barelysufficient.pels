@@ -26,10 +26,19 @@ const hideDeadlinePlanPanel = (fallbackTab: string): void => {
   showTab(fallbackTab);
 };
 
+type CloseOptions = {
+  // Optional override for which shell tab to land on after the deadline-plan
+  // view closes. Defaults to 'deadlines'. Used by the cannot-finish recourse
+  // action row so e.g. "Open Budget" closes the plan and lands the user on
+  // the Budget tab in a single click — without a race against the popstate
+  // handler that the prior "close then showTab(target)" flow lost to.
+  fallbackTab?: string;
+};
+
 type RouterDeps = {
   mount: () => Promise<void>;
   unmount: () => void;
-  setCloseHandler: (handler: () => void) => void;
+  setCloseHandler: (handler: (options?: CloseOptions) => void) => void;
 };
 
 export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
@@ -39,9 +48,18 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
   // path lands here with a non-deadline URL and we must not steal the
   // tab choice that `initializeBootHandlers` already made.
   let panelVisible = false;
+  // Pending fallback tab set by `closeView` when it routes through
+  // `history.back()`. The popstate handler reads this so the popstate path
+  // honours the recourse-target override instead of always landing on the
+  // Smart-tasks tab. Cleared after every `applyRouteFromUrl` so a back
+  // navigation that wasn't triggered by `closeView` doesn't pick up a stale
+  // target.
+  let pendingFallbackTab: string | null = null;
 
-  const closeView = (): void => {
+  const closeView = (options?: CloseOptions): void => {
+    const fallbackTab = options?.fallbackTab ?? 'deadlines';
     if (openedViaPushState && window.history.length > 1) {
+      pendingFallbackTab = fallbackTab;
       window.history.back();
       return;
     }
@@ -50,7 +68,7 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
     // closed plan.
     window.history.replaceState(null, '', './');
     deps.unmount();
-    hideDeadlinePlanPanel('deadlines');
+    hideDeadlinePlanPanel(fallbackTab);
     panelVisible = false;
     openedViaPushState = false;
   };
@@ -60,6 +78,7 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
     if (isDeadlinePlanRoute(window.location.search)) {
       showDeadlinePlanPanel();
       panelVisible = true;
+      pendingFallbackTab = null;
       void deps.mount();
       return;
     }
@@ -67,9 +86,10 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
     // deadline-plan view — otherwise the boot path's initial tab choice
     // would be overwritten.
     if (panelVisible) {
-      hideDeadlinePlanPanel('deadlines');
+      hideDeadlinePlanPanel(pendingFallbackTab ?? 'deadlines');
       panelVisible = false;
     }
+    pendingFallbackTab = null;
     deps.unmount();
     openedViaPushState = false;
   };

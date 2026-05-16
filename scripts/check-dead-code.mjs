@@ -119,6 +119,7 @@ const allowedUnusedExportPatterns = [
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_STATUS_LABELS$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_STATUS_CHIP_VARIANT$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskListStatus$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskListReadyByTone$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - DeadlinePlanCompletedReason$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - deadlineLabels$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveEvCardStateLine$/,

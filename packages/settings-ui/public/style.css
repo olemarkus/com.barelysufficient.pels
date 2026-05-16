@@ -1613,6 +1613,17 @@ md-primary-tab.tab[active]:hover {
   color: var(--pels-text-secondary);
 }
 
+/* Missed-only postmortem sentence under the progress line. Tone matches the
+ * outcome chip's warning rung so the "why" reads as an extension of the
+ * "what happened" signal already on the hero. Sits in the supporting font
+ * size so it doesn't compete with the headline; the warn color keeps it
+ * legible against the hero background. */
+.plan-history-detail__missed-reason {
+  margin: var(--spacing-2) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--pels-status-on-warning);
+}
+
 .plan-history-detail__revision {
   display: flex;
   flex-direction: column;
@@ -1930,6 +1941,54 @@ md-primary-tab.tab[active]:hover {
 
 .plan-hero__subline--muted {
   color: var(--pels-text-supporting-color);
+}
+
+/* Queued-headline "why" subline (e.g. "Waiting for tomorrow's prices through
+ * HH:MM"). Sits between the headline and the device/target subline so the
+ * user reads it as a direct answer to the headline. Primary-supporting tone
+ * keeps it readable without escalating to a warn voice — the hero is on-track
+ * at this point. */
+.plan-hero__subline--reason {
+  color: var(--pels-text-primary);
+}
+
+/* Recourse action row beneath the cannot-finish meta line. The 48 px floor
+ * matches the touch-target token used elsewhere on PELS — see
+ * `feedback_design_tokens.md` plus the upstream "Lift `.pels-icon-toggle` and
+ * `.pels-device-card__detail-button` to 48 px" item. The action is rendered as
+ * a `<button type="button">` rather than a `<md-text-button>` so the click
+ * dispatcher in `deadlinePlanMount.ts` sees the native event regardless of
+ * shadow-DOM composition. */
+.plan-hero__recourse {
+  margin-top: var(--spacing-3);
+}
+
+.plan-hero__recourse-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--pels-touch-target-min);
+  padding: var(--spacing-2) var(--spacing-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--pels-surface-outline);
+  background: var(--pels-surface-container-high);
+  color: var(--pels-text-primary);
+  font-family: inherit;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.plan-hero__recourse-button:hover,
+.plan-hero__recourse-button:focus-visible {
+  background: var(--pels-surface-container-highest);
+  border-color: var(--accent);
+}
+
+.plan-hero__recourse-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .plan-hero__energy-support {
@@ -5439,6 +5498,21 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 .deadline-list-card__when-row--accent dd {
   color: var(--accent);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* On at-risk / cannot-meet cards the "Ready by" line must mirror the status
+ * chip tone so the deadline row doesn't paint success-green next to a red or
+ * amber pill. `--warn` matches the chip's warning token; `--alert` matches
+ * the critical token. Resolved producer-side via `resolveSmartTaskListReadyByTone`
+ * so the view dispatches on a stable slug. */
+.deadline-list-card__when-row--warn dd {
+  color: var(--pels-status-on-warning);
+  font-weight: var(--font-weight-semibold);
+}
+
+.deadline-list-card__when-row--alert dd {
+  color: var(--pels-status-on-critical);
   font-weight: var(--font-weight-semibold);
 }
 

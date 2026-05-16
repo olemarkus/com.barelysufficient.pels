@@ -4,6 +4,7 @@ import { ChevronRightIcon } from './icons.tsx';
 import {
   deadlineLabels,
   formatConfidenceChipLabel,
+  resolveSmartTaskListReadyByTone,
   SMART_TASK_LIST_STATUS_LABELS,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
   type SmartTaskListStatusId,
@@ -72,9 +73,15 @@ const StatusChip = ({ statusId }: { statusId: SmartTaskListStatusId }) => {
 // matches the live hero's styling (`muted` tone) so the same trust signal
 // lands on both surfaces. Suppressed when no confidence band is available
 // (pending plans, no learned profile yet) rather than fabricating a label.
+//
+// The "Ready by" accent row mirrors the status chip tone so an at-risk /
+// cannot-meet card never paints the deadline in success-green next to a
+// red / amber pill. Resolved producer-side so the view dispatches on a
+// stable slug instead of branching on `statusId`.
 const Card = ({ card }: { card: DeadlinesListCard }) => {
   const labels = deadlineLabels(card.kind);
   const confidenceLabel = formatConfidenceChipLabel(card.confidence);
+  const readyByTone = resolveSmartTaskListReadyByTone(card.statusId);
   return (
     <a class="deadline-list-card clickable" href={card.href} data-device-id={card.deviceId}>
       <MdElevation aria-hidden="true" />
@@ -105,7 +112,7 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
             <dd>{formatWhen(card.firstActionAtMs)}</dd>
           </div>
         )}
-        <div class="deadline-list-card__when-row deadline-list-card__when-row--accent">
+        <div class={`deadline-list-card__when-row deadline-list-card__when-row--${readyByTone}`}>
           <dt>Ready by</dt>
           <dd>{formatWhen(card.deadlineAtMs)}</dd>
         </div>

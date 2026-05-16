@@ -71,6 +71,25 @@ export const SMART_TASK_LIST_STATUS_CHIP_VARIANT: Record<SmartTaskListStatusId, 
   satisfied: 'ok',
 };
 
+// Tone slug for the smart-task list card's "Ready by" accent row. The default
+// `accent` (green) tone reads as "healthy" alongside an on-track chip; on
+// at-risk / cannot-meet cards the accent green semantically contradicts the
+// status pill. This resolver mirrors the chip tone so the two signals agree.
+//
+// Returns 'accent' (default green) for healthy / pending / queued / satisfied
+// states; 'warn' for at-risk / paused; 'alert' for cannot-meet. The view layer
+// renders `.deadline-list-card__when-row--accent` / `--warn` / `--alert` per
+// the resolved slug — never branches on status itself.
+export type SmartTaskListReadyByTone = 'accent' | 'warn' | 'alert';
+
+export const resolveSmartTaskListReadyByTone = (
+  status: SmartTaskListStatusId,
+): SmartTaskListReadyByTone => {
+  if (status === 'cannot_meet') return 'alert';
+  if (status === 'at_risk' || status === 'paused_unplugged') return 'warn';
+  return 'accent';
+};
+
 // Confidence chip label shown on the live hero and the Smart-tasks list card.
 // Centralised so the two surfaces stay phrased identically — the hero already
 // renders `Confidence ${value}` inline; this wraps that single formatting
@@ -169,6 +188,59 @@ export type DeadlinePendingCopy = { headline: string; body: string };
 
 export type DeadlinePendingCopyResolver = (ctx: DeadlinePendingContext) => DeadlinePendingCopy;
 
+// Recourse action surfaced under the cannot-finish hero body. The producer
+// resolves a stable `targetTab` slug (Homey settings-UI shell tab id) so the
+// view just forwards it to the click dispatcher without branching on cause
+// codes. Adding a new action means adding a label here, picking a target
+// tab, and the dispatcher in `deadlinePlanMount.ts` already handles the
+// click → `showTab(targetTab)` flow.
+//
+// Branches (resolved in `resolveCannotMeetRecourse`):
+//   daily-budget-exhausted        → `targetTab: 'budget'`
+//                                   (per `feedback_hard_cap_is_physical.md`,
+//                                   the recourse path is "lower the daily
+//                                   budget," not "raise the hard cap").
+//   device-side shortfall / other → `targetTab: 'overview'`
+//                                   (where the device card hosts the in-app
+//                                   detail drawer; reaching across surfaces
+//                                   to the device-detail overlay directly
+//                                   from the smart-task panel would couple
+//                                   two otherwise-independent panels).
+export type DeadlineCannotMeetRecourse = {
+  label: string;
+  targetTab: string;
+};
+
+// Headline-reason copy explaining *why* a queued smart task hasn't started yet.
+// Lives in shared-domain so the same strings can also be emitted to the
+// structured logger (per `feedback_ui_text_shared_with_logs.md`). Helper is
+// pure — locale/Date formatting stays in the caller.
+export type DeadlineHeadlineReasonResolverParams = {
+  // First planned start time, pre-formatted by the caller (e.g. "16:00").
+  // The producer resolves this from `firstChargingHour.startsAtMs`.
+  firstPlannedTime: string;
+  // True when the latest revision's `computedFromPricesUpTo` does not yet
+  // reach the deadline (prices for tomorrow have not arrived). The caller
+  // pre-resolves the comparison so shared-domain stays free of arithmetic on
+  // optional timestamps.
+  pricesShortOfDeadline: boolean;
+  // Pre-formatted local time of the deadline (e.g. "16:00") used in the
+  // "Waiting for tomorrow's prices through HH:MM" branch. Caller supplies
+  // a formatter to keep shared-domain free of locale helpers.
+  deadlineTime: string;
+  // True when one or more horizon buckets in the run-up had their per-bucket
+  // cap collapse to zero because the daily budget cap was hit.
+  dailyBudgetExhausted: boolean;
+};
+
+// Returns null when none of the three primary cases apply (e.g. price-aware
+// optimisation is off, or the hour was chosen on a non-price basis); the
+// view layer suppresses the subline in that case rather than fabricating a
+// reason. Honest absence beats invented copy here.
+export type DeadlineHeadlineReasonResolver = (
+  params: DeadlineHeadlineReasonResolverParams,
+) => string | null;
+
 export type DeadlineLabels = {
   kindChipLabel: string;
   activeChipLabel: string;
@@ -200,7 +272,13 @@ export type DeadlineLabels = {
   planTooltipIdle: string;
   pendingHeroByReason: Record<DeadlinePlanPendingReason, DeadlinePendingCopyResolver>;
   unavailableByReason: Record<DeadlinePlanUnavailableReason, { headline: string; body: string }>;
-  cannotMeetShortfall: (shortfallLabel: string) => string;
+  // Shortfall sentence for cannot-meet. The producer passes raw progress-unit
+  // values (°C / %) only when they communicate something meaningful — energy
+  // and time shortfalls render via this sentence too. We avoid rendering raw
+  // °C deltas (e.g. "Short by about 41.9 °C") because users read those as a
+  // device anomaly; the underlying truth is "the smart task can't reach the
+  // target temperature in time", which the copy now states directly.
+  cannotMeetShortfall: () => string;
   // Replaces the shortfall/fallback cannot-meet copy when the diagnostic
   // reports that the daily budget cap had been hit before the deadline.
   // Surfaces the budget — not the device or schedule — as the constraint so
@@ -208,6 +286,21 @@ export type DeadlineLabels = {
   // suggesting the user raise their capacity hard cap; the recommended remedy
   // is a lower daily budget so future days reserve available power earlier.
   cannotMeetDailyBudgetExhausted: string;
+  // Recourse-action labels for the cannot-finish hero. The producer resolves
+  // which `kind` to surface based on the cause; the view renders one button
+  // per call. Both labels live here so the strings stay in sync with the rest
+  // of the smart-task copy (kind chip / device-card lines).
+  cannotMeetRecourse: {
+    openBudget: DeadlineCannotMeetRecourse;
+    openOverview: DeadlineCannotMeetRecourse;
+  };
+  // Resolver for the "why is the smart task starting at HH:MM" subline that
+  // sits below the queued headline. Branches resolve in this order:
+  //   1. prices_short_of_deadline → "Waiting for tomorrow's prices through HH:MM."
+  //   2. daily_budget_exhausted   → "Today's budget is full — next cheap window after midnight."
+  //   3. cheaper window chosen    → "Cheaper than now — starts at HH:MM."
+  //   4. none of the above        → null (the subline is suppressed).
+  resolveQueuedHeadlineReason: DeadlineHeadlineReasonResolver;
   completedHero: { headline: string; body: string };
   targetUnit: '°C' | '%';
   planInputsCardTitle: string;
@@ -238,6 +331,30 @@ const REVISION_REASON_TOOLTIP_LINE: Partial<Record<DeferredObjectiveActivePlanRe
 const withLastFetched = (base: string, lastFetchedShort: string | null): string => (
   lastFetchedShort ? `${base} Last price update: ${lastFetchedShort}.` : base
 );
+
+// Shared across both kinds — the "why is the smart task starting at HH:MM"
+// resolver branches on data the planner already publishes (`computedFromPricesUpTo`
+// vs `deadlineAtMs`, `dailyBudgetExhaustedBucketCount`). The caller resolves
+// the comparisons to flat booleans so this stays free of timestamp math.
+const resolveQueuedHeadlineReason: DeadlineHeadlineReasonResolver = (params) => {
+  if (params.pricesShortOfDeadline) {
+    return `Waiting for tomorrow’s prices through ${params.deadlineTime}.`;
+  }
+  if (params.dailyBudgetExhausted) {
+    return 'Today’s budget is full — next cheap window after midnight.';
+  }
+  return `Cheaper than now — starts at ${params.firstPlannedTime}.`;
+};
+
+// Shared recourse-action labels + target tabs across both kinds. The producer
+// picks which one to surface based on cause; the chosen object is the only
+// payload the view layer sees. Both `targetTab` values resolve to shell tab
+// ids defined in `packages/settings-ui/public/index.html` (`#shell-nav
+// [data-tab]`); keep this list in sync if those tab ids change.
+const CANNOT_MEET_RECOURSE = {
+  openBudget: { label: 'Open Budget', targetTab: 'budget' },
+  openOverview: { label: 'Adjust device', targetTab: 'overview' },
+};
 
 const awaitingHorizonCopy = (kindNoun: 'heat plan' | 'charging plan'): DeadlinePendingCopyResolver => (
   (ctx) => {
@@ -328,12 +445,24 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
           + 'if the temperature drops below target.',
       },
     },
-    cannotMeetShortfall: (shortfallLabel) => (
-      `There may not be enough time or available power to finish. Short by about ${shortfallLabel}.`
+    // Drops the raw progress-unit delta ("Short by about 41.9 °C") that users
+    // misread as a wild temperature anomaly. The underlying shortfall is energy
+    // / time against the plan, not a raw temperature gap; the copy now states
+    // that directly. The hero meta line follows up with the "Needs N kWh · Y
+    // hours left · …" line via `formatMetaLine`, which is the right surface for
+    // a magnitude. Recourse copy ("Try lowering the target or moving the
+    // deadline later") names the two levers that aren't the daily budget; the
+    // budget remedy is handled by the dedicated `cannotMeetDailyBudgetExhausted`
+    // branch above.
+    cannotMeetShortfall: () => (
+      'PELS may not reach the target temperature before the deadline. '
+        + 'Try lowering the target or moving the deadline later.'
     ),
     cannotMeetDailyBudgetExhausted: 'The daily energy budget is already used up for the rest of the day, so '
       + 'PELS can\'t reserve more for heating before the deadline. Lower the daily budget so future '
       + 'days reserve available power earlier, or move the deadline to a later day.',
+    cannotMeetRecourse: CANNOT_MEET_RECOURSE,
+    resolveQueuedHeadlineReason,
     completedHero: {
       headline: 'Smart task finished',
       body: 'See Smart tasks for the outcome.',
@@ -407,12 +536,18 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
           + 'state of charge drops below target.',
       },
     },
-    cannotMeetShortfall: (shortfallLabel) => (
-      `There may not be enough time or available power to finish. Short by about ${shortfallLabel}.`
+    // EV mirrors the thermal copy: drop the raw % shortfall figure (users can
+    // read it as "the car lost 30 % of charge") in favour of plain-language
+    // recourse. The meta line continues to carry the energy/duration magnitude.
+    cannotMeetShortfall: () => (
+      'PELS may not have enough time or charging power to reach the target before the deadline. '
+        + 'Try lowering the target or moving the deadline later.'
     ),
     cannotMeetDailyBudgetExhausted: 'The daily energy budget is already used up for the rest of the day, so '
       + 'PELS can\'t reserve more for charging before the deadline. Lower the daily budget so future '
       + 'days reserve available power earlier, or move the deadline to a later day.',
+    cannotMeetRecourse: CANNOT_MEET_RECOURSE,
+    resolveQueuedHeadlineReason,
     completedHero: {
       headline: 'Smart task finished',
       body: 'See Smart tasks for the outcome.',

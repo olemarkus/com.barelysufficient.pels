@@ -139,6 +139,59 @@ const sumObservedMs = (
 ): number => intervals.reduce((acc, interval) => acc + Math.max(0, interval.toMs - interval.fromMs), 0);
 
 /**
+ * Composes a short human-readable explanation for *why* a finalized run was marked missed.
+ * Resolves to flat copy from the recorded snapshots so the missed-history surface mirrors the
+ * succeeded path's "explanation density": users opening a missed run need to see the cause
+ * without inferring from chart bars alone.
+ *
+ * Branches resolve in priority order (most specific first):
+ *  1. Final plan status `cannot_meet` → "PELS couldn't reserve enough energy in time."
+ *  2. Final plan status `at_risk`     → "The smart task fell behind and didn't catch up
+ *                                       before the deadline."
+ *  3. Discovered from backfill        → "PELS was restarted during this smart task —
+ *                                       outcome reconstructed from settings."
+ *  4. Otherwise                       → "The device did not reach the target before the
+ *                                       deadline."
+ *
+ * Returns `null` only when the entry is not `outcome === 'missed'`; the missed-history page
+ * always renders something so the user is never left with a chip and no explanation.
+ *
+ * Note on the absent "daily budget exhausted" branch: the persisted history
+ * snapshot (`DeferredObjectivePlanHistoryRevisionSnapshot`) intentionally
+ * drops fields that don't matter retrospectively — including
+ * `dailyBudgetExhaustedBucketCount`. Adding it to the snapshot is tracked
+ * for v2.7.1 alongside `deliveredKWh` and the revision log (TODO P2). Until
+ * then the `cannot_meet` branch absorbs that cause with a recourse-neutral
+ * sentence; users see the same explanation on either trigger.
+ *
+ * Lives in shared-domain so the same strings can feed runtime log breadcrumbs (per
+ * `feedback_ui_text_shared_with_logs.md`).
+ */
+export const formatPlanHistoryMissedReason = (
+  entry: Pick<
+    DeferredObjectivePlanHistoryEntry,
+    'outcome' | 'originalPlan' | 'finalPlan' | 'discoveredFrom'
+  >,
+): string | null => {
+  if (entry.outcome !== 'missed') return null;
+  // Prefer the final plan's status — it reflects the planner's last word
+  // before finalization. Fall back to the original snapshot when the run
+  // finalized before the planner replanned (no finalPlan recorded).
+  const lastPlan = entry.finalPlan ?? entry.originalPlan;
+  if (lastPlan?.planStatus === 'cannot_meet') {
+    return 'PELS couldn\'t reserve enough energy in time. '
+      + 'Try lowering the target or moving the deadline later.';
+  }
+  if (lastPlan?.planStatus === 'at_risk') {
+    return 'The smart task fell behind and didn\'t catch up before the deadline.';
+  }
+  if (entry.discoveredFrom === 'backfill') {
+    return 'PELS was restarted during this smart task — outcome reconstructed from settings.';
+  }
+  return 'The device did not reach the target before the deadline.';
+};
+
+/**
  * Returns a short human-readable note about how complete the observation was for the entry, or
  * `null` if coverage was effectively full (≥99% of the [start, deadline] window). Used by the
  * settings UI to explain entries that may have data gaps (PELS off, diagnostics unavailable).
