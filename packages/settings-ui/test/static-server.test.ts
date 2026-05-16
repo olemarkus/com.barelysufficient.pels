@@ -123,14 +123,29 @@ describe('settings-ui static server', () => {
 describe('settings-ui static server — Homey-wrap host CSS injection', () => {
   let server: ReturnType<typeof spawn> | undefined;
   let port = 0;
-  // The production `dist/index.html` is built by `npm run build` and always
-  // contains a `./style.css` link. We do NOT overwrite that file here —
-  // doing so would break every subsequent layout test in the suite that
-  // runs against the same dist build. Instead, the assertions below trust
-  // the production file's shape and verify the server's injection behavior
-  // by inspecting the rewritten response body.
+  // The suite needs `dist/index.html` so `/__pels__/` returns a real PELS
+  // shell to rewrite. The production file is built by `npm run build` and
+  // always contains a `./style.css` link, but `test:unit` runs the vitest
+  // suite directly without a prior build, so we must seed a local fixture
+  // when one isn't present. To avoid clobbering a real built file used by
+  // other tests in the same run, write the stub only when missing and
+  // clean it up only when we created it.
+  const PELS_INDEX_PATH = path.join(DIST_DIR, 'index.html');
+  const PELS_INDEX_STUB = (
+    '<!DOCTYPE html><html><head>'
+    + '<link rel="stylesheet" href="./style.css">'
+    + '</head><body></body></html>'
+  );
+  let stubbedPelsIndex = false;
 
   beforeAll(async () => {
+    await fs.mkdir(DIST_DIR, { recursive: true });
+    try {
+      await fs.stat(PELS_INDEX_PATH);
+    } catch {
+      await fs.writeFile(PELS_INDEX_PATH, PELS_INDEX_STUB, 'utf8');
+      stubbedPelsIndex = true;
+    }
     server = spawn(process.execPath, [STATIC_SERVER_PATH, '--port', '0'], {
       cwd: REPO_ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -143,6 +158,9 @@ describe('settings-ui static server — Homey-wrap host CSS injection', () => {
     if (server) {
       await stopServer(server);
     }
+    if (stubbedPelsIndex) {
+      await fs.rm(PELS_INDEX_PATH, { force: true });
+    }
   });
 
   it('injects captured Homey host stylesheets into the iframe document before PELS style.css', async () => {
@@ -154,12 +172,14 @@ describe('settings-ui static server — Homey-wrap host CSS injection', () => {
     expect(response.status).toBe(200);
     const baseIdx = response.body.indexOf('href="/__homey-host__/_base.css"');
     const buttonIdx = response.body.indexOf('href="/__homey-host__/_homey-button.css"');
+    const homeyIdx = response.body.indexOf('href="/__homey-host__/homey.css"');
     const pelsIdx = response.body.indexOf('href="./style.css"');
     expect(baseIdx, 'host _base.css link should be injected').toBeGreaterThan(-1);
     expect(buttonIdx, 'host _homey-button.css link should be injected').toBeGreaterThan(-1);
+    expect(homeyIdx, 'host homey.css link should be injected').toBeGreaterThan(-1);
     expect(pelsIdx, 'PELS style.css link should remain').toBeGreaterThan(-1);
     expect(
-      baseIdx < pelsIdx && buttonIdx < pelsIdx,
+      baseIdx < pelsIdx && buttonIdx < pelsIdx && homeyIdx < pelsIdx,
       'Host CSS must precede PELS style.css so the cascade matches the real Homey shell',
     ).toBe(true);
   });

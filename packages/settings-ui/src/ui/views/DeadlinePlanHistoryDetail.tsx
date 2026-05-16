@@ -211,8 +211,10 @@ export const buildHistoryDetailChartOption = (
     // left edge as `.2 kWh` on every history-detail row). `left: 8` is the
     // padding inside the auto-expanded grid; ECharts adds the label width on
     // top of it. `bottom: 32` makes equivalent room for the x-axis tick
-    // labels under containLabel.
-    grid: { top: 40, left: 8, right: 16, bottom: 32, containLabel: true },
+    // labels under containLabel. `top: 44` matches the live `DeadlinePlan.tsx`
+    // chart so a two-line legend (`width: '100%'`) has the same vertical
+    // headroom on both surfaces.
+    grid: { top: 44, left: 8, right: 16, bottom: 32, containLabel: true },
     tooltip: {
       trigger: 'axis',
       appendToBody: true,

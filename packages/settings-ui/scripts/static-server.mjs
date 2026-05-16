@@ -118,11 +118,13 @@ const HOMEY_HOST_CSS_PREFIX = '/__homey-host__/';
 // Captured Homey host stylesheets injected into the PELS iframe document.
 // Order matches Homey's real load order: `_base.css` first (which defines the
 // legacy `<button>` rule that competes with PELS's segmented control), then
-// `_homey-button.css` (the `.homey-button` family). These resolve to files
-// under `packages/settings-ui/test/fixtures/homey-wrap/`.
+// `_homey-button.css` (the `.homey-button` family), then `homey.css` (the
+// import-manifest that pulls in the rest of Homey's host stylesheet bundle).
+// These resolve to files under `packages/settings-ui/test/fixtures/homey-wrap/`.
 const HOMEY_HOST_CSS_FILES = new Map([
   ['_base.css', 'homey-host-base.css'],
   ['_homey-button.css', 'homey-host-button.css'],
+  ['homey.css', 'homey-host.css'],
 ]);
 
 const resolveHomeyWrapCss = (pathname) => {
@@ -142,12 +144,13 @@ const resolveHomeyHostCss = (pathname) => {
   return path.join(HOMEY_WRAP_FIXTURE_DIR, fixture);
 };
 
-// Build the `<link>` block injected into the PELS iframe `<head>` before
+// Build the `<link>` tags injected into the PELS iframe `<head>` before
 // PELS's own stylesheets so the host rules sit lower in the cascade — exactly
-// where Homey places them in production.
+// where Homey places them in production. Indentation is applied at injection
+// time from the whitespace captured in front of the original `./style.css`
+// link, so the injected block matches the surrounding HTML formatting.
 const HOMEY_HOST_CSS_LINKS = [...HOMEY_HOST_CSS_FILES.keys()]
-  .map((name) => `  <link rel="stylesheet" href="${HOMEY_HOST_CSS_PREFIX}${name}">`)
-  .join('\n');
+  .map((name) => `<link rel="stylesheet" href="${HOMEY_HOST_CSS_PREFIX}${name}">`);
 
 const resolveInnerPelsPath = (pathname) => {
   if (!SIMULATE_HOMEY_MODE) return pathname;
@@ -261,7 +264,9 @@ const main = async () => {
         const html = data.toString('utf8');
         const injected = html.replace(
           /(\s*)(<link\s+rel=["']stylesheet["']\s+href=["']\.\/style\.css["']\s*\/?>)/,
-          (_match, indent, tag) => `${indent}${HOMEY_HOST_CSS_LINKS}${indent}${tag}`,
+          (_match, indent, tag) => (
+            HOMEY_HOST_CSS_LINKS.map((link) => `${indent}${link}`).join('') + indent + tag
+          ),
         );
         send(res, 200, { 'Content-Type': contentType, 'Cache-Control': 'no-store' }, injected);
         return;
