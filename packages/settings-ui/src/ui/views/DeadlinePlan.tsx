@@ -4,6 +4,7 @@ import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/de
 import type { DeferredObjectiveActivePlanRevisionReason } from '../../../../contracts/src/deferredObjectiveActivePlans.ts';
 import {
   deadlineLabels,
+  type DeadlineCannotMeetRecourse,
   type DeadlineLabels,
   type DeadlinePlanUnavailableReason,
   type KwhPerUnitProvenanceRow,
@@ -70,8 +71,20 @@ export type DeadlinePlanPayload = {
     tone: DeadlinePlanHeroTone;
     sectionLabel: string;
     headline: string;
+    // "Why" subline beneath the queued headline ("Cheaper than now — starts at
+    // HH:MM" / "Waiting for tomorrow's prices through HH:MM" / "Today's
+    // budget is full — next cheap window after midnight"). Null when the
+    // hero is not queued or no reason applies — the view suppresses the line
+    // rather than render fabricated copy.
+    headlineReason: string | null;
     subline: string;
     metaLine: string;
+    // Recourse action surfaced below the meta line on cannot-finish heroes.
+    // Resolved producer-side so the view dispatches on a stable slug
+    // (`open_budget` / `open_overview`) rather than re-deriving cause.
+    // Null when there is no action to surface (anything other than
+    // `cannot_meet` / `at_risk`).
+    recourse: DeadlineCannotMeetRecourse | null;
   };
   timeline: {
     ariaLabel: string;
@@ -155,8 +168,22 @@ const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
     <div class="plan-hero__section">
       <span class="plan-hero__section-label eyebrow" id="deadline-plan-title">{payload.hero.sectionLabel}</span>
       <div class="plan-hero__headline">{payload.hero.headline}</div>
+      {payload.hero.headlineReason !== null && (
+        <div class="plan-hero__subline plan-hero__subline--reason">{payload.hero.headlineReason}</div>
+      )}
       <div class="plan-hero__subline">{payload.hero.subline}</div>
       <div class="plan-hero__subline plan-hero__subline--muted">{payload.hero.metaLine}</div>
+      {payload.hero.recourse !== null && (
+        <div class="plan-hero__recourse">
+          <button
+            type="button"
+            class="plan-hero__recourse-button"
+            data-deadline-recourse-tab={payload.hero.recourse.targetTab}
+          >
+            {payload.hero.recourse.label}
+          </button>
+        </div>
+      )}
     </div>
   </section>
 );

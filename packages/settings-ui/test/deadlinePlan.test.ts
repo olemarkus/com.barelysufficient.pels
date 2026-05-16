@@ -942,9 +942,19 @@ describe('deadline plan page payload', () => {
     // The Cannot-finish chip mirrors the hero rim — `cannot_meet` → `alert`
     // on both — so the user never sees a red rim with an amber chip.
     expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish' && chip.tone === 'alert')).toBe(true);
-    expect(payload.hero.metaLine).toMatch(/not be enough time or available power/i);
-    expect(payload.hero.metaLine).toMatch(/short by about/i);
+    // Shortfall copy names the cause in plain language ("may not reach the
+    // target temperature") rather than rendering a raw °C delta; the meta
+    // line still carries the Needs/duration magnitude after the sentence.
+    expect(payload.hero.metaLine).toMatch(/may not reach the target temperature/i);
+    expect(payload.hero.metaLine).toMatch(/needs .* kwh/i);
+    // The misleading "Short by about 41.9 °C" magnitude must not surface in
+    // user copy (TODO 434 in TODO.md).
+    expect(payload.hero.metaLine).not.toMatch(/short by about/i);
     expect(payload.hero.tone).toBe('alert');
+    // Recourse-action surfaces on cannot-meet; shortfall route picks the
+    // Overview tab because the daily-budget cause hasn't fired.
+    expect(payload.hero.recourse).not.toBeNull();
+    expect(payload.hero.recourse?.targetTab).toBe('overview');
     // No live-state chip ("On track" / "Heating now") should appear alongside
     // "Cannot finish"; the contradiction is the bug we are guarding against.
     expect(payload.hero.chips.some((chip) => chip.text === 'On track')).toBe(false);
@@ -1021,6 +1031,16 @@ describe('deadline plan page payload', () => {
     // The shortfall copy must not also appear — the budget message is the
     // chosen explanation when the recorder flagged the cause.
     expect(payload.hero.metaLine).not.toMatch(/short by about/i);
+    expect(payload.hero.metaLine).not.toMatch(/may not reach the target/i);
+    // Daily-budget cause routes recourse to the Budget tab so the user can
+    // lower the cap; the hard-cap-is-physical rule forbids suggesting they
+    // raise it. The `budget` target-tab id is the only branch that fires
+    // when the recorder flagged an exhausted bucket.
+    expect(payload.hero.recourse?.targetTab).toBe('budget');
+    expect(payload.hero.recourse?.label).toBe('Open Budget');
+    // The reasoned sentence is followed by the rich `Needs N kWh · …` meta
+    // (TODO 1276) so users see both "why it's failing" and "how bad".
+    expect(payload.hero.metaLine).toMatch(/needs .* kwh/i);
   });
 
   it('routes a passed deadline to the completed state on the History tab', () => {
@@ -2967,6 +2987,132 @@ describe('resolveConfidenceChipText', () => {
   });
 });
 
+// `resolveQueuedHeadlineReason` answers "why does my smart task start at HH:MM
+// instead of now?" — the line below the queued headline. The resolver
+// suppresses itself outside the queued state so the on-track / cannot-meet
+// heroes don't render an unrelated reason; the queued cases pick from the
+// three primary branches (waiting on prices, daily budget used up, cheaper
+// window).
+describe('resolveQueuedHeadlineReason', () => {
+  const labels = deadlineLabels('temperature');
+  const HOUR_MS = 60 * 60 * 1000;
+  const firstHourStart = Date.UTC(2026, 0, 1, 8, 0);
+  const baseHour = {
+    startsAtMs: firstHourStart,
+    endMs: firstHourStart + HOUR_MS,
+    price: 0,
+    plannedOtherKWh: 0,
+  };
+  const deadlineAtMs = Date.UTC(2026, 0, 1, 16, 0);
+
+  it('returns null when the plan cannot meet (subline is suppressed on cannot-meet heroes)', async () => {
+    const { resolveQueuedHeadlineReason } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveQueuedHeadlineReason({
+      labels,
+      firstChargingHour: baseHour,
+      nowMs: baseHour.startsAtMs - 60_000,
+      cannotMeet: true,
+      deadlineAtMs,
+      computedFromPricesUpTo: deadlineAtMs,
+      dailyBudgetExhaustedInRunUp: false,
+    })).toBeNull();
+  });
+
+  it('returns null when no charging hour is queued (only "active now" cases reach here)', async () => {
+    const { resolveQueuedHeadlineReason } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveQueuedHeadlineReason({
+      labels,
+      firstChargingHour: undefined,
+      nowMs: baseHour.startsAtMs - 60_000,
+      cannotMeet: false,
+      deadlineAtMs,
+      computedFromPricesUpTo: deadlineAtMs,
+      dailyBudgetExhaustedInRunUp: false,
+    })).toBeNull();
+  });
+
+  it('surfaces "Waiting for tomorrow\'s prices through HH:MM" when prices don\'t reach the deadline', async () => {
+    const { resolveQueuedHeadlineReason } = await import('../src/ui/deadlinePlanHero.ts');
+    const out = resolveQueuedHeadlineReason({
+      labels,
+      firstChargingHour: baseHour,
+      nowMs: baseHour.startsAtMs - 60_000,
+      cannotMeet: false,
+      deadlineAtMs,
+      computedFromPricesUpTo: deadlineAtMs - 60 * 60 * 1000,
+      dailyBudgetExhaustedInRunUp: false,
+    });
+    expect(out).toMatch(/Waiting for tomorrow.s prices/);
+  });
+
+  it('surfaces "Today\'s budget is full" when prices are complete but the run-up hit the cap', async () => {
+    const { resolveQueuedHeadlineReason } = await import('../src/ui/deadlinePlanHero.ts');
+    const out = resolveQueuedHeadlineReason({
+      labels,
+      firstChargingHour: baseHour,
+      nowMs: baseHour.startsAtMs - 60_000,
+      cannotMeet: false,
+      deadlineAtMs,
+      computedFromPricesUpTo: deadlineAtMs,
+      dailyBudgetExhaustedInRunUp: true,
+    });
+    expect(out).toMatch(/Today.s budget is full/);
+  });
+
+  it('falls through to "Cheaper than now — starts at HH:MM" when the window was a price choice', async () => {
+    const { resolveQueuedHeadlineReason } = await import('../src/ui/deadlinePlanHero.ts');
+    const out = resolveQueuedHeadlineReason({
+      labels,
+      firstChargingHour: baseHour,
+      nowMs: baseHour.startsAtMs - 60_000,
+      cannotMeet: false,
+      deadlineAtMs,
+      computedFromPricesUpTo: deadlineAtMs,
+      dailyBudgetExhaustedInRunUp: false,
+    });
+    expect(out).toMatch(/Cheaper than now — starts at/);
+  });
+});
+
+// `resolveCannotMeetRecourse` picks the action button surfaced under the
+// cannot-finish hero body. Daily-budget cause → Budget tab; every other
+// cannot-meet cause → Overview tab. The producer resolves the slug so the
+// view never branches on raw cause codes.
+describe('resolveCannotMeetRecourse', () => {
+  const labels = deadlineLabels('temperature');
+
+  it('returns null when the hero is not cannot-meet', async () => {
+    const { resolveCannotMeetRecourse } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveCannotMeetRecourse({
+      labels,
+      cannotMeet: false,
+      dailyBudgetExhausted: false,
+    })).toBeNull();
+  });
+
+  it('routes daily-budget-exhausted to "Open Budget"', async () => {
+    const { resolveCannotMeetRecourse } = await import('../src/ui/deadlinePlanHero.ts');
+    const out = resolveCannotMeetRecourse({
+      labels,
+      cannotMeet: true,
+      dailyBudgetExhausted: true,
+    });
+    expect(out?.label).toBe('Open Budget');
+    expect(out?.targetTab).toBe('budget');
+  });
+
+  it('routes every other cannot-meet cause to "Adjust device"', async () => {
+    const { resolveCannotMeetRecourse } = await import('../src/ui/deadlinePlanHero.ts');
+    const out = resolveCannotMeetRecourse({
+      labels,
+      cannotMeet: true,
+      dailyBudgetExhausted: false,
+    });
+    expect(out?.label).toBe('Adjust device');
+    expect(out?.targetTab).toBe('overview');
+  });
+});
+
 describe('buildChartOption original-series suppression', () => {
   const stubPalette = {
     priceCheap: '#0f0', priceNormal: '#888', priceExpensive: '#f00',
@@ -2984,7 +3130,16 @@ describe('buildChartOption original-series suppression', () => {
       kind: 'ev_soc',
       labels,
       priceUnitLabel: 'øre/kWh',
-      hero: { chips: [], tone: 'good', sectionLabel: 'EV smart task', headline: 'On track', subline: '', metaLine: '' },
+      hero: {
+        chips: [],
+        tone: 'good',
+        sectionLabel: 'EV smart task',
+        headline: 'On track',
+        headlineReason: null,
+        subline: '',
+        metaLine: '',
+        recourse: null,
+      },
       timeline: {
         ariaLabel: 'EV smart task',
         progressFloor: 0,

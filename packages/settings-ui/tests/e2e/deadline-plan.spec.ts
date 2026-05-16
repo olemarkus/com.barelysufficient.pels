@@ -61,8 +61,15 @@ test.describe('Deadline plan', () => {
 
     // Section eyebrow uses smart-task vocabulary, not planner-noun "plan".
     await expect(panel.locator('.plan-hero__section-label')).toHaveText(/Heating smart task/);
-    await expect(panel.locator('.plan-hero__subline').first()).toContainText('Connected 300');
-    await expect(panel.locator('.plan-hero__subline').first()).toContainText('°C');
+    // The device + target subline lives on the un-modified `.plan-hero__subline`
+    // node (no `--reason` / `--muted` modifier). The headline-reason node now
+    // renders above it for queued plans, so a positional `.first()` query is
+    // not stable — match by class shape instead.
+    const deviceTargetSubline = panel.locator(
+      '.plan-hero__subline:not(.plan-hero__subline--reason):not(.plan-hero__subline--muted)',
+    ).first();
+    await expect(deviceTargetSubline).toContainText('Connected 300');
+    await expect(deviceTargetSubline).toContainText('°C');
     await expect(panel.getByText('Price horizon', { exact: true })).toBeVisible();
     await expect(panel.getByLabel(/Smart task schedule/).getByText('Heating', { exact: true })).toBeVisible();
     await expect(panel.getByLabel(/Smart task schedule/).getByText('Original Heating', { exact: true })).toBeVisible();
@@ -114,7 +121,12 @@ test.describe('Deadline plan', () => {
   test('refreshes the open page when plan and device events arrive', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 860 });
     const panel = await openDeadlinePlan(page);
-    await expect(panel.locator('.plan-hero__subline').first()).toContainText('Target 65 °C');
+    // Match the device/target subline (no class modifier) so the new
+    // headline-reason subline above it doesn't shift `.first()` underneath us.
+    const deviceTargetSubline = panel.locator(
+      '.plan-hero__subline:not(.plan-hero__subline--reason):not(.plan-hero__subline--muted)',
+    ).first();
+    await expect(deviceTargetSubline).toContainText('Target 65 °C');
 
     const initialBootstrapCalls = await page.evaluate(() => (
       (window as unknown as DeadlinePlanStubWindow).Homey.__stub.getApiCallCount('GET /ui_bootstrap')
@@ -141,7 +153,7 @@ test.describe('Deadline plan', () => {
       homey.__stub.emitHomeyEvent('devices_updated');
     });
 
-    await expect(panel.locator('.plan-hero__subline').first()).toContainText('Target 70 °C');
+    await expect(deviceTargetSubline).toContainText('Target 70 °C');
     const refreshedBootstrapCalls = await page.evaluate(() => (
       (window as unknown as DeadlinePlanStubWindow).Homey.__stub.getApiCallCount('GET /ui_bootstrap')
     ));

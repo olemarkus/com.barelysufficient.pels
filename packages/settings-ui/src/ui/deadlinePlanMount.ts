@@ -29,13 +29,22 @@ const buildBootErrorMessage = (error: unknown): string => (
 
 const DEADLINE_PLAN_REFRESH_DEBOUNCE_MS = 200;
 
+// Optional override for the shell tab the deadline-plan view lands on when
+// it closes. `closeView` in `deadlinePlanRouter.ts` reads this so the
+// recourse-action row (e.g. "Open Budget") can land the user on Budget
+// directly in a single click — without racing the popstate handler that
+// would have re-shown the Smart-tasks tab.
+export type DeadlinePlanCloseOptions = { fallbackTab?: string };
+
 // Resolved by `boot.ts` so the close button can return to whichever tab the
 // user came from (almost always Smart tasks). Kept as a module-local instead
 // of a parameter on `mountDeadlinePlan` so the close button stays bound across
 // the SPA's lifetime even when the deadline-plan view is re-mounted.
-let onCloseDeadlinePlan: () => void = () => {};
+let onCloseDeadlinePlan: (options?: DeadlinePlanCloseOptions) => void = () => {};
 
-export const setDeadlinePlanCloseHandler = (handler: () => void): void => {
+export const setDeadlinePlanCloseHandler = (
+  handler: (options?: DeadlinePlanCloseOptions) => void,
+): void => {
   onCloseDeadlinePlan = handler;
 };
 
@@ -44,6 +53,30 @@ const initDeadlinePlanClose = (): void => {
   if (!button || button.dataset.deadlinePlanCloseBound === 'true') return;
   button.dataset.deadlinePlanCloseBound = 'true';
   button.addEventListener('click', () => onCloseDeadlinePlan());
+};
+
+// Delegated click handler for the cannot-finish hero's recourse action row.
+// The button carries `data-deadline-recourse-tab="<tabId>"`; clicking it
+// closes the deadline-plan view (history-back / replace-state, shell-nav
+// restore) and lands on the requested shell tab — Budget for the daily-cap
+// cause, Overview for device-side ones. The close handler honours the
+// `fallbackTab` option so a single user click flows through the router in
+// one pass; the prior "close then showTab" sequence raced popstate and
+// lost the target on the history-back path. Bound once on the document so
+// we don't need to re-bind after each render of the deadline-plan view.
+let recourseHandlerBound = false;
+const initDeadlinePlanRecourseDispatcher = (): void => {
+  if (recourseHandlerBound) return;
+  recourseHandlerBound = true;
+  document.addEventListener('click', (event) => {
+    if (!(event.target instanceof Element)) return;
+    const trigger = event.target.closest<HTMLElement>('[data-deadline-recourse-tab]');
+    if (!trigger) return;
+    const targetTab = trigger.dataset.deadlineRecourseTab;
+    if (!targetTab) return;
+    event.preventDefault();
+    onCloseDeadlinePlan({ fallbackTab: targetTab });
+  });
 };
 
 export type DeadlinePlanBoot = {
@@ -163,6 +196,7 @@ export const mountDeadlinePlan = async (): Promise<void> => {
   const isStale = (): boolean => activeMount?.generation !== generation;
 
   initDeadlinePlanClose();
+  initDeadlinePlanRecourseDispatcher();
   // Bind runtime refresh once per SPA session, *before* any awaitable work,
   // so a failed first boot does not leave the rest of the session without
   // event-driven refresh. The handler reads `activeMount` at fire time so

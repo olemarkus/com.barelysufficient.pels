@@ -1,7 +1,10 @@
 import type { DeferredObjectiveActivePlanStatusV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
-import type { DeadlineLabels } from '../../../shared-domain/src/deadlineLabels.ts';
+import type {
+  DeadlineCannotMeetRecourse,
+  DeadlineLabels,
+} from '../../../shared-domain/src/deadlineLabels.ts';
 import type { HorizonHour } from './deadlinePlanData.ts';
 import {
   formatDeadlineFull,
@@ -9,13 +12,6 @@ import {
   formatTarget,
 } from './deadlinePlanFormatters.ts';
 import type { DeadlinePlanHeroTone, DeadlinePlanPayload } from './views/DeadlinePlan.tsx';
-
-// For `%` clamp to ≥ 1 with `ceil` so a sub-1% shortfall does not render as
-// "0%" while the warning chip says "Cannot finish" — that mismatch was
-// flagged on the original PR (copilot review of `formatShortfallLabel`).
-const formatShortfallLabel = (shortfallUnits: number, unit: '°C' | '%'): string => (
-  unit === '°C' ? `${shortfallUnits.toFixed(1)} °C` : `${Math.max(1, Math.ceil(shortfallUnits))}%`
-);
 
 // Canonical chip order `[kind, ?cannotMeet, ?confidence]` — kind identity
 // reads first across every Smart-task surface. The live-state chip is no
@@ -85,19 +81,68 @@ export const resolveHeroHeadline = (params: {
   return `${params.labels.activeChipLabel} from ${formatHourLabel(params.firstChargingHour.startsAtMs)}`;
 };
 
+// Resolves the "why does the smart task start at HH:MM" subline below the
+// queued headline. Returns null when the hero is not in the queued state
+// (`firstChargingHour <= nowMs` or no charging hour at all), or when the
+// resolver inside `labels` returns null — the view suppresses the line
+// rather than fabricating a reason.
+export const resolveQueuedHeadlineReason = (params: {
+  labels: DeadlineLabels;
+  firstChargingHour: HorizonHour | undefined;
+  nowMs: number;
+  cannotMeet: boolean;
+  deadlineAtMs: number;
+  computedFromPricesUpTo: number | null;
+  // Counts buckets in the run-up whose per-bucket cap collapsed to zero
+  // because the daily budget cap was hit. Distinct from `dailyBudgetExhausted`
+  // (which gates the cannot-meet body copy and is restricted to
+  // `planStatus === 'cannot_meet'`): the queued headline-reason resolver wants
+  // to surface "Today's budget is full" on healthy on-track plans whose first
+  // hour falls after midnight too.
+  dailyBudgetExhaustedInRunUp: boolean;
+}): string | null => {
+  if (params.cannotMeet) return null;
+  if (!params.firstChargingHour) return null;
+  if (params.firstChargingHour.startsAtMs <= params.nowMs) return null;
+  return params.labels.resolveQueuedHeadlineReason({
+    firstPlannedTime: formatHourLabel(params.firstChargingHour.startsAtMs),
+    pricesShortOfDeadline: params.computedFromPricesUpTo === null
+      || params.computedFromPricesUpTo < params.deadlineAtMs,
+    deadlineTime: formatHourLabel(params.deadlineAtMs),
+    dailyBudgetExhausted: params.dailyBudgetExhaustedInRunUp,
+  });
+};
+
 // Walks budget → shortfall → unknown-reason so we never render the warning
-// chip without a paired body reason.
+// chip without a paired body reason. Returns the user-visible cannot-meet
+// sentence; `formatMetaLine` is then appended by `buildHero` so the rich
+// "Needs X kWh · Y hours left · …" context coexists with the reason.
 export const resolveCannotMeetMeta = (params: {
   labels: DeadlineLabels;
   shortfallUnits: number;
-  shortfallUnit: '°C' | '%';
   dailyBudgetExhausted: boolean;
 }): string => {
   if (params.dailyBudgetExhausted) return params.labels.cannotMeetDailyBudgetExhausted;
-  if (params.shortfallUnits > 0) {
-    return params.labels.cannotMeetShortfall(formatShortfallLabel(params.shortfallUnits, params.shortfallUnit));
-  }
+  if (params.shortfallUnits > 0) return params.labels.cannotMeetShortfall();
   return params.labels.cannotMeetUnknownReason;
+};
+
+// Resolves the recourse action surfaced below the cannot-finish body. Returns
+// null when the plan is not cannot-meet so the view never branches on
+// `cannotMeet` state. `open_budget` is reserved for the daily-budget cause;
+// every other cannot-meet branch points at the device (`open_overview`).
+//
+// Per `feedback_hard_cap_is_physical.md`, no recourse branch suggests raising
+// the capacity hard cap — `open_budget` lands on the daily-budget surface
+// where users can lower the daily cap.
+export const resolveCannotMeetRecourse = (params: {
+  labels: DeadlineLabels;
+  cannotMeet: boolean;
+  dailyBudgetExhausted: boolean;
+}): DeadlineCannotMeetRecourse | null => {
+  if (!params.cannotMeet) return null;
+  if (params.dailyBudgetExhausted) return params.labels.cannotMeetRecourse.openBudget;
+  return params.labels.cannotMeetRecourse.openOverview;
 };
 
 // Falls back to the "Needs X kWh · N hours left" form when planning speed or
@@ -136,9 +181,24 @@ export type BuildHeroInput = {
   confidence: string | null;
   nowMs: number;
   cannotMeet: boolean;
+  // Remaining shortfall against the target after the planner's best-effort
+  // allocation, in progress units (°C / %). Used to disambiguate the
+  // "device-side shortfall" branch (`> 0`) from the "no clear cause"
+  // fallback so the unknown-reason copy fires only when we actually have no
+  // signal. The unit is no longer surfaced in user copy — see
+  // `cannotMeetShortfall` for the rephrasing rationale.
   shortfallUnits: number;
-  shortfallUnit: '°C' | '%';
   dailyBudgetExhausted: boolean;
+  // Whether the latest revision's `dailyBudgetExhaustedBucketCount` is > 0.
+  // Distinct from `dailyBudgetExhausted` above (which is gated on
+  // `planStatus === 'cannot_meet'`): the queued headline-reason resolver
+  // wants this signal even on healthy on-track plans whose first hour falls
+  // after midnight.
+  dailyBudgetExhaustedInRunUp: boolean;
+  // Planner's `computedFromPricesUpTo` carried verbatim so the producer can
+  // resolve the "prices not through deadline yet" headline-reason branch.
+  // Null when the latest revision predates the field.
+  computedFromPricesUpTo: number | null;
   planningSpeedKw: number | null;
   estimatedDurationText: string | null;
   kwhPerUnitSource: 'learned' | 'bootstrap' | undefined;
@@ -154,18 +214,21 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
   const deadline = formatDeadlineFull(params.deadlineAtMs);
   const subline = `${params.device.name} • Target ${target} by ${deadline}`;
   const speedModeLabel = resolveSpeedModeLabel(params.kwhPerUnitSource);
+  const baseMetaLine = formatMetaLine({
+    energyNeededKWh: params.energyNeededKWh,
+    hoursLeft: params.hoursLeft,
+    planningSpeedKw: params.planningSpeedKw,
+    estimatedDurationText: params.estimatedDurationText,
+    speedModeLabel,
+  });
   // When the chip says "Cannot finish" we must not fall back to the on-track
-  // meta copy — that contradicts the chip. The dedicated resolver guarantees a
-  // reasoned body line in every cannot-meet branch.
+  // meta copy alone — that loses the answer to "how bad is this?" (e.g.
+  // "29.6 °C short" is meaningless without "needs 17 kWh, 8 hours left").
+  // Compose the reasoned cannot-meet sentence with the `Needs N kWh · …`
+  // context so both signals coexist on a single line.
   const metaLine = params.cannotMeet
-    ? resolveCannotMeetMeta(params)
-    : formatMetaLine({
-      energyNeededKWh: params.energyNeededKWh,
-      hoursLeft: params.hoursLeft,
-      planningSpeedKw: params.planningSpeedKw,
-      estimatedDurationText: params.estimatedDurationText,
-      speedModeLabel,
-    });
+    ? `${resolveCannotMeetMeta(params)} ${baseMetaLine}`
+    : baseMetaLine;
   // The cannot-meet chip mirrors the hero rim: `alert` (red) for `cannot_meet`
   // and `warn` (amber) for `at_risk`. Anything else means `cannotMeet` is false
   // and the chip isn't rendered, so the fallback never reaches the UI; it
@@ -181,7 +244,9 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
     tone: params.tone,
     sectionLabel: params.labels.sectionLabel,
     headline,
+    headlineReason: resolveQueuedHeadlineReason(params),
     subline,
     metaLine,
+    recourse: resolveCannotMeetRecourse(params),
   };
 };

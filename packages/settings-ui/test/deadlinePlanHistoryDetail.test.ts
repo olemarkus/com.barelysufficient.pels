@@ -287,6 +287,42 @@ describe('DeadlinePlanHistoryDetail', () => {
     expect(option.legend.data.map((l) => l.name)).toContain('Measured Heating');
   });
 
+  // Missed-history detail used to render a chart + chip only; users opening
+  // a missed run had no copy explaining *why*. The reason resolver now plumbs
+  // a postmortem sentence under the progress line so the surface mirrors the
+  // succeeded path's explanation density.
+  it('renders a missed-reason sentence under the progress line on missed entries', async () => {
+    const finalCannotMeet = buildRevision({ planStatus: 'cannot_meet' });
+    const root = await mount(buildEntry({
+      outcome: 'missed',
+      finalProgressC: 38,
+      originalPlan: finalCannotMeet,
+      finalPlan: finalCannotMeet,
+    }));
+    const reason = root.querySelector('.plan-history-detail__missed-reason');
+    expect(reason).not.toBeNull();
+    expect(reason?.textContent).toMatch(/couldn.t reserve enough energy/i);
+  });
+
+  it('omits the missed-reason sentence on succeeded entries', async () => {
+    const root = await mount(buildEntry({ outcome: 'met' }));
+    expect(root.querySelector('.plan-history-detail__missed-reason')).toBeNull();
+  });
+
+  it('renders the observed-vs-target progress line even on missed entries', async () => {
+    const root = await mount(buildEntry({
+      outcome: 'missed',
+      startProgressC: 50,
+      finalProgressC: 38,
+      targetTemperatureC: 65,
+    }));
+    const progress = root.querySelector('.plan-history-detail__progress');
+    expect(progress).not.toBeNull();
+    expect(progress?.textContent).toContain('50.0 °C');
+    expect(progress?.textContent).toContain('38.0 °C');
+    expect(progress?.textContent).toContain('target 65.0 °C');
+  });
+
   it('uses the kind-aware Measured Charging series name for EV runs', async () => {
     const { buildHistoryDetailRows, buildHistoryDetailChartOption } =
       await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');

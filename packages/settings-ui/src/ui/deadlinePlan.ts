@@ -352,6 +352,23 @@ const prepareObjectivePayload = (
   };
 };
 
+// Producer-side guards for optional revision fields. Pulled out so
+// `buildReadyPayload` stays under the cyclomatic-complexity ceiling — without
+// these, every inline `typeof … && Number.isFinite(…) && …` branch ticks the
+// complexity score even though the meaning is just "carry through when valid,
+// null otherwise."
+const resolvePositiveNumber = (value: number | undefined): number | null => (
+  typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
+);
+
+const resolveFiniteNumber = (value: number | null | undefined): number | null => (
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+);
+
+const resolveNonEmptyString = (value: string | undefined): string | null => (
+  typeof value === 'string' && value.length > 0 ? value : null
+);
+
 const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload => {
   const { ctx, bootstrap, profile, progress, hours, energy } = input;
   const { device, objective, deviceId, deadlineAtMs, activePlan, nowMs } = ctx;
@@ -368,10 +385,15 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   const hoursLeft = Math.max(0, Math.ceil((deadlineAtMs - nowMs) / ONE_HOUR_MS));
   // Older persisted revisions don't carry the count; treat absence as zero so
   // the budget-exhausted explanation only fires when the recorder actually
-  // saw it. Restricted to the cannot-meet path so an at-risk plan that still
-  // allocates against limited buckets keeps the shortfall copy.
-  const dailyBudgetExhausted = latest.planStatus === 'cannot_meet'
-    && (latest.dailyBudgetExhaustedBucketCount ?? 0) > 0;
+  // saw it. Two surfaces consume this signal:
+  //   - The cannot-meet body copy fires only on `planStatus === 'cannot_meet'`
+  //     so an at-risk plan that still allocates against limited buckets keeps
+  //     the device-side shortfall copy.
+  //   - The queued headline-reason resolver fires on any plan status so a
+  //     healthy on-track plan whose first hour falls after midnight can still
+  //     surface "Today's budget is full — next cheap window after midnight."
+  const dailyBudgetExhaustedAnywhere = (latest.dailyBudgetExhaustedBucketCount ?? 0) > 0;
+  const dailyBudgetExhausted = latest.planStatus === 'cannot_meet' && dailyBudgetExhaustedAnywhere;
 
   return {
     kind: objective.kind,
@@ -389,21 +411,18 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       nowMs,
       cannotMeet,
       shortfallUnits: cannotMeetUnits,
-      shortfallUnit: progress.unit,
       dailyBudgetExhausted,
+      dailyBudgetExhaustedInRunUp: dailyBudgetExhaustedAnywhere,
+      // Latest revision's `computedFromPricesUpTo` is carried verbatim so the
+      // hero's headline-reason resolver can branch on "prices not through
+      // deadline yet" without re-deriving the comparison at the view layer.
+      computedFromPricesUpTo: resolveFiniteNumber(latest.computedFromPricesUpTo),
       // Planner inputs the recorder persisted with the latest revision. These
       // are optional because legacy persisted plans don't carry them; the
       // hero falls back to the "Needs X kWh · N hours left" line when either
       // is missing.
-      planningSpeedKw: typeof latest.planningSpeedKw === 'number'
-        && Number.isFinite(latest.planningSpeedKw)
-        && latest.planningSpeedKw > 0
-        ? latest.planningSpeedKw
-        : null,
-      estimatedDurationText: typeof latest.estimatedDurationText === 'string'
-        && latest.estimatedDurationText.length > 0
-        ? latest.estimatedDurationText
-        : null,
+      planningSpeedKw: resolvePositiveNumber(latest.planningSpeedKw),
+      estimatedDurationText: resolveNonEmptyString(latest.estimatedDurationText),
       kwhPerUnitSource: latest.kwhPerUnitSource,
       tone: resolveHeroTone(latest.planStatus),
     }),
