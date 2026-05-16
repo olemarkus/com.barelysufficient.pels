@@ -87,6 +87,27 @@ const getDerivedDailyTotals = (buckets: Record<string, number> | undefined, time
   return totals;
 };
 
+// Persisted `dailyTotals` only ever holds days that have aged out of the 30-day
+// hourly retention window in `lib/core/powerTracker.ts` (`aggregateAndPruneHistory`).
+// Recent days still live exclusively in `tracker.buckets`, so taking
+// `tracker.dailyTotals` as the source of truth makes the Daily-usage chart
+// trail today by a full month. Merge both sources additively: same-key sums
+// keep boundary days (some hours already aggregated, some still in buckets)
+// arithmetically correct because each hourly bucket entry is moved out of
+// `buckets` once it is folded into `dailyTotals`.
+const mergeDailyTotals = (
+  persisted: Record<string, number> | undefined,
+  buckets: Record<string, number> | undefined,
+  timeZone: string,
+): Record<string, number> => {
+  const merged: Record<string, number> = { ...(persisted || {}) };
+  const fromBuckets = getDerivedDailyTotals(buckets, timeZone);
+  for (const [dateKey, kWh] of Object.entries(fromBuckets)) {
+    merged[dateKey] = (merged[dateKey] || 0) + kWh;
+  }
+  return merged;
+};
+
 const getDerivedHourlyAverages = (buckets: Record<string, number> | undefined, timeZone: string) => {
   const averages: Record<string, { sum: number; count: number }> = {};
   if (!buckets) return averages;
@@ -146,42 +167,37 @@ const sumDailyTotals = (
   return totals;
 };
 
-const sumBucketTotalsBeforeToday = (
-  buckets: Record<string, number> | undefined,
-  timeContext: { todayStart: number; weekStart: number; monthStart: number },
-): PeriodTotals => {
-  const totals = { week: 0, month: 0 };
-  if (!buckets) return totals;
-  for (const [iso, kWh] of Object.entries(buckets)) {
-    const ts = new Date(iso).getTime();
-    if (ts >= timeContext.todayStart) continue;
-    if (ts >= timeContext.weekStart) totals.week += kWh;
-    if (ts >= timeContext.monthStart) totals.month += kWh;
-  }
-  return totals;
-};
-
+// `mergedDailyTotals` already folds bucket-derived recent days into the
+// persisted dailyTotals (see `mergeDailyTotals`). Summing buckets again here
+// would double-count days that live in both maps once we merge them.
 const getWeekMonthTotals = (
-  tracker: PowerTracker,
-  timeContext: { todayKey: string; todayStart: number; weekStart: number; monthStart: number },
+  mergedDailyTotals: Record<string, number>,
+  timeContext: { todayKey: string; weekStart: number; monthStart: number },
   today: number,
   timeZone: string,
 ) => {
-  const dailyTotals = sumDailyTotals(tracker.dailyTotals, timeContext, timeZone);
-  const bucketTotals = sumBucketTotalsBeforeToday(tracker.buckets, timeContext);
+  const dailyTotals = sumDailyTotals(mergedDailyTotals, timeContext, timeZone);
   return {
-    week: today + dailyTotals.week + bucketTotals.week,
-    month: today + dailyTotals.month + bucketTotals.month,
+    week: today + dailyTotals.week,
+    month: today + dailyTotals.month,
   };
 };
 
-const getWeekdayWeekendAverages = (dailyTotals: Record<string, number>, timeZone: string) => {
+const getWeekdayWeekendAverages = (
+  dailyTotals: Record<string, number>,
+  todayKey: string,
+  timeZone: string,
+) => {
   let weekdaySum = 0;
   let weekdayCount = 0;
   let weekendSum = 0;
   let weekendCount = 0;
 
   for (const [dateKey, kWh] of Object.entries(dailyTotals)) {
+    // Skip today's in-progress total so partial days never drag the average down.
+    // Past totals are already finalised; merged bucket-derived recent days are
+    // whole days because hourly retention spans the full 30-day window.
+    if (dateKey === todayKey) continue;
     const ts = getDateKeyStartMs(dateKey, timeZone);
     const day = new Date(ts).getUTCDay();
     if (day === 0 || day === 6) {
@@ -439,14 +455,12 @@ export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZ
     powerTracker: tracker,
   });
   const today = dayContext.usedNowKWh;
-  const derivedDailyTotals = Object.keys(tracker.dailyTotals || {}).length
-    ? tracker.dailyTotals as Record<string, number>
-    : getDerivedDailyTotals(tracker.buckets, timeZone);
+  const derivedDailyTotals = mergeDailyTotals(tracker.dailyTotals, tracker.buckets, timeZone);
   const derivedHourlyAverages = Object.keys(tracker.hourlyAverages || {}).length
     ? tracker.hourlyAverages as Record<string, { sum: number; count: number }>
     : getDerivedHourlyAverages(tracker.buckets, timeZone);
-  const totals = getWeekMonthTotals({ ...tracker, dailyTotals: derivedDailyTotals }, timeContext, today, timeZone);
-  const averages = getWeekdayWeekendAverages(derivedDailyTotals, timeZone);
+  const totals = getWeekMonthTotals(derivedDailyTotals, timeContext, today, timeZone);
+  const averages = getWeekdayWeekendAverages(derivedDailyTotals, timeContext.todayKey, timeZone);
   const hourlyPatternAll = buildHourlyPattern(derivedHourlyAverages);
   const hourlyPatternWeekday = buildHourlyPattern(derivedHourlyAverages, (d) => d >= 1 && d <= 5);
   const hourlyPatternWeekend = buildHourlyPattern(derivedHourlyAverages, (d) => d === 0 || d === 6);

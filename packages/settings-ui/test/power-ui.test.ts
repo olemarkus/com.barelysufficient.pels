@@ -114,6 +114,47 @@ describe('power page stats (buckets-only)', () => {
     expect(chartRoot?.querySelector('.usage-row--daily')).toBeNull();
   });
 
+  // Regression: `aggregateAndPruneHistory` in `lib/core/powerTracker.ts` only
+  // moves buckets older than 30 days into `dailyTotals`. When both maps are
+  // populated, the Daily-usage chart used to read from `dailyTotals` alone,
+  // making it show the 14 days right before the 30-day cliff (e.g. 3–15 Apr on
+  // 16 May). The merge in `getPowerStats` must fold recent bucket-derived days
+  // into the chart so the window advances forward to "today − 1".
+  it('advances daily history window past stale dailyTotals using recent buckets', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2026, 4, 16, 12, 0, 0))); // 2026-05-16 12:00 UTC
+
+    // Stale persisted dailyTotals: 14 days ending 15 Apr (just before the 30-day cliff).
+    const dailyTotals: Record<string, number> = {};
+    const staleStart = Date.UTC(2026, 3, 2); // 2 Apr
+    for (let i = 0; i < 14; i += 1) {
+      const ts = staleStart + i * 24 * 60 * 60 * 1000;
+      dailyTotals[`${new Date(ts).toISOString().slice(0, 10)}`] = 60 + i;
+    }
+
+    // Recent buckets: full hourly samples for 17 Apr through 16 May (today).
+    const buckets = buildBuckets('2026-04-17T00:00:00.000Z', 30 * 24, 1.5);
+
+    await installHomeyClient({ dailyTotals, buckets });
+
+    const { getPowerStats } = await import('../src/ui/power.ts');
+    const { stats } = await getPowerStats();
+
+    // The chart slices to DAILY_HISTORY_DAYS = 14 newest entries excluding today.
+    const dates = stats.dailyHistory.map((point) => point.date);
+    expect(dates.length).toBe(14);
+    expect(dates[0]).toBe('2026-05-15'); // today − 1, sorted newest first
+    expect(dates[dates.length - 1]).toBe('2026-05-02'); // today − 14
+    // The Apr-only window must not survive when recent bucket data is present.
+    for (const date of dates) {
+      expect(date.startsWith('2026-04')).toBe(false);
+    }
+    // Today is excluded so partial in-progress days don't appear.
+    expect(dates).not.toContain('2026-05-16');
+
+    vi.useRealTimers();
+  });
+
   it('limits hourly detail to the current UTC week by default', async () => {
     const buckets = buildBuckets('2025-01-01T00:00:00.000Z', 14 * 24, 0.4);
     vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 0, 10, 12, 0, 0));

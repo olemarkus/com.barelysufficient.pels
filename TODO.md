@@ -231,6 +231,23 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       wrong for the device.
       Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
       `packages/shared-domain/src/deadlineLabels.ts`.
+- [x] Usage "Daily usage" chart shows April dates while the rest of the tab shows
+      May 16, 2026. *(landed — `getPowerStats` in
+      `packages/settings-ui/src/ui/power.ts` now always merges `tracker.dailyTotals`
+      (long-term storage of days that have aged out of the 30-day hourly window)
+      with bucket-derived recent days, so the chart, the weekday/weekend averages
+      and the hero pace stats reflect the latest 14 days ending today instead of
+      the 14 days that sat right before the 30-day cliff. The pre-fix bug came
+      from `aggregateAndPruneHistory` only moving >30-day-old buckets into
+      `dailyTotals`; recent days lived exclusively in `tracker.buckets` and were
+      never visible to the chart. `getWeekMonthTotals` was simplified to read
+      from the merged map only — the old `sumBucketTotalsBeforeToday` path would
+      have double-counted recent days after the merge. `getWeekdayWeekendAverages`
+      now drops `todayKey` so partial in-progress days never drag the average
+      down. Regression test in `packages/settings-ui/test/power-ui.test.ts`
+      mocks the clock to 2026-05-16, seeds 14 stale `dailyTotals` ending 15 Apr
+      AND 30 days of recent hourly buckets, and asserts the chart window is
+      `2026-05-15` down to `2026-05-02` with no April dates leaking through.)*
 ## P1 Correctness, Data Integrity, and Supported UX
 
 - [ ] Smart task hero: `estimatedDurationText` shrinks across revisions. The recorder formats
@@ -929,6 +946,42 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] Power tracker persisted `dailyTotals` keys use UTC dates while UI-derived
+      bucket totals use the Homey timezone date. After the P0 merge fix in
+      `packages/settings-ui/src/ui/power.ts`, the chart, week/month totals, and
+      weekday/weekend averages combine both maps; in non-UTC timezones a day
+      that sits at the UTC/local boundary can appear at two adjacent date keys
+      (one from the persisted UTC key, one from the bucket-derived local key).
+      The typical-case Daily-usage chart window is unaffected because the last
+      14 days come exclusively from buckets, but pre-30-day historical entries
+      that show up in `getWeekdayWeekendAverages` and `sumDailyTotals` are
+      keyed off by 1 day in zones like Europe/Oslo. Fix the backend to write
+      `dailyTotals` keys with the Homey timezone (or normalise the UI to
+      reparse both sources into one canonical zone-local representation).
+      Files: `lib/core/powerTracker.ts` (`formatDateUtc` -> zone-aware),
+      `packages/settings-ui/src/ui/power.ts` (or carry the dual-key
+      normalisation here if backend can't change without a migration).
+- [ ] "Typical day" hourly-pattern chart ignores the most recent 30 days of
+      data. `derivedHourlyAverages` in `packages/settings-ui/src/ui/power.ts`
+      still falls back to bucket-derived values only when persisted
+      `hourlyAverages` is empty; once it has any entry, the chart shows only
+      the >30-day-old slice that `aggregateAndPruneHistory` has rotated in.
+      The Daily-usage merge fix did not extend here because the persisted
+      `hourlyAverages` count is per-day (incremented for all 24 slots once per
+      processed day) while the bucket-derived count is per-hour, so additive
+      merge would mis-weight the average. Either rework the persisted format
+      to per-hour counts, or compute a unified pattern by grouping merged
+      day-hour entries before averaging.
+      Files: `packages/settings-ui/src/ui/power.ts`,
+      `lib/core/powerTracker.ts` (`processDayHourBuckets`).
+- [ ] `processDayHourBuckets` in `lib/core/powerTracker.ts` over-counts the
+      day count for boundary days that have their hours moved into
+      `hourlyAverages` across multiple prune runs. Each prune that moves at
+      least one hour of a given day calls the helper for that day, which
+      increments count by 1 for all 24 weekday-hour slots. A day whose hours
+      cross the threshold across two prune ticks therefore contributes count
+      +2 instead of +1, biasing the typical-day averages slightly low.
+      Files: `lib/core/powerTracker.ts` (`aggregateAndPruneHistory`).
 - [ ] Idle classifier: surface a signal when a device has a temperature setpoint but no
       `currentTemperature` reading. Today `lib/observer/idleDetector.ts` requires
       `hasTemperatureSetpoint` but allows `currentTemperature` to be absent — `gap` then
