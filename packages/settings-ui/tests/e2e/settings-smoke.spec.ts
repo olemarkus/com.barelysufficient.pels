@@ -161,7 +161,7 @@ test.describe('Settings UI (smoke)', () => {
 
     await expect(page.locator('#budget-redesign-comparison')).toContainText('/');
     await expect(page.locator('#budget-redesign-comparison')).toContainText('kWh');
-    await expect(page.locator('#budget-plan-summary')).toContainText('to spare now');
+    await expect(page.locator('#budget-plan-summary')).toContainText("left in today's budget");
     await expect(page.locator('#budget-plan-summary')).toContainText('Managed');
     await expect(page.locator('#budget-plan-summary')).toContainText('Background');
     await expect(page.locator('#budget-redesign-chart')).toBeVisible();
@@ -175,16 +175,16 @@ test.describe('Settings UI (smoke)', () => {
     await page.getByRole('button', { name: 'Tomorrow' }).click();
     await expect(page.locator('#budget-redesign-comparison')).toContainText('kWh');
     await expect(page.locator('#budget-plan-summary .plan-hero__decision')).toContainText('Most planned use');
-    await expect(page.locator('#budget-plan-summary .plan-hero__subline')).not.toContainText('to spare now');
+    await expect(page.locator('#budget-plan-summary .plan-hero__subline')).not.toContainText("left in today's budget");
 
     await page.getByRole('button', { name: 'Yesterday' }).click();
     await expect(page.locator('#budget-redesign-comparison')).toContainText('kWh');
-    await expect(page.locator('#budget-plan-summary')).not.toContainText('to spare now');
+    await expect(page.locator('#budget-plan-summary')).not.toContainText("left in today's budget");
 
     await page.getByRole('button', { name: 'Adjust', exact: true }).click();
     await expect(page.locator('#budget-redesign-adjust-view')).toBeVisible();
     await expect(page.locator('#budget-redesign-adjust-view')).toContainText('Daily energy');
-    await expect(page.locator('#budget-redesign-adjust-view')).toContainText('Planning behavior');
+    await expect(page.locator('#budget-redesign-adjust-view')).toContainText('Budget shaping');
     await expect(page.locator('#budget-redesign-adjust-view')).toContainText('Current limits');
 
     await expect(page.getByRole('button', { name: 'Preview changes' })).toHaveCount(0);

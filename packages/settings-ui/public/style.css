@@ -3869,6 +3869,26 @@ details[open] > summary .disclosure-chevron {
   }
 }
 
+/* Optional dual-label support: when a segmented option provides both a full
+ * `--full` label and a `--short` abbreviation, show the full label at
+ * comfortable widths and swap to the abbreviation at ≤360 px where the full
+ * word ("Yesterday", "Tomorrow") would otherwise wrap mid-word. The button's
+ * accessible name comes from `aria-label` so screen readers always speak the
+ * full word; both visible spans are `aria-hidden="true"`. */
+.segmented__option-label--short {
+  display: none;
+}
+
+@media (max-width: 360px) {
+  .segmented__option-label--full {
+    display: none;
+  }
+
+  .segmented__option-label--short {
+    display: inline;
+  }
+}
+
 .detail-mode-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 80px;
@@ -4409,11 +4429,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 .budget-comparison__legend-swatch--managed {
   background: var(--day-view-color-managed-usage);
-}
-
-.budget-redesign-comparison {
-  --pels-chart-price-line: var(--color-role-danger);
-  --pels-chart-price-fill: color-mix(in srgb, var(--color-role-danger) 14%, transparent);
 }
 
 .budget-comparison__legend-swatch--price {

@@ -430,7 +430,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
       missed-detail data plumbing.
 
-- [ ] Budget Plan: "On budget" Tomorrow pill has very low contrast.
+- [x] Budget Plan: "On budget" Tomorrow pill has very low contrast.
       Live-walk 2026-05-16 (`/tmp/pels-live-walk/02-budget-plan-tomorrow-480.png`)
       shows the "On budget" pill rendering as faint mint-green text on a faint
       mint-green background. Borderline legibility.
@@ -440,7 +440,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/public/style.css` (pill / chip tokens for the
       "good"/"on track" variant).
 
-- [ ] Day segmented control wraps mid-word at 320 px ("Yesterd / ay", "Tomorr / ow").
+- [x] Day segmented control wraps mid-word at 320 px ("Yesterd / ay", "Tomorr / ow").
       Live-walk 2026-05-16 (`/tmp/pels-live-walk/02-budget-plan-320.png`) shows the
       Yesterday/Today/Tomorrow segmented breaking mid-word at the documented narrow
       width. Same primitive as Plan/Adjust (which PR #816 fixed for those specific
@@ -452,7 +452,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       stacks the segments vertically — but does not wrap mid-word.
       Files: `packages/settings-ui/public/style.css`, `packages/settings-ui/src/ui/views/BudgetOverview.tsx`.
 
-- [ ] Budget Today: "kWh to spare now" vs "projected today" don't visibly reconcile.
+- [x] Budget Today: "kWh to spare now" vs "projected today" don't visibly reconcile.
       Live-walk 2026-05-16 (`/tmp/pels-live-walk/02-budget-plan-480.png`) shows
       "59.9 / 60.0 kWh" with sub-text "28.9 kWh to spare now". 28.9 + 59.9 ≠ 60, so a
       user trying to reason about the deltas can't trace where each number comes from.
@@ -1005,7 +1005,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       devices PELS is already allowed to lower." for the boost description; "When this charger is
       limited and then starts again, PELS climbs back up step by step." for the footer.
       Files: `packages/settings-ui/public/index.html`.
-- [ ] Reword "Managed devices ran above plan" budget-overflow line.
+- [x] Reword "Managed devices ran above plan" budget-overflow line.
       `packages/settings-ui/src/ui/budgetRedesign.ts:290` emits "Managed devices ran above plan —
       check device priorities." — "above plan" reads as planner-noun usage, the same pattern this
       pass is sweeping elsewhere. Suggest: "Managed devices used more than expected — check device
@@ -1083,7 +1083,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       card placeholders) and use it everywhere.
       Files: `packages/settings-ui/src/ui/views/*.tsx`,
       `packages/settings-ui/public/style.css`.
-- [ ] Sweep Budget panel for remaining planner-noun leakage and terminology drift.
+- [x] Sweep Budget panel for remaining planner-noun leakage and terminology drift.
       Two sibling sites still leak `plan` as a planner noun: `budgetRedesign.ts:245` emits
       "Cheaper-hour planning" (compare to the documented "Use cheaper hours" wording in the
       Adjust view and `docs/daily-budget.md`); `BudgetOverview.tsx:582` uses the section heading
@@ -1092,7 +1092,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/src/ui/budgetRedesign.ts`,
       `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
       `packages/shared-domain/src/**` (if helpers exist there).
-- [ ] Fix Budget chart legend color collision between Managed and Price series.
+- [x] Fix Budget chart legend color collision between Managed and Price series.
       `tokens.css:219, 224` both bind to `--color-role-warn` (orange). The two series are
       distinguishable only by shape (filled circle vs line), which is fragile at small swatch
       sizes. Reassign the Price series to a distinct semantic token (or extend the chart palette
@@ -2288,6 +2288,14 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `docs/plan-states.md`.
 
 ## P3 Future and Exploratory Work
+
+- [ ] Add Playwright assertion that the segmented short/full labels never co-render.
+      PR 3.2 introduced a dual-label pattern on `.segmented__option-label--full` /
+      `--short` toggled by `@media (max-width: 360px)`. If a future CSS regression
+      breaks the toggle, both spans could render concurrently. A 480 px probe
+      asserting `--short` width is 0, and a 320 px probe asserting `--full` width
+      is 0, would catch the dual-render regression.
+      Files: `packages/settings-ui/tests/e2e/`, `packages/settings-ui/public/style.css`.
 
 - [ ] Watch `position: fixed` behavior under the new `:root { filter }` counter-filter (PR #827, gemini-code-assist review).
       Applying `filter` to `:root` makes it the containing block for fixed-position descendants

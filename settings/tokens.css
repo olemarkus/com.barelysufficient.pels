@@ -59,6 +59,8 @@
   --color-base-accent-dark: #15803d;
   --color-base-accent-on: #0c1610;
   --color-base-good-default: #5eead4;
+  --color-base-good-soft: #a7f3d0;
+  --color-base-price-default: #c4b5fd;
   --color-base-danger-default: #ef4444;
   --color-base-danger-soft: #e57373;
   --color-base-danger-strong: #b91c1c;
@@ -99,6 +101,7 @@
   --color-semantic-info: var(--color-base-info-default);
   --color-state-positive-bg: color-mix(in srgb, var(--color-base-good-default) 14%, var(--color-surface-1));
   --color-state-positive-border: color-mix(in srgb, var(--color-base-good-default) 55%, var(--color-surface-3));
+  --color-state-positive-text: var(--color-base-good-soft);
   --color-state-negative-bg: color-mix(in srgb, var(--color-base-danger-default) 14%, var(--color-surface-1));
   --color-state-negative-border: var(--color-base-danger-strong);
   --color-state-negative-text: var(--color-base-danger-soft);
@@ -168,6 +171,8 @@
   --pels-shell-nav-tab-label-size: var(--font-size-sm);
   --pels-shell-nav-tab-label-size-compact: var(--font-size-xs);
   --pels-shell-nav-tab-label-weight: var(--font-weight-semibold);
+  --pels-chart-price-line: var(--color-base-price-default);
+  --pels-chart-price-fill: color-mix(in srgb, var(--color-base-price-default) 18%, transparent);
   --pels-chart-heatmap-border: var(--color-surface-1);
   --pels-chart-disabled-bar: var(--color-surface-4);
   --pels-chart-unreliable-cell: var(--color-surface-5);
@@ -178,10 +183,9 @@
   --chip-font-size: var(--font-size-xs);
   --chip-font-weight: var(--font-weight-semibold);
   --chip-line-height: var(--font-line-height-tight);
-  --color-state-positive-text: var(--color-role-good);
   --color-state-info-text: var(--color-role-info);
   --pels-status-good: var(--color-role-good);
-  --pels-status-on-good: var(--color-role-good);
+  --pels-status-on-good: var(--color-state-positive-text);
   --pels-status-good-container: var(--color-state-positive-bg);
   --pels-status-good-surface: var(--color-state-positive-bg);
   --pels-status-good-border: var(--color-state-positive-border);
@@ -221,8 +225,6 @@
   --pels-chart-warn: var(--color-role-warn);
   --pels-chart-danger: var(--color-role-danger);
   --pels-chart-forecast: var(--color-role-info);
-  --pels-chart-price-line: var(--color-role-warn);
-  --pels-chart-price-fill: color-mix(in srgb, var(--color-role-warn) 14%, transparent);
   --pels-chart-heatmap-low: var(--color-role-good);
   --pels-chart-heatmap-high: var(--color-role-danger);
   --pels-chart-current-border: var(--color-state-info-border);

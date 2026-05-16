@@ -242,17 +242,21 @@ const resolvePriceTagline = (
 ): string | null => {
   if (!payload || view === 'yesterday') return null;
   if (payload.budget.enabled !== true || payload.budget.priceShapingEnabled !== true) return null;
-  return isPriceReliable(payload) ? 'Cheaper-hour planning' : 'Cheaper-hour planning (price data unavailable)';
+  return isPriceReliable(payload) ? 'Using cheaper hours' : 'Using cheaper hours (price data unavailable)';
 };
 
 export const resolveHeadroomLine = (
   payload: DailyBudgetDayPayload,
   costDisplay: CostDisplay,
 ): string => {
+  // `remainingKWh = dailyBudgetKWh - usedNowKWh` (see
+  // `lib/dailyBudget/dailyBudgetState.ts`). The hero headline shows
+  // projected-vs-budget; this subline names *used* as the baseline so the two
+  // numbers don't read as if they should add up.
   const remaining = payload.state.remainingKWh;
   const status = Number.isFinite(remaining) && remaining < 0
-    ? `${formatKWh(Math.abs(remaining), 1)} over budget now`
-    : `${formatKWh(remaining, 1)} to spare now`;
+    ? `${formatKWh(Math.abs(remaining), 1)} over budget already used`
+    : `${formatKWh(remaining, 1)} left in today's budget`;
   const cost = computeEstimatedCost({ payload, view: 'today' });
   if (cost === null) return status;
   return `${status} · est. ${formatCost(cost, costDisplay)} today`;
@@ -286,8 +290,8 @@ const resolveTodayLine = (
       : 'PELS is shaping flexible use to stay within budget.';
   }
   return cause === 'background'
-    ? 'Background usage is above plan today.'
-    : 'Managed devices ran above plan — check device priorities.';
+    ? 'Background usage is higher than expected today.'
+    : 'Managed devices used more than expected — check device priorities.';
 };
 
 export const resolveDecisionLine = (

@@ -130,7 +130,7 @@ describe('resolveDecisionLine', () => {
       plannedUncontrolledKWh: Array.from({ length: 24 }, () => 1.5),
     });
     expect(resolveDecisionLine(payload, 'today', 'over'))
-      .toBe('Background usage is above plan today.');
+      .toBe('Background usage is higher than expected today.');
   });
 
   it('points at device priorities when over and managed-dominant', () => {
@@ -141,13 +141,13 @@ describe('resolveDecisionLine', () => {
       plannedUncontrolledKWh: Array.from({ length: 24 }, () => 1.5),
     });
     expect(resolveDecisionLine(payload, 'today', 'over'))
-      .toBe('Managed devices ran above plan — check device priorities.');
+      .toBe('Managed devices used more than expected — check device priorities.');
   });
 
   it('defaults to background-dominant copy when split arrays are missing', () => {
     const payload = buildPayload();
     expect(resolveDecisionLine(payload, 'today', 'over'))
-      .toBe('Background usage is above plan today.');
+      .toBe('Background usage is higher than expected today.');
   });
 
   it('summarises yesterday outcomes', () => {
@@ -325,15 +325,15 @@ describe('resolveDominantCause', () => {
 });
 
 describe('resolveHeadroomLine', () => {
-  it('frames positive remaining as energy to spare', () => {
+  it('frames positive remaining as energy left in the budget', () => {
     const payload = buildPayload({ remainingKWh: 7.7 });
-    expect(resolveHeadroomLine(payload, costDisplay)).toMatch(/^7\.7 kWh to spare now/);
+    expect(resolveHeadroomLine(payload, costDisplay)).toMatch(/^7\.7 kWh left in today's budget/);
   });
 
-  it('frames negative remaining as overdraw rather than negative spare energy', () => {
+  it('frames negative remaining as already-used overdraw', () => {
     const payload = buildPayload({ remainingKWh: -1.3 });
     expect(resolveHeadroomLine(payload, costDisplay))
-      .toMatch(/^1\.3 kWh over budget now/);
+      .toMatch(/^1\.3 kWh over budget already used/);
   });
 });
 

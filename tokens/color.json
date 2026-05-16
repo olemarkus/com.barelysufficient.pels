@@ -18,7 +18,11 @@
         "on": { "value": "#0c1610" }
       },
       "good": {
-        "default": { "value": "#5eead4" }
+        "default": { "value": "#5eead4" },
+        "soft": { "value": "#a7f3d0" }
+      },
+      "price": {
+        "default": { "value": "#c4b5fd" }
       },
       "danger": {
         "default": { "value": "#ef4444" },
@@ -73,7 +77,7 @@
       "positive": {
         "bg": { "value": "color-mix(in srgb, {color.base.good.default} 14%, {color.surface.1})" },
         "border": { "value": "color-mix(in srgb, {color.base.good.default} 55%, {color.surface.3})" },
-        "text": { "value": "{color.role.good}" }
+        "text": { "value": "{color.base.good.soft}" }
       },
       "negative": {
         "bg": { "value": "color-mix(in srgb, {color.base.danger.default} 14%, {color.surface.1})" },
@@ -102,7 +106,7 @@
   "pels": {
     "status": {
       "good": { "value": "{color.role.good}" },
-      "on-good": { "value": "{color.role.good}" },
+      "on-good": { "value": "{color.state.positive.text}" },
       "good-container": { "value": "{color.state.positive.bg}" },
       "good-surface": { "value": "{color.state.positive.bg}" },
       "good-border": { "value": "{color.state.positive.border}" },
