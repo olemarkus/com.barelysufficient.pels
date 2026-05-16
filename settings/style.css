@@ -1698,12 +1698,16 @@ md-primary-tab.tab[active]:hover {
 }
 
 /* Info-icon button anchored to the top-right of the chip row. The Material
-   icon-button state-layer fills the surrounding 36 px target. */
+   icon-button state-layer fills the touch target; the icon glyph stays at
+   20 px. Touch target follows the M3 minimum (`--pels-touch-target-min`,
+   48 px) — the previous 36 px state layer was below the project floor and
+   off-screen at 320 px because the surrounding overflow pushed it past the
+   viewport. */
 .plan-hero__info-button {
   flex: 0 0 auto;
   align-self: flex-start;
-  --md-icon-button-state-layer-height: 36px;
-  --md-icon-button-state-layer-width: 36px;
+  --md-icon-button-state-layer-height: var(--pels-touch-target-min);
+  --md-icon-button-state-layer-width: var(--pels-touch-target-min);
   --md-icon-button-icon-size: 20px;
   --md-icon-button-icon-color: var(--pels-text-secondary);
   --md-icon-button-hover-icon-color: var(--pels-text-primary);
@@ -2413,6 +2417,18 @@ md-primary-tab.tab[active]:hover {
   border-color: var(--accent);
 }
 
+/* 320 px viewport: an 11-step Easee / Zaptec charger renders 11 ampere
+ * labels ("Off · 6 A · 8 A · 10 A …"). Even with the SI-format spacing
+ * ("6 A" instead of "6a") the labels collide and the right-most entries
+ * push beyond the card. Hiding the intermediate labels keeps the endpoint
+ * markers visible while the active-step dot stays prominently marked on
+ * the rail. */
+@media (max-width: 360px) {
+  .plan-card__step-label:not(:first-child):not(:last-child) {
+    display: none;
+  }
+}
+
 @media (max-width: 480px) {
   .tabs {
     gap: 4px;
@@ -2494,19 +2510,37 @@ md-primary-tab.tab[active]:hover {
   }
 }
 
-/* Narrow breakpoint: keep all five destinations on one row at ~320px.
-   Tightens padding and shrinks label size so labels truncate cleanly via
-   existing ellipsis on `.tab`. Touch target height stays at 48px via tokens. */
+/* Narrow breakpoint: keep all five destinations on one row at ~320 px.
+   Tightens padding, shrinks label size, and allows "Smart tasks" to wrap to
+   two lines so the full label remains visible instead of ellipsis-truncating
+   to "Smart task…". The growing tab height is absorbed by the surrounding
+   header — touch target stays ≥ 48 px via the tab container token. */
 @media (max-width: 360px) {
   #shell-nav[data-shell-nav-compact] {
     gap: 0;
     padding: 2px;
+    /* Allow the bar to stretch when the two-line "Smart tasks" label grows
+     * the row height — capping at the tab height would re-trigger clipping. */
+    --md-primary-tab-container-height: auto;
+    --pels-shell-nav-tab-height-compact: auto;
   }
 
   #shell-nav[data-shell-nav-compact] .tab {
     padding-inline: 4px;
+    padding-block: var(--spacing-1);
     font-size: var(--font-size-xs);
     letter-spacing: -0.01em;
+    /* Two-line wrap fits "Smart tasks" without truncation; keeps the full
+     * label legible and the touch target ≥ 48 px (the row height grows to
+     * accommodate the wrapped label). */
+    white-space: normal;
+    word-break: keep-all;
+    overflow: visible;
+    overflow-wrap: normal;
+    text-overflow: clip;
+    line-height: var(--font-line-height-tight);
+    min-height: var(--pels-touch-target-min);
+    height: auto;
   }
 
   #shell-nav[data-shell-nav-compact] > md-primary-tab:not(:last-child) {
@@ -3583,7 +3617,15 @@ details[open] > summary .disclosure-chevron {
    qualifier so they sit on the same specificity tier as the selected rule. */
 .segmented .segmented__option {
   flex: 1 1 0;
-  min-width: 0;
+  /* Reserve enough room for the longest segmented label in the app
+   * ("Conservative", 12 chars @ font-size-sm ≈ 88px) so the budget
+   * Background-usage-reserve control doesn't wrap mid-word inside the 480 px
+   * dialog. The button still shrinks to fit when its container can't satisfy
+   * the request — the flex container clips, but the label stays whole rather
+   * than breaking like `Conservati|ve`. The narrow-viewport override below
+   * relaxes this floor at 320 px where 3 options × 96 px would push the
+   * container past the viewport. */
+  min-width: 96px;
   min-height: var(--pels-touch-target-min);
   appearance: none;
   border: 0;
@@ -3596,7 +3638,12 @@ details[open] > summary .disclosure-chevron {
   cursor: pointer;
   text-align: center;
   white-space: normal;
-  overflow-wrap: anywhere;
+  /* `break-word` only inserts a break when no other opportunity exists, so
+   * "Conservative" stays on a single line instead of breaking after the
+   * second `i`. The earlier `anywhere` value caused mid-word breaks at
+   * narrow widths. */
+  overflow-wrap: break-word;
+  word-break: normal;
   line-height: var(--font-line-height-tight);
   transition: background var(--transition-fast), color var(--transition-fast);
 }
@@ -3629,6 +3676,16 @@ details[open] > summary .disclosure-chevron {
 
 .segmented .segmented__option[hidden] {
   display: none;
+}
+
+/* At 320 px the 96 px per-option floor would push a 3-option control past
+ * the viewport (3 × 96 + 2 px gap = 290 px > available column). Relax the
+ * floor so the buttons can shrink to fit the container while keeping the
+ * 48 px touch target and break-word wrap protection. */
+@media (max-width: 360px) {
+  .segmented .segmented__option {
+    min-width: 0;
+  }
 }
 
 .detail-mode-row {
@@ -4081,26 +4138,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   min-width: 0;
 }
 
-/* Stacked variant: short option sets (2-3 values) render as a full-width
-   segmented control under the label, giving the selected state clear contrast
-   and a predictable hit area at 480px / 320px webviews. */
-.budget-setting-row--stacked {
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--spacing-2);
-  align-items: start;
-}
-
-.budget-setting-row--stacked > span:first-child {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-1);
-  min-width: 0;
-}
-
-.budget-setting-row--stacked > .segmented {
-  width: 100%;
-}
-
 @media (max-width: 380px) {
   #budget-redesign-adjust-view .budget-setting-row--editable {
     grid-template-columns: minmax(0, 1fr);
@@ -4248,6 +4285,31 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 .budget-setting-row > span:first-child {
   min-width: 0;
+}
+
+/* Stacked variant: short option sets (2-3 values) render as a full-width
+ * segmented control under the label, giving the selected state clear contrast
+ * and a predictable hit area at 480 px / 320 px webviews. These rules live
+ * after the base `.budget-setting-row` declarations on purpose — the stacked
+ * grid template must override the two-column base, so source order matters
+ * (the modifier selector tier matches the base, so the cascade resolves on
+ * order alone). The "Conservative" segmented option used to wrap mid-word
+ * inside the 480 px dialog when the base layout won and squeezed the toggle. */
+.budget-setting-row--stacked {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--spacing-2);
+  align-items: start;
+}
+
+.budget-setting-row--stacked > span:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.budget-setting-row--stacked > .segmented {
+  width: 100%;
 }
 
 .budget-setting-row__label {
@@ -5339,7 +5401,12 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   padding: var(--spacing-3) var(--spacing-1) var(--spacing-1);
 }
 
-@media (max-width: 380px) {
+/* Drop the stat font earlier than the original 380 px breakpoint — the Homey
+ * settings dialog is 480 px and two-digit kWh totals ("1642.1 kWh") overflow
+ * the 124 px column and ellipsis-truncate before the original media query
+ * fires. Tighten to ≤ 480 px so the smaller font carries the dialog's actual
+ * width. */
+@media (max-width: 480px) {
   .usage-hero__stats {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--spacing-1);
@@ -5716,19 +5783,35 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   background: var(--color-surface-2);
 }
 
+/* Modes panel inline-actions: text field on its own row, the Add / Delete /
+ * Rename buttons share the row below. At 480 px the four-column variant
+ * shrinks the input below its 13-char placeholder ("New mode name") and
+ * clips the trailing characters; the stacked layout keeps the input wide
+ * enough for the full placeholder to render. */
 #modes-panel .inline-actions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) repeat(3, auto);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--spacing-2);
   margin-top: var(--spacing-1);
 }
 
 #modes-panel .inline-actions md-filled-text-field {
   min-width: 0;
+  grid-column: 1 / -1;
+}
+
+#modes-panel .inline-actions .btn {
+  min-width: 0;
+  width: 100%;
+  padding-inline: var(--spacing-2);
 }
 
 #modes-panel .mode-row {
-  grid-template-columns: auto minmax(0, 1fr) minmax(80px, 96px) auto;
+  /* Temperature column: 96–112 px. The 80 px minimum used to clip the
+   * spinner buttons of a Material number field so a two-digit value (`65°C`)
+   * rendered as `6` plus an arrow. 96 px keeps the digits + spinner visible
+   * at 480 px without forcing a wider total row. */
+  grid-template-columns: auto minmax(0, 1fr) minmax(96px, 112px) auto;
   gap: var(--spacing-3);
   padding: var(--spacing-3);
   border: 1px solid var(--panel-border);
@@ -5781,12 +5864,11 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
 }
 
-#device-detail-panel .segmented__option {
-  min-height: 48px;
-  line-height: var(--font-line-height-tight);
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
+/* The `#device-detail-panel .segmented__option` override block was removed:
+ * its `min-height`, `line-height`, `white-space`, `overflow-wrap`, and
+ * `word-break` declarations duplicated the base `.segmented .segmented__option`
+ * rule above. The base now carries the `break-word` + 96 px `min-width` floor
+ * needed for the slide-over panel as well. */
 
 #device-detail-panel :where(
   .detail-mode-row,

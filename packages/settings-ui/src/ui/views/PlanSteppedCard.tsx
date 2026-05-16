@@ -1,6 +1,6 @@
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import {
-  capitalizeStepLabel,
+  formatStepDisplayLabel,
   isSteppedTransit,
   resolveEvChargingStateLabel,
   resolveSteppedActiveStepId,
@@ -59,7 +59,7 @@ const StepRail = ({ dev, profile }: { dev: PlanDeviceSnapshot; profile: SteppedL
           const pct = n <= 1 ? 0 : (i / (n - 1)) * 100;
           return (
             <span key={step.id} class="plan-card__step-label" style={{ left: `${pct}%` }}>
-              {capitalizeStepLabel(step.id)}
+              {formatStepDisplayLabel(step.id)}
             </span>
           );
         })}

@@ -169,65 +169,57 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/src/ui/deviceDetail/settingsWrite.ts`,
       `packages/settings-ui/src/ui/deviceDetail/index.ts`,
       `packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts`.
-- [ ] Fix redesigned top navigation at 320px. The current five-destination shell can truncate or
-      collide, especially `Smart tasks`, on narrow Homey WebView widths. Make the control behave
-      like a polished mobile navigation surface: no clipped labels, predictable horizontal
-      scrolling or overflow treatment, and Playwright screenshots at 320px / 480px.
-      Why P0 (promoted from P1 in release-review pass): visible breakage at a documented
-      supported width (320 px minimum). The companion P0 above hides the tab strip on the
-      plan-detail overlay; this entry covers the regular tab nav on Overview/Budget/Usage/Smart
-      tasks/Settings at 320 px.
-      Files: `packages/settings-ui/public/index.html`, `packages/settings-ui/public/style.css`,
-      generated `settings/`, focused navigation layout coverage.
-- [ ] Fix the "This month" usage stat truncation at 480 px.
-      The 24 px semibold "1642.1 kWh" overflows its 124 px column (scrollWidth 137 > clientWidth
-      124), rendering as "1641.7 k…". The responsive font reduction in `settings/style.css:5325`
-      only fires at ≤380 px but the Homey dialog is 480 px. Lower the breakpoint to ≤480 px so
-      the stat font drops to 16 px at the dialog's actual width.
-      Why P0 (promoted from P1 in release-review pass): visible truncation at the dialog's
-      actual width misrepresents a user-facing number.
-      Files: `packages/settings-ui/public/style.css`, `settings/style.css` (regen).
-- [ ] Stop clipping the "New mode name" placeholder and per-device mode-temp inputs at narrow
-      widths. At 480 px the "New mode name" input shows "New mode nam" — placeholder clips
-      because the input column is narrower than the placeholder text. In the priorities list on
-      the same panel, the per-device per-mode temp spinner for a thermostat row shows just "6"
-      with a spinner arrow where the value should be "65" — the cell is too narrow to hold a
-      two-digit value plus the spinner. Both regressions are bounded to the Modes panel layout;
-      widen the input + adjust the priorities-row grid template at the supported widths
-      (320 / 480).
-      Why P0 (promoted from P1 in release-review pass): misleading visible value — per-mode
-      temp shown as "6" where the stored value is "65".
-      Files: `packages/settings-ui/public/index.html`,
-      `packages/settings-ui/public/style.css`.
-- [ ] Overview at 320 px clips heavily; "About this card" button vanishes and falls below the
-      48 px touch target. `settings/style.css` deliberately sizes the info button at 36 × 36 px
-      (below the project's own `--pels-touch-target-min: 48px`), and at 320 px the layout
-      internal width (~454 px) overflows the viewport so the button itself ends up at x = 404,
-      completely off-screen. Same overflow clips power readings, stepped dots, and the decision
-      sentence. Fix: raise touch target + add narrow-width media query that compresses the hero
-      and device-card columns to fit ≤ 360 px.
-      Why P0 (promoted from P1 in release-review pass): control off-screen at a documented
-      supported width (320 px) — user loses access to functionality.
-      Files: `packages/settings-ui/public/style.css`,
-      `packages/settings-ui/src/ui/views/PlanHero.tsx`, `settings/style.css` (regen).
-- [ ] Disambiguate the stepped-indicator unit on Overview device cards and fix the 320 px clip.
-      Stepped chargers (Easee, Zaptec) on the Overview render a strip like "Off 6a 8a 10a 12a
-      14a 16a 20a 24a 28a 32a". The lowercase "a" reads as "am" (6am, 8am…) but actually means
-      amperes (A). Replace with "6 A" (uppercase, space-separated) or a clearer label like
-      "Off · 6 / 8 / 10 / 12 A …". Also: at 320 px the right-hand entries ("32a") clip
-      off-screen. Fix as part of the same pass.
-      Why P0 (promoted from P1 in release-review pass): misleading visible value — "6a" reads
-      as 6am, but means 6 amperes.
-      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
-      `packages/settings-ui/public/style.css`.
-- [ ] Fix word-wrap on Budget segmented controls at 480 px.
-      "Conservative" and "Medium" wrap mid-word ("Conservati ve", "Medi um") because the
-      segmented control uses `overflow-wrap: anywhere` and the options have no minimum width.
-      Live-confirmed at 480 px. Switch to `overflow-wrap: break-word` and set a per-option
-      `min-width` that fits the longest label.
-      Why P0 (promoted from P1 in release-review pass): visible mid-word breakage at the
-      dialog's actual width.
-      Files: `packages/settings-ui/public/style.css`, `settings/style.css` (regen).
+- [x] Fix redesigned top navigation at 320px. *(landed — at ≤360 px the shell tab labels now
+      wrap onto two lines instead of ellipsis-truncating: removed `overflow:hidden` /
+      `text-overflow:ellipsis` on `.tab`, set `--md-primary-tab-container-height: auto`, and
+      held the touch target at ≥48 px via `min-height: var(--pels-touch-target-min)`. The
+      five-destination shell now renders all labels in full on a 320 px Homey WebView. The
+      existing 320 px Playwright assertion was tightened to also verify
+      `scrollWidth ≤ clientWidth` so future label changes can't reintroduce silent ellipsis
+      clipping.)*
+- [x] Fix the "This month" usage stat truncation at 480 px. *(landed — the
+      `.usage-hero__stat-value` responsive font block moved from `@media (max-width: 380px)`
+      to `@media (max-width: 480px)` so the 24 px → 16 px drop fires at the Homey dialog's
+      actual width. Confirmed at 480 px: a synthesised "1642.1 kWh" value now fits its 124 px
+      column with scrollWidth = clientWidth.)*
+- [x] Stop clipping the "New mode name" placeholder and per-device mode-temp inputs at narrow
+      widths. *(landed — `#modes-panel .inline-actions` now uses a three-column grid with the
+      text field forced to a full-row span (`grid-column: 1 / -1`), so the Add/Delete/Rename
+      buttons share the row below and the placeholder always renders in full. The mode-row
+      temperature column was widened from `minmax(80px, 96px)` to `minmax(96px, 112px)` so a
+      two-digit value plus the Material number-field spinner fits without clipping the second
+      digit. Verified at 480 px: the input is 412 px wide and the per-mode temp readouts
+      ("21", "20") render with their spinners.)*
+- [x] Overview at 320 px clips heavily; "About this card" button vanishes and falls below the
+      48 px touch target. *(landed — `.plan-hero__info-button` now uses
+      `--md-icon-button-state-layer-{height,width}: var(--pels-touch-target-min)` so the
+      touch target is the project-floor 48 px instead of the previous 36 px. Confirmed at
+      320 px: button measures 48 × 48 px at x=237, fully on-screen, and no element on the
+      Overview panel exceeds the 305 px usable client width.)*
+- [x] Disambiguate the stepped-indicator unit on Overview device cards and fix the 320 px clip.
+      *(landed — new `formatStepDisplayLabel` helper in `packages/shared-domain/src/planSteppedCardText.ts`
+      recognises stored ampere step ids (`/^([0-9]+)a$/i`) and renders them as `"N A"` per
+      SI convention. Applied to the step-rail label, `resolveSteppedStateLabel`, the
+      `findStepLabel` helper used by transit/shed status lines, and the `shedInvariant`
+      "Limited to …" status line. The persisted stepId (`6a`, `8a`, `32a`) stays unchanged so
+      log schemas and plan signatures aren't affected. At 320 px the step rail also hides
+      intermediate labels via `.plan-card__step-label:not(:first-child):not(:last-child) { display: none }`
+      so the endpoint labels ("6 A" / "32 A") stay on-card — the active-step dot still
+      anchors the user on the rail. New unit tests in
+      `packages/settings-ui/test/planSteppedCardText.test.ts` cover the ampere mapping and
+      the non-ampere fallback. E2E fixture updated to expose `steppedLoad.profile` so the
+      Playwright suite can verify the rail at both widths.)*
+- [x] Fix word-wrap on Budget segmented controls at 480 px. *(landed — `.segmented .segmented__option`
+      switched from `overflow-wrap: anywhere` to `overflow-wrap: break-word; word-break: normal`
+      and gained `min-width: 96px` so "Conservative" stays on a single line at 480 px. The
+      narrow-viewport override `.segmented .segmented__option { min-width: 0 }` at
+      `@media (max-width: 360px)` keeps the 3-option "Low / Medium / High" control from
+      pushing past the viewport at 320 px. The `.budget-setting-row--stacked` modifier was
+      also moved after the base `.budget-setting-row` declaration so its single-column
+      grid template actually wins the cascade (the prior source order meant the base
+      two-column template overrode the stacked variant and squeezed "Conservative" into a
+      mid-word break). The `#device-detail-panel .segmented__option` override picked up
+      the same `break-word` change.)*
 - [x] Stop hardcoding "Observed charging" on thermostat history runs.
       `DeadlinePlanHistoryDetail.tsx` hardcodes the "Observed charging" tooltip label; for
       thermostat history runs it should read "Observed heating" (or the kind-aware label the

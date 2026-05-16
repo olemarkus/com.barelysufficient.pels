@@ -285,6 +285,31 @@
           binaryCommandPending: false,
           reason: { code: 'headroom_cooldown', remainingSec: 45, countdownStartedAtMs: Date.now() - 15000 },
           shedAction: 'set_step',
+          // `steppedLoad` mirrors the runtime SettingsUiPlanSteppedLoadState
+          // shape so the plan card renders the StepRail. Profile values match
+          // a real Zaptec Go (6 A–32 A, plus a synthesized `off` step inserted
+          // by the rail when missing); this is the long-tail rail the 320 px
+          // overflow + ampere-label regressions show up on.
+          steppedLoad: {
+            profile: {
+              model: 'stepped_load',
+              steps: [
+                { id: '6a', planningPowerW: 1380 },
+                { id: '8a', planningPowerW: 1840 },
+                { id: '10a', planningPowerW: 2300 },
+                { id: '12a', planningPowerW: 2760 },
+                { id: '14a', planningPowerW: 3220 },
+                { id: '16a', planningPowerW: 3680 },
+                { id: '20a', planningPowerW: 4600 },
+                { id: '24a', planningPowerW: 5520 },
+                { id: '28a', planningPowerW: 6440 },
+                { id: '32a', planningPowerW: 7360 },
+              ],
+            },
+            reportedStepId: '6a',
+            targetStepId: '6a',
+            commandPending: false,
+          },
         },
         {
           id: 'dev_connected300',
@@ -316,6 +341,19 @@
             swapTargetName: null,
           },
           shedAction: 'set_step',
+          steppedLoad: {
+            profile: {
+              model: 'stepped_load',
+              steps: [
+                { id: 'low', planningPowerW: 750 },
+                { id: 'medium', planningPowerW: 1500 },
+                { id: 'high', planningPowerW: 2000 },
+              ],
+            },
+            reportedStepId: 'low',
+            targetStepId: 'low',
+            commandPending: false,
+          },
         },
         {
           id: 'dev_evcharger',

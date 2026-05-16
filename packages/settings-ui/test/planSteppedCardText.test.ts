@@ -1,4 +1,5 @@
 import {
+  formatStepDisplayLabel,
   isSteppedTransit,
   resolveSteppedActiveStepId,
   resolveSteppedChip,
@@ -71,6 +72,44 @@ describe('resolveSteppedStateLabel', () => {
     expect(resolveSteppedStateLabel({
       ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ reportedStepId: 'max' }),
     })).toBe('Level: Max');
+  });
+
+  it('renders ampere step ids in SI form ("6 A", not "6a")', () => {
+    expect(resolveSteppedStateLabel({
+      ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ reportedStepId: '6a' }),
+    })).toBe('Level: 6 A');
+    expect(resolveSteppedStateLabel({
+      ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ reportedStepId: '32a' }),
+    })).toBe('Level: 32 A');
+  });
+});
+
+describe('formatStepDisplayLabel', () => {
+  it('formats ampere step ids as "N A" so they cannot read as "6 am"', () => {
+    expect(formatStepDisplayLabel('6a')).toBe('6 A');
+    expect(formatStepDisplayLabel('16a')).toBe('16 A');
+    expect(formatStepDisplayLabel('32a')).toBe('32 A');
+  });
+
+  it('also accepts an already-uppercase ampere suffix', () => {
+    expect(formatStepDisplayLabel('6A')).toBe('6 A');
+  });
+
+  it('capitalizes non-ampere step ids', () => {
+    expect(formatStepDisplayLabel('off')).toBe('Off');
+    expect(formatStepDisplayLabel('low')).toBe('Low');
+    expect(formatStepDisplayLabel('medium')).toBe('Medium');
+    expect(formatStepDisplayLabel('high')).toBe('High');
+  });
+
+  it('leaves bare numeric ids alone (no ampere suffix → no unit)', () => {
+    expect(formatStepDisplayLabel('1')).toBe('1');
+    expect(formatStepDisplayLabel('100')).toBe('100');
+  });
+
+  it('returns empty string for empty input', () => {
+    expect(formatStepDisplayLabel('')).toBe('');
+    expect(formatStepDisplayLabel('   ')).toBe('');
   });
 });
 
