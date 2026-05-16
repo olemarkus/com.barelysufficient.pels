@@ -343,6 +343,57 @@ describe('EV charger integration', () => {
     }));
   });
 
+  // EV that PELS only ever touches via the smart task (Power-limit control off, no normal
+  // capacity admission). Two complementary tests below cover the active-deadline
+  // resume/pause cycle — SoC stays below target in both so the diagnostic never reaches
+  // `satisfied`, exercising the cap-off planned/idle paths (not the terminal-pause path
+  // covered further down).
+  it('resumes a paused cap-off charger during a planned deadline bucket', async () => {
+    currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
+    const charger = new EaseeMockCharger({ loadW: 7200 });
+    await charger.seedState('plugged_in_paused', { socPercent: 35 });
+    const app = await createEvApp(charger, [charger], {
+      evDeadlinePricesByRelativeHour: [1, 100, 100, 100],
+      controllableOverrides: { [charger.idValue]: false },
+    });
+
+    const plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
+    const evPlan = getPlanEntry(plan, charger.idValue);
+
+    expect(evPlan.deferredEvCommandIntent).toBe('ev_resume');
+    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:true']);
+    expect(charger.commandLog.every((entry) => entry.capabilityId === 'evcharger_charging')).toBe(true);
+
+    const snapshot = await refreshSnapshot(app);
+    expect(getSnapshotEntry(snapshot, charger.idValue)).toEqual(expect.objectContaining({
+      currentOn: true,
+      evChargingState: 'plugged_in_charging',
+    }));
+  });
+
+  it('pauses a charging cap-off charger during an idle deadline bucket', async () => {
+    currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
+    const charger = new EaseeMockCharger();
+    await charger.seedState('plugged_in_charging');
+    const app = await createEvApp(charger, [charger], {
+      evDeadlinePricesByRelativeHour: [100, 1, 1, 1],
+      controllableOverrides: { [charger.idValue]: false },
+    });
+
+    const plan = await rebuildPlan(app, { totalPowerKw: 7.2, softLimitKw: 10.0 });
+    const evPlan = getPlanEntry(plan, charger.idValue);
+
+    expect(evPlan.deferredEvCommandIntent).toBe('ev_pause');
+    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:false']);
+    expect(charger.commandLog.every((entry) => entry.capabilityId === 'evcharger_charging')).toBe(true);
+
+    const snapshot = await refreshSnapshot(app);
+    expect(getSnapshotEntry(snapshot, charger.idValue)).toEqual(expect.objectContaining({
+      currentOn: true,
+      evChargingState: 'plugged_in_paused',
+    }));
+  });
+
   // Note's "EV Semantics" §"Power-limit control off": meeting the deadline target removes the
   // deferred-objective allowance and PELS should pause the charger. Without a terminal pause,
   // a cap-off charger would keep running past the user's target.
