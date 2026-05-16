@@ -174,6 +174,8 @@ The deadline-plan surface (the per-device plan view that schedules charging or h
 
 Rule: a temperature device must never render the words *charge*, *charging*, or *EV* in user-facing text. Pull every label from `deadlineLabels(kind)` rather than hardcoding strings.
 
+**Pending review (2026-05-15):** The `queued` label implies a task queue that does not exist — the semantics are "plan ready, first hour > now" (i.e. *scheduled for later*). Active-hero chip is also redundant with the headline ("Heating from HH:MM" already conveys "queued"). See TODO `Smart task chip "Queued" is redundant on the hero and misleading on list cards`. Expected outcome: drop the live-state chip from the active hero entirely; rename the list-card label from `Queued` to `Scheduled` (kind-specific variants `Heat scheduled` / `Charge scheduled` if needed for parallelism).
+
 ### "Plan" vs "deadline" on smart-task surfaces
 
 The general rule (see [feedback_terminology_plan_vs_deadline](../../.claude/projects/-home-olemarkus-dev-pels/memory/feedback_terminology_plan_vs_deadline.md)) reserves *plan* for the planning layer and asks smart-task surfaces to prefer *deadline* / *objective* / *smart task*. The rule applies to lifecycle and identity language ("set a deadline", "smart task ended"). For surface labels, prefer non-plan terminology — e.g., the smart-task inputs card is titled "Smart task inputs" rather than "Plan inputs".
