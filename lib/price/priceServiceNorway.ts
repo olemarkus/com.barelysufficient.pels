@@ -220,19 +220,21 @@ export const buildCombinedHourlyPricesNorway = (params: {
 
     if (norgesprisEnabled) {
       const isHistoricalHour = Number.isFinite(startsAtMs) && startsAtMs < currentHourStartMs;
+      const remainingNorgesprisKwh = getRemainingCap({
+        remainingByMonth: remainingNorgesprisCapByMonth,
+        monthKey,
+        monthlyCapKwh,
+      });
+      const eligibleShare = remainingNorgesprisKwh <= 0
+        ? 0
+        : Math.min(1, remainingNorgesprisKwh / validHourlyUsageEstimateKwh);
+      norgesprisAdjustment = (norgesprisTargetIncVat - spotPriceIncVat) * eligibleShare;
+      norgesprisAdjustmentExVat = norgesprisAdjustment / vatMultiplier;
+      totalPrice += norgesprisAdjustment;
+      // Past hours display the fixed-price model but do not consume the forward-looking cap
+      // estimate; only current and future hours decrement remaining cap eligibility.
       if (!isHistoricalHour) {
-        const remainingNorgesprisKwh = getRemainingCap({
-          remainingByMonth: remainingNorgesprisCapByMonth,
-          monthKey,
-          monthlyCapKwh,
-        });
-        const eligibleShare = remainingNorgesprisKwh <= 0
-          ? 0
-          : Math.min(1, remainingNorgesprisKwh / validHourlyUsageEstimateKwh);
         const updatedRemainingNorgesprisKwh = Math.max(0, remainingNorgesprisKwh - validHourlyUsageEstimateKwh);
-        norgesprisAdjustment = (norgesprisTargetIncVat - spotPriceIncVat) * eligibleShare;
-        norgesprisAdjustmentExVat = norgesprisAdjustment / vatMultiplier;
-        totalPrice += norgesprisAdjustment;
         remainingNorgesprisCapByMonth.set(monthKey, updatedRemainingNorgesprisKwh);
       }
     } else {
