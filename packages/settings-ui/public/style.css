@@ -3620,8 +3620,17 @@ details[open] > summary .disclosure-chevron {
    above any host rule. Captured Homey host CSS lives under
    `packages/settings-ui/test/fixtures/homey-wrap/homey-host-base.css` so the
    `PELS_E2E_SIMULATE_HOMEY=light|dark` static-server mode reproduces the
-   cascade locally; without that fixture the bug was invisible until deploy. */
-.segmented button.segmented__option.segmented__option {
+   cascade locally; without that fixture the bug was invisible until deploy.
+
+   Update 2026-05-16: the base (inactive) rule needs (0,4,1) — not (0,3,1) —
+   because Homey's `_base.css` actually loads AFTER PELS's `style.css` in the
+   live iframe, so a (0,3,1) tie goes to Homey. (The fixture initially
+   simulated the opposite order, hiding the bug locally; that's now fixed
+   in `static-server.mjs`.) Hover / focus-visible / disabled / selected
+   variants below pick up an extra pseudo-class or attribute and sit at
+   (0,4,1)+ comfortably; only this base rule needs the extra `.segmented__option`
+   duplicate. */
+.segmented button.segmented__option.segmented__option.segmented__option {
   flex: 1 1 0;
   /* Reserve enough room for the longest segmented label in the app
    * ("Conservative", 12 chars @ font-size-sm ≈ 88px) so the budget

@@ -15,8 +15,12 @@
  *     rule that paints all `<button>` elements with `background-color:#e7e7e7`
  *     unless PELS reaches higher specificity. Captured copies under
  *     `homey-host-base.css` / `homey-host-button.css` are injected into the
- *     served PELS `index.html` BEFORE PELS's own `style.css` so the cascade
- *     order matches the real Homey shell.
+ *     served PELS `index.html` AFTER PELS's own `style.css` — verified
+ *     2026-05-16 against live my.homey.app DevTools, where Homey's host CSS
+ *     consistently won cascade ties because it loaded after PELS's. Mirroring
+ *     the production order locally means a PELS rule at tied specificity will
+ *     lose in the simulator, surfacing the bug at dev time instead of after
+ *     deploy.
  *
  *     When unset, the server serves PELS directly at `/` and behavior matches
  *     what it has always been (no Homey host CSS injected).
@@ -144,11 +148,12 @@ const resolveHomeyHostCss = (pathname) => {
   return path.join(HOMEY_WRAP_FIXTURE_DIR, fixture);
 };
 
-// Build the `<link>` tags injected into the PELS iframe `<head>` before
-// PELS's own stylesheets so the host rules sit lower in the cascade — exactly
-// where Homey places them in production. Indentation is applied at injection
-// time from the whitespace captured in front of the original `./style.css`
-// link, so the injected block matches the surrounding HTML formatting.
+// Build the `<link>` tags injected into the PELS iframe `<head>` AFTER PELS's
+// own stylesheets so the host rules win cascade ties — exactly where Homey
+// places them in production (verified 2026-05-16 against live my.homey.app
+// DevTools). Indentation is applied at injection time from the whitespace
+// captured in front of the original `./style.css` link, so the injected
+// block matches the surrounding HTML formatting.
 const HOMEY_HOST_CSS_LINKS = [...HOMEY_HOST_CSS_FILES.keys()]
   .map((name) => `<link rel="stylesheet" href="${HOMEY_HOST_CSS_PREFIX}${name}">`);
 
@@ -251,11 +256,14 @@ const main = async () => {
 
       const contentType = CONTENT_TYPES.get(path.extname(fsPath).toLowerCase()) ?? 'application/octet-stream';
       // When the Homey wrap is active, inject the captured host stylesheets
-      // into the PELS iframe document's <head> before its own `./style.css`
-      // link. Matches the real Homey load order — `_base.css` ships a default
-      // `<button>` rule that competes with PELS's segmented-control selectors
-      // in the cascade. Without this injection the local fixture would render
-      // PELS-correct, masking specificity bugs that only surface in production.
+      // into the PELS iframe document's <head> AFTER its own `./style.css`
+      // link. Matches the real Homey load order — verified 2026-05-16 against
+      // live my.homey.app DevTools (cascade winner was Homey's `_base.css`
+      // button rule, beating PELS's tied-specificity rule because Homey loads
+      // later). `_base.css` ships a default `<button>` rule that competes with
+      // PELS's segmented-control selectors. Without this injection — or with
+      // the wrong order — the local fixture would render PELS-correct and
+      // mask specificity bugs that only surface in production.
       if (
         SIMULATE_HOMEY_MODE
         && contentType.startsWith('text/html')
@@ -265,7 +273,7 @@ const main = async () => {
         const injected = html.replace(
           /(\s*)(<link\s+rel=["']stylesheet["']\s+href=["']\.\/style\.css["']\s*\/?>)/,
           (_match, indent, tag) => (
-            HOMEY_HOST_CSS_LINKS.map((link) => `${indent}${link}`).join('') + indent + tag
+            indent + tag + HOMEY_HOST_CSS_LINKS.map((link) => `${indent}${link}`).join('')
           ),
         );
         send(res, 200, { 'Content-Type': contentType, 'Cache-Control': 'no-store' }, injected);
