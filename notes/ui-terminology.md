@@ -106,18 +106,27 @@ Source of truth: `packages/shared-domain/src/deadlineLabels.ts`. Pull every labe
 | Concept | Temperature device | EV-SoC device |
 |---|---|---|
 | Kind chip | `Temperature` | `EV` |
-| Live state chip — active | `Heating` | `Charging` |
-| Live state chip — building plan | `Building plan…` | `Building plan…` |
-| Live state chip — plan ready, first hour later | `Queued` | `Queued` |
-| Live state chip — session ended | (n/a) | `Paused — unplugged` |
+| Hero section label (eyebrow) | `Heating smart task` | `EV smart task` |
+| Live state chip — active (pending hero only) | `Heating` | `Charging` |
+| Live state chip — building plan (pending hero / list) | `Building plan…` | `Building plan…` |
+| Live state chip — plan ready, first hour later (list only) | `Scheduled` | `Scheduled` |
+| Live state chip — session ended (pending hero / list) | (n/a) | `Paused — unplugged` |
 | Live state chip — on track, no active hour | `On track` | `On track` |
 | Cannot-finish chip | `Cannot finish` | `Cannot finish` |
 | Device load series (legend) | `Heating` | `Charging` |
 | Measured device series (legend) | `Measured Heating` | `Measured Charging` |
 | Background load series | `Background usage` | `Background usage` |
-| Plan-active tooltip word | `Heat` | `Charge` |
+| Progress series (legend) | `Temperature` | `Charge level` |
+| Active-hour tooltip word | `Heating` | `Charging` |
 | Target unit | `°C` | `%` |
 | Plan inputs card title | `Smart task inputs` | `Smart task inputs` |
+
+The live deadline-plan hero shows only the kind chip plus the cannot-finish chip
+(and confidence as `Estimating` / `Refining` when learning is in progress). The
+headline carries the live state directly (`Heating from HH:MM`, `Charging now`,
+`On track — no action needed yet`, `Cannot finish`), so a separate state chip
+duplicated information. The pending hero and the smart-task list still emit a
+state chip because there the state is the only available signal.
 
 Rule: a temperature device must never render the words *charge*, *charging*, or *EV* in user-facing text.
 
@@ -128,12 +137,16 @@ The smart-task list uses one chip per task. Source: `SMART_TASK_LIST_STATUS_LABE
 | Chip | Meaning |
 |---|---|
 | `Building plan…` | Pending; no plan allocation yet (often waiting for prices through the deadline). |
-| `Queued` | Plan ready, first scheduled hour is in the future. |
+| `Scheduled` | Plan ready, first scheduled hour is in the future. |
 | `Paused — unplugged` | EV: charging task is paused because the car is unplugged or the session ended. |
 | `On track` | PELS currently expects the task to reach the target. |
 | `At risk` | Plan exists but there is limited time or room left. |
 | `Cannot finish` | Not enough usable time or energy delivery before the deadline. |
 | `Satisfied` | The observed target is met. PELS resumes tracking if a later reading drops below it. |
+
+Internal note: the `DeadlineLiveState` enum value is still spelled `queued`
+(used in chip-tone resolvers and the list status id) so log schemas and JSON
+contracts remain stable — only the user-visible chip label changed.
 
 ### "Plan" vs "deadline" on smart-task surfaces
 

@@ -93,9 +93,9 @@ describe('DeadlinePlanHistoryDetail', () => {
     expect(root.querySelector('.plan-history-detail__device')).toBeNull();
   });
 
-  it('renders the "no plan detail recorded" fallback when both plan snapshots are null', async () => {
+  it('renders the "no hourly schedule was saved" fallback when both plan snapshots are null', async () => {
     const root = await mount(buildEntry({ originalPlan: null, finalPlan: null }));
-    expect(root.textContent).toContain('No plan detail was recorded for this run');
+    expect(root.textContent).toContain('No hourly schedule was saved for this run');
     expect(root.querySelector('.deadline-horizon-chart')).toBeNull();
   });
 
@@ -103,10 +103,11 @@ describe('DeadlinePlanHistoryDetail', () => {
     const revision = buildRevision();
     const root = await mount(buildEntry({ originalPlan: revision, finalPlan: revision }));
     expect(root.querySelector('.deadline-horizon-chart')).not.toBeNull();
-    expect(root.textContent).toContain('Plan vs observed');
+    // Card title uses smart-task-noun vocabulary, not planner-noun "Plan".
+    expect(root.textContent).toContain('Scheduled vs observed');
   });
 
-  it('suppresses the Original plan overlay when original and final revisions are identical', async () => {
+  it('suppresses the initial-schedule overlay when original and final revisions are identical', async () => {
     const revision = buildRevision();
     const root = await mount(buildEntry({ originalPlan: revision, finalPlan: revision }));
     const legend = root.querySelectorAll('.deadline-horizon-chart');
@@ -130,8 +131,8 @@ describe('DeadlinePlanHistoryDetail', () => {
       series: Array<{ name: string }>;
     };
     const seriesNames = option.series.map((entry) => entry.name);
-    expect(seriesNames).toContain('Final plan');
-    expect(seriesNames).not.toContain('Original plan');
+    expect(seriesNames).toContain('Revised schedule');
+    expect(seriesNames).not.toContain('Initial schedule');
   });
 
   it('falls back to the original snapshot when no final revision was recorded', async () => {
@@ -188,8 +189,8 @@ describe('DeadlinePlanHistoryDetail', () => {
       legend: { data: Array<{ name: string }> };
     };
     const seriesNames = option.series.map((entry) => entry.name);
-    expect(seriesNames).toContain('Original plan');
-    expect(seriesNames).toContain('Final plan');
+    expect(seriesNames).toContain('Initial schedule');
+    expect(seriesNames).toContain('Revised schedule');
     expect(seriesNames).toContain('Measured Charging');
     const legendNames = option.legend.data.map((entry) => entry.name);
     expect(legendNames).toContain('Measured Charging');

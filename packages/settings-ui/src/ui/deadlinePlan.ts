@@ -121,7 +121,7 @@ const buildTimeline = (params: {
     ? formatTemperature(params.progressTarget)
     : `${Math.round(params.progressTarget)}%`;
   return {
-    ariaLabel: `Deadline plan for ${params.device.name}`,
+    ariaLabel: `Smart task schedule for ${params.device.name}`,
     progressFloor: Math.min(normalizedProgressFloor, params.progressTarget - 1),
     progressCeilingValue: params.progressTarget,
     progressCeilingLabel,
@@ -244,7 +244,7 @@ const buildPendingHero = (params: {
       { text: params.labels.kindChipLabel, tone: 'info' },
       { text: params.labels.liveStateChipLabel[liveState], tone: pendingChipTone(liveState) },
     ],
-    sectionLabel: `${params.labels.kindChipLabel} plan`,
+    sectionLabel: params.labels.sectionLabel,
     headline: copy.headline,
     subline: `${params.device.name} • Target ${target} by ${deadline}`,
     metaLine: copy.body,
