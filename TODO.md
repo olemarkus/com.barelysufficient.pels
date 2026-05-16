@@ -89,37 +89,25 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `estimated_duration_text`, `kind`, `change_reason_id` — were not Homey-conventional
       on triggers; if future demand surfaces, expose them as device capabilities, not
       tokens. Shared bag lives in `flowCards/smartTaskTokens.ts`.)*
-- [ ] Hide the tab strip while a smart-task plan-detail page is open.
-      `deadlinePlanRouter.ts:14` toggles the `hidden` class on the `#shell-nav` element via
-      `classList.toggle('hidden', !visible)`, but `settings/style.css` has no matching
-      `#shell-nav.hidden { display: none }` rule — only `.panel.hidden` is defined. The tab strip
-      therefore stays fully visible and interactive while the plan detail overlay is open, and is
-      only "hidden" by the plan region scrolling it above the viewport (`top: -65px`). Effect: at
-      480 px the tab bar competes for attention with the plan hero; at 320 px the strip clips
-      ("Settings" off-screen, "Smart tasks" truncated to "Sm…") in a place no tabs should be
-      showing at all. Three audit units found this independently (Unit 5 F2, Unit 6 LF-01, Units
-      5+7 P2). Fix is a single CSS rule.
-      Files: `packages/settings-ui/public/style.css` (add `#shell-nav.hidden { display: none; }`),
-      `settings/style.css` (regen).
-- [ ] Drive the deadline-plan hero `data-tone` from the resolved plan status.
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx:126` hard-codes `data-tone="ok"` as a
-      string literal — it never updates with `planStatus`. Any CSS that targets
-      `[data-tone="error"]` or `[data-tone="cannot_meet"]` is dead, so a Cannot-finish hero renders
-      with the same green rim as a healthy "On track" hero. A user on the EV deep-link page can be
-      looking at a plan that physically cannot deliver and the page chrome says "looks fine".
-      Confirmed live (EV at SoC ≈ 30 %, target 80 % by 23:00).
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/public/style.css` (verify the tone variants are styled).
-- [ ] Suppress the liveState chip when the plan cannot finish.
-      `packages/settings-ui/src/ui/deadlinePlanHero.ts:31` `resolveLiveState` returns `'ok'`
-      whenever `firstChargingHour` is null. In a `cannot_meet` plan there are no scheduled hours,
-      so the live-state resolver always says `'ok'` and the hero ends up rendering both an
-      "On track" / "Active now" chip *and* a "Cannot finish" chip simultaneously. The contradiction
-      makes the planner look broken — the very moment we most need the user to trust PELS.
-      Gate the liveState chip on `cannotMeet === false`, or have the resolver short-circuit
-      `cannotMeet`-state plans before deriving live state.
-      Files: `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+- [x] Hide the tab strip while a smart-task plan-detail page is open. *(landed — added
+      `#shell-nav.hidden { display: none; }` next to the existing `.panel.hidden` rule in
+      `packages/settings-ui/public/style.css`; regenerated `settings/style.css`. The router
+      already toggles the `hidden` class via `deadlinePlanRouter.ts:14`; the missing CSS binding
+      is what kept the tab strip painted underneath the plan overlay at 320 / 480 px.)*
+- [x] Drive the deadline-plan hero `data-tone` from the resolved plan status. *(landed — the
+      producer `deadlinePlan.ts` now resolves `latest.planStatus → tone` via the new
+      `resolveHeroTone` helper in `deadlinePlanHero.ts`, surfaces the resolved tone on
+      `payload.hero.tone`, and `views/DeadlinePlan.tsx` binds `data-tone={payload.hero.tone}`
+      instead of the previous string literal. Mapping: `cannot_meet → alert`, `at_risk → warn`,
+      `on_track`/`satisfied → good`, `invalid → info`. All four target the existing CSS rim
+      bindings at `style.css` 1287-1325. Unit tests cover the mapping in
+      `test/deadlinePlan.test.ts`.)*
+- [x] Suppress the liveState chip when the plan cannot finish. *(landed — gated at the caller
+      in `buildHeroChips` (`deadlinePlanHero.ts`) so the resolver stays a single-purpose helper
+      shared with the smart-task list and device card. When `cannotMeet === true`, the hero
+      now renders chips `[kind, cannotMeet, ?confidence]` only; the live-state chip is
+      omitted. Canonical order preserved; unit tests assert the suppression and the
+      `[kind, cannotMeet, confidence]` sequence in `test/deadlinePlan.test.ts`.)*
 - [ ] Fix chart clarity issues from the first-impression Settings UI audit.
       Tighten the graphs users are most likely to inspect on first load. Normalize deadline-plan
       price values and units against the Budget chart convention (`kr/kWh` or `øre/kWh` shown
@@ -130,6 +118,10 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       first-impression problem the rubric scopes into P0. (Refactor sub-item — moving chart
       lifecycle ownership from module-level state to the rendering view — was split out of this
       P0 in the release-review pass; track it as P2 below if useful.)
+      *In progress: deadline-plan price units done in PR 1 (axis-label precision now matches
+      the Budget chart's `toFixed(1)` and the same `resolvePriceUnitLabel` helper is used on
+      both surfaces). Remaining work: Budget hourly-plan legend split match + Usage chart
+      resize on tab show.*
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
       `packages/settings-ui/src/ui/deadlinePlan.ts`,
       `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
@@ -1661,6 +1653,25 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P3 Future and Exploratory Work
 
+- [ ] Resolve `resolveHeroTone` name collision between `usageHero.ts` and `deadlinePlanHero.ts`.
+      Two distinct exports share the same name with different signatures
+      (`PaceContext → 'ok'|'warn'|'alert'` vs `DeferredObjectiveActivePlanStatusV1 →
+      DeadlinePlanHeroTone`). Not a runtime issue today (Vitest/TS scope them per module) but
+      a future global rename or IDE auto-import could pick the wrong symbol. Rename one — e.g.
+      the deadline helper to `resolveDeadlineHeroTone` or the usage helper to
+      `resolveUsagePaceTone`.
+      Files: `packages/settings-ui/src/ui/usageHero.ts`,
+      `packages/settings-ui/src/ui/deadlinePlanHero.ts`.
+- [ ] Split chip label for `at_risk` plans vs `cannot_meet` plans.
+      `deadlinePlan.ts:365` folds `at_risk` into `cannotMeet`, and `deadlineLabels.ts:212/290`
+      labels the resulting chip "Cannot finish" — but `at_risk` is a recoverable shortfall, not
+      an impossibility. The PR that added the hero-tone split now visually distinguishes the
+      two (amber rim vs red rim), but the chip text still reads the same. Consider either a
+      separate `atRiskChipLabel` ("At risk") or stop folding `at_risk` into `cannotMeet` at the
+      payload-build layer.
+      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`,
+      `packages/shared-domain/src/deadlineLabels.ts`,
+      `packages/settings-ui/src/ui/deadlinePlanHero.ts`.
 - [ ] Always show observed coverage on smart-task history cards. Today
       `formatPlanHistoryObservedCoverage` returns nothing when no charging was observed,
       hiding the case where the planner thought a device was active but it drew no power.

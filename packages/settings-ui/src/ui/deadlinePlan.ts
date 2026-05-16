@@ -17,7 +17,7 @@ import {
   type DeadlinePlanUnavailableReason,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { buildPlanInputs } from './deadlinePlanInputs.ts';
-import { buildHero } from './deadlinePlanHero.ts';
+import { buildHero, resolveHeroTone } from './deadlinePlanHero.ts';
 import {
   formatDeadlineFull,
   formatDeadlineShort,
@@ -405,6 +405,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
         ? latest.estimatedDurationText
         : null,
       kwhPerUnitSource: latest.kwhPerUnitSource,
+      tone: resolveHeroTone(latest.planStatus),
     }),
     timeline: buildTimeline({
       device, bootstrap, deviceId, hours,

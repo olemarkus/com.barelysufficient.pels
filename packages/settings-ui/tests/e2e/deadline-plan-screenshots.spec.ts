@@ -10,10 +10,10 @@ const openDeadlinePlan = async (page: Page) => {
   const panel = page.locator('#deadline-plan-panel');
   await expect(panel.locator('.plan-hero__headline')).toBeVisible();
   await expect(panel.locator('.deadline-horizon-chart svg')).toBeVisible();
-  // Hide the global shell chrome so the docs screenshot shows only the plan
-  // panel itself. The router toggles a `.hidden` class on `#shell-nav`, but
-  // there is no CSS rule for that class on the nav element, so the global
-  // tabs would otherwise stay visible above the plan content.
+  // The router toggles a `.hidden` class on `#shell-nav` whenever the plan
+  // panel is open, and the matching CSS rule (`#shell-nav.hidden { display:
+  // none; }`) now hides it natively. Only the page-level `.hero` and the
+  // global dry-run banner still need to be tucked away for the docs capture.
   await page.evaluate(() => {
     document.querySelector<HTMLElement>('.hero')?.style.setProperty('display', 'none');
     document.querySelector<HTMLElement>('#dry-run-banner')?.style.setProperty('display', 'none');

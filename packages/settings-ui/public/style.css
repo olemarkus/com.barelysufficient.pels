@@ -2757,7 +2757,8 @@ md-primary-tab.tab[active]:hover {
   line-height: var(--font-line-height-compact);
 }
 
-.panel.hidden {
+.panel.hidden,
+#shell-nav.hidden {
   display: none;
 }
 
