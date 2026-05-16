@@ -244,4 +244,55 @@ describe('callApi', () => {
     await vi.advanceTimersByTimeAsync(1100);
     await settled;
   });
+
+  it('retries POST writes that surface PELS_APP_NOT_READY until the runtime responds', async () => {
+    vi.useFakeTimers();
+    let attempts = 0;
+    const api = vi.fn((
+      _method: string,
+      _uri: string,
+      bodyOrCallback: unknown,
+      callback?: HomeyCallback<unknown>,
+    ) => {
+      attempts += 1;
+      const cb = typeof bodyOrCallback === 'function' ? bodyOrCallback : callback;
+      if (attempts <= 2) {
+        cb?.(new Error('PELS_APP_NOT_READY: Refresh devices unavailable while PELS is starting'));
+        return;
+      }
+      cb?.(null, { devices: [] });
+    });
+    const { callApi, setHomeyClient } = await import('../src/ui/homey.ts');
+    setHomeyClient(createClient({ api }));
+
+    // POST is normally not retried for transient transport errors, but
+    // the App-Not-Ready sentinel is a runtime-only signal (not a partial
+    // write), so retrying is safe and matches TODO 744's "loading state".
+    const pending = callApi('POST', '/ui_refresh_devices', {});
+    await vi.advanceTimersByTimeAsync(1000); // 250 + 500
+    await expect(pending).resolves.toEqual({ devices: [] });
+    expect(api).toHaveBeenCalledTimes(3);
+  });
+
+  it('surfaces the App-Not-Ready error after the retry budget is exhausted', async () => {
+    vi.useFakeTimers();
+    const api = vi.fn((
+      _method: string,
+      _uri: string,
+      bodyOrCallback: unknown,
+      callback?: HomeyCallback<unknown>,
+    ) => {
+      const cb = typeof bodyOrCallback === 'function' ? bodyOrCallback : callback;
+      cb?.(new Error('PELS_APP_NOT_READY: Refresh prices unavailable while PELS is starting'));
+    });
+    const { callApi, setHomeyClient } = await import('../src/ui/homey.ts');
+    setHomeyClient(createClient({ api }));
+
+    const pending = callApi('POST', '/ui_refresh_prices', {});
+    const settled = expect(pending).rejects.toThrow(/PELS_APP_NOT_READY/);
+    // Walk past every entry in the App-Not-Ready backoff schedule
+    // (250 + 500 + 1000 + 1500 + 2000 + 3000 = 8250ms) plus a buffer.
+    await vi.advanceTimersByTimeAsync(9000);
+    await settled;
+  });
 });

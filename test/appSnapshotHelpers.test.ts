@@ -363,10 +363,70 @@ describe('appSnapshotHelpers', () => {
 
     const firstRefresh = helper.refreshTargetDevicesSnapshot();
     await Promise.resolve();
-    await helper.refreshTargetDevicesSnapshot();
+    // Overlapping callers await the in-flight refresh now (TODO 728), so do
+    // not block the test on the second call before releasing the first cycle.
+    const secondRefresh = helper.refreshTargetDevicesSnapshot();
     deferred.resolve();
     await firstRefresh;
+    await secondRefresh;
 
     expect(refreshSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('overlapping refresh calls await the in-flight cycle instead of returning immediately', async () => {
+    const deferred = (() => {
+      let resolve!: () => void;
+      const promise = new Promise<void>((nextResolve) => {
+        resolve = nextResolve;
+      });
+      return { promise, resolve };
+    })();
+    const refreshSnapshot = vi.fn()
+      .mockImplementationOnce(() => deferred.promise)
+      .mockResolvedValue(undefined);
+
+    const helper = new AppSnapshotHelpers({
+      homey: mockHomeyInstance as any,
+      timers: new TimerRegistry(),
+      getDeviceManager: () => ({ refreshSnapshot } as any),
+      getPlanEngine: () => undefined,
+      getPlanService: () => ({
+        syncLivePlanState: vi.fn().mockResolvedValue(undefined),
+        syncHeadroomCardState: vi.fn(),
+        getLatestPlanSnapshot: vi.fn(),
+      } as any),
+      getLatestTargetSnapshot: () => [],
+      resolveManagedState: () => false,
+      isCapacityControlEnabled: () => false,
+      getStructuredLogger: () => undefined,
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      getNow: () => new Date('2026-03-21T10:00:00Z'),
+      logPeriodicStatus: vi.fn(),
+      disableUnsupportedDevices: vi.fn(),
+      getFlowReportedDeviceIds: vi.fn(() => []),
+      emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
+      emitSettingsUiDevicesUpdated: vi.fn(),
+      recordPowerSample: vi.fn().mockResolvedValue(undefined),
+    });
+    (helper as any).staleObservationRefreshStopped = false;
+
+    const firstRefresh = helper.refreshTargetDevicesSnapshot();
+    await Promise.resolve();
+    const secondRefresh = helper.refreshTargetDevicesSnapshot();
+    let secondSettled = false;
+    void secondRefresh.then(() => { secondSettled = true; });
+    // The second call must not resolve before the in-flight cycle (still
+    // gated on `deferred`) completes — that is the contract behind TODO 728:
+    // overlapping `/ui_refresh_devices` calls must see the post-refresh
+    // snapshot, not the pre-refresh stale snapshot.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(secondSettled).toBe(false);
+
+    deferred.resolve();
+    await firstRefresh;
+    await secondRefresh;
+    expect(secondSettled).toBe(true);
   });
 });

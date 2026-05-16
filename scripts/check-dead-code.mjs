@@ -102,6 +102,10 @@ const allowedUnusedExportPatterns = [
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_RECOMPUTE_DAILY_BUDGET_PATH$/,
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH$/,
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH$/,
+  // Consumed by packages/settings-ui only; the runtime cannot value-import
+  // deploy-excluded contract source files and instead duplicates the literal
+  // in `lib/app/settingsUiAppRuntime.ts`.
+  /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX$/,
   /^packages\/contracts\/src\/targetCapabilities\.ts:\d+ - getTargetCapabilityStep$/,
   /^lib\/app\/smapsRollup\.ts:\d+ - _resetSmapsCacheForTests$/,
   /^lib\/app\/smapsRollup\.ts:\d+ - __resetSmapsDetailCacheForTests$/,

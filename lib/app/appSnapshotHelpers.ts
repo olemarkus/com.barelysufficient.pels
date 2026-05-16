@@ -31,6 +31,15 @@ export class AppSnapshotHelpers {
   private targetConfirmationPollInterval?: ReturnType<typeof setInterval>;
   private isSnapshotRefreshing = false;
   private snapshotRefreshPending = false;
+  // Promise for the currently-running snapshot refresh cycle. Concurrent
+  // callers await this promise so they see the post-refresh in-memory
+  // snapshot instead of returning while the refresh is still in flight.
+  // Cleared inside the same `finally` that flips `isSnapshotRefreshing` back
+  // to false so awaiters never observe a resolved-but-still-running state.
+  // Synchronous re-entry (before the outer call has yielded once) leaves
+  // this `null`; nested callers in that window keep the legacy fire-and-
+  // forget queue-and-return behavior to avoid awaiting their own caller.
+  private snapshotRefreshInFlight: Promise<void> | null = null;
   private postActuationRefreshTimer?: ReturnType<typeof setTimeout>;
   private deviceObservationStaleById = new Map<string, boolean>();
 
@@ -109,25 +118,47 @@ export class AppSnapshotHelpers {
 
     if (this.isSnapshotRefreshing) {
       this.snapshotRefreshPending = true;
+      if (this.snapshotRefreshInFlight) {
+        // Overlapping caller arrived after the outer call yielded once and
+        // assigned the loop promise — await it so callers (e.g.
+        // `/ui_refresh_devices`) see the post-refresh in-memory snapshot
+        // instead of returning while the refresh is still running. (TODO 728.)
+        this.deps.logDebug('devices', 'Snapshot refresh already in progress, awaiting in-flight refresh');
+        await this.snapshotRefreshInFlight;
+        return;
+      }
+      // Synchronous re-entry window (the outer call has not yielded yet, so
+      // the loop promise is not visible). Keep the legacy queue-and-return
+      // behavior to avoid awaiting a promise the caller is itself producing.
       this.deps.logDebug('devices', 'Snapshot refresh already in progress, queued another refresh');
       return;
     }
 
     this.isSnapshotRefreshing = true;
-    let shouldEmitFlowBackedRefresh = options.emitFlowBackedRefresh !== false;
+    const refreshPromise = this.runSnapshotRefreshLoop(deviceManager, options);
+    this.snapshotRefreshInFlight = refreshPromise;
     try {
-      do {
-        this.snapshotRefreshPending = false;
-        await this.runSnapshotRefreshCycle(deviceManager, {
-          ...options,
-          emitFlowBackedRefresh: shouldEmitFlowBackedRefresh,
-        });
-        shouldEmitFlowBackedRefresh = false;
-      } while (this.snapshotRefreshPending && !this.staleObservationRefreshStopped);
+      await refreshPromise;
     } finally {
       this.isSnapshotRefreshing = false;
       this.snapshotRefreshPending = false;
+      this.snapshotRefreshInFlight = null;
     }
+  }
+
+  private async runSnapshotRefreshLoop(
+    deviceManager: DeviceManager,
+    options: RefreshTargetDevicesSnapshotOptions,
+  ): Promise<void> {
+    let shouldEmitFlowBackedRefresh = options.emitFlowBackedRefresh !== false;
+    do {
+      this.snapshotRefreshPending = false;
+      await this.runSnapshotRefreshCycle(deviceManager, {
+        ...options,
+        emitFlowBackedRefresh: shouldEmitFlowBackedRefresh,
+      });
+      shouldEmitFlowBackedRefresh = false;
+    } while (this.snapshotRefreshPending && !this.staleObservationRefreshStopped);
   }
 
   async refreshStaleDeviceObservations(): Promise<void> {

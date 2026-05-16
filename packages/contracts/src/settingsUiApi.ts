@@ -22,6 +22,13 @@ export const SETTINGS_UI_RECOMPUTE_DAILY_BUDGET_PATH = '/ui_recompute_daily_budg
 export const SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH = '/ui_preview_daily_budget_model';
 export const SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH = '/ui_apply_daily_budget_model';
 
+// Sentinel prefix the runtime API layer uses when the Homey app shell exists
+// but the PELS runtime services have not finished initializing yet (e.g.
+// during the boot window after `homey app run` or an app restart). The
+// settings UI client matches this prefix to keep callers in a bounded
+// loading/retry state instead of surfacing a hard error.
+export const SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX = 'PELS_APP_NOT_READY:';
+
 export const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'capacity_limit_kw',
   'capacity_margin_kw',

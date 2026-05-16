@@ -142,12 +142,15 @@ describe('showToast with action', () => {
 
     pending = showToastError(
       new Error(
-        'Homey api POST /ui_refresh_prices failed: Refresh prices functionality is not available in the app.',
+        'Homey api POST /ui_refresh_prices failed: PELS_APP_NOT_READY: Refresh prices unavailable while PELS is starting',
       ),
       'Failed to refresh spot prices.',
     );
 
-    expect(toastEl.textContent).toContain('Refresh prices functionality is not available in the app.');
+    // App-not-ready errors are surfaced as the user-friendly "starting" message
+    // — never the sentinel prefix and never the caller's specific fallback.
+    expect(toastEl.textContent).toContain('PELS is still starting');
+    expect(toastEl.textContent).not.toContain('PELS_APP_NOT_READY');
     expect(toastEl.textContent).not.toContain('Failed to refresh spot prices.');
 
     await vi.runAllTimersAsync();

@@ -696,6 +696,13 @@ describe('device detail managed state saves', () => {
     vi.doMock('../src/ui/priceOptimization.ts', () => ({
       renderPriceOptimization: vi.fn(),
       savePriceOptimizationSettings,
+      clonePriceOptimizationSettings: <T extends Record<string, unknown>>(source: T): T => {
+        const next: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(source)) {
+          next[key] = { ...(value as object) };
+        }
+        return next as T;
+      },
     }));
     vi.doMock('../src/ui/toast.ts', () => ({
       showToastError: vi.fn().mockResolvedValue(undefined),
