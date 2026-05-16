@@ -21,7 +21,7 @@
     },
     {
       "name": "target_percent",
-      "type": "number",
+      "type": "range",
       "title": {
         "en": "Target battery (%)"
       },

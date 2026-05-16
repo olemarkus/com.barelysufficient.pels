@@ -30,6 +30,11 @@
       "name": "status",
       "type": "string",
       "title": { "en": "Status" }
+    },
+    {
+      "name": "notification_text",
+      "type": "string",
+      "title": { "en": "Notification text" }
     }
   ]
 }

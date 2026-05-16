@@ -543,18 +543,30 @@ describe('deadline objective flow cards', () => {
     bus.publish(transition);
     expect(trigger.trigger).toHaveBeenCalledTimes(1);
     const [tokens, state] = trigger.trigger.mock.calls[0]!;
-    expect(tokens).toEqual({ device_name: 'Boiler', status: 'at_risk' });
+    expect(tokens).toEqual({
+      device_name: 'Boiler',
+      status: 'at_risk',
+      notification_text: 'Boiler smart task is At risk',
+    });
     expect(state).toEqual({ deviceId: 'heater-1' });
     expect(await trigger.run!({ device: 'heater-1' }, state)).toBe(true);
     expect(await trigger.run!({ device: 'heater-2' }, state)).toBe(false);
 
     bus.publish({ ...transition, status: 'on_track', previousStatus: 'at_risk' });
     expect(trigger.trigger).toHaveBeenCalledTimes(2);
-    expect(trigger.trigger.mock.calls[1]![0]).toEqual({ device_name: 'Boiler', status: 'on_track' });
+    expect(trigger.trigger.mock.calls[1]![0]).toEqual({
+      device_name: 'Boiler',
+      status: 'on_track',
+      notification_text: 'Boiler smart task is On track',
+    });
 
     bus.publish({ ...transition, status: 'cannot_meet', previousStatus: 'on_track' });
     expect(trigger.trigger).toHaveBeenCalledTimes(3);
-    expect(trigger.trigger.mock.calls[2]![0]).toEqual({ device_name: 'Boiler', status: 'unachievable' });
+    expect(trigger.trigger.mock.calls[2]![0]).toEqual({
+      device_name: 'Boiler',
+      status: 'unachievable',
+      notification_text: 'Boiler smart task is Cannot finish',
+    });
   });
 
   it('publishes unknown as waiting when the active smart task status changes', async () => {
@@ -581,7 +593,11 @@ describe('deadline objective flow cards', () => {
 
     expect(trigger.trigger).toHaveBeenCalledTimes(1);
     const [tokens, state] = trigger.trigger.mock.calls[0]!;
-    expect(tokens).toEqual({ device_name: 'Boiler', status: 'waiting' });
+    expect(tokens).toEqual({
+      device_name: 'Boiler',
+      status: 'waiting',
+      notification_text: 'Boiler smart task is Waiting — target 55 °C by 07:00',
+    });
     expect(state).toEqual({ deviceId: 'heater-1' });
   });
 

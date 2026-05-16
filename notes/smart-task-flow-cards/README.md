@@ -27,13 +27,15 @@ delivered shape is the minimum below.
 
 - `deadline_ended` — `device_name` (string), `outcome` (string, stable
   lowercase id: `succeeded` / `missed` / `abandoned`), `shortfall`
-  (number, 0 when succeeded).
+  (number, 0 when succeeded; flow UI label "Gap to target").
 - `deadline_status_changed` — `device_name` (string), `status` (string,
   stable lowercase id: `waiting` / `on_track` / `at_risk` /
-  `unachievable` / `satisfied`).
+  `unachievable` / `satisfied`), `notification_text` (string, composed
+  one-liner combining display-label status, target text, and ready-by
+  local time — drop-in push body).
 - `deadline_plan_changed` — `device_name` (string), `remaining_kwh`
   (number), `planned_hours` (number), `projected_finish_local_time`
-  (string).
+  (string). Trigger title is "Smart task schedule changed".
 
 The stable lowercase token values stay a public API contract; renaming
 one is a breaking change. Display formatting (e.g. capitalised "Missed")

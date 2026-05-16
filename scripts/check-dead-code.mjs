@@ -111,6 +111,18 @@ const allowedUnusedExportPatterns = [
   new RegExp(`^lib\\/plan\\/deferredObjectives\\/index\\.ts:\\d+ - (${deferredObjectiveBarrelExports})$`),
   // Consumed by packages/settings-ui/src/ui/planDeviceCard.ts via cross-package relative import; ts-prune doesn't follow these.
   /^packages\/shared-domain\/src\/planStateLabels\.ts:\d+ - PLAN_STATE_LABEL$/,
+  // `deadlineLabels.ts` is pulled into ts-prune's graph by `flowCards/smartTaskTokens.ts`
+  // importing `composeSmartTaskStatusNotificationText`; the rest of the file's exports
+  // are consumed by `packages/settings-ui/**` which the runtime tsconfig excludes.
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_STATUS_LABELS$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_STATUS_CHIP_VARIANT$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskListStatus$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - DeadlinePlanCompletedReason$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - deadlineLabels$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveEvCardStateLine$/,
+  // Transitively reached from `deadlineLabels.ts`; consumed by settings UI bootstrap
+  // and flowCards' deadline-objective settings reader.
+  /^packages\/contracts\/src\/deferredObjectiveSettings\.ts:\d+ - normalizeDeferredObjectiveSettings$/,
 ];
 
 const orphanResult = run(
