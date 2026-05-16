@@ -70,7 +70,7 @@ import {
   loadTemperatureBoostSettings,
   renderTemperatureBoostSettings,
 } from './temperatureBoost.ts';
-import { createSerializedAsyncRunner, readRecordSetting, writeFreshSetting } from './settingsWrite.ts';
+import { createSerializedAsyncRunner, readRecordSettingStrict, writeFreshSetting } from './settingsWrite.ts';
 import {
   clearPendingNativeWiringEnable,
   initDeviceDetailNativeWiringHandler,
@@ -185,8 +185,20 @@ const persistDeviceControlProfile = async (deviceId: string, profile: SteppedLoa
       context: 'device detail',
       logMessage: 'Failed to save device control profile',
       toastMessage: 'Failed to save device control profile.',
-      fallbackValue: {},
-      readFresh: normalizeDeviceControlProfiles,
+      // Use the live in-memory profiles map as the snapshot fallback so
+      // that a transient null SDK read does not erase profiles for other
+      // devices. The first-write case is still safe: when no profiles
+      // exist locally either, the merged write is the user's new entry
+      // alone.
+      fallbackValue: state.deviceControlProfiles,
+      // Only normalize when the fresh SDK value is a real object.
+      // Anything else returns null so `writeFreshSetting` falls back to
+      // the snapshot instead of normalising garbage into `{}`.
+      readFresh: (value) => (
+        value && typeof value === 'object' && !Array.isArray(value)
+          ? normalizeDeviceControlProfiles(value)
+          : null
+      ),
       mutate: (currentProfiles) => {
         const nextProfiles = { ...currentProfiles };
         if (profile) {
@@ -371,8 +383,10 @@ const initDeviceDetailBudgetExemptHandler = () => {
       context: 'device detail',
       logMessage: 'Failed to update budget exempt device',
       toastMessage: 'Failed to update budget exempt device.',
-      fallbackValue: {},
-      readFresh: readRecordSetting<boolean>,
+      // Use the live budget-exempt snapshot as the fallback so a transient
+      // null SDK read does not erase entries for other devices.
+      fallbackValue: state.budgetExemptMap,
+      readFresh: readRecordSettingStrict<boolean>,
       mutate: (currentMap) => {
         const nextMap = { ...currentMap };
         if (nextChecked) {

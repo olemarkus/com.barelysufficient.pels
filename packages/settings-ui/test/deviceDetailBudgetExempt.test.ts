@@ -397,4 +397,73 @@ describe('device detail budget exemption', () => {
     );
     expect(state.budgetExemptMap).toEqual({ 'other-device': true });
   });
+
+  it('preserves other devices when a fresh budget exempt read resolves to null', async () => {
+    // Regression for the device-write fail-closed fix. A Homey SDK
+    // transient blip that returns null for a populated key used to
+    // synthesise an empty map and write back `{ 'heater-1': true }`,
+    // erasing 'other-device'. The snapshot fallback now uses the live
+    // local state, so the merged write preserves every device the UI
+    // already knows about.
+    const logSettingsError = vi.fn().mockResolvedValue(undefined);
+    const showToastError = vi.fn().mockResolvedValue(undefined);
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError,
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError,
+    }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      settings: {
+        budget_exempt_devices: { 'other-device': true },
+      },
+    });
+    homeyModule.setHomeyClient(homey);
+    vi.spyOn(homeyModule, 'getSettingFresh').mockResolvedValueOnce(null);
+
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [buildDevice()];
+    state.managedMap = { 'heater-1': true };
+    state.controllableMap = { 'heater-1': true };
+    state.budgetExemptMap = { 'other-device': true };
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'heater-1': 1 } };
+    state.modeTargets = { Home: { 'heater-1': 20 } };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+    openDeviceDetail('heater-1');
+    await flushPromises();
+
+    const budgetExemptInput = document.querySelector('#device-detail-budget-exempt') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
+    budgetExemptInput!.selected = true;
+    budgetExemptInput!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+
+    expect(homey.set).toHaveBeenCalledWith(
+      'budget_exempt_devices',
+      { 'other-device': true, 'heater-1': true },
+      expect.any(Function),
+    );
+    expect(state.budgetExemptMap).toEqual({ 'other-device': true, 'heater-1': true });
+    // The snapshot fallback is a planned recovery path; the user should
+    // not see an error toast for a successful save.
+    expect(logSettingsError).not.toHaveBeenCalled();
+    expect(showToastError).not.toHaveBeenCalled();
+  });
 });
