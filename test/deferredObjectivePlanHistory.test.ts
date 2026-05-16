@@ -1009,4 +1009,153 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entries[0]!.id).not.toBe(entries[1]!.id);
     });
   });
+
+  // Regression: live-Homey walk on 2026-05-16 found the four most recent past
+  // entries for Connected 300 rendered as device-only rows because
+  // `formatPlanHistoryProgressLine` returns null when `startProgressC` is null.
+  // Root cause: `startRecord` stamps `startProgressC` once at create time and
+  // never back-fills, so a run that begins with a null diagnostic (transient
+  // SDK miss / `objective_progress_stale` / `objective_missing_temperature`)
+  // keeps the field null for the lifetime of the run even when later cycles
+  // report a real reading. See TODO.md P0 item 5 and notes/smart-task-ui/README.md.
+  describe('back-fills start progress from the first non-null observation', () => {
+    it('temperature path: stamps `startProgressC` once a real reading arrives', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      // First cycle: diagnostic reports the deadline + target but no
+      // `currentTemperatureC` yet (Homey SDK temperature read transiently
+      // failed; the bridge surfaces `objective_missing_temperature` with
+      // current = null). Without the fix `startProgressC` is captured as
+      // null and stays null forever.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs,
+        currentTemperatureC: null,
+        status: 'unknown',
+        reasonCode: 'objective_missing_temperature',
+        horizonPlan: undefined,
+      })], 0);
+      // Second cycle: device is back, planner produces a real allocation.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs,
+        currentTemperatureC: 52,
+        status: 'on_track',
+      })], HOUR_MS);
+      // Third cycle: continues with a richer reading — must NOT overwrite the
+      // back-filled start value (start is "first real reading", not "latest").
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs,
+        currentTemperatureC: 60,
+        status: 'on_track',
+      })], 3 * HOUR_MS);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.startProgressC).toBe(52); // first real reading wins
+      expect(entry.finalProgressC).toBe(60);
+      expect(entry.observedIntervals.length).toBeGreaterThan(0);
+    });
+
+    it('temperature path: a transient null cycle in the middle does not clear an already-set start', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      // Start with a real reading.
+      recorder.observe([makeDiag({
+        deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50, status: 'on_track',
+      })], 0);
+      // Mid-run SDK miss.
+      recorder.observe([makeDiag({
+        deviceId: 'dev', deadlineAtMs, currentTemperatureC: null, status: 'unknown',
+        reasonCode: 'objective_progress_stale', horizonPlan: undefined,
+      })], HOUR_MS);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      expect(saved()!.entries[0]!.startProgressC).toBe(50);
+    });
+
+    it('EV path: stamps `startProgressPercent` once a real percent arrives', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 9 * HOUR_MS;
+
+      // First cycle: EV charging session not yet known (e.g. plug-state still
+      // settling, `currentPercent` null). The diagnostic carries the deadline
+      // and target but no progress.
+      recorder.observe([makeDiag({
+        deviceId: 'ev',
+        deadlineAtMs,
+        objectiveKind: 'ev_soc',
+        objectiveId: 'ev:ev_soc',
+        targetTemperatureC: null,
+        currentTemperatureC: null,
+        targetPercent: 80,
+        currentPercent: null,
+        status: 'unknown',
+        reasonCode: 'objective_progress_stale',
+        horizonPlan: undefined,
+      })], 0);
+      // Second cycle: SoC is now fresh.
+      recorder.observe([makeDiag({
+        deviceId: 'ev',
+        deadlineAtMs,
+        objectiveKind: 'ev_soc',
+        objectiveId: 'ev:ev_soc',
+        targetTemperatureC: null,
+        currentTemperatureC: null,
+        targetPercent: 80,
+        currentPercent: 35,
+        status: 'on_track',
+      })], HOUR_MS);
+      recorder.observe([makeDiag({
+        deviceId: 'ev',
+        deadlineAtMs,
+        objectiveKind: 'ev_soc',
+        objectiveId: 'ev:ev_soc',
+        targetTemperatureC: null,
+        currentTemperatureC: null,
+        targetPercent: 80,
+        currentPercent: 70,
+        status: 'on_track',
+      })], 6 * HOUR_MS);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.startProgressPercent).toBe(35); // first real reading wins
+      expect(entry.finalProgressPercent).toBe(70);
+      expect(entry.observedIntervals.length).toBeGreaterThan(0);
+    });
+
+    it('non-plannable cycles also back-fill start progress when a fresh reading arrives', () => {
+      // `objective_missing_price_horizon` is non-plannable but carries a fresh
+      // `currentTemperatureC`. The non-plannable tick path must also adopt
+      // the first real reading as `startProgressC`.
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      recorder.observe([makeDiag({
+        deviceId: 'dev', deadlineAtMs, currentTemperatureC: null,
+        status: 'unknown', reasonCode: 'objective_missing_temperature',
+        horizonPlan: undefined,
+      })], 0);
+      recorder.observe([makeDiag({
+        deviceId: 'dev', deadlineAtMs, currentTemperatureC: 48,
+        status: 'unknown', reasonCode: 'objective_missing_price_horizon',
+        horizonPlan: undefined,
+      })], HOUR_MS);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      expect(saved()!.entries[0]!.startProgressC).toBe(48);
+    });
+  });
 });

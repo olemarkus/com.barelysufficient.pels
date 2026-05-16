@@ -275,6 +275,27 @@ const refreshPlanSnapshots = (
   };
 };
 
+// Back-fill `startProgressC` / `startProgressPercent` from the first cycle
+// that actually carries a fresh reading. `startRecord` stamps both fields
+// from the first diagnostic the recorder sees, but Homey SDK reads can
+// transiently fail (per `feedback_homey_sdk_unreliable` — see
+// `notes/smart-task-ui/README.md` for the live-walk regression), so a run
+// that starts with `currentTemperatureC: null` / `currentPercent: null`
+// would otherwise carry that null all the way to finalization. The history
+// formatter (`packages/shared-domain/src/deferredPlanHistory.ts`) returns
+// `null` for the progress line when the start value is null, hiding the
+// run from the past-tasks list. Adopting the first non-null reading keeps
+// "start" semantically meaning "first observed progress" rather than
+// "snapshot at create-time, even if it was missing". Once set, the value
+// is sticky — later cycles must not overwrite it.
+const backfillStartProgress = (
+  record: InProgressRecord,
+  diag: DeferredObjectiveDiagnostic,
+): Pick<InProgressRecord, 'startProgressC' | 'startProgressPercent'> => ({
+  startProgressC: record.startProgressC ?? captureProgressC(diag),
+  startProgressPercent: record.startProgressPercent ?? captureProgressPercent(diag),
+});
+
 const mergeRecord = (
   record: InProgressRecord,
   diag: DeferredObjectiveDiagnostic,
@@ -286,6 +307,7 @@ const mergeRecord = (
   return {
     ...record,
     deviceName: diag.deviceName ?? record.deviceName,
+    ...backfillStartProgress(record, diag),
     finalProgressC: captureProgressC(diag) ?? record.finalProgressC,
     finalProgressPercent: captureProgressPercent(diag) ?? record.finalProgressPercent,
     usedDeadlineReserve: record.usedDeadlineReserve || (diag.horizonPlan?.usesDeadlineReserve ?? false),
@@ -306,6 +328,7 @@ const clearSatisfiedWithProgress = (
   return {
     ...record,
     deviceName: diag.deviceName ?? record.deviceName,
+    ...backfillStartProgress(record, diag),
     finalProgressC: captureProgressC(diag) ?? record.finalProgressC,
     finalProgressPercent: captureProgressPercent(diag) ?? record.finalProgressPercent,
     observedIntervals: extendIntervals(record.observedIntervals, nowMs),
@@ -317,10 +340,12 @@ const clearSatisfiedWithProgress = (
 
 const recordObservedTick = (
   record: InProgressRecord,
+  diag: DeferredObjectiveDiagnostic,
   nowMs: number,
   plan: DeferredObjectiveActivePlanV1 | undefined,
 ): InProgressRecord => ({
   ...record,
+  ...backfillStartProgress(record, diag),
   observedIntervals: extendIntervals(record.observedIntervals, nowMs),
   ...refreshPlanSnapshots(record, plan),
 });
@@ -334,7 +359,7 @@ const recordNonPlannableTick = (
   if (record.satisfied && hasTrustworthyProgress(diag) && !diagnosticProgressAtTarget(diag)) {
     return clearSatisfiedWithProgress(record, diag, nowMs, plan);
   }
-  return recordObservedTick(record, nowMs, plan);
+  return recordObservedTick(record, diag, nowMs, plan);
 };
 
 const wasTargetReached = (record: InProgressRecord): boolean => {
