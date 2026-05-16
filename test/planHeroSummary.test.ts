@@ -1,7 +1,11 @@
 import {
+  formatAboveHardCapSubline,
+  formatAboveSafePaceSubline,
+  formatEnergyMeterMarkerLabels,
   formatEnergyUsedOfBudget,
   formatFreshnessChip,
   formatHeroHeadline,
+  formatPowerMeterMarkerLabels,
   type PlanHeroMetaInput,
 } from '../packages/shared-domain/src/planHeroSummary';
 
@@ -106,5 +110,43 @@ describe('formatFreshnessChip', () => {
       label: 'No data',
       tone: 'alert',
     });
+  });
+});
+
+describe('hero meter marker labels', () => {
+  it('formats power markers with short legend + screen-reader labels', () => {
+    expect(formatPowerMeterMarkerLabels('target', 11)).toEqual({
+      short: 'Safe pace',
+      aria: 'Safe pace now 11.0 kW',
+    });
+    expect(formatPowerMeterMarkerLabels('cap', 14)).toEqual({
+      short: 'Hard cap',
+      aria: 'Hard cap 14.0 kW',
+    });
+  });
+
+  it('formats energy markers with short legend + screen-reader labels', () => {
+    expect(formatEnergyMeterMarkerLabels('target', 5)).toEqual({
+      short: 'Budget this hour',
+      aria: 'Budget this hour 5.0 kWh',
+    });
+    expect(formatEnergyMeterMarkerLabels('projected', 4.4)).toEqual({
+      short: 'Projected this hour',
+      aria: 'Projected this hour 4.4 kWh',
+    });
+  });
+});
+
+describe('above-threshold subline formatters', () => {
+  it('renders the overshoot kW when above safe pace', () => {
+    expect(formatAboveSafePaceSubline(-1.5)).toBe('1.5 kW above safe pace');
+  });
+
+  it('clamps to zero when headroom is positive (defensive)', () => {
+    expect(formatAboveSafePaceSubline(2.0)).toBe('0.0 kW above safe pace');
+  });
+
+  it('renders overshoot kW + the hard cap value when above hard cap', () => {
+    expect(formatAboveHardCapSubline(-0.5, 5.0)).toBe('0.5 kW above hard cap (5.0 kW)');
   });
 });

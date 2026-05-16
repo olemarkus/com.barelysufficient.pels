@@ -118,3 +118,64 @@ export const formatFreshnessChip = (
  */
 export const formatEnergyUsedOfBudget = (usedKWh: number, budgetKWh: number): string =>
   `${usedKWh.toFixed(1)} of ${budgetKWh.toFixed(1)} kWh used`;
+
+// ─── Hero meter marker labels ────────────────────────────────────────────────
+// Source of truth for every "what is this dot on the bar?" label the Overview
+// hero exposes — used both as `aria-label` (screen-reader) and as the visible
+// legend row below the bar. Wording matches `notes/ui-terminology.md`
+// § "Hero bar vocabulary" so the screen-reader text mirrors the visible chip /
+// tooltip copy. The runtime logger imports these helpers when it emits
+// hero-render diagnostics so the wording never drifts between the UI and the
+// logs (see `feedback_ui_text_shared_with_logs.md`).
+
+export type HeroMeterMarkerLabels = {
+  // Concise legend label, no value — e.g. "Safe pace".
+  short: string;
+  // Screen-reader label with the numeric value — e.g. "Safe pace now 12.0 kW".
+  aria: string;
+};
+
+const formatKw = (kw: number): string => `${kw.toFixed(1)} kW`;
+const formatKWh = (kwh: number): string => `${kwh.toFixed(1)} kWh`;
+
+export const formatPowerMeterMarkerLabels = (
+  kind: 'target' | 'cap',
+  valueKw: number,
+): HeroMeterMarkerLabels => {
+  if (kind === 'cap') {
+    return { short: 'Hard cap', aria: `Hard cap ${formatKw(valueKw)}` };
+  }
+  return { short: 'Safe pace', aria: `Safe pace now ${formatKw(valueKw)}` };
+};
+
+export const formatEnergyMeterMarkerLabels = (
+  kind: 'target' | 'projected',
+  valueKWh: number,
+): HeroMeterMarkerLabels => {
+  if (kind === 'projected') {
+    return {
+      short: 'Projected this hour',
+      aria: `Projected this hour ${formatKWh(valueKWh)}`,
+    };
+  }
+  return { short: 'Budget this hour', aria: `Budget this hour ${formatKWh(valueKWh)}` };
+};
+
+// ─── Above-safe-pace / above-hard-cap subline ────────────────────────────────
+// `headroomKw` is the spare room before safe pace (negative when above).
+// `hardCapHeadroomKw` is the spare room before hard cap (negative when above).
+// The subline copy matches `notes/overview-hero-spec.md` § "Power now" and is
+// rendered when the chip indicates the hero is above one of the thresholds.
+
+export const formatAboveSafePaceSubline = (headroomKw: number): string => {
+  const overshootKw = Math.max(0, -headroomKw);
+  return `${formatKw(overshootKw)} above safe pace`;
+};
+
+export const formatAboveHardCapSubline = (
+  hardCapHeadroomKw: number,
+  hardCapKw: number,
+): string => {
+  const overshootKw = Math.max(0, -hardCapHeadroomKw);
+  return `${formatKw(overshootKw)} above hard cap (${formatKw(hardCapKw)})`;
+};
