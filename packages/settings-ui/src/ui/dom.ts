@@ -168,6 +168,7 @@ export const deviceDetailSocValue = qs('#device-detail-soc-value');
 export const deviceDetailSocUpdated = qs('#device-detail-soc-updated');
 export const deviceDetailControlModelRow = qs('#device-detail-control-model-row');
 export const deviceDetailControlModel = document.querySelector('#device-detail-control-model') as MdFilledSelectElement;
+export const deviceDetailModesSection = qs('#device-detail-modes-section');
 export const deviceDetailModes = qs('#device-detail-modes');
 export const deviceDetailDeltaSection = qs('#device-detail-delta-section');
 export const deviceDetailCheapDelta = document.querySelector('#device-detail-cheap-delta') as MdFilledTextFieldElement;

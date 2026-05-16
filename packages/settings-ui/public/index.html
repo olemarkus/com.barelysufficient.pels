@@ -782,7 +782,7 @@
                   <md-switch id="device-detail-temperature-boost-enabled"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label">Temperature boost</span>
-                    <small class="field__hint">Step this load up when it is cold, using only lower-priority devices if room must be made.</small>
+                    <small class="field__hint">Step this load up when it is cold, drawing from devices PELS is already allowed to lower.</small>
                   </span>
                 </div>
                 <div class="md-field-row" id="device-detail-temperature-boost-below-row">
@@ -805,7 +805,7 @@
                   <md-switch id="device-detail-ev-boost-enabled"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label">Charge boost</span>
-                    <small class="field__hint">Step this charger up while the car stays below the minimum battery level, using only lower-priority devices if room must be made.</small>
+                    <small class="field__hint">Step this charger up while the car stays below the minimum battery level, drawing from devices PELS is already allowed to lower.</small>
                   </span>
                 </div>
                 <div class="md-field-row" id="device-detail-ev-boost-below-row">
@@ -824,7 +824,7 @@
                 <p class="muted" id="device-detail-ev-boost-status"></p>
               </div>
 
-              <p class="muted">When a limited stepped-load device resumes, PELS starts from the lowest active step and only climbs higher when there is room for it.</p>
+              <p class="muted">When this device is limited and then starts again, PELS climbs back up step by step.</p>
             </div>
           </details>
         </section>

@@ -21,6 +21,7 @@ import {
   resolveCooldownBaseSec,
   resolveCooldownRemainingSec,
 } from '../../../../shared-domain/src/planCooldown.ts';
+import { resolveHeldStateActionLabel } from '../../../../shared-domain/src/deviceOverview.ts';
 import { resolveEvCardStateLine } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { formatIdleClassificationCopy } from '../../../../shared-domain/src/idleClassificationCopy.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
@@ -276,10 +277,6 @@ const isReportedLoadConflict = (dev: PlanDeviceSnapshot, kind: PlanStateKind): b
   && dev.measuredPowerKw > 0.05
 );
 
-const resolveHeldStateLabel = (dev: PlanDeviceSnapshot): string => (
-  dev.shedAction === 'turn_off' ? 'Turned off by PELS' : 'Limited by PELS'
-);
-
 const normalizeInlineDetail = (detail: unknown): string | null => (
   typeof detail === 'string' && detail.trim().length > 0 ? detail.trim() : null
 );
@@ -380,7 +377,7 @@ export const PlanGenericCard = ({
 
       {reportedLoadConflict && powerReadout && (
         <div class="plan-card__state-row">
-          <span class="plan-card__state-label">{resolveHeldStateLabel(displayDev)}</span>
+          <span class="plan-card__state-label">{resolveHeldStateActionLabel(displayDev)}</span>
           <span class="plan-card__state-power">{powerReadout.text}</span>
         </div>
       )}

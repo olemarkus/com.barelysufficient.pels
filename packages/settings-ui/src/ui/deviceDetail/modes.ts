@@ -4,7 +4,7 @@ import {
   getTargetCapabilityStep,
   normalizeTargetCapabilityValue,
 } from '../../../../contracts/src/targetCapabilities.ts';
-import { deviceDetailModes, type MdFilledTextFieldElement } from '../dom.ts';
+import { deviceDetailModes, deviceDetailModesSection, type MdFilledTextFieldElement } from '../dom.ts';
 import { state } from '../state.ts';
 import { showToastError } from '../toast.ts';
 import { logSettingsError } from '../logging.ts';
@@ -141,15 +141,15 @@ const buildDeviceDetailModeRow = (mode: string, device: TargetDeviceSnapshot) =>
 
 export const renderDeviceDetailModes = (device: TargetDeviceSnapshot) => {
   if (!deviceDetailModes) return;
-  deviceDetailModes.innerHTML = '';
+  while (deviceDetailModes.firstChild) deviceDetailModes.removeChild(deviceDetailModes.firstChild);
 
-  if (!supportsTemperatureDevice(device)) {
-    const note = document.createElement('p');
-    note.className = 'muted';
-    note.textContent = 'Temperature targets are not available for on/off devices.';
-    deviceDetailModes.appendChild(note);
-    return;
-  }
+  // Per-mode temperature targets only apply to thermal devices. On/off and
+  // stepped-load devices have no target temperature to set per mode, so hide
+  // the whole section rather than render an empty-state placeholder.
+  const supports = supportsTemperatureDevice(device);
+  if (deviceDetailModesSection) deviceDetailModesSection.hidden = !supports;
+  if (!supports) return;
+
   getAllModes().forEach((mode) => {
     deviceDetailModes.appendChild(buildDeviceDetailModeRow(mode, device));
   });

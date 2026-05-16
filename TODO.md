@@ -901,7 +901,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `.homeycompose/capabilities/*.json`, `.homeycompose/flow/**/*.json`,
       `docs/configuration.md`, `docs/getting-started.md`, relevant generated `app.json` after
       `homey app validate`.
-- [ ] Do a bounded first-impression copy polish pass on the redesigned Settings UI.
+- [x] Do a bounded first-impression copy polish pass on the redesigned Settings UI.
       This should stay small and user-visible: change `Mode: Home` to `Home mode`, explain the
       `Safe pace now` tooltip from `softLimitSource`, replace `Price-shaped plan` with
       `Cheaper-hour planning`, avoid `model` in daily-budget success toasts, and refine device-card
@@ -986,7 +986,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `title` exactly: "Add heating task" / "Add charging task") so the empty state is findable
       both by search and by visual scan. Live-UI verified.
       Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`.
-- [ ] Hide the "Temperature per mode" section on on/off devices.
+- [x] Hide the "Temperature per mode" section on on/off devices.
       Device detail for the Easee / Zaptec chargers (both on/off) today renders the full
       "Temperature per mode" card with body "Temperature targets are not available for on/off
       devices." Empty-state placeholder + card title is wasted real estate — the section should
@@ -995,7 +995,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Live-UI verified on Easee and Zaptec.
       Files: `packages/settings-ui/src/ui/deviceDetail/` (the section visibility gate),
       `packages/settings-ui/public/index.html` (per-mode-temp card template).
-- [ ] Reword stepped-load copy that leaks "lower-priority devices" and "stepped-load device".
+- [x] Reword stepped-load copy that leaks "lower-priority devices" and "stepped-load device".
       `Charge boost` / `Temperature boost` descriptions in `packages/settings-ui/public/index.html`
       (around the existing "Step this charger up while the car stays below the minimum battery
       level, using only lower-priority devices if room must be made." line) and the stepped-section
@@ -2280,6 +2280,12 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `packages/settings-ui/src/ui/deviceDetail/targetPowerConfig.ts`,
       `packages/settings-ui/src/ui/deviceDetail/evBoost.ts`,
       `packages/settings-ui/src/ui/deviceDetail/temperatureBoost.ts`.
+- [ ] Sync `docs/plan-states.md` device-card secondary-text language with `notes/ui-terminology.md`.
+      `docs/plan-states.md:26` still describes the held-state secondary text as "Limited by PELS"
+      while `notes/ui-terminology.md:100` and the live UI (post PR 4.4) now use `Lowered by PELS`
+      / `Charging paused`. Update the doc paragraph so the public docs site matches the shipped UI.
+      Why P2: docs-only drift; live UI is already authoritative.
+      Files: `docs/plan-states.md`.
 
 ## P3 Future and Exploratory Work
 
