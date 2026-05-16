@@ -249,7 +249,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       AND 30 days of recent hourly buckets, and asserts the chart window is
       `2026-05-15` down to `2026-05-02` with no April dates leaking through.)*
 
-- [ ] Smart task history chart Y-axis labels clipped (leading digit cut off).
+- [x] Smart task history chart Y-axis labels clipped (leading digit cut off). *(landed in PR #821 — `DeadlinePlanHistoryDetail.tsx` chart grid uses ECharts `containLabel: true` so the full `1.2 / 0.9 / 0.6 / 0.3 kWh` labels fit; chart container height bumped 220→240 px; legend.width: 100% added so long localized labels wrap cleanly — incidentally closes the P1 chart-legend truncation cluster.)*
       Live-walk 2026-05-16 (`/tmp/pels-live-walk/04-smart-task-history-succeeded-480.png`,
       `y-axis-clip-evidence.png`) shows the per-row Y-axis labels rendering as `.2 kWh`,
       `.9 kWh`, `.6 kWh`, `.3 kWh` instead of `1.2 / 0.9 / 0.6 / 0.3 kWh` on every smart-task
@@ -262,7 +262,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`, smart-task
       chart shell (echarts grid.left / padding), CSS selectors driving chart container width.
 
-- [ ] PELS segmented control inactive / hover / disabled styling loses specificity
+- [x] PELS segmented control inactive / hover / disabled styling loses specificity *(landed in PR #821 — extended the duplicate-attribute trick already used on the selected state to inactive, hover, and disabled; PELS now wins the (0,3,1) cascade tie against Homey's `_base.css` button rule.)*
       battle against Homey's host stylesheet — inactive segments render cream `#e7e7e7`
       with dark `#555` text in EVERY Homey theme (light or dark). Live walk 2026-05-16
       confirmed root cause in `/tmp/pels-rewalk/budget/inspect-segmented.json`.
@@ -307,7 +307,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Evidence: `/tmp/pels-rewalk/budget/inspect-segmented.json` and
       `/tmp/pels-rewalk/budget/zoom-segmented-view.png`.
 
-- [ ] Settings → Modes priority list truncates device names. Live-walk 2026-05-16
+- [x] Settings → Modes priority list truncates device names. *(landed in PR #821 — `#modes-panel .mode-row .device-row__name { white-space: normal; overflow-wrap: anywhere; }` lets long Norwegian device names wrap to 2 lines instead of clipping.)* Live-walk 2026-05-16
       (`/tmp/pels-live-walk/05-settings-modes-480-hovedsoverom-crop.png`) shows
       "Termostat hovedsoverom" rendering as "hovedsoveron" — the final `m` is clipped by the
       adjacent number-input + #priority chip cluster at the supported 480 px width.
@@ -322,7 +322,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `packages/settings-ui/src/ui/views/...` (modes panel markup), `settings/style.css`
       (regen).
 
-- [ ] Extend the Homey-wrap fixture with Homey's host CSS so PELS-vs-Homey CSS
+- [x] Extend the Homey-wrap fixture with Homey's host CSS so PELS-vs-Homey CSS *(landed in PR #821 — `_base.css`, `_homey-button.css`, `homey.css` added to fixture; `static-server.mjs` injects them into the PELS iframe document in the real Homey load order under `PELS_E2E_SIMULATE_HOMEY=light|dark`.)*
       cascade bugs reproduce locally. PR #817 captured Homey's iframe-level CSS and
       the dark-mode filter — but missed the host stylesheets Homey injects into the
       iframe document itself (`_base.css`, `_homey-button.css`, `homey.css`). Those
@@ -403,7 +403,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/public/style.css`,
       `packages/settings-ui/public/index.html`, `settings/style.css` (regen).
 
-- [ ] Smart-task chart legend labels truncate to ellipsis across multiple views.
+- [x] Smart-task chart legend labels truncate to ellipsis across multiple views. *(landed in PR #821 — fixed alongside the P0 chart Y-axis bug via `legend.width: '100%'` + grid-top 28→44 px on the smart-task chart shell.)*
       Live-walk 2026-05-16:
       - Active detail (`/tmp/pels-live-walk/04-smart-task-active-detail-480.png`):
         "Background usa…" and "Original Heatin…" truncated at 480 px.

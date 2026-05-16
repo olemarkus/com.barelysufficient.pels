@@ -6,9 +6,20 @@
  *     Wraps the PELS UI in a Homey-like parent page so dev/Playwright runs see
  *     the same outer chrome (and dark-mode CSS filter) that the real
  *     my.homey.app shell layers around the PELS iframe. Captured fixtures live
- *     in packages/settings-ui/test/fixtures/homey-wrap/. When unset, the
- *     server serves PELS directly at `/` and behavior matches what it has
- *     always been.
+ *     in packages/settings-ui/test/fixtures/homey-wrap/.
+ *
+ *     In addition to the iframe-level wrap CSS, Homey injects three host
+ *     stylesheets into the iframe document itself (`_base.css`,
+ *     `_homey-button.css`, `homey.css`). Those are the rules that compete with
+ *     PELS's own CSS in the iframe's cascade — most notably the legacy button
+ *     rule that paints all `<button>` elements with `background-color:#e7e7e7`
+ *     unless PELS reaches higher specificity. Captured copies under
+ *     `homey-host-base.css` / `homey-host-button.css` are injected into the
+ *     served PELS `index.html` BEFORE PELS's own `style.css` so the cascade
+ *     order matches the real Homey shell.
+ *
+ *     When unset, the server serves PELS directly at `/` and behavior matches
+ *     what it has always been (no Homey host CSS injected).
  */
 import http from 'node:http';
 import fs from 'node:fs/promises';
@@ -103,6 +114,16 @@ const isWithinRoot = (candidatePath) => {
 };
 
 const HOMEY_WRAP_CSS_PREFIX = '/__homey-wrap__/';
+const HOMEY_HOST_CSS_PREFIX = '/__homey-host__/';
+// Captured Homey host stylesheets injected into the PELS iframe document.
+// Order matches Homey's real load order: `_base.css` first (which defines the
+// legacy `<button>` rule that competes with PELS's segmented control), then
+// `_homey-button.css` (the `.homey-button` family). These resolve to files
+// under `packages/settings-ui/test/fixtures/homey-wrap/`.
+const HOMEY_HOST_CSS_FILES = new Map([
+  ['_base.css', 'homey-host-base.css'],
+  ['_homey-button.css', 'homey-host-button.css'],
+]);
 
 const resolveHomeyWrapCss = (pathname) => {
   if (!pathname.startsWith(HOMEY_WRAP_CSS_PREFIX)) return null;
@@ -112,6 +133,21 @@ const resolveHomeyWrapCss = (pathname) => {
   if (mode !== 'light' && mode !== 'dark') return null;
   return path.join(HOMEY_WRAP_FIXTURE_DIR, `homey-wrap.${mode}.css`);
 };
+
+const resolveHomeyHostCss = (pathname) => {
+  if (!pathname.startsWith(HOMEY_HOST_CSS_PREFIX)) return null;
+  const tail = pathname.slice(HOMEY_HOST_CSS_PREFIX.length);
+  const fixture = HOMEY_HOST_CSS_FILES.get(tail);
+  if (!fixture) return null;
+  return path.join(HOMEY_WRAP_FIXTURE_DIR, fixture);
+};
+
+// Build the `<link>` block injected into the PELS iframe `<head>` before
+// PELS's own stylesheets so the host rules sit lower in the cascade — exactly
+// where Homey places them in production.
+const HOMEY_HOST_CSS_LINKS = [...HOMEY_HOST_CSS_FILES.keys()]
+  .map((name) => `  <link rel="stylesheet" href="${HOMEY_HOST_CSS_PREFIX}${name}">`)
+  .join('\n');
 
 const resolveInnerPelsPath = (pathname) => {
   if (!SIMULATE_HOMEY_MODE) return pathname;
@@ -123,6 +159,9 @@ const resolveInnerPelsPath = (pathname) => {
 const resolveFilePath = async (pathname) => {
   const wrapCss = resolveHomeyWrapCss(pathname);
   if (wrapCss) return wrapCss;
+
+  const hostCss = resolveHomeyHostCss(pathname);
+  if (hostCss) return hostCss;
 
   if (pathname === '/') {
     return path.join(ROOT_DIR, 'index.html');
@@ -208,6 +247,25 @@ const main = async () => {
       }
 
       const contentType = CONTENT_TYPES.get(path.extname(fsPath).toLowerCase()) ?? 'application/octet-stream';
+      // When the Homey wrap is active, inject the captured host stylesheets
+      // into the PELS iframe document's <head> before its own `./style.css`
+      // link. Matches the real Homey load order — `_base.css` ships a default
+      // `<button>` rule that competes with PELS's segmented-control selectors
+      // in the cascade. Without this injection the local fixture would render
+      // PELS-correct, masking specificity bugs that only surface in production.
+      if (
+        SIMULATE_HOMEY_MODE
+        && contentType.startsWith('text/html')
+        && fsPath === path.join(ROOT_DIR, 'index.html')
+      ) {
+        const html = data.toString('utf8');
+        const injected = html.replace(
+          /(\s*)(<link\s+rel=["']stylesheet["']\s+href=["']\.\/style\.css["']\s*\/?>)/,
+          (_match, indent, tag) => `${indent}${HOMEY_HOST_CSS_LINKS}${indent}${tag}`,
+        );
+        send(res, 200, { 'Content-Type': contentType, 'Cache-Control': 'no-store' }, injected);
+        return;
+      }
       send(res, 200, { 'Content-Type': contentType, 'Cache-Control': 'no-store' }, data);
     } catch (error) {
       console.error('settings-ui static server error', error);

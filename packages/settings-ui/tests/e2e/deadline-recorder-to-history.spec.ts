@@ -261,4 +261,103 @@ test.describe('Deadline recorder → history UI round-trip', () => {
     await expect(cards).toHaveCount(1);
     await expect(cards.first().locator('.plan-chip--warn')).toHaveText('Missed');
   });
+
+  // Regression: leading digits of the y-axis labels rendered under the chart
+  // container's left edge as `.2 kWh` / `.9 kWh` instead of `1.2 / 0.9 kWh`
+  // on every history-detail page. Caused by a fixed `grid.left: 36` that was
+  // narrower than the label width; the fix uses `containLabel: true` so
+  // ECharts auto-expands the grid to fit every label. Run at 480 px and at
+  // 320 px so we catch a regression at either supported width.
+  for (const viewport of [{ width: 480, height: 800 }, { width: 320, height: 700 }] as const) {
+    test(`history-detail chart Y-axis labels fit inside container at ${viewport.width}px`, async ({ page }) => {
+      // Build a synthetic history entry with `originalPlan` populated so the
+      // chart actually renders. The recorder fixture above produces entries
+      // without plan snapshots (`deadline_passed` finalization without a live
+      // planner revision); a chart-clip test needs the plan bars to be drawn.
+      const T0 = Date.UTC(2026, 4, 16, 4, 0, 0);
+      const HOUR = 3_600_000;
+      const entry = {
+        id: 'fixture-yaxis-regression',
+        deviceId: 'dev_connected300',
+        deviceName: 'Connected 300',
+        objectiveKind: 'temperature' as const,
+        targetTemperatureC: 65,
+        targetPercent: null,
+        deadlineAtMs: T0 + 6 * HOUR,
+        startedAtMs: T0,
+        finalizedAtMs: T0 + 6 * HOUR + HOUR,
+        startProgressC: 50,
+        startProgressPercent: null,
+        finalProgressC: 65,
+        finalProgressPercent: null,
+        initialEnergyNeededKWh: 4.0,
+        outcome: 'met' as const,
+        metAtMs: T0 + 5 * HOUR,
+        usedDeadlineReserve: false,
+        usedPolicyAvoid: false,
+        observedIntervals: [{ fromMs: T0 + HOUR, toMs: T0 + 3 * HOUR }],
+        discoveredFrom: 'observation' as const,
+        // Plan values chosen so labels include a leading digit > 0: ECharts
+        // splits the [0,1.2] axis into 0/0.3/0.6/0.9/1.2 kWh, exactly the
+        // values the live walk reported being clipped to `.2`/`.9`/etc.
+        originalPlan: {
+          hours: [
+            { startsAtMs: T0, plannedKWh: 1.2 },
+            { startsAtMs: T0 + HOUR, plannedKWh: 0.9 },
+            { startsAtMs: T0 + 2 * HOUR, plannedKWh: 0.6 },
+            { startsAtMs: T0 + 3 * HOUR, plannedKWh: 0.3 },
+            { startsAtMs: T0 + 4 * HOUR, plannedKWh: 0.6 },
+            { startsAtMs: T0 + 5 * HOUR, plannedKWh: 0.4 },
+          ],
+          energyNeededKWh: 4.0,
+          planStatus: 'on_track' as const,
+          revisedAtMs: T0,
+        },
+        finalPlan: null,
+        revisionCount: 1,
+      };
+
+      await page.setViewportSize(viewport);
+      await page.addInitScript(stubHistory, { dev_connected300: [entry] });
+      await page.goto(
+        `/?page=deadline-plan&deviceId=dev_connected300&historyId=${encodeURIComponent(entry.id)}`,
+        { waitUntil: 'domcontentloaded' },
+      );
+
+      const chart = page.locator('.deadline-horizon-chart');
+      await expect(chart).toBeVisible();
+      await expect(chart.locator('svg')).toBeVisible();
+
+      // Every y-axis label inside the SVG must render fully inside the
+      // chart container's left/right bounds. A label whose left edge is to
+      // the left of the container is being clipped by the container — the
+      // original bug. We filter to labels ending in `kWh` so x-axis ticks
+      // and legend text don't pollute the assertion.
+      const offenders = await chart.evaluate((container) => {
+        const rect = container.getBoundingClientRect();
+        const labels = container.querySelectorAll('svg text');
+        const issues: Array<{ text: string; left: number; right: number; containerLeft: number; containerRight: number }> = [];
+        for (const node of Array.from(labels)) {
+          if (!(node instanceof SVGTextElement)) continue;
+          const text = (node.textContent ?? '').trim();
+          if (!text.endsWith('kWh')) continue;
+          const labelRect = node.getBoundingClientRect();
+          if (labelRect.left < rect.left - 1 || labelRect.right > rect.right + 1) {
+            issues.push({
+              text,
+              left: Number(labelRect.left.toFixed(2)),
+              right: Number(labelRect.right.toFixed(2)),
+              containerLeft: Number(rect.left.toFixed(2)),
+              containerRight: Number(rect.right.toFixed(2)),
+            });
+          }
+        }
+        return issues;
+      });
+      expect(
+        offenders,
+        `Y-axis labels clipped by chart container: ${JSON.stringify(offenders)}`,
+      ).toEqual([]);
+    });
+  }
 });

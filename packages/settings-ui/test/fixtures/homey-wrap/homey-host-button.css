@@ -1,0 +1,178 @@
+/******************************
+ * Homey Button
+ *
+ * @WARNING FOR APP DEVELOPERS: Don't overwrite this class, this may break your app in the future.
+ *
+ * @description Can be used by combining multiple parameters into one classnames
+ * @example
+ * - homey-button
+ * - homey-button-primary
+ * - homey-button-primary-shadow
+ * - homey-button-primary-full
+ * - homey-button-primary-full-shadow
+ * - homey-button-secondary-shadow
+ * - homey-button-danger-shadow
+ * - homey-button-danger-small-shadow
+ ******************************/
+
+[class*='homey-button'] {
+  --animation: 0%;
+  --deg: 30deg;
+  --mask-color: var(--homey-color-white);
+
+  box-sizing: border-box;
+  display: inline-grid;
+  grid-auto-flow: column;
+  justify-content: center;
+  align-items: center;
+  grid-gap: 8px;
+  padding: 12px 24px;
+  border-radius: var(--homey-border-radius);
+  background: var(--homey-button-background);
+  background-position: var(--homey-interactive-gradient-position-default);
+  background-size: var(--homey-interactive-gradient-size);
+  font-size: var(--homey-font-size-default);
+  font-weight: var(--homey-font-weight-medium);
+  line-height: 24px;
+  color: var(--homey-color-white);
+  text-decoration: none !important; /* !important is used to fix broken button in existing apps */
+  cursor: pointer;
+  border: none !important; /* !important is used to fix broken button in existing apps. */
+  -webkit-tap-highlight-color: transparent;
+  white-space: nowrap; /* Fix for safari browsers which renders two lines instead of one line even the text fits in one line.*/
+  overflow: hidden; /* Fix for safari browsers which renders two lines instead of one line even the text fits in one line.*/
+
+  transform: scale(1);
+  transition:
+    var(--homey-duration-fast) ease-in-out,
+    var(--homey-duration-fast) var(--homey-curve-fast-in);
+  transition-property: transform, background-position, filter;
+}
+
+[class*='homey-button']:hover {
+  background-position: var(--homey-interactive-gradient-position-hover);
+  text-decoration: none;
+  transform: scale(1) translate3d(0, 0, 0);
+}
+
+[class*='homey-button']:hover:active {
+  background-position: var(--homey-interactive-gradient-position-active);
+  transform: scale(0.98);
+}
+
+[class*='homey-button']:focus-visible {
+  box-shadow: 0 0 5px var(--homey-button-color-focus) !important; /* important is used to overwrite &-shadow variant when used. */
+  outline: 1px solid var(--homey-color-white-o-50);
+}
+
+/* Text, icons etc */
+[class*='homey-button'] span {
+  transition: opacity var(--homey-duration-fast) var(--homey-curve-fast-in);
+}
+
+/* Colors */
+[class*='homey-button'],
+[class*='homey-button'][class*='-primary'] {
+  --homey-button-background: var(--homey-interactive-gradient-blue);
+  --homey-button-color-focus: var(--homey-color-gradient-blue-start);
+  --homey-button-box-shadow: var(--homey-box-shadow);
+}
+
+[class*='homey-button'][class*='-secondary'] {
+  --homey-button-background: var(--homey-color-white);
+  --homey-button-box-shadow: var(--homey-box-shadow-light);
+  color: var(--homey-color-highlight);
+}
+
+[class*='homey-button'][class*='-secondary']:hover {
+  color: var(--homey-color-highlight-hover);
+}
+[class*='homey-button'][class*='-secondary']:hover:active {
+  color: var(--homey-color-highlight-active);
+}
+
+[class*='homey-button'][class*='-danger'] {
+  --homey-button-background: var(--homey-color-white);
+  --homey-button-box-shadow: var(--homey-box-shadow-light);
+  color: var(--homey-color-text-danger);
+}
+
+[class*='homey-button'][class*='-danger']:hover {
+  color: var(--homey-color-text-danger-hover);
+}
+
+[class*='homey-button'][class*='-danger']:hover:active {
+  color: var(--homey-color-text-danger-active);
+}
+
+[class*='homey-button'][class*='-transparent'] {
+  --homey-button-background: transparent;
+  color: var(--homey-color-text-light);
+  font-weight: var(--homey-font-weight-regular);
+}
+
+[class*='homey-button'][class*='-transparent'].is-loading::before {
+  background-color: var(--homey-color-text-light);
+}
+
+/* Sizes */
+[class*='homey-button'][class*='-small'] {
+  font-size: var(--homey-font-size-small);
+  line-height: 20px;
+  padding: 8px 16px;
+}
+
+/* Full */
+[class*='homey-button'][class*='-full'] {
+  display: grid;
+  width: 100%;
+}
+
+/* Shadow */
+[class*='homey-button'][class*='-shadow'] {
+  box-shadow: var(--homey-button-box-shadow);
+}
+
+/*** STATES ***/
+/* Disabled */
+[class*='homey-button'][disabled='disabled'],
+[class*='homey-button'].is-disabled {
+  filter: grayscale(1) opacity(0.5);
+  cursor: not-allowed;
+}
+
+/* Loading */
+@keyframes homey-button-loading {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+[class*='homey-button'].is-loading {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
+[class*='homey-button'].is-loading::before {
+  content: '';
+  mask-image: url('../img/spinner.svg');
+  mask-position: center center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  -webkit-mask-image: url('../img/spinner.svg');
+  -webkit-mask-position: center center;
+  -webkit-mask-repeat: no-repeat;
+  -moz-mask-image: url('../img/spinner.svg');
+  -moz-mask-position: center center;
+  -moz-mask-repeat: no-repeat;
+  -moz-mask-size: contain;
+  width: 23px;
+  height: 23px;
+  animation: homey-button-loading 1s infinite;
+  animation-timing-function: steps(8, end);
+  background-color: white;
+}
