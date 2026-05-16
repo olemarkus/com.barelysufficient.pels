@@ -237,6 +237,119 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `packages/shared-domain/src/deadlineLabels.ts`.
 ## P1 Correctness, Data Integrity, and Supported UX
 
+- [ ] Smart task hero: `estimatedDurationText` shrinks across revisions. The recorder formats
+      the value every revision from the current `energyNeededKWh / planningSpeedKw`
+      (`lib/plan/deferredObjectives/activePlanRecorder.ts:267`); `energyNeededKWh` is
+      recomputed from `progress.remainingUnits` each cycle
+      (`lib/plan/deferredObjectives/diagnosticsBridge.ts:266-279`), so the persisted
+      `Estimated: Yh Zm` shrinks every time a new revision is written. User expectation
+      (clarified 2026-05-15): "hours remaining" can shrink, but the *plan-level total
+      duration* should be set once at plan creation and never reduced. Either snapshot
+      `initialEstimatedDurationText` + `initialPlanningSpeedKw` on
+      `DeferredObjectiveActivePlanV1` at `createPlanFromDiagnostic` time and have the hero
+      read those, or rename the metaLine value so the shrink is honest (e.g. "Remaining:
+      Yh Zm"). Decide which side of the contract holds the truth.
+      Files: `packages/contracts/src/deferredObjectiveActivePlans.ts`,
+      `lib/plan/deferredObjectives/activePlanRecorder.ts`,
+      `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+
+- [ ] Smart task hero headline names a time but no reason. When `firstChargingHour > now`,
+      `resolveHeroHeadline` (`packages/settings-ui/src/ui/deadlinePlanHero.ts:58-70`) emits
+      "Heating from HH:MM" / "Charging from HH:MM" with zero context for *why* that hour.
+      User reads it as a mystery: waiting for prices? next cheap window? plug-in? Add a
+      subline or extra meta line resolving against the data already on the latest revision
+      (`computedFromPricesUpTo` vs `deadlineAtMs`, `dailyBudgetExhaustedBucketCount`,
+      `firstPlannedHourMs`). Three primary cases:
+      - prices not through deadline → "Waiting for tomorrow's prices through HH:MM."
+      - daily budget exhausted in the run-up → "Today's budget is full — next cheap window
+        after midnight."
+      - prices known + window deliberately chosen → "Cheaper than now — starts at HH:MM."
+      Reason copy lives in `packages/shared-domain/src/deadlineLabels.ts`. Helper goes in
+      shared-domain to stay browser-safe.
+
+- [ ] Smart task live chart: price grid and load grid bars don't align by hour. Two
+      ECharts grids (`packages/settings-ui/src/ui/views/DeadlinePlan.tsx:362-365`) share
+      xAxis categories but auto-size bars per grid; price grid has 1 bar series, load
+      grid has 3-5 (background + device + optional original-* + optional actual-device
+      line). Without explicit `barCategoryGap` or pinned `barWidth`, ECharts computes bar
+      centres differently per grid, producing a visible offset at 320-480px viewports.
+      Fix: set `barCategoryGap` on every bar series across both grids and pin `barWidth`
+      to a deterministic value. Add a Playwright visual regression test asserting bar
+      centres match between `xAxisIndex 0` and `xAxisIndex 1` at 320px + 480px.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx` (lines 442-550),
+      `packages/settings-ui/tests/e2e/`.
+
+- [ ] Smart task history detail: rebuild around temperature/SoC actual-vs-plan, not
+      hourly bar comparisons. Current `DeadlinePlanHistoryDetail.tsx` shows planned-hour
+      bars (original + final) and binary observed-interval markers. The history entry
+      (`packages/contracts/src/deferredObjectivePlanHistory.ts`) persists `startProgressC`
+      / `finalProgressC` (scalar) but no time-series progress samples — so the user can't
+      see how temperature actually evolved against the planned trajectory.
+      Two-step fix (user-approved 2026-05-15):
+      1. Bump history schema v3 → v4. Add optional
+         `progressSamples?: Array<{ atMs: number; valueC: number | null; valuePercent: number | null }>`
+         (hourly downsample, cap ~48 samples per entry; budget ~70KB worst case for 30
+         entries). In `lib/plan/deferredObjectives/planHistory.ts`, maintain an in-memory
+         hourly ring per run; drain into the entry at finalization. Migration in
+         `lib/plan/deferredObjectives/planHistorySettings.ts` reads v3 with samples
+         absent (graceful degrade). Persist `kwhPerUnitMean` on
+         `DeferredObjectivePlanHistoryRevisionSnapshot` so the UI can compute the planned
+         trajectory.
+      2. Rebuild the chart in `DeadlinePlanHistoryDetail.tsx`: y-axis = target unit
+         (°C / %); x-axis = run-start → deadline; series 1 = planned staircase trajectory
+         derived from `originalPlan.hours × kwhPerUnitMean` starting from
+         `startProgress*`; series 2 = `progressSamples` as line+points. Mark line at
+         `metAtMs` if reached. Hide chart and fall back to current bars when
+         `progressSamples.length < 2` (v3 legacy entries).
+      Related: existing P1 entry `Add deliveredKWh and totalCost to
+      DeferredObjectivePlanHistoryEntry` and existing P2 entries `Bring the smart-task
+      history detail view to full live-plan chart parity` and `Compose a one-sentence
+      postmortem on the smart-task history detail page` all touch the same history detail
+      surface; sequence together.
+      Files (step 1): `packages/contracts/src/deferredObjectivePlanHistory.ts`,
+      `lib/plan/deferredObjectives/planHistorySettings.ts`,
+      `lib/plan/deferredObjectives/planHistory.ts`,
+      `test/deferredObjectivePlanHistory.test.ts`.
+      Files (step 2): `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `packages/settings-ui/test/deadlinePlanHistoryDetail.test.ts`.
+
+- [ ] Smart task chip "Queued" is redundant on the hero and misleading on list cards.
+      On the deadline-plan hero, the chip duplicates the headline for `queued`, `active`,
+      `on_track`, and `cannot_finish` cases (headline already says "Heating from HH:MM" /
+      "Heating now" / "On track …" / "Cannot finish"). On list cards
+      (`packages/settings-ui/src/ui/views/DeadlinesList.tsx`), the chip is the *only*
+      state signal — but "Queued" implies a task queue that doesn't exist. The semantics
+      are "plan ready, first hour > now" — i.e. "scheduled for later." Two-part fix:
+      (a) drop the live-state chip from the active hero
+      (`packages/settings-ui/src/ui/deadlinePlanHero.ts:46-56`); keep the kind chip and
+      the cannot-meet chip;
+      (b) rename `queued` *label* to "Scheduled" in
+      `packages/shared-domain/src/deadlineLabels.ts:49` and the kind-specific
+      `liveStateChipLabel` block. Keep the internal LiveState enum value `queued`
+      unchanged so log schemas aren't affected. Pending-hero chips ("Building plan…",
+      "Paused — unplugged") stay — they carry unique info. The `Heat queued` / `Charge
+      queued` rows in `notes/ui-terminology.md:168` also need updating once landed.
+
+- [ ] Smart task hero "Confidence low" chip carries no explanation. The chip is built as
+      a bare `Confidence ${confidence}` string
+      (`packages/settings-ui/src/ui/deadlinePlanHero.ts:55`) with no tooltip, supporting
+      copy, or aria-label. Users have no way to know that the bands come from sample
+      count + relative std-dev of the learned `kWhPerUnit` profile
+      (`lib/core/objectiveProfileStats.ts:38-49`; low: <4 samples OR relStdDev >0.75;
+      medium: 4-9 samples + relStdDev 0.35-0.75; high: ≥10 samples AND relStdDev ≤0.35),
+      or what to do about it. Two-part fix:
+      (a) drop the chip when `confidence === 'high'` (no signal needed in the common
+      case); for `low` / `medium`, replace text with action-oriented copy ("Estimating" /
+      "Refining") and surface `sampleCount` so the user can see basis;
+      (b) add a row to the "Smart task inputs" card via
+      `packages/settings-ui/src/ui/deadlinePlanInputs.ts` showing "Learned from N samples"
+      and a one-line explanation: "Plan estimates may drift until PELS has more
+      observations of this device's energy use." Plumb `sampleCount` through from
+      `kwhPerUnitProvenance.acceptedSamples` (already on the revision contract). Companion
+      to the existing P1 entry "Surface confidence and progress on Smart-tasks list cards"
+      which covers the same signal on the list surface.
+
 - [ ] Give settings-form text-field / select controls an accessible name. M3 follow-up audit
       (2026-05-14) re-checked the previous "duplicate visible labels" finding and corrected the
       framing: `md-filled-text-field` and `md-filled-select` in `Limits & safety`,
@@ -1519,6 +1632,32 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Why P2: bridges two parallel surfaces that today co-exist without acknowledgement.
       Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
       `packages/settings-ui/src/ui/deadlineUrls.ts` (usage deep-link builder).
+- [ ] Complete the `--day-view-color-*` → `--pels-chart-*` migration on Budget surfaces.
+      The shimmed token pair (`--day-view-color-background-usage` /
+      `--day-view-color-managed-usage`) is still bound to `--color-role-info` /
+      `--color-role-warn` at `packages/settings-ui/public/style.css:4490-4493`, with four
+      remaining consumers (`style.css:4615, 4620, 4728, 4732`) reading the shim with
+      `--color-base-*-default` fallbacks. The Playwright e2e
+      `packages/settings-ui/tests/e2e/daily-budget-rollover.spec.ts:205,209` also asserts
+      against the shim names. Two budget chart legend swatches at lines 4188 and 4192 are
+      currently on the shim and visually need to match the actual chart cells they label.
+      An ad-hoc patch sat as WIP on the main worktree (rebind only the two legend swatches
+      directly in the generated `settings/style.css`) — rejected because (a) editing the
+      generated bundle is reverted on next `npm run build:settings`, and (b) two-of-six
+      rebound is half a migration that risks legend/chart-cell divergence on the
+      unmigrated surfaces.
+      Minimum acceptable completion: rebind all 6 consumers in
+      `packages/settings-ui/public/style.css` from `--day-view-color-*` to
+      `--pels-chart-*` tokens, remove the shim definitions, update
+      `daily-budget-rollover.spec.ts` to read the new names, regen `settings/style.css`
+      via `npm run build:settings`, confirm the Budget legend and rendered chart cells
+      bind to the same hex at 320 / 480 px.
+      Why P2: pure visual-token cleanup; current rendering is coherent (legends and cells
+      both read the shim), so user-visible incorrectness does not apply yet. Required
+      before the chart-token P0's "shims removed after one release" promise can land.
+      Files: `packages/settings-ui/public/style.css`,
+      `packages/settings-ui/tests/e2e/daily-budget-rollover.spec.ts`,
+      `settings/style.css` (regen).
 
 ## P3 Future and Exploratory Work
 

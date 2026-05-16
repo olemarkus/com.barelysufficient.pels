@@ -175,6 +175,22 @@ GitHub Actions (`.github/workflows/test.yml`) runs on every push and PR:
 
 ---
 
+## Review Subagents
+
+User-level review agents are available for fan-out checks before opening a non-trivial PR. They are read-only (no Edit/Write) and auto-approved. Use whichever match the diff surface; for sizeable PRs, dispatch the relevant ones in parallel alongside the `adversarial-review` skill.
+
+| Agent | Trigger surface |
+|-------|-----------------|
+| `pels-layering-guardian` | `lib/core/**`, `lib/plan/**`, `lib/price/**`, `lib/dailyBudget/**`, `lib/app/**`, `lib/utils/**`, `flowCards/**`, `drivers/**`, `packages/shared-domain/**` |
+| `pels-m3-critic` | `packages/settings-ui/**`, any `*Chart*.ts` |
+| `pels-ux-fit` | non-trivial view changes in `packages/settings-ui/src/ui/views/**` |
+| `pels-copy-and-terminology` | `packages/settings-ui/**`, `packages/shared-domain/**` (UI strings, status labels, tooltips, copy helpers) |
+| `pels-runtime-reality` | `lib/plan/**`, `lib/core/**`, `lib/dailyBudget/**`, `lib/price/**`, `drivers/**`, persisted-state handling |
+
+Findings come back classified P0/P1/P2 — P0/P1 fix in the same PR; P2/P3 to `TODO.md`.
+
+---
+
 ## Pull Request Guidelines
 
 - Minimal changes: one issue/feature per PR.
