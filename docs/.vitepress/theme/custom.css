@@ -14,35 +14,108 @@
   font-display: swap;
 }
 
+/*
+ * Docs-scoped design tokens — light-theme companion to settings/tokens.css.
+ * Brand accent is derived from the app's accent palette so the docs site and
+ * the in-app UI feel like the same product, in a light surface.
+ */
 :root {
-  --vp-font-family-base: 'IBM Plex Sans', 'Segoe UI', sans-serif;
-  --vp-font-family-mono: 'IBM Plex Mono', 'SFMono-Regular', monospace;
+  /* Spacing — mirrors settings/tokens.css scale (4 / 8 / 12 / 16 / 24 / 32) */
+  --docs-spacing-1: 4px;
+  --docs-spacing-2: 8px;
+  --docs-spacing-3: 12px;
+  --docs-spacing-4: 16px;
+  --docs-spacing-6: 24px;
+  --docs-spacing-8: 32px;
+
+  /* Radius */
+  --docs-radius-sm: 6px;
+  --docs-radius-md: 10px;
+  --docs-radius-lg: 14px;
+  --docs-radius-xl: 20px;
+  --docs-radius-2xl: 24px;
+  --docs-radius-full: 9999px;
+
+  /* Light-theme shadows (softer than the app's dark shadows) */
+  --docs-shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.04);
+  --docs-shadow-md: 0 6px 24px rgba(15, 23, 42, 0.06);
+  --docs-shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.08);
+
+  /* Typography */
+  --docs-font-family-sans: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  --docs-font-family-mono: 'IBM Plex Mono', 'SFMono-Regular', monospace;
+  --docs-font-weight-normal: 400;
+  --docs-font-weight-medium: 500;
+  --docs-font-weight-semibold: 600;
+  --docs-line-height-tight: 1.2;
+  --docs-line-height-snug: 1.25;
+  --docs-line-height-normal: 1.5;
+  --docs-line-height-relaxed: 1.65;
+
+  /* Transitions */
+  --docs-transition-fast: 0.15s ease;
+  --docs-transition-default: 0.2s ease;
+
+  /* Brand accent — light-theme variants of the app accent (#22c55e family) */
+  --docs-color-brand-rgb: 34, 197, 94;
+  --docs-color-accent-rgb: 21, 128, 61;
+  --docs-color-accent: rgb(var(--docs-color-accent-rgb));
+  --docs-color-accent-hover: #126c33;
+  --docs-color-accent-active: #0e5526;
+  --docs-color-accent-soft: rgba(var(--docs-color-brand-rgb), 0.12);
+  --docs-color-accent-soft-strong: rgba(var(--docs-color-brand-rgb), 0.2);
+  --docs-color-accent-border: rgba(var(--docs-color-accent-rgb), 0.16);
+
+  /* Surfaces — light theme */
+  --docs-color-bg: #f7faf7;
+  --docs-color-bg-alt: #eef3ee;
+  --docs-color-bg-soft: #f1f5f1;
+  --docs-color-bg-elevated: #ffffff;
+  --docs-color-bg-gradient-start: #f8fbf7;
+  --docs-color-bg-gradient-end: #f3f6f3;
+  --docs-color-navbar-bg: rgba(248, 251, 247, 0.9);
+  --docs-color-accent-secondary: #2f9e64;
+  --docs-color-surface-card: rgba(255, 255, 255, 0.88);
+  --docs-color-surface-card-accent: rgba(255, 255, 255, 0.92);
+
+  /* Borders / dividers */
+  --docs-color-border: rgba(15, 23, 42, 0.08);
+
+  /* Mark / device-screenshot backdrop (always dark — these wrap dark UI shots) */
+  --docs-color-device-frame: #1a2332;
+
+  /* Touch targets (M3-style) */
+  --docs-touch-target-min: 48px;
+
+  /* Wire VitePress theme variables to our docs tokens */
+  --vp-font-family-base: var(--docs-font-family-sans);
+  --vp-font-family-mono: var(--docs-font-family-mono);
   --vp-layout-max-width: 1440px;
-  --vp-c-brand-1: #177b60;
-  --vp-c-brand-2: #0f6b53;
-  --vp-c-brand-3: #3d9d7d;
-  --vp-c-brand-soft: rgba(23, 123, 96, 0.14);
-  --vp-c-bg: #f6f8f5;
-  --vp-c-bg-alt: #edf2ee;
-  --vp-c-bg-soft: #f0f5f1;
-  --vp-c-bg-elv: #ffffff;
-  --vp-c-divider: rgba(17, 24, 39, 0.08);
-  --vp-button-brand-bg: #177b60;
-  --vp-button-brand-hover-bg: #0f6b53;
-  --vp-button-brand-active-bg: #0c5844;
-  --vp-button-alt-bg: rgba(23, 123, 96, 0.08);
-  --vp-button-alt-hover-bg: rgba(23, 123, 96, 0.14);
+  --vp-c-brand-1: var(--docs-color-accent);
+  --vp-c-brand-2: var(--docs-color-accent-hover);
+  --vp-c-brand-3: var(--docs-color-accent-secondary);
+  --vp-c-brand-soft: var(--docs-color-accent-soft);
+  --vp-c-bg: var(--docs-color-bg);
+  --vp-c-bg-alt: var(--docs-color-bg-alt);
+  --vp-c-bg-soft: var(--docs-color-bg-soft);
+  --vp-c-bg-elv: var(--docs-color-bg-elevated);
+  --vp-c-divider: var(--docs-color-border);
+  --vp-button-brand-bg: var(--docs-color-accent);
+  --vp-button-brand-hover-bg: var(--docs-color-accent-hover);
+  --vp-button-brand-active-bg: var(--docs-color-accent-active);
+  --vp-button-alt-bg: var(--docs-color-accent-soft);
+  --vp-button-alt-hover-bg: var(--docs-color-accent-soft-strong);
 }
 
 body {
   background:
-    radial-gradient(circle at top left, rgba(127, 209, 174, 0.18), transparent 34%),
-    linear-gradient(180deg, #f8fbf7 0%, #f3f6f3 100%);
+    radial-gradient(circle at top left, var(--docs-color-accent-soft), transparent 34%),
+    linear-gradient(180deg, var(--docs-color-bg-gradient-start) 0%, var(--docs-color-bg-gradient-end) 100%);
 }
 
 /* stylelint-disable-next-line selector-class-pattern */
 .VPNavBar {
-  background: rgba(248, 251, 247, 0.9);
+  background: var(--docs-color-navbar-bg);
   backdrop-filter: blur(14px);
 }
 
@@ -53,37 +126,37 @@ body {
 
 .landing-hero {
   display: grid;
-  gap: 1rem;
+  gap: var(--docs-spacing-4);
   grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.8fr);
   align-items: start;
-  margin: 0 auto 1.5rem;
+  margin: 0 auto var(--docs-spacing-6);
   max-width: 1160px;
 }
 
 .landing-panel,
 .landing-section,
 .landing-card {
-  border: 1px solid rgba(23, 123, 96, 0.1);
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.84);
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.05);
+  border: 1px solid var(--docs-color-accent-border);
+  border-radius: var(--docs-radius-2xl);
+  background: var(--docs-color-surface-card);
+  box-shadow: var(--docs-shadow-md);
 }
 
 .landing-panel {
-  padding: 1.6rem;
+  padding: var(--docs-spacing-6);
   height: fit-content;
 }
 
 .landing-panel-primary {
-  padding: 1.85rem;
+  padding: var(--docs-spacing-8);
 }
 
 .landing-kicker,
 .landing-section-kicker {
-  margin: 0 0 0.55rem;
-  color: var(--vp-c-brand-2);
+  margin: 0 0 var(--docs-spacing-2);
+  color: var(--docs-color-accent-hover);
   font-size: 0.84rem;
-  font-weight: 600;
+  font-weight: var(--docs-font-weight-semibold);
   letter-spacing: 0.09em;
   text-transform: uppercase;
 }
@@ -110,55 +183,124 @@ body {
 }
 
 .landing-app-type {
-  margin: 0.7rem 0 0;
+  margin: var(--docs-spacing-3) 0 0;
   color: var(--vp-c-text-1);
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: var(--docs-font-weight-semibold);
   letter-spacing: 0.01em;
 }
 
 .landing-lead {
-  margin-top: 1rem;
+  margin-top: var(--docs-spacing-4);
   max-width: 42rem;
   font-size: 1.04rem;
-  line-height: 1.7;
+  line-height: var(--docs-line-height-relaxed);
 }
 
 .landing-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 1.25rem;
+  gap: var(--docs-spacing-3);
+  margin-top: var(--docs-spacing-4);
 }
 
+/*
+ * The landing page uses raw HTML with class="VPButton brand|alt" instead of
+ * VitePress's <VPButton> Vue component, so the framework styles don't apply.
+ * We replicate them here.
+ */
+/* stylelint-disable selector-class-pattern */
+.landing-actions .VPButton,
+.landing-panel-actions .VPButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--docs-touch-target-min);
+  padding: 0 var(--docs-spacing-4);
+  border: 1px solid transparent;
+  border-radius: var(--docs-radius-full);
+  font-size: 0.95rem;
+  font-weight: var(--docs-font-weight-semibold);
+  letter-spacing: 0.005em;
+  line-height: var(--docs-line-height-tight);
+  text-decoration: none;
+  transition:
+    background-color var(--docs-transition-default),
+    border-color var(--docs-transition-default),
+    color var(--docs-transition-default),
+    box-shadow var(--docs-transition-default),
+    transform var(--docs-transition-default);
+}
+
+.landing-actions .VPButton.brand,
+.landing-panel-actions .VPButton.brand {
+  background-color: var(--docs-color-accent);
+  color: var(--docs-color-bg-elevated);
+  box-shadow: var(--docs-shadow-sm);
+}
+
+.landing-actions .VPButton.brand:hover,
+.landing-panel-actions .VPButton.brand:hover {
+  background-color: var(--docs-color-accent-hover);
+  box-shadow: var(--docs-shadow-md);
+  transform: translateY(-1px);
+}
+
+.landing-actions .VPButton.brand:active,
+.landing-panel-actions .VPButton.brand:active {
+  background-color: var(--docs-color-accent-active);
+  transform: translateY(0);
+  box-shadow: var(--docs-shadow-sm);
+}
+
+.landing-actions .VPButton.alt,
+.landing-panel-actions .VPButton.alt {
+  background-color: var(--docs-color-accent-soft);
+  border-color: var(--docs-color-accent-border);
+  color: var(--docs-color-accent);
+}
+
+.landing-actions .VPButton.alt:hover,
+.landing-panel-actions .VPButton.alt:hover {
+  background-color: var(--docs-color-accent-soft-strong);
+  color: var(--docs-color-accent-hover);
+  transform: translateY(-1px);
+}
+
+.landing-actions .VPButton.alt:active,
+.landing-panel-actions .VPButton.alt:active {
+  transform: translateY(0);
+}
+/* stylelint-enable selector-class-pattern */
+
 .landing-inline-note {
-  margin: 1rem 0 0;
+  margin: var(--docs-spacing-4) 0 0;
   max-width: 42rem;
   font-size: 0.95rem;
-  line-height: 1.6;
+  line-height: var(--docs-line-height-normal);
 }
 
 .landing-mark {
   width: 56px;
   height: 56px;
-  margin-bottom: 1rem;
-  padding: 0.65rem;
-  border-radius: 16px;
-  background: rgba(23, 123, 96, 0.08);
+  margin-bottom: var(--docs-spacing-4);
+  padding: var(--docs-spacing-3);
+  border-radius: var(--docs-radius-lg);
+  background: var(--docs-color-accent-soft);
 }
 
 .landing-panel-accent {
   background:
-    linear-gradient(180deg, rgba(23, 123, 96, 0.08), rgba(23, 123, 96, 0.03)),
-    rgba(255, 255, 255, 0.88);
-  border-color: rgba(23, 123, 96, 0.16);
+    linear-gradient(180deg, var(--docs-color-accent-soft), var(--docs-color-accent-soft-strong)),
+    var(--docs-color-surface-card-accent);
+  border-color: var(--docs-color-accent-border);
 }
 
 .landing-panel-kicker {
-  margin: 0 0 0.45rem;
-  color: var(--vp-c-brand-2);
+  margin: 0 0 var(--docs-spacing-2);
+  color: var(--docs-color-accent-hover);
   font-size: 0.78rem;
-  font-weight: 600;
+  font-weight: var(--docs-font-weight-semibold);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -172,30 +314,30 @@ body {
 }
 
 .landing-panel-copy {
-  margin: 0.8rem 0 0;
-  line-height: 1.65;
+  margin: var(--docs-spacing-3) 0 0;
+  line-height: var(--docs-line-height-relaxed);
 }
 
 .landing-list {
-  margin: 1rem 0 0;
+  margin: var(--docs-spacing-4) 0 0;
   padding-left: 1.1rem;
   color: var(--vp-c-text-2);
 }
 
 .landing-list li + li {
-  margin-top: 0.6rem;
+  margin-top: var(--docs-spacing-2);
 }
 
 .landing-panel-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.9rem;
+  gap: var(--docs-spacing-3);
   align-items: center;
-  margin-top: 1.2rem;
+  margin-top: var(--docs-spacing-4);
 }
 
 .landing-text-link {
-  font-weight: 600;
+  font-weight: var(--docs-font-weight-semibold);
 }
 
 .home-shell {
@@ -204,30 +346,30 @@ body {
 }
 
 .home-shell > section + section {
-  margin-top: 1.5rem;
+  margin-top: var(--docs-spacing-6);
 }
 
 .landing-section {
-  padding: 1.5rem;
+  padding: var(--docs-spacing-6);
 }
 
 .landing-section-title {
   font-size: clamp(1.55rem, 3vw, 2.1rem);
-  line-height: 1.1;
+  line-height: var(--docs-line-height-tight);
   border-top: 0;
   padding-top: 0;
 }
 
 .landing-section-text {
-  margin: 0.55rem 0 0;
+  margin: var(--docs-spacing-2) 0 0;
   max-width: 46rem;
-  line-height: 1.7;
+  line-height: var(--docs-line-height-relaxed);
 }
 
 .landing-grid {
   display: grid;
-  gap: 1rem;
-  margin-top: 1.2rem;
+  gap: var(--docs-spacing-4);
+  margin-top: var(--docs-spacing-4);
 }
 
 .landing-grid-three {
@@ -239,29 +381,36 @@ body {
 }
 
 .landing-card {
-  padding: 1.2rem;
+  padding: var(--docs-spacing-4);
+  border-radius: var(--docs-radius-xl);
+  box-shadow: var(--docs-shadow-sm);
+  transition: box-shadow var(--docs-transition-default), transform var(--docs-transition-default);
+}
+
+.landing-card:hover {
+  box-shadow: var(--docs-shadow-md);
 }
 
 .landing-card h3 {
   margin-top: 0;
-  margin-bottom: 0.5rem;
+  margin-bottom: var(--docs-spacing-2);
   font-size: 1.02rem;
   letter-spacing: -0.01em;
 }
 
 .landing-card p {
   margin: 0;
-  line-height: 1.65;
+  line-height: var(--docs-line-height-relaxed);
 }
 
 .landing-card a {
   display: inline-block;
-  margin-top: 0.9rem;
-  font-weight: 600;
+  margin-top: var(--docs-spacing-3);
+  font-weight: var(--docs-font-weight-semibold);
 }
 
 .landing-note {
-  margin-top: 1rem;
+  margin-top: var(--docs-spacing-4);
   font-size: 0.95rem;
 }
 
@@ -271,9 +420,9 @@ body {
   max-width: 340px;
   margin: 0 auto;
   padding: 6px;
-  border-radius: 16px;
-  background: #1a2332;
-  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.18);
+  border-radius: var(--docs-radius-lg);
+  background: var(--docs-color-device-frame);
+  box-shadow: var(--docs-shadow-lg);
 }
 
 .landing-card-with-screenshot {
@@ -285,11 +434,11 @@ body {
   display: block;
   width: 100%;
   max-width: 260px;
-  margin: 0 auto 1rem;
+  margin: 0 auto var(--docs-spacing-4);
   padding: 4px;
-  border-radius: 12px;
-  background: #1a2332;
-  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.15);
+  border-radius: var(--docs-radius-md);
+  background: var(--docs-color-device-frame);
+  box-shadow: var(--docs-shadow-md);
 }
 
 @media (max-width: 960px) {
@@ -305,6 +454,6 @@ body {
   .landing-panel,
   .landing-panel-primary,
   .landing-section {
-    padding: 1.2rem;
+    padding: var(--docs-spacing-4);
   }
 }
