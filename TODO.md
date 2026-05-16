@@ -362,46 +362,23 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
-- [ ] Homey dark theme inverts the PELS iframe via `filter: invert(1) hue-rotate(180deg)`.
-      PELS — already a dark UI designed for dark — gets re-inverted into a near-white
-      palette under Homey dark, and PELS's amber warning palette gets hue-shifted
-      toward cyan/blue, breaking the warn semantic on the Projected-today card and
-      "Close to budget" chip. Captured in
-      `packages/settings-ui/test/fixtures/homey-wrap/homey-wrap.dark.css`. Reproducible
-      locally via `PELS_E2E_SIMULATE_HOMEY=dark`.
+- [x] Homey dark theme inverts the PELS iframe via `filter: invert(1) hue-rotate(180deg)`.
+      *(landed: counter-filter `@media (prefers-color-scheme: dark) { :root { filter: invert(1) hue-rotate(180deg) } }`
+      in `packages/settings-ui/public/style.css` plus `<meta name="color-scheme" content="dark">`
+      defense-in-depth in `public/index.html`. Verified via the captured wrap fixture under
+      `PELS_E2E_SIMULATE_HOMEY=dark`: PELS reads dark again, amber warn semantic restored.)*
 
-      (Earlier hypothesis about a separate "same-document CSS-variable cascade" mode
-      was disproved by the Budget rewalk 2026-05-16 — what looked like a partial
-      cascade was actually the PELS segmented-button specificity bug listed separately
-      in the P0 section. PELS always loads in an iframe; the only Homey-side wrap is
-      the iframe filter.)
-
-      **Mitigation candidates, smallest to largest:**
-      1. Counter-filter scoped to `prefers-color-scheme: dark`:
-         ```css
-         @media (prefers-color-scheme: dark) {
-           :root { filter: invert(1) hue-rotate(180deg); }
-         }
-         ```
-         Cures the iframe-invert when the user's OS theme aligns with Homey theme
-         (~99% case). Edge case: OS dark + Homey light over-triggers.
-      2. JS probe at load: render a known color, read the painted pixel, toggle a
-         `<html>` class. Cures deterministically regardless of OS theme; ~15 LoC.
-
-      `<meta name="color-scheme" content="dark">` alone is NOT sufficient — verified
-      pixel-identical to broken state on the captured fixture.
-
-      **Focus / hover states need a re-check after the fix.** Walk
-      `:focus-visible`, `:hover`, and `:active` on the segmented controls
-      (`.segmented__option`), shell-nav tabs (`#shell-nav md-primary-tab`), and
-      `md-switch` rows once the wrap is neutralised — make sure rings/halos have
-      intended contrast against the restored dark background.
-
-      Fixture screenshots: `homey-wrap-dark-current.png` (broken),
-      `homey-wrap-dark-fixed.png` (color-scheme-meta-only attempt — still broken),
-      `homey-wrap-nav.png` (white-nav effect from the filter).
-      Files: `packages/settings-ui/public/style.css`,
-      `packages/settings-ui/public/index.html`, `settings/style.css` (regen).
+      **Known trade-off (v2.7.1 follow-up):** the CSS-only counter-filter triggers on
+      `prefers-color-scheme: dark`, which is correlated with Homey's theme but not
+      identical. Users who explicitly mismatch (OS dark + Homey light) now see PELS
+      inverted to a near-white palette. The proper deterministic fix requires
+      Homey-side cooperation — there is no in-iframe signal available across the
+      `*.homeylocal.com` ↔ `my.homey.app` origin boundary: `window.parent.document`
+      access throws, canvas readback does not see iframe-element filters, and Homey
+      does not postMessage theme state. A future Homey SDK that exposes the theme
+      via postMessage (or a URL parameter) would let us replace the media-query
+      gate with a deterministic check; tracked as a v2.7.1 enhancement once that
+      signal exists.
 
 - [x] Smart-task chart legend labels truncate to ellipsis across multiple views. *(landed in PR #821 — fixed alongside the P0 chart Y-axis bug via `legend.width: '100%'` + grid-top 28→44 px on the smart-task chart shell.)*
       Live-walk 2026-05-16:
@@ -2305,6 +2282,16 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `packages/settings-ui/src/ui/deviceDetail/temperatureBoost.ts`.
 
 ## P3 Future and Exploratory Work
+
+- [ ] Watch `position: fixed` behavior under the new `:root { filter }` counter-filter (PR #827, gemini-code-assist review).
+      Applying `filter` to `:root` makes it the containing block for fixed-position descendants
+      (`.toast`, `.overlay`, `.slide-panel`, `.deadline-page-close`). Verified non-impacting on
+      Chromium and Firefox mobile under the captured `homey-wrap.dark` fixture at 480×900 (the
+      `<html>` rect equals the viewport, so the new containing block is identical to the
+      viewport). The risk gemini flagged is specifically iOS WebKit — Homey Pro mobile is
+      Android, so this isn't a current target — but worth a follow-up Playwright probe on
+      WebKit-based test browsers if PELS ever ships to an iOS-WebKit consumer.
+      Files: `packages/settings-ui/public/style.css` (counter-filter rule near top).
 
 - [ ] Overview device-name trailing whitespace. Live-walk 2026-05-16:
       `aria-label="Open device details for Termostat gang "` and several others

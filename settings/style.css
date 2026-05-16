@@ -4,6 +4,38 @@
 @import url('tokens.css');
 
 /**
+ * Homey dark-theme counter-filter.
+ *
+ * Homey inverts every app iframe under `<html class="darkTheme">` via
+ * `filter: invert(1) hue-rotate(180deg)`. PELS is dark-only, so the
+ * inversion turns dark surfaces near-white and hue-shifts the amber warn
+ * semantic toward cyan. Applying the same filter to PELS's `:root`
+ * composes the two into identity, restoring the intended palette.
+ *
+ * `prefers-color-scheme: dark` is the only signal available inside the
+ * iframe: PELS loads on `*.homeylocal.com` while the wrapper is on
+ * `my.homey.app`, so `window.parent.document` is blocked; canvas
+ * readback does not see iframe-element filters; Homey does not
+ * postMessage theme state. A JS probe would reduce to the same signal.
+ *
+ * `<meta name="color-scheme" content="dark">` in index.html does not
+ * defeat Homey's filter on its own (verified pixel-identical to the
+ * broken state against the captured fixture under
+ * packages/settings-ui/test/fixtures/homey-wrap/, 2026-05-16) — keep it
+ * as a defense-in-depth declaration of our paint target.
+ *
+ * Known trade-off (TODO.md, v2.7.1): users who explicitly mismatch OS
+ * and Homey theme (e.g. OS dark + Homey light) see PELS inverted because
+ * we counter-invert without Homey having inverted. Deterministic fix
+ * requires a Homey-side postMessage handshake.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    filter: invert(1) hue-rotate(180deg);
+  }
+}
+
+/**
  * Homey injects _base.css which sets light theme defaults.
  * These overrides ensure our dark theme works properly.
  */
