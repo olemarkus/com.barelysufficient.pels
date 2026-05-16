@@ -101,7 +101,9 @@ describe('pre-push checks script', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('pre-push: inspecting 1 changed file(s)');
-    expect(result.stdout).toContain('pre-push: running npm run ci:full');
+    expect(result.stdout).toContain('pre-push: running npm run ci:checks');
+    expect(result.stdout).not.toContain('pre-push: running npm run ci:full');
+    expect(result.stdout).not.toContain('playwright');
     expect(fs.readFileSync(logPath, 'utf8')).toContain(
       `diff --name-only --diff-filter=ACMR ${EMPTY_TREE_SHA}..local-sha`,
     );
@@ -122,7 +124,7 @@ describe('pre-push checks script', () => {
     expect(fs.readFileSync(logPath, 'utf8')).not.toContain('diff ');
   });
 
-  it('runs both settings and runtime checks for shared contract changes', () => {
+  it('runs ci:checks plus runtime and settings UI unit tests for shared contract changes', () => {
     const { dir } = createFakeGitDir();
     const result = runPrePush({
       PATH: `${dir}:${process.env.PATH ?? ''}`,
@@ -133,13 +135,16 @@ describe('pre-push checks script', () => {
     });
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('pre-push: running npm run ci:test:settings-ui');
-    expect(result.stdout).toContain('pre-push: running npm run ci:test:playwright:quick');
     expect(result.stdout).toContain('pre-push: running npm run ci:checks');
-    expect(result.stdout).toContain('pre-push: running npm run ci:test:runtime');
+    expect(result.stdout).toContain('pre-push: running npm run test:unit');
+    expect(result.stdout).toContain('pre-push: running npm run test:unit:tz');
+    expect(result.stdout).toContain('pre-push: running npm --workspace @pels/settings-ui exec -- vitest run --config vitest.config.ts');
+    expect(result.stdout).not.toContain('playwright');
+    expect(result.stdout).not.toContain('ci:test:runtime');
+    expect(result.stdout).not.toContain('ci:full');
   });
 
-  it('runs runtime checks and validation for Homey runtime packaging changes', () => {
+  it('runs ci:checks, fast runtime tests, and validate for driver source changes', () => {
     const { dir } = createFakeGitDir();
     const result = runPrePush({
       PATH: `${dir}:${process.env.PATH ?? ''}`,
@@ -151,27 +156,71 @@ describe('pre-push checks script', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('pre-push: running npm run ci:checks');
-    expect(result.stdout).toContain('pre-push: running npm run ci:test:runtime');
+    expect(result.stdout).toContain('pre-push: running npm run test:unit');
+    expect(result.stdout).toContain('pre-push: running npm run test:unit:tz');
     expect(result.stdout).toContain('pre-push: running npm run validate');
+    expect(result.stdout).not.toContain('playwright');
   });
 
-  it('runs runtime checks and validation for widget source changes', () => {
+  it('runs validate for driver manifest changes', () => {
     const { dir } = createFakeGitDir();
     const result = runPrePush({
       PATH: `${dir}:${process.env.PATH ?? ''}`,
       FAKE_GIT_LOG: path.join(dir, 'git.log'),
       FAKE_MERGE_BASE_VALUE: 'base-sha',
       FAKE_DIFF_RANGE: 'base-sha..local-sha',
-      FAKE_DIFF_OUTPUT: 'widgets/plan_budget/src/public/chart.ts',
+      FAKE_DIFF_OUTPUT: 'drivers/pels_insights/driver.compose.json',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('pre-push: running npm run validate');
+  });
+
+  it('runs validate for packaging-check script changes', () => {
+    const { dir } = createFakeGitDir();
+    const result = runPrePush({
+      PATH: `${dir}:${process.env.PATH ?? ''}`,
+      FAKE_GIT_LOG: path.join(dir, 'git.log'),
+      FAKE_MERGE_BASE_VALUE: 'base-sha',
+      FAKE_DIFF_RANGE: 'base-sha..local-sha',
+      FAKE_DIFF_OUTPUT: 'scripts/check-homey-packaging.mjs',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('pre-push: running npm run validate');
+  });
+
+  it('runs validate when the Homey manifest changes', () => {
+    const { dir } = createFakeGitDir();
+    const result = runPrePush({
+      PATH: `${dir}:${process.env.PATH ?? ''}`,
+      FAKE_GIT_LOG: path.join(dir, 'git.log'),
+      FAKE_MERGE_BASE_VALUE: 'base-sha',
+      FAKE_DIFF_RANGE: 'base-sha..local-sha',
+      FAKE_DIFF_OUTPUT: 'app.json',
     });
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('pre-push: running npm run ci:checks');
-    expect(result.stdout).toContain('pre-push: running npm run ci:test:runtime');
+    expect(result.stdout).toContain('pre-push: running npm run validate');
+    expect(result.stdout).not.toContain('pre-push: running npm run test:unit');
+  });
+
+  it('runs validate for .homeycompose changes', () => {
+    const { dir } = createFakeGitDir();
+    const result = runPrePush({
+      PATH: `${dir}:${process.env.PATH ?? ''}`,
+      FAKE_GIT_LOG: path.join(dir, 'git.log'),
+      FAKE_MERGE_BASE_VALUE: 'base-sha',
+      FAKE_DIFF_RANGE: 'base-sha..local-sha',
+      FAKE_DIFF_OUTPUT: '.homeycompose/app.json',
+    });
+
+    expect(result.status).toBe(0);
     expect(result.stdout).toContain('pre-push: running npm run validate');
   });
 
-  it('runs runtime checks for root Vitest configuration changes', () => {
+  it('runs ci:checks and fast runtime tests for root Vitest configuration changes', () => {
     const { dir } = createFakeGitDir();
     const result = runPrePush({
       PATH: `${dir}:${process.env.PATH ?? ''}`,
@@ -183,10 +232,10 @@ describe('pre-push checks script', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('pre-push: running npm run ci:checks');
-    expect(result.stdout).toContain('pre-push: running npm run ci:test:runtime');
+    expect(result.stdout).toContain('pre-push: running npm run test:unit');
   });
 
-  it('runs runtime checks for runtime test file changes', () => {
+  it('runs ci:checks and fast runtime tests for runtime test file changes', () => {
     const { dir } = createFakeGitDir();
     const result = runPrePush({
       PATH: `${dir}:${process.env.PATH ?? ''}`,
@@ -198,6 +247,23 @@ describe('pre-push checks script', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('pre-push: running npm run ci:checks');
-    expect(result.stdout).toContain('pre-push: running npm run ci:test:runtime');
+    expect(result.stdout).toContain('pre-push: running npm run test:unit');
+  });
+
+  it('runs only ci:checks for unrelated changes like docs', () => {
+    const { dir } = createFakeGitDir();
+    const result = runPrePush({
+      PATH: `${dir}:${process.env.PATH ?? ''}`,
+      FAKE_GIT_LOG: path.join(dir, 'git.log'),
+      FAKE_MERGE_BASE_VALUE: 'base-sha',
+      FAKE_DIFF_RANGE: 'base-sha..local-sha',
+      FAKE_DIFF_OUTPUT: 'docs/architecture.md',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('pre-push: running npm run ci:checks');
+    expect(result.stdout).not.toContain('pre-push: running npm run test:unit');
+    expect(result.stdout).not.toContain('pre-push: running npm run validate');
+    expect(result.stdout).not.toContain('vitest.config.ts');
   });
 });

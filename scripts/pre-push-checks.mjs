@@ -1,36 +1,11 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
+import { runParallel } from './lib/run-parallel.mjs';
 
 const ZERO_SHA_PATTERN = /^0+$/;
 const DRY_RUN = process.env.PELS_PRE_PUSH_DRY_RUN === '1';
 const EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
-
-const FULL_CI_PATHS = [
-  '.github/workflows/',
-  '.husky/',
-  'package.json',
-  'package-lock.json',
-  'scripts/pre-push-checks.mjs',
-];
-
-const FULL_PLAYWRIGHT_PATHS = [
-  'packages/settings-ui/package.json',
-  'packages/settings-ui/playwright.config.ts',
-  'packages/settings-ui/tests/e2e/',
-  'scripts/playwright-static-server.mjs',
-];
-
-const QUICK_PLAYWRIGHT_PATHS = [
-  'packages/settings-ui/public/',
-  'packages/settings-ui/src/',
-  'packages/settings-ui/test/',
-  'packages/contracts/src/',
-  'packages/shared-domain/src/',
-  'scripts/sync-settings-ui.mjs',
-  'settings/',
-  'tokens/',
-];
 
 const RUNTIME_PATHS = [
   'app.ts',
@@ -50,12 +25,18 @@ const RUNTIME_PATHS = [
   'vitest-env.d.ts',
 ];
 
-const VALIDATE_PATHS = [
+const SETTINGS_UI_PATHS = [
+  'packages/settings-ui/src/',
+  'packages/settings-ui/test/',
+  'packages/settings-ui/package.json',
+  'packages/contracts/src/',
+  'packages/shared-domain/src/',
+];
+
+const MANIFEST_PATHS = [
   '.homeycompose/',
   'app.json',
   'drivers/',
-  'flowCards/',
-  'settings/',
   'widgets/',
   'scripts/check-homey-packaging.mjs',
 ];
@@ -132,36 +113,40 @@ const matchesAnyPath = (files, patterns) => files.some((file) => (
   patterns.some((pattern) => file === pattern || file.startsWith(pattern))
 ));
 
-const runCommand = (command, args) => {
-  const rendered = `${command} ${args.join(' ')}`;
-  console.log(`pre-push: running ${rendered}`);
-  if (DRY_RUN) return;
+const planCommands = (changedFiles) => {
+  const commands = [
+    { label: 'ci:checks', command: 'npm', args: ['run', 'ci:checks'] },
+  ];
 
-  const result = spawnSync(command, args, {
-    env: process.env,
-    stdio: 'inherit',
-  });
-
-  if (result.error) {
-    throw result.error;
+  if (matchesAnyPath(changedFiles, RUNTIME_PATHS)) {
+    commands.push(
+      { label: 'test:unit', command: 'npm', args: ['run', 'test:unit'] },
+      { label: 'test:unit:tz', command: 'npm', args: ['run', 'test:unit:tz'] },
+    );
   }
 
-  if (typeof result.status === 'number' && result.status !== 0) {
-    process.exit(result.status);
+  if (matchesAnyPath(changedFiles, SETTINGS_UI_PATHS)) {
+    commands.push({
+      label: 'test:ui:unit',
+      command: 'npm',
+      args: ['--workspace', '@pels/settings-ui', 'exec', '--', 'vitest', 'run', '--config', 'vitest.config.ts'],
+    });
+  }
+
+  if (matchesAnyPath(changedFiles, MANIFEST_PATHS)) {
+    commands.push({ label: 'validate', command: 'npm', args: ['run', 'validate'] });
+  }
+
+  return commands;
+};
+
+const announce = (commands) => {
+  for (const entry of commands) {
+    console.log(`pre-push: running ${entry.command} ${entry.args.join(' ')}`);
   }
 };
 
-const runCommands = (commands) => {
-  const seen = new Set();
-  for (const [command, args] of commands) {
-    const key = `${command}\0${args.join('\0')}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    runCommand(command, args);
-  }
-};
-
-const main = () => {
+const main = async () => {
   const pushRefs = parsePushRefs();
   if (pushRefs.length === 0) {
     console.log('pre-push: no refs received, skipping extra local checks');
@@ -176,42 +161,12 @@ const main = () => {
 
   console.log(`pre-push: inspecting ${changedFiles.length} changed file(s)`);
 
-  if (matchesAnyPath(changedFiles, FULL_CI_PATHS)) {
-    runCommand('npm', ['run', 'ci:full']);
-    return;
-  }
+  const commands = planCommands(changedFiles);
+  announce(commands);
 
-  const commands = [];
+  if (DRY_RUN) return;
 
-  if (matchesAnyPath(changedFiles, FULL_PLAYWRIGHT_PATHS)) {
-    commands.push(
-      ['npm', ['run', 'ci:test:settings-ui']],
-      ['npm', ['run', 'ci:test:playwright']],
-    );
-  } else if (matchesAnyPath(changedFiles, QUICK_PLAYWRIGHT_PATHS)) {
-    commands.push(
-      ['npm', ['run', 'ci:test:settings-ui']],
-      ['npm', ['run', 'ci:test:playwright:quick']],
-    );
-  }
-
-  if (matchesAnyPath(changedFiles, RUNTIME_PATHS)) {
-    commands.push(
-      ['npm', ['run', 'ci:checks']],
-      ['npm', ['run', 'ci:test:runtime']],
-    );
-  }
-
-  if (matchesAnyPath(changedFiles, VALIDATE_PATHS)) {
-    commands.push(['npm', ['run', 'build']], ['npm', ['run', 'validate']]);
-  }
-
-  if (commands.length > 0) {
-    runCommands(commands);
-    return;
-  }
-
-  console.log('pre-push: no runtime, settings UI, packaging, or CI wiring changes detected; skipping extra local checks');
+  await runParallel(commands);
 };
 
-main();
+await main();
