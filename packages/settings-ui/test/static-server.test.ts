@@ -163,7 +163,7 @@ describe('settings-ui static server — Homey-wrap host CSS injection', () => {
     }
   });
 
-  it('injects captured Homey host stylesheets into the iframe document before PELS style.css', async () => {
+  it('injects captured Homey host stylesheets into the iframe document after PELS style.css', async () => {
     // Inner PELS HTML is served under the `/__pels__/` mount when the wrap is
     // active. The captured `_base.css` rule that competes with PELS's
     // segmented control sits in the host CSS — without this injection the
@@ -179,8 +179,8 @@ describe('settings-ui static server — Homey-wrap host CSS injection', () => {
     expect(homeyIdx, 'host homey.css link should be injected').toBeGreaterThan(-1);
     expect(pelsIdx, 'PELS style.css link should remain').toBeGreaterThan(-1);
     expect(
-      baseIdx < pelsIdx && buttonIdx < pelsIdx && homeyIdx < pelsIdx,
-      'Host CSS must precede PELS style.css so the cascade matches the real Homey shell',
+      baseIdx > pelsIdx && buttonIdx > pelsIdx && homeyIdx > pelsIdx,
+      'Host CSS must follow PELS style.css so the cascade matches the real Homey shell (Homey loads its host CSS after PELS in the iframe, verified 2026-05-16)',
     ).toBe(true);
   });
 
