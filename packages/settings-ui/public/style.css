@@ -4,19 +4,28 @@
 @import url('tokens.css');
 
 /**
- * Homey dark-theme counter-filter.
+ * Homey dark-theme counter-filter (desktop-only scope).
  *
- * Homey inverts every app iframe under `<html class="darkTheme">` via
- * `filter: invert(1) hue-rotate(180deg)`. PELS is dark-only, so the
+ * Homey desktop inverts every app iframe under `<html class="darkTheme">`
+ * via `filter: invert(1) hue-rotate(180deg)`. PELS is dark-only, so the
  * inversion turns dark surfaces near-white and hue-shifts the amber warn
  * semantic toward cyan. Applying the same filter to PELS's `:root`
  * composes the two into identity, restoring the intended palette.
  *
- * `prefers-color-scheme: dark` is the only signal available inside the
- * iframe: PELS loads on `*.homeylocal.com` while the wrapper is on
- * `my.homey.app`, so `window.parent.document` is blocked; canvas
- * readback does not see iframe-element filters; Homey does not
- * postMessage theme state. A JS probe would reduce to the same signal.
+ * **Mobile Homey does not apply the outer iframe inversion** — it paints
+ * its own dark surrounds and lets the embedded iframe render natively.
+ * The counter-filter must therefore stay off on mobile, otherwise it
+ * inverts native-dark PELS into a near-white "light mode" view (the
+ * regression observed after the initial counter-filter shipped). Scope
+ * the rule to `(hover: hover) and (pointer: fine)` — the standard
+ * "desktop with mouse" probe used elsewhere in `tooltips.ts` for the
+ * inverse touch detection. Mobile / tablet do not match either feature,
+ * so the filter stays off there and PELS renders as its native dark UI.
+ *
+ * Signal choice: `prefers-color-scheme: dark` is still the only available
+ * cue *for the parent's theme* inside the iframe (cross-origin parent
+ * doc, no canvas readback of iframe-element filters, no Homey postMessage
+ * theme signal). A JS probe would reduce to the same media query.
  *
  * `<meta name="color-scheme" content="dark">` in index.html does not
  * defeat Homey's filter on its own (verified pixel-identical to the
@@ -24,12 +33,13 @@
  * packages/settings-ui/test/fixtures/homey-wrap/, 2026-05-16) — keep it
  * as a defense-in-depth declaration of our paint target.
  *
- * Known trade-off (TODO.md, v2.7.1): users who explicitly mismatch OS
- * and Homey theme (e.g. OS dark + Homey light) see PELS inverted because
- * we counter-invert without Homey having inverted. Deterministic fix
- * requires a Homey-side postMessage handshake.
+ * Known trade-off (TODO.md, v2.7.1): users on **desktop** who explicitly
+ * mismatch OS and Homey theme (e.g. OS dark + Homey light) see PELS
+ * inverted because we counter-invert without Homey having inverted.
+ * Deterministic fix requires a Homey-side postMessage handshake or a
+ * proper light/dark theme implementation in PELS itself.
  */
-@media (prefers-color-scheme: dark) {
+@media (prefers-color-scheme: dark) and (hover: hover) and (pointer: fine) {
   :root {
     filter: invert(1) hue-rotate(180deg);
   }
