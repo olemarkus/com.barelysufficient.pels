@@ -3,6 +3,10 @@ import { getSetting, setSetting } from './homey.ts';
 import { defaultPriceOptimizationConfig, state } from './state.ts';
 import { updatePriceConfigDevices } from './priceConfig.ts';
 
+// Re-exported for `priceOpt.ts`; the underlying helper lives in `state.ts`
+// to avoid a circular import between this module and `priceConfig.ts`.
+export { clonePriceOptimizationSettings } from './state.ts';
+
 export const loadPriceOptimizationSettings = async () => {
   const settings = await getSetting('price_optimization_settings');
   if (settings && typeof settings === 'object') {

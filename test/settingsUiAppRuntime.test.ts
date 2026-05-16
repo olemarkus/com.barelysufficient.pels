@@ -1,9 +1,24 @@
 import { mockHomeyInstance } from './mocks/homey';
 import { createApp, cleanupApps } from './utils/appTestUtils';
-import { getLatestDevicesForUiFromApp, resetSettingsUiPowerStatsForApp } from '../lib/app/settingsUiAppRuntime';
+import {
+  getLatestDevicesForUiFromApp,
+  refreshSettingsUiDevicesForApp,
+  resetSettingsUiPowerStatsForApp,
+} from '../lib/app/settingsUiAppRuntime';
+import { SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX } from '../packages/contracts/src/settingsUiApi';
 import { getHourBucketKey } from '../lib/utils/dateUtils';
 
 describe('settings UI app runtime helpers', () => {
+  it('uses the contract-declared PELS_APP_NOT_READY prefix for boot-window errors', async () => {
+    // Runtime code cannot value-import deploy-excluded contract source files,
+    // so `settingsUiAppRuntime.ts` duplicates the literal. This test pins both
+    // copies together so a future rename of the canonical constant cannot
+    // silently break the settings UI retry contract.
+    await expect(refreshSettingsUiDevicesForApp({} as never)).rejects.toThrow(
+      new RegExp(`^${SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX} `),
+    );
+  });
+
   it('reads latestTargetSnapshot exactly once per getLatestDevicesForUiFromApp call', () => {
     let getterCallCount = 0;
     const devices = [{ id: 'dev-1', name: 'Heater' }];

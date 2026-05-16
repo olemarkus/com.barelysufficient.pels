@@ -5,13 +5,23 @@ import {
   countHomeySet,
   countSettingsCacheHit,
 } from './perf.ts';
-import { isRetryableHomeyTransportErrorMessage } from './homeyTransportErrors.ts';
+import {
+  isAppNotReadyErrorMessage,
+  isRetryableHomeyTransportErrorMessage,
+} from './homeyTransportErrors.ts';
 
 // Backoff schedule for transient Homey-API transport failures (e.g. "Network
 // request failed", "socket hang up", or "Homey api ... not available" while
 // the SDK adapter is still wiring up). The retry only applies to GET so we
 // don't replay non-idempotent writes.
 const CALL_API_RETRY_DELAYS_MS = [250, 750] as const;
+
+// Longer backoff schedule for the PELS-app-not-ready window. App restarts
+// can take several seconds — the runtime returns a `PELS_APP_NOT_READY:`
+// error until services are wired up. Idempotent reads keep polling; writes
+// are also retried because the sentinel guarantees the runtime has not yet
+// touched persistent state. Sums to ~8.25 s of total wait.
+const APP_NOT_READY_RETRY_DELAYS_MS = [250, 500, 1000, 1500, 2000, 3000] as const;
 
 export type HomeyCallback<T> = (err: Error | null, value?: T) => void;
 
@@ -206,11 +216,18 @@ export const callApi = async <T>(
   body?: unknown,
 ): Promise<T> => {
   let attempt = 0;
+  let appNotReadyAttempt = 0;
   while (true) {
     try {
       return await callApiOnce<T>(method, uri, body);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (isAppNotReadyErrorMessage(message)
+          && appNotReadyAttempt < APP_NOT_READY_RETRY_DELAYS_MS.length) {
+        await sleep(APP_NOT_READY_RETRY_DELAYS_MS[appNotReadyAttempt]!);
+        appNotReadyAttempt += 1;
+        continue;
+      }
       const canRetry = method === 'GET'
         && attempt < CALL_API_RETRY_DELAYS_MS.length
         && isRetryableHomeyTransportErrorMessage(message);

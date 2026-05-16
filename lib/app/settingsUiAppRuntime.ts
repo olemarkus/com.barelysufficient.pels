@@ -7,6 +7,18 @@ import type {
 import type { TargetDeviceSnapshot } from '../utils/types';
 import { getHourBucketKey } from '../utils/dateUtils';
 
+// Sentinel prefix the settings UI matches to detect the PELS boot/restart
+// window and keep the panel in a bounded loading/retry state instead of
+// surfacing a hard error. Duplicated here because the runtime cannot
+// value-import deploy-excluded contract source files; the canonical
+// declaration lives at `packages/contracts/src/settingsUiApi.ts`
+// (`SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX`). Keep both copies in sync.
+const APP_NOT_READY_ERROR_PREFIX = 'PELS_APP_NOT_READY:';
+
+const appNotReadyError = (capability: string): Error => (
+  new Error(`${APP_NOT_READY_ERROR_PREFIX} ${capability} unavailable while PELS is starting`)
+);
+
 type SettingsUiRuntimeApp = Homey.App & {
   latestTargetSnapshot?: TargetDeviceSnapshot[];
   getUiPickerDevices?: () => TargetDeviceSnapshot[];
@@ -129,7 +141,7 @@ export const emitSettingsUiPowerUpdatedForApp = (
 export const refreshSettingsUiDevicesForApp = async (homey: Homey.App['homey']): Promise<TargetDeviceSnapshot[]> => {
   const app = getRuntimeApp(homey);
   if (!app?.refreshTargetDevicesSnapshot) {
-    throw new Error('Refresh devices functionality is not available in the app.');
+    throw appNotReadyError('Refresh devices');
   }
   await app.refreshTargetDevicesSnapshot();
   return getLatestDevicesForUiFromApp(homey) ?? [];
@@ -138,7 +150,7 @@ export const refreshSettingsUiDevicesForApp = async (homey: Homey.App['homey']):
 export const refreshSettingsUiPricesForApp = async (homey: Homey.App['homey']): Promise<void> => {
   const app = getRuntimeApp(homey);
   if (!app?.priceCoordinator?.refreshSpotPrices) {
-    throw new Error('Refresh prices functionality is not available in the app.');
+    throw appNotReadyError('Refresh prices');
   }
   await app.priceCoordinator.refreshSpotPrices(true);
 };
@@ -146,7 +158,7 @@ export const refreshSettingsUiPricesForApp = async (homey: Homey.App['homey']): 
 export const refreshSettingsUiGridTariffForApp = async (homey: Homey.App['homey']): Promise<void> => {
   const app = getRuntimeApp(homey);
   if (!app?.priceCoordinator?.refreshGridTariffData) {
-    throw new Error('Refresh grid tariff functionality is not available in the app.');
+    throw appNotReadyError('Refresh grid tariff');
   }
   await app.priceCoordinator.refreshGridTariffData(true);
 };
@@ -154,7 +166,7 @@ export const refreshSettingsUiGridTariffForApp = async (homey: Homey.App['homey'
 export const resetSettingsUiPowerStatsForApp = async (homey: Homey.App['homey']): Promise<PowerTrackerState> => {
   const app = getRuntimeApp(homey);
   if (!app?.replacePowerTrackerForUi) {
-    throw new Error('Reset power stats functionality is not available in the app.');
+    throw appNotReadyError('Reset power stats');
   }
 
   const currentState = app.powerTracker || {};

@@ -443,23 +443,23 @@ describe('settingsUiApi', () => {
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({ plan: null });
   });
 
-  it('throws when refresh or reset functionality is unavailable', async () => {
+  it('throws a PELS_APP_NOT_READY-prefixed error when refresh or reset hits the boot window', async () => {
     const homey = createHomey();
     delete (homey.app as Partial<typeof homey.app>).refreshTargetDevicesSnapshot;
     delete (homey.app as Partial<typeof homey.app>).priceCoordinator;
     delete (homey.app as Partial<typeof homey.app>).replacePowerTrackerForUi;
 
     await expect(refreshSettingsUiDevices({ homey: homey as never })).rejects.toThrow(
-      'Refresh devices functionality is not available in the app.',
+      /^PELS_APP_NOT_READY: Refresh devices unavailable/,
     );
     await expect(refreshSettingsUiPrices({ homey: homey as never })).rejects.toThrow(
-      'Refresh prices functionality is not available in the app.',
+      /^PELS_APP_NOT_READY: Refresh prices unavailable/,
     );
     await expect(refreshSettingsUiGridTariff({ homey: homey as never })).rejects.toThrow(
-      'Refresh grid tariff functionality is not available in the app.',
+      /^PELS_APP_NOT_READY: Refresh grid tariff unavailable/,
     );
     await expect(resetSettingsUiPowerStats({ homey: homey as never })).rejects.toThrow(
-      'Reset power stats functionality is not available in the app.',
+      /^PELS_APP_NOT_READY: Reset power stats unavailable/,
     );
   });
 

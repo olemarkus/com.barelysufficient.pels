@@ -1,5 +1,8 @@
 import { toastEl } from './dom.ts';
-import { isHomeyTransportErrorMessage } from './homeyTransportErrors.ts';
+import {
+  isAppNotReadyErrorMessage,
+  isHomeyTransportErrorMessage,
+} from './homeyTransportErrors.ts';
 import { sleep } from './homey.ts';
 
 export type ToastTone = 'default' | 'ok' | 'warn';
@@ -18,6 +21,10 @@ const DEFAULT_DURATION_MS = 1800;
 const ACTION_DURATION_MS = 6000;
 const ERROR_DURATION_MS = 5000;
 const GENERIC_ERROR_FALLBACK = 'Save failed — try again.';
+// Generic message shown when the PELS app shell is reachable but the runtime
+// services have not finished initializing. Avoids surfacing the internal
+// sentinel prefix to users when the boot window outlives the retry budget.
+const APP_NOT_READY_FALLBACK = 'PELS is still starting — try again in a moment.';
 // Wrap added by buildApiError in homey.ts. Strip so users see the inner
 // server-authored message instead of the transport envelope.
 const HOMEY_API_ERROR_PREFIX_REGEX = /^Homey api (?:DELETE|GET|POST|PUT) \S+ failed: /;
@@ -89,6 +96,12 @@ const stripHomeyApiPrefix = (message: string): string => (
 export const showToastError = async (error: unknown, fallback: string): Promise<void> => {
   const rawMessage = extractErrorMessage(error);
   const unwrapped = stripHomeyApiPrefix(rawMessage);
+  // App-not-ready outlasted the bounded retry budget: prefer a stable "still
+  // starting" message over the sentinel prefix or the caller's generic fallback.
+  if (isAppNotReadyErrorMessage(rawMessage)) {
+    await showToast(APP_NOT_READY_FALLBACK, 'warn', { durationMs: ERROR_DURATION_MS });
+    return;
+  }
   // Hide low-signal transport errors behind the caller's fallback. The user
   // sees an actionable message instead of "socket hang up" or similar.
   const candidate = unwrapped && !isHomeyTransportErrorMessage(unwrapped) ? unwrapped : fallback;

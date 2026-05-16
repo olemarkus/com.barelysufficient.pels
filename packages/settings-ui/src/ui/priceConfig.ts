@@ -9,7 +9,7 @@ import {
 } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
 import { logSettingsError } from './logging.ts';
-import { state, defaultPriceOptimizationConfig } from './state.ts';
+import { clonePriceOptimizationSettings, state, defaultPriceOptimizationConfig } from './state.ts';
 import { supportsTemperatureDevice } from './deviceUtils.ts';
 import { resolveManagedState } from './state.ts';
 import { gridCompanies } from './gridCompanies.ts';
@@ -381,24 +381,32 @@ const handleTariffGroupChange = async (group: string) => {
 };
 
 const handleDeviceCheapDeltaChange = async (deviceId: string, val: number) => {
+  const previousSettings = clonePriceOptimizationSettings(state.priceOptimizationSettings);
   const existing = state.priceOptimizationSettings[deviceId] || { ...defaultPriceOptimizationConfig };
   state.priceOptimizationSettings[deviceId] = { ...existing, cheapDelta: val };
   renderPriceAwareDevices();
   try {
     await setSetting('price_optimization_settings', state.priceOptimizationSettings);
   } catch (error) {
+    // Roll back the optimistic write so the visible value matches what Homey
+    // actually persisted (TODO 735).
+    state.priceOptimizationSettings = previousSettings;
+    renderPriceAwareDevices();
     await logSettingsError('Failed to save cheap delta', error, 'priceConfig');
     await showToastError(error, 'Failed to save price optimization setting.');
   }
 };
 
 const handleDeviceExpensiveDeltaChange = async (deviceId: string, val: number) => {
+  const previousSettings = clonePriceOptimizationSettings(state.priceOptimizationSettings);
   const existing = state.priceOptimizationSettings[deviceId] || { ...defaultPriceOptimizationConfig };
   state.priceOptimizationSettings[deviceId] = { ...existing, expensiveDelta: val };
   renderPriceAwareDevices();
   try {
     await setSetting('price_optimization_settings', state.priceOptimizationSettings);
   } catch (error) {
+    state.priceOptimizationSettings = previousSettings;
+    renderPriceAwareDevices();
     await logSettingsError('Failed to save expensive delta', error, 'priceConfig');
     await showToastError(error, 'Failed to save price optimization setting.');
   }

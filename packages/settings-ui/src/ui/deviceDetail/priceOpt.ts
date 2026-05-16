@@ -8,7 +8,11 @@ import {
 import { renderDevices } from '../devices.ts';
 import { supportsTemperatureDevice } from '../deviceUtils.ts';
 import { logSettingsError } from '../logging.ts';
-import { renderPriceOptimization, savePriceOptimizationSettings } from '../priceOptimization.ts';
+import {
+  clonePriceOptimizationSettings,
+  renderPriceOptimization,
+  savePriceOptimizationSettings,
+} from '../priceOptimization.ts';
 import { resolveManagedState, state, defaultPriceOptimizationConfig } from '../state.ts';
 import { showToastError } from '../toast.ts';
 
@@ -62,6 +66,15 @@ export const initDeviceDetailPriceOptHandlers = (params: {
   getCurrentDetailDeviceId: () => string | null;
   getDeviceById: (deviceId: string) => TargetDeviceSnapshot | null;
 }) => {
+  const renderPriceOptDependents = () => {
+    renderDevices(state.latestDevices);
+    renderPriceOptimization(state.latestDevices);
+    updateDeltaSectionVisibility({
+      currentDetailDeviceId: params.getCurrentDetailDeviceId(),
+      getDeviceById: params.getDeviceById,
+    });
+  };
+
   const autoSavePriceOpt = async () => {
     const deviceId = params.getCurrentDetailDeviceId();
     if (!deviceId) return;
@@ -70,6 +83,10 @@ export const initDeviceDetailPriceOptHandlers = (params: {
     if (!supportsTemperatureDevice(device)) return;
 
     const { enabled, cheapDelta, expensiveDelta } = readPriceOptInputs();
+    // Snapshot the persisted map before the optimistic mutation so a failed
+    // Homey write can be rolled back; otherwise the UI would keep showing
+    // values the runtime did not persist (TODO 735).
+    const previousSettings = clonePriceOptimizationSettings(state.priceOptimizationSettings);
     const config = ensurePriceOptimizationConfig(deviceId);
     config.enabled = enabled;
     config.cheapDelta = cheapDelta;
@@ -77,13 +94,15 @@ export const initDeviceDetailPriceOptHandlers = (params: {
 
     try {
       await savePriceOptimizationSettings();
-      renderDevices(state.latestDevices);
-      renderPriceOptimization(state.latestDevices);
-      updateDeltaSectionVisibility({
-        currentDetailDeviceId: params.getCurrentDetailDeviceId(),
-        getDeviceById: params.getDeviceById,
-      });
+      renderPriceOptDependents();
     } catch (error) {
+      state.priceOptimizationSettings = previousSettings;
+      // Re-bind the inputs and toggle to the restored persisted values so the
+      // screen reflects what Homey actually has, not the failed write.
+      setDeviceDetailDeltaValues(deviceId);
+      const restored = state.priceOptimizationSettings[deviceId];
+      if (deviceDetailPriceOpt) deviceDetailPriceOpt.selected = restored?.enabled ?? false;
+      renderPriceOptDependents();
       await logSettingsError('Failed to save price optimization settings', error, 'device detail');
       await showToastError(error, 'Failed to save price optimization settings.');
     }

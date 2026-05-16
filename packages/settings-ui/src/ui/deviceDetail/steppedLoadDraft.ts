@@ -27,7 +27,22 @@ import {
 import { supportsEvBoostDevice } from './evBoost.ts';
 import { writeShedBehaviors } from './shedBehavior.ts';
 
-let currentSteppedLoadDraft: SteppedLoadProfile | null = null;
+// Drafts are keyed by deviceId so the editor state for one device cannot bleed
+// into another's session. A single module-global draft used to make fallback
+// chains depend on whichever device wrote the draft last (TODO 740).
+const steppedLoadDraftsByDeviceId = new Map<string, SteppedLoadProfile>();
+
+const getSteppedLoadDraft = (deviceId: string): SteppedLoadProfile | null => (
+  steppedLoadDraftsByDeviceId.get(deviceId) ?? null
+);
+
+const setSteppedLoadDraft = (deviceId: string, profile: SteppedLoadProfile): void => {
+  steppedLoadDraftsByDeviceId.set(deviceId, profile);
+};
+
+const clearSteppedLoadDraft = (deviceId: string): void => {
+  steppedLoadDraftsByDeviceId.delete(deviceId);
+};
 
 const DEFAULT_SET_STEP_OPTION_LABEL = 'Set to step';
 
@@ -68,7 +83,7 @@ const attachDraftSyncOnChange = (
 const getDraftProfileFromCurrentDevice = (device: TargetDeviceSnapshot): SteppedLoadProfile => (
   isNativeSteppedLoadProfileActive(device)
     ? createDefaultSteppedLoadProfile(device)
-    : currentSteppedLoadDraft
+    : getSteppedLoadDraft(device.id)
       ?? resolveSavedSteppedLoadProfile(device)
       ?? createDefaultSteppedLoadProfile(device)
 );
@@ -166,7 +181,7 @@ export const updateSetStepOptionLabel = (
     setOptionLabel(setStepOption, DEFAULT_SET_STEP_OPTION_LABEL);
   } else {
     const profile = profileOverride
-      ?? currentSteppedLoadDraft
+      ?? getSteppedLoadDraft(device.id)
       ?? resolveSavedSteppedLoadProfile(device);
     const lowestActiveStepId = profile ? getSteppedLoadLowestActiveStep(profile)?.id : null;
     setOptionLabel(setStepOption, lowestActiveStepId
@@ -198,7 +213,7 @@ export const renderSteppedLoadDraft = (device: TargetDeviceSnapshot) => {
   deviceDetailSteppedSection.hidden = !showStepEditor && !showBoostOnlySection;
   setEditorVisibility(!showStepEditor);
   if (!showStepEditor) {
-    currentSteppedLoadDraft = null;
+    clearSteppedLoadDraft(device.id);
     deviceDetailSteppedSteps.replaceChildren();
     setEditorDisabled(false);
     updateSetStepOptionLabel(device, null);
@@ -211,14 +226,14 @@ export const renderSteppedLoadDraft = (device: TargetDeviceSnapshot) => {
   const syncSteppedLoadDraftState = () => {
     if (nativeProfileLocked) return;
     const profile = collectSteppedLoadDraftFromDom()
-      ?? currentSteppedLoadDraft
+      ?? getSteppedLoadDraft(device.id)
       ?? getDraftProfileFromCurrentDevice(device);
-    currentSteppedLoadDraft = profile;
+    setSteppedLoadDraft(device.id, profile);
     updateSetStepOptionLabel(device, profile);
   };
 
   const profile = getDraftProfileFromCurrentDevice(device);
-  currentSteppedLoadDraft = profile;
+  setSteppedLoadDraft(device.id, profile);
   updateSetStepOptionLabel(device, profile);
   const rows = sortSteppedLoadSteps(profile.steps).map((step) => buildSteppedLoadStepRow({
     step,
@@ -228,8 +243,10 @@ export const renderSteppedLoadDraft = (device: TargetDeviceSnapshot) => {
   deviceDetailSteppedSteps.replaceChildren(...rows);
 };
 
+// Drop every per-device draft so the next device-detail open starts fresh
+// from the persisted profile. Called on detail-pane close.
 export const closeSteppedLoadDraft = () => {
-  currentSteppedLoadDraft = null;
+  steppedLoadDraftsByDeviceId.clear();
 };
 
 export const initSteppedLoadDraftHandlers = (params: {
@@ -248,7 +265,7 @@ export const initSteppedLoadDraftHandlers = (params: {
     if (isNativeSteppedLoadProfileActive(device)) return;
 
     const profile = collectSteppedLoadDraftFromDom()
-      ?? currentSteppedLoadDraft
+      ?? getSteppedLoadDraft(deviceId)
       ?? getDraftProfileFromCurrentDevice(device);
     const existingIds = new Set(profile.steps.map((step) => step.id));
     let nextIndex = profile.steps.length + 1;
@@ -259,13 +276,13 @@ export const initSteppedLoadDraftHandlers = (params: {
     }
 
     const lastPower = profile.steps[profile.steps.length - 1]?.planningPowerW ?? 0;
-    currentSteppedLoadDraft = {
+    setSteppedLoadDraft(deviceId, {
       ...profile,
       steps: [...profile.steps, {
         id: nextId,
         planningPowerW: lastPower,
       }],
-    };
+    });
     renderSteppedLoadDraft(device);
   };
 
@@ -278,7 +295,10 @@ export const initSteppedLoadDraftHandlers = (params: {
     if (!canEditSteppedLoadProfile(device)) return;
     if (isNativeSteppedLoadProfileActive(device)) return;
 
-    currentSteppedLoadDraft = resolveSavedSteppedLoadProfile(device) ?? createDefaultSteppedLoadProfile(device);
+    setSteppedLoadDraft(
+      deviceId,
+      resolveSavedSteppedLoadProfile(device) ?? createDefaultSteppedLoadProfile(device),
+    );
     renderSteppedLoadDraft(device);
   };
 
@@ -299,7 +319,7 @@ export const initSteppedLoadDraftHandlers = (params: {
       );
     }
 
-    currentSteppedLoadDraft = profile;
+    setSteppedLoadDraft(deviceId, profile);
     if (deviceDetailShedAction && deviceDetailShedAction.value === 'set_step') {
       const lowestActiveStepId = getSteppedLoadLowestActiveStep(profile)?.id;
       const nextBehaviors = await writeShedBehaviors({
