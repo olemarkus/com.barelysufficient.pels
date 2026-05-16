@@ -116,6 +116,33 @@ describe('Redesign plan UI', () => {
       const deviceNames = Array.from(document.querySelectorAll('.plan-card__title'))
         .map((el) => el.textContent?.trim());
       expect(deviceNames).toEqual(['First', 'Second']);
+
+      const rankChips = Array.from(document.querySelectorAll('.plan-card__chips .plan-chip--rank'))
+        .map((el) => el.textContent?.trim());
+      expect(rankChips).toEqual(['#1', '#2']);
+      const firstRank = document.querySelector('[data-device-id="dev-1"] .plan-chip--rank') as HTMLElement | null;
+      expect(firstRank?.getAttribute('aria-label')).toBe('Priority #1');
+    });
+
+    it('omits the priority-rank chip for budget-exempt devices', async () => {
+      await renderPlanSnapshot({
+        meta: { totalKw: 0, softLimitKw: 5, headroomKw: 5 },
+        devices: [
+          {
+            id: 'dev-always-on',
+            name: 'Server rack',
+            priority: 1,
+            budgetExempt: true,
+            currentState: 'on',
+            plannedState: 'keep',
+          },
+        ],
+      });
+      expect(document.querySelector('[data-device-id="dev-always-on"] .plan-chip--rank')).toBeNull();
+      expect(
+        (document.querySelector('[data-device-id="dev-always-on"] .plan-chip--muted') as HTMLElement | null)
+          ?.textContent?.trim(),
+      ).toBe('Always on');
     });
 
     it('renders the hero info button with the kW-vs-kWh tooltip', async () => {
