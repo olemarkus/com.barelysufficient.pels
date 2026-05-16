@@ -125,8 +125,12 @@ const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
   if (state.cards.length === 0) {
     return (
       <p class="muted">
-        No smart tasks yet. Open the Flow editor and add a heating or charging smart task
-        to schedule a device for a specific ready-by time.
+        No smart tasks yet. Open the Flow editor and add the
+        {' '}<strong>Add heating task</strong> action
+        (<em>Heat … to … °C by Ready by</em>) or the
+        {' '}<strong>Add charging task</strong> action
+        (<em>Charge … to … % by Ready by</em>) to schedule a device
+        for a specific ready-by time.
       </p>
     );
   }

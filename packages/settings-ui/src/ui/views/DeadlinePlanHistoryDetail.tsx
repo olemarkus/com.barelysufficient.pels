@@ -141,6 +141,9 @@ const resolveChartSize = (element: HTMLElement): { height: number; width: number
   return { width: Math.max(240, width), height: element.clientHeight > 0 ? element.clientHeight : 240 };
 };
 
+const INITIAL_SERIES_NAME = 'Initial schedule';
+const REVISED_SERIES_NAME = 'Revised schedule';
+
 const buildTooltip = (
   rows: HourRow[],
   hasOriginalSeries: boolean,
@@ -155,8 +158,8 @@ const buildTooltip = (
     const row = first ? rows[first.dataIndex] : null;
     if (!row) return '';
     const lines = [`<strong>${encodeHtml(row.displayLabel)}</strong>`];
-    if (hasOriginalSeries) lines.push(`Original ${row.originalKWh.toFixed(2)} kWh`);
-    if (hasFinalSeries) lines.push(`Final ${row.finalKWh.toFixed(2)} kWh`);
+    if (hasOriginalSeries) lines.push(`${INITIAL_SERIES_NAME} ${row.originalKWh.toFixed(2)} kWh`);
+    if (hasFinalSeries) lines.push(`${REVISED_SERIES_NAME} ${row.finalKWh.toFixed(2)} kWh`);
     lines.push(`${observedSeriesName} ${row.observed ? 'yes' : 'no'}`);
     return lines.join('<br>');
   }
@@ -184,13 +187,13 @@ export const buildHistoryDetailChartOption = (
       // truncate to "Measured Heati…" inside a 320–480 px container. Matches
       // the legend behavior of the live deadline-plan chart.
       width: '100%',
-      // The "Original plan" series renders as a `transparent` fill + dashed
+      // The initial-schedule series renders as a `transparent` fill + dashed
       // device-coloured border. Pin its legend swatch to that same border so
       // the swatch is visible and matches the bar shown on the chart.
       data: [
         ...(hasOriginalSeries
           ? [{
-            name: 'Original plan',
+            name: INITIAL_SERIES_NAME,
             itemStyle: {
               color: 'transparent',
               borderColor: palette.device,
@@ -199,7 +202,7 @@ export const buildHistoryDetailChartOption = (
             },
           }]
           : []),
-        ...(hasFinalSeries ? [{ name: 'Final plan', itemStyle: { color: palette.device } }] : []),
+        ...(hasFinalSeries ? [{ name: REVISED_SERIES_NAME, itemStyle: { color: palette.device } }] : []),
         ...(hasObservedSeries ? [{ name: observedSeriesName, itemStyle: { color: palette.observed } }] : []),
       ],
       itemWidth: 12,
@@ -260,7 +263,7 @@ export const buildHistoryDetailChartOption = (
     },
     series: [
       ...(hasOriginalSeries ? [{
-        name: 'Original plan',
+        name: INITIAL_SERIES_NAME,
         type: 'bar' as const,
         barMaxWidth: 18,
         barGap: '-100%',
@@ -274,7 +277,7 @@ export const buildHistoryDetailChartOption = (
         data: rows.map((row) => row.originalKWh),
       }] : []),
       ...(hasFinalSeries ? [{
-        name: 'Final plan',
+        name: REVISED_SERIES_NAME,
         type: 'bar' as const,
         barMaxWidth: 18,
         itemStyle: {
@@ -344,7 +347,7 @@ const PlanComparisonChart = ({ rows, hasOriginalSeries, hasFinalSeries, observed
       ref={chartRef}
       class="deadline-horizon-chart"
       role="img"
-      aria-label="Original plan vs final plan charging hours"
+      aria-label="Initial schedule vs revised schedule charging hours"
     />
   );
 };
@@ -403,19 +406,19 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone }: Props) => {
         )}
         {coverageLine && <p class="pels-card-supporting">{coverageLine}</p>}
         {typeof entry.revisionCount === 'number' && entry.revisionCount > 1 && (
-          <p class="pels-card-supporting">Replanned {entry.revisionCount - 1} {entry.revisionCount === 2 ? 'time' : 'times'}.</p>
+          <p class="pels-card-supporting">Schedule updated {entry.revisionCount - 1} {entry.revisionCount === 2 ? 'time' : 'times'}.</p>
         )}
       </section>
       {entry.originalPlan === null && entry.finalPlan === null ? (
         <section class="pels-surface-card">
           <p class="pels-card-supporting">
-            No plan detail was recorded for this run. It may have finalized before the planner produced a revision, or it predates plan-snapshot tracking.
+            No hourly schedule was saved for this run.
           </p>
         </section>
       ) : (
         <section class="pels-surface-card budget-redesign-card deadline-horizon-card">
           <div class="budget-card-header">
-            <h2 class="plan-card__title">Plan vs observed</h2>
+            <h2 class="plan-card__title">Scheduled vs observed</h2>
           </div>
           <PlanComparisonChart
             rows={rows}

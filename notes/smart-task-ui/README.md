@@ -165,8 +165,8 @@ adjusting for learned rates) and the user *cannot see it happening*.
 - Live page: changed hours render with a 1-px border on the device bar;
   revision reason text shows only in the per-hour tooltip — easy to
   miss, impossible on touch.
-- History page: `Replanned N times.` line when `revisionCount > 1` and
-  nothing else.
+- History page: `Schedule updated N times.` line when `revisionCount > 1`
+  and nothing else.
 - Flow trigger: `deadline_plan_changed` fires when planned-hours count
   changes; no `reason_id` token.
 
@@ -224,7 +224,7 @@ surface:
   by it.
 
 The v1 work therefore focuses on **data integrity** and **honesty**
-(don't render a chart titled "Plan vs observed" when there are no
+(don't render a chart titled "Scheduled vs observed" when there are no
 observations; don't render `Cannot finish` next to an `On track` chip).
 The vNext work focuses on **trust signals** (cost, postmortem, picked-
 N-of-M) that turn a fine surface into a trusted one.

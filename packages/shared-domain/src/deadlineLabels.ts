@@ -47,9 +47,12 @@ export type SmartTaskListStatusId =
 
 // Stable chip label strings for list card status — kind-agnostic.
 // Sourced here (shared-domain) so runtime logging and UI use the same strings.
+// Note: the internal status id `queued` is kept stable for log schemas /
+// contracts; only the user-visible chip label changed from `Queued` →
+// `Scheduled` (TODO 691).
 export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string> = {
   building_plan: 'Building plan…',
-  queued: 'Queued',
+  queued: 'Scheduled',
   paused_unplugged: 'Paused — unplugged',
   on_track: 'On track',
   at_risk: 'At risk',
@@ -108,8 +111,8 @@ export const SMART_TASK_HISTORY_EYEBROW = 'Smart task';
 export const SMART_TASK_PAST_EMPTY_COPY = 'No completed tasks yet — they\'ll appear here after a smart task finishes.';
 
 // Resolve the list card status id from plan data.
-// `nowMs` is used to distinguish "Queued" (plan ready, first action in future)
-// from other non-pending states.
+// `nowMs` is used to distinguish the `queued` id (plan ready, first action in
+// future — labelled "Scheduled" in the UI) from other non-pending states.
 //
 // `diagnosticReasonCode` carries the recorder's "current cause" signal — it
 // is set even on plans with a cached `latest` revision (e.g. EV unplugged
@@ -169,6 +172,11 @@ export type DeadlinePendingCopyResolver = (ctx: DeadlinePendingContext) => Deadl
 export type DeadlineLabels = {
   kindChipLabel: string;
   activeChipLabel: string;
+  // Hero eyebrow / section label. Kind-aware so the user-facing surface uses
+  // "EV smart task" / "Heating smart task" instead of the planner-layer noun
+  // "EV plan" / "Temperature plan". Per `notes/ui-terminology.md` §"Plan vs
+  // deadline terminology".
+  sectionLabel: string;
   // Live-state chip labels (kind-aware). The hero, smart-task list, and device
   // card all draw from this map so the three surfaces stay in sync. Replaces
   // the prior single `waitingChipLabel`; see `DeadlineLiveState`.
@@ -182,7 +190,13 @@ export type DeadlineLabels = {
   originalDeviceSeriesName: string;
   actualDeviceSeriesName: string;
   backgroundSeriesName: string;
-  planTooltipActive: string;
+  // Legend / series name for the target-progress line on the deadline-plan
+  // chart. Kind-aware so users see "Charge level" for EV or "Temperature" for
+  // thermal instead of the planner-layer "Target progress".
+  progressSeriesName: string;
+  // Chart-tooltip word for idle (not-planned) hours. Planned hours are already
+  // identified by the device-series line ("Heating 2.0 kWh" / "Charging 2.0 kWh"),
+  // so only the idle case needs its own copy line.
   planTooltipIdle: string;
   pendingHeroByReason: Record<DeadlinePlanPendingReason, DeadlinePendingCopyResolver>;
   unavailableByReason: Record<DeadlinePlanUnavailableReason, { headline: string; body: string }>;
@@ -214,11 +228,11 @@ export type DeadlineLabels = {
 // Shared across all objective kinds — revision reasons are recorder-level
 // concepts that don't vary by device category.
 const REVISION_REASON_TOOLTIP_LINE: Partial<Record<DeferredObjectiveActivePlanRevisionReason, string>> = {
-  flow_card: 'Revised because a flow card fired',
-  prices_arrived: 'Revised because prices became available',
-  objective_changed: 'Revised because the target changed',
-  prices_revised: 'Revised because new prices arrived',
-  rate_refined: 'Revised because rates were refined',
+  flow_card: 'Updated after a flow card fired',
+  prices_arrived: 'Updated as prices became available',
+  objective_changed: 'Updated after the target changed',
+  prices_revised: 'Updated as new prices arrived',
+  rate_refined: 'Updated as rates were refined',
 };
 
 const withLastFetched = (base: string, lastFetchedShort: string | null): string => (
@@ -253,14 +267,15 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
   temperature: {
     kindChipLabel: 'Temperature',
     activeChipLabel: 'Heating',
+    sectionLabel: 'Heating smart task',
     liveStateChipLabel: {
       active: 'Heating',
       building_plan: 'Building plan…',
-      queued: 'Queued',
+      queued: 'Scheduled',
       // Thermal devices can't be unplugged; the variant is unreachable here
-      // and falls back to the generic queued copy if the resolver ever hands
-      // a stale value through.
-      paused_unplugged: 'Queued',
+      // and falls back to the generic scheduled copy if the resolver ever
+      // hands a stale value through.
+      paused_unplugged: 'Scheduled',
       ok: 'On track',
     },
     cannotMeetChipLabel: 'Cannot finish',
@@ -270,7 +285,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     originalDeviceSeriesName: 'Original Heating',
     actualDeviceSeriesName: 'Measured Heating',
     backgroundSeriesName: 'Background usage',
-    planTooltipActive: 'Heat',
+    progressSeriesName: 'Temperature',
     planTooltipIdle: 'Idle',
     pendingHeroByReason: {
       awaiting_horizon_plan: awaitingHorizonCopy('heat plan'),
@@ -321,7 +336,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       + 'days reserve available power earlier, or move the deadline to a later day.',
     completedHero: {
       headline: 'Smart task finished',
-      body: 'See History for the outcome.',
+      body: 'See Smart tasks for the outcome.',
     },
     targetUnit: '°C',
     planInputsCardTitle: 'Smart task inputs',
@@ -334,10 +349,11 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
   ev_soc: {
     kindChipLabel: 'EV',
     activeChipLabel: 'Charging',
+    sectionLabel: 'EV smart task',
     liveStateChipLabel: {
       active: 'Charging',
       building_plan: 'Building plan…',
-      queued: 'Queued',
+      queued: 'Scheduled',
       paused_unplugged: 'Paused — unplugged',
       ok: 'On track',
     },
@@ -348,7 +364,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     originalDeviceSeriesName: 'Original Charging',
     actualDeviceSeriesName: 'Measured Charging',
     backgroundSeriesName: 'Background usage',
-    planTooltipActive: 'Charge',
+    progressSeriesName: 'Charge level',
     planTooltipIdle: 'Idle',
     pendingHeroByReason: {
       awaiting_horizon_plan: awaitingHorizonCopy('charging plan'),
@@ -399,7 +415,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       + 'days reserve available power earlier, or move the deadline to a later day.',
     completedHero: {
       headline: 'Smart task finished',
-      body: 'See History for the outcome.',
+      body: 'See Smart tasks for the outcome.',
     },
     targetUnit: '%',
     planInputsCardTitle: 'Smart task inputs',

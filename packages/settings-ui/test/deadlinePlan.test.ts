@@ -243,7 +243,8 @@ describe('deadline plan page payload', () => {
     }));
 
     expect(payload.kind).toBe('temperature');
-    expect(payload.hero.sectionLabel).toBe('Temperature plan');
+    // Section label uses smart-task-noun vocabulary, not planner-noun "plan".
+    expect(payload.hero.sectionLabel).toBe('Heating smart task');
     expect(payload.hero.subline).toContain('Connected 300');
     expect(payload.hero.subline).toContain('22 °C');
     const chipTexts = payload.hero.chips.map((chip) => chip.text);
@@ -2250,10 +2251,13 @@ describe('deadline plan page payload', () => {
     expect(renderInput.pending.hero.metaLine).not.toContain('Last price update:');
   });
 
-  // Live hero chip ordering — canonical `[kind, state, ?cannotMeet,
-  // ?confidence]`. The earlier surface used `[state, kind, …]`; this test
-  // pins the new order across Smart-task surfaces (TODO 402).
-  it('orders live hero chips as [kind, state, ?cannotMeet, ?confidence]', () => {
+  // Live hero chip ordering — canonical `[kind, ?cannotMeet, ?confidence]`.
+  // The state chip is no longer rendered on the live hero (TODO 674): the
+  // headline already carries the live state (`Heating from HH:MM`,
+  // `Charging now`, `On track …`, `Cannot finish`). Pending heroes still emit
+  // the state chip in their own builder. High-confidence learned profiles
+  // produce no confidence chip (suppressed for the common case).
+  it('orders live hero chips as [kind, ?cannotMeet, ?confidence]', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
     const devices: TargetDeviceSnapshot[] = [{
@@ -2308,11 +2312,9 @@ describe('deadline plan page payload', () => {
     }));
 
     const chipTexts = payload.hero.chips.map((chip) => chip.text);
-    expect(chipTexts[0]).toBe('Temperature');
-    expect(chipTexts[1]).toBe('Queued');
-    // High-confidence learned profile fixture surfaces as the muted suffix
-    // chip after kind+state.
-    expect(chipTexts[chipTexts.length - 1]).toBe('Confidence high');
+    // High-confidence learned profile suppresses the confidence chip: the
+    // healthy plan reads with only the kind chip.
+    expect(chipTexts).toEqual(['Temperature']);
   });
 
   it('headline names the planned start time when no hour is currently active', () => {
@@ -2874,52 +2876,53 @@ describe('hero tone resolution', () => {
   });
 });
 
-describe('buildHeroChips cannot-meet suppression', () => {
+describe('buildHeroChips', () => {
   const labels = deadlineLabels('temperature');
 
-  it('omits the live-state chip when cannotMeet is true', async () => {
+  it('omits any live-state chip — the active hero no longer renders state on the chip row', async () => {
     const { buildHeroChips } = await import('../src/ui/deadlinePlanHero.ts');
     const chips = buildHeroChips({
       labels,
-      liveState: 'ok',
-      cannotMeet: true,
+      cannotMeet: false,
       cannotMeetChipTone: 'alert',
-      confidence: null,
+      confidenceChipText: null,
     });
-    // No chip text should equal any of the live-state labels.
+    // No chip text should equal any of the live-state labels (TODO 674): the
+    // headline already says "Heating from HH:MM" / "On track …" / etc.
     const liveStateTexts = Object.values(labels.liveStateChipLabel);
     for (const text of liveStateTexts) {
       expect(chips.some((chip) => chip.text === text)).toBe(false);
     }
-    // The Cannot-finish chip must be present with the supplied tone.
-    expect(chips.some((chip) => chip.text === labels.cannotMeetChipLabel && chip.tone === 'alert')).toBe(true);
+    expect(chips.map((chip) => chip.text)).toEqual([labels.kindChipLabel]);
   });
 
-  it('renders the live-state chip when cannotMeet is false', async () => {
+  it('adds the Cannot-finish chip when cannotMeet is true and keeps it in canonical order', async () => {
     const { buildHeroChips } = await import('../src/ui/deadlinePlanHero.ts');
     const chips = buildHeroChips({
       labels,
-      liveState: 'ok',
-      cannotMeet: false,
-      cannotMeetChipTone: 'alert',
-      confidence: null,
-    });
-    expect(chips.some((chip) => chip.text === labels.liveStateChipLabel.ok)).toBe(true);
-  });
-
-  it('keeps the canonical chip order kind → cannotMeet → confidence when suppressed', async () => {
-    const { buildHeroChips } = await import('../src/ui/deadlinePlanHero.ts');
-    const chips = buildHeroChips({
-      labels,
-      liveState: 'ok',
       cannotMeet: true,
       cannotMeetChipTone: 'alert',
-      confidence: 'low',
+      confidenceChipText: null,
+    });
+    expect(chips.some((chip) => chip.text === labels.cannotMeetChipLabel && chip.tone === 'alert')).toBe(true);
+    expect(chips.map((chip) => chip.text)).toEqual([
+      labels.kindChipLabel,
+      labels.cannotMeetChipLabel,
+    ]);
+  });
+
+  it('keeps the canonical chip order kind → cannotMeet → confidence when all are present', async () => {
+    const { buildHeroChips } = await import('../src/ui/deadlinePlanHero.ts');
+    const chips = buildHeroChips({
+      labels,
+      cannotMeet: true,
+      cannotMeetChipTone: 'alert',
+      confidenceChipText: 'Estimating',
     });
     expect(chips.map((chip) => chip.text)).toEqual([
       labels.kindChipLabel,
       labels.cannotMeetChipLabel,
-      'Confidence low',
+      'Estimating',
     ]);
   });
 
@@ -2927,20 +2930,40 @@ describe('buildHeroChips cannot-meet suppression', () => {
     const { buildHeroChips } = await import('../src/ui/deadlinePlanHero.ts');
     const alertChips = buildHeroChips({
       labels,
-      liveState: 'ok',
       cannotMeet: true,
       cannotMeetChipTone: 'alert',
-      confidence: null,
+      confidenceChipText: null,
     });
     expect(alertChips.find((chip) => chip.text === labels.cannotMeetChipLabel)?.tone).toBe('alert');
     const warnChips = buildHeroChips({
       labels,
-      liveState: 'ok',
       cannotMeet: true,
       cannotMeetChipTone: 'warn',
-      confidence: null,
+      confidenceChipText: null,
     });
     expect(warnChips.find((chip) => chip.text === labels.cannotMeetChipLabel)?.tone).toBe('warn');
+  });
+});
+
+describe('resolveConfidenceChipText', () => {
+  it('suppresses the chip for high confidence — the common case carries no signal', async () => {
+    const { resolveConfidenceChipText } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveConfidenceChipText('high')).toBeNull();
+  });
+
+  it('maps low confidence to the action-oriented `Estimating`', async () => {
+    const { resolveConfidenceChipText } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveConfidenceChipText('low')).toBe('Estimating');
+  });
+
+  it('maps medium confidence to the action-oriented `Refining`', async () => {
+    const { resolveConfidenceChipText } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveConfidenceChipText('medium')).toBe('Refining');
+  });
+
+  it('returns null when no confidence is available so the chip is suppressed', async () => {
+    const { resolveConfidenceChipText } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveConfidenceChipText(null)).toBeNull();
   });
 });
 
@@ -2961,9 +2984,9 @@ describe('buildChartOption original-series suppression', () => {
       kind: 'ev_soc',
       labels,
       priceUnitLabel: 'øre/kWh',
-      hero: { chips: [], tone: 'good', sectionLabel: 'EV plan', headline: 'On track', subline: '', metaLine: '' },
+      hero: { chips: [], tone: 'good', sectionLabel: 'EV smart task', headline: 'On track', subline: '', metaLine: '' },
       timeline: {
-        ariaLabel: 'EV plan',
+        ariaLabel: 'EV smart task',
         progressFloor: 0,
         progressCeilingValue: 80,
         progressCeilingLabel: '80%',

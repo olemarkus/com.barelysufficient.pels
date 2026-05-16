@@ -243,7 +243,10 @@ const buildTooltip = (payload: DeadlinePlanPayload, rawParams: unknown): string 
   const hour = first ? payload.timeline.hours[first.dataIndex] : null;
   if (!hour) return '';
   const labels = payload.labels;
-  const planLabel = hour.planned ? labels.planTooltipActive : labels.planTooltipIdle;
+  // Only the not-planned state needs its own line — the planned case is
+  // already conveyed by the device-series line ("Heating 2.0 kWh"). Dropping
+  // the planner-noun "Plan " prefix here too (TODO 1062).
+  const idleLine = hour.planned ? null : labels.planTooltipIdle;
   const originalLine = hour.changed
     ? `${labels.originalDeviceSeriesName} ${hour.usage.originalDeviceKwh.toFixed(1)} kWh`
     : null;
@@ -260,8 +263,8 @@ const buildTooltip = (payload: DeadlinePlanPayload, rawParams: unknown): string 
     ...(originalLine ? [encodeHtml(originalLine)] : []),
     `${encodeHtml(labels.deviceSeriesName)} ${hour.usage.deviceKwh.toFixed(1)} kWh`,
     ...(actualLine ? [encodeHtml(actualLine)] : []),
-    `Plan ${encodeHtml(planLabel)}`,
-    `Progress ${formatProgressValue(hour.progress, labels.targetUnit)}`,
+    ...(idleLine ? [encodeHtml(idleLine)] : []),
+    `${encodeHtml(labels.progressSeriesName)} ${formatProgressValue(hour.progress, labels.targetUnit)}`,
     ...(revisionLine ? [encodeHtml(revisionLine)] : []),
   ].join('<br>');
 };
@@ -386,7 +389,7 @@ export const buildChartOption = (
         ...(hasActualDeviceSeries
           ? [{ name: payload.labels.actualDeviceSeriesName, itemStyle: { color: palette.actualDevice } }]
           : []),
-        { name: 'Target progress', itemStyle: { color: palette.progress } },
+        { name: payload.labels.progressSeriesName, itemStyle: { color: palette.progress } },
       ],
       itemWidth: 12,
       itemHeight: 8,
@@ -576,7 +579,7 @@ export const buildChartOption = (
         data: payload.timeline.hours.map((hour) => hour.usage.actualDeviceKwh),
       }] : []),
       {
-        name: 'Target progress',
+        name: payload.labels.progressSeriesName,
         type: 'line',
         step: 'end',
         xAxisIndex: 1,
@@ -698,8 +701,8 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
   if (loadState.status === 'history-missing') {
     return (
       <section class="pels-surface-card budget-redesign-card">
-        <h1 class="plan-card__title">Plan not found</h1>
-        <p class="pels-card-supporting">This past plan is no longer recorded. Older entries roll off as new ones are saved. Return to Smart tasks to see what is still available.</p>
+        <h1 class="plan-card__title">Smart task record not found</h1>
+        <p class="pels-card-supporting">This past smart task is no longer recorded. Older entries roll off as new ones are saved. Return to Smart tasks to see what is still available.</p>
       </section>
     );
   }
@@ -742,7 +745,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
     return (
       <section class="pels-surface-card budget-redesign-card">
         <h1 class="plan-card__title">{copy.headline}</h1>
-        <p class="pels-card-supporting">{copy.body} Past plans are listed under Smart tasks.</p>
+        <p class="pels-card-supporting">{copy.body}</p>
       </section>
     );
   }

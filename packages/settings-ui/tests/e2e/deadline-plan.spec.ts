@@ -59,16 +59,17 @@ test.describe('Deadline plan', () => {
     await page.setViewportSize({ width: 360, height: 780 });
     const panel = await openDeadlinePlan(page);
 
-    await expect(panel.locator('.plan-hero__section-label')).toHaveText(/Temperature plan/);
+    // Section eyebrow uses smart-task vocabulary, not planner-noun "plan".
+    await expect(panel.locator('.plan-hero__section-label')).toHaveText(/Heating smart task/);
     await expect(panel.locator('.plan-hero__subline').first()).toContainText('Connected 300');
     await expect(panel.locator('.plan-hero__subline').first()).toContainText('°C');
     await expect(panel.getByText('Price horizon', { exact: true })).toBeVisible();
-    await expect(panel.getByLabel(/Deadline plan/).getByText('Heating', { exact: true })).toBeVisible();
-    await expect(panel.getByLabel(/Deadline plan/).getByText('Original Heating', { exact: true })).toBeVisible();
-    await expect(panel.getByLabel(/Deadline plan/).getByText('Measured Heating', { exact: true })).toBeVisible();
-    await expect(panel.getByLabel(/Deadline plan/).getByText('Background usage', { exact: true })).toBeVisible();
-    await expect(panel.getByLabel(/Deadline plan/).getByText('Charging', { exact: true })).toHaveCount(0);
-    await expect(panel.getByLabel(/Deadline plan/).getByText('Measured Charging', { exact: true })).toHaveCount(0);
+    await expect(panel.getByLabel(/Smart task schedule/).getByText('Heating', { exact: true })).toBeVisible();
+    await expect(panel.getByLabel(/Smart task schedule/).getByText('Original Heating', { exact: true })).toBeVisible();
+    await expect(panel.getByLabel(/Smart task schedule/).getByText('Measured Heating', { exact: true })).toBeVisible();
+    await expect(panel.getByLabel(/Smart task schedule/).getByText('Background usage', { exact: true })).toBeVisible();
+    await expect(panel.getByLabel(/Smart task schedule/).getByText('Charging', { exact: true })).toHaveCount(0);
+    await expect(panel.getByLabel(/Smart task schedule/).getByText('Measured Charging', { exact: true })).toHaveCount(0);
     await expect(panel.locator('.deadline-horizon-chart svg')).toBeVisible();
     await expectNoPageOverflow(page);
   });
@@ -77,16 +78,18 @@ test.describe('Deadline plan', () => {
     await page.setViewportSize({ width: 480, height: 900 });
     const panel = await openDeadlinePlan(page);
 
-    await expect(panel.getByLabel(/Deadline plan/)).toBeVisible();
+    await expect(panel.getByLabel(/Smart task schedule/)).toBeVisible();
     await expectNoPageOverflow(page);
   });
 
-  test('shows the temperature kind chip and confidence chip without duplicates', async ({ page }) => {
+  test('shows the temperature kind chip without duplicates and without the high-confidence chip', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 860 });
     const panel = await openDeadlinePlan(page);
 
     await expect(panel.locator('.plan-chip', { hasText: 'Temperature' })).toBeVisible();
-    await expect(panel.locator('.plan-chip', { hasText: 'Confidence high' })).toBeVisible();
+    // High-confidence learned profile no longer surfaces a Confidence chip —
+    // suppressed by `resolveConfidenceChipText` to keep the chip row clean.
+    await expect(panel.locator('.plan-chip', { hasText: /Confidence/ })).toHaveCount(0);
     const chipTexts = await panel.locator('.plan-chip').allTextContents();
     expect(new Set(chipTexts).size).toBe(chipTexts.length);
   });

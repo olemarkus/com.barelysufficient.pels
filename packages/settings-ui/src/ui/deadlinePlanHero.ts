@@ -1,10 +1,7 @@
 import type { DeferredObjectiveActivePlanStatusV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
-import type {
-  DeadlineLabels,
-  DeadlineLiveState,
-} from '../../../shared-domain/src/deadlineLabels.ts';
+import type { DeadlineLabels } from '../../../shared-domain/src/deadlineLabels.ts';
 import type { HorizonHour } from './deadlinePlanData.ts';
 import {
   formatDeadlineFull,
@@ -20,55 +17,42 @@ const formatShortfallLabel = (shortfallUnits: number, unit: '°C' | '%'): string
   unit === '°C' ? `${shortfallUnits.toFixed(1)} °C` : `${Math.max(1, Math.ceil(shortfallUnits))}%`
 );
 
-// Returns the chip label key; the caller looks up the kind-specific label
-// from `DeadlineLabels.liveStateChipLabel`. Shared by the hero, smart-task
-// list, and device card so the three surfaces never disagree.
-export const resolveLiveState = (params: {
-  isPlanReady: boolean;
-  firstChargingHour: HorizonHour | undefined;
-  nowMs: number;
-}): DeadlineLiveState => {
-  if (!params.isPlanReady) return 'building_plan';
-  if (!params.firstChargingHour) return 'ok';
-  if (params.firstChargingHour.startsAtMs <= params.nowMs) return 'active';
-  return 'queued';
-};
-
-const resolveStateChipTone = (
-  liveState: DeadlineLiveState,
-): DeadlinePlanPayload['hero']['chips'][number]['tone'] => {
-  if (liveState === 'active') return 'ok';
-  if (liveState === 'paused_unplugged') return 'warn';
-  return 'info';
-};
-
-// Canonical chip order `[kind, ?state, ?cannotMeet, ?confidence]` — kind
-// identity reads first across every Smart-task surface. The live-state chip
-// is suppressed when the plan `cannotMeet`s: the resolver returns `'ok'`
-// whenever there are no scheduled hours, so without this gate we would render
-// "On track" or "Active now" alongside "Cannot finish" — a contradiction at
-// the moment we most need the user to trust PELS. The cannot-meet chip tone
-// is supplied by the caller so it stays in sync with the hero rim tone:
-// `alert` (red) for `cannot_meet`, `warn` (amber) for `at_risk`.
+// Canonical chip order `[kind, ?cannotMeet, ?confidence]` — kind identity
+// reads first across every Smart-task surface. The live-state chip is no
+// longer rendered on the active hero: the headline already says
+// "Heating from HH:MM" / "Charging from HH:MM" / "On track …" / "Cannot
+// finish", so the chip duplicated information instead of adding signal. The
+// pending hero still emits its own state chip (Building plan… / Paused —
+// unplugged) via `deadlinePlan.ts:buildPendingHero`, where the state is the
+// only available signal. The cannot-meet chip tone is supplied by the caller
+// so it stays in sync with the hero rim tone: `alert` (red) for
+// `cannot_meet`, `warn` (amber) for `at_risk`. The confidence chip is
+// suppressed when `confidence === 'high'` because the common case carries no
+// useful signal; the caller passes action-oriented text ("Estimating" /
+// "Refining") for low / medium confidence.
 export const buildHeroChips = (params: {
   labels: DeadlineLabels;
-  liveState: DeadlineLiveState;
   cannotMeet: boolean;
   cannotMeetChipTone: 'alert' | 'warn';
-  confidence: string | null;
+  confidenceChipText: string | null;
 }): DeadlinePlanPayload['hero']['chips'] => [
   { text: params.labels.kindChipLabel, tone: 'info' },
   ...(params.cannotMeet
-    ? []
-    : [{
-      text: params.labels.liveStateChipLabel[params.liveState],
-      tone: resolveStateChipTone(params.liveState),
-    }]),
-  ...(params.cannotMeet
     ? [{ text: params.labels.cannotMeetChipLabel, tone: params.cannotMeetChipTone }]
     : []),
-  ...(params.confidence ? [{ text: `Confidence ${params.confidence}`, tone: 'muted' as const }] : []),
+  ...(params.confidenceChipText !== null
+    ? [{ text: params.confidenceChipText, tone: 'muted' as const }]
+    : []),
 ];
+
+// Live-confidence chip: `high` carries no signal worth a chip — suppress.
+// `low` and `medium` map to action-oriented words so the user reads the chip
+// as PELS's current learning state rather than a bare quality score.
+export const resolveConfidenceChipText = (confidence: string | null): string | null => {
+  if (confidence === 'low') return 'Estimating';
+  if (confidence === 'medium') return 'Refining';
+  return null;
+};
 
 // Maps the planner's `planStatus` to the hero's CSS rim tone. Resolved at the
 // producer so the view layer never branches on planner internals.
@@ -169,11 +153,6 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
   const target = formatTarget(params.objective);
   const deadline = formatDeadlineFull(params.deadlineAtMs);
   const subline = `${params.device.name} • Target ${target} by ${deadline}`;
-  const liveState = resolveLiveState({
-    isPlanReady: true,
-    firstChargingHour: params.firstChargingHour,
-    nowMs: params.nowMs,
-  });
   const speedModeLabel = resolveSpeedModeLabel(params.kwhPerUnitSource);
   // When the chip says "Cannot finish" we must not fall back to the on-track
   // meta copy — that contradicts the chip. The dedicated resolver guarantees a
@@ -195,13 +174,12 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
   return {
     chips: buildHeroChips({
       labels: params.labels,
-      liveState,
       cannotMeet: params.cannotMeet,
       cannotMeetChipTone,
-      confidence: params.confidence,
+      confidenceChipText: resolveConfidenceChipText(params.confidence),
     }),
     tone: params.tone,
-    sectionLabel: `${params.labels.kindChipLabel} plan`,
+    sectionLabel: params.labels.sectionLabel,
     headline,
     subline,
     metaLine,
