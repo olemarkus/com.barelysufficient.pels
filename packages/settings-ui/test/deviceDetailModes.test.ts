@@ -2,9 +2,12 @@ import { createHomeyMock } from './helpers/homeyApiMock';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 
 const setupDom = () => {
-  document.body.innerHTML = `
-    <div id="device-detail-modes"></div>
-  `;
+  const section = document.createElement('section');
+  section.id = 'device-detail-modes-section';
+  const modes = document.createElement('div');
+  modes.id = 'device-detail-modes';
+  section.appendChild(modes);
+  document.body.replaceChildren(section);
 };
 
 const buildDevice = (): TargetDeviceSnapshot => ({
@@ -13,6 +16,14 @@ const buildDevice = (): TargetDeviceSnapshot => ({
   deviceType: 'temperature',
   currentOn: true,
   targets: [{ id: 'target_temperature', value: 20, unit: '°C', step: 0.5 }],
+});
+
+const buildOnOffDevice = (): TargetDeviceSnapshot => ({
+  id: 'charger-1',
+  name: 'EV Charger',
+  deviceType: 'onoff',
+  currentOn: true,
+  targets: [],
 });
 
 describe('device detail target writes', () => {
@@ -74,5 +85,26 @@ describe('device detail target writes', () => {
       expect.any(Function),
     );
     expect(renderPriorities).toHaveBeenCalledWith(state.latestDevices);
+  });
+
+  it('hides the per-mode section for on/off devices and shows it again for thermal devices', async () => {
+    const homey = createHomeyMock({ settings: { operating_mode: 'Home' } });
+    const homeyModule = await import('../src/ui/homey.ts');
+    homeyModule.setHomeyClient(homey);
+
+    const { state } = await import('../src/ui/state.ts');
+    state.activeMode = 'Home';
+
+    const { renderDeviceDetailModes } = await import('../src/ui/deviceDetail/modes.ts');
+    const section = document.querySelector('#device-detail-modes-section') as HTMLElement;
+    expect(section).not.toBeNull();
+
+    renderDeviceDetailModes(buildOnOffDevice());
+    expect(section.hidden).toBe(true);
+    expect(document.querySelectorAll('#device-detail-modes .detail-mode-row')).toHaveLength(0);
+
+    renderDeviceDetailModes(buildDevice());
+    expect(section.hidden).toBe(false);
+    expect(document.querySelectorAll('#device-detail-modes .detail-mode-row').length).toBeGreaterThan(0);
   });
 });

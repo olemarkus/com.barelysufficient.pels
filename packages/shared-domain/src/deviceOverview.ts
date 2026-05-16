@@ -59,6 +59,18 @@ export const getDeviceOverviewReportedStepId = (device: DeviceOverviewSnapshot):
   (device.actualStepSource === 'reported' ? device.actualStepId : undefined) ?? device.reportedStepId
 );
 
+// Secondary text under a Limited chip names the action PELS took. Source of
+// truth: notes/ui-terminology.md §"Device state chips". EV chargers map to
+// "Charging paused" rather than "Turned off by PELS" so the language matches
+// what the user sees on the charger itself; turn-off shed actions on other
+// devices read as "Turned off by PELS"; everything else (set_temperature,
+// set_step, missing shedAction) reads as "Lowered by PELS".
+export const resolveHeldStateActionLabel = (device: DeviceOverviewSnapshot): string => {
+  if (isEvChargerDevice(device)) return 'Charging paused';
+  if (device.shedAction === 'turn_off') return 'Turned off by PELS';
+  return 'Lowered by PELS';
+};
+
 const getTargetStepId = (device: DeviceOverviewSnapshot): string | undefined => (
   device.targetStepId ?? device.desiredStepId
 );
