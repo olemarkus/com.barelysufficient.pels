@@ -248,7 +248,351 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       mocks the clock to 2026-05-16, seeds 14 stale `dailyTotals` ending 15 Apr
       AND 30 days of recent hourly buckets, and asserts the chart window is
       `2026-05-15` down to `2026-05-02` with no April dates leaking through.)*
+
+- [ ] Smart task history chart Y-axis labels clipped (leading digit cut off).
+      Live-walk 2026-05-16 (`/tmp/pels-live-walk/04-smart-task-history-succeeded-480.png`,
+      `y-axis-clip-evidence.png`) shows the per-row Y-axis labels rendering as `.2 kWh`,
+      `.9 kWh`, `.6 kWh`, `.3 kWh` instead of `1.2 / 0.9 / 0.6 / 0.3 kWh` on every smart-task
+      history detail page. The leading digit is hidden under the chart container's left edge.
+      Why P0: first-impression visual coherence break on a feature-card chart; reproduces on
+      every history-detail row, not edge-case. Likely root cause is left-margin / padding
+      miscalculation on the chart container. Same fix likely also addresses the cluster of
+      legend-truncation P1 entries below (Background usa…, Original Heatin…, Measured Heati…,
+      Original pla…) — chart shell and legend behavior should be reviewed as a single primitive.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`, smart-task
+      chart shell (echarts grid.left / padding), CSS selectors driving chart container width.
+
+- [ ] PELS segmented control inactive / hover / disabled styling loses specificity
+      battle against Homey's host stylesheet — inactive segments render cream `#e7e7e7`
+      with dark `#555` text in EVERY Homey theme (light or dark). Live walk 2026-05-16
+      confirmed root cause in `/tmp/pels-rewalk/budget/inspect-segmented.json`.
+
+      Homey's `_base.css` ships
+      ```css
+      button:not(.hy-nostyle):not([class*='homey-button']):not([class*='hy-button']) {
+        background-color: #e7e7e7; color: #555; padding: 6px 16px; border-radius: 3px; …
+      }
+      ```
+      Specificity **(0, 3, 1)**. PELS's `.segmented .segmented__option` rule at
+      `packages/settings-ui/public/style.css:3618` is specificity **(0, 2, 0)** and loses.
+      PELS's *selected* selector at lines 3651–3654 uses the duplicate-attribute trick
+      (`[aria-checked="true"][aria-checked]`) to reach (0, 4, 0) and wins — that is
+      why the active pill is correctly themed but the inactive pill is not. Hover
+      (line 3672) and disabled (line 3667) have the same bug.
+
+      The CSS comment at `style.css:3609-3617` already acknowledges Homey's `_base.css`
+      and applied the duplicate-attribute fix to the selected state only — extend the
+      pattern to inactive, hover, and disabled states too.
+
+      Why P0: first-impression visual coherence break that hits every user on every
+      Homey theme; affordance reads inverted on `Plan / Adjust`, day segmented,
+      `Progress / Hourly plan`, and any other segmented control on the redesigned UI.
+      Not a Homey-dark-mode artifact — easily reproducible in Homey light theme too.
+
+      Fix candidates (smallest first):
+      1. Change the base selector to `.segmented button.segmented__option` — raises
+         specificity to (0, 3, 1) and beats Homey's button rule.
+      2. Apply the same duplicate-class trick used on selected
+         (`.segmented .segmented__option.segmented__option` → (0, 3, 0)) — slightly
+         less specific than option 1.
+      3. Or move the styling to a more specific scoped selector that always wins.
+
+      Verify the fix in both Homey light theme (segments are cream today) and Homey
+      dark theme (segments are inverted to white through the filter) via PR #817's
+      `PELS_E2E_SIMULATE_HOMEY=dark` simulator. Touch every state: inactive, hover,
+      `:focus-visible`, disabled.
+
+      Files: `packages/settings-ui/public/style.css` (lines 3618, 3667, 3672 + the
+      comment block at 3609-3617 explaining the pattern), `settings/style.css` (regen).
+      Evidence: `/tmp/pels-rewalk/budget/inspect-segmented.json` and
+      `/tmp/pels-rewalk/budget/zoom-segmented-view.png`.
+
+- [ ] Settings → Modes priority list truncates device names. Live-walk 2026-05-16
+      (`/tmp/pels-live-walk/05-settings-modes-480-hovedsoverom-crop.png`) shows
+      "Termostat hovedsoverom" rendering as "hovedsoveron" — the final `m` is clipped by the
+      adjacent number-input + #priority chip cluster at the supported 480 px width.
+      Why P0: settings UI hiding part of a label the user is being asked to compare against
+      priority numbers; user is selecting per-mode targets for a device whose name they
+      cannot read in full.
+      Acceptance: every Norwegian device name in the priority list renders completely at
+      480 px (or wraps cleanly) without ellipsis or cut characters. Fix candidates: shrink
+      the number-input/chip cluster, allow the name column to wrap, or move the
+      input/chip to a second line on narrow widths.
+      Files: `packages/settings-ui/public/style.css` (modes priority row grid),
+      `packages/settings-ui/src/ui/views/...` (modes panel markup), `settings/style.css`
+      (regen).
+
+- [ ] Extend the Homey-wrap fixture with Homey's host CSS so PELS-vs-Homey CSS
+      cascade bugs reproduce locally. PR #817 captured Homey's iframe-level CSS and
+      the dark-mode filter — but missed the host stylesheets Homey injects into the
+      iframe document itself (`_base.css`, `_homey-button.css`, `homey.css`). Those
+      are the ones that just broke our segmented-control styling for every user
+      (cream `#e7e7e7` inactive segments, the P0 above) by beating PELS's lower-
+      specificity rules. Without them in the fixture, the fix for that P0 can't be
+      verified locally and any future PELS rule that competes with a Homey selector
+      will only surface after deployment.
+
+      Captured copies of all three stylesheets exist at
+      `/tmp/pels-rewalk/budget/_base-css.txt`,
+      `/tmp/pels-rewalk/budget/homey-button-css.txt`,
+      `/tmp/pels-rewalk/budget/homey-css.txt` (from the 2026-05-16 Budget rewalk).
+      Move those into `packages/settings-ui/test/fixtures/homey-wrap/` and update
+      `packages/settings-ui/scripts/static-server.mjs` so the
+      `PELS_E2E_SIMULATE_HOMEY=light|dark` mode injects them into the PELS iframe
+      document (not just the parent page) before PELS's own stylesheets — matching
+      the real Homey load order.
+
+      Why P0: gates the segmented-control specificity fix above (no way to test it
+      locally otherwise), and unblocks every future styling change from hitting
+      "looked fine locally, broke under Homey" surprises. The fixture is already a
+      P0 enabler — it just isn't complete.
+
+      Acceptance: with the fixture extended, running
+      `PELS_E2E_SIMULATE_HOMEY=light node packages/settings-ui/scripts/static-server.mjs --port <N>`
+      and opening Budget reproduces the cream `#e7e7e7` inactive segmented buttons
+      identical to the live screenshot at `/tmp/pels-rewalk/budget/01-budget-plan-480-full.png`.
+      A Playwright snapshot test that fails today and passes after the segmented
+      specificity fix is the natural regression gate.
+
+      Files: `packages/settings-ui/test/fixtures/homey-wrap/` (add the three CSS
+      files), `packages/settings-ui/scripts/static-server.mjs` (inject into iframe
+      document not just parent), optionally a new Playwright spec in
+      `packages/settings-ui/tests/e2e/` that asserts inactive segments don't render
+      `#e7e7e7` under the simulator.
+
 ## P1 Correctness, Data Integrity, and Supported UX
+
+- [ ] Homey dark theme inverts the PELS iframe via `filter: invert(1) hue-rotate(180deg)`.
+      PELS — already a dark UI designed for dark — gets re-inverted into a near-white
+      palette under Homey dark, and PELS's amber warning palette gets hue-shifted
+      toward cyan/blue, breaking the warn semantic on the Projected-today card and
+      "Close to budget" chip. Captured in
+      `packages/settings-ui/test/fixtures/homey-wrap/homey-wrap.dark.css`. Reproducible
+      locally via `PELS_E2E_SIMULATE_HOMEY=dark`.
+
+      (Earlier hypothesis about a separate "same-document CSS-variable cascade" mode
+      was disproved by the Budget rewalk 2026-05-16 — what looked like a partial
+      cascade was actually the PELS segmented-button specificity bug listed separately
+      in the P0 section. PELS always loads in an iframe; the only Homey-side wrap is
+      the iframe filter.)
+
+      **Mitigation candidates, smallest to largest:**
+      1. Counter-filter scoped to `prefers-color-scheme: dark`:
+         ```css
+         @media (prefers-color-scheme: dark) {
+           :root { filter: invert(1) hue-rotate(180deg); }
+         }
+         ```
+         Cures the iframe-invert when the user's OS theme aligns with Homey theme
+         (~99% case). Edge case: OS dark + Homey light over-triggers.
+      2. JS probe at load: render a known color, read the painted pixel, toggle a
+         `<html>` class. Cures deterministically regardless of OS theme; ~15 LoC.
+
+      `<meta name="color-scheme" content="dark">` alone is NOT sufficient — verified
+      pixel-identical to broken state on the captured fixture.
+
+      **Focus / hover states need a re-check after the fix.** Walk
+      `:focus-visible`, `:hover`, and `:active` on the segmented controls
+      (`.segmented__option`), shell-nav tabs (`#shell-nav md-primary-tab`), and
+      `md-switch` rows once the wrap is neutralised — make sure rings/halos have
+      intended contrast against the restored dark background.
+
+      Fixture screenshots: `homey-wrap-dark-current.png` (broken),
+      `homey-wrap-dark-fixed.png` (color-scheme-meta-only attempt — still broken),
+      `homey-wrap-nav.png` (white-nav effect from the filter).
+      Files: `packages/settings-ui/public/style.css`,
+      `packages/settings-ui/public/index.html`, `settings/style.css` (regen).
+
+- [ ] Smart-task chart legend labels truncate to ellipsis across multiple views.
+      Live-walk 2026-05-16:
+      - Active detail (`/tmp/pels-live-walk/04-smart-task-active-detail-480.png`):
+        "Background usa…" and "Original Heatin…" truncated at 480 px.
+      - History detail (`/tmp/pels-live-walk/04-smart-task-history-succeeded-480.png`):
+        "Original pla…" truncated.
+      - 320 px active detail (`/tmp/pels-live-walk/04-smart-task-active-320.png`):
+        "Measured Heati…" right-edge collides with chart's "1.7" Y-axis label — legend
+        overlaps the plot, not just truncates.
+      Why P1: legend lies about what the colors represent and on 320 px overlaps live
+      chart data. Same cluster as the P0 Y-axis clip — likely one chart-shell + legend
+      width primitive fix covers all. Acceptance: every legend entry fully readable at
+      both 480 and 320 px on smart-task active and history details; no overlap.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      smart-task chart shell (echarts legend wrap config), `packages/settings-ui/public/style.css`.
+
+- [ ] Smart tasks list: "Cannot finish" active task renders deadline in success-green.
+      Live-walk 2026-05-16 (`/tmp/pels-live-walk/smart-tasks-top.png`): an active task
+      card shows status pill "Cannot finish" but "Ready by Sat 16 May, 16:00" is
+      rendered in the success-green color used elsewhere for healthy on-track tasks.
+      Why P1: color semantically contradicts the status pill — user reads a red/amber
+      pill and a green deadline at the same time. Either drop the deadline line for
+      `cannot_meet` plans, or render it in the same alert/warn tone as the pill (per
+      the `resolveHeroTone` mapping shipped in PR #812).
+      Files: `packages/settings-ui/src/ui/views/SmartTasksList.tsx` (or equivalent),
+      `packages/settings-ui/public/style.css`.
+
+- [ ] Smart task copy: "Short by about 41.9 °C" misleading on tank heat target.
+      Live-walk 2026-05-16 (`/tmp/pels-live-walk/04-smart-task-active-detail-480.png`)
+      shows the cannot-finish active detail body copy reading literally "Short by about
+      41.9 °C". Users will read this as a wild temperature anomaly. The shortfall is
+      energy / kWh against the plan, not raw temperature delta.
+      Why P1: factually misleading user-visible string at the very moment the user is
+      trying to understand why PELS says it cannot finish.
+      Fix candidates: render shortfall as `kWh` / `% of energy needed`, or rephrase to
+      "won't reach the target temperature in time" without a misleading magnitude.
+      Files: `packages/shared-domain/src/deadlineLabels.ts` (or smart-task copy
+      helper), `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+
+- [ ] Smart task missed-history detail page omits observed-vs-target line and reason.
+      Live-walk 2026-05-16 (`/tmp/pels-live-walk/04-smart-task-history-missed-480.png`)
+      shows the missed-task history page rendering a single solid green bar at 15:00
+      with no copy explaining why it was marked missed and no comparison to the target.
+      Why P1: missed is the failure case where users most need explanation; page
+      drops exactly that information. Succeeded rows show observed-vs-target detail —
+      thread the same render through the missed path.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      missed-detail data plumbing.
+
+- [ ] Budget Plan: "On budget" Tomorrow pill has very low contrast.
+      Live-walk 2026-05-16 (`/tmp/pels-live-walk/02-budget-plan-tomorrow-480.png`)
+      shows the "On budget" pill rendering as faint mint-green text on a faint
+      mint-green background. Borderline legibility.
+      Why P1: chip is a primary signal on the Tomorrow card; users skim for it and
+      currently miss it. Either bump the chip's foreground/background contrast or
+      adopt the higher-contrast `good`-tone treatment used on other surfaces.
+      Files: `packages/settings-ui/public/style.css` (pill / chip tokens for the
+      "good"/"on track" variant).
+
+- [ ] Day segmented control wraps mid-word at 320 px ("Yesterd / ay", "Tomorr / ow").
+      Live-walk 2026-05-16 (`/tmp/pels-live-walk/02-budget-plan-320.png`) shows the
+      Yesterday/Today/Tomorrow segmented breaking mid-word at the documented narrow
+      width. Same primitive as Plan/Adjust (which PR #816 fixed for those specific
+      labels). The day segmented control isn't using whatever `min-width` /
+      `overflow-wrap` rule PR #816 introduced.
+      Why P1: visible mid-word breakage at a documented supported width.
+      Acceptance: at 320 px, the day segmented either uses abbreviations
+      (`Yest. / Today / Tom.`), shortens labels via icons + screen-reader text, or
+      stacks the segments vertically — but does not wrap mid-word.
+      Files: `packages/settings-ui/public/style.css`, `packages/settings-ui/src/ui/views/BudgetOverview.tsx`.
+
+- [ ] Budget Today: "kWh to spare now" vs "projected today" don't visibly reconcile.
+      Live-walk 2026-05-16 (`/tmp/pels-live-walk/02-budget-plan-480.png`) shows
+      "59.9 / 60.0 kWh" with sub-text "28.9 kWh to spare now". 28.9 + 59.9 ≠ 60, so a
+      user trying to reason about the deltas can't trace where each number comes from.
+      "to spare now" is the gap against the *current cumulative target at this hour*,
+      not against 60.
+      Why P1: dashboards lose user trust the moment two numbers in the same card don't
+      add up. Disambiguate copy ("X kWh to spare vs current pace" / "X kWh to spare vs
+      projection") so the baseline is explicit.
+      Files: `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
+      `packages/shared-domain/src/...` (budget copy helpers).
+
+- [ ] Usage hero shows two different "vs typical" deltas in the same card.
+      Live-walk 2026-05-16 (`/tmp/pels-live-walk/03-usage-480.png`) shows a "-3.3 kWh
+      vs pace" pill AND "On track for ~56.8 kWh — about 6.0 kWh below typical"
+      copy. Two different numbers ("3.3" and "6.0") with two different baselines
+      ("pace" and "typical").
+      Why P1: same trust problem as Budget Today — user can't tell which delta is
+      the meaningful one. Pick one baseline ("vs typical day" likely the most
+      relevant) and remove the other.
+      Files: `packages/settings-ui/src/ui/views/UsageOverview.tsx` (or equivalent),
+      `packages/shared-domain/src/...`.
+
+- [ ] Overview hero surface tier hierarchy inverted. Live-walk 2026-05-16
+      (`/tmp/pels-rewalk/overview/02-overview-hero-480.png`,
+      `/tmp/pels-rewalk/overview/inspect-overview.json`): the hero card computes
+      `background: rgba(0,0,0,0)` with `border: 1px solid #2a3340`, while device cards
+      below compute `background: #141923` with the same border. Net effect: the hero
+      reads as *less* prominent than the device cards underneath it — the eye is
+      drawn to the cards rather than the headline summary. First-impression visual
+      coherence break on the page every user lands on. Bump the hero to a
+      surface-container tier above the device cards (e.g.
+      `--pels-surface-container-high`) or restructure so the visual weight matches
+      the information hierarchy.
+      Files: `packages/settings-ui/public/style.css` (`.plan-hero` / `.pels-hero`
+      surface binding), `packages/settings-ui/src/ui/views/PlanHero.tsx`,
+      `settings/style.css` (regen).
+
+- [ ] Overview hero markers (power-now + energy-used bars) have no titles or
+      ARIA labels. Live-walk 2026-05-16
+      (`/tmp/pels-rewalk/overview/09-power-now-bar-detail.png`,
+      `10-energy-used-bar-detail.png`, `13-energy-bar-end.png`): four marker
+      elements (`--target`, `--cap`, `--projected`) sit on the meter bars purely as
+      colored ticks/dots with no `title`, `aria-label`, legend, or hover affordance.
+      Users can't tell which dot is "safe pace" vs "hard cap" vs "projected end of
+      hour" without reading the docs. First-impression clarity gap + accessibility
+      blocker for screen-reader users on the headline meters.
+      Acceptance: every marker has either an `aria-label` (single-marker case) or a
+      small legend row below the bar (multi-marker case) plus `title` tooltips on
+      hover. Verify Playwright accessibility snapshot doesn't drop unlabeled
+      `aria-hidden=false` elements.
+      Files: `packages/settings-ui/src/ui/views/PlanHero.tsx` (marker rendering),
+      `packages/settings-ui/public/style.css` (legend row), copy in
+      `packages/shared-domain/src/...`.
+
+- [ ] Stepped-load device card "stepped control" is a fake affordance. Live-walk
+      2026-05-16 (`/tmp/pels-rewalk/overview/11-segmented-control-detail.png`,
+      `14-connected-300-card.png`): the `.plan-card__step-rail` and
+      `.plan-card__step-stop` elements on Connected 300 (and presumably all
+      stepped-load cards) use `cursor: pointer` on every dot/label, but have no
+      `role`, no `aria-checked`, no `<button>` or `<radio>` semantics, and no click
+      handlers. The only actual click target is the parent card (which navigates
+      to detail). Users see what looks like an Off / Low / Medium / Max selector
+      and try to tap individual stops — nothing happens; they have to discover the
+      card itself is the link.
+      Fix candidates: either remove the misleading `cursor: pointer` so the strip
+      reads as a status indicator only, or make the individual stops real
+      `<button>` controls that select a step (with the card click still working as
+      the fallback to open detail).
+      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx` (stepped
+      card markup), `packages/settings-ui/public/style.css` (cursor / hover state).
+
+- [ ] Low-contrast metric label on device cards (`.plan-card__metric-label`).
+      Live-walk 2026-05-16 (`/tmp/pels-rewalk/overview/15-elbillader-card.png`):
+      "~1.0 kW when active" on the Elbillader card renders as 11 px
+      `rgb(107, 114, 128)` on `rgb(20, 25, 35)` — fails WCAG AA contrast for
+      small body text. Bump the color to a token that meets AA on the device-card
+      surface (e.g. `--pels-text-secondary`).
+      Files: `packages/settings-ui/public/style.css` (`.plan-card__metric-label`
+      color), `settings/style.css` (regen).
+
+- [ ] Usage tab — Y-axis top-tick collides with the prior gridline on every
+      chart. Live walk 2026-05-16: "Today" mini-chart ticks `0,1,2,3,3.7` (3.7
+      sits 15.8 px above 3 with overlap); Daily usage ticks `0,20,40,60,71`
+      (71 wedged above 60); Typical day ticks `0,0.3,0.6,0.9,1`. Same "pin
+      label to data max" anti-pattern recurs across all three echarts grids —
+      almost certainly one chart-config helper. Fix the helper to round the
+      axis max up to the next clean tick step instead of pinning to data max.
+      Evidence: `/tmp/pels-rewalk/usage/03-usage-mini-chart-480.png`,
+      `07-daily-usage-7days.png`, `10-typical-day-weekdays.png`.
+      Files: `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
+      `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts` (and wherever
+      the typical-day chart is configured); look for `axis.max` or
+      `yAxis.max` config.
+
+- [ ] Usage heatmap "Unreliable data" legend swatch doesn't visually match
+      the cells it labels. Live walk 2026-05-16
+      (`/tmp/pels-rewalk/usage/04-usage-heatmap-480.png`,
+      `/tmp/pels-rewalk/usage/08-heatmap-close.png`): legend swatch is a 12×8 px
+      outlined pill (`rgb(35,43,56)` fill + `rgb(86,98,122)` border, 6 px radius);
+      the actual unreliable cell in the grid (around Mon 11 May 12:00) is a
+      filled dark square with no border or pill shape. Users won't connect the
+      two. Either render the legend swatch as a filled square matching the
+      heatmap cells, or change the unreliable cell to use the same pill shape.
+      Files: `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
+      `packages/settings-ui/public/style.css`.
+
+- [ ] Usage "Typical day" Weekdays / Weekend segmented control updates the
+      bars but not the stat strip. Live walk 2026-05-16
+      (`/tmp/pels-rewalk/usage/10-typical-day-weekdays.png`): selecting
+      Weekdays / Weekend changes which bars are highlighted but the "Weekday
+      avg 62.9 kWh · Weekend avg 62.8 kWh" stat strip stays unchanged in
+      both states. With the two averages only 0.1 kWh apart, the segmented
+      control feels purposeless — there's no reinforcing change in the stat.
+      Either hide the stat for the unselected mode, or restructure so the
+      strip reflects only the active selection.
+      Files: `packages/settings-ui/src/ui/views/UsageOverview.tsx` (or
+      equivalent typical-day view).
 
 - [ ] Smart task hero: `estimatedDurationText` shrinks across revisions. The recorder formats
       the value every revision from the current `energyNeededKWh / planningSpeedKw`
@@ -982,6 +1326,230 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       cross the threshold across two prune ticks therefore contributes count
       +2 instead of +1, biasing the typical-day averages slightly low.
       Files: `lib/core/powerTracker.ts` (`aggregateAndPruneHistory`).
+
+- [ ] Budget tab vertical rhythm + density audit. The user's live walk 2026-05-16
+      flagged the page as feeling visually loose / off-rhythm at the dialog's actual
+      width.
+
+      **Acceptance bar — fix all three of these consolidation candidates (or
+      explicitly close each with a one-line "rejected because…" in the PR):**
+      1. **Daily-budget header tile collapses out of its own card.** Today the
+         "BUDGET / Daily budget" eyebrow + headline occupy a full card holding
+         nothing else, with another full card immediately below for the segmented
+         `Plan / Adjust` row. Move the headline into a header row of the segmented
+         card, or use a section-eyebrow pattern that doesn't claim a card-tier
+         surface, so one card's worth of vertical chrome (border + padding × 2 +
+         gap) is removed.
+      2. **`Plan / Adjust` and `Yesterday / Today / Tomorrow` stop stacking as two
+         independent 50 px-tall segmented controls.** At 480 px there's room to
+         either render them inline on one row (one segmented per axis), reduce
+         their heights/gaps, or rebuild as a single 2D selector. Either keep both
+         50 px high or both ≤36 px high — not the current mix.
+      3. **`Plan confidence` card stack collapses at 480 px.** Today: title row,
+         two-line body copy, `What this means` expander — each on its own line
+         with generous gap. Collapse the expander affordance + label onto the
+         title row (or into a single line that summarises both the level and the
+         "what this means" affordance) at the dialog width.
+
+      **Baseline / rhythm sweep (do once after the three above land):** confirm
+      section gaps use a consistent `--spacing-*` step across cards and tiles
+      (no ad-hoc pixels), and that the baseline grid implied by
+      `--font-line-height-*` doesn't drift across stat values, body copy, and
+      chip labels on this page.
+
+      **Quantitative aim:** cut at least one fold-worth of vertical scroll on the
+      Budget tab at both 480 px and 320 px without sacrificing tap-target sizes
+      (≥48 px per `--pels-touch-target-min`).
+
+      Cross-reference: the Overview hero spec at `notes/overview-hero-spec.md`
+      for the typographic rhythm the redesign targets.
+      Files: `packages/settings-ui/public/style.css` (segmented spacing, card
+      padding, section gaps), `packages/settings-ui/src/ui/views/BudgetOverview.tsx`
+      (markup consolidation for #1 and #3), `settings/style.css` (regen).
+
+- [ ] Overview Power-Now bar end-marker leaves a small visible gap from the main fill.
+      Live-walk 2026-05-16 (`/tmp/pels-live-walk/overview-hero-480.png`) shows the
+      orange "current draw" marker rendering slightly offset from the right edge of the
+      filled bar — visually ragged. Minor visual rough edge on a hero element.
+      Files: `packages/settings-ui/src/ui/views/PlanHero.tsx`,
+      `packages/settings-ui/public/style.css`.
+
+- [ ] Settings → Advanced page H2 "Device diagnostics" doesn't describe the page.
+      Live-walk 2026-05-16 (`/tmp/pels-live-walk/05-settings-advanced-480-1.png`):
+      the page header reads "Device diagnostics" but the page contains Debug logging
+      categories + Daily-budget tuning + Data management + Device cleanup + Device
+      log. Rename to "Diagnostics & maintenance" or similar so users can predict
+      what they'll find under the entry.
+      Files: `packages/settings-ui/src/ui/views/AdvancedSettings.tsx` (or markup
+      equivalent), `packages/shared-domain/src/...` (copy helper if heading sourced
+      from there).
+
+- [ ] Settings → Electricity prices: two `<select>` controls render at different
+      contrast on the same page. Live-walk 2026-05-16
+      (`/tmp/pels-live-walk/05-settings-prices-480-top.png`) shows one select inverted
+      / washed and another at full contrast. Material `md-outlined-select` falls back
+      to light-theme defaults that ghost on the dark UI (per project memory
+      `feedback_form_styling`); the fix is to follow the Limits & safety / Simulation
+      mode pattern (native `<select>` + `.field`) — but apply it once globally
+      wherever an `md-outlined-select` is still in use, not surface-by-surface.
+      Files: `packages/settings-ui/src/ui/views/...` (electricity prices markup),
+      grep for `md-outlined-select` across `packages/settings-ui/src/`.
+
+- [ ] Inconsistent chart styling between Smart-task active and history details.
+      Live-walk 2026-05-16 (`/tmp/pels-live-walk/04-smart-task-active-detail-480.png`,
+      `04-smart-task-history-succeeded-480.png`): active detail uses pale-grey
+      rectangle bars + green dashed step markers; history detail uses dashed-outline
+      bars with no fill. Two different chart languages for the same feature surface.
+      Pick one (likely the active one — filled bars + step markers is more readable)
+      and apply across both views.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
+
+- [ ] Smart-task active detail repeats "Cannot finish" 3× (pill, headline, body).
+      Live-walk 2026-05-16 (`/tmp/pels-live-walk/04-smart-task-active-detail-480.png`).
+      Reads as alarm spam rather than information. Keep the pill + one explanatory
+      line; drop the duplicate copies.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+
+- [ ] Usage heatmap: color-scale legend on the right edge lacks a kWh unit label.
+      Live-walk 2026-05-16 (`/tmp/pels-live-walk/03-usage-detailed-480.png`) shows
+      the heatmap right-edge color scale with numeric values but no unit. Add `kWh`
+      (or `kr/kWh` if that's what the scale encodes — verify) so the user knows
+      what intensity means.
+      Files: `packages/settings-ui/src/ui/views/UsageOverview.tsx`,
+      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`.
+
+- [ ] Overview "Termostat TV-stue" device card missing temperature line.
+      Live-walk 2026-05-16 (`/tmp/pels-rewalk/overview/07-tv-stue-missing-temp.png`):
+      renders as `On / 0.0 kW` only; every other temperature card shows
+      `xx.x° · target yy°`. Card height drops to 99 px while peers are 125 px.
+      Data fallback inconsistency when the measure is missing/null — either render
+      a placeholder ("Temperature unavailable") or reserve the line so the card
+      grid stays uniform.
+      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
+      `packages/shared-domain/src/...` (per-device summary builder).
+
+- [ ] Overview cards use two parallel chip primitive families for similar roles.
+      Live-walk 2026-05-16: Elbillader uses `plan-state-chip plan-state-chip--neutral`
+      (`/tmp/pels-rewalk/overview/15-elbillader-card.png`); Nordic S4 REL uses
+      `plan-chip plan-chip--muted` (`/tmp/pels-rewalk/overview/16-nordic-s4-card.png`).
+      Same semantic role ("manual control" / off-by-user status) rendered through
+      two unrelated chip primitives. Token/primitive consolidation gap; pick one
+      chip family and migrate the other call sites.
+      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
+      `packages/settings-ui/public/style.css` (chip primitive definitions),
+      `settings/style.css` (regen).
+
+- [ ] Overview "Smart task" chip nested in clickable card has no `aria-label`.
+      Live-walk 2026-05-16 (`/tmp/pels-rewalk/overview/14-connected-300-card.png`):
+      the chip is rendered as `<a>` and announces only "Smart task link" to screen
+      readers. Add `aria-label="Smart task for {deviceName}"` and clarify the
+      hit-target so the chip click separates from the parent card-navigation click.
+      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`.
+
+- [ ] Overview hero warning indicator uses raw unicode emoji instead of the
+      design-system SVG icon set. Live-walk 2026-05-16
+      (`/tmp/pels-rewalk/overview/18-hero-states-compare.png` right pane): the
+      "projected X kWh ⚠️" annotation in above-safe-pace state renders a literal
+      ⚠️ character rather than the project's SVG icon primitive used everywhere
+      else. Design-system inconsistency.
+      Files: `packages/settings-ui/src/ui/views/PlanHero.tsx`,
+      `packages/settings-ui/src/ui/...` (icon imports).
+
+- [ ] Overview energy bar `--projected` marker misaligned with printed projection.
+      Live-walk 2026-05-16 (`/tmp/pels-rewalk/overview/10-energy-used-bar-detail.png`,
+      `02-overview-hero-480.png`): teal projected dot sits at ~75 % of the track
+      while the printed projection reads 1.95 / 2.3 ≈ 85 %. Either the marker
+      uses a different basis or there's a small positioning bug. Reconcile so the
+      visual position matches the printed number to within 1-2 %.
+      Files: `packages/settings-ui/src/ui/views/PlanHero.tsx`,
+      `packages/settings-ui/public/style.css` (marker percent calculation).
+
+- [ ] Overview hero "Safe pace now X kW" subline disappears in above-safe-pace
+      state. Live-walk 2026-05-16
+      (`/tmp/pels-rewalk/overview/18-hero-states-compare.png`): the safe-pace
+      numeric reference is shown only in the on-pace state; in the very state
+      the user most wants the number ("how much over am I?"), the subline
+      vanishes leaving only "Power Now". Keep the safe-pace reference visible
+      in both states.
+      Files: `packages/settings-ui/src/ui/views/PlanHero.tsx`,
+      `packages/shared-domain/src/...` (copy resolver).
+
+- [ ] Overview device-card stack has uneven vertical rhythm.
+      Live-walk 2026-05-16 (`/tmp/pels-rewalk/overview/01-overview-480-full.png`,
+      `04-overview-bottom-cards-480.png`): card heights vary 99–163 px because
+      the temperature line, status-reason line, and stepped-control row are
+      conditional. Stack reads as jagged on the tall list. Reserve content with
+      a min-height or render placeholder lines so the card grid stays uniform.
+      Files: `packages/settings-ui/public/style.css` (`.plan-card` min-height /
+      content reservation), `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`.
+
+- [ ] Punctuation drift on device-card status copy: spec uses em-dash
+      (`Limited — staying under the hard cap`, per `notes/ui-terminology.md:9`),
+      live render uses middle-dot (`Limited · staying under the hard cap`).
+      Live-walk 2026-05-16 noted as a verified-not-glitch but flagged for
+      consistency. Pick one separator and apply across the per-device status
+      copy helpers.
+      Files: `packages/shared-domain/src/...` (per-device status copy),
+      `notes/ui-terminology.md` (if the dot is the new intent).
+
+- [ ] Usage heatmap week-navigation chevrons have no visible chrome + use the
+      wrong ARIA attribute. Live walk 2026-05-16
+      (`/tmp/pels-rewalk/usage/08-heatmap-close.png`): `<md-text-button>`
+      chevrons render as tiny bare green icons with no visible affordance, AND
+      the accessibility name is set as `data-aria-label` (an arbitrary data
+      attribute) instead of `aria-label` — so screen readers will announce the
+      button with no label at all. Fix: rename `data-aria-label` → `aria-label`
+      (real attribute), and bump the visual chrome (background fill or border)
+      so users see something tappable.
+      Files: `packages/settings-ui/src/ui/views/UsageOverview.tsx` (or wherever
+      the heatmap week-nav lives), `packages/settings-ui/public/style.css`.
+
+- [ ] Usage hero "Daily avg" stat duplicates the "Typical weekend: 62.8 kWh"
+      already in the subline. Live walk 2026-05-16
+      (`/tmp/pels-rewalk/usage/02-usage-hero-480.png`): same number rendered
+      twice in a single hero, only 24 px apart. Pick one location and drop the
+      other.
+      Files: `packages/settings-ui/src/ui/views/UsageOverview.tsx`.
+
+- [ ] Usage hero double-capsule wastes ~80 px of vertical real estate. Live
+      walk 2026-05-16 (`/tmp/pels-rewalk/usage/02-usage-hero-480.png`,
+      `/tmp/pels-rewalk/usage/01-usage-480-full.png`): the
+      `<header class="pels-hero">` "USAGE / Energy history" eyebrow capsule
+      sits above the actual `34.x kWh` hero card with no content between
+      them. Two stacked dark capsules consuming ~80 px before the user reaches
+      the headline number. Same shape as the Budget tab's "Daily-budget header
+      tile" candidate in the P2 rhythm audit — fold the eyebrow into the
+      hero card.
+      Files: `packages/settings-ui/src/ui/views/UsageOverview.tsx`,
+      `packages/settings-ui/public/style.css` (`.pels-hero` markup / padding).
+
+- [ ] Usage tab chart palettes don't share a family. Live walk 2026-05-16:
+      three unrelated palettes coexist on the same tab — Daily-usage bars are
+      ECharts-default blue, segmented active uses the accent green
+      `rgba(34,197,94,0.28)`, heatmap is teal-to-red. None reference the
+      documented PELS accent. Pick a palette family rooted in the accent and
+      apply across all three chart types so the tab reads as one surface.
+      Files: `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
+      `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,
+      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
+      `settings/tokens.css` (chart palette tokens).
+
+- [ ] Delete the dead `#shell-nav .tab[data-tab="settings"]` block at
+      `packages/settings-ui/public/style.css:397-403`. The selector duplicates `.tab`'s
+      base `margin-left`, `padding-inline`, and `opacity` declarations, and its
+      `font-size` / `font-weight` declarations actively fight the compact-mode media
+      query at `style.css:2420,2427` — keeping the Settings tab at the non-compact label
+      size (13px) while the other four tabs (Overview, Budget, Usage, Smart tasks) shrink
+      to the compact size (11px) at narrow widths. Result: Settings reads as visibly
+      larger and bolder than the other four in the top nav, breaking typographic
+      consistency on the first thing a user sees. Live-confirmed at 480px in both
+      light-wrap and dark-wrap via PR #817's fixture
+      (`packages/settings-ui/test/fixtures/homey-wrap/homey-wrap-nav.png`). Fix: delete
+      the whole block (leftover from a previous design iteration; nothing else depends
+      on it). Regen `settings/style.css`.
+      Files: `packages/settings-ui/public/style.css`, `settings/style.css` (regen).
+
 - [ ] Idle classifier: surface a signal when a device has a temperature setpoint but no
       `currentTemperature` reading. Today `lib/observer/idleDetector.ts` requires
       `hasTemperatureSetpoint` but allows `currentTemperature` to be absent — `gap` then
@@ -1722,6 +2290,15 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `packages/settings-ui/src/ui/deviceDetail/temperatureBoost.ts`.
 
 ## P3 Future and Exploratory Work
+
+- [ ] Overview device-name trailing whitespace. Live-walk 2026-05-16:
+      `aria-label="Open device details for Termostat gang "` and several others
+      ("Synne ", "vaskerom ", "kontor ", "bad tredje ", "hovedsoverom "). Likely
+      user-entered in Homey itself, but a `String#trimEnd` on display would be
+      polite and avoid screen-reader pauses.
+      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx` (device
+      name rendering), `packages/shared-domain/src/...` (any per-device label
+      helper).
 
 - [ ] Resolve `resolveHeroTone` name collision between `usageHero.ts` and `deadlinePlanHero.ts`.
       Two distinct exports share the same name with different signatures
