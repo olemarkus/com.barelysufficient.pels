@@ -119,3 +119,59 @@ describe('settings-ui static server', () => {
     expect(response.body).toBe(FIXTURE_CONTENT);
   });
 });
+
+describe('settings-ui static server — Homey-wrap host CSS injection', () => {
+  let server: ReturnType<typeof spawn> | undefined;
+  let port = 0;
+  // The production `dist/index.html` is built by `npm run build` and always
+  // contains a `./style.css` link. We do NOT overwrite that file here —
+  // doing so would break every subsequent layout test in the suite that
+  // runs against the same dist build. Instead, the assertions below trust
+  // the production file's shape and verify the server's injection behavior
+  // by inspecting the rewritten response body.
+
+  beforeAll(async () => {
+    server = spawn(process.execPath, [STATIC_SERVER_PATH, '--port', '0'], {
+      cwd: REPO_ROOT,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PELS_E2E_SIMULATE_HOMEY: 'light' },
+    });
+    port = await waitForServer(server);
+  });
+
+  afterAll(async () => {
+    if (server) {
+      await stopServer(server);
+    }
+  });
+
+  it('injects captured Homey host stylesheets into the iframe document before PELS style.css', async () => {
+    // Inner PELS HTML is served under the `/__pels__/` mount when the wrap is
+    // active. The captured `_base.css` rule that competes with PELS's
+    // segmented control sits in the host CSS — without this injection the
+    // local simulator would render PELS-correct and mask the bug.
+    const response = await requestPath(port, '/__pels__/');
+    expect(response.status).toBe(200);
+    const baseIdx = response.body.indexOf('href="/__homey-host__/_base.css"');
+    const buttonIdx = response.body.indexOf('href="/__homey-host__/_homey-button.css"');
+    const pelsIdx = response.body.indexOf('href="./style.css"');
+    expect(baseIdx, 'host _base.css link should be injected').toBeGreaterThan(-1);
+    expect(buttonIdx, 'host _homey-button.css link should be injected').toBeGreaterThan(-1);
+    expect(pelsIdx, 'PELS style.css link should remain').toBeGreaterThan(-1);
+    expect(
+      baseIdx < pelsIdx && buttonIdx < pelsIdx,
+      'Host CSS must precede PELS style.css so the cascade matches the real Homey shell',
+    ).toBe(true);
+  });
+
+  it('serves the captured _base.css with the legacy button rule that drives the segmented-control specificity bug', async () => {
+    const response = await requestPath(port, '/__homey-host__/_base.css');
+    expect(response.status).toBe(200);
+    // The legacy button rule (`button:not(.hy-nostyle):not([class*='homey-button']):not([class*='hy-button']) { background-color: #e7e7e7; … }`)
+    // is the specificity-(0,3,1) rule PELS's `.segmented .segmented__option`
+    // (specificity (0,2,0)) used to lose to. Pin the cream colour so a
+    // future fixture refresh that drops this rule is caught here.
+    expect(response.body).toContain('background-color: #e7e7e7');
+    expect(response.body).toContain("button:not(.hy-nostyle):not([class*='homey-button']):not([class*='hy-button'])");
+  });
+});

@@ -132,7 +132,10 @@ const resolveChartSize = (element: HTMLElement): { height: number; width: number
   const width = element.clientWidth > 0
     ? element.clientWidth
     : (parent?.clientWidth ?? Math.min(480, document.documentElement?.clientWidth ?? 360));
-  return { width: Math.max(240, width), height: element.clientHeight > 0 ? element.clientHeight : 220 };
+  // Default height matches `.deadline-horizon-chart` in style.css (240 px) so
+  // a cold-mount inside a hidden panel sizes the chart consistently with the
+  // post-resize value.
+  return { width: Math.max(240, width), height: element.clientHeight > 0 ? element.clientHeight : 240 };
 };
 
 const buildTooltip = (
@@ -172,6 +175,12 @@ export const buildHistoryDetailChartOption = (
     legend: {
       top: 0,
       left: 0,
+      // Pin the legend to the chart's full width and let ECharts wrap onto
+      // additional lines as needed. Without `width: '100%'`, the legend would
+      // assume an unbounded layout and labels like "Measured Heating" would
+      // truncate to "Measured Heati…" inside a 320–480 px container. Matches
+      // the legend behavior of the live deadline-plan chart.
+      width: '100%',
       // The "Original plan" series renders as a `transparent` fill + dashed
       // device-coloured border. Pin its legend swatch to that same border so
       // the swatch is visible and matches the bar shown on the chart.
@@ -196,7 +205,14 @@ export const buildHistoryDetailChartOption = (
       textStyle: { color: palette.muted, fontSize: 11 },
       inactiveColor: palette.grid,
     },
-    grid: { top: 40, left: 36, right: 16, bottom: 28 },
+    // `containLabel: true` lets ECharts auto-expand the grid to fit the
+    // y-axis label width ("1.2 kWh" needs ~50 px, which a fixed `left: 36`
+    // can't hold — the leading digit was rendering under the chart container's
+    // left edge as `.2 kWh` on every history-detail row). `left: 8` is the
+    // padding inside the auto-expanded grid; ECharts adds the label width on
+    // top of it. `bottom: 32` makes equivalent room for the x-axis tick
+    // labels under containLabel.
+    grid: { top: 40, left: 8, right: 16, bottom: 32, containLabel: true },
     tooltip: {
       trigger: 'axis',
       appendToBody: true,

@@ -218,7 +218,10 @@ const resolveChartSize = (element: HTMLElement): { height: number; width: number
   const viewportWidth = document.documentElement?.clientWidth ?? 0;
   return {
     width: width > 0 ? width : Math.min(480, viewportWidth || 390),
-    height: element.clientHeight > 0 ? element.clientHeight : 220,
+    // Default height matches `.deadline-horizon-chart` in style.css (240 px)
+    // so a cold-mount inside a hidden panel sizes the chart consistently with
+    // the post-resize value.
+    height: element.clientHeight > 0 ? element.clientHeight : 240,
   };
 };
 
@@ -257,10 +260,13 @@ const buildTooltip = (payload: DeadlinePlanPayload, rawParams: unknown): string 
   ].join('<br>');
 };
 
-// Two-grid ECharts layout inside a 220 px container. Top: price, Bottom: load + progress overlay.
-const PRICE_GRID_TOP = 28;
+// Two-grid ECharts layout inside a 240 px container. Top: price, Bottom: load + progress overlay.
+// The 44 px top reserves room for a two-line legend (`width: '100%'`) — with
+// up to 5 long localized series names at 320–480 px the legend wraps, and a
+// single-line `top: 28` left no room above the price grid.
+const PRICE_GRID_TOP = 44;
 const PRICE_GRID_HEIGHT = 56;
-const LOAD_GRID_TOP = 110;
+const LOAD_GRID_TOP = 126;
 const LOAD_GRID_HEIGHT = 84;
 const GRID_LEFT = 36;
 const GRID_RIGHT = 56;
@@ -347,6 +353,12 @@ export const buildChartOption = (
     legend: {
       top: 0,
       left: 0,
+      // Let the legend wrap onto a second row instead of truncating to
+      // "Background usa…" / "Original Heatin…" / "Measured Heati…" when 4–5
+      // long localized series names overflow the 320–480 px chart width.
+      // `PRICE_GRID_TOP` (44) and the container `.deadline-horizon-chart`
+      // height token reserve enough vertical room for a two-line legend.
+      width: '100%',
       // Explicit `itemStyle` per entry: the original-plan series renders its
       // bars as `transparent` fill + colored border, which would otherwise
       // produce an invisible legend swatch. Pin each legend swatch to the

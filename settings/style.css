@@ -3607,15 +3607,21 @@ details[open] > summary .disclosure-chevron {
 }
 
 /* Specificity note: Homey injects a host stylesheet (`_base.css`) inside the
-   settings WebView with default light-theme button rules that out-weighed the
-   single-class `.segmented__option` selector, so neither the base background
-   nor the selected tonal fill rendered, making Plan vs Adjust look identical.
-   The selected-state selectors below use the duplicate attribute trick
-   (`[aria-pressed="true"][aria-pressed]`) plus the `.segmented` parent class
-   to reach specificity (0,4,0) — decisive over the host rules without
-   `!important`. The base, hover, and disabled selectors keep the same parent
-   qualifier so they sit on the same specificity tier as the selected rule. */
-.segmented .segmented__option {
+   settings WebView with default light-theme button rules
+   (`button:not(.hy-nostyle):not([class*='homey-button']):not([class*='hy-button'])`,
+   specificity (0,3,1)) that out-weigh single-class `.segmented__option`
+   selectors. To win on the cascade tie without `!important`, the base / hover
+   / disabled selectors below combine `.segmented` (class), `button` (type),
+   and the duplicate-class trick `.segmented__option.segmented__option`
+   (two classes for one element) — total specificity (0,3,1), same as Homey's
+   rule, and PELS's stylesheet loads after Homey's so PELS wins on the tie.
+   The selected-state selectors stack a duplicate-attribute trick
+   (`[aria-pressed="true"][aria-pressed]`) on top to reach (0,4,1), comfortably
+   above any host rule. Captured Homey host CSS lives under
+   `packages/settings-ui/test/fixtures/homey-wrap/homey-host-base.css` so the
+   `PELS_E2E_SIMULATE_HOMEY=light|dark` static-server mode reproduces the
+   cascade locally; without that fixture the bug was invisible until deploy. */
+.segmented button.segmented__option.segmented__option {
   flex: 1 1 0;
   /* Reserve enough room for the longest segmented label in the app
    * ("Conservative", 12 chars @ font-size-sm ≈ 88px) so the budget
@@ -3648,33 +3654,33 @@ details[open] > summary .disclosure-chevron {
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 
-.segmented .segmented__option[aria-checked="true"][aria-checked],
-.segmented .segmented__option[aria-pressed="true"][aria-pressed] {
+.segmented button.segmented__option.segmented__option[aria-checked="true"][aria-checked],
+.segmented button.segmented__option.segmented__option[aria-pressed="true"][aria-pressed] {
   background: var(--pels-segmented-selected-background);
   color: var(--pels-segmented-selected-text);
 }
 
-.segmented .segmented__option:focus-visible {
+.segmented button.segmented__option.segmented__option:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: -2px;
 }
 
-.segmented .segmented__option:disabled,
-.segmented .segmented__option[hidden] {
+.segmented button.segmented__option.segmented__option:disabled,
+.segmented button.segmented__option.segmented__option[hidden] {
   cursor: not-allowed;
 }
 
-.segmented .segmented__option:disabled:not([aria-checked="true"]):not([aria-pressed="true"]) {
+.segmented button.segmented__option.segmented__option:disabled:not([aria-checked="true"]):not([aria-pressed="true"]) {
   color: var(--pels-text-muted);
   opacity: 0.6;
 }
 
-.segmented .segmented__option:hover:not(:disabled):not([aria-checked="true"]):not([aria-pressed="true"]) {
+.segmented button.segmented__option.segmented__option:hover:not(:disabled):not([aria-checked="true"]):not([aria-pressed="true"]) {
   color: var(--pels-text-primary);
   background: color-mix(in srgb, var(--pels-segmented-selected-background) 40%, transparent);
 }
 
-.segmented .segmented__option[hidden] {
+.segmented button.segmented__option.segmented__option[hidden] {
   display: none;
 }
 
@@ -3683,7 +3689,7 @@ details[open] > summary .disclosure-chevron {
  * floor so the buttons can shrink to fit the container while keeping the
  * 48 px touch target and break-word wrap protection. */
 @media (max-width: 360px) {
-  .segmented .segmented__option {
+  .segmented button.segmented__option.segmented__option {
     min-width: 0;
   }
 }
@@ -4482,7 +4488,11 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 .deadline-horizon-chart {
   width: 100%;
   min-width: 0;
-  height: 220px;
+  /* 240 px container holds: top legend (auto-wraps to two lines at 320–480 px
+   * when series names are long), price grid (live chart only), load+progress
+   * grid, x-axis tick labels under containLabel. Previously 220 px assumed a
+   * single-line legend that truncated long localized labels with `…`. */
+  height: 240px;
 }
 
 #deadline-plan-root .plan-hero__chips {
@@ -5818,6 +5828,22 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   border-radius: var(--radius-md);
   background: var(--color-surface-2);
   box-shadow: var(--shadow-sm);
+}
+
+/* Norwegian device names like "Termostat hovedsoverom" are long enough to
+ * collide with the number-input + priority-badge cluster on the right of a
+ * priority row at the 480 px supported width — without the wrap override
+ * below, the name was rendering as "hovedsoveron", the final `m` lost under
+ * the next column. The base `.mode-row .device-row__name` rule has
+ * `white-space: nowrap` + `text-overflow: ellipsis`; the 430 px breakpoint
+ * already relaxes it, but at 431–480 px the user still saw clipped text. Drop
+ * the nowrap inside the modes priority list at all widths — the panel is
+ * capped at 480 px so the name column is always short, and a 2-line wrap is
+ * acceptable and complete vs. a silent character cut. */
+#modes-panel .mode-row .device-row__name {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
 }
 
 #modes-panel .mode-row:last-child {
