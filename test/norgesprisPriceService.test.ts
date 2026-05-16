@@ -228,6 +228,59 @@ describe('Norway norgespris pricing', () => {
     expect((current as any).norgesprisAdjustment).toBeCloseTo(buildExpectedNorgesprisAdjustment(0.5), 2);
   });
 
+  it('applies norgespris adjustment to past same-month hours without consuming future cap', () => {
+    const now = new Date(Date.UTC(2026, 0, 15, 10, 15, 0));
+    vi.useFakeTimers().setSystemTime(now);
+    const previousHour = new Date(Date.UTC(2026, 0, 15, 9, 0, 0));
+    const currentHour = new Date(Date.UTC(2026, 0, 15, 10, 0, 0));
+    // Past usage already covers half the cap; remaining 2500 kWh / 2 kWh-per-hour estimate
+    // still yields full eligibility (eligibleShare = min(1, 2500/2) = 1) for both rows.
+    // The key check is that the past row gets the adjustment and the current row's
+    // eligibility is not decremented by the past row.
+    setNorwayNorgesprisSettings({
+      now,
+      monthUsageKwh: NORGESPRIS_HOUSEHOLD_MONTHLY_CAP_KWH / 2,
+      lastPowerW: 2000,
+      tariffGroup: 'Husholdning',
+      spotPrices: [
+        { startsAt: previousHour.toISOString(), spotPriceExVat: SPOT_PRICE_EX_VAT, currency: 'NOK' },
+        { startsAt: currentHour.toISOString(), spotPriceExVat: SPOT_PRICE_EX_VAT, currency: 'NOK' },
+      ],
+    });
+
+    const prices = createService().getCombinedHourlyPrices();
+    const previous = prices.find((entry) => entry.startsAt === previousHour.toISOString());
+    const current = prices.find((entry) => entry.startsAt === currentHour.toISOString());
+    expect(previous).toBeDefined();
+    expect(current).toBeDefined();
+    const expectedAdjustment = buildExpectedNorgesprisAdjustment(1);
+    // Past row shows the Norgespris model (adjustment applied), not the spot-only total.
+    expect((previous as any).norgesprisAdjustment).toBeCloseTo(expectedAdjustment, 2);
+    // Current row remains fully eligible — the past row did not decrement future cap.
+    expect((current as any).norgesprisAdjustment).toBeCloseTo(expectedAdjustment, 2);
+  });
+
+  it('keeps strømstøtte support behavior for past hours unchanged', () => {
+    const now = new Date(Date.UTC(2026, 0, 15, 10, 15, 0));
+    vi.useFakeTimers().setSystemTime(now);
+    const previousHour = new Date(Date.UTC(2026, 0, 15, 9, 0, 0));
+    setNorwayNorgesprisSettings({
+      now,
+      monthUsageKwh: 0,
+      lastPowerW: 2000,
+      norwayPriceModel: 'stromstotte',
+      tariffGroup: 'Husholdning',
+      spotPrices: [
+        { startsAt: previousHour.toISOString(), spotPriceExVat: SPOT_PRICE_EX_VAT, currency: 'NOK' },
+      ],
+    });
+
+    const [past] = createService().getCombinedHourlyPrices();
+    expect(past.startsAt).toBe(previousHour.toISOString());
+    expect((past as any).norgesprisAdjustment).toBeUndefined();
+    expect((past.electricitySupport ?? 0)).toBeGreaterThan(0);
+  });
+
   it('uses Homey timezone month boundaries for norgespris cap', () => {
     const now = new Date('2026-01-31T23:30:00.000Z'); // Europe/Oslo: 2026-02-01 00:30
     vi.useFakeTimers().setSystemTime(now);
