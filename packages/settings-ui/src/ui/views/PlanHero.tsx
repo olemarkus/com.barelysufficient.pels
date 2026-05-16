@@ -1,8 +1,13 @@
 import type { ComponentChild } from 'preact';
 import {
+  formatAboveHardCapSubline,
+  formatAboveSafePaceSubline,
+  formatEnergyMeterMarkerLabels,
   formatEnergyUsedOfBudget,
   formatFreshnessChip,
   formatHeroHeadline,
+  formatPowerMeterMarkerLabels,
+  type HeroMeterMarkerLabels,
 } from '../../../../shared-domain/src/planHeroSummary.ts';
 import { formatModeLabel } from '../modeLabels.ts';
 import { resolveDisplayPlanDevices } from '../planLiveData.ts';
@@ -200,6 +205,11 @@ type MeterMarker = {
   positionPct: number;
   tone?: MeterTone;
   tooltip?: string;
+  // Short legend label and screen-reader label, sourced from
+  // `shared-domain/planHeroSummary.formatPowerMeterMarkerLabels` /
+  // `formatEnergyMeterMarkerLabels` so wording stays in sync with the runtime
+  // logger.
+  labels: HeroMeterMarkerLabels;
 };
 
 type MeterTone = 'good' | 'warning' | 'critical';
@@ -420,7 +430,15 @@ const PelsMeterTrack = ({
   <div class="pels-meter-track">
     {fill}
     {markers.map((marker) => (
+      // `role="img"` + `aria-label` give screen readers the same content the
+      // sighted user sees on the tippy.js tooltip wired by `data-tooltip`.
+      // Avoid native `title=` here because `setTooltip` strips it when
+      // `data-tooltip` is present (see `tooltips.ts`) — native tooltips would
+      // also stack on top of the tippy popover.
       <span
+        key={marker.kind}
+        role="img"
+        aria-label={marker.labels.aria}
         class={`pels-meter-track__marker pels-meter-track__marker--${marker.kind}`}
         style={{ left: `${clampPct(marker.positionPct)}%` }}
         data-tone={marker.tone}
@@ -430,6 +448,28 @@ const PelsMeterTrack = ({
   </div>
 );
 
+// Sublegend rendered below a meter when it carries more than one marker — a
+// single labeled dot reads fine from its `aria-label`, but two or more dots
+// need a sighted-user legend so the colors map to meaning. Hidden from screen
+// readers (`aria-hidden`) because the per-marker `aria-label` already
+// describes each marker.
+const MeterLegend = ({ markers }: { markers: MeterMarker[] }) => {
+  if (markers.length < 2) return null;
+  return (
+    <div class="plan-hero__legend" aria-hidden="true">
+      {markers.map((marker) => (
+        <span key={marker.kind} class="plan-hero__legend-item">
+          <span
+            class={`plan-hero__legend-swatch plan-hero__legend-swatch--${marker.kind}`}
+            data-tone={marker.tone}
+          />
+          <span class="plan-hero__legend-label">{marker.labels.short}</span>
+        </span>
+      ))}
+    </div>
+  );
+};
+
 const PowerMeter = ({ scale }: { scale: BarScale }) => {
   const safePaceTooltip = resolveSafePaceTooltip(scale.safePaceKw, scale.softLimitSource);
   const markers: MeterMarker[] = [
@@ -437,6 +477,7 @@ const PowerMeter = ({ scale }: { scale: BarScale }) => {
       kind: 'target',
       positionPct: pctOf(scale.safePaceKw, scale.scaleKw),
       tooltip: safePaceTooltip,
+      labels: formatPowerMeterMarkerLabels('target', scale.safePaceKw),
     },
   ];
   if (scale.hardCapKw !== null && scale.hardCapKw > scale.safePaceKw) {
@@ -444,9 +485,34 @@ const PowerMeter = ({ scale }: { scale: BarScale }) => {
       kind: 'cap',
       positionPct: pctOf(scale.hardCapKw, scale.scaleKw),
       tooltip: `Hard cap ${scale.hardCapKw.toFixed(1)} kW — ${HARD_CAP_TOOLTIP}`,
+      labels: formatPowerMeterMarkerLabels('cap', scale.hardCapKw),
     });
   }
-  return <PelsMeterTrack fill={<PowerMeterSegments scale={scale} />} markers={markers} />;
+  return (
+    <>
+      <PelsMeterTrack fill={<PowerMeterSegments scale={scale} />} markers={markers} />
+      <MeterLegend markers={markers} />
+    </>
+  );
+};
+
+// Three mutually exclusive sublines under the Power-now headline, matching
+// `notes/overview-hero-spec.md` § "Power now":
+//   - on track:           "Safe pace now 12.0 kW"
+//   - above safe pace:    "1.5 kW above safe pace"
+//   - above hard cap:     "0.5 kW above hard cap (5.0 kW)"
+// `overHardLimit` takes precedence (hard cap implies above safe pace).
+const resolvePowerSubline = (
+  headline: NonNullable<ReturnType<typeof formatHeroHeadline>>,
+  meta: PlanMetaSnapshot,
+): string => {
+  if (headline.overHardLimit && typeof meta.hardCapHeadroomKw === 'number' && headline.hardLimitKw !== null) {
+    return formatAboveHardCapSubline(meta.hardCapHeadroomKw, headline.hardLimitKw);
+  }
+  if (headline.overSoftLimit) {
+    return formatAboveSafePaceSubline(headline.headroomKw);
+  }
+  return `Safe pace now ${headline.softLimitKw.toFixed(1)} kW`;
 };
 
 const PowerSection = ({
@@ -463,11 +529,7 @@ const PowerSection = ({
     <div class="plan-hero__section">
       <p class="plan-hero__section-label eyebrow">Power now</p>
       <div class="plan-hero__headline">{headline.totalKw.toFixed(1)} kW</div>
-      {!headline.overSoftLimit && !headline.overHardLimit && (
-        <div class="plan-hero__subline">
-          Safe pace now {headline.softLimitKw.toFixed(1)} kW
-        </div>
-      )}
+      <div class="plan-hero__subline">{resolvePowerSubline(headline, meta)}</div>
       {scale && (
         <div class="plan-hero__bar-group">
           <PowerMeter scale={scale} />
@@ -503,6 +565,7 @@ const EnergyMeter = ({ scale }: { scale: EnergyBarScale }) => {
       kind: 'target',
       positionPct: pctOf(scale.budgetKWh, scaleKWh),
       tooltip: `Budget this hour ${scale.budgetKWh.toFixed(1)} kWh`,
+      labels: formatEnergyMeterMarkerLabels('target', scale.budgetKWh),
     },
   ];
   if (scale.projectedKWh !== null) {
@@ -511,9 +574,15 @@ const EnergyMeter = ({ scale }: { scale: EnergyBarScale }) => {
       positionPct: pctOf(scale.projectedKWh, scaleKWh),
       tone: projectionTone,
       tooltip: `Projected this hour ${scale.projectedKWh.toFixed(2)} kWh`,
+      labels: formatEnergyMeterMarkerLabels('projected', scale.projectedKWh),
     });
   }
-  return <PelsMeterTrack fill={<EnergyMeterFill scale={scale} scaleKWh={scaleKWh} />} markers={markers} />;
+  return (
+    <>
+      <PelsMeterTrack fill={<EnergyMeterFill scale={scale} scaleKWh={scaleKWh} />} markers={markers} />
+      <MeterLegend markers={markers} />
+    </>
+  );
 };
 
 const EnergySection = ({ meta }: { meta: PlanMetaSnapshot }) => {

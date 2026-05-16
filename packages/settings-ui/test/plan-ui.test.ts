@@ -262,6 +262,91 @@ describe('Redesign plan UI', () => {
         .toBe('This hour is projected to go over budget.');
     });
 
+    it('surfaces the "X kW above safe pace" subline when current power is above safe pace', async () => {
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 6.5,
+          softLimitKw: 5,
+          headroomKw: -1.5,
+          hardCapLimitKw: 8,
+          hardCapHeadroomKw: 1.5,
+          powerFreshnessState: 'fresh',
+          usedKWh: 0.8,
+          hourBudgetKWh: 5,
+          minutesRemaining: 30,
+        },
+        devices: [],
+      });
+      const subline = document.querySelector('.plan-hero .plan-hero__subline') as HTMLElement | null;
+      expect(subline?.textContent?.trim()).toBe('1.5 kW above safe pace');
+    });
+
+    it('surfaces the "X kW above hard cap (Y kW)" subline when current power is above hard cap', async () => {
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 8.5,
+          softLimitKw: 5,
+          headroomKw: -3.5,
+          hardCapLimitKw: 8,
+          hardCapHeadroomKw: -0.5,
+          powerFreshnessState: 'fresh',
+          usedKWh: 0.8,
+          hourBudgetKWh: 5,
+          minutesRemaining: 30,
+        },
+        devices: [],
+      });
+      const subline = document.querySelector('.plan-hero .plan-hero__subline') as HTMLElement | null;
+      expect(subline?.textContent?.trim()).toBe('0.5 kW above hard cap (8.0 kW)');
+    });
+
+    it('labels every hero meter marker with aria-label and a legend when more than one marker is present', async () => {
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 5.2,
+          softLimitKw: 11,
+          headroomKw: 5.8,
+          hardCapLimitKw: 14,
+          hardCapHeadroomKw: 3,
+          controlledKw: 3.1,
+          uncontrolledKw: 2.1,
+          powerFreshnessState: 'fresh',
+          usedKWh: 4.2,
+          hourBudgetKWh: 11,
+          minutesRemaining: 30,
+        },
+        devices: [],
+      });
+
+      const sections = Array.from(document.querySelectorAll('.plan-hero .plan-hero__section')) as HTMLElement[];
+      expect(sections).toHaveLength(2);
+
+      // Power bar has two markers: safe pace + hard cap. Both labeled.
+      const powerMarkers = Array.from(sections[0]!.querySelectorAll('.pels-meter-track__marker')) as HTMLElement[];
+      expect(powerMarkers).toHaveLength(2);
+      expect(powerMarkers.map((m) => m.getAttribute('aria-label'))).toEqual([
+        'Safe pace now 11.0 kW',
+        'Hard cap 14.0 kW',
+      ]);
+      expect(powerMarkers.every((m) => m.getAttribute('role') === 'img')).toBe(true);
+
+      // Energy bar has two markers: budget + projected end. Both labeled.
+      const energyMarkers = Array.from(sections[1]!.querySelectorAll('.pels-meter-track__marker')) as HTMLElement[];
+      expect(energyMarkers).toHaveLength(2);
+      expect(energyMarkers.map((m) => m.getAttribute('aria-label'))).toEqual([
+        'Budget this hour 11.0 kWh',
+        expect.stringMatching(/^Projected this hour [\d.]+ kWh$/),
+      ]);
+
+      // Each bar with more than one marker renders a sublegend row.
+      const legends = Array.from(document.querySelectorAll('.plan-hero__legend')) as HTMLElement[];
+      expect(legends).toHaveLength(2);
+      const legendLabels = legends.map((l) => Array.from(l.querySelectorAll('.plan-hero__legend-label'))
+        .map((el) => el.textContent?.trim()));
+      expect(legendLabels[0]).toEqual(['Safe pace', 'Hard cap']);
+      expect(legendLabels[1]).toEqual(['Budget this hour', 'Projected this hour']);
+    });
+
     it('uses only the explicit backend hour budget for the energy hero', async () => {
       await renderPlanSnapshot({
         meta: {

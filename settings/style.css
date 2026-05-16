@@ -1300,7 +1300,10 @@ md-primary-tab.tab[active]:hover {
    Overview / Usage / Deadline-plan surfaces keep working unchanged while
    Budget / Smart tasks / Settings / Limits / Simulation / Advanced headers
    adopt the same look via the shared selector. Tone bindings use the flat
-   `--color-state-{positive,warning,negative,info}-{bg,border}` tokens. */
+   `--color-state-{positive,warning,negative,info}-{bg,border}` tokens.
+   Surface tier is `--pels-surface-container-high` (one step above the
+   device-card surface `--color-surface-1`) so the hero reads as the
+   primary container on the page — see `notes/overview-hero-spec.md`. */
 .plan-hero,
 .pels-hero {
   display: grid;
@@ -1308,11 +1311,7 @@ md-primary-tab.tab[active]:hover {
   padding: var(--pels-hero-padding);
   border: 1px solid var(--pels-surface-outline);
   border-radius: var(--radius-lg);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--pels-surface-container-high) 86%, transparent),
-    color-mix(in srgb, var(--pels-surface-container) 96%, transparent)
-  );
+  background: var(--pels-surface-container-high);
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-base-white) 10%, transparent);
 }
 
@@ -1697,12 +1696,64 @@ md-primary-tab.tab[active]:hover {
   background: var(--pels-status-critical);
 }
 
+/* Sublegend below a hero meter — renders only when the bar carries two or
+   more markers (single-marker bars rely on the per-marker `aria-label` and
+   the visible position alone). Swatch geometry mirrors the matching
+   `.pels-meter-track__marker--*` rule so the legend reads as a key. */
 .plan-hero__legend {
   display: flex;
-  flex-direction: row;
-  gap: var(--spacing-1);
+  flex-flow: row wrap;
+  gap: var(--spacing-1) var(--spacing-3);
   margin-top: var(--spacing-1);
   color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: var(--font-line-height-tight);
+}
+
+.plan-hero__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+.plan-hero__legend-swatch {
+  --legend-tone: color-mix(in srgb, var(--text) 82%, transparent);
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.plan-hero__legend-swatch--target {
+  width: 3px;
+  height: 12px;
+  border-radius: var(--radius-full);
+  background: var(--legend-tone);
+}
+
+.plan-hero__legend-swatch--cap {
+  width: 4px;
+  height: 12px;
+  border-radius: var(--radius-full);
+  background: var(--pels-status-warning);
+}
+
+.plan-hero__legend-swatch--projected {
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--legend-tone);
+  border-radius: var(--radius-full);
+  background: var(--pels-surface-container-high);
+}
+
+.plan-hero__legend-swatch--projected[data-tone="good"] {
+  --legend-tone: var(--pels-status-good);
+}
+
+.plan-hero__legend-swatch--projected[data-tone="warning"] {
+  --legend-tone: var(--pels-status-warning);
+}
+
+.plan-hero__legend-swatch--projected[data-tone="critical"] {
+  --legend-tone: var(--pels-status-critical);
 }
 
 .pels-meter-track__marker {
@@ -2199,8 +2250,12 @@ md-primary-tab.tab[active]:hover {
   white-space: nowrap;
 }
 
+/* The expected-load variant ("~1.0 kW when active") sits on the device-card
+   surface `--color-surface-1`. Bind it to `--text-secondary` (≈#9ba6b7) rather
+   than `--muted` (≈#6b7280) so the small-body text clears WCAG AA contrast on
+   the card surface — see TODO.md note "Low-contrast metric label". */
 .plan-card__metric--power[data-variant="expected"] .plan-card__metric-label {
-  color: var(--muted);
+  color: var(--text-secondary);
   font-weight: var(--font-weight-normal);
 }
 
