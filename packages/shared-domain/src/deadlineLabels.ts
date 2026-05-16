@@ -1,7 +1,9 @@
 import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings.js';
 import type {
+  DeferredObjectiveActivePlanDiagnosticReason,
   DeferredObjectiveActivePlanPendingReason,
   DeferredObjectiveActivePlanRevisionReason,
+  DeferredObjectiveKwhPerUnitProvenanceV1,
 } from '../../contracts/src/deferredObjectiveActivePlans.js';
 
 export type DeadlinePlanUnavailableReason =
@@ -68,14 +70,26 @@ export const SMART_TASK_LIST_STATUS_CHIP_VARIANT: Record<SmartTaskListStatusId, 
 // Resolve the list card status id from plan data.
 // `nowMs` is used to distinguish "Queued" (plan ready, first action in future)
 // from other non-pending states.
+//
+// `diagnosticReasonCode` carries the recorder's "current cause" signal — it
+// is set even on plans with a cached `latest` revision (e.g. EV unplugged
+// mid-plan). When present, it takes precedence over `planStatus` so the chip
+// matches the device-card line.
 export const resolveSmartTaskListStatus = (params: {
   pending: boolean;
   pendingReason: DeferredObjectiveActivePlanPendingReason | undefined;
+  diagnosticReasonCode: DeferredObjectiveActivePlanDiagnosticReason | undefined;
   planStatus: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied' | undefined;
   firstActionAtMs: number | null;
   nowMs: number;
 }): SmartTaskListStatusId => {
-  const { pending, pendingReason, planStatus, firstActionAtMs, nowMs } = params;
+  const { pending, pendingReason, diagnosticReasonCode, planStatus, firstActionAtMs, nowMs } = params;
+
+  // Unplugged-mid-plan: the recorder refreshes `diagnosticReasonCode` even on
+  // non-pending plans so this branch fires regardless of whether `latest` is
+  // still cached. Without this, the list chip would say "On track" while the
+  // device-card line said "Charging plan paused — car unplugged".
+  if (diagnosticReasonCode === 'objective_invalid_session') return 'paused_unplugged';
 
   if (pending || planStatus === undefined) {
     if (pendingReason === 'invalid_session') return 'paused_unplugged';
@@ -464,4 +478,63 @@ export const composeSmartTaskStatusNotificationText = (params: {
   const deadline = params.deadlineLocalTime.trim();
   const detail = [target && `target ${target}`, deadline && `by ${deadline}`].filter(Boolean).join(' ');
   return detail === '' ? head : `${head} — ${detail}`;
+};
+
+// ─── EV learning provenance rows ──────────────────────────────────────────────
+
+// A row in the plan-inputs card describing one provenance fact (source, value,
+// sample count, confidence, last accepted at). Pre-resolved at this layer so
+// the view never branches on `source` / null values.
+export type KwhPerUnitProvenanceRow = { label: string; value: string };
+
+// Confidence text is rendered next to the learned mean. Lowercase to fit the
+// neighbouring sentence ("12 samples · medium confidence"); the chip surface
+// uses sentence-case copy elsewhere.
+const CONFIDENCE_TEXT: Record<'low' | 'medium' | 'high', string> = {
+  low: 'low confidence',
+  medium: 'medium confidence',
+  high: 'high confidence',
+};
+
+const formatLearnedValue = (kWhPerUnit: number, unitSuffix: DeadlineLabels['perUnitRateUnit']): string => (
+  `${kWhPerUnit.toFixed(2)} ${unitSuffix}`
+);
+
+const formatSamplesLine = (acceptedSamples: number, confidence: 'low' | 'medium' | 'high' | null): string => {
+  const sampleWord = acceptedSamples === 1 ? 'sample' : 'samples';
+  const base = `${acceptedSamples} accepted ${sampleWord}`;
+  return confidence === null ? base : `${base} · ${CONFIDENCE_TEXT[confidence]}`;
+};
+
+// Resolve display rows for the kWhPerUnit provenance snapshot. The caller
+// supplies `formatAcceptedAt` because shared-domain stays free of locale and
+// timezone helpers — the UI passes a browser-side formatter, while runtime
+// callers can pass a timezone-aware `Intl.DateTimeFormat` formatter.
+//
+// Producer-side resolution: the UI just renders these rows; it never branches
+// on `source`, raw kWh values, or null fields.
+export const resolveKwhPerUnitProvenanceRows = (params: {
+  provenance: DeferredObjectiveKwhPerUnitProvenanceV1 | undefined;
+  unitSuffix: DeadlineLabels['perUnitRateUnit'];
+  formatAcceptedAt: (ms: number) => string;
+}): KwhPerUnitProvenanceRow[] => {
+  const { provenance, unitSuffix, formatAcceptedAt } = params;
+  if (!provenance) return [];
+  if (provenance.source === 'bootstrap') {
+    // Bootstrap rows describe the cold-start state. The plan-inputs row note
+    // already says "Estimated — refining as PELS observes charging", so a
+    // single Source row is enough here — adding "0 samples" would be noisy.
+    return [{ label: 'Source', value: 'Bootstrap estimate' }];
+  }
+  const rows: KwhPerUnitProvenanceRow[] = [{ label: 'Source', value: 'Learned profile' }];
+  if (provenance.kWhPerUnit !== null && Number.isFinite(provenance.kWhPerUnit) && provenance.kWhPerUnit > 0) {
+    rows.push({ label: 'Learned rate', value: formatLearnedValue(provenance.kWhPerUnit, unitSuffix) });
+  }
+  if (provenance.acceptedSamples > 0) {
+    rows.push({ label: 'Samples', value: formatSamplesLine(provenance.acceptedSamples, provenance.confidence) });
+  }
+  if (provenance.lastAcceptedAtMs !== null && Number.isFinite(provenance.lastAcceptedAtMs)) {
+    rows.push({ label: 'Last sample', value: formatAcceptedAt(provenance.lastAcceptedAtMs) });
+  }
+  return rows;
 };

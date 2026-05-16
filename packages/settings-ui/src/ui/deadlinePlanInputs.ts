@@ -1,10 +1,26 @@
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
-import type { DeadlineLabels } from '../../../shared-domain/src/deadlineLabels.ts';
+import { resolveKwhPerUnitProvenanceRows, type DeadlineLabels } from '../../../shared-domain/src/deadlineLabels.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
-import type { DeferredObjectiveActivePlanRevisionV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
+import type {
+  DeferredObjectiveActivePlanRevisionV1,
+  DeferredObjectiveKwhPerUnitProvenanceV1,
+} from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import { BOOTSTRAP_EV_SOC_KWH_PER_PERCENT } from '../../../shared-domain/src/objectiveProfileBootstrap.ts';
 import { resolveLowestActiveStepKw, type resolveProfile } from './deadlinePlanResolvers.ts';
 import type { DeadlinePlanPayload } from './views/DeadlinePlan.tsx';
+
+const formatAcceptedAt = (ms: number): string => {
+  const date = new Date(ms);
+  // Locale-aware short timestamp. Browser-side, so the user's runtime locale
+  // and timezone are applied automatically — no `timeZone` plumbing required.
+  return date.toLocaleString([], {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+};
 
 const formatPerUnitRateLabel = (
   kwhPerUnitMean: number | null | undefined,
@@ -26,6 +42,7 @@ export const buildPlanInputs = (params: {
   labels: DeadlineLabels;
   objectiveKind: DeferredObjectiveSettingsEntry['kind'];
   device: TargetDeviceSnapshot;
+  provenance: DeferredObjectiveKwhPerUnitProvenanceV1 | undefined;
 }): DeadlinePlanPayload['planInputs'] => {
   // When the latest revision came from the bootstrap fallback (no learned
   // kwhPerUnit yet), show the bootstrap value rather than the absent profile
@@ -40,5 +57,10 @@ export const buildPlanInputs = (params: {
     perUnitRateLabel: formatPerUnitRateLabel(rateMean, params.labels.perUnitRateUnit),
     perUnitRateNote: usingBootstrap ? params.labels.planInputsRateBootstrapNote : null,
     maxPowerLabel: formatMaxPowerLabel(resolveLowestActiveStepKw(params.device)),
+    provenanceRows: resolveKwhPerUnitProvenanceRows({
+      provenance: params.provenance,
+      unitSuffix: params.labels.perUnitRateUnit,
+      formatAcceptedAt,
+    }),
   };
 };

@@ -255,6 +255,29 @@ describe('resolveDeadlinesListCards', () => {
     expect(cards[0].statusId).toBe('paused_unplugged');
   });
 
+  it('assigns paused_unplugged when the EV unplugs mid-plan (diagnosticReasonCode on a non-pending plan)', () => {
+    // Mid-plan unplug: the recorder keeps `pending: false` and the cached
+    // `latest` revision but refreshes `diagnosticReasonCode` to
+    // `objective_invalid_session`. The list chip must reflect that — without
+    // this branch the chip would say "On track" while the device-card line
+    // says "Charging plan paused — car unplugged".
+    const cards = resolveDeadlinesListCards({
+      activePlans: buildActivePlans([
+        buildPlan({
+          objectiveKind: 'ev_soc',
+          targetTemperatureC: null,
+          targetPercent: 80,
+          pending: false,
+          diagnosticReasonCode: 'objective_invalid_session',
+        }),
+      ]),
+      objectiveSettings: buildObjectiveSettings({ dev_a: enabledEvEntry }),
+      devices,
+      nowMs: T0,
+    });
+    expect(cards[0].statusId).toBe('paused_unplugged');
+  });
+
   it('resolves the device name by the map key, not by plan.deviceId, so a corrupted record cannot mis-name the card', () => {
     // Persisted plan has `deviceId: 'dev_other'` inside the value, but is stored
     // under key `dev_a`. The card must be named after `dev_a` (the key drives

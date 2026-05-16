@@ -6,6 +6,7 @@ import {
   deadlineLabels,
   type DeadlineLabels,
   type DeadlinePlanUnavailableReason,
+  type KwhPerUnitProvenanceRow,
 } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
 import { attachTabShownResize } from '../chartVisibilityResize.ts';
@@ -84,6 +85,11 @@ export type DeadlinePlanPayload = {
     perUnitRateLabel: string | null;
     perUnitRateNote: string | null;
     maxPowerLabel: string | null;
+    // EV learning provenance rows (source, learned value, samples, last
+    // sample timestamp). Pre-resolved at the producer side so the view
+    // never branches on `kwhPerUnitProvenance.source` or null fields.
+    // Empty array when no provenance is available.
+    provenanceRows: KwhPerUnitProvenanceRow[];
   };
 };
 
@@ -632,8 +638,8 @@ const HorizonCard = ({ payload }: { payload: DeadlinePlanPayload }) => (
 );
 
 const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
-  const { perUnitRateLabel, perUnitRateNote, maxPowerLabel } = payload.planInputs;
-  if (perUnitRateLabel === null && maxPowerLabel === null) return null;
+  const { perUnitRateLabel, perUnitRateNote, maxPowerLabel, provenanceRows } = payload.planInputs;
+  if (perUnitRateLabel === null && maxPowerLabel === null && provenanceRows.length === 0) return null;
   return (
     <section class="pels-surface-card budget-redesign-card" aria-labelledby="deadline-plan-inputs-title">
       <div class="budget-card-header">
@@ -657,6 +663,12 @@ const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
             <dd class="plan-inputs__row-value">{maxPowerLabel}</dd>
           </div>
         )}
+        {provenanceRows.map((row) => (
+          <div key={row.label} class="plan-inputs__row">
+            <dt class="plan-inputs__row-label">{row.label}</dt>
+            <dd class="plan-inputs__row-value">{row.value}</dd>
+          </div>
+        ))}
       </dl>
     </section>
   );
