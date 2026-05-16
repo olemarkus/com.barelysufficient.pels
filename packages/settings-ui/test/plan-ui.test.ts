@@ -104,7 +104,7 @@ describe('Redesign plan UI', () => {
       expect((document.querySelector('.plan-hero .plan-hero__subline:not(.plan-hero__subline--muted)') as HTMLElement | null)
         ?.textContent?.trim()).toBe('Safe pace now 11.0 kW');
       // Energy section shows the explicit backend-provided hour budget, not legacy budget fields.
-      expect(headlines.some((h) => h?.includes('4.20 / 11.0 kWh'))).toBe(true);
+      expect(headlines.some((h) => h?.includes('4.2 of 11.0 kWh used'))).toBe(true);
       expect(document.querySelectorAll('.plan-hero .pels-meter-track')).toHaveLength(2);
       // Status chip stays quiet when below safe pace and data is fresh
       expect(document.querySelector('.plan-hero .plan-chip:not(.plan-chip--muted)')).toBeNull();
@@ -281,10 +281,10 @@ describe('Redesign plan UI', () => {
 
       const headlines = Array.from(document.querySelectorAll('.plan-hero .plan-hero__headline'))
         .map((el) => el.textContent?.trim());
-      expect(headlines.some((h) => h?.includes('0.02 / 4.5 kWh'))).toBe(true);
-      expect(headlines.some((h) => h?.includes('0.02 / 5.0 kWh'))).toBe(false);
-      expect(headlines.some((h) => h?.includes('0.02 / 9.5 kWh'))).toBe(false);
-      expect(headlines.some((h) => h?.includes('0.02 / 12.0 kWh'))).toBe(false);
+      expect(headlines.some((h) => h?.includes('0.0 of 4.5 kWh used'))).toBe(true);
+      expect(headlines.some((h) => h?.includes('0.0 of 5.0 kWh used'))).toBe(false);
+      expect(headlines.some((h) => h?.includes('0.0 of 9.5 kWh used'))).toBe(false);
+      expect(headlines.some((h) => h?.includes('0.0 of 12.0 kWh used'))).toBe(false);
     });
 
     it('does not fall back to legacy hour budget fields in the hero', async () => {

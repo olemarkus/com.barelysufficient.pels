@@ -110,3 +110,11 @@ export const formatFreshnessChip = (
   if (state === 'stale_hold') return { kind: state, label: 'Delayed', tone: 'warn' };
   return { kind: state, label: 'No data', tone: 'alert' };
 };
+
+/**
+ * Formats the "energy used this hour" headline shown on the Overview hero and
+ * emitted by the runtime logger so logs match the on-screen wording verbatim.
+ * One decimal precision is applied to both sides to keep the pair consistent.
+ */
+export const formatEnergyUsedOfBudget = (usedKWh: number, budgetKWh: number): string =>
+  `${usedKWh.toFixed(1)} of ${budgetKWh.toFixed(1)} kWh used`;

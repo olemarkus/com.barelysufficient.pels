@@ -1,4 +1,5 @@
 import {
+  formatEnergyUsedOfBudget,
   formatFreshnessChip,
   formatHeroHeadline,
   type PlanHeroMetaInput,
@@ -81,6 +82,14 @@ describe('formatHeroHeadline', () => {
     const headline = formatHeroHeadline(meta({ hardCapLimitKw: null, hardCapHeadroomKw: null }), NOW);
     expect(headline?.hardLimitKw).toBeNull();
     expect(headline?.overHardLimit).toBe(false);
+  });
+});
+
+describe('formatEnergyUsedOfBudget', () => {
+  it('formats both sides with one-decimal precision', () => {
+    expect(formatEnergyUsedOfBudget(4.2, 11)).toBe('4.2 of 11.0 kWh used');
+    expect(formatEnergyUsedOfBudget(0, 4.5)).toBe('0.0 of 4.5 kWh used');
+    expect(formatEnergyUsedOfBudget(1.25, 0.9)).toBe('1.3 of 0.9 kWh used');
   });
 });
 

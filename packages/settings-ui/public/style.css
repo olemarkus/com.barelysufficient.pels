@@ -4567,6 +4567,14 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-variant-numeric: tabular-nums;
 }
 
+.plan-inputs__row-note {
+  color: var(--pels-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--font-line-height-tight);
+  margin-top: var(--spacing-1);
+}
+
 /* Day view foundation */
 .day-view-header {
   display: flex;
