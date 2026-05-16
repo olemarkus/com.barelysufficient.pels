@@ -864,13 +864,16 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Why P1: hero is the top-line user signal; bare "On track" is the weakest possible answer
       to "what's happening?".
       Files: `packages/settings-ui/src/ui/deadlinePlan.ts`.
-- [ ] Rename `deadline_ended.json` dropdown option keys from `title` to `label`. Sibling
+- [x] Rename `deadline_ended.json` dropdown option keys from `title` to `label`. Sibling
       trigger / condition JSONs (`deadline_status_changed.json`, `deadline_status_is.json`,
       condition `outcome`-typed cards across the project) all use `label: { en: … }` on
       dropdown option objects. `deadline_ended.json` uses `title` — non-standard per the
       Homey SDK convention and may render raw ids (`succeeded`/`missed`/`abandoned`) in the
       mobile UI instead of the localized labels. ~1-minute fix.
       Files: `.homeycompose/flow/triggers/deadline_ended.json`.
+      Resolved by upstream: commit 50a395c5 dropped the outcome dropdown entirely from
+      `deadline_ended.json`, so no dropdown option keys remain to rename. The dropdown was
+      replaced by stable-id tokens that flow authors filter on downstream.
 - [ ] Decouple Smart tasks list empty-state copy from flow-card action titles.
       `DeadlinesList.tsx:99-100` hard-codes "Add heating task" / "Add charging task" as the
       action names. The flow-card redesign P0 may rename or unify the actions; this copy
@@ -1031,7 +1034,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       pass is sweeping elsewhere. Suggest: "Managed devices used more than expected — check device
       priorities." (or a kind-aware variant if the helper has access to per-device context).
       Files: `packages/settings-ui/src/ui/budgetRedesign.ts`.
-- [ ] Clean up smart-task Flow card user-facing copy.
+- [x] Clean up smart-task Flow card user-facing copy.
       Surface jargon / inconsistencies the Flow audit found: in
       `.homeycompose/flow/triggers/deadline_ended.json` rename token titles `"Shortfall"` →
       `"Gap to target"` and `"Shortfall (text)"` → `"Gap to target (text)"`, and update the hint
@@ -1222,7 +1225,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/public/index.html`,
       `packages/settings-ui/public/style.css`,
       `packages/settings-ui/src/ui/views/icons.tsx`.
-- [ ] Switch the Flow card `target_percent` argument to Homey's `range` type.
+- [x] Switch the Flow card `target_percent` argument to Homey's `range` type.
       `.homeycompose/flow/actions/set_ev_charge_deadline.json` currently declares
       `"type": "number"` with min/max/step for `target_percent` — renders as a text/numeric
       input. Homey supports `"type": "range"` which renders as a slider, a much better UX for
@@ -1234,6 +1237,10 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `.homeycompose/flow/conditions/*battery*.json` (audit),
       `.homeycompose/flow/actions/report_battery_level.json` (audit),
       `app.json` (regenerated).
+      Audit result: `target_percent` switched to `range` (2.7.0-new card, breaking change
+      permitted). `report_evcharger_battery_level.json` `battery_percent` (also 0–100 %)
+      shipped in v2.6.0 — type change is a pre-2.7.0 breaking change; deferred to v2.7.1
+      entry below. No other bounded-percentage args were found.
 - [ ] Unify the hero and section-label primitive across every settings-UI surface.
       Overview hero, Budget header, Usage header, Smart tasks header, Settings header, Advanced
       header, and deadline-plan hero should read as one component: same eyebrow (font-size,
@@ -1290,6 +1297,14 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] v2.7.1: Switch `report_evcharger_battery_level.json` `battery_percent` argument from
+      `type: "number"` to `type: "range"` for a slider-style picker. The card shipped in
+      v2.6.0, so changing the arg type is a pre-2.7.0 breaking change — defer to a release
+      where breaking pre-2.7.0 flow-card surfaces is in scope. Step is currently `0.1`
+      (not all Homey clients render fractional steps on `range`); evaluate whether to keep
+      0.1 (slider with float step) or coarsen to `1` (typical battery-percent precision)
+      when this lands. Surfaced by the v2.7.0 PR 4.1 audit.
+      Files: `.homeycompose/flow/actions/report_evcharger_battery_level.json`, `app.json`.
 - [ ] Power tracker persisted `dailyTotals` keys use UTC dates while UI-derived
       bucket totals use the Homey timezone date. After the P0 merge fix in
       `packages/settings-ui/src/ui/power.ts`, the chart, week/month totals, and

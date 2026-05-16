@@ -10,6 +10,10 @@
 // on device capabilities, not on trigger tokens.
 
 import {
+  composeSmartTaskStatusNotificationText,
+  type SmartTaskStatusNotificationId,
+} from '../packages/shared-domain/src/deadlineLabels';
+import {
   formatDeadlineLocalTime,
   type DeferredObjectiveEndedEvent,
   type DeferredObjectivePlanRevisionEvent,
@@ -17,12 +21,11 @@ import {
 } from '../lib/plan/deferredObjectives';
 import { isFiniteNumber } from '../lib/utils/appTypeGuards';
 
-export type SmartTaskStatusId =
-  | 'waiting'
-  | 'on_track'
-  | 'at_risk'
-  | 'unachievable'
-  | 'satisfied';
+// The status-token id set is a public-API contract for flow authors; the same
+// id set is the input to the shared-domain notification-text composer. Aliasing
+// here keeps the runtime call sites readable while the single source of truth
+// stays in shared-domain.
+export type SmartTaskStatusId = SmartTaskStatusNotificationId;
 
 // Homey number-typed flow tokens must not be null. Coerce nullish or
 // non-finite inputs to 0 — flows that need "data not ready yet" semantics
@@ -61,10 +64,19 @@ export const buildSmartTaskEndedTokens = (
 export const buildSmartTaskStatusTokens = (
   snapshot: DeferredObjectiveStatusSnapshot,
   status: SmartTaskStatusId,
-): Record<string, unknown> => ({
-  device_name: snapshot.deviceName ?? snapshot.deviceId,
-  status,
-});
+): Record<string, unknown> => {
+  const deviceName = snapshot.deviceName ?? snapshot.deviceId;
+  return {
+    device_name: deviceName,
+    status,
+    notification_text: composeSmartTaskStatusNotificationText({
+      deviceName,
+      status,
+      targetText: snapshot.targetText,
+      deadlineLocalTime: snapshot.deadlineLocalTime,
+    }),
+  };
+};
 
 export const buildSmartTaskPlanChangedTokens = (
   event: DeferredObjectivePlanRevisionEvent,

@@ -413,3 +413,55 @@ export const resolveEvCardStateLine = (params: {
 
   return { kind: 'none' };
 };
+
+// ─── Smart task status notification text ─────────────────────────────────────
+
+// Stable lowercase ids surfaced by the `deadline_status_changed` flow-card
+// `status` token. This is a **frozen public-API contract**: renaming a value
+// breaks user flows that filter on it. Repeated here (rather than imported
+// from `flowCards/`) because shared-domain must not pull from runtime layers.
+//
+// Intentionally distinct from `SmartTaskListStatusId` above — that one is the
+// richer UI list-card status (with `building_plan`, `queued`,
+// `paused_unplugged`, `cannot_meet`) which is allowed to evolve as the UI
+// grows. This one collapses those finer states to the five values flow
+// authors filter against (`waiting` absorbs the three pending sub-states;
+// `unachievable` is the trigger-side name for `cannot_meet`). Do not merge
+// the two enums.
+export type SmartTaskStatusNotificationId =
+  | 'waiting'
+  | 'on_track'
+  | 'at_risk'
+  | 'unachievable'
+  | 'satisfied';
+
+const SMART_TASK_STATUS_DISPLAY_LABEL: Record<SmartTaskStatusNotificationId, string> = {
+  waiting: 'Waiting',
+  on_track: 'On track',
+  at_risk: 'At risk',
+  unachievable: 'Cannot finish',
+  satisfied: 'Satisfied',
+};
+
+// Compose the one-line notification body for `deadline_status_changed`.
+// Format examples:
+//   "Boiler smart task is At risk — target 55 °C by 07:00"
+//   "Tesla smart task is On track — target 80 % by 07:00"
+//   "Boiler smart task is Waiting"  (target/deadline omitted when unknown)
+//
+// The text is the value of the `notification_text` flow token; downstream
+// users compose final notifications via Logic/text. Display formatting (the
+// `Status` label) is composed here once instead of asking every flow author
+// to map ids to human strings.
+export const composeSmartTaskStatusNotificationText = (params: {
+  deviceName: string;
+  status: SmartTaskStatusNotificationId;
+  targetText: string;
+  deadlineLocalTime: string;
+}): string => {
+  const head = `${params.deviceName} smart task is ${SMART_TASK_STATUS_DISPLAY_LABEL[params.status]}`;
+  const target = params.targetText.trim();
+  const deadline = params.deadlineLocalTime.trim();
+  const detail = [target && `target ${target}`, deadline && `by ${deadline}`].filter(Boolean).join(' ');
+  return detail === '' ? head : `${head} — ${detail}`;
+};
