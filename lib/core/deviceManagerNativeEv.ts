@@ -33,6 +33,10 @@ import {
   resolveTargetPowerSteppedLoadProfileFromConfig,
   stripNativeSteppedLoadControlCapabilities,
 } from './nativeSteppedLoadWiring';
+import {
+  resetTargetPowerContractLogStateForTests,
+  warnIfTargetPowerCapabilityViolatesContract,
+} from './targetPowerContractWarn';
 import { resolveDeviceCompatibilityTargetPowerConfig } from './deviceCompatibility';
 
 export type FlowEffectiveRequiredCapabilityId =
@@ -45,6 +49,11 @@ export type FlowEffectiveRequiredCapabilityId =
 
 const detectionLogState = new Map<string, { signature: string; emittedAt: number }>();
 const DETECTION_LOG_REPEAT_AFTER_MS = 10 * 60 * 1000;
+
+export function __resetNativeEvWiringLogStateForTests(): void {
+  detectionLogState.clear();
+  resetTargetPowerContractLogStateForTests();
+}
 
 export function resolveFlowCapabilityOverlay(params: {
   device: HomeyDeviceLike;
@@ -81,16 +90,13 @@ export function resolveFlowCapabilityOverlay(params: {
     providers,
     logger,
   } = params;
-  const nativeEvOverlay = applyNativeEvWiringOverlay({
+  const nativeEvOverlay = applyOverlaysWithDiagnostics({
     device,
-    capabilities: rawCapabilities,
-    capabilityObj: rawCapabilityObj,
-    nativeWiringEnabled: providers.getNativeEvWiringEnabled?.(deviceId) === true,
-  });
-  logNativeEvCandidate({
+    deviceId,
+    rawCapabilities,
+    rawCapabilityObj,
+    providers,
     logger,
-    device,
-    controlAdapter: nativeEvOverlay.controlAdapter,
   });
 
   const overlayCapabilities = nativeEvOverlay.capabilities;
@@ -163,6 +169,34 @@ export function resolveFlowCapabilityOverlay(params: {
     targetPowerConfig: targetPowerOverlay.targetPowerConfig,
     allReportedCapabilities,
   };
+}
+
+function applyOverlaysWithDiagnostics(params: {
+  device: HomeyDeviceLike;
+  deviceId: string;
+  rawCapabilities: string[];
+  rawCapabilityObj: DeviceCapabilityMap;
+  providers: DeviceManagerParseProviders;
+  logger: Logger;
+}): ReturnType<typeof applyNativeEvWiringOverlay> {
+  const overlay = applyNativeEvWiringOverlay({
+    device: params.device,
+    capabilities: params.rawCapabilities,
+    capabilityObj: params.rawCapabilityObj,
+    nativeWiringEnabled: params.providers.getNativeEvWiringEnabled?.(params.deviceId) === true,
+  });
+  logNativeEvCandidate({
+    logger: params.logger,
+    device: params.device,
+    controlAdapter: overlay.controlAdapter,
+  });
+  warnIfTargetPowerCapabilityViolatesContract({
+    logger: params.logger,
+    device: params.device,
+    capabilities: overlay.capabilities,
+    capabilityObj: overlay.capabilityObj,
+  });
+  return overlay;
 }
 
 function shouldIgnoreFlowReports(params: {

@@ -10,7 +10,12 @@ export function normalizeTargetPowerSteppedLoadConfig(
 ): TargetPowerSteppedLoadConfig | undefined {
   const parsed = parseJsonObject(value);
   if (!parsed) return undefined;
+  const config = buildTargetPowerSteppedLoadConfig(parsed);
+  if (Object.keys(config).length === 0) return undefined;
+  return isAcceptableTargetPowerSteppedLoadConfig(config) ? config : undefined;
+}
 
+function buildTargetPowerSteppedLoadConfig(parsed: UnknownRecord): TargetPowerSteppedLoadConfig {
   const preset = normalizePreset(parsed.preset);
   const min = normalizeFiniteNumber(parsed.min);
   const max = normalizeFiniteNumber(parsed.max);
@@ -18,7 +23,7 @@ export function normalizeTargetPowerSteppedLoadConfig(
   const excludeMin = normalizeFiniteNumber(parsed.excludeMin);
   const excludeMax = normalizeFiniteNumber(parsed.excludeMax);
   const enabled = typeof parsed.enabled === 'boolean' ? parsed.enabled : undefined;
-  const config: TargetPowerSteppedLoadConfig = {
+  return {
     ...(enabled !== undefined ? { enabled } : {}),
     ...(preset ? { preset } : {}),
     ...(min !== undefined ? { min } : {}),
@@ -27,10 +32,21 @@ export function normalizeTargetPowerSteppedLoadConfig(
     ...(excludeMin !== undefined ? { excludeMin } : {}),
     ...(excludeMax !== undefined ? { excludeMax } : {}),
   };
-  if (Object.keys(config).length === 0) return undefined;
-  if (config.enabled === false) return config;
-  if (config.preset || (config.max !== undefined && config.step !== undefined)) return config;
-  return undefined;
+}
+
+function isAcceptableTargetPowerSteppedLoadConfig(config: TargetPowerSteppedLoadConfig): boolean {
+  if (config.enabled === false) return true;
+  if (config.preset) return true;
+  return config.max !== undefined
+    && config.step !== undefined
+    && configRangeIncludesZero(config);
+}
+
+function configRangeIncludesZero(config: TargetPowerSteppedLoadConfig): boolean {
+  // Homey's target_power contract requires the range to include 0 (idle).
+  // Reject manual/synthetic configs that raise min above 0; minimum operating
+  // power should be modeled with excludeMin/excludeMax instead.
+  return config.min === undefined || config.min <= 0;
 }
 
 export function normalizeDeviceTargetPowerConfigs(

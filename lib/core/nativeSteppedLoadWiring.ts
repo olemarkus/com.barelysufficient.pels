@@ -146,6 +146,56 @@ export function buildSyntheticTargetPowerCapabilityMap(params: {
   };
 }
 
+export type TargetPowerCapabilityContractIssue =
+  | 'missing_max'
+  | 'missing_step'
+  | 'min_excludes_zero'
+  | 'negative_max'
+  | 'negative_step'
+  | 'step_exceeds_range'
+  | 'too_many_generated_steps';
+
+export type TargetPowerCapabilityAssessment =
+  | { valid: true }
+  | { valid: false; issue: TargetPowerCapabilityContractIssue };
+
+/**
+ * Validates target_power capability options against the Homey contract.
+ *
+ * The contract requires that the range includes 0 (so the device can be set to
+ * idle). The minimum operating power is modeled with excludeMin/excludeMax,
+ * not by raising `min`. Any options with `min > 0` violate the contract and
+ * must be ignored — the off step always maps to `target_power = 0`.
+ */
+export function assessTargetPowerCapabilityOptions(
+  capability: Pick<DeviceCapabilityMap[string], 'min' | 'max' | 'step' | 'excludeMax'> | undefined,
+): TargetPowerCapabilityAssessment {
+  const numericIssue = assessTargetPowerNumericFields(capability);
+  if (numericIssue) return { valid: false, issue: numericIssue };
+  const max = capability?.max as number;
+  const step = capability?.step as number;
+  const minW = resolveTargetPowerActiveMinW(capability, step);
+  if (minW > max) return { valid: false, issue: 'step_exceeds_range' };
+  const stepCount = Math.floor((max - minW) / step) + 1;
+  if (stepCount < 1) return { valid: false, issue: 'step_exceeds_range' };
+  if (stepCount > TARGET_POWER_MAX_GENERATED_STEPS) return { valid: false, issue: 'too_many_generated_steps' };
+  return { valid: true };
+}
+
+function assessTargetPowerNumericFields(
+  capability: Pick<DeviceCapabilityMap[string], 'min' | 'max' | 'step'> | undefined,
+): TargetPowerCapabilityContractIssue | undefined {
+  const max = capability?.max;
+  const step = capability?.step;
+  if (typeof max !== 'number' || !Number.isFinite(max)) return 'missing_max';
+  if (typeof step !== 'number' || !Number.isFinite(step)) return 'missing_step';
+  if (max <= 0) return 'negative_max';
+  if (step <= 0) return 'negative_step';
+  const min = capability?.min;
+  if (typeof min === 'number' && Number.isFinite(min) && min > 0) return 'min_excludes_zero';
+  return undefined;
+}
+
 export function stripNativeSteppedLoadControlCapabilities(params: {
   device: HomeyDeviceLike;
   capabilities: readonly string[];
@@ -315,13 +365,11 @@ function buildEvTargetPowerSteppedLoadProfile(phaseCount: 1 | 3): SteppedLoadPro
 function buildCapabilityTargetPowerSteppedLoadProfile(
   capability: Pick<DeviceCapabilityMap[string], 'min' | 'max' | 'step' | 'excludeMax'> | undefined,
 ): SteppedLoadProfile | undefined {
-  const maxW = finitePositiveNumber(capability?.max);
-  const stepW = finitePositiveNumber(capability?.step);
-  if (!maxW || !stepW) return undefined;
+  const assessment = assessTargetPowerCapabilityOptions(capability);
+  if (!assessment.valid) return undefined;
+  const maxW = capability?.max as number;
+  const stepW = capability?.step as number;
   const minW = resolveTargetPowerActiveMinW(capability, stepW);
-  if (minW > maxW) return undefined;
-  const stepCount = Math.floor((maxW - minW) / stepW) + 1;
-  if (stepCount < 1 || stepCount > TARGET_POWER_MAX_GENERATED_STEPS) return undefined;
 
   const steps: SteppedLoadStep[] = [{ id: 'off', planningPowerW: 0 }];
   for (let value = minW; value <= maxW + Number.EPSILON; value += stepW) {

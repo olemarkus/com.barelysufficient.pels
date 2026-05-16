@@ -201,20 +201,22 @@ function readDeviceControlSettings(params: {
 }
 
 function parseRecordSetting(value: unknown): Record<string, unknown> | undefined {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
+  if (isPlainObject(value)) return value as Record<string, unknown>;
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   if (!trimmed) return undefined;
   try {
     const parsed = JSON.parse(trimmed) as unknown;
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : undefined;
+    return isPlainObject(parsed) ? parsed as Record<string, unknown> : undefined;
   } catch {
     return undefined;
   }
+}
+
+function isPlainObject(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype: object | null = Object.getPrototypeOf(value) as object | null;
+  return prototype === Object.prototype || prototype === null;
 }
 
 function normalizeStringMap(value: Record<string, string>): Record<string, string> {

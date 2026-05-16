@@ -27,7 +27,13 @@ import {
   registerDeviceCapacityControlCards,
   registerManagedDeviceCondition,
 } from './deviceSettingsCards';
-import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
+import { buildDeviceAutocompleteOptions } from './deviceArgs';
+import {
+  readFlowDeviceArg,
+  readFlowNumberArg,
+  readFlowRawArg,
+  readFlowStringArg,
+} from './flowArgParsers';
 import { registerFlowBackedDeviceCards } from './flowBackedDeviceCards';
 import { registerDeadlineObjectiveCards } from './deadlineObjectiveCards';
 import type {
@@ -42,8 +48,6 @@ const STEPPED_LOAD_POWER_CEILING_MARGIN_RATIO = 0.05;
 const STEPPED_LOAD_POWER_CEILING_MARGIN_MAX_W = 150;
 const EV_CHARGER_NOMINAL_VOLTAGE = 230;
 const EV_SOC_CARD_ID = 'report_evcharger_battery_level';
-
-type DeviceArg = RawFlowDeviceArg;
 
 export type FlowCardDeps = {
   homey: FlowHomeyLike;
@@ -120,16 +124,8 @@ export function registerFlowCards(deps: FlowCardDeps): void {
 
     const operatingModeChangedTrigger = homey.flow.getTriggerCard('operating_mode_changed');
     operatingModeChangedTrigger.registerRunListener(async (args: unknown, state?: unknown) => {
-      const payload = args as { mode?: string | { id?: string; name?: string } } | null;
-      const statePayload = state as { mode?: string } | null;
-      const argModeValue = (
-        typeof payload?.mode === 'object' && payload?.mode !== null
-          ? payload.mode.id
-          : payload?.mode
-      );
-      const chosenModeRaw = (argModeValue || '').trim();
-      const chosenMode = deps.resolveModeName(chosenModeRaw);
-      const stateMode = deps.resolveModeName((statePayload?.mode || '').trim());
+      const chosenMode = deps.resolveModeName(readFlowStringArg(args, 'mode'));
+      const stateMode = deps.resolveModeName(readFlowStringArg(state, 'mode'));
       if (!chosenMode || !stateMode) return false;
       return chosenMode.toLowerCase() === stateMode.toLowerCase();
     });
@@ -139,16 +135,9 @@ export function registerFlowCards(deps: FlowCardDeps): void {
 
     const priceLevelChangedTrigger = homey.flow.getTriggerCard('price_level_changed');
     priceLevelChangedTrigger.registerRunListener(async (args: unknown, state?: unknown) => {
-      const payload = args as { level?: string | { id?: string; name?: string } } | null;
-      const statePayload = state as { priceLevel?: PriceLevel } | null;
-      const argLevelValue = (
-        typeof payload?.level === 'object' && payload?.level !== null
-          ? payload.level.id
-          : payload?.level
-      );
-      const chosenLevelRaw = (argLevelValue || '').trim().toLowerCase();
-      const chosenLevel = (chosenLevelRaw || PriceLevel.UNKNOWN) as PriceLevel;
-      const stateLevel = (statePayload?.priceLevel || PriceLevel.UNKNOWN) as PriceLevel;
+      const chosenLevel = readPriceLevelArg(args);
+      const statePriceLevel = readFlowStringArg(state, 'priceLevel');
+      const stateLevel = (statePriceLevel.toLowerCase() || PriceLevel.UNKNOWN) as PriceLevel;
       return chosenLevel === stateLevel;
     });
     priceLevelChangedTrigger.registerArgumentAutocompleteListener('level', async (query: string) => (
@@ -157,13 +146,7 @@ export function registerFlowCards(deps: FlowCardDeps): void {
 
     const priceLevelIsCond = homey.flow.getConditionCard('price_level_is');
     priceLevelIsCond.registerRunListener(async (args: unknown) => {
-      const payload = args as { level?: string | { id?: string; name?: string } } | null;
-      const argLevelValue = (
-        typeof payload?.level === 'object' && payload?.level !== null
-          ? payload.level.id
-          : payload?.level
-      );
-      const chosenLevel = ((argLevelValue || '').trim().toLowerCase() || PriceLevel.UNKNOWN) as PriceLevel;
+      const chosenLevel = readPriceLevelArg(args);
       const currentLevel = deps.getCurrentPriceLevel();
       return chosenLevel === currentLevel;
     });
@@ -194,11 +177,10 @@ export function registerFlowCards(deps: FlowCardDeps): void {
 function registerSteppedLoadCards(deps: FlowCardDeps): void {
   const desiredChangedTrigger = deps.homey.flow.getTriggerCard('desired_stepped_load_changed');
   desiredChangedTrigger.registerRunListener(async (args: unknown, state?: unknown) => {
-    const payload = args as { device?: DeviceArg } | null;
-    const statePayload = state as { deviceId?: string } | null;
-    const chosenDeviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
-    if (!chosenDeviceId || !statePayload?.deviceId) return false;
-    return chosenDeviceId === statePayload.deviceId;
+    const chosenDeviceId = readFlowDeviceArg(args);
+    const stateDeviceId = readFlowStringArg(state, 'deviceId');
+    if (!chosenDeviceId || !stateDeviceId) return false;
+    return chosenDeviceId === stateDeviceId;
   });
   desiredChangedTrigger.registerArgumentAutocompleteListener('device', async (query: string) => (
     getSteppedLoadDeviceOptions(deps, query)
@@ -211,12 +193,8 @@ function registerSteppedLoadCards(deps: FlowCardDeps): void {
 function registerReportActualStepCard(deps: FlowCardDeps): void {
   const reportActualStepCard = deps.homey.flow.getActionCard('report_stepped_load_actual_step');
   reportActualStepCard.registerRunListener(async (args: unknown) => {
-    const payload = args as { device?: DeviceArg; step?: string | { id?: string; name?: string } } | null;
-    const deviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
-    const stepValue = typeof payload?.step === 'object' && payload?.step !== null
-      ? payload.step.id
-      : payload?.step;
-    const stepId = (stepValue || '').trim();
+    const deviceId = readFlowDeviceArg(args);
+    const stepId = readFlowStringArg(args, 'step');
     const sourceCardId = 'report_stepped_load_actual_step';
     emitSteppedLoadReportReceivedLog({
       deps,
@@ -272,7 +250,7 @@ function registerReportActualStepCard(deps: FlowCardDeps): void {
   reportActualStepCard.registerArgumentAutocompleteListener(
     'step',
     async (query: string, args?: Record<string, unknown>) => {
-      const deviceId = getDeviceIdFromArg(args?.device as DeviceArg);
+      const deviceId = readFlowDeviceArg(args);
       if (!deviceId) return [];
       const snapshot = await deps.getSnapshot();
       const device = snapshot.find((entry) => entry.id === deviceId && entry.controlModel === 'stepped_load');
@@ -288,14 +266,14 @@ function registerReportActualStepCard(deps: FlowCardDeps): void {
 function registerReportActualPowerCard(deps: FlowCardDeps): void {
   const reportActualPowerCard = deps.homey.flow.getActionCard('report_stepped_load_power');
   reportActualPowerCard.registerRunListener(async (args: unknown) => {
-    const payload = args as { device?: DeviceArg; power_w?: unknown } | null;
-    const deviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
+    const deviceId = readFlowDeviceArg(args);
+    const rawPower = readFlowRawArg(args, 'power_w');
     const sourceCardId = 'report_stepped_load_power';
     emitSteppedLoadReportReceivedLog({
       deps,
       sourceCardId,
       deviceId,
-      rawPowerInput: formatFlowValueForLog(payload?.power_w),
+      rawPowerInput: formatFlowValueForLog(rawPower),
     });
     try {
       if (!deviceId) {
@@ -317,7 +295,7 @@ function registerReportActualPowerCard(deps: FlowCardDeps): void {
       const { stepId, deviceName, parsedPowerW } = await resolveSteppedLoadStepIdFromPowerInput({
         deps,
         deviceId,
-        rawPower: payload?.power_w,
+        rawPower,
       });
       const result = await deps.reportSteppedLoadActualStep(deviceId, stepId);
       await handleSteppedLoadReportResult({
@@ -335,7 +313,7 @@ function registerReportActualPowerCard(deps: FlowCardDeps): void {
         deps,
         sourceCardId,
         deviceId,
-        rawPowerInput: formatFlowValueForLog(payload?.power_w),
+        rawPowerInput: formatFlowValueForLog(rawPower),
         error,
       });
       throw error;
@@ -691,8 +669,7 @@ function registerFlowPriceCards(deps: FlowCardDeps): void {
 function createPriceCardRunListener(kind: 'today' | 'tomorrow', deps: FlowCardDeps) {
   return async (args: unknown) => {
     try {
-      const payload = args as { prices_json?: unknown } | null;
-      const raw = payload?.prices_json;
+      const raw = readFlowRawArg(args, 'prices_json');
       if (raw === null || raw === undefined || String(raw).trim() === '') {
         throw new Error('Price data is required.');
       }
@@ -762,13 +739,12 @@ function evaluateLowestPriceFlowCard(
 
 function registerHeadroomForDeviceCard(deps: FlowCardDeps): void {
   const hasHeadroomForDeviceCond = deps.homey.flow.getConditionCard('has_headroom_for_device');
-  hasHeadroomForDeviceCond.registerRunListener(async (args: unknown) => {
-    const payload = args as { device?: DeviceArg; required_kw?: number } | null;
-    return checkHeadroomForDevice({
-      device: payload?.device as DeviceArg,
-      required_kw: Number(payload?.required_kw),
-    }, deps);
-  });
+  hasHeadroomForDeviceCond.registerRunListener(async (args: unknown) => (
+    checkHeadroomForDevice({
+      deviceId: readFlowDeviceArg(args),
+      requiredKw: readFlowNumberArg(args, 'required_kw'),
+    }, deps)
+  ));
   hasHeadroomForDeviceCond.registerArgumentAutocompleteListener('device', async (query: string) => {
     const snapshot = await deps.getSnapshot();
     return buildDeviceAutocompleteOptions(
@@ -781,9 +757,8 @@ function registerHeadroomForDeviceCard(deps: FlowCardDeps): void {
 function registerCapacityAndModeCards(deps: FlowCardDeps): void {
   const reportPowerCard = deps.homey.flow.getActionCard('report_power_usage');
   reportPowerCard.registerRunListener(async (args: unknown) => {
-    const payload = args as { power?: number } | null;
-    const power = Number(payload?.power);
-    if (!Number.isFinite(power) || power < 0) {
+    const power = readFlowNumberArg(args, 'power');
+    if (power === null || power < 0) {
       throw new Error('Power must be a non-negative number (W).');
     }
     await deps.recordPowerSample(power);
@@ -794,9 +769,8 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
   setLimitCard.registerRunListener(async (args: unknown) => {
     const capacityGuard = deps.getCapacityGuard();
     if (!capacityGuard) return false;
-    const payload = args as { limit_kw?: number } | null;
-    const limit = Number(payload?.limit_kw);
-    if (!Number.isFinite(limit) || limit <= 0) {
+    const limit = readFlowNumberArg(args, 'limit_kw');
+    if (limit === null || limit <= 0) {
       throw new Error('Limit must be a positive number (kW).');
     }
     const previous = deps.homey.settings.get(CAPACITY_LIMIT_KW);
@@ -809,9 +783,8 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
 
   const setDailyBudgetCard = deps.homey.flow.getActionCard('set_daily_budget_kwh');
   setDailyBudgetCard.registerRunListener(async (args: unknown) => {
-    const payload = args as { budget_kwh?: number } | null;
-    const raw = Number(payload?.budget_kwh);
-    if (!Number.isFinite(raw)) {
+    const raw = readFlowNumberArg(args, 'budget_kwh');
+    if (raw === null) {
       throw new Error('Daily budget must be a number (kWh).');
     }
     if (raw < 0) {
@@ -846,9 +819,7 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
 
   const setOperatingModeCard = deps.homey.flow.getActionCard('set_capacity_mode');
   setOperatingModeCard.registerRunListener(async (args: unknown) => {
-    const payload = args as { mode?: string | { id?: string; name?: string } } | null;
-    const modeValue = typeof payload?.mode === 'object' && payload?.mode !== null ? payload.mode.id : payload?.mode;
-    const raw = (modeValue || '').trim();
+    const raw = readFlowStringArg(args, 'mode');
     if (!raw) throw new Error('Mode must be provided');
     await deps.handleOperatingModeChange(raw);
     return true;
@@ -859,17 +830,16 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
 
   const hasCapacityCond = deps.homey.flow.getConditionCard('has_capacity_for');
   hasCapacityCond.registerRunListener(async (args: unknown) => {
-    const payload = args as { required_kw?: number } | null;
+    const requiredKw = readFlowNumberArg(args, 'required_kw');
+    if (requiredKw === null) return false;
     const headroom = deps.getHeadroom();
     if (headroom === null) return false;
-    return headroom >= Number(payload?.required_kw);
+    return headroom >= requiredKw;
   });
 
   const isOperatingModeCond = deps.homey.flow.getConditionCard('is_capacity_mode');
   isOperatingModeCond.registerRunListener(async (args: unknown) => {
-    const payload = args as { mode?: string | { id?: string; name?: string } } | null;
-    const modeValue = typeof payload?.mode === 'object' && payload?.mode !== null ? payload.mode.id : payload?.mode;
-    const chosenModeRaw = (modeValue || '').trim();
+    const chosenModeRaw = readFlowStringArg(args, 'mode');
     const chosenMode = deps.resolveModeName(chosenModeRaw);
     if (!chosenMode) return false;
     const activeMode = deps.getCurrentOperatingMode();
@@ -894,11 +864,6 @@ function registerEvSocCard(deps: FlowCardDeps): void {
     getEvChargerDeviceOptions(deps, query)
   ));
 }
-
-type EvSocCardArgs = {
-  device?: DeviceArg;
-  battery_percent?: unknown;
-} | null;
 
 async function handleEvSocCardRun(deps: FlowCardDeps, args: unknown): Promise<boolean> {
   const { chargerDeviceId, percent } = parseEvSocCardArgs(args);
@@ -949,14 +914,13 @@ function parseEvSocCardArgs(args: unknown): {
   chargerDeviceId: string;
   percent: number;
 } {
-  const payload = args as EvSocCardArgs;
-  const chargerDeviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
+  const chargerDeviceId = readFlowDeviceArg(args);
   if (!chargerDeviceId) {
     throw new Error('Charger device must be provided.');
   }
   return {
     chargerDeviceId,
-    percent: parseEvSocPercent(payload?.battery_percent),
+    percent: parseEvSocPercent(readFlowRawArg(args, 'battery_percent')),
   };
 }
 
@@ -991,6 +955,11 @@ function getPriceLevelOptions(query: string): Array<{ id: string; name: string }
   return PRICE_LEVEL_OPTIONS
     .filter((opt: PriceLevelOption) => !q || opt.name.toLowerCase().includes(q))
     .map((opt: PriceLevelOption) => ({ id: opt.id, name: opt.name }));
+}
+
+function readPriceLevelArg(args: unknown): PriceLevel {
+  const raw = readFlowStringArg(args, 'level').toLowerCase();
+  return (raw || PriceLevel.UNKNOWN) as PriceLevel;
 }
 
 async function getSteppedLoadDeviceOptions(
@@ -1054,10 +1023,6 @@ function parseEvSocPercent(rawValue: unknown): number {
   return Math.round(percent * 10) / 10;
 }
 
-function getDeviceIdFromArg(arg: DeviceArg): string {
-  return getDeviceIdFromFlowArg(arg);
-}
-
 function requestPlanRebuildFromFlow(deps: FlowCardDeps, source: string): void {
   incPerfCounters([
     'plan_rebuild_requested_total',
@@ -1068,14 +1033,13 @@ function requestPlanRebuildFromFlow(deps: FlowCardDeps, source: string): void {
 }
 
 async function checkHeadroomForDevice(
-  args: { device: DeviceArg; required_kw: number },
+  args: { deviceId: string; requiredKw: number | null },
   deps: FlowCardDeps,
 ): Promise<boolean> {
   const capacityGuard = deps.getCapacityGuard();
   if (!capacityGuard) return false;
-  const deviceId = getDeviceIdFromArg(args.device);
-  const requiredKw = Number(args.required_kw);
-  if (!deviceId || !Number.isFinite(requiredKw) || requiredKw < 0) return false;
+  const { deviceId, requiredKw } = args;
+  if (!deviceId || requiredKw === null || requiredKw < 0) return false;
 
   const headroom = deps.getHeadroom();
   if (headroom === null) return false;

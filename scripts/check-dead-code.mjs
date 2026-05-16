@@ -107,6 +107,8 @@ const allowedUnusedExportPatterns = [
   /^lib\/app\/smapsRollup\.ts:\d+ - __resetSmapsDetailCacheForTests$/,
   /^lib\/app\/perfLogging\.ts:\d+ - __resetFdCountProbeForTests$/,
   /^lib\/utils\/opRssTracker\.ts:\d+ - __resetRssSupportProbeForTests$/,
+  /^lib\/core\/deviceManagerNativeEv\.ts:\d+ - __resetNativeEvWiringLogStateForTests$/,
+  /^lib\/core\/targetPowerContractWarn\.ts:\d+ - resetTargetPowerContractLogStateForTests$/,
   // Pure scheduler barrel kept intentionally until planner integration consumes it.
   new RegExp(`^lib\\/plan\\/deferredObjectives\\/index\\.ts:\\d+ - (${deferredObjectiveBarrelExports})$`),
   // Consumed by packages/settings-ui/src/ui/planDeviceCard.ts via cross-package relative import; ts-prune doesn't follow these.
