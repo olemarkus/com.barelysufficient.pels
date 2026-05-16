@@ -89,45 +89,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `estimated_duration_text`, `kind`, `change_reason_id` — were not Homey-conventional
       on triggers; if future demand surfaces, expose them as device capabilities, not
       tokens. Shared bag lives in `flowCards/smartTaskTokens.ts`.)*
-- [ ] Unify the hero and section-label primitive across every settings-UI surface.
-      Overview hero, Budget header, Usage header, Smart tasks header, Settings header, Advanced
-      header, and deadline-plan hero should read as one component: same eyebrow (font-size,
-      letter-spacing, colour token), same headline weight / size / line-height, same status-tone
-      bindings (`data-tone="good|warn|alert"` → flattened tokens from the entry above), same
-      accent radial-gradient atmosphere rule, same supporting-text token. Same for section
-      labels (`eyebrow`) — one font-size + one weight + one colour token, applied uniformly.
-      Acceptance: a Playwright screenshot matrix of all primary surfaces at 320 / 480 px shows
-      hero typography and section-label typography each trace to a single source of truth in
-      `style.css`; the screenshot snapshots are committed and diff-gated; no surface defines its
-      own one-off hero rule. Files: `packages/settings-ui/public/index.html`,
-      `packages/settings-ui/public/style.css`, `packages/settings-ui/src/ui/views/PlanHero.tsx`,
-      `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/src/ui/power.ts`, generated `settings/`, screenshot suite under
-      `packages/settings-ui/tests/e2e/`.
-      *Sub-bullets from M3 visual pass (2026-05-14, after eco-palette landed):*
-      - **Overview hero side landed (hero-rework PR):** headline tone no longer flips to
-        warning/critical, the redundant `"X kW above hard cap"` subline was dropped, the
-        power bar now renders segmented [managed][background] blocks on a single track,
-        and the section labels reuse the shared `.eyebrow` primitive. Budget / Usage /
-        Smart tasks / Settings / Advanced headers + the deadline-plan hero still need
-        the same rebind before this P0 closes.
-      - **Info as a role is sparse on Overview** — only the Smart-task chip and the
-        info-tinted histogram on Budget/Usage tabs. That's M3-appropriate (info is for
-        neutral explanation), but worth confirming during hero work that we're not
-        artificially restraining it; if there's a natural "Price low / Price high" hint
-        for the hero meta-row, use info there.
-      Chips, cards, buttons, segmented controls, ripples, and elevation are currently duplicated
-      across views with subtle per-page variations (padding, border colour, ripple behaviour,
-      focus ring). A first-impression UI should read as one system, not five-plus near-duplicates.
-      Acceptance: one shared CSS class / JSX wrapper per primitive type, every consumer rebound,
-      no inline overrides beyond data-attribute state. Implementation may use the existing custom
-      primitives or `@material/web` — that choice stays with the P2 entry below; this P0 only
-      requires that consumers converge. Files: `packages/settings-ui/public/style.css`,
-      `packages/settings-ui/src/ui/views/*.tsx`,
-      `packages/settings-ui/src/ui/views/materialWebJSX.tsx`,
-      `packages/settings-ui/src/ui/materialWeb.ts`, generated `settings/`, focused visual/e2e
-      coverage.
 - [ ] Hide the tab strip while a smart-task plan-detail page is open.
       `deadlinePlanRouter.ts:14` toggles the `hidden` class on the `#shell-nav` element via
       `classList.toggle('hidden', !visible)`, but `settings/style.css` has no matching
@@ -164,11 +125,11 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       price values and units against the Budget chart convention (`kr/kWh` or `øre/kWh` shown
       explicitly), make the Budget hourly-plan legend match the rendered `Managed` / `Background`
       split series, and resize/reinitialize Usage ECharts when a hidden panel becomes visible so
-      SVGs cannot keep a too-wide fallback size after tab navigation. While fixing the resize
-      path, review module-level chart instance state and move lifecycle ownership to the
-      rendering view or component where needed. Promoted from P1: a chart whose legend lies
+      SVGs cannot keep a too-wide fallback size after tab navigation. A chart whose legend lies
       about its colours, or that renders the wrong width after a tab switch, is exactly the
-      first-impression problem the rubric now scopes into P0.
+      first-impression problem the rubric scopes into P0. (Refactor sub-item — moving chart
+      lifecycle ownership from module-level state to the rendering view — was split out of this
+      P0 in the release-review pass; track it as P2 below if useful.)
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
       `packages/settings-ui/src/ui/deadlinePlan.ts`,
       `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
@@ -176,6 +137,104 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
       `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,
       `packages/settings-ui/tests/e2e/charts-layout.spec.ts`.
+- [ ] Plan-history recorder dropping `startProgressC` and `observedIntervals` on recent runs.
+      Live-Homey walk on 2026-05-16 (`notes/smart-task-ui/README.md`) found that the four most
+      recent past entries for Connected 300 render as device-only rows (no progress line, no
+      coverage note) while older entries (Wed 13 May and earlier) have both populated. The
+      `formatPlanHistoryProgressLine` helper returns `null` when `startProgressC` is null, so
+      the visible regression is "row gives the user nothing to chew on" on the most
+      consequential rows. The history-detail Missed page also renders a chart titled
+      `Plan vs observed` with zero observations rendered, because `observedIntervals` is empty
+      for the same entries. Either path is a recorder regression: the in-progress record should
+      stamp `startProgressC` at creation and accumulate `observedIntervals` over the run.
+      Why P0: data-integrity regression that misleads the failure-investigation page (chart
+      title promises observations the data can't show). Promoted from P1 in the release-review
+      pass (see `notes/smart-task-ui/README.md`).
+      Acceptance: a Jest test that mocks the diagnostic stream from in-progress through
+      finalize and asserts the persisted entry has non-null `startProgressC` and
+      `observedIntervals.length > 0`. Add the same for `startProgressPercent` on the EV path.
+      Files: `lib/plan/deferredObjectives/planHistory.ts`,
+      `lib/plan/deferredObjectives/activePlanRecorder.ts`,
+      plan-history recorder tests.
+- [ ] Make Settings UI device-setting writes fail closed when a fresh settings read is missing or
+      invalid. Avoid falling back to `{}` or caller-provided defaults and writing a partial object
+      back as if it were the current state.
+      Why P0 (promoted from P1 in release-review pass): fallback writes can erase or overwrite
+      unrelated settings when the UI starts from an incomplete read. Settings writes that can
+      corrupt persisted state is an explicit P0 category per the rubric.
+      Files: `packages/settings-ui/src/ui/deviceDetail/settingsWrite.ts`,
+      `packages/settings-ui/src/ui/deviceDetail/index.ts`,
+      `packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts`.
+- [ ] Fix redesigned top navigation at 320px. The current five-destination shell can truncate or
+      collide, especially `Smart tasks`, on narrow Homey WebView widths. Make the control behave
+      like a polished mobile navigation surface: no clipped labels, predictable horizontal
+      scrolling or overflow treatment, and Playwright screenshots at 320px / 480px.
+      Why P0 (promoted from P1 in release-review pass): visible breakage at a documented
+      supported width (320 px minimum). The companion P0 above hides the tab strip on the
+      plan-detail overlay; this entry covers the regular tab nav on Overview/Budget/Usage/Smart
+      tasks/Settings at 320 px.
+      Files: `packages/settings-ui/public/index.html`, `packages/settings-ui/public/style.css`,
+      generated `settings/`, focused navigation layout coverage.
+- [ ] Fix the "This month" usage stat truncation at 480 px.
+      The 24 px semibold "1642.1 kWh" overflows its 124 px column (scrollWidth 137 > clientWidth
+      124), rendering as "1641.7 k…". The responsive font reduction in `settings/style.css:5325`
+      only fires at ≤380 px but the Homey dialog is 480 px. Lower the breakpoint to ≤480 px so
+      the stat font drops to 16 px at the dialog's actual width.
+      Why P0 (promoted from P1 in release-review pass): visible truncation at the dialog's
+      actual width misrepresents a user-facing number.
+      Files: `packages/settings-ui/public/style.css`, `settings/style.css` (regen).
+- [ ] Stop clipping the "New mode name" placeholder and per-device mode-temp inputs at narrow
+      widths. At 480 px the "New mode name" input shows "New mode nam" — placeholder clips
+      because the input column is narrower than the placeholder text. In the priorities list on
+      the same panel, the per-device per-mode temp spinner for a thermostat row shows just "6"
+      with a spinner arrow where the value should be "65" — the cell is too narrow to hold a
+      two-digit value plus the spinner. Both regressions are bounded to the Modes panel layout;
+      widen the input + adjust the priorities-row grid template at the supported widths
+      (320 / 480).
+      Why P0 (promoted from P1 in release-review pass): misleading visible value — per-mode
+      temp shown as "6" where the stored value is "65".
+      Files: `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/public/style.css`.
+- [ ] Overview at 320 px clips heavily; "About this card" button vanishes and falls below the
+      48 px touch target. `settings/style.css` deliberately sizes the info button at 36 × 36 px
+      (below the project's own `--pels-touch-target-min: 48px`), and at 320 px the layout
+      internal width (~454 px) overflows the viewport so the button itself ends up at x = 404,
+      completely off-screen. Same overflow clips power readings, stepped dots, and the decision
+      sentence. Fix: raise touch target + add narrow-width media query that compresses the hero
+      and device-card columns to fit ≤ 360 px.
+      Why P0 (promoted from P1 in release-review pass): control off-screen at a documented
+      supported width (320 px) — user loses access to functionality.
+      Files: `packages/settings-ui/public/style.css`,
+      `packages/settings-ui/src/ui/views/PlanHero.tsx`, `settings/style.css` (regen).
+- [ ] Disambiguate the stepped-indicator unit on Overview device cards and fix the 320 px clip.
+      Stepped chargers (Easee, Zaptec) on the Overview render a strip like "Off 6a 8a 10a 12a
+      14a 16a 20a 24a 28a 32a". The lowercase "a" reads as "am" (6am, 8am…) but actually means
+      amperes (A). Replace with "6 A" (uppercase, space-separated) or a clearer label like
+      "Off · 6 / 8 / 10 / 12 A …". Also: at 320 px the right-hand entries ("32a") clip
+      off-screen. Fix as part of the same pass.
+      Why P0 (promoted from P1 in release-review pass): misleading visible value — "6a" reads
+      as 6am, but means 6 amperes.
+      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
+      `packages/settings-ui/public/style.css`.
+- [ ] Fix word-wrap on Budget segmented controls at 480 px.
+      "Conservative" and "Medium" wrap mid-word ("Conservati ve", "Medi um") because the
+      segmented control uses `overflow-wrap: anywhere` and the options have no minimum width.
+      Live-confirmed at 480 px. Switch to `overflow-wrap: break-word` and set a per-option
+      `min-width` that fits the longest label.
+      Why P0 (promoted from P1 in release-review pass): visible mid-word breakage at the
+      dialog's actual width.
+      Files: `packages/settings-ui/public/style.css`, `settings/style.css` (regen).
+- [ ] Stop hardcoding "Observed charging" on thermostat history runs.
+      `DeadlinePlanHistoryDetail.tsx` hardcodes the "Observed charging" tooltip label; for
+      thermostat history runs it should read "Observed heating" (or the kind-aware label the
+      active chart already pulls from `deadlineLabels(kind).actualDeviceSeriesName`). The
+      planner-noun "Original plan" / "Final plan" rename half of the original entry stays at
+      P1 — that is a copy sweep, not a wrong-content bug.
+      Why P0 (promoted from P1 in release-review pass, narrowed scope): wrong noun on
+      user-visible text — thermostat history shows "Observed charging" which is factually
+      wrong for the device.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `packages/shared-domain/src/deadlineLabels.ts`.
 ## P1 Correctness, Data Integrity, and Supported UX
 
 - [ ] Give settings-form text-field / select controls an accessible name. M3 follow-up audit
@@ -203,23 +262,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       device data during startup or overlapping refreshes.
       Files: `lib/app/appSnapshotHelpers.ts`, `lib/app/settingsUiAppRuntime.ts`,
       `lib/app/settingsUiApi.ts`, settings UI API/runtime tests.
-- [ ] Investigate repeated stale managed-device refreshes that never become fresh.
-      `/tmp/pels/start.main.stdout.log` from 2026-05-13 repeatedly emitted
-      `stale_device_observation_refresh` with `staleDevices: 2`, `refreshedDevices: 2`, and
-      `freshAfterRefreshDevices: 0`. Determine whether those devices lack fresh telemetry,
-      targeted refresh is not replacing stale fields, or freshness metadata is preserved
-      incorrectly. Add a regression proving stale observations either become fresh when Homey
-      returns fresh data or are degraded with a clear reason when they cannot.
-      Files: `lib/app/appSnapshotHelpers.ts`, observer/device-state freshness helpers,
-      snapshot-refresh tests.
-- [ ] Make Settings UI device setting writes fail closed when a fresh settings read is missing or
-      invalid. Avoid falling back to `{}` or caller-provided defaults and writing a partial object
-      back as if it were the current state.
-      Why P1: fallback writes can erase or overwrite unrelated settings when the UI starts from an
-      incomplete read.
-      Files: `packages/settings-ui/src/ui/deviceDetail/settingsWrite.ts`,
-      `packages/settings-ui/src/ui/deviceDetail/index.ts`,
-      `packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts`.
 - [ ] Roll back optimistic price-optimization UI state when persistence fails.
       Why P1: the UI currently mutates local state before the write succeeds, so failed writes can
       leave the screen showing settings that Homey did not persist.
@@ -237,21 +279,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       error toast or empty error card.
       Files: `packages/settings-ui/src/ui/**` API call sites for `/ui_power` and related routes,
       `lib/app/settingsUiApi.ts` not-ready response shape, settings UI loading/error tests.
-- [ ] Fix redesigned top navigation at 320px. The current five-destination shell can truncate or
-      collide, especially `Smart tasks`, on narrow Homey WebView widths. Make the control behave
-      like a polished mobile navigation surface: no clipped labels, predictable horizontal
-      scrolling or overflow treatment, and Playwright screenshots at 320px / 480px.
-      Files: `packages/settings-ui/public/index.html`, `packages/settings-ui/public/style.css`,
-      generated `settings/`, focused navigation layout coverage.
-- [ ] Clamp stale EV boost stepped-load intent after boost deactivates.
-      When EV boost admits a higher charger step and a later SoC update turns boost off, the next
-      plan can briefly carry the old higher `desiredStepId` even when the shed-invariant reason
-      says the step-up should not be admitted while other devices are still limited. This is
-      expected to self-correct on later step/power observations, but the planner should eventually
-      clamp the desired/target step to the currently allowed step when the boost exemption no
-      longer applies.
-      Files: `lib/plan/planRestoreHelpers.ts`, `lib/plan/planDevices.ts`,
-      EV boost / stepped restore tests.
 - [ ] Harden target-power stepped-load contract validation.
       Homey's `target_power` contract requires the range to include `0`; minimum operating power
       should be modeled with `excludeMin` / `excludeMax`, and `0` means idle. Keep mapping the off
@@ -260,28 +287,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       normal input.
       Files: `lib/core/nativeSteppedLoadWiring.ts`, `lib/core/deviceManagerNativeEv.ts`,
       target-power/EV stepped-load tests.
-- [ ] Make stepped swap completion use confirmed step evidence instead of planner-effective
-      `selectedStepId`. `cleanupCompletedSwaps()` currently treats a pending stepped swap target
-      as complete when `selectedStepId` is at or above the requested step, but that field can be
-      an observer-resolved planning fallback rather than materialized/reported state. Post-release,
-      move this completion check to reported/materialized step evidence so lower-priority swapped
-      devices are not released before the target step is actually confirmed.
-      Files: `lib/plan/swap/completion.ts`, `lib/plan/swap/lifecycle.ts`,
-      `lib/plan/planRestore.ts`, stepped swap lifecycle tests.
-- [ ] Tighten the planner-to-executor projection so executable stepped-load intents cannot be
-      underspecified. The desired end state is an `input snapshots -> ExecutablePlan` boundary
-      where only core planning/admission sees both current and desired state; executable intents
-      contain commandable desired state only, and observed current state comes separately from
-      `ExecutableObservedState`. In particular, stepped `set_step` limiting should either carry a
-      concrete requested step or be represented as non-executable before drift/dispatch code sees
-      it.
-      Update: keep-invariant gate now reads `hasExecutableShedDevices` from the executable plan
-      so a dropped underspecified set_step shed no longer phantom-blocks unrelated stepped
-      restores; dropped intents are also surfaced via the `stepped_load_shed_intent_dropped`
-      structured debug event. The deeper refactor of removing observed current state from intents
-      is still outstanding.
-      Files: `lib/executor/executableSteppedLoadProjection.ts`, `lib/executor/executablePlan.ts`,
-      `lib/executor/planExecutionDrift.ts`, stepped executable projection/drift tests.
 - [ ] Add typed schemas/parsers for settings maps and flow-card args before values enter app
       logic. Avoid raw `Record<string, ...>`, `unknown`, and inline casts beyond the external
       Homey boundary.
@@ -289,25 +294,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       so invalid external input can become normal internal state.
       Files: `lib/app/appSettingsHelpers.ts`, `flowCards/registerFlowCards.ts`,
       `flowCards/deviceSettingsCards.ts`, `flowCards/flowBackedDeviceCards.ts`.
-- [ ] Extract a shared `PersistedSettingsState<T>` helper for recorder-style settings storage.
-      Three modules currently reimplement the same dirty / debounce / abandon-grace / flush /
-      plausibility cascade: `lib/app/appPowerCalibrationWiring.ts` (calibration),
-      `lib/plan/deferredObjectives/planHistory.ts`, and
-      `lib/plan/deferredObjectives/activePlanRecorder.ts`. After the helper lands, migrate
-      calibration first, then the two deferred-objective recorders.
-      Design context in `notes/persisted-settings-state.md`.
-      Files: new `lib/persistence/` or `lib/utils/persistedSettingsState.ts`,
-      `lib/app/appPowerCalibrationWiring.ts`, `lib/plan/deferredObjectives/planHistory.ts`,
-      `lib/plan/deferredObjectives/activePlanRecorder.ts`, recorder/persistence tests.
-- [ ] Unify stepped restore admission wrappers so pending-swap source-off holds and stepped swap
-      executor context are applied consistently across normal restore planning, restore cooldown,
-      meter-settling, and active stepped upgrade paths.
-      Why P1: the two-phase swap contract is currently enforced by branch-local calls in
-      `planRestore.ts`, which makes narrow bypasses easy when a new restore branch calls
-      `planRestoreForSteppedDevice()` directly. Include a regression for an active stepped
-      pending swap target during restore cooldown while its swapped-out source is still on.
-      Files: `lib/plan/planRestore.ts`, `lib/plan/planRestoreHelpers.ts`,
-      stepped swap / restore-cooldown tests.
 - [ ] Surface EV deadline device-card state.
       `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx:63` shows only the Smart task chip.
       Once EV actuation lands, the device card should explain what PELS thinks the charger is
@@ -342,31 +328,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/src/ui/deadlinePlan.ts`, `lib/app/appInit.ts`,
       `lib/plan/deferredObjectives/diagnosticsBridge.ts`, EV learning store, calibration view
       tests.
-- [ ] Bring the smart-task history detail view to full live-plan chart parity.
-      The history detail page currently renders a summary card plus original/final planned-hour
-      tables (`packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`). The live
-      `DeadlinePlan` view shows a richer hour-by-hour chart with price tone, projected progress,
-      and original-vs-current charge overlay. Reconciling the two would let users compare past
-      runs apples-to-apples with the current plan instead of switching mental models.
-      Why P1: history is the surface users return to when a deadline missed or partially
-      delivered, and "why did this run miss?" can't be answered without the price layer that
-      live plan shows. Without parity, users switch mental models between live and history
-      views, losing trust in the system's explanation.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
-      `packages/settings-ui/src/ui/deadlinePlan.ts` (synthesise a `DeadlinePlanPayload` from a
-      history entry without depending on stale bootstrap prices/profile).
-- [ ] Add status to Smart tasks list cards. `DeadlinesList.tsx` today shows device name, kind
-      chip, target, and date rows — no status, no progress. With multiple active smart tasks
-      users have to tap into each one to find a task in trouble. Add a status chip
-      (`waiting`/`on_track`/`at_risk`/`unachievable`/`satisfied`) sourced from the status bus
-      snapshot, plus an optional progress indicator (current temp / current SoC vs target) per
-      card.
-      Why P1: the list is the "are my tasks healthy?" front door; as inventory-only it forces
-      drill-down for every check.
-      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
-      `packages/settings-ui/src/ui/deadlinesList.ts`,
-      `lib/plan/deferredObjectives/statusBus.ts` (status snapshot wiring through the settings UI
-      bootstrap), list-card tests.
 - [ ] Make "Cannot finish" hero copy always name a reason. `deadlinePlan.ts:resolveCannotMeetMeta`
       has three branches: `cannotMeetDailyBudgetExhausted`, `cannotMeetShortfall(text)`, and a
       bare `cannotMeetFallback`. The fallback path renders the warning chip with no reasoned
@@ -584,15 +545,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Live-UI verified on Easee and Zaptec.
       Files: `packages/settings-ui/src/ui/deviceDetail/` (the section visibility gate),
       `packages/settings-ui/public/index.html` (per-mode-temp card template).
-- [ ] Stop clipping the "New mode name" placeholder and per-device mode-temp inputs at narrow widths.
-      At 480 px the "New mode name" input shows "New mode nam" — placeholder clips because the
-      input column is narrower than the placeholder text. In the priorities list on the same
-      panel, the per-device per-mode temp spinner for a thermostat row shows just "6" with a
-      spinner arrow where the value should be "65" — the cell is too narrow to hold a two-digit
-      value plus the spinner. Both regressions are bounded to the Modes panel layout; widen the
-      input + adjust the priorities-row grid template at the supported widths (320 / 480).
-      Files: `packages/settings-ui/public/index.html`,
-      `packages/settings-ui/public/style.css`.
 - [ ] Reword stepped-load copy that leaks "lower-priority devices" and "stepped-load device".
       `Charge boost` / `Temperature boost` descriptions in `packages/settings-ui/public/index.html`
       (around the existing "Step this charger up while the car stays below the minimum battery
@@ -653,29 +605,12 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       it annotates. Add a small-size, supporting-color, normal-weight rule.
       Files: `packages/settings-ui/public/style.css`,
       `settings/style.css` (regen).
-- [ ] Overview at 320 px clips heavily; "About this card" button vanishes and falls below the
-      48 px touch target. `settings/style.css` deliberately sizes the info button at 36 × 36 px
-      (below the project's own `--pels-touch-target-min: 48px`), and at 320 px the layout
-      internal width (~454 px) overflows the viewport so the button itself ends up at x = 404,
-      completely off-screen. Same overflow clips power readings, stepped dots, and the decision
-      sentence. Fix: raise touch target + add narrow-width media query that compresses the hero
-      and device-card columns to fit ≤ 360 px.
-      Files: `packages/settings-ui/public/style.css`, `packages/settings-ui/src/ui/views/PlanHero.tsx`,
-      `settings/style.css` (regen).
 - [ ] Surface the "X kW above safe pace" subline on the Overview hero when above safe pace.
       The hero spec (`notes/overview-hero-spec.md`) requires a quantitative subline whenever the
       mode chip indicates "Above safe pace", but `PlanHero.tsx:465–469` only renders the matching
       "Safe pace now X kW" subline in the on-track state. As a result, the above-pace state shows
       a chip + "Power now X kW" but no overshoot figure. Add the missing branch.
       Files: `packages/settings-ui/src/ui/views/PlanHero.tsx`.
-- [ ] Disambiguate the stepped-indicator unit on Overview device cards.
-      Stepped chargers (Easee, Zaptec) on the Overview render a strip like "Off 6a 8a 10a 12a
-      14a 16a 20a 24a 28a 32a". The lowercase "a" reads as "am" (6am, 8am…) but actually means
-      amperes (A). Replace with "6 A" (uppercase, space-separated) or a clearer label like
-      "Off · 6 / 8 / 10 / 12 A …". Also: at 320 px the right-hand entries ("32a") clip
-      off-screen. Fix as part of the same pass.
-      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
-      `packages/settings-ui/public/style.css`.
 - [ ] Show priority on Overview device cards.
       Today priority is only visible in the device-detail drawer; the Overview cards show device
       name + current state + draw + (for steppers) the level strip. Priority is the user's
@@ -707,12 +642,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/src/ui/budgetRedesign.ts`,
       `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
       `packages/shared-domain/src/**` (if helpers exist there).
-- [ ] Fix word-wrap on Budget segmented controls at 480 px.
-      "Conservative" and "Medium" wrap mid-word ("Conservati ve", "Medi um") because the
-      segmented control uses `overflow-wrap: anywhere` and the options have no minimum width.
-      Live-confirmed at 480 px. Switch to `overflow-wrap: break-word` and set a per-option
-      `min-width` that fits the longest label.
-      Files: `packages/settings-ui/public/style.css`, `settings/style.css` (regen).
 - [ ] Fix Budget chart legend color collision between Managed and Price series.
       `tokens.css:219, 224` both bind to `--color-role-warn` (orange). The two series are
       distinguishable only by shape (filled circle vs line), which is fragile at small swatch
@@ -720,12 +649,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       with a dedicated `--pels-chart-price` hue that contrasts both Managed and Background).
       Files: `tokens/component.json`, `settings/tokens.css` (regen),
       `packages/settings-ui/src/ui/budgetRedesignChart.ts`.
-- [ ] Fix the "This month" usage stat truncation at 480 px.
-      The 24 px semibold "1642.1 kWh" overflows its 124 px column (scrollWidth 137 > clientWidth
-      124), rendering as "1641.7 k…". The responsive font reduction in `settings/style.css:5325`
-      only fires at ≤380 px but the Homey dialog is 480 px. Lower the breakpoint to ≤480 px so
-      the stat font drops to 16 px at the dialog's actual width.
-      Files: `packages/settings-ui/public/style.css`, `settings/style.css` (regen).
 - [ ] Remove the ghost "Warning" legend entry from the Usage day ECharts chart.
       `packages/settings-ui/src/ui/usageDayChartEcharts.ts` registers `{ name: 'Warning', … }` in
       the legend data but no series is named "Warning" — the single "Measured" series uses
@@ -779,16 +702,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `lib/plan/deadlineRecorder.ts` (or equivalent),
       `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
       `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
-- [ ] Rename History detail chart series and stop hardcoding "charging" for thermostat runs.
-      `DeadlinePlanHistoryDetail.tsx:174, 183, 235, 249` names the chart series `"Original plan"`
-      / `"Final plan"` and the tooltip line `Original ${…} kWh` / `Final ${…} kWh` — sweep the
-      planner-noun "plan" with the rest of the terminology pass. Suggest "Initial schedule" /
-      "Revised schedule" or plain "Original" / "Final" (chart title already supplies the
-      "vs observed" framing). Also: the "Observed charging" tooltip label is hardcoded — for
-      thermostat history runs it should read "Observed heating" (or the kind-aware label the
-      active chart already pulls from `deadlineLabels(kind).actualDeviceSeriesName`).
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
-      `packages/shared-domain/src/deadlineLabels.ts`.
 - [ ] Show a real revision log on the History detail page.
       Today the entire revision surface is the single line "Replanned N times." — no timestamps,
       no per-revision reasons, no diff of which hours changed. The page's whole mission of
@@ -851,6 +764,59 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `.homeycompose/flow/conditions/*battery*.json` (audit),
       `.homeycompose/flow/actions/report_battery_level.json` (audit),
       `app.json` (regenerated).
+- [ ] Unify the hero and section-label primitive across every settings-UI surface.
+      Overview hero, Budget header, Usage header, Smart tasks header, Settings header, Advanced
+      header, and deadline-plan hero should read as one component: same eyebrow (font-size,
+      letter-spacing, colour token), same headline weight / size / line-height, same status-tone
+      bindings (`data-tone="good|warn|alert"` → flattened tokens from the entry above), same
+      accent radial-gradient atmosphere rule, same supporting-text token. Same for section
+      labels (`eyebrow`) — one font-size + one weight + one colour token, applied uniformly.
+      Acceptance: a Playwright screenshot matrix of all primary surfaces at 320 / 480 px shows
+      hero typography and section-label typography each trace to a single source of truth in
+      `style.css`; the screenshot snapshots are committed and diff-gated; no surface defines its
+      own one-off hero rule.
+      Why P1 (demoted from P0 in release-review pass): the unfinished work is rebinding 5 panel
+      headers to the shared `.eyebrow` primitive plus consolidating duplicated chip/card/button
+      primitives. Both are refactor-for-coherence — the panels render today, just with subtle
+      per-page differences. No user-visible incorrectness, so does not gate the release.
+      *Sub-bullets from M3 visual pass (2026-05-14, after eco-palette landed):*
+      - **Overview hero side landed (hero-rework PR):** headline tone no longer flips to
+        warning/critical, the redundant `"X kW above hard cap"` subline was dropped, the
+        power bar now renders segmented [managed][background] blocks on a single track,
+        and the section labels reuse the shared `.eyebrow` primitive. Budget / Usage /
+        Smart tasks / Settings / Advanced headers + the deadline-plan hero still need
+        the same rebind.
+      - **Info as a role is sparse on Overview** — only the Smart-task chip and the
+        info-tinted histogram on Budget/Usage tabs. That's M3-appropriate (info is for
+        neutral explanation), but worth confirming during hero work that we're not
+        artificially restraining it; if there's a natural "Price low / Price high" hint
+        for the hero meta-row, use info there.
+      Chips, cards, buttons, segmented controls, ripples, and elevation are currently duplicated
+      across views with subtle per-page variations (padding, border colour, ripple behaviour,
+      focus ring). A first-impression UI should read as one system, not five-plus near-duplicates.
+      Acceptance: one shared CSS class / JSX wrapper per primitive type, every consumer rebound,
+      no inline overrides beyond data-attribute state. Implementation may use the existing custom
+      primitives or `@material/web` — that choice stays with the P2 entry below.
+      Files: `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/public/style.css`, `packages/settings-ui/src/ui/views/PlanHero.tsx`,
+      `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/power.ts`, generated `settings/`, screenshot suite under
+      `packages/settings-ui/tests/e2e/`.
+- [ ] Restore "Needs X kWh · Y hours left · Auto/Learning…" context on the `Cannot finish` hero.
+      `deadlinePlanHero.ts:buildHero` routes through `resolveCannotMeetMeta` on `planStatus
+      === 'cannot_meet'`, which returns only the shortfall sentence (e.g. `Short by about
+      29.6 °C`). The on-track / at-risk path keeps the rich `Needs ${energy} · ${speed} ·
+      ${duration} · ${speedMode}` line via `formatMetaLine`. The user loses the answer to
+      "how bad is this?" — `29.6 °C short` is meaningless without the energy/duration anchor
+      (is that "4 more hours that aren't there" or "80 kWh past the budget"?). Append the
+      formatMetaLine output after the cannot-meet sentence so both signals coexist:
+      `Short by about 29.6 °C — needs 17 kWh, 1.3 kW max, 8 hours left, Learning…`.
+      Why P1: confusing visible wording exactly when the user needs context most. Companion
+      to the existing "actionable recourse path on Cannot-finish hero" P1.
+      Related: `notes/smart-task-ui/README.md`.
+      Files: `packages/settings-ui/src/ui/deadlinePlanHero.ts:buildHero`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`, deadlinePlanHero tests.
 
 ## P2 Product, Observability, and Maintainability
 
@@ -1093,15 +1059,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `packages/shared-domain/src/deadlineLabels.ts`,
       `packages/contracts/src/deferredObjectiveActivePlans.ts` (if a new pending-reason value is
       needed).
-- [ ] Surface revision reason in the deadline-plan tooltip. The active-plan recorder already
-      classifies each revision (`flow_card`/`prices_arrived`/`prices_revised`/`rate_refined`/
-      `objective_changed`); per-hour tooltips currently show only the kWh and price. Adding
-      "Revised because rates were refined" or similar in the tooltip, on hours that differ
-      from original, closes the fuzzy "what does original even mean?" gap. Small change with
-      genuine clarity payoff.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/src/ui/deadlinePlan.ts`,
-      `packages/shared-domain/src/deadlineLabels.ts`.
 - [ ] Reassess `isLegacyNoneStatusMatch` in `flowCards/deadlineObjectiveCards.ts:167-175`.
       The runlistener accepts legacy dropdown ids (`'none'`, `'pending_prices'`, `'cannot_meet'`,
       `'cannot_finish'`, `'done'`) that don't appear in the shipped dropdown JSON for the
@@ -1377,6 +1334,191 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       values outside the token layer.
       Files: `packages/settings-ui/public/style.css`,
       `tokens/base.json`, `settings/tokens.css` (regen).
+- [ ] Investigate repeated stale managed-device refreshes that never become fresh.
+      `/tmp/pels/start.main.stdout.log` from 2026-05-13 repeatedly emitted
+      `stale_device_observation_refresh` with `staleDevices: 2`, `refreshedDevices: 2`, and
+      `freshAfterRefreshDevices: 0`. Determine whether those devices lack fresh telemetry,
+      targeted refresh is not replacing stale fields, or freshness metadata is preserved
+      incorrectly. Add a regression proving stale observations either become fresh when Homey
+      returns fresh data or are degraded with a clear reason when they cannot.
+      Why P2 (demoted from P1 in release-review pass): investigation work; no confirmed
+      user-visible regression. The companion P2 below ("Quiet repeated stale_device_observation_refresh
+      log entries") covers the log-noise half.
+      Files: `lib/app/appSnapshotHelpers.ts`, observer/device-state freshness helpers,
+      snapshot-refresh tests.
+- [ ] Clamp stale EV boost stepped-load intent after boost deactivates.
+      When EV boost admits a higher charger step and a later SoC update turns boost off, the next
+      plan can briefly carry the old higher `desiredStepId` even when the shed-invariant reason
+      says the step-up should not be admitted while other devices are still limited. This is
+      expected to self-correct on later step/power observations, but the planner should eventually
+      clamp the desired/target step to the currently allowed step when the boost exemption no
+      longer applies.
+      Why P2 (demoted from P1 in release-review pass): the entry's own text confirms
+      "expected to self-correct on later observations" — no persistent user-visible state.
+      Files: `lib/plan/planRestoreHelpers.ts`, `lib/plan/planDevices.ts`,
+      EV boost / stepped restore tests.
+- [ ] Make stepped swap completion use confirmed step evidence instead of planner-effective
+      `selectedStepId`. `cleanupCompletedSwaps()` currently treats a pending stepped swap target
+      as complete when `selectedStepId` is at or above the requested step, but that field can be
+      an observer-resolved planning fallback rather than materialized/reported state. Post-release,
+      move this completion check to reported/materialized step evidence so lower-priority swapped
+      devices are not released before the target step is actually confirmed.
+      Why P2 (demoted from P1 in release-review pass): the entry's own text says "Post-release";
+      internal hardening, not user-visible.
+      Files: `lib/plan/swap/completion.ts`, `lib/plan/swap/lifecycle.ts`,
+      `lib/plan/planRestore.ts`, stepped swap lifecycle tests.
+- [ ] Tighten the planner-to-executor projection so executable stepped-load intents cannot be
+      underspecified. The desired end state is an `input snapshots -> ExecutablePlan` boundary
+      where only core planning/admission sees both current and desired state; executable intents
+      contain commandable desired state only, and observed current state comes separately from
+      `ExecutableObservedState`. In particular, stepped `set_step` limiting should either carry a
+      concrete requested step or be represented as non-executable before drift/dispatch code sees
+      it.
+      Update: keep-invariant gate now reads `hasExecutableShedDevices` from the executable plan
+      so a dropped underspecified set_step shed no longer phantom-blocks unrelated stepped
+      restores; dropped intents are also surfaced via the `stepped_load_shed_intent_dropped`
+      structured debug event. The deeper refactor of removing observed current state from intents
+      is still outstanding.
+      Why P2 (demoted from P1 in release-review pass): the user-visible symptom is already
+      fixed by the keep-invariant gate; the remaining work is internal-only refactor.
+      Files: `lib/executor/executableSteppedLoadProjection.ts`, `lib/executor/executablePlan.ts`,
+      `lib/executor/planExecutionDrift.ts`, stepped executable projection/drift tests.
+- [ ] Extract a shared `PersistedSettingsState<T>` helper for recorder-style settings storage.
+      Three modules currently reimplement the same dirty / debounce / abandon-grace / flush /
+      plausibility cascade: `lib/app/appPowerCalibrationWiring.ts` (calibration),
+      `lib/plan/deferredObjectives/planHistory.ts`, and
+      `lib/plan/deferredObjectives/activePlanRecorder.ts`. After the helper lands, migrate
+      calibration first, then the two deferred-objective recorders.
+      Design context in `notes/persisted-settings-state.md`.
+      Why P2 (demoted from P1 in release-review pass): pure refactor — three modules
+      duplicating the same pattern. No user-visible difference.
+      Files: new `lib/persistence/` or `lib/utils/persistedSettingsState.ts`,
+      `lib/app/appPowerCalibrationWiring.ts`, `lib/plan/deferredObjectives/planHistory.ts`,
+      `lib/plan/deferredObjectives/activePlanRecorder.ts`, recorder/persistence tests.
+- [ ] Unify stepped restore admission wrappers so pending-swap source-off holds and stepped swap
+      executor context are applied consistently across normal restore planning, restore cooldown,
+      meter-settling, and active stepped upgrade paths.
+      Why P2 (demoted from P1 in release-review pass): hardening against future bugs ("makes
+      narrow bypasses easy when a new restore branch calls planRestoreForSteppedDevice
+      directly"). Not a current user-visible bug.
+      Files: `lib/plan/planRestore.ts`, `lib/plan/planRestoreHelpers.ts`,
+      stepped swap / restore-cooldown tests.
+- [ ] Bring the smart-task history detail view to full live-plan chart parity.
+      The history detail page currently renders a summary card plus original/final planned-hour
+      tables (`packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`). The live
+      `DeadlinePlan` view shows a richer hour-by-hour chart with price tone, projected progress,
+      and original-vs-current charge overlay. Reconciling the two would let users compare past
+      runs apples-to-apples with the current plan instead of switching mental models.
+      Why P2 (demoted from P1 in release-review pass): feature enrichment — the history page
+      is functional today, just thinner than the live page. Parity is product improvement, not
+      bug fix.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts` (synthesise a `DeadlinePlanPayload` from a
+      history entry without depending on stale bootstrap prices/profile).
+- [ ] Compose a one-sentence postmortem on the smart-task history detail page.
+      Live-Homey walk on 2026-05-16 (`notes/smart-task-ui/README.md`) confirmed the page a
+      missed-deadline notification visitor lands on shows date + chip + device + (sometimes)
+      plan-vs-plan chart and nothing else. The diagnostic data needed to compose
+      `The daily energy budget ran out during planned hours 03:00–05:00.`
+      or `The heater needed ~17 kWh but PELS could only fit ~12 kWh in the cheap window`
+      or `EV was unplugged at 02:45 during planned charging`
+      is already on the diagnostic stream and the persisted entry. Build a postmortem
+      resolver in `packages/shared-domain/src/deferredPlanHistory.ts` that takes the entry
+      shape (outcome, final progress, target, deadline, observed intervals,
+      `cannotMeetDailyBudgetExhausted`-derived flag if persisted) and returns one sentence.
+      Render it at the top of `DeadlinePlanHistoryDetail.tsx` hero. Six outcome variants:
+      `met-with-margin`, `met-with-overshoot`, `met-at-buzzer`, `missed-by-shortfall`,
+      `missed-by-budget-exhaustion`, `abandoned-by-clear` / `abandoned-by-unplug`, `unknown`.
+      Companion to the existing P1 entries that promote the outcome chip and add the recourse
+      path. The recourse path tells the user *what to do*; the postmortem tells them *why*.
+      Why P2: the largest single trust improvement for the failure-investigation persona;
+      the page barely earns its visit without it.
+      Files: `packages/shared-domain/src/deferredPlanHistory.ts` (new resolver),
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `packages/contracts/src/deferredObjectivePlanHistory.ts` (only if the budget-exhaustion
+      flag needs to be persisted), six-variant resolver tests.
+- [ ] Render `Cost ≈ X kr` on the smart-task live hero, past-task list rows, and history detail.
+      The existing P1 entry "Add `deliveredKWh` and `totalCost` to
+      `DeferredObjectivePlanHistoryEntry`" lands the contract; this is the rendering follow-up.
+      For the live hero, derive `Σ priceValue × deviceKwh` over the planned hours each cycle
+      (no persistence needed). For past entries, use `totalCost` once persisted. The single
+      biggest hole on a price-optimization product's most-visited pages.
+      Why P2: depends on the upstream contract change. Sequence after.
+      Files: `packages/settings-ui/src/ui/deadlinePlan.ts` (live cost derivation),
+      `packages/settings-ui/src/ui/deadlinePlanHero.ts` (meta line),
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistory.tsx` (past list row),
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx` (history hero),
+      price/cost rendering tests.
+- [ ] Add a "Picked the N cheapest hours of next M (avg P kr/kWh vs Q baseline)" caption under
+      the live deadline-plan chart. The chart today is honest — price bars are tone-coded,
+      planned hours stack on the same x-axis — but a skeptical user can't tell at a glance
+      whether PELS actually picked the cheapest available hours. The data is already in
+      `payload.timeline.hours` (`priceValue` + `planned` flag); the math is trivial. Live-Homey
+      walk found this is the second-most-asked product question on the live page after cost.
+      Why P2: trust signal for the skeptical EV-commuter persona; not blocking but
+      meaningfully closes the "is PELS doing what it says?" question.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts`,
+      `packages/shared-domain/src/deadlineLabels.ts` (new label string),
+      live-plan chart caption tests.
+- [ ] Add a "delivered so far" strip to the smart-task live hero for queued / active /
+      cannot-meet plans. Today the live page tells the user the *plan* but tells them very
+      little about *actual delivery so far in this run*. The dotted `Measured Heating` /
+      `Measured Charging` line in the chart is the only acknowledgement and easy to miss.
+      Render `Delivered 1.8 of 4.2 kWh · 35 → 42 °C of 65 °C target · on plan / 0.3 kWh behind`
+      in the hero meta or as a third subline. The cannot-meet branch should show the same strip
+      reframed: `Delivered 1.8 of 4.2 kWh · still 35 °C of 65 °C target · won't reach by 16:00`.
+      Why P2: matches the live page emphasis "what's next" with the missing emphasis "what's
+      happened so far"; closes the live-during-run history gap discussed in
+      `notes/smart-task-ui/README.md`.
+      Files: `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts`, live-hero unit tests.
+- [ ] Add an `Overshoot {N} {unit}` muted line on Succeeded history entries where the final
+      progress materially exceeded the target. Live-Homey walk found a Succeeded run with
+      `29.3 °C → 77.7 °C · target 65.0 °C` — overshot by 12.7 °C — surfaced as a normal success
+      with no flag. Overshoots that large often indicate the deferred override stopped applying
+      when satisfied flipped live and the device-local thermostat kept running on its own; a
+      muted line is enough to let the user spot a tuning problem. Threshold: > 5 °C for
+      thermal, > 10 % for EV (mirror the bands the hysteresis design proposes).
+      Why P2: passive support-cost reduction; users who notice the overshoot today have no
+      surface that confirms it's interesting.
+      Files: `packages/shared-domain/src/deferredPlanHistory.ts` (new
+      `formatPlanHistoryOvershootLine` helper),
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistory.tsx` (past list row variant),
+      overshoot-resolver tests.
+- [ ] Surface miss-streak aggregate on the Smart tasks landing page when recent miss density
+      is high. A user with three consecutive missed deadlines today sees three Missed chips in
+      sequence but no aggregate signal that the device is failing a *pattern*. Add a section
+      subhead under `Past tasks`: `Past tasks (3 of last 4 missed)` when
+      `missed / first-4-entries >= 0.5`. Pure aggregation over the already-loaded
+      `DeferredObjectivePlanHistoryEntry[]`. Discoverable via
+      `notes/smart-task-ui/README.md` (lived-state Connected 300 example).
+      Why P2: the pattern is what tells the user "investigate this device's setup," not the
+      individual miss; the current surface forces them to mentally aggregate.
+      Files: `packages/settings-ui/src/ui/views/DeadlinesHistoryList.tsx`,
+      `packages/settings-ui/src/ui/deadlinesList.ts`, list aggregate tests.
+- [ ] Reuse one chart vocabulary for past-hours-in-a-live-run and past-hours-in-history.
+      Today the live chart paints planned bars + a dotted measured line; the eye treats them
+      as separate. After a run, the history chart shows planned bars + (eventually, when the
+      `deliveredKWhByHour` contract addition lands) overlay delivered bars. Once both surfaces
+      can render planned-vs-delivered overlay bars, switch the live chart to use the same
+      overlay shape for past hours within the active run. Users learn one chart vocabulary,
+      not two. Depends on the upstream `deliveredKWh` contract change.
+      Why P2: vocabulary unification, supports the live → history end-of-run transition
+      below.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      shared chart-option helper if extracted.
+- [ ] Cross-link from smart-task history detail to Usage's same-day chart for the device.
+      A user investigating "why did this run miss?" benefits from seeing the device's
+      whole-day power profile around the deadline. Today neither view links to the other.
+      One-line link below the history hero: `See {device name} usage on {date} →`. Reverse
+      direction (Usage → Smart tasks) is intentionally not added; Usage users aren't asking
+      task-shaped questions.
+      Why P2: bridges two parallel surfaces that today co-exist without acknowledgement.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `packages/settings-ui/src/ui/deadlineUrls.ts` (usage deep-link builder).
 
 ## P3 Future and Exploratory Work
 
@@ -1498,3 +1640,44 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       branch in `prepareDocsSource` outright.
       Files: `scripts/sidebarFilter.mjs`, `scripts/build-docs-channels.mjs`,
       `test/sidebarFilter.test.ts`.
+- [ ] Compose a `notification_text` token on the `deadline_ended` flow trigger for
+      `outcome = missed` only. `notes/smart-task-flow-cards/README.md` deliberately rejected
+      a composed `notification_text` based on Homey-app conventions (other apps emit thin
+      tokens for lifecycle events). The convention argument is sound for symmetric lifecycle
+      events but weaker for the asymmetric-cost case of a missed deadline: a user holding
+      "Smart task missed for Connected 300" is mid-shower with no hot water and would
+      strongly benefit from a one-sentence reason in the notification itself, instead of
+      tapping into the Settings UI to find out. Sourced from the same postmortem resolver
+      the history detail uses (`packages/shared-domain/src/deferredPlanHistory.ts`); flow-only
+      addition, no new diagnostic data needed.
+      Why P3: revisits a deliberate-rejection design decision; small but should be debated
+      with the flow-card slice in `notes/smart-task-flow-cards/README.md` before landing.
+      Related: `notes/smart-task-ui/README.md` Q2.
+      Files: `.homeycompose/flow/triggers/deadline_ended.json`,
+      `flowCards/smartTaskTokens.ts`, `notes/smart-task-flow-cards/README.md` (update).
+- [ ] Replace the live → completed → history hard-cut with an in-place transition.
+      When a deadline passes, `DeadlinePlan.tsx` short-circuits to a thin "Smart task
+      finished — See History" card and the user is bounced. Live-Homey walk noted this is
+      jarring after watching a plan progress for hours. The cleaner shape: the same URL,
+      same page, transitioning state — chart series fade from "planned + measured" to
+      "planned vs delivered", hero re-shapes from "what's next" to "what happened", URL
+      adds `historyId=…` once the history entry is persisted. The page *becomes* the
+      history-detail rather than redirecting. Requires the live-page route to recognize
+      a completed-but-not-yet-history transient state.
+      Why P3: design-shaped polish; the current short-circuit is functional but unloved.
+      Related: `notes/smart-task-ui/README.md` §4.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts` (load-state mapping),
+      `lib/plan/deferredObjectives/planHistory.ts` (transient handoff to in-page route).
+- [ ] Add a banner to the *active* task hero showing "Last [kind] task missed: {short
+      reason}" for ~24 h after a finalized miss. The user lands on the active task when
+      they open the app worried about the same deadline pattern; the breadcrumb avoids the
+      Smart tasks → past row → detail dance. Sourced from the same postmortem resolver as
+      the history detail and the missed-notification text.
+      Why P3: notification → app breadcrumb; meaningful for the panic-visitor persona but
+      lower-effort variants (the postmortem on history detail, the missed-deadline
+      notification text) cover the same ground at lower cost.
+      Related: `notes/smart-task-ui/README.md` Q2.
+      Files: `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts` (recent-miss query against
+      `DeferredObjectivePlanHistoryEntry`).
