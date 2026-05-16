@@ -4,10 +4,9 @@ import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import { resolveFlowAugmentedDeviceType } from '../lib/core/flowReportedCapabilities';
 import { getCapabilities, resolveDeviceClassKey } from '../lib/core/deviceManagerHelpers';
 import { incPerfCounter, incPerfCounters } from '../lib/utils/perfCounters';
-import { getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
+import { readFlowDeviceArg, readFlowRawArg } from './flowArgParsers';
 import type { FlowCardDeps } from './registerFlowCards';
 
-type DeviceArg = RawFlowDeviceArg;
 type FlowBackedCardTarget = 'binary' | 'evcharger' | 'binary_or_evcharger';
 
 export function registerFlowBackedDeviceCards(deps: FlowCardDeps): void {
@@ -92,17 +91,22 @@ function registerFlowBackedRequestTrigger(params: {
   } = params;
   const trigger = deps.homey.flow.getTriggerCard(cardId);
   trigger.registerRunListener(async (args: unknown, state?: unknown) => {
-    const payload = args as { device?: DeviceArg } | null;
-    const statePayload = state as { deviceId?: string } | null;
-    const chosenDeviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
-    if (!chosenDeviceId || !statePayload?.deviceId) return false;
-    return chosenDeviceId === statePayload.deviceId;
+    const chosenDeviceId = readFlowDeviceArg(args);
+    const stateDeviceId = readStateDeviceId(state);
+    if (!chosenDeviceId || !stateDeviceId) return false;
+    return chosenDeviceId === stateDeviceId;
   });
   trigger.registerArgumentAutocompleteListener('device', async (query: string) => (
     getFlowBackedDeviceOptions(deps, query, target, {
       requiredMissingCapabilityId,
     })
   ));
+}
+
+function readStateDeviceId(state: unknown): string {
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return '';
+  const id = (state as { deviceId?: unknown }).deviceId;
+  return typeof id === 'string' ? id.trim() : '';
 }
 
 function registerBooleanCapabilityCard(params: {
@@ -157,12 +161,11 @@ function registerFlowBackedCapabilityCard(params: {
   } = params;
   const card = deps.homey.flow.getActionCard(cardId);
   card.registerRunListener(async (args: unknown) => {
-    const payload = args as { device?: DeviceArg; state?: unknown } | null;
-    const deviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
+    const deviceId = readFlowDeviceArg(args);
     if (!deviceId) throw new Error('Device must be provided.');
     const device = await requireSupportedFlowBackedDevice(deps, deviceId, target);
 
-    const value = parseValue(payload?.state);
+    const value = parseValue(readFlowRawArg(args, 'state'));
     const nativeCapabilityPresent = isCapabilityProvidedNatively({
       device,
       capabilityId,
@@ -209,10 +212,6 @@ async function getFlowBackedDeviceOptions(
 ): Promise<Array<{ id: string; name: string }>> {
   const devices = await deps.getHomeyDevicesForFlow();
   return buildFlowBackedDeviceAutocompleteOptions(devices, query, target, options);
-}
-
-function getDeviceIdFromArg(arg: DeviceArg): string {
-  return getDeviceIdFromFlowArg(arg);
 }
 
 function parseBooleanFlowValue(rawValue: unknown, errorMessage: string): boolean {

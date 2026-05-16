@@ -5,10 +5,12 @@ import {
   PLAN_RECONCILE_REALTIME_UPDATE_EVENT,
 } from '../lib/core/deviceManager';
 import {
+  assessTargetPowerCapabilityOptions,
   resolveNativeSteppedLoadCommand,
   resolveNativeSteppedLoadProfileSuggestion,
   resolveNativeSteppedLoadReportedStepId,
 } from '../lib/core/nativeSteppedLoadWiring';
+import { __resetNativeEvWiringLogStateForTests } from '../lib/core/deviceManagerNativeEv';
 import { setObservedNativeSteppedLoadStep } from '../lib/core/deviceManagerNativeSteppedCommand';
 import { applySteppedLoadCommand, type PlanExecutorSteppedContext } from '../lib/executor/steppedLoadExecutor';
 import { buildExecutableObservedDeviceState } from '../lib/executor/executablePlanProjection';
@@ -60,6 +62,7 @@ const createLogger = () => ({
   error: vi.fn(),
   structuredLog: {
     info: vi.fn(),
+    warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
   },
@@ -117,6 +120,10 @@ const restoreMockRestClient = () => {
 };
 
 describe('native stepped-load wiring', () => {
+  beforeEach(() => {
+    __resetNativeEvWiringLogStateForTests();
+  });
+
   it('maps Høiax max_power values to the configured stepped-load profile', () => {
     expect(resolveNativeSteppedLoadReportedStepId({
       profile: steppedProfile,
@@ -345,9 +352,10 @@ describe('native stepped-load wiring', () => {
         target_power: {
           value: 4140,
           setable: true,
-          min: 1380,
+          min: 0,
           max: 3680,
           step: 460,
+          excludeMax: 1380,
         },
       },
     })]);
@@ -1398,6 +1406,111 @@ describe('native stepped-load wiring', () => {
         put: (path, body) => mockHomeyInstance.api.put(path, body),
       });
     }
+  });
+
+  describe('target_power capability contract validation', () => {
+    it('accepts capability options whose range includes zero', () => {
+      expect(assessTargetPowerCapabilityOptions({ min: 0, max: 3680, step: 460 }))
+        .toEqual({ valid: true });
+      expect(assessTargetPowerCapabilityOptions({ max: 3680, step: 460 }))
+        .toEqual({ valid: true });
+    });
+
+    it('rejects capability options that exclude zero by raising min', () => {
+      expect(assessTargetPowerCapabilityOptions({ min: 1380, max: 3680, step: 460 }))
+        .toEqual({ valid: false, issue: 'min_excludes_zero' });
+    });
+
+    it('rejects capability options missing max or step', () => {
+      expect(assessTargetPowerCapabilityOptions({ min: 0, step: 460 }))
+        .toEqual({ valid: false, issue: 'missing_max' });
+      expect(assessTargetPowerCapabilityOptions({ min: 0, max: 3680 }))
+        .toEqual({ valid: false, issue: 'missing_step' });
+    });
+
+    it('rejects capability options with non-positive max or step', () => {
+      expect(assessTargetPowerCapabilityOptions({ min: 0, max: 0, step: 460 }))
+        .toEqual({ valid: false, issue: 'negative_max' });
+      expect(assessTargetPowerCapabilityOptions({ min: 0, max: 3680, step: 0 }))
+        .toEqual({ valid: false, issue: 'negative_step' });
+    });
+
+    it('rejects capability options that would generate too many steps', () => {
+      expect(assessTargetPowerCapabilityOptions({ min: 0, max: 100_000, step: 1 }))
+        .toEqual({ valid: false, issue: 'too_many_generated_steps' });
+    });
+
+    it('ignores configs whose min raises the range above zero', () => {
+      const deviceManager = new DeviceManager(
+        mockHomeyInstance as unknown as Homey.App,
+        createLogger(),
+        {
+          // Malformed config: min > 0 violates the contract.
+          getDeviceTargetPowerConfig: () => ({ min: 1380, max: 3680, step: 460 }),
+        },
+      );
+      // Valid capability shape (range includes 0) so the device survives the
+      // candidate filter; the malformed config should still not produce a
+      // stepped-load profile.
+      const [parsed] = deviceManager.parseDeviceListForTests([buildTargetPowerDevice({
+        capabilitiesObj: {
+          measure_power: { value: 0 },
+          target_power: {
+            value: 0,
+            min: 0,
+            max: 3680,
+            step: 460,
+            excludeMax: 1380,
+            setable: true,
+          },
+        },
+      })]);
+      // The valid capability falls back to the default capability-derived
+      // profile. The malformed override config is ignored.
+      expect(parsed.controlModel).toBe('stepped_load');
+      expect(parsed.targetPowerConfig).toBeUndefined();
+    });
+
+    it('emits a deduplicated warning when target_power capability options violate the contract', () => {
+      const logger = createLogger();
+      const deviceManager = new DeviceManager(
+        mockHomeyInstance as unknown as Homey.App,
+        logger,
+        {},
+      );
+      const buildMalformedDevice = () => buildTargetPowerDevice({
+        capabilities: ['measure_power', 'evcharger_charging', 'target_power'],
+        capabilitiesObj: {
+          measure_power: { value: 0 },
+          evcharger_charging: { value: false, setable: true },
+          target_power: {
+            value: 0,
+            min: 1380,
+            max: 3680,
+            step: 460,
+            setable: true,
+          },
+        },
+      });
+      deviceManager.parseDeviceListForTests([buildMalformedDevice()]);
+      const warnings = (logger.structuredLog?.warn as ReturnType<typeof vi.fn>).mock.calls
+        .filter(([payload]) => (payload as { event?: string }).event === 'target_power_contract_violation');
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0][0]).toEqual(expect.objectContaining({
+        event: 'target_power_contract_violation',
+        issue: 'min_excludes_zero',
+        deviceId: 'target-power-1',
+        min: 1380,
+        max: 3680,
+        step: 460,
+      }));
+
+      // Re-parse the same device with identical options: the warning is deduplicated.
+      deviceManager.parseDeviceListForTests([buildMalformedDevice()]);
+      const repeatedWarnings = (logger.structuredLog?.warn as ReturnType<typeof vi.fn>).mock.calls
+        .filter(([payload]) => (payload as { event?: string }).event === 'target_power_contract_violation');
+      expect(repeatedWarnings).toHaveLength(1);
+    });
   });
 
 });

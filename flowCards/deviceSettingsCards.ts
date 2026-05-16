@@ -1,9 +1,8 @@
 import { BUDGET_EXEMPT_DEVICES, CONTROLLABLE_DEVICES } from '../lib/utils/settingsKeys';
 import type { TargetDeviceSnapshot } from '../lib/utils/types';
 import type { FlowCardDeps } from './registerFlowCards';
-import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
-
-type DeviceArg = RawFlowDeviceArg;
+import { buildDeviceAutocompleteOptions } from './deviceArgs';
+import { readFlowDeviceArg } from './flowArgParsers';
 
 export function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
   registerDeviceBooleanActionCard({
@@ -79,7 +78,7 @@ function registerDeviceBooleanActionCard(params: {
   const card = deps.homey.flow.getActionCard(cardId);
   card.registerRunListener(async (args: unknown) => {
     await setDeviceBooleanSetting({
-      payload: args as { device?: DeviceArg } | null,
+      deviceId: readFlowDeviceArg(args),
       deps,
       ...settingParams,
     });
@@ -103,8 +102,7 @@ function registerDeviceSnapshotCondition(params: {
 }
 
 async function resolveDeviceFromArgs(args: unknown, deps: FlowCardDeps): Promise<TargetDeviceSnapshot | null> {
-  const payload = args as { device?: DeviceArg } | null;
-  const deviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
+  const deviceId = readFlowDeviceArg(args);
   if (!deviceId) return null;
   const snapshot = await deps.getSnapshot();
   return snapshot.find((device) => device.id === deviceId) ?? null;
@@ -115,12 +113,8 @@ async function getDeviceOptions(deps: FlowCardDeps, query: string): Promise<Arra
   return buildDeviceAutocompleteOptions(snapshot, query);
 }
 
-function getDeviceIdFromArg(arg: DeviceArg): string {
-  return getDeviceIdFromFlowArg(arg);
-}
-
 async function setDeviceBooleanSetting(params: {
-  payload: { device?: DeviceArg } | null;
+  deviceId: string;
   enabled: boolean;
   settingKey: string;
   label: string;
@@ -128,14 +122,13 @@ async function setDeviceBooleanSetting(params: {
   deps: FlowCardDeps;
 }): Promise<void> {
   const {
-    payload,
+    deviceId,
     enabled,
     settingKey,
     label,
     logPrefix,
     deps,
   } = params;
-  const deviceId = getDeviceIdFromArg(payload?.device as DeviceArg);
   if (!deviceId) throw new Error(`${label[0].toUpperCase()}${label.slice(1)} device must be provided`);
   const snapshot = await deps.getSnapshot();
   const device = snapshot.find((entry) => entry.id === deviceId);

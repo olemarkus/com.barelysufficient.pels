@@ -14,33 +14,44 @@ export function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+/**
+ * Returns true when the input is a plain object literal (Object.prototype or
+ * a bare null-prototype object). Rejects arrays, class instances, Date, Map,
+ * Set, etc. — Homey settings persistence only round-trips plain objects.
+ */
+function isPlainObjectRecord(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype: object | null = Object.getPrototypeOf(value) as object | null;
+  return prototype === Object.prototype || prototype === null;
+}
+
 export function isStringMap(value: unknown): value is Record<string, string> {
-  if (!value || typeof value !== 'object') return false;
+  if (!isPlainObjectRecord(value)) return false;
   return Object.entries(value).every(([key, entry]) => typeof key === 'string' && typeof entry === 'string');
 }
 
 export function isBooleanMap(value: unknown): value is Record<string, boolean> {
-  if (!value || typeof value !== 'object') return false;
+  if (!isPlainObjectRecord(value)) return false;
   return Object.entries(value).every(([key, entry]) => typeof key === 'string' && typeof entry === 'boolean');
 }
 
 export function isNumberMap(value: unknown): value is Record<string, number> {
-  if (!value || typeof value !== 'object') return false;
+  if (!isPlainObjectRecord(value)) return false;
   return Object.entries(value).every(([key, entry]) => typeof key === 'string' && isFiniteNumber(entry));
 }
 
 export function isCommunicationModelMap(value: unknown): value is Record<string, 'local' | 'cloud'> {
-  if (!value || typeof value !== 'object') return false;
+  if (!isPlainObjectRecord(value)) return false;
   return Object.entries(value).every(([key, entry]) => (
     typeof key === 'string' && (entry === 'local' || entry === 'cloud')
   ));
 }
 
 export function isPrioritySettings(value: unknown): value is Record<string, Record<string, number>> {
-  if (!value || typeof value !== 'object') return false;
-  return Object.values(value as Record<string, unknown>).every((mode) => {
-    if (!mode || typeof mode !== 'object') return false;
-    return Object.values(mode as Record<string, unknown>).every((entry) => isFiniteNumber(entry));
+  if (!isPlainObjectRecord(value)) return false;
+  return Object.values(value).every((mode) => {
+    if (!isPlainObjectRecord(mode)) return false;
+    return Object.values(mode).every((entry) => isFiniteNumber(entry));
   });
 }
 
