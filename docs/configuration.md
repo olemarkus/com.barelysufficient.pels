@@ -50,9 +50,9 @@ Budget settings include:
 | --- | --- |
 | **Enable daily budget** | Turns daily pacing on or off. |
 | **Daily budget (kWh)** | Target daily energy use. |
-| **Use cheaper hours** | Lets the daily plan give more room to cheaper remaining hours when price data is reliable. |
-| **Background usage reserve** | How defensively PELS reserves budget for household usage it cannot move. |
-| **Managed device flexibility** | How freely PELS may shift managed-device usage toward cheaper feasible hours. |
+| **Use cheaper hours** | When prices are reliable, lets the day's budget lean toward cheaper hours so more of the energy is used when electricity is cheap. |
+| **Background usage reserve** | How much of the daily budget PELS sets aside for everyday loads it cannot control — lights, fridges, the TV, anything not managed by PELS. A larger reserve protects against surprise consumption; a smaller reserve leaves more room for heaters and chargers. |
+| **Managed device flexibility** | How willing PELS is to push managed heaters or chargers toward cheaper hours. Low keeps usage close to normal; high actively shifts work toward the cheap end of the day. |
 
 Read [Daily Energy Budget](/daily-budget) before changing the advanced tuning values.
 

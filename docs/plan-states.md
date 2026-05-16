@@ -23,7 +23,7 @@ The redesigned Overview uses a compact state chip on each device card:
 | **Unavailable** | PELS cannot currently trust the device state enough to plan with it. |
 | **Unknown** | PELS does not have enough current state to choose a more specific label. |
 
-Some cards add a more specific readout below the chip. For example, a limited device may say **Paused by PELS** when it was turned off, or **Limited by PELS** when PELS lowered a target or step. A stepped-load card may show **Off now**, **Level unknown**, or **Level: Max** to describe the reported step.
+Some cards add a more specific readout below the chip. A limited device may say **Turned off by PELS** when it was turned off, **Charging paused** for an EV charger, or **Limited by PELS** when PELS lowered a target or step. A stepped-load card may show **Off now**, **Level unknown**, or **Level: Max** to describe the reported step.
 
 ## Common Status Lines
 
