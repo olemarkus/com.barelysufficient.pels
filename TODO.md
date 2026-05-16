@@ -697,10 +697,22 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       label rendering should stay the same as today.
       Files: `packages/settings-ui/public/index.html`,
       `packages/settings-ui/src/ui/deviceDetail/*.ts`, related layout tests.
-- [ ] Refresh the PELS leaf icon to match the new eco palette. The current app icon and any
+- [x] Refresh the PELS leaf icon to match the new eco palette. The current app icon and any
       in-UI leaf graphic should align with the leaf-green primary (`#16a34a`) rather than the
       previous emerald (`#10b981`). Out of scope for the redesigned settings UI; touches Homey
       app metadata. Files: `assets/icon.svg`, `.homeycompose/app.json`, any in-UI SVG leaf.
+      *(landed — `assets/icon.svg` and the docs-site copy at `docs/public/icon.svg` now bake
+      `#16a34a` as the leaf fill/stroke instead of `currentColor`, so the published Homey
+      app icon and the VitePress favicon/header both paint the eco-palette primary regardless
+      of host theme tint. `.homeycompose/app.json` brandColor stays `#22c55e` — that's the
+      accent half of the eco palette, intentionally distinct from the primary; the file
+      never referenced the old emerald hex. No in-UI leaf SVG exists elsewhere in
+      `packages/settings-ui/**`.)*
+
+- [ ] Consolidate `assets/icon.svg` and `docs/public/icon.svg` (currently byte-identical
+      duplicates) so a future icon refresh only edits one source. Lowest-effort option:
+      a `scripts/copy-public.mjs` step that mirrors `assets/icon.svg` into the docs
+      `public/` dir at build time. Files: `scripts/copy-public.mjs`, `docs/public/icon.svg`.
 
 - [ ] Make Settings UI device refresh await in-flight snapshot refreshes. `/ui_refresh_devices`
       currently calls `refreshTargetDevicesSnapshot()` and then returns the current in-memory

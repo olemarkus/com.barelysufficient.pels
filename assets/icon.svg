@@ -22,8 +22,8 @@
     </mask>
   </defs>
 
-  <path fill="currentColor"
-        stroke="currentColor"
+  <path fill="#16a34a"
+        stroke="#16a34a"
         stroke-width="116"
         stroke-linejoin="round"
         mask="url(#leaf-mask)"
