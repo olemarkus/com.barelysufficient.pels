@@ -307,6 +307,19 @@ const LOAD_GRID_HEIGHT = 84;
 const GRID_LEFT = 36;
 const GRID_RIGHT = 56;
 
+// Pinned bar width + category gap shared by every bar series across both
+// xAxis grids (`xAxisIndex 0` = price, `xAxisIndex 1` = load). ECharts auto-
+// sizes bars per grid: the price grid has 1 bar series while the load grid
+// has 2–4 (background + device + optional original-overlay + optional actual
+// line), and without explicit pins the auto-sizer picks different widths and
+// off-centres the bars relative to the category. Pinning both values makes
+// bar centres parity-aligned at every viewport from 320–480 px, which the
+// `bar-centre parity` E2E spec asserts. `barWidth` (not `barMaxWidth`) is
+// required: `barMaxWidth` is an upper bound that the auto-sizer still varies
+// per grid, defeating the alignment goal.
+const BAR_WIDTH = 14;
+const BAR_CATEGORY_GAP = '20%';
+
 export const buildChartOption = (
   payload: DeadlinePlanPayload,
   palette: DeadlineChartPalette,
@@ -381,6 +394,32 @@ export const buildChartOption = (
     data: [{ xAxis: 0 }],
   };
 
+  // Shared builder for the progress axis. The load grid uses it for the
+  // visible left axis (`palette.progress` colour) and the price grid uses
+  // it for a transparent phantom that reserves identical layout width —
+  // see the bar-alignment comment near the yAxis array (TODO 628). Keeping
+  // a single builder ensures future tweaks (ticks, ranges, formatter) stay
+  // mirrored across the two grids.
+  const buildProgressAxis = (gridIndex: 0 | 1, color: string) => ({
+    ...valueAxisBase,
+    gridIndex,
+    position: 'left' as const,
+    name: payload.labels.targetUnit,
+    nameLocation: 'middle' as const,
+    nameGap: GRID_LEFT - 12,
+    nameRotate: 0,
+    nameTextStyle: { ...axisNameStyle, color },
+    min: payload.timeline.progressFloor,
+    max: payload.timeline.progressCeilingValue,
+    interval: Math.max(1, payload.timeline.progressCeilingValue - payload.timeline.progressFloor),
+    splitLine: { show: false },
+    axisLabel: {
+      ...valueAxisBase.axisLabel,
+      color,
+      formatter: showCeilingOnly(payload.timeline.progressCeilingValue, payload.timeline.progressCeilingLabel),
+    },
+  });
+
   return {
     animation: false,
     backgroundColor: 'transparent',
@@ -425,8 +464,16 @@ export const buildChartOption = (
       inactiveColor: palette.grid,
     },
     grid: [
-      { top: PRICE_GRID_TOP, left: GRID_LEFT, right: GRID_RIGHT, height: PRICE_GRID_HEIGHT },
-      { top: LOAD_GRID_TOP, left: GRID_LEFT, right: GRID_RIGHT, height: LOAD_GRID_HEIGHT },
+      // `containLabel: true` makes ECharts auto-reserve enough horizontal
+      // space INSIDE the `[left, right]` box for both axes' labels + names.
+      // The result is that both grids share the same effective plot area
+      // (since they reserve identical insets), and the bars at the same
+      // `dataIndex` line up horizontally between the two grids (TODO 628).
+      // Without it the price grid (single right axis) and load grid (left
+      // progress axis + right kWh axis) end up with different plot widths
+      // and bars drift apart.
+      { top: PRICE_GRID_TOP, left: GRID_LEFT, right: GRID_RIGHT, height: PRICE_GRID_HEIGHT, containLabel: true },
+      { top: LOAD_GRID_TOP, left: GRID_LEFT, right: GRID_RIGHT, height: LOAD_GRID_HEIGHT, containLabel: true },
     ],
     tooltip: {
       trigger: 'axis',
@@ -470,6 +517,17 @@ export const buildChartOption = (
           },
         },
       },
+      // Phantom left axis on the price grid — invisible to the user but
+      // mirrors the load grid's progress axis so ECharts reserves the same
+      // plot-area inset on both grids. Without it, the load grid's left
+      // axis pushes its plot area ~20 px to the right (TODO 628) and the
+      // bars at matching `dataIndex` end up off-centre between the two
+      // grids. The axis label text is the same shape as the load grid's
+      // ceiling label so ECharts measures the same text width;
+      // `color: 'transparent'` paints it invisibly while the glyphs still
+      // occupy layout space. Sharing the builder with the load grid keeps
+      // the two axes in lock-step under future tweaks.
+      buildProgressAxis(0, 'transparent'),
       {
         ...valueAxisBase,
         gridIndex: 1,
@@ -487,25 +545,7 @@ export const buildChartOption = (
           formatter: showCeilingOnly(stackedMax, stackedMax.toFixed(1)),
         },
       },
-      {
-        ...valueAxisBase,
-        gridIndex: 1,
-        position: 'left',
-        name: payload.labels.targetUnit,
-        nameLocation: 'middle',
-        nameGap: GRID_LEFT - 12,
-        nameRotate: 0,
-        nameTextStyle: { ...axisNameStyle, color: palette.progress },
-        min: payload.timeline.progressFloor,
-        max: payload.timeline.progressCeilingValue,
-        interval: Math.max(1, payload.timeline.progressCeilingValue - payload.timeline.progressFloor),
-        splitLine: { show: false },
-        axisLabel: {
-          ...valueAxisBase.axisLabel,
-          color: palette.progress,
-          formatter: showCeilingOnly(payload.timeline.progressCeilingValue, payload.timeline.progressCeilingLabel),
-        },
-      },
+      buildProgressAxis(1, palette.progress),
     ],
     series: [
       {
@@ -513,7 +553,8 @@ export const buildChartOption = (
         type: 'bar',
         xAxisIndex: 0,
         yAxisIndex: 0,
-        barMaxWidth: 18,
+        barWidth: BAR_WIDTH,
+        barCategoryGap: BAR_CATEGORY_GAP,
         barMinHeight: 3,
         markLine: nowMarkLine,
         data: payload.timeline.hours.map((hour) => ({
@@ -533,8 +574,13 @@ export const buildChartOption = (
         type: 'bar',
         stack: 'load',
         xAxisIndex: 1,
-        yAxisIndex: 1,
-        barMaxWidth: 18,
+        // kWh axis moved from yAxis[1] to yAxis[2] after the price-grid
+        // phantom axis was inserted at yAxis[1] (see the phantom-axis comment
+        // above the yAxis array). All load-grid bar/line series share this
+        // shifted index.
+        yAxisIndex: 2,
+        barWidth: BAR_WIDTH,
+        barCategoryGap: BAR_CATEGORY_GAP,
         markLine: nowMarkLine,
         data: payload.timeline.hours.map((hour) => hour.usage.backgroundKwh),
         itemStyle: { color: palette.background, borderRadius: [0, 0, 0, 0] },
@@ -544,8 +590,9 @@ export const buildChartOption = (
         type: 'bar',
         stack: 'load',
         xAxisIndex: 1,
-        yAxisIndex: 1,
-        barMaxWidth: 18,
+        yAxisIndex: 2,
+        barWidth: BAR_WIDTH,
+        barCategoryGap: BAR_CATEGORY_GAP,
         data: payload.timeline.hours.map((hour) => ({
           value: hour.usage.deviceKwh,
           itemStyle: {
@@ -563,8 +610,9 @@ export const buildChartOption = (
           type: 'bar' as const,
           stack: 'original-load',
           xAxisIndex: 1,
-          yAxisIndex: 1,
-          barMaxWidth: 18,
+          yAxisIndex: 2,
+          barWidth: BAR_WIDTH,
+          barCategoryGap: BAR_CATEGORY_GAP,
           barGap: '-100%',
           silent: true,
           tooltip: { show: false },
@@ -577,8 +625,9 @@ export const buildChartOption = (
           type: 'bar' as const,
           stack: 'original-load',
           xAxisIndex: 1,
-          yAxisIndex: 1,
-          barMaxWidth: 18,
+          yAxisIndex: 2,
+          barWidth: BAR_WIDTH,
+          barCategoryGap: BAR_CATEGORY_GAP,
           barGap: '-100%',
           itemStyle: { color: 'transparent', borderColor: palette.device, borderWidth: 2 },
           data: payload.timeline.hours.map((hour) => ({
@@ -597,7 +646,7 @@ export const buildChartOption = (
         name: payload.labels.actualDeviceSeriesName,
         type: 'line' as const,
         xAxisIndex: 1,
-        yAxisIndex: 1,
+        yAxisIndex: 2,
         symbol: 'circle',
         symbolSize: 7,
         connectNulls: false,
@@ -610,7 +659,9 @@ export const buildChartOption = (
         type: 'line',
         step: 'end',
         xAxisIndex: 1,
-        yAxisIndex: 2,
+        // Progress axis sits at yAxis[3] after the price-grid phantom axis was
+        // inserted at yAxis[1] to match the load grid's left-axis inset.
+        yAxisIndex: 3,
         symbol: 'none',
         lineStyle: { color: palette.progress, width: 2 },
         areaStyle: { color: palette.progress, opacity: 0.12 },
@@ -618,6 +669,35 @@ export const buildChartOption = (
       },
     ] satisfies SeriesOption[],
   };
+};
+
+// Writes per-grid bar x-centres to a data attribute on the chart container so
+// the bar-centre parity E2E spec (TODO 628) can verify alignment without
+// poking at SVG paths or fragile heuristics. The attribute carries one entry
+// per hour for each xAxis: `{"price":[x0,…], "load":[x0,…]}`. Test-only path;
+// removing it would only weaken the regression suite.
+const writeBarCentresForTest = (
+  container: HTMLElement,
+  chart: EChartsType,
+  hourCount: number,
+): void => {
+  const collect = (xAxisIndex: number): number[] => {
+    const centres: number[] = [];
+    for (let i = 0; i < hourCount; i += 1) {
+      // `convertToPixel` on a category axis returns a single x-pixel for the
+      // category index. Pass `i` as the data index. Some echarts versions
+      // return `[x, y]` instead of `x`; handle both shapes defensively so the
+      // attribute is populated either way.
+      const pixel = chart.convertToPixel({ xAxisIndex }, i);
+      const x = Array.isArray(pixel) ? pixel[0] : pixel;
+      if (Number.isFinite(x)) centres.push(Number((x as number).toFixed(2)));
+    }
+    return centres;
+  };
+  container.setAttribute('data-test-bar-centres', JSON.stringify({
+    price: collect(0),
+    load: collect(1),
+  }));
 };
 
 const HorizonChart = ({ payload }: { payload: DeadlinePlanPayload }) => {
@@ -636,9 +716,13 @@ const HorizonChart = ({ payload }: { payload: DeadlinePlanPayload }) => {
       buildChartOption(payload, resolvePalette(container), resolveTypography(container)),
       { notMerge: true },
     );
+    writeBarCentresForTest(container, chart, payload.timeline.hours.length);
 
     const resizeObserver = typeof ResizeObserver === 'function'
-      ? new ResizeObserver(() => chart.resize(resolveChartSize(container)))
+      ? new ResizeObserver(() => {
+        chart.resize(resolveChartSize(container));
+        writeBarCentresForTest(container, chart, payload.timeline.hours.length);
+      })
       : null;
     resizeObserver?.observe(container);
     // Cold-mount path: the chart may be initialized while its panel is still

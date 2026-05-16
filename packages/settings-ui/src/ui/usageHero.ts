@@ -26,6 +26,19 @@ const CHIP_TONE_CLASSES: readonly string[] = [
 
 // Pace evaluation thresholds (kWh and ratios). Named to make the hero behavior
 // auditable without re-reading the implementation.
+//
+// `PROJECTION_ON_TRACK_KWH` is reused by the chip + the prose so both surfaces
+// agree on the "On track" dead-band — TODO 490 was about the chip ("vs pace")
+// and the prose ("vs typical") publishing two different numbers in the same
+// card; they now share the projected-vs-typical baseline so the card surfaces
+// a single delta.
+//
+// The two dead-band constants are deliberately distinct. `PACE_ON_PACE_KWH`
+// (0.2) is compared to the elapsed-vs-expected delta — small absolute kWh
+// because we're only a fraction of the day in. `PROJECTION_ON_TRACK_KWH`
+// (0.3) is compared to the projected-end-of-day-vs-typical delta — slightly
+// larger because the projection extrapolates the partial-day delta to the
+// full day.
 const PACE_ON_PACE_KWH = 0.2;
 const PROJECTION_ON_TRACK_KWH = 0.3;
 const WARN_PACE_RATIO = 0.1;
@@ -92,16 +105,49 @@ export type PaceContext = {
   typicalDay: number;
 };
 
+// Maps a positive over-delta and its base to the same `ok | warn | alert`
+// tone the hero rim uses (see `resolveHeroTone`). Shared between the pace
+// and projection branches of `formatDeltaChipLabel` so the chip tone never
+// disagrees with the hero rim regardless of which branch evaluated it.
+const resolveOverDeltaTone = (overDelta: number, base: number): ChipTone => {
+  const ratio = overDelta / Math.max(base, 0.1);
+  const absDelta = Math.abs(overDelta);
+  if (ratio > ALERT_PACE_RATIO && absDelta >= ALERT_PACE_ABS_KWH) return 'alert';
+  if (ratio > WARN_PACE_RATIO && absDelta >= WARN_PACE_ABS_KWH) return 'warn';
+  return 'ok';
+};
+
+// Chip + prose share the projected-vs-typical baseline so the card surfaces
+// a single delta (TODO 490). When the projection window is suppressed (first
+// ~2.4 h of the day — see `MIN_PROJECTION_FRACTION`) the chip falls back to
+// the elapsed-pace delta, since projecting from a handful of minutes amplifies
+// noise; the comparison subline still names the typical-day target so users
+// see the baseline.
 export const formatDeltaChipLabel = (ctx: PaceContext): { label: string; tone: ChipTone } => {
-  if (ctx.absDiff < PACE_ON_PACE_KWH) {
-    return { label: 'On pace', tone: 'ok' };
+  if (ctx.projected === null) {
+    if (ctx.absDiff < PACE_ON_PACE_KWH) {
+      return { label: 'On pace', tone: 'ok' };
+    }
+    if (ctx.diff > 0) {
+      return {
+        label: `+${ctx.absDiff.toFixed(1)} kWh vs pace`,
+        tone: resolveOverDeltaTone(ctx.diff, ctx.expectedSoFar),
+      };
+    }
+    return { label: `−${ctx.absDiff.toFixed(1)} kWh vs pace`, tone: 'ok' };
   }
-  if (ctx.diff > 0) {
-    const ratio = ctx.diff / Math.max(ctx.expectedSoFar, 0.1);
-    const tone: ChipTone = ratio > ALERT_PACE_RATIO ? 'alert' : 'warn';
-    return { label: `+${ctx.absDiff.toFixed(1)} kWh vs pace`, tone };
+  const projectedDiff = ctx.projected - ctx.typicalDay;
+  const absDiff = Math.abs(projectedDiff);
+  if (absDiff < PROJECTION_ON_TRACK_KWH) {
+    return { label: 'On track', tone: 'ok' };
   }
-  return { label: `−${ctx.absDiff.toFixed(1)} kWh vs pace`, tone: 'ok' };
+  if (projectedDiff > 0) {
+    return {
+      label: `+${absDiff.toFixed(1)} kWh vs typical`,
+      tone: resolveOverDeltaTone(projectedDiff, ctx.typicalDay),
+    };
+  }
+  return { label: `−${absDiff.toFixed(1)} kWh vs typical`, tone: 'ok' };
 };
 
 export const formatProjectionText = (ctx: PaceContext): string | null => {
@@ -110,12 +156,28 @@ export const formatProjectionText = (ctx: PaceContext): string | null => {
   if (Math.abs(projectedDiff) < PROJECTION_ON_TRACK_KWH) {
     return `On track for ~${ctx.projected.toFixed(1)} kWh by midnight.`;
   }
+  // Prose drops the redundant delta number — the chip carries it — but keeps
+  // the projection figure so the user still sees the absolute end-of-day kWh.
   const direction = projectedDiff > 0 ? 'above' : 'below';
-  const gap = Math.abs(projectedDiff).toFixed(1);
-  return `On track for ~${ctx.projected.toFixed(1)} kWh — about ${gap} kWh ${direction} typical.`;
+  return `On track for ~${ctx.projected.toFixed(1)} kWh by midnight (${direction} typical).`;
 };
 
 export const resolveHeroTone = (ctx: PaceContext): 'ok' | 'warn' | 'alert' => {
+  // When the projection window is open, mirror the chip's projected-vs-typical
+  // baseline so the hero rim and the delta chip never disagree. The earlier
+  // pace-based logic falls back in the early-morning window where projection
+  // is suppressed and the chip already uses the elapsed-pace delta.
+  if (ctx.projected !== null) {
+    const projectedDiff = ctx.projected - ctx.typicalDay;
+    const absDiff = Math.abs(projectedDiff);
+    if (projectedDiff > ctx.typicalDay * ALERT_PACE_RATIO && absDiff >= ALERT_PACE_ABS_KWH) {
+      return 'alert';
+    }
+    if (projectedDiff > ctx.typicalDay * WARN_PACE_RATIO && absDiff >= WARN_PACE_ABS_KWH) {
+      return 'warn';
+    }
+    return 'ok';
+  }
   if (ctx.diff > ctx.expectedSoFar * ALERT_PACE_RATIO && ctx.absDiff >= ALERT_PACE_ABS_KWH) {
     return 'alert';
   }
