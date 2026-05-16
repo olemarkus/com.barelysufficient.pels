@@ -97,7 +97,13 @@ describe('DeadlinePlanHistoryDetail', () => {
       startedAtMs: DEADLINE_MS - 2 * HOUR_MS,
       deadlineAtMs: DEADLINE_MS - HOUR_MS,
     });
-    const option = buildHistoryDetailChartOption(rows, stubPalette, false, true) as {
+    const option = buildHistoryDetailChartOption(
+      rows,
+      stubPalette,
+      false,
+      true,
+      'Measured Heating',
+    ) as {
       series: Array<{ name: string }>;
     };
     const seriesNames = option.series.map((entry) => entry.name);
@@ -148,16 +154,22 @@ describe('DeadlinePlanHistoryDetail', () => {
     expect(rows.map((row) => row.finalKWh)).toEqual([0, 0, 3]);
     expect(rows.map((row) => row.observed)).toEqual([true, false, false]);
 
-    const option = buildHistoryDetailChartOption(rows, stubPalette, true, true) as {
+    const option = buildHistoryDetailChartOption(
+      rows,
+      stubPalette,
+      true,
+      true,
+      'Measured Charging',
+    ) as {
       series: Array<{ name: string }>;
       legend: { data: Array<{ name: string }> };
     };
     const seriesNames = option.series.map((entry) => entry.name);
     expect(seriesNames).toContain('Original plan');
     expect(seriesNames).toContain('Final plan');
-    expect(seriesNames).toContain('Observed charging');
+    expect(seriesNames).toContain('Measured Charging');
     const legendNames = option.legend.data.map((entry) => entry.name);
-    expect(legendNames).toContain('Observed charging');
+    expect(legendNames).toContain('Measured Charging');
   });
 
   it('seeds every hour in the deadline window even when the plan covers only one', async () => {
@@ -180,7 +192,7 @@ describe('DeadlinePlanHistoryDetail', () => {
     expect(rows[7]!.finalKWh).toBeCloseTo(0.6);
   });
 
-  it('omits the Observed charging legend item when no hour was observed', async () => {
+  it('omits the observed-series legend item when no hour was observed', async () => {
     const { buildHistoryDetailRows, buildHistoryDetailChartOption } =
       await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
     const revision = buildRevision();
@@ -188,11 +200,18 @@ describe('DeadlinePlanHistoryDetail', () => {
       startedAtMs: DEADLINE_MS - 2 * HOUR_MS,
       deadlineAtMs: DEADLINE_MS,
     });
-    const option = buildHistoryDetailChartOption(rows, stubPalette, false, true) as {
+    const option = buildHistoryDetailChartOption(
+      rows,
+      stubPalette,
+      false,
+      true,
+      'Measured Heating',
+    ) as {
       legend: { data: Array<{ name: string }> };
     };
     const legendNames = option.legend.data.map((entry) => entry.name);
-    expect(legendNames).not.toContain('Observed charging');
+    expect(legendNames).not.toContain('Measured Heating');
+    expect(legendNames).not.toContain('Measured Charging');
   });
 
   it('y-axis uses multiple ticks instead of a single ceiling label', async () => {
@@ -203,10 +222,72 @@ describe('DeadlinePlanHistoryDetail', () => {
       startedAtMs: DEADLINE_MS - 2 * HOUR_MS,
       deadlineAtMs: DEADLINE_MS,
     });
-    const option = buildHistoryDetailChartOption(rows, stubPalette, false, true) as {
+    const option = buildHistoryDetailChartOption(
+      rows,
+      stubPalette,
+      false,
+      true,
+      'Measured Heating',
+    ) as {
       yAxis: { splitNumber?: number; interval?: number };
     };
     expect(option.yAxis.splitNumber).toBe(4);
     expect(option.yAxis.interval).toBeUndefined();
+  });
+
+  it('uses the kind-aware Measured Heating series name for thermostat runs', async () => {
+    const { buildHistoryDetailRows, buildHistoryDetailChartOption } =
+      await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
+    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels');
+    const revision = buildRevision();
+    const rows = buildHistoryDetailRows(
+      revision,
+      revision,
+      [{ fromMs: DEADLINE_MS - 2 * HOUR_MS, toMs: DEADLINE_MS - HOUR_MS }],
+      'UTC',
+      { startedAtMs: DEADLINE_MS - 2 * HOUR_MS, deadlineAtMs: DEADLINE_MS },
+    );
+    const observedSeriesName = deadlineLabels('temperature').actualDeviceSeriesName;
+    expect(observedSeriesName).toBe('Measured Heating');
+    const option = buildHistoryDetailChartOption(
+      rows,
+      stubPalette,
+      false,
+      true,
+      observedSeriesName,
+    ) as {
+      series: Array<{ name: string }>;
+      legend: { data: Array<{ name: string }> };
+    };
+    expect(option.series.map((s) => s.name)).toContain('Measured Heating');
+    expect(option.legend.data.map((l) => l.name)).toContain('Measured Heating');
+  });
+
+  it('uses the kind-aware Measured Charging series name for EV runs', async () => {
+    const { buildHistoryDetailRows, buildHistoryDetailChartOption } =
+      await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
+    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels');
+    const revision = buildRevision();
+    const rows = buildHistoryDetailRows(
+      revision,
+      revision,
+      [{ fromMs: DEADLINE_MS - 2 * HOUR_MS, toMs: DEADLINE_MS - HOUR_MS }],
+      'UTC',
+      { startedAtMs: DEADLINE_MS - 2 * HOUR_MS, deadlineAtMs: DEADLINE_MS },
+    );
+    const observedSeriesName = deadlineLabels('ev_soc').actualDeviceSeriesName;
+    expect(observedSeriesName).toBe('Measured Charging');
+    const option = buildHistoryDetailChartOption(
+      rows,
+      stubPalette,
+      false,
+      true,
+      observedSeriesName,
+    ) as {
+      series: Array<{ name: string }>;
+      legend: { data: Array<{ name: string }> };
+    };
+    expect(option.series.map((s) => s.name)).toContain('Measured Charging');
+    expect(option.legend.data.map((l) => l.name)).toContain('Measured Charging');
   });
 });
