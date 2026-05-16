@@ -108,7 +108,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       now renders chips `[kind, cannotMeet, ?confidence]` only; the live-state chip is
       omitted. Canonical order preserved; unit tests assert the suppression and the
       `[kind, cannotMeet, confidence]` sequence in `test/deadlinePlan.test.ts`.)*
-- [ ] Fix chart clarity issues from the first-impression Settings UI audit.
+- [x] Fix chart clarity issues from the first-impression Settings UI audit.
       Tighten the graphs users are most likely to inspect on first load. Normalize deadline-plan
       price values and units against the Budget chart convention (`kr/kWh` or `øre/kWh` shown
       explicitly), make the Budget hourly-plan legend match the rendered `Managed` / `Background`
@@ -118,10 +118,15 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       first-impression problem the rubric scopes into P0. (Refactor sub-item — moving chart
       lifecycle ownership from module-level state to the rendering view — was split out of this
       P0 in the release-review pass; track it as P2 below if useful.)
-      *In progress: deadline-plan price units done in PR 1 (axis-label precision now matches
-      the Budget chart's `toFixed(1)` and the same `resolvePriceUnitLabel` helper is used on
-      both surfaces). Remaining work: Budget hourly-plan legend split match + Usage chart
-      resize on tab show.*
+      Shipped across `9026cb4c` (chart-clarity review findings + `powerWeekChartEcharts`
+      tab-shown wiring), `37ea7604` (deadline-plan price normalization + Usage/Budget
+      `attachTabShownResize` + legend swatch rebinding), `c1ea3dc2` (E2E colour-parser
+      normalization), and PR #812 (deadline-plan price axis label precision aligned with the
+      Budget chart's `toFixed(1)`). Acceptance verified by `charts-layout.spec.ts` tests:
+      `'budget legend swatches match rendered series fills'`, `'usage charts have non-zero
+      size on first tab activation'`, `'budget chart SVG matches container width after tab
+      switch'`, and `'deadline-plan horizon chart labels the price axis with a unit'`
+      (12 passes across chromium-mobile + firefox-mobile).
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
       `packages/settings-ui/src/ui/deadlinePlan.ts`,
       `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
