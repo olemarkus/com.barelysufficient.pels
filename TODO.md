@@ -129,7 +129,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
       `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,
       `packages/settings-ui/tests/e2e/charts-layout.spec.ts`.
-- [ ] Plan-history recorder dropping `startProgressC` and `observedIntervals` on recent runs.
+- [x] Plan-history recorder dropping `startProgressC` and `observedIntervals` on recent runs.
       Live-Homey walk on 2026-05-16 (`notes/smart-task-ui/README.md`) found that the four most
       recent past entries for Connected 300 render as device-only rows (no progress line, no
       coverage note) while older entries (Wed 13 May and earlier) have both populated. The
@@ -148,6 +148,13 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `lib/plan/deferredObjectives/planHistory.ts`,
       `lib/plan/deferredObjectives/activePlanRecorder.ts`,
       plan-history recorder tests.
+      Fixed: `planHistory.ts` `mergeRecord` / `clearSatisfiedWithProgress` /
+      `recordObservedTick` now back-fill `startProgressC` / `startProgressPercent`
+      from the first non-null observation via a new `backfillStartProgress` helper.
+      `observedIntervals` accumulation was already wired via `extendIntervals` on
+      every plannable and non-plannable tick. Regression coverage added in
+      `test/deferredObjectivePlanHistory.test.ts` under
+      "back-fills start progress from the first non-null observation".
 - [ ] Make Settings UI device-setting writes fail closed when a fresh settings read is missing or
       invalid. Avoid falling back to `{}` or caller-provided defaults and writing a partial object
       back as if it were the current state.
