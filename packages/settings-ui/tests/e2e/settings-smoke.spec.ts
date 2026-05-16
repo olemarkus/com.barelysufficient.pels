@@ -32,7 +32,7 @@ test.describe('Settings UI (smoke)', () => {
     await expect(page.getByRole('tablist')).toBeVisible();
     await expect(page.locator('#overview-panel')).toBeVisible();
     await expect(page.locator('#overview-panel')).toContainText('Energy used this hour');
-    await expect(page.locator('#overview-panel')).toContainText('0.26 / 4.5 kWh');
+    await expect(page.locator('#overview-panel')).toContainText('0.3 of 4.5 kWh used');
   });
 
   test('keeps the new UI on when the old local stub requests legacy navigation', async ({ page }) => {

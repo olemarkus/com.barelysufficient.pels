@@ -1,5 +1,6 @@
 import type { ComponentChild } from 'preact';
 import {
+  formatEnergyUsedOfBudget,
   formatFreshnessChip,
   formatHeroHeadline,
 } from '../../../../shared-domain/src/planHeroSummary.ts';
@@ -519,9 +520,7 @@ const EnergySection = ({ meta }: { meta: PlanMetaSnapshot }) => {
   const scale = computeEnergyBarScale(meta);
   if (!scale) return null;
   const minutesRemaining = typeof meta.minutesRemaining === 'number' ? meta.minutesRemaining : null;
-  // Headline kept for backwards compatibility with unit tests that assert
-  // `.plan-hero__headline` text contains "X / Y kWh".
-  const usedText = `${scale.usedKWh.toFixed(2)} / ${scale.budgetKWh.toFixed(1)} kWh`;
+  const usedText = formatEnergyUsedOfBudget(scale.usedKWh, scale.budgetKWh);
   const projectionTone = resolveProjectionTone(scale);
   const projectedText = scale.projectedKWh !== null
     ? `projected ${scale.projectedKWh.toFixed(2)} kWh${projectionTone === 'good' ? '' : ' ⚠'}`

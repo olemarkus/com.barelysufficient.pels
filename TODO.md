@@ -1047,7 +1047,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       values feeding the formatter.
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
       `packages/shared-domain/src/deadlineLabels.ts`.
-- [ ] Add a CSS rule for `.plan-inputs__row-note`.
+- [x] Add a CSS rule for `.plan-inputs__row-note`.
       The Smart task inputs card emits the bootstrap caveat ("Estimated — refining as PELS
       observes charging.") inside a `<dd>` with class `.plan-inputs__row-note`, but
       `settings/style.css` has no matching rule. The note inherits parent `<dd>` styles
@@ -1069,7 +1069,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       name, matching the chip primitive already used in Modes priorities.
       Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
       `packages/settings-ui/public/style.css`.
-- [ ] Make the energy-this-hour headline format consistent across the Overview hero.
+- [x] Make the energy-this-hour headline format consistent across the Overview hero.
       `PlanHero.tsx:524` emits "0.95 / 0.9 kWh" but the spec says "0.95 of 0.9 kWh used" (or
       "0.95 of 0.9 kWh" — readable English, not the math `/` separator). Decimal precision also
       drifts within the same pair (`toFixed(2)` for the numerator, `toFixed(1)` for the
