@@ -4,13 +4,21 @@ import {
   deviceDetailNativeWiring,
   deviceDetailNativeWiringConfirm,
   deviceDetailNativeWiringConfirmRow,
+  deviceDetailNativeWiringNotice,
+  deviceDetailNativeWiringNoticeAction,
   deviceDetailNativeWiringRow,
+  deviceDetailSetupDisclosure,
 } from '../dom.ts';
-import { supportsNativeWiringActivation } from '../deviceUtils.ts';
+import { requiresNativeWiringForActivation, supportsNativeWiringActivation } from '../deviceUtils.ts';
 import { state } from '../state.ts';
 import { readRecordSetting, writeFreshSetting } from './settingsWrite.ts';
 
 let nativeWiringActivationPendingDeviceId: string | null = null;
+// Tracks the device id we have already auto-expanded the Setup disclosure
+// for. Refresh paths (devices-updated, snapshot refresh, plan-updated) call
+// setDeviceDetailNativeWiringState repeatedly; without this guard we would
+// fight the user every time they manually close the disclosure.
+let setupAutoExpandedForDeviceId: string | null = null;
 
 export const retainPendingNativeWiringEnable = (deviceId: string) => {
   nativeWiringActivationPendingDeviceId = nativeWiringActivationPendingDeviceId === deviceId ? deviceId : null;
@@ -18,6 +26,30 @@ export const retainPendingNativeWiringEnable = (deviceId: string) => {
 
 export const clearPendingNativeWiringEnable = () => {
   nativeWiringActivationPendingDeviceId = null;
+  setupAutoExpandedForDeviceId = null;
+};
+
+const expandSetupDisclosure = () => {
+  if (deviceDetailSetupDisclosure && !deviceDetailSetupDisclosure.open) {
+    deviceDetailSetupDisclosure.open = true;
+  }
+};
+
+const syncNativeWiringRequirementSurfaces = (
+  device: TargetDeviceSnapshot | null,
+  required: boolean,
+) => {
+  if (deviceDetailNativeWiringNotice) {
+    deviceDetailNativeWiringNotice.hidden = !required;
+  }
+  if (!required) {
+    setupAutoExpandedForDeviceId = null;
+    return;
+  }
+  if (device && setupAutoExpandedForDeviceId !== device.id) {
+    setupAutoExpandedForDeviceId = device.id;
+    expandSetupDisclosure();
+  }
 };
 
 export const setDeviceDetailNativeWiringState = (device: TargetDeviceSnapshot | null) => {
@@ -28,6 +60,8 @@ export const setDeviceDetailNativeWiringState = (device: TargetDeviceSnapshot | 
   const nativeWiringActivationPending = device
     && nativeWiringActivationPendingDeviceId === device.id
     && !nativeWiringEffectiveEnabled;
+  const nativeWiringRequiredAndMissing = requiresNativeWiringForActivation(device)
+    && !nativeWiringActivationPending;
 
   if (deviceDetailNativeWiringRow) {
     deviceDetailNativeWiringRow.hidden = !nativeWiringSupported;
@@ -43,6 +77,7 @@ export const setDeviceDetailNativeWiringState = (device: TargetDeviceSnapshot | 
     deviceDetailNativeWiringConfirm.selected = false;
     deviceDetailNativeWiringConfirm.disabled = !nativeWiringActivationPending;
   }
+  syncNativeWiringRequirementSurfaces(device, nativeWiringRequiredAndMissing);
 };
 
 export const updateCurrentDeviceNativeWiringSnapshot = (
@@ -154,5 +189,16 @@ export const initDeviceDetailNativeWiringHandler = (params: {
     if (!deviceDetailNativeWiringConfirm.selected) return;
 
     await persistNativeWiringEnabled(deviceId, true);
+  });
+
+  deviceDetailNativeWiringNoticeAction?.addEventListener('click', () => {
+    // Explicit user request: always re-expand and reset the auto-expand
+    // tracker so the user-driven open survives subsequent state refreshes.
+    setupAutoExpandedForDeviceId = getCurrentDetailDeviceId();
+    expandSetupDisclosure();
+    if (!deviceDetailNativeWiringRow || deviceDetailNativeWiringRow.hidden) return;
+    // jsdom does not implement scrollIntoView; tolerate it.
+    deviceDetailNativeWiringRow.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    deviceDetailNativeWiring?.focus?.();
   });
 };

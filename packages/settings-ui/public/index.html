@@ -831,7 +831,7 @@
         </section>
 
         <section class="detail-section" id="device-detail-setup-section">
-          <details class="settings-collapse detail-collapse">
+          <details class="settings-collapse detail-collapse" id="device-detail-setup-disclosure">
             <summary>
               <h3 class="section-title">Setup</h3>
               <span class="section-hint">Management, control model, and wiring</span>
@@ -839,6 +839,22 @@
             </summary>
             <div class="collapse-content">
               <div class="detail-setup-list">
+                <div
+                  class="detail-setup-notice"
+                  id="device-detail-native-wiring-notice"
+                  role="status"
+                  hidden
+                >
+                  <div class="detail-setup-notice__content">
+                    <span class="detail-setup-notice__title">Built-in device control is required first</span>
+                    <small class="detail-setup-notice__body">Turn it on below to let PELS manage this device.</small>
+                  </div>
+                  <md-text-button
+                    type="button"
+                    id="device-detail-native-wiring-notice-action"
+                    class="detail-setup-notice__action"
+                  >Enable below</md-text-button>
+                </div>
                 <div class="md-switch-row">
                   <md-switch id="device-detail-managed"></md-switch>
                   <span class="md-switch-row__content">

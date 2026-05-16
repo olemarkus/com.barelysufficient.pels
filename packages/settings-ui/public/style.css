@@ -3802,6 +3802,44 @@ details[open] > summary .disclosure-chevron {
   margin: 0;
 }
 
+.detail-setup-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+  background: var(--color-state-info-bg);
+  border: 1px solid var(--color-state-info-border);
+  border-radius: var(--radius-md);
+  color: var(--color-state-info-text);
+}
+
+.detail-setup-notice[hidden] {
+  display: none;
+}
+
+.detail-setup-notice__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.detail-setup-notice__title {
+  font-weight: var(--font-weight-semibold);
+}
+
+.detail-setup-notice__body {
+  font-size: var(--font-size-sm);
+  color: var(--color-state-info-text);
+}
+
+.detail-setup-notice__action {
+  flex: 0 0 auto;
+  min-height: var(--pels-touch-target-min);
+}
+
 .detail-stepped-boost {
   display: grid;
   gap: var(--spacing-3);
