@@ -14,12 +14,16 @@ import {
 } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type {
   DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { DeferredObjectivePlanHistoryEntry } from '../../../contracts/src/deferredObjectivePlanHistory.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import { buildDeadlineHref } from './deadlineUrls.ts';
 import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
-import { resolveSmartTaskListStatus } from '../../../shared-domain/src/deadlineLabels.ts';
+import {
+  formatSmartTaskCurrentValueLine,
+  resolveSmartTaskListStatus,
+} from '../../../shared-domain/src/deadlineLabels.ts';
 import {
   renderDeadlinesList,
   type DeadlinesListCard,
@@ -35,6 +39,69 @@ const isObjectiveEnabled = (
   deviceId: string,
 ): boolean => Boolean(settings.objectivesByDeviceId[deviceId]?.enabled);
 
+// Resolves the device's current value (current temperature for thermal kinds,
+// state-of-charge for EV) by deviceId. Returns `null` when the value is not
+// reported — the chip + currently-X line are then suppressed at the renderer.
+//
+// Looked up by device id rather than plumbed through the plan because the
+// active-plan recorder doesn't carry live device readings; the snapshot
+// fetched from `/ui_devices` (Homey SDK) does.
+const resolveCurrentValue = (
+  device: TargetDeviceSnapshot | undefined,
+  kind: DeferredObjectiveActivePlanV1['objectiveKind'],
+): number | null => {
+  if (!device) return null;
+  if (kind === 'temperature') {
+    return typeof device.currentTemperature === 'number' && Number.isFinite(device.currentTemperature)
+      ? device.currentTemperature
+      : null;
+  }
+  const percent = device.stateOfCharge?.percent;
+  return typeof percent === 'number' && Number.isFinite(percent) ? percent : null;
+};
+
+const buildCard = (params: {
+  deviceId: string;
+  plan: DeferredObjectiveActivePlanV1;
+  device: TargetDeviceSnapshot | undefined;
+  nowMs: number;
+}): DeadlinesListCard => {
+  const { deviceId, plan, device, nowMs } = params;
+  const pending = plan.pending || plan.latest === null;
+  const firstHour = plan.latest?.hours[0]?.startsAtMs ?? null;
+  const statusId = resolveSmartTaskListStatus({
+    pending,
+    pendingReason: plan.pendingReason,
+    diagnosticReasonCode: plan.diagnosticReasonCode,
+    planStatus: plan.latest?.planStatus,
+    firstActionAtMs: firstHour,
+    nowMs,
+  });
+  // `kwhPerUnitProvenance.confidence` is the per-revision snapshot of the
+  // learned profile band — preferred over the live profile because it
+  // matches the plan the list card is summarising. `null` covers the
+  // bootstrap / pending case where no learned band exists yet.
+  const confidence = plan.kwhPerUnitProvenance?.confidence ?? null;
+  const currentValue = resolveCurrentValue(device, plan.objectiveKind);
+  return {
+    deviceId,
+    deviceName: device?.name ?? plan.deviceName ?? deviceId,
+    kind: plan.objectiveKind,
+    targetTemperatureC: plan.targetTemperatureC,
+    targetPercent: plan.targetPercent,
+    createdAtMs: plan.startedAtMs,
+    firstActionAtMs: firstHour,
+    deadlineAtMs: plan.deadlineAtMs,
+    href: buildDeadlineHref(deviceId),
+    statusId,
+    confidence,
+    currentValueLine: formatSmartTaskCurrentValueLine({
+      kind: plan.objectiveKind,
+      currentValue,
+    }),
+  };
+};
+
 export const resolveDeadlinesListCards = (params: {
   activePlans: DeferredObjectiveActivePlansV1 | null;
   objectiveSettings: DeferredObjectiveSettingsV1;
@@ -43,32 +110,11 @@ export const resolveDeadlinesListCards = (params: {
 }): DeadlinesListCard[] => {
   const nowMs = params.nowMs ?? Date.now();
   const plans = params.activePlans?.plansByDeviceId ?? {};
-  const deviceNamesById = new Map(params.devices.map((device) => [device.id, device.name]));
+  const devicesById = new Map(params.devices.map((device) => [device.id, device]));
   const cards: DeadlinesListCard[] = [];
   for (const [deviceId, plan] of Object.entries(plans)) {
     if (!isObjectiveEnabled(params.objectiveSettings, deviceId)) continue;
-    const pending = plan.pending || plan.latest === null;
-    const firstHour = plan.latest?.hours[0]?.startsAtMs ?? null;
-    const statusId = resolveSmartTaskListStatus({
-      pending,
-      pendingReason: plan.pendingReason,
-      diagnosticReasonCode: plan.diagnosticReasonCode,
-      planStatus: plan.latest?.planStatus,
-      firstActionAtMs: firstHour,
-      nowMs,
-    });
-    cards.push({
-      deviceId,
-      deviceName: deviceNamesById.get(deviceId) ?? plan.deviceName ?? deviceId,
-      kind: plan.objectiveKind,
-      targetTemperatureC: plan.targetTemperatureC,
-      targetPercent: plan.targetPercent,
-      createdAtMs: plan.startedAtMs,
-      firstActionAtMs: firstHour,
-      deadlineAtMs: plan.deadlineAtMs,
-      href: buildDeadlineHref(deviceId),
-      statusId,
-    });
+    cards.push(buildCard({ deviceId, plan, device: devicesById.get(deviceId), nowMs }));
   }
   cards.sort((a, b) => a.deadlineAtMs - b.deadlineAtMs);
   return cards;
@@ -109,8 +155,13 @@ const renderHistorySurface = (
   payload: SettingsUiDeferredObjectivePlanHistoryPayload | null,
 ): void => {
   const entries = resolveDeadlinesHistoryEntries(payload);
+  // Render `empty` (with copy) rather than `hidden` so a brand-new user who
+  // has never finished a smart task still sees the Past tasks heading and an
+  // explanatory line — the section silently vanishing was the bug. `hidden`
+  // remains a valid state for callers that genuinely want to suppress the
+  // section (e.g. a transient render before any data has arrived).
   const state: DeadlinesHistoryListState = entries.length === 0
-    ? { status: 'hidden' }
+    ? { status: 'empty' }
     : { status: 'ready', entries, timeZone: resolveBrowserTimeZone() };
   renderDeadlinesHistoryList(surface, state);
 };

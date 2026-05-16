@@ -3,11 +3,15 @@ import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import { ChevronRightIcon } from './icons.tsx';
 import {
   deadlineLabels,
+  formatConfidenceChipLabel,
   SMART_TASK_LIST_STATUS_LABELS,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
   type SmartTaskListStatusId,
 } from '../../../../shared-domain/src/deadlineLabels.ts';
+import { formatSmartTaskListDateTime } from '../../../../shared-domain/src/deferredPlanHistory.ts';
+import { resolveBrowserTimeZone } from '../deadlinePlanHistoryFetch.ts';
 import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/deferredObjectiveSettings.ts';
+import type { ObjectiveProfileConfidence } from '../../../../contracts/src/objectiveProfileTypes.ts';
 
 export type DeadlinesListCard = {
   deviceId: string;
@@ -20,6 +24,14 @@ export type DeadlinesListCard = {
   deadlineAtMs: number;
   href: string;
   statusId: SmartTaskListStatusId;
+  // Confidence band attached to the latest revision; `null` when no
+  // confidence has been computed yet (pending plan or no learned profile).
+  // Mirrors the live hero's confidence chip so the two surfaces stay aligned.
+  confidence: ObjectiveProfileConfidence | null;
+  // Pre-rendered "currently 18.5 °C" / "currently 45 %" sentence; `null` when
+  // the device's current value is unknown. Resolved at the producer so the
+  // view layer never branches on the device kind for unit formatting.
+  currentValueLine: string | null;
 };
 
 export type DeadlinesListState =
@@ -27,16 +39,12 @@ export type DeadlinesListState =
   | { status: 'error'; message: string }
   | { status: 'ready'; cards: DeadlinesListCard[] };
 
-const DATE_TIME_OPTIONS: Intl.DateTimeFormatOptions = {
-  weekday: 'short',
-  month: 'short',
-  day: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-};
-
-const formatWhen = (ms: number): string => new Date(ms).toLocaleString([], DATE_TIME_OPTIONS);
+// Route both list surfaces (active + past) through the same shared formatter
+// so the date/time shape can't drift again. Time-zone is resolved at render
+// time via the existing `resolveBrowserTimeZone` helper so the past-tasks
+// surface (which gets its zone plumbed via `DeadlinesHistoryListState.timeZone`)
+// stays consistent with the active list.
+const formatWhen = (ms: number): string => formatSmartTaskListDateTime(ms, resolveBrowserTimeZone());
 
 const formatTarget = (card: DeadlinesListCard): string => {
   const labels = deadlineLabels(card.kind);
@@ -60,9 +68,13 @@ const StatusChip = ({ statusId }: { statusId: SmartTaskListStatusId }) => {
   );
 };
 
-// Canonical chip order: [kind (identity), status (live signal)].
+// Canonical chip order: [kind, status, ?confidence]. The confidence chip
+// matches the live hero's styling (`muted` tone) so the same trust signal
+// lands on both surfaces. Suppressed when no confidence band is available
+// (pending plans, no learned profile yet) rather than fabricating a label.
 const Card = ({ card }: { card: DeadlinesListCard }) => {
   const labels = deadlineLabels(card.kind);
+  const confidenceLabel = formatConfidenceChipLabel(card.confidence);
   return (
     <a class="deadline-list-card clickable" href={card.href} data-device-id={card.deviceId}>
       <MdElevation aria-hidden="true" />
@@ -71,10 +83,16 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
         <h3 class="deadline-list-card__title">{card.deviceName}</h3>
         <span class="plan-chip plan-chip--info">{labels.kindChipLabel}</span>
         <StatusChip statusId={card.statusId} />
+        {confidenceLabel !== null && (
+          <span class="plan-chip plan-chip--muted">{confidenceLabel}</span>
+        )}
       </div>
       <div class="deadline-list-card__target">
         <span class="deadline-list-card__target-label">Target</span>
         <span class="deadline-list-card__target-value">{formatTarget(card)}</span>
+        {card.currentValueLine !== null && (
+          <span class="deadline-list-card__current">{card.currentValueLine}</span>
+        )}
       </div>
       <dl class="deadline-list-card__when">
         <div class="deadline-list-card__when-row">

@@ -121,6 +121,10 @@ const allowedUnusedExportPatterns = [
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - deadlineLabels$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveEvCardStateLine$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveKwhPerUnitProvenanceRows$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatConfidenceChipLabel$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatSmartTaskCurrentValueLine$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_HISTORY_EYEBROW$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_PAST_EMPTY_COPY$/,
   // Transitively reached from `deadlineLabels.ts`; consumed by settings UI bootstrap
   // and flowCards' deadline-objective settings reader.
   /^packages\/contracts\/src\/deferredObjectiveSettings\.ts:\d+ - normalizeDeferredObjectiveSettings$/,

@@ -70,8 +70,14 @@ const enabledEvEntry: DeferredObjectiveSettingsEntry = {
 };
 
 const devices: TargetDeviceSnapshot[] = [
-  { id: 'dev_a', name: 'Living-room heater', targets: [], currentOn: false },
-  { id: 'dev_b', name: 'EV charger', targets: [], currentOn: false },
+  { id: 'dev_a', name: 'Living-room heater', targets: [], currentOn: false, currentTemperature: 18.4 },
+  {
+    id: 'dev_b',
+    name: 'EV charger',
+    targets: [],
+    currentOn: false,
+    stateOfCharge: { percent: 45, status: 'fresh' },
+  },
 ];
 
 describe('resolveDeadlinesListCards', () => {
@@ -153,7 +159,57 @@ describe('resolveDeadlinesListCards', () => {
       deadlineAtMs: T0 + 12 * HOUR_MS,
       href: './?page=deadline-plan&deviceId=dev_a',
       statusId: 'queued', // first hour is in the future relative to nowMs
+      confidence: null,
+      currentValueLine: 'currently 18.4 °C',
     });
+  });
+
+  it('plumbs the per-revision learned-profile confidence band onto the card', () => {
+    const cards = resolveDeadlinesListCards({
+      activePlans: buildActivePlans([
+        buildPlan({
+          kwhPerUnitProvenance: {
+            source: 'learned',
+            kWhPerUnit: 0.55,
+            acceptedSamples: 24,
+            confidence: 'medium',
+            lastAcceptedAtMs: T0,
+          },
+        }),
+      ]),
+      objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
+      devices,
+      nowMs: T0,
+    });
+    expect(cards[0].confidence).toBe('medium');
+  });
+
+  it('formats currently-X line for EV from device state of charge', () => {
+    const cards = resolveDeadlinesListCards({
+      activePlans: buildActivePlans([
+        buildPlan({
+          deviceId: 'dev_b',
+          objectiveKind: 'ev_soc',
+          targetTemperatureC: null,
+          targetPercent: 80,
+        }),
+      ]),
+      objectiveSettings: buildObjectiveSettings({ dev_b: enabledEvEntry }),
+      devices,
+      nowMs: T0,
+    });
+    expect(cards[0].currentValueLine).toBe('currently 45 %');
+  });
+
+  it('suppresses the currently-X line when the device has no reading yet', () => {
+    const cards = resolveDeadlinesListCards({
+      activePlans: buildActivePlans([buildPlan({})]),
+      objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
+      // Device exists but has no currentTemperature reading.
+      devices: [{ id: 'dev_a', name: 'Living-room heater', targets: [], currentOn: false }],
+      nowMs: T0,
+    });
+    expect(cards[0].currentValueLine).toBeNull();
   });
 
   it('assigns on_track when first hour has already started', () => {

@@ -70,6 +70,29 @@ const stubPalette = {
 };
 
 describe('DeadlinePlanHistoryDetail', () => {
+  it('renders a "Smart task" eyebrow above the heading', async () => {
+    const root = await mount(buildEntry({ originalPlan: null, finalPlan: null }));
+    const eyebrow = root.querySelector('.plan-history-detail__eyebrow');
+    expect(eyebrow?.textContent).toBe('Smart task');
+  });
+
+  it('promotes the outcome chip into its own row above the timestamp', async () => {
+    const root = await mount(buildEntry({ outcome: 'met' }));
+    const outcomeRow = root.querySelector('.plan-history-detail__outcome');
+    expect(outcomeRow).not.toBeNull();
+    const chip = outcomeRow!.querySelector('.plan-history-detail__outcome-chip');
+    expect(chip?.textContent).toBe('Succeeded');
+  });
+
+  it('brings the device name onto the heading line', async () => {
+    const root = await mount(buildEntry({ deviceName: 'Connected 300' }));
+    const heading = root.querySelector('.plan-history-detail__heading');
+    expect(heading?.textContent).toContain('Connected 300');
+    // The standalone device paragraph that used to sit below the heading must
+    // no longer appear — the spec was to bring it *onto* the heading line.
+    expect(root.querySelector('.plan-history-detail__device')).toBeNull();
+  });
+
   it('renders the "no plan detail recorded" fallback when both plan snapshots are null', async () => {
     const root = await mount(buildEntry({ originalPlan: null, finalPlan: null }));
     expect(root.textContent).toContain('No plan detail was recorded for this run');
