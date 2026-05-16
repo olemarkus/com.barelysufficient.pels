@@ -1,0 +1,51 @@
+/*
+ * Homey web wrap (dark mode) — minimum reproduction.
+ *
+ * Captured 2026-05-16 from
+ *   https://my.homey.app/homeys/.../settings/apps/com.barelysufficient.pels
+ * with <html class="darkTheme">.
+ *
+ * The only PELS-relevant difference from the light wrap is:
+ *
+ *   .darkTheme { --theme-filter-dark-mode: invert(1) hue-rotate(180deg); }
+ *
+ * Homey assumes every app iframe is light-only and inverts it via CSS filter
+ * in dark mode. PELS is dark-only, so the iframe gets re-inverted and looks
+ * wrong (dark surfaces become pale, hues shift).
+ *
+ * Important: the filter is applied unconditionally on the iframe element
+ * (`.css-whs0o6`) — Homey does NOT check the embedded app's
+ * `color-scheme`. Adding `<meta name="color-scheme" content="dark">` to PELS
+ * does not defeat the filter. The only PELS-side workaround that actually
+ * cancels the inversion is to apply `filter: invert(1) hue-rotate(180deg)` on
+ * PELS's own `:root` so the two filters compose into identity. Verified
+ * locally against this fixture on 2026-05-16.
+ */
+
+:root,
+.lightTheme {
+  --theme-filter-dark-mode: none;
+}
+
+.darkTheme {
+  --theme-filter-dark-mode: invert(1) hue-rotate(180deg);
+
+  /* Homey's parent-page dark colors (visible around the iframe). */
+  font-family: Roboto, NotoSansArabic, sans-serif;
+  background: rgb(17, 18, 24);
+  color: rgb(231, 231, 232);
+}
+
+html.darkTheme,
+html.darkTheme body {
+  background: rgb(17, 18, 24);
+  color: rgb(231, 231, 232);
+}
+
+/* The PELS iframe in the Homey overlay. The actual production class is
+ * emotion-generated (`css-whs0o6`); we name ours explicitly. */
+iframe.pels-homey-wrap {
+  flex: 1 1 auto;
+  border: 0;
+  filter: var(--theme-filter-dark-mode);
+}

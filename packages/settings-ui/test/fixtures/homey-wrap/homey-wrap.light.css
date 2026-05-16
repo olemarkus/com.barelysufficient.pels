@@ -1,0 +1,37 @@
+/*
+ * Homey web wrap (light mode) — minimum reproduction.
+ *
+ * Captured 2026-05-16 from
+ *   https://my.homey.app/homeys/.../settings/apps/com.barelysufficient.pels
+ * with <html class="lightTheme">.
+ *
+ * Reproduces what Homey's web shell layers around the PELS iframe so local
+ * Playwright/dev runs can see the same wrap. Only the rules that actually
+ * influence the iframe's rendering or styling-context are kept here; the rest
+ * of Homey's design-system CSS is irrelevant to PELS.
+ */
+
+:root,
+.lightTheme {
+  /* The token Homey defines and references on the iframe element. */
+  --theme-filter-dark-mode: none;
+
+  /* Homey's parent-page font + colors (visible around the iframe). */
+  font-family: Roboto, NotoSansArabic, sans-serif;
+  background: rgb(255, 255, 255);
+  color: rgb(28, 28, 28);
+}
+
+html.lightTheme,
+html.lightTheme body {
+  background: rgb(255, 255, 255);
+  color: rgb(28, 28, 28);
+}
+
+/* The PELS iframe in the Homey overlay (class names are emotion-generated,
+ * but the only relevant declaration is the dark-mode filter wiring). */
+iframe.pels-homey-wrap {
+  flex: 1 1 auto;
+  border: 0;
+  filter: var(--theme-filter-dark-mode);
+}
