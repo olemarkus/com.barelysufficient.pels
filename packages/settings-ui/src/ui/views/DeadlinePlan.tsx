@@ -14,8 +14,20 @@ import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/sr
 import { DeadlinePlanHistoryDetail } from './DeadlinePlanHistoryDetail.tsx';
 import { MdTextButton } from './materialWebJSX.tsx';
 
-type DeadlinePlanChipTone = 'info' | 'muted' | 'ok' | 'warn';
+// Matches the `.plan-chip--*` CSS variants in
+// `packages/settings-ui/public/style.css` (~1340-1374). `alert` was previously
+// styled but unreferenced; surfacing it lets the cannot-finish chip use the
+// same critical (red) tone as the hero rim instead of a warning (amber) tone
+// that contradicted it.
+type DeadlinePlanChipTone = 'alert' | 'info' | 'muted' | 'ok' | 'warn';
 type DeadlinePlanHourTone = 'cheap' | 'expensive' | 'normal';
+
+// Maps to the CSS `[data-tone="…"]` rim/background variants on `.pels-hero` /
+// `.plan-hero` (style.css ~1287-1325). `good` is the on-track / satisfied
+// state, `warn` covers at-risk, `alert` covers cannot-meet, `info` is the
+// neutral pending hero. Keep this union in sync with the CSS bindings — a
+// rim that never paints is worse than no rim at all.
+export type DeadlinePlanHeroTone = 'good' | 'warn' | 'alert' | 'info';
 
 type DeadlinePlanChip = {
   text: string;
@@ -50,6 +62,11 @@ export type DeadlinePlanPayload = {
   priceUnitLabel: string;
   hero: {
     chips: DeadlinePlanChip[];
+    // Resolved at the producer (`deadlinePlan.ts`) from the active plan's
+    // `planStatus` so the view never branches on planner internals. Keeps
+    // chip text, rim colour, and meta line agreeing on a single "are we ok?"
+    // signal.
+    tone: DeadlinePlanHeroTone;
     sectionLabel: string;
     headline: string;
     subline: string;
@@ -123,7 +140,7 @@ export type DeadlinePlanLoadState =
 const chipClass = (tone: DeadlinePlanChipTone): string => `plan-chip plan-chip--${tone}`;
 
 const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
-  <section class="plan-hero pels-hero" data-tone="ok" aria-labelledby="deadline-plan-title">
+  <section class="plan-hero pels-hero" data-tone={payload.hero.tone} aria-labelledby="deadline-plan-title">
     <div class="plan-hero__chips">
       {payload.hero.chips.map((chip) => (
         <span key={chip.text} class={chipClass(chip.tone)}>{chip.text}</span>
@@ -394,9 +411,13 @@ export const buildChartOption = (
         interval: Math.max(0.01, priceMax - priceAxisMin),
         axisLabel: {
           ...valueAxisBase.axisLabel,
+          // One-decimal precision matches the Budget chart's price axis
+          // (`budgetRedesignChart.ts:400`) so users see the same number
+          // format on both surfaces. Tooltip retains two-decimal precision
+          // via `formatPrice` in `deadlinePlan.ts`.
           formatter: (value: number) => {
-            if (Math.abs(value - priceMax) < 0.001) return priceMax.toFixed(2);
-            if (priceAxisMin !== 0 && Math.abs(value - priceAxisMin) < 0.001) return priceMin.toFixed(2);
+            if (Math.abs(value - priceMax) < 0.001) return priceMax.toFixed(1);
+            if (priceAxisMin !== 0 && Math.abs(value - priceAxisMin) < 0.001) return priceMin.toFixed(1);
             return '';
           },
         },

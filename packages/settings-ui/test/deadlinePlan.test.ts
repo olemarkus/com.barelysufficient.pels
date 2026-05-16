@@ -938,9 +938,16 @@ describe('deadline plan page payload', () => {
       nowMs: now.getTime(),
     }));
 
-    expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish' && chip.tone === 'warn')).toBe(true);
+    // The Cannot-finish chip mirrors the hero rim — `cannot_meet` → `alert`
+    // on both — so the user never sees a red rim with an amber chip.
+    expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish' && chip.tone === 'alert')).toBe(true);
     expect(payload.hero.metaLine).toMatch(/not be enough time or available power/i);
     expect(payload.hero.metaLine).toMatch(/short by about/i);
+    expect(payload.hero.tone).toBe('alert');
+    // No live-state chip ("On track" / "Heating now") should appear alongside
+    // "Cannot finish"; the contradiction is the bug we are guarding against.
+    expect(payload.hero.chips.some((chip) => chip.text === 'On track')).toBe(false);
+    expect(payload.hero.chips.some((chip) => chip.text === 'Heating')).toBe(false);
   });
 
   it('explains a cannot-meet plan with daily-budget-exhausted hint when the recorder flagged it', () => {
@@ -1007,7 +1014,7 @@ describe('deadline plan page payload', () => {
       nowMs: now.getTime(),
     }));
 
-    expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish' && chip.tone === 'warn')).toBe(true);
+    expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish' && chip.tone === 'alert')).toBe(true);
     expect(payload.hero.metaLine).toMatch(/daily energy budget is already used up/i);
     expect(payload.hero.metaLine).toMatch(/lower the daily budget/i);
     // The shortfall copy must not also appear — the budget message is the
@@ -2583,6 +2590,99 @@ describe('deadline plan page payload', () => {
   });
 });
 
+describe('hero tone resolution', () => {
+  it('maps cannot_meet to alert so the rim agrees with the Cannot-finish chip', async () => {
+    const { resolveHeroTone } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveHeroTone('cannot_meet')).toBe('alert');
+  });
+
+  it('maps at_risk to warn so an amber rim flags a recoverable shortfall', async () => {
+    const { resolveHeroTone } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveHeroTone('at_risk')).toBe('warn');
+  });
+
+  it('maps on_track and satisfied to good so a healthy plan reads green', async () => {
+    const { resolveHeroTone } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveHeroTone('on_track')).toBe('good');
+    expect(resolveHeroTone('satisfied')).toBe('good');
+  });
+
+  it('maps invalid to info — the planner could not produce a valid plan, neutral rim', async () => {
+    const { resolveHeroTone } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveHeroTone('invalid')).toBe('info');
+  });
+});
+
+describe('buildHeroChips cannot-meet suppression', () => {
+  const labels = deadlineLabels('temperature');
+
+  it('omits the live-state chip when cannotMeet is true', async () => {
+    const { buildHeroChips } = await import('../src/ui/deadlinePlanHero.ts');
+    const chips = buildHeroChips({
+      labels,
+      liveState: 'ok',
+      cannotMeet: true,
+      cannotMeetChipTone: 'alert',
+      confidence: null,
+    });
+    // No chip text should equal any of the live-state labels.
+    const liveStateTexts = Object.values(labels.liveStateChipLabel);
+    for (const text of liveStateTexts) {
+      expect(chips.some((chip) => chip.text === text)).toBe(false);
+    }
+    // The Cannot-finish chip must be present with the supplied tone.
+    expect(chips.some((chip) => chip.text === labels.cannotMeetChipLabel && chip.tone === 'alert')).toBe(true);
+  });
+
+  it('renders the live-state chip when cannotMeet is false', async () => {
+    const { buildHeroChips } = await import('../src/ui/deadlinePlanHero.ts');
+    const chips = buildHeroChips({
+      labels,
+      liveState: 'ok',
+      cannotMeet: false,
+      cannotMeetChipTone: 'alert',
+      confidence: null,
+    });
+    expect(chips.some((chip) => chip.text === labels.liveStateChipLabel.ok)).toBe(true);
+  });
+
+  it('keeps the canonical chip order kind → cannotMeet → confidence when suppressed', async () => {
+    const { buildHeroChips } = await import('../src/ui/deadlinePlanHero.ts');
+    const chips = buildHeroChips({
+      labels,
+      liveState: 'ok',
+      cannotMeet: true,
+      cannotMeetChipTone: 'alert',
+      confidence: 'low',
+    });
+    expect(chips.map((chip) => chip.text)).toEqual([
+      labels.kindChipLabel,
+      labels.cannotMeetChipLabel,
+      'Confidence low',
+    ]);
+  });
+
+  it('honours the supplied cannotMeetChipTone — `warn` for at-risk, `alert` for cannot-meet', async () => {
+    const { buildHeroChips } = await import('../src/ui/deadlinePlanHero.ts');
+    const alertChips = buildHeroChips({
+      labels,
+      liveState: 'ok',
+      cannotMeet: true,
+      cannotMeetChipTone: 'alert',
+      confidence: null,
+    });
+    expect(alertChips.find((chip) => chip.text === labels.cannotMeetChipLabel)?.tone).toBe('alert');
+    const warnChips = buildHeroChips({
+      labels,
+      liveState: 'ok',
+      cannotMeet: true,
+      cannotMeetChipTone: 'warn',
+      confidence: null,
+    });
+    expect(warnChips.find((chip) => chip.text === labels.cannotMeetChipLabel)?.tone).toBe('warn');
+  });
+});
+
 describe('buildChartOption original-series suppression', () => {
   const stubPalette = {
     priceCheap: '#0f0', priceNormal: '#888', priceExpensive: '#f00',
@@ -2600,7 +2700,7 @@ describe('buildChartOption original-series suppression', () => {
       kind: 'ev_soc',
       labels,
       priceUnitLabel: 'øre/kWh',
-      hero: { chips: [], sectionLabel: 'EV plan', headline: 'On track', subline: '', metaLine: '' },
+      hero: { chips: [], tone: 'good', sectionLabel: 'EV plan', headline: 'On track', subline: '', metaLine: '' },
       timeline: {
         ariaLabel: 'EV plan',
         progressFloor: 0,

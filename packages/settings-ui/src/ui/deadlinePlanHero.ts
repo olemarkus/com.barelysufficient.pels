@@ -1,3 +1,4 @@
+import type { DeferredObjectiveActivePlanStatusV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import type {
@@ -10,7 +11,7 @@ import {
   formatHourLabel,
   formatTarget,
 } from './deadlinePlanFormatters.ts';
-import type { DeadlinePlanPayload } from './views/DeadlinePlan.tsx';
+import type { DeadlinePlanHeroTone, DeadlinePlanPayload } from './views/DeadlinePlan.tsx';
 
 // For `%` clamp to ≥ 1 with `ceil` so a sub-1% shortfall does not render as
 // "0%" while the warning chip says "Cannot finish" — that mismatch was
@@ -41,19 +42,50 @@ const resolveStateChipTone = (
   return 'info';
 };
 
-// Canonical chip order `[kind, state, ?cannotMeet, ?confidence]` — kind
-// identity reads first across every Smart-task surface.
+// Canonical chip order `[kind, ?state, ?cannotMeet, ?confidence]` — kind
+// identity reads first across every Smart-task surface. The live-state chip
+// is suppressed when the plan `cannotMeet`s: the resolver returns `'ok'`
+// whenever there are no scheduled hours, so without this gate we would render
+// "On track" or "Active now" alongside "Cannot finish" — a contradiction at
+// the moment we most need the user to trust PELS. The cannot-meet chip tone
+// is supplied by the caller so it stays in sync with the hero rim tone:
+// `alert` (red) for `cannot_meet`, `warn` (amber) for `at_risk`.
 export const buildHeroChips = (params: {
   labels: DeadlineLabels;
   liveState: DeadlineLiveState;
   cannotMeet: boolean;
+  cannotMeetChipTone: 'alert' | 'warn';
   confidence: string | null;
 }): DeadlinePlanPayload['hero']['chips'] => [
   { text: params.labels.kindChipLabel, tone: 'info' },
-  { text: params.labels.liveStateChipLabel[params.liveState], tone: resolveStateChipTone(params.liveState) },
-  ...(params.cannotMeet ? [{ text: params.labels.cannotMeetChipLabel, tone: 'warn' as const }] : []),
+  ...(params.cannotMeet
+    ? []
+    : [{
+      text: params.labels.liveStateChipLabel[params.liveState],
+      tone: resolveStateChipTone(params.liveState),
+    }]),
+  ...(params.cannotMeet
+    ? [{ text: params.labels.cannotMeetChipLabel, tone: params.cannotMeetChipTone }]
+    : []),
   ...(params.confidence ? [{ text: `Confidence ${params.confidence}`, tone: 'muted' as const }] : []),
 ];
+
+// Maps the planner's `planStatus` to the hero's CSS rim tone. Resolved at the
+// producer so the view layer never branches on planner internals.
+//   `cannot_meet` → `alert`  (red rim — physically can't deliver)
+//   `at_risk`     → `warn`   (amber rim — currently behind, but recoverable)
+//   `on_track`    → `good`   (green rim — healthy)
+//   `satisfied`   → `good`   (green rim — already at/past target)
+//   `invalid`     → `info`   (neutral — planner couldn't produce a valid plan
+//                             and the hero will show the pending/empty copy)
+export const resolveHeroTone = (
+  planStatus: DeferredObjectiveActivePlanStatusV1,
+): DeadlinePlanHeroTone => {
+  if (planStatus === 'cannot_meet') return 'alert';
+  if (planStatus === 'at_risk') return 'warn';
+  if (planStatus === 'invalid') return 'info';
+  return 'good';
+};
 
 export const resolveHeroHeadline = (params: {
   labels: DeadlineLabels;
@@ -126,6 +158,10 @@ export type BuildHeroInput = {
   planningSpeedKw: number | null;
   estimatedDurationText: string | null;
   kwhPerUnitSource: 'learned' | 'bootstrap' | undefined;
+  // Producer-resolved CSS rim tone, derived from the latest revision's
+  // `planStatus`. Carried through the payload so the view layer never branches
+  // on planner internals.
+  tone: DeadlinePlanHeroTone;
 };
 
 export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] => {
@@ -151,13 +187,20 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
       estimatedDurationText: params.estimatedDurationText,
       speedModeLabel,
     });
+  // The cannot-meet chip mirrors the hero rim: `alert` (red) for `cannot_meet`
+  // and `warn` (amber) for `at_risk`. Anything else means `cannotMeet` is false
+  // and the chip isn't rendered, so the fallback never reaches the UI; it
+  // exists only so the union narrows for the `chip.tone` type.
+  const cannotMeetChipTone: 'alert' | 'warn' = params.tone === 'alert' ? 'alert' : 'warn';
   return {
     chips: buildHeroChips({
       labels: params.labels,
       liveState,
       cannotMeet: params.cannotMeet,
+      cannotMeetChipTone,
       confidence: params.confidence,
     }),
+    tone: params.tone,
     sectionLabel: `${params.labels.kindChipLabel} plan`,
     headline,
     subline,
