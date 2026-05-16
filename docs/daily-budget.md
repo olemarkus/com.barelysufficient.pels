@@ -5,11 +5,11 @@ description: How PELS paces whole-day energy use without turning daily misses in
 
 # Daily Energy Budget
 
-The Daily Energy Budget is a **soft constraint** - a kWh/day guide that helps pace your energy use. It does not override the hourly capacity system. Instead, it produces a daily pace for the current hour, and the planner uses the tighter of that pace and the hourly capacity pace.
+The Daily Energy Budget is a target for total kWh in one day. You set, for example, "I want the house to use no more than 50 kWh today." PELS spreads that target across the hours of the day and gently slows things down if you are getting ahead of plan.
 
-**Key distinction:** Unlike the hourly capacity limit (hard cap), the daily budget will never trigger emergency alarms or manual-action Flows. If PELS cannot limit enough devices to meet the daily budget, it simply continues operating. Only projected breaches of the hourly hard-cap budget trigger urgent intervention.
+It is a **soft target**, not a hard limit. If the house ends up over budget, nothing dramatic happens — PELS keeps running, devices keep heating, and you do not get an emergency notification. The only thing that ever triggers an urgent alert is your **hourly hard cap** (your grid tariff step or breaker limit). The daily budget is for shaping the day, not protecting the grid connection.
 
-This feature always uses the whole-home meter data that PELS already collects (the same stats used for hourly and daily usage).
+PELS reads your existing whole-home power meter to track today's usage — the same data you already see in the Usage tab. You do not need to set up anything extra.
 
 ## Budget-Exempt Devices
 
@@ -30,10 +30,10 @@ Shared capacity terminology and units are defined in:
 
 Daily-budget-specific terms:
 
-- **Daily pace**: A planning pace derived from the daily plan (history + price shaping). Never triggers urgent manual-action Flows.
-- **Effective pace**: The tighter of the hourly pace and daily pace - this is what the planner uses for limiting decisions.
-- **Allowed by now**: Planned cumulative kWh at the current local-hour bucket.
-- **Remaining**: `daily_budget_kWh - used_today_kWh` (kWh, can be negative).
+- **Daily pace** — how fast PELS thinks the house should be using power right now to land on the daily target. If you are ahead of plan, the daily pace is lower; if you are behind, it is higher.
+- **Effective pace** — PELS protects the hard cap and the daily target at the same time. Whichever is stricter at the moment is the one currently in effect.
+- **Allowed by now** — how much of the day's budget should have been used by this hour according to the plan.
+- **Remaining** — daily budget minus what has been used so far today. Can be negative if you have already gone over.
 
 ## What It Does
 
@@ -46,11 +46,13 @@ Daily-budget-specific terms:
 
 ## How the Daily Pace is Applied
 
-PELS always computes the hourly pace for the current hour. When daily budget is enabled, it also computes a daily pace for the same hour. The planner then uses the tighter of those two when deciding whether devices should be limited or resumed.
+PELS is always watching two things at once: how close the current hour is to the hard cap, and how close the day is to the daily target. Whichever needs more care right now is the one driving decisions.
 
-The daily pace is capped at the hourly hard cap before the safety margin. This ensures the daily budget never allows more power than your grid connection supports.
+If you are well under the daily target, only the hard cap matters and the day just runs normally. If you are running ahead of the daily target, PELS becomes a bit more conservative: it may keep a heater paused a little longer, or hold off on resuming a water heater until the next hour.
 
-**Important:** End-of-hour capping, which prevents bursting at the end of an hour, only applies to the hourly capacity pace, not the daily budget pace. Daily budget misses are not time-critical in the same way - there is no grid penalty for exceeding a daily budget at 11:55.
+The daily pace can never raise the hourly hard cap. Your grid tariff step is sacred. The daily target only ever makes PELS more cautious, never less.
+
+End-of-hour rules that protect the hard cap from a last-minute burst do not apply to the daily target. Going slightly over a daily target at 23:55 is not a problem — there is no penalty.
 
 ## Examples (Scenarios)
 
