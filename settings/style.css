@@ -5839,10 +5839,13 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
  * already relaxes it, but at 431–480 px the user still saw clipped text. Drop
  * the nowrap inside the modes priority list at all widths — the panel is
  * capped at 480 px so the name column is always short, and a 2-line wrap is
- * acceptable and complete vs. a silent character cut. */
+ * acceptable and complete vs. a silent character cut. `break-word` prefers
+ * breaks at word boundaries and only falls back to mid-word when no
+ * opportunity exists — matches the segmented control's wrap strategy and
+ * avoids awkward mid-glyph splits when a space or hyphen is available. */
 #modes-panel .mode-row .device-row__name {
   white-space: normal;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   text-overflow: clip;
 }
 
