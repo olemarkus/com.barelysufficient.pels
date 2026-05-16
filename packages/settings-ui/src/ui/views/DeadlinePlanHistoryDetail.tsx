@@ -11,6 +11,7 @@ import {
   getPlanHistoryOutcomeLabel,
   getPlanHistoryOutcomeTone,
 } from '../../../../shared-domain/src/deferredPlanHistory.ts';
+import { deadlineLabels } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from '../echartsRegistry.ts';
 import { attachTabShownResize } from '../chartVisibilityResize.ts';
 
@@ -134,7 +135,12 @@ const resolveChartSize = (element: HTMLElement): { height: number; width: number
   return { width: Math.max(240, width), height: element.clientHeight > 0 ? element.clientHeight : 220 };
 };
 
-const buildTooltip = (rows: HourRow[], hasOriginalSeries: boolean, hasFinalSeries: boolean) => (
+const buildTooltip = (
+  rows: HourRow[],
+  hasOriginalSeries: boolean,
+  hasFinalSeries: boolean,
+  observedSeriesName: string,
+) => (
   (rawParams: unknown): string => {
     const params = Array.isArray(rawParams) ? rawParams : [rawParams];
     const first = params.find((item): item is { dataIndex: number } => (
@@ -145,7 +151,7 @@ const buildTooltip = (rows: HourRow[], hasOriginalSeries: boolean, hasFinalSerie
     const lines = [`<strong>${encodeHtml(row.displayLabel)}</strong>`];
     if (hasOriginalSeries) lines.push(`Original ${row.originalKWh.toFixed(2)} kWh`);
     if (hasFinalSeries) lines.push(`Final ${row.finalKWh.toFixed(2)} kWh`);
-    lines.push(`Observed charging ${row.observed ? 'yes' : 'no'}`);
+    lines.push(`${observedSeriesName} ${row.observed ? 'yes' : 'no'}`);
     return lines.join('<br>');
   }
 );
@@ -155,6 +161,7 @@ export const buildHistoryDetailChartOption = (
   palette: Palette,
   hasOriginalSeries: boolean,
   hasFinalSeries: boolean,
+  observedSeriesName: string,
 ): EChartsOption => {
   const labels = rows.map((row) => row.displayLabel);
   const hasObservedSeries = rows.some((row) => row.observed);
@@ -181,7 +188,7 @@ export const buildHistoryDetailChartOption = (
           }]
           : []),
         ...(hasFinalSeries ? [{ name: 'Final plan', itemStyle: { color: palette.device } }] : []),
-        ...(hasObservedSeries ? [{ name: 'Observed charging', itemStyle: { color: palette.observed } }] : []),
+        ...(hasObservedSeries ? [{ name: observedSeriesName, itemStyle: { color: palette.observed } }] : []),
       ],
       itemWidth: 12,
       itemHeight: 8,
@@ -197,7 +204,7 @@ export const buildHistoryDetailChartOption = (
       backgroundColor: palette.tooltipBackground,
       borderColor: palette.tooltipBorder,
       textStyle: { color: palette.tooltipText },
-      formatter: buildTooltip(rows, hasOriginalSeries, hasFinalSeries),
+      formatter: buildTooltip(rows, hasOriginalSeries, hasFinalSeries, observedSeriesName),
     },
     xAxis: {
       type: 'category',
@@ -256,7 +263,7 @@ export const buildHistoryDetailChartOption = (
         data: rows.map((row) => row.finalKWh),
       }] : []),
       {
-        name: 'Observed charging',
+        name: observedSeriesName,
         type: 'scatter' as const,
         symbol: 'rect',
         symbolSize: [12, 4],
@@ -268,10 +275,11 @@ export const buildHistoryDetailChartOption = (
   };
 };
 
-const PlanComparisonChart = ({ rows, hasOriginalSeries, hasFinalSeries }: {
+const PlanComparisonChart = ({ rows, hasOriginalSeries, hasFinalSeries, observedSeriesName }: {
   rows: HourRow[];
   hasOriginalSeries: boolean;
   hasFinalSeries: boolean;
+  observedSeriesName: string;
 }) => {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<EChartsType | null>(null);
@@ -285,7 +293,13 @@ const PlanComparisonChart = ({ rows, hasOriginalSeries, hasFinalSeries }: {
     });
     chartInstanceRef.current = chart;
     chart.setOption(
-      buildHistoryDetailChartOption(rows, resolvePalette(container), hasOriginalSeries, hasFinalSeries),
+      buildHistoryDetailChartOption(
+        rows,
+        resolvePalette(container),
+        hasOriginalSeries,
+        hasFinalSeries,
+        observedSeriesName,
+      ),
       { notMerge: true },
     );
     const resizeObserver = typeof ResizeObserver === 'function'
@@ -302,7 +316,7 @@ const PlanComparisonChart = ({ rows, hasOriginalSeries, hasFinalSeries }: {
       chart.dispose();
       if (chartInstanceRef.current === chart) chartInstanceRef.current = null;
     };
-  }, [rows, hasOriginalSeries, hasFinalSeries]);
+  }, [rows, hasOriginalSeries, hasFinalSeries, observedSeriesName]);
 
   return (
     <div
@@ -337,6 +351,11 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone }: Props) => {
   const hasOriginalSeries = Boolean(entry.originalPlan)
     && Boolean(entry.finalPlan)
     && rows.some((row) => Math.abs(row.originalKWh - row.finalKWh) > 0.001);
+  // Resolve the observed-series noun once per entry. `deadlineLabels` maps
+  // `temperature` → "Measured Heating" and `ev_soc` → "Measured Charging" so
+  // the legend, tooltip, and scatter series all read correctly for the
+  // device kind instead of always saying "Observed charging".
+  const observedSeriesName = deadlineLabels(entry.objectiveKind).actualDeviceSeriesName;
   return (
     <article class="plan-history-detail" aria-label={`Past plan ${deadlineLine}`}>
       <section class="pels-surface-card plan-history-detail__hero">
@@ -373,6 +392,7 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone }: Props) => {
             rows={rows}
             hasOriginalSeries={hasOriginalSeries}
             hasFinalSeries={hasFinalSeries}
+            observedSeriesName={observedSeriesName}
           />
         </section>
       )}

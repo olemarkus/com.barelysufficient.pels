@@ -224,7 +224,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Why P0 (promoted from P1 in release-review pass): visible mid-word breakage at the
       dialog's actual width.
       Files: `packages/settings-ui/public/style.css`, `settings/style.css` (regen).
-- [ ] Stop hardcoding "Observed charging" on thermostat history runs.
+- [x] Stop hardcoding "Observed charging" on thermostat history runs.
       `DeadlinePlanHistoryDetail.tsx` hardcodes the "Observed charging" tooltip label; for
       thermostat history runs it should read "Observed heating" (or the kind-aware label the
       active chart already pulls from `deadlineLabels(kind).actualDeviceSeriesName`). The
