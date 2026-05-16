@@ -1,7 +1,3 @@
-import {
-  getSteppedLoadStep,
-  isSteppedLoadOffStep,
-} from '../utils/deviceControlProfiles';
 import type { TargetDeviceSnapshot } from '../utils/types';
 import type {
   DeviceObjectiveProfile,
@@ -11,18 +7,24 @@ import type { PowerTrackerState } from './powerTrackerTypes';
 import { shouldEmitRejectedProfileSample } from './objectiveProfileRejectionLogging';
 import { resolveRecoveryState, type RecoveryAction } from './objectiveProfileRecovery';
 import { updateProfileStat } from './objectiveProfileStats';
+import { appendSampleToBuffer, fitBandsFromSamples } from './objectiveProfileBands';
+import { buildObjectiveProfileSample } from './objectiveProfileSamples';
 
 export type {
   DeviceObjectiveProfile,
   DeviceObjectiveProfileSample,
 } from './objectiveProfileTypes';
 
+export {
+  OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS,
+  OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS,
+  buildObjectiveProfileSample,
+} from './objectiveProfileSamples';
+
 export const OBJECTIVE_PROFILE_MAX_DEVICES = 64;
 export const OBJECTIVE_PROFILE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 export const OBJECTIVE_PROFILE_MIN_INTERVAL_MS = 5 * 60 * 1000;
 export const OBJECTIVE_PROFILE_MAX_INTERVAL_MS = 6 * 60 * 60 * 1000;
-export const OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS = 30 * 60 * 1000;
-export const OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS = 5 * 1000;
 const MIN_TEMPERATURE_RISE_C = 0.2;
 const MIN_SOC_RISE_PERCENT = 0.2;
 const MAX_KWH_PER_DEGREE_C = 10;
@@ -207,6 +209,7 @@ function buildAcceptedProfileSample(params: {
   const unitPerHour = calculateUnitPerHour({ intervalMs, valueDelta });
   const energyKwh = calculateEnergyKwh(previousSample, intervalMs);
   const kwhPerUnit = energyKwh !== undefined ? calculateKwhPerUnit({ energyKwh, valueDelta }) : undefined;
+  const bandedUpdate = resolveBandedUpdate({ previous, previousSample, sample, kwhPerUnit });
   const nextProfile = {
     ...previous,
     updatedAtMs: sample.observedAtMs,
@@ -216,6 +219,7 @@ function buildAcceptedProfileSample(params: {
     ...(kwhPerUnit !== undefined
       ? { kwhPerUnit: updateProfileStat(previous.kwhPerUnit, kwhPerUnit, sample.observedAtMs) }
       : {}),
+    ...bandedUpdate,
   };
   debugStructured?.({
     event: 'objective_profile_sample_recorded',
@@ -231,6 +235,8 @@ function buildAcceptedProfileSample(params: {
     rateConfidence: nextProfile.unitPerHour.confidence,
     energyConfidence: nextProfile.kwhPerUnit?.confidence ?? null,
     powerSource: previousSample.powerSource ?? null,
+    bufferedSamples: nextProfile.samples?.length ?? 0,
+    bandsCount: nextProfile.bands?.length ?? 0,
   });
   return nextProfile;
 }
@@ -317,79 +323,6 @@ function emitRejectedProfileSample(params: {
     intervalMs,
     valueDelta,
   });
-}
-
-export function buildObjectiveProfileSample(
-  device: TargetDeviceSnapshot,
-  nowMs: number,
-): DeviceObjectiveProfileSample | null {
-  if (isFreshTemperatureDevice(device, nowMs)) {
-    return {
-      observedAtMs: device.lastFreshDataMs,
-      value: Math.round(device.currentTemperature * 10) / 10,
-      unit: 'degree_c',
-      ...resolveCredibleDevicePower(device),
-    };
-  }
-
-  if (device.deviceClass === 'evcharger' && device.stateOfCharge?.status === 'fresh') {
-    const observedAtMs = device.stateOfCharge.observedAtMs ?? device.lastFreshDataMs;
-    if (typeof observedAtMs !== 'number' || !Number.isFinite(observedAtMs)) return null;
-    if (!isFreshObservationTime(observedAtMs, nowMs)) return null;
-    if (!Number.isFinite(device.stateOfCharge.percent)) return null;
-    return {
-      observedAtMs,
-      value: device.stateOfCharge.percent,
-      unit: 'percent',
-      ...resolveCredibleDevicePower(device),
-    };
-  }
-
-  return null;
-}
-
-function isFreshTemperatureDevice(
-  device: TargetDeviceSnapshot,
-  nowMs: number,
-): device is TargetDeviceSnapshot & { currentTemperature: number; lastFreshDataMs: number } {
-  return device.deviceType === 'temperature'
-    && typeof device.currentTemperature === 'number'
-    && Number.isFinite(device.currentTemperature)
-    && typeof device.lastFreshDataMs === 'number'
-    && Number.isFinite(device.lastFreshDataMs)
-    && isFreshObservationTime(device.lastFreshDataMs, nowMs);
-}
-
-function isFreshObservationTime(observedAtMs: number, nowMs: number): boolean {
-  return observedAtMs <= nowMs + OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS
-    && nowMs - observedAtMs <= OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS;
-}
-
-function resolveCredibleDevicePower(
-  device: TargetDeviceSnapshot,
-): Pick<DeviceObjectiveProfileSample, 'crediblePowerW' | 'powerSource'> {
-  if (
-    typeof device.measuredPowerKw === 'number'
-    && Number.isFinite(device.measuredPowerKw)
-    && device.measuredPowerKw > 0
-  ) {
-    return {
-      crediblePowerW: Math.round(device.measuredPowerKw * 1000),
-      powerSource: 'measured',
-    };
-  }
-
-  const profile = device.steppedLoadProfile;
-  if (!profile) return {};
-  const reportedStep = getSteppedLoadStep(profile, device.reportedStepId);
-  if (reportedStep && !isSteppedLoadOffStep(profile, reportedStep.id) && reportedStep.planningPowerW > 0) {
-    return {
-      crediblePowerW: Math.round(reportedStep.planningPowerW),
-      powerSource: 'reported_step_planning',
-    };
-  }
-
-  return {};
 }
 
 function resolveProfileValueOrEnergyRejectionReason(params: {
@@ -490,6 +423,32 @@ function calculateKwhPerUnit(params: {
   valueDelta: number;
 }): number {
   return params.energyKwh / params.valueDelta;
+}
+
+// Records the (input, kWh/unit) sample in the per-device ring buffer and
+// re-fits the band layout. Returning a partial Pick lets the caller spread
+// the update inline without branching twice on whether kWh/unit is known.
+function resolveBandedUpdate(params: {
+  previous: DeviceObjectiveProfile;
+  previousSample: DeviceObjectiveProfileSample;
+  sample: DeviceObjectiveProfileSample;
+  kwhPerUnit: number | undefined;
+}): Partial<Pick<DeviceObjectiveProfile, 'samples' | 'bands'>> {
+  const { previous, previousSample, sample, kwhPerUnit } = params;
+  if (kwhPerUnit === undefined) return {};
+  // Tag the sample by the midpoint of the rise so the band layout reflects
+  // where the energy was actually deposited, not just the end value.
+  const inputValue = (previousSample.value + sample.value) / 2;
+  const samples = appendSampleToBuffer(previous.samples, {
+    observedAtMs: sample.observedAtMs,
+    inputValue,
+    kwhPerUnit,
+  });
+  const bands = fitBandsFromSamples({ samples, kind: previous.kind });
+  // Explicit `bands: undefined` clears any prior layout if the fitter declines
+  // to publish one (e.g., the buffer dipped under the split threshold). The
+  // undefined key is dropped on JSON serialization for `power_tracker_state`.
+  return { samples, bands };
 }
 
 function buildInitialProfile(sample: DeviceObjectiveProfileSample): DeviceObjectiveProfile {

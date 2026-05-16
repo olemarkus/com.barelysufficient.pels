@@ -271,10 +271,11 @@ const buildRevision = (params: {
     computedFromPricesUpTo: resolveComputedFromPricesUpTo(params.diag),
     reason: params.reason,
     hours: params.hours,
-    // Round to milliWh to match `plannedKWh`. Without rounding, multiplication
-    // noise (energyNeededKWh = remainingUnits × kWhPerUnit.mean) can produce
-    // ~1e-15 kWh drift that would appear in persisted output even when the
-    // underlying allocation is byte-identical.
+    // Round to milliWh to match `plannedKWh`. Without rounding,
+    // floating-point accumulation in the kWh/unit-band integrator (or the
+    // simple multiply on the unbanded path) can produce ~1e-15 kWh drift
+    // that would appear in persisted output even when the underlying
+    // allocation is byte-identical.
     energyNeededKWh,
     planStatus: horizonPlan.status,
     ...(source !== null ? { kwhPerUnitSource: source } : {}),

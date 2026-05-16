@@ -28,6 +28,29 @@ export type DeviceObjectiveProfile = {
   // back to that pre-drop level or the 24h safety timeout elapses.
   recoveryTargetValue?: number;
   recoveryArmedAtMs?: number;
+  // Recent (input, kWh/unit) samples kept verbatim so the band fitter can
+  // re-bucket data when the value distribution shifts. Bounded ring buffer
+  // (newest at the end); legacy profiles without this field still load.
+  samples?: ObjectiveProfileSampleObservation[];
+  // Contiguous, sorted bands of kWh/unit covering the observed input range.
+  // Absent when the buffer holds too few samples to split usefully; the
+  // estimator then falls back to the global `kwhPerUnit` mean.
+  bands?: ObjectiveProfileBand[];
+};
+
+export type ObjectiveProfileSampleObservation = {
+  observedAtMs: number;
+  inputValue: number;
+  kwhPerUnit: number;
+};
+
+export type ObjectiveProfileBand = {
+  lowerInclusive: number;
+  upperExclusive: number;
+  sampleCount: number;
+  mean: number;
+  m2: number;
+  confidence: ObjectiveProfileConfidence;
 };
 
 export type DeviceObjectiveProfileSample = {

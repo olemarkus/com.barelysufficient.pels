@@ -64,7 +64,7 @@ describe('objective profiles', () => {
     expect(profile?.lastSample.value).toBe(52);
   });
 
-  it('keeps only aggregate stats and the latest sample instead of raw history', () => {
+  it('retains a bounded ring buffer of recent samples for band fitting', () => {
     let profile: DeviceObjectiveProfile | undefined;
     for (let index = 0; index < 6; index += 1) {
       profile = updateDeviceObjectiveProfile({
@@ -82,7 +82,40 @@ describe('objective profiles', () => {
     expect(profile?.acceptedSamples).toBe(5);
     expect(profile?.kwhPerUnit?.sampleCount).toBe(5);
     expect(profile?.lastSample.value).toBe(55);
-    expect(Object.keys(profile ?? {})).not.toContain('samples');
+    // Five accepted rises stay below the band-fit threshold (16 samples), so
+    // the buffer is populated but no bands are published yet.
+    expect(profile?.samples).toHaveLength(5);
+    expect(profile?.bands).toBeUndefined();
+  });
+
+  it('publishes adaptive bands once enough accepted samples accumulate', () => {
+    // 19 accepted rises, with kWh/°C deliberately split: first 9 are cheap
+    // (1 kWh/°C, power 1 kW per 1 °C/h step), next 10 are expensive
+    // (3 kWh/°C, power 3 kW per 1 °C/h step). The fitter should publish at
+    // least one band boundary inside the observed range and one band's mean
+    // should be near 1 while another's is near 3.
+    let profile: DeviceObjectiveProfile | undefined;
+    for (let index = 0; index < 20; index += 1) {
+      const isCheap = index < 10;
+      profile = updateDeviceObjectiveProfile({
+        previous: profile,
+        sample: {
+          observedAtMs: startMs + index * hourMs,
+          value: 30 + index,
+          unit: 'degree_c',
+          crediblePowerW: isCheap ? 1000 : 3000,
+          powerSource: 'measured',
+        },
+      });
+    }
+
+    expect(profile?.acceptedSamples).toBe(19);
+    expect(profile?.samples?.length).toBe(19);
+    expect(profile?.bands).toBeDefined();
+    expect(profile!.bands!.length).toBeGreaterThanOrEqual(2);
+    const sortedBands = [...profile!.bands!].sort((a, b) => a.lowerInclusive - b.lowerInclusive);
+    expect(sortedBands[0].mean).toBeLessThan(2);
+    expect(sortedBands[sortedBands.length - 1].mean).toBeGreaterThan(2);
   });
 
   it('does not update energy conversion when credible energy evidence is missing', () => {
