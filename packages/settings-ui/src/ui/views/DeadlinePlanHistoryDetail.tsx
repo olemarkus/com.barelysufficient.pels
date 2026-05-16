@@ -11,7 +11,10 @@ import {
   getPlanHistoryOutcomeLabel,
   getPlanHistoryOutcomeTone,
 } from '../../../../shared-domain/src/deferredPlanHistory.ts';
-import { deadlineLabels } from '../../../../shared-domain/src/deadlineLabels.ts';
+import {
+  deadlineLabels,
+  SMART_TASK_HISTORY_EYEBROW,
+} from '../../../../shared-domain/src/deadlineLabels.ts';
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from '../echartsRegistry.ts';
 import { attachTabShownResize } from '../chartVisibilityResize.ts';
 
@@ -374,16 +377,24 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone }: Props) => {
   // the legend, tooltip, and scatter series all read correctly for the
   // device kind instead of always saying "Observed charging".
   const observedSeriesName = deadlineLabels(entry.objectiveKind).actualDeviceSeriesName;
+  // Screen-reader label mirrors the visible heading shape: scoping eyebrow
+  // ("Smart task") → device name (when present) → timestamp.
+  const ariaHeading = entry.deviceName
+    ? `${entry.deviceName} — ${deadlineLine}`
+    : deadlineLine;
   return (
-    <article class="plan-history-detail" aria-label={`Past plan ${deadlineLine}`}>
+    <article class="plan-history-detail" aria-label={`${SMART_TASK_HISTORY_EYEBROW} ${ariaHeading}`}>
       <section class="pels-surface-card plan-history-detail__hero">
+        <p class="eyebrow plan-history-detail__eyebrow">{SMART_TASK_HISTORY_EYEBROW}</p>
+        <p class="plan-history-detail__outcome">
+          <span class={`plan-chip plan-chip--${tone} plan-history-detail__outcome-chip`}>{outcomeLabel}</span>
+        </p>
         <header class="plan-history-detail__hero-header">
-          <h1 class="plan-card__title">{deadlineLine}</h1>
-          <span class={`plan-chip plan-chip--${tone}`}>{outcomeLabel}</span>
+          <h1 class="plan-card__title plan-history-detail__heading">
+            {entry.deviceName && `${entry.deviceName} — `}
+            <span class="plan-history-detail__heading-when">{deadlineLine}</span>
+          </h1>
         </header>
-        {entry.deviceName && (
-          <p class="plan-history-detail__device">{entry.deviceName}</p>
-        )}
         {progressLine && (
           <p class="plan-history-detail__progress">
             {progressLine}

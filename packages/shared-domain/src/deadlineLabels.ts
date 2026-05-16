@@ -5,6 +5,7 @@ import type {
   DeferredObjectiveActivePlanRevisionReason,
   DeferredObjectiveKwhPerUnitProvenanceV1,
 } from '../../contracts/src/deferredObjectiveActivePlans.js';
+import type { ObjectiveProfileConfidence } from '../../contracts/src/objectiveProfileTypes.js';
 
 export type DeadlinePlanUnavailableReason =
   | 'no_current_reading'
@@ -66,6 +67,45 @@ export const SMART_TASK_LIST_STATUS_CHIP_VARIANT: Record<SmartTaskListStatusId, 
   cannot_meet: 'alert',
   satisfied: 'ok',
 };
+
+// Confidence chip label shown on the live hero and the Smart-tasks list card.
+// Centralised so the two surfaces stay phrased identically — the hero already
+// renders `Confidence ${value}` inline; this wraps that single formatting
+// rule. Returns `null` when no confidence band is available, so the caller can
+// skip rendering without inventing copy.
+export const formatConfidenceChipLabel = (
+  confidence: ObjectiveProfileConfidence | null | undefined,
+): string | null => {
+  if (confidence !== 'low' && confidence !== 'medium' && confidence !== 'high') return null;
+  return `Confidence ${confidence}`;
+};
+
+// "currently 18.5 °C" / "currently 45 %" line shown on Smart-tasks list cards
+// so users can answer "what's at risk?" without tapping in. Lives in
+// shared-domain because the same phrasing also feeds runtime log breadcrumbs
+// (per `feedback_ui_text_shared_with_logs.md`). Returns `null` when the
+// current value is unknown so the line is suppressed cleanly.
+export const formatSmartTaskCurrentValueLine = (params: {
+  kind: DeferredObjectiveSettingsKind;
+  currentValue: number | null;
+}): string | null => {
+  if (params.currentValue === null || !Number.isFinite(params.currentValue)) return null;
+  if (params.kind === 'temperature') {
+    return `currently ${params.currentValue.toFixed(1)} °C`;
+  }
+  return `currently ${Math.round(params.currentValue)} %`;
+};
+
+// Eyebrow + empty-state copy for the Smart-tasks history surfaces.
+// Kept in shared-domain so logging breadcrumbs and the UI render the same
+// strings (per `feedback_ui_text_shared_with_logs.md`).
+//
+// Note: `Smart task` not `Smart task plan` — `feedback_terminology_plan_vs_deadline`
+// reserves the "plan" noun for the planner layer; user copy uses "smart task"
+// for the user-facing schedule entity.
+export const SMART_TASK_HISTORY_EYEBROW = 'Smart task';
+
+export const SMART_TASK_PAST_EMPTY_COPY = 'No completed tasks yet — they\'ll appear here after a smart task finishes.';
 
 // Resolve the list card status id from plan data.
 // `nowMs` is used to distinguish "Queued" (plan ready, first action in future)

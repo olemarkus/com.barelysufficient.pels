@@ -1521,11 +1521,59 @@ md-primary-tab.tab[active]:hover {
   gap: var(--spacing-2);
 }
 
-.plan-history-detail__hero-header {
+/* Eyebrow above the heading scopes the surface so users who deep-link here
+ * (e.g. via a notification) know which feature owns this page. Uses the
+ * shared `.eyebrow` primitive's typography; the modifier only removes the
+ * inherited bottom-margin so it sits flush with the outcome row below. */
+.plan-history-detail__eyebrow {
+  margin: 0;
+}
+
+/* Outcome chip lifted out of the heading row so the answer to "did it
+ * succeed?" reads ahead of the timestamp instead of being tucked to the
+ * right. The chip primitive carries its own tone (ok / warn / muted); this
+ * row exists purely as a layout container. */
+.plan-history-detail__outcome {
+  margin: 0;
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: var(--spacing-2);
+}
+
+/* Raise the outcome chip's visual weight so it competes with the heading
+ * timestamp — the user is here to confirm the outcome, not the moment.
+ * Bumps font-size from chip's default (xs) up to sm so it reads as the
+ * primary signal. */
+.plan-history-detail__outcome-chip {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.plan-history-detail__hero-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+/* Heading carries both device name and timestamp on a single line. Wrapping
+ * is allowed (smart task device names can be long) so the timestamp falls
+ * onto its own line on 320px rather than getting clipped. */
+.plan-history-detail__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--spacing-1);
+}
+
+/* Timestamp on the heading reads in muted weight so the device name is the
+ * primary subject. The device-name span inherits the heading's
+ * `--pels-text-card-title-color` and weight from `.plan-card__title`; only
+ * the timestamp span needs to de-emphasise. tabular-nums keeps clock digits
+ * aligned vertically when multiple history entries open in sequence. */
+.plan-history-detail__heading-when {
+  color: var(--muted);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
 }
 
 .plan-history-detail__device {
@@ -5252,6 +5300,16 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   color: var(--text);
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
+}
+
+/* "currently 18.5 °C" / "currently 45 %" line — sits to the right of the
+ * Target value on the same baseline. Muted so the target stays the primary
+ * value; tabular-nums keeps the digits aligned across cards in the list.
+ */
+.deadline-list-card__current {
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 .deadline-list-card__when {

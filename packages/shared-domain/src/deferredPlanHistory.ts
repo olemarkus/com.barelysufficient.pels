@@ -2,27 +2,45 @@ import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanOutcome,
 } from '../../contracts/src/deferredObjectivePlanHistory.js';
-import { formatDateInTimeZone, formatTimeInTimeZone } from './utils/dateUtils.js';
+import { formatTimeInTimeZone } from './utils/dateUtils.js';
 
 export type DeferredPlanHistoryChipTone = 'ok' | 'warn' | 'muted';
+
+// Canonical Smart-task list date+time format, e.g. `Sat 16 May 06:50`.
+//
+// Both the active Smart-tasks list (`DeadlinesList.tsx`) and the past-tasks
+// list (`DeadlinesHistoryList.tsx` via `DeadlinePlanHistory.tsx`) route their
+// timestamps through this helper so the two columns can't drift apart again.
+// Pinned to `en-GB` so the day-of-month-then-month ordering ("16 May") is
+// stable across CI (en-US default) and developer machines (en-GB/en-DK).
+// `formatDateInTimeZone` would otherwise inherit the runtime's default locale
+// and render `Sat, May 16` on en-US, breaking regression tests.
+const SMART_TASK_DATE_LOCALE = 'en-GB';
+
+export const formatSmartTaskListDateTime = (
+  ms: number,
+  timeZone = 'UTC',
+): string => {
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return 'unknown time';
+  const dateLabel = new Intl.DateTimeFormat(SMART_TASK_DATE_LOCALE, {
+    timeZone,
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  }).format(date);
+  const timeLabel = formatTimeInTimeZone(date, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }, timeZone);
+  return `${dateLabel} ${timeLabel}`;
+};
 
 export const formatPlanHistoryDeadlineLine = (
   entry: Pick<DeferredObjectivePlanHistoryEntry, 'deadlineAtMs'>,
   timeZone = 'UTC',
-): string => {
-  const date = new Date(entry.deadlineAtMs);
-  if (Number.isNaN(date.getTime())) return 'unknown deadline';
-  const dateLabel = formatDateInTimeZone(date, {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-  }, timeZone);
-  const timeLabel = formatTimeInTimeZone(date, {
-    hour: '2-digit',
-    minute: '2-digit',
-  }, timeZone);
-  return `${dateLabel}  ${timeLabel}`;
-};
+): string => formatSmartTaskListDateTime(entry.deadlineAtMs, timeZone);
 
 const formatTemperature = (value: number | null): string | null => (
   value === null ? null : `${value.toFixed(1)} °C`
