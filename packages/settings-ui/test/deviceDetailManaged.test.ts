@@ -27,6 +27,9 @@ const buildDom = () => {
       <div id="device-detail-panel">
         <div id="device-detail-title"></div>
         <md-text-button id="device-detail-close"></md-text-button>
+        <details id="device-detail-setup-disclosure"><summary></summary></details>
+        <div id="device-detail-native-wiring-notice" hidden></div>
+        <md-text-button id="device-detail-native-wiring-notice-action"></md-text-button>
         <div id="device-detail-native-wiring-row" hidden></div>
         <md-switch id="device-detail-native-wiring"></md-switch>
         <div id="device-detail-native-wiring-confirm-row" hidden></div>
@@ -378,6 +381,140 @@ describe('device detail managed state saves', () => {
     );
     expect(state.managedMap['zaptec-1']).toBe(false);
     expect(confirmRow?.hidden).toBe(true);
+  });
+
+  it('surfaces the built-in device control notice and auto-expands Setup when management is blocked', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    homeyModule.setHomeyClient(createHomeyMock({
+      settings: {
+        managed_devices: { 'zaptec-1': true },
+        native_ev_wiring_devices: {},
+      },
+    }));
+
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [buildDevice('zaptec-1', 'Driveway Zaptec', {
+      deviceClass: 'evcharger',
+      deviceType: 'onoff',
+      targets: [],
+      controlAdapter: {
+        kind: 'capability_adapter',
+        activationRequired: true,
+        activationEnabled: false,
+      },
+      capabilities: ['measure_power', 'charging_button', 'charge_mode', 'alarm_generic.car_connected'],
+      currentOn: false,
+    })];
+    state.managedMap = { 'zaptec-1': true };
+    state.controllableMap = { 'zaptec-1': false };
+    state.budgetExemptMap = {};
+    state.nativeWiringMap = {};
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'zaptec-1': 1 } };
+    state.modeTargets = { Home: {} };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+    openDeviceDetail('zaptec-1');
+    await flushPromises();
+
+    const managedInput = document.querySelector('#device-detail-managed') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
+    const setupDisclosure = document.querySelector('#device-detail-setup-disclosure') as HTMLDetailsElement | null;
+    const notice = document.querySelector('#device-detail-native-wiring-notice') as HTMLElement | null;
+    const noticeAction = document.querySelector('#device-detail-native-wiring-notice-action') as HTMLElement | null;
+    const nativeWiringRow = document.querySelector('#device-detail-native-wiring-row') as HTMLElement | null;
+
+    expect(managedInput?.disabled).toBe(true);
+    expect(notice?.hidden).toBe(false);
+    expect(setupDisclosure?.open).toBe(true);
+    expect(nativeWiringRow?.hidden).toBe(false);
+
+    // Collapse the disclosure to verify the notice action button re-expands it.
+    if (setupDisclosure) setupDisclosure.open = false;
+    noticeAction?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(setupDisclosure?.open).toBe(true);
+  });
+
+  it('hides the built-in device control notice once activation is no longer required', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    homeyModule.setHomeyClient(createHomeyMock({
+      settings: {
+        managed_devices: { 'zaptec-1': true },
+        native_ev_wiring_devices: { 'zaptec-1': true },
+      },
+    }));
+
+    const { initDeviceDetailHandlers, openDeviceDetail } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    state.latestDevices = [buildDevice('zaptec-1', 'Driveway Zaptec', {
+      deviceClass: 'evcharger',
+      deviceType: 'onoff',
+      targets: [],
+      controlAdapter: {
+        kind: 'capability_adapter',
+        activationRequired: true,
+        activationEnabled: true,
+      },
+      capabilities: ['measure_power', 'charging_button', 'charge_mode', 'alarm_generic.car_connected'],
+      currentOn: false,
+    })];
+    state.managedMap = { 'zaptec-1': true };
+    state.controllableMap = { 'zaptec-1': false };
+    state.budgetExemptMap = {};
+    state.nativeWiringMap = { 'zaptec-1': true };
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'zaptec-1': 1 } };
+    state.modeTargets = { Home: {} };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    initDeviceDetailHandlers();
+    openDeviceDetail('zaptec-1');
+    await flushPromises();
+
+    const managedInput = document.querySelector('#device-detail-managed') as (HTMLElement & { selected: boolean; disabled: boolean; value: string }) | null;
+    const notice = document.querySelector('#device-detail-native-wiring-notice') as HTMLElement | null;
+
+    expect(managedInput?.disabled).toBe(false);
+    expect(notice?.hidden).toBe(true);
   });
 
   it('shows EV SoC details for charger device detail', async () => {

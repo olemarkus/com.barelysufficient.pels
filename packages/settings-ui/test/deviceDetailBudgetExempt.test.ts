@@ -12,6 +12,9 @@ const buildDom = () => {
       <div id="device-detail-panel">
         <div id="device-detail-title"></div>
         <button id="device-detail-close"></button>
+        <details id="device-detail-setup-disclosure"><summary></summary></details>
+        <div id="device-detail-native-wiring-notice" hidden></div>
+        <md-text-button id="device-detail-native-wiring-notice-action"></md-text-button>
         <div id="device-detail-native-wiring-row" hidden></div>
         <md-switch id="device-detail-native-wiring"></md-switch>
         <div id="device-detail-native-wiring-confirm-row" hidden></div>
