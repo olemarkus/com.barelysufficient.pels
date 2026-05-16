@@ -137,6 +137,32 @@ export const IdleClassificationChip = ({ dev }: { dev: PlanDeviceSnapshot }) => 
   );
 };
 
+// Surfaces the device's shed-order rank on Overview cards so users can read the
+// priority they configured under Modes without opening the device-detail
+// drawer. `#1` is kept on longest (sheds last); higher ranks shed earlier.
+// Suppressed for `budgetExempt` devices because the adjacent "Always on" chip
+// already says the device is not shed-eligible.
+export const PriorityRankChip = ({
+  rank,
+  budgetExempt,
+}: {
+  rank: number | null;
+  budgetExempt: boolean;
+}) => {
+  if (rank === null || budgetExempt) return null;
+  const label = `Priority #${rank}`;
+  return (
+    <span
+      class="plan-chip plan-chip--rank"
+      role="img"
+      aria-label={label}
+      data-tooltip={`${label} · Higher-numbered devices are limited first`}
+    >
+      {`#${rank}`}
+    </span>
+  );
+};
+
 const formatKw = (value: number | undefined): string => (
   typeof value === 'number' && Number.isFinite(value) ? value.toFixed(1) : '–'
 );
@@ -271,11 +297,13 @@ const resolveReportedLoadReason = (dev: PlanDeviceSnapshot): string => {
 export const PlanGenericCard = ({
   dev,
   plan,
+  rank,
   renderedAtMs,
   nowMs,
 }: {
   dev: PlanDeviceSnapshot;
   plan: PlanSnapshot | null;
+  rank: number | null;
   renderedAtMs: number;
   nowMs: number;
 }) => {
@@ -323,6 +351,7 @@ export const PlanGenericCard = ({
           <h3 class="plan-card__title">{dev.name}</h3>
         </div>
         <div class="plan-card__chips">
+          <PriorityRankChip rank={rank} budgetExempt={displayDev.budgetExempt === true} />
           {shouldShowStateChip(presentation.kind, hasTimer) && (
             <span class="plan-state-chip-wrap">
               <span
@@ -373,11 +402,13 @@ export const PlanGenericCard = ({
 export const PlanTemperatureCard = ({
   dev,
   plan,
+  rank,
   renderedAtMs,
   nowMs,
 }: {
   dev: PlanDeviceSnapshot;
   plan: PlanSnapshot | null;
+  rank: number | null;
   renderedAtMs: number;
   nowMs: number;
 }) => {
@@ -411,6 +442,7 @@ export const PlanTemperatureCard = ({
           <h3 class="plan-card__title">{dev.name}</h3>
         </div>
         <div class="plan-card__chips">
+          <PriorityRankChip rank={rank} budgetExempt={displayDev.budgetExempt === true} />
           {dev.temperatureBoostActive === true && (
             <span class="plan-chip plan-chip--ok" data-tooltip="Temperature boost is active">Boost</span>
           )}

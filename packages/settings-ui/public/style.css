@@ -1404,6 +1404,21 @@ md-primary-tab.tab[active]:hover {
   color: var(--pels-text-secondary);
 }
 
+/* Priority rank chip (#1, #2, …) shown on Overview device cards. Mirrors the
+ * Modes priorities badge (`.priority-badge`) so users see the same shed-order
+ * vocabulary in both surfaces. `.plan-chip` already provides the radius, font
+ * size, and border-width tokens. */
+.plan-chip--rank {
+  min-width: var(--spacing-8);
+  justify-content: center;
+  padding-inline: var(--spacing-2);
+  background: var(--color-state-positive-bg);
+  border-color: var(--color-state-positive-border);
+  color: var(--color-state-positive-text);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
 .plan-chip--link {
   cursor: pointer;
   text-decoration: none;
@@ -2480,6 +2495,12 @@ md-primary-tab.tab[active]:hover {
   gap: var(--spacing-2);
   padding-top: var(--spacing-1);
   padding-bottom: var(--spacing-1);
+  /* The rail is a status indicator, not an interactive control. The parent
+   * `.device-row.clickable` sets `cursor: pointer` for the entire card; reset
+   * it back to default on the rail so individual stops/labels don't promise
+   * tap-to-select behavior they do not implement. A real step-selector lives
+   * in the device-detail drawer. */
+  cursor: default;
 }
 
 .plan-card__step-labels {
