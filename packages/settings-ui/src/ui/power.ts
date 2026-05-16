@@ -337,9 +337,23 @@ const renderPowerAverages = (stats: PowerStatsSummary) => {
   }
 };
 
+// Show only the metric matching the active Weekdays / Weekend segment so the
+// stat strip reflects the chart (TODO 585 — fixed v2.7.0). With the two
+// averages often within 0.1 kWh, leaving both visible made the segmented
+// control feel purposeless. The `data-pattern-metric` attribute values
+// ('weekday' / 'weekend') match the corresponding `HourlyPatternView` strings.
+const syncPatternAverageVisibility = () => {
+  const metrics = document.querySelectorAll<HTMLElement>('[data-pattern-metric]');
+  for (const metric of metrics) {
+    const matchesSegment = metric.dataset.patternMetric === hourlyPatternView;
+    metric.hidden = hourlyPatternView !== 'all' && !matchesSegment;
+  }
+};
+
 const renderHourlyPattern = (stats: PowerStatsSummary) => {
   if (!hourlyPattern) return;
   setHourlyPatternToggleActive(hourlyPatternView);
+  syncPatternAverageVisibility();
   const points = getHourlyPatternPoints(stats);
   if (hourlyPatternMeta) {
     hourlyPatternMeta.textContent = stats.hourlyPatternMeta;

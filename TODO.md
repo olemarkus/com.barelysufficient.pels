@@ -533,43 +533,27 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/public/style.css` (`.plan-card__metric-label`
       color), `settings/style.css` (regen).
 
-- [ ] Usage tab — Y-axis top-tick collides with the prior gridline on every
-      chart. Live walk 2026-05-16: "Today" mini-chart ticks `0,1,2,3,3.7` (3.7
-      sits 15.8 px above 3 with overlap); Daily usage ticks `0,20,40,60,71`
-      (71 wedged above 60); Typical day ticks `0,0.3,0.6,0.9,1`. Same "pin
-      label to data max" anti-pattern recurs across all three echarts grids —
-      almost certainly one chart-config helper. Fix the helper to round the
-      axis max up to the next clean tick step instead of pinning to data max.
-      Evidence: `/tmp/pels-rewalk/usage/03-usage-mini-chart-480.png`,
-      `07-daily-usage-7days.png`, `10-typical-day-weekdays.png`.
-      Files: `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
-      `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts` (and wherever
-      the typical-day chart is configured); look for `axis.max` or
-      `yAxis.max` config.
+- [x] Usage tab — Y-axis top-tick collides with the prior gridline on every
+      chart. *(landed in PR 3.1 — `roundedAxisMaxToInterval(dataMax, splitNumber)`
+      in `dayViewChart.ts` picks the smallest nice multiplier (1 / 2 / 2.5 / 5 / 10
+      × 10^k) ≥ `dataMax / splitNumber`, so `max = splitNumber * interval` and
+      ECharts never tacks an extra top tick above the prior gridline. Inputs
+      3.7 → ticks 0/1/2/3/4; 71 → 0/20/40/60/80; 1 → 0/0.25/0.5/0.75/1.)*
 
-- [ ] Usage heatmap "Unreliable data" legend swatch doesn't visually match
-      the cells it labels. Live walk 2026-05-16
-      (`/tmp/pels-rewalk/usage/04-usage-heatmap-480.png`,
-      `/tmp/pels-rewalk/usage/08-heatmap-close.png`): legend swatch is a 12×8 px
-      outlined pill (`rgb(35,43,56)` fill + `rgb(86,98,122)` border, 6 px radius);
-      the actual unreliable cell in the grid (around Mon 11 May 12:00) is a
-      filled dark square with no border or pill shape. Users won't connect the
-      two. Either render the legend swatch as a filled square matching the
-      heatmap cells, or change the unreliable cell to use the same pill shape.
-      Files: `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
-      `packages/settings-ui/public/style.css`.
+- [x] Usage heatmap "Unreliable data" legend swatch doesn't visually match
+      the cells it labels. *(landed in PR 3.1 — `.usage-legend__swatch--unreliable`
+      now reads the same `--pels-chart-unreliable-cell` fill and
+      `--pels-chart-heatmap-border` border tokens the heatmap cell uses, rendered
+      as a 10×10 square with 2 px radius matching the cell. An E2E test in
+      `charts-layout.spec.ts` asserts the parity through `getComputedStyle` so
+      future palette tweaks can't drift them apart.)*
 
-- [ ] Usage "Typical day" Weekdays / Weekend segmented control updates the
-      bars but not the stat strip. Live walk 2026-05-16
-      (`/tmp/pels-rewalk/usage/10-typical-day-weekdays.png`): selecting
-      Weekdays / Weekend changes which bars are highlighted but the "Weekday
-      avg 62.9 kWh · Weekend avg 62.8 kWh" stat strip stays unchanged in
-      both states. With the two averages only 0.1 kWh apart, the segmented
-      control feels purposeless — there's no reinforcing change in the stat.
-      Either hide the stat for the unselected mode, or restructure so the
-      strip reflects only the active selection.
-      Files: `packages/settings-ui/src/ui/views/UsageOverview.tsx` (or
-      equivalent typical-day view).
+- [x] Usage "Typical day" Weekdays / Weekend segmented control updates the
+      bars but not the stat strip. *(landed in PR 3.1 — `power.ts`
+      `syncPatternAverageVisibility` hides the inactive metric strip on every
+      `renderHourlyPattern` call. The `data-pattern-metric` attribute values
+      match the `HourlyPatternView` strings so the comparison is direct;
+      "All days" keeps both visible.)*
 
 - [ ] Smart task hero: `estimatedDurationText` shrinks across revisions. The recorder formats
       the value every revision from the current `energyNeededKWh / planningSpeedKw`
@@ -1099,14 +1083,12 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       with a dedicated `--pels-chart-price` hue that contrasts both Managed and Background).
       Files: `tokens/component.json`, `settings/tokens.css` (regen),
       `packages/settings-ui/src/ui/budgetRedesignChart.ts`.
-- [ ] Remove the ghost "Warning" legend entry from the Usage day ECharts chart.
-      `packages/settings-ui/src/ui/usageDayChartEcharts.ts` registers `{ name: 'Warning', … }` in
-      the legend data but no series is named "Warning" — the single "Measured" series uses
-      per-item colors. ECharts silently drops the orphaned legend entry, so unreliable (orange)
-      bars render with no legend label. Fix: add a zero-data dummy series named "Warning" the
-      legend can bind to, or remove the orphaned legend item and rely on the heatmap legend for
-      the unreliable-cell explanation.
-      Files: `packages/settings-ui/src/ui/usageDayChartEcharts.ts`.
+- [x] Remove the ghost "Warning" legend entry from the Usage day ECharts chart.
+      *(landed in PR 3.1 — `usageDayChartEcharts.ts` now adds a zero-data dummy
+      bar series named "Warning" alongside the "Measured" series whenever
+      warn bars are present. The legend's `Warning` entry binds to this real
+      series so ECharts no longer drops it; `barMaxWidth` caps both series so
+      the dummy can't shrink the real bars.)*
 - [ ] Surface confidence and progress on Smart-tasks list cards.
       `DeadlinesListCard` shows kind chip + device + target + ready-by + status, but no
       confidence indicator and no current-value indicator. A user scanning the list cannot tell

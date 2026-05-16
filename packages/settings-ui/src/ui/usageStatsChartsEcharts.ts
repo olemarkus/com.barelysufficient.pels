@@ -1,8 +1,9 @@
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
 import {
+  formatAxisTick,
   readChartPalette,
   resolveLabelEvery,
-  roundedKWhAxisMax,
+  roundedAxisMaxToInterval,
 } from './dayViewChart.ts';
 import { formatDateInTimeZone } from './timezone.ts';
 import { attachTabShownResize } from './chartVisibilityResize.ts';
@@ -40,6 +41,7 @@ type PlotState = {
 
 const DEFAULT_CHART_HEIGHT = 196;
 const DEFAULT_CHART_WIDTH = 480;
+const Y_AXIS_SPLIT_NUMBER = 4;
 const hourlyPatternState: PlotState = {
   plot: null,
   container: null,
@@ -153,6 +155,7 @@ const buildHourlyPatternOption = (params: {
   const labels = points.map((point) => String(point.hour).padStart(2, '0'));
   const labelEvery = resolveLabelEvery(labels.length);
   const maxValue = Math.max(1, ...values);
+  const yAxis = roundedAxisMaxToInterval(maxValue, Y_AXIS_SPLIT_NUMBER);
 
   return {
     animation: false,
@@ -203,13 +206,14 @@ const buildHourlyPatternOption = (params: {
     yAxis: {
       type: 'value',
       min: 0,
-      max: roundedKWhAxisMax(maxValue),
-      splitNumber: 4,
+      max: yAxis.max,
+      interval: yAxis.interval,
       axisTick: { show: false },
       axisLine: { show: false },
       axisLabel: {
         color: palette.muted,
         fontSize: 11,
+        formatter: (value: number) => formatAxisTick(value, yAxis.interval),
       },
       splitLine: {
         lineStyle: {
@@ -252,6 +256,7 @@ const buildDailyHistoryOption = (params: {
   });
   const labelEvery = resolveLabelEvery(labels.length);
   const maxValue = Math.max(1, ...values);
+  const yAxis = roundedAxisMaxToInterval(maxValue, Y_AXIS_SPLIT_NUMBER);
 
   return {
     animation: false,
@@ -302,14 +307,14 @@ const buildDailyHistoryOption = (params: {
     yAxis: {
       type: 'value',
       min: 0,
-      max: roundedKWhAxisMax(maxValue),
-      splitNumber: 4,
+      max: yAxis.max,
+      interval: yAxis.interval,
       axisTick: { show: false },
       axisLine: { show: false },
       axisLabel: {
         color: palette.muted,
         fontSize: 11,
-        formatter: (value: number) => String(Math.round(value)),
+        formatter: (value: number) => formatAxisTick(value, yAxis.interval),
       },
       splitLine: {
         lineStyle: {
