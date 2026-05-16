@@ -4,6 +4,15 @@ tokens/
 packages/
 tmp/
 
+# Devx screenshots accumulate at the repo root during UI walks. They are not
+# packaged with the app — assets live under assets/. Stops `homey app validate`
+# from copying them into .homeybuild/ where check-homey-packaging rejects them.
+/*.png
+/*.jpg
+/*.jpeg
+/*.gif
+/*.webp
+
 test/
 tests/
 coverage/
@@ -57,5 +66,3 @@ jest.config.perf.cjs
 jest.config.ui.cjs
 tsconfig.json
 tsconfig.runtime-unused.json
-
-tmp/
