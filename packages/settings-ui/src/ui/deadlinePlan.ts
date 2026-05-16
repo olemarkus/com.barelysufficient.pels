@@ -418,7 +418,10 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       deadlineAtMs,
       costDisplay: input.costDisplay,
     }),
-    planInputs: buildPlanInputs({ latest, profile, labels, objectiveKind: objective.kind, device }),
+    planInputs: buildPlanInputs({
+      latest, profile, labels, objectiveKind: objective.kind, device,
+      provenance: activePlan!.kwhPerUnitProvenance,
+    }),
   };
 };
 

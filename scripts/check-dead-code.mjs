@@ -120,6 +120,7 @@ const allowedUnusedExportPatterns = [
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - DeadlinePlanCompletedReason$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - deadlineLabels$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveEvCardStateLine$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveKwhPerUnitProvenanceRows$/,
   // Transitively reached from `deadlineLabels.ts`; consumed by settings UI bootstrap
   // and flowCards' deadline-objective settings reader.
   /^packages\/contracts\/src\/deferredObjectiveSettings\.ts:\d+ - normalizeDeferredObjectiveSettings$/,

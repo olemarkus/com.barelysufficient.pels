@@ -52,6 +52,7 @@ export const resolveDeadlinesListCards = (params: {
     const statusId = resolveSmartTaskListStatus({
       pending,
       pendingReason: plan.pendingReason,
+      diagnosticReasonCode: plan.diagnosticReasonCode,
       planStatus: plan.latest?.planStatus,
       firstActionAtMs: firstHour,
       nowMs,
