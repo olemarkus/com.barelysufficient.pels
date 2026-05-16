@@ -464,16 +464,14 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Files: `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
       `packages/shared-domain/src/...` (budget copy helpers).
 
-- [ ] Usage hero shows two different "vs typical" deltas in the same card.
-      Live-walk 2026-05-16 (`/tmp/pels-live-walk/03-usage-480.png`) shows a "-3.3 kWh
-      vs pace" pill AND "On track for ~56.8 kWh — about 6.0 kWh below typical"
-      copy. Two different numbers ("3.3" and "6.0") with two different baselines
-      ("pace" and "typical").
-      Why P1: same trust problem as Budget Today — user can't tell which delta is
-      the meaningful one. Pick one baseline ("vs typical day" likely the most
-      relevant) and remove the other.
-      Files: `packages/settings-ui/src/ui/views/UsageOverview.tsx` (or equivalent),
-      `packages/shared-domain/src/...`.
+- [x] Usage hero shows two different "vs typical" deltas in the same card.
+      *(landed in PR 3.3 — `formatDeltaChipLabel` in `packages/settings-ui/src/ui/usageHero.ts`
+      now derives the chip number from the projected-vs-typical delta when the
+      projection window is open, so the chip ("−4.0 kWh vs typical") and the
+      prose ("On track for ~8.0 kWh by midnight (below typical).") share one
+      baseline. In the early-morning window where projection is suppressed,
+      the chip falls back to "On pace" / "±X.X kWh vs pace" — only one number
+      ever surfaces.)*
 
 - [ ] Overview hero surface tier hierarchy inverted. Live-walk 2026-05-16
       (`/tmp/pels-rewalk/overview/02-overview-hero-480.png`,
@@ -586,17 +584,14 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Reason copy lives in `packages/shared-domain/src/deadlineLabels.ts`. Helper goes in
       shared-domain to stay browser-safe.
 
-- [ ] Smart task live chart: price grid and load grid bars don't align by hour. Two
-      ECharts grids (`packages/settings-ui/src/ui/views/DeadlinePlan.tsx:362-365`) share
-      xAxis categories but auto-size bars per grid; price grid has 1 bar series, load
-      grid has 3-5 (background + device + optional original-* + optional actual-device
-      line). Without explicit `barCategoryGap` or pinned `barWidth`, ECharts computes bar
-      centres differently per grid, producing a visible offset at 320-480px viewports.
-      Fix: set `barCategoryGap` on every bar series across both grids and pin `barWidth`
-      to a deterministic value. Add a Playwright visual regression test asserting bar
-      centres match between `xAxisIndex 0` and `xAxisIndex 1` at 320px + 480px.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx` (lines 442-550),
-      `packages/settings-ui/tests/e2e/`.
+- [x] Smart task live chart: price grid and load grid bars don't align by hour.
+      *(landed in PR 3.3 — `barWidth` + `barCategoryGap` are pinned on every bar series
+      across both grids in `DeadlinePlan.tsx`, both grids set `containLabel: true`, and
+      a phantom left axis on the price grid mirrors the load grid's progress axis so
+      both grids reserve identical horizontal insets. A new Playwright spec in
+      `tests/e2e/deadline-plan.spec.ts` reads per-grid bar centres via the chart's
+      `convertToPixel` (exposed as `data-test-bar-centres` on the chart container) and
+      asserts they agree to within 1 px at 320 + 480 px.)*
 
 - [ ] Smart task history detail: rebuild around temperature/SoC actual-vs-plan, not
       hourly bar comparisons. Current `DeadlinePlanHistoryDetail.tsx` shows planned-hour

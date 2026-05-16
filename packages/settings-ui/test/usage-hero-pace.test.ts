@@ -99,29 +99,61 @@ describe('computePaceContext', () => {
 });
 
 describe('formatDeltaChipLabel', () => {
-  it('says "On pace" inside the dead-band', () => {
+  // When the projection window is open the chip mirrors the projected-vs-
+  // typical baseline so it never disagrees with the projection prose
+  // (TODO 490). Inside the early-morning window the chip falls back to the
+  // elapsed-pace baseline since projection is suppressed.
+  it('says "On track" inside the projected dead-band', () => {
     const ctx = computePaceContext(6.05, 12, atUtcHour(12), 'UTC');
-    expect(formatDeltaChipLabel(ctx)).toEqual({ label: 'On pace', tone: 'ok' });
+    expect(formatDeltaChipLabel(ctx)).toEqual({ label: 'On track', tone: 'ok' });
   });
 
-  it('reports a positive delta with warn tone for moderate excess', () => {
+  it('reports a positive vs-typical delta with warn tone for moderate excess', () => {
+    // 7 kWh by noon → projected 14 kWh → +2.0 vs typical 12 (16% > 10%).
     const ctx = computePaceContext(7, 12, atUtcHour(12), 'UTC');
     const result = formatDeltaChipLabel(ctx);
-    expect(result.label.startsWith('+')).toBe(true);
+    expect(result.label).toBe('+2.0 kWh vs typical');
     expect(result.tone).toBe('warn');
   });
 
-  it('escalates to alert tone past 25% over expected', () => {
+  it('escalates to alert tone past 25% over typical', () => {
+    // 9 kWh by noon → projected 18 kWh → +6.0 vs typical 12 (50% > 25%).
     const ctx = computePaceContext(9, 12, atUtcHour(12), 'UTC');
     const result = formatDeltaChipLabel(ctx);
     expect(result.tone).toBe('alert');
+    expect(result.label).toContain('vs typical');
   });
 
-  it('reports a negative delta with ok tone', () => {
+  it('reports a negative vs-typical delta with ok tone', () => {
+    // 4 kWh by noon → projected 8 kWh → −4.0 vs typical 12.
     const ctx = computePaceContext(4, 12, atUtcHour(12), 'UTC');
     const result = formatDeltaChipLabel(ctx);
-    expect(result.label.startsWith('−')).toBe(true);
+    expect(result.label).toBe('−4.0 kWh vs typical');
     expect(result.tone).toBe('ok');
+  });
+
+  it('falls back to vs-pace wording when projection is suppressed', () => {
+    // 02:00 → fractionOfDay = 2/24 ≈ 0.083 < MIN_PROJECTION_FRACTION, so
+    // projected is null and the chip falls back to the elapsed-pace baseline.
+    // 2 kWh used vs expected 1 kWh by hour 2 → +1.0 kWh vs pace.
+    const ctx = computePaceContext(2, 12, atUtcHour(2, 0), 'UTC');
+    expect(ctx.projected).toBeNull();
+    const result = formatDeltaChipLabel(ctx);
+    expect(result.label).toContain('vs pace');
+  });
+
+  it('holds the chip at ok when the projected delta is above the dead-band but below the hero-tone gates', () => {
+    // 6.2 kWh by noon → projected 12.4 → +0.4 vs typical 12. Above
+    // PROJECTION_ON_TRACK_KWH (0.3) so the chip leaves the "On track"
+    // dead-band, but the ratio (3.3%) and abs delta (0.4) sit below the
+    // WARN gates (ratio > 10% AND absDiff ≥ 0.3). The chip tone must
+    // remain `ok` so it never disagrees with the hero rim which already
+    // returns `ok` in this region.
+    const ctx = computePaceContext(6.2, 12, atUtcHour(12), 'UTC');
+    const chip = formatDeltaChipLabel(ctx);
+    expect(chip.tone).toBe('ok');
+    expect(chip.label).toBe('+0.4 kWh vs typical');
+    expect(resolveHeroTone(ctx)).toBe('ok');
   });
 });
 
@@ -136,25 +168,26 @@ describe('formatProjectionText', () => {
     expect(formatProjectionText(ctx)).toBe('On track for ~12.0 kWh by midnight.');
   });
 
-  it('uses "above"/"below" wording outside the dead-band', () => {
+  it('keeps the projection figure but drops the duplicate delta number', () => {
+    // The chip carries the kWh delta; the prose just names the direction.
     const high = computePaceContext(7.5, 12, atUtcHour(12), 'UTC');
-    expect(formatProjectionText(high)).toMatch(/above typical\.$/);
+    expect(formatProjectionText(high)).toBe('On track for ~15.0 kWh by midnight (above typical).');
 
     const low = computePaceContext(4, 12, atUtcHour(12), 'UTC');
-    expect(formatProjectionText(low)).toMatch(/below typical\.$/);
+    expect(formatProjectionText(low)).toBe('On track for ~8.0 kWh by midnight (below typical).');
   });
 });
 
 describe('resolveHeroTone', () => {
-  it('returns ok when on pace', () => {
+  it('returns ok when projected lands at typical', () => {
     expect(resolveHeroTone(computePaceContext(6, 12, atUtcHour(12), 'UTC'))).toBe('ok');
   });
 
-  it('warns when meaningfully ahead of pace', () => {
+  it('warns when projected lands meaningfully above typical', () => {
     expect(resolveHeroTone(computePaceContext(7, 12, atUtcHour(12), 'UTC'))).toBe('warn');
   });
 
-  it('alerts when far ahead of pace', () => {
+  it('alerts when projected lands far above typical', () => {
     expect(resolveHeroTone(computePaceContext(9, 12, atUtcHour(12), 'UTC'))).toBe('alert');
   });
 

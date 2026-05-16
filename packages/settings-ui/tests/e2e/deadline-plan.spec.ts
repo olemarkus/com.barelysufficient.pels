@@ -160,6 +160,58 @@ test.describe('Deadline plan', () => {
     expect(refreshedBootstrapCalls).toBe(initialBootstrapCalls + 1);
   });
 
+  // TODO 628: ECharts auto-sizes bars per grid, so the price grid (1 bar
+  // series) and load grid (2–4 bar series) used to publish bars whose centres
+  // drifted apart at narrow widths. The fix pins `barWidth` + `barCategoryGap`
+  // on every bar series so the layout stays grid-agnostic. The view writes
+  // each grid's hour centres to `data-test-bar-centres` after the chart
+  // renders so this spec can verify alignment by comparing the two arrays
+  // hour-by-hour, without parsing SVG path geometry.
+  for (const width of [320, 480] as const) {
+    test(`load and price bars line up by hour at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const panel = await openDeadlinePlan(page);
+      const chart = panel.locator('.deadline-horizon-chart');
+      await expect(chart).toBeVisible();
+      // Wait until the chart has settled to the real viewport width — the
+      // cold-mount path resizes once on the next frame and the centres
+      // attribute refreshes on every resize.
+      await page.waitForFunction(() => {
+        const node = document.querySelector('.deadline-horizon-chart');
+        if (!(node instanceof HTMLElement)) return false;
+        const raw = node.getAttribute('data-test-bar-centres');
+        if (!raw) return false;
+        try {
+          const parsed = JSON.parse(raw) as { price: number[]; load: number[] };
+          return parsed.price.length > 0
+            && parsed.price.length === parsed.load.length;
+        } catch {
+          return false;
+        }
+      });
+
+      const centres = await chart.evaluate((node) => {
+        const raw = node.getAttribute('data-test-bar-centres') ?? '{}';
+        return JSON.parse(raw) as { price: number[]; load: number[] };
+      });
+
+      expect(centres.price.length).toBeGreaterThan(0);
+      expect(centres.price.length).toBe(centres.load.length);
+      // Every price bar's centre must align with the corresponding load bar's
+      // centre — they share the same xAxis categories, so the values should
+      // be identical to the floating-point rounding that `convertToPixel`
+      // produces. 1 px tolerance covers any sub-pixel drift between the two
+      // grid coord-sys resolutions.
+      const offending = centres.price.flatMap((x, i) => {
+        const loadX = centres.load[i];
+        if (loadX === undefined) return [{ index: i, price: x, load: null, dx: null }];
+        const dx = Math.abs(x - loadX);
+        return dx <= 1 ? [] : [{ index: i, price: x, load: loadX, dx }];
+      });
+      expect(offending, `Bar centres drift at ${width}px: ${JSON.stringify(offending)}`).toEqual([]);
+    });
+  }
+
   test('shows the error state when the device has no objective', async ({ page }) => {
     await page.addInitScript(() => {
       (window as typeof window & { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {

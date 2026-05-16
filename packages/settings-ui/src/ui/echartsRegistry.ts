@@ -14,6 +14,15 @@ type EChartsType = {
   setOption: (option: EChartsOption, opts?: Record<string, unknown>) => void;
   resize: (opts?: Record<string, unknown>) => void;
   dispose: () => void;
+  // `convertToPixel` returns the pixel position of a data point in the
+  // chart's coordinate system. Used by the deadline-plan bar-centre parity
+  // test to verify both grids resolve the same `xAxisIndex × dataIndex` to
+  // the same `[x, y]` pixel; without exposing the method the test would have
+  // to parse SVG path geometry, which is brittle across renderer versions.
+  convertToPixel: (
+    finder: { xAxisIndex?: number; yAxisIndex?: number; gridIndex?: number; seriesIndex?: number },
+    value: number | string | Array<number | string>,
+  ) => number | number[];
 };
 type SeriesOption = Record<string, unknown>;
 
