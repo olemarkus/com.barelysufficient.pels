@@ -682,8 +682,8 @@ md-primary-tab.tab[active]:hover {
 }
 
 .pels-icon-toggle {
-  width: 36px;
-  height: 36px;
+  width: var(--pels-touch-target-min);
+  height: var(--pels-touch-target-min);
   padding: 0;
   border: 1px solid color-mix(in srgb, var(--text-secondary) 40%, transparent);
   background: transparent;
@@ -733,8 +733,8 @@ md-primary-tab.tab[active]:hover {
 }
 
 .pels-device-card__detail-button {
-  width: 36px;
-  height: 36px;
+  width: var(--pels-touch-target-min);
+  height: var(--pels-touch-target-min);
   color: var(--pels-text-muted);
   border-radius: var(--radius-full);
 }
@@ -4729,9 +4729,10 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 .deadline-page-close__icon {
   display: inline-block;
+  width: 1.5rem;
+  height: 1.5rem;
   color: var(--pels-deadline-close-text);
-  font-size: var(--font-size-headline-sm);
-  line-height: var(--font-line-height-flat);
+  fill: currentColor;
 }
 
 #deadline-plan-root {

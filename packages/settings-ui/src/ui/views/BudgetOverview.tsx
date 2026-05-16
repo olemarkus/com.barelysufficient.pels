@@ -8,7 +8,7 @@ import {
   MdSwitch,
   MdTextButton,
 } from './materialWebJSX.tsx';
-import { ExpandMoreIcon } from './icons.tsx';
+import { ExpandMoreIcon, WarningIcon } from './icons.tsx';
 import {
   renderBudgetRedesignChart,
   clearBudgetRedesignChart,
@@ -215,7 +215,7 @@ const AllocationWarningBanner = ({
     class="banner banner--warning budget-redesign-allocation-warning"
     role="status"
   >
-    <span class="banner__icon" aria-hidden="true">⚠️</span>
+    <span class="banner__icon" aria-hidden="true"><WarningIcon /></span>
     <div class="banner__body">
       <p class="banner__title">{warning.title}</p>
       <p class="banner__text">{warning.body}</p>

@@ -25,13 +25,17 @@
     </header>
 
     <div id="dry-run-banner" class="banner banner--warning" hidden>
-      <span class="banner__icon">⚠️</span>
+      <span class="banner__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" focusable="false"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+      </span>
       <span class="banner__text">Simulation mode is enabled. PELS will not switch devices automatically.</span>
       <md-outlined-button type="button" class="btn secondary dry-run-banner__action" id="simulation-disable-button">Turn off simulation</md-outlined-button>
     </div>
 
     <div id="stale-data-banner" class="banner banner--warning" hidden>
-      <span class="banner__icon">⚠️</span>
+      <span class="banner__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" focusable="false"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+      </span>
       <span id="stale-data-text" class="banner__text">No power data received recently. Check your Flow that reports power usage.</span>
     </div>
 
@@ -47,14 +51,13 @@
         </div>
       </header>
       <template id="pels-icon-managed">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="9"></circle>
-          <path d="m8 12 3 3 5-6"></path>
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
         </svg>
       </template>
       <template id="pels-icon-limit">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"></path>
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M7 2v11h3v9l7-12h-4l4-8H7z"/>
         </svg>
       </template>
       <template id="pels-icon-price">
@@ -64,17 +67,16 @@
         <summary class="device-control-legend__summary">
           <span class="device-control-legend__pill">
             <span class="device-control-legend__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="9"></circle>
-                <path d="m8 12 3 3 5-6"></path>
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
               </svg>
             </span>
             Managed
           </span>
           <span class="device-control-legend__pill">
             <span class="device-control-legend__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"></path>
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M7 2v11h3v9l7-12h-4l4-8H7z"/>
               </svg>
             </span>
             Limit
@@ -93,9 +95,8 @@
         <ul class="device-control-legend__list">
           <li class="device-control-legend__item">
             <span class="device-control-legend__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="9"></circle>
-                <path d="m8 12 3 3 5-6"></path>
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
               </svg>
             </span>
             <div>
@@ -105,8 +106,8 @@
           </li>
           <li class="device-control-legend__item">
             <span class="device-control-legend__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"></path>
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M7 2v11h3v9l7-12h-4l4-8H7z"/>
               </svg>
             </span>
             <div>
@@ -148,7 +149,7 @@
           <label class="field__label" for="mode-select">Edit mode</label>
           <md-filled-select id="mode-select" name="mode"></md-filled-select>
           <div class="inline-actions">
-            <md-filled-text-field id="mode-new" type="text" placeholder="New mode name"></md-filled-text-field>
+            <md-filled-text-field id="mode-new" type="text" placeholder="New mode name" aria-label="New mode name"></md-filled-text-field>
             <md-outlined-button type="button" class="btn secondary" id="add-mode-button">Add</md-outlined-button>
             <md-outlined-button type="button" class="btn ghost" id="delete-mode-button">Delete</md-outlined-button>
             <md-outlined-button type="button" class="btn ghost" id="rename-mode-button">Rename</md-outlined-button>
@@ -330,7 +331,7 @@
 
     <section class="panel hidden deadline-plan-panel" id="deadline-plan-panel" data-panel="deadline-plan" aria-label="Smart task plan">
       <md-icon-button class="deadline-page-close" type="button" data-deadline-plan-close aria-label="Close smart task plan">
-        <span class="deadline-page-close__icon" aria-hidden="true">&times;</span>
+        <svg class="deadline-page-close__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z" fill="currentColor"/></svg>
       </md-icon-button>
       <div class="deadline-plan-panel__surface" id="deadline-plan-root" aria-live="polite">
         <section class="pels-surface-card budget-redesign-card">
@@ -353,8 +354,8 @@
           <p class="muted">Priorities and temperatures stay in Modes.</p>
         </div>
         <label class="field settings-current-mode__field">
-          <span class="field__label">Mode</span>
-          <md-filled-select id="active-mode-select" name="active_mode"></md-filled-select>
+          <span class="field__label" id="settings-active-mode-select-label">Mode</span>
+          <md-filled-select id="active-mode-select" name="active_mode" aria-labelledby="settings-active-mode-select-label"></md-filled-select>
         </label>
       </section>
       <md-list class="settings-nav-list">
@@ -409,19 +410,19 @@
       </header>
       <form id="settings-limits-form" class="form-grid settings-form-card">
         <label class="field">
-          <span class="field__label">Hard cap (kW)</span>
-          <md-filled-text-field id="settings-capacity-limit" name="settings_capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required></md-filled-text-field>
+          <span class="field__label" id="settings-capacity-limit-label">Hard cap (kW)</span>
+          <md-filled-text-field id="settings-capacity-limit" name="settings_capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required aria-labelledby="settings-capacity-limit-label"></md-filled-text-field>
           <small class="field__hint">The upper boundary PELS tries not to exceed.</small>
         </label>
         <label class="field">
-          <span class="field__label">Safety margin (kW)</span>
-          <md-filled-text-field id="settings-capacity-margin" name="settings_capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required></md-filled-text-field>
+          <span class="field__label" id="settings-capacity-margin-label">Safety margin (kW)</span>
+          <md-filled-text-field id="settings-capacity-margin" name="settings_capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required aria-labelledby="settings-capacity-margin-label"></md-filled-text-field>
           <small class="field__hint" id="settings-capacity-reaction">Safe pace stays below the hard cap.</small>
           <small class="field__hint field__hint--alert" id="settings-capacity-margin-alert" hidden></small>
         </label>
         <label class="field">
-          <span class="field__label">Power source</span>
-          <md-filled-select id="settings-power-source" name="settings_power_source">
+          <span class="field__label" id="settings-power-source-label">Power source</span>
+          <md-filled-select id="settings-power-source" name="settings_power_source" aria-labelledby="settings-power-source-label">
             <md-select-option value="flow" selected><div slot="headline">Flow card</div></md-select-option>
             <md-select-option value="homey_energy"><div slot="headline">Homey Energy</div></md-select-option>
           </md-filled-select>
@@ -492,16 +493,16 @@
         <div class="collapse-content">
           <form id="daily-budget-advanced-form" class="form-grid">
             <label class="field">
-              <span class="field__label">Background usage reserve</span>
-              <md-filled-select id="daily-budget-controlled-weight">
+              <span class="field__label" id="daily-budget-controlled-weight-label">Background usage reserve</span>
+              <md-filled-select id="daily-budget-controlled-weight" aria-labelledby="daily-budget-controlled-weight-label">
                 <md-select-option value="0" selected><div slot="headline">Balanced</div></md-select-option>
                 <md-select-option value="1"><div slot="headline">Conservative</div></md-select-option>
               </md-filled-select>
               <small class="field__hint">How much daily budget to hold back for household usage PELS cannot move.</small>
             </label>
             <label class="field">
-              <span class="field__label">Managed device flexibility</span>
-              <md-filled-select id="daily-budget-price-flex-share">
+              <span class="field__label" id="daily-budget-price-flex-share-label">Managed device flexibility</span>
+              <md-filled-select id="daily-budget-price-flex-share" aria-labelledby="daily-budget-price-flex-share-label">
                 <md-select-option value="0.3"><div slot="headline">Low</div></md-select-option>
                 <md-select-option value="0.6" selected><div slot="headline">Medium</div></md-select-option>
                 <md-select-option value="0.85"><div slot="headline">High</div></md-select-option>
@@ -543,8 +544,8 @@
         <div class="collapse-content">
           <div class="form-grid">
             <label class="field">
-              <span class="field__label">Device</span>
-              <md-filled-select id="advanced-device-select"></md-filled-select>
+              <span class="field__label" id="advanced-device-select-label">Device</span>
+              <md-filled-select id="advanced-device-select" aria-labelledby="advanced-device-select-label"></md-filled-select>
               <small class="field__hint">Removes PELS settings for this device only.</small>
             </label>
             <div class="inline-actions">
@@ -563,8 +564,8 @@
         <div class="collapse-content">
           <div class="form-grid">
             <label class="field">
-              <span class="field__label">Homey device</span>
-              <md-filled-select id="advanced-api-device-select"></md-filled-select>
+              <span class="field__label" id="advanced-api-device-select-label">Homey device</span>
+              <md-filled-select id="advanced-api-device-select" aria-labelledby="advanced-api-device-select-label"></md-filled-select>
               <small class="field__hint">Loads the raw device from the Homey API.</small>
             </label>
             <div class="inline-actions">

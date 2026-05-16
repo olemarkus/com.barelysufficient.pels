@@ -39,3 +39,12 @@ export const ExpandMoreIcon = (props: IconProps) => (
     <path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" />
   </svg>
 );
+
+// Material `warning` glyph. Used by the dry-run, stale-data, and budget
+// allocation banner primitives in place of the U+26A0 Unicode emoji so the
+// icon stays consistent across Apple, Google, and Microsoft glyph sets.
+export const WarningIcon = (props: IconProps) => (
+  <svg {...baseSvgProps(props)}>
+    <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+  </svg>
+);
