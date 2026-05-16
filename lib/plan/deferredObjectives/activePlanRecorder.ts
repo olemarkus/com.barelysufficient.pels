@@ -7,6 +7,7 @@ import type {
   DeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlansV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
+import { formatEstimatedDuration, resolvePlanLevelDurationSnapshot } from './activePlanDuration';
 import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION } from './activePlanSettings';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
@@ -285,24 +286,6 @@ const buildRevision = (params: {
   };
 };
 
-// Formats kWh / kW into "Yh Zm" or "Zm" when sub-hour. Returns null when the
-// computation isn't useful (missing inputs or zero energy needed). Keeping
-// the formatting next to the recorder so all surfaces stay aligned.
-const formatEstimatedDuration = (
-  energyNeededKWh: number,
-  planningSpeedKw: number | null,
-): string | null => {
-  if (!Number.isFinite(energyNeededKWh) || energyNeededKWh <= 0) return null;
-  if (typeof planningSpeedKw !== 'number' || !Number.isFinite(planningSpeedKw) || planningSpeedKw <= 0) {
-    return null;
-  }
-  const totalMinutes = Math.max(1, Math.round((energyNeededKWh / planningSpeedKw) * 60));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes - hours * 60;
-  if (hours <= 0) return `${minutes}m`;
-  return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
-};
-
 // Per-plan provenance is best-effort and only written when at least one
 // field has useful content; otherwise older consumers continue using the
 // fall-back lookup against the live profile store.
@@ -503,6 +486,9 @@ export class DeferredObjectiveActivePlanRecorder {
     const revision = buildRevision({ diag, hours, revision: 1, reason, nowMs });
     const startedAtMs = this.plans[diag.deviceId]?.startedAtMs ?? nowMs;
     const provenance = resolveProvenance(diag);
+    // Freeze the plan-level total duration here so the hero meta line stays
+    // stable across revisions. See `resolvePlanLevelDurationSnapshot` for the
+    // preservation/reset rules applied during subsequent revisions.
     this.plans[diag.deviceId] = {
       deviceId: diag.deviceId,
       deviceName: diag.deviceName ?? null,
@@ -514,6 +500,10 @@ export class DeferredObjectiveActivePlanRecorder {
       pending: false,
       objectiveSignature: signature,
       ...(provenance ? { kwhPerUnitProvenance: provenance } : {}),
+      ...(revision.planningSpeedKw !== undefined ? { initialPlanningSpeedKw: revision.planningSpeedKw } : {}),
+      ...(revision.estimatedDurationText !== undefined
+        ? { initialEstimatedDurationText: revision.estimatedDurationText }
+        : {}),
       original: revision,
       latest: revision,
     };
@@ -585,6 +575,7 @@ export class DeferredObjectiveActivePlanRecorder {
     // accepted-sample counts and confidence are kind-specific.
     const nextProvenance = provenance
       ?? (current.objectiveKind === diag.objectiveKind ? current.kwhPerUnitProvenance : undefined);
+    const snapshot = resolvePlanLevelDurationSnapshot({ current, revision, reason });
     this.plans[diag.deviceId] = {
       ...current,
       deviceName: diag.deviceName ?? current.deviceName,
@@ -593,6 +584,13 @@ export class DeferredObjectiveActivePlanRecorder {
       targetPercent: diag.targetPercent,
       objectiveSignature: signature,
       ...(nextProvenance ? { kwhPerUnitProvenance: nextProvenance } : {}),
+      // Explicit set so an `objective_changed` reset can drop the snapshot to
+      // `undefined` when the new revision has no usable planning speed; the
+      // conditional-spread idiom used elsewhere would silently carry the
+      // prior value forward through `...current`. JSON.stringify omits
+      // `undefined` so the persisted record stays compatible.
+      initialPlanningSpeedKw: snapshot.initialPlanningSpeedKw,
+      initialEstimatedDurationText: snapshot.initialEstimatedDurationText,
       latest: revision,
     };
     this.dirty = true;
