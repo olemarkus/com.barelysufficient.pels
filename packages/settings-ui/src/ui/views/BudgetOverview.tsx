@@ -109,7 +109,19 @@ export type BudgetOverviewProps = {
 
 // ─── Toggle Group ─────────────────────────────────────────────────────────────
 
-type ToggleOpt<T extends string> = { value: T; label: string; disabled?: boolean; title?: string };
+type ToggleOpt<T extends string> = {
+  value: T;
+  label: string;
+  /**
+   * Optional shorter label rendered at narrow widths (≤360 px) when the full
+   * label would otherwise wrap mid-word. The full `label` is preserved as the
+   * button's accessible name via `aria-label` so screen readers always speak
+   * the unabbreviated word.
+   */
+  shortLabel?: string;
+  disabled?: boolean;
+  title?: string;
+};
 
 const ToggleGroup = <T extends string>({
   options,
@@ -129,11 +141,23 @@ const ToggleGroup = <T extends string>({
         type="button"
         class="segmented__option"
         aria-pressed={value === opt.value}
+        aria-label={opt.shortLabel ? opt.label : undefined}
         disabled={opt.disabled}
         title={opt.title}
         onClick={() => onChange(opt.value)}
       >
-        {opt.label}
+        {opt.shortLabel ? (
+          <>
+            <span class="segmented__option-label segmented__option-label--full" aria-hidden="true">
+              {opt.label}
+            </span>
+            <span class="segmented__option-label segmented__option-label--short" aria-hidden="true">
+              {opt.shortLabel}
+            </span>
+          </>
+        ) : (
+          opt.label
+        )}
       </button>
     ))}
   </div>
@@ -579,7 +603,7 @@ const BudgetAdjustView = ({
       <details class="pels-surface-card budget-redesign-card budget-planning-behavior" open>
         <summary class="budget-planning-behavior__summary">
           <span class="budget-planning-behavior__heading">
-            <span class="plan-card__title">Planning behavior</span>
+            <span class="plan-card__title">Budget shaping</span>
             <small class="section-hint">{`${reserveValueText} · ${flexibilityValueText}`}</small>
           </span>
         </summary>
@@ -783,9 +807,9 @@ const BudgetOverviewRoot = ({
       <div class="budget-redesign-view">
         <ToggleGroup
           options={[
-            { value: 'yesterday' as const, label: 'Yesterday' },
+            { value: 'yesterday' as const, label: 'Yesterday', shortLabel: 'Yest.' },
             { value: 'today' as const, label: 'Today' },
-            { value: 'tomorrow' as const, label: 'Tomorrow' },
+            { value: 'tomorrow' as const, label: 'Tomorrow', shortLabel: 'Tom.' },
           ]}
           value={view}
           ariaLabel="Budget day"
