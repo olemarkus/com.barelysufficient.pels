@@ -4,44 +4,115 @@
 @import url('tokens.css');
 
 /**
- * Homey dark-theme counter-filter (desktop-only scope).
+ * Desktop-only light palette (mobile keeps the dark default).
  *
- * Homey desktop inverts every app iframe under `<html class="darkTheme">`
- * via `filter: invert(1) hue-rotate(180deg)`. PELS is dark-only, so the
- * inversion turns dark surfaces near-white and hue-shifts the amber warn
- * semantic toward cyan. Applying the same filter to PELS's `:root`
- * composes the two into identity, restoring the intended palette.
+ * Homey's web shell inverts every app iframe via `filter: invert(1)
+ * hue-rotate(180deg)` when the parent `<html>` has class `darkTheme` —
+ * on desktop only. Mobile Homey never applies the filter. Inside the
+ * cross-origin iframe (sandbox lacks `allow-same-origin`, parent doc /
+ * frameElement / canvas readback / postMessage / Homey SDK all blank
+ * for theme), PELS has no signal for Homey's theme. The previous
+ * counter-filter approach proxied Homey-theme via `prefers-color-scheme`
+ * (OS coupling) and broke whenever OS and Homey themes disagreed.
  *
- * **Mobile Homey does not apply the outer iframe inversion** — it paints
- * its own dark surrounds and lets the embedded iframe render natively.
- * The counter-filter must therefore stay off on mobile, otherwise it
- * inverts native-dark PELS into a near-white "light mode" view (the
- * regression observed after the initial counter-filter shipped). Scope
- * the rule to `(hover: hover) and (pointer: fine)` — the standard
- * "desktop with mouse" probe used elsewhere in `tooltips.ts` for the
- * inverse touch detection. Mobile / tablet do not match either feature,
- * so the filter stays off there and PELS renders as its native dark UI.
+ * Approach: ship PELS as a **light-canvas app on desktop** and let
+ * Homey's invert produce the dark skin in Homey dark mode — the design
+ * pattern every other Homey settings app uses. Mobile keeps the
+ * designer-tuned dark palette unchanged (no filter to fight).
  *
- * Signal choice: `prefers-color-scheme: dark` is still the only available
- * cue *for the parent's theme* inside the iframe (cross-origin parent
- * doc, no canvas readback of iframe-element filters, no Homey postMessage
- * theme signal). A JS probe would reduce to the same media query.
+ * Gate is `(hover: hover) and (pointer: fine)` — the same hardware probe
+ * used in `tooltips.ts`. Deterministic on mobile (no filter) vs desktop
+ * (always-invert-in-dark-mode); not coupled to OS theme.
  *
- * `<meta name="color-scheme" content="dark">` in index.html does not
- * defeat Homey's filter on its own (verified pixel-identical to the
- * broken state against the captured fixture under
- * packages/settings-ui/test/fixtures/homey-wrap/, 2026-05-16) — keep it
- * as a defense-in-depth declaration of our paint target.
+ * Override scope: neutrals + surfaces + borders + state-text "soft"
+ * variants + state-info text. Saturated *default* role hues (accent
+ * green, warn amber, alert red, info blue, price lavender, good teal)
+ * keep their dark-palette values — Homey's invert produces hue-shifted
+ * but recognisable forms for dark mode, and they read as designed on
+ * the light canvas in light mode. The state-text soft variants flip
+ * dark→light here so warning/positive/negative text remains readable
+ * on the light canvas (Homey's invert then forwards them to readable
+ * warm tones for desktop dark mode). On-accent text intentionally
+ * does NOT flip — see the in-block comment for the AA contrast
+ * justification.
  *
- * Known trade-off (TODO.md, v2.7.1): users on **desktop** who explicitly
- * mismatch OS and Homey theme (e.g. OS dark + Homey light) see PELS
- * inverted because we counter-invert without Homey having inverted.
- * Deterministic fix requires a Homey-side postMessage handshake or a
- * proper light/dark theme implementation in PELS itself.
+ * `<meta name="color-scheme" content="light dark">` in index.html
+ * declares both palettes so the UA picks form-control / scrollbar
+ * defaults from the user's preference; CSS still drives the actual
+ * surface colors per the @media gate below.
  */
-@media (prefers-color-scheme: dark) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   :root {
-    filter: invert(1) hue-rotate(180deg);
+    /* Light-canvas palette mapped 1:1 to Homey's canonical iframe-
+       injected variable set (`_homey-variables.css` served at
+       `/manager/webserver/assets/css/`, 2026-05-17). Homey defines:
+         body bg:     --homey-color-ice-white = #f6f7fb
+         component:   --homey-color-white     = #ffffff
+         line:        --homey-color-mono-10   = #dddee2
+         text:        --homey-color-mono-90   = #181818
+         text-light:  --homey-color-mono-40   = #939496
+       PELS sits inside Homey's iframe — adopt these values verbatim
+       so the surface reads as a continuation of Homey's own chrome,
+       not a third-party app with a similar-but-distinct neutral
+       system. Status semantics are conveyed by *border* and *text*
+       colour; Homey itself never tints status surfaces. */
+    --color-base-black: #f6f7fb;       /* Homey ice-white / body */
+    --color-base-black-rgb: 246, 247, 251;
+    --color-base-gray-50: #181818;     /* Homey mono-90 / primary text */
+    --color-base-gray-100: #7a7b7d;    /* Homey mono-50 / secondary */
+    --color-base-gray-300: #939496;    /* Homey mono-40 / text-light */
+    --color-base-gray-900: #ffffff;
+    /* Keep the designer-tuned dark on-accent text from the mobile palette —
+       `#ffffff` text on `#22c55e` accent green is only ~1.86 : 1 (fails
+       WCAG AA), while `#0c1610` on the same green is ~9.3 : 1 (AA pass for
+       both normal and large text). Saturated accent default stays identical
+       across mobile and desktop, so the dark on-accent reads correctly on
+       both canvases. */
+    --color-surface-1: #ffffff;        /* Homey mono-0 / component */
+    --color-surface-2: #fafbfd;        /* Homey mono-01 */
+    --color-surface-3: #f1f2f6;        /* Homey mono-02 */
+    --color-surface-4: #dddee2;        /* Homey mono-10 / line */
+    --color-surface-5: #c4c5c8;        /* Homey mono-20 */
+    --color-surface-elevated: #ffffff;
+    --color-border-default: #dddee2;   /* Homey line (mono-10) */
+    --color-border-medium: #c4c5c8;    /* Homey line-hover/active (mono-20) */
+    --color-border-strong: #939496;    /* Homey mono-40 */
+    --color-overlay-backdrop: rgba(24, 24, 24, 0.5);  /* mono-90 at 0.5 */
+
+    /* State-text "soft" tones — readable dark tones on light surface
+       and they forward-invert to readable light tones under Homey's
+       dark mode skin (#92400e → #f5a371, #065f46 → #71cab1,
+       #991b1b → #ffaeae). Values computed by applying the standard
+       SVG `invert(1) hue-rotate(180deg)` matrix to each input. */
+    --color-base-warning-soft: #92400e;
+    --color-base-good-soft: #065f46;
+    --color-base-danger-soft: #991b1b;
+
+    /* info-text falls back through `--color-role-info` → `--color-base-info-default`
+       (`#60a5fa`, sky-400), which only hits ~3.5 : 1 on white. Borrow Homey's
+       primary blue for state-info text so info-toned text + borders read at
+       AA on the light canvas. */
+    --color-state-info-text: #0075e0;  /* Homey blue-active */
+
+    /* State containers — Homey-style: no saturated background tint.
+       Containers stay white; the semantic role hue lives on the
+       border and the inner title/text. Mobile keeps the original 14%
+       color-mix tint (different aesthetic for a dark canvas). */
+    --color-state-positive-bg: var(--color-surface-1);
+    --color-state-warning-bg: var(--color-surface-1);
+    --color-state-negative-bg: var(--color-surface-1);
+    --color-state-info-bg: var(--color-surface-1);
+
+    /* Shadow stack lifted directly from Homey's `--homey-box-shadow*`
+       variables — same three-layer composition Homey uses on its own
+       cards, panels and selected states. PELS card elevations now
+       match Homey's elevation language exactly. */
+    --shadow-sm: 0 5px 22px 0 rgba(0, 0, 0, 0.04), 0 2px 5px 0 rgba(0, 0, 0, 0.05), 0 2px 2px 0 rgba(0, 0, 0, 0.02);  /* Homey box-shadow-light */
+    --shadow-md: 0 10px 44px 0 rgba(0, 0, 0, 0.07), 0 2px 12px 0 rgba(0, 0, 0, 0.1), 0 2px 4px 0 rgba(0, 0, 0, 0.04);  /* Homey box-shadow */
+    --shadow-lg: 0 10px 44px 0 rgba(0, 0, 0, 0.07), 0 2px 12px 0 rgba(0, 0, 0, 0.1), 0 2px 4px 0 rgba(0, 0, 0, 0.04);
+    --shadow-card: 0 5px 22px 0 rgba(0, 0, 0, 0.04), 0 2px 5px 0 rgba(0, 0, 0, 0.05), 0 2px 2px 0 rgba(0, 0, 0, 0.02);
+    --shadow-panel: 0 5px 22px 0 rgba(0, 0, 0, 0.04), 0 2px 6px 0 rgba(0, 0, 0, 0.05), 0 2px 2px 0 rgba(0, 0, 0, 0.02);  /* Homey box-shadow-selected */
+    --shadow-inset-soft: inset 0 1px 2px rgba(0, 0, 0, 0.04);
   }
 }
 
@@ -474,6 +545,38 @@ md-primary-tab.tab[active]:hover {
   background: var(--pels-surface-container-highest) !important;
   border: 1px solid var(--pels-surface-outline) !important;
   color: var(--text) !important;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  /* Desktop-only: promote the simulation banner to a warning-themed card
+     so the colour semantics ("you're in simulation, nothing will switch")
+     read on the light canvas. Mobile keeps the original neutral container
+     above — today's dark palette stays byte-identical. */
+  #dry-run-banner {
+    background: var(--color-state-warning-bg);
+    border: 1px solid var(--color-state-warning-border);
+  }
+
+  .dry-run-banner__action {
+    /* Let Material Web draw the outlined button — host `border` and
+       `background` would double-stroke against the M3 outline / interaction
+       layer. The label colour reaches the shadow-DOM text via the
+       `--md-outlined-button-*` custom properties, not the host `color`. */
+    background: transparent !important;
+    border: 0 !important;
+    color: var(--color-state-warning-text) !important;
+    --md-outlined-button-label-text-color: var(--color-state-warning-text);
+    --md-outlined-button-hover-label-text-color: var(--color-state-warning-text);
+    --md-outlined-button-pressed-label-text-color: var(--color-state-warning-text);
+    --md-outlined-button-focus-label-text-color: var(--color-state-warning-text);
+    --md-outlined-button-outline-color: var(--color-state-warning-border);
+    /* State layer tints — without these the hover/press overlay falls back
+       to Material's default `--md-sys-color-primary` (teal-ish), which
+       reads as a primary-tinted ring inside an amber warning button. */
+    --md-outlined-button-hover-state-layer-color: var(--color-state-warning-text);
+    --md-outlined-button-pressed-state-layer-color: var(--color-state-warning-text);
+    --md-outlined-button-focus-state-layer-color: var(--color-state-warning-text);
+  }
 }
 
 .device-control-legend {
@@ -3086,7 +3189,7 @@ md-primary-tab.tab[active]:hover {
 
 .tippy-box[data-theme~='pels'] {
   background: var(--color-surface-elevated);
-  color: var(--color-base-white);
+  color: var(--text);
   border: 1px solid var(--color-border-medium);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
@@ -4393,8 +4496,13 @@ details[open] > summary .disclosure-chevron {
 }
 
 #budget-redesign-adjust-view {
-  --pels-md-on-primary: var(--color-base-black);
-  --pels-md-on-secondary: var(--color-base-black);
+  /* On-primary / on-secondary text sits on the saturated accent green —
+     use `--color-base-accent-on` (a theme-invariant near-black) instead
+     of `--color-base-black`, which the desktop palette flips to a near-
+     white page wash and would otherwise produce near-white text on a
+     saturated green container (~1.86 : 1, fails AA). */
+  --pels-md-on-primary: var(--color-base-accent-on);
+  --pels-md-on-secondary: var(--color-base-accent-on);
   padding-bottom: var(--spacing-8);
 }
 
@@ -5765,12 +5873,15 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
  * --------------------------------------------------------------------------- */
 
 #device-detail-panel {
-  /* Re-theme @material/web on this panel to match the PELS dark surface. */
-  --pels-md-on-primary: var(--color-base-black);
+  /* Re-theme @material/web on this panel. On-primary / on-secondary /
+     on-error sit on the saturated accent and error containers — use
+     `--color-base-accent-on` (theme-invariant near-black) instead of
+     `--color-base-black`, which the desktop palette flips light. */
+  --pels-md-on-primary: var(--color-base-accent-on);
   --pels-md-primary-container: color-mix(in srgb, var(--accent) 20%, transparent);
-  --pels-md-on-secondary: var(--color-base-black);
+  --pels-md-on-secondary: var(--color-base-accent-on);
   --pels-md-on-surface-variant: var(--color-semantic-text-secondary);
-  --pels-md-on-error: var(--color-base-black);
+  --pels-md-on-error: var(--color-base-accent-on);
 }
 
 /* Switch row: switch on the left, label + hint stacked beside it.

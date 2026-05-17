@@ -363,22 +363,19 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 ## P1 Correctness, Data Integrity, and Supported UX
 
 - [x] Homey dark theme inverts the PELS iframe via `filter: invert(1) hue-rotate(180deg)`.
-      *(landed: counter-filter `@media (prefers-color-scheme: dark) { :root { filter: invert(1) hue-rotate(180deg) } }`
-      in `packages/settings-ui/public/style.css` plus `<meta name="color-scheme" content="dark">`
-      defense-in-depth in `public/index.html`. Verified via the captured wrap fixture under
-      `PELS_E2E_SIMULATE_HOMEY=dark`: PELS reads dark again, amber warn semantic restored.)*
-
-      **Known trade-off (v2.7.1 follow-up):** the CSS-only counter-filter triggers on
-      `prefers-color-scheme: dark`, which is correlated with Homey's theme but not
-      identical. Users who explicitly mismatch (OS dark + Homey light) now see PELS
-      inverted to a near-white palette. The proper deterministic fix requires
-      Homey-side cooperation — there is no in-iframe signal available across the
-      `*.homeylocal.com` ↔ `my.homey.app` origin boundary: `window.parent.document`
-      access throws, canvas readback does not see iframe-element filters, and Homey
-      does not postMessage theme state. A future Homey SDK that exposes the theme
-      via postMessage (or a URL parameter) would let us replace the media-query
-      gate with a deterministic check; tracked as a v2.7.1 enhancement once that
-      signal exists.
+      *(landed: the prior CSS-only counter-filter — which proxied Homey theme via
+      `prefers-color-scheme` and broke whenever OS and Homey themes disagreed — is
+      retired. PELS now ships as a **light-canvas app on desktop** and lets Homey's
+      own invert produce the dark skin in Homey dark mode (the design pattern every
+      other Homey app uses). Mobile keeps today's designer-tuned dark palette
+      unchanged. The gate is `@media (hover: hover) and (pointer: fine)`, a hardware
+      probe that matches Homey's actual behaviour: mobile Homey never applies the
+      iframe filter, desktop Homey always applies it in dark mode. All four OS/Homey
+      combinations now render correct semantics. See
+      `notes/desktop-light-mobile-dark.md` for the empirical probe (no in-iframe
+      signal exists for Homey's parent theme — verified across cross-origin
+      sandbox, canvas readback, Homey SDK surface, and parent postMessage stream)
+      and the palette decisions.)*
 
 - [x] Smart-task chart legend labels truncate to ellipsis across multiple views. *(landed in PR #821 — fixed alongside the P0 chart Y-axis bug via `legend.width: '100%'` + grid-top 28→44 px on the smart-task chart shell.)*
       Live-walk 2026-05-16:
@@ -2280,6 +2277,60 @@ release-review passes.*
       Why P2: docs-only drift; live UI is already authoritative.
       Files: `docs/plan-states.md`.
 
+## P2 M3 alignment pass (post desktop-light-mode-fix)
+
+Deferred from the desktop-light theme-model review (2026-05-17). The theme-model
+change scoped itself strictly to the colour palette — the items below are the
+broader Material 3 / Homey-look alignment direction surfaced during that review
+but explicitly out of scope for the patch landing. Each is a separate effort,
+should not be folded into the same PR.
+
+- [ ] Real M3 token layer: migrate PELS from its current mixed
+      `--color-base-*` / `--color-role-*` / `--md-sys-color-*` graph to a strict
+      M3 `--md-sys-color-*` role layer. Components consume roles only — no raw
+      hex, no opacity stacks, no one-off colours. Touches every component CSS
+      file, every `--md-*` binding in `packages/settings-ui/public/style.css`,
+      every chart palette consumer under `packages/settings-ui/src/ui/charts/`.
+
+- [ ] Calmer PELS primary on light surfaces: tone `--color-base-accent-default`
+      from the current vivid `#22c55e` to something nearer `#16a34a` (green-600)
+      so the accent reads as "calm green" against white cards rather than
+      "bright fluorescent". Verify against Homey's own primary blue intensity
+      for parity. Re-verify the post-invert form for desktop dark.
+
+- [ ] Reduce orange weight on PELS-controlled / over-budget / simulation-mode
+      device and hero cards: today's CSS paints a full amber border around any
+      card in a warning state (Water Heater "Turned off by PELS", simulation
+      hero rim). On the new light canvas three warning cards in one viewport
+      reads as "everything is on fire". Migrate to a chip / state-rail (4 px
+      left rail in role colour + role-toned title + neutral border on the other
+      three sides) per the M3 status pattern. Files:
+      `packages/settings-ui/public/style.css` (`.plan-hero[data-tone]`,
+      `.pels-hero[data-tone]`, device-card warning state rules).
+
+- [ ] Replace the heavy filled-pill tab strip with an M3 tabs / navigation
+      treatment (underline indicator + label, or a smaller pill). Verify the
+      `Smart tasks` label still fits at 320 px without wrapping. Files: shell
+      navigation rules near `.tabs` / `.tab` selectors in
+      `packages/settings-ui/public/style.css`, focus styles, panel transitions.
+
+- [ ] Rework metric hero typography: drop long headline strings like
+      "0.3 of 4.5 kWh used" in favour of numeric-first stacks
+      ("0.3 kWh" → "of 4.5 kWh used this hour"). Enable `font-feature-settings:
+      "tnum"` on metric numbers, scale display type down at 320 px. Files:
+      `packages/shared-domain/src/` metric format helpers, every hero template
+      in `packages/settings-ui/src/ui/views/`.
+
+- [ ] Progress visual cleanup: standardise on M3 tracks + semantic colour for
+      bar/segment progress (Energy used, Daily usage, smart-task plan).
+      Self-explanatory markers; remove unlabelled dark ticks; legends compact
+      and readable. Files: `packages/settings-ui/src/ui/charts/`,
+      `packages/settings-ui/public/style.css` (`.power-meter*`, `.pels-meter*`).
+
+- [ ] Calmer device-card defaults on the light canvas: keep normal devices on
+      plain white cards with neutral borders; reserve tone treatment for true
+      attention states only (paired with the orange-weight item above).
+
 ## P3 Future and Exploratory Work
 
 - [ ] Add Playwright assertion that the segmented short/full labels never co-render.
@@ -2290,15 +2341,13 @@ release-review passes.*
       is 0, would catch the dual-render regression.
       Files: `packages/settings-ui/tests/e2e/`, `packages/settings-ui/public/style.css`.
 
-- [ ] Watch `position: fixed` behavior under the new `:root { filter }` counter-filter (PR #827, gemini-code-assist review).
-      Applying `filter` to `:root` makes it the containing block for fixed-position descendants
-      (`.toast`, `.overlay`, `.slide-panel`, `.deadline-page-close`). Verified non-impacting on
-      Chromium and Firefox mobile under the captured `homey-wrap.dark` fixture at 480×900 (the
-      `<html>` rect equals the viewport, so the new containing block is identical to the
-      viewport). The risk gemini flagged is specifically iOS WebKit — Homey Pro mobile is
-      Android, so this isn't a current target — but worth a follow-up Playwright probe on
-      WebKit-based test browsers if PELS ever ships to an iOS-WebKit consumer.
-      Files: `packages/settings-ui/public/style.css` (counter-filter rule near top).
+- [x] Watch `position: fixed` behavior under the prior counter-filter
+      (`:root { filter }` containing-block risk flagged in PR #827 gemini review).
+      *(closed: the counter-filter is gone. PELS no longer applies a CSS filter on
+      `:root` — `.toast`, `.overlay`, `.slide-panel`, `.deadline-page-close` now
+      live under the normal initial containing block in both Homey themes.
+      Superseded by the light-canvas redesign documented at
+      `notes/desktop-light-mobile-dark.md`.)*
 
 - [ ] Overview device-name trailing whitespace. Live-walk 2026-05-16:
       `aria-label="Open device details for Termostat gang "` and several others
