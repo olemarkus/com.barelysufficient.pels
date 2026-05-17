@@ -28,7 +28,7 @@
   "tags": {
     "en": [
       "capacity",
-      "power limit",
+      "hard cap",
       "energy price",
       "temperature",
       "spot price",
@@ -690,16 +690,16 @@
           }
         ],
         "hint": {
-          "en": "Use this to check if the selected device is ignored by daily budget soft-limit control while still counting in real usage and capacity management."
+          "en": "Use this to check if the selected device is ignored by daily budget control while still counting in real usage."
         },
         "id": "is_device_budget_exempt"
       },
       {
         "title": {
-          "en": "Is device capacity controlled?"
+          "en": "Is power-limit control enabled for device?"
         },
         "titleFormatted": {
-          "en": "Is [[device]] capacity controlled?"
+          "en": "Is power-limit control enabled for [[device]]?"
         },
         "args": [
           {
@@ -711,7 +711,7 @@
           }
         ],
         "hint": {
-          "en": "Use this to check if PELS may limit or resume the selected device based on capacity limits."
+          "en": "Use this to check whether PELS may limit or resume the selected device to stay under the hard cap."
         },
         "id": "is_device_capacity_controlled"
       },
@@ -856,7 +856,7 @@
           "en": "Add budget exemption for [[device]]"
         },
         "hint": {
-          "en": "Exclude this device from daily budget soft-limit control. Real usage still counts in charts and budget reporting, and capacity management still applies."
+          "en": "Exclude this device from daily budget control. Real usage still counts in charts and budget reporting."
         },
         "args": [
           {
@@ -898,13 +898,13 @@
       },
       {
         "title": {
-          "en": "Disable capacity control for device"
+          "en": "Disable power-limit control for device"
         },
         "titleFormatted": {
-          "en": "Disable capacity control for [[device]]"
+          "en": "Disable power-limit control for [[device]]"
         },
         "hint": {
-          "en": "Keep PELS from limiting or resuming this device while capacity control is disabled."
+          "en": "Keep PELS from limiting or resuming this device while power-limit control is disabled."
         },
         "args": [
           {
@@ -922,13 +922,13 @@
       },
       {
         "title": {
-          "en": "Enable capacity control for device"
+          "en": "Enable power-limit control for device"
         },
         "titleFormatted": {
-          "en": "Enable capacity control for [[device]]"
+          "en": "Enable power-limit control for [[device]]"
         },
         "hint": {
-          "en": "Allow PELS to limit or resume this device based on capacity limits."
+          "en": "Allow PELS to limit or resume this device to stay under the hard cap."
         },
         "args": [
           {
@@ -952,7 +952,7 @@
           "en": "Remove budget exemption for [[device]]"
         },
         "hint": {
-          "en": "Make this device follow daily budget soft-limit control again. Capacity management is unchanged."
+          "en": "Make this device follow daily budget control again."
         },
         "args": [
           {
@@ -1101,7 +1101,7 @@
           "en": "Set capacity limit to [[limit_kw]] kW"
         },
         "hint": {
-          "en": "Use this to dynamically adjust your power limit based on time of day, electricity prices, or other conditions."
+          "en": "Use this to dynamically adjust your capacity limit based on time of day, electricity prices, or other conditions."
         },
         "args": [
           {
@@ -1175,7 +1175,7 @@
           "en": "Charge [[device]] to [[target_percent]] % by [[ready_by]]"
         },
         "hint": {
-          "en": "PELS plans charging from the device settings, prices, budget, and power limits."
+          "en": "PELS plans charging from the device settings, prices, budget, and the hard cap."
         },
         "args": [
           {
@@ -1298,7 +1298,7 @@
           "en": "Heat [[device]] to [[target_c]] °C by [[ready_by]]"
         },
         "hint": {
-          "en": "PELS plans heating from the device settings, prices, budget, and power limits."
+          "en": "PELS plans heating from the device settings, prices, budget, and the hard cap."
         },
         "args": [
           {
@@ -1571,7 +1571,7 @@
         "en": "Available power"
       },
       "desc": {
-        "en": "Available power before reaching the current hourly limit"
+        "en": "Available power before reaching the current safe pace"
       },
       "units": {
         "en": "kW"
@@ -1586,10 +1586,10 @@
     "pels_hourly_limit_kw": {
       "type": "number",
       "title": {
-        "en": "Current hourly limit"
+        "en": "Current safe pace"
       },
       "desc": {
-        "en": "Current effective hourly limit (minimum of hourly limit and daily limit when enabled)"
+        "en": "Current effective safe pace (minimum of hourly safe pace and daily budget pace when enabled)"
       },
       "units": {
         "en": "kW"

@@ -6,7 +6,7 @@
     "en": "Add budget exemption for [[device]]"
   },
   "hint": {
-    "en": "Exclude this device from daily budget soft-limit control. Real usage still counts in charts and budget reporting, and capacity management still applies."
+    "en": "Exclude this device from daily budget control. Real usage still counts in charts and budget reporting."
   },
   "args": [
     {

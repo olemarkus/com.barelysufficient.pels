@@ -6,7 +6,7 @@
     "en": "Set capacity limit to [[limit_kw]] kW"
   },
 "hint": {
-    "en": "Use this to dynamically adjust your power limit based on time of day, electricity prices, or other conditions."
+    "en": "Use this to dynamically adjust your capacity limit based on time of day, electricity prices, or other conditions."
   },
   "args": [
     {

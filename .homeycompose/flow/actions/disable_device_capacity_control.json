@@ -1,12 +1,12 @@
 {
   "title": {
-    "en": "Disable capacity control for device"
+    "en": "Disable power-limit control for device"
   },
   "titleFormatted": {
-    "en": "Disable capacity control for [[device]]"
+    "en": "Disable power-limit control for [[device]]"
   },
   "hint": {
-    "en": "Keep PELS from limiting or resuming this device while capacity control is disabled."
+    "en": "Keep PELS from limiting or resuming this device while power-limit control is disabled."
   },
   "args": [
     {

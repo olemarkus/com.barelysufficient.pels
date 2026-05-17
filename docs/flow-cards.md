@@ -9,7 +9,7 @@ Flow cards are how PELS connects to the rest of your Homey setup.
 
 If you only build one Flow, make it **Report power usage**. Everything else depends on having current load data unless you use **Homey Energy** as the power source.
 
-Some older card names still use "headroom" or "capacity control" in Homey. In these docs, read **headroom** as **available power**: how much more load PELS can fit before the current safe pace. Read **capacity control** as **power-limit control**.
+Internal planner reasons may still mention older terms like "headroom" or "shed" in diagnostics and logs. In these docs and the visible UI, **headroom** is **available power** (how much more load PELS can fit before the current safe pace) and **shed** appears as **limited**. Legacy flow-card filenames such as `has_headroom_for_device` keep their stable internal ids; their visible titles use the current vocabulary.
 
 ## Required Starter Flow
 
@@ -43,14 +43,14 @@ Use **Capacity guard: manual action needed** for urgent notifications, not for n
 
 | Card | What it does |
 | --- | --- |
-| **Is there enough headroom?** | Legacy label. Checks whether current available power can fit a specified extra load in kW. |
-| **Is there headroom for device?** | Legacy label. Checks whether current available power can fit the selected device's estimated draw plus a specified extra load. Useful for stepped devices. |
+| **Is there enough available power?** | Checks whether current available power can fit a specified extra load in kW. |
+| **Is there available power for device?** | Checks whether current available power can fit the selected device's estimated draw plus a specified extra load. Useful for stepped devices. |
 | **Operating mode is...** | Checks which mode is active. |
 | **Price level is...** | Checks the current price bucket. |
 | **Current price is one of today's lowest** | True when the current hour is among the selected number of cheapest hours today. |
 | **Current price is one of the lowest before a time** | True when the current hour is among the selected number of cheapest hours in a window before a chosen end hour. |
 | **Is device managed by PELS?** | Checks whether PELS currently manages the selected device. |
-| **Is device capacity controlled?** | Legacy label. Checks whether power-limit control is enabled for the selected device. |
+| **Is power-limit control enabled for device?** | Checks whether power-limit control is enabled for the selected device. |
 | **Does device have budget exemption?** | Checks whether the selected device is ignored by daily-budget control while still counting in real usage and hourly hard-cap protection. |
 | **Smart task status is...** | True when the current Smart task status for the chosen device matches **Building plan…**, **Queued**, **Paused — unplugged**, **On track**, **At risk**, **Cannot finish**, or **Satisfied**. |
 | **Has smart task** | True when the device has a stored Smart task. |
@@ -67,8 +67,8 @@ The device-aware available-power condition includes built-in hysteresis after re
 | **Set daily budget** | Sets the daily budget from a Flow. Use `0` to disable daily budget. |
 | **Add budget exemption for device** | Makes a device skip daily-budget control. Real usage still counts in charts and hourly hard-cap protection. |
 | **Remove budget exemption for device** | Makes a device follow daily-budget control again. |
-| **Enable capacity control for device** | Turns on power-limit control for one device. |
-| **Disable capacity control for device** | Turns off power-limit control for one device. |
+| **Enable power-limit control for device** | Turns on power-limit control for one device. |
+| **Disable power-limit control for device** | Turns off power-limit control for one device. |
 | **Set expected power for device** | Legacy/manual override of a device's expected draw in watts. Fails if the device already has configured load or a stepped-load profile. |
 | **Set external prices (today)** | Stores today's hourly prices from a Flow tag payload. |
 | **Set external prices (tomorrow)** | Stores tomorrow's hourly prices from a Flow tag payload. |
@@ -98,7 +98,7 @@ Use the device-state conditions to avoid duplicate actions:
 | Goal | Condition |
 | --- | --- |
 | Only enable control when a device is managed | **Is device managed by PELS?** |
-| Check whether a Flow-booked device is currently allowed | **Is device capacity controlled?** |
+| Check whether a Flow-booked device is currently allowed | **Is power-limit control enabled for device?** |
 | Check whether daily-budget control currently ignores a device | **Does device have budget exemption?** |
 
 ### Stepped load control
@@ -145,7 +145,7 @@ Example:
 
 This matches the 5 cheapest hours in the 12 hours before 07:00. The window can cross midnight.
 
-Pair that condition or trigger with **Enable capacity control for device** and **Disable capacity control for device** so your Flow chooses the booked hours while PELS still protects the hard cap.
+Pair that condition or trigger with **Enable power-limit control for device** and **Disable power-limit control for device** so your Flow chooses the booked hours while PELS still protects the hard cap.
 
 See [Book Cheap Hours With Flows](/how-to-book-cheap-hours-with-flows).
 

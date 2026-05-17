@@ -6,7 +6,7 @@
     "en": "Heat [[device]] to [[target_c]] °C by [[ready_by]]"
   },
   "hint": {
-    "en": "PELS plans heating from the device settings, prices, budget, and power limits."
+    "en": "PELS plans heating from the device settings, prices, budget, and the hard cap."
   },
   "args": [
     {

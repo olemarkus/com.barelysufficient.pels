@@ -1,12 +1,12 @@
 {
   "title": {
-    "en": "Enable capacity control for device"
+    "en": "Enable power-limit control for device"
   },
   "titleFormatted": {
-    "en": "Enable capacity control for [[device]]"
+    "en": "Enable power-limit control for [[device]]"
   },
   "hint": {
-    "en": "Allow PELS to limit or resume this device based on capacity limits."
+    "en": "Allow PELS to limit or resume this device to stay under the hard cap."
   },
   "args": [
     {
