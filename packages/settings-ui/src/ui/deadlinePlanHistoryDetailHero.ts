@@ -140,6 +140,7 @@ export const buildHistoryDetailHero = (
       recourse: resolveMissedHistoryRecourse({
         outcome: entry.outcome,
         dailyBudgetExhausted,
+        deviceId: entry.deviceId,
       }),
       chartCollapsedByDefault: false,
     };

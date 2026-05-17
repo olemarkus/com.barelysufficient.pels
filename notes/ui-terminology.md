@@ -148,6 +148,17 @@ Internal note: the `DeadlineLiveState` enum value is still spelled `queued`
 (used in chip-tone resolvers and the list status id) so log schemas and JSON
 contracts remain stable — only the user-visible chip label changed.
 
+### Recourse labels
+
+Smart-task heroes (live "cannot finish" and history-detail "missed") render at most one recourse button. The label is action-oriented and names what the user should do *now*, not where the click lands. Source: `resolveMissedHistoryRecourse` and `cannotMeet*Recourse` helpers in `deadlineLabels.ts`.
+
+| Label | When | Lands on |
+|---|---|---|
+| `Lower daily budget` | Missed run because the day's energy budget was exhausted before the deadline. | Budget tab. |
+| `Review device` | Missed run because the device couldn't deliver enough (shortfall, capacity pressure, plan invalidation). | Overview tab + opens the device-settings overlay for the entry's device. |
+
+The prior "Move deadline later" copy promised an action neither destination offered (deadlines are configured via Flow cards, not the device-settings overlay) and was replaced 2026-05-17. The overlay is honest about scope: shed behaviour, target power, boost, modes, priority, and deltas — i.e. settings the user can audit when a run misses.
+
 ### "Plan" vs "deadline" on smart-task surfaces
 
 Reserve *plan* for the planning layer. Smart-task surfaces use *deadline*, *objective*, or *smart task* for lifecycle and identity language ("set a deadline", "smart task ended"). Surface labels prefer non-plan terminology — e.g., the inputs card is titled `Smart task inputs`, not `Plan inputs`.
