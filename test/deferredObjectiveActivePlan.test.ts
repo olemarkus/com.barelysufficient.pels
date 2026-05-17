@@ -189,6 +189,56 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan.pendingReason).toBe('device_data_missing');
   });
 
+  it('routes objective_missing_charge_rate to missing_capacity for a thermal objective', () => {
+    // Production case (2026-05-17, Termostat kontor): PELS reads the current
+    // temperature and has a learned kWh/°C but no calibrated planningPowerKw,
+    // so `resolveObjectiveSteps` returns [] and the diagnostic emits
+    // `objective_missing_charge_rate`. The pending hero must show the
+    // "Learning energy use" copy, not "PELS can't read the current
+    // temperature".
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+    delete (diag as { horizonPlan?: unknown }).horizonPlan;
+    diag.reasonCode = 'objective_missing_charge_rate';
+
+    recorder.observe([diag], HOUR_MS);
+    recorder.flushIfDirty();
+
+    const plan = saved()!.plansByDeviceId.dev;
+    expect(plan.pending).toBe(true);
+    expect(plan.pendingReason).toBe('missing_capacity');
+  });
+
+  it('routes objective_missing_charge_rate to device_data_missing for an EV objective', () => {
+    // EV `objective_missing_charge_rate` is a genuine missing reading from the
+    // charger — keep the existing "Waiting for a reading" copy.
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    const diag = makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      objectiveKind: 'ev_soc',
+      targetTemperatureC: null,
+      targetPercent: 80,
+      currentTemperatureC: null,
+      currentPercent: 40,
+      kWhPerDegreeC: null,
+      kWhPerPercent: 0.5,
+    });
+    delete (diag as { horizonPlan?: unknown }).horizonPlan;
+    diag.reasonCode = 'objective_missing_charge_rate';
+
+    recorder.observe([diag], HOUR_MS);
+    recorder.flushIfDirty();
+
+    const plan = saved()!.plansByDeviceId.dev;
+    expect(plan.pending).toBe(true);
+    expect(plan.pendingReason).toBe('device_data_missing');
+  });
+
   it('captures invalid_session on a pending record when the EV is unplugged', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);

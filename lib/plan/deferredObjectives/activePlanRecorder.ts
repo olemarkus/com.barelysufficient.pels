@@ -193,6 +193,17 @@ const DEVICE_DATA_REASON_CODES: ReadonlySet<string> = new Set([
   'objective_progress_stale',
 ]);
 
+// For thermal objectives, `objective_missing_charge_rate` means the planner has the kWh/°C
+// (learned or bootstrap) but no executable step yet — typically because `planningPowerKw`
+// has not been calibrated from observed power. That is the same "still learning the energy
+// profile" state as `objective_missing_capacity`, and the "Learning energy use" hero copy
+// describes it correctly. EVs keep the generic `device_data_missing` mapping because for
+// them `objective_missing_charge_rate` really is a missing reading from the charger.
+const THERMAL_LEARNING_CAPACITY_REASON_CODES: ReadonlySet<string> = new Set([
+  'objective_missing_capacity',
+  'objective_missing_charge_rate',
+]);
+
 const resolvePendingReason = (
   diag: DeferredObjectiveDiagnostic,
 ): DeferredObjectiveActivePlanPendingReason => {
@@ -204,8 +215,16 @@ const resolvePendingReason = (
   if (diag.reasonCode === 'objective_invalid_session') return 'invalid_session';
   // Thermal devices have no shipped bootstrap kWh/°C; tell the user that
   // power readings are what unblock the plan instead of leaving them with an
-  // indefinite "Waiting" state.
-  if (diag.reasonCode === 'objective_missing_capacity') return 'missing_capacity';
+  // indefinite "Waiting" state. For thermal objectives this also covers
+  // `objective_missing_charge_rate` (no executable step yet because
+  // `planningPowerKw` is uncalibrated), which is the same cold-start state
+  // from the user's point of view.
+  if (
+    diag.objectiveKind === 'temperature'
+      && THERMAL_LEARNING_CAPACITY_REASON_CODES.has(diag.reasonCode)
+  ) {
+    return 'missing_capacity';
+  }
   if (DEVICE_DATA_REASON_CODES.has(diag.reasonCode)) return 'device_data_missing';
   return 'awaiting_horizon_plan';
 };
