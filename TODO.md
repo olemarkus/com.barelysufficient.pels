@@ -192,8 +192,7 @@ v2.7.1 release-review passes.*
       Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
       `lib/plan/deferredObjectives/diagnosticsBridge.ts`,
       `packages/contracts/src/` (diagnostic reason additions), device-card tests.
-
-- [ ] Show planning speed and estimated duration on the EV deadline-plan page.
+- [x] Show planning speed and estimated duration on the EV deadline-plan page.
       `packages/settings-ui/src/ui/deadlinePlan.ts:153,164` shows kWh and hours-until-deadline.
       Add "Planning speed: X.X kW" and "Estimated time: Yh Zm" near the energy line, tagged
       with a speed-mode badge ("Auto" / "Learning…" today; "Manual" / "Conservative" once P3
@@ -211,7 +210,32 @@ v2.7.1 release-review passes.*
       Files: `packages/settings-ui/src/ui/deadlinePlan.ts`, `lib/app/appInit.ts`,
       `lib/plan/deferredObjectives/diagnosticsBridge.ts`, EV learning store, calibration view
       tests.
-- [ ] Surface `objective_invalid_session` (car unplugged) on hero and list. The diagnostics
+      *(shipped — `formatMetaLine` in `packages/settings-ui/src/ui/deadlinePlanHero.ts:160-167`
+      composes a dot-separated meta line with energy · speed · duration · speed-mode label.
+      `resolveSpeedModeLabel` (L171-173) renders Auto / Learning… badges. Planning speed flows
+      from `lib/plan/deferredObjectives/planningSpeed.ts::resolvePlanningSpeedKw`, fed by EV
+      synthetic 1-step calibration in `lib/app/appInit.ts:496-498::buildEvChargerCalibrationView`.
+      Duration via `formatEstimatedDuration` in
+      `lib/plan/deferredObjectives/activePlanDuration.ts`; initial snapshot via
+      `resolvePlanLevelDurationSnapshot` (activePlanRecorder.ts:503-505). Provenance rows via
+      `resolveKwhPerUnitProvenanceRows` in `deadlinePlanInputs.ts:60-64`. Shipping commits:
+      8720af37 (live plan hero) + 4b88a325 (snapshot initial duration). Tests:
+      `test/deferredObjectiveActivePlan.test.ts`,
+      `packages/settings-ui/test/deadlinePlan.test.ts`. The original TODO asked for labeled
+      "Planning speed:" / "Estimated time:" rows; what shipped is a single dot-separated meta
+      line — see new P2 below for the optional split.)*
+- [x] Make "Cannot finish" hero copy always name a reason. *(landed in `50bd8d7c`: the bare `cannotMeetFallback` branch was replaced with a reasoned-or-honest sentence; the producer-side `resolveCannotMeetMeta` always returns named copy.)* `deadlinePlan.ts:resolveCannotMeetMeta`
+      has three branches: `cannotMeetDailyBudgetExhausted`, `cannotMeetShortfall(text)`, and a
+      bare `cannotMeetFallback`. The fallback path renders the warning chip with no reasoned
+      explanation, which is the worst combination — user sees a problem signal but cannot tell
+      what's wrong.
+      Why P1: copy bug that undermines trust precisely in the moment users need it. Replace the
+      fallback with either a named reason from the diagnostic (e.g. plan-status reason code) or
+      escalate to logging + show a generic-but-honest copy ("PELS can't determine why this task
+      is at risk — check the device's setup").
+      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`,
+      `packages/shared-domain/src/deadlineLabels.ts`.
+- [x] Surface `objective_invalid_session` (car unplugged) on hero and list. The diagnostics
       bridge already emits `objective_invalid_session` when SoC reads invalid (car unplugged or
       session ended), and the user-facing flow status maps to `'waiting'`. The hero and list
       both render "Waiting" without explanation. Add a copy branch — "Charging plan paused —
@@ -225,6 +249,105 @@ v2.7.1 release-review passes.*
       `packages/shared-domain/src/deadlineLabels.ts`,
       `lib/plan/deferredObjectives/diagnosticsBridge.ts` (confirm the reason flows into the
       pending-payload).
+      *(shipped — hero copy "Charging plan paused — EV unplugged" via
+      `packages/shared-domain/src/deadlineLabels.ts:584-590` consumed by `buildPendingHero` in
+      `deadlinePlan.ts:236-260` with chip "Paused — unplugged" via `resolvePendingLiveState`
+      (L65-68). List card via `resolveSmartTaskListStatus` (deadlineLabels.ts:145-174) wired
+      through `deadlinesList.ts:72-79`. Device card "Charging plan paused — car unplugged" via
+      `resolveEvCardStateLine` (deadlineLabels.ts:652-685) consumed by `EvDeadlineStateLine` in
+      `PlanDeviceCards.tsx:100-104`. Diagnostics via `diagnosticProgress.ts:39` +
+      `activePlanRecorder.ts:204,218,452`. Tests: `deadlinesList.test.ts:295-334`,
+      `deadlinePlan.test.ts:2722-2780,3819-3829`, `evDeadlineStateLine.test.ts:178-249`.
+      Shipping commits: c37fcb9b + cd4bce6d + 8720af37.)*
+- [x] Disambiguate the "Waiting" chip across Smart task surfaces. *(landed in `cd4bce6d`: chip cleanup canonicalises `Building plan…` / `Scheduled` / `Paused — unplugged` variants; live-state chip dropped from active hero so the kind chip carries identity and the headline carries state.)* Today the same chip text
+      serves three meanings: plan still being built (`pending: true`), plan ready but charging
+      not started yet (queued for first bucket), and (proposed via existing entry above) car
+      unplugged. Split into `Building plan…` / `Queued` / `Paused — unplugged` chip variants
+      so users can tell at a glance which is active. Pair with the
+      `objective_invalid_session` entry above so the unplugged variant lands in the same pass.
+      Why P1: trust signal — three indistinguishable "Waiting" states erode confidence in what
+      PELS is doing right now.
+      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts`,
+      `packages/shared-domain/src/deadlineLabels.ts`.
+- [x] Suppress live-plan original-series in legend and chart when identical to current. *(landed in `cd4bce6d`: the live-plan original-series legend + chart suppress when every hour's `originalDeviceKwh === deviceKwh`, mirroring the existing history-detail behaviour.)*
+      `DeadlinePlanHistoryDetail.tsx:317-320` already gates `hasOriginalSeries` on
+      `Math.abs(originalKwh - finalKwh) > 0.001`. The live `DeadlinePlan.tsx` always renders the
+      original-series legend entry plus the dashed-border bar (with transparent fill when
+      `originalDeviceKwh === 0`), producing two visually near-identical legend entries on
+      first-load plans that haven't revised. Mirror the history-detail suppression: hide the
+      series and the legend entry when every hour's `originalDeviceKwh === deviceKwh`.
+      Why P1: chart clutter on the most common case (first-load, never-revised plan) — small UI
+      fix with measurable first-impression payoff.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+- [x] Canonicalize chip ordering across Smart task surfaces. *(landed in `cd4bce6d`: ordering canonicalised across hero + list — kind identity first, state second.)* Today three orderings ship:
+      list card `[kind, ?Waiting]`, pending hero `[Waiting, kind]`, live hero `[state, kind,
+      ?cannotMeet, ?confidence]`. Pick one canonical order — suggested: kind first as identity,
+      state second as live signal — and apply uniformly so glance-scanning the same chip across
+      surfaces lands on the same position.
+      Why P1: first-impression consistency; inconsistent ordering hurts glance comprehension
+      of a multi-surface feature.
+      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts`.
+- [x] Hero headline indicates planned start window when not currently active. *(landed in `50bd8d7c`: queued hero now emits `headlineReason` subline — "Waiting for tomorrow's prices through HH:MM" / "Today's budget is full — next cheap window after midnight" / "Cheaper than now — starts at HH:MM" — alongside the existing time-anchored headline.)* Today when
+      `firstChargingHour` exists but its `startsAtMs > nowMs`, `resolveHeroHeadline`
+      (`packages/settings-ui/src/ui/deadlinePlan.ts`) returns `Waiting until HH:MM`. When the
+      hero is in the active-now branch it returns `Charging now` / `Heating now`. The bare
+      "On track" branch can fire when there's no `firstChargingHour` at all; consider whether
+      that branch should instead say something like "On track — no action needed yet" or
+      similar. Audit and tighten the headline so users always get a concrete time or status
+      cue rather than a bare status label.
+      Why P1: hero is the top-line user signal; bare "On track" is the weakest possible answer
+      to "what's happening?".
+      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`.
+- [x] Rename `deadline_ended.json` dropdown option keys from `title` to `label`. Sibling
+      trigger / condition JSONs (`deadline_status_changed.json`, `deadline_status_is.json`,
+      condition `outcome`-typed cards across the project) all use `label: { en: … }` on
+      dropdown option objects. `deadline_ended.json` uses `title` — non-standard per the
+      Homey SDK convention and may render raw ids (`succeeded`/`missed`/`abandoned`) in the
+      mobile UI instead of the localized labels. ~1-minute fix.
+      Files: `.homeycompose/flow/triggers/deadline_ended.json`.
+      Resolved by upstream: commit 50a395c5 dropped the outcome dropdown entirely from
+      `deadline_ended.json`, so no dropdown option keys remain to rename. The dropdown was
+      replaced by stable-id tokens that flow authors filter on downstream.
+- [x] Decouple Smart tasks list empty-state copy from flow-card action titles. *(landed in `cd4bce6d`: empty state now references the PELS `Heat … by Ready by` / `Charge … by Ready by` Flow actions so users can find them in the picker.)*
+      `DeadlinesList.tsx:99-100` hard-codes "Add heating task" / "Add charging task" as the
+      action names. The flow-card redesign P0 may rename or unify the actions; this copy
+      would then silently go stale. Either extract action titles to a shared label constant
+      consumed by both the `.homeycompose/flow/actions/*.json` source and the UI, or drop the
+      names entirely (e.g. "Open the Flow editor to schedule a heating or charging task").
+      Why P1 polish: depends on flow-card redesign sequencing; bundle with that work for
+      single-PR safety.
+      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
+      `.homeycompose/flow/actions/set_*_deadline.json` (if shared constants).
+- [x] Surface built-in device control when it blocks device management. *(landed in `41a481a2`: inline notice next to the disabled toggle pointing the user to the activation switch; first-open auto-expands the Setup section and the action button scrolls + focuses the wiring switch.)*
+      The control still exists (`packages/settings-ui/public/index.html:1017-1029`) and is wired
+      by `packages/settings-ui/src/ui/deviceDetail/nativeWiring.ts`, but it is conditional and
+      lives inside the collapsed Setup section. Meanwhile unsupported activation can leave
+      "Managed by PELS" disabled with only a tooltip and list-row explanation. For native-wiring
+      required devices, users can reasonably miss the hidden switch and think the option is gone.
+      Minimum acceptable completion: when a device requires built-in device control before it can
+      be managed, the device detail panel makes that action visible near the disabled management
+      control or automatically opens or highlights the Setup section, and tests cover the blocked
+      management path.
+      Files: `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/src/ui/deviceDetail/nativeWiring.ts`,
+      `packages/settings-ui/src/ui/deviceDetail/index.ts`,
+      `packages/settings-ui/src/ui/devices.ts`, device-detail tests.
+- [x] Apply Norgespris to historical price rows instead of falling back to spot pricing. *(landed in `7c6c4363`: past hours under `norway_price_model = norgespris` now include the Norgespris adjustment; only current and future hours decrement the forward-looking monthly cap projection. Strømstøtte behavior unchanged.)*
+      `buildCombinedHourlyPricesNorway()` currently skips the Norgespris adjustment for every
+      hour before the current hour (`lib/price/priceServiceNorway.ts:221-239`). That avoids
+      consuming the forward-looking monthly cap estimate, but it also makes past rows under the
+      Norgespris model show spot-price totals. Split "display the fixed-price model" from
+      "consume estimated remaining cap" so historical rows still use Norgespris while only current
+      and future rows affect the remaining-cap projection.
+      Why P1: cost history and any UI using past combined prices can show the wrong price model
+      after the user selects Norgespris.
+      Minimum acceptable completion: past same-month rows under `norway_price_model = norgespris`
+      include a Norgespris adjustment and total, past rows do not reduce current /
+      future cap eligibility, and strømstøtte behavior is unchanged.
+      Files: `lib/price/priceServiceNorway.ts`, `test/norgesprisPriceService.test.ts`,
+      price UI/widget tests that render past combined prices.
 - [ ] Align user-visible Homey labels, Flow cards, and public docs with the redesigned Settings UI
       terminology.
       The settings UI mostly follows `notes/ui-terminology.md`, but Homey-facing labels and public
@@ -329,6 +452,12 @@ release-review passes.*
 
 *v2.7.1 release-review P2 batch (2026-05-17). Eight items from the
 six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
+
+- [ ] **deadline-hero-speed-duration-split** — EV deadline detail hero today uses a single
+      dot-separated meta line ("Needs 12.4 kWh · 3.2 kW · 3h 50m · Auto"). The earlier P1
+      spec asked for split labeled rows ("Planning speed: 3.2 kW" / "Estimated time: 3h 50m").
+      Function is identical, this is a copy/layout preference. Pick one direction and document
+      in `notes/ev-ready-by/README.md`.
 
 - [ ] `notes/overview-hero-spec.md` decision-sentence ladder drift: the
       note documents 6 branches; `PlanHero.tsx:108` now has 7 (added
