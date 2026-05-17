@@ -8,7 +8,7 @@ import type {
 } from '../lib/plan/deferredObjectives';
 import type {
   DeferredObjectivePlanHistoryEntry,
-  DeferredObjectivePlanHistoryV3,
+  DeferredObjectivePlanHistoryV4,
 } from '../packages/contracts/src/deferredObjectivePlanHistory';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -64,11 +64,11 @@ const makeDiag = (
   ...overrides,
 });
 
-const buildPersistDeps = (initial?: DeferredObjectivePlanHistoryV3): {
+const buildPersistDeps = (initial?: DeferredObjectivePlanHistoryV4): {
   deps: PlanHistoryPersistDeps;
-  saved: () => DeferredObjectivePlanHistoryV3 | null;
+  saved: () => DeferredObjectivePlanHistoryV4 | null;
 } => {
-  let saved: DeferredObjectivePlanHistoryV3 | null = null;
+  let saved: DeferredObjectivePlanHistoryV4 | null = null;
   return {
     deps: {
       load: () => initial ?? null,
@@ -640,8 +640,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
   });
 
   it('hydrates from persisted history on construction', () => {
-    const initial: DeferredObjectivePlanHistoryV3 = {
-      version: 3,
+    const initial: DeferredObjectivePlanHistoryV4 = {
+      version: 4,
       entries: [
         {
           id: 'hydration-entry-1',
@@ -1156,6 +1156,410 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.flushIfDirty();
 
       expect(saved()!.entries[0]!.startProgressC).toBe(48);
+    });
+  });
+
+  // PR 1 of the v2.7.2 train added four optional fields to the history entry:
+  // `progressSamples`, `deliveredKWh` + `totalCost`, and `revisions[]`, plus
+  // `kwhPerUnitMean` on the revision snapshot. The tests below cover the
+  // recorder side of each addition. UI consumption is the subject of later
+  // PRs in the train.
+  describe('v4 history-detail trio', () => {
+    const buildActivePlansV4 = (params: {
+      deviceId: string;
+      deadlineAtMs: number;
+      latestRevision: number;
+      latestRevisedAtMs: number;
+      latestReason?: 'flow_card' | 'prices_arrived' | 'prices_revised' | 'rate_refined' | 'objective_changed';
+      latestHourStarts: number[];
+      originalHourStarts?: number[];
+      kwhPerUnit?: number | null;
+    }) => ({
+      version: 1 as const,
+      plansByDeviceId: {
+        [params.deviceId]: {
+          deviceId: params.deviceId,
+          deviceName: 'Water Heater',
+          objectiveKind: 'temperature' as const,
+          targetTemperatureC: 65,
+          targetPercent: null,
+          deadlineAtMs: params.deadlineAtMs,
+          startedAtMs: 0,
+          pending: false,
+          objectiveSignature: 'sig',
+          ...(params.kwhPerUnit !== undefined ? {
+            kwhPerUnitProvenance: {
+              source: 'learned' as const,
+              kWhPerUnit: params.kwhPerUnit,
+              acceptedSamples: 8,
+              confidence: 'medium' as const,
+              lastAcceptedAtMs: 0,
+            },
+          } : {}),
+          original: {
+            revision: 1,
+            revisedAtMs: 0,
+            computedFromPricesUpTo: null,
+            reason: 'flow_card' as const,
+            hours: (params.originalHourStarts ?? [0]).map((startsAtMs) => ({ startsAtMs, plannedKWh: 1.0 })),
+            energyNeededKWh: 2.0,
+            planStatus: 'on_track' as const,
+          },
+          latest: {
+            revision: params.latestRevision,
+            revisedAtMs: params.latestRevisedAtMs,
+            computedFromPricesUpTo: null,
+            reason: params.latestReason ?? 'prices_revised' as const,
+            hours: params.latestHourStarts.map((startsAtMs) => ({ startsAtMs, plannedKWh: 1.0 })),
+            energyNeededKWh: 2.0,
+            planStatus: 'on_track' as const,
+          },
+        },
+      },
+    });
+
+    it('drains the hourly progress ring into the entry at finalization', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      // Three cycles in distinct hours produce three samples; two cycles in
+      // the same hour collapse to the most recent reading.
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 52 })], 30 * 60 * 1000);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })], HOUR_MS);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60 })], 2 * HOUR_MS);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.progressSamples).toBeDefined();
+      // Three hour-buckets (0h / 1h / 2h). The half-hour sample upserts the
+      // 0h bucket, so the persisted `atMs` for that bucket is the half-hour
+      // timestamp (the latest observation kept) and not the bucket-start
+      // timestamp — the UI gets the most precise time PELS actually saw the
+      // reading.
+      const sampleAtMs = entry.progressSamples!.map((s) => s.atMs);
+      expect(sampleAtMs).toEqual([30 * 60 * 1000, HOUR_MS, 2 * HOUR_MS]);
+      // Within 0h bucket: latest reading wins (52 °C, not the initial 50).
+      expect(entry.progressSamples![0]!.valueC).toBe(52);
+      expect(entry.progressSamples![1]!.valueC).toBe(55);
+      expect(entry.progressSamples![2]!.valueC).toBe(60);
+      // The temperature objective stamps `valuePercent: null` so the UI
+      // never has to branch on objectiveKind to pick a field.
+      for (const sample of entry.progressSamples!) {
+        expect(sample.valuePercent).toBeNull();
+      }
+    });
+
+    it('caps progressSamples at 48 entries, dropping the oldest', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      // A 60-hour deadline is unrealistic for production but exercises the cap.
+      const deadlineAtMs = 60 * HOUR_MS;
+      for (let hour = 0; hour < 55; hour += 1) {
+        recorder.observe([makeDiag({
+          deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 + hour,
+        })], hour * HOUR_MS);
+      }
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.progressSamples).toHaveLength(48);
+      // Oldest 7 hours were dropped — first sample now starts at hour 7.
+      expect(entry.progressSamples![0]!.atMs).toBe(7 * HOUR_MS);
+      expect(entry.progressSamples![47]!.atMs).toBe(54 * HOUR_MS);
+    });
+
+    it('preserves the progress ring on abandon-grace finalization', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      // One sample before the diagnostic stops appearing.
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
+      // Abandon grace (ABANDON_GRACE_MS = 1h) elapses → run finalized as `abandoned`.
+      recorder.observe([], 2 * HOUR_MS);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('abandoned');
+      // The samples observed before the diagnostic stream stopped are still
+      // drained into the entry so the history chart can show the partial run.
+      expect(entry.progressSamples).toHaveLength(1);
+      expect(entry.progressSamples![0]!.valueC).toBe(50);
+    });
+
+    it('ignores stale diagnostics so untrusted telemetry never lands in progressSamples', () => {
+      // Regression: `buildProgressSample` previously persisted any non-null
+      // `currentTemperatureC` / `currentPercent`, including readings whose
+      // reason code says they are stale or otherwise untrustworthy. The
+      // recorder now gates writes on `hasTrustworthyProgress` (same predicate
+      // `finalProgress*` uses) so the history chart never disagrees with the
+      // headline value the UI shows.
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      // Cycle 1: fresh reading. Lands in the ring.
+      recorder.observe([makeDiag({
+        deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50,
+      })], 0);
+      // Cycle 2: same hour bucket as cycle 1, but the sensor has gone stale.
+      // Must NOT overwrite the trusted 0 h sample with the untrusted value.
+      recorder.observe([makeDiag({
+        deviceId: 'dev', deadlineAtMs, currentTemperatureC: 99,
+        reasonCode: 'objective_progress_stale',
+      })], 30 * 60 * 1000);
+      // Cycle 3: still stale on a new hour bucket. Must NOT add a new sample.
+      recorder.observe([makeDiag({
+        deviceId: 'dev', deadlineAtMs, currentTemperatureC: 99,
+        reasonCode: 'objective_progress_stale',
+      })], HOUR_MS);
+      // Cycle 4: fresh again. Lands in the ring on hour 2.
+      recorder.observe([makeDiag({
+        deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55,
+      })], 2 * HOUR_MS);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.progressSamples).toHaveLength(2);
+      // Hour-0 bucket kept the trusted 50 °C reading; the stale 99 °C upsert
+      // was rejected even though it fell into the same bucket.
+      expect(entry.progressSamples![0]!.atMs).toBe(0);
+      expect(entry.progressSamples![0]!.valueC).toBe(50);
+      // Hour-2 bucket has the next trusted reading. Hour-1 (stale-only) was
+      // never written.
+      expect(entry.progressSamples![1]!.atMs).toBe(2 * HOUR_MS);
+      expect(entry.progressSamples![1]!.valueC).toBe(55);
+    });
+
+    it('records `deliveredKWh` and `totalCost` from hourly delivery contributions', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      // Start the run so an in-progress record exists for the contributions
+      // to land on.
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
+      // Three priced hours: 1.0 kWh @ 0.50 + 1.5 kWh @ 0.80 + 0.5 kWh @ 1.20 = 3.0 kWh, 2.30 cost.
+      recorder.recordHourlyDelivery({
+        deviceId: 'dev', deadlineAtMs, hourStartMs: HOUR_MS, deliveredKWh: 1.0, priceValue: 0.50,
+      });
+      recorder.recordHourlyDelivery({
+        deviceId: 'dev', deadlineAtMs, hourStartMs: 2 * HOUR_MS, deliveredKWh: 1.5, priceValue: 0.80,
+      });
+      recorder.recordHourlyDelivery({
+        deviceId: 'dev', deadlineAtMs, hourStartMs: 3 * HOUR_MS, deliveredKWh: 0.5, priceValue: 1.20,
+      });
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.deliveredKWh).toBeCloseTo(3.0);
+      expect(entry.totalCost).toBeCloseTo(0.50 + 1.20 + 0.60);
+    });
+
+    it('persists `deliveredKWh: 0` on a real-but-zero contribution but suppresses both fields when no contribution arrived', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      // Run A receives a zero-kWh contribution at a negative price.
+      // Both fields persist (the feed ran, the run is "this was free").
+      recorder.observe([makeDiag({ deviceId: 'dev-a', deadlineAtMs, currentTemperatureC: 50 })], 0);
+      recorder.recordHourlyDelivery({
+        deviceId: 'dev-a', deadlineAtMs, hourStartMs: HOUR_MS, deliveredKWh: 0, priceValue: -0.10,
+      });
+      // Run B never receives a contribution. Both fields stay absent.
+      recorder.observe([makeDiag({ deviceId: 'dev-b', deadlineAtMs, currentTemperatureC: 45 })], 0);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entriesByDeviceId = new Map(saved()!.entries.map((e) => [e.deviceId, e]));
+      expect(entriesByDeviceId.get('dev-a')!.deliveredKWh).toBe(0);
+      expect(entriesByDeviceId.get('dev-a')!.totalCost).toBe(0);
+      expect(entriesByDeviceId.get('dev-b')!.deliveredKWh).toBeUndefined();
+      expect(entriesByDeviceId.get('dev-b')!.totalCost).toBeUndefined();
+    });
+
+    it('ignores hourly delivery contributions for unknown runs (no in-progress record)', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      // No `observe` call — recorder has no in-progress record for this device.
+      recorder.recordHourlyDelivery({
+        deviceId: 'ghost', deadlineAtMs: HOUR_MS, hourStartMs: 0, deliveredKWh: 1.0, priceValue: 0.50,
+      });
+      // No persist should happen — recorder is clean.
+      expect(recorder.isDirty()).toBe(false);
+      expect(recorder.flushIfDirty()).toBe(false);
+      expect(saved()).toBeNull();
+    });
+
+    it('drops negative or non-finite contributions defensively', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
+      // Negative kWh — dropped.
+      recorder.recordHourlyDelivery({
+        deviceId: 'dev', deadlineAtMs, hourStartMs: HOUR_MS, deliveredKWh: -1.0, priceValue: 0.50,
+      });
+      // NaN price — dropped.
+      recorder.recordHourlyDelivery({
+        deviceId: 'dev', deadlineAtMs, hourStartMs: HOUR_MS, deliveredKWh: 1.0, priceValue: Number.NaN,
+      });
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      // Both contributions dropped → no delivery contribution recorded → fields absent.
+      expect(entry.deliveredKWh).toBeUndefined();
+      expect(entry.totalCost).toBeUndefined();
+    });
+
+    it('captures `kwhPerUnitMean` from the active plan onto the revision snapshots', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const plans = buildActivePlansV4({
+        deviceId: 'dev',
+        deadlineAtMs,
+        latestRevision: 2,
+        latestRevisedAtMs: HOUR_MS,
+        latestHourStarts: [HOUR_MS, 2 * HOUR_MS],
+        originalHourStarts: [HOUR_MS],
+        kwhPerUnit: 0.59,
+      });
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, plans);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.originalPlan?.kwhPerUnitMean).toBeCloseTo(0.59);
+      expect(entry.finalPlan?.kwhPerUnitMean).toBeCloseTo(0.59);
+    });
+
+    it('omits `kwhPerUnitMean` when the active plan has no provenance snapshot', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const plans = buildActivePlansV4({
+        deviceId: 'dev',
+        deadlineAtMs,
+        latestRevision: 1,
+        latestRevisedAtMs: 0,
+        latestHourStarts: [HOUR_MS],
+        // No kwhPerUnit passed → no provenance on the plan.
+      });
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, plans);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.originalPlan?.kwhPerUnitMean).toBeUndefined();
+      expect(entry.finalPlan?.kwhPerUnitMean).toBeUndefined();
+    });
+
+    it('appends a revision-log entry per replan with reason + +/- hour counts', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 8 * HOUR_MS;
+      // Cycle 1: revision 1, hours = [0h].
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, buildActivePlansV4({
+        deviceId: 'dev',
+        deadlineAtMs,
+        latestRevision: 1,
+        latestRevisedAtMs: 0,
+        latestHourStarts: [0],
+        originalHourStarts: [0],
+        kwhPerUnit: 0.5,
+      }));
+      // Cycle 2: revision 2 (prices_revised), hours = [0h, 1h, 2h] → +2 hours.
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 52 })], HOUR_MS, buildActivePlansV4({
+        deviceId: 'dev',
+        deadlineAtMs,
+        latestRevision: 2,
+        latestRevisedAtMs: HOUR_MS,
+        latestReason: 'prices_revised',
+        latestHourStarts: [0, HOUR_MS, 2 * HOUR_MS],
+        originalHourStarts: [0],
+        kwhPerUnit: 0.5,
+      }));
+      // Cycle 3: revision 3 (rate_refined), hours = [HOUR_MS, 2h] → -1 hour (0h removed).
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })], 2 * HOUR_MS, buildActivePlansV4({
+        deviceId: 'dev',
+        deadlineAtMs,
+        latestRevision: 3,
+        latestRevisedAtMs: 2 * HOUR_MS,
+        latestReason: 'rate_refined',
+        latestHourStarts: [HOUR_MS, 2 * HOUR_MS],
+        originalHourStarts: [0],
+        kwhPerUnit: 0.5,
+      }));
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.revisions).toHaveLength(2);
+      expect(entry.revisions![0]!.atMs).toBe(HOUR_MS);
+      expect(entry.revisions![0]!.reasonId).toBe('prices_revised');
+      expect(entry.revisions![0]!.hoursAdded).toBe(2);
+      expect(entry.revisions![0]!.hoursRemoved).toBe(0);
+      expect(entry.revisions![1]!.atMs).toBe(2 * HOUR_MS);
+      expect(entry.revisions![1]!.reasonId).toBe('rate_refined');
+      expect(entry.revisions![1]!.hoursAdded).toBe(0);
+      expect(entry.revisions![1]!.hoursRemoved).toBe(1);
+    });
+
+    it('does not log a phantom revision entry when the recorder picks up mid-run at revision ≥ 2', () => {
+      // Regression: when `startRecord` seeds `finalPlan` with an already-
+      // replanned revision (e.g. PELS restarts mid-run with `latest.revision = 2`),
+      // the next `refreshPlanSnapshots` cycle would previously append a
+      // phantom `+0/-0` revision-log entry comparing `rev2` against itself.
+      // The recorder can't honestly count replans it didn't witness, so it
+      // must skip the log when `previousFinalPlan.revisedAtMs` already
+      // matches the next revision's timestamp.
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const plans = buildActivePlansV4({
+        deviceId: 'dev',
+        deadlineAtMs,
+        latestRevision: 2,
+        latestRevisedAtMs: HOUR_MS,
+        latestHourStarts: [HOUR_MS],
+        originalHourStarts: [0],
+        kwhPerUnit: 0.5,
+      });
+      // Three consecutive cycles with the same already-replanned revision —
+      // no real replan transition occurs during the recorder's lifetime, so
+      // nothing should land on `revisions[]`.
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, plans);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 51 })], HOUR_MS, plans);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 52 })], 2 * HOUR_MS, plans);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.revisions).toBeUndefined();
+    });
+
+    it('omits `revisions[]` entirely when the run never replanned past the seed revision', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const plans = buildActivePlansV4({
+        deviceId: 'dev',
+        deadlineAtMs,
+        latestRevision: 1, // never replanned
+        latestRevisedAtMs: 0,
+        latestHourStarts: [0],
+        kwhPerUnit: 0.5,
+      });
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0, plans);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      expect(saved()!.entries[0]!.revisions).toBeUndefined();
     });
   });
 });
