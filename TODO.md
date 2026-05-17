@@ -449,6 +449,48 @@ release, not v2.7.1 merge-blockers.*
       copy).
       Source: `pels-ux-fit` agent, v2.7.1 release-review pass.
 
+*Pro Homey runtime-log audit (2026-05-17, log
+`/tmp/pels/start.main.0a4464c3.stdout.log`, 2h40m window).*
+
+- [ ] Profile recovery armed on a thermostat that cannot reach
+      `recoveryTargetValue` locks learning out for up to 24h.
+      `lib/core/objectiveProfileRecovery.ts:67-106` disarms only when
+      `sample.value ≥ recoveryTargetValue` (recovered) or after
+      `RECOVERY_SAFETY_TIMEOUT_MS = 24h` (timed out). A capacity-shed
+      heater (cap-on) that cools below its previously-armed target will
+      stay in `reject_recovering` indefinitely — every sample rejected,
+      no stat update, no band update, no kwh-per-unit refinement —
+      because the device is *cooling away* from the target, not warming
+      toward it. In this audit window `Connected 300` (water heater
+      with an active 65 °C / 16:00 smart task) was held off the full
+      session and emitted 4× `reject_recovering` with
+      `recoveryTargetValue:60.1`, sample drifting 45.3 → 44.7 °C.
+      `Nordic S4 REL` showed the same pattern (armed 19.8 °C, sample
+      13.8 → 15.1 °C, 6× rejected). When this happens, the smart-task
+      planner keeps consuming the *stale* learned rate
+      (`kWhPerDegreeC` from before the lockout) and reports
+      `rateConfidence:"low"` forever even when fresh samples are
+      available. Worst case: the only thermostats users routinely place
+      under smart-task control are also the ones most likely to trigger
+      this lockout, because the smart task itself is what's shedding
+      them.
+      Why P1: data-integrity / planner-input bug; visible user impact
+      is "smart task says cannot finish and never improves". Not a
+      release blocker by itself (current behavior is degraded, not
+      destructive), but should ship in the next patch.
+      Acceptance: add a forward-progress check to `resolveArmedRecovery`
+      so a device that has been armed for ≥ N minutes with zero net
+      forward progress disarms cleanly (treat as "we lost the refill
+      assumption; resume baseline learning") instead of waiting 24h.
+      Cross-check that the disarm clears `recoveryTargetValue` /
+      `recoveryArmedAtMs` and preserves `samples` / `bands` per
+      `notes/objective-profile-bands.md`.
+      Files: `lib/core/objectiveProfileRecovery.ts`,
+      `lib/core/objectiveProfiles.ts` (recovery dispatch),
+      `notes/objective-profile-bands.md` (update the "Interaction with
+      #775 recovery window" section), recovery tests.
+      Source: Pro Homey runtime-log audit 2026-05-17.
+
 - [x] Homey dark theme inverts the PELS iframe via `filter: invert(1) hue-rotate(180deg)`.
       *(landed: the prior CSS-only counter-filter — which proxied Homey theme via
       `prefers-color-scheme` and broke whenever OS and Homey themes disagreed — is
@@ -2237,6 +2279,101 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       log entries") covers the log-noise half.
       Files: `lib/app/appSnapshotHelpers.ts`, observer/device-state freshness helpers,
       snapshot-refresh tests.
+- [ ] Deferred-objective diagnostics advertise plan inputs that admission won't apply for
+      cap-on devices. `lib/plan/deferredObjectives/admission.ts:72-77` intentionally only
+      overrides the cap-off (`device.controllable === false`) fallback — the inline comment
+      is explicit that soft objectives "should not bypass restore admission, cooldowns, or
+      daily-budget logic" when capacity control is on. But the diagnostic emitted upstream
+      (`diagnosticsBridge.ts`) still publishes `requestedMinimumStepId`,
+      `usesDeadlineReserve`, and per-bucket `plannedUsefulEnergyKWh` regardless of
+      device-controllable state. Result: the runtime log, flow tokens, and (potentially)
+      UI/devtools surfaces all describe a planning intent the executor never seeds for
+      cap-on devices, so an operator inspecting "why my heater isn't running" cannot tell
+      from the diagnostic alone that admission has silently no-op'd. In this audit window
+      80/80 horizon plans for `Connected 300` (cap-on water heater) emitted
+      `requestedMinimumStepId:"low"` and `usesDeadlineReserve:true` while the device was
+      held off the entire session by the normal capacity guard.
+      Why P2: behavior is correct by design; the gap is observability, not control
+      integrity. Related to but distinct from the existing P2 about `enforcement: 'hard'`
+      having no behavioral effect on EV deadlines (`TODO.md` "Make `enforcement: 'hard'`
+      actually bypass…").
+      Acceptance: either (a) the diagnostic carries a flag that marks plan intent as
+      advisory-only when `device.controllable === true && enforcement === 'soft'` (so UI
+      and trigger token consumers can render the soft contract honestly), or (b) those
+      fields are suppressed for that case. Acceptance test: cap-on soft objective in
+      `cannot_meet` produces a diagnostic that does not invite a "we'll heat at low step"
+      reading.
+      Files: `lib/plan/deferredObjectives/diagnosticsBridge.ts`,
+      `lib/plan/deferredObjectives/admission.ts` (read-only — comment is the contract),
+      `flowCards/deadlineObjectiveCards.ts` (trigger token shape), diagnostics-bridge tests.
+      Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
+- [ ] Quiet duplicate-snapshot `objective_profile_non_monotonic_time` rejections.
+      `lib/core/deviceManagerParseSnapshot.ts:58-84` (`resolveLastFreshDataMs`) takes
+      `Math.max(...)` over multiple Homey capability `lastUpdated` timestamps. When the
+      device temperature value hasn't moved but another capability (target_temperature,
+      measure_power, evcharger_charging_state, etc.) emits a fresh `lastUpdated`, the
+      snapshot rebuilds with the *same* `value` and a flat-or-slightly-shifted floor —
+      occasionally `-2` to `-4 ms` when one capability ages out of the `Math.max` and an
+      older capability becomes the new winner. The monotonicity guard at
+      `lib/core/objectiveProfiles.ts:346` then emits an `objective_profile_sample_rejected
+      reasonCode:objective_profile_non_monotonic_time` event with `valueDelta:0`. In this
+      audit window 14/27 sample rejections are this pattern. No correctness impact (the
+      duplicate would not have improved learning) but the log noise burns 15-minute
+      rejection-throttle windows on real same-reason rejections and inflates the per-device
+      "rejected" counter.
+      Why P2: observability/log-quality cleanup, no user-visible regression.
+      Acceptance: suppress the `objective_profile_non_monotonic_time` rejection event (and
+      `rejectedSamples` increment) whenever the rejected sample has `value` equal to
+      `previous.lastSample.value` — this covers both exact `(observedAtMs, value)` duplicates
+      (`intervalMs === 0`) and the `intervalMs ∈ {-2, -4}` cases where a different capability
+      ages out of the `Math.max` floor and `value` is unchanged. Regression: feed (a) two
+      identical `(observedAtMs, value)` samples and (b) a sample with `observedAtMs` 4 ms
+      less than previous and unchanged `value`; assert no rejection event fires in either case
+      and `rejectedSamples` is not incremented.
+      Files: `lib/core/objectiveProfiles.ts`, `lib/core/objectiveProfileSamples.ts`,
+      sample-pipeline tests.
+      Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
+- [ ] Plan engine fires before the first device snapshot lands, producing a one-cycle
+      `deferred_objective_unknown reasonCode:objective_missing_device` event on every
+      restart. `app.ts:758-771` calls `initDeviceManager` then `initPlanEngine` without
+      awaiting `refreshSnapshot()`; `lib/core/deviceManager.ts:1457-1460` emits
+      `device_api_initialized` immediately after `liveFeed.start()`. The first scheduled
+      plan rebuild fires before the snapshot resolves and
+      `lib/plan/deferredObjectives/diagnosticsBridge.ts:216` correctly emits
+      `unknown / objective_missing_device` for any objective whose device isn't in
+      `deviceById` yet. In this audit window the spurious event fired at 09:52:01.227Z and
+      was replaced by a valid horizon plan ~2.7s later. Persistence is safe (1h
+      abandon-grace in `activePlanRecorder.ts:24`) but the status snapshot is published via
+      `statusBus`, so a one-cycle `waiting → unachievable` flow trigger fires every
+      restart for any objective whose post-warmup status is `cannot_meet`.
+      Why P2: cosmetic/spurious-flow-trigger, recurs every restart. Not data-destructive.
+      Acceptance: hold the first plan rebuild and the first `statusBus` publish until the
+      first `refreshSnapshot()` completes (or until a configurable bound expires).
+      Regression: start the app with an unresolvable Homey Manager fetch and confirm no
+      `deferred_objective_unknown` is emitted until the snapshot bound elapses.
+      Files: `app.ts`, `lib/core/deviceManager.ts`,
+      `lib/plan/deferredObjectives/diagnosticsBridge.ts`, app-startup integration test.
+      Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
+- [ ] Energy training stuck at `bandsCount:0` for thermostats with no `crediblePowerW`.
+      `lib/core/objectiveProfileSamples.ts:57-82` returns `kwhPerUnit:null` when neither
+      `measuredPowerKw > 0` nor `reportedStep.planningPowerW > 0` is present at sample
+      time. `lib/core/objectiveProfiles.ts:436-438` then skips the band buffer update, so
+      the device's adaptive band fitter (per `notes/objective-profile-bands.md`) never
+      sees any input. `Termostat Synne` in this audit window had `acceptedSamples:67` but
+      `bandsCount:0`, `rateConfidence:"low"`, `energyConfidence:"low"`. For thermostats
+      without an inline meter and without a per-step planning-power configured, energy
+      training is effectively disabled — no warning, no recourse surfaced to the user.
+      Why P2: silent gap; user expectation is "the longer this runs the smarter it gets"
+      and the reality is that some devices will not improve regardless of sample count.
+      Acceptance: either (a) when `crediblePowerW` is unresolved across N consecutive
+      accepted samples, emit a one-shot `objective_profile_no_power_source` diagnostic so
+      the user knows which devices need step power configured; or (b) fall back to a
+      device-class default `planningPowerW` for the reported step when the user has not
+      configured one, with a clear logging trace. Either path documents the requirement in
+      `notes/objective-profile-bands.md`.
+      Files: `lib/core/objectiveProfileSamples.ts`, `lib/core/objectiveProfiles.ts`,
+      `notes/objective-profile-bands.md`, profile-sample tests.
+      Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
 - [ ] Clamp stale EV boost stepped-load intent after boost deactivates.
       When EV boost admits a higher charger step and a later SoC update turns boost off, the next
       plan can briefly carry the old higher `desiredStepId` even when the shed-invariant reason
