@@ -185,14 +185,26 @@ Standard Material linear progress bar with a projected-end marker.
 
 Required. One plain-language conclusion at the bottom of the card.
 
+Source of truth in code: `packages/settings-ui/src/ui/views/PlanHero.tsx`
+(`buildDecisionSentence`, currently around lines 108-186). Keep this ladder
+in sync — the code comment cross-links back to this section.
+
 Priority order (first matching condition wins):
 
 1. No data: `No live power data — keeping devices limited until readings return.`
 2. Above hard cap: `Hard cap exceeded — limiting devices now.`
 3. Simulation mode would act: `Would limit 2 devices — simulation mode is enabled.`
 4. Actively limiting: `Limiting 2 devices — current power is above the safe pace.`
+   When current power is below the safe pace (cooldown after a recent shed)
+   the trailing reason swaps to `staying below the safe pace` so the sentence
+   stays factual.
 5. Restoring: `Resuming 1 device — power has stayed below the safe pace.`
-6. On track: `No action needed — this hour is on track.`
+6. Projected over budget: `This hour is projected to go over budget.`
+   Fires when no devices are being limited or resumed but the projected hour
+   energy already trips the `warning` / `critical` projection tone, so the
+   conclusion stays consistent with the `Above budget` status chip surfaced
+   by `resolveHeroStatus`.
+7. On track: `No action needed — this hour is on track.`
 
 Simulation mode wording must be hypothetical throughout:
 - `Would limit 2 devices — simulation mode is enabled.`

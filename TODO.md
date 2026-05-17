@@ -387,7 +387,64 @@ v2.7.1 release-review passes.*
       card placeholders) and use it everywhere.
       Files: `packages/settings-ui/src/ui/views/*.tsx`,
       `packages/settings-ui/public/style.css`.
-- [ ] Unify hero structure across the five settings panels.
+- [x] Sweep Budget panel for remaining planner-noun leakage and terminology drift.
+      Two sibling sites still leak `plan` as a planner noun: `budgetRedesign.ts:245` emits
+      "Cheaper-hour planning" (compare to the documented "Use cheaper hours" wording in the
+      Adjust view and `docs/daily-budget.md`); `BudgetOverview.tsx:582` uses the section heading
+      "Planning behavior" (consider "Shaping behavior" / "Budget shaping"). Both should align
+      with the rest of the planner-noun sweep landing alongside the smart-task copy work.
+      Files: `packages/settings-ui/src/ui/budgetRedesign.ts`,
+      `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
+      `packages/shared-domain/src/**` (if helpers exist there).
+- [x] Fix Budget chart legend color collision between Managed and Price series.
+      `tokens.css:219, 224` both bind to `--color-role-warn` (orange). The two series are
+      distinguishable only by shape (filled circle vs line), which is fragile at small swatch
+      sizes. Reassign the Price series to a distinct semantic token (or extend the chart palette
+      with a dedicated `--pels-chart-price` hue that contrasts both Managed and Background).
+      Files: `tokens/component.json`, `settings/tokens.css` (regen),
+      `packages/settings-ui/src/ui/budgetRedesignChart.ts`.
+- [x] Remove the ghost "Warning" legend entry from the Usage day ECharts chart.
+      *(landed in PR 3.1 — `usageDayChartEcharts.ts` now adds a zero-data dummy
+      bar series named "Warning" alongside the "Measured" series whenever
+      warn bars are present. The legend's `Warning` entry binds to this real
+      series so ECharts no longer drops it; `barMaxWidth` caps both series so
+      the dummy can't shrink the real bars.)*
+- [x] Surface confidence and progress on Smart-tasks list cards. *(landed in `832c53ba`: `Confidence low/medium/high` chip + `currently 18.5 °C` / `currently 45 %` line beside the target. Helpers in shared-domain so logs and UI share strings.)*
+      `DeadlinesListCard` shows kind chip + device + target + ready-by + status, but no
+      confidence indicator and no current-value indicator. A user scanning the list cannot tell
+      which queued task is in trouble without tapping into each one. Add a small confidence
+      chip ("Low" / "Medium" / "High" — matching the hero detail page's confidence chip) and a
+      "currently X" row line ("currently 18 °C", "currently 45 %") so the list answers "what's
+      at risk?" at a glance.
+      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
+      `packages/contracts/src/settingsUiApi.ts` (add `confidence` / `currentValue` to the list
+      card shape if not already there),
+      `packages/shared-domain/src/deadlineLabels.ts` (confidence label per kind).
+- [x] Smart-tasks list: empty Past tasks section silently vanishes; date format inconsistent *(landed in `832c53ba`: new `empty` state on `DeadlinesHistoryListState` renders the heading + explanatory line; both active and past lists routed through `formatSmartTaskListDateTime(ms, timeZone)` so dates render uniformly as `Sat 16 May 06:50`.)*
+      between active and past cards.
+      The Past tasks region lives in `DeadlinesHistoryList.tsx`; when `historyEntries.length === 0`
+      it renders as `null` instead of an explanatory placeholder — leaves the user wondering where
+      the section is supposed to be. Same panel, active cards rendered in `DeadlinesList.tsx` use
+      `Sat 16 May, 06:50` (with comma) while past cards in `DeadlinesHistoryList.tsx` use
+      `Mon 11 May 23:00` (no comma). Pick one format helper and route both lists through it; add
+      an empty-state stanza for past tasks ("No completed tasks yet — they'll appear here after
+      a smart task finishes.").
+      Files: `packages/settings-ui/src/ui/views/DeadlinesHistoryList.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
+      `packages/shared-domain/src/dateFormat.ts` (or wherever the date helper lives).
+- [x] Promote the History detail outcome chip and add a scoping eyebrow. *(landed in `832c53ba`: outcome chip promoted to its own row above the heading; `Smart task` eyebrow added; device name on the heading line with timestamp following in muted text. Per `feedback_terminology_plan_vs_deadline`, the eyebrow is `Smart task`, not `Smart task plan`.)*
+      Today the past-plan detail opens with an 18 px semibold h1 timestamp ("Mon 11 May 23:00")
+      and an 11 px chip ("Succeeded") tucked to the right — the timestamp answers first and the
+      outcome (the thing the user came to confirm) is the quietest element. Also: no eyebrow
+      labels the surface as "Past plan" / "Smart task plan", so a user landing here from a
+      deep-link or notification has no scoping ("PELS" in the dialog title bar is not enough).
+      Fix: add a "Smart task plan" eyebrow above the heading, raise the outcome chip to be
+      visually at least the weight of the timestamp (or move it inline above), and bring the
+      device name onto the heading line.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `packages/settings-ui/public/style.css`.
+- [x] Unify hero structure across the five settings panels. *(landed in `polish-v2.7.3-hero-structure-and-spec`: Settings panel hero contents wrapped in canonical `<div>` to match all other panels.)*
       Every panel except Settings uses `<header class="pels-hero"><div><eyebrow><h2></div></header>`;
       the Settings panel hero (`#settings-panel`) drops the inner `<div>` wrapper and puts the
       eyebrow, h2, and supporting paragraph as direct grid children. The result is a different
@@ -459,7 +516,7 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       Function is identical, this is a copy/layout preference. Pick one direction and document
       in `notes/ev-ready-by/README.md`.
 
-- [ ] `notes/overview-hero-spec.md` decision-sentence ladder drift: the
+- [x] `notes/overview-hero-spec.md` decision-sentence ladder drift. *(landed in `polish-v2.7.3-hero-structure-and-spec`: spec updated to document all 7 branches, "projected over budget" inserted between Restoring and On track, code cross-link added.)*
       note documents 6 branches; `PlanHero.tsx:108` now has 7 (added
       "projected over budget"). The note's own "keep this ladder in
       sync" instruction is referenced from the code comment. Update the
@@ -662,7 +719,7 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       padding, section gaps), `packages/settings-ui/src/ui/views/BudgetOverview.tsx`
       (markup consolidation for #1 and #3), `settings/style.css` (regen).
 
-- [ ] Overview Power-Now bar end-marker leaves a small visible gap from the main fill.
+- [x] Overview Power-Now bar end-marker leaves a small visible gap from the main fill. *(landed in `polish-v2.7.3-hero-structure-and-spec`: `box-shadow: 0 0 0 0.5px` added to both marker variants so sub-pixel gaps are closed.)*
       Live-walk 2026-05-16 (`/tmp/pels-live-walk/overview-hero-480.png`) shows the
       orange "current draw" marker rendering slightly offset from the right edge of the
       filled bar — visually ragged. Minor visual rough edge on a hero element.
@@ -830,7 +887,7 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
       `settings/tokens.css` (chart palette tokens).
 
-- [ ] Delete the dead `#shell-nav .tab[data-tab="settings"]` block at
+- [x] Delete the dead `#shell-nav .tab[data-tab="settings"]` block at *(landed in `polish-v2.7.3-hero-structure-and-spec`: 7-line block removed; Settings tab now inherits compact-mode font sizes correctly.)*
       `packages/settings-ui/public/style.css:397-403`. The selector duplicates `.tab`'s
       base `margin-left`, `padding-inline`, and `opacity` declarations, and its
       `font-size` / `font-weight` declarations actively fight the compact-mode media
