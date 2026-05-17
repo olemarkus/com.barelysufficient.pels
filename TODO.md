@@ -1203,6 +1203,15 @@ release-review pass (2026-05-17). All three depend on the history schema
 v3 → v4 migration, which is out of scope for v2.7.1; sequence them together
 in v2.7.2+.*
 
+*Claimed by the **v2.7.2 PR train** (long-lived branch `v2.7.2`, started
+2026-05-17). In scope for the train: the history-detail trio below
+(L1215 / L1249 / L1260) plus the smart-task trust-signal cluster
+(L2121, L2133, L2155, L2167, L2179, L2191, L2205, L2216, L2228) plus
+small UI polish (L915, L1383, L1393, L1987). Theme: failed runs deserve
+a different page shape than succeeded runs — see `notes/v2-7-2/README.md`
+and `notes/smart-task-ui/README.md`. Skip these items in v2.7.1
+release-review passes.*
+
 - [ ] Smart task history detail: rebuild around temperature/SoC actual-vs-plan, not
       hourly bar comparisons. Current `DeadlinePlanHistoryDetail.tsx` shows planned-hour
       bars (original + final) and binary observed-interval markers. The history entry
