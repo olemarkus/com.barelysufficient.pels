@@ -78,3 +78,119 @@ describe('normalizeDeferredObjectivePlanHistory v2 → v3 migration', () => {
     expect(result.entries[0]!.id).toBe('fixed-id-1');
   });
 });
+
+describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
+  const v3Entry = {
+    ...v2Entry,
+    id: 'v3-entry-1',
+    originalPlan: null,
+    finalPlan: null,
+  };
+
+  it('reads v3 entries with new v4 fields absent — graceful degrade', () => {
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 3,
+      entries: [v3Entry],
+    });
+    // Schema is upgraded to v4 in-place; entry shape is preserved.
+    expect(result.version).toBe(DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION);
+    expect(result.version).toBe(4);
+    expect(result.entries).toHaveLength(1);
+    const migrated = result.entries[0]!;
+    expect(migrated.id).toBe('v3-entry-1');
+    // The four v4-only fields read undefined on legacy v3 entries.
+    expect(migrated.progressSamples).toBeUndefined();
+    expect(migrated.deliveredKWh).toBeUndefined();
+    expect(migrated.totalCost).toBeUndefined();
+    expect(migrated.revisions).toBeUndefined();
+  });
+
+  it('accepts well-formed v4 entries unchanged (round-trip)', () => {
+    const v4Entry = {
+      ...v3Entry,
+      id: 'v4-entry-1',
+      progressSamples: [
+        { atMs: 0, valueC: 50, valuePercent: null },
+        { atMs: HOUR_MS, valueC: 60, valuePercent: null },
+      ],
+      deliveredKWh: 4.2,
+      totalCost: 5.1,
+      revisions: [
+        { atMs: HOUR_MS / 2, reasonId: 'prices_revised', hoursAdded: 1, hoursRemoved: 0 },
+      ],
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [v4Entry],
+    });
+    expect(result.entries).toHaveLength(1);
+    const round = result.entries[0]!;
+    expect(round.progressSamples).toEqual(v4Entry.progressSamples);
+    expect(round.deliveredKWh).toBeCloseTo(4.2);
+    expect(round.totalCost).toBeCloseTo(5.1);
+    expect(round.revisions).toEqual(v4Entry.revisions);
+  });
+
+  it('drops entries with malformed v4 extensions but keeps siblings', () => {
+    const goodEntry = {
+      ...v3Entry,
+      id: 'v4-good',
+      deliveredKWh: 1.5,
+      totalCost: 2.0,
+    };
+    const badProgressSamples = {
+      ...v3Entry,
+      id: 'v4-bad-samples',
+      // Not an array — should drop.
+      progressSamples: 'not-an-array',
+    };
+    const badRevision = {
+      ...v3Entry,
+      id: 'v4-bad-revisions',
+      revisions: [{ atMs: 'not-a-number', reasonId: 'x', hoursAdded: 0, hoursRemoved: 0 }],
+    };
+    const badDelivered = {
+      ...v3Entry,
+      id: 'v4-bad-delivered',
+      // Negative kWh — caught by `deliveredKWh < 0` check.
+      deliveredKWh: -1,
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [goodEntry, badProgressSamples, badRevision, badDelivered],
+    });
+    expect(result.entries.map((e) => e.id)).toEqual(['v4-good']);
+  });
+
+  it('accepts a revision snapshot with kwhPerUnitMean present', () => {
+    const snapshot = {
+      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      energyNeededKWh: 1.5,
+      planStatus: 'on_track',
+      revisedAtMs: 0,
+      kwhPerUnitMean: 0.59,
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [{ ...v3Entry, id: 'kwh-1', originalPlan: snapshot, finalPlan: snapshot }],
+    });
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]!.originalPlan?.kwhPerUnitMean).toBeCloseTo(0.59);
+    expect(result.entries[0]!.finalPlan?.kwhPerUnitMean).toBeCloseTo(0.59);
+  });
+
+  it('drops a revision snapshot whose kwhPerUnitMean is non-positive', () => {
+    const snapshot = {
+      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      energyNeededKWh: 1.5,
+      planStatus: 'on_track',
+      revisedAtMs: 0,
+      kwhPerUnitMean: 0, // illegal — must be > 0 to be a real rate.
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [{ ...v3Entry, id: 'kwh-bad', originalPlan: snapshot, finalPlan: null }],
+    });
+    expect(result.entries).toHaveLength(0);
+  });
+});

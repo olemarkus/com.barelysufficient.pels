@@ -8,16 +8,25 @@ import type {
   DeferredObjectivePlanHistoryEntryV1,
   DeferredObjectivePlanHistoryEntryV2,
   DeferredObjectivePlanHistoryObservedInterval,
+  DeferredObjectivePlanHistoryProgressSample,
+  DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
-  DeferredObjectivePlanHistoryV3,
+  DeferredObjectivePlanHistoryV4,
   DeferredObjectivePlanOutcome,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { isFiniteNumber } from '../../utils/appTypeGuards';
 import { randomUUID } from 'node:crypto';
 
-export const DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION = 3 as const;
+// Bumped to 4 in v2.7.2 alongside the smart-task history-detail trio:
+// `progressSamples`, `kwhPerUnitMean` (on revision snapshots), `deliveredKWh`
+// + `totalCost`, and `revisions[]`. All new fields are optional so v3 entries
+// continue to load with the field absent (graceful degrade). New entries are
+// written at v4; v3 reads are upgraded in-place by `normalizeV3` without
+// dropping any persisted state — see `feedback_homey_sdk_unreliable` for the
+// "never delete persisted state on a single empty/missing read" invariant.
+export const DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION = 4 as const;
 
-const createEmptyDeferredObjectivePlanHistory = (): DeferredObjectivePlanHistoryV3 => ({
+const createEmptyDeferredObjectivePlanHistory = (): DeferredObjectivePlanHistoryV4 => ({
   version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
   entries: [],
 });
@@ -67,11 +76,47 @@ const isRevisionSnapshot = (
 ): value is DeferredObjectivePlanHistoryRevisionSnapshot => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
-  return Array.isArray(v.hours)
-    && v.hours.every(isPlanHour)
-    && isFiniteNumber(v.energyNeededKWh)
-    && isPlanStatus(v.planStatus)
-    && isFiniteNumber(v.revisedAtMs);
+  if (!Array.isArray(v.hours) || !v.hours.every(isPlanHour)) return false;
+  if (!isFiniteNumber(v.energyNeededKWh)) return false;
+  if (!isPlanStatus(v.planStatus)) return false;
+  if (!isFiniteNumber(v.revisedAtMs)) return false;
+  // `kwhPerUnitMean` added in v4. Optional — absence is the legacy shape.
+  // When present it must be a finite positive number (kWh/°C or kWh/%);
+  // anything else means the persisted snapshot was tampered with so drop it.
+  if (v.kwhPerUnitMean !== undefined
+    && (!isFiniteNumber(v.kwhPerUnitMean) || v.kwhPerUnitMean <= 0)) return false;
+  return true;
+};
+
+const isProgressSample = (
+  value: unknown,
+): value is DeferredObjectivePlanHistoryProgressSample => {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return isFiniteNumber(v.atMs) && isFiniteOrNull(v.valueC) && isFiniteOrNull(v.valuePercent);
+};
+
+const isRevisionLogEntry = (
+  value: unknown,
+): value is DeferredObjectivePlanHistoryRevisionLogEntry => {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return isFiniteNumber(v.atMs)
+    && typeof v.reasonId === 'string'
+    && v.reasonId.length > 0
+    && isFiniteNumber(v.hoursAdded)
+    && isFiniteNumber(v.hoursRemoved);
+};
+
+const hasValidV4Extensions = (v: Record<string, unknown>): boolean => {
+  if (v.progressSamples !== undefined
+    && (!Array.isArray(v.progressSamples) || !v.progressSamples.every(isProgressSample))) return false;
+  if (v.deliveredKWh !== undefined
+    && (!isFiniteNumber(v.deliveredKWh) || v.deliveredKWh < 0)) return false;
+  if (v.totalCost !== undefined && !isFiniteNumber(v.totalCost)) return false;
+  if (v.revisions !== undefined
+    && (!Array.isArray(v.revisions) || !v.revisions.every(isRevisionLogEntry))) return false;
+  return true;
 };
 
 const isRevisionSnapshotOrNull = (
@@ -140,7 +185,10 @@ const isV2EntryShape = (value: unknown): value is DeferredObjectivePlanHistoryEn
 const isPlanHistoryEntry = (value: unknown): value is DeferredObjectivePlanHistoryEntry => {
   if (!isV2EntryShape(value)) return false;
   const v = value as unknown as Record<string, unknown>;
-  return typeof v.id === 'string' && v.id.length > 0 && hasValidPlanSnapshots(v);
+  return typeof v.id === 'string'
+    && v.id.length > 0
+    && hasValidPlanSnapshots(v)
+    && hasValidV4Extensions(v);
 };
 
 const upgradeV1Entry = (
@@ -171,20 +219,27 @@ const normalizeV2 = (entries: unknown[]): DeferredObjectivePlanHistoryEntry[] =>
   entries.filter(isV2EntryShape).map(upgradeV2Entry)
 );
 
-const normalizeV3 = (entries: unknown[]): DeferredObjectivePlanHistoryEntry[] => (
+// v3 and v4 entries share the same validation function: the v4-only fields
+// (`progressSamples`, `deliveredKWh`, `totalCost`, `revisions[]`,
+// `revisionSnapshot.kwhPerUnitMean`) are all optional, so v3 entries
+// satisfy the v4 entry validator. v3 → v4 is therefore a pure envelope
+// rewrite — the per-entry payload is unchanged and never reset on read.
+const normalizeV3OrV4 = (entries: unknown[]): DeferredObjectivePlanHistoryEntry[] => (
   entries.filter(isPlanHistoryEntry)
 );
 
 export const normalizeDeferredObjectivePlanHistory = (
   raw: unknown,
-): DeferredObjectivePlanHistoryV3 => {
+): DeferredObjectivePlanHistoryV4 => {
   if (!raw || typeof raw !== 'object') return createEmptyDeferredObjectivePlanHistory();
   const r = raw as Record<string, unknown>;
   if (!Array.isArray(r.entries)) return createEmptyDeferredObjectivePlanHistory();
-  if (r.version === DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION) {
+  // v4 reads + v3 reads upgrade to v4 in-place. New fields stay absent on
+  // legacy entries (graceful degrade per `feedback_homey_sdk_unreliable`).
+  if (r.version === DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION || r.version === 3) {
     return {
       version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
-      entries: normalizeV3(r.entries),
+      entries: normalizeV3OrV4(r.entries),
     };
   }
   if (r.version === 2) {

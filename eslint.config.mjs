@@ -462,6 +462,20 @@ export default tseslint.config(
     },
   },
   {
+    // The history recorder keeps the in-progress record, observation loop, finalize/abandon
+    // flows, backfill synthesis, and hourly-delivery aggregation co-located so the lifecycle
+    // for one run is navigable in a single file. The v2.7.2 schema v4 additions
+    // (`progressSamples`, `deliveredKWh` + `totalCost`, `revisions[]`) pushed it slightly past
+    // the default 500-line budget; the most reusable helpers
+    // (`captureRevisionSnapshot`, progress-ring + revision-log helpers) live in
+    // `planHistoryV4Helpers.ts`. Target: <=500 once a later PR splits the in-progress record
+    // into its own module.
+    files: ['lib/plan/deferredObjectives/planHistory.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 520, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
     // PriceService still coordinates spot/grid refresh, storage, and combined-price publication
     // across the Homey/runtime boundary. Target: <=560 while that orchestration remains local.
     files: ['lib/price/priceService.ts'],
