@@ -2,6 +2,7 @@ import type { RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type {
   DeferredObjectivePlanHistoryEntry,
+  DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
 } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import {
@@ -12,6 +13,8 @@ import {
   resolveHistoryDetailChartData,
   type DeferredPlanHistoryChartData,
   type DeferredPlanHistoryChartPoint,
+  formatPlanHistoryRevisionEntry,
+  type PlanHistoryRevisionLogRow,
 } from '../../../../shared-domain/src/deferredPlanHistory.ts';
 import { deadlineLabels } from '../../../../shared-domain/src/deadlineLabels.ts';
 import {
@@ -741,6 +744,11 @@ const HistoryDetailHero = ({
   </section>
 );
 
+// Hero fallback when no per-revision log entries are recorded (legacy v3 entries,
+// or v4 entries whose run finalized before any replan). v4 entries with a real
+// `revisions` array suppress this line and render the dedicated Revisions card
+// below the chart instead — the card carries the same information at more
+// detail, so keeping the hero line would just duplicate the count.
 const formatRevisionUpdatesLine = (revisionCount: number | undefined): string | null => {
   if (typeof revisionCount !== 'number' || revisionCount <= 1) return null;
   const count = revisionCount - 1;
@@ -760,12 +768,59 @@ const resolveChartCardTitle = (mode: DeferredPlanHistoryChartData['mode']): stri
 // implicitly, so the line is suppressed there.
 const LEGACY_FALLBACK_NOTE = 'Schedule only — observations not recorded for this run.';
 
+// Sort revisions chronologically (oldest → newest). The recorder writes them
+// in-order today but we don't want the view to depend on persistence order,
+// since a future producer could batch / replay events out of order without
+// breaking the contract. Returns a new array — the input is never mutated.
+const sortRevisionsByAtMs = (
+  revisions: readonly DeferredObjectivePlanHistoryRevisionLogEntry[],
+): DeferredObjectivePlanHistoryRevisionLogEntry[] => (
+  [...revisions].sort((a, b) => a.atMs - b.atMs)
+);
+
+type RevisionsCardRow = PlanHistoryRevisionLogRow & { atMs: number };
+
+const RevisionsCard = ({ rows }: { rows: RevisionsCardRow[] }) => (
+  <section class="pels-surface-card budget-redesign-card plan-history-detail__revisions-card">
+    <div class="budget-card-header">
+      <h2 class="plan-card__title">What changed</h2>
+    </div>
+    <ol class="plan-history-detail__revision-log">
+      {rows.map((row) => (
+        // `atMs` is the recorder-issued timestamp at which the revision was
+        // written; revisions are at-most-one-per-replan and the recorder
+        // guarantees monotonic ordering, so this is a stable per-row key
+        // without us inventing a synthetic id field on the contract.
+        <li key={row.atMs} class="plan-history-detail__revision-row">
+          <span class="plan-history-detail__revision-time">{row.timeLabel}</span>
+          <span class="plan-history-detail__revision-reason">{row.reason}</span>
+          {row.hourDiff !== null && (
+            <span class="plan-history-detail__revision-diff">{row.hourDiff}</span>
+          )}
+        </li>
+      ))}
+    </ol>
+  </section>
+);
+
 export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Props) => {
   const deadlineLine = formatPlanHistoryDeadlineLine(entry, timeZone);
   const progressLine = formatPlanHistoryProgressLine(entry);
   const reachedAtLine = formatPlanHistoryReachedAtLine(entry, timeZone);
   const coverageLine = formatPlanHistoryObservedCoverage(entry);
-  const revisionUpdatesLine = formatRevisionUpdatesLine(entry.revisionCount);
+  // Resolve the per-revision rows once. A non-empty array switches the surface
+  // from the hero fallback line to the dedicated `RevisionsCard` below the
+  // chart — see comment on `formatRevisionUpdatesLine` for the legacy v3
+  // fallback contract.
+  const revisionRows: RevisionsCardRow[] = Array.isArray(entry.revisions) && entry.revisions.length > 0
+    ? sortRevisionsByAtMs(entry.revisions).map((revision) => ({
+      atMs: revision.atMs,
+      ...formatPlanHistoryRevisionEntry(revision, timeZone, entry.objectiveKind),
+    }))
+    : [];
+  const revisionUpdatesLine = revisionRows.length > 0
+    ? null
+    : formatRevisionUpdatesLine(entry.revisionCount);
   // Producer-resolved hero payload. The view layer never branches on outcome
   // / planStatus / `dailyBudgetExhaustedBucketCount` — all of that resolution
   // lives in `buildHistoryDetailHero`.
@@ -862,6 +917,16 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
           )}
         </section>
       )}
+      {/* The revision log is the "what changed" companion to the chart's "what
+        * was planned" — they explain the same machinery from two angles, so we
+        * gate the card on the chart-expanded state. Succeeded entries default
+        * chart-collapsed (receipt shape, per `notes/smart-task-ui/README.md`
+        * §"Asymmetric treatment of failure"); the card stays hidden until the
+        * user opts into the schedule view via the chart toggle. Missed
+        * entries default chart-expanded so the card shows automatically.
+        * Abandoned entries default collapsed and the card follows the same
+        * "log when asked for" rhythm. */}
+      {revisionRows.length > 0 && !chartCollapsed && <RevisionsCard rows={revisionRows} />}
     </article>
   );
 };

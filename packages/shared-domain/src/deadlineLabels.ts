@@ -361,6 +361,60 @@ const REVISION_REASON_TOOLTIP_LINE: Partial<Record<DeferredObjectiveActivePlanRe
   rate_refined: 'Updated as rates were refined',
 };
 
+// Short "what changed" copy for the per-revision log on the smart-task history
+// detail page. Reuses the same `DeferredObjectiveActivePlanRevisionReason` enum
+// the recorder emits — strings here are deliberately tighter than
+// `REVISION_REASON_TOOLTIP_LINE` (which sits in the live hover tooltip and can
+// afford a sentence) because the history-detail surface stacks these in a
+// vertical list.
+//
+// Per `feedback_ui_text_shared_with_logs.md`, copy lives in shared-domain so
+// runtime log breadcrumbs and the history-detail view render identical labels.
+//
+// Reasons absent from this map fall through to `REVISION_REASON_FALLBACK` so
+// the view never invents copy for a recorder code it hasn't yet learned about
+// — better to surface "Plan refreshed" than to omit the entry entirely (which
+// would silently under-count the revision log).
+const REVISION_REASON_LABEL: Record<DeferredObjectiveActivePlanRevisionReason, string> = {
+  flow_card: 'Updated by a Flow card',
+  prices_arrived: 'Prices arrived',
+  prices_revised: 'Tomorrow’s prices published',
+  rate_refined: 'Rate estimate refined',
+  objective_changed: 'Smart task settings changed',
+  // Per `feedback_homey_sdk_unreliable.md`: a single SDK read miss triggers this
+  // reason — the recorder doesn't witness a sustained "offline" state. Copy
+  // names the *event the recorder saw* ("couldn't read"), not a state it
+  // assumes.
+  device_unavailable: 'Device was unreachable',
+  // `measured_deviation` fires when observed delivery rate diverged from the
+  // planned rate enough to trigger a replan. Naming the *cause-effect* (rate
+  // differed → replan) reads more clearly than naming an abstract field
+  // ("rate updated", which leaves the user asking which rate).
+  measured_deviation: 'Measured rate differed from plan',
+};
+
+const REVISION_REASON_FALLBACK = 'Plan refreshed';
+
+// Resolves a single short label for a revision-reason code. `_kind` is
+// accepted so callers (heating vs EV) can pass it without branching at the
+// call site — the underlying copy is kind-agnostic today because revision
+// causes are recorder-level events (a price publish is a price publish
+// regardless of device category). The parameter name is prefixed `_` to
+// reserve the slot for future kind-aware copy without churning every caller.
+//
+// Unknown / falsy / unmapped codes resolve to `Plan refreshed` so the log
+// always renders a label rather than swallowing an entry.
+export const revisionReason = (
+  reasonId: string | null | undefined,
+  _kind: DeferredObjectiveSettingsKind,
+): string => {
+  if (!reasonId) return REVISION_REASON_FALLBACK;
+  if (Object.prototype.hasOwnProperty.call(REVISION_REASON_LABEL, reasonId)) {
+    return REVISION_REASON_LABEL[reasonId as DeferredObjectiveActivePlanRevisionReason];
+  }
+  return REVISION_REASON_FALLBACK;
+};
+
 const withLastFetched = (base: string, lastFetchedShort: string | null): string => (
   lastFetchedShort ? `${base} Last price update: ${lastFetchedShort}.` : base
 );

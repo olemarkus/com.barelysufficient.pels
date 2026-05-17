@@ -1,9 +1,11 @@
+import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings.js';
 import type {
   DeferredObjectivePlanHistoryEntry,
+  DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
   DeferredObjectivePlanOutcome,
 } from '../../contracts/src/deferredObjectivePlanHistory.js';
-import { APPROX_GLYPH } from './deadlineLabels.js';
+import { APPROX_GLYPH, revisionReason } from './deadlineLabels.js';
 import { formatTimeInTimeZone } from './utils/dateUtils.js';
 
 export type DeferredPlanHistoryChipTone = 'ok' | 'warn' | 'muted';
@@ -616,6 +618,63 @@ export const formatPlanHistoryAbandonedSecondary = (
     return `${plannedTotalKWh.toFixed(1)} planned kWh; delivery unknown.`;
   }
   return null;
+};
+
+// ─── Per-revision log entries on history detail (v2.7.2 PR 5) ────────────────
+
+// Resolved shape of a single revision-log row on the smart-task history-detail
+// page. The producer formats every visible field — the view layer only renders
+// strings and never branches on `reasonId` / hour-diff signs.
+//
+//   `timeLabel`   pre-formatted local time (e.g. `14:32`) of the revision.
+//   `reason`      short "what changed" copy from `revisionReason`.
+//   `hourDiff`    e.g. `+2h −1h` or `+2h` / `−1h`; `null` when both counts
+//                 are zero (the revision touched the same hours the previous
+//                 revision already covered, so the diff is silent).
+export type PlanHistoryRevisionLogRow = {
+  timeLabel: string;
+  reason: string;
+  hourDiff: string | null;
+};
+
+const formatHourDiff = (hoursAdded: number, hoursRemoved: number): string | null => {
+  // Both counts are non-negative integer counts of bucket starts in the
+  // symmetric difference between consecutive revisions, so a zero on either
+  // side means "no change in that direction". Producer-side suppression of
+  // the all-zero case keeps the row visually quiet when a revision only
+  // moved per-hour kWh (without adding or removing hours).
+  const added = Number.isFinite(hoursAdded) && hoursAdded > 0 ? Math.floor(hoursAdded) : 0;
+  const removed = Number.isFinite(hoursRemoved) && hoursRemoved > 0 ? Math.floor(hoursRemoved) : 0;
+  if (added === 0 && removed === 0) return null;
+  const parts: string[] = [];
+  if (added > 0) parts.push(`+${added}h`);
+  // U+2212 MINUS SIGN — matches the typographic minus used elsewhere in the
+  // smart-task UI (cost meta line, postmortem sentences) so the revision log
+  // doesn't drift to ASCII hyphen and read as a range separator.
+  if (removed > 0) parts.push(`−${removed}h`);
+  return parts.join(' ');
+};
+
+/**
+ * Resolves a single revision-log row from a recorded `revisions[]` entry for
+ * the smart-task history-detail page. Every visible string is formatted here so
+ * the view layer never branches on `reasonId`, hour-diff sign, or `kind`.
+ *
+ * `timeZone` is supplied by the caller (UI layer); shared-domain stays free
+ * of locale defaults.
+ *
+ * Per `feedback_ui_text_shared_with_logs.md`, the same `revisionReason`
+ * resolver feeds runtime log breadcrumbs so the two surfaces stay in sync.
+ */
+export const formatPlanHistoryRevisionEntry = (
+  entry: DeferredObjectivePlanHistoryRevisionLogEntry,
+  timeZone: string,
+  kind: DeferredObjectiveSettingsKind,
+): PlanHistoryRevisionLogRow => {
+  const timeLabel = formatClockTime(entry.atMs, timeZone) ?? '—';
+  const reason = revisionReason(entry.reasonId, kind);
+  const hourDiff = formatHourDiff(entry.hoursAdded, entry.hoursRemoved);
+  return { timeLabel, reason, hourDiff };
 };
 
 /**

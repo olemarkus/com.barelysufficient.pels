@@ -1805,19 +1805,12 @@ md-primary-tab.tab[active]:hover {
   margin-top: 0;
 }
 
-.plan-history-detail__revision {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-2);
-}
-
-.plan-history-detail__revision-header {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-1);
-}
-
-.plan-history-detail__hours {
+/* Per-revision log card on the smart-task history detail page (v2.7.2 PR 5).
+ * One row per replan; the producer (`formatPlanHistoryRevisionEntry`) resolves
+ * the visible strings so the view layer only positions them. Rows stack
+ * vertically; on the 320–480 px target widths the time/reason/diff segments
+ * sit on one line whenever they fit and wrap onto the next line otherwise. */
+.plan-history-detail__revision-log {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -1826,22 +1819,38 @@ md-primary-tab.tab[active]:hover {
   gap: var(--spacing-1);
 }
 
-.plan-history-detail__hour {
+.plan-history-detail__revision-row {
   display: flex;
-  justify-content: space-between;
-  gap: var(--spacing-2);
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--spacing-1) var(--spacing-2);
   padding: var(--spacing-1) var(--spacing-2);
   background: var(--pels-surface-container-low);
   border-radius: var(--radius-sm);
 }
 
-.plan-history-detail__hour-time {
+.plan-history-detail__revision-time {
+  color: var(--pels-text-supporting-color);
   font-variant-numeric: tabular-nums;
+  /* Keep the leading time slot a stable width so reasons line up across rows.
+   * `5ch` covers `HH:MM` (4 digits + colon) at any tabular font; the column
+   * narrows naturally if the user shrinks the font size via OS controls. */
+  min-width: 5ch;
 }
 
-.plan-history-detail__hour-kwh {
-  color: var(--pels-text-secondary);
+.plan-history-detail__revision-reason {
+  color: var(--pels-text-primary);
+  /* Allow the reason to absorb remaining row width so the hour-diff chip
+   * lands flush-right on wide rows; on narrow widths the diff still wraps
+   * cleanly underneath the reason. */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.plan-history-detail__revision-diff {
+  color: var(--pels-text-supporting-color);
   font-variant-numeric: tabular-nums;
+  font-size: var(--font-size-sm);
 }
 
 .plan-history-empty {
