@@ -210,14 +210,14 @@ v2.7.1 release-review passes.*
       Files: `packages/settings-ui/src/ui/deadlinePlan.ts`, `lib/app/appInit.ts`,
       `lib/plan/deferredObjectives/diagnosticsBridge.ts`, EV learning store, calibration view
       tests.
-      *(shipped — `formatMetaLine` in `packages/settings-ui/src/ui/deadlinePlanHero.ts:160-167`
+      *(shipped — `formatMetaLine` in `packages/settings-ui/src/ui/deadlinePlanHero.ts:153`
       composes a dot-separated meta line with energy · speed · duration · speed-mode label.
       `resolveSpeedModeLabel` (L171-173) renders Auto / Learning… badges. Planning speed flows
       from `lib/plan/deferredObjectives/planningSpeed.ts::resolvePlanningSpeedKw`, fed by EV
       synthetic 1-step calibration in `lib/app/appInit.ts:496-498::buildEvChargerCalibrationView`.
       Duration via `formatEstimatedDuration` in
       `lib/plan/deferredObjectives/activePlanDuration.ts`; initial snapshot via
-      `resolvePlanLevelDurationSnapshot` (activePlanRecorder.ts:503-505). Provenance rows via
+      `resolvePlanLevelDurationSnapshot` (activePlanRecorder.ts:578). Provenance rows via
       `resolveKwhPerUnitProvenanceRows` in `deadlinePlanInputs.ts:60-64`. Shipping commits:
       8720af37 (live plan hero) + 4b88a325 (snapshot initial duration). Tests:
       `test/deferredObjectiveActivePlan.test.ts`,
