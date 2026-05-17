@@ -1,9 +1,11 @@
 import type { DeferredObjectiveActivePlanStatusV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
-import type {
-  DeadlineCannotMeetRecourse,
-  DeadlineLabels,
+import {
+  formatDeadlineCostMetaLine,
+  formatDeadlineDeliveredSoFarLine,
+  type DeadlineCannotMeetRecourse,
+  type DeadlineLabels,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import type { HorizonHour } from './deadlinePlanData.ts';
 import {
@@ -206,6 +208,78 @@ export type BuildHeroInput = {
   // `planStatus`. Carried through the payload so the view layer never branches
   // on planner internals.
   tone: DeadlinePlanHeroTone;
+  // Σ (display-scaled price × deviceKwh) across the timeline's planned hours,
+  // in the user's display currency (e.g. kr). Producer sums each render cycle
+  // so the live cost reflects the latest revision. Zero / non-finite values
+  // suppress the cost line at the shared-domain formatter.
+  plannedTotalCost: number;
+  // Σ priceValue × actualDeviceKwh for hours where `actualDeviceKwh` is known
+  // (delivery so far in this run). Null when no run is active yet or no
+  // delivery has been observed — the formatter collapses to the planned-only
+  // form instead of fabricating a "0.00 kr so far" value.
+  deliveredCostSoFar: number | null;
+  // Cost-unit suffix (e.g. `kr`). Empty / null suppresses the cost line at
+  // the shared-domain formatter — Flow / Homey schemes without a unit don't
+  // get a misleading Norwegian-specific label.
+  costUnit: string;
+  // Σ actualDeviceKwh across the run (kWh delivered so far). Zero when the
+  // run hasn't started consuming yet — the formatter renders `0.0 of Y kWh`
+  // so the user sees the planned total even before delivery.
+  deliveredKWh: number;
+  // Total energy the planner currently estimates the run needs to reach the
+  // target (`latest.energyNeededKWh`). Drives the "of Y kWh" tail. Note: this
+  // is the latest revision's value, not original — `rate_refined` / replans
+  // can shift it as the planner observes the device.
+  plannedTotalKWh: number;
+  // Current device reading on the objective unit (°C / %). Null when the
+  // device hasn't reported yet — the delivered-so-far line suppresses.
+  currentProgress: number | null;
+  // Back-calculated start-of-run progress when the kWh-per-unit rate is
+  // known: `current − delivered × kWhPerUnit`. Null otherwise — the line
+  // collapses to `now …` rather than inventing a starting value.
+  startProgress: number | null;
+  targetValue: number | null;
+  targetUnit: '°C' | '%';
+};
+
+// Resolves the "Delivered X of Y kWh · …" subline. Returns null when there's
+// no plan to summarise (planned kWh zero / non-finite, no progress reading,
+// or no live target). The two visible branches — on-track-ish vs cannot-meet
+// — collapse the planner's status union (cannot_meet / at_risk / on_track /
+// satisfied / queued) to the two phrasing shapes per the task design.
+export const resolveDeliveredSoFarLine = (
+  params: Pick<
+    BuildHeroInput,
+    'cannotMeet'
+    | 'tone'
+    | 'deliveredKWh'
+    | 'plannedTotalKWh'
+    | 'currentProgress'
+    | 'startProgress'
+    | 'targetValue'
+    | 'targetUnit'
+    | 'deadlineAtMs'
+  >,
+): string | null => {
+  if (params.currentProgress === null || params.targetValue === null) return null;
+  // `cannotMeet === true` on the BuildHeroInput collapses both `cannot_meet`
+  // and `at_risk` together (so the chip surface stays in sync). For the
+  // delivered-so-far line we want the "won't reach" copy *only* on the
+  // physically-can't-deliver case — `tone === 'alert'` is the producer's
+  // already-resolved signal for that, derived from `planStatus`. At-risk
+  // (`tone === 'warn'`) keeps the on-track-shaped phrasing so the line stays
+  // hopeful while the chip still warns.
+  const isWontReach = params.cannotMeet && params.tone === 'alert';
+  return formatDeadlineDeliveredSoFarLine({
+    status: isWontReach ? 'cannot_meet' : 'on_track_or_queued',
+    deliveredKWh: params.deliveredKWh,
+    plannedTotalKWh: params.plannedTotalKWh,
+    currentProgress: params.currentProgress,
+    startProgress: params.startProgress,
+    targetValue: params.targetValue,
+    targetUnit: params.targetUnit,
+    deadlineTime: formatHourLabel(params.deadlineAtMs),
+  });
 };
 
 export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] => {
@@ -247,6 +321,12 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
     headlineReason: resolveQueuedHeadlineReason(params),
     subline,
     metaLine,
+    costMetaLine: formatDeadlineCostMetaLine({
+      plannedTotalCost: params.plannedTotalCost,
+      deliveredCost: params.deliveredCostSoFar,
+      costUnit: params.costUnit,
+    }),
+    deliveredSoFarLine: resolveDeliveredSoFarLine(params),
     recourse: resolveCannotMeetRecourse(params),
   };
 };

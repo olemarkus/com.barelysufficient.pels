@@ -134,6 +134,8 @@ const allowedUnusedExportPatterns = [
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatSmartTaskCurrentValueLine$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_HISTORY_EYEBROW$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_PAST_EMPTY_COPY$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatDeadlineCostMetaLine$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatDeadlineDeliveredSoFarLine$/,
   // Transitively reached from `deadlineLabels.ts`; consumed by settings UI bootstrap
   // and flowCards' deadline-objective settings reader.
   /^packages\/contracts\/src\/deferredObjectiveSettings\.ts:\d+ - normalizeDeferredObjectiveSettings$/,

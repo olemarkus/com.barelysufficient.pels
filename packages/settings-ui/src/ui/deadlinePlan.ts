@@ -369,6 +369,94 @@ const resolveNonEmptyString = (value: string | undefined): string | null => (
   typeof value === 'string' && value.length > 0 ? value : null
 );
 
+// Resolves the live-derived cost + delivered-kWh fields piped into the hero.
+// Sits next to `buildTimeline` because they consume the same per-hour shape;
+// kept as a small helper so `buildReadyPayload` stays under the complexity
+// ceiling and the live derivation has one home.
+//
+// Live derivation (no persistence): the active plan revisions carry hourly
+// planned kWh; the power tracker carries hourly actual kWh per device. We
+// scale `hour.price` by the cost-display divisor (same scaling the timeline
+// uses) so the cost reads in the user's display currency unit.
+const resolveLiveCostAndDelivery = (params: {
+  bootstrap: SettingsUiBootstrap;
+  deviceId: string;
+  hours: HorizonHour[];
+  currentChargeByStartMs: Map<number, number>;
+  costDisplay: CostDisplay;
+  // Plan start timestamp + render-time "now". Tracker buckets accumulate
+  // incrementally during the current hour (see `lib/core/powerTrackerEnergy.ts`),
+  // so the bucket value represents `[hour_start, min(now, hour_end))` of
+  // measured energy — not necessarily a full-hour aggregate. We prorate the
+  // bucket by `relevant / elapsed`, where `relevant = min(now, hour_end) -
+  // max(startedAtMs, hour_start)` and `elapsed = min(now, hour_end) - hour_start`.
+  // Past closed hours have `elapsed = ONE_HOUR_MS`; current open hours have
+  // `elapsed = now - hour_start` and the prorate becomes "fraction of the
+  // already-elapsed slice that landed after `startedAtMs`".
+  startedAtMs: number;
+  nowMs: number;
+}): {
+  plannedTotalCost: number;
+  deliveredCostSoFar: number | null;
+  deliveredKWh: number;
+} => {
+  const divisor = Math.max(1, params.costDisplay.divisor);
+  let plannedTotalCost = 0;
+  let deliveredCostSoFar = 0;
+  let deliveredKWh = 0;
+  let sawAnyActual = false;
+  for (const hour of params.hours) {
+    const displayPrice = hour.price / divisor;
+    const plannedKWh = params.currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
+    if (plannedKWh > 0) plannedTotalCost += displayPrice * plannedKWh;
+    const proratedKWh = resolveProratedActualKWh({
+      bootstrap: params.bootstrap,
+      deviceId: params.deviceId,
+      hourStartsAtMs: hour.startsAtMs,
+      startedAtMs: params.startedAtMs,
+      nowMs: params.nowMs,
+    });
+    if (proratedKWh > 0) {
+      sawAnyActual = true;
+      deliveredCostSoFar += displayPrice * proratedKWh;
+      deliveredKWh += proratedKWh;
+    }
+  }
+  return {
+    plannedTotalCost,
+    deliveredCostSoFar: sawAnyActual ? deliveredCostSoFar : null,
+    deliveredKWh,
+  };
+};
+
+// Prorate one bucket's `actualKWh` against the plan's run interval. Tracker
+// buckets accumulate incrementally so the value represents `[hour_start,
+// min(now, hour_end))`. The relevant slice for delivered-so-far is
+// `[max(startedAtMs, hour_start), min(now, hour_end))`. Returns 0 for any
+// bucket that doesn't overlap the run interval, or whose tracker reading
+// is missing / non-positive.
+const resolveProratedActualKWh = (params: {
+  bootstrap: SettingsUiBootstrap;
+  deviceId: string;
+  hourStartsAtMs: number;
+  startedAtMs: number;
+  nowMs: number;
+}): number => {
+  const hourEndMs = params.hourStartsAtMs + ONE_HOUR_MS;
+  if (hourEndMs <= params.startedAtMs) return 0;
+  const bucketCloseMs = Math.min(params.nowMs, hourEndMs);
+  const elapsedMs = bucketCloseMs - params.hourStartsAtMs;
+  const relevantMs = bucketCloseMs - Math.max(params.startedAtMs, params.hourStartsAtMs);
+  if (elapsedMs <= 0 || relevantMs <= 0) return 0;
+  const actualKWh = resolveActualDeviceKwh({
+    bootstrap: params.bootstrap,
+    deviceId: params.deviceId,
+    startsAtMs: params.hourStartsAtMs,
+  });
+  if (actualKWh === null || actualKWh <= 0) return 0;
+  return actualKWh * (relevantMs / elapsedMs);
+};
+
 const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload => {
   const { ctx, bootstrap, profile, progress, hours, energy } = input;
   const { device, objective, deviceId, deadlineAtMs, activePlan, nowMs } = ctx;
@@ -383,6 +471,29 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   const { cannotMeetUnits } = resolveShortfall({ progress, allocatedKWh, progressPerKWh });
   const firstChargingHour = hours.find((hour) => currentChargeByStartMs.has(hour.startsAtMs));
   const hoursLeft = Math.max(0, Math.ceil((deadlineAtMs - nowMs) / ONE_HOUR_MS));
+  const costAndDelivery = resolveLiveCostAndDelivery({
+    bootstrap, deviceId, hours, currentChargeByStartMs, costDisplay: input.costDisplay,
+    startedAtMs: activePlan!.startedAtMs,
+    nowMs,
+  });
+  // Back-calculate `startProgress` from current − delivered × progressPerKWh
+  // when both signals are available. `progressPerKWh = remainingUnits /
+  // energyNeededKWh` simplifies to `1 / kWhPerUnit` (the inverse of the
+  // learned/bootstrap rate), so this is the planner's view of progress made
+  // per kWh delivered. Null when `progressPerKWh` is zero (no allocation /
+  // already-satisfied path is gated earlier), no delivery has been observed,
+  // or the back-calc lands negative (conservative rate over-counted progress)
+  // — in any of those the delivered-so-far line falls back to the `now …`
+  // phrasing rather than fabricating a `0 °C → current` arrow. Exactly zero
+  // is preserved because `0 %` is a legitimate start for an empty EV battery
+  // and `0 °C` is a real (if unusual) heater start; the bot's spurious-zero
+  // case is already gated by `deliveredKWh <= 0`.
+  const startProgress = (() => {
+    if (progressPerKWh <= 0 || costAndDelivery.deliveredKWh <= 0) return null;
+    const candidate = progress.currentValue - costAndDelivery.deliveredKWh * progressPerKWh;
+    if (!Number.isFinite(candidate) || candidate < 0) return null;
+    return candidate;
+  })();
   // Older persisted revisions don't carry the count; treat absence as zero so
   // the budget-exhausted explanation only fires when the recorder actually
   // saw it. Two surfaces consume this signal:
@@ -432,6 +543,15 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       ),
       kwhPerUnitSource: latest.kwhPerUnitSource,
       tone: resolveHeroTone(latest.planStatus),
+      plannedTotalCost: costAndDelivery.plannedTotalCost,
+      deliveredCostSoFar: costAndDelivery.deliveredCostSoFar,
+      costUnit: input.costDisplay.unit,
+      deliveredKWh: costAndDelivery.deliveredKWh,
+      plannedTotalKWh: energyNeededKWh,
+      currentProgress: progress.currentValue,
+      startProgress,
+      targetValue: progress.targetValue,
+      targetUnit: progress.unit,
     }),
     timeline: buildTimeline({
       device, bootstrap, deviceId, hours,
