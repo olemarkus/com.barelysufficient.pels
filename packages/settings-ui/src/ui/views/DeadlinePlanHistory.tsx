@@ -2,6 +2,7 @@ import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/sr
 import {
   formatPlanHistoryDeadlineLine,
   formatPlanHistoryObservedCoverage,
+  formatPlanHistoryOvershootLine,
   formatPlanHistoryProgressLine,
   formatPlanHistoryReachedAtLine,
   getPlanHistoryOutcomeLabel,
@@ -25,10 +26,14 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
   const progressLine = formatPlanHistoryProgressLine(entry);
   const reachedAtLine = formatPlanHistoryReachedAtLine(entry, timeZone);
   const coverageLine = formatPlanHistoryObservedCoverage(entry);
+  // Overshoot note: muted line on Succeeded entries whose final reading exceeded
+  // the target by > 5 °C / > 10 %. Null on the other outcomes so the line is
+  // suppressed cleanly — view never branches on `outcome` itself.
+  const overshootLine = formatPlanHistoryOvershootLine(entry);
   return (
     <a
       class="plan-history-card plan-history-card--link"
-      aria-label={`Past plan ${deadlineLine}`}
+      aria-label={`Past smart task ${deadlineLine}`}
       href={buildDeadlineHistoryHref(entry.deviceId, entry.id)}
     >
       <header class="plan-history-card__header">
@@ -41,6 +46,9 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
           {progressLine}
           {reachedAtLine && <span class="plan-history-card__reached">  ·  {reachedAtLine}</span>}
         </div>
+      )}
+      {overshootLine && (
+        <div class="plan-history-card__overshoot">{overshootLine}</div>
       )}
       {coverageLine && (
         <div class="plan-history-card__coverage">{coverageLine}</div>

@@ -24,7 +24,7 @@ const describeError = (error: unknown): string => {
 };
 
 const buildBootErrorMessage = (error: unknown): string => (
-  `Smart task plan data could not be loaded: ${describeError(error)}`
+  `Smart task data could not be loaded: ${describeError(error)}`
 );
 
 const DEADLINE_PLAN_REFRESH_DEBOUNCE_MS = 200;
@@ -76,6 +76,29 @@ const initDeadlinePlanRecourseDispatcher = (): void => {
     if (!targetTab) return;
     event.preventDefault();
     onCloseDeadlinePlan({ fallbackTab: targetTab });
+  });
+};
+
+// Delegated click handler for the smart-task history-detail Usage cross-link.
+// The anchor carries `data-deadline-usage-link="<deviceId>"` and is intercepted
+// here so the SPA closes the deadline-plan view and lands on the Usage tab in
+// a single transition — same close-with-fallback flow as the recourse buttons.
+// `data-deadline-usage-link` is kept on the anchor for future enhancement
+// (Usage deviceId/date filter wiring); the value is unused at click time today
+// because the Usage panel doesn't yet consume the param.
+let usageLinkHandlerBound = false;
+const initDeadlinePlanUsageLinkDispatcher = (): void => {
+  if (usageLinkHandlerBound) return;
+  usageLinkHandlerBound = true;
+  document.addEventListener('click', (event) => {
+    if (!(event.target instanceof Element)) return;
+    if (event.defaultPrevented || (event as MouseEvent).button !== 0) return;
+    if ((event as MouseEvent).metaKey || (event as MouseEvent).ctrlKey
+      || (event as MouseEvent).shiftKey || (event as MouseEvent).altKey) return;
+    const trigger = event.target.closest<HTMLElement>('[data-deadline-usage-link]');
+    if (!trigger) return;
+    event.preventDefault();
+    onCloseDeadlinePlan({ fallbackTab: 'usage' });
   });
 };
 
@@ -197,6 +220,7 @@ export const mountDeadlinePlan = async (): Promise<void> => {
 
   initDeadlinePlanClose();
   initDeadlinePlanRecourseDispatcher();
+  initDeadlinePlanUsageLinkDispatcher();
   // Bind runtime refresh once per SPA session, *before* any awaitable work,
   // so a failed first boot does not leave the rest of the session without
   // event-driven refresh. The handler reads `activeMount` at fire time so

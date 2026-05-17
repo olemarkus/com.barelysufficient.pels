@@ -316,7 +316,7 @@ describe('resolveDeadlinesListCards', () => {
     // `latest` revision but refreshes `diagnosticReasonCode` to
     // `objective_invalid_session`. The list chip must reflect that — without
     // this branch the chip would say "On track" while the device-card line
-    // says "Charging plan paused — car unplugged".
+    // says "Charging paused — car unplugged".
     const cards = resolveDeadlinesListCards({
       activePlans: buildActivePlans([
         buildPlan({

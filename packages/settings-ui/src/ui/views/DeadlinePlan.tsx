@@ -70,7 +70,11 @@ export type DeadlinePlanPayload = {
     // signal.
     tone: DeadlinePlanHeroTone;
     sectionLabel: string;
-    headline: string;
+    // Null on the cannot-finish branch so the chip + body postmortem aren't
+    // accompanied by a redundant "Cannot finish" headline echo (per TODO 1569
+    // / lived-walk 2026-05-16). The view suppresses the headline render slot
+    // when this is `null`.
+    headline: string | null;
     // "Why" subline beneath the queued headline ("Cheaper than now — starts at
     // HH:MM" / "Waiting for tomorrow's prices through HH:MM" / "Today's
     // budget is full — next cheap window after midnight"). Null when the
@@ -190,7 +194,9 @@ const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
     </div>
     <div class="plan-hero__section">
       <span class="plan-hero__section-label eyebrow" id="deadline-plan-title">{payload.hero.sectionLabel}</span>
-      <div class="plan-hero__headline">{payload.hero.headline}</div>
+      {payload.hero.headline !== null && (
+        <div class="plan-hero__headline">{payload.hero.headline}</div>
+      )}
       {payload.hero.headlineReason !== null && (
         <div class="plan-hero__subline plan-hero__subline--reason">{payload.hero.headlineReason}</div>
       )}
@@ -881,8 +887,8 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
   if (loadState.status === 'loading') {
     return (
       <section class="pels-surface-card budget-redesign-card">
-        <h1 class="plan-card__title">Loading smart task plan</h1>
-        <p class="pels-card-supporting">Preparing the device plan.</p>
+        <h1 class="plan-card__title">Loading smart task</h1>
+        <p class="pels-card-supporting">Preparing the schedule.</p>
       </section>
     );
   }
@@ -890,7 +896,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
     const onRetry = loadState.onRetry;
     return (
       <section class="pels-surface-card budget-redesign-card">
-        <h1 class="plan-card__title">Smart task plan unavailable</h1>
+        <h1 class="plan-card__title">Smart task unavailable</h1>
         <p class="pels-card-supporting">{loadState.message}</p>
         {onRetry && (
           <MdTextButton class="plan-card__retry" onClick={onRetry}>

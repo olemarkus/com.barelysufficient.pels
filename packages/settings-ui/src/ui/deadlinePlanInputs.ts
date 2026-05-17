@@ -36,26 +36,53 @@ const formatMaxPowerLabel = (lowestStepKw: number | null): string | null => (
   lowestStepKw === null ? null : `${lowestStepKw.toFixed(1)} kW`
 );
 
-export const buildPlanInputs = (params: {
+// Producer-side resolver: collapses the per-unit-rate provenance branching
+// (bootstrap-source EV vs learned profile vs legacy null-source revisions)
+// into a flat `{ rateMean, usingBootstrap }` payload so `buildPlanInputs`
+// never has to branch on `kwhPerUnitSource` or `objectiveKind` directly.
+//
+// Per `feedback_layering_resolution_in_producer.md` — the producing layer
+// resolves to flat values; consumers never branch on provenance / source.
+//
+// EV bootstrap fallback: when the latest revision came from the bootstrap
+// kWh/% rate (recorder set `kwhPerUnitSource === 'bootstrap'` because no
+// learned profile existed yet), the displayed rate must be the bootstrap
+// constant rather than the absent profile mean. Thermal kinds never ship a
+// bootstrap rate (they sit pending until a learned profile lands), so the
+// bootstrap branch is EV-only.
+export const resolveKwhPerUnitDisplayRate = (params: {
   latest: DeferredObjectiveActivePlanRevisionV1;
   profile: ReturnType<typeof resolveProfile>;
-  labels: DeadlineLabels;
   objectiveKind: DeferredObjectiveSettingsEntry['kind'];
-  device: TargetDeviceSnapshot;
-  provenance: DeferredObjectiveKwhPerUnitProvenanceV1 | undefined;
-}): DeadlinePlanPayload['planInputs'] => {
-  // When the latest revision came from the bootstrap fallback (no learned
-  // kwhPerUnit yet), show the bootstrap value rather than the absent profile
-  // mean so the rate row is populated. Default-source revisions and
-  // legacy persisted revisions (no source field) fall back to the profile.
+}): { rateMean: number | null; usingBootstrap: boolean } => {
   const usingBootstrap = params.latest.kwhPerUnitSource === 'bootstrap'
     && params.objectiveKind === 'ev_soc';
-  const rateMean = usingBootstrap
-    ? BOOTSTRAP_EV_SOC_KWH_PER_PERCENT
-    : params.profile?.kwhPerUnit?.mean;
+  if (usingBootstrap) {
+    return { rateMean: BOOTSTRAP_EV_SOC_KWH_PER_PERCENT, usingBootstrap: true };
+  }
+  const learnedMean = params.profile?.kwhPerUnit?.mean;
   return {
-    perUnitRateLabel: formatPerUnitRateLabel(rateMean, params.labels.perUnitRateUnit),
-    perUnitRateNote: usingBootstrap ? params.labels.planInputsRateBootstrapNote : null,
+    rateMean: typeof learnedMean === 'number' && Number.isFinite(learnedMean) ? learnedMean : null,
+    usingBootstrap: false,
+  };
+};
+
+export const buildPlanInputs = (params: {
+  labels: DeadlineLabels;
+  device: TargetDeviceSnapshot;
+  provenance: DeferredObjectiveKwhPerUnitProvenanceV1 | undefined;
+  // Pre-resolved by `resolveKwhPerUnitDisplayRate` so this producer never
+  // branches on the revision's `kwhPerUnitSource` / `objectiveKind` to pick
+  // between the learned profile mean and the EV bootstrap fallback.
+  rateMean: number | null;
+  // Whether the bootstrap fallback drove `rateMean`. Drives the "Estimated —
+  // refining as PELS observes charging" note rendered next to the rate row;
+  // suppressed when the rate came from the learned profile.
+  usingBootstrap: boolean;
+}): DeadlinePlanPayload['planInputs'] => {
+  return {
+    perUnitRateLabel: formatPerUnitRateLabel(params.rateMean, params.labels.perUnitRateUnit),
+    perUnitRateNote: params.usingBootstrap ? params.labels.planInputsRateBootstrapNote : null,
     maxPowerLabel: formatMaxPowerLabel(resolveLowestActiveStepKw(params.device)),
     provenanceRows: resolveKwhPerUnitProvenanceRows({
       provenance: params.provenance,

@@ -2777,7 +2777,7 @@ describe('deadline plan page payload', () => {
     });
     expect(renderInput?.status).toBe('pending');
     if (renderInput?.status !== 'pending') return;
-    expect(renderInput.pending.hero.headline).toBe('Charging plan paused — EV unplugged');
+    expect(renderInput.pending.hero.headline).toBe('Charging paused — EV unplugged');
     const chipTexts = renderInput.pending.hero.chips.map((chip) => chip.text);
     expect(chipTexts).toEqual(['EV', 'Paused — unplugged']);
   });
@@ -3826,7 +3826,7 @@ describe('shared-domain pending-hero copy', () => {
       deviceName: 'Garage EV',
       deadlineTime: '07:00',
     });
-    expect(copy.headline).toBe('Charging plan paused — EV unplugged');
+    expect(copy.headline).toBe('Charging paused — EV unplugged');
     expect(copy.headlineReason).toBe('Charger reports the car isn’t plugged in.');
     expect(copy.recourse).toBeNull();
   });

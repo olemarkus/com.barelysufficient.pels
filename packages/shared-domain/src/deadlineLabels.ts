@@ -155,7 +155,7 @@ export const resolveSmartTaskListStatus = (params: {
   // Unplugged-mid-plan: the recorder refreshes `diagnosticReasonCode` even on
   // non-pending plans so this branch fires regardless of whether `latest` is
   // still cached. Without this, the list chip would say "On track" while the
-  // device-card line said "Charging plan paused — car unplugged".
+  // device-card line said "Charging paused — car unplugged".
   if (diagnosticReasonCode === 'objective_invalid_session') return 'paused_unplugged';
 
   if (pending || planStatus === undefined) {
@@ -553,7 +553,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       missing_capacity: () => ({
         headline: 'Learning energy use',
         body: 'PELS needs power readings from this heater while it heats so it can learn how '
-          + 'many kWh raise the temperature by one degree. The plan will appear once that is '
+          + 'many kWh raise the temperature by one degree. The schedule will appear once that is '
           + 'available.',
         headlineReason: 'PELS is still learning this heater’s energy per degree from observed power.',
         recourse: OVERVIEW_DEVICE_RECOURSE,
@@ -562,12 +562,12 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     unavailableByReason: {
       no_current_reading: {
         headline: 'Waiting for the first temperature reading',
-        body: 'The plan will appear once the device reports its current temperature.',
+        body: 'The schedule will appear once the device reports its current temperature.',
       },
       already_satisfied: {
         headline: 'Satisfied',
-        body: 'The current temperature already meets the smart task target. PELS will plan again '
-          + 'if the temperature drops below target.',
+        body: 'The current temperature already meets the smart task target. PELS will schedule it '
+          + 'again if the temperature drops below target.',
       },
     },
     // Drops the raw progress-unit delta ("Short by about 41.9 °C") that users
@@ -636,9 +636,9 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       }),
       device_data_missing: EV_DEVICE_DATA_MISSING,
       invalid_session: () => ({
-        headline: 'Charging plan paused — EV unplugged',
-        body: 'PELS will resume the plan once the EV is plugged in and reports a valid charging '
-          + 'session.',
+        headline: 'Charging paused — EV unplugged',
+        body: 'PELS will resume the schedule once the EV is plugged in and reports a valid '
+          + 'charging session.',
         headlineReason: 'Charger reports the car isn’t plugged in.',
         recourse: null,
       }),
@@ -647,12 +647,12 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     unavailableByReason: {
       no_current_reading: {
         headline: 'Waiting for the first state-of-charge reading',
-        body: 'The plan will appear once the EV reports its current state of charge.',
+        body: 'The schedule will appear once the EV reports its current state of charge.',
       },
       already_satisfied: {
         headline: 'Satisfied',
-        body: 'The EV is already at or above the smart task target. PELS will plan again if the '
-          + 'state of charge drops below target.',
+        body: 'The EV is already at or above the smart task target. PELS will schedule it again '
+          + 'if the state of charge drops below target.',
       },
     },
     // EV mirrors the thermal copy: drop the raw % shortfall figure (users can
@@ -732,7 +732,7 @@ export const resolveEvCardStateLine = (params: {
   }
 
   if (isPlugOutPaused) {
-    return { kind: 'plug_out_paused', text: 'Charging plan paused — car unplugged' };
+    return { kind: 'plug_out_paused', text: 'Charging paused — car unplugged' };
   }
 
   return { kind: 'none' };
