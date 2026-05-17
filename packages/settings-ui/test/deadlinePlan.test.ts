@@ -3701,3 +3701,258 @@ describe('shared-domain hero-line formatters', () => {
     expect(out).toBe('Delivered 5.0 of 20.0 kWh · 30% → 46% of 80% target');
   });
 });
+
+// Pure-resolver tests for the pending-hero `headlineReason` + `recourse`
+// fields. Mirrors the "shared-domain hero-line formatters" describe block
+// above — guards each per-pending-reason branch in isolation so producer
+// wiring and resolver copy can be reviewed separately.
+describe('shared-domain pending-hero copy', () => {
+  it('temperature awaiting_horizon_plan surfaces the deadline horizon in headlineReason and emits no recourse', async () => {
+    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const copy = deadlineLabels('temperature').pendingHeroByReason.awaiting_horizon_plan({
+      priceSource: 'managed',
+      lastFetchedShort: null,
+      deviceName: 'Connected 300',
+      deadlineTime: '07:00',
+    });
+    expect(copy.headlineReason).toBe('Need prices through 07:00 before the smart task can start.');
+    expect(copy.recourse).toBeNull();
+  });
+
+  it('temperature awaiting_horizon_plan keeps the same headlineReason in external-flow price mode', async () => {
+    // Headline + body branch on the price source, but the panic-visitor's
+    // "how long am I waiting?" answer is the deadline horizon regardless —
+    // hence headlineReason stays stable across the two body shapes.
+    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const copy = deadlineLabels('temperature').pendingHeroByReason.awaiting_horizon_plan({
+      priceSource: 'external_flow',
+      lastFetchedShort: '14:32',
+      deviceName: 'Connected 300',
+      deadlineTime: '07:00',
+    });
+    expect(copy.headline).toBe('Waiting for tomorrow’s prices from your Flow');
+    expect(copy.headlineReason).toBe('Need prices through 07:00 before the smart task can start.');
+    expect(copy.recourse).toBeNull();
+  });
+
+  it('temperature device_data_missing names the device in headlineReason and emits an Overview recourse', async () => {
+    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const copy = deadlineLabels('temperature').pendingHeroByReason.device_data_missing({
+      priceSource: 'managed',
+      lastFetchedShort: null,
+      deviceName: 'Connected 300',
+      deadlineTime: '07:00',
+    });
+    expect(copy.headlineReason).toBe('PELS can’t read the current temperature from Connected 300.');
+    expect(copy.recourse?.targetTab).toBe('overview');
+    expect(copy.recourse?.label).toBe('Open device in Overview');
+  });
+
+  it('temperature device_data_missing falls back to "the heater" when the device snapshot has no name', async () => {
+    // Empty deviceName covers the pre-load race where the device snapshot
+    // hasn't landed yet; the copy must still parse cleanly.
+    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const copy = deadlineLabels('temperature').pendingHeroByReason.device_data_missing({
+      priceSource: 'managed',
+      lastFetchedShort: null,
+      deviceName: '',
+      deadlineTime: '07:00',
+    });
+    expect(copy.headlineReason).toBe('PELS can’t read the current temperature from the heater.');
+    expect(copy.recourse?.targetTab).toBe('overview');
+  });
+
+  it('temperature missing_capacity points at the learning-energy-profile bottleneck', async () => {
+    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const copy = deadlineLabels('temperature').pendingHeroByReason.missing_capacity({
+      priceSource: 'managed',
+      lastFetchedShort: null,
+      deviceName: 'Connected 300',
+      deadlineTime: '07:00',
+    });
+    expect(copy.headlineReason).toBe(
+      'PELS is still learning this heater’s energy per degree from observed power.',
+    );
+    // Recourse lands on Overview where the user can verify the heater is
+    // running — per `feedback_hard_cap_is_physical.md` we never suggest
+    // raising the global capacity hard cap as a remedy.
+    expect(copy.recourse?.targetTab).toBe('overview');
+    expect(copy.recourse?.label).not.toMatch(/hard cap/i);
+  });
+
+  it('temperature invalid_session falls back to device_data_missing copy (thermal can’t go invalid)', async () => {
+    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const copy = deadlineLabels('temperature').pendingHeroByReason.invalid_session({
+      priceSource: 'managed',
+      lastFetchedShort: null,
+      deviceName: 'Connected 300',
+      deadlineTime: '07:00',
+    });
+    expect(copy.headlineReason).toBe('PELS can’t read the current temperature from Connected 300.');
+    expect(copy.recourse?.targetTab).toBe('overview');
+  });
+
+  it('ev_soc awaiting_horizon_plan surfaces the deadline horizon in headlineReason', async () => {
+    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const copy = deadlineLabels('ev_soc').pendingHeroByReason.awaiting_horizon_plan({
+      priceSource: 'managed',
+      lastFetchedShort: null,
+      deviceName: 'Garage EV',
+      deadlineTime: '07:00',
+    });
+    expect(copy.headlineReason).toBe('Need prices through 07:00 before the smart task can start.');
+    expect(copy.recourse).toBeNull();
+  });
+
+  it('ev_soc device_data_missing names the device and reads "state of charge"', async () => {
+    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const copy = deadlineLabels('ev_soc').pendingHeroByReason.device_data_missing({
+      priceSource: 'managed',
+      lastFetchedShort: null,
+      deviceName: 'Garage EV',
+      deadlineTime: '07:00',
+    });
+    expect(copy.headlineReason).toBe('PELS can’t read the state of charge from Garage EV.');
+    expect(copy.recourse?.targetTab).toBe('overview');
+  });
+
+  it('ev_soc invalid_session restates the charger signal at headline height and emits no recourse', async () => {
+    // EV plug-out is a physical action; no in-app tab maps to it, so
+    // recourse stays null and the body alone names the unblocking condition.
+    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const copy = deadlineLabels('ev_soc').pendingHeroByReason.invalid_session({
+      priceSource: 'managed',
+      lastFetchedShort: null,
+      deviceName: 'Garage EV',
+      deadlineTime: '07:00',
+    });
+    expect(copy.headline).toBe('Charging plan paused — EV unplugged');
+    expect(copy.headlineReason).toBe('Charger reports the car isn’t plugged in.');
+    expect(copy.recourse).toBeNull();
+  });
+});
+
+// Producer integration: per-pending-reason render path checks that
+// `buildPendingPayload` threads deviceName + deadlineTime through to the
+// shared-domain resolver and that the view-facing payload carries the new
+// fields.
+describe('pending hero producer wiring', () => {
+  it('threads deviceName + deadlineTime into the pending hero so headlineReason resolves', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: { prices: [] },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const pendingPlan: DeferredObjectiveActivePlanV1 = {
+      ...buildHeaterActivePlan({ now, deadline, plannedHourOffsets: [], plannedKWhPerHour: 0 }),
+      pending: true,
+      pendingReason: 'device_data_missing',
+      original: null,
+      latest: null,
+    };
+    const renderInput = testExports.resolveRenderInput({
+      bootstrap: buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: {
+          version: 1,
+          objectivesByDeviceId: {
+            heater: {
+              enabled: true,
+              kind: 'temperature',
+              enforcement: 'soft',
+              targetTemperatureC: 22,
+              deadlineAtMs: deadline.getTime(),
+            },
+          },
+        },
+      }, pendingPlan),
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    });
+    expect(renderInput?.status).toBe('pending');
+    if (renderInput?.status !== 'pending') return;
+    expect(renderInput.pending.hero.headlineReason).toBe(
+      'PELS can’t read the current temperature from Connected 300.',
+    );
+    expect(renderInput.pending.hero.recourse?.targetTab).toBe('overview');
+  });
+
+  it('emits no recourse on the EV unplugged pending hero — plugging in is a physical action', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'ev',
+      name: 'Garage EV',
+      currentOn: false,
+      planningPowerKw: 7,
+      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: { prices: [] },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const pendingPlan: DeferredObjectiveActivePlanV1 = {
+      deviceId: 'ev',
+      deviceName: 'Garage EV',
+      objectiveKind: 'ev_soc',
+      targetTemperatureC: null,
+      targetPercent: 80,
+      deadlineAtMs: deadline.getTime(),
+      startedAtMs: now.getTime(),
+      pending: true,
+      pendingReason: 'invalid_session',
+      objectiveSignature: 'sig',
+      original: null,
+      latest: null,
+    };
+    const renderInput = testExports.resolveRenderInput({
+      bootstrap: buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: {
+          version: 1,
+          objectivesByDeviceId: {
+            ev: {
+              enabled: true,
+              kind: 'ev_soc',
+              enforcement: 'soft',
+              targetPercent: 80,
+              deadlineAtMs: deadline.getTime(),
+            },
+          },
+        },
+      }, pendingPlan),
+      deviceId: 'ev',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    });
+    expect(renderInput?.status).toBe('pending');
+    if (renderInput?.status !== 'pending') return;
+    expect(renderInput.pending.hero.headlineReason).toBe('Charger reports the car isn’t plugged in.');
+    expect(renderInput.pending.hero.recourse).toBeNull();
+  });
+});

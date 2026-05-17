@@ -201,8 +201,14 @@ const resolvePendingReason = (
 
 // Narrow the unknown `combinedPrices` payload to the two fields we care about
 // for pending-hero copy. Returns 'unknown' / null when the payload is missing
-// or unrecognised so the copy falls back to neutral wording.
-const resolvePendingContext = (prices: SettingsUiPricesPayload): DeadlinePendingContext => {
+// or unrecognised so the copy falls back to neutral wording. `deviceName` /
+// `deadlineTime` are appended by `buildPendingPayload` once the resolved
+// objective context is in hand — keeping the price-only fields here means
+// `resolveRenderInput` can share one helper for the absent-plan and ready-
+// but-no-prices branches.
+const resolvePendingPriceContext = (prices: SettingsUiPricesPayload): Pick<
+  DeadlinePendingContext, 'priceSource' | 'lastFetchedShort'
+> => {
   const combined = prices.combinedPrices;
   if (!combined || typeof combined !== 'object') {
     return { priceSource: 'unknown', lastFetchedShort: null };
@@ -246,16 +252,26 @@ const buildPendingHero = (params: {
     ],
     sectionLabel: params.labels.sectionLabel,
     headline: copy.headline,
+    headlineReason: copy.headlineReason,
     subline: `${params.device.name} • Target ${target} by ${deadline}`,
     metaLine: copy.body,
+    recourse: copy.recourse,
   };
 };
 
 const buildPendingPayload = (
   ctx: ResolvedObjectiveContext,
-  pendingContext: DeadlinePendingContext,
+  priceContext: Pick<DeadlinePendingContext, 'priceSource' | 'lastFetchedShort'>,
 ): DeadlinePlanPendingPayload => {
   const labels = deadlineLabels(ctx.objective.kind);
+  // Resolve device + deadline strings on this side of the layer so shared-
+  // domain copy helpers stay free of locale and Date helpers (same rule as
+  // the queued-hero headlineReason resolver).
+  const pendingContext: DeadlinePendingContext = {
+    ...priceContext,
+    deviceName: ctx.device.name ?? '',
+    deadlineTime: formatHourLabel(ctx.deadlineAtMs),
+  };
   return {
     kind: ctx.objective.kind,
     labels,
@@ -590,10 +606,10 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
   if (ctxResult.kind === 'absent') return { status: 'absent' };
   if (ctxResult.kind === 'completed') return { status: 'completed', kind: ctxResult.objectiveKind };
   const ctx = ctxResult.context;
-  const pendingContext = resolvePendingContext(params.prices);
+  const priceContext = resolvePendingPriceContext(params.prices);
   // No persisted record yet OR record is explicitly pending → pending hero.
   if (!ctx.activePlan || ctx.activePlan.pending || !ctx.activePlan.latest) {
-    return { status: 'pending', pending: buildPendingPayload(ctx, pendingContext) };
+    return { status: 'pending', pending: buildPendingPayload(ctx, priceContext) };
   }
   const result = buildObjectivePayload(params);
   if (!result) return { status: 'absent' };
@@ -601,7 +617,7 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
     return { status: 'unavailable', kind: ctx.objective.kind, reason: result.reason };
   }
   if (result.kind === 'awaiting_prices') {
-    return { status: 'pending', pending: buildPendingPayload(ctx, pendingContext) };
+    return { status: 'pending', pending: buildPendingPayload(ctx, priceContext) };
   }
   return { status: 'ready', payload: result.payload };
 };
