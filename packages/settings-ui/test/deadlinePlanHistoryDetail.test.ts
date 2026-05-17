@@ -103,7 +103,7 @@ describe('DeadlinePlanHistoryDetail', () => {
     // Missed entries land with `chartCollapsedByDefault: false` so the chart
     // is rendered immediately (diagnosis-shape hero). Succeeded entries
     // default to the receipt-shape (chart collapsed) and require the user to
-    // click "View schedule" — covered in a separate test below.
+    // click "View details" — covered in a separate test below.
     const revision = buildRevision({ planStatus: 'cannot_meet' });
     const root = await mount(buildEntry({
       outcome: 'missed',
@@ -353,19 +353,20 @@ describe('DeadlinePlanHistoryDetail', () => {
       }));
       const hero = root.querySelector<HTMLElement>('.plan-history-detail__hero');
       expect(hero?.dataset.tone).toBe('good');
-      // Postmortem sentence under the heading.
-      const postmortem = root.querySelector('.plan-history-detail__postmortem');
-      expect(postmortem).not.toBeNull();
-      expect(postmortem?.textContent).toContain('65.0 °C');
+      // Outcome headline promoted above the chart card (PR10).
+      const outcomeHeadline = root.querySelector('.plan-history-detail__outcome-headline');
+      expect(outcomeHeadline).not.toBeNull();
+      expect(outcomeHeadline?.textContent).toContain('65.0 °C');
       // No recourse CTA on succeeded.
       expect(root.querySelector('.plan-history-detail__recourse')).toBeNull();
       // No "Why" line on succeeded.
       expect(root.querySelector('.plan-history-detail__missed-reason')).toBeNull();
       // Chart card exists but the comparison chart is collapsed — "View
-      // schedule" toggle visible.
+      // details" toggle visible (renamed in PR10 to avoid the "schedule"
+      // vocabulary overload with the deadline-plan page).
       const toggle = root.querySelector('.plan-history-detail__chart-toggle');
       expect(toggle).not.toBeNull();
-      expect(toggle?.textContent).toBe('View schedule');
+      expect(toggle?.textContent).toBe('View details');
       expect(root.querySelector('.deadline-horizon-chart')).toBeNull();
     });
 
@@ -383,8 +384,8 @@ describe('DeadlinePlanHistoryDetail', () => {
       }));
       const hero = root.querySelector<HTMLElement>('.plan-history-detail__hero');
       expect(hero?.dataset.tone).toBe('warn');
-      // Postmortem on Missed.
-      expect(root.querySelector('.plan-history-detail__postmortem')?.textContent)
+      // Outcome headline on Missed (promoted above chart card in PR10).
+      expect(root.querySelector('.plan-history-detail__outcome-headline')?.textContent)
         .toMatch(/daily energy budget/);
       // "Why" line on Missed.
       expect(root.querySelector('.plan-history-detail__missed-reason')?.textContent)
@@ -437,7 +438,7 @@ describe('DeadlinePlanHistoryDetail', () => {
       }));
       const hero = root.querySelector<HTMLElement>('.plan-history-detail__hero');
       expect(hero?.dataset.tone).toBe('muted');
-      expect(root.querySelector('.plan-history-detail__postmortem')?.textContent)
+      expect(root.querySelector('.plan-history-detail__outcome-headline')?.textContent)
         .toMatch(/stopped/);
       // No recourse / Why on Abandoned.
       expect(root.querySelector('.plan-history-detail__recourse')).toBeNull();
@@ -447,7 +448,7 @@ describe('DeadlinePlanHistoryDetail', () => {
       expect(root.querySelector('.deadline-horizon-chart')).toBeNull();
     });
 
-    it('Succeeded hero has a "View schedule" toggle that expands the chart on click', async () => {
+    it('Succeeded hero has a "View details" toggle that expands the chart on click', async () => {
       const root = await mount(buildEntry({
         outcome: 'met',
         metAtMs: DEADLINE_MS - 4 * HOUR_MS,
@@ -461,7 +462,7 @@ describe('DeadlinePlanHistoryDetail', () => {
       toggle!.click();
       // Preact's effect/render is synchronous on click in JSDOM here.
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      expect(toggle!.textContent).toBe('Hide schedule');
+      expect(toggle!.textContent).toBe('Hide details');
       expect(root.querySelector('.deadline-horizon-chart')).not.toBeNull();
     });
   });

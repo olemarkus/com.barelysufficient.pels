@@ -325,7 +325,7 @@ test.describe('Deadline recorder → history UI round-trip', () => {
       );
 
       // PR 3 collapses the chart by default on the Succeeded receipt shape
-      // (this fixture is `outcome: 'met'`). Click the "View schedule" toggle
+      // (this fixture is `outcome: 'met'`). Click the "View details" toggle
       // to render the chart before asserting its Y-axis labels fit.
       await page.locator('.plan-history-detail__chart-toggle').click();
 

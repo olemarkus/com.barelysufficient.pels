@@ -732,7 +732,20 @@ const HistoryDetailHero = ({
         <span class="plan-history-detail__heading-when">{hero.heading.deadlineLine}</span>
       </h1>
     </header>
-    <p class="plan-history-detail__postmortem" data-variant={hero.lead.variant}>{hero.lead.sentence}</p>
+    {/* Outcome headline — the answer to "what happened on this run?".
+      * Promoted in v2.7.2/PR10 from a muted-supporting paragraph to a
+      * display-tier headline, visually equivalent to the live deadline-plan
+      * page's hero headline. The producer
+      * (`buildHistoryDetailHero` → `resolvePostmortem` in
+      * `packages/shared-domain/src/deferredPlanHistory.ts`) emits the
+      * sentence; the `data-variant` hook stays for future variant-specific
+      * copy tuning without re-resolving in the view. */}
+    <p
+      class="plan-history-detail__outcome-headline"
+      data-variant={hero.lead.variant}
+    >
+      {hero.lead.sentence}
+    </p>
     {hero.secondary !== null && (
       <p class="plan-history-detail__secondary">{hero.secondary}</p>
     )}
@@ -957,7 +970,7 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
                 aria-expanded={!chartCollapsed}
                 onClick={() => setChartCollapsed(!chartCollapsed)}
               >
-                {chartCollapsed ? 'View schedule' : 'Hide schedule'}
+                {chartCollapsed ? 'View details' : 'Hide details'}
               </button>
             )}
           </div>

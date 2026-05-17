@@ -1752,22 +1752,28 @@ md-primary-tab.tab[active]:hover {
   color: var(--pels-status-on-warning);
 }
 
-/* Postmortem lead line — the answer to "why did this run miss?" or "did it
- * actually succeed?". This is the strongest content move on the page, so it
- * reads one weight up from the supporting font and carries no muted color.
- * Sits directly under the heading; spacing collapses to the hero's flex gap
- * so its prominence isn't diluted by extra margin. */
-.plan-history-detail__postmortem {
+/* Outcome headline — the answer to "what happened on this run?". Promoted
+ * to display-tier weight within the hero block (v2.7.2/PR10), immediately
+ * after the device-name header. Reading order inside the hero is
+ * headline -> supporting (cost / delivered) -> why -> recourse -> progress,
+ * with the chart card following. Visually equivalent to the live
+ * deadline-plan page's main hero headline (`.plan-hero__headline`). This is
+ * the strongest content move on the page: succeeded receipts read the
+ * outcome sentence as a confirmation; missed/abandoned runs read it as the
+ * page's diagnosis. Display-tier tokens already bake in tracking, so this
+ * rule does not set its own letter-spacing. */
+.plan-history-detail__outcome-headline {
   margin: 0;
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-medium);
-  color: var(--pels-text-primary);
+  color: var(--pels-text-display-color);
+  font-size: var(--pels-text-display-font-size);
+  font-weight: var(--pels-text-display-font-weight);
+  line-height: var(--pels-text-display-font-line-height);
 }
 
-/* Secondary line under the postmortem: cost + delivered (succeeded /
- * missed) or partial-delivery summary (abandoned). Muted so the postmortem
- * stays the headline; tabular-nums keeps cost digits aligned when several
- * past entries open in sequence. */
+/* Secondary line under the outcome headline: cost + delivered (succeeded /
+ * missed) or partial-delivery summary (abandoned). Muted so the outcome
+ * headline stays primary; tabular-nums keeps cost digits aligned when
+ * several past entries open in sequence. */
 .plan-history-detail__secondary {
   margin: 0;
   font-size: var(--font-size-sm);
@@ -1775,10 +1781,12 @@ md-primary-tab.tab[active]:hover {
   font-variant-numeric: tabular-nums;
 }
 
-/* Chart toggle on the Succeeded receipt shape ("View schedule" / "Hide
- * schedule"). Renders as a recognisable ghost button — visible affordance,
+/* Chart toggle on the Succeeded receipt shape ("View details" / "Hide
+ * details"). Renders as a recognisable ghost button — visible affordance,
  * keyboard-focusable, M3 touch-target minimum. Borrows the ghost-button
- * primitive so we don't introduce a page-local custom button. */
+ * primitive so we don't introduce a page-local custom button. The label
+ * reads "details" not "schedule" so the toggle doesn't overload the
+ * deadline-plan "schedule" vocabulary (v2.7.2/PR10). */
 .plan-history-detail__chart-toggle {
   align-self: flex-start;
   min-height: var(--pels-touch-target-min);
