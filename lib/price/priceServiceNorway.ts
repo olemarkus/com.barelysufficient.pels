@@ -225,10 +225,11 @@ export const buildCombinedHourlyPricesNorway = (params: {
         monthKey,
         monthlyCapKwh,
       });
-      // Past hours always show full Norgespris eligibility — they ran (or didn't) under the
-      // model at the time, and the live monthly cap snapshot is not a valid retroactive
-      // signal. Only current and future hours derive eligibility from the forward cap
-      // projection. See TODO `norgespris-historical-snapshot-tz` (option a).
+      // Past hours always show full Norgespris eligibility (option a: static 1.0 for history).
+      // The monthly cap at execution time was effectively the snapshot that governed each past
+      // hour, and re-evaluating it against the live cap would produce misleading retroactive
+      // adjustments. Only current and future hours derive eligibility from the forward cap
+      // projection.
       const forwardLookingEligibleShare = remainingNorgesprisKwh <= 0
         ? 0
         : Math.min(1, remainingNorgesprisKwh / validHourlyUsageEstimateKwh);
