@@ -2633,7 +2633,7 @@ md-primary-tab.tab[active]:hover {
  * Replaces flat `Awaiting data…` text with a token-driven M3 shimmer so the
  * shape of the panel is visible while data loads. The `--hero` modifier sits
  * inside `.plan-hero` placeholders; `--card` sits inside surface cards.
- * Honors `prefers-reduced-motion: reduce` (no animation, lower contrast).
+ * Honors `prefers-reduced-motion: reduce` (no animation).
  */
 .pels-skeleton {
   display: block;
