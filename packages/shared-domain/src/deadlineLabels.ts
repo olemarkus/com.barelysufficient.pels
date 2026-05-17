@@ -1,3 +1,8 @@
+/* eslint-disable max-lines -- single home for kind-aware smart-task copy
+   (chips, status labels, pending-hero variants, history copy, cost & delivered-
+   so-far formatters, EV provenance rows). Splitting per surface would scatter
+   copy across files; `feedback_ui_text_shared_with_logs` keeps runtime
+   logging and the UI reading the same strings, which requires colocation. */
 import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings.js';
 import type {
   DeferredObjectiveActivePlanDiagnosticReason,
@@ -182,20 +187,26 @@ export type DeadlinePendingContext = {
   // or null when no refresh has happened yet. Formatting lives in the caller so
   // shared-domain stays free of locale/Date helpers.
   lastFetchedShort: string | null;
+  // Device name (e.g. "Connected 300") so the per-reason headlineReason copy
+  // can name the source of the stall ("PELS can't read the current temperature
+  // from {device}"). Empty string is a safe fallback when the device snapshot
+  // hasn't loaded yet; resolvers degrade to a kind-only sentence.
+  deviceName: string;
+  // Pre-formatted local time of the deadline (e.g. "07:00"), used by the
+  // `awaiting_horizon_plan` resolver to surface the horizon the planner is
+  // waiting on. Caller resolves so shared-domain stays free of locale helpers.
+  deadlineTime: string;
 };
 
-export type DeadlinePendingCopy = { headline: string; body: string };
-
-export type DeadlinePendingCopyResolver = (ctx: DeadlinePendingContext) => DeadlinePendingCopy;
-
-// Recourse action surfaced under the cannot-finish hero body. The producer
-// resolves a stable `targetTab` slug (Homey settings-UI shell tab id) so the
-// view just forwards it to the click dispatcher without branching on cause
-// codes. Adding a new action means adding a label here, picking a target
-// tab, and the dispatcher in `deadlinePlanMount.ts` already handles the
-// click → `showTab(targetTab)` flow.
+// Recourse action surfaced under the cannot-finish hero body and the pending
+// hero. The producer resolves a stable `targetTab` slug
+// (Homey settings-UI shell tab id) so the view just forwards it to the click
+// dispatcher without branching on cause codes. Adding a new action means
+// adding a label here, picking a target tab, and the dispatcher in
+// `deadlinePlanMount.ts` already handles the click → `showTab(targetTab)`
+// flow.
 //
-// Branches (resolved in `resolveCannotMeetRecourse`):
+// Cannot-meet branches (resolved in `resolveCannotMeetRecourse`):
 //   daily-budget-exhausted        → `targetTab: 'budget'`
 //                                   (per `feedback_hard_cap_is_physical.md`,
 //                                   the recourse path is "lower the daily
@@ -206,10 +217,32 @@ export type DeadlinePendingCopyResolver = (ctx: DeadlinePendingContext) => Deadl
 //                                   to the device-detail overlay directly
 //                                   from the smart-task panel would couple
 //                                   two otherwise-independent panels).
+//
+// Pending branches: `device_data_missing` and `missing_capacity` point at
+// `targetTab: 'overview'` (same device-card surface). `invalid_session`
+// (EV unplugged) and `awaiting_horizon_plan` carry no recourse — both
+// resolve on their own when the user plugs in / when prices land.
 export type DeadlineCannotMeetRecourse = {
   label: string;
   targetTab: string;
 };
+
+// `headlineReason` is the subline rendered below the pending headline — a
+// short one-sentence answer to "why is this still building?". `recourse` is
+// the actionable next step (when there is one); rendered as the same
+// button shape PR 2 uses for the cannot-meet hero, with the same shell-tab
+// dispatcher in `deadlinePlanMount.ts`. Both fields are nullable so a
+// resolver can decline to fabricate either when honest absence is the right
+// answer (e.g. `awaiting_horizon_plan` has no user-side recourse — the
+// planner runs every ~5 min on its own).
+export type DeadlinePendingCopy = {
+  headline: string;
+  body: string;
+  headlineReason: string | null;
+  recourse: DeadlineCannotMeetRecourse | null;
+};
+
+export type DeadlinePendingCopyResolver = (ctx: DeadlinePendingContext) => DeadlinePendingCopy;
 
 // Headline-reason copy explaining *why* a queued smart task hasn't started yet.
 // Lives in shared-domain so the same strings can also be emitted to the
@@ -356,29 +389,72 @@ const CANNOT_MEET_RECOURSE = {
   openOverview: { label: 'Adjust device', targetTab: 'overview' },
 };
 
+// Recourse target for the pending-hero device-side branches
+// (`device_data_missing`, `invalid_session`, `missing_capacity`). The Overview
+// tab hosts the device card where the user verifies status / capacity. We
+// pick a single, kind-aware label so the button reads as "where the device
+// lives", not "Adjust device" (which the cannot-meet branch already uses for
+// the post-plan-failure case and would mislead in a pre-plan pending state).
+const OVERVIEW_DEVICE_RECOURSE = { label: 'Open device in Overview', targetTab: 'overview' };
+
+// `awaiting_horizon_plan` is the most common pending reason — the planner
+// runs every ~5 min and needs prices through the deadline. `headlineReason`
+// repeats the salient horizon time at headline height so the user knows what
+// they're waiting on; `recourse` is null because the planner replans itself
+// when prices arrive (no user action).
 const awaitingHorizonCopy = (kindNoun: 'heat plan' | 'charging plan'): DeadlinePendingCopyResolver => (
   (ctx) => {
-    if (ctx.priceSource === 'external_flow') {
-      return {
-        headline: 'Waiting for tomorrow’s prices from your Flow',
-        body: withLastFetched(
-          `PELS needs prices through the deadline before it can build a ${kindNoun}. `
-            + 'In flow price mode, prices arrive only when a Flow calls the '
-            + '“Set external prices (tomorrow)” action. Check the Flow that publishes prices '
-            + 'if this message stays up after tomorrow’s prices should have arrived.',
-          ctx.lastFetchedShort,
-        ),
-      };
-    }
+    const isFlow = ctx.priceSource === 'external_flow';
+    const body = isFlow
+      ? `PELS needs prices through the deadline before it can build a ${kindNoun}. `
+        + 'In flow price mode, prices arrive only when a Flow calls the '
+        + '“Set external prices (tomorrow)” action. Check the Flow that publishes prices '
+        + 'if this message stays up after tomorrow’s prices should have arrived.'
+      : `PELS will build a ${kindNoun} as soon as prices through the deadline are available.`;
     return {
-      headline: 'Waiting for tomorrow’s prices',
-      body: withLastFetched(
-        `PELS will build a ${kindNoun} as soon as prices through the deadline are available.`,
-        ctx.lastFetchedShort,
-      ),
+      headline: isFlow ? 'Waiting for tomorrow’s prices from your Flow' : 'Waiting for tomorrow’s prices',
+      body: withLastFetched(body, ctx.lastFetchedShort),
+      // Avoid restating "Waiting for tomorrow’s prices" from the headline; the
+      // panic-visitor's actionable detail is the horizon time the planner
+      // needs to cover.
+      headlineReason: `Need prices through ${ctx.deadlineTime} before the smart task can start.`,
+      recourse: null,
     };
   }
 );
+
+// `device_data_missing` / `missing_capacity` (and the thermal fall-through
+// for `invalid_session`) share one resolver — same headline, same body, same
+// recourse — keyed by the kind's reading-word + device-noun fallback.
+// Shared with structured-log breadcrumbs (`feedback_ui_text_shared_with_logs`).
+const deviceDataMissingResolver = (kind: {
+  headline: string;
+  body: string;
+  readingNoun: 'current temperature' | 'state of charge';
+  fallbackDeviceNoun: 'the heater' | 'the EV';
+}): DeadlinePendingCopyResolver => (ctx) => ({
+  headline: kind.headline,
+  body: kind.body,
+  headlineReason: `PELS can’t read the ${kind.readingNoun} from `
+    + `${ctx.deviceName.trim() || kind.fallbackDeviceNoun}.`,
+  recourse: OVERVIEW_DEVICE_RECOURSE,
+});
+
+const HEATER_DEVICE_DATA_MISSING = deviceDataMissingResolver({
+  headline: 'Waiting for a reading from the device',
+  body: 'PELS needs a current temperature, a useful capacity, or a recent observation '
+    + 'from this heater before it can plan the smart task.',
+  readingNoun: 'current temperature',
+  fallbackDeviceNoun: 'the heater',
+});
+
+const EV_DEVICE_DATA_MISSING = deviceDataMissingResolver({
+  headline: 'Waiting for a reading from the EV',
+  body: 'PELS needs a current state of charge, a charge rate, or a recent observation '
+    + 'from this EV before it can plan the smart task.',
+  readingNoun: 'state of charge',
+  fallbackDeviceNoun: 'the EV',
+});
 
 const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
   temperature: {
@@ -404,34 +480,29 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     backgroundSeriesName: 'Background usage',
     progressSeriesName: 'Temperature',
     planTooltipIdle: 'Idle',
+    // Thermal `invalid_session` is unreachable today (heaters can't be
+    // unplugged); we map it to `device_data_missing` so a future diagnostic
+    // can't leak EV-specific copy. `missing_capacity` is the cold-start
+    // "learning energy profile" state — no shipped bootstrap kWh/°C — and
+    // recourse lands on Overview where the user can verify the heater is
+    // actually running and reporting power.
     pendingHeroByReason: {
       awaiting_horizon_plan: awaitingHorizonCopy('heat plan'),
       price_feature_disabled: () => ({
         headline: 'Price-aware optimisation is off',
         body: 'Enable price-aware optimisation in Settings → Electricity prices to compute a heat plan.',
+        headlineReason: 'Price-aware optimisation is off in Settings.',
+        recourse: { label: 'Open Settings', targetTab: 'settings' },
       }),
-      device_data_missing: () => ({
-        headline: 'Waiting for a reading from the device',
-        body: 'PELS needs a current temperature, a useful capacity, or a recent observation '
-          + 'from this heater before it can plan the smart task.',
-      }),
-      // Thermal kinds can't go invalid the way an EV session can; if a future
-      // diagnostic ever surfaces this reason for a thermostat, treat it the
-      // same as `device_data_missing` rather than leaking EV-specific copy.
-      invalid_session: () => ({
-        headline: 'Waiting for a reading from the device',
-        body: 'PELS needs a current temperature, a useful capacity, or a recent observation '
-          + 'from this heater before it can plan the smart task.',
-      }),
-      // Thermal devices have no shipped bootstrap kWh/°C, so a new device sits
-      // pending until samples accumulate. Tell the user what's blocking and
-      // what unblocks it — without this they see "Waiting" indefinitely with
-      // no explanation.
+      device_data_missing: HEATER_DEVICE_DATA_MISSING,
+      invalid_session: HEATER_DEVICE_DATA_MISSING,
       missing_capacity: () => ({
         headline: 'Learning energy use',
         body: 'PELS needs power readings from this heater while it heats so it can learn how '
           + 'many kWh raise the temperature by one degree. The plan will appear once that is '
           + 'available.',
+        headlineReason: 'PELS is still learning this heater’s energy per degree from observed power.',
+        recourse: OVERVIEW_DEVICE_RECOURSE,
       }),
     },
     unavailableByReason: {
@@ -495,35 +566,29 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     backgroundSeriesName: 'Background usage',
     progressSeriesName: 'Charge level',
     planTooltipIdle: 'Idle',
+    // EV `invalid_session` is the plugged-out / discharging pause state. The
+    // body already says "PELS will resume…", the headlineReason restates the
+    // *cause* at headline height, and recourse is null because plugging in
+    // is a physical action with no in-app tab to land on. EV
+    // `missing_capacity` should never fire (bootstrap fallback exists); the
+    // device-data-missing copy is kept as a safety net.
     pendingHeroByReason: {
       awaiting_horizon_plan: awaitingHorizonCopy('charging plan'),
       price_feature_disabled: () => ({
         headline: 'Price-aware optimisation is off',
         body: 'Enable price-aware optimisation in Settings → Electricity prices to compute a charging plan.',
+        headlineReason: 'Price-aware optimisation is off in Settings.',
+        recourse: { label: 'Open Settings', targetTab: 'settings' },
       }),
-      device_data_missing: () => ({
-        headline: 'Waiting for a reading from the EV',
-        body: 'PELS needs a current state of charge, a charge rate, or a recent observation '
-          + 'from this EV before it can plan the smart task.',
-      }),
-      // EV plugged out (or session reported as discharging). The plan is
-      // intentionally paused — it resumes the next time PELS sees a valid
-      // session. Telling the user this prevents the "is PELS broken?" worry
-      // when they plug back in and expect immediate charging.
+      device_data_missing: EV_DEVICE_DATA_MISSING,
       invalid_session: () => ({
         headline: 'Charging plan paused — EV unplugged',
         body: 'PELS will resume the plan once the EV is plugged in and reports a valid charging '
           + 'session.',
+        headlineReason: 'Charger reports the car isn’t plugged in.',
+        recourse: null,
       }),
-      // EV objectives always have the bootstrap kWh-per-percent fallback, so
-      // `missing_capacity` should never actually fire for EVs; keep an
-      // equivalent device-data-missing copy as a safety net in case the
-      // upstream invariant changes.
-      missing_capacity: () => ({
-        headline: 'Waiting for a reading from the EV',
-        body: 'PELS needs a current state of charge, a charge rate, or a recent observation '
-          + 'from this EV before it can plan the smart task.',
-      }),
+      missing_capacity: EV_DEVICE_DATA_MISSING,
     },
     unavailableByReason: {
       no_current_reading: {

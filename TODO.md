@@ -2822,3 +2822,16 @@ should not be folded into the same PR.
       Why P3: micro-optimization on a bounded loop; no observed performance issue.
       Files: `packages/settings-ui/src/ui/deadlinePlan.ts` (`resolveLiveCostAndDelivery`,
       `buildTimeline`).
+- [ ] Split `packages/shared-domain/src/deadlineLabels.ts` so the file drops back under the
+      500-LOC ESLint ceiling without an override.
+      Added a `/* eslint-disable max-lines */` header on v2.7.2 PR 2.5 (pending-hero headlineReason
+      + recourse). Natural split: pull the smart-task list status helpers
+      (`SMART_TASK_LIST_STATUS_LABELS`, `SMART_TASK_LIST_STATUS_CHIP_VARIANT`,
+      `resolveSmartTaskListReadyByTone`, `resolveSmartTaskListStatus`) into
+      `smartTaskListStatus.ts`, and/or the EV-card state-line helpers
+      (`resolveEvCardStateLine`) into `evCardState.ts`. Both groups have stable callers and read
+      independently from the kind-aware copy bundle.
+      Why P3: maintenance hygiene; the override is documented with the colocation rationale
+      (`feedback_ui_text_shared_with_logs` keeps runtime logging + UI reading the same strings).
+      Files: `packages/shared-domain/src/deadlineLabels.ts`,
+      `packages/shared-domain/src/smartTaskListStatus.ts` (new), `packages/shared-domain/src/evCardState.ts` (new).
