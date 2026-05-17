@@ -566,7 +566,7 @@ const BudgetAdjustView = ({
                 The selected day's energy plan.
                 <span class="field__hint-range">{` Range ${MIN_DAILY_BUDGET_KWH}–${MAX_DAILY_BUDGET_KWH} kWh.`}</span>
                 {recommendedMaxKWh !== null && recommendedMaxKWh < MAX_DAILY_BUDGET_KWH ? (
-                  <span class="field__hint-range">{` Recommended up to ${formatKWh(recommendedMaxKWh, 1)} (hourly limit × 24h).`}</span>
+                  <span class="field__hint-range">{` Recommended up to ${formatKWh(recommendedMaxKWh, 1)} (hard cap × 24h).`}</span>
                 ) : null}
               </FieldHint>
             </span>
