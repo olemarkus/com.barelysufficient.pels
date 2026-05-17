@@ -264,7 +264,9 @@ export const openDeviceDetail = (deviceId: string) => {
   if (!device) return;
 
   resetDeviceDetailDiagnosticsRequests();
-  closeSteppedLoadDraft();
+  // Do not drop drafts here: switching from device A's pane to device B's must
+  // preserve A's in-progress edits per TODO `stepped-load-draft-close-handler`.
+  // The draft for B (if any) is loaded via renderSteppedLoadDraft below.
   retainPendingNativeWiringEnable(deviceId);
   currentDetailDeviceId = deviceId;
 
@@ -299,7 +301,9 @@ export const openDeviceDetail = (deviceId: string) => {
 export const closeDeviceDetail = () => {
   resetDeviceDetailDiagnosticsRequests();
   resetDeviceDetailDiagnosticsView();
-  closeSteppedLoadDraft();
+  if (currentDetailDeviceId) {
+    closeSteppedLoadDraft(currentDetailDeviceId);
+  }
   clearPendingNativeWiringEnable();
   currentDetailDeviceId = null;
   if (deviceDetailOverlay) {

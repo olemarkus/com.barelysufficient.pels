@@ -12,7 +12,12 @@ import {
   aggregateAndPruneHistory,
   recordPowerSample,
 } from '../lib/core/powerTracker';
-import { getHourBucketKey, truncateToUtcHour } from '../lib/utils/dateUtils';
+import {
+  getHourBucketKey,
+  truncateToUtcHour,
+  getDateKeyInTimeZone,
+  getZonedParts,
+} from '../lib/utils/dateUtils';
 
 // Use fake timers to control throttling, but keep real Date behavior
 vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
@@ -69,7 +74,11 @@ describe('power tracker integration', () => {
     const oldTimestamp = now - (35 * 24 * 60 * 60 * 1000); // 35 days ago
     const oldHourStart = truncateToUtcHour(oldTimestamp);
     const oldBucketKey = new Date(oldHourStart).toISOString();
-    const oldDateKey = formatDateUtc(new Date(oldHourStart));
+    // Mock Homey reports Europe/Oslo, so the runtime now keys dailyTotals and
+    // hourlyAverages by the local calendar date / hour (TODO `power-tracker-tz-fix`).
+    const oldDateKey = getDateKeyInTimeZone(new Date(oldHourStart), 'Europe/Oslo');
+    // formatDateUtc is still exported and used by back-compat callers; keep it imported.
+    void formatDateUtc;
 
     // Manually set old data in powerTracker
     app['powerTracker'] = {
@@ -91,9 +100,15 @@ describe('power tracker integration', () => {
     // Should be aggregated into daily totals
     expect(state.dailyTotals[oldDateKey]).toBeCloseTo(1.5, 3);
 
-    // Should be in hourly averages pattern
+    // Should be in hourly averages pattern. Weekday is derived from the local date key
+    // (date-label weekday is identical whether we parse it as UTC or local midnight).
+    // Hour-of-day comes from the Homey-local hour the sample actually fell in.
     const date = new Date(oldHourStart);
-    const patternKey = `${getUtcDayOfWeek(date)}_${getUtcHour(date)}`;
+    const localHour = getZonedParts(date, 'Europe/Oslo').hour;
+    const localDayOfWeek = new Date(`${oldDateKey}T00:00:00.000Z`).getUTCDay();
+    const patternKey = `${localDayOfWeek}_${localHour}`;
+    void getUtcDayOfWeek;
+    void getUtcHour;
     expect(state.hourlyAverages[patternKey]).toBeDefined();
     expect(state.hourlyAverages[patternKey].sum).toBeCloseTo(1.5, 3);
     expect(state.hourlyAverages[patternKey].count).toBe(1);

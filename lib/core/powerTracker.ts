@@ -1,6 +1,6 @@
 import type CapacityGuard from './capacityGuard';
 import type { PowerTrackerState, RecordPowerSampleParams } from './powerTrackerTypes';
-import { truncateToUtcHour, getHourBucketKey } from '../utils/dateUtils';
+import { truncateToUtcHour, getHourBucketKey, getDateKeyInTimeZone, getZonedParts } from '../utils/dateUtils';
 import { addPerfDuration } from '../utils/perfCounters';
 import {
   accumulateDevicePowerIfAvailable,
@@ -236,6 +236,9 @@ const processDayHourBuckets = (
   averages: Map<string, { sum: number; count: number }>,
 ) => {
   for (const [dateKey, hours] of dayHourBuckets.entries()) {
+    // dateKey is YYYY-MM-DD (UTC date or Homey-local date, depending on caller).
+    // Parsing midnight-UTC of the same YYYY-MM-DD gives the right calendar weekday
+    // either way — weekday is a property of the date label itself, not its instant.
     const date = new Date(`${dateKey}T00:00:00.000Z`);
     const dayOfWeek = getUtcDayOfWeek(date);
     for (let hour = 0; hour < 24; hour += 1) {
@@ -261,9 +264,22 @@ const pruneDailyTotals = (
   }
   return next;
 };
+function resolveDayHourKey(date: Date, timeZone?: string): { dateKey: string; hourOfDay: number } {
+  if (timeZone) {
+    return { dateKey: getDateKeyInTimeZone(date, timeZone), hourOfDay: getZonedParts(date, timeZone).hour };
+  }
+  return { dateKey: formatDateUtc(date), hourOfDay: getUtcHour(date) };
+}
+
 export function aggregateAndPruneHistory(
   state: PowerTrackerState,
+  options?: { timeZone?: string },
 ): PowerTrackerState {
+  // When `timeZone` is provided, dailyTotals/hourlyAverages buckets are keyed by the
+  // Homey-local calendar date and hour-of-day. Without it we fall back to UTC keys
+  // (the historical behaviour, preserved so existing callers and persisted state
+  // continue to work without a forced migration).
+  const timeZone = options?.timeZone;
   const now = Date.now();
   const hourlyRetentionMs = HOURLY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
   const hourlyThreshold = now - hourlyRetentionMs;
@@ -288,9 +304,7 @@ export function aggregateAndPruneHistory(
         if (Number.isNaN(timestamp)) continue;
 
         if (timestamp < hourlyThreshold) {
-          const date = new Date(isoKey);
-          const dateKey = formatDateUtc(date);
-          const hourOfDay = getUtcHour(date);
+          const { dateKey, hourOfDay } = resolveDayHourKey(new Date(isoKey), timeZone);
           const hours = dayHourBuckets.get(dateKey) ?? ZERO_HOURS.slice();
           hours[hourOfDay] = (hours[hourOfDay] ?? 0) + kWh;
           dayHourBuckets.set(dateKey, hours);

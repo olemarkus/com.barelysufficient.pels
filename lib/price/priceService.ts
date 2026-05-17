@@ -496,8 +496,10 @@ export default class PriceService {
       });
     }
 
-    // Daily totals are keyed by UTC date (formatDateUtc in powerTracker). Only include full UTC days
-    // wholly inside the local-month window to avoid month-boundary misclassification.
+    // Daily totals are keyed by YYYY-MM-DD (Homey-local when the runtime can supply a
+    // timezone to `aggregateAndPruneHistory`, otherwise legacy UTC). The conservative
+    // "fully inside the month window" check works for both: a day-key whose UTC midnight
+    // sits inside the local-month UTC window is unambiguously inside that local month.
     if (dailyTotals && typeof dailyTotals === 'object') {
       Object.entries(dailyTotals as Record<string, unknown>).forEach(([dateKey, value]) => {
         if (typeof value !== 'number' || !Number.isFinite(value)) return;

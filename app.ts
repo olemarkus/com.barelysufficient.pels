@@ -1342,6 +1342,9 @@ class PelsApp extends Homey.App {
       powerTracker: this.powerTracker,
       logDebug: (msg) => this.logDebug('perf', msg),
       error: (msg, err) => this.error(msg, err),
+      // Pass Homey timezone so dailyTotals are keyed by the local calendar day
+      // (matches the UI's bucket-derived keys; see TODO `power-tracker-tz-fix`).
+      timeZone: this.getTimeZone(),
     });
     this.persistPowerTrackerState('prune');
     // Piggyback on the power-tracker prune tick so the calibration store
