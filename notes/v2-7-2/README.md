@@ -66,6 +66,21 @@ In scope (TODO line refs into `TODO.md`):
 | L1393 | "Cannot finish" repeated 3× cleanup |
 | L1987 | List ↔ detail chip-tone reconciliation |
 
+### 2026-05-17 scope expansion — PR #856 follow-ups absorbed
+
+PR #856's release review surfaced one P1 and three P2 gaps in the
+shipped Smart-tasks surface. Rather than land them as separate v2.7.1
+patches (the release was already delayed), we fold them into this train
+so the train ships one coherent Smart-tasks refresh:
+
+| Severity | Item | Lands as |
+|---|---|---|
+| P1 | Pending hero missing `headlineReason` + `recourse` | **PR 2.5** (this entry) |
+| P2 | Past list missing cost + miss-streak quick aggregate | folded into PR 3 / PR 6 |
+| P2 | History detail missing one-sentence postmortem hooks beyond Missed | folded into PR 3 |
+| P2 | History detail revisions list omits "what changed" wording | folded into PR 5 |
+| P2 | Live chart picked-N captioning verbosity | folded into PR 7 |
+
 Out of scope (kept on their current tier):
 
 - `notification_text` token on `deadline_ended` flow trigger (P3, L2440)
@@ -126,6 +141,9 @@ P0/P1 findings from any critic: fix in the same PR. P2/P3: route to
 | Date | PR | Status |
 |---|---|---|
 | 2026-05-17 | PR 0 | branch + workflow trigger + theme note + TODO banner |
+| 2026-05-17 | PR 1 | history schema v3 → v4 — progressSamples + kWhPerUnitMean + deliveredKWh/totalCost + revisions[] |
+| 2026-05-17 | PR 2 | cost + delivered-so-far on live hero — `Σ priceValue × deviceKwh`, two-branch delivery copy |
+| 2026-05-17 | PR 2.5 | pending hero `headlineReason` + `recourse` — scope expansion absorbing PR #856 P1 |
 
 Update as PRs merge into `v2.7.2`.
 
