@@ -114,6 +114,7 @@
     --shadow-panel: 0 5px 22px 0 rgba(0, 0, 0, 0.04), 0 2px 6px 0 rgba(0, 0, 0, 0.05), 0 2px 2px 0 rgba(0, 0, 0, 0.02);  /* Homey box-shadow-selected */
     --shadow-inset-soft: inset 0 1px 2px rgba(0, 0, 0, 0.04);
   }
+
 }
 
 /**
@@ -1514,7 +1515,13 @@ md-primary-tab.tab[active]:hover {
 .plan-chip--muted {
   background: var(--pels-surface-container-high);
   border-color: var(--pels-surface-outline);
-  color: var(--pels-text-secondary);
+  /* Use primary text rather than --pels-text-secondary. Secondary on a
+     container-high surface only reaches ~3:1 on the light canvas and ~3.9:1
+     under Homey's dark-mode invert (chip text is font-size-xs = 11px, so
+     small-text AA needs 4.5:1). Primary text gives ~9:1 in both modes
+     while the "muted" feel is still carried by the chip's neutral container
+     background and smaller font size. */
+  color: var(--text);
 }
 
 /* Priority rank chip (#1, #2, …) shown on Overview device cards. Mirrors the
@@ -6488,3 +6495,122 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   }
 }
 /* stylelint-enable no-descending-specificity */
+
+/* ============================================================================
+ * Desktop component overrides triggered by the 2026-05-17 live-walk audit.
+ *
+ * Placed at the end of the stylesheet so they win cascade ties against the
+ * matching base rules defined earlier in the file. Each rule lives inside
+ * the same `(hover: hover) and (pointer: fine)` gate as the desktop palette
+ * so mobile stays byte-identical to today.
+ * ============================================================================ */
+
+@media (hover: hover) and (pointer: fine) {
+  /* Hero — idle state. The default `--pels-surface-container-high` (= mono-10
+     `#dddee2` on desktop) reads as a heavy gray slab against the ice-white
+     page bg. Lift heroes onto a white surface with a hairline neutral border
+     + Homey's standard card shadow — matches Homey's own panel pattern. */
+  .plan-hero,
+  .pels-hero {
+    background: var(--color-surface-1);
+    border-color: var(--color-border-default);
+    box-shadow: var(--shadow-card);
+  }
+
+  /* Hero — tone states. M3 status pattern: neutral surface + neutral
+     hairline border. The semantic comes from the inline chips (e.g.
+     "Above safe pace", "Simulation mode") + role-coloured meter overflow
+     segments + role-coloured status text, not from a coloured card edge.
+     Mobile keeps the original tone-coloured edge (different aesthetic
+     for the dark canvas). */
+  .plan-hero[data-tone="good"],
+  .pels-hero[data-tone="good"],
+  .plan-hero[data-tone="warn"],
+  .pels-hero[data-tone="warn"],
+  .plan-hero[data-tone="alert"],
+  .pels-hero[data-tone="alert"],
+  .plan-hero[data-tone="info"],
+  .pels-hero[data-tone="info"] {
+    background: var(--color-surface-1);
+    border-color: var(--color-border-default);
+  }
+
+  /* Power meter — fill on track. `--pels-status-good` is `#5eead4` (light
+     teal) which only reaches ~1.2 : 1 on the desktop light-grey track. Use
+     the darker `--color-base-good-soft` for graphical fills so the bar reads
+     at AA on the light canvas (~3.7 : 1 on track, ~7.5 : 1 on white card).
+     Same swap for warning / critical so over-threshold stripes stay readable. */
+  .pels-meter-track {
+    background: var(--color-surface-4);
+  }
+  .pels-meter-track__fill,
+  .pels-meter-segments__seg--managed {
+    background: var(--color-base-good-soft);
+  }
+  .pels-meter-track__fill[data-tone="warning"],
+  .pels-meter-segments__seg--background[data-over-safe-pace],
+  .pels-meter-segments__seg--managed[data-over-safe-pace] {
+    background: var(--color-base-warning-soft);
+  }
+  .pels-meter-track__fill[data-tone="critical"],
+  .pels-meter-segments__seg--background[data-over-hard-cap],
+  .pels-meter-segments__seg--managed[data-over-hard-cap] {
+    background: var(--color-base-danger-soft);
+  }
+
+  /* Material filled text fields / selects — Homey-style inset white. Mobile's
+     dark canvas uses `--color-surface-4` (a darker neutral than the card)
+     for filled fields; on a light canvas that same token resolves to
+     `#dddee2` which reads as a heavy gray slab. Use white container with a
+     visible hairline border, matching Homey's own input pattern. */
+  md-filled-text-field,
+  md-filled-select {
+    --md-filled-text-field-container-color: var(--color-surface-1);
+    --md-filled-select-text-field-container-color: var(--color-surface-1);
+    border: 1px solid var(--color-border-medium);
+    border-radius: var(--radius-md);
+  }
+
+  /* Device cards — M3 status pattern. The card surface stays neutral white
+     with a neutral hairline border (NOT a coloured edge rail — that's an
+     M2/iOS pattern). Status semantic moves inline: the reason / status
+     text inside the card is role-toned, which is the M3 way to convey
+     state without decorating the card edge. */
+  .plan-card[data-state-kind="held"],
+  .plan-card[data-state-kind="resuming"],
+  .plan-card[data-state-kind="unavailable"] {
+    background: var(--color-surface-1);
+    border: 1px solid var(--color-border-default);
+    /* Reset the base `opacity: 0.78` on the `unavailable` rule so the new
+       role-coloured status text inside the card reads at full contrast on
+       the light canvas. Held + resuming were never opacity-faded, so this
+       is a no-op for those — kept on the shared selector for symmetry. */
+    opacity: 1;
+  }
+  .plan-card[data-state-kind="held"] .plan-card__reason,
+  .plan-card[data-state-kind="held"] .plan-card__status-line,
+  .plan-card[data-state-kind="held"] .plan-card__output-state {
+    color: var(--color-state-warning-text);
+  }
+  .plan-card[data-state-kind="resuming"] .plan-card__reason,
+  .plan-card[data-state-kind="resuming"] .plan-card__status-line,
+  .plan-card[data-state-kind="resuming"] .plan-card__output-state {
+    color: var(--color-state-positive-text);
+  }
+  .plan-card[data-state-kind="unavailable"] .plan-card__reason,
+  .plan-card[data-state-kind="unavailable"] .plan-card__status-line,
+  .plan-card[data-state-kind="unavailable"] .plan-card__output-state {
+    color: var(--color-state-negative-text);
+  }
+
+  /* Smart-tasks list — match history-card to active-task card surface so the
+     two sections read as one consistent list. Both use the same neutral
+     white surface with hairline border; drop the active card's elevated
+     shadow that made it pop as "more important" than past entries. */
+  .deadline-list-card,
+  .plan-history-card {
+    background: var(--color-surface-1);
+    border: 1px solid var(--color-border-default);
+    box-shadow: none;
+  }
+}
