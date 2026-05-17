@@ -362,6 +362,93 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
+*v2.7.1 release-review findings (2026-05-17). Six items below from the
+six-agent fan-out pass on `v2.7.0..HEAD`; safe for the next patch
+release, not v2.7.1 merge-blockers.*
+
+- [ ] Norgespris historical display uses live monthly cap snapshot, not
+      snapshot-at-the-time. `priceServiceNorway.ts` initialises
+      `remainingNorgesprisCapByMonth` from `monthlyCap − monthUsageKwh` at
+      fetch time, then renders historical hours' `eligibleShare` against
+      that live snapshot. Late in the month a user with `monthUsageKwh`
+      near the cap will see every past hour rendered at reduced
+      Norgespris eligibility, even hours that actually occurred when the
+      cap was untouched. Decision-side is unaffected — the forward cap
+      gating remains correct (commit `7c6c4363`).
+      Why P1: misleading historical price display; not a decisioning bug.
+      Fix candidates: (a) force `eligibleShare = 1` unconditionally for
+      historical hours; (b) persist per-hour eligibility snapshots.
+      Prefer (a) — simpler and matches "the model was either active or
+      not" framing.
+      Files: `lib/price/priceServiceNorway.ts:223-233`.
+      Source: `adversarial-review` skill, v2.7.1 release-review pass.
+
+- [ ] `closeSteppedLoadDraft()` clears the entire per-device draft map.
+      The per-device map shipped in TODO 740 to isolate in-progress edits
+      across devices, but the close handler still wipes all entries.
+      Switching device-detail panes drops unsaved edits on every other
+      device.
+      Why P1: not a regression (pre-change used a single global), but the
+      new per-device keying advertises an isolation guarantee that the
+      close handler erases.
+      Acceptance: only the closed device's entry is removed; switching
+      panes preserves drafts on devices the user hasn't closed.
+      Files: `packages/settings-ui/src/ui/deviceDetail/steppedLoadDraft.ts:248-251`.
+      Source: `adversarial-review` skill, v2.7.1 release-review pass.
+
+- [ ] `dailyBudgetAllocationWarning.ts` double-violates terminology rules.
+      Title `"Daily budget is larger than your hourly limit allows"` and
+      the two-branch body strings are inlined in settings-ui (Rule 4 —
+      shared-domain origin so runtime logs match user-visible text) AND
+      use "hourly power limit" / "hourly limit" as a threshold label
+      (Rule 6 — `notes/ui-terminology.md § "Safe pace, hard cap, and
+      safety margin"` forbids this; the physical breaker/tariff ceiling
+      is `hard cap`).
+      Why P1: violates two canonical terminology rules in a banner that
+      reaches every user whose budget shape mismatches their tariff.
+      Acceptance: strings move to `packages/shared-domain/**` (e.g.
+      `dailyBudgetWarningStrings.ts`); copy reframes to "Daily budget
+      exceeds what your hard cap can deliver" / "…more than your hard
+      cap can deliver in a day."
+      Files: `packages/settings-ui/src/ui/dailyBudgetAllocationWarning.ts`,
+      new `packages/shared-domain/src/dailyBudgetWarningStrings.ts`,
+      `notes/ui-terminology.md`.
+      Source: `pels-copy-and-terminology` agent, v2.7.1 release-review pass.
+
+- [ ] PlanHero tooltip copy hardcoded in the view. `INFO_TOOLTIP_TEXT`,
+      `SAFE_PACE_TOOLTIP_BY_SOURCE`, `HARD_CAP_TOOLTIP` live inline at
+      `PlanHero.tsx:47-62`, but `notes/ui-terminology.md § "Safe pace
+      now"` defines these as canonical strings. Runtime logging must
+      emit the same wording (Rule 7), which requires a shared home.
+      Why P1: copy renders correctly; the issue is shared-domain origin
+      so logs and UI cannot drift.
+      Acceptance: tooltip strings exported from
+      `packages/shared-domain/src/planHeroSummary.ts` (or a sibling);
+      `PlanHero.tsx` imports them with no inline literals.
+      Files: `packages/settings-ui/src/ui/views/PlanHero.tsx:47-62`,
+      `packages/shared-domain/src/planHeroSummary.ts`.
+      Source: `pels-copy-and-terminology` agent, v2.7.1 release-review pass.
+
+- [ ] Pending smart-task hero is missing `headlineReason` + `recourse`.
+      `DeadlinePlan.tsx:792` `PendingHero` only exposes
+      `headline / subline / metaLine`. The ready hero adds
+      `headlineReason` and `recourse`, both of which answer the page
+      mission ("when and at what price, and why those hours?"). A task
+      that lands pending for hours (no prices yet / pre-window) leaves
+      the user with no "why" line and no recourse — every newly-created
+      smart task lands on this hero first.
+      Why P1 (not P0): same shape already shipped in v2.7.0; this is a
+      first-impression gap, not a regression introduced by v2.7.1.
+      `pels-ux-fit` graded P0; downgraded because the rubric reserves P0
+      for introduced bugs or exposed half-implemented features.
+      Acceptance: pending hero mirrors `headlineReason` (at minimum) and
+      `recourse` when available. Wording stays plain ("prices land at
+      14:00", "task starts at 02:00", etc.).
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx:792`,
+      `packages/shared-domain/src/deadlineLabels.ts` (pending reason
+      copy).
+      Source: `pels-ux-fit` agent, v2.7.1 release-review pass.
+
 - [x] Homey dark theme inverts the PELS iframe via `filter: invert(1) hue-rotate(180deg)`.
       *(landed: the prior CSS-only counter-filter — which proxied Homey theme via
       `prefers-color-scheme` and broke whenever OS and Homey themes disagreed — is
@@ -1208,6 +1295,98 @@ small UI polish (L915, L1383, L1393, L1987). Theme: failed runs deserve
 a different page shape than succeeded runs — see `notes/v2-7-2/README.md`
 and `notes/smart-task-ui/README.md`. Skip these items in v2.7.1
 release-review passes.*
+
+*v2.7.1 release-review P2 batch (2026-05-17). Eight items from the
+six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
+
+- [ ] `notes/overview-hero-spec.md` decision-sentence ladder drift: the
+      note documents 6 branches; `PlanHero.tsx:108` now has 7 (added
+      "projected over budget"). The note's own "keep this ladder in
+      sync" instruction is referenced from the code comment. Update the
+      note to match, or move it to historical if the spec/code contract
+      is retired. Source: `pels-ux-fit` agent.
+      Files: `notes/overview-hero-spec.md`,
+      `packages/settings-ui/src/ui/views/PlanHero.tsx:108`.
+
+- [ ] Resolution-in-producer smell in `deadlinePlanInputs.ts:51-55`. UI
+      branches on `latest.kwhPerUnitSource === 'bootstrap'` to recompute
+      `rateMean` from `BOOTSTRAP_EV_SOC_KWH_PER_PERCENT` because
+      `profile.kwhPerUnit.mean` is absent during bootstrap. The producer
+      (`profileEnergyResolution`) already resolves an `effectiveKwhPerUnit`;
+      persist that on the active-plan revision so the UI reads one flat
+      field and `kwhPerUnitSource` collapses to label-only provenance
+      (matches `resolveSpeedModeLabel` at `deadlinePlanHero.ts:170-216`).
+      Source: `pels-layering-guardian` agent.
+      Files: `lib/plan/deferredObjectives/profileEnergyResolution.ts`,
+      `lib/plan/deferredObjectives/activePlanRecorder.ts`,
+      `packages/contracts/src/deferredObjectiveActivePlans.ts`,
+      `packages/settings-ui/src/ui/deadlinePlanInputs.ts`.
+
+- [ ] Promote heatmap cell radius `2px` to a token. `settings/style.css`
+      `.usage-legend__swatch--unreliable` uses `border-radius: 2px`, and
+      `powerWeekChartEcharts.ts` carries the same constant as a chart
+      cell radius. No token analog exists today; promote to
+      `--pels-chart-cell-radius` so the legend/cell shape contract is
+      enforced at the token layer rather than two parallel literals.
+      Source: `pels-m3-critic` agent.
+      Files: `settings/tokens.css` (or `tokens/component.json`),
+      `settings/style.css`,
+      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`.
+
+- [ ] Light-canvas tooltip contrast spot-check on Homey light. The
+      `967365c5` pivot rebound `.tippy-box[data-theme~='pels']` to
+      `color: var(--text)` on `background: var(--color-surface-elevated)`
+      (resolves `#181818` on `#ffffff` — clean). Verify warn/critical
+      tippy variants if they inherit `--text` still meet AA contrast on
+      `--color-surface-elevated`. Visual QA only; no code evidence of
+      breakage.
+      Source: `pels-m3-critic` agent.
+      Files: `settings/style.css` `.tippy-box[data-theme~='pels']` rule
+      block.
+
+- [ ] Smart-task error banners + "plan" wording on smart-task surfaces.
+      `deadlinePlanMount.ts:27,221,273` and `deadlinePlan.ts:500` inline
+      strings like `"Smart task plan data could not be loaded: …"` and
+      `"Smart task plan unavailable"`. Two issues: (1) Rule 4 — strings
+      should live in `packages/shared-domain/**`; (2) `notes/ui-terminology.md
+      § Plan vs deadline` reserves *plan* for the planning layer. Use
+      `"Smart task record not found"` at `DeadlinePlan.tsx:815` as the
+      model. Source: `pels-copy-and-terminology` agent.
+      Files: `packages/settings-ui/src/ui/deadlinePlanMount.ts`,
+      `packages/settings-ui/src/ui/deadlinePlan.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx:823,832`.
+
+- [ ] Pre-existing jargon in `packages/shared-domain/src/deviceOverview.ts:135-140,178,187`.
+      Still emits raw `"Shed (charging paused)"`, `"Shed (lowered
+      temperature)"`, `"Shed to {step}"`, `"Shed (reduced step)"`, `"Shed
+      (powered off)"`, `"Restore requested"`. Terminology guide mandates
+      `Limited`, `Charging paused`, `Lowered`, `Turned off`, and
+      `Resume requested`. Not introduced by v2.7.1 — pre-existing cleanup.
+      Source: `pels-copy-and-terminology` agent.
+      Files: `packages/shared-domain/src/deviceOverview.ts`,
+      `notes/ui-terminology.md`.
+
+- [ ] `formatPlanHistoryMissedReason` recourse copy is wrong when the
+      cause was daily-budget-exhausted. `deferredPlanHistory.ts:160-180`
+      collapses that branch into the `cannot_meet` copy "Try lowering
+      the target or moving the deadline later" — but the correct
+      recourse in that case is raising the daily budget. Either persist
+      the `dailyBudgetExhausted` distinction in the history snapshot
+      (requires v3→v4 migration, claimed by v2.7.2 train) or soften copy
+      to "Try lowering the target, moving the deadline later, or raising
+      today's energy budget." Source: `adversarial-review` skill.
+      Files: `packages/shared-domain/src/deferredPlanHistory.ts:160-180`.
+
+- [ ] `activePlanRecorder.ts:584-594` sets explicit `undefined` on
+      snapshot fields and relies on `JSON.stringify` dropping them. The
+      comment is intentional, but the in-memory object exposes explicit
+      `undefined` keys that violate `exactOptionalPropertyTypes`-style
+      contracts elsewhere and risk inconsistent round-tripping if Homey
+      ever serialises via a path that preserves `undefined`. Switch to
+      conditional spread for the `objective_changed` reset path so the
+      field is only set when defined.
+      Source: `adversarial-review` skill.
+      Files: `lib/plan/deferredObjectives/activePlanRecorder.ts:584-594`.
 
 - [ ] Smart task history detail: rebuild around temperature/SoC actual-vs-plan, not
       hourly bar comparisons. Current `DeadlinePlanHistoryDetail.tsx` shows planned-hour
