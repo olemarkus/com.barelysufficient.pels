@@ -493,6 +493,11 @@ v2.7.1 release-review passes.*
       `packages/settings-ui/tests/e2e/`.
 ## P2 Product, Observability, and Maintainability
 
+- [ ] v2.7.3 — iOS Homey chrome inset may exceed 56 px (PWA + status bar + nav bar);
+      confirm via screenshot from user, then split `--pels-homey-mobile-chrome` per
+      pointer/platform if needed. Deferred from v2.7.2/PR7 fixup.
+
+
 *Smart-task history-detail trio below was demoted from P1 in the v2.7.1
 release-review pass (2026-05-17). All three depend on the history schema
 v3 → v4 migration, which is out of scope for v2.7.1; sequence them together

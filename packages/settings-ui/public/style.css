@@ -5012,11 +5012,26 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   gap: var(--spacing-3);
 }
 
-.deadline-page-close {
+@media (hover: none) and (pointer: coarse) {
+  /* Coarse-pointer (touch) clients are the only place Homey overlays its
+   * native mobile chrome ("PELS / Done") on top of the iframe. The
+   * desktop my.homey.app iframe has no such chrome, so the token defaults
+   * to 0 in tokens/component.json and is raised here only for touch. */
+  :root {
+    --pels-homey-mobile-chrome: 56px;
+  }
+}
+
+.pels-page-close {
+  /* Page-chrome close button: sibling of the page surface (not inside the
+   * hero card) so the X never collides with hero copy. Anchored to the page
+   * viewport via `position: fixed`, offset below Homey's mobile chrome via
+   * the same `--pels-homey-mobile-chrome` token the panel uses for its top
+   * inset. Name reserved for the cross-page primitive promised by v2.7.2/PR10. */
   position: fixed;
   z-index: 20;
-  top: max(var(--spacing-2), env(safe-area-inset-top));
-  right: max(var(--spacing-3), env(safe-area-inset-right));
+  top: max(var(--pels-homey-mobile-chrome), env(safe-area-inset-top, 0px));
+  right: max(var(--spacing-3), env(safe-area-inset-right, 0px));
   width: var(--pels-deadline-close-size);
   height: var(--pels-deadline-close-size);
   border: 1px solid var(--pels-surface-outline);
@@ -5035,7 +5050,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   --md-icon-button-pressed-state-layer-color: var(--pels-deadline-close-text);
 }
 
-.deadline-page-close__icon {
+.pels-page-close__icon {
   display: inline-block;
   width: 1.5rem;
   height: 1.5rem;
@@ -5044,10 +5059,18 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 #deadline-plan-root {
-  padding-top: calc(max(var(--spacing-2), env(safe-area-inset-top)) + var(--pels-deadline-close-size) + var(--spacing-2));
+  /* Reserve a strip for the page-chrome offset and the fixed close button:
+   * the Homey mobile webview overlays its own top chrome ("PELS / Done") on
+   * top of the iframe without populating safe-area-inset-*, so
+   * `--pels-homey-mobile-chrome` gives a token-sized fallback while
+   * `env(safe-area-inset-top)` still wins on platforms that surface it. */
+  padding-top: calc(
+    max(var(--pels-homey-mobile-chrome), env(safe-area-inset-top, 0px))
+    + var(--pels-deadline-close-size) + var(--spacing-2)
+  );
 }
 
-.deadline-page-close:focus-visible {
+.pels-page-close:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
