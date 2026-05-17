@@ -127,8 +127,19 @@ export type DeadlinePlanPendingPayload = {
     chips: DeadlinePlanChip[];
     sectionLabel: string;
     headline: string;
+    // Per-pending-reason "why is this still building?" subline (e.g.
+    // "PELS can't read the current temperature from Connected 300."). Null
+    // when the resolver declines to fabricate one. Mirrors the queued-hero
+    // headlineReason on the ready payload — same render slot, same suppress
+    // semantics.
+    headlineReason: string | null;
     subline: string;
     metaLine: string;
+    // Optional CTA mirroring the cannot-meet recourse pattern. Resolved
+    // producer-side so the view dispatches on a stable shell-tab slug and
+    // never branches on pendingReason. Null when no in-app action applies
+    // (e.g. `awaiting_horizon_plan`, EV `invalid_session`).
+    recourse: DeadlineCannotMeetRecourse | null;
   };
 };
 
@@ -807,6 +818,13 @@ const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
 };
 
 
+// PendingHero mirrors `DeadlineHero` for the active-plan ready path: the
+// headlineReason subline sits directly below the headline (same render slot
+// as the queued-hero "why" subline) and the recourse button reuses the
+// cannot-meet `plan-hero__recourse-button` shape so the dispatcher in
+// `deadlinePlanMount.ts` handles both surfaces with a single delegated click
+// handler. The view never branches on pendingReason — both fields arrive
+// pre-resolved from the producer.
 const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
   <section class="plan-hero pels-hero" data-tone="info" aria-labelledby="deadline-plan-pending-title">
     <div class="plan-hero__chips">
@@ -817,8 +835,22 @@ const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
     <div class="plan-hero__section">
       <span class="plan-hero__section-label eyebrow" id="deadline-plan-pending-title">{pending.hero.sectionLabel}</span>
       <div class="plan-hero__headline">{pending.hero.headline}</div>
+      {pending.hero.headlineReason !== null && (
+        <div class="plan-hero__subline plan-hero__subline--reason">{pending.hero.headlineReason}</div>
+      )}
       <div class="plan-hero__subline">{pending.hero.subline}</div>
       <div class="plan-hero__subline plan-hero__subline--muted">{pending.hero.metaLine}</div>
+      {pending.hero.recourse !== null && (
+        <div class="plan-hero__recourse">
+          <button
+            type="button"
+            class="plan-hero__recourse-button"
+            data-deadline-recourse-tab={pending.hero.recourse.targetTab}
+          >
+            {pending.hero.recourse.label}
+          </button>
+        </div>
+      )}
     </div>
   </section>
 );
