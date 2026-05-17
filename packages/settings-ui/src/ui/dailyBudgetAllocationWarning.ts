@@ -1,4 +1,8 @@
 import type { DailyBudgetDayPayload } from '../../../contracts/src/dailyBudgetTypes.ts';
+import {
+  DAILY_BUDGET_ALLOCATION_WARNING_TITLE,
+  formatDailyBudgetAllocationWarningBody,
+} from '../../../shared-domain/src/dailyBudgetWarningStrings.ts';
 import { formatKWh } from './dailyBudgetFormat.ts';
 
 export type AllocationWarning = {
@@ -17,15 +21,10 @@ export const resolveAllocationWarning = (
   const ceilingKWh = pressure.maxFittingDailyBudgetKWh;
   if (ceilingKWh > 0 && payload.budget.dailyBudgetKWh <= ceilingKWh) return null;
   const configured = formatKWh(payload.budget.dailyBudgetKWh, 1);
-  const body = ceilingKWh > 0
-    ? `You've set ${configured}, but at most ${formatKWh(ceilingKWh, 1)} fits within your `
-      + `hourly power limit. Lower the daily budget to that or below so PELS can shift usage `
-      + `to cheaper hours.`
-    : `You've set a daily budget of ${configured}, which is more than your hourly power limit `
-      + `can deliver in a day. Lower the daily budget so PELS can shift usage to cheaper hours.`;
+  const ceilingText = ceilingKWh > 0 ? formatKWh(ceilingKWh, 1) : null;
   return {
-    title: 'Daily budget is larger than your hourly limit allows',
-    body,
+    title: DAILY_BUDGET_ALLOCATION_WARNING_TITLE,
+    body: formatDailyBudgetAllocationWarningBody(configured, ceilingText),
   };
 };
 
