@@ -529,7 +529,10 @@ describe('resolveAllocationWarning', () => {
       maxFittingDailyBudgetKWh: 48,
     };
     const result = resolveAllocationWarning(payload);
-    expect(result?.title).toContain('larger than your hourly limit');
+    expect(result?.title).toBe('Daily budget exceeds what your hard cap can deliver');
+    expect(result?.title).not.toMatch(/hourly/i);
+    expect(result?.body).toContain('hard cap');
+    expect(result?.body).not.toMatch(/hourly/i);
     expect(result?.body).toContain('60.0 kWh');
     expect(result?.body).toContain('48.0 kWh');
     expect(result?.body).toContain('shift usage to cheaper hours');
@@ -564,6 +567,8 @@ describe('resolveAllocationWarning', () => {
     const result = resolveAllocationWarning(payload);
     expect(result?.body).toContain('60.0 kWh');
     expect(result?.body).toContain('Lower the daily budget');
+    expect(result?.body).toContain('hard cap');
+    expect(result?.body).not.toMatch(/hourly/i);
     expect(result?.body).not.toContain('48.0');
   });
 

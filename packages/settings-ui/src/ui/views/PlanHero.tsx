@@ -9,6 +9,11 @@ import {
   formatPowerMeterMarkerLabels,
   type HeroMeterMarkerLabels,
 } from '../../../../shared-domain/src/planHeroSummary.ts';
+import {
+  HERO_INFO_TOOLTIP_TEXT,
+  formatHardCapTooltip,
+  formatSafePaceTooltip,
+} from '../../../../shared-domain/src/planHeroTooltips.ts';
 import { formatModeLabel } from '../modeLabels.ts';
 import { resolveDisplayPlanDevices } from '../planLiveData.ts';
 import type { PlanDeviceSnapshot, PlanMetaSnapshot, PlanSnapshot } from '../planTypes.ts';
@@ -43,23 +48,6 @@ const HERO_STATUS_DATA_TONE: Record<HeroStatus, string> = {
   'dry-run': 'warn',
   'no-data': 'alert',
 };
-
-const INFO_TOOLTIP_TEXT = [
-  'Power now is measured in kW — how fast electricity is being used right now.',
-  'Energy this hour is measured in kWh — how much has been used so far this hour.',
-  'Safe pace is the highest power rate that keeps this hour on track for the energy budget.',
-  'kW is speed. kWh is distance.',
-].join(' ');
-
-// Tooltips appended after "Safe pace now {N} kW — ", so each phrase starts in
-// lowercase. Source-specific copy mirrors `notes/ui-terminology.md`.
-const SAFE_PACE_TOOLTIP_BY_SOURCE: Record<NonNullable<PlanMetaSnapshot['softLimitSource']>, string> = {
-  capacity: 'hourly power limit minus safety margin, PELS starts reacting here.',
-  daily: 'slowed to stay within today’s budget — daily pacing is the tighter constraint right now.',
-  both: 'both capacity and daily pacing are constraining PELS right now.',
-};
-
-const HARD_CAP_TOOLTIP = 'your configured maximum, staying under this avoids tariff steps or breaker trips.';
 
 const resolveFreshnessState = (
   power: SettingsUiPowerStatus | null | undefined,
@@ -364,7 +352,7 @@ const HeroChipRow = ({
         class="plan-hero__info-button"
         type="button"
         aria-label="About this card"
-        data-tooltip={INFO_TOOLTIP_TEXT}
+        data-tooltip={HERO_INFO_TOOLTIP_TEXT}
       >
         <InfoIcon />
       </MdIconButton>
@@ -410,14 +398,6 @@ const PowerMeterSegments = ({ scale }: { scale: BarScale }) => {
       )}
     </span>
   );
-};
-
-const resolveSafePaceTooltip = (
-  safePaceKw: number,
-  source: PlanMetaSnapshot['softLimitSource'],
-): string => {
-  const sourceText = source ? SAFE_PACE_TOOLTIP_BY_SOURCE[source] : SAFE_PACE_TOOLTIP_BY_SOURCE.capacity;
-  return `Safe pace now ${safePaceKw.toFixed(1)} kW — ${sourceText}`;
 };
 
 const PelsMeterTrack = ({
@@ -471,7 +451,7 @@ const MeterLegend = ({ markers }: { markers: MeterMarker[] }) => {
 };
 
 const PowerMeter = ({ scale }: { scale: BarScale }) => {
-  const safePaceTooltip = resolveSafePaceTooltip(scale.safePaceKw, scale.softLimitSource);
+  const safePaceTooltip = formatSafePaceTooltip(scale.safePaceKw, scale.softLimitSource ?? null);
   const markers: MeterMarker[] = [
     {
       kind: 'target',
@@ -484,7 +464,7 @@ const PowerMeter = ({ scale }: { scale: BarScale }) => {
     markers.push({
       kind: 'cap',
       positionPct: pctOf(scale.hardCapKw, scale.scaleKw),
-      tooltip: `Hard cap ${scale.hardCapKw.toFixed(1)} kW — ${HARD_CAP_TOOLTIP}`,
+      tooltip: formatHardCapTooltip(scale.hardCapKw),
       labels: formatPowerMeterMarkerLabels('cap', scale.hardCapKw),
     });
   }
