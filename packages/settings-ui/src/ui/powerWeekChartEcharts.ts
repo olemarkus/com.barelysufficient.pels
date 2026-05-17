@@ -52,6 +52,18 @@ const resolvePalette = (container: HTMLElement): HeatmapPalette => (
   readChartPalette<HeatmapPalette>(container, HEATMAP_PALETTE_VARS)
 );
 
+// Fallback matches the `--radius-xs` token value in `tokens/base.json`. Reading
+// the token via `getComputedStyle` keeps the chart cell radius in lockstep with
+// the legend swatch (`.usage-legend__swatch--unreliable`) without two parallel
+// literals.
+const HEATMAP_CELL_RADIUS_FALLBACK = 2;
+
+const resolveCellRadius = (container: HTMLElement): number => {
+  const raw = getComputedStyle(container).getPropertyValue('--radius-xs').trim();
+  const parsed = Number.parseFloat(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : HEATMAP_CELL_RADIUS_FALLBACK;
+};
+
 let detachTabShownResize: (() => void) | null = null;
 
 export const disposePowerWeekChart = () => {
@@ -191,6 +203,7 @@ const buildOption = (params: {
   } = params;
 
   const palette = resolvePalette(container);
+  const cellRadius = resolveCellRadius(container);
   const dayLabels = buildDayLabels(startMs, numDays, timeZone);
   const hourLabels = buildHourLabels();
   const data = buildHeatmapDataFixed(entries, startMs, numDays, timeZone, palette);
@@ -267,7 +280,7 @@ const buildOption = (params: {
         itemStyle: {
           borderWidth: 1,
           borderColor: palette.border,
-          borderRadius: 2,
+          borderRadius: cellRadius,
         },
         emphasis: { disabled: true },
         blur: { disabled: true },
