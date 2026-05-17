@@ -6,13 +6,23 @@ import type {
 import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryObservedInterval,
+  DeferredObjectivePlanHistoryProgressSample,
+  DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
-  DeferredObjectivePlanHistoryV3,
+  DeferredObjectivePlanHistoryV4,
   DeferredObjectivePlanOutcome,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION } from './planHistorySettings';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import { buildEndedEventFromEntry, type DeferredObjectiveEndedBus } from './endedEventBus';
+import {
+  appendRevisionLogIfNew,
+  captureRevisionSnapshot,
+  drainProgressSamples,
+  hasTrustworthyProgress,
+  recordProgressSample,
+  seedProgressSamples,
+} from './planHistoryV4Helpers';
 import { randomUUID } from 'node:crypto';
 // Cap the rolling buffer. One deferred objective produces at most one entry per deadline run
 // (per-day for HH:mm objectives), so 30 entries covers ~one month of history per device for a
@@ -44,6 +54,10 @@ type InProgressRecord = Omit<
   | 'originalPlan'
   | 'finalPlan'
   | 'revisionCount'
+  | 'progressSamples'
+  | 'deliveredKWh'
+  | 'totalCost'
+  | 'revisions'
 > & {
   satisfied: boolean;
   // True original plan for this run, captured the first cycle an active plan
@@ -62,16 +76,33 @@ type InProgressRecord = Omit<
   // history detail can show "Replanned N times". 0 when no plannable
   // revision was ever observed.
   revisionCount: number;
+  // Hourly downsample of progress observations, keyed by hour-aligned `atMs`.
+  // Each cycle upserts the latest reading for the current hour; cap is
+  // applied at drain so the in-memory map stays bounded even for runs that
+  // somehow exceed the cap. Drained into the entry at finalization.
+  progressSamples: Map<number, DeferredObjectivePlanHistoryProgressSample>;
+  // Total useful kWh delivered to the device across the run. Summed from
+  // `recordHourlyDelivery` contributions; persisted only when at least one
+  // contribution was recorded so empty runs stay byte-stable across upgrades.
+  deliveredKWh: number;
+  // Σ priceValue × deliveredKWh across the run, in the user's display
+  // currency. Tracked alongside `deliveredKWh` so the persisted ratio
+  // (cost / delivered) stays internally consistent.
+  totalCost: number;
+  // Becomes true on the first `recordHourlyDelivery` contribution so
+  // `deliveredKWh` and `totalCost` are persisted (as `0` if needed) rather
+  // than dropped. Without this flag a run with one zero-priced delivered
+  // hour would look identical to a run that never received a contribution.
+  hasDeliveryContribution: boolean;
+  // Chronological per-revision metadata appended each time the active plan's
+  // `latest.revision` index increases. Bounded implicitly by the active-plan
+  // recorder's per-cycle dedupe — `prices_revised` and `rate_refined` only
+  // fire when the underlying inputs actually changed, so realistic runs see
+  // ~5-10 entries at most. No explicit cap; tracked in `TODO.md` as a v2.7.2
+  // follow-up if a pathological replan loop ever surfaces.
+  revisions: DeferredObjectivePlanHistoryRevisionLogEntry[];
 };
 
-const captureRevisionSnapshot = (
-  revision: DeferredObjectiveActivePlanRevisionV1,
-): DeferredObjectivePlanHistoryRevisionSnapshot => ({
-  hours: revision.hours.map((hour) => ({ ...hour })),
-  energyNeededKWh: revision.energyNeededKWh,
-  planStatus: revision.planStatus,
-  revisedAtMs: revision.revisedAtMs,
-});
 
 const pickRevisionForOriginal = (
   plan: DeferredObjectiveActivePlanV1 | undefined,
@@ -118,14 +149,6 @@ const isSatisfiedStatus = (status: DeferredObjectiveDiagnostic['status']): boole
   status === 'satisfied'
 );
 
-const PROGRESS_UNTRUSTWORTHY_REASON_CODES: ReadonlySet<DeferredObjectiveDiagnostic['reasonCode']> = new Set([
-  'objective_invalid_deadline',
-  'objective_invalid_session',
-  'objective_missing_device',
-  'objective_missing_temperature',
-  'objective_progress_stale',
-]);
-
 const captureProgressC = (diag: DeferredObjectiveDiagnostic): number | null => (
   diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : null
 );
@@ -133,14 +156,6 @@ const captureProgressC = (diag: DeferredObjectiveDiagnostic): number | null => (
 const captureProgressPercent = (diag: DeferredObjectiveDiagnostic): number | null => (
   diag.objectiveKind === 'ev_soc' ? diag.currentPercent : null
 );
-
-const hasTrustworthyProgress = (diag: DeferredObjectiveDiagnostic): boolean => {
-  if (PROGRESS_UNTRUSTWORTHY_REASON_CODES.has(diag.reasonCode)) return false;
-  if (diag.objectiveKind === 'temperature') {
-    return diag.currentTemperatureC !== null && diag.targetTemperatureC !== null;
-  }
-  return diag.currentPercent !== null && diag.targetPercent !== null;
-};
 
 const diagnosticProgressAtTarget = (diag: DeferredObjectiveDiagnostic): boolean => {
   if (diag.objectiveKind === 'temperature') {
@@ -191,8 +206,8 @@ const startRecord = (
   const currentlySatisfied = isSatisfiedStatus(diag.status);
   const originalRevision = pickRevisionForOriginal(plan);
   const finalRevision = pickRevisionForFinal(plan);
-  const originalSnapshot = originalRevision ? captureRevisionSnapshot(originalRevision) : null;
-  const finalSnapshot = finalRevision ? captureRevisionSnapshot(finalRevision) : null;
+  const originalSnapshot = originalRevision ? captureRevisionSnapshot(originalRevision, plan) : null;
+  const finalSnapshot = finalRevision ? captureRevisionSnapshot(finalRevision, plan) : null;
   return {
     deviceId: diag.deviceId,
     deviceName: diag.deviceName ?? null,
@@ -218,8 +233,14 @@ const startRecord = (
     originalPlan: pickRicherSnapshot(originalSnapshot, finalSnapshot),
     finalPlan: finalSnapshot,
     revisionCount: resolveRevisionCount(plan),
+    progressSamples: seedProgressSamples(diag, nowMs),
+    deliveredKWh: 0,
+    totalCost: 0,
+    hasDeliveryContribution: false,
+    revisions: [],
   };
 };
+
 
 // Highest `latest.revision` index observed for this plan. The recorder
 // increments revisions monotonically (see `activePlanRecorder.maybeWriteReplanRevision`),
@@ -238,7 +259,7 @@ const resolveRevisionCount = (
 const refreshPlanSnapshots = (
   record: InProgressRecord,
   plan: DeferredObjectiveActivePlanV1 | undefined,
-): Pick<InProgressRecord, 'originalPlan' | 'finalPlan' | 'revisionCount'> => {
+): Pick<InProgressRecord, 'originalPlan' | 'finalPlan' | 'revisionCount' | 'revisions'> => {
   const finalRevision = pickRevisionForFinal(plan);
   // Revision count is monotonic. Track the highest index ever observed so a
   // transient `plan` regression (planner cleared `latest` after a settings
@@ -249,9 +270,10 @@ const refreshPlanSnapshots = (
       originalPlan: record.originalPlan,
       finalPlan: record.finalPlan,
       revisionCount: nextRevisionCount,
+      revisions: record.revisions,
     };
   }
-  const finalSnapshot = captureRevisionSnapshot(finalRevision);
+  const finalSnapshot = captureRevisionSnapshot(finalRevision, plan);
   // `originalPlan` tracks the richest schedule the planner ever achieved for
   // this run, not strictly the first revision. The first written revision can
   // be a degenerate 1-hour allocation (prices arrived late, profile
@@ -263,17 +285,24 @@ const refreshPlanSnapshots = (
   // because intermediate replans frequently have more hours than
   // `plan.original`.
   const originalRevision = pickRevisionForOriginal(plan);
-  const originalCandidate = originalRevision ? captureRevisionSnapshot(originalRevision) : null;
+  const originalCandidate = originalRevision ? captureRevisionSnapshot(originalRevision, plan) : null;
   const nextOriginal = pickRicherSnapshot(
     pickRicherSnapshot(record.originalPlan, originalCandidate),
     finalSnapshot,
   );
+  // Append a revision-log entry the first time we observe a higher
+  // `latest.revision` than what we already logged. Skip the seed revision
+  // (`revision === 1`) — its metadata is on `originalPlan`. Idempotent so a
+  // cycle that observes the same plan twice doesn't double-log.
+  const revisions = appendRevisionLogIfNew(record.revisions, record.finalPlan, finalRevision);
   return {
     originalPlan: nextOriginal,
     finalPlan: finalSnapshot,
     revisionCount: nextRevisionCount,
+    revisions,
   };
 };
+
 
 // Back-fill `startProgressC` / `startProgressPercent` from the first cycle
 // that actually carries a fresh reading. `startRecord` stamps both fields
@@ -296,6 +325,7 @@ const backfillStartProgress = (
   startProgressPercent: record.startProgressPercent ?? captureProgressPercent(diag),
 });
 
+
 const mergeRecord = (
   record: InProgressRecord,
   diag: DeferredObjectiveDiagnostic,
@@ -315,6 +345,7 @@ const mergeRecord = (
     observedIntervals: extendIntervals(record.observedIntervals, nowMs),
     satisfied: currentlySatisfied,
     metAtMs,
+    progressSamples: recordProgressSample(record.progressSamples, diag, nowMs),
     ...refreshPlanSnapshots(record, plan),
   };
 };
@@ -334,6 +365,7 @@ const clearSatisfiedWithProgress = (
     observedIntervals: extendIntervals(record.observedIntervals, nowMs),
     satisfied: false,
     metAtMs: null,
+    progressSamples: recordProgressSample(record.progressSamples, diag, nowMs),
     ...refreshPlanSnapshots(record, plan),
   };
 };
@@ -347,6 +379,7 @@ const recordObservedTick = (
   ...record,
   ...backfillStartProgress(record, diag),
   observedIntervals: extendIntervals(record.observedIntervals, nowMs),
+  progressSamples: recordProgressSample(record.progressSamples, diag, nowMs),
   ...refreshPlanSnapshots(record, plan),
 });
 
@@ -388,35 +421,49 @@ const finalizeRecord = (
   record: InProgressRecord,
   nowMs: number,
   reason: 'deadline_passed' | 'replaced' | 'abandoned',
-): DeferredObjectivePlanHistoryEntry => ({
-  id: randomUUID(),
-  deviceId: record.deviceId,
-  deviceName: record.deviceName,
-  objectiveKind: record.objectiveKind,
-  targetTemperatureC: record.targetTemperatureC,
-  targetPercent: record.targetPercent,
-  deadlineAtMs: record.deadlineAtMs,
-  startedAtMs: record.startedAtMs,
-  finalizedAtMs: nowMs,
-  startProgressC: record.startProgressC,
-  startProgressPercent: record.startProgressPercent,
-  finalProgressC: record.finalProgressC,
-  finalProgressPercent: record.finalProgressPercent,
-  initialEnergyNeededKWh: record.initialEnergyNeededKWh,
-  outcome: classifyOutcome(record, reason),
-  metAtMs: record.metAtMs,
-  usedDeadlineReserve: record.usedDeadlineReserve,
-  usedPolicyAvoid: record.usedPolicyAvoid,
-  observedIntervals: record.observedIntervals.slice(),
-  discoveredFrom: 'observation',
-  originalPlan: record.originalPlan,
-  finalPlan: record.finalPlan,
-  // Persist `revisionCount` only when the recorder actually observed at least
-  // one revision. Zero means "never plannable" — the UI treats that the same
-  // as a missing field (no "replanned" copy) so suppressing it keeps existing
-  // entries byte-stable and avoids zero-vs-undefined drift.
-  ...(record.revisionCount > 0 ? { revisionCount: record.revisionCount } : {}),
-});
+): DeferredObjectivePlanHistoryEntry => {
+  const drainedSamples = drainProgressSamples(record.progressSamples);
+  return {
+    id: randomUUID(),
+    deviceId: record.deviceId,
+    deviceName: record.deviceName,
+    objectiveKind: record.objectiveKind,
+    targetTemperatureC: record.targetTemperatureC,
+    targetPercent: record.targetPercent,
+    deadlineAtMs: record.deadlineAtMs,
+    startedAtMs: record.startedAtMs,
+    finalizedAtMs: nowMs,
+    startProgressC: record.startProgressC,
+    startProgressPercent: record.startProgressPercent,
+    finalProgressC: record.finalProgressC,
+    finalProgressPercent: record.finalProgressPercent,
+    initialEnergyNeededKWh: record.initialEnergyNeededKWh,
+    outcome: classifyOutcome(record, reason),
+    metAtMs: record.metAtMs,
+    usedDeadlineReserve: record.usedDeadlineReserve,
+    usedPolicyAvoid: record.usedPolicyAvoid,
+    observedIntervals: record.observedIntervals.slice(),
+    discoveredFrom: 'observation',
+    originalPlan: record.originalPlan,
+    finalPlan: record.finalPlan,
+    // Persist `revisionCount` only when the recorder actually observed at least
+    // one revision. Zero means "never plannable" — the UI treats that the same
+    // as a missing field (no "replanned" copy) so suppressing it keeps existing
+    // entries byte-stable and avoids zero-vs-undefined drift.
+    ...(record.revisionCount > 0 ? { revisionCount: record.revisionCount } : {}),
+    ...(drainedSamples.length > 0 ? { progressSamples: drainedSamples } : {}),
+    // `deliveredKWh` + `totalCost` are persisted only when the runtime fed at
+    // least one hourly delivery contribution — otherwise older entries
+    // (where the hourly feed wasn't wired yet) and runs that never received
+    // a contribution stay byte-stable across upgrades. The flag captures
+    // "feed actually ran" so a legitimately zero-cost / zero-delivered run
+    // still persists 0 rather than hiding the contribution.
+    ...(record.hasDeliveryContribution
+      ? { deliveredKWh: record.deliveredKWh, totalCost: record.totalCost }
+      : {}),
+    ...(record.revisions.length > 0 ? { revisions: record.revisions.slice() } : {}),
+  };
+};
 
 export type DeferredObjectiveBackfillConfig = {
   deviceId: string;
@@ -455,17 +502,40 @@ const synthesizeBackfillEntry = (
 });
 
 export type PlanHistoryPersistDeps = {
-  load: () => DeferredObjectivePlanHistoryV3 | null;
+  // Persisted history reader. Returns null when no payload exists yet
+  // (first install / settings purge). Migration from older schemas is done
+  // upstream by `normalizeDeferredObjectivePlanHistory`, so the recorder
+  // accepts the v4 envelope it was bumped to in v2.7.2.
+  load: () => DeferredObjectivePlanHistoryV4 | null;
   // Persist the snapshot. Return `true` on success, `false` on failure (e.g. the underlying
   // settings.set threw and the host swallowed it). A `false` return keeps the recorder dirty
   // so a later flush retries, and lets callers gate side-effects (like advancing the
   // observation watermark) on real persistence success.
-  save: (history: DeferredObjectivePlanHistoryV3) => boolean;
+  save: (history: DeferredObjectivePlanHistoryV4) => boolean;
   // Optional bus the recorder publishes ended events to as runs finalize. The
   // recorder filters by `discoveredFrom === 'observation'` and public outcome
   // (`met`/`missed`/`abandoned`) before publishing — backfill entries and
   // `replaced`/`unknown` outcomes never reach the bus.
   endedBus?: DeferredObjectiveEndedBus;
+};
+
+// Per-hour delivery contribution fed into the recorder by the runtime
+// power-tracker / pricing wiring. Both fields are absolute values for the
+// hour: `deliveredKWh` is the device's measured useful kWh during that
+// hour, `priceValue` is the hourly spot price in the user's display unit.
+// The recorder sums `priceValue × deliveredKWh` into `totalCost` on the
+// matching in-progress record. Wiring lives in `lib/app/appInit.ts`.
+export type DeferredObjectivePlanHistoryHourlyDelivery = {
+  deviceId: string;
+  deadlineAtMs: number;
+  // Hour-aligned start; redundantly carried so the recorder can ignore
+  // contributions whose hour falls outside the run's observed window if a
+  // late-arriving feed reports against a deadline that has already
+  // finalized. Currently informational — duplicate contributions for the
+  // same hour are added (the wiring is responsible for de-duping if needed).
+  hourStartMs: number;
+  deliveredKWh: number;
+  priceValue: number;
 };
 
 export class DeferredObjectivePlanHistoryRecorder {
@@ -561,6 +631,35 @@ export class DeferredObjectivePlanHistoryRecorder {
     }
   }
 
+  /**
+   * Sum a per-hour delivery contribution onto the in-progress run that
+   * matches `(deviceId, deadlineAtMs)`. The matching record's running
+   * `deliveredKWh` and `totalCost = Σ priceValue × deliveredKWh` totals are
+   * persisted at finalization. No-op when no matching in-progress run
+   * exists (late contribution after the deadline finalized, or contribution
+   * for a deadline this recorder never tracked).
+   *
+   * Designed as a one-shot push rather than per-cycle bookkeeping so the
+   * caller can drive it from either the power-tracker hourly rollover or
+   * from a plan-cycle aggregator without the recorder needing to know
+   * either data source's cadence. Negative `deliveredKWh` values are
+   * dropped (defensive: only consumption is interesting; production / sign
+   * inversions would corrupt the running total).
+   */
+  recordHourlyDelivery(contribution: DeferredObjectivePlanHistoryHourlyDelivery): void {
+    if (!Number.isFinite(contribution.deliveredKWh) || contribution.deliveredKWh < 0) return;
+    if (!Number.isFinite(contribution.priceValue)) return;
+    const key = buildKey(contribution.deviceId, contribution.deadlineAtMs);
+    const record = this.inProgress.get(key);
+    if (!record) return;
+    this.inProgress.set(key, {
+      ...record,
+      deliveredKWh: record.deliveredKWh + contribution.deliveredKWh,
+      totalCost: record.totalCost + contribution.priceValue * contribution.deliveredKWh,
+      hasDeliveryContribution: true,
+    });
+  }
+
   private finalizeStaleRecords(seenKeys: ReadonlySet<InProgressKey>, nowMs: number): void {
     for (const [key, record] of this.inProgress) {
       if (record.deadlineAtMs <= nowMs) {
@@ -611,7 +710,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     return this.dirty;
   }
 
-  getHistorySnapshot(): DeferredObjectivePlanHistoryV3 {
+  getHistorySnapshot(): DeferredObjectivePlanHistoryV4 {
     return {
       version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
       entries: this.entries.slice(),
