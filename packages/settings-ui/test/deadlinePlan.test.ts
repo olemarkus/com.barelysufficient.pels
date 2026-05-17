@@ -3231,6 +3231,8 @@ describe('buildChartOption original-series suppression', () => {
         headlineReason: null,
         subline: '',
         metaLine: '',
+        costMetaLine: null,
+        deliveredSoFarLine: null,
         recourse: null,
       },
       timeline: {
@@ -3293,5 +3295,409 @@ describe('buildChartOption original-series suppression', () => {
     expect(legendNames).toContain(payload.labels.originalDeviceSeriesName);
     const seriesNames = option.series.map((s) => s.name);
     expect(seriesNames).toContain(payload.labels.originalDeviceSeriesName);
+  });
+});
+
+// Cost + delivered-so-far hero lines (v2.7.2 PR 2). Four branches cover the
+// chip-row state surface — queued (firstHour in future), on-track (no
+// delivery yet), at-risk (`tone === 'warn'`), cannot-meet (`tone === 'alert'`).
+// Each branch asserts the planned cost meta line shape and the delivered-so-
+// far line shape, plus the `≈` glyph convention.
+describe('cost + delivered-so-far hero lines', () => {
+  // Stub combined prices keep the cost-display divisor at 100 (`kr` scheme),
+  // so raw `total` values in øre/kWh divide to kr/kWh for the cost sums.
+  const buildStubPrices = (now: Date, hourCount: number, totalOre: number): SettingsUiPricesPayload => ({
+    combinedPrices: {
+      priceScheme: 'norway',
+      priceUnit: 'kr',
+      prices: Array.from({ length: hourCount }, (_, offset) => ({
+        startsAt: atLocalHour(now, offset).toISOString(),
+        total: totalOre,
+      })),
+    },
+    electricityPrices: null,
+    priceArea: null,
+    gridTariffData: null,
+    flowToday: null,
+    flowTomorrow: null,
+    homeyCurrency: null,
+    homeyToday: null,
+    homeyTomorrow: null,
+  });
+
+  const buildStubBootstrap = (
+    now: Date,
+    deadline: Date,
+    plan: DeferredObjectiveActivePlanV1,
+    targetTemperatureC: number,
+    deviceBuckets?: Record<string, number>,
+  ): SettingsUiBootstrap => {
+    const bootstrap = buildBootstrap({
+      capacity_limit_kw: 8,
+      deferred_objectives: {
+        version: 1,
+        objectivesByDeviceId: {
+          heater: {
+            enabled: true,
+            kind: 'temperature',
+            enforcement: 'soft',
+            targetTemperatureC,
+            deadlineAtMs: deadline.getTime(),
+          },
+        },
+      },
+    }, plan);
+    if (deviceBuckets) {
+      bootstrap.power.tracker = { ...bootstrap.power.tracker, deviceBuckets: { heater: deviceBuckets } };
+    }
+    return bootstrap;
+  };
+
+  const buildHeaterDevice = (currentTemperature: number): TargetDeviceSnapshot[] => ([{
+    id: 'heater',
+    name: 'Connected 300',
+    currentOn: false,
+    currentTemperature,
+    planningPowerKw: 2,
+    targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
+  }]);
+
+  it('queued: no delivery yet — cost line shows planned-only, delivered-so-far shows now/target', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const prices = buildStubPrices(now, 6, 150); // 150 øre/kWh → 1.50 kr/kWh
+    const plan = buildHeaterActivePlan({
+      now,
+      deadline,
+      plannedHourOffsets: [3, 4], // future hours — queued
+      plannedKWhPerHour: 2,
+      targetTemperatureC: 22,
+      planStatus: 'on_track',
+    });
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap: buildStubBootstrap(now, deadline, plan, 22),
+      deviceId: 'heater',
+      devices: buildHeaterDevice(18),
+      prices,
+      nowMs: now.getTime(),
+    }));
+    // 2 hours × 2 kWh × 1.50 kr/kWh = 6.00 kr planned, no delivery.
+    expect(payload.hero.costMetaLine).toBe('Cost ≈ 6.00 kr');
+    expect(payload.hero.deliveredSoFarLine).toBe('Delivered 0.0 of 4.0 kWh · now 18.0 °C of 22.0 °C target');
+  });
+
+  it('on-track: partial delivery — cost line shows so-far + planned, delivered shows start → current', () => {
+    // Plan revised an hour ago so the horizon window starts before `now` and
+    // includes the past hour where delivery already happened. Mirrors the
+    // real-world lifecycle: a smart task placed earlier, "now" mid-run.
+    const planAnchor = new Date(2026, 0, 1, 12, 0, 0, 0);
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(planAnchor, 6); // 18:00 local
+    // 6 hours of prices anchored at planAnchor (12:00, 13:00, …, 17:00) so
+    // both past (12:00) and future (13:00+) hours land in the horizon.
+    const prices = buildStubPrices(planAnchor, 6, 200);
+    const plan = buildHeaterActivePlan({
+      now: planAnchor,
+      deadline,
+      plannedHourOffsets: [0, 1, 2, 3], // 12:00, 13:00, 14:00, 15:00 from planAnchor
+      plannedKWhPerHour: 1,
+      targetTemperatureC: 22,
+      energyNeededKWh: 4,
+      planStatus: 'on_track',
+    });
+    // 1 kWh delivered an hour ago (the 12:00 bucket).
+    const pastBucketKey = planAnchor.toISOString();
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap: buildStubBootstrap(planAnchor, deadline, plan, 22, { [pastBucketKey]: 1 }),
+      deviceId: 'heater',
+      devices: buildHeaterDevice(19),
+      prices,
+      nowMs: now.getTime(),
+    }));
+    // Delivered: 1 kWh × 2.00 kr/kWh = 2.00 kr so far · 4 kWh × 2.00 = 8.00 kr planned.
+    expect(payload.hero.costMetaLine).toBe('Cost ≈ 2.00 kr so far · 8.00 kr planned');
+    // start = 19 − 1 × (3/4) = 18.25; current = 19; target = 22.
+    expect(payload.hero.deliveredSoFarLine).toBe('Delivered 1.0 of 4.0 kWh · 18.3 °C → 19.0 °C of 22.0 °C target');
+  });
+
+  it('prorates the plan-start hour bucket so pre-plan usage does not inflate delivered totals', () => {
+    // Regression: device buckets are full-hour aggregates. If a plan starts
+    // mid-hour (e.g. 12:30) and the 12:00 bucket has 1.0 kWh, all of that
+    // kWh would otherwise count as "delivered so far" — but half of it
+    // happened before the plan existed. The resolver now prorates the
+    // bucket that contains `startedAtMs` by the post-start fraction, and
+    // skips buckets fully before the plan start.
+    const planAnchor = new Date(2026, 0, 1, 12, 30, 0, 0); // plan starts 12:30
+    const hourBucket = new Date(2026, 0, 1, 12, 0, 0, 0); // bucket key is hour-start
+    const now = new Date(2026, 0, 1, 13, 30, 0, 0);
+    const deadline = atLocalHour(planAnchor, 6);
+    const prices = buildStubPrices(hourBucket, 7, 200); // 2.00 kr/kWh, anchored at 12:00
+    const plan = buildHeaterActivePlan({
+      now: planAnchor,
+      deadline,
+      plannedHourOffsets: [0, 1, 2, 3], // 12:30 → 16:30, but planned hours align to top-of-hour
+      plannedKWhPerHour: 1,
+      targetTemperatureC: 22,
+      energyNeededKWh: 4,
+      planStatus: 'on_track',
+    });
+    // 1.0 kWh recorded in the 12:00 bucket. Half occurred before plan start
+    // at 12:30, so only 0.5 kWh should count as delivered.
+    const bucketKey = hourBucket.toISOString();
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap: buildStubBootstrap(planAnchor, deadline, plan, 22, { [bucketKey]: 1 }),
+      deviceId: 'heater',
+      devices: buildHeaterDevice(19),
+      prices,
+      nowMs: now.getTime(),
+    }));
+    // Delivered: 0.5 kWh × 2.00 kr/kWh = 1.00 kr so far (not 2.00).
+    expect(payload.hero.costMetaLine).toBe('Cost ≈ 1.00 kr so far · 8.00 kr planned');
+    expect(payload.hero.deliveredSoFarLine).toMatch(/Delivered 0\.5 of 4\.0 kWh/);
+  });
+
+  it('at-risk: keeps on-track-shape delivered line — the chip warns, the line stays hopeful', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 4);
+    const prices = buildStubPrices(now, 4, 100);
+    const plan = buildHeaterActivePlan({
+      now,
+      deadline,
+      plannedHourOffsets: [0, 1, 2, 3],
+      plannedKWhPerHour: 2,
+      targetTemperatureC: 30,
+      energyNeededKWh: 8,
+      planStatus: 'at_risk',
+    });
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap: buildStubBootstrap(now, deadline, plan, 30),
+      deviceId: 'heater',
+      devices: buildHeaterDevice(18),
+      prices,
+      nowMs: now.getTime(),
+    }));
+    expect(payload.hero.tone).toBe('warn');
+    expect(payload.hero.costMetaLine).toBe('Cost ≈ 8.00 kr');
+    // No "won't reach by" copy — at-risk still uses the hopeful shape.
+    expect(payload.hero.deliveredSoFarLine).not.toMatch(/won.t reach/i);
+    expect(payload.hero.deliveredSoFarLine).toMatch(/now 18.0 °C of 30.0 °C target/);
+  });
+
+  it('cannot-meet: delivered line gains the "won\'t reach by HH:MM" tail', () => {
+    const now = new Date(2026, 0, 1, 14, 0, 0, 0);
+    const deadline = atLocalHour(now, 2);
+    const prices = buildStubPrices(now, 2, 100);
+    const plan = buildHeaterActivePlan({
+      now,
+      deadline,
+      plannedHourOffsets: [0, 1],
+      plannedKWhPerHour: 2,
+      targetTemperatureC: 65,
+      energyNeededKWh: 16, // far more than 4 kWh allocated → won't reach
+      planStatus: 'cannot_meet',
+    });
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap: buildStubBootstrap(now, deadline, plan, 65),
+      deviceId: 'heater',
+      devices: buildHeaterDevice(40),
+      prices,
+      nowMs: now.getTime(),
+    }));
+    expect(payload.hero.tone).toBe('alert');
+    expect(payload.hero.costMetaLine).toBe('Cost ≈ 4.00 kr'); // 2 hours × 2 kWh × 1.00 kr
+    expect(payload.hero.deliveredSoFarLine).toMatch(/Delivered 0\.0 of 16\.0 kWh/);
+    expect(payload.hero.deliveredSoFarLine).toMatch(/still 40\.0 °C of 65\.0 °C target/);
+    // Deadline at 16:00 local time (now=14:00 + 2h).
+    expect(payload.hero.deliveredSoFarLine).toMatch(/won.t reach by 16:00/);
+  });
+
+  it('suppresses the cost line when the cost unit is empty (Flow / Homey scheme without priceUnit)', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 4);
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        priceScheme: 'flow',
+        priceUnit: 'price units',
+        prices: Array.from({ length: 4 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 1,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const plan = buildHeaterActivePlan({
+      now,
+      deadline,
+      plannedHourOffsets: [0, 1],
+      plannedKWhPerHour: 2,
+      targetTemperatureC: 22,
+      planStatus: 'on_track',
+    });
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap: buildStubBootstrap(now, deadline, plan, 22),
+      deviceId: 'heater',
+      devices: buildHeaterDevice(18),
+      prices,
+      nowMs: now.getTime(),
+    }));
+    expect(payload.hero.costMetaLine).toBeNull();
+    // Delivered-so-far is independent of cost unit and still surfaces.
+    expect(payload.hero.deliveredSoFarLine).toMatch(/Delivered 0\.0 of 4\.0 kWh/);
+  });
+});
+
+// Pure-resolver tests for `formatDeadlineCostMetaLine` /
+// `formatDeadlineDeliveredSoFarLine` in shared-domain. The integration tests
+// above cover the full producer-to-payload wiring; these guard the resolver
+// edges in isolation (empty unit, zero planned, missing progress).
+describe('shared-domain hero-line formatters', () => {
+  it('formatDeadlineCostMetaLine uses ≈ (U+2248), never ~ or "approx"', async () => {
+    const { formatDeadlineCostMetaLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const out = formatDeadlineCostMetaLine({ plannedTotalCost: 6.5, deliveredCost: null, costUnit: 'kr' });
+    expect(out).toBe('Cost ≈ 6.50 kr');
+    expect(out).toContain('≈');
+    expect(out).not.toContain('~');
+    expect(out).not.toMatch(/approx/i);
+  });
+
+  it('formatDeadlineCostMetaLine collapses to planned-only when delivered is null', async () => {
+    const { formatDeadlineCostMetaLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const out = formatDeadlineCostMetaLine({ plannedTotalCost: 6.5, deliveredCost: null, costUnit: 'kr' });
+    expect(out).toBe('Cost ≈ 6.50 kr');
+  });
+
+  it('formatDeadlineCostMetaLine emits the composite form when delivered > 0', async () => {
+    const { formatDeadlineCostMetaLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const out = formatDeadlineCostMetaLine({ plannedTotalCost: 6.5, deliveredCost: 0.3, costUnit: 'kr' });
+    expect(out).toBe('Cost ≈ 0.30 kr so far · 6.50 kr planned');
+  });
+
+  it('formatDeadlineCostMetaLine returns null when the unit is empty', async () => {
+    const { formatDeadlineCostMetaLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    expect(formatDeadlineCostMetaLine({ plannedTotalCost: 6.5, deliveredCost: null, costUnit: '' })).toBeNull();
+    expect(formatDeadlineCostMetaLine({ plannedTotalCost: 6.5, deliveredCost: null, costUnit: '   ' })).toBeNull();
+  });
+
+  it('formatDeadlineCostMetaLine returns null when planned cost is non-finite', async () => {
+    const { formatDeadlineCostMetaLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    expect(formatDeadlineCostMetaLine({ plannedTotalCost: Number.NaN, deliveredCost: null, costUnit: 'kr' })).toBeNull();
+    expect(formatDeadlineCostMetaLine({ plannedTotalCost: Number.POSITIVE_INFINITY, deliveredCost: null, costUnit: 'kr' })).toBeNull();
+  });
+
+  it('formatDeadlineCostMetaLine renders zero and negative planned cost (Nordpool can be negative)', async () => {
+    // Regression: previously the helper suppressed `<= 0` planned cost,
+    // dropping the line during negative-price oversupply windows — the
+    // exact pricing regime PELS targets in Norway. The guard now rejects
+    // only non-finite values.
+    const { formatDeadlineCostMetaLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    expect(formatDeadlineCostMetaLine({ plannedTotalCost: 0, deliveredCost: null, costUnit: 'kr' }))
+      .toBe('Cost ≈ 0.00 kr');
+    expect(formatDeadlineCostMetaLine({ plannedTotalCost: -0.30, deliveredCost: null, costUnit: 'kr' }))
+      .toBe('Cost ≈ -0.30 kr');
+    expect(formatDeadlineCostMetaLine({ plannedTotalCost: -0.30, deliveredCost: -0.05, costUnit: 'kr' }))
+      .toBe('Cost ≈ -0.05 kr so far · -0.30 kr planned');
+  });
+
+  it('formatDeadlineDeliveredSoFarLine surfaces the start → current arrow when start is known', async () => {
+    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const out = formatDeadlineDeliveredSoFarLine({
+      status: 'on_track_or_queued',
+      deliveredKWh: 1.8,
+      plannedTotalKWh: 4.2,
+      currentProgress: 42,
+      startProgress: 35,
+      targetValue: 65,
+      targetUnit: '°C',
+      deadlineTime: '16:00',
+    });
+    expect(out).toBe('Delivered 1.8 of 4.2 kWh · 35.0 °C → 42.0 °C of 65.0 °C target');
+  });
+
+  it('formatDeadlineDeliveredSoFarLine collapses to `now …` when start equals current', async () => {
+    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const out = formatDeadlineDeliveredSoFarLine({
+      status: 'on_track_or_queued',
+      deliveredKWh: 0,
+      plannedTotalKWh: 4.2,
+      currentProgress: 42,
+      startProgress: null,
+      targetValue: 65,
+      targetUnit: '°C',
+      deadlineTime: '16:00',
+    });
+    expect(out).toBe('Delivered 0.0 of 4.2 kWh · now 42.0 °C of 65.0 °C target');
+  });
+
+  it('formatDeadlineDeliveredSoFarLine suppresses the redundant arrow when start and current round to the same label', async () => {
+    // Regression: previously the helper used a numeric `Math.abs(...) > 0.05`
+    // gate to decide whether to render `start → current`. For percent
+    // (`Math.round`), two readings within ~0.5 percentage points still render
+    // identically — producing a meaningless "45% → 45%" arrow. The helper
+    // now compares the formatted labels post-rounding and falls through to
+    // "now X" when they match.
+    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const out = formatDeadlineDeliveredSoFarLine({
+      status: 'on_track_or_queued',
+      deliveredKWh: 0.4,
+      plannedTotalKWh: 4.2,
+      currentProgress: 45.4,
+      startProgress: 45.1,
+      targetValue: 80,
+      targetUnit: '%',
+      deadlineTime: '16:00',
+    });
+    expect(out).toBe('Delivered 0.4 of 4.2 kWh · now 45% of 80% target');
+    expect(out).not.toMatch(/45%\s*→\s*45%/);
+  });
+
+  it('formatDeadlineDeliveredSoFarLine renders the won\'t-reach tail on cannot-meet', async () => {
+    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const out = formatDeadlineDeliveredSoFarLine({
+      status: 'cannot_meet',
+      deliveredKWh: 1.8,
+      plannedTotalKWh: 4.2,
+      currentProgress: 35,
+      startProgress: null,
+      targetValue: 65,
+      targetUnit: '°C',
+      deadlineTime: '16:00',
+    });
+    expect(out).toBe('Delivered 1.8 of 4.2 kWh · still 35.0 °C of 65.0 °C target · won’t reach by 16:00');
+  });
+
+  it('formatDeadlineDeliveredSoFarLine returns null when planned kWh is zero', async () => {
+    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    expect(formatDeadlineDeliveredSoFarLine({
+      status: 'on_track_or_queued',
+      deliveredKWh: 0,
+      plannedTotalKWh: 0,
+      currentProgress: 18,
+      startProgress: null,
+      targetValue: 22,
+      targetUnit: '°C',
+      deadlineTime: '16:00',
+    })).toBeNull();
+  });
+
+  it('formatDeadlineDeliveredSoFarLine formats EV percent without decimals', async () => {
+    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const out = formatDeadlineDeliveredSoFarLine({
+      status: 'on_track_or_queued',
+      deliveredKWh: 5,
+      plannedTotalKWh: 20,
+      currentProgress: 45.6,
+      startProgress: 30,
+      targetValue: 80,
+      targetUnit: '%',
+      deadlineTime: '07:00',
+    });
+    expect(out).toBe('Delivered 5.0 of 20.0 kWh · 30% → 46% of 80% target');
   });
 });

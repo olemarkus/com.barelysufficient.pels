@@ -2773,3 +2773,18 @@ should not be folded into the same PR.
       Files: `lib/plan/deferredObjectives/planHistory.ts`,
       `lib/plan/deferredObjectives/planHistoryBackfill.ts` (new),
       `eslint.config.mjs` (remove override once the split lands).
+- [ ] Consider single-pass `resolveLiveCostAndDelivery` in `packages/settings-ui/src/ui/deadlinePlan.ts`.
+      Surfaced by gemini-code-assist on v2.7.2 PR 2 as Medium. Current implementation iterates
+      `hours` twice (once in `resolveLiveCostAndDelivery`, once in `buildTimeline`'s
+      `resolveActualDeviceKwh` per-hour) and divides per-hour rather than accumulating raw and
+      dividing once. Gemini's proposed shape: cache `deviceBuckets` lookup once, accumulate raw
+      totals, single division at end, optionally fold `allocatedKWh` into the same loop.
+      Deferred because: (a) horizon is ≤24 hours so the ~24 extra hash lookups + Date conversions
+      are negligible; (b) the two passes today separate the chart data path from the cost summary
+      path, and merging them tangles two concerns that read cleanly as-is; (c) PR 2's own
+      adversarial-review pre-emptively assessed and skipped this exact change with the same
+      reasoning. If a future PR adds expensive work inside the hour loop (e.g. PR 4's hourly
+      delivered overlay), revisit then.
+      Why P3: micro-optimization on a bounded loop; no observed performance issue.
+      Files: `packages/settings-ui/src/ui/deadlinePlan.ts` (`resolveLiveCostAndDelivery`,
+      `buildTimeline`).
