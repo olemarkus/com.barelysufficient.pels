@@ -386,6 +386,15 @@ export default tseslint.config(
     },
   },
   {
+    // priceConfig is at the limit after the per-field rollback / overlapping-save-safety
+    // hardening. Target: <=500 once the device-detail price-opt rollback helpers are extracted
+    // into a shared utility alongside `state.priceOptimizationSettings`.
+    files: ['packages/settings-ui/src/ui/priceConfig.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 510, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
     // DeviceManager still owns snapshot refresh, realtime drift reconciliation, and binary settle
     // windows over one shared mutable snapshot. Target: <=850 after the post-Phase-7 helper
     // cleanup trims the remaining orchestration bulk.

@@ -9,7 +9,6 @@ import { renderDevices } from '../devices.ts';
 import { supportsTemperatureDevice } from '../deviceUtils.ts';
 import { logSettingsError } from '../logging.ts';
 import {
-  clonePriceOptimizationSettings,
   renderPriceOptimization,
   savePriceOptimizationSettings,
 } from '../priceOptimization.ts';
@@ -83,11 +82,16 @@ export const initDeviceDetailPriceOptHandlers = (params: {
     if (!supportsTemperatureDevice(device)) return;
 
     const { enabled, cheapDelta, expensiveDelta } = readPriceOptInputs();
-    // Snapshot the persisted map before the optimistic mutation so a failed
-    // Homey write can be rolled back; otherwise the UI would keep showing
-    // values the runtime did not persist (TODO 735).
-    const previousSettings = clonePriceOptimizationSettings(state.priceOptimizationSettings);
+    // Snapshot only this device's three fields before the optimistic mutation
+    // so a failed Homey write can be rolled back. Replacing the whole map
+    // (the earlier approach) clobbered newer persisted edits from overlapping
+    // handlers (TODO 735 follow-up).
     const config = ensurePriceOptimizationConfig(deviceId);
+    const previousValues = {
+      enabled: config.enabled,
+      cheapDelta: config.cheapDelta,
+      expensiveDelta: config.expensiveDelta,
+    };
     config.enabled = enabled;
     config.cheapDelta = cheapDelta;
     config.expensiveDelta = expensiveDelta;
@@ -96,12 +100,23 @@ export const initDeviceDetailPriceOptHandlers = (params: {
       await savePriceOptimizationSettings();
       renderPriceOptDependents();
     } catch (error) {
-      state.priceOptimizationSettings = previousSettings;
-      // Re-bind the inputs and toggle to the restored persisted values so the
-      // screen reflects what Homey actually has, not the failed write.
-      setDeviceDetailDeltaValues(deviceId);
-      const restored = state.priceOptimizationSettings[deviceId];
-      if (deviceDetailPriceOpt) deviceDetailPriceOpt.selected = restored?.enabled ?? false;
+      // Roll back this device's fields only if a later successful save has
+      // not already overwritten them.
+      const current = state.priceOptimizationSettings[deviceId];
+      if (current
+        && current.enabled === enabled
+        && current.cheapDelta === cheapDelta
+        && current.expensiveDelta === expensiveDelta) {
+        Object.assign(current, previousValues);
+      }
+      // Re-bind the inputs and toggle only if the user is still on this
+      // device's detail panel. Otherwise the rollback would overwrite the
+      // visible inputs with values from the previous device (TODO 735 follow-up).
+      if (params.getCurrentDetailDeviceId() === deviceId) {
+        setDeviceDetailDeltaValues(deviceId);
+        const restored = state.priceOptimizationSettings[deviceId];
+        if (deviceDetailPriceOpt) deviceDetailPriceOpt.selected = restored?.enabled ?? false;
+      }
       renderPriceOptDependents();
       await logSettingsError('Failed to save price optimization settings', error, 'device detail');
       await showToastError(error, 'Failed to save price optimization settings.');

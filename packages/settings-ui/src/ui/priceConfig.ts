@@ -9,7 +9,7 @@ import {
 } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
 import { logSettingsError } from './logging.ts';
-import { clonePriceOptimizationSettings, state, defaultPriceOptimizationConfig } from './state.ts';
+import { state, defaultPriceOptimizationConfig } from './state.ts';
 import { supportsTemperatureDevice } from './deviceUtils.ts';
 import { resolveManagedState } from './state.ts';
 import { gridCompanies } from './gridCompanies.ts';
@@ -381,32 +381,41 @@ const handleTariffGroupChange = async (group: string) => {
 };
 
 const handleDeviceCheapDeltaChange = async (deviceId: string, val: number) => {
-  const previousSettings = clonePriceOptimizationSettings(state.priceOptimizationSettings);
   const existing = state.priceOptimizationSettings[deviceId] || { ...defaultPriceOptimizationConfig };
+  const previousCheapDelta = existing.cheapDelta;
   state.priceOptimizationSettings[deviceId] = { ...existing, cheapDelta: val };
   renderPriceAwareDevices();
   try {
     await setSetting('price_optimization_settings', state.priceOptimizationSettings);
   } catch (error) {
-    // Roll back the optimistic write so the visible value matches what Homey
-    // actually persisted (TODO 735).
-    state.priceOptimizationSettings = previousSettings;
-    renderPriceAwareDevices();
+    // Roll back only this device's `cheapDelta`, and only if a later
+    // successful save has not already overwritten it. Replacing the whole
+    // map (the earlier approach) clobbered newer persisted edits from
+    // overlapping handlers (TODO 735 follow-up).
+    const current = state.priceOptimizationSettings[deviceId];
+    if (current && current.cheapDelta === val) {
+      state.priceOptimizationSettings[deviceId] = { ...current, cheapDelta: previousCheapDelta };
+      renderPriceAwareDevices();
+    }
     await logSettingsError('Failed to save cheap delta', error, 'priceConfig');
     await showToastError(error, 'Failed to save price optimization setting.');
   }
 };
 
 const handleDeviceExpensiveDeltaChange = async (deviceId: string, val: number) => {
-  const previousSettings = clonePriceOptimizationSettings(state.priceOptimizationSettings);
   const existing = state.priceOptimizationSettings[deviceId] || { ...defaultPriceOptimizationConfig };
+  const previousExpensiveDelta = existing.expensiveDelta;
   state.priceOptimizationSettings[deviceId] = { ...existing, expensiveDelta: val };
   renderPriceAwareDevices();
   try {
     await setSetting('price_optimization_settings', state.priceOptimizationSettings);
   } catch (error) {
-    state.priceOptimizationSettings = previousSettings;
-    renderPriceAwareDevices();
+    // Same field-level rollback rationale as `cheapDelta` above.
+    const current = state.priceOptimizationSettings[deviceId];
+    if (current && current.expensiveDelta === val) {
+      state.priceOptimizationSettings[deviceId] = { ...current, expensiveDelta: previousExpensiveDelta };
+      renderPriceAwareDevices();
+    }
     await logSettingsError('Failed to save expensive delta', error, 'priceConfig');
     await showToastError(error, 'Failed to save price optimization setting.');
   }
