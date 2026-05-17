@@ -145,6 +145,7 @@ P0/P1 findings from any critic: fix in the same PR. P2/P3: route to
 | 2026-05-17 | PR 2 | cost + delivered-so-far on live hero — `Σ priceValue × deviceKwh`, two-branch delivery copy |
 | 2026-05-17 | PR 2.5 | pending hero `headlineReason` + `recourse` — scope expansion absorbing PR #856 P1 |
 | 2026-05-17 | PR 3 | one-sentence postmortem + outcome-asymmetric history hero — succeeded receipt vs missed diagnosis vs abandoned log, snapshot `dailyBudgetExhaustedBucketCount` capture, PR #856 P2 missed-reason fold-in |
+| 2026-05-17 | PR 4 | actual-vs-plan progress chart on history detail — planned staircase (`hours / kwhPerUnitMean` integrated from start progress), observed-progress line from v4 `progressSamples[]`, dashed target reference, `metAtMs` marker; v3 entries fall back to the legacy kWh-bar chart with a "Plan only — observations not recorded" note |
 
 Update as PRs merge into `v2.7.2`.
 

@@ -643,3 +643,15 @@ export const formatPlanHistoryObservedCoverage = (
   if (missingMs >= HOUR_MS) return `Not observed for ${formatDurationMs(missingMs)}`;
   return `Brief gap (${formatDurationMs(missingMs)}) in observation`;
 };
+
+// ─── Actual-vs-plan trajectory chart data (v2.7.2 PR 4) ───────────────────────
+//
+// Re-exported from `deferredPlanHistoryChartData.ts` so consumers can keep
+// importing the chart payload from this module. Living in its own file keeps
+// the formatters here inside the 500-LOC ESLint cap.
+export {
+  resolveHistoryDetailChartData,
+  type DeferredPlanHistoryChartData,
+  type DeferredPlanHistoryChartMode,
+  type DeferredPlanHistoryChartPoint,
+} from './deferredPlanHistoryChartData.js';

@@ -1430,7 +1430,8 @@ md-primary-tab.tab[active]:hover {
 }
 
 .plan-hero[data-tone="good"],
-.pels-hero[data-tone="good"] {
+.pels-hero[data-tone="good"],
+.plan-history-detail__hero[data-tone="good"] {
   border-color: var(--color-state-positive-border);
   background: linear-gradient(
     180deg,
@@ -1440,13 +1441,22 @@ md-primary-tab.tab[active]:hover {
 }
 
 .plan-hero[data-tone="warn"],
-.pels-hero[data-tone="warn"] {
+.pels-hero[data-tone="warn"],
+.plan-history-detail__hero[data-tone="warn"] {
   border-color: var(--color-state-warning-border);
   background: linear-gradient(
     180deg,
     var(--color-state-warning-bg),
     color-mix(in srgb, var(--color-surface-3) 98%, transparent)
   );
+}
+
+/* History-detail-only tone for the Abandoned shape — a log entry, not a
+ * receipt or a diagnosis. Neutral surface so the chip + postmortem carry
+ * the muted framing without competing with succeeded/missed tones. */
+.plan-history-detail__hero[data-tone="muted"] {
+  border-color: var(--color-border-subtle);
+  background: var(--color-surface-3);
 }
 
 .plan-hero[data-tone="alert"],
@@ -1482,7 +1492,8 @@ md-primary-tab.tab[active]:hover {
   white-space: nowrap;
 }
 
-.plan-chip--ok {
+.plan-chip--ok,
+.plan-chip--good {
   background: var(--pels-status-good-container);
   border-color: var(--pels-status-good-border);
   color: var(--pels-status-on-good);
@@ -1727,11 +1738,71 @@ md-primary-tab.tab[active]:hover {
  * outcome chip's warning rung so the "why" reads as an extension of the
  * "what happened" signal already on the hero. Sits in the supporting font
  * size so it doesn't compete with the headline; the warn color keeps it
- * legible against the hero background. */
-.plan-history-detail__missed-reason {
+ * legible against the hero background. Scoped to the `warn` tone so the
+ * class can't leak a warn color onto succeeded/abandoned shapes if a
+ * future variant reuses it. */
+.plan-history-detail__hero[data-tone="warn"] .plan-history-detail__missed-reason {
   margin: var(--spacing-2) 0 0;
   font-size: var(--font-size-sm);
   color: var(--pels-status-on-warning);
+}
+
+/* Postmortem lead line — the answer to "why did this run miss?" or "did it
+ * actually succeed?". This is the strongest content move on the page, so it
+ * reads one weight up from the supporting font and carries no muted color.
+ * Sits directly under the heading; spacing collapses to the hero's flex gap
+ * so its prominence isn't diluted by extra margin. */
+.plan-history-detail__postmortem {
+  margin: 0;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--pels-text-primary);
+}
+
+/* Secondary line under the postmortem: cost + delivered (succeeded /
+ * missed) or partial-delivery summary (abandoned). Muted so the postmortem
+ * stays the headline; tabular-nums keeps cost digits aligned when several
+ * past entries open in sequence. */
+.plan-history-detail__secondary {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--pels-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Chart toggle on the Succeeded receipt shape ("View schedule" / "Hide
+ * schedule"). Renders as a recognisable ghost button — visible affordance,
+ * keyboard-focusable, M3 touch-target minimum. Borrows the ghost-button
+ * primitive so we don't introduce a page-local custom button. */
+.plan-history-detail__chart-toggle {
+  align-self: flex-start;
+  min-height: var(--pels-touch-target-min);
+  padding: var(--spacing-1) var(--spacing-3);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--pels-text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.plan-history-detail__chart-toggle:hover,
+.plan-history-detail__chart-toggle:focus-visible {
+  background: color-mix(in srgb, var(--color-surface-3) 92%, var(--color-base-white) 8%);
+}
+
+.plan-history-detail__chart-toggle:focus-visible {
+  outline: 2px solid var(--color-state-info-border);
+  outline-offset: 2px;
+}
+
+/* Recourse CTA modifier on the history-detail hero. The base
+ * `.plan-hero__recourse` already adds `margin-top: var(--spacing-3)` for
+ * the live-hero ordering where the button sits at the end. On the history
+ * hero the button sits between postmortem and progress, so suppress that
+ * margin-top — the parent hero's flex gap already provides the rhythm. */
+.plan-hero__recourse.plan-history-detail__recourse {
+  margin-top: 0;
 }
 
 .plan-history-detail__revision {

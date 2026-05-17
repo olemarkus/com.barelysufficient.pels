@@ -1,3 +1,4 @@
+import type { RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type {
   DeferredObjectivePlanHistoryEntry,
@@ -8,13 +9,16 @@ import {
   formatPlanHistoryObservedCoverage,
   formatPlanHistoryProgressLine,
   formatPlanHistoryReachedAtLine,
+  resolveHistoryDetailChartData,
+  type DeferredPlanHistoryChartData,
+  type DeferredPlanHistoryChartPoint,
 } from '../../../../shared-domain/src/deferredPlanHistory.ts';
 import { deadlineLabels } from '../../../../shared-domain/src/deadlineLabels.ts';
 import {
   buildHistoryDetailHero,
   type DeadlinePlanHistoryHeroPayload,
 } from '../deadlinePlanHistoryDetailHero.ts';
-import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from '../echartsRegistry.ts';
+import { encodeHtml, initEcharts, type EChartsOption } from '../echartsRegistry.ts';
 import { attachTabShownResize } from '../chartVisibilityResize.ts';
 
 type Props = {
@@ -26,6 +30,13 @@ type Props = {
   // default; the secondary line collapses to the kWh-only form.
   costUnit?: string;
 };
+
+// ─── Legacy kWh-bar chart (v3 fallback) ───────────────────────────────────────
+//
+// Kept intact so entries that predate PR 1's recorder (no `progressSamples`,
+// no `kwhPerUnitMean` on either snapshot) still render a chart instead of an
+// empty card. The producer returns `mode: 'legacy_kwh'` for these entries and
+// the view falls through to `LegacyKwhChart` below.
 
 type HourRow = {
   // `startsAtMs` is the row identity (sort + de-dupe key when both original
@@ -303,15 +314,301 @@ export const buildHistoryDetailChartOption = (
   };
 };
 
-const PlanComparisonChart = ({ rows, hasOriginalSeries, hasFinalSeries, observedSeriesName }: {
-  rows: HourRow[];
-  hasOriginalSeries: boolean;
-  hasFinalSeries: boolean;
-  observedSeriesName: string;
-}) => {
-  const chartRef = useRef<HTMLDivElement>(null);
-  const chartInstanceRef = useRef<EChartsType | null>(null);
+// ─── Trajectory chart (v2.7.2 PR 4) ───────────────────────────────────────────
+//
+// Renders the planned staircase + observed-progress line on a single grid with
+// the y-axis in unit space (°C / %). The producer in shared-domain resolves
+// the staircase from `originalPlan.hours × kwhPerUnitMean`; this layer is a
+// renderer that never inspects the raw entry.
 
+const PLANNED_SERIES_NAME = 'Planned trajectory';
+const PLANNED_REVISED_SERIES_NAME = 'Revised trajectory';
+const TARGET_SERIES_NAME = 'Target';
+const MET_MARK_NAME = 'Reached target';
+
+const formatTrajectoryValue = (value: number, unit: '°C' | '%'): string => (
+  unit === '°C' ? `${value.toFixed(1)} °C` : `${Math.round(value)} %`
+);
+
+const formatTrajectoryClock = (atMs: number, timeZone: string): string => (
+  new Date(atMs).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone,
+  })
+);
+
+// Each line series carries `[ms, value]` tuples. ECharts' `time` xAxis maps
+// these to clock positions automatically, so the legend / line ordering does
+// not depend on a category-axis category index.
+type TrajectorySeriesData = Array<[number, number]>;
+
+const toEchartsData = (points: readonly DeferredPlanHistoryChartPoint[]): TrajectorySeriesData => (
+  points.map((point) => [point.atMs, point.value])
+);
+
+// Resolve a min/max for the y-axis that always contains the target line and
+// gives the observed/planned series a bit of headroom. Floors at 0 for `%`
+// (SoC can't go below zero) but lets °C dip below 0 since cold-storage
+// thermostats can legitimately span sub-zero. The 5 %/2 °C padding keeps the
+// observed line from hugging the chart edge.
+const resolveTrajectoryYRange = (
+  data: DeferredPlanHistoryChartData,
+): { min: number | 'dataMin'; max: number | 'dataMax' } => {
+  const values: number[] = [];
+  if (data.target !== null) values.push(data.target);
+  for (const point of data.plannedOriginal) values.push(point.value);
+  if (data.plannedFinal) for (const point of data.plannedFinal) values.push(point.value);
+  for (const point of data.observed) values.push(point.value);
+  if (values.length === 0) return { min: 'dataMin', max: 'dataMax' };
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const pad = data.unit === '%' ? 5 : 2;
+  const lowerBound = data.unit === '%' ? Math.max(0, Math.floor(min - pad)) : Math.floor(min - pad);
+  const upperBound = Math.ceil(max + pad);
+  return { min: lowerBound, max: upperBound };
+};
+
+type TrajectoryTooltipPart = {
+  seriesName: string;
+  data?: unknown;
+  value?: unknown;
+  axisValue?: unknown;
+};
+
+// Pull the timestamp from the first tooltip part. ECharts emits `axisValue`
+// for axis-triggered tooltips on a `time` xAxis; otherwise fall back to the
+// first series' `[ms, value]` payload. Returns `null` only when both shapes
+// fail, which the caller treats as "no hover position resolved".
+const resolveTooltipAxisMs = (first: TrajectoryTooltipPart): number | null => {
+  const candidateAxis = first.axisValue;
+  if (typeof candidateAxis === 'number') return candidateAxis;
+  if (Array.isArray(first.data)) {
+    const ms = (first.data as unknown[])[0];
+    if (typeof ms === 'number') return ms;
+  }
+  return null;
+};
+
+const resolveTooltipYValue = (part: TrajectoryTooltipPart): number | null => {
+  if (Array.isArray(part.data)) {
+    const y = (part.data as unknown[])[1];
+    if (typeof y === 'number') return y;
+  }
+  if (typeof part.value === 'number') return part.value;
+  return null;
+};
+
+const buildTrajectoryTooltip = (
+  data: DeferredPlanHistoryChartData,
+  timeZone: string,
+  unit: '°C' | '%',
+  observedSeriesName: string,
+): ((raw: unknown) => string) => (raw: unknown): string => {
+  const parts = Array.isArray(raw) ? (raw as TrajectoryTooltipPart[]) : [raw as TrajectoryTooltipPart];
+  const first = parts[0];
+  if (!first) return '';
+  const axisMs = resolveTooltipAxisMs(first);
+  if (axisMs === null) return '';
+  const lines = [`<strong>${encodeHtml(formatTrajectoryClock(axisMs, timeZone))}</strong>`];
+  for (const part of parts) {
+    // Hide the target reference line from the tooltip — it's a fixed
+    // horizontal guide, not a data series, so listing "Target 65.0 °C" at
+    // every hover would be noise.
+    if (part.seriesName === TARGET_SERIES_NAME) continue;
+    const yValue = resolveTooltipYValue(part);
+    if (yValue === null) continue;
+    lines.push(`${encodeHtml(part.seriesName)} ${encodeHtml(formatTrajectoryValue(yValue, unit))}`);
+  }
+  // If the user is hovering over the planned line but no observed point lies
+  // at this hour, surface that explicitly so the absence is honest (rather
+  // than letting the tooltip silently omit the observed series).
+  if (data.observed.length === 0 && data.plannedOriginal.length > 0) {
+    lines.push(`${encodeHtml(observedSeriesName)} — not recorded`);
+  }
+  return lines.join('<br>');
+};
+
+export const buildHistoryDetailTrajectoryOption = (
+  data: DeferredPlanHistoryChartData,
+  palette: Palette,
+  timeZone: string,
+  observedSeriesName: string,
+): EChartsOption => {
+  // Trajectory-mode payloads always carry a unit; a `null` unit means a
+  // caller wired a `legacy_kwh` payload through this builder, which would
+  // silently render °C labels on a kWh dataset. Assert at the boundary.
+  if (data.unit === null) {
+    throw new Error('buildHistoryDetailTrajectoryOption requires a trajectory-mode payload (unit must be set)');
+  }
+  const unit: '°C' | '%' = data.unit;
+  const hasPlannedOriginal = data.plannedOriginal.length > 0;
+  const hasPlannedFinal = data.plannedFinal !== null && data.plannedFinal.length > 0;
+  const hasObserved = data.observed.length > 0;
+  const yRange = resolveTrajectoryYRange(data);
+  // Pre-compose the legend label names — the original-staircase swatch reads
+  // as "Planned" when there is no second revision, and "Initial plan"
+  // (matching the legacy chart vocabulary) once the user has both lines on
+  // the chart to compare.
+  const originalLabel = hasPlannedFinal ? INITIAL_SERIES_NAME : PLANNED_SERIES_NAME;
+  const revisedLabel = PLANNED_REVISED_SERIES_NAME;
+  const legendData = [
+    ...(hasPlannedOriginal
+      ? [{
+        name: originalLabel,
+        itemStyle: { color: hasPlannedFinal ? 'transparent' : palette.device, borderColor: palette.device, borderWidth: 2 },
+      }]
+      : []),
+    ...(hasPlannedFinal ? [{ name: revisedLabel, itemStyle: { color: palette.device } }] : []),
+    ...(hasObserved ? [{ name: observedSeriesName, itemStyle: { color: palette.observed } }] : []),
+    ...(data.target !== null
+      ? [{ name: TARGET_SERIES_NAME, itemStyle: { color: 'transparent', borderColor: palette.muted, borderWidth: 1, borderType: 'dashed' as const } }]
+      : []),
+  ];
+  return {
+    animation: false,
+    backgroundColor: 'transparent',
+    textStyle: { color: palette.text, fontFamily: 'inherit' },
+    legend: {
+      top: 0,
+      left: 0,
+      width: '100%',
+      data: legendData,
+      itemWidth: 12,
+      itemHeight: 8,
+      icon: 'roundRect',
+      textStyle: { color: palette.muted, fontSize: 11 },
+      inactiveColor: palette.grid,
+    },
+    grid: { top: 44, left: 8, right: 16, bottom: 32, containLabel: true },
+    tooltip: {
+      trigger: 'axis',
+      appendToBody: true,
+      confine: true,
+      backgroundColor: palette.tooltipBackground,
+      borderColor: palette.tooltipBorder,
+      textStyle: { color: palette.tooltipText },
+      formatter: buildTrajectoryTooltip(data, timeZone, unit, observedSeriesName),
+    },
+    xAxis: {
+      type: 'time',
+      min: data.windowStartMs,
+      max: data.windowEndMs,
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: palette.grid } },
+      axisLabel: {
+        color: palette.muted,
+        fontSize: 11,
+        hideOverlap: true,
+        formatter: (ms: number): string => formatTrajectoryClock(ms, timeZone),
+      },
+    },
+    yAxis: {
+      type: 'value',
+      min: yRange.min,
+      max: yRange.max,
+      splitNumber: 4,
+      splitLine: { lineStyle: { color: palette.grid, opacity: 0.55 } },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: {
+        color: palette.text,
+        fontSize: 11,
+        formatter: (value: number) => formatTrajectoryValue(value, unit),
+      },
+    },
+    series: [
+      ...(hasPlannedOriginal ? [{
+        name: originalLabel,
+        type: 'line' as const,
+        step: 'end' as const,
+        showSymbol: false,
+        // The original staircase is the planner's intent. When a revised
+        // staircase overlays it, render the original as dashed-muted (the
+        // "what we set out to do") so the eye lands on the revised one.
+        lineStyle: hasPlannedFinal
+          ? { color: palette.device, width: 2, type: 'dashed' as const, opacity: 0.7 }
+          : { color: palette.device, width: 2 },
+        itemStyle: { color: palette.device },
+        data: toEchartsData(data.plannedOriginal),
+        // The metAtMs marker sits on the planned staircase — the postmortem
+        // sentence "Hit 65 °C at 11:57" lands here. Only attached to the
+        // original series so a revised overlay doesn't double-mark.
+        markPoint: data.metAtMs !== null && data.target !== null && !hasPlannedFinal
+          ? {
+            symbol: 'circle',
+            symbolSize: 10,
+            itemStyle: { color: palette.observed, borderColor: palette.text, borderWidth: 1 },
+            label: { show: false },
+            data: [{
+              name: MET_MARK_NAME,
+              coord: [data.metAtMs, data.target],
+            }],
+          }
+          : undefined,
+      }] : []),
+      ...(hasPlannedFinal ? [{
+        name: revisedLabel,
+        type: 'line' as const,
+        step: 'end' as const,
+        showSymbol: false,
+        lineStyle: { color: palette.device, width: 2 },
+        itemStyle: { color: palette.device },
+        data: toEchartsData(data.plannedFinal!),
+        markPoint: data.metAtMs !== null && data.target !== null
+          ? {
+            symbol: 'circle',
+            symbolSize: 10,
+            itemStyle: { color: palette.observed, borderColor: palette.text, borderWidth: 1 },
+            label: { show: false },
+            data: [{
+              name: MET_MARK_NAME,
+              coord: [data.metAtMs, data.target],
+            }],
+          }
+          : undefined,
+      }] : []),
+      ...(hasObserved ? [{
+        name: observedSeriesName,
+        type: 'line' as const,
+        showSymbol: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        lineStyle: { color: palette.observed, width: 2 },
+        itemStyle: { color: palette.observed },
+        data: toEchartsData(data.observed),
+      }] : []),
+      // Target reference as a dashed horizontal line. Rendered as a
+      // single-segment line series spanning the window so it picks up the
+      // x-axis time scale automatically (mark-lines on a `time` axis can
+      // misbehave when the only y datum is `target`).
+      ...(data.target !== null ? [{
+        name: TARGET_SERIES_NAME,
+        type: 'line' as const,
+        showSymbol: false,
+        silent: true,
+        lineStyle: { color: palette.muted, width: 1, type: 'dashed' as const },
+        data: [
+          [data.windowStartMs, data.target],
+          [data.windowEndMs, data.target],
+        ] as TrajectorySeriesData,
+      }] : []),
+    ],
+  };
+};
+
+// ─── Chart React wrapper ──────────────────────────────────────────────────────
+
+// Shared ECharts mount: builds the option lazily (so the closure captures the
+// fresh palette), wires the ResizeObserver + tab-shown resize, and disposes on
+// unmount. `deps` controls when the chart re-renders; legacy vs trajectory
+// callers pass their own data shape.
+const useEchartsMount = (
+  buildOption: (palette: Palette) => EChartsOption,
+  deps: ReadonlyArray<unknown>,
+): RefObject<HTMLDivElement> => {
+  const chartRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const container = chartRef.current;
     if (!container) return undefined;
@@ -319,39 +616,65 @@ const PlanComparisonChart = ({ rows, hasOriginalSeries, hasFinalSeries, observed
       renderer: 'svg',
       ...resolveChartSize(container),
     });
-    chartInstanceRef.current = chart;
-    chart.setOption(
-      buildHistoryDetailChartOption(
-        rows,
-        resolvePalette(container),
-        hasOriginalSeries,
-        hasFinalSeries,
-        observedSeriesName,
-      ),
-      { notMerge: true },
-    );
+    chart.setOption(buildOption(resolvePalette(container)), { notMerge: true });
     const resizeObserver = typeof ResizeObserver === 'function'
       ? new ResizeObserver(() => chart.resize(resolveChartSize(container)))
       : null;
     resizeObserver?.observe(container);
-    // Cold-mount path: the chart may be initialized while its panel is still
-    // `display:none`, so `clientWidth` was the 480 px fallback. Resize on the
-    // next `pels:tab-shown` so the SVG settles to the real visible width.
     const detachTabShown = attachTabShownResize({ container, chart, resolveSize: resolveChartSize });
     return () => {
       resizeObserver?.disconnect();
       detachTabShown();
       chart.dispose();
-      if (chartInstanceRef.current === chart) chartInstanceRef.current = null;
     };
-  }, [rows, hasOriginalSeries, hasFinalSeries, observedSeriesName]);
+    // `buildOption` closes over the caller-supplied deps already; including
+    // it here would re-mount on every render because the arrow recreates.
+  }, deps);
+  return chartRef;
+};
 
+const LegacyKwhChart = ({ rows, hasOriginalSeries, hasFinalSeries, observedSeriesName }: {
+  rows: HourRow[];
+  hasOriginalSeries: boolean;
+  hasFinalSeries: boolean;
+  observedSeriesName: string;
+}) => {
+  const chartRef = useEchartsMount(
+    (palette) => buildHistoryDetailChartOption(
+      rows,
+      palette,
+      hasOriginalSeries,
+      hasFinalSeries,
+      observedSeriesName,
+    ),
+    [rows, hasOriginalSeries, hasFinalSeries, observedSeriesName],
+  );
   return (
     <div
       ref={chartRef}
       class="deadline-horizon-chart"
       role="img"
       aria-label="Initial schedule vs revised schedule charging hours"
+    />
+  );
+};
+
+const TrajectoryChart = ({ data, timeZone, observedSeriesName, ariaLabel }: {
+  data: DeferredPlanHistoryChartData;
+  timeZone: string;
+  observedSeriesName: string;
+  ariaLabel: string;
+}) => {
+  const chartRef = useEchartsMount(
+    (palette) => buildHistoryDetailTrajectoryOption(data, palette, timeZone, observedSeriesName),
+    [data, timeZone, observedSeriesName],
+  );
+  return (
+    <div
+      ref={chartRef}
+      class="deadline-horizon-chart"
+      role="img"
+      aria-label={ariaLabel}
     />
   );
 };
@@ -424,6 +747,19 @@ const formatRevisionUpdatesLine = (revisionCount: number | undefined): string | 
   return `Schedule updated ${count} ${count === 1 ? 'time' : 'times'}.`;
 };
 
+// Card-title copy. Trajectory mode reads as "Progress vs schedule" — the
+// chart shows the actual progression against the planned trajectory. Legacy
+// mode keeps the existing "Scheduled vs observed" so the v3 fallback path
+// reads consistently across surfaces.
+const resolveChartCardTitle = (mode: DeferredPlanHistoryChartData['mode']): string => (
+  mode === 'trajectory' ? 'Progress vs schedule' : 'Scheduled vs observed'
+);
+
+// Subtext shown under the chart card title for the legacy fallback. The
+// trajectory chart's y-axis unit + line shapes carry the same information
+// implicitly, so the line is suppressed there.
+const LEGACY_FALLBACK_NOTE = 'Schedule only — observations not recorded for this run.';
+
 export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Props) => {
   const deadlineLine = formatPlanHistoryDeadlineLine(entry, timeZone);
   const progressLine = formatPlanHistoryProgressLine(entry);
@@ -442,15 +778,17 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
   // Succeeded heroes default the chart collapsed (`receipt-shape`); the view
   // toggles via `useState`. Missed heroes pass `chartCollapsedByDefault: false`
   // so the chart renders expanded and the user sees the diagnosis context.
-  // Reset on entry change so navigating Missed (expanded) → Succeeded
-  // (collapsed) doesn't carry the previous entry's expanded state forward
-  // when the parent reuses this component instance.
-  // Initial state mirrors the hero's per-outcome default (Succeeded =
-  // collapsed receipt; Missed = expanded diagnosis; Abandoned = collapsed
-  // log). State reset across entry navigation is handled by the parent's
-  // `key={entry.id}` prop, which remounts this component on entry change
-  // rather than us managing reset-via-useEffect inside.
+  // Initial state mirrors the hero's per-outcome default; state reset across
+  // entry navigation is handled by the parent's `key={entry.id}` prop, which
+  // remounts this component on entry change rather than us managing
+  // reset-via-useEffect inside.
   const [chartCollapsed, setChartCollapsed] = useState(hero.chartCollapsedByDefault);
+  const chartData = resolveHistoryDetailChartData(entry);
+  const labels = deadlineLabels(entry.objectiveKind);
+  const observedSeriesName = labels.actualDeviceSeriesName;
+  // Legacy mode also drives the row builder so the existing kWh-bar fallback
+  // keeps rendering for v3 entries. Built unconditionally so the empty-chart
+  // guard below sees a consistent shape; row computation is cheap.
   const rows = buildHistoryDetailRows(
     entry.originalPlan,
     entry.finalPlan,
@@ -458,26 +796,21 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
     timeZone,
     { startedAtMs: entry.startedAtMs, deadlineAtMs: entry.deadlineAtMs },
   );
-  // The chart always shows the final/as-executed plan when one exists,
-  // falling back to the original when the run finalized before the planner
-  // could revise. The original-plan series is only overlaid when the run
-  // actually replanned — otherwise the two series would render identical
-  // bars on top of each other and clutter the legend.
   const hasFinalSeries = Boolean(entry.finalPlan ?? entry.originalPlan);
   const hasOriginalSeries = Boolean(entry.originalPlan)
     && Boolean(entry.finalPlan)
     && rows.some((row) => Math.abs(row.originalKWh - row.finalKWh) > 0.001);
-  // Resolve the observed-series noun once per entry. `deadlineLabels` maps
-  // `temperature` → "Measured Heating" and `ev_soc` → "Measured Charging" so
-  // the legend, tooltip, and scatter series all read correctly for the
-  // device kind instead of always saying "Observed charging".
-  const observedSeriesName = deadlineLabels(entry.objectiveKind).actualDeviceSeriesName;
   // Screen-reader label mirrors the visible heading shape: scoping eyebrow
   // ("Smart task") → device name (when present) → timestamp.
   const ariaHeading = entry.deviceName
     ? `${entry.deviceName} — ${deadlineLine}`
     : deadlineLine;
-  const hasChartData = entry.originalPlan !== null || entry.finalPlan !== null;
+  const trajectoryAriaLabel = `Progress trajectory for ${entry.deviceName ?? 'this smart task'}`;
+  const hasChartData = chartData.mode === 'trajectory'
+    ? (chartData.plannedOriginal.length > 0 || chartData.observed.length > 0)
+    : (entry.originalPlan !== null || entry.finalPlan !== null);
+  const chartCardTitle = resolveChartCardTitle(chartData.mode);
+  const chartFallbackNote = chartData.mode === 'legacy_kwh' ? LEGACY_FALLBACK_NOTE : null;
   return (
     <article class="plan-history-detail" aria-label={`${hero.eyebrow} ${ariaHeading}`}>
       <HistoryDetailHero
@@ -496,7 +829,7 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
       ) : (
         <section class="pels-surface-card budget-redesign-card deadline-horizon-card">
           <div class="budget-card-header">
-            <h2 class="plan-card__title">Scheduled vs observed</h2>
+            <h2 class="plan-card__title">{chartCardTitle}</h2>
             {hero.chartCollapsedByDefault && (
               <button
                 type="button"
@@ -508,8 +841,19 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
               </button>
             )}
           </div>
-          {!chartCollapsed && (
-            <PlanComparisonChart
+          {!chartCollapsed && chartFallbackNote !== null && (
+            <p class="pels-card-supporting">{chartFallbackNote}</p>
+          )}
+          {!chartCollapsed && chartData.mode === 'trajectory' && (
+            <TrajectoryChart
+              data={chartData}
+              timeZone={timeZone}
+              observedSeriesName={observedSeriesName}
+              ariaLabel={trajectoryAriaLabel}
+            />
+          )}
+          {!chartCollapsed && chartData.mode === 'legacy_kwh' && (
+            <LegacyKwhChart
               rows={rows}
               hasOriginalSeries={hasOriginalSeries}
               hasFinalSeries={hasFinalSeries}

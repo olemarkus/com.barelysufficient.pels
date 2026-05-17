@@ -485,4 +485,185 @@ describe('DeadlinePlanHistoryDetail', () => {
     expect(option.series.map((s) => s.name)).toContain('Measured Charging');
     expect(option.legend.data.map((l) => l.name)).toContain('Measured Charging');
   });
+
+  // v2.7.2 PR 4 — actual-vs-plan trajectory chart shape. The chart's y-axis
+  // moves to the target unit (°C / %), planned hours render as a stepped
+  // staircase derived from `kwhPerUnitMean`, observed samples render as a
+  // line + points, and the target reference + metAtMs marker land on the
+  // chart.
+  describe('actual-vs-plan trajectory chart (PR 4)', () => {
+    it('renders the trajectory chart and the new "Progress vs schedule" title for entries with progressSamples', async () => {
+      const revision = buildRevision({ kwhPerUnitMean: 0.5 });
+      const root = await mount(buildEntry({
+        outcome: 'missed', // missed → chart expanded by default
+        finalProgressC: 38,
+        originalPlan: revision,
+        finalPlan: revision,
+        progressSamples: [
+          { atMs: DEADLINE_MS - 3 * HOUR_MS, valueC: 50, valuePercent: null },
+          { atMs: DEADLINE_MS - 2 * HOUR_MS, valueC: 54, valuePercent: null },
+          { atMs: DEADLINE_MS - HOUR_MS, valueC: 58, valuePercent: null },
+        ],
+      }));
+      expect(root.textContent).toContain('Progress vs schedule');
+      expect(root.textContent).not.toContain('Scheduled vs observed');
+      expect(root.querySelector('.deadline-horizon-chart')).not.toBeNull();
+    });
+
+    it('falls back to the legacy "Scheduled vs observed" card title when neither samples nor rate were captured', async () => {
+      const revision = buildRevision({ planStatus: 'cannot_meet' });
+      // Strip kwhPerUnitMean so the producer returns mode `legacy_kwh`.
+      delete (revision as { kwhPerUnitMean?: number }).kwhPerUnitMean;
+      const root = await mount(buildEntry({
+        outcome: 'missed',
+        finalProgressC: 38,
+        originalPlan: revision,
+        finalPlan: revision,
+        // No progressSamples → legacy mode locked in.
+        progressSamples: undefined,
+      }));
+      expect(root.textContent).toContain('Scheduled vs observed');
+      expect(root.textContent).toContain('Schedule only — observations not recorded for this run.');
+    });
+
+    it('builds a time-axis trajectory option with planned staircase, observed line, and target reference', async () => {
+      const { buildHistoryDetailTrajectoryOption } =
+        await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
+      const { resolveHistoryDetailChartData } =
+        await import('../../shared-domain/src/deferredPlanHistory');
+      const revision = buildRevision({
+        hours: [
+          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 1 },
+        ],
+        kwhPerUnitMean: 0.5,
+      });
+      const entry = buildEntry({
+        outcome: 'met',
+        metAtMs: DEADLINE_MS - HOUR_MS,
+        startProgressC: 50,
+        finalProgressC: 65,
+        targetTemperatureC: 65,
+        startedAtMs: DEADLINE_MS - 2 * HOUR_MS,
+        originalPlan: revision,
+        finalPlan: revision,
+        progressSamples: [
+          { atMs: DEADLINE_MS - 2 * HOUR_MS, valueC: 50, valuePercent: null },
+          { atMs: DEADLINE_MS - HOUR_MS, valueC: 60, valuePercent: null },
+        ],
+      });
+      const chartData = resolveHistoryDetailChartData(entry);
+      const option = buildHistoryDetailTrajectoryOption(
+        chartData,
+        stubPalette,
+        'UTC',
+        'Measured Heating',
+      ) as {
+        xAxis: { type: string; min: number; max: number };
+        series: Array<{ name: string; type: string; step?: string }>;
+        legend: { data: Array<{ name: string }> };
+      };
+      expect(option.xAxis.type).toBe('time');
+      expect(option.xAxis.min).toBe(DEADLINE_MS - 2 * HOUR_MS);
+      expect(option.xAxis.max).toBe(DEADLINE_MS);
+      const seriesNames = option.series.map((s) => s.name);
+      expect(seriesNames).toContain('Planned trajectory');
+      expect(seriesNames).toContain('Measured Heating');
+      expect(seriesNames).toContain('Target');
+      // Planned series must be a stepped line so the horizontal-hour
+      // semantic reads correctly.
+      const plannedSeries = option.series.find((s) => s.name === 'Planned trajectory');
+      expect(plannedSeries?.type).toBe('line');
+      expect(plannedSeries?.step).toBe('end');
+    });
+
+    it('exposes the metAtMs marker on the planned staircase for met outcomes', async () => {
+      const { buildHistoryDetailTrajectoryOption } =
+        await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
+      const { resolveHistoryDetailChartData } =
+        await import('../../shared-domain/src/deferredPlanHistory');
+      const revision = buildRevision({ kwhPerUnitMean: 0.5 });
+      const entry = buildEntry({
+        outcome: 'met',
+        metAtMs: DEADLINE_MS - HOUR_MS,
+        originalPlan: revision,
+        finalPlan: revision,
+        progressSamples: [
+          { atMs: DEADLINE_MS - 2 * HOUR_MS, valueC: 50, valuePercent: null },
+          { atMs: DEADLINE_MS - HOUR_MS, valueC: 65, valuePercent: null },
+        ],
+      });
+      const chartData = resolveHistoryDetailChartData(entry);
+      const option = buildHistoryDetailTrajectoryOption(
+        chartData,
+        stubPalette,
+        'UTC',
+        'Measured Heating',
+      ) as {
+        series: Array<{ name: string; markPoint?: { data: Array<{ name: string; coord: number[] }> } }>;
+      };
+      const plannedSeries = option.series.find((s) => s.name === 'Planned trajectory');
+      expect(plannedSeries?.markPoint?.data[0]?.name).toBe('Reached target');
+      expect(plannedSeries?.markPoint?.data[0]?.coord[0]).toBe(DEADLINE_MS - HOUR_MS);
+      expect(plannedSeries?.markPoint?.data[0]?.coord[1]).toBe(65);
+    });
+
+    it('uses % unit formatting for EV SoC entries', async () => {
+      const { buildHistoryDetailTrajectoryOption } =
+        await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
+      const { resolveHistoryDetailChartData } =
+        await import('../../shared-domain/src/deferredPlanHistory');
+      const entry = buildEntry({
+        objectiveKind: 'ev_soc',
+        targetTemperatureC: null,
+        targetPercent: 80,
+        startProgressC: null,
+        startProgressPercent: 30,
+        finalProgressC: null,
+        finalProgressPercent: 80,
+        outcome: 'met',
+        originalPlan: buildRevision({ kwhPerUnitMean: 0.5 }),
+        finalPlan: buildRevision({ kwhPerUnitMean: 0.5 }),
+        progressSamples: [
+          { atMs: DEADLINE_MS - 2 * HOUR_MS, valueC: null, valuePercent: 30 },
+          { atMs: DEADLINE_MS - HOUR_MS, valueC: null, valuePercent: 80 },
+        ],
+      });
+      const chartData = resolveHistoryDetailChartData(entry);
+      expect(chartData.unit).toBe('%');
+      const option = buildHistoryDetailTrajectoryOption(
+        chartData,
+        stubPalette,
+        'UTC',
+        'Measured Charging',
+      ) as {
+        yAxis: { axisLabel: { formatter: (value: number) => string } };
+      };
+      expect(option.yAxis.axisLabel.formatter(50)).toBe('50 %');
+    });
+
+    it('preserves the legacy bar chart for v3 entries (kWh y-axis)', async () => {
+      const { buildHistoryDetailChartOption, buildHistoryDetailRows } =
+        await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
+      const revision = buildRevision();
+      delete (revision as { kwhPerUnitMean?: number }).kwhPerUnitMean;
+      const rows = buildHistoryDetailRows(revision, revision, [], 'UTC', {
+        startedAtMs: DEADLINE_MS - 2 * HOUR_MS,
+        deadlineAtMs: DEADLINE_MS,
+      });
+      const option = buildHistoryDetailChartOption(
+        rows,
+        stubPalette,
+        false,
+        true,
+        'Measured Heating',
+      ) as {
+        yAxis: { axisLabel: { formatter: (value: number) => string } };
+      };
+      // The legacy mode keeps the existing kWh axis so the existing y-axis
+      // regression test in `deadline-recorder-to-history.spec.ts` continues
+      // to assert against `kWh` labels.
+      expect(option.yAxis.axisLabel.formatter(1.2)).toContain('kWh');
+    });
+  });
 });
