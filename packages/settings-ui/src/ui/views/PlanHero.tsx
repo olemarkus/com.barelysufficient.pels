@@ -640,8 +640,13 @@ export const PlanHero = ({
   const headline = formatHeroHeadline(meta, nowMs);
   if (!headline || !meta) {
     return (
-      <div class="plan-hero pels-hero" aria-live="polite">
-        <p class="plan-hero__placeholder muted">Awaiting data…</p>
+      <div class="plan-hero pels-hero" aria-live="polite" aria-busy="true">
+        <div class="plan-hero__placeholder pels-skeleton-stack" aria-hidden="true">
+          <span class="pels-skeleton pels-skeleton--headline"></span>
+          <span class="pels-skeleton pels-skeleton--subline"></span>
+          <span class="pels-skeleton pels-skeleton--hero"></span>
+        </div>
+        <span class="visually-hidden">Loading overview…</span>
       </div>
     );
   }

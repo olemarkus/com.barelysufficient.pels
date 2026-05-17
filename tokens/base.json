@@ -8,6 +8,7 @@
     "8": { "value": "32px" }
   },
   "radius": {
+    "xs": { "value": "2px" },
     "sm": { "value": "6px" },
     "md": { "value": "10px" },
     "lg": { "value": "14px" },

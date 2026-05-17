@@ -455,11 +455,21 @@
 
     <section class="card panel" id="overview-panel" data-panel="overview">
       <div id="plan-redesign-surface">
-        <div id="plan-hero" class="plan-hero pels-hero" aria-live="polite">
-          <p class="plan-hero__placeholder muted">Awaiting data…</p>
+        <div id="plan-hero" class="plan-hero pels-hero" aria-live="polite" aria-busy="true">
+          <div class="plan-hero__placeholder pels-skeleton-stack" aria-hidden="true">
+            <span class="pels-skeleton pels-skeleton--headline"></span>
+            <span class="pels-skeleton pels-skeleton--subline"></span>
+            <span class="pels-skeleton pels-skeleton--hero"></span>
+          </div>
+          <span class="visually-hidden">Loading overview…</span>
         </div>
         <div id="plan-hour-strip" class="plan-hour-strip" hidden></div>
-        <div id="plan-cards" class="plan-cards"></div>
+        <div id="plan-cards" class="plan-cards">
+          <div class="pels-skeleton-stack" data-overview-cards-placeholder aria-hidden="true">
+            <span class="pels-skeleton pels-skeleton--card"></span>
+            <span class="pels-skeleton pels-skeleton--card"></span>
+          </div>
+        </div>
       </div>
       <p id="plan-empty" class="muted" hidden>No plan available yet. Send power data or refresh devices.</p>
     </section>

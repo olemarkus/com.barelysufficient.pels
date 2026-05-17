@@ -1229,6 +1229,19 @@ md-primary-tab.tab[active]:hover {
   margin: var(--spacing-2) 0 0;
 }
 
+/* Screen-reader-only utility — visually hidden but announced by assistive tech. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .list__header,
 .device-row {
   display: block;
@@ -2613,6 +2626,69 @@ md-primary-tab.tab[active]:hover {
   }
 }
 
+/* ── Loading skeleton primitives ───────────────────────────────────────────────
+ * Used as first-paint placeholders for the Overview panel before the bootstrap
+ * fetch resolves. Other four panels (Budget, Usage, Smart tasks, Settings) can
+ * wire the same primitive in a follow-up PR.
+ * Replaces flat `Awaiting data…` text with a token-driven M3 shimmer so the
+ * shape of the panel is visible while data loads. The `--hero` modifier sits
+ * inside `.plan-hero` placeholders; `--card` sits inside surface cards.
+ * Honors `prefers-reduced-motion: reduce` (no animation, lower contrast).
+ */
+.pels-skeleton {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--pels-surface-container-high) 70%, transparent);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--pels-on-surface) 8%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  background-position: -150% 0;
+  /* Keep the placeholder readable to screen readers via aria-busy on the
+   * parent; the block itself is decorative. */
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pels-skeleton {
+    animation: pels-skeleton-shimmer 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes pels-skeleton-shimmer {
+  0% { background-position: -150% 0; }
+  100% { background-position: 150% 0; }
+}
+
+.pels-skeleton--hero {
+  height: 96px;
+}
+
+.pels-skeleton--headline {
+  height: 28px;
+  width: 70%;
+}
+
+.pels-skeleton--subline {
+  height: 16px;
+  width: 50%;
+}
+
+.pels-skeleton--card {
+  height: 72px;
+  border-radius: var(--radius-lg);
+}
+
+.pels-skeleton-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
 .plan-card__reason {
   position: relative;
   z-index: 1;
@@ -2788,7 +2864,7 @@ md-primary-tab.tab[active]:hover {
   position: relative;
   height: 4px;
   background: color-mix(in srgb, var(--text) 12%, transparent);
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   margin: var(--spacing-2) var(--spacing-3);
 }
 
@@ -2798,7 +2874,7 @@ md-primary-tab.tab[active]:hover {
   left: 0;
   height: 100%;
   background: var(--accent);
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
 }
 
 .plan-card__step-stop {
@@ -3089,14 +3165,14 @@ md-primary-tab.tab[active]:hover {
  * `powerWeekChartEcharts.ts` use:
  *   background     = --pels-chart-unreliable-cell
  *   border (1 px)  = --pels-chart-heatmap-border
- *   border-radius  = 2 px
+ *   border-radius  = var(--radius-xs)
  * Render the swatch as a 10x10 square (the cell is ~10 px tall at 240 px chart
  * height) with the same fill + border + radius.
  */
 .usage-legend__swatch--unreliable {
   width: 10px;
   height: 10px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   background: var(--pels-chart-unreliable-cell);
   border: 1px solid var(--pels-chart-heatmap-border);
 }
