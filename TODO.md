@@ -1430,39 +1430,13 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       Source: `adversarial-review` skill.
       Files: `lib/plan/deferredObjectives/activePlanRecorder.ts:584-594`.
 
-- [ ] Smart task history detail: rebuild around temperature/SoC actual-vs-plan, not
-      hourly bar comparisons. Current `DeadlinePlanHistoryDetail.tsx` shows planned-hour
-      bars (original + final) and binary observed-interval markers. The history entry
-      (`packages/contracts/src/deferredObjectivePlanHistory.ts`) persists `startProgressC`
-      / `finalProgressC` (scalar) but no time-series progress samples — so the user can't
-      see how temperature actually evolved against the planned trajectory.
-      Two-step fix (user-approved 2026-05-15):
-      1. Bump history schema v3 → v4. Add optional
-         `progressSamples?: Array<{ atMs: number; valueC: number | null; valuePercent: number | null }>`
-         (hourly downsample, cap ~48 samples per entry; budget ~70KB worst case for 30
-         entries). In `lib/plan/deferredObjectives/planHistory.ts`, maintain an in-memory
-         hourly ring per run; drain into the entry at finalization. Migration in
-         `lib/plan/deferredObjectives/planHistorySettings.ts` reads v3 with samples
-         absent (graceful degrade). Persist `kwhPerUnitMean` on
-         `DeferredObjectivePlanHistoryRevisionSnapshot` so the UI can compute the planned
-         trajectory.
-      2. Rebuild the chart in `DeadlinePlanHistoryDetail.tsx`: y-axis = target unit
-         (°C / %); x-axis = run-start → deadline; series 1 = planned staircase trajectory
-         derived from `originalPlan.hours × kwhPerUnitMean` starting from
-         `startProgress*`; series 2 = `progressSamples` as line+points. Mark line at
-         `metAtMs` if reached. Hide chart and fall back to current bars when
-         `progressSamples.length < 2` (v3 legacy entries).
-      Related: the two adjacent P2 entries below (`Add deliveredKWh and totalCost …`
-      and `Show a real revision log …`) all touch the same history detail surface;
-      sequence together. Existing P2 entries `Bring the smart-task history detail view
-      to full live-plan chart parity` and `Compose a one-sentence postmortem on the
-      smart-task history detail page` are also part of the cluster.
-      Files (step 1): `packages/contracts/src/deferredObjectivePlanHistory.ts`,
-      `lib/plan/deferredObjectives/planHistorySettings.ts`,
-      `lib/plan/deferredObjectives/planHistory.ts`,
-      `test/deferredObjectivePlanHistory.test.ts`.
-      Files (step 2): `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
-      `packages/settings-ui/test/deadlinePlanHistoryDetail.test.ts`.
+- [x] Smart task history detail: rebuild around temperature/SoC actual-vs-plan, not
+      hourly bar comparisons. *(Step 1 landed in `a5b8116a` as v2.7.2/PR1 — schema v4
+      with `progressSamples`, `kwhPerUnitMean`, `revisions[]`. Step 2 landed in the
+      v2.7.2/PR4 commit on this train — `DeadlinePlanHistoryDetail.tsx` now renders a
+      stepped planned staircase + observed-progress line on a unit-space y-axis,
+      target reference, `metAtMs` marker, and falls back to the legacy kWh-bar
+      chart when neither samples nor `kwhPerUnitMean` was captured.)*
 
 - [ ] Add `deliveredKWh` and `totalCost` to `DeferredObjectivePlanHistoryEntry`.
       The History detail page is supposed to answer "how much did it cost?" and "by how much
@@ -2938,3 +2912,58 @@ should not be folded into the same PR.
       (`feedback_ui_text_shared_with_logs` keeps runtime logging + UI reading the same strings).
       Files: `packages/shared-domain/src/deadlineLabels.ts`,
       `packages/shared-domain/src/smartTaskListStatus.ts` (new), `packages/shared-domain/src/evCardState.ts` (new).
+- [ ] Move v2.7.2/PR4 chart strings into a shared-domain `historyDetailChartLabels(kind)` helper.
+      Surfaced by pels-copy-and-terminology on v2.7.2 PR 4 as P1 (deferred to a follow-up to
+      keep PR 4 focused). PR 4 introduced seven new user-visible chart strings inlined in
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`: `PLANNED_SERIES_NAME`
+      ('Planned trajectory'), `PLANNED_REVISED_SERIES_NAME` ('Revised trajectory'),
+      `TARGET_SERIES_NAME` ('Target'), `MET_MARK_NAME` ('Reached target'), card titles
+      ('Progress vs schedule' / 'Scheduled vs observed'), legacy fallback note
+      ('Schedule only — observations not recorded for this run.'), toggle copy ('View
+      schedule' / 'Hide schedule'), tooltip absence suffix (`${observedSeriesName} — not
+      recorded`), aria-label (`Progress trajectory for ${deviceName}`).
+      Move into a `historyDetailChartLabels(kind)` helper in
+      `packages/shared-domain/src/deferredPlanHistoryChartData.ts` (the natural home — same
+      file as the chart data producer). Per `feedback_ui_text_shared_with_logs`, runtime log
+      breadcrumbs need to read the same strings the user saw.
+      Why P2 (downgraded from P1 since strings render correctly today): architecture-level
+      consistency. Strings are correct as-is; this is logger-parity hygiene.
+      Files: `packages/shared-domain/src/deferredPlanHistoryChartData.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
+- [ ] markPoint tone-aware for the "Reached target" dot on the history-detail chart.
+      Surfaced by pels-m3-critic on v2.7.2 PR 4 as P2. The `metAtMs` markPoint uses
+      `palette.observed` (green) fill regardless of hero tone. In practice the marker only
+      renders when `outcome === 'met'` → hero tone is always `good` (green gradient) and
+      contrast is fine. Defensive design: if a future variant ever attaches `metAtMs` to a
+      warn-tone shape (e.g. `met-with-overshoot` if it gets re-classified), green-on-warn
+      would be low-contrast. Either pin the marker to neutral tokens (`--pels-status-on-good`
+      fill + `--pels-text-primary` stroke), or thread hero tone into
+      `buildHistoryDetailTrajectoryOption` so the marker style branches.
+      Why P3: today the marker only renders on `good` heroes; the contrast concern is
+      defensive against a hypothetical future variant.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
+- [ ] Test history-detail chart legend wrap at 320 px and bump `grid.top` if needed.
+      Surfaced by pels-m3-critic on v2.7.2 PR 4 as P2. Trajectory legend has 4 entries
+      ('Planned trajectory' / 'Revised trajectory' / 'Measured Heating' / 'Target') and may
+      wrap to two rows at 320 px, crowding the chart top edge. Static `grid.top: 44` reserves
+      single-line height. Either dynamic grid-top calculation or bump to 60 unconditionally;
+      mirror PR 1's `containLabel: true` pattern. Add a 320 px Playwright snapshot to
+      regression-protect.
+      Why P3: cosmetic at narrow width; chart still renders correctly.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `packages/settings-ui/tests/e2e/charts-layout.spec.ts`.
+- [ ] Hoist the `useEchartsMount` helper from `DeadlinePlanHistoryDetail.tsx` to a shared
+      module in `echartsRegistry.ts`. PR 4 introduced the helper file-locally, but the
+      same init/dispose/resize pattern exists in `powerWeekChartEcharts.ts`,
+      `usageStatsChartsEcharts.ts`, `budgetRedesignChart.ts`, `usageDayChartEcharts.ts`,
+      `DeadlinePlan.tsx`. Hoisting to `mountEcharts(container, buildOption, deps)` is the
+      actual primitive-consolidation win that PR 4 claimed; as-is it remains a parallel
+      pattern. Surfaced by pels-m3-critic as P3.
+      Why P3: maintenance hygiene; current pattern works but doesn't dedupe across charts.
+      Files: `packages/settings-ui/src/ui/echartsRegistry.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
+      `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,
+      `packages/settings-ui/src/ui/budgetRedesignChart.ts`,
+      `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
