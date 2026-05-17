@@ -2496,9 +2496,13 @@ should not be folded into the same PR.
 - [ ] Rework metric hero typography: drop long headline strings like
       "0.3 of 4.5 kWh used" in favour of numeric-first stacks
       ("0.3 kWh" → "of 4.5 kWh used this hour"). Enable `font-feature-settings:
-      "tnum"` on metric numbers, scale display type down at 320 px. Files:
-      `packages/shared-domain/src/` metric format helpers, every hero template
-      in `packages/settings-ui/src/ui/views/`.
+      "tnum"` on metric numbers, scale display type down at 320 px. Also drop
+      the all-caps eyebrow above section h2s ("DAILY BUDGET" / "ENERGY HISTORY"
+      / "SMART TASKS" / "CONFIGURE PELS") — Homey-native uses single-weight
+      sentence-case section labels with no eyebrow; today's eyebrow + display
+      heading reads as a marketing idiom. Files: `packages/shared-domain/src/`
+      metric format helpers, every hero template in
+      `packages/settings-ui/src/ui/views/`.
 
 - [ ] Progress visual cleanup: standardise on M3 tracks + semantic colour for
       bar/segment progress (Energy used, Daily usage, smart-task plan).
@@ -2510,61 +2514,23 @@ should not be folded into the same PR.
       plain white cards with neutral borders; reserve tone treatment for true
       attention states only (paired with the orange-weight item above).
 
-- [ ] Live-walk findings (2026-05-17 review of the deployed desktop palette on
-      the production Homey via headed Playwright, three parallel critic agents).
-      Roll into the alignment pass above rather than treating as separate
-      items — they overlap with the earlier list but capture the lived-in
-      evidence the critics surfaced:
+- [ ] Homey-native Settings nav: today the Settings tab lists `Limits & safety`,
+      `Devices`, `Modes`, `Electricity prices`, `Price-aware devices`,
+      `Simulation mode`, `Advanced` as individually-bordered chevron-only cards.
+      Homey's own settings group these into a single list with internal dividers
+      and pair each row with a flat outline icon (cf. Living Room / Kitchen
+      icons in Homey's app nav). Migrate to a single dividerised list and add a
+      flat outline icon per row. Files: Settings tab markup under
+      `packages/settings-ui/src/ui/views/`, list/divider rules in
+      `packages/settings-ui/public/style.css`.
 
-  - **Whole-card warning rectangles are loud and double-encoded.** Every
-    `data-tone="warn"|"alert"` surface (`.pels-hero`, `.plan-hero`, device
-    cards on Overview, Budget `Projected today`, Usage hero, Smart-task
-    active card) paints a full role-coloured outer border *in addition to*
-    role-toned chips / pills / status text inside. Stacked amber rectangles
-    on a single Overview viewport (hero + device card both in warn state)
-    read as a wall of warning. **Migration target:** 4 px left rail in role
-    colour + role-toned title text + neutral hairline border on the other
-    three sides. M3 status pattern. Files as listed in the orange-weight
-    item above.
-
-  - **Saturated semantics drift under Homey's invert.** Amber warn pills
-    become pink/magenta in Homey dark mode (Budget `Over by 6.5 kWh`, Usage
-    `+16.7 kWh vs typical`). Past tasks `Missed` (amber) and `Succeeded`
-    (green) chips drift inconsistently. Not fixable from PELS alone — needs
-    either Homey-side theme signal or source values whose post-invert form
-    preserves the same role tone. Park as architectural debt unless Homey
-    ships a signal.
-
-  - **Accent green doubles as brand AND positive status.** `#22c55e` on
-    the active tab pill, the "Safe pace" meter swatch, the "What this means"
-    disclosure link, and the "Plan confidence: High" filled pill all use
-    the same fill. The filled-green confidence pill in particular reads
-    "this is selected" before it reads "confidence is high". Pair this with
-    the calmer-primary item above and a status-tone vocabulary review.
-
-  - **Tab strip doesn't fit Homey's chrome.** Homey's own settings nav is
-    flat list rows with a thin accent indicator and no pill capsules; PELS
-    uses a saturated green segmented pill at the top of the modal. This is
-    the largest "third-party graft" signal in the live capture. Pair with
-    the tab-strip-rework item above.
-
-  - **Section eyebrow + display heading is a marketing idiom.** "Daily
-    budget", "Energy history", "Smart tasks", "Configure PELS" use a small
-    all-caps eyebrow on a tinted container card + an oversized display
-    heading. Homey's own settings use single-weight sentence-case labels
-    with no eyebrow. Pair with the metric-typography item above.
-
-  - **Settings list rows ship without icons.** Homey pairs every nav row
-    with a flat coloured icon (Living Room / Kitchen / Bathroom etc.);
-    PELS's Settings page lists `Limits & safety`, `Devices`, `Modes`,
-    `Electricity prices`, `Price-aware devices`, `Simulation mode`,
-    `Advanced` as chevron-only rows. Visually quieter than Homey-native.
-    Add a flat outline icon per row when the tab-rework lands.
-
-  - **Stacked individually-bordered settings cards read as a busy
-    rectangle list.** Each Settings row is its own bordered card. Homey
-    would group these into a single list with internal dividers. Pair with
-    the calmer-device-card item.
+- [ ] Architectural debt — saturated semantics drift under Homey's invert.
+      Amber warn pills become pink/magenta and `Missed` / `Succeeded` chips
+      drift inconsistently when Homey's dark-mode `filter: invert(1)
+      hue-rotate(180deg)` lands on PELS. Not fixable from PELS alone: needs
+      either a Homey-side theme signal we can read at runtime, or source values
+      whose post-invert form preserves the same role tone. Park until Homey
+      ships a signal or until we move to a theme-handshake protocol.
 
 ## P3 Future and Exploratory Work
 
