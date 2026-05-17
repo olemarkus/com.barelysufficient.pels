@@ -144,6 +144,7 @@ P0/P1 findings from any critic: fix in the same PR. P2/P3: route to
 | 2026-05-17 | PR 1 | history schema v3 → v4 — progressSamples + kWhPerUnitMean + deliveredKWh/totalCost + revisions[] |
 | 2026-05-17 | PR 2 | cost + delivered-so-far on live hero — `Σ priceValue × deviceKwh`, two-branch delivery copy |
 | 2026-05-17 | PR 2.5 | pending hero `headlineReason` + `recourse` — scope expansion absorbing PR #856 P1 |
+| 2026-05-17 | PR 3 | one-sentence postmortem + outcome-asymmetric history hero — succeeded receipt vs missed diagnosis vs abandoned log, snapshot `dailyBudgetExhaustedBucketCount` capture, PR #856 P2 missed-reason fold-in |
 
 Update as PRs merge into `v2.7.2`.
 
