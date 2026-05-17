@@ -1,27 +1,30 @@
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
 } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import {
   formatPlanHistoryDeadlineLine,
-  formatPlanHistoryMissedReason,
   formatPlanHistoryObservedCoverage,
   formatPlanHistoryProgressLine,
   formatPlanHistoryReachedAtLine,
-  getPlanHistoryOutcomeLabel,
-  getPlanHistoryOutcomeTone,
 } from '../../../../shared-domain/src/deferredPlanHistory.ts';
+import { deadlineLabels } from '../../../../shared-domain/src/deadlineLabels.ts';
 import {
-  deadlineLabels,
-  SMART_TASK_HISTORY_EYEBROW,
-} from '../../../../shared-domain/src/deadlineLabels.ts';
+  buildHistoryDetailHero,
+  type DeadlinePlanHistoryHeroPayload,
+} from '../deadlinePlanHistoryDetailHero.ts';
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from '../echartsRegistry.ts';
 import { attachTabShownResize } from '../chartVisibilityResize.ts';
 
 type Props = {
   entry: DeferredObjectivePlanHistoryEntry;
   timeZone: string;
+  // Cost-unit suffix carried through from the boot prices (e.g. `kr`). Empty
+  // string when unavailable — the history-detail mount doesn't fetch live
+  // prices (bookmarked URLs work without them), so this is left empty by
+  // default; the secondary line collapses to the kWh-only form.
+  costUnit?: string;
 };
 
 type HourRow = {
@@ -353,19 +356,101 @@ const PlanComparisonChart = ({ rows, hasOriginalSeries, hasFinalSeries, observed
   );
 };
 
-export const DeadlinePlanHistoryDetail = ({ entry, timeZone }: Props) => {
-  const tone = getPlanHistoryOutcomeTone(entry.outcome);
-  const outcomeLabel = getPlanHistoryOutcomeLabel(entry.outcome);
+// Hero block — outcome-asymmetric. Branches on the resolved `tone` from the
+// producer so the only condition the view layer reads is the recourse
+// presence (which the producer already gates on outcome). The "Why" line
+// is rendered separately from the postmortem because the postmortem is the
+// outcome-shape sentence (PR 3) and the missed-reason is the action-oriented
+// one (PR #856 P2 fold-in) — both useful on Missed, neither on Succeeded.
+const HistoryDetailHero = ({
+  hero,
+  progressLine,
+  reachedAtLine,
+  coverageLine,
+  revisionUpdatesLine,
+}: {
+  hero: DeadlinePlanHistoryHeroPayload;
+  progressLine: string | null;
+  reachedAtLine: string | null;
+  coverageLine: string | null;
+  revisionUpdatesLine: string | null;
+}) => (
+  <section
+    class="pels-surface-card plan-history-detail__hero"
+    data-tone={hero.tone}
+  >
+    <p class="eyebrow plan-history-detail__eyebrow">{hero.eyebrow}</p>
+    <p class="plan-history-detail__outcome">
+      <span class={`plan-chip plan-chip--${hero.chip.tone} plan-history-detail__outcome-chip`}>{hero.chip.text}</span>
+    </p>
+    <header class="plan-history-detail__hero-header">
+      <h1 class="plan-card__title plan-history-detail__heading">
+        {hero.heading.deviceName !== null && `${hero.heading.deviceName} — `}
+        <span class="plan-history-detail__heading-when">{hero.heading.deadlineLine}</span>
+      </h1>
+    </header>
+    <p class="plan-history-detail__postmortem" data-variant={hero.lead.variant}>{hero.lead.sentence}</p>
+    {hero.secondary !== null && (
+      <p class="plan-history-detail__secondary">{hero.secondary}</p>
+    )}
+    {hero.whyLine !== null && (
+      <p class="plan-history-detail__missed-reason">Why: {hero.whyLine}</p>
+    )}
+    {hero.recourse !== null && (
+      <div class="plan-hero__recourse plan-history-detail__recourse">
+        <button
+          type="button"
+          class="plan-hero__recourse-button"
+          data-deadline-recourse-tab={hero.recourse.targetTab}
+        >
+          {hero.recourse.label}
+        </button>
+      </div>
+    )}
+    {progressLine !== null && (
+      <p class="plan-history-detail__progress">
+        {progressLine}
+        {reachedAtLine !== null && <span class="plan-history-detail__reached">  ·  {reachedAtLine}</span>}
+      </p>
+    )}
+    {coverageLine !== null && <p class="pels-card-supporting">{coverageLine}</p>}
+    {revisionUpdatesLine !== null && <p class="pels-card-supporting">{revisionUpdatesLine}</p>}
+  </section>
+);
+
+const formatRevisionUpdatesLine = (revisionCount: number | undefined): string | null => {
+  if (typeof revisionCount !== 'number' || revisionCount <= 1) return null;
+  const count = revisionCount - 1;
+  return `Schedule updated ${count} ${count === 1 ? 'time' : 'times'}.`;
+};
+
+export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Props) => {
   const deadlineLine = formatPlanHistoryDeadlineLine(entry, timeZone);
   const progressLine = formatPlanHistoryProgressLine(entry);
   const reachedAtLine = formatPlanHistoryReachedAtLine(entry, timeZone);
   const coverageLine = formatPlanHistoryObservedCoverage(entry);
-  // Missed-only postmortem sentence ("Daily budget was used up before…" /
-  // "PELS couldn't reserve enough energy in time"). Null for non-missed
-  // outcomes so the succeeded path keeps its receipt-shape rendering. Sits
-  // immediately under the progress line so the user sees "what happened"
-  // before "why" — same reading order as the succeeded "reached at" stamp.
-  const missedReason = formatPlanHistoryMissedReason(entry);
+  const revisionUpdatesLine = formatRevisionUpdatesLine(entry.revisionCount);
+  // Producer-resolved hero payload. The view layer never branches on outcome
+  // / planStatus / `dailyBudgetExhaustedBucketCount` — all of that resolution
+  // lives in `buildHistoryDetailHero`.
+  const hero = buildHistoryDetailHero({
+    entry,
+    timeZone,
+    deadlineLine,
+    costUnit,
+  });
+  // Succeeded heroes default the chart collapsed (`receipt-shape`); the view
+  // toggles via `useState`. Missed heroes pass `chartCollapsedByDefault: false`
+  // so the chart renders expanded and the user sees the diagnosis context.
+  // Reset on entry change so navigating Missed (expanded) → Succeeded
+  // (collapsed) doesn't carry the previous entry's expanded state forward
+  // when the parent reuses this component instance.
+  // Initial state mirrors the hero's per-outcome default (Succeeded =
+  // collapsed receipt; Missed = expanded diagnosis; Abandoned = collapsed
+  // log). State reset across entry navigation is handled by the parent's
+  // `key={entry.id}` prop, which remounts this component on entry change
+  // rather than us managing reset-via-useEffect inside.
+  const [chartCollapsed, setChartCollapsed] = useState(hero.chartCollapsedByDefault);
   const rows = buildHistoryDetailRows(
     entry.originalPlan,
     entry.finalPlan,
@@ -392,34 +477,17 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone }: Props) => {
   const ariaHeading = entry.deviceName
     ? `${entry.deviceName} — ${deadlineLine}`
     : deadlineLine;
+  const hasChartData = entry.originalPlan !== null || entry.finalPlan !== null;
   return (
-    <article class="plan-history-detail" aria-label={`${SMART_TASK_HISTORY_EYEBROW} ${ariaHeading}`}>
-      <section class="pels-surface-card plan-history-detail__hero">
-        <p class="eyebrow plan-history-detail__eyebrow">{SMART_TASK_HISTORY_EYEBROW}</p>
-        <p class="plan-history-detail__outcome">
-          <span class={`plan-chip plan-chip--${tone} plan-history-detail__outcome-chip`}>{outcomeLabel}</span>
-        </p>
-        <header class="plan-history-detail__hero-header">
-          <h1 class="plan-card__title plan-history-detail__heading">
-            {entry.deviceName && `${entry.deviceName} — `}
-            <span class="plan-history-detail__heading-when">{deadlineLine}</span>
-          </h1>
-        </header>
-        {progressLine && (
-          <p class="plan-history-detail__progress">
-            {progressLine}
-            {reachedAtLine && <span class="plan-history-detail__reached">  ·  {reachedAtLine}</span>}
-          </p>
-        )}
-        {missedReason && (
-          <p class="plan-history-detail__missed-reason">{missedReason}</p>
-        )}
-        {coverageLine && <p class="pels-card-supporting">{coverageLine}</p>}
-        {typeof entry.revisionCount === 'number' && entry.revisionCount > 1 && (
-          <p class="pels-card-supporting">Schedule updated {entry.revisionCount - 1} {entry.revisionCount === 2 ? 'time' : 'times'}.</p>
-        )}
-      </section>
-      {entry.originalPlan === null && entry.finalPlan === null ? (
+    <article class="plan-history-detail" aria-label={`${hero.eyebrow} ${ariaHeading}`}>
+      <HistoryDetailHero
+        hero={hero}
+        progressLine={progressLine}
+        reachedAtLine={reachedAtLine}
+        coverageLine={coverageLine}
+        revisionUpdatesLine={revisionUpdatesLine}
+      />
+      {!hasChartData ? (
         <section class="pels-surface-card">
           <p class="pels-card-supporting">
             No hourly schedule was saved for this run.
@@ -429,13 +497,25 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone }: Props) => {
         <section class="pels-surface-card budget-redesign-card deadline-horizon-card">
           <div class="budget-card-header">
             <h2 class="plan-card__title">Scheduled vs observed</h2>
+            {hero.chartCollapsedByDefault && (
+              <button
+                type="button"
+                class="plan-history-detail__chart-toggle"
+                aria-expanded={!chartCollapsed}
+                onClick={() => setChartCollapsed(!chartCollapsed)}
+              >
+                {chartCollapsed ? 'View schedule' : 'Hide schedule'}
+              </button>
+            )}
           </div>
-          <PlanComparisonChart
-            rows={rows}
-            hasOriginalSeries={hasOriginalSeries}
-            hasFinalSeries={hasFinalSeries}
-            observedSeriesName={observedSeriesName}
-          />
+          {!chartCollapsed && (
+            <PlanComparisonChart
+              rows={rows}
+              hasOriginalSeries={hasOriginalSeries}
+              hasFinalSeries={hasFinalSeries}
+              observedSeriesName={observedSeriesName}
+            />
+          )}
         </section>
       )}
     </article>

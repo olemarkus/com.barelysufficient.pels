@@ -1,0 +1,276 @@
+// Unit tests for the smart-task history-detail postmortem resolver (v2.7.2 PR 3).
+// Six outcome-shaped variants split across `met` / `missed` / `abandoned`
+// + `unknown` fallback. Each test constructs a minimal entry and asserts
+// the resolved variant slug + sentence shape so the asymmetric history hero
+// can rely on `lead.sentence` without re-checking outcome.
+import {
+  formatPlanHistoryMissedReason,
+  formatPlanHistoryPostmortem,
+} from '../packages/shared-domain/src/deferredPlanHistory';
+import type {
+  DeferredObjectivePlanHistoryEntry,
+  DeferredObjectivePlanHistoryRevisionSnapshot,
+} from '../packages/contracts/src/deferredObjectivePlanHistory';
+
+const HOUR_MS = 60 * 60 * 1000;
+const DEADLINE_MS = Date.UTC(2026, 4, 16, 16, 0, 0); // Sat 16 May 16:00 UTC
+
+const buildSnapshot = (
+  overrides: Partial<DeferredObjectivePlanHistoryRevisionSnapshot> = {},
+): DeferredObjectivePlanHistoryRevisionSnapshot => ({
+  hours: [{ startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 2 }],
+  energyNeededKWh: 2,
+  planStatus: 'on_track',
+  revisedAtMs: DEADLINE_MS - 3 * HOUR_MS,
+  ...overrides,
+});
+
+const buildEntry = (
+  overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
+): DeferredObjectivePlanHistoryEntry => ({
+  id: 'entry-1',
+  deviceId: 'dev-1',
+  deviceName: 'Connected 300',
+  objectiveKind: 'temperature',
+  targetTemperatureC: 65,
+  targetPercent: null,
+  deadlineAtMs: DEADLINE_MS,
+  startedAtMs: DEADLINE_MS - 6 * HOUR_MS,
+  finalizedAtMs: DEADLINE_MS,
+  startProgressC: 50,
+  startProgressPercent: null,
+  finalProgressC: 65,
+  finalProgressPercent: null,
+  initialEnergyNeededKWh: 22.5,
+  outcome: 'met',
+  metAtMs: null,
+  usedDeadlineReserve: false,
+  usedPolicyAvoid: false,
+  observedIntervals: [],
+  discoveredFrom: 'observation',
+  originalPlan: null,
+  finalPlan: null,
+  ...overrides,
+});
+
+describe('formatPlanHistoryPostmortem', () => {
+  describe('met outcome', () => {
+    it('resolves met-with-margin when the run reached the target well before the deadline', () => {
+      // Reached the target 4h 3m before the deadline (16:00) → margin variant.
+      const metAtMs = DEADLINE_MS - 4 * HOUR_MS - 3 * 60 * 1000;
+      const entry = buildEntry({
+        outcome: 'met',
+        metAtMs,
+        finalProgressC: 65,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('met-with-margin');
+      expect(result.sentence).toContain('65.0 °C');
+      expect(result.sentence).toContain('16:00');
+      expect(result.sentence).toMatch(/4h 3m/);
+    });
+
+    it('resolves met-at-buzzer when the run reached target inside the last hour', () => {
+      // Reached 2 minutes before deadline → at-buzzer variant.
+      const metAtMs = DEADLINE_MS - 2 * 60 * 1000;
+      const entry = buildEntry({
+        outcome: 'met',
+        metAtMs,
+        finalProgressC: 65,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('met-at-buzzer');
+      expect(result.sentence).toMatch(/2m before/);
+    });
+
+    it('resolves met-with-overshoot when the final progress is > 5 °C above target', () => {
+      const entry = buildEntry({
+        outcome: 'met',
+        metAtMs: DEADLINE_MS - 4 * HOUR_MS,
+        // 12.7 °C overshoot — well above the 5 °C threshold.
+        finalProgressC: 77.7,
+        targetTemperatureC: 65,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('met-with-overshoot');
+      expect(result.sentence).toContain('overshot');
+    });
+
+    it('resolves met-with-overshoot for EV when > 10 % above target', () => {
+      const entry = buildEntry({
+        outcome: 'met',
+        objectiveKind: 'ev_soc',
+        targetTemperatureC: null,
+        targetPercent: 80,
+        startProgressC: null,
+        startProgressPercent: 30,
+        finalProgressC: null,
+        finalProgressPercent: 95, // 15 % overshoot — above the 10 % threshold.
+        metAtMs: DEADLINE_MS - 2 * HOUR_MS,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('met-with-overshoot');
+    });
+
+    it('falls back to a plain confirmation when metAtMs is missing on a met entry', () => {
+      const entry = buildEntry({
+        outcome: 'met',
+        metAtMs: null,
+        finalProgressC: 65,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('met-with-margin');
+      expect(result.sentence).toContain('65.0 °C');
+      expect(result.sentence).toContain('before the deadline');
+    });
+  });
+
+  describe('missed outcome', () => {
+    it('resolves missed-by-budget-exhaustion when the final snapshot reports budget cap collapse', () => {
+      const entry = buildEntry({
+        outcome: 'missed',
+        finalProgressC: 38,
+        finalPlan: buildSnapshot({
+          planStatus: 'cannot_meet',
+          dailyBudgetExhaustedBucketCount: 4,
+        }),
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('missed-by-budget-exhaustion');
+      expect(result.sentence).toContain('daily energy budget');
+      expect(result.sentence).toContain('16:00');
+    });
+
+    it('resolves missed-by-shortfall when budget is fine but progress did not reach target', () => {
+      const entry = buildEntry({
+        outcome: 'missed',
+        finalProgressC: 38,
+        targetTemperatureC: 65,
+        finalPlan: buildSnapshot({
+          planStatus: 'cannot_meet',
+          // No `dailyBudgetExhaustedBucketCount` → not the budget branch.
+        }),
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('missed-by-shortfall');
+      expect(result.sentence).toMatch(/Reached 38\.0 °C/);
+      expect(result.sentence).toMatch(/27\.0 °C short of 65\.0 °C/);
+      expect(result.sentence).toContain('16:00');
+    });
+
+    it('falls through to a plain shortfall sentence when the figures are missing', () => {
+      const entry = buildEntry({
+        outcome: 'missed',
+        finalProgressC: null,
+        targetTemperatureC: null,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('missed-by-shortfall');
+      expect(result.sentence).toContain('Did not reach the target');
+    });
+  });
+
+  describe('abandoned outcome', () => {
+    it('resolves abandoned-by-clear for outcome=replaced (user-swapped target/deadline)', () => {
+      const finalizedAtMs = DEADLINE_MS - 12 * HOUR_MS - 12 * 60 * 1000; // 04:12 the day before
+      const entry = buildEntry({
+        outcome: 'replaced',
+        finalizedAtMs,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('abandoned-by-clear');
+      expect(result.sentence).toContain('replaced');
+    });
+
+    // `outcome === 'abandoned'` covers both the stale-diagnostic timeout path
+    // and the user-clear path; the schema can't distinguish them so the copy
+    // names a probable behaviour without claiming a specific cause.
+    it('resolves abandoned-by-unplug for outcome=abandoned on EV kind (charger or clear)', () => {
+      const finalizedAtMs = DEADLINE_MS - 13 * HOUR_MS - 15 * 60 * 1000; // 02:45
+      const entry = buildEntry({
+        outcome: 'abandoned',
+        objectiveKind: 'ev_soc',
+        targetTemperatureC: null,
+        targetPercent: 80,
+        startProgressC: null,
+        startProgressPercent: 30,
+        finalProgressC: null,
+        finalProgressPercent: 45,
+        finalizedAtMs,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('abandoned-by-unplug');
+      expect(result.sentence).toMatch(/stopped/);
+      expect(result.sentence).toMatch(/charger|cleared/);
+    });
+
+    it('resolves abandoned-by-unplug for outcome=abandoned on thermal kind', () => {
+      const entry = buildEntry({
+        outcome: 'abandoned',
+        objectiveKind: 'temperature',
+        finalizedAtMs: DEADLINE_MS - 8 * HOUR_MS,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('abandoned-by-unplug');
+      expect(result.sentence).toMatch(/stopped/);
+      expect(result.sentence).toMatch(/device|cleared/);
+    });
+  });
+
+  describe('unknown outcome', () => {
+    it('resolves unknown variant for backfill-discovered entries', () => {
+      const entry = buildEntry({
+        outcome: 'unknown',
+        discoveredFrom: 'backfill',
+        finalProgressC: null,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('unknown');
+      expect(result.sentence).toContain('reconstructed from settings');
+    });
+
+    it('returns a non-null sentence for unknown outcomes that are not backfill-derived', () => {
+      const entry = buildEntry({
+        outcome: 'unknown',
+        discoveredFrom: 'observation',
+        finalProgressC: null,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('unknown');
+      expect(result.sentence.length).toBeGreaterThan(0);
+    });
+  });
+});
+
+describe('formatPlanHistoryMissedReason (v2.7.2 PR 3 budget-exhaustion fold-in)', () => {
+  it('returns a daily-budget-pointing sentence when the final snapshot reports budget exhaustion', () => {
+    const entry = buildEntry({
+      outcome: 'missed',
+      finalPlan: buildSnapshot({
+        planStatus: 'cannot_meet',
+        dailyBudgetExhaustedBucketCount: 3,
+      }),
+    });
+    const result = formatPlanHistoryMissedReason(entry);
+    expect(result).not.toBeNull();
+    expect(result).toContain('daily energy budget');
+    expect(result).toContain('daily budget');
+  });
+
+  it('keeps the cannot_meet fallback sentence when no budget exhaustion is recorded', () => {
+    const entry = buildEntry({
+      outcome: 'missed',
+      finalPlan: buildSnapshot({
+        planStatus: 'cannot_meet',
+        // No `dailyBudgetExhaustedBucketCount` → cannot_meet fallback branch.
+      }),
+    });
+    const result = formatPlanHistoryMissedReason(entry);
+    expect(result).toContain("couldn't reserve enough energy");
+  });
+
+  it('returns null for non-missed outcomes', () => {
+    expect(formatPlanHistoryMissedReason(buildEntry({ outcome: 'met' }))).toBeNull();
+    expect(formatPlanHistoryMissedReason(buildEntry({ outcome: 'abandoned' }))).toBeNull();
+  });
+});

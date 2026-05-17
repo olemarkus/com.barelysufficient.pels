@@ -193,4 +193,41 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     });
     expect(result.entries).toHaveLength(0);
   });
+
+  // v2.7.2 PR 3 added `dailyBudgetExhaustedBucketCount` on the snapshot so
+  // the history-detail postmortem can branch on budget exhaustion. The
+  // validator accepts the field on read, drops it on negative values, and
+  // accepts zero (the recorder writes positive counts only — but legacy
+  // tools that round-trip persisted history might write zero, so the
+  // validator stays lenient).
+  it('accepts a revision snapshot with dailyBudgetExhaustedBucketCount present', () => {
+    const snapshot = {
+      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      energyNeededKWh: 1.5,
+      planStatus: 'cannot_meet',
+      revisedAtMs: 0,
+      dailyBudgetExhaustedBucketCount: 3,
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [{ ...v3Entry, id: 'budget-1', originalPlan: snapshot, finalPlan: snapshot }],
+    });
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]!.finalPlan?.dailyBudgetExhaustedBucketCount).toBe(3);
+  });
+
+  it('drops a revision snapshot whose dailyBudgetExhaustedBucketCount is negative', () => {
+    const snapshot = {
+      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      energyNeededKWh: 1.5,
+      planStatus: 'cannot_meet',
+      revisedAtMs: 0,
+      dailyBudgetExhaustedBucketCount: -1,
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [{ ...v3Entry, id: 'budget-bad', originalPlan: snapshot, finalPlan: null }],
+    });
+    expect(result.entries).toHaveLength(0);
+  });
 });

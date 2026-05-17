@@ -857,7 +857,18 @@ const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
 
 const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) => {
   if (loadState.status === 'history-detail') {
-    return <DeadlinePlanHistoryDetail entry={loadState.entry} timeZone={loadState.timeZone} />;
+    // `key={entry.id}` forces Preact to remount the component when the user
+    // navigates between history entries (e.g., past-task list → entry A →
+    // back → entry B). Without this, the local `chartCollapsed` state from
+    // entry A would persist and the Succeeded receipt for entry B could
+    // briefly render expanded with a stale "Hide schedule" toggle.
+    return (
+      <DeadlinePlanHistoryDetail
+        key={loadState.entry.id}
+        entry={loadState.entry}
+        timeZone={loadState.timeZone}
+      />
+    );
   }
   if (loadState.status === 'history-missing') {
     return (
