@@ -243,10 +243,14 @@ export const renderSteppedLoadDraft = (device: TargetDeviceSnapshot) => {
   deviceDetailSteppedSteps.replaceChildren(...rows);
 };
 
-// Drop every per-device draft so the next device-detail open starts fresh
-// from the persisted profile. Called on detail-pane close.
-export const closeSteppedLoadDraft = () => {
-  steppedLoadDraftsByDeviceId.clear();
+// Drop the closing device's draft so its next open starts fresh from the persisted
+// profile. Drafts for any other device the user has touched remain intact — the
+// per-device map shipped in TODO 740 explicitly advertises that isolation guarantee,
+// and a blanket .clear() here used to erase unsaved edits on every other device when
+// the user merely switched panes.
+export const closeSteppedLoadDraft = (deviceId: string): void => {
+  if (!deviceId) return;
+  steppedLoadDraftsByDeviceId.delete(deviceId);
 };
 
 export const initSteppedLoadDraftHandlers = (params: {

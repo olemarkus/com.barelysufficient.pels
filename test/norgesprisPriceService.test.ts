@@ -260,6 +260,76 @@ describe('Norway norgespris pricing', () => {
     expect((current as any).norgesprisAdjustment).toBeCloseTo(expectedAdjustment, 2);
   });
 
+  it('shows full norgespris adjustment for past hours regardless of live monthly cap snapshot', () => {
+    // Late in the month, monthUsageKwh is near the cap (only 1 kWh remaining).
+    // Past hours actually ran (or didn't) under the model at the time, so the live
+    // forward-looking cap snapshot must not retroactively reduce their displayed
+    // eligibility. Only current/future hours derive eligibility from remaining cap.
+    const now = new Date(Date.UTC(2026, 0, 28, 10, 15, 0));
+    vi.useFakeTimers().setSystemTime(now);
+    const farPast = new Date(Date.UTC(2026, 0, 27, 8, 0, 0));
+    const recentPast = new Date(Date.UTC(2026, 0, 28, 9, 0, 0));
+    const currentHour = new Date(Date.UTC(2026, 0, 28, 10, 0, 0));
+    setNorwayNorgesprisSettings({
+      now,
+      monthUsageKwh: NORGESPRIS_HOUSEHOLD_MONTHLY_CAP_KWH - 1,
+      lastPowerW: 2000, // 2 kWh/hour estimate -> current hour gets 50% eligibility
+      tariffGroup: 'Husholdning',
+      spotPrices: [
+        { startsAt: farPast.toISOString(), spotPriceExVat: SPOT_PRICE_EX_VAT, currency: 'NOK' },
+        { startsAt: recentPast.toISOString(), spotPriceExVat: SPOT_PRICE_EX_VAT, currency: 'NOK' },
+        { startsAt: currentHour.toISOString(), spotPriceExVat: SPOT_PRICE_EX_VAT, currency: 'NOK' },
+      ],
+    });
+
+    const prices = createService().getCombinedHourlyPrices();
+    const fullEligibility = buildExpectedNorgesprisAdjustment(1);
+    const halfEligibility = buildExpectedNorgesprisAdjustment(0.5);
+
+    const farPastRow = prices.find((entry) => entry.startsAt === farPast.toISOString());
+    const recentPastRow = prices.find((entry) => entry.startsAt === recentPast.toISOString());
+    const currentRow = prices.find((entry) => entry.startsAt === currentHour.toISOString());
+    expect(farPastRow).toBeDefined();
+    expect(recentPastRow).toBeDefined();
+    expect(currentRow).toBeDefined();
+
+    // Both past rows display full Norgespris adjustment even though the live snapshot is near-cap.
+    expect((farPastRow as any).norgesprisAdjustment).toBeCloseTo(fullEligibility, 2);
+    expect((recentPastRow as any).norgesprisAdjustment).toBeCloseTo(fullEligibility, 2);
+    // Current hour still derives eligibility from remaining cap (1 kWh / 2 kWh estimate = 0.5).
+    expect((currentRow as any).norgesprisAdjustment).toBeCloseTo(halfEligibility, 2);
+  });
+
+  it('shows full norgespris adjustment for past hours when live cap is fully consumed', () => {
+    // Past hours preceded a usage spike that exhausted the cap. The historical display
+    // must still show those hours under Norgespris (full adjustment), not under the
+    // empty-cap fallback the current hour now sees.
+    const now = new Date(Date.UTC(2026, 0, 28, 10, 15, 0));
+    vi.useFakeTimers().setSystemTime(now);
+    const previousHour = new Date(Date.UTC(2026, 0, 28, 9, 0, 0));
+    const currentHour = new Date(Date.UTC(2026, 0, 28, 10, 0, 0));
+    setNorwayNorgesprisSettings({
+      now,
+      monthUsageKwh: NORGESPRIS_HOUSEHOLD_MONTHLY_CAP_KWH + 100, // cap fully consumed
+      lastPowerW: 2000,
+      tariffGroup: 'Husholdning',
+      spotPrices: [
+        { startsAt: previousHour.toISOString(), spotPriceExVat: SPOT_PRICE_EX_VAT, currency: 'NOK' },
+        { startsAt: currentHour.toISOString(), spotPriceExVat: SPOT_PRICE_EX_VAT, currency: 'NOK' },
+      ],
+    });
+
+    const prices = createService().getCombinedHourlyPrices();
+    const previous = prices.find((entry) => entry.startsAt === previousHour.toISOString());
+    const current = prices.find((entry) => entry.startsAt === currentHour.toISOString());
+    expect(previous).toBeDefined();
+    expect(current).toBeDefined();
+    // Past hour still gets full adjustment.
+    expect((previous as any).norgesprisAdjustment).toBeCloseTo(buildExpectedNorgesprisAdjustment(1), 2);
+    // Current hour reflects the empty cap.
+    expect((current as any).norgesprisAdjustment).toBeCloseTo(0, 5);
+  });
+
   it('keeps strømstøtte support behavior for past hours unchanged', () => {
     const now = new Date(Date.UTC(2026, 0, 15, 10, 15, 0));
     vi.useFakeTimers().setSystemTime(now);

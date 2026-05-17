@@ -11,6 +11,7 @@ const TIME_ZONES = Object.freeze([
 const TEST_FILES = Object.freeze([
   'test/prices.test.ts',
   'test/norgesprisPriceService.test.ts',
+  'test/tz/powerTrackerDst.test.ts',
 ]);
 
 for (const timeZone of TIME_ZONES) {
