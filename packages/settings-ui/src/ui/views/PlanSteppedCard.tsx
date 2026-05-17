@@ -16,7 +16,7 @@ import {
 } from '../../../../shared-domain/src/planStateLabels.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { cardActivationProps } from '../cardActivation.ts';
-import { DeadlineChip, PriorityRankChip } from './PlanDeviceCards.tsx';
+import { DeadlineChip } from './PlanDeviceCards.tsx';
 import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
 import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
 
@@ -93,13 +93,11 @@ const StepRail = ({ dev, profile }: { dev: PlanDeviceSnapshot; profile: SteppedL
 export const PlanSteppedCard = ({
   dev,
   plan,
-  rank,
   renderedAtMs,
   nowMs,
 }: {
   dev: PlanDeviceSnapshot;
   plan: PlanSnapshot | null;
-  rank: number | null;
   renderedAtMs: number;
   nowMs: number;
 }) => {
@@ -139,7 +137,6 @@ export const PlanSteppedCard = ({
           <h3 class="plan-card__title">{dev.name}</h3>
         </div>
         <div class="plan-card__chips">
-          <PriorityRankChip rank={rank} budgetExempt={displayDev.budgetExempt === true} />
           {chip && <span class={`plan-chip plan-chip--${chip.tone}`}>{chip.label}</span>}
           {displayDev.budgetExempt === true && (
             <span class="plan-chip plan-chip--muted">Always on</span>

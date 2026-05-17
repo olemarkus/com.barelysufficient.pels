@@ -109,12 +109,12 @@ test.describe('Settings UI (smoke)', () => {
 
     await page.getByRole('tab', { name: 'Settings' }).click();
     const currentMode = page.locator('#settings-active-mode-summary');
-    await expect(currentMode).toHaveText('Home mode');
+    await expect(currentMode).toHaveText('Mode: Home');
     await expect(page.locator('#active-mode-select md-select-option[value="Away"]')).toHaveCount(1);
 
     await setMdValue(page, '#active-mode-select', 'Away');
 
-    await expect(currentMode).toHaveText('Away mode');
+    await expect(currentMode).toHaveText('Mode: Away');
     await expect(page.locator('#toast')).toContainText('Active mode set to Away');
 
     const stored = await page.evaluate(() => new Promise<unknown>((resolve, reject) => {

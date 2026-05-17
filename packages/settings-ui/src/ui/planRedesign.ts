@@ -73,7 +73,7 @@ const doRender = () => {
   renderPlanOverview(surface, {
     plan: currentPlan,
     power: cachedPowerStatus,
-    context: { activeMode: state.activeMode, dryRun: state.dryRun },
+    context: { dryRun: state.dryRun },
     renderedAtMs: currentRenderedAtMs,
     nowMs: now,
   });

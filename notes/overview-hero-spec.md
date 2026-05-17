@@ -20,7 +20,7 @@ One elevated Material 3 card with tonal background that shifts with state.
 
 ```
 ┌──────────────────────────────────────────────┐
-│ [On track] [Home mode] [Live]            ⓘ  │
+│ [On track]                                ⓘ  │
 │                                              │
 │ Power now                                    │
 │ 7.0 kW                                      │
@@ -43,7 +43,15 @@ One elevated Material 3 card with tonal background that shifts with state.
 
 ## Chip row
 
-Three chips, left-to-right: status · mode · freshness.
+The hero answers "am I OK right now?". The chip rail carries only signals that
+change that answer: status, plus freshness when the underlying data is stale.
+
+Why: owner walk 2026-05-17. The mode chip and price-level chip were demoted
+out of the hero in PR9. Mode is a stable filter (page chrome), not a status
+signal — restating it on the hero adds noise without changing the user's
+"am I OK now" answer. Price level is a Budget-page concern; the Budget page
+still surfaces it. The hero keeps status (because that *is* the answer) and
+freshness (because stale readings invalidate the answer).
 
 ### Status chip
 
@@ -55,17 +63,18 @@ Three chips, left-to-right: status · mode · freshness.
 | Simulation mode enabled and PELS would act | `Simulation mode` | warning |
 | Power data stale or fail-closed | `No data` | error |
 
-### Mode chip
-
-Label: `[Home mode]`, `[Away mode]`, `[Night mode]`, etc.
-
-The word "mode" is required — `[Home]` alone is ambiguous to a new user.
-
-Mode must be fetched via an API endpoint (bootstrap or dedicated), not by reading a setting key directly in the UI. See design principles below.
-
 ### Freshness chip
 
 Show only when not `fresh`. Hide when live data is current.
+
+### Mode (page chrome, not hero chip)
+
+The current operating mode is surfaced on the Settings page (under "Mode:") and
+in the modes editor, not on the Overview hero. Settings rendering uses
+`formatModeSummary` from `packages/settings-ui/src/ui/modeLabels.ts`, which
+emits the English structural prefix `Mode:` before the user-authored mode
+name (e.g. `Mode: Hjemme`) to avoid the mid-phrase code-switch that
+`{name} mode` produced at non-English locales.
 
 ### Info button
 
@@ -252,15 +261,12 @@ hourUsedKWh             meta.usedKWh
 hourBudgetKWh           meta.budgetKWh
 minutesRemaining        meta.minutesRemaining
 projectedHourKWh        computed: usedKWh + (currentKw × minutesRemaining / 60)
-activeModeName          needs API exposure (currently settings-only)
 freshnessState          powerStatus.powerFreshnessState
 dryRunEnabled           bootstrap setting `capacity_dry_run`; show as `Simulation mode` in UI copy
 limitedDeviceCount      count plan devices where currentState=shed
 restoringDeviceCount    count plan devices where plannedState=restore
 wouldLimitCount         simulation mode only: count where plannedState=shed and currentState≠shed
 ```
-
-`activeModeName` is currently only available via settings. It should be added to the bootstrap or plan API response so the UI does not need to read settings for live state.
 
 ---
 
