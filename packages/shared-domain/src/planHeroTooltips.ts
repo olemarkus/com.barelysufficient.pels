@@ -19,8 +19,8 @@ export const HERO_INFO_TOOLTIP_TEXT = [
 // Tooltips appended after "Safe pace now {N} kW — ", so each phrase starts in
 // lowercase. Source-specific copy mirrors `notes/ui-terminology.md`.
 export const SAFE_PACE_TOOLTIP_BY_SOURCE: Record<HeroSoftLimitSource, string> = {
-  capacity: 'hourly power limit minus safety margin, PELS starts reacting here.',
-  daily: 'slowed to stay within today’s budget — daily pacing is the tighter constraint right now.',
+  capacity: 'hard cap minus safety margin - PELS starts reacting here.',
+  daily: 'slowed to stay within today\'s budget - daily pacing is the tighter constraint right now.',
   both: 'both capacity and daily pacing are constraining PELS right now.',
 };
 

@@ -25,6 +25,11 @@ describe('planHeroTooltips', () => {
         expect(text[0]).toBe(text[0].toLowerCase());
       }
     });
+
+    it('uses "hard cap" terminology, not "hourly power limit"', () => {
+      expect(SAFE_PACE_TOOLTIP_BY_SOURCE.capacity).not.toMatch(/hourly/i);
+      expect(SAFE_PACE_TOOLTIP_BY_SOURCE.capacity).toMatch(/hard cap/);
+    });
   });
 
   describe('formatSafePaceTooltip', () => {
