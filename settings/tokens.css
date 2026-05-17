@@ -80,7 +80,6 @@
   --color-border-strong: #56627a;
   --color-overlay-backdrop: rgba(0, 0, 0, 0.6);
   --pels-touch-target-min: 48px;
-  --pels-deadline-close-size: 40px;
   --chip-padding-inline: 10px;
   --chip-border-width: 1px;
   --shadow-primary-glow: 0 16px 30px rgba(var(--color-base-accent-default-rgb), 0.25);
@@ -113,6 +112,7 @@
   --color-state-info-border: color-mix(in srgb, var(--color-base-info-default) 55%, var(--color-surface-3));
   --color-focus-ring: var(--color-base-accent-default);
   --color-overlay-toast: rgba(var(--color-base-black-rgb), 0.9);
+  --pels-homey-mobile-chrome: var(--spacing-2); /** Minimum-floor (NOT a fallback) for the page-chrome top inset reserved under Homey's native mobile chrome ("PELS / Done" header). Default is 8 px (`--spacing-2`) for desktop / fine-pointer iframes; coarse-pointer (touch) override raises to 56 px to clear Homey mobile chrome. Use as `max(var(--pels-homey-mobile-chrome), env(safe-area-inset-top))` — token is a **floor**, not a fallback. */
   --pels-surface-container-low: var(--color-surface-2);
   --pels-surface-container: var(--color-surface-3);
   --pels-surface-container-high: var(--color-surface-4);
@@ -172,6 +172,7 @@
   --pels-shell-nav-tab-label-size: var(--font-size-sm);
   --pels-shell-nav-tab-label-size-compact: var(--font-size-xs);
   --pels-shell-nav-tab-label-weight: var(--font-weight-semibold);
+  --pels-deadline-close-size: var(--pels-touch-target-min);
   --pels-chart-price-line: var(--color-base-price-default);
   --pels-chart-price-fill: color-mix(in srgb, var(--color-base-price-default) 18%, transparent);
   --pels-chart-heatmap-border: var(--color-surface-1);

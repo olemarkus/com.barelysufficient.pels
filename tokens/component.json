@@ -3,6 +3,10 @@
     "touch-target": {
       "min": { "value": "48px" }
     },
+    "homey-mobile-chrome": {
+      "value": "{spacing.2}",
+      "comment": "Minimum-floor (NOT a fallback) for the page-chrome top inset reserved under Homey's native mobile chrome (\"PELS / Done\" header). Default is 8 px (`--spacing-2`) for desktop / fine-pointer iframes; coarse-pointer (touch) override raises to 56 px to clear Homey mobile chrome. Use as `max(var(--pels-homey-mobile-chrome), env(safe-area-inset-top))` — token is a **floor**, not a fallback."
+    },
     "on-surface": { "value": "{color.semantic.text.primary}" },
     "on-surface-variant": { "value": "{color.semantic.text.secondary}" },
     "on-surface-muted": { "value": "{color.semantic.text.muted}" },
@@ -175,7 +179,7 @@
       }
     },
     "deadline-close": {
-      "size": { "value": "40px" },
+      "size": { "value": "{pels.touch-target.min}" },
       "background": { "value": "{pels.surface-container-high}" },
       "text": { "value": "{pels.text.primary}" },
       "outline": { "value": "{pels.surface-outline}" }
