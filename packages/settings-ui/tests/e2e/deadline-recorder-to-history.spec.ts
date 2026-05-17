@@ -7,7 +7,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import type {
   DeferredObjectivePlanHistoryEntry,
-  DeferredObjectivePlanHistoryV3,
+  DeferredObjectivePlanHistoryV4,
 } from '../../../contracts/src/deferredObjectivePlanHistory';
 
 const require = createRequire(import.meta.url);
@@ -51,8 +51,8 @@ type PlanHistoryRecorderLike = {
 
 type PlanHistoryRuntimeModule = {
   DeferredObjectivePlanHistoryRecorder: new (deps: {
-    load: () => DeferredObjectivePlanHistoryV3 | null;
-    save: (history: DeferredObjectivePlanHistoryV3) => boolean;
+    load: () => DeferredObjectivePlanHistoryV4 | null;
+    save: (history: DeferredObjectivePlanHistoryV4) => boolean;
   }) => PlanHistoryRecorderLike;
 };
 
@@ -129,9 +129,9 @@ const buildTemperatureDiag = (overrides: TemperatureDiagOverrides): DeferredObje
   requestedMinimumStepId: null,
 });
 
-const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV3> => {
+const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV4> => {
   const { DeferredObjectivePlanHistoryRecorder } = await loadPlanHistoryRuntime();
-  let saved: DeferredObjectivePlanHistoryV3 | null = null;
+  let saved: DeferredObjectivePlanHistoryV4 | null = null;
   const recorder = new DeferredObjectivePlanHistoryRecorder({
     load: () => null,
     save: (history) => { saved = history; return true; },
@@ -187,7 +187,7 @@ const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV3> => {
 };
 
 const groupByDevice = (
-  history: DeferredObjectivePlanHistoryV3,
+  history: DeferredObjectivePlanHistoryV4,
 ): Record<string, DeferredObjectivePlanHistoryEntry[]> => {
   const grouped: Record<string, DeferredObjectivePlanHistoryEntry[]> = {};
   for (const entry of history.entries) {

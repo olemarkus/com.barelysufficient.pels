@@ -2780,3 +2780,30 @@ should not be folded into the same PR.
       parameter expansion (`${PWD:t}`).
       Files: `package.json` (scripts: `start`, `install-app`, `start:local`),
       `scripts/resolve-homey-id.mjs`.
+- [ ] Add an explicit cap on `DeferredObjectivePlanHistoryEntry.revisions[]` length.
+      Surfaced by adversarial-review on v2.7.2 PR 1 (schema v3→v4). The in-memory
+      `InProgressRecord.revisions` array is rebuilt with `[...existing, newEntry]` on every
+      cycle that observes a new revision (`appendRevisionLogIfNew` in
+      `lib/plan/deferredObjectives/planHistoryV4Helpers.ts`). Realistic runs see 5-10
+      entries due to the active-plan recorder's per-cycle dedupe, so the persisted size is
+      bounded in practice. A pathological replan loop (prices oscillate, `rate_refined`
+      keeps firing) could push the array large; the rebuild path is O(n²) over the run.
+      Add `MAX_REVISIONS_PER_ENTRY = 64` with drop-oldest semantics mirroring
+      `PROGRESS_SAMPLES_PER_ENTRY_CAP`, or switch the recorder to a `push`-based mutation
+      pattern guarded by a single dirty flag.
+      Why P3: speculative future-proofing; no observed pathological trigger today.
+      Files: `lib/plan/deferredObjectives/planHistoryV4Helpers.ts`,
+      `lib/plan/deferredObjectives/planHistory.ts` (`InProgressRecord.revisions`).
+- [ ] Split `lib/plan/deferredObjectives/planHistory.ts` so the file drops back under the
+      500-LOC ESLint ceiling without an override.
+      Surfaced by adversarial-review on v2.7.2 PR 1. PR 1 added a `planHistoryV4Helpers.ts`
+      split but the recorder still sits at ~512 effective lines, requiring an override in
+      `eslint.config.mjs` (`max-lines: 520`). A second split — most natural is moving
+      `synthesizeBackfillEntry` + `DeferredObjectiveBackfillConfig` + the related
+      `backfillFromConfig` body into `planHistoryBackfill.ts` — would free ~40 effective
+      lines and let the override come back out.
+      Why P3: maintenance hygiene; the override is already documented with a target
+      ceiling comment.
+      Files: `lib/plan/deferredObjectives/planHistory.ts`,
+      `lib/plan/deferredObjectives/planHistoryBackfill.ts` (new),
+      `eslint.config.mjs` (remove override once the split lands).
