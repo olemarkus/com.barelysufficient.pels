@@ -2135,3 +2135,39 @@ should not be folded into the same PR.
       `packages/settings-ui/src/ui/budgetRedesignChart.ts`,
       `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
       `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+- [ ] v2.7.2/PR12: per-hour bar strip on history detail showing planned-vs-delivered
+      kWh per hour, banded by price tier. Owner walk 2026-05-17 raised concerns
+      #11 + #14: the page describes a multi-hour run with a single total but does
+      not show where the energy actually landed within the deadline window. The
+      blocker is data, not UI: today `hourlyContributions` is summed into a single
+      `deliveredKWh` + `totalCost` in `deadlineRecorder.ts` and the per-hour split
+      is discarded. PR12 must (1) extend the history schema to v5 with a
+      `hourlyContributions: { atMs, plannedKWh, deliveredKWh, priceValue }[]`
+      array, (2) update the recorder to persist it, (3) add a bar-strip subview
+      to `DeadlinePlanHistoryDetail.tsx` with price-tier bands (reuse the
+      `--pels-price-*` token family from the live deadline-plan chart),
+      (4) gate the strip on `chartCollapsed` so it shares the "View details"
+      toggle visibility, (5) write a v4→v5 migration leaving the array empty
+      for legacy entries and rendering a "Per-hour breakdown unavailable for
+      runs recorded before v2.7.2" supporting note.
+      Why P2: the existing chart + outcome headline answer the page's primary
+      question ("did it succeed?"); the per-hour strip is the next-best
+      explanation surface but is not load-bearing.
+      Files: `packages/contracts/src/deferredObjectiveActivePlans.ts`,
+      `lib/plan/deadlineRecorder.ts`,
+      `packages/shared-domain/src/planHistoryV5Helpers.ts` (new),
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
+- [ ] v2.7.2/PR10 audit: `.deadline-page-close` (icon-only fixed X on the
+      full-page deadline overlay) and `.settings-back-button` (M3 text button
+      labelled "Back to devices" inside the slide-panel header) already consume
+      the shared global tokens `--pels-touch-target-min` (touch target) and
+      `--color-focus-ring` (focus ring) — no token consolidation was needed.
+      The remaining differences (icon-only circular fixed-position chrome vs
+      labeled in-flow text button) are intentional visual contracts. If a third
+      close/back affordance is introduced and starts duplicating per-element
+      `min-height` / `padding` / `border-radius` literals, revisit and extract
+      a scoped `--pels-page-close-*` or `--pels-overlay-close-*` token group
+      then. Source: PR10 owner-walk follow-up.
+      Why P3: no defect; documented so a future reviewer doesn't re-open the
+      consolidation question.
+      Files: `packages/settings-ui/public/style.css`.

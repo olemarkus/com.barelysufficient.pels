@@ -867,7 +867,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
     // navigates between history entries (e.g., past-task list → entry A →
     // back → entry B). Without this, the local `chartCollapsed` state from
     // entry A would persist and the Succeeded receipt for entry B could
-    // briefly render expanded with a stale "Hide schedule" toggle.
+    // briefly render expanded with a stale "Hide details" toggle.
     return (
       <DeadlinePlanHistoryDetail
         key={loadState.entry.id}
