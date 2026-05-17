@@ -40,9 +40,8 @@ started 2026-05-17). In scope for the train: `norgespris-historical-snapshot-tz`
 `planhero-tooltip-shared-origin`, `smart-task-redundant-eyebrow`,
 `smart-task-homey-terminology-sync`, `loading-skeleton-five-panels`,
 `smart-task-leaf-icon-palette`. Theme: remaining P1 polish, terminology,
-and settings-UI safety items not on the v2.7.2 path — see
-`/home/olemarkus/.claude/plans/take-a-look-at-lucky-metcalfe.md`. Skip
-these items in v2.7.1 release-review passes.*
+and settings-UI safety items not on the v2.7.2 path. Skip these items in
+v2.7.1 release-review passes.*
 
 - [ ] Norgespris historical display uses live monthly cap snapshot, not
       snapshot-at-the-time. `priceServiceNorway.ts` initialises
@@ -173,6 +172,26 @@ these items in v2.7.1 release-review passes.*
       in-UI leaf graphic should align with the leaf-green primary (`#16a34a`) rather than the
       previous emerald (`#10b981`). Out of scope for the redesigned settings UI; touches Homey
       app metadata. Files: `assets/icon.svg`, `.homeycompose/app.json`, any in-UI SVG leaf.
+
+- [ ] Surface EV deadline device-card state.
+      `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx:63` shows only the Smart task chip.
+      Once EV actuation lands, the device card should explain what PELS thinks the charger is
+      doing. Add a next-planned-start line ("Waiting · charging starts 01:00"), an
+      active-charging finish line ("Charging · planned finish 05:30"), and a plug-out paused
+      line ("Charging plan paused — car unplugged"). Pull start / finish from the active-plan
+      recorder's `latest.hours`; pull the paused state from the existing
+      `objective_invalid_session` reason emitted by `resolveEvObjectiveProgress`
+      (`lib/plan/deferredObjectives/diagnosticsBridge.ts:380-402`), which fires when the
+      observation layer reports `stateOfCharge.status === 'invalid'`.
+      Why P1: this is not a P0 blocker, but it is the first support-facing clarity gap once EV
+      deadlines actually control charging.
+      *(partial shipping observed: `resolveEvCardStateLine` exists in `PlanDeviceCards.tsx`, but
+      `diagnosticsBridge.ts` plumbing and contract additions need verification before this can be
+      closed.)*
+      Design: `notes/ev-ready-by/README.md`.
+      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
+      `lib/plan/deferredObjectives/diagnosticsBridge.ts`,
+      `packages/contracts/src/` (diagnostic reason additions), device-card tests.
 
 - [ ] Show planning speed and estimated duration on the EV deadline-plan page.
       `packages/settings-ui/src/ui/deadlinePlan.ts:153,164` shows kWh and hours-until-deadline.
