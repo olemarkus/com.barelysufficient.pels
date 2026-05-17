@@ -79,6 +79,18 @@ export type DeadlinePlanPayload = {
     headlineReason: string | null;
     subline: string;
     metaLine: string;
+    // `Cost ≈ X.XX kr` (planned) or `Cost ≈ X.XX kr so far · Y.YY kr planned`
+    // (when partial delivery is known). Resolved producer-side from
+    // `Σ priceValue × deviceKwh` so the view never re-derives sums or branches
+    // on unit. Null when planned cost is unknown (no allocation yet) or the
+    // cost unit is missing (Flow / Homey without `priceUnit`).
+    costMetaLine: string | null;
+    // `Delivered X of Y kWh · …` subline. Two visible branches collapse the
+    // planner status union: cannot-meet renders the `won't reach by HH:MM`
+    // form, every other status renders the on-track-shaped form. Null when
+    // there is no plan to summarise (queued without allocation, no current
+    // reading, etc.).
+    deliveredSoFarLine: string | null;
     // Recourse action surfaced below the meta line on cannot-finish heroes.
     // Resolved producer-side so the view dispatches on a stable slug
     // (`open_budget` / `open_overview`) rather than re-deriving cause.
@@ -173,6 +185,12 @@ const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
       )}
       <div class="plan-hero__subline">{payload.hero.subline}</div>
       <div class="plan-hero__subline plan-hero__subline--muted">{payload.hero.metaLine}</div>
+      {payload.hero.deliveredSoFarLine !== null && (
+        <div class="plan-hero__subline plan-hero__subline--muted">{payload.hero.deliveredSoFarLine}</div>
+      )}
+      {payload.hero.costMetaLine !== null && (
+        <div class="plan-hero__subline plan-hero__subline--muted">{payload.hero.costMetaLine}</div>
+      )}
       {payload.hero.recourse !== null && (
         <div class="plan-hero__recourse">
           <button

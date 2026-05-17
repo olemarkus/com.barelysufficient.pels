@@ -697,6 +697,111 @@ const formatSamplesLine = (acceptedSamples: number, confidence: 'low' | 'medium'
   return confidence === null ? base : `${base} · ${CONFIDENCE_TEXT[confidence]}`;
 };
 
+// ─── Cost + delivered-so-far hero lines (v2.7.2 PR 2) ────────────────────────
+
+// `≈` (U+2248) signals "approximate" — the in-flight cost is a planned figure
+// that the actual delivered run will overshoot or undershoot. Spelling the
+// glyph out here (rather than burying it in caller string concat) so the
+// `pels-copy-and-terminology` reviewer can grep for it and so we never drift
+// to ASCII `~` or the word "approx" again. Matches `notes/ui-terminology.md`.
+const APPROX_GLYPH = '≈';
+
+// Resolver for the `Cost ≈ X.XX kr` meta line on the smart-task live hero.
+// Both branches live in shared-domain so runtime log breadcrumbs and the UI
+// surface the same phrasing (per `feedback_ui_text_shared_with_logs.md`).
+//
+// Branches resolve in this order:
+//   1. `deliveredCost !== null` AND > 0 → composite "so far · planned" form.
+//   2. Otherwise                         → planned-only form.
+//
+// Returns `null` when the planned cost cannot be summarised honestly — either
+// the unit is missing (Flow / Homey scheme with no `priceUnit` provided) or the
+// planned total is non-finite / zero (no allocated kWh, e.g. cannot-meet on a
+// sub-second remaining bucket). The caller suppresses the line cleanly rather
+// than rendering "Cost ≈ 0.00 kr planned" which would mislead.
+export const formatDeadlineCostMetaLine = (params: {
+  plannedTotalCost: number;
+  deliveredCost: number | null;
+  costUnit: string;
+}): string | null => {
+  const unit = params.costUnit.trim();
+  if (unit.length === 0) return null;
+  if (!Number.isFinite(params.plannedTotalCost)) return null;
+  // Allow zero and negative planned cost: Norwegian Nordpool spot prices
+  // can go negative during oversupply windows, so a zero/negative total is
+  // a real outcome the user should see ("Cost ≈ -0.30 kr" = you got paid to
+  // charge). Only non-finite values still suppress the line.
+  const plannedLabel = `${params.plannedTotalCost.toFixed(2)} ${unit}`;
+  if (params.deliveredCost !== null && Number.isFinite(params.deliveredCost)) {
+    const deliveredLabel = `${params.deliveredCost.toFixed(2)} ${unit}`;
+    return `Cost ${APPROX_GLYPH} ${deliveredLabel} so far · ${plannedLabel} planned`;
+  }
+  return `Cost ${APPROX_GLYPH} ${plannedLabel}`;
+};
+
+// Resolver for the "Delivered so far" hero subline. Branches by plan status:
+//   - `cannot_meet`            → `Delivered X of Y kWh · still {curr} of {target} · won't reach by {deadline}`
+//   - on-track / at-risk / queued → `Delivered X of Y kWh · {start →} {curr} of {target}`
+//
+// The "start → current" arrow is rendered only when `startProgress` is known
+// (caller resolves the back-calc from current − delivered × kWh-per-unit). When
+// it's not, the line collapses to `now {curr} of {target}` so the user still
+// sees current vs target without us inventing a starting value.
+//
+// `targetUnit` is `°C` / `%` and matches `DeadlineLabels.targetUnit`. The
+// caller formats `deadlineTime` (e.g. `16:00`) — shared-domain stays free of
+// locale and Date helpers.
+//
+// Returns `null` when planned energy is non-finite / zero (no allocation yet,
+// or revision predates the field) or when both delivered and progress data
+// are absent — the line has nothing concrete to say so the view suppresses it
+// rather than emit "Delivered 0 of 0 kWh".
+export type DeadlineDeliveredSoFarStatus =
+  | 'cannot_meet'
+  | 'on_track_or_queued';
+
+export const formatDeadlineDeliveredSoFarLine = (params: {
+  status: DeadlineDeliveredSoFarStatus;
+  deliveredKWh: number;
+  plannedTotalKWh: number;
+  currentProgress: number;
+  startProgress: number | null;
+  targetValue: number;
+  targetUnit: '°C' | '%';
+  deadlineTime: string;
+}): string | null => {
+  if (!Number.isFinite(params.plannedTotalKWh) || params.plannedTotalKWh <= 0) return null;
+  if (!Number.isFinite(params.currentProgress) || !Number.isFinite(params.targetValue)) return null;
+  const deliveredKWhSafe = Number.isFinite(params.deliveredKWh) && params.deliveredKWh > 0
+    ? params.deliveredKWh : 0;
+  const energyPart = `Delivered ${deliveredKWhSafe.toFixed(1)} of ${params.plannedTotalKWh.toFixed(1)} kWh`;
+  const currentLabel = formatProgressValueForUnit(params.currentProgress, params.targetUnit);
+  const targetLabel = formatProgressValueForUnit(params.targetValue, params.targetUnit);
+  if (params.status === 'cannot_meet') {
+    return `${energyPart} · still ${currentLabel} of ${targetLabel} target `
+      + `· won’t reach by ${params.deadlineTime}`;
+  }
+  // Compare formatted labels rather than raw numeric deltas: for percent
+  // values (`Math.round`) two readings 0.4 percentage points apart still
+  // render identically, and a "45% → 45%" arrow is meaningless to the user.
+  // Falling through to "now X" keeps the line honest when the rounded
+  // start-vs-current motion is invisible at display precision.
+  const startLabel = params.startProgress !== null && Number.isFinite(params.startProgress)
+    ? formatProgressValueForUnit(params.startProgress, params.targetUnit)
+    : null;
+  if (startLabel !== null && startLabel !== currentLabel) {
+    return `${energyPart} · ${startLabel} → ${currentLabel} of ${targetLabel} target`;
+  }
+  return `${energyPart} · now ${currentLabel} of ${targetLabel} target`;
+};
+
+const formatProgressValueForUnit = (
+  value: number,
+  unit: '°C' | '%',
+): string => (
+  unit === '°C' ? `${value.toFixed(1)} °C` : `${Math.round(value)}%`
+);
+
 // Resolve display rows for the kWhPerUnit provenance snapshot. The caller
 // supplies `formatAcceptedAt` because shared-domain stays free of locale and
 // timezone helpers — the UI passes a browser-side formatter, while runtime
