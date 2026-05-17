@@ -1,9 +1,9 @@
 {
   "title": {
-    "en": "Is device capacity controlled?"
+    "en": "Is power-limit control enabled for device?"
   },
   "titleFormatted": {
-    "en": "Is [[device]] capacity controlled?"
+    "en": "Is power-limit control enabled for [[device]]?"
   },
   "args": [
     {
@@ -15,6 +15,6 @@
     }
   ],
   "hint": {
-    "en": "Use this to check if PELS may limit or resume the selected device based on capacity limits."
+    "en": "Use this to check whether PELS may limit or resume the selected device to stay under the hard cap."
   }
 }

@@ -6,7 +6,7 @@
     "en": "Remove budget exemption for [[device]]"
   },
   "hint": {
-    "en": "Make this device follow daily budget soft-limit control again. Capacity management is unchanged."
+    "en": "Make this device follow daily budget control again."
   },
   "args": [
     {

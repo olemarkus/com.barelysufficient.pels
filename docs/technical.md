@@ -133,7 +133,7 @@ To prevent rapid on/off cycling that could damage equipment or annoy occupants, 
 
 ### Available-Power Flow Card Step-Down Cooldown (60 seconds)
 
-- The legacy **"Is there headroom for device?"** Flow condition checks available power for the selected device. The card tracks the same device's **expected/usable** power estimate (prefers `expectedPowerKw` over raw `measuredPowerKw` when available)
+- The **"Is there available power for device?"** Flow condition checks available power for the selected device. The card tracks the same device's **expected/usable** power estimate (prefers `expectedPowerKw` over raw `measuredPowerKw` when available)
 - If that tracked/expected usable draw drops by at least 0.15 kW, the condition stays `false` for 60 seconds before allowing another increase
 - Pure measurement-only dips that do not change the tracked/expected usable draw do **not** start this cooldown
 - The same card also respects recent same-device PELS limit/resume cooldowns
@@ -312,7 +312,7 @@ Devices without any usable power estimate are listed for visibility and cannot u
 
 ### Available-Power Check For Devices With Power-Limit Control
 
-The legacy **"Is there headroom for device?"** Flow condition is intended for devices with power-limit control, such as EV chargers and water heaters. It answers "Can this device safely draw another _X_ kW right now?" by calculating:
+The **"Is there available power for device?"** Flow condition is intended for devices with power-limit control, such as EV chargers and water heaters. It answers "Can this device safely draw another _X_ kW right now?" by calculating:
 
 - Current available power (safe pace minus current load)
 - Same-device cooldown state after recent step-downs or recent PELS limit/resume events
