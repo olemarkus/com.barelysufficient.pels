@@ -1,6 +1,6 @@
 import type CapacityGuard from './capacityGuard';
 import type { PowerTrackerState, RecordPowerSampleParams } from './powerTrackerTypes';
-import { truncateToUtcHour, getHourBucketKey, getDateKeyInTimeZone, getZonedParts } from '../utils/dateUtils';
+import { truncateToUtcHour, getHourBucketKey, getZonedParts } from '../utils/dateUtils';
 import { addPerfDuration } from '../utils/perfCounters';
 import {
   accumulateDevicePowerIfAvailable,
@@ -266,7 +266,15 @@ const pruneDailyTotals = (
 };
 function resolveDayHourKey(date: Date, timeZone?: string): { dateKey: string; hourOfDay: number } {
   if (timeZone) {
-    return { dateKey: getDateKeyInTimeZone(date, timeZone), hourOfDay: getZonedParts(date, timeZone).hour };
+    // Call getZonedParts once — each call allocates an Intl.DateTimeFormat; avoid the
+    // double allocation that would result from calling getDateKeyInTimeZone + getZonedParts
+    // separately (getDateKeyInTimeZone already calls getZonedParts internally).
+    const { year, month, day, hour } = getZonedParts(date, timeZone);
+    const yyyy = year.toString().padStart(4, '0');
+    const mm = month.toString().padStart(2, '0');
+    const dd = day.toString().padStart(2, '0');
+    const dateKey = `${yyyy}-${mm}-${dd}`;
+    return { dateKey, hourOfDay: hour };
   }
   return { dateKey: formatDateUtc(date), hourOfDay: getUtcHour(date) };
 }
