@@ -85,6 +85,16 @@ const isRevisionSnapshot = (
   // anything else means the persisted snapshot was tampered with so drop it.
   if (v.kwhPerUnitMean !== undefined
     && (!isFiniteNumber(v.kwhPerUnitMean) || v.kwhPerUnitMean <= 0)) return false;
+  // `dailyBudgetExhaustedBucketCount` added in v2.7.2 PR 3. Optional;
+  // when present must be a finite non-negative count. The recorder only
+  // writes positive counts (zero is suppressed via `captureRevisionSnapshot`
+  // to keep persisted entries byte-stable), but the validator accepts zero
+  // so legacy tools that round-trip persisted history (or hand-written
+  // fixtures in tests) don't get dropped on read. Consumer's "treat
+  // absence as zero" rule keeps either shape consistent.
+  if (v.dailyBudgetExhaustedBucketCount !== undefined
+    && (!isFiniteNumber(v.dailyBudgetExhaustedBucketCount)
+      || v.dailyBudgetExhaustedBucketCount < 0)) return false;
   return true;
 };
 

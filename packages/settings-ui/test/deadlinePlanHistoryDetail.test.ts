@@ -99,17 +99,32 @@ describe('DeadlinePlanHistoryDetail', () => {
     expect(root.querySelector('.deadline-horizon-chart')).toBeNull();
   });
 
-  it('renders the chart card when at least one plan snapshot exists', async () => {
-    const revision = buildRevision();
-    const root = await mount(buildEntry({ originalPlan: revision, finalPlan: revision }));
+  it('renders the chart card when at least one plan snapshot exists (missed outcome — always expanded)', async () => {
+    // Missed entries land with `chartCollapsedByDefault: false` so the chart
+    // is rendered immediately (diagnosis-shape hero). Succeeded entries
+    // default to the receipt-shape (chart collapsed) and require the user to
+    // click "View schedule" — covered in a separate test below.
+    const revision = buildRevision({ planStatus: 'cannot_meet' });
+    const root = await mount(buildEntry({
+      outcome: 'missed',
+      finalProgressC: 38,
+      originalPlan: revision,
+      finalPlan: revision,
+    }));
     expect(root.querySelector('.deadline-horizon-chart')).not.toBeNull();
     // Card title uses smart-task-noun vocabulary, not planner-noun "Plan".
     expect(root.textContent).toContain('Scheduled vs observed');
   });
 
   it('suppresses the initial-schedule overlay when original and final revisions are identical', async () => {
-    const revision = buildRevision();
-    const root = await mount(buildEntry({ originalPlan: revision, finalPlan: revision }));
+    const revision = buildRevision({ planStatus: 'cannot_meet' });
+    // Missed outcome forces the chart open by default (`chartCollapsedByDefault: false`).
+    const root = await mount(buildEntry({
+      outcome: 'missed',
+      finalProgressC: 38,
+      originalPlan: revision,
+      finalPlan: revision,
+    }));
     const legend = root.querySelectorAll('.deadline-horizon-chart');
     expect(legend.length).toBe(1);
     // Re-build the option directly via the exported helper so we can inspect
@@ -321,6 +336,126 @@ describe('DeadlinePlanHistoryDetail', () => {
     expect(progress?.textContent).toContain('50.0 °C');
     expect(progress?.textContent).toContain('38.0 °C');
     expect(progress?.textContent).toContain('target 65.0 °C');
+  });
+
+  // v2.7.2 PR 3 — outcome-asymmetric hero shapes. Each shape carries a
+  // different combination of tone, secondary line, "why" line, recourse
+  // CTA, and default chart-collapsed state, mirroring the table in
+  // `notes/smart-task-ui/README.md` ("Asymmetric treatment of failure").
+  describe('outcome-asymmetric hero (PR 3)', () => {
+    it('Succeeded shape: tone=ok, postmortem present, no recourse, chart collapsed by default', async () => {
+      const root = await mount(buildEntry({
+        outcome: 'met',
+        metAtMs: DEADLINE_MS - 4 * HOUR_MS - 3 * 60 * 1000,
+        finalProgressC: 65,
+        originalPlan: buildRevision(),
+        finalPlan: buildRevision(),
+      }));
+      const hero = root.querySelector<HTMLElement>('.plan-history-detail__hero');
+      expect(hero?.dataset.tone).toBe('good');
+      // Postmortem sentence under the heading.
+      const postmortem = root.querySelector('.plan-history-detail__postmortem');
+      expect(postmortem).not.toBeNull();
+      expect(postmortem?.textContent).toContain('65.0 °C');
+      // No recourse CTA on succeeded.
+      expect(root.querySelector('.plan-history-detail__recourse')).toBeNull();
+      // No "Why" line on succeeded.
+      expect(root.querySelector('.plan-history-detail__missed-reason')).toBeNull();
+      // Chart card exists but the comparison chart is collapsed — "View
+      // schedule" toggle visible.
+      const toggle = root.querySelector('.plan-history-detail__chart-toggle');
+      expect(toggle).not.toBeNull();
+      expect(toggle?.textContent).toBe('View schedule');
+      expect(root.querySelector('.deadline-horizon-chart')).toBeNull();
+    });
+
+    it('Missed shape: tone=warn, postmortem + Why line + recourse, chart always expanded', async () => {
+      const revision = buildRevision({
+        planStatus: 'cannot_meet',
+        dailyBudgetExhaustedBucketCount: 4,
+      });
+      const root = await mount(buildEntry({
+        outcome: 'missed',
+        finalProgressC: 38,
+        targetTemperatureC: 65,
+        originalPlan: revision,
+        finalPlan: revision,
+      }));
+      const hero = root.querySelector<HTMLElement>('.plan-history-detail__hero');
+      expect(hero?.dataset.tone).toBe('warn');
+      // Postmortem on Missed.
+      expect(root.querySelector('.plan-history-detail__postmortem')?.textContent)
+        .toMatch(/daily energy budget/);
+      // "Why" line on Missed.
+      expect(root.querySelector('.plan-history-detail__missed-reason')?.textContent)
+        .toMatch(/daily/i);
+      // Recourse CTA on Missed.
+      const recourseBtn = root.querySelector<HTMLButtonElement>('.plan-history-detail__recourse button');
+      expect(recourseBtn).not.toBeNull();
+      expect(recourseBtn?.dataset.deadlineRecourseTab).toBe('budget');
+      expect(recourseBtn?.textContent).toContain('Lower daily budget');
+      // Missed → chart is rendered expanded; no toggle.
+      expect(root.querySelector('.plan-history-detail__chart-toggle')).toBeNull();
+      expect(root.querySelector('.deadline-horizon-chart')).not.toBeNull();
+    });
+
+    it('Missed-by-shortfall recourse uses Move-deadline-later, not budget', async () => {
+      const revision = buildRevision({ planStatus: 'cannot_meet' });
+      const root = await mount(buildEntry({
+        outcome: 'missed',
+        finalProgressC: 38,
+        targetTemperatureC: 65,
+        originalPlan: revision,
+        finalPlan: revision,
+      }));
+      const recourseBtn = root.querySelector<HTMLButtonElement>('.plan-history-detail__recourse button');
+      expect(recourseBtn?.textContent).toContain('Move deadline later');
+      expect(recourseBtn?.dataset.deadlineRecourseTab).toBe('overview');
+    });
+
+    it('Abandoned shape: tone=muted, postmortem present, no recourse, chart collapsed', async () => {
+      const root = await mount(buildEntry({
+        outcome: 'abandoned',
+        objectiveKind: 'ev_soc',
+        targetTemperatureC: null,
+        targetPercent: 80,
+        startProgressC: null,
+        startProgressPercent: 30,
+        finalProgressC: null,
+        finalProgressPercent: 45,
+        finalizedAtMs: DEADLINE_MS - 13 * HOUR_MS,
+        originalPlan: buildRevision(),
+        finalPlan: buildRevision(),
+      }));
+      const hero = root.querySelector<HTMLElement>('.plan-history-detail__hero');
+      expect(hero?.dataset.tone).toBe('muted');
+      expect(root.querySelector('.plan-history-detail__postmortem')?.textContent)
+        .toMatch(/stopped/);
+      // No recourse / Why on Abandoned.
+      expect(root.querySelector('.plan-history-detail__recourse')).toBeNull();
+      expect(root.querySelector('.plan-history-detail__missed-reason')).toBeNull();
+      // Chart collapsed by default on Abandoned.
+      expect(root.querySelector('.plan-history-detail__chart-toggle')).not.toBeNull();
+      expect(root.querySelector('.deadline-horizon-chart')).toBeNull();
+    });
+
+    it('Succeeded hero has a "View schedule" toggle that expands the chart on click', async () => {
+      const root = await mount(buildEntry({
+        outcome: 'met',
+        metAtMs: DEADLINE_MS - 4 * HOUR_MS,
+        finalProgressC: 65,
+        originalPlan: buildRevision(),
+        finalPlan: buildRevision(),
+      }));
+      const toggle = root.querySelector<HTMLButtonElement>('.plan-history-detail__chart-toggle');
+      expect(toggle).not.toBeNull();
+      expect(root.querySelector('.deadline-horizon-chart')).toBeNull();
+      toggle!.click();
+      // Preact's effect/render is synchronous on click in JSDOM here.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      expect(toggle!.textContent).toBe('Hide schedule');
+      expect(root.querySelector('.deadline-horizon-chart')).not.toBeNull();
+    });
   });
 
   it('uses the kind-aware Measured Charging series name for EV runs', async () => {

@@ -35,6 +35,15 @@ export type DeferredObjectivePlanHistoryRevisionSnapshot = {
   // persist without the field — UI consumers must treat absence as
   // "fall back to a straight line through hours". Added in schema v4.
   kwhPerUnitMean?: number;
+  // Number of horizon buckets whose per-bucket cap collapsed to zero because
+  // the daily budget cap had already been reached when this revision was
+  // written. Mirrors the runtime
+  // `DeferredObjectiveActivePlanRevisionV1.dailyBudgetExhaustedBucketCount`
+  // so the history-detail postmortem can explain a `cannot_meet` outcome
+  // that would otherwise read as a device or schedule problem. Optional:
+  // legacy v3 entries and revisions written before this field shipped
+  // persist without it — consumers treat absence as zero. Added in v2.7.2.
+  dailyBudgetExhaustedBucketCount?: number;
 };
 
 // Hourly snapshot of objective progress while a run is in flight. The

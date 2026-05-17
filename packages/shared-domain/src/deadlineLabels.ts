@@ -769,7 +769,10 @@ const formatSamplesLine = (acceptedSamples: number, confidence: 'low' | 'medium'
 // glyph out here (rather than burying it in caller string concat) so the
 // `pels-copy-and-terminology` reviewer can grep for it and so we never drift
 // to ASCII `~` or the word "approx" again. Matches `notes/ui-terminology.md`.
-const APPROX_GLYPH = '≈';
+// Exported so the history-detail cost helpers in `deferredPlanHistory.ts`
+// render the same glyph across live and past surfaces — the user reads the
+// same approximation marker whether the run is in-flight or finalized.
+export const APPROX_GLYPH = '≈';
 
 // Resolver for the `Cost ≈ X.XX kr` meta line on the smart-task live hero.
 // Both branches live in shared-domain so runtime log breadcrumbs and the UI
@@ -866,6 +869,43 @@ const formatProgressValueForUnit = (
 ): string => (
   unit === '°C' ? `${value.toFixed(1)} °C` : `${Math.round(value)}%`
 );
+
+// ─── History-detail missed-hero recourse (v2.7.2 PR 3) ───────────────────────
+
+// Recourse action for a missed history entry. Mirrors the live hero's
+// `DeadlineCannotMeetRecourse` shape so the click dispatcher in
+// `deadlinePlanMount.ts` handles both surfaces with the same handler.
+//
+// Labels are action-oriented for the postmortem context: the user is reading
+// what happened *after* the deadline missed, so the recourse is advice for
+// the next run rather than a "fix the current plan" affordance. The
+// `targetTab` slug still routes the click — Budget for the budget-exhausted
+// branch, Overview (where the device lives) for shortfall.
+const MISSED_HISTORY_RECOURSE = {
+  lowerDailyBudget: { label: 'Lower daily budget', targetTab: 'budget' },
+  moveDeadlineLater: { label: 'Move deadline later', targetTab: 'overview' },
+} as const;
+
+// Resolves the recourse action for a missed history entry. Producer-side
+// branch on `dailyBudgetExhausted` so the consumer never branches on the
+// snapshot's optional `dailyBudgetExhaustedBucketCount`. Per
+// `feedback_hard_cap_is_physical.md` the budget branch lands on
+// `targetTab: 'budget'` — never the capacity hard cap.
+//
+// Two-branch resolver:
+//   - budget exhausted → `Lower daily budget` (targetTab: 'budget')
+//   - everything else  → `Move deadline later` (targetTab: 'overview')
+//
+// Returns `null` when the entry is not a missed run — the receipt-shape
+// succeeded hero and the muted abandoned hero carry no recourse.
+export const resolveMissedHistoryRecourse = (params: {
+  outcome: 'met' | 'missed' | 'abandoned' | 'replaced' | 'unknown';
+  dailyBudgetExhausted: boolean;
+}): DeadlineCannotMeetRecourse | null => {
+  if (params.outcome !== 'missed') return null;
+  if (params.dailyBudgetExhausted) return MISSED_HISTORY_RECOURSE.lowerDailyBudget;
+  return MISSED_HISTORY_RECOURSE.moveDeadlineLater;
+};
 
 // Resolve display rows for the kWhPerUnit provenance snapshot. The caller
 // supplies `formatAcceptedAt` because shared-domain stays free of locale and
