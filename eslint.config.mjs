@@ -513,4 +513,15 @@ export default tseslint.config(
       'max-lines': ['warn', { max: 520, skipBlankLines: true, skipComments: true }],
     },
   },
+  {
+    // deferredPlanHistory aggregates the smart-task history formatters (postmortem, missed
+    // reason, observed coverage, overshoot line, chart-data resolver). v2.7.2 PR 6 added the
+    // overshoot helper + Usage-link label + miss-streak resolver, pushing the file slightly
+    // past the 500-line budget. Target: <=500 once a future PR splits the chart-data resolver
+    // (`deferredPlanHistoryChartData.ts`) out from the postmortem/list-shape helpers.
+    files: ['packages/shared-domain/src/deferredPlanHistory.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 560, skipBlankLines: true, skipComments: true }],
+    },
+  },
 );

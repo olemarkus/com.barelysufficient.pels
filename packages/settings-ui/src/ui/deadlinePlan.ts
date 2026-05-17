@@ -9,6 +9,7 @@ import {
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import {
   deadlineLabels,
+  SMART_TASK_LIST_STATUS_CHIP_VARIANT,
   type DeadlineLabels,
   type DeadlineLiveState,
   type DeadlinePendingContext,
@@ -16,7 +17,7 @@ import {
   type DeadlinePlanPendingReason,
   type DeadlinePlanUnavailableReason,
 } from '../../../shared-domain/src/deadlineLabels.ts';
-import { buildPlanInputs } from './deadlinePlanInputs.ts';
+import { buildPlanInputs, resolveKwhPerUnitDisplayRate } from './deadlinePlanInputs.ts';
 import { buildHero, resolveHeroTone } from './deadlinePlanHero.ts';
 import {
   formatDeadlineFull,
@@ -67,11 +68,26 @@ const resolvePendingLiveState = (reason: DeadlinePlanPendingReason): DeadlineLiv
   return 'building_plan';
 };
 
+// Pending-hero state chip tone, routed through the same
+// `SMART_TASK_LIST_STATUS_CHIP_VARIANT` map the list card reads so the
+// "Building plan…" / "Paused — unplugged" pill never shows a different
+// colour on the list and the detail surface (per TODO 2163 — the prior
+// `'info'`-vs-`'muted'` drift on `Building plan…` flagged in release
+// review). The pending hero only ever resolves to `building_plan` /
+// `paused_unplugged` via `resolvePendingLiveState`; the broader
+// `DeadlineLiveState` union (`active` / `queued` / `ok`) doesn't reach
+// this resolver in practice, so the fallback simply mirrors the
+// `building_plan` variant. The `as` casts narrow the variant union
+// (`string`) to the chip-tone subset since the variant map is typed
+// `Record<…, string>` for change resilience.
 const pendingChipTone = (
   liveState: DeadlineLiveState,
-): DeadlinePlanPendingPayload['hero']['chips'][number]['tone'] => (
-  liveState === 'paused_unplugged' ? 'warn' : 'info'
-);
+): DeadlinePlanPendingPayload['hero']['chips'][number]['tone'] => {
+  if (liveState === 'paused_unplugged') {
+    return SMART_TASK_LIST_STATUS_CHIP_VARIANT.paused_unplugged as 'warn';
+  }
+  return SMART_TASK_LIST_STATUS_CHIP_VARIANT.building_plan as 'muted';
+};
 
 const resolveActualDeviceKwh = (params: {
   bootstrap: SettingsUiBootstrap;
@@ -581,8 +597,10 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       costDisplay: input.costDisplay,
     }),
     planInputs: buildPlanInputs({
-      latest, profile, labels, objectiveKind: objective.kind, device,
+      labels,
+      device,
       provenance: activePlan!.kwhPerUnitProvenance,
+      ...resolveKwhPerUnitDisplayRate({ latest, profile, objectiveKind: objective.kind }),
     }),
   };
 };
@@ -633,7 +651,7 @@ export const resolveDeadlinePlanLoadState = (
     // Genuinely unknown device or feature gated off — keep the legacy error
     // card. Lifecycle transitions (passed deadline, auto-disable) go through
     // the `completed` branch instead.
-    return { status: 'error', message: 'Smart task plan data is not available for this device.', history };
+    return { status: 'error', message: 'Smart task data is not available for this device.', history };
   }
   if (renderInput.status === 'completed') {
     return { status: 'completed', objectiveKind: renderInput.kind, history };

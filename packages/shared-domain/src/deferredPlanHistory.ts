@@ -122,6 +122,118 @@ export const shouldShowBackupHoursPill = (
   entry: Pick<DeferredObjectivePlanHistoryEntry, 'usedPolicyAvoid' | 'usedDeadlineReserve'>,
 ): boolean => entry.usedPolicyAvoid || entry.usedDeadlineReserve;
 
+// Overshoot threshold matches the `notes/smart-task-ui/README.md` design spec
+// ("Notable extras: overshoot line if delivered > target by > 5 °C / 10 %").
+// Pulled out of `wasOvershoot` so the dedicated overshoot line helper below
+// can share the constant without a second copy. Kept module-private so the
+// thresholds stay encapsulated alongside the helpers that read them.
+const OVERSHOOT_TEMPERATURE_THRESHOLD_C_PUBLIC = 5;
+const OVERSHOOT_PERCENT_THRESHOLD_PUBLIC = 10;
+
+/**
+ * Resolves a one-line "Overshoot {delta}" muted note for a Succeeded history entry whose
+ * final reading exceeded the target by a meaningful margin. Threshold matches the
+ * `notes/smart-task-ui/README.md` design spec — `finalProgressC − targetTemperatureC > 5 °C`
+ * for temperature kinds, or `finalProgressPercent − targetPercent > 10 %` for EV kinds.
+ *
+ * Returns `null` when the entry didn't overshoot (or wasn't `met`, or lacks the readings to
+ * compute a delta) so the caller can suppress the line cleanly. Lives in shared-domain so
+ * the same string feeds runtime log breadcrumbs alongside the UI (per
+ * `feedback_ui_text_shared_with_logs.md`).
+ *
+ * Canonical regression: the lived-state Connected 300 entry from
+ * `notes/smart-task-ui/README.md` had `29.3 → 77.7 °C · target 65 °C`, overshooting by 12.7 °C
+ * — the helper renders `Overshoot 12.7 °C` for that entry.
+ */
+export const formatPlanHistoryOvershootLine = (
+  entry: Pick<
+    DeferredObjectivePlanHistoryEntry,
+    'outcome'
+    | 'objectiveKind'
+    | 'targetTemperatureC'
+    | 'targetPercent'
+    | 'finalProgressC'
+    | 'finalProgressPercent'
+  >,
+): string | null => {
+  if (entry.outcome !== 'met') return null;
+  if (entry.objectiveKind === 'temperature') {
+    if (entry.finalProgressC === null || entry.targetTemperatureC === null) return null;
+    const delta = entry.finalProgressC - entry.targetTemperatureC;
+    if (delta <= OVERSHOOT_TEMPERATURE_THRESHOLD_C_PUBLIC) return null;
+    return `Overshoot ${delta.toFixed(1)} °C`;
+  }
+  if (entry.finalProgressPercent === null || entry.targetPercent === null) return null;
+  const delta = entry.finalProgressPercent - entry.targetPercent;
+  if (delta <= OVERSHOOT_PERCENT_THRESHOLD_PUBLIC) return null;
+  return `Overshoot ${delta.toFixed(0)} %`;
+};
+
+/**
+ * Composes the muted "See {device} usage on {date} →" cross-link label rendered below the
+ * history-detail hero. Per `notes/smart-task-ui/README.md` "Cross-surface: vs Usage /
+ * Insights", the asymmetric link from a Smart-task history detail to the same-day Usage
+ * chart helps the recovering-from-mistake user see the device's whole-day energy context
+ * when investigating a miss.
+ *
+ * Falls back to "usage" when the device name is missing so the line never reads as a
+ * bare placeholder. `dateLabel` is the localized day string supplied by the caller (UI
+ * layer) so shared-domain stays free of locale/Date helpers — same rule as
+ * `formatPlanHistoryDeadlineLine`. The trailing arrow is part of the label so the
+ * link reads as a navigation affordance even without underline styling.
+ */
+export const formatPlanHistoryUsageDayLinkLabel = (
+  deviceName: string | null,
+  dateLabel: string,
+): string => {
+  const device = deviceName && deviceName.trim().length > 0 ? deviceName : 'device';
+  return `See ${device} usage on ${dateLabel} →`;
+};
+
+// Window size for the "miss-streak" aggregate on the past-tasks landing surface.
+// Mirrors the lived-state Connected 300 example from `notes/smart-task-ui/README.md`:
+// 3 missed runs in the most recent 4 history entries triggered the recovering-from-mistake
+// persona's need for an aggregate signal. The window stays small (4) so a single late-night
+// miss in an otherwise-healthy device never trips the aggregate.
+const MISS_STREAK_WINDOW = 4;
+// Half the window is the threshold — keeps the resolver kind-agnostic and matches the
+// notes' "3 of last 4 missed" framing (3/4 ≥ 0.5).
+const MISS_STREAK_THRESHOLD = 0.5;
+
+/**
+ * Composes the "Past tasks (N of last M missed)" subhead string when a device's most-recent
+ * history entries show a meaningful miss streak. Returns `null` when the streak is below the
+ * threshold (or the window is too short to be meaningful) so the caller can render the plain
+ * "Past tasks" heading instead.
+ *
+ * `entries` MUST already be sorted newest-first (matching `resolveDeadlinesHistoryEntries`).
+ * The resolver looks only at the first `MISS_STREAK_WINDOW` entries for the device — older
+ * history doesn't influence the aggregate.
+ *
+ * Per `notes/smart-task-ui/README.md`, the aggregate is the only signal a recovering-from-
+ * mistake user gets without opening per-entry detail; keep the threshold loose enough that
+ * the "Connected 300 misses 3 of last 4" pattern fires reliably, but tight enough that a
+ * single late-night miss in an otherwise-healthy device doesn't trip it.
+ *
+ * Lives in shared-domain so runtime log breadcrumbs and the UI share the same wording.
+ */
+export const formatMissStreakAggregateLine = (
+  entries: ReadonlyArray<Pick<DeferredObjectivePlanHistoryEntry, 'outcome' | 'deviceId'>>,
+  deviceId: string,
+): string | null => {
+  if (entries.length < 2) return null;
+  const recent: Array<Pick<DeferredObjectivePlanHistoryEntry, 'outcome'>> = [];
+  for (const entry of entries) {
+    if (entry.deviceId !== deviceId) continue;
+    recent.push(entry);
+    if (recent.length >= MISS_STREAK_WINDOW) break;
+  }
+  if (recent.length < 2) return null;
+  const missed = recent.filter((entry) => entry.outcome === 'missed').length;
+  if (missed / recent.length < MISS_STREAK_THRESHOLD) return null;
+  return `${missed} of last ${recent.length} missed`;
+};
+
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
 
@@ -239,8 +351,10 @@ export type DeferredPlanHistoryPostmortem = {
 };
 
 const MET_AT_BUZZER_WINDOW_MS = HOUR_MS;
-const OVERSHOOT_TEMPERATURE_THRESHOLD_C = 5;
-const OVERSHOOT_PERCENT_THRESHOLD = 10;
+// Aliased to the module-private constants used by `formatPlanHistoryOvershootLine`
+// so the two helpers can't drift on the threshold definition (5 °C / 10 %).
+const OVERSHOOT_TEMPERATURE_THRESHOLD_C = OVERSHOOT_TEMPERATURE_THRESHOLD_C_PUBLIC;
+const OVERSHOOT_PERCENT_THRESHOLD = OVERSHOOT_PERCENT_THRESHOLD_PUBLIC;
 
 const formatClockTime = (ms: number, timeZone: string): string | null => {
   if (!Number.isFinite(ms)) return null;

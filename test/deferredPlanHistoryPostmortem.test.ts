@@ -3,9 +3,17 @@
 // + `unknown` fallback. Each test constructs a minimal entry and asserts
 // the resolved variant slug + sentence shape so the asymmetric history hero
 // can rely on `lead.sentence` without re-checking outcome.
+//
+// v2.7.2 PR 6 extends coverage to two list-level helpers added in the same
+// train: `formatPlanHistoryOvershootLine` (Succeeded entries that overshot
+// by > 5 °C / > 10 %) and `formatMissStreakAggregateLine` (recovering-from-
+// mistake aggregate on the past-tasks landing surface).
 import {
+  formatMissStreakAggregateLine,
   formatPlanHistoryMissedReason,
+  formatPlanHistoryOvershootLine,
   formatPlanHistoryPostmortem,
+  formatPlanHistoryUsageDayLinkLabel,
 } from '../packages/shared-domain/src/deferredPlanHistory';
 import type {
   DeferredObjectivePlanHistoryEntry,
@@ -272,5 +280,136 @@ describe('formatPlanHistoryMissedReason (v2.7.2 PR 3 budget-exhaustion fold-in)'
   it('returns null for non-missed outcomes', () => {
     expect(formatPlanHistoryMissedReason(buildEntry({ outcome: 'met' }))).toBeNull();
     expect(formatPlanHistoryMissedReason(buildEntry({ outcome: 'abandoned' }))).toBeNull();
+  });
+});
+
+describe('formatPlanHistoryOvershootLine', () => {
+  it('renders the canonical Connected 300 overshoot from notes/smart-task-ui', () => {
+    // Lived-state regression: the Wed 13 May 16:00 entry from the 2026-05-16
+    // walk progressed 29.3 °C → 77.7 °C with a 65 °C target — 12.7 °C overshoot.
+    // The shared-domain helper must surface that exact value so the past-list
+    // card and the history-detail hero both read identically.
+    const entry = buildEntry({
+      outcome: 'met',
+      objectiveKind: 'temperature',
+      startProgressC: 29.3,
+      finalProgressC: 77.7,
+      targetTemperatureC: 65,
+    });
+    expect(formatPlanHistoryOvershootLine(entry)).toBe('Overshoot 12.7 °C');
+  });
+
+  it('returns null when temperature delta is at or below the 5 °C threshold', () => {
+    // Threshold is strict (`> 5`), so exactly 5 °C overshoot stays muted.
+    expect(formatPlanHistoryOvershootLine(buildEntry({
+      outcome: 'met',
+      finalProgressC: 70,
+      targetTemperatureC: 65,
+    }))).toBeNull();
+    expect(formatPlanHistoryOvershootLine(buildEntry({
+      outcome: 'met',
+      finalProgressC: 64,
+      targetTemperatureC: 65,
+    }))).toBeNull();
+  });
+
+  it('renders an EV overshoot line with percent precision', () => {
+    const entry = buildEntry({
+      outcome: 'met',
+      objectiveKind: 'ev_soc',
+      targetTemperatureC: null,
+      targetPercent: 80,
+      startProgressC: null,
+      startProgressPercent: 20,
+      finalProgressC: null,
+      finalProgressPercent: 95,
+    });
+    expect(formatPlanHistoryOvershootLine(entry)).toBe('Overshoot 15 %');
+  });
+
+  it('returns null for non-met outcomes even when readings exceed target', () => {
+    const overshootButMissed = buildEntry({
+      outcome: 'missed',
+      finalProgressC: 80,
+      targetTemperatureC: 65,
+    });
+    expect(formatPlanHistoryOvershootLine(overshootButMissed)).toBeNull();
+  });
+
+  it('returns null when final or target readings are missing', () => {
+    expect(formatPlanHistoryOvershootLine(buildEntry({
+      outcome: 'met',
+      finalProgressC: null,
+      targetTemperatureC: 65,
+    }))).toBeNull();
+    expect(formatPlanHistoryOvershootLine(buildEntry({
+      outcome: 'met',
+      finalProgressC: 80,
+      targetTemperatureC: null,
+    }))).toBeNull();
+  });
+});
+
+describe('formatMissStreakAggregateLine', () => {
+  const buildMissed = (id: string): DeferredObjectivePlanHistoryEntry => (
+    buildEntry({ id, deviceId: 'dev-1', outcome: 'missed' })
+  );
+  const buildMet = (id: string): DeferredObjectivePlanHistoryEntry => (
+    buildEntry({ id, deviceId: 'dev-1', outcome: 'met' })
+  );
+
+  it('renders the canonical 3-of-4-missed Connected 300 aggregate', () => {
+    // Lived-state walk: Connected 300 had 3 missed in its 4 most-recent entries.
+    // The aggregate line surfaces the pattern without forcing the user to count
+    // chips by hand.
+    const entries = [
+      buildMet('e0'),    // most recent — met
+      buildMissed('e1'),
+      buildMissed('e2'),
+      buildMissed('e3'),
+      buildMet('e4'),    // older entry that shouldn't influence the window
+    ];
+    expect(formatMissStreakAggregateLine(entries, 'dev-1')).toBe('3 of last 4 missed');
+  });
+
+  it('returns null when the device has fewer than 2 history entries', () => {
+    expect(formatMissStreakAggregateLine([buildMissed('e1')], 'dev-1')).toBeNull();
+  });
+
+  it('returns null when the miss share is below the threshold', () => {
+    // 1 missed of 4 = 25 %, below the 50 % threshold → suppressed.
+    const entries = [buildMet('e0'), buildMet('e1'), buildMet('e2'), buildMissed('e3')];
+    expect(formatMissStreakAggregateLine(entries, 'dev-1')).toBeNull();
+  });
+
+  it('returns null when the requested device has no matching entries', () => {
+    const entries = [buildMissed('e1'), buildMissed('e2')];
+    expect(formatMissStreakAggregateLine(entries, 'other-device')).toBeNull();
+  });
+
+  it('only looks at the device-id-filtered subset of the most-recent 4 entries', () => {
+    // Other-device misses should not pollute the streak window for dev-1.
+    const entries = [
+      buildEntry({ id: 'a', deviceId: 'other', outcome: 'missed' }),
+      buildEntry({ id: 'b', deviceId: 'other', outcome: 'missed' }),
+      buildEntry({ id: 'c', deviceId: 'dev-1', outcome: 'missed' }),
+      buildEntry({ id: 'd', deviceId: 'dev-1', outcome: 'met' }),
+    ];
+    // dev-1 has 1 missed + 1 met in the window → 50 % triggers the aggregate.
+    expect(formatMissStreakAggregateLine(entries, 'dev-1')).toBe('1 of last 2 missed');
+  });
+});
+
+describe('formatPlanHistoryUsageDayLinkLabel', () => {
+  it('renders the device + date link copy', () => {
+    expect(formatPlanHistoryUsageDayLinkLabel('Connected 300', '16 May'))
+      .toBe('See Connected 300 usage on 16 May →');
+  });
+
+  it('falls back to a neutral label when device name is missing', () => {
+    expect(formatPlanHistoryUsageDayLinkLabel(null, '16 May'))
+      .toBe('See device usage on 16 May →');
+    expect(formatPlanHistoryUsageDayLinkLabel('   ', '16 May'))
+      .toBe('See device usage on 16 May →');
   });
 });

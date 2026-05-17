@@ -8,6 +8,7 @@ import type {
 import {
   formatPlanHistoryDeadlineLine,
   formatPlanHistoryObservedCoverage,
+  formatPlanHistoryOvershootLine,
   formatPlanHistoryProgressLine,
   formatPlanHistoryReachedAtLine,
   resolveHistoryDetailChartData,
@@ -15,12 +16,14 @@ import {
   type DeferredPlanHistoryChartPoint,
   formatPlanHistoryRevisionEntry,
   type PlanHistoryRevisionLogRow,
+  formatPlanHistoryUsageDayLinkLabel,
 } from '../../../../shared-domain/src/deferredPlanHistory.ts';
 import { deadlineLabels } from '../../../../shared-domain/src/deadlineLabels.ts';
 import {
   buildHistoryDetailHero,
   type DeadlinePlanHistoryHeroPayload,
 } from '../deadlinePlanHistoryDetailHero.ts';
+import { buildUsageDayHref } from '../deadlineUrls.ts';
 import { encodeHtml, initEcharts, type EChartsOption } from '../echartsRegistry.ts';
 import { attachTabShownResize } from '../chartVisibilityResize.ts';
 
@@ -688,18 +691,32 @@ const TrajectoryChart = ({ data, timeZone, observedSeriesName, ariaLabel }: {
 // is rendered separately from the postmortem because the postmortem is the
 // outcome-shape sentence (PR 3) and the missed-reason is the action-oriented
 // one (PR #856 P2 fold-in) — both useful on Missed, neither on Succeeded.
+//
+// The overshoot line is muted secondary text rendered under the secondary
+// cost/delivered row on Succeeded entries whose final reading exceeded the
+// target by > 5 °C / > 10 %. Producer resolves `null` for the other outcomes
+// so the view layer never branches on `outcome` itself.
+//
+// The Usage cross-link is a one-line footer below the hero body. Sits below
+// the hero's other secondary lines so the page mission ("did this run miss,
+// and what should I do next?") still leads, with the asymmetric link to
+// Usage / Insights as a follow-up affordance.
 const HistoryDetailHero = ({
   hero,
   progressLine,
   reachedAtLine,
   coverageLine,
   revisionUpdatesLine,
+  overshootLine,
+  usageLink,
 }: {
   hero: DeadlinePlanHistoryHeroPayload;
   progressLine: string | null;
   reachedAtLine: string | null;
   coverageLine: string | null;
   revisionUpdatesLine: string | null;
+  overshootLine: string | null;
+  usageLink: { href: string; label: string; deviceId: string } | null;
 }) => (
   <section
     class="pels-surface-card plan-history-detail__hero"
@@ -718,6 +735,9 @@ const HistoryDetailHero = ({
     <p class="plan-history-detail__postmortem" data-variant={hero.lead.variant}>{hero.lead.sentence}</p>
     {hero.secondary !== null && (
       <p class="plan-history-detail__secondary">{hero.secondary}</p>
+    )}
+    {overshootLine !== null && (
+      <p class="plan-history-detail__overshoot">{overshootLine}</p>
     )}
     {hero.whyLine !== null && (
       <p class="plan-history-detail__missed-reason">Why: {hero.whyLine}</p>
@@ -741,6 +761,17 @@ const HistoryDetailHero = ({
     )}
     {coverageLine !== null && <p class="pels-card-supporting">{coverageLine}</p>}
     {revisionUpdatesLine !== null && <p class="pels-card-supporting">{revisionUpdatesLine}</p>}
+    {usageLink !== null && (
+      <p class="plan-history-detail__usage-link">
+        <a
+          class="plan-history-detail__usage-link-anchor"
+          href={usageLink.href}
+          data-deadline-usage-link={usageLink.deviceId}
+        >
+          {usageLink.label}
+        </a>
+      </p>
+    )}
   </section>
 );
 
@@ -803,6 +834,20 @@ const RevisionsCard = ({ rows }: { rows: RevisionsCardRow[] }) => (
   </section>
 );
 
+// Day-only date for the Usage cross-link label. Locale-pinned to `en-GB` so the
+// day-of-month-then-month ordering ("16 May") matches the existing
+// `formatSmartTaskListDateTime` shape — keeps the cross-link wording aligned
+// with the past-list timestamps the user clicked through.
+const formatUsageLinkDate = (ms: number, timeZone: string): string => {
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return 'this day';
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    day: 'numeric',
+    month: 'short',
+  }).format(date);
+};
+
 export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Props) => {
   const deadlineLine = formatPlanHistoryDeadlineLine(entry, timeZone);
   const progressLine = formatPlanHistoryProgressLine(entry);
@@ -821,6 +866,23 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
   const revisionUpdatesLine = revisionRows.length > 0
     ? null
     : formatRevisionUpdatesLine(entry.revisionCount);
+  // Overshoot resolver returns null on non-`met` outcomes and on `met` entries
+  // whose final reading stayed within the 5 °C / 10 % threshold; the view
+  // suppresses the line in either case.
+  const overshootLine = formatPlanHistoryOvershootLine(entry);
+  // Cross-link to the same-day Usage chart for this device. Per
+  // `notes/smart-task-ui/README.md` "Cross-surface: vs Usage / Insights",
+  // the asymmetric link helps users investigating a miss see the device's
+  // whole-day energy context. Pinned to the deadline timestamp's date so the
+  // user lands on the day the run was *supposed* to finish.
+  const usageLink = {
+    href: buildUsageDayHref(entry.deviceId, entry.deadlineAtMs),
+    label: formatPlanHistoryUsageDayLinkLabel(
+      entry.deviceName ?? null,
+      formatUsageLinkDate(entry.deadlineAtMs, timeZone),
+    ),
+    deviceId: entry.deviceId,
+  };
   // Producer-resolved hero payload. The view layer never branches on outcome
   // / planStatus / `dailyBudgetExhaustedBucketCount` — all of that resolution
   // lives in `buildHistoryDetailHero`.
@@ -874,6 +936,8 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
         reachedAtLine={reachedAtLine}
         coverageLine={coverageLine}
         revisionUpdatesLine={revisionUpdatesLine}
+        overshootLine={overshootLine}
+        usageLink={usageLink}
       />
       {!hasChartData ? (
         <section class="pels-surface-card">

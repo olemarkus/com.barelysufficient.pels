@@ -199,7 +199,7 @@ describe('EvDeadlineStateLine', () => {
     };
     const el = renderStateLine('ev-charger').querySelector('.plan-card__ev-state');
     expect(el).not.toBeNull();
-    expect(el?.textContent).toBe('Charging plan paused — car unplugged');
+    expect(el?.textContent).toBe('Charging paused — car unplugged');
   });
 
   it('does not show plug-out paused when device_data_missing but no specific diagnostic reason', () => {

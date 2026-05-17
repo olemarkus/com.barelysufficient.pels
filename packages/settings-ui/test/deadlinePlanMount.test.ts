@@ -1,5 +1,5 @@
 // Regression: when `/ui_bootstrap`, `/ui_devices`, or `/ui_prices` failed,
-// the deadline-plan page rendered "Smart task plan data is not available
+// the deadline-plan page rendered "Smart task data is not available
 // for this device." with no clue what actually went wrong, and the client
 // did not log the failure either. The error card now embeds the underlying
 // transport message and the failure round-trips to the app log via
@@ -62,7 +62,7 @@ describe('mountDeadlinePlan boot failure', () => {
     const text = surface?.textContent ?? '';
     // The error card includes both the framing line and the actual cause so
     // the user can read the failure without opening DevTools.
-    expect(text).toContain('Smart task plan data could not be loaded');
+    expect(text).toContain('Smart task data could not be loaded');
     expect(text).toContain('Homey api GET /ui_bootstrap failed: Network request failed');
     // And the failure round-trips so it shows up in `/tmp/pels` instead of
     // disappearing into a swallowed catch.
@@ -82,7 +82,7 @@ describe('mountDeadlinePlan boot failure', () => {
 
     const surface = document.getElementById('deadline-plan-root');
     const text = surface?.textContent ?? '';
-    expect(text).toContain('Smart task plan data could not be loaded');
+    expect(text).toContain('Smart task data could not be loaded');
     expect(text).toContain('Homey api GET /ui_deferred_objective_history failed: Network request failed');
     expect(logSettingsErrorMock).toHaveBeenCalledExactlyOnceWith(
       'Failed to load smart task history detail',
@@ -129,7 +129,7 @@ describe('mountDeadlinePlan boot failure', () => {
     await Promise.resolve();
 
     expect(surface?.querySelector('.plan-card__retry')).toBeNull();
-    expect(surface?.textContent ?? '').toContain('Loading smart task plan');
+    expect(surface?.textContent ?? '').toContain('Loading smart task');
     expect(callApiMock).toHaveBeenCalledTimes(2);
   });
 });

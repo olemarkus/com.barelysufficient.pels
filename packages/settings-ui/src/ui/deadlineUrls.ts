@@ -26,3 +26,24 @@ export const buildDeadlineHistoryHref = (deviceId: string, historyId: string): s
 export const isDeadlinePlanRoute = (search: string): boolean => (
   new URLSearchParams(search).get('page') === DEADLINE_PLAN_PAGE_PARAM
 );
+
+// Cross-link from smart-task history detail → Usage tab for the same device
+// + day. The Usage surface today does not consume deviceId/date URL params
+// (the filter is selected from inside the panel), so the href is a SPA root
+// reference; the click handler in `deadlinePlanMount.ts` reads `data-deadline-
+// usage-link` attributes on the anchor to dispatch a close-then-Usage-tab
+// transition.
+//
+// The deviceId + dateMs are still encoded on the href so future work that
+// adds Usage deviceId/date filter routing can read them off the URL without
+// needing to re-thread the producer signature. Per `notes/smart-task-ui/README.md`
+// "Cross-surface: vs Usage / Insights" — the asymmetric link is task → usage
+// only; the reverse is noise.
+export const buildUsageDayHref = (deviceId: string, dateMs: number): string => {
+  const params = new URLSearchParams({
+    page: 'usage',
+    deviceId,
+    date: new Date(dateMs).toISOString(),
+  });
+  return `./?${params.toString()}`;
+};
