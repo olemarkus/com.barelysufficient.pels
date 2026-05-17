@@ -43,6 +43,18 @@ started 2026-05-17). In scope for the train: `norgespris-historical-snapshot-tz`
 and settings-UI safety items not on the v2.7.2 path. Skip these items in
 v2.7.1 release-review passes.*
 
+- [ ] Budget page needs a current cheap/expensive price-level chip. PR9
+      (`v2-7-2-pr9-overview-calm-down`, 2026-05-17) demoted the
+      Overview hero's price-level chip on the basis that "should I run
+      loads now?" is a Budget concern, but the Budget page does not
+      currently surface a live `priceLevel` chip — only static "Use
+      cheaper hours" copy and price-shaping settings. Add a chip on
+      BudgetOverview that mirrors the demoted `PRICE_LEVEL_CHIPS`
+      mapping (`cheap → Price low`, `expensive → Price high`) sourced
+      from `power.priceLevel` on the live snapshot. Promote to P1 if
+      owner walks reveal users miss the cue between Overview demotion
+      and Budget chip landing.
+
 - [ ] Norgespris historical display uses live monthly cap snapshot, not
       snapshot-at-the-time. `priceServiceNorway.ts` initialises
       `remainingNorgesprisCapByMonth` from `monthlyCap − monthUsageKwh` at

@@ -106,25 +106,20 @@ describe('Redesign plan UI', () => {
       // Energy section shows the explicit backend-provided hour budget, not legacy budget fields.
       expect(headlines.some((h) => h?.includes('4.2 of 11.0 kWh used'))).toBe(true);
       expect(document.querySelectorAll('.plan-hero .pels-meter-track')).toHaveLength(2);
-      // Status chip stays quiet when below safe pace and data is fresh
-      expect(document.querySelector('.plan-hero .plan-chip:not(.plan-chip--muted)')).toBeNull();
-      expect((document.querySelector('.plan-hero .plan-chip--muted') as HTMLElement | null)?.textContent?.trim())
-        .toBe('Home mode');
+      // Hero chip rail stays calm when on track + fresh: no chips at all.
+      // Mode and price-level chips were demoted in PR9 (owner walk 2026-05-17).
+      expect(document.querySelectorAll('.plan-hero .plan-chip')).toHaveLength(0);
       // No stale-data chip when power is fresh
       expect(document.querySelector('.plan-hero .plan-chip--alert')).toBeNull();
+      // Priority rank chip removed in PR9 — list order already encodes priority.
+      expect(document.querySelector('.plan-card__chips .plan-chip--rank')).toBeNull();
 
       const deviceNames = Array.from(document.querySelectorAll('.plan-card__title'))
         .map((el) => el.textContent?.trim());
       expect(deviceNames).toEqual(['First', 'Second']);
-
-      const rankChips = Array.from(document.querySelectorAll('.plan-card__chips .plan-chip--rank'))
-        .map((el) => el.textContent?.trim());
-      expect(rankChips).toEqual(['#1', '#2']);
-      const firstRank = document.querySelector('[data-device-id="dev-1"] .plan-chip--rank') as HTMLElement | null;
-      expect(firstRank?.getAttribute('aria-label')).toBe('Priority #1');
     });
 
-    it('omits the priority-rank chip for budget-exempt devices', async () => {
+    it('renders the budget-exempt "Always on" chip on device cards', async () => {
       await renderPlanSnapshot({
         meta: { totalKw: 0, softLimitKw: 5, headroomKw: 5 },
         devices: [
@@ -138,7 +133,6 @@ describe('Redesign plan UI', () => {
           },
         ],
       });
-      expect(document.querySelector('[data-device-id="dev-always-on"] .plan-chip--rank')).toBeNull();
       expect(
         (document.querySelector('[data-device-id="dev-always-on"] .plan-chip--muted') as HTMLElement | null)
           ?.textContent?.trim(),

@@ -163,6 +163,21 @@ The prior "Move deadline later" copy promised an action neither destination offe
 
 Reserve *plan* for the planning layer. Smart-task surfaces use *deadline*, *objective*, or *smart task* for lifecycle and identity language ("set a deadline", "smart task ended"). Surface labels prefer non-plan terminology — e.g., the inputs card is titled `Smart task inputs`, not `Plan inputs`.
 
+## Mode label
+
+The operating mode (Home, Away, Night, or any user-authored name) is rendered
+on the Settings page with the English structural prefix `Mode:` followed by
+the untranslated mode name — e.g. `Mode: Home`, `Mode: Hjemme`. Source helper:
+`formatModeSummary` in `packages/settings-ui/src/ui/modeLabels.ts`.
+
+The older `${name} mode` form was retired in PR9 (owner walk 2026-05-17)
+because it produced awkward mid-phrase code-switches at non-English locales
+(e.g. `Hjemme mode`). Putting the English word first keeps it unambiguously
+chrome, and lets the user-authored name stand alone.
+
+The Overview hero does not chip the mode — see
+`notes/overview-hero-spec.md` § "Chip row".
+
 ## Style rules
 
 1. **Concrete action words.** `limited`, not `shed`. `resume`, not `restore`. `available power`, not `headroom`.

@@ -21,23 +21,21 @@ const isTemperatureCard = (dev: PlanDeviceSnapshot): boolean => (
 const PlanCard = ({
   dev,
   plan,
-  rank,
   renderedAtMs,
   nowMs,
 }: {
   dev: PlanDeviceSnapshot;
   plan: PlanSnapshot | null;
-  rank: number | null;
   renderedAtMs: number;
   nowMs: number;
 }) => {
   if (dev.controlModel === 'stepped_load') {
-    return <PlanSteppedCard dev={dev} plan={plan} rank={rank} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
+    return <PlanSteppedCard dev={dev} plan={plan} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
   }
   if (isTemperatureCard(dev)) {
-    return <PlanTemperatureCard dev={dev} plan={plan} rank={rank} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
+    return <PlanTemperatureCard dev={dev} plan={plan} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
   }
-  return <PlanGenericCard dev={dev} plan={plan} rank={rank} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
+  return <PlanGenericCard dev={dev} plan={plan} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
 };
 
 const PlanOverviewRoot = ({ plan, power, context, renderedAtMs, nowMs }: OverviewProps) => {
@@ -55,12 +53,11 @@ const PlanOverviewRoot = ({ plan, power, context, renderedAtMs, nowMs }: Overvie
       <div id="plan-hour-strip" class="plan-hour-strip" hidden />
       {emptyMessage && <p id="plan-empty" class="muted">{emptyMessage}</p>}
       <div id="plan-cards" class="plan-cards">
-        {devices.map((dev, index) => (
+        {devices.map((dev) => (
           <PlanCard
             key={dev.id}
             dev={dev}
             plan={plan}
-            rank={typeof dev.priority === 'number' ? index + 1 : null}
             renderedAtMs={renderedAtMs}
             nowMs={nowMs}
           />

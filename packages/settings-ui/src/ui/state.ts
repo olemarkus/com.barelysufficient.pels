@@ -10,7 +10,7 @@ import {
   type DeferredObjectiveSettingsV1,
 } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { DeferredObjectiveActivePlansV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
-import { DEFAULT_MODE_NAME } from './modeLabels.ts';
+import { DEFAULT_MODE_NAME } from '../../../shared-domain/src/modeLabels.ts';
 
 export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 export type ShedBehavior = {

@@ -14,7 +14,6 @@ import {
   formatHardCapTooltip,
   formatSafePaceTooltip,
 } from '../../../../shared-domain/src/planHeroTooltips.ts';
-import { formatModeLabel } from '../modeLabels.ts';
 import { resolveDisplayPlanDevices } from '../planLiveData.ts';
 import type { PlanDeviceSnapshot, PlanMetaSnapshot, PlanSnapshot } from '../planTypes.ts';
 import type { SettingsUiPowerStatus } from '../../../../contracts/src/settingsUiApi.ts';
@@ -295,33 +294,19 @@ const InfoIcon = () => (
   </svg>
 );
 
-// Surface a single info chip for the cheap / expensive price-level signal.
-// `priceLevel` is a free-form string from the Homey price API; we only chip
-// the two canonical values that map to actionable user copy and skip anything
-// else (including `normal`, `null`, or unrecognised tags) so the chip rail
-// stays calm when there is nothing to say.
-const PRICE_LEVEL_CHIPS: Record<string, string> = {
-  cheap: 'Price low',
-  expensive: 'Price high',
-};
-
-const resolvePriceLevelChip = (priceLevel: string | null | undefined): string | null => {
-  if (!priceLevel) return null;
-  return PRICE_LEVEL_CHIPS[priceLevel] ?? null;
-};
-
+// Overview hero answers "am I OK right now?". The chip rail is pared back to
+// the live status signal plus a freshness chip when data is stale. Mode and
+// price-level chips were demoted in PR9 (owner walk 2026-05-17): mode is a
+// stable filter belonging to page chrome, and price-level is a Budget concern.
+// See notes/overview-hero-spec.md § "Chip row".
 const HeroChipRow = ({
   heroStatus,
-  activeMode,
   freshnessState,
   ageText,
-  priceLevel,
 }: {
   heroStatus: HeroStatus;
-  activeMode: string;
   freshnessState: FreshnessState | undefined;
   ageText: string | null;
-  priceLevel: string | null | undefined;
 }) => {
   const freshness = formatFreshnessChip(freshnessState);
   // Hide freshness chip when data is fresh — chip rail stays calm on the
@@ -329,19 +314,10 @@ const HeroChipRow = ({
   const showFreshness = freshness !== null && freshness.kind !== 'fresh';
   const freshnessTooltip = ageText ? `Power reading updated ${ageText}` : undefined;
   const statusLabel = HERO_STATUS_LABEL[heroStatus] ?? null;
-  const priceChipLabel = resolvePriceLevelChip(priceLevel);
   return (
     <div class="plan-hero__chips">
       <div class="plan-hero__chip-rail">
         {statusLabel && <Chip label={statusLabel} tone={HERO_STATUS_CHIP_TONE[heroStatus]} />}
-        {activeMode && (
-          <span class="plan-chip plan-chip--muted">{formatModeLabel(activeMode)}</span>
-        )}
-        {priceChipLabel && (
-          <span class="plan-chip plan-chip--info" data-price-level={priceLevel ?? undefined}>
-            {priceChipLabel}
-          </span>
-        )}
         {showFreshness && (
           <span class={`plan-chip plan-chip--${freshness.tone}`} data-tooltip={freshnessTooltip}>
             {freshness.label}
@@ -595,7 +571,6 @@ const EnergySection = ({ meta }: { meta: PlanMetaSnapshot }) => {
 // ─── PlanHero component ───────────────────────────────────────────────────────
 
 export type HeroContext = {
-  activeMode: string;
   dryRun: boolean;
 };
 
@@ -648,10 +623,8 @@ export const PlanHero = ({
     <div class="plan-hero pels-hero" data-tone={HERO_STATUS_DATA_TONE[heroStatus]} aria-live="polite">
       <HeroChipRow
         heroStatus={heroStatus}
-        activeMode={context.activeMode}
         freshnessState={freshnessState}
         ageText={headline.ageText}
-        priceLevel={power?.priceLevel ?? null}
       />
       <PowerSection headline={headline} meta={meta} />
       <EnergySection meta={meta} />

@@ -26,7 +26,7 @@ import { showToast, showToastError } from './toast.ts';
 import { resolveManagedState, state } from './state.ts';
 import { createDragHandle } from './components.ts';
 import { logSettingsError } from './logging.ts';
-import { DEFAULT_MODE_NAME, formatModeLabel, resolveModeName } from './modeLabels.ts';
+import { DEFAULT_MODE_NAME, formatModeSummary, resolveModeName } from '../../../shared-domain/src/modeLabels.ts';
 import { debouncedSetSetting } from './utils.ts';
 
 type MaterialTextFieldElement = HTMLElement & {
@@ -68,7 +68,7 @@ const createModeOption = (value: string, selected: boolean): MaterialSelectOptio
 
 const renderActiveModeSummary = () => {
   if (!settingsActiveModeSummary) return;
-  settingsActiveModeSummary.textContent = formatModeLabel(state.activeMode);
+  settingsActiveModeSummary.textContent = formatModeSummary(state.activeMode);
 };
 
 const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
