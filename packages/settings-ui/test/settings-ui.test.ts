@@ -687,6 +687,12 @@ describe('Settings UI', () => {
         };
       });
       expect(activeTabTheme.container).toBe('rgb(34, 197, 94)');
+      // On-accent text uses the same designer-tuned dark value on both
+      // mobile and desktop — `#0c1610` on `#22c55e` is ~9.3 : 1 (AA pass),
+      // while `#ffffff` on the same green is only ~1.86 : 1 (AA fail). The
+      // desktop palette gate intentionally inherits this value from the
+      // default `:root` rather than flipping to white. See
+      // notes/desktop-light-mobile-dark.md.
       expect(activeTabTheme.activeText).toBe('rgb(12, 22, 16)');
       expect(activeTabTheme.expectedContainer).toBe('#22c55e');
       expect(activeTabTheme.expectedActiveText).toBe('#0c1610');
