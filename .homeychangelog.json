@@ -364,5 +364,8 @@
   },
   "2.7.1": {
     "en": "Fixed a theming issue. Homey dark mode applies a blanket hue rotation on top of everything, includign the PELS iframe. This should now make the colours render correctly at least for light mode and for mobile."
+  },
+  "2.7.3": {
+    "en": "The smart task history detail has been significantly expanded. Completed tasks now show a receipt view, missed tasks show a diagnosis with the reason the deadline was not met, and abandoned tasks show a log of what changed. Each history entry also includes a progress chart plotting actual measured values against the planned trajectory, and a revision log that shows each time the schedule was updated and why.\n\nThis release also fixes timezone handling for Norgespris price caps and daily power tracking, and removes inconsistent terms from tooltips and capacity-related labels across the app."
   }
 }
