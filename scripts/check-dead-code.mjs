@@ -138,6 +138,7 @@ const allowedUnusedExportPatterns = [
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatDeadlineDeliveredSoFarLine$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveMissedHistoryRecourse$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - APPROX_GLYPH$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - revisionReason$/,
   /^packages\/shared-domain\/src\/deferredPlanHistory\.ts:\d+ - formatPlanHistoryCostAndDelivered$/,
   /^packages\/shared-domain\/src\/deferredPlanHistory\.ts:\d+ - formatPlanHistoryAbandonedSecondary$/,
   // Transitively reached from `deadlineLabels.ts`; consumed by settings UI bootstrap
