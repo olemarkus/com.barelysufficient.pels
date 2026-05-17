@@ -399,18 +399,26 @@ describe('DeadlinePlanHistoryDetail', () => {
       expect(root.querySelector('.deadline-horizon-chart')).not.toBeNull();
     });
 
-    it('Missed-by-shortfall recourse uses Move-deadline-later, not budget', async () => {
+    it('Missed-by-shortfall recourse opens device settings for the entry device, not a dead-end tab', async () => {
       const revision = buildRevision({ planStatus: 'cannot_meet' });
       const root = await mount(buildEntry({
         outcome: 'missed',
+        deviceId: 'dev_water_heater',
         finalProgressC: 38,
         targetTemperatureC: 65,
         originalPlan: revision,
         finalPlan: revision,
       }));
       const recourseBtn = root.querySelector<HTMLButtonElement>('.plan-history-detail__recourse button');
-      expect(recourseBtn?.textContent).toContain('Move deadline later');
+      // Label is action-oriented and honest about the landing surface — the
+      // prior "Move deadline later" copy promised an action the destination
+      // didn't offer (owner walk 2026-05-17). "Review device" is honest:
+      // the overlay shows shed behaviour, target power, boost, modes, deltas.
+      expect(recourseBtn?.textContent).toContain('Review device');
       expect(recourseBtn?.dataset.deadlineRecourseTab).toBe('overview');
+      // Producer threads the entry's deviceId through so the dispatcher can
+      // open the device-settings overlay in a single click.
+      expect(recourseBtn?.dataset.deadlineRecourseDeviceId).toBe('dev_water_heater');
     });
 
     it('Abandoned shape: tone=muted, postmortem present, no recourse, chart collapsed', async () => {

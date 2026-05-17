@@ -33,8 +33,14 @@ const DEADLINE_PLAN_REFRESH_DEBOUNCE_MS = 200;
 // it closes. `closeView` in `deadlinePlanRouter.ts` reads this so the
 // recourse-action row (e.g. "Open Budget") can land the user on Budget
 // directly in a single click — without racing the popstate handler that
-// would have re-shown the Smart-tasks tab.
-export type DeadlinePlanCloseOptions = { fallbackTab?: string };
+// would have re-shown the Smart-tasks tab. `onSettled` fires after the
+// close path has settled (popstate handled on the history-back branch,
+// inline on the replaceState branch) so the history-detail recourse can
+// open the device-detail overlay *after* the view has unmounted.
+export type DeadlinePlanCloseOptions = {
+  fallbackTab?: string;
+  onSettled?: () => void;
+};
 
 // Resolved by `boot.ts` so the close button can return to whichever tab the
 // user came from (almost always Smart tasks). Kept as a module-local instead
@@ -64,6 +70,16 @@ const initDeadlinePlanClose = (): void => {
 // one pass; the prior "close then showTab" sequence raced popstate and
 // lost the target on the history-back path. Bound once on the document so
 // we don't need to re-bind after each render of the deadline-plan view.
+//
+// When the button also carries `data-deadline-recourse-device-id="<id>"`
+// (history-detail "Review device" recourse), dispatch the
+// `open-device-detail` custom event *after* the close path has settled so
+// the device-settings overlay opens in a single click without racing the
+// router's popstate. Owner walk 2026-05-17 flagged the prior dead-end
+// button; the prior fix dispatched synchronously and only worked by luck of
+// z-index ordering. The overlay layers on top of any tab, so landing on
+// Overview first keeps the back-stack sensible if the user dismisses the
+// overlay.
 let recourseHandlerBound = false;
 const initDeadlinePlanRecourseDispatcher = (): void => {
   if (recourseHandlerBound) return;
@@ -75,7 +91,13 @@ const initDeadlinePlanRecourseDispatcher = (): void => {
     const targetTab = trigger.dataset.deadlineRecourseTab;
     if (!targetTab) return;
     event.preventDefault();
-    onCloseDeadlinePlan({ fallbackTab: targetTab });
+    const deviceId = trigger.dataset.deadlineRecourseDeviceId;
+    const onSettled = (deviceId !== undefined && deviceId.length > 0)
+      ? () => {
+        document.dispatchEvent(new CustomEvent('open-device-detail', { detail: { deviceId } }));
+      }
+      : undefined;
+    onCloseDeadlinePlan({ fallbackTab: targetTab, onSettled });
   });
 };
 

@@ -33,6 +33,13 @@ type CloseOptions = {
   // the Budget tab in a single click — without a race against the popstate
   // handler that the prior "close then showTab(target)" flow lost to.
   fallbackTab?: string;
+  // Optional callback fired after the close path has settled (popstate has
+  // fired on the history-back branch, or synchronously on the replaceState
+  // branch). The history-detail "Review device" recourse uses this to defer
+  // the `open-device-detail` dispatch until *after* the view has unmounted —
+  // dispatching synchronously raced popstate and only worked by luck of the
+  // overlay's z-index. See `deadlinePlanMount.ts` recourse dispatcher.
+  onSettled?: () => void;
 };
 
 type RouterDeps = {
@@ -55,11 +62,18 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
   // navigation that wasn't triggered by `closeView` doesn't pick up a stale
   // target.
   let pendingFallbackTab: string | null = null;
+  // Pending settled-callback set by `closeView` when it routes through
+  // `history.back()`. Invoked from `applyRouteFromUrl` once popstate has
+  // fired and the route has actually been applied, so callers can sequence
+  // post-close work (e.g. opening an overlay) without racing popstate. The
+  // synchronous replaceState branch invokes the callback inline.
+  let pendingOnSettled: (() => void) | null = null;
 
   const closeView = (options?: CloseOptions): void => {
     const fallbackTab = options?.fallbackTab ?? 'deadlines';
     if (openedViaPushState && window.history.length > 1) {
       pendingFallbackTab = fallbackTab;
+      pendingOnSettled = options?.onSettled ?? null;
       window.history.back();
       return;
     }
@@ -71,6 +85,7 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
     hideDeadlinePlanPanel(fallbackTab);
     panelVisible = false;
     openedViaPushState = false;
+    options?.onSettled?.();
   };
   deps.setCloseHandler(closeView);
 
@@ -92,6 +107,11 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
     pendingFallbackTab = null;
     deps.unmount();
     openedViaPushState = false;
+    // Fire after unmount + tab switch so the callback observes the settled
+    // post-close DOM state (overlay opens cleanly on top of the target tab).
+    const settled = pendingOnSettled;
+    pendingOnSettled = null;
+    settled?.();
   };
 
   // Find a SPA-route anchor in the event's composed path. `closest('a[href]')`

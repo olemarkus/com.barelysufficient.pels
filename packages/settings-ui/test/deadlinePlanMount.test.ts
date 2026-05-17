@@ -25,7 +25,11 @@ vi.mock('../src/ui/logging.ts', async () => {
   };
 });
 
-import { mountDeadlinePlan } from '../src/ui/deadlinePlanMount.ts';
+import {
+  mountDeadlinePlan,
+  setDeadlinePlanCloseHandler,
+  type DeadlinePlanCloseOptions,
+} from '../src/ui/deadlinePlanMount.ts';
 
 const setLocation = (search: string) => {
   Object.defineProperty(window, 'location', {
@@ -131,5 +135,74 @@ describe('mountDeadlinePlan boot failure', () => {
     expect(surface?.querySelector('.plan-card__retry')).toBeNull();
     expect(surface?.textContent ?? '').toContain('Loading smart task');
     expect(callApiMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+// PR 8 polish: clicking the "Review device" recourse on a missed history
+// entry must close the deadline-plan view first, then dispatch
+// `open-device-detail` once the close path has settled. Dispatching
+// synchronously raced popstate and only worked by luck of overlay z-index
+// ordering; the router now exposes an `onSettled` callback so the
+// dispatcher can sequence the overlay open after the unmount + tab switch.
+describe('recourse dispatcher (history-detail "Review device")', () => {
+  // Ensure the document-level recourse-click handler is bound before each
+  // test in this block, independent of prior describe order. `mountDeadlinePlan`
+  // binds it once per session via `recourseHandlerBound`; a single failing
+  // mount with a rejected callApi exercises the binding without coupling to
+  // the boot-failure tests above.
+  beforeEach(async () => {
+    callApiMock.mockRejectedValue(new Error('binding-only mount'));
+    await mountDeadlinePlan();
+  });
+
+  it('defers open-device-detail until the close handler invokes onSettled', () => {
+    const events: string[] = [];
+    let capturedOnSettled: (() => void) | null = null;
+
+    // Stub close handler — records the call and captures onSettled instead
+    // of running it. This pins the contract: the dispatcher must hand a
+    // callback to the router, not dispatch open-device-detail inline.
+    setDeadlinePlanCloseHandler((options?: DeadlinePlanCloseOptions) => {
+      events.push(`close:${options?.fallbackTab ?? ''}`);
+      capturedOnSettled = options?.onSettled ?? null;
+    });
+    document.addEventListener('open-device-detail', () => {
+      events.push('open-device-detail');
+    });
+
+    // Install a recourse button matching the producer's data-* contract.
+    installRoot();
+    const button = document.createElement('button');
+    button.setAttribute('data-deadline-recourse-tab', 'overview');
+    button.setAttribute('data-deadline-recourse-device-id', 'dev_water_heater');
+    document.body.appendChild(button);
+
+    button.click();
+
+    // Close fired first; overlay open has NOT yet been dispatched.
+    expect(events).toEqual(['close:overview']);
+    expect(typeof capturedOnSettled).toBe('function');
+
+    // Router signals close settled → overlay opens.
+    capturedOnSettled!();
+    expect(events).toEqual(['close:overview', 'open-device-detail']);
+  });
+
+  it('omits onSettled when the recourse has no device-id (budget-exhausted branch)', () => {
+    let capturedOptions: DeadlinePlanCloseOptions | undefined;
+    setDeadlinePlanCloseHandler((options?: DeadlinePlanCloseOptions) => {
+      capturedOptions = options;
+    });
+
+    installRoot();
+    const button = document.createElement('button');
+    button.setAttribute('data-deadline-recourse-tab', 'budget');
+    // No data-deadline-recourse-device-id — budget branch has no overlay.
+    document.body.appendChild(button);
+
+    button.click();
+
+    expect(capturedOptions?.fallbackTab).toBe('budget');
+    expect(capturedOptions?.onSettled).toBeUndefined();
   });
 });

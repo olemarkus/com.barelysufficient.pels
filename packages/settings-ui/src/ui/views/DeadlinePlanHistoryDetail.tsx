@@ -748,6 +748,7 @@ const HistoryDetailHero = ({
           type="button"
           class="plan-hero__recourse-button"
           data-deadline-recourse-tab={hero.recourse.targetTab}
+          data-deadline-recourse-device-id={hero.recourse.deviceId ?? ''}
         >
           {hero.recourse.label}
         </button>

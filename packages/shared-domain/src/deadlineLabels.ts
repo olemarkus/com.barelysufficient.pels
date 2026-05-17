@@ -225,6 +225,15 @@ export type DeadlinePendingContext = {
 export type DeadlineCannotMeetRecourse = {
   label: string;
   targetTab: string;
+  // Optional deep-link target. When present, the click dispatcher fires the
+  // `open-device-detail` custom event *after* landing on `targetTab` so the
+  // user lands on the device-settings overlay in a single click. Carried as
+  // a producer-resolved field so the consumer never branches on history-entry
+  // source / evidence (per `feedback_layering_resolution_in_producer.md`).
+  // Used today by the missed-history "Review device" recourse — the
+  // user reads the postmortem and tapping the recourse opens the device that
+  // missed, not just a tab list. Live-hero recourses leave this absent.
+  deviceId?: string;
 };
 
 // `headlineReason` is the subline rendered below the pending headline — a
@@ -934,11 +943,31 @@ const formatProgressValueForUnit = (
 // what happened *after* the deadline missed, so the recourse is advice for
 // the next run rather than a "fix the current plan" affordance. The
 // `targetTab` slug still routes the click — Budget for the budget-exhausted
-// branch, Overview (where the device lives) for shortfall.
-const MISSED_HISTORY_RECOURSE = {
-  lowerDailyBudget: { label: 'Lower daily budget', targetTab: 'budget' },
-  moveDeadlineLater: { label: 'Move deadline later', targetTab: 'overview' },
-} as const;
+// branch; the shortfall branch lands on Overview AND deep-links the
+// device-settings overlay for the device that missed (deadlines are
+// configured per-device via Flow cards, so the device-settings surface is
+// the closest landing place — Overview alone is a dead end, see owner walk
+// 2026-05-17).
+//
+// Label note: the prior "Move deadline later" copy promised an action the
+// destination doesn't offer (the deadline-plan panel doesn't edit
+// deadlines, nor does device-settings). "Review device" is honest about
+// where the click lands — the device-settings overlay shows shed behaviour,
+// target power, boost, modes and deltas; the user audits the device that
+// missed and can adjust those settings (or the Flow wiring) from there.
+const MISSED_HISTORY_RECOURSE_LOWER_BUDGET: DeadlineCannotMeetRecourse = {
+  label: 'Lower daily budget',
+  targetTab: 'budget',
+};
+
+// Shortfall sibling of `MISSED_HISTORY_RECOURSE_LOWER_BUDGET`. Hoisted so the
+// two branches of `resolveMissedHistoryRecourse` share the same producer
+// pattern (constant + spread of the per-entry `deviceId`) instead of one
+// branch returning a constant and the other returning an inline literal.
+const MISSED_HISTORY_RECOURSE_SHORTFALL: Omit<DeadlineCannotMeetRecourse, 'deviceId'> = {
+  label: 'Review device',
+  targetTab: 'overview',
+};
 
 // Resolves the recourse action for a missed history entry. Producer-side
 // branch on `dailyBudgetExhausted` so the consumer never branches on the
@@ -948,17 +977,19 @@ const MISSED_HISTORY_RECOURSE = {
 //
 // Two-branch resolver:
 //   - budget exhausted → `Lower daily budget` (targetTab: 'budget')
-//   - everything else  → `Move deadline later` (targetTab: 'overview')
+//   - everything else  → `Review device` (targetTab: 'overview' +
+//                        deviceId deep link)
 //
 // Returns `null` when the entry is not a missed run — the receipt-shape
 // succeeded hero and the muted abandoned hero carry no recourse.
 export const resolveMissedHistoryRecourse = (params: {
   outcome: 'met' | 'missed' | 'abandoned' | 'replaced' | 'unknown';
   dailyBudgetExhausted: boolean;
+  deviceId: string;
 }): DeadlineCannotMeetRecourse | null => {
   if (params.outcome !== 'missed') return null;
-  if (params.dailyBudgetExhausted) return MISSED_HISTORY_RECOURSE.lowerDailyBudget;
-  return MISSED_HISTORY_RECOURSE.moveDeadlineLater;
+  if (params.dailyBudgetExhausted) return MISSED_HISTORY_RECOURSE_LOWER_BUDGET;
+  return { ...MISSED_HISTORY_RECOURSE_SHORTFALL, deviceId: params.deviceId };
 };
 
 // Resolve display rows for the kWhPerUnit provenance snapshot. The caller
