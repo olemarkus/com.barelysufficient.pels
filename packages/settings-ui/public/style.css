@@ -508,14 +508,6 @@ md-text-button.md-text-button--destructive {
   min-width: 0;
 }
 
-#shell-nav .tab[data-tab="settings"] {
-  margin-left: 0;
-  padding-inline: var(--pels-shell-nav-tab-padding-inline);
-  font-size: var(--pels-shell-nav-tab-label-size);
-  font-weight: var(--pels-shell-nav-tab-label-weight);
-  opacity: 1;
-}
-
 md-primary-tab.tab.active,
 md-primary-tab.tab[active] {
   --md-primary-tab-container-color: var(--pels-shell-nav-tab-selected-background);
@@ -2021,11 +2013,17 @@ md-primary-tab.tab[active]:hover {
   background: var(--color-surface-3);
 }
 
+/* Target / cap markers extend a half-pixel on each side via box-shadow so
+   sub-pixel rendering does not leave a hairline gap between the marker body
+   and the trailing edge of the colored fill when the bar reaches (or just
+   crosses) the marker position. The shadow inherits the marker tone so it
+   reads as a continuation of the marker, not a halo. */
 .pels-meter-track__marker--target {
   width: 3px;
   height: 14px;
   border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--text) 82%, transparent);
+  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--text) 82%, transparent);
 }
 
 .pels-meter-track__marker--cap {
@@ -2033,6 +2031,7 @@ md-primary-tab.tab[active]:hover {
   height: 14px;
   border-radius: var(--radius-full);
   background: var(--pels-status-warning);
+  box-shadow: 0 0 0 0.5px var(--pels-status-warning);
   transform: translate(-100%, -50%);
 }
 
