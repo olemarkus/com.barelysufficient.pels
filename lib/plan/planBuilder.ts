@@ -208,16 +208,27 @@ export class PlanBuilder {
     const deferredEvaluations = this.trackDuration('evaluate_deferred_objectives_ms', () => (
       this.evaluateDeferredObjectives(devices, dailyBudgetSnapshot, nowTs)
     ));
-    this.deps.observeDeferredObjectivePlanHistory?.(
-      deferredEvaluations,
-      nowTs,
-      this.deps.getStallClassification,
-    );
-    this.deps.observeDeferredObjectiveActivePlans?.(deferredEvaluations, nowTs);
-    const deferredAdmission = applyDeferredObjectiveAdmission(deferredEvaluations, devices);
-    const { devices: admittedDevices, forceShedSet } = applyDeferredAdmissionToInput(devices, deferredAdmission);
-    const deferredTargetTempByDeviceId = buildDeferredTargetOverrides(deferredEvaluations);
-    const deferredEvCommandIntentByDeviceId = buildDeferredEvCommandIntents(deferredAdmission);
+    const {
+      admittedDevices,
+      forceShedSet,
+      deferredTargetTempByDeviceId,
+      deferredEvCommandIntentByDeviceId,
+    } = this.trackDuration('plan_deferred_objective_observe_ms', () => {
+      this.deps.observeDeferredObjectivePlanHistory?.(
+        deferredEvaluations,
+        nowTs,
+        this.deps.getStallClassification,
+      );
+      this.deps.observeDeferredObjectiveActivePlans?.(deferredEvaluations, nowTs);
+      const deferredAdmission = applyDeferredObjectiveAdmission(deferredEvaluations, devices);
+      const admission = applyDeferredAdmissionToInput(devices, deferredAdmission);
+      return {
+        admittedDevices: admission.devices,
+        forceShedSet: admission.forceShedSet,
+        deferredTargetTempByDeviceId: buildDeferredTargetOverrides(deferredEvaluations),
+        deferredEvCommandIntentByDeviceId: buildDeferredEvCommandIntents(deferredAdmission),
+      };
+    });
 
     const {
       context,
@@ -239,24 +250,29 @@ export class PlanBuilder {
     this.syncHeadroomCardStateWithTiming(planDevices);
     const finalized = this.finalizePlanWithTiming(planDevices);
     this.state.lastPlannedShedIds = finalized.lastPlannedShedIds;
-    this.updateOvershootState({
+    this.trackDuration('plan_overshoot_ms', () => this.updateOvershootState({
       context,
       deviceNameById,
       planDevices: finalized.planDevices,
       overshootDecision,
       nowTs,
-    });
+    }));
 
     const meta = this.trackDuration('plan_meta_ms', () => (
       this.buildPlanMeta(context, finalized.planDevices, dailyBudgetSnapshot)
     ));
-    this.observeDiagnostics({
-      context,
-      planDevices: finalized.planDevices,
-      restoreResult,
+    this.trackDuration('plan_observe_diag_ms', () => {
+      this.observeDiagnostics({
+        context,
+        planDevices: finalized.planDevices,
+        restoreResult,
+        nowTs,
+      });
     });
-    this.emitDeferredObjectiveDiagnostics(deferredEvaluations);
-    this.emitDeferredObjectiveStatusTransitions(deferredEvaluations, nowTs);
+    this.trackDuration('plan_emit_deferred_ms', () => {
+      this.emitDeferredObjectiveDiagnostics(deferredEvaluations);
+      this.emitDeferredObjectiveStatusTransitions(deferredEvaluations, nowTs);
+    });
     return {
       meta,
       devices: finalized.planDevices,
@@ -611,13 +627,20 @@ export class PlanBuilder {
     });
   }
 
+  // Diagnostics observation runs synchronously on the plan-build path so the
+  // immediately-following `plan_updated` emit reads fresh starvation state
+  // from `DeviceDiagnosticsService.getOverviewStarvation`. Earlier attempts to
+  // defer this via `setImmediate` caused the UI snapshot to serialize the
+  // previous batch's starvation, since the deferred callback hadn't run yet
+  // when `serializePlanForUi` queried `live.starvation`.
   private observeDiagnostics(params: {
     context: PlanContext;
     planDevices: DevicePlanDevice[];
     restoreResult: RestorePlanResult;
+    nowTs: number;
   }): void {
     if (!this.deps.deviceDiagnostics) return;
-    const nowTs = Date.now();
+    const { nowTs } = params;
     const observations = buildDeviceDiagnosticsObservations({
       context: params.context,
       planDevices: params.planDevices,

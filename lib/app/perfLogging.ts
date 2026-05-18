@@ -99,6 +99,27 @@ const VALUE_DURATION_KEYS = new Set([
   'device_refresh_ms',
   'evaluate_deferred_objectives_ms',
   'price_optimizer_apply_ms',
+  // Plan-build sub-stages (recorded by PlanBuilder.trackDuration). Surfaced
+  // so the perf log shows which sub-stage dominates plan_build_ms when the
+  // total regresses.
+  'plan_context_ms',
+  'plan_meta_ms',
+  'plan_shedding_ms',
+  'plan_devices_ms',
+  'plan_restore_ms',
+  'plan_hold_ms',
+  'plan_reasons_ms',
+  'plan_finalize_ms',
+  'plan_headroom_cooldown_ms',
+  // Inside buildInitialPlanDevices, accumulated across the per-device loop.
+  'plan_devices_setup_ms',
+  'plan_devices_base_ms',
+  'plan_devices_offstate_ms',
+  // Inside buildPlanSnapshotWithTimings — the un-trackDuration'd regions.
+  'plan_deferred_objective_observe_ms',
+  'plan_overshoot_ms',
+  'plan_observe_diag_ms',
+  'plan_emit_deferred_ms',
 ]);
 
 const buildPerfDelta = (current: PerfSnapshot, previous?: PerfSnapshot | null): PerfDelta => {

@@ -7,10 +7,6 @@ import {
   resolveSteppedShedCurrentDesiredStepId,
 } from './planSteppedShedResolution';
 import {
-  resolveSteppedLoadDirectShedStepId,
-  resolveSteppedShedCurrentDesiredStepId,
-} from './planSteppedShedResolution';
-import {
   PLAN_REASON_CODES,
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -43,6 +39,7 @@ import {
   resolveTemperatureBoostActive,
   supportsTemperatureBoostDevice,
 } from './planTemperatureBoost';
+import { addPerfDuration } from '../utils/perfCounters';
 import type { StructuredDebugEmitter } from '../logging/logger';
 
 export type PlanDevicesDeps = {
@@ -86,7 +83,16 @@ export function buildInitialPlanDevices(params: {
     shedSet,
     isPhantom: (dev) => isPhantomSetStepShed({ dev, devices: context.devices, state, deps }),
   });
-  return context.devices.flatMap((dev) => {
+  // Per-stage accumulators (split inside the per-device loop). Emitted once
+  // after the loop so the perf log shows where plan_devices_ms is going
+  // without per-iteration log spam. Added during 2026-05-18 memory-regression
+  // investigation; keep as a permanent diagnostic surface for future
+  // regressions in this hot path.
+  let setupMs = 0;
+  let baseMs = 0;
+  let offStateMs = 0;
+  const result = context.devices.flatMap((dev) => {
+    const t0 = Date.now();
     const supportsTemperature = supportsTemperatureDevice(dev);
     const priority = deps.getPriorityForDevice(dev.id);
     const plannedTarget = resolvePlannedTarget({
@@ -96,7 +102,10 @@ export function buildInitialPlanDevices(params: {
       supportsTemperature,
       deps,
     });
-    if (plannedTarget === SKIP_PLANNED_TARGET) return [];
+    if (plannedTarget === SKIP_PLANNED_TARGET) {
+      setupMs += Date.now() - t0;
+      return [];
+    }
     const currentTarget = getPrimaryTargetCapability(dev.targets)?.value ?? null;
     const currentState = resolveCurrentState(dev);
     const controllable = dev.controllable !== false;
@@ -116,6 +125,8 @@ export function buildInitialPlanDevices(params: {
       active: evBoostActive,
       debugStructured: deps.debugStructured,
     });
+    setupMs += Date.now() - t0;
+    const t1 = Date.now();
     const base = buildBasePlanDevice({
       dev,
       devices: context.devices,
@@ -137,15 +148,22 @@ export function buildInitialPlanDevices(params: {
       temperatureBoostActive: active,
       evBoostActive,
     });
+    baseMs += Date.now() - t1;
     state.temperatureBoostActiveByDevice[dev.id] = base.temperatureBoostActive === true;
     state.evBoostActiveByDevice[dev.id] = base.evBoostActive === true;
+    const t2 = Date.now();
     const withOffStateReason = applyOffStateReason({
       planDevice: base,
       headroomRaw: context.headroomRaw,
       guardInShortfall,
     });
+    offStateMs += Date.now() - t2;
     return [withOffStateReason];
   });
+  addPerfDuration('plan_devices_setup_ms', setupMs);
+  addPerfDuration('plan_devices_base_ms', baseMs);
+  addPerfDuration('plan_devices_offstate_ms', offStateMs);
+  return result;
 }
 function resolvePlannedTarget(params: {
   dev: PlanInputDevice;

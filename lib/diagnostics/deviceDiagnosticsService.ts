@@ -717,11 +717,12 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     nowTs: number,
   ): void {
     const live = this.getLiveDeviceState(deviceId);
-    live.starvation = {
-      ...live.starvation,
-      pendingEntryStartedAt: undefined,
-      clearQualifiedStartedAt: undefined,
-    };
+    // In-place mutation: avoid allocating a fresh starvation object on every
+    // observation cycle. The class instance is the only holder of this state
+    // (no consumers cache the reference), so mutating in place is safe and
+    // halves the per-cycle allocation churn that was inflating heapTotal.
+    live.starvation.pendingEntryStartedAt = undefined;
+    live.starvation.clearQualifiedStartedAt = undefined;
     if (!live.starvation.isStarved) return;
     this.pauseStarvation(deviceId, 'sample_gap', nowTs);
   }
@@ -729,23 +730,17 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
   private handleStarvationTargetChange(deviceId: string, nowTs: number): void {
     const live = this.getLiveDeviceState(deviceId);
     if (!live.starvation.isStarved) {
-      live.starvation = {
-        ...live.starvation,
-        pendingEntryStartedAt: undefined,
-        clearQualifiedStartedAt: undefined,
-        starvationCause: null,
-        starvationPauseReason: null,
-      };
+      live.starvation.pendingEntryStartedAt = undefined;
+      live.starvation.clearQualifiedStartedAt = undefined;
+      live.starvation.starvationCause = null;
+      live.starvation.starvationPauseReason = null;
       this.deps.logDebug(
         `Diagnostics: starvation pending reset ${formatDeviceRef(deviceId, live.name)} `
         + `reason=target_changed at=${new Date(nowTs).toISOString()}`,
       );
       return;
     }
-    live.starvation = {
-      ...live.starvation,
-      clearQualifiedStartedAt: undefined,
-    };
+    live.starvation.clearQualifiedStartedAt = undefined;
     this.deps.logDebug(
       `Diagnostics: starvation thresholds refreshed ${formatDeviceRef(deviceId, live.name)} `
       + `reason=target_changed at=${new Date(nowTs).toISOString()}`,
@@ -765,19 +760,16 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     const live = this.getLiveDeviceState(deviceId);
     const { startTs, endTs } = span;
     if (!evaluation.entryQualified) {
-      live.starvation = {
-        ...live.starvation,
-        pendingEntryStartedAt: undefined,
-        starvationCause: null,
-        starvationPauseReason: null,
-      };
+      live.starvation.pendingEntryStartedAt = undefined;
+      live.starvation.starvationCause = null;
+      live.starvation.starvationPauseReason = null;
       return;
     }
     const pendingEntryStartedAt = isFiniteNumber(live.starvation.pendingEntryStartedAt)
       ? live.starvation.pendingEntryStartedAt
       : startTs;
     const entryAt = pendingEntryStartedAt + DEVICE_DIAGNOSTICS_STARVATION_ENTRY_MS;
-    live.starvation = { ...live.starvation, pendingEntryStartedAt };
+    live.starvation.pendingEntryStartedAt = pendingEntryStartedAt;
     if (endTs < entryAt) return;
 
     const accumulatedMs = endTs > entryAt && evaluation.belowExitThreshold
@@ -819,13 +811,10 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       ? live.starvation.clearQualifiedStartedAt
       : startTs;
     const clearAt = clearQualifiedStartedAt + DEVICE_DIAGNOSTICS_STARVATION_CLEAR_MS;
-    live.starvation = {
-      ...live.starvation,
-      clearQualifiedStartedAt,
-      starvationLastResumedAt: undefined,
-      starvationCause: evaluation.counting ? observation.countingCause : null,
-      starvationPauseReason: evaluation.counting ? null : evaluation.pauseReason,
-    };
+    live.starvation.clearQualifiedStartedAt = clearQualifiedStartedAt;
+    live.starvation.starvationLastResumedAt = undefined;
+    live.starvation.starvationCause = evaluation.counting ? observation.countingCause : null;
+    live.starvation.starvationPauseReason = evaluation.counting ? null : evaluation.pauseReason;
     if (endTs < clearAt) return;
     this.deps.structuredLog?.info({
       event: 'device_starvation_cleared',
@@ -863,16 +852,13 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
         + `cause=${observation.countingCause ?? evaluation.pauseReason} at=${new Date(startTs).toISOString()}`,
       );
     }
-    live.starvation = {
-      ...live.starvation,
-      clearQualifiedStartedAt: undefined,
-      starvationLastResumedAt: isFiniteNumber(live.starvation.starvationLastResumedAt)
-        ? live.starvation.starvationLastResumedAt
-        : startTs,
-      starvedAccumulatedMs: live.starvation.starvedAccumulatedMs + Math.max(0, endTs - startTs),
-      starvationCause: evaluation.counting ? observation.countingCause : null,
-      starvationPauseReason: evaluation.counting ? null : evaluation.pauseReason,
-    };
+    live.starvation.clearQualifiedStartedAt = undefined;
+    if (!isFiniteNumber(live.starvation.starvationLastResumedAt)) {
+      live.starvation.starvationLastResumedAt = startTs;
+    }
+    live.starvation.starvedAccumulatedMs += Math.max(0, endTs - startTs);
+    live.starvation.starvationCause = evaluation.counting ? observation.countingCause : null;
+    live.starvation.starvationPauseReason = evaluation.counting ? null : evaluation.pauseReason;
   }
 
   private pauseStarvation(
@@ -895,13 +881,10 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
         + `reason=${pauseReason} at=${new Date(nowTs).toISOString()}`,
       );
     }
-    live.starvation = {
-      ...live.starvation,
-      clearQualifiedStartedAt: undefined,
-      starvationLastResumedAt: undefined,
-      starvationCause: null,
-      starvationPauseReason: pauseReason,
-    };
+    live.starvation.clearQualifiedStartedAt = undefined;
+    live.starvation.starvationLastResumedAt = undefined;
+    live.starvation.starvationCause = null;
+    live.starvation.starvationPauseReason = pauseReason;
   }
 
   private hardResetStarvation(
