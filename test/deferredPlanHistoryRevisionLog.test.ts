@@ -9,6 +9,13 @@ describe('revisionReason', () => {
     expect(revisionReason('prices_revised', 'temperature')).toBe('Tomorrow’s prices published');
   });
 
+  it('maps schedule_revised to "Schedule revised"', () => {
+    // Distinct from prices_revised — the recorder emits this when the
+    // schedule shifts but no fresher price horizon arrived. UI must not
+    // claim a publication event that didn't happen.
+    expect(revisionReason('schedule_revised', 'temperature')).toBe('Schedule revised');
+  });
+
   it('maps rate_refined to "Rate estimate refined"', () => {
     expect(revisionReason('rate_refined', 'temperature')).toBe('Rate estimate refined');
   });

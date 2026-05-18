@@ -813,9 +813,14 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       ]),
     })], 4 * HOUR_MS);
 
+    // First replan extends the horizon (5h → 6h end) → prices_revised.
+    // Second replan trims buckets without extending the horizon (still
+    // ending at 6h) → schedule_revised. The split lets the user-visible
+    // "Tomorrow's prices published" label fire only when prices actually
+    // arrived.
     expect(events).toEqual([
       { reason: 'prices_revised', hours: 2 },
-      { reason: 'prices_revised', hours: 1 },
+      { reason: 'schedule_revised', hours: 1 },
     ]);
     expect(recorder.getPlanForTests('dev')?.latest?.hours).toEqual([
       { startsAtMs: 5 * HOUR_MS, plannedKWh: 1.5 },
@@ -924,8 +929,11 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       }),
     })], 2 * HOUR_MS);
 
+    // Bucket collapse to empty shifts the schedule without consuming a fresher
+    // price horizon (the next-revision `computedFromPricesUpTo` is null when
+    // there are no planned buckets), so the reason is `schedule_revised`.
     expect(events).toEqual([
-      { reason: 'prices_revised', hours: 0, planStatus: 'cannot_meet' },
+      { reason: 'schedule_revised', hours: 0, planStatus: 'cannot_meet' },
     ]);
     // Revision still persists so the Settings UI sees the cannot_meet state.
     expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
@@ -933,7 +941,12 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(recorder.getPlanForTests('dev')?.latest?.planStatus).toBe('cannot_meet');
   });
 
-  it('emits a prices_revised revision when the bucket plan shifts but the objective is unchanged', () => {
+  it('emits a prices_revised revision when the price horizon advances (new bucket extends the horizon end)', () => {
+    // The schedule's last bucket extends further into the future after the
+    // second observe — that's the planner consuming a newer price horizon
+    // than the first revision. `prices_revised` is the right label here
+    // because the user-visible promise ("Tomorrow's prices published") is
+    // actually true.
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
@@ -941,7 +954,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
-      // Same target and deadline, different cheap-hour selection:
+      // Same target and deadline, different cheap-hour selection — and the
+      // horizon's last bucket sits later than before (5h vs 4h start), so
+      // `computedFromPricesUpTo` advances.
       horizonPlan: makeHorizon([
         makeBucket(HOUR_MS, 1.5),
         makeBucket(2 * HOUR_MS, 1.5),
@@ -953,6 +968,34 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan?.latest?.reason).toBe('prices_revised');
     expect(plan?.latest?.revision).toBe(2);
     expect(plan?.original?.revision).toBe(1);
+  });
+
+  it('emits a schedule_revised revision when metadata drifts within an unchanged price horizon', () => {
+    // Same horizon end across revisions and same set of charging hours — only
+    // `dailyBudgetExhaustedBucketCount` flipped (the planner observed budget
+    // pressure mid-day). `prices_revised` would mis-label this as
+    // "Tomorrow's prices published"; the recorder now emits
+    // `schedule_revised` instead. This is the per-cycle replan pattern
+    // reported 2026-05-18 as firing "several times per hour".
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      dailyBudgetExhaustedBucketCount: 0,
+    })], HOUR_MS);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      // Same horizon, same charging hours — only the daily-budget signal
+      // shifted. Triggers a metadata-only revision write.
+      dailyBudgetExhaustedBucketCount: 2,
+    })], 2 * HOUR_MS);
+
+    const plan = recorder.getPlanForTests('dev');
+    expect(plan?.latest?.reason).toBe('schedule_revised');
+    expect(plan?.latest?.revision).toBe(2);
   });
 
   it('emits a rate_refined revision when the kwhPerUnit source flips bootstrap → learned', () => {
@@ -1042,7 +1085,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // and treating it as `bootstrap → learned` would persist a misleading
     // `rate_refined` revision even though nothing was learned. The recorder
     // must instead treat null as "no source consulted" and label the
-    // allocation-change revision `prices_revised`.
+    // allocation-change revision `schedule_revised` (no fresher prices
+    // arrived — the horizon collapsed to empty as the objective was met).
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
@@ -1070,7 +1114,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     })], 2 * HOUR_MS);
 
     const plan = recorder.getPlanForTests('dev');
-    expect(plan?.latest?.reason).toBe('prices_revised');
+    expect(plan?.latest?.reason).toBe('schedule_revised');
     expect(plan?.latest?.kwhPerUnitSource).toBeUndefined();
     expect(plan?.latest?.revision).toBe(2);
   });
@@ -1111,12 +1155,15 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(exhausted.latest?.revision).toBe(2);
   });
 
-  it('writes a prices_revised revision when source flips learned→bootstrap even with identical hours', () => {
+  it('writes a schedule_revised revision when source flips learned→bootstrap even with identical hours', () => {
     // Regression for PR #708 review: if the profile is pruned (or the device
     // is removed/re-added) and the bucket allocation happens to be
     // byte-identical across the source flip, the recorder must still write a
     // revision so persisted `kwhPerUnitSource` does not stay stale at
-    // 'learned' while the planner is using bootstrap.
+    // 'learned' while the planner is using bootstrap. Since the price
+    // horizon is unchanged (identical buckets), the reason is
+    // `schedule_revised` — not `prices_revised`, which would imply a
+    // publication event.
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
@@ -1141,7 +1188,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     })], 2 * HOUR_MS);
 
     const plan = recorder.getPlanForTests('dev');
-    expect(plan?.latest?.reason).toBe('prices_revised');
+    expect(plan?.latest?.reason).toBe('schedule_revised');
     expect(plan?.latest?.kwhPerUnitSource).toBe('bootstrap');
     expect(plan?.latest?.revision).toBe(2);
   });
@@ -1331,6 +1378,21 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       const normalized = normalizeDeferredObjectiveActivePlans(persisted);
       expect(normalized.plansByDeviceId.dev?.latest?.reason).toBe('rate_refined');
       expect(normalized.plansByDeviceId.dev?.latest?.kwhPerUnitSource).toBe('learned');
+    });
+
+    it('preserves a schedule_revised revision through the validator', () => {
+      // Regression: the v2.7.3 fix introduced `schedule_revised` as the
+      // catch-all reason for internal replans. The persisted-plan validator
+      // must accept it; otherwise restarts silently drop revisions that the
+      // recorder is now emitting in the most common code path.
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: basePlan({ reason: 'schedule_revised' }),
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev?.latest?.reason).toBe('schedule_revised');
     });
 
     it('preserves a bootstrap-source revision', () => {

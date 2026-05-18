@@ -2261,3 +2261,18 @@ should not be folded into the same PR.
       Files: `packages/settings-ui/public/style.css`.
 
 - [ ] v2.7.4 salvage from closed PR #883 (`v2.7.3/budget-usage-loveable`) — Budget half superseded by `dd92fa42`; Usage-half items remain undelivered: "Your typical Sunday runs X kWh" day-aware voice (`usageHero.ts` + `usageVoice.ts`), drop the 7d toggle in `power.ts` (keep 14d only), NBSP between number and `kr` in any Usage money copy, NOK money line on Usage (deferred). Small focused PR.
+
+- [ ] v2.7.3 follow-up — `replanReason.ts`'s `resolveHorizonPriceWatermark`
+      uses `max(plannedBuckets[].endMs)` as the price-horizon watermark, but
+      buckets are clamped to `deadlineAtMs` in the runtime path
+      (`policyHorizon.ts` / `bucketAllocation.ts`), so the value is typically
+      just the deadline on every revision. `hasPriceHorizonAdvanced` therefore
+      rarely (or never) flips true for real Nordpool publications — meaning
+      real price advances get under-labeled as `schedule_revised` rather than
+      `prices_revised`. The shipped fix (PR #890) is still strictly better
+      than the catch-all `prices_revised` it replaced (no more misleading
+      "Tomorrow's prices published" on internal replans), but it doesn't
+      catch the inverse case yet. Proper fix: thread an actual price-horizon
+      cutoff through `DeferredObjectiveHorizonPlan` (e.g. `pricesAvailableUpToMs`)
+      from the price source down to the recorder. Filed as chatgpt-codex P2
+      on PR #890 (thread `PRRT_kwDOQhCm-86CxCbo`).
