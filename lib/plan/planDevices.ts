@@ -7,6 +7,10 @@ import {
   resolveSteppedShedCurrentDesiredStepId,
 } from './planSteppedShedResolution';
 import {
+  resolveSteppedLoadDirectShedStepId,
+  resolveSteppedShedCurrentDesiredStepId,
+} from './planSteppedShedResolution';
+import {
   PLAN_REASON_CODES,
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
