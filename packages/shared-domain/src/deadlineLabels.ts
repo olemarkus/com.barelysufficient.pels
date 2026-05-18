@@ -366,7 +366,13 @@ const REVISION_REASON_TOOLTIP_LINE: Partial<Record<DeferredObjectiveActivePlanRe
   flow_card: 'Updated after a flow card fired',
   prices_arrived: 'Updated as prices became available',
   objective_changed: 'Updated after the target changed',
+  // Only fires when the planner consumed a newer price horizon than the
+  // previous revision. `schedule_revised` carries internal replans.
   prices_revised: 'Updated as new prices arrived',
+  // Schedule shifted without a new price horizon — daily-budget pressure
+  // moved a bucket, planStatus flipped, etc. Honest about the cause without
+  // claiming a publication event.
+  schedule_revised: 'Updated as the schedule was revised',
   rate_refined: 'Updated as rates were refined',
 };
 
@@ -387,7 +393,12 @@ const REVISION_REASON_TOOLTIP_LINE: Partial<Record<DeferredObjectiveActivePlanRe
 const REVISION_REASON_LABEL: Record<DeferredObjectiveActivePlanRevisionReason, string> = {
   flow_card: 'Updated by a Flow card',
   prices_arrived: 'Prices arrived',
+  // Reserved for revisions where the planner saw a fresher price horizon
+  // than the previous revision (Nordpool typically publishes 1–2 times per
+  // day). Internal replans surface as `schedule_revised` so this label
+  // doesn't claim a publication event that didn't happen.
   prices_revised: 'Tomorrow’s prices published',
+  schedule_revised: 'Schedule revised',
   rate_refined: 'Rate estimate refined',
   objective_changed: 'Smart task settings changed',
   // Per `feedback_homey_sdk_unreliable.md`: a single SDK read miss triggers this

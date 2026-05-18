@@ -2,11 +2,19 @@
 // packaging boundary. The schema version literal lives at the runtime side
 // (`lib/plan/deferredObjectives/activePlanSettings.ts`).
 
+// `prices_revised` is reserved for revisions where the planner consumed a
+// newer price horizon than the last revision (Nordpool publishes tomorrow's
+// prices 1–2 times per day; this label promises that event). When the
+// schedule shifts for any other reason — daily-budget pressure flipping a
+// bucket, device-state change, planStatus oscillating — the recorder emits
+// `schedule_revised` instead. The split landed v2.7.3 to stop the revision
+// log mis-labelling internal replans as "Tomorrow's prices published."
 export type DeferredObjectiveActivePlanRevisionReason =
   | 'flow_card'
   | 'prices_arrived'
   | 'objective_changed'
   | 'prices_revised'
+  | 'schedule_revised'
   | 'rate_refined'
   | 'device_unavailable'
   | 'measured_deviation';
