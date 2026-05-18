@@ -397,14 +397,10 @@ v2.7.1 release-review passes.*
       `packages/settings-ui/test/helpers/homeyApiMock.ts`,
       `packages/contracts/src/settingsUiApi.ts`,
       settings UI mock and browser smoke tests.
-- [ ] Drop the redundant "SMART TASKS" eyebrow above the same-named h2 on the Smart tasks tab.
-      The empty-state hero on the Smart tasks tab currently renders eyebrow "SMART TASKS" + h2
-      "Smart tasks" — the eyebrow says the same word as the heading. Either remove the eyebrow
-      on this tab or replace it with a per-state hint ("EMPTY" / "ACTIVE" depending on whether
-      a task is queued). Other tabs (Budget, Usage, Settings) use the eyebrow to name the panel,
-      so dropping it here keeps consistency: the tab itself already names the panel.
-      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
-      `packages/settings-ui/public/index.html`.
+- [x] ~~Drop the redundant "SMART TASKS" eyebrow above the same-named h2 on the Smart tasks tab.~~
+      Landed in v2.7.3 PR #880 (`v2.7.3/smart-tasks-list-hero`) — the static `<h2>Smart tasks</h2>`
+      header was removed from `#deadlines-panel`; the populated-state hero now owns the
+      eyebrow + headline slot and the empty-state renders an explanatory paragraph.
 - [ ] Add loading skeletons across the five panels.
       Loading state today is a plain `<p class="muted">Awaiting data…</p>` in all panels —
       identical wording, identical styling, no M3 shimmer / skeleton. First-paint after the
@@ -522,6 +518,19 @@ v2.7.1 release-review passes.*
 - [ ] v2.7.3 — iOS Homey chrome inset may exceed 56 px (PWA + status bar + nav bar);
       confirm via screenshot from user, then split `--pels-homey-mobile-chrome` per
       pointer/platform if needed. Deferred from v2.7.2/PR7 fixup.
+
+- [ ] Smart-tasks panel loses its visible title in loading / error / empty
+      states after the v2.7.3 `smart-tasks-list-hero` PR dropped the static
+      `<h2>Smart tasks</h2>`. Other panels (Overview, Budget, Usage, Settings)
+      keep a persistent header, so the Smart tasks tab is now inconsistent
+      when the populated hero is not rendered. Options: (a) restore a small
+      eyebrow/header that shows in non-populated states only, (b) render a
+      tone-neutral hero placeholder ("Smart tasks") in loading/error/empty so
+      a heading always exists. Note the `aria-label` already covers screen
+      readers — this is a sighted-user / semantic-structure follow-up.
+      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
+      `packages/settings-ui/public/index.html`, `settings/index.html`.
+      Source: gemini-code-assist on PR #880.
 
 - [ ] Overview device-card status copy is inlined in `PlanDeviceCards.tsx`
       (and `PlanSteppedCard.tsx`) instead of routed through a shared-domain
@@ -1338,6 +1347,10 @@ consolidation + a11y polish (8 P2)`.*
 - [ ] Reconcile chip tone between the Smart tasks list and the plan detail.
       For the same `Building plan…` state the list card uses `muted` tone but the plan-detail
       pending hero uses `info` tone. Pick one and apply uniformly.
+      Deferred from PR #880 fix-up: the unifier needs a shared status→chip-tone helper in
+      `shared-domain` consumed by both surfaces; lifting it cleanly is bigger than the
+      list-hero PR scope and risks touching plan-detail unrelated tone wiring. Pick this up
+      as its own small PR alongside the pending-hero-body-weight TODO below.
       Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
       `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
 - [ ] Bring the pending-hero body copy up to action-text weight.
@@ -1648,17 +1661,12 @@ consolidation + a11y polish (8 P2)`.*
       `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
       `packages/settings-ui/src/ui/views/DeadlinePlanHistory.tsx` (past list row variant),
       overshoot-resolver tests.
-- [ ] Surface miss-streak aggregate on the Smart tasks landing page when recent miss density
-      is high. A user with three consecutive missed deadlines today sees three Missed chips in
-      sequence but no aggregate signal that the device is failing a *pattern*. Add a section
-      subhead under `Past tasks`: `Past tasks (3 of last 4 missed)` when
-      `missed / first-4-entries >= 0.5`. Pure aggregation over the already-loaded
-      `DeferredObjectivePlanHistoryEntry[]`. Discoverable via
-      `notes/smart-task-ui/README.md` (lived-state Connected 300 example).
-      Why P2: the pattern is what tells the user "investigate this device's setup," not the
-      individual miss; the current surface forces them to mentally aggregate.
-      Files: `packages/settings-ui/src/ui/views/DeadlinesHistoryList.tsx`,
-      `packages/settings-ui/src/ui/deadlinesList.ts`, list aggregate tests.
+- [x] ~~Surface miss-streak aggregate on the Smart tasks landing page when recent miss density
+      is high.~~ Struck during PR #880 fix-up: miss-streak aggregate deferred; v2.7.3 loveable
+      policy disallows streak counters. A "3 of last 4 missed" badge punishes the user with
+      pattern guilt without giving them a remedy on the same surface — exactly the anti-loveable
+      shape the v2.7.3 train is trimming. The individual Missed chips already let the user
+      drill into any past task. Revisit only if a same-surface remedy lands first.
 - [ ] Reuse one chart vocabulary for past-hours-in-a-live-run and past-hours-in-history.
       Today the live chart paints planned bars + a dotted measured line; the eye treats them
       as separate. After a run, the history chart shows planned bars + (eventually, when the

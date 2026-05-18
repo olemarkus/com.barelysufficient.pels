@@ -10,6 +10,11 @@ import {
   type SmartTaskListStatusId,
 } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { formatSmartTaskListDateTime } from '../../../../shared-domain/src/deferredPlanHistory.ts';
+import { formatTimeInTimeZone } from '../../../../shared-domain/src/utils/dateUtils.ts';
+import {
+  resolveDeadlinesListHero,
+  type DeadlinesListHeroCopy,
+} from '../../../../shared-domain/src/deadlinesListHero.ts';
 import { resolveBrowserTimeZone } from '../deadlinePlanHistoryFetch.ts';
 import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/deferredObjectiveSettings.ts';
 import type { ObjectiveProfileConfidence } from '../../../../contracts/src/objectiveProfileTypes.ts';
@@ -46,6 +51,19 @@ export type DeadlinesListState =
 // surface (which gets its zone plumbed via `DeadlinesHistoryListState.timeZone`)
 // stays consistent with the active list.
 const formatWhen = (ms: number): string => formatSmartTaskListDateTime(ms, resolveBrowserTimeZone());
+
+// Short HH:MM formatter for the populated-state hero subline. The hero is a
+// glance read ("EV ready by 06:30, charging from 02:00") so the full
+// "Sat 16 May 06:30" date stamp from `formatWhen` would crowd the line — the
+// user is looking at *today's* upcoming deadlines, not picking a date.
+const formatHourMinute = (ms: number): string => {
+  const zone = resolveBrowserTimeZone();
+  return formatTimeInTimeZone(
+    new Date(ms),
+    { hour: '2-digit', minute: '2-digit', hour12: false },
+    zone,
+  );
+};
 
 const formatTarget = (card: DeadlinesListCard): string => {
   const labels = deadlineLabels(card.kind);
@@ -122,6 +140,64 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
   );
 };
 
+// When the hero subline names a specific card, scroll that card into view.
+// The cards in the list each carry `data-device-id`; the resolver forwards
+// the deviceId via `sublineTarget` so this handler can locate the row
+// without re-deriving the slug. `scrollIntoView` is no-op in jsdom (tests
+// rely on the click landing, not the scroll itself).
+const scrollToCardByDeviceId = (deviceId: string): void => {
+  // `CSS.escape` is unavailable under jsdom and we can't rely on it across
+  // every settings-UI runtime; iterate over the candidate rows and match the
+  // attribute directly so any deviceId shape (including ones that aren't
+  // valid CSS identifiers) resolves.
+  const card = Array.from(
+    document.querySelectorAll<HTMLElement>('.deadline-list-card'),
+  ).find((el) => el.dataset.deviceId === deviceId);
+  if (!card) return;
+  // Smooth-scroll only — do not call `card.focus()`. Stealing focus to the
+  // anchor moves the focus ring away from the hero button the user just
+  // activated and leaves the named card stuck in its hover/focus styling
+  // (`.deadline-list-card:focus-visible` paints a permanent accent rim until
+  // the user clicks elsewhere). The scroll is the visual target on its own.
+  card.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+};
+
+// Populated-state hero. Single-signal headline + one named subline; the
+// shape matches the four sibling panels (Overview / Budget / Usage / History
+// detail) so the user reads the same answer-on-arrival rhythm everywhere.
+// Empty-state stays a plain muted paragraph — the resolver returns `null` in
+// that case so this component never renders for new users.
+const Hero = ({ copy }: { copy: DeadlinesListHeroCopy }) => {
+  const target = copy.sublineTarget;
+  return (
+    <section
+      class="plan-hero pels-hero deadlines-list-hero"
+      data-tone={copy.tone}
+      aria-labelledby="deadlines-list-hero-headline"
+    >
+      <div class="plan-hero__section">
+        <p class="eyebrow plan-hero__section-label">{copy.eyebrow}</p>
+        <h2 class="plan-hero__headline" id="deadlines-list-hero-headline">{copy.headline}</h2>
+        {target !== undefined ? (
+          <p class="plan-hero__subline">
+            <button
+              type="button"
+              class="deadlines-list-hero__nav-target"
+              data-deadline-card-id={target.deviceId}
+              onClick={() => scrollToCardByDeviceId(target.deviceId)}
+            >
+              <span class="deadlines-list-hero__nav-target-text">{copy.subline}</span>
+              <span class="deadlines-list-hero__nav-target-chevron" aria-hidden="true">›</span>
+            </button>
+          </p>
+        ) : (
+          <p class="plan-hero__subline">{copy.subline}</p>
+        )}
+      </div>
+    </section>
+  );
+};
+
 const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
   if (state.status === 'loading') {
     return <p class="muted">Loading smart tasks…</p>;
@@ -141,12 +217,19 @@ const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
       </p>
     );
   }
+  const heroCopy = resolveDeadlinesListHero({
+    cards: state.cards,
+    formatTime: formatHourMinute,
+  });
   return (
-    <div class="deadline-list">
-      {state.cards.map((card) => (
-        <Card key={card.deviceId} card={card} />
-      ))}
-    </div>
+    <>
+      {heroCopy !== null && <Hero copy={heroCopy} />}
+      <div class="deadline-list">
+        {state.cards.map((card) => (
+          <Card key={card.deviceId} card={card} />
+        ))}
+      </div>
+    </>
   );
 };
 

@@ -308,12 +308,12 @@
       </footer>
     </section>
 
-    <section class="card panel hidden" id="deadlines-panel" data-panel="deadlines" aria-labelledby="deadlines-title">
-      <header class="pels-hero">
-        <div>
-          <h2 id="deadlines-title">Smart tasks</h2>
-        </div>
-      </header>
+    <section class="card panel hidden" id="deadlines-panel" data-panel="deadlines" aria-label="Smart tasks">
+      <!-- Populated-state hero is rendered into #deadlines-list-root by
+           `DeadlinesList.tsx`; the empty state renders an explanatory
+           paragraph instead. The previous `<h2>Smart tasks</h2>` header was
+           dropped per TODO #1041 — it duplicated the tab label and the
+           populated-state hero already owns the eyebrow+headline slot. -->
       <div id="deadlines-list-root"></div>
       <div id="deadlines-history-root"></div>
     </section>
