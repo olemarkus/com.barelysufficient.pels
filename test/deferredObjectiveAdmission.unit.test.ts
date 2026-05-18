@@ -1,4 +1,4 @@
-import { applyDeferredObjectiveAdmission } from '../lib/plan/deferredObjectives/admission';
+import { applyDeferredObjectiveAdmission, buildDeferredTargetOverrides } from '../lib/plan/deferredObjectives/admission';
 import type { DeferredObjectiveDiagnostic } from '../lib/plan/deferredObjectives';
 import type { DeferredObjectiveHorizonPlan } from '../lib/plan/deferredObjectives';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
@@ -79,8 +79,6 @@ describe('applyDeferredObjectiveAdmission', () => {
       objectiveKind: 'ev_soc',
       targetPercent: 80,
       currentPercent: 40,
-      targetTemperatureC: null,
-      currentTemperatureC: null,
       kWhPerPercent: 1,
       kWhPerDegreeC: null,
       horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc' }),
@@ -111,8 +109,6 @@ describe('applyDeferredObjectiveAdmission', () => {
       objectiveKind: 'ev_soc',
       targetPercent: 80,
       currentPercent: 40,
-      targetTemperatureC: null,
-      currentTemperatureC: null,
       kWhPerPercent: 1,
       kWhPerDegreeC: null,
       horizonPlan: buildHorizonPlan({
@@ -228,5 +224,40 @@ describe('applyDeferredObjectiveAdmission', () => {
     expect(decisions.size).toBe(2);
     expect(decisions.get('dev_a')?.kind).toBe('planned');
     expect(decisions.get('dev_b')?.kind).toBe('inactive');
+  });
+});
+
+describe('buildDeferredTargetOverrides', () => {
+  it('includes the temperature target for a planned temperature diagnostic', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'heater1',
+      targetTemperatureC: 65,
+      horizonPlan: buildHorizonPlan(),
+    });
+    expect(buildDeferredTargetOverrides([diagnostic])).toEqual({ heater1: 65 });
+  });
+
+  it('skips EV diagnostics', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'ev1',
+      objectiveId: 'ev1:ev_soc',
+      objectiveKind: 'ev_soc',
+      targetPercent: 80,
+      currentPercent: 40,
+      kWhPerPercent: 1,
+      kWhPerDegreeC: null,
+      horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc' }),
+    });
+    expect(buildDeferredTargetOverrides([diagnostic])).toEqual({});
+  });
+
+  it('skips a temperature diagnostic whose current bucket has no planned energy', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'heater1',
+      horizonPlan: buildHorizonPlan({
+        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, requestedMinimumStepId: null },
+      }),
+    });
+    expect(buildDeferredTargetOverrides([diagnostic])).toEqual({});
   });
 });

@@ -50,18 +50,15 @@ export type DeferredObjectiveDiagnosticReasonCode =
 
 export type { DeferredObjectiveKwhPerUnitSource } from './profileEnergyResolution';
 
-export type DeferredObjectiveDiagnostic = {
+type BaseDeferredObjectiveDiagnostic = {
   deviceId: string;
   deviceName?: string;
   objectiveId: string;
-  objectiveKind: DeferredObjectiveSettingsEntry['kind'];
   enforcement: DeferredObjectiveSettingsEntry['enforcement'];
   status: 'unknown' | DeferredObjectiveHorizonPlan['status'];
   reasonCode: DeferredObjectiveDiagnosticReasonCode | DeferredObjectiveHorizonPlan['statusDetail'];
   targetPercent: number | null;
   currentPercent: number | null;
-  targetTemperatureC: number | null;
-  currentTemperatureC: number | null;
   deadlineAtMs: number | null;
   deadlineLocalTime: string;
   energyNeededKWh: number | null;
@@ -91,6 +88,23 @@ export type DeferredObjectiveDiagnostic = {
   requestedMinimumStepId: string | null;
   horizonPlan?: DeferredObjectiveHorizonPlan;
 };
+
+// Discriminated by `objectiveKind`. Temperature variants always carry a
+// numeric `targetTemperatureC` (the setting requires it); EV variants omit
+// both temperature fields entirely so consumers can't accidentally read
+// them. `currentTemperatureC` stays `number | null` on the temperature
+// variant because sensor reads can legitimately fail.
+export type DeferredObjectiveDiagnostic =
+  | (BaseDeferredObjectiveDiagnostic & {
+    objectiveKind: 'temperature';
+    targetTemperatureC: number;
+    currentTemperatureC: number | null;
+  })
+  | (BaseDeferredObjectiveDiagnostic & {
+    objectiveKind: 'ev_soc';
+    targetTemperatureC?: never;
+    currentTemperatureC?: never;
+  });
 
 export const buildDeferredObjectiveDiagnostics = (params: {
   nowMs: number;
@@ -149,6 +163,21 @@ const canReportFreshProgressWhileUnknown = (reasonCode: DeferredObjectiveDiagnos
     || reasonCode === 'objective_price_feature_disabled'
 );
 
+// Variant-preserving merge of progress-derived fields onto an existing
+// diagnostic. The discriminated union forbids assigning
+// `currentTemperatureC` on the EV variant, so we branch on the diagnostic's
+// own `objectiveKind` rather than spreading both fields blindly.
+const mergeProgressFields = (
+  base: DeferredObjectiveDiagnostic,
+  currentPercent: number | null,
+  currentTemperatureC: number | null,
+): DeferredObjectiveDiagnostic => {
+  if (base.objectiveKind === 'temperature') {
+    return { ...base, currentPercent, currentTemperatureC };
+  }
+  return { ...base, currentPercent };
+};
+
 const buildPolicyGatedKnownInputs = (
   base: DeferredObjectiveDiagnostic,
   progress: DeferredObjectiveProgressResolution,
@@ -170,10 +199,13 @@ const buildPolicyGatedKnownInputs = (
     })
     : null;
 
+  const withProgress = mergeProgressFields(
+    base,
+    !progress.reasonCode ? progress.currentPercent : null,
+    !progress.reasonCode ? progress.currentTemperatureC : null,
+  );
   return {
-    ...base,
-    currentPercent: !progress.reasonCode ? progress.currentPercent : null,
-    currentTemperatureC: !progress.reasonCode ? progress.currentTemperatureC : null,
+    ...withProgress,
     ...(!progress.reasonCode && remainingUnits <= 0 ? { energyNeededKWh: 0 } : {}),
     ...(profileEnergy && !profileEnergy.reasonCode ? buildKnownEnergyFields({ objective, profileEnergy }) : {}),
   };
@@ -281,9 +313,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   const { nowMs, deviceId, objective, device, powerTracker, base, progress, policyHorizon, deadlineAtMs } = params;
   if (progress.reasonCode) {
     return withUnknown({
-      ...base,
-      currentPercent: progress.currentPercent,
-      currentTemperatureC: progress.currentTemperatureC,
+      ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
       horizonBucketCount: policyHorizon.horizonBucketCount,
       dailyBudgetExhaustedBucketCount: policyHorizon.dailyBudgetExhaustedBucketCount,
     }, progress.reasonCode);
@@ -306,9 +336,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     };
   if (profileEnergy.reasonCode) {
     return withUnknown({
-      ...base,
-      currentPercent: progress.currentPercent,
-      currentTemperatureC: progress.currentTemperatureC,
+      ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
       horizonBucketCount: policyHorizon.horizonBucketCount,
       dailyBudgetExhaustedBucketCount: policyHorizon.dailyBudgetExhaustedBucketCount,
     }, profileEnergy.reasonCode);
@@ -317,9 +345,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   const steps = profileEnergy.energyNeededKWh > 0 ? resolveObjectiveSteps(device) : [];
   if (profileEnergy.energyNeededKWh > 0 && steps.length === 0) {
     return withUnknown({
-      ...base,
-      currentPercent: progress.currentPercent,
-      currentTemperatureC: progress.currentTemperatureC,
+      ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
       energyNeededKWh: profileEnergy.energyNeededKWh,
       kWhPerPercent: objective.kind === 'ev_soc' ? profileEnergy.kWhPerUnit : null,
       kWhPerDegreeC: objective.kind === 'temperature' ? profileEnergy.kWhPerUnit : null,
@@ -345,11 +371,9 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   });
 
   return {
-    ...base,
+    ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
     status: horizonPlan.status,
     reasonCode: horizonPlan.statusDetail,
-    currentPercent: progress.currentPercent,
-    currentTemperatureC: progress.currentTemperatureC,
     energyNeededKWh: profileEnergy.energyNeededKWh,
     kWhPerPercent: objective.kind === 'ev_soc' ? profileEnergy.kWhPerUnit : null,
     kWhPerDegreeC: objective.kind === 'temperature' ? profileEnergy.kWhPerUnit : null,
@@ -384,18 +408,15 @@ const buildDiagnosticBase = (params: {
     deviceId: params.deviceId,
     objectiveKind: params.objective.kind,
   });
-  return {
+  const common: BaseDeferredObjectiveDiagnostic = {
     deviceId: params.deviceId,
     deviceName: params.device?.name,
     objectiveId: `${params.deviceId}:${params.objective.kind}`,
-    objectiveKind: params.objective.kind,
     enforcement: params.objective.enforcement,
     status: 'unknown',
     reasonCode: 'objective_progress_stale',
     targetPercent: params.objective.kind === 'ev_soc' ? params.objective.targetPercent : null,
     currentPercent: params.currentPercent,
-    targetTemperatureC: params.objective.kind === 'temperature' ? params.objective.targetTemperatureC : null,
-    currentTemperatureC: params.currentTemperatureC,
     deadlineAtMs,
     deadlineLocalTime: deadlineAtMs !== null ? formatDeadlineLocalTime(deadlineAtMs, params.timeZone) : '',
     energyNeededKWh: params.energyNeededKWh,
@@ -409,6 +430,18 @@ const buildDiagnosticBase = (params: {
     horizonBucketCount: 0,
     dailyBudgetExhaustedBucketCount: 0,
     requestedMinimumStepId: null,
+  };
+  if (params.objective.kind === 'temperature') {
+    return {
+      ...common,
+      objectiveKind: 'temperature',
+      targetTemperatureC: params.objective.targetTemperatureC,
+      currentTemperatureC: params.currentTemperatureC,
+    };
+  }
+  return {
+    ...common,
+    objectiveKind: 'ev_soc',
   };
 };
 

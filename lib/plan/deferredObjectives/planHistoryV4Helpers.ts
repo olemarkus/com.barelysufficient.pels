@@ -99,7 +99,7 @@ export const PROGRESS_UNTRUSTWORTHY_REASON_CODES: ReadonlySet<DeferredObjectiveD
 export const hasTrustworthyProgress = (diag: DeferredObjectiveDiagnostic): boolean => {
   if (PROGRESS_UNTRUSTWORTHY_REASON_CODES.has(diag.reasonCode)) return false;
   if (diag.objectiveKind === 'temperature') {
-    return diag.currentTemperatureC !== null && diag.targetTemperatureC !== null;
+    return diag.currentTemperatureC !== null;
   }
   return diag.currentPercent !== null && diag.targetPercent !== null;
 };

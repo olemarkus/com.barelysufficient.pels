@@ -179,7 +179,7 @@ const captureProgressPercent = (diag: DeferredObjectiveDiagnostic): number | nul
 
 const diagnosticProgressAtTarget = (diag: DeferredObjectiveDiagnostic): boolean => {
   if (diag.objectiveKind === 'temperature') {
-    if (diag.currentTemperatureC === null || diag.targetTemperatureC === null) return false;
+    if (diag.currentTemperatureC === null) return false;
     return diag.currentTemperatureC >= diag.targetTemperatureC;
   }
   if (diag.currentPercent === null || diag.targetPercent === null) return false;
@@ -232,7 +232,7 @@ const startRecord = (
     deviceId: diag.deviceId,
     deviceName: diag.deviceName ?? null,
     objectiveKind: diag.objectiveKind,
-    targetTemperatureC: diag.targetTemperatureC,
+    targetTemperatureC: diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : null,
     targetPercent: diag.targetPercent,
     deadlineAtMs: diag.deadlineAtMs,
     startedAtMs: nowMs,

@@ -16,6 +16,12 @@ import type { DeferredObjectivePlanRevisionEvent } from './planRevisionBus';
 const KWH_ROUNDING_FACTOR = 1000;
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
+// Persisted plans store mixed objective kinds, so derive the nullable
+// persisted value from the discriminated diagnostic.
+const diagTargetTemperatureC = (diag: DeferredObjectiveDiagnostic): number | null => (
+  diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : null
+);
+
 // Mirror `planHistory.ts` ABANDON_GRACE_MS. Homey settings reads can transiently
 // return empty/malformed data; if a plan cycle ever produces an empty
 // diagnostic stream we must not drop persisted plans on the first miss. Wait
@@ -60,7 +66,7 @@ const buildSignatureFromDiagnostic = (diag: DeferredObjectiveDiagnostic): string
   if (diag.deadlineAtMs === null) return null;
   return buildObjectiveSignature({
     objectiveKind: diag.objectiveKind,
-    targetTemperatureC: diag.targetTemperatureC,
+    targetTemperatureC: diagTargetTemperatureC(diag),
     targetPercent: diag.targetPercent,
     deadlineAtMs: diag.deadlineAtMs,
     enforcement: diag.enforcement,
@@ -247,7 +253,7 @@ const createPlanFromDiagnostic = (
     deviceId: diag.deviceId,
     deviceName: diag.deviceName ?? null,
     objectiveKind: diag.objectiveKind,
-    targetTemperatureC: diag.targetTemperatureC,
+    targetTemperatureC: diagTargetTemperatureC(diag),
     targetPercent: diag.targetPercent,
     deadlineAtMs: diag.deadlineAtMs as number,
     startedAtMs: nowMs,
@@ -512,7 +518,7 @@ export class DeferredObjectiveActivePlanRecorder {
       deviceId: diag.deviceId,
       deviceName: diag.deviceName ?? null,
       objectiveKind: diag.objectiveKind,
-      targetTemperatureC: diag.targetTemperatureC,
+      targetTemperatureC: diagTargetTemperatureC(diag),
       targetPercent: diag.targetPercent,
       deadlineAtMs: diag.deadlineAtMs as number,
       startedAtMs,
@@ -599,7 +605,7 @@ export class DeferredObjectiveActivePlanRecorder {
       ...current,
       deviceName: diag.deviceName ?? current.deviceName,
       objectiveKind: diag.objectiveKind,
-      targetTemperatureC: diag.targetTemperatureC,
+      targetTemperatureC: diagTargetTemperatureC(diag),
       targetPercent: diag.targetPercent,
       objectiveSignature: signature,
       ...(nextProvenance ? { kwhPerUnitProvenance: nextProvenance } : {}),
