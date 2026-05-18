@@ -14,6 +14,11 @@ const VALID_REASONS: ReadonlySet<DeferredObjectiveActivePlanRevisionReason> = ne
   'prices_arrived',
   'objective_changed',
   'prices_revised',
+  // v2.7.3: schedule shifted without a fresher price horizon — daily-budget
+  // pressure flipped a bucket, planStatus drifted, source flipped, etc.
+  // Distinct from `prices_revised` so the UI label doesn't claim a Nordpool
+  // publication event that didn't happen.
+  'schedule_revised',
   'rate_refined',
   'device_unavailable',
   'measured_deviation',

@@ -9,6 +9,11 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import { formatEstimatedDuration, resolvePlanLevelDurationSnapshot } from './activePlanDuration';
 import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION } from './activePlanSettings';
+import {
+  hasPriceHorizonAdvanced,
+  resolveHorizonPriceWatermark,
+  resolveReplanReason,
+} from './replanReason';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import type { DeferredObjectivePlanRevisionEvent } from './planRevisionBus';
@@ -118,18 +123,6 @@ const resolveProjectedFinishAtMs = (
     ? Math.min(1, Math.max(0, lastPlannedBucket.plannedUsefulEnergyKWh / capacity))
     : 1;
   return Math.round(lastPlannedBucket.startMs + fraction * bucketDurationMs);
-};
-
-const resolveComputedFromPricesUpTo = (
-  diag: DeferredObjectiveDiagnostic,
-): number | null => {
-  const horizonPlan = diag.horizonPlan;
-  if (!horizonPlan) return null;
-  let latest: number | null = null;
-  for (const bucket of horizonPlan.plannedBuckets) {
-    if (latest === null || bucket.endMs > latest) latest = bucket.endMs;
-  }
-  return latest;
 };
 
 // Schedule comparison: two hour lists are equivalent iff they cover the same
@@ -294,7 +287,7 @@ const buildRevision = (params: {
   return {
     revision: params.revision,
     revisedAtMs: params.nowMs,
-    computedFromPricesUpTo: resolveComputedFromPricesUpTo(params.diag),
+    computedFromPricesUpTo: resolveHorizonPriceWatermark(params.diag),
     reason: params.reason,
     hours: params.hours,
     // Round to milliWh to match `plannedKWh`. Without rounding,
@@ -585,11 +578,11 @@ export class DeferredObjectiveActivePlanRecorder {
     // TODO: device_unavailable + measured_deviation triggers — wired here once
     // device-level metering exists. For now those reasons are not used.
     if (!objectiveChanged && !scheduleChanged && !metadataDriftedWithinSchedule && !sourceChanged) return;
-    const reason: DeferredObjectiveActivePlanRevisionReason = (() => {
-      if (objectiveChanged) return 'objective_changed';
-      if (sourceRefined) return 'rate_refined';
-      return 'prices_revised';
-    })();
+    const reason = resolveReplanReason({
+      objectiveChanged,
+      sourceRefined,
+      pricesAdvanced: hasPriceHorizonAdvanced(latest, diag),
+    });
     const nextRevision = latest.revision + 1;
     const revision = buildRevision({ diag, hours, revision: nextRevision, reason, nowMs });
     const provenance = resolveProvenance(diag);
