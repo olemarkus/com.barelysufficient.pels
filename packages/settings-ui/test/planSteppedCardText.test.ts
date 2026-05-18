@@ -614,11 +614,6 @@ describe('resolveSteppedTemperatureText', () => {
     expect(resolveSteppedTemperatureText({ currentTemperature: 20.5 })).toBeNull();
   });
 
-  it('returns null when plannedTarget is null', () => {
-    expect(resolveSteppedTemperatureText({ currentTemperature: 20.5, plannedTarget: null }))
-      .toBeNull();
-  });
-
   it('rounds target temperature to integer', () => {
     expect(resolveSteppedTemperatureText({ currentTemperature: 37.2, plannedTarget: 49.8 }))
       .toBe('37.2° → 50°');

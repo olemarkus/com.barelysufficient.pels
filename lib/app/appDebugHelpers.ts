@@ -92,7 +92,7 @@ type PelsPlanDeviceSummary = {
   currentState: string;
   plannedState: string;
   currentTarget: unknown;
-  plannedTarget: number | null;
+  plannedTarget?: number;
   reason?: string;
   controllable?: boolean;
   pendingTargetCommand?: DevicePlan['devices'][number]['pendingTargetCommand'];
@@ -157,7 +157,7 @@ type DeviceStateComparison = {
     currentState: string;
     plannedState: string;
     currentTarget: unknown;
-    plannedTarget: number | null;
+    plannedTarget?: number;
     pendingTargetCommand?: DevicePlan['devices'][number]['pendingTargetCommand'];
   } | null;
 };

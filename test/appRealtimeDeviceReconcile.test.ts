@@ -251,7 +251,6 @@ describe('appRealtimeDeviceReconcile', () => {
           plannedState: 'shed',
           shedAction: 'turn_off',
           currentTarget: null,
-          plannedTarget: null,
           controllable: true,
         }],
       },

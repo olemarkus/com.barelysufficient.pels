@@ -451,16 +451,7 @@ export const PlanTemperatureCard = ({
         <span class="plan-card__output-power">{formatKw(displayDev.measuredPowerKw)} kW</span>
       </div>
 
-      {/* Always render the temperature line so cards keep a uniform height even
-          when current temperature or planned target is missing from the snapshot.
-          When the snapshot lacks either value, render a visible "Temperature
-          unavailable" placeholder so the card still explains why the line is
-          empty (TODO 2026-05-16 #1, TV-stue thermostat). */}
-      <p
-        class={`plan-card__temp-line${temperatureLine === null ? ' plan-card__temp-line--placeholder' : ''}`}
-      >
-        {temperatureLine ?? 'Temperature unavailable'}
-      </p>
+      {temperatureLine !== null && <p class="plan-card__temp-line">{temperatureLine}</p>}
       {reasonLine !== null && <p class="plan-card__temp-reason">{reasonLine}</p>}
       <IdleClassificationLine dev={displayDev} />
     </article>

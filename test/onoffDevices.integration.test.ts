@@ -627,7 +627,7 @@ describe('On/off device integration', () => {
     const plan = getLatestPlanSnapshotForTests();
     const planDevice = plan.devices.find((entry: any) => entry.id === 'device-a');
     expect(planDevice?.shedAction).toBe('turn_off');
-    expect(planDevice?.plannedTarget).toBeNull();
+    expect(planDevice?.plannedTarget).toBeUndefined();
     expect(planDevice?.currentTarget).toBeNull();
     expect(planDevice?.shedTemperature).toBeNull();
   });

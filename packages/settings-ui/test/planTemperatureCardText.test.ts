@@ -21,6 +21,14 @@ describe('resolveTemperatureLine', () => {
       reason: { code: 'none' },
     })).toBe('20.2° · target 18° → 21°');
   });
+
+  it('reports sensor offline when the planned target is known but currentTemperature is missing', () => {
+    expect(resolveTemperatureLine({
+      currentTarget: 21,
+      plannedTarget: 21,
+      reason: { code: 'none' },
+    })).toBe('target 21° · sensor unavailable');
+  });
 });
 
 describe('resolveTemperatureReasonLine', () => {

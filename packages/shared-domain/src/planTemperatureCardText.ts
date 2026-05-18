@@ -6,7 +6,7 @@ type TemperatureDevice = DeviceOverviewSnapshot & {
   measuredPowerKw?: number;
   currentTemperature?: number;
   currentTarget?: unknown;
-  plannedTarget?: number | null;
+  plannedTarget?: number;
 };
 
 const isWaitingReason = (code: string): boolean => (
@@ -43,13 +43,13 @@ export const resolveTemperatureOutputState = (device: TemperatureDevice): string
 
 export const resolveTemperatureLine = (device: TemperatureDevice): string | null => {
   const { currentTemperature, currentTarget, plannedTarget } = device;
-  if (typeof currentTemperature !== 'number') return null;
   if (typeof plannedTarget !== 'number') return null;
   const targetText = typeof currentTarget === 'number' && currentTarget !== plannedTarget
     ? `${currentTarget.toFixed(0)}° → ${plannedTarget.toFixed(0)}°`
     : `${plannedTarget.toFixed(0)}°`;
   // Middle-dot separator for the data line — em-dash is reserved for status
   // copy (see notes/ui-terminology.md:9). Source: TODO #8.
+  if (typeof currentTemperature !== 'number') return `target ${targetText} · sensor unavailable`;
   return `${currentTemperature.toFixed(1)}° · target ${targetText}`;
 };
 

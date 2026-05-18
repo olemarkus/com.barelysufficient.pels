@@ -1018,7 +1018,7 @@ function applyHoldUpdate(
       plannedState: 'shed',
       shedAction: 'set_temperature',
       shedTemperature: behavior.temperature,
-      plannedTarget: behavior.temperature,
+      ...(behavior.temperature !== null ? { plannedTarget: behavior.temperature } : {}),
       reason,
     },
     availableHeadroom,

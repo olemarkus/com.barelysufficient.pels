@@ -119,7 +119,6 @@ describe('pels status limit reason', () => {
           currentState: 'off',
           plannedState: 'inactive',
           currentTarget: null,
-          plannedTarget: null,
           controllable: true,
           reason: legacyDeviceReason('inactive (charger is unplugged)'),
         },

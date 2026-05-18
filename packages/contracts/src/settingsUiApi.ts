@@ -148,7 +148,7 @@ export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
   id: string;
   name: string;
   deviceClass?: string;
-  plannedTarget?: number | null;
+  plannedTarget?: number;
   priority?: number;
   zone?: string;
   budgetExempt?: boolean;

@@ -761,7 +761,6 @@ describe('native stepped-load wiring', () => {
       currentState: 'on',
       plannedState: 'shed',
       currentTarget: null,
-      plannedTarget: null,
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'max',
@@ -839,7 +838,6 @@ describe('native stepped-load wiring', () => {
       currentState: 'on',
       plannedState: 'shed',
       currentTarget: null,
-      plannedTarget: null,
       controlModel: 'stepped_load',
       steppedLoadProfile: {
         model: 'stepped_load',
@@ -924,7 +922,6 @@ describe('native stepped-load wiring', () => {
       currentState: 'on',
       plannedState: 'shed',
       currentTarget: null,
-      plannedTarget: null,
       controlModel: 'stepped_load',
       steppedLoadProfile: {
         model: 'stepped_load',
