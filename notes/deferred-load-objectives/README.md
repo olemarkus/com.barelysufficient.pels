@@ -1003,16 +1003,17 @@ Three trigger cards registered in `flowCards/deadlineObjectiveCards.ts`:
 
 - **`deadline_status_changed`** — fires when the status bus reports a transition between
   `waiting` / `on_track` / `at_risk` / `unachievable` / `satisfied`. First-observation and
-  same-status re-fires are suppressed. Tokens: `device_name`, `status` (display label),
-  `target_text`, `deadline_local_time`, `kind`. A sticky `deadlineMissed` flag on the snapshot
-  blocks re-fires once the deadline has passed (the missed transition is surfaced via
-  `deadline_ended` instead); the flag clears on `satisfied` or when the objective is rescheduled.
+  same-status re-fires are suppressed. Tokens: `device_name`, `status` (stable lowercase id).
+  A sticky `deadlineMissed` flag on the snapshot blocks re-fires once the deadline has passed
+  (the missed transition is surfaced via `deadline_ended` instead); the flag clears on
+  `satisfied` or when the objective is rescheduled.
 - **`deadline_ended`** — fires once per run conclusion with `outcome` = `succeeded` /
-  `missed` / `abandoned`. Tokens: `device_name`, `outcome` (display label), `kind`,
-  `target_text`, `deadline_local_time`, `finished_at_local_time` (empty when not succeeded),
-  `shortfall_text`. `replaced` and `unknown` outcomes are intentionally suppressed.
+  `missed` / `abandoned` (stable lowercase id). Tokens: `device_name`, `outcome`, `shortfall`
+  (number, 0 when succeeded; flow UI label "Gap to target"). `replaced` and `unknown`
+  outcomes are intentionally suppressed.
 - **`deadline_plan_changed`** — fires when a replan changes the number of planned hours.
   Tokens: `device_name`, `remaining_kwh`, `planned_hours`, `projected_finish_local_time`.
+  Trigger title is "Smart task schedule changed".
 
 Plus two condition cards:
 

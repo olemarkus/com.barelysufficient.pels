@@ -78,23 +78,26 @@ Cost: filtered flows gain one condition node. Benefit: single trigger to
 maintain, and compound logic (e.g. "missed AND kind=ev_soc") works without
 registering multiple triggers.
 
-### Rule 2 — Stable id tokens + display label tokens
+### Rule 2 — Stable id tokens (display-label duo trimmed)
 
-Each enum value gets two tokens:
-
-- **`<name>_id`** — stable, lowercase, never renamed without a deliberate
-  breaking-change call. Public-API contract.
-- **`<name>`** — display label, may localize.
-
-The `kind` token already follows this pattern (`temperature` / `ev_soc` are
-stable ids); extend the precedent to `outcome_id` / `status_id` /
-`previous_status_id` / `change_reason_id`.
+Each enum value gets a **`<name>`** token (or just `<name>`) carrying the
+stable lowercase id — public-API contract, never renamed without a deliberate
+breaking-change call. Originally this rule paired each id with a localized
+display-label companion (`<name>` for id, `<name>_label` for display); the
+companion was trimmed after comparing against other Homey apps (Easee, Home
+Connect, myUplink, Power by the Hour), which all surface only the id and
+push display formatting into the user's Logic / text step. The current
+shipped triggers therefore emit `outcome` / `status` as stable ids only, with
+no display-label sibling.
 
 ### Rule 3 — Numeric tokens for values users want to compare or compute
 
 Today, `target_text`, `shortfall_text`, etc. are pre-formatted strings.
 Expose the underlying numbers as separate tokens so flows can do math
-(`if shortfall_value > 5: warn loud`) without parsing strings.
+(`if shortfall_value > 5: warn loud`) without parsing strings. Shipped
+example: `deadline_ended` emits a `shortfall` number token rather than a
+`shortfall_text` string. Apply the same pattern when extending the other
+triggers.
 
 ### Rule 4 — Notification text composition stays in the user's flow
 
@@ -106,24 +109,33 @@ contract whose stability we'd have to defend across copy revisions.
 
 ## Per-card target shape
 
+> **Pre-trim proposal — not the shipped contract.** The token lists below
+> are the original full-fat redesign and were deliberately trimmed against
+> peer-app conventions before landing. The shipped shape is the "Delivered
+> token bag (minimum)" section near the top of this note. Treat what
+> follows as a backlog of tokens to revisit one-by-one if a concrete
+> flow-author need surfaces, not as a target to implement wholesale —
+> re-expansion would walk back the trim decision. In particular, the
+> `*_text` tokens (`target_text`, `shortfall_text`, `deadline_local_time`,
+> `estimated_duration_text`) and any composed `notification_text` are out
+> of scope per Rule 4.
+
 ### `deadline_ended`
 
 **Args:** `device` (autocomplete). No outcome dropdown.
 
 **Title formatting:** `Smart task ended for [[device]]`.
 
-**Tokens:**
-- `device_name` (string)
-- `kind` (string, stable id — already shipped)
-- `outcome_id` (string, stable id: `succeeded` / `missed` / `abandoned`)
-- `outcome` (string, display label: `Succeeded` / `Missed` / `Abandoned`)
-- `target_value` (number) and `target_unit` (string id: `c` / `percent`)
-- `final_progress_value` (number, nullable) and `final_progress_unit` (string id)
-- `delivered_kwh` (number) — actual energy delivered during the run
-- `shortfall_value` (number, 0 when succeeded), `shortfall_unit` (string id)
-- `deadline_local_time` (string, formatted)
-- `finished_at_local_time` (string, formatted, empty when not succeeded)
-- `revisions_count` (number) — how many times the plan replanned during the run
+**Tokens (pre-trim proposal — see banner above):**
+- `device_name` (string) — shipped
+- `outcome` (string, stable id: `succeeded` / `missed` / `abandoned`) — shipped
+- `shortfall` (number, 0 when succeeded; flow UI label "Gap to target") — shipped
+- `kind` (string, stable id) — proposed
+- `target_value` (number) and `target_unit` (string id: `c` / `percent`) — proposed
+- `final_progress_value` (number, nullable) and `final_progress_unit` (string id) — proposed
+- `delivered_kwh` (number) — proposed
+- `finished_at_local_time` (string, formatted, empty when not succeeded) — proposed
+- `revisions_count` (number) — proposed
 
 ### `deadline_status_changed`
 
@@ -131,22 +143,18 @@ contract whose stability we'd have to defend across copy revisions.
 
 **Title formatting:** `Smart task status changed for [[device]]`.
 
-**Tokens:**
-- `device_name` (string)
-- `kind` (string, stable id)
-- `status_id` (string, stable id: `waiting` / `on_track` / `at_risk` /
-  `unachievable` / `satisfied`)
-- `status` (string, display label)
-- `previous_status_id` (string, stable id, nullable) — enables
-  "transitioned FROM x" logic
-- `target_value` (number), `target_unit` (string id)
-- `deadline_local_time` (string, formatted)
-- `planned_start_local_time` (string, formatted, nullable)
-- `planned_finish_local_time` (string, formatted, nullable)
-- `required_kwh` (number, nullable) — remaining energy needed
-- `planning_speed_kw` (number, nullable) — observed/configured charging rate
-- `risk_reason` (string id, nullable) — when status is `at_risk` or
-  `unachievable`, the stable reason code from the diagnostics bridge
+**Tokens (pre-trim proposal — see banner above):**
+- `device_name` (string) — shipped
+- `status` (string, stable id: `waiting` / `on_track` / `at_risk` /
+  `unachievable` / `satisfied`) — shipped
+- `kind` (string, stable id) — proposed
+- `previous_status_id` (string, stable id, nullable) — proposed
+- `target_value` (number), `target_unit` (string id) — proposed
+- `planned_start_local_time` (string, formatted, nullable) — proposed
+- `planned_finish_local_time` (string, formatted, nullable) — proposed
+- `required_kwh` (number, nullable) — proposed
+- `planning_speed_kw` (number, nullable) — proposed
+- `risk_reason` (string id, nullable) — proposed
 
 The runtime-side suppression rules already in place (first observation, same-
 status re-fire) stay.
@@ -155,17 +163,17 @@ status re-fire) stay.
 
 **Args:** `device` (autocomplete). No change.
 
-**Tokens:** (add to today's set)
-- `device_name` (existing)
-- `kind` (add — stable id)
-- `remaining_kwh` (existing)
-- `planned_hours` (existing)
-- `projected_finish_local_time` (existing)
+**Tokens (pre-trim proposal — see banner above):**
+- `device_name` — shipped
+- `remaining_kwh` — shipped
+- `planned_hours` — shipped
+- `projected_finish_local_time` — shipped
+- `kind` (stable id) — proposed
 - `change_reason_id` (string, stable id: `prices_revised` / `rate_refined` /
-  `objective_changed` / `measured_deviation`) — the recorder already classifies the first three;
-  `measured_deviation` is reserved and will fire once the observability work lands. The
-  `flow_card` and `prices_arrived` revision reasons mark plan *creation* rather than *change*
-  and are not emitted on `deadline_plan_changed`.
+  `objective_changed` / `measured_deviation`) — proposed. The recorder already classifies
+  the first three; `measured_deviation` is reserved and will fire once the observability
+  work lands. The `flow_card` and `prices_arrived` revision reasons mark plan *creation*
+  rather than *change* and are not emitted on `deadline_plan_changed`.
 
 ### `deadline_status_is` (condition)
 
