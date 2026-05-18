@@ -1,6 +1,11 @@
 import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
+import { buildEffectiveShedPosture, isAnyOtherDeviceLimited } from './keepInvariantPosture';
+import {
+  resolveSteppedLoadDirectShedStepId,
+  resolveSteppedShedCurrentDesiredStepId,
+} from './planSteppedShedResolution';
 import {
   PLAN_REASON_CODES,
   type DeviceReason,
@@ -17,14 +22,9 @@ import {
   isSteppedLoadDevice,
   resolveSteppedKeepDesiredStepId,
   resolveSteppedLoadInitialDesiredStepId,
-  resolveSteppedLoadPlanningKw,
-  resolveSteppedUnknownCurrentMeasuredShedding,
-  getSteppedLoadShedTargetStep,
 } from './planSteppedLoad';
 import {
   getSteppedLoadLowestActiveStep,
-  getSteppedLoadLowestStep,
-  getSteppedLoadOffStep,
   getSteppedLoadStep,
   isSteppedLoadOffStep,
 } from '../utils/deviceControlProfiles';
@@ -39,7 +39,6 @@ import {
   resolveTemperatureBoostActive,
   supportsTemperatureBoostDevice,
 } from './planTemperatureBoost';
-import { isObservedOff } from '../observer/observedState';
 import type { StructuredDebugEmitter } from '../logging/logger';
 
 export type PlanDevicesDeps = {
@@ -76,6 +75,13 @@ export function buildInitialPlanDevices(params: {
     deferredTargetTempByDeviceId = {},
     deps,
   } = params;
+  // Filter the executor-side phantom set_step shed entries that hasExecutableShedDevices
+  // ignores, so the keep-invariant shed clamp (docs/technical.md:222) is symmetric.
+  const effectiveShedSet = buildEffectiveShedPosture({
+    devices: context.devices,
+    shedSet,
+    isPhantom: (dev) => isPhantomSetStepShed({ dev, devices: context.devices, state, deps }),
+  });
   return context.devices.flatMap((dev) => {
     const supportsTemperature = supportsTemperatureDevice(dev);
     const priority = deps.getPriorityForDevice(dev.id);
@@ -122,6 +128,7 @@ export function buildInitialPlanDevices(params: {
       controllable,
       shedBehavior,
       shedSet,
+      anyOtherDeviceLimited: isAnyOtherDeviceLimited(effectiveShedSet, dev.id),
       shedReasons,
       temperatureBoostActive: active,
       evBoostActive,
@@ -283,6 +290,7 @@ function buildBasePlanDevice(params: {
   controllable: boolean;
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
   shedSet: Set<string>;
+  anyOtherDeviceLimited: boolean;
   shedReasons: Map<string, DeviceReason>;
   temperatureBoostActive: boolean;
   evBoostActive: boolean;
@@ -320,14 +328,12 @@ function buildBasePlanDevice(params: {
     && shedDesiredStepId !== undefined
     && shedDesiredStepId !== dev.selectedStepId;
   const plannedState = resolvePlannedState(controllable, shedSet.has(dev.id) || isSteppedShed);
-  // For keep/restore devices at off-step, normalize desired step to lowest non-zero.
-  // Computed after plannedState to avoid a circular effect on isSteppedShed.
   const effectiveDesiredStepId = resolveSteppedKeepDesiredStepId({
     ...dev,
     currentState,
     plannedState,
     desiredStepId,
-  });
+  }, { anyOtherDeviceLimited: params.anyOtherDeviceLimited });
   const baseReason: DeviceReason = controllable
     ? shedReasons.get(dev.id) ?? { code: PLAN_REASON_CODES.keep, detail: recentlyRestored ? 'recently restored' : null }
     : { code: PLAN_REASON_CODES.capacityControlOff };
@@ -406,6 +412,27 @@ function isRecentlyRestored(lastRestoreMs: number | undefined): boolean {
   if (!lastRestoreMs) return false;
   return Date.now() - lastRestoreMs < RECENT_RESTORE_SHED_GRACE_MS;
 }
+// Mirrors isDroppedUnderspecifiedSetStepShed at plan-build time, minus the
+// !isHeldByRestoreAdmission conjunct: plan reasons aren't computed at this pre-pass.
+// Mild inverse-direction asymmetry vs. lib/executor/executablePlanProjection.ts:126-135 —
+// tracked as a P3 in TODO.md.
+function isPhantomSetStepShed(params: {
+  dev: PlanInputDevice;
+  devices: PlanInputDevice[];
+  state: PlanEngineState;
+  deps: PlanDevicesDeps;
+}): boolean {
+  const { dev, devices, state, deps } = params;
+  if (!isSteppedLoadDevice(dev)) return false;
+  const behavior = deps.getShedBehavior(dev.id);
+  if (behavior.action !== 'set_step') return false;
+  const directStepId = resolveSteppedLoadDirectShedStepId({
+    dev, devices, state, shedBehavior: behavior, shouldShed: true,
+    currentDesiredStepId: resolveSteppedShedCurrentDesiredStepId(dev),
+  });
+  return directStepId === undefined || directStepId === dev.selectedStepId;
+}
+
 function resolvePlannedState(controllable: boolean, shouldShed: boolean): 'shed' | 'keep' {
   if (!controllable) return 'keep';
   return shouldShed ? 'shed' : 'keep';
@@ -445,73 +472,4 @@ function resolveSteppedShedAction(params: {
     return { shedAction: 'set_step', shedTemperature: null, shedStepId: null };
   }
   return { shedAction: 'turn_off', shedTemperature: null, shedStepId: null };
-}
-function resolveSteppedLoadDirectShedStepId(params: {
-  dev: PlanInputDevice;
-  devices: PlanInputDevice[];
-  state: PlanEngineState;
-  shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
-  shouldShed: boolean;
-  currentDesiredStepId?: string;
-}): string | undefined {
-  const {
-    dev,
-    devices,
-    state,
-    shedBehavior,
-    shouldShed,
-    currentDesiredStepId,
-  } = params;
-  if (!shouldShed || !isSteppedLoadDevice(dev)) return undefined;
-  if (shedBehavior.action === 'turn_off') {
-    const profile = dev.steppedLoadProfile;
-    if (!profile) return undefined;
-    // turn_off targets the off-step (zero-usage) directly, not gradual stepping
-    return (getSteppedLoadOffStep(profile) ?? getSteppedLoadLowestStep(profile))?.id;
-  }
-  if (shedBehavior.action !== 'set_step') return undefined;
-  if (shouldForceLowestActiveStep({ dev, devices, state, shedBehaviorAction: shedBehavior.action })) {
-    return dev.steppedLoadProfile ? getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)?.id : undefined;
-  }
-  const targetStep = getSteppedLoadShedTargetStep({
-    device: dev,
-    shedAction: 'set_step',
-    currentDesiredStepId,
-  });
-  return targetStep?.id
-    ?? resolveSteppedUnknownCurrentMeasuredShedding({ device: dev, shedAction: 'set_step' })?.targetStep.id;
-}
-function shouldForceLowestActiveStep(params: {
-  dev: PlanInputDevice;
-  devices: PlanInputDevice[];
-  state: Pick<PlanEngineState, 'lastDeviceShedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>;
-  shedBehaviorAction: ShedAction;
-}): boolean {
-  const { dev, devices, state, shedBehaviorAction } = params;
-  return shedBehaviorAction === 'set_step'
-    && devices.some((candidate) => candidate.id !== dev.id && isNonSteppedDeviceRecovering(candidate, state));
-}
-function isNonSteppedDeviceRecovering(
-  candidate: PlanInputDevice,
-  state: Pick<PlanEngineState, 'lastDeviceShedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>,
-): boolean {
-  const observedOff = isObservedOff(candidate);
-  if (candidate.controllable === false || isSteppedLoadDevice(candidate) || !observedOff) {
-    return false;
-  }
-  if (state.swapByDevice[candidate.id]?.swappedOutFor || state.swapByDevice[candidate.id]?.pendingTarget) {
-    return true;
-  }
-  const lastShedMs = state.lastDeviceShedMs[candidate.id];
-  if (lastShedMs == null) return false;
-  const lastRestoreMs = state.lastDeviceRestoreMs[candidate.id];
-  return lastRestoreMs == null || lastRestoreMs < lastShedMs;
-}
-function resolveSteppedShedCurrentDesiredStepId(dev: PlanInputDevice): string | undefined {
-  if (!isSteppedLoadDevice(dev) || !dev.stepCommandPending || !dev.desiredStepId || !dev.selectedStepId) {
-    return dev.selectedStepId;
-  }
-  const desiredKw = resolveSteppedLoadPlanningKw(dev, dev.desiredStepId);
-  const selectedKw = resolveSteppedLoadPlanningKw(dev, dev.selectedStepId);
-  return desiredKw < selectedKw ? dev.desiredStepId : dev.selectedStepId;
 }
