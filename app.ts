@@ -13,6 +13,7 @@ import { isPlanActivelyConverging } from './lib/plan/planStateHelpers';
 import { buildPlanCapacityStateSummary } from './lib/plan/planLogging';
 import { HomeyDeviceLike, TargetDeviceSnapshot, type DeviceTargetPowerConfigs } from './lib/utils/types';
 import { PriceCoordinator } from './lib/price/priceCoordinator';
+import { PriceFlowTagPublisher } from './lib/price/priceFlowTags';
 import { PowerTrackerState } from './lib/core/powerTracker';
 import { PriceLevel } from './lib/price/priceLevels';
 import { buildPeriodicStatusLogFields } from './lib/core/periodicStatus';
@@ -72,6 +73,7 @@ import {
   createPlanEngine,
   createPlanService,
   createPriceCoordinator,
+  createPriceFlowTagPublisher,
   persistDeferredObjectiveObservationWatermark,
   registerAppFlowCards,
 } from './lib/app/appInit';
@@ -260,6 +262,7 @@ class PelsApp extends Homey.App {
   private deferredObjectiveActivePlanRecorder?: DeferredObjectiveActivePlanRecorder;
   private deviceDiagnosticsService!: DeviceDiagnosticsService;
   private priceCoordinator!: PriceCoordinator;
+  private priceFlowTagPublisher?: PriceFlowTagPublisher;
   private deviceManager!: DeviceManager;
   private planEngine!: PlanEngine;
   private planService!: PlanService;
@@ -712,6 +715,8 @@ class PelsApp extends Homey.App {
       set deviceDiagnosticsService(value) { appRef.deviceDiagnosticsService = value; },
       get priceCoordinator() { return app.priceCoordinator; },
       set priceCoordinator(value) { appRef.priceCoordinator = value; },
+      get priceFlowTagPublisher() { return app.priceFlowTagPublisher; },
+      set priceFlowTagPublisher(value) { appRef.priceFlowTagPublisher = value; },
       get deviceManager() { return app.deviceManager; },
       set deviceManager(value) { appRef.deviceManager = value; },
       get planEngine() { return app.planEngine; },
@@ -800,8 +805,9 @@ class PelsApp extends Homey.App {
     );
     await runStartupStep('startPowerTrackerPruning', () => this.startPowerTrackerPruning(), logStartupStepFailure);
   }
-  private initPriceCoordinator(): void {
+  private async initPriceCoordinator(): Promise<void> {
     this.priceCoordinator = createPriceCoordinator(this.ctx);
+    this.priceFlowTagPublisher = createPriceFlowTagPublisher(this.ctx);
   }
   private initDailyBudgetService(): void {
     this.dailyBudgetService = new DailyBudgetService({

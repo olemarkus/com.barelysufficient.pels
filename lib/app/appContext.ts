@@ -19,6 +19,7 @@ import type { PendingTargetObservationSource, ShedAction, ShedBehavior } from '.
 import type { PlanService } from '../plan/planService';
 import type { PriceLevel } from '../price/priceLevels';
 import type { PriceCoordinator } from '../price/priceCoordinator';
+import type { PriceFlowTagPublisher } from '../price/priceFlowTags';
 import type { PriceOptimizationSettings } from '../price/priceOptimizer';
 import type { DebugLoggingTopic } from '../utils/debugLogging';
 import type {
@@ -194,6 +195,7 @@ export type AppContext = {
   deferredObjectiveActivePlanRecorder?: DeferredObjectiveActivePlanRecorder;
   deviceDiagnosticsService?: DeviceDiagnosticsService;
   priceCoordinator?: PriceCoordinator;
+  priceFlowTagPublisher?: PriceFlowTagPublisher;
   deviceManager?: DeviceManager;
   planEngine?: PlanEngine;
   planService?: PlanService;
