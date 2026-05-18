@@ -1275,4 +1275,137 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       expect(planDevice.plannedTarget).toBe(40);
     });
   });
+
+  describe('mode target fallback', () => {
+    const tempInputDevice = (overrides: Partial<Parameters<typeof buildPlanInputDevice>[0]> = {}) => buildPlanInputDevice({
+      id: 'tank',
+      name: 'Water tank',
+      deviceType: 'temperature',
+      currentTemperature: 45,
+      targets: [{ id: 'target_temperature', value: 50, unit: '°C', min: 30, max: 70 }],
+      ...overrides,
+    });
+
+    it('uses the mode target when present', () => {
+      const debugStructured = vi.fn();
+      const [planDevice] = buildInitialPlanDevices({
+        context: { ...buildContext([tempInputDevice()]), desiredForMode: { tank: 55 } },
+        state: createPlanEngineState(),
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deps: { ...defaultDeps, debugStructured, getOperatingMode: () => 'home' },
+      });
+
+      expect(planDevice.plannedTarget).toBe(55);
+      expect(debugStructured).not.toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'missing_mode_target' }),
+      );
+    });
+
+    it('falls back to the current target capability and emits missing_mode_target', () => {
+      const debugStructured = vi.fn();
+      const [planDevice] = buildInitialPlanDevices({
+        context: { ...buildContext([tempInputDevice()]), desiredForMode: {} },
+        state: createPlanEngineState(),
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deps: { ...defaultDeps, debugStructured, getOperatingMode: () => 'home' },
+      });
+
+      expect(planDevice.plannedTarget).toBe(50);
+      expect(debugStructured).toHaveBeenCalledWith({
+        event: 'missing_mode_target',
+        deviceId: 'tank',
+        deviceName: 'Water tank',
+        operatingMode: 'home',
+      });
+    });
+
+    it('skips the device and emits missing_mode_target_and_current_target when both are missing', () => {
+      const debugStructured = vi.fn();
+      const result = buildInitialPlanDevices({
+        context: {
+          ...buildContext([tempInputDevice({
+            targets: [{ id: 'target_temperature', unit: '°C', min: 30, max: 70 }],
+          })]),
+          desiredForMode: {},
+        },
+        state: createPlanEngineState(),
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deps: { ...defaultDeps, debugStructured, getOperatingMode: () => 'home' },
+      });
+
+      expect(result).toHaveLength(0);
+      expect(debugStructured).toHaveBeenCalledWith({
+        event: 'missing_mode_target_and_current_target',
+        deviceId: 'tank',
+        deviceName: 'Water tank',
+        operatingMode: 'home',
+      });
+    });
+
+    it('combines the current-target fallback with an active deferred objective', () => {
+      const [planDevice] = buildInitialPlanDevices({
+        context: { ...buildContext([tempInputDevice()]), desiredForMode: {} },
+        state: createPlanEngineState(),
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deferredTargetTempByDeviceId: { tank: 58 },
+        deps: defaultDeps,
+      });
+
+      // currentTarget = 50, deferred = 58 — max wins.
+      expect(planDevice.plannedTarget).toBe(58);
+    });
+
+    it('does not apply price-opt delta when the seed comes from the current-target fallback', () => {
+      const [planDevice] = buildInitialPlanDevices({
+        context: { ...buildContext([tempInputDevice()]), desiredForMode: {} },
+        state: createPlanEngineState(),
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deps: {
+          ...defaultDeps,
+          isCurrentHourCheap: () => true,
+          getPriceOptimizationEnabled: () => true,
+          getPriceOptimizationSettings: () => ({ tank: { enabled: true, cheapDelta: 2, expensiveDelta: -1 } }),
+          getOperatingMode: () => 'home',
+        },
+      });
+
+      // currentTarget = 50; no mode target → fallback path. Cheap-hour delta of +2 must NOT
+      // apply, so PELS remains a no-op against the existing setpoint.
+      expect(planDevice.plannedTarget).toBe(50);
+    });
+
+    it('rescues a device with no mode target and no current target value via an active deferred objective', () => {
+      const debugStructured = vi.fn();
+      const [planDevice] = buildInitialPlanDevices({
+        context: {
+          ...buildContext([tempInputDevice({
+            targets: [{ id: 'target_temperature', unit: '°C', min: 30, max: 70 }],
+          })]),
+          desiredForMode: {},
+        },
+        state: createPlanEngineState(),
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deferredTargetTempByDeviceId: { tank: 58 },
+        deps: { ...defaultDeps, debugStructured, getOperatingMode: () => 'home' },
+      });
+
+      expect(planDevice).toBeDefined();
+      expect(planDevice.plannedTarget).toBe(58);
+      expect(debugStructured).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'missing_mode_target_and_current_target' }),
+      );
+    });
+  });
 });

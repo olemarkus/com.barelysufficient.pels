@@ -49,8 +49,12 @@ export type PlanDevicesDeps = {
   isCurrentHourExpensive: () => boolean;
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
+  getOperatingMode?: () => string;
   debugStructured?: StructuredDebugEmitter;
 };
+
+const SKIP_PLANNED_TARGET = Symbol('skip-planned-target');
+type ResolvedPlannedTarget = number | null | typeof SKIP_PLANNED_TARGET;
 const supportsTemperatureDevice = (device: PlanInputDevice): boolean => {
   return supportsTemperatureBoostDevice(device);
 };
@@ -72,7 +76,7 @@ export function buildInitialPlanDevices(params: {
     deferredTargetTempByDeviceId = {},
     deps,
   } = params;
-  return context.devices.map((dev) => {
+  return context.devices.flatMap((dev) => {
     const supportsTemperature = supportsTemperatureDevice(dev);
     const priority = deps.getPriorityForDevice(dev.id);
     const plannedTarget = resolvePlannedTarget({
@@ -82,6 +86,7 @@ export function buildInitialPlanDevices(params: {
       supportsTemperature,
       deps,
     });
+    if (plannedTarget === SKIP_PLANNED_TARGET) return [];
     const currentTarget = getPrimaryTargetCapability(dev.targets)?.value ?? null;
     const currentState = resolveCurrentState(dev);
     const controllable = dev.controllable !== false;
@@ -128,7 +133,7 @@ export function buildInitialPlanDevices(params: {
       headroomRaw: context.headroomRaw,
       guardInShortfall,
     });
-    return withOffStateReason;
+    return [withOffStateReason];
   });
 }
 function resolvePlannedTarget(params: {
@@ -137,27 +142,56 @@ function resolvePlannedTarget(params: {
   deferredTargetTempByDeviceId: Record<string, number>;
   supportsTemperature: boolean;
   deps: PlanDevicesDeps;
-}): number | null {
+}): ResolvedPlannedTarget {
   const { dev, desiredForMode, deferredTargetTempByDeviceId, supportsTemperature, deps } = params;
   if (!supportsTemperature) return null;
   const target = getPrimaryTargetCapability(dev.targets);
-  const desired = desiredForMode[dev.id];
-  let plannedTarget = Number.isFinite(desired) ? Number(desired) : null;
+  const deferredC = deferredTargetTempByDeviceId[dev.id];
+  const hasDeferred = typeof deferredC === 'number';
+  const seed = resolveTemperatureSeed(dev, desiredForMode[dev.id], target, deps);
+  if (seed.kind === 'skip') {
+    // An active deadline objective is itself a strong signal that PELS should plan for the
+    // device. When the mode target and current capability value are both missing, use the
+    // deferred target as the rescue seed instead of dropping the device. Price-opt is not
+    // applied to the deadline target; see comment below.
+    if (!hasDeferred) return SKIP_PLANNED_TARGET;
+    return normalizeTargetCapabilityValue({ target, value: deferredC });
+  }
+  let plannedTarget = seed.value;
+  // Price-opt only modulates a configured mode setpoint. When the seed is the current
+  // thermostat reading (fallback) or a deadline rescue target, leaving it unmodulated keeps
+  // PELS a no-op against whatever the user / deadline already chose.
   const priceOptConfig = deps.getPriceOptimizationSettings()[dev.id];
-  if (deps.getPriceOptimizationEnabled() && plannedTarget !== null && priceOptConfig?.enabled) {
+  if (seed.kind === 'mode' && deps.getPriceOptimizationEnabled() && priceOptConfig?.enabled) {
     plannedTarget = applyPriceOptimizationDelta(plannedTarget, priceOptConfig, deps);
   }
-  // Deferred temperature objective: during a planned hour, lift the setpoint to the deadline
-  // target if the price-adjusted mode target falls below it. The price-opt delta combines only
-  // with the mode side; the deadline target is never further modulated.
-  const deferredC = deferredTargetTempByDeviceId[dev.id];
-  if (typeof deferredC === 'number') {
-    plannedTarget = plannedTarget === null ? deferredC : Math.max(plannedTarget, deferredC);
+  if (hasDeferred) {
+    // Deferred target is the floor, never further modulated by price-opt.
+    plannedTarget = Math.max(plannedTarget, deferredC);
   }
-  if (plannedTarget !== null) {
-    plannedTarget = normalizeTargetCapabilityValue({ target, value: plannedTarget });
+  return normalizeTargetCapabilityValue({ target, value: plannedTarget });
+}
+
+type TemperatureSeed =
+  | { kind: 'mode'; value: number }
+  | { kind: 'fallback'; value: number }
+  | { kind: 'skip' };
+
+function resolveTemperatureSeed(
+  dev: PlanInputDevice,
+  desired: number | undefined,
+  target: ReturnType<typeof getPrimaryTargetCapability>,
+  deps: PlanDevicesDeps,
+): TemperatureSeed {
+  if (Number.isFinite(desired)) return { kind: 'mode', value: Number(desired) };
+  const fallback = target?.value;
+  const payload = { deviceId: dev.id, deviceName: dev.name, operatingMode: deps.getOperatingMode?.() ?? null };
+  if (typeof fallback === 'number' && Number.isFinite(fallback)) {
+    deps.debugStructured?.({ event: 'missing_mode_target', ...payload });
+    return { kind: 'fallback', value: fallback };
   }
-  return plannedTarget;
+  deps.debugStructured?.({ event: 'missing_mode_target_and_current_target', ...payload });
+  return { kind: 'skip' };
 }
 function applyPriceOptimizationDelta(
   target: number,

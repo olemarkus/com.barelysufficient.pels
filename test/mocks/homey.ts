@@ -79,7 +79,12 @@ export class MockDevice {
     private name: string,
     private capabilities: string[],
     private deviceClass: string = 'heater',
-  ) { }
+  ) {
+    if (capabilities.includes('target_temperature')) {
+      this.capabilityValues.set('target_temperature', 21);
+      this.actualCapabilityValues.set('target_temperature', 21);
+    }
+  }
 
   private getNormalizedCapabilities(): string[] {
     const normalized = new Set(this.capabilities);
