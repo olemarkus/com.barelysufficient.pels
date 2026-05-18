@@ -364,5 +364,8 @@
   },
   "2.7.1": {
     "en": "Fixed a theming issue. Homey dark mode applies a blanket hue rotation on top of everything, includign the PELS iframe. This should now make the colours render correctly at least for light mode and for mobile."
+  },
+  "2.7.2": {
+    "en": "Fixed a performance issue and several other stability and UX issues."
   }
 }
