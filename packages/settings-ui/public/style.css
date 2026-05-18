@@ -3129,11 +3129,6 @@ md-primary-tab.tab[active]:hover {
   border: 1px solid var(--panel-border);
 }
 
-.usage-legend__swatch--warn {
-  background: var(--color-state-negative-bg);
-  border-color: var(--color-state-negative-border);
-}
-
 /*
  * Match the heatmap cell shape exactly so the legend reads as "this is what
  * that means" (TODO 573 — fixed v2.7.0). Heatmap cells in
@@ -3185,7 +3180,10 @@ md-primary-tab.tab[active]:hover {
 }
 
 #usage-panel .usage-bar__fill--accent {
-  background: var(--day-view-color-primary, var(--accent));
+  /* Per-device strips in the Usage tab join the unified accent family
+   * (TODO 2026-05-16 palette unification). The other day-view surfaces
+   * (Budget/Plan) keep cascading `--day-view-color-primary` unchanged. */
+  background: var(--color-semantic-accent);
 }
 
 #usage-panel .usage-row--warn .usage-bar__fill--accent {
@@ -5869,7 +5867,10 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 .usage-hero__stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Two stats (This week / This month) — "Daily avg" was folded out as
+   * it duplicated the "Typical weekday/weekend: X kWh" subline 24 px
+   * above (TODO 2026-05-16). */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--spacing-2);
   padding-top: var(--spacing-3);
   border-top: 1px solid color-mix(in srgb, var(--pels-surface-outline) 70%, transparent);
@@ -6020,7 +6021,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
  * width. */
 @media (max-width: 480px) {
   .usage-hero__stats {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--spacing-1);
   }
   .usage-hero__stat-value {

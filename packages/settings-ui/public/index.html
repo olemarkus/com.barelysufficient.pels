@@ -172,16 +172,10 @@
       <div class="budget-redesign-surface" id="budget-redesign-surface"></div>
     </section>
 
-    <section class="card panel hidden" id="usage-panel" data-panel="usage" aria-labelledby="usage-title">
-      <header class="pels-hero">
-        <div>
-          <p class="eyebrow">Usage</p>
-          <h2 id="usage-title">Energy history</h2>
-        </div>
-      </header>
-
-      <section class="plan-hero pels-hero usage-hero" id="usage-hero" data-tone="ok" aria-labelledby="usage-hero-headline">
+    <section class="card panel hidden" id="usage-panel" data-panel="usage" aria-labelledby="usage-hero-headline">
+      <div class="plan-hero pels-hero usage-hero" id="usage-hero" data-tone="ok">
         <div class="plan-hero__section">
+          <p class="eyebrow" id="usage-title">Energy history</p>
           <div class="plan-hero__headline-row">
             <div class="plan-hero__headline" id="usage-hero-headline">-- kWh today</div>
             <span class="plan-chip plan-chip--muted usage-hero__delta" id="usage-hero-delta" hidden>--</span>
@@ -198,13 +192,9 @@
             <span class="usage-hero__stat-label">This month</span>
             <span class="usage-hero__stat-value" id="usage-month">-- kWh</span>
           </li>
-          <li class="usage-hero__stat">
-            <span class="usage-hero__stat-label">Daily avg</span>
-            <span class="usage-hero__stat-value" id="usage-weekly-avg">-- kWh</span>
-          </li>
         </ul>
         <span hidden id="usage-today">-- kWh</span>
-      </section>
+      </div>
 
       <section class="pels-surface-card usage-card" aria-labelledby="usage-day-title">
         <md-elevation aria-hidden="true"></md-elevation>
