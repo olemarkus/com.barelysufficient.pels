@@ -19,10 +19,20 @@ import {
   formatPlanHistoryAbandonedSecondary,
   formatPlanHistoryCostAndDelivered,
   formatPlanHistoryMissedReason,
+  formatPlanHistoryOvershootLine,
   formatPlanHistoryPostmortem,
+  formatPlanHistoryReachedAtLine,
   getPlanHistoryOutcomeLabel,
   type DeferredPlanHistoryPostmortem,
 } from '../../../shared-domain/src/deferredPlanHistory.ts';
+import {
+  formatPlanHistoryAbandonedDetails,
+  formatPlanHistoryCostNarrative,
+  formatPlanHistoryReceiptTimeline,
+  formatPlanHistoryShortfallChip,
+  type PlanHistoryAbandonedDetails,
+  type PlanHistoryReceiptRow,
+} from '../../../shared-domain/src/deferredPlanHistoryReceipt.ts';
 import {
   type DeadlineCannotMeetRecourse,
   resolveMissedHistoryRecourse,
@@ -82,6 +92,40 @@ export type DeadlinePlanHistoryHeroPayload = {
   // receipt-shape (collapsed by default with a "View plan" toggle); Missed
   // = diagnosis-shape (always expanded); Abandoned = muted log (collapsed).
   chartCollapsedByDefault: boolean;
+  // Whether the hero is the quiet abandoned-shape — eyebrow + one sentence
+  // + Material `<details>` expansion, no chart card, no recourse. Resolved
+  // here so the view layer never branches on outcome to drop the chart
+  // card. v2.7.3.
+  quietAbandoned: boolean;
+  // Three-row receipt timeline rendered beneath the outcome line on
+  // Succeeded heroes. `null` on Missed / Abandoned, and on Succeeded
+  // entries where fewer than two rows could be composed honestly. v2.7.3.
+  receiptTimeline: PlanHistoryReceiptRow[] | null;
+  // Blameless shortfall summary chip rendered beneath the diagnosis sentence
+  // on Missed heroes. `null` on Succeeded / Abandoned, and on Missed
+  // entries that lack the delivery / shortfall numbers to summarize. v2.7.3.
+  shortfallChip: string | null;
+  // Cost narrative chip ("≈ 12 kr") rendered on Succeeded and Missed
+  // heroes. `null` on Abandoned, and on entries that didn't capture a
+  // total cost or unit. v2.7.3 — the per-kWh average half was dropped
+  // pending per-hour spot prices (P1 #4 fold-in).
+  costNarrative: string | null;
+  // Body of the abandoned-shape `<details>` disclosure. `null` on Succeeded
+  // / Missed, and on Abandoned entries that lack enough recorded context to
+  // populate the disclosure honestly — in that case the hero stays a
+  // single sentence with no expansion control. v2.7.3.
+  abandonedDetails: PlanHistoryAbandonedDetails | null;
+  // Legacy supporting paragraphs. v2.7.3 suppresses them on Succeeded
+  // (receipt timeline carries the same info) and on Abandoned (the
+  // `<details>` disclosure is the evidence surface). On Missed,
+  // progressLine + coverageLine are suppressed (shortfall chip + diagnosis
+  // already answer "by how much" and "how much we observed"), but
+  // reachedAtLine and overshootLine survive because they encode signal the
+  // chip doesn't (time-to-target / overshoot temperature).
+  progressLine: string | null;
+  reachedAtLine: string | null;
+  overshootLine: string | null;
+  coverageLine: string | null;
 };
 
 
@@ -111,6 +155,15 @@ export const buildHistoryDetailHero = (
   };
 
   const chipLabel = getPlanHistoryOutcomeLabel(entry.outcome);
+  const costNarrative = formatPlanHistoryCostNarrative(entry, costUnit);
+  // Pre-resolve the legacy supporting lines once so the per-outcome blocks
+  // can selectively keep them or null them. The producer suppresses the
+  // ones that duplicate the new receipt / shortfall / cost-narrative
+  // surface per `notes/smart-task-ui/README.md` v2.7.3 history-loveable
+  // pass. progressLine + coverageLine are retired on every outcome shape;
+  // reachedAtLine + overshootLine survive on Missed.
+  const reachedAtLine = formatPlanHistoryReachedAtLine(entry, timeZone);
+  const overshootLine = formatPlanHistoryOvershootLine(entry);
   if (entry.outcome === 'met') {
     return {
       tone: 'good',
@@ -118,20 +171,51 @@ export const buildHistoryDetailHero = (
       eyebrow: SMART_TASK_HISTORY_EYEBROW,
       heading,
       lead,
-      secondary: formatPlanHistoryCostAndDelivered(entry, costUnit, ''),
+      // The 3-row receipt below the outcome headline is the new primary
+      // supporting line on Succeeded (v2.7.3 history-loveable pass). Cost
+      // moves to the `costNarrative` chip; the old kWh-delivered figure is
+      // carried inside the receipt's "Largest planned hour" detail. The
+      // secondary line is suppressed entirely so the receipt + chip aren't
+      // shouted over by a duplicate cost-and-delivered sentence.
+      secondary: null,
       whyLine: null,
       recourse: null,
       chartCollapsedByDefault: true,
+      quietAbandoned: false,
+      receiptTimeline: formatPlanHistoryReceiptTimeline(entry, timeZone),
+      shortfallChip: null,
+      costNarrative,
+      abandonedDetails: null,
+      // v2.7.3 — Succeeded retires progressLine / reachedAtLine / overshoot
+      // / coverageLine. The receipt timeline's "Started …", "Largest
+      // planned hour …", "Ready 06:42, 18 min before 07:00" rows already
+      // encode the same information; stacking them again was the density
+      // problem `pels-ux-fit` flagged.
+      progressLine: null,
+      reachedAtLine: null,
+      overshootLine: null,
+      coverageLine: null,
     };
   }
   if (entry.outcome === 'missed') {
+    const missedShortfallChip = formatPlanHistoryShortfallChip(entry);
+    // v2.7.3 P2 fold-in (copilot CusK5 / codex Cuwrx) — gate the cost+delivered
+    // secondary behind the absence of both the shortfall chip and the cost
+    // narrative. Both new chips encode the same cost/delivery signal at
+    // whole-kroner precision; rendering the secondary alongside them double-
+    // surfaces the figure at 2-decimal precision and pushes the recourse
+    // CTA lower on 320 px screens. The fallback only fires for sparsely-
+    // recorded misses where the chips can't compose.
+    const missedSecondary = missedShortfallChip === null && costNarrative === null
+      ? formatPlanHistoryCostAndDelivered(entry, costUnit, ' partial')
+      : null;
     return {
       tone: 'warn',
       chip: { text: chipLabel, tone: 'warn' },
       eyebrow: SMART_TASK_HISTORY_EYEBROW,
       heading,
       lead,
-      secondary: formatPlanHistoryCostAndDelivered(entry, costUnit, ' partial'),
+      secondary: missedSecondary,
       // Why: the missed-reason resolver returns a longer, action-oriented
       // sentence; the postmortem returns a tight outcome-shaped one. Both
       // are useful — the postmortem answers "what happened" and the Why
@@ -143,18 +227,55 @@ export const buildHistoryDetailHero = (
         deviceId: entry.deviceId,
       }),
       chartCollapsedByDefault: false,
+      quietAbandoned: false,
+      receiptTimeline: null,
+      shortfallChip: missedShortfallChip,
+      costNarrative,
+      abandonedDetails: null,
+      // v2.7.3 — Missed retires progressLine; the shortfall chip already
+      // answers "by how much, in kWh". reachedAtLine + overshootLine
+      // survive because they carry time / temperature signal the chip
+      // doesn't. coverageLine retired — it's plumbing noise that doesn't
+      // help the user act on the miss.
+      progressLine: null,
+      reachedAtLine,
+      overshootLine,
+      coverageLine: null,
     };
   }
-  // Abandoned / replaced / unknown → muted log shape.
+  // Abandoned / replaced / unknown → quiet log shape (v2.7.3). The page
+  // collapses to eyebrow + outcome sentence + Material `<details>`. No
+  // chart card by default, no recourse — the temptation to "make it
+  // useful" is exactly what makes archives feel like audits.
+  const abandonedDetails = formatPlanHistoryAbandonedDetails(entry, timeZone);
   return {
     tone: 'muted',
     chip: { text: chipLabel, tone: 'muted' },
     eyebrow: SMART_TASK_HISTORY_EYEBROW,
     heading,
     lead,
-    secondary: formatPlanHistoryAbandonedSecondary(entry),
+    // The abandoned shape uses the `<details>` body as its evidence
+    // surface — keep the secondary line null so the hero stays a single
+    // sentence above the disclosure. Legacy entries without a details
+    // payload fall through to the existing `formatPlanHistoryAbandonedSecondary`
+    // for partial-delivery context.
+    secondary: abandonedDetails === null
+      ? formatPlanHistoryAbandonedSecondary(entry)
+      : null,
     whyLine: null,
     recourse: null,
     chartCollapsedByDefault: true,
+    quietAbandoned: true,
+    receiptTimeline: null,
+    shortfallChip: null,
+    costNarrative: null,
+    abandonedDetails,
+    // Quiet abandoned shape — the `<details>` body is the evidence surface;
+    // legacy paragraphs would re-shout details the disclosure already
+    // contains.
+    progressLine: null,
+    reachedAtLine: null,
+    overshootLine: null,
+    coverageLine: null,
   };
 };

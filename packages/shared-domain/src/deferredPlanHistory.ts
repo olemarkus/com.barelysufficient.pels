@@ -284,11 +284,11 @@ const pickLastPlan = (
  * without inferring from chart bars alone.
  *
  * Branches resolve in priority order (most specific first):
- *  1. Daily budget exhausted on the last revision → an action-oriented sentence
- *     pointing the user at the budget surface as the recourse path (v2.7.2 PR 3
- *     fold-in from PR #856 P2: the previous "couldn't reserve enough energy"
- *     fallback under-served the daily-budget cause).
- *  2. Final plan status `cannot_meet` → "PELS couldn't reserve enough energy in time."
+ *  1. Daily budget exhausted on the last revision → "Today's daily budget filled before
+ *     the deadline could be reached." (blameless; recourse copy lives on the recourse
+ *     button per v2.7.3 history-loveable rewrite — `pels-ux-fit` P1 #2 fold-in).
+ *  2. Final plan status `cannot_meet` → "PELS couldn't reserve enough cheap hours
+ *     before the deadline."
  *  3. Final plan status `at_risk`     → "The smart task fell behind and didn't catch up
  *                                       before the deadline."
  *  4. Discovered from backfill        → "PELS was restarted during this smart task —
@@ -299,8 +299,10 @@ const pickLastPlan = (
  * Returns `null` only when the entry is not `outcome === 'missed'`; the missed-history page
  * always renders something so the user is never left with a chip and no explanation.
  *
- * Per `feedback_hard_cap_is_physical.md`, the daily-budget branch recommends lowering the
- * daily budget so future days reserve power earlier — never raising the capacity hard cap.
+ * Per `feedback_hard_cap_is_physical.md`, no branch recommends raising the capacity
+ * hard cap or the daily budget — the recourse button (resolved by
+ * `resolveMissedHistoryRecourse`) is the only surface that names the user-facing
+ * "lower target / move deadline / lower daily budget" action.
  *
  * Lives in shared-domain so the same strings can feed runtime log breadcrumbs (per
  * `feedback_ui_text_shared_with_logs.md`).
@@ -312,18 +314,22 @@ export const formatPlanHistoryMissedReason = (
   >,
 ): string | null => {
   if (entry.outcome !== 'missed') return null;
+  // v2.7.3 — blameless rewrite. Recourse copy lives on the recourse button
+  // (resolved separately by `resolveMissedHistoryRecourse`), so the "Why"
+  // sentence answers only "what happened" — never "what should you do".
+  // Per `feedback_hard_cap_is_physical.md`, no branch ever suggests raising
+  // the capacity hard cap or daily budget; the user-facing recommendation
+  // (lower target / move deadline / lower daily budget) is the recourse
+  // button's job.
   const lastPlan = pickLastPlan(entry);
   if (snapshotShowsBudgetExhausted(lastPlan)) {
-    return 'The daily energy budget was used up before the deadline. '
-      + 'Lower today\'s daily budget so tomorrow\'s planning has room, or move the '
-      + 'deadline to a later day.';
+    return "Today's daily budget filled before the deadline could be reached.";
   }
   if (lastPlan?.planStatus === 'cannot_meet') {
-    return 'PELS couldn\'t reserve enough energy in time. '
-      + 'Try lowering the target or moving the deadline later.';
+    return "PELS couldn't reserve enough cheap hours before the deadline.";
   }
   if (lastPlan?.planStatus === 'at_risk') {
-    return 'The smart task fell behind and didn\'t catch up before the deadline.';
+    return "The smart task fell behind and didn't catch up before the deadline.";
   }
   if (entry.discoveredFrom === 'backfill') {
     return 'PELS was restarted during this smart task — outcome reconstructed from settings.';
