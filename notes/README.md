@@ -36,7 +36,7 @@ Current notes:
   same intent via deadline-reserve and `planned_using_policy_avoid` reasons.
 - `smart-task-flow-cards/README.md`: redesign proposal for the smart-task trigger cards —
   drop dropdown filtering args, expose stable-id tokens as public-API contract, add numeric
-  tokens and a composed `notification_text` token. Tracked as P0 in `TODO.md`.
+  tokens. Notification-text composition stays in the user's flow (see Rule 4).
 - `status-hysteresis/README.md`: deferred-from-v1 design for hysteresis on smart-task status
   transitions and confidence-scaled deadline margins. Trigger to revisit is real telemetry
   showing user-observable flapping; a target-boundary deadband is the smaller alternative

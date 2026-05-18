@@ -9,19 +9,25 @@ localize or be renamed.
 
 This note collects the proposed redesign: one trigger per lifecycle event,
 stable-id tokens treated as public API, condition cards used for filtering.
-It also folds in the token gaps surfaced in
-`notes/ev-ready-by/README.md` §P2.3 (richer tokens for notification text) so
-the same change can land them together.
 
-**Status:** shipped (2026-05-15), then trimmed (2026-05-15) after
-comparing token counts against installed Homey apps (Easee, Home Connect,
+**Status:** shipped (2026-05-15), then trimmed (2026-05-15, again 2026-05-18)
+after comparing token counts against installed Homey apps (Easee, Home Connect,
 myUplink, Power by the Hour). The "stable-id + display-label" duo, the
-composed `notification_text`, and the diagnostic-grade introspection
-tokens (`risk_reason`, `planned_start/finish_local_time`, `required_kwh`,
-`planning_speed_kw`, `estimated_duration_text`) had no equivalent in any
-other app — convention is "trigger emits the thing that changed, full
-stop." The per-card target shape in this note therefore overshot;
-delivered shape is the minimum below.
+composed notification text, and the diagnostic-grade introspection tokens
+(`risk_reason`, `planned_start/finish_local_time`, `required_kwh`,
+`planning_speed_kw`, `estimated_duration_text`) had no equivalent in any other
+app — convention is "trigger emits the thing that changed, full stop." The
+per-card target shape in this note therefore overshot; delivered shape is the
+minimum below.
+
+**Composing notification text is the flow author's job, not PELS's.** We do
+not emit a pre-baked `notification_text` (or `target_text` / `shortfall_text`
+formatted strings shaped for one) on any trigger. Reasons: every other Homey
+app pushes that composition to the flow (Logic / text concatenation); a
+pre-baked English string locks out localisation; and the additional token
+surface is a maintenance liability against a contract we actively discourage.
+If a future need arises, revisit by changing this rule explicitly — do not
+re-add the token quietly.
 
 **Delivered token bag (minimum):**
 
@@ -30,9 +36,7 @@ delivered shape is the minimum below.
   (number, 0 when succeeded; flow UI label "Gap to target").
 - `deadline_status_changed` — `device_name` (string), `status` (string,
   stable lowercase id: `waiting` / `on_track` / `at_risk` /
-  `unachievable` / `satisfied`), `notification_text` (string, composed
-  one-liner combining display-label status, target text, and ready-by
-  local time — drop-in push body).
+  `unachievable` / `satisfied`).
 - `deadline_plan_changed` — `device_name` (string), `remaining_kwh`
   (number), `planned_hours` (number), `projected_finish_local_time`
   (string). Trigger title is "Smart task schedule changed".
@@ -71,9 +75,8 @@ trigger fires for every lifecycle change; users filter downstream with a
 condition node on the stable-id token.
 
 Cost: filtered flows gain one condition node. Benefit: single trigger to
-maintain, tokens flow through to notification text without re-fetching, and
-compound logic (e.g. "missed AND kind=ev_soc") works without registering
-multiple triggers.
+maintain, and compound logic (e.g. "missed AND kind=ev_soc") works without
+registering multiple triggers.
 
 ### Rule 2 — Stable id tokens + display label tokens
 
@@ -81,7 +84,7 @@ Each enum value gets two tokens:
 
 - **`<name>_id`** — stable, lowercase, never renamed without a deliberate
   breaking-change call. Public-API contract.
-- **`<name>`** — display label, may localize, used for notification text.
+- **`<name>`** — display label, may localize.
 
 The `kind` token already follows this pattern (`temperature` / `ev_soc` are
 stable ids); extend the precedent to `outcome_id` / `status_id` /
@@ -93,12 +96,13 @@ Today, `target_text`, `shortfall_text`, etc. are pre-formatted strings.
 Expose the underlying numbers as separate tokens so flows can do math
 (`if shortfall_value > 5: warn loud`) without parsing strings.
 
-### Rule 4 — Composed notification text is provided by PELS
+### Rule 4 — Notification text composition stays in the user's flow
 
-PELS does not deliver notifications directly, but composing a useful one-line
-notification from five sparse tokens is friction. Expose a `notification_text`
-token on each trigger that combines the relevant fields into a
-ready-to-use string. Users can still ignore it and build their own.
+PELS does not emit a composed `notification_text` token on any trigger, and
+does not emit "_text" tokens whose only purpose is to feed one. Composing a
+push body from the underlying tokens is the flow author's job — same as every
+other Homey app. This avoids locking out localisation and avoids a token
+contract whose stability we'd have to defend across copy revisions.
 
 ## Per-card target shape
 
@@ -114,15 +118,12 @@ ready-to-use string. Users can still ignore it and build their own.
 - `outcome_id` (string, stable id: `succeeded` / `missed` / `abandoned`)
 - `outcome` (string, display label: `Succeeded` / `Missed` / `Abandoned`)
 - `target_value` (number) and `target_unit` (string id: `c` / `percent`)
-- `target_text` (string, formatted — for notification text)
 - `final_progress_value` (number, nullable) and `final_progress_unit` (string id)
 - `delivered_kwh` (number) — actual energy delivered during the run
 - `shortfall_value` (number, 0 when succeeded), `shortfall_unit` (string id)
-- `shortfall_text` (string, formatted — for notification text)
 - `deadline_local_time` (string, formatted)
 - `finished_at_local_time` (string, formatted, empty when not succeeded)
 - `revisions_count` (number) — how many times the plan replanned during the run
-- `notification_text` (string, composed one-liner)
 
 ### `deadline_status_changed`
 
@@ -139,16 +140,13 @@ ready-to-use string. Users can still ignore it and build their own.
 - `previous_status_id` (string, stable id, nullable) — enables
   "transitioned FROM x" logic
 - `target_value` (number), `target_unit` (string id)
-- `target_text` (string, formatted)
 - `deadline_local_time` (string, formatted)
 - `planned_start_local_time` (string, formatted, nullable)
 - `planned_finish_local_time` (string, formatted, nullable)
 - `required_kwh` (number, nullable) — remaining energy needed
 - `planning_speed_kw` (number, nullable) — observed/configured charging rate
-- `estimated_duration_text` (string, formatted, nullable)
 - `risk_reason` (string id, nullable) — when status is `at_risk` or
   `unachievable`, the stable reason code from the diagnostics bridge
-- `notification_text` (string, composed one-liner)
 
 The runtime-side suppression rules already in place (first observation, same-
 status re-fire) stay.
@@ -168,7 +166,6 @@ status re-fire) stay.
   `measured_deviation` is reserved and will fire once the observability work lands. The
   `flow_card` and `prices_arrived` revision reasons mark plan *creation* rather than *change*
   and are not emitted on `deadline_plan_changed`.
-- `notification_text` (string, composed one-liner)
 
 ### `deadline_status_is` (condition)
 
@@ -199,7 +196,7 @@ refactor PRs know not to rename them silently.
 
 | Goal | Flow shape |
 |---|---|
-| Notify on every smart task outcome | trigger + action, use `notification_text` |
+| Notify on every smart task outcome | trigger + action, compose body from `device_name` + `outcome` in the flow |
 | Notify only when EV charge fails | trigger + condition `outcome_id = missed AND kind = ev_soc` + action |
 | Per-outcome routing | trigger + branch on `outcome_id` |
 | Alert when status reaches at-risk | trigger + condition `status_id = at_risk` |
@@ -220,7 +217,7 @@ Files that need to change:
 - `flowCards/deadlineObjectiveCards.ts` — update `buildTriggerTokens`
   for status_changed; remove dropdown-based runlistener filtering.
 - `flowCards/deadlineEndedTokens.ts` — emit `outcome_id` alongside
-  `outcome`; add numeric tokens; compose `notification_text`.
+  `outcome`; add numeric tokens.
 - Active-plan recorder / planHistory — surface the new numeric fields the
   tokens depend on (`delivered_kwh`, `revisions_count`, numeric target /
   progress) if not already available.
@@ -255,7 +252,8 @@ the redesign work.
 - `notes/deferred-load-objectives/README.md` — shared objective model,
   reason codes, status semantics.
 - `notes/ev-ready-by/README.md` §P2.3 — the original source of the
-  notification-text + extended-tokens proposal.
+  extended-tokens proposal (the notification-text portion is deliberately
+  not in scope; see Rule 4).
 - `notes/hard-deadlines/README.md` — when hard enforcement ships, the cards
   will need an `enforcement_id` token and possibly an `enforcement` arg on
   the set actions.

@@ -1031,16 +1031,17 @@ usable.
 
 The trigger cards above ship with `outcome` and `status` dropdown args that filter at trigger
 time. That design forces users into one flow per filtered value and makes the tokens emit
-English display labels rather than stable ids — fine for notification text, awkward for
-condition logic. A proposed redesign drops the dropdown args, exposes stable-id tokens
-(`outcome_id`, `status_id`, `previous_status_id`, `change_reason_id`) as public-API contract,
-adds numeric tokens for math/comparison, and adds a composed `notification_text` token to
-every trigger. See [`notes/smart-task-flow-cards/README.md`](../smart-task-flow-cards/README.md)
-for the full proposal. Tracked as P0 in `TODO.md`.
+English display labels rather than stable ids — awkward for condition logic. A proposed
+redesign drops the dropdown args, exposes stable-id tokens (`outcome_id`, `status_id`,
+`previous_status_id`, `change_reason_id`) as public-API contract, and adds numeric tokens for
+math/comparison. Notification-text composition stays in the user's flow — PELS does not emit
+a `notification_text` token on any trigger. See
+[`notes/smart-task-flow-cards/README.md`](../smart-task-flow-cards/README.md) Rule 4 for
+the full proposal.
 
 The richer-tokens slice originally drafted as `ev-ready-by/README.md` §P2.3
 (`planned_start_local`, `planned_finish_local`, `required_kwh`, `planning_speed_kw`,
-`estimated_duration_text`, `risk_reason`, `notification_text`) is part of the same redesign.
+`estimated_duration_text`, `risk_reason`) is part of the same redesign.
 
 ## Reason Codes
 
