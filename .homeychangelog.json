@@ -367,5 +367,8 @@
   },
   "2.7.2": {
     "en": "Fixed a performance issue and several other stability and UX issues."
+  },
+  "2.7.3": {
+    "en": "Improved step learning algoritm."
   }
 }
