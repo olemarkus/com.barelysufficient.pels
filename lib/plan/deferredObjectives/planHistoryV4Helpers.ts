@@ -8,6 +8,7 @@ import type {
   DeferredObjectiveActivePlanV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
+  DeferredObjectivePlanHistoryHourlyContribution,
   DeferredObjectivePlanHistoryProgressSample,
   DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
@@ -209,4 +210,27 @@ const diffHourSchedules = (
   let hoursRemoved = 0;
   for (const startsAtMs of previousStarts) if (!nextStarts.has(startsAtMs)) hoursRemoved += 1;
   return { hoursAdded, hoursRemoved };
+};
+
+// Append (or merge) a per-hour delivery contribution onto the running list
+// the recorder keeps on an in-progress run. If an entry already exists for
+// `next.atMs`, the kWh is summed and the latest price/tone wins — the
+// recorder's wiring contract is one-shot push per hour, so duplicates only
+// happen when an aggregator replays a missed slot; in that case the
+// fresher price/tone is the authoritative one for the postmortem.
+export const appendHourlyContribution = (
+  list: readonly DeferredObjectivePlanHistoryHourlyContribution[],
+  next: DeferredObjectivePlanHistoryHourlyContribution,
+): DeferredObjectivePlanHistoryHourlyContribution[] => {
+  const existingIndex = list.findIndex((entry) => entry.atMs === next.atMs);
+  if (existingIndex === -1) {
+    return [...list, next];
+  }
+  const merged: DeferredObjectivePlanHistoryHourlyContribution = {
+    atMs: next.atMs,
+    deliveredKWh: list[existingIndex]!.deliveredKWh + next.deliveredKWh,
+    priceValue: next.priceValue,
+    tone: next.tone,
+  };
+  return list.map((entry, index) => (index === existingIndex ? merged : entry));
 };

@@ -229,6 +229,11 @@
   --pels-chart-forecast: var(--color-role-info);
   --pels-chart-heatmap-low: color-mix(in srgb, var(--color-semantic-accent) 18%, var(--color-surface-1));
   --pels-chart-heatmap-high: var(--color-semantic-accent);
+  --pels-chart-hour-tone-cheap: var(--color-role-good);
+  --pels-chart-hour-tone-normal: var(--color-role-info);
+  --pels-chart-hour-tone-expensive: var(--color-role-danger);
+  --pels-chart-hour-tone-glow: color-mix(in srgb, var(--color-role-accent) 30%, transparent);
+  --pels-chart-hour-tone-skipped-outline: var(--color-semantic-text-muted);
   --pels-chart-current-border: var(--color-state-info-border);
   --pels-chart-muted: var(--color-semantic-text-muted);
   --pels-chart-tooltip-bg: var(--color-overlay-toast);

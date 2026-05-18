@@ -5062,6 +5062,184 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   height: 240px;
 }
 
+/* ─── Per-hour bar strip (v2.7.3) ────────────────────────────────────────────
+ *
+ * Postmortem strip rendered below the trajectory chart. Reads as "when did
+ * each hour run, and what did each hour cost?" — owner walk #11 + #14.
+ * Bars are shaded by price tier (cheap / normal / expensive); planned-
+ * but-skipped hours render a dashed outline at the baseline; the single
+ * cheapest delivered hour gets a soft accent glow ("this is the one we
+ * waited for").
+ */
+
+.hourly-strip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  width: 100%;
+  min-width: 0;
+}
+
+.hourly-strip__legend {
+  display: flex;
+  flex-flow: row wrap;
+  gap: var(--spacing-2);
+  align-items: center;
+}
+
+/* Legend chip overrides on top of `.plan-chip.plan-chip--muted`. We reuse
+   the chip primitive's padding / radius / font tokens; the only override
+   is the embedded tone bar's gap. */
+.hourly-strip__legend-item {
+  gap: var(--spacing-1);
+}
+
+/* Embedded tone bar inside a legend chip. Sized off the chip's font line
+   height so the swatch scales with chip text rather than carrying its own
+   hardcoded dimensions; `--radius-xs` keeps the bar visually crisp at the
+   small footprint. */
+.hourly-strip__legend-bar {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  border-radius: var(--radius-xs);
+}
+
+.hourly-strip__legend-bar[data-tone="cheap"] {
+  background: var(--pels-chart-hour-tone-cheap);
+}
+
+.hourly-strip__legend-bar[data-tone="normal"] {
+  background: var(--pels-chart-hour-tone-normal);
+}
+
+.hourly-strip__legend-bar[data-tone="expensive"] {
+  background: var(--pels-chart-hour-tone-expensive);
+}
+
+.hourly-strip__legend-label {
+  color: inherit;
+}
+
+.hourly-strip__bars {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  /* The strip baseline matches the bottom of the trajectory chart's x-axis
+   * so the two surfaces read on the same time grid. 64 px holds the
+   * tallest bar plus a small floor for outlined-only buckets without
+   * dominating the chart card. */
+  height: 64px;
+  width: 100%;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hourly-strip__bucket {
+  /* Each bucket fills 1/N of the row width — flex distribution keeps the
+   * strip aligned across DST 23/25-hour windows without re-deriving width. */
+  flex: 1 1 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 100%;
+  min-width: 0;
+  position: relative;
+  /* Each bucket is its own hover/focus target. The token-styled `::after`
+   * tooltip (see below) replaces the browser's native `title` rendering so
+   * the popover matches the dark chart-tooltip style used by the
+   * trajectory chart directly above. Pointer-coarse users can tap (focus
+   * via `tabIndex={0}`) to surface it. */
+  outline: none;
+}
+
+.hourly-strip__bucket:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* Token-styled hover/focus tooltip. Reuses the same chart-tooltip token
+ * family the ECharts trajectory tooltip consumes (see
+ * `usageDayChartEcharts.ts` / `powerWeekChartEcharts.ts`) so the two
+ * popovers read as the same primitive. Rendered via `::after` with
+ * `attr(data-tooltip)` content; suppressed when the bucket has no
+ * tooltip text (gap buckets without delivered/planned hours). */
+.hourly-strip__bucket[data-tooltip]:where(:hover, :focus-visible)::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + var(--spacing-1));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--spacing-1) var(--spacing-2);
+  background: var(--pels-chart-tooltip-bg);
+  color: var(--pels-chart-tooltip-text);
+  border: 1px solid var(--pels-chart-tooltip-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  line-height: var(--font-line-height-tight);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.hourly-strip__bar {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius-xs);
+  background: var(--pels-surface-container-high);
+  transition: background var(--transition-fast);
+}
+
+.hourly-strip__bucket[data-tone="cheap"] .hourly-strip__bar {
+  background: var(--pels-chart-hour-tone-cheap);
+}
+
+.hourly-strip__bucket[data-tone="normal"] .hourly-strip__bar {
+  background: var(--pels-chart-hour-tone-normal);
+}
+
+.hourly-strip__bucket[data-tone="expensive"] .hourly-strip__bar {
+  background: var(--pels-chart-hour-tone-expensive);
+}
+
+/* Gap buckets carry `data-tone="gap"` — no fill (the strip still reserves
+ * space so the time axis stays intact across DST 23/25-hour windows). */
+.hourly-strip__bucket[data-tone="gap"] .hourly-strip__bar {
+  background: transparent;
+}
+
+/* Planned-but-skipped: dashed 1 px outline at the baseline, no fill. Reads
+ * as "schedule said yes, machinery did not" — restraint, not action. */
+.hourly-strip__bucket[data-outline="true"]::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  border: 1px dashed var(--pels-chart-hour-tone-skipped-outline);
+  border-radius: var(--radius-xs);
+  pointer-events: none;
+}
+
+/* Soft accent glow on the single cheapest delivered hour. "This is the
+ * one we waited for." 4 px box-shadow at the configured alpha so the
+ * highlight reads as warmth, not as a primary call-to-action. */
+.hourly-strip__bucket[data-cheapest="true"] .hourly-strip__bar {
+  box-shadow: 0 0 4px 0 var(--pels-chart-hour-tone-glow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Suppress the bar transition for motion-sensitive users; the glow stays
+   * (it's a static box-shadow, not an animation). */
+  .hourly-strip__bar {
+    transition: none;
+  }
+}
+
 #deadline-plan-root .plan-hero__chips {
   padding-right: 48px;
 }

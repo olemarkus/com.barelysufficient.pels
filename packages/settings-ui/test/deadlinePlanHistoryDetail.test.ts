@@ -55,11 +55,17 @@ const buildEntry = (
   ...overrides,
 });
 
-const mount = async (entry: DeferredObjectivePlanHistoryEntry): Promise<HTMLElement> => {
+const mount = async (
+  entry: DeferredObjectivePlanHistoryEntry,
+  options: { costUnit?: string } = {},
+): Promise<HTMLElement> => {
   const root = document.createElement('div');
   document.body.appendChild(root);
   const { DeadlinePlanHistoryDetail } = await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
-  render(h(DeadlinePlanHistoryDetail, { entry, timeZone: 'UTC' }), root);
+  render(
+    h(DeadlinePlanHistoryDetail, { entry, timeZone: 'UTC', costUnit: options.costUnit ?? '' }),
+    root,
+  );
   return root;
 };
 
@@ -673,6 +679,143 @@ describe('DeadlinePlanHistoryDetail', () => {
       // regression test in `deadline-recorder-to-history.spec.ts` continues
       // to assert against `kWh` labels.
       expect(option.yAxis.axisLabel.formatter(1.2)).toContain('kWh');
+    });
+  });
+
+  describe('per-hour bar strip (v2.7.3)', () => {
+    it('renders one bucket per hour in the deadline window when hourlyContributions is present', async () => {
+      const startedAtMs = DEADLINE_MS - 4 * HOUR_MS;
+      // Missed outcome so the chart card defaults expanded — the postmortem
+      // strip is only worth rendering when the user is actively reading the
+      // diagnosis, which matches the chart-expanded contract.
+      const entry = buildEntry({
+        startedAtMs,
+        outcome: 'missed',
+        finalProgressC: 60,
+        metAtMs: null,
+        // originalPlan present so `hasChartData` is true and the chart card
+        // (where the strip lives) renders rather than the empty-state card.
+        originalPlan: buildRevision({
+          hours: [{ startsAtMs: startedAtMs, plannedKWh: 2 }],
+        }),
+        hourlyContributions: [
+          { atMs: startedAtMs, deliveredKWh: 1.5, priceValue: 0.20, tone: 'cheap' },
+          { atMs: startedAtMs + HOUR_MS, deliveredKWh: 1.2, priceValue: 0.55, tone: 'normal' },
+        ],
+      });
+      const root = await mount(entry);
+      const strip = root.querySelector('.hourly-strip');
+      expect(strip).not.toBeNull();
+      // 4-hour window → 4 buckets, regardless of how many contributions
+      // landed (gap buckets are emitted to keep the time axis intact).
+      const buckets = strip!.querySelectorAll('.hourly-strip__bucket');
+      expect(buckets.length).toBe(4);
+      expect(buckets[0]!.getAttribute('data-tone')).toBe('cheap');
+      expect(buckets[1]!.getAttribute('data-tone')).toBe('normal');
+      expect(buckets[2]!.getAttribute('data-tone')).toBe('gap');
+    });
+
+    it('suppresses the strip on legacy v4 entries without hourlyContributions', async () => {
+      const root = await mount(buildEntry({
+        originalPlan: null,
+        finalPlan: null,
+        hourlyContributions: undefined,
+      }));
+      expect(root.querySelector('.hourly-strip')).toBeNull();
+    });
+
+    it('writes a tooltip with time, kWh, price and planned/skipped marker', async () => {
+      const startedAtMs = DEADLINE_MS - 2 * HOUR_MS;
+      const entry = buildEntry({
+        startedAtMs,
+        outcome: 'missed',
+        finalProgressC: 60,
+        metAtMs: null,
+        originalPlan: buildRevision({
+          hours: [
+            { startsAtMs: startedAtMs, plannedKWh: 1.0 },
+            { startsAtMs: startedAtMs + HOUR_MS, plannedKWh: 1.0 },
+          ],
+        }),
+        hourlyContributions: [
+          { atMs: startedAtMs, deliveredKWh: 0.42, priceValue: 0.18, tone: 'cheap' },
+        ],
+      });
+      const root = await mount(entry, { costUnit: 'kr' });
+      const buckets = root.querySelectorAll('.hourly-strip__bucket');
+      // Delivered bucket: token-styled tooltip (via `data-tooltip` + CSS
+      // `::after`, not native `title`) carries kWh + price (in display
+      // unit) + "planned". `aria-label` mirrors the same text so screen
+      // readers still announce the data. The native `title` attribute is
+      // gone — the browser's OS-themed tooltip clashed with the dark
+      // chart-tooltip rendered above the strip.
+      expect(buckets[0]!.getAttribute('title')).toBeNull();
+      const deliveredTooltip = buckets[0]!.getAttribute('data-tooltip') ?? '';
+      expect(deliveredTooltip).toContain('0.42 kWh');
+      expect(deliveredTooltip).toContain('0.18 kr');
+      expect(deliveredTooltip).toContain('planned');
+      expect(buckets[0]!.getAttribute('aria-label')).toBe(deliveredTooltip);
+      // Outlined bucket (planned but not delivered): tooltip says "skipped"
+      // and suppresses the kWh + price segments so it doesn't contradict
+      // itself (the bucket's `kwh` field still carries `plannedKWh` for
+      // bar-height context, but that detail stays out of the tooltip).
+      const skippedTooltip = buckets[1]!.getAttribute('data-tooltip') ?? '';
+      expect(skippedTooltip).toContain('skipped');
+      expect(skippedTooltip).not.toContain('kWh');
+      expect(buckets[1]!.getAttribute('data-outline')).toBe('true');
+    });
+
+    it('renders øre prices as whole integers (minor-unit convention)', async () => {
+      const startedAtMs = DEADLINE_MS - HOUR_MS;
+      const entry = buildEntry({
+        startedAtMs,
+        outcome: 'missed',
+        finalProgressC: 60,
+        metAtMs: null,
+        originalPlan: buildRevision({
+          hours: [{ startsAtMs: startedAtMs, plannedKWh: 1.0 }],
+        }),
+        hourlyContributions: [
+          { atMs: startedAtMs, deliveredKWh: 0.42, priceValue: 17.6, tone: 'cheap' },
+        ],
+      });
+      const root = await mount(entry, { costUnit: 'øre' });
+      const bucket = root.querySelector('.hourly-strip__bucket');
+      const tooltip = bucket!.getAttribute('data-tooltip') ?? '';
+      // 17.6 øre → "18 øre" (whole-integer, no fractional øre per the
+      // PELS money convention).
+      expect(tooltip).toContain('18 øre');
+      expect(tooltip).not.toContain('17.60');
+    });
+
+    it('renders three token-styled legend chips and a screen-reader caption', async () => {
+      const startedAtMs = DEADLINE_MS - HOUR_MS;
+      const entry = buildEntry({
+        startedAtMs,
+        outcome: 'missed',
+        finalProgressC: 60,
+        metAtMs: null,
+        originalPlan: buildRevision({
+          hours: [{ startsAtMs: startedAtMs, plannedKWh: 1.0 }],
+        }),
+        hourlyContributions: [
+          { atMs: startedAtMs, deliveredKWh: 0.5, priceValue: 0.2, tone: 'cheap' },
+        ],
+      });
+      const root = await mount(entry);
+      const legend = root.querySelector('.hourly-strip__legend');
+      expect(legend).not.toBeNull();
+      // No `aria-hidden` on the legend wrapper any more — the chips carry
+      // visible labels, and a visually-hidden caption announces the tier
+      // vocabulary to screen readers.
+      expect(legend!.getAttribute('aria-hidden')).toBeNull();
+      expect(legend!.querySelector('.visually-hidden')).not.toBeNull();
+      // Three chips, all reusing the `.plan-chip` primitive.
+      const chips = legend!.querySelectorAll('.hourly-strip__legend-item');
+      expect(chips.length).toBe(3);
+      for (const chip of chips) {
+        expect(chip.classList.contains('plan-chip')).toBe(true);
+      }
     });
   });
 });

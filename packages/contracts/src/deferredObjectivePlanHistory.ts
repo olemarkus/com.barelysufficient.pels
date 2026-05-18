@@ -46,6 +46,31 @@ export type DeferredObjectivePlanHistoryRevisionSnapshot = {
   dailyBudgetExhaustedBucketCount?: number;
 };
 
+// Price-tier classification for a single hour's delivery contribution. The
+// recorder writes the tone alongside the kWh / price so the postmortem
+// surface ("when did each hour run, and what did each hour cost?") never
+// re-derives a band from the persisted price (which would need historical
+// thresholds that may have shifted across versions). The three tiers match
+// the cheap / normal / expensive heatmap split surfaced elsewhere in the UI.
+export type DeferredObjectivePlanHistoryHourlyTone = 'cheap' | 'normal' | 'expensive';
+
+// Per-hour delivery contribution persisted alongside `deliveredKWh` /
+// `totalCost`. Each entry corresponds to one `recordHourlyDelivery` call,
+// captured at hour-aligned `atMs` with the delivered kWh, the spot price
+// the recorder summed into `totalCost`, and the resolved price tone. The
+// postmortem bar strip on `DeadlinePlanHistoryDetail` reads this list to
+// render one bar per hour. Optional — runs that finalize without any
+// hourly delivery contribution (price feed unavailable, legacy v4 entries
+// from before this field shipped) persist without it and the bar strip is
+// suppressed. Added in schema v4 (extension; no version bump because v4 is
+// unreleased — production = v2.7.1).
+export type DeferredObjectivePlanHistoryHourlyContribution = {
+  atMs: number;
+  deliveredKWh: number;
+  priceValue: number;
+  tone: DeferredObjectivePlanHistoryHourlyTone;
+};
+
 // Hourly snapshot of objective progress while a run is in flight. The
 // recorder maintains a per-run ring keyed by hour-aligned `atMs` and drains
 // it into the entry at finalization. Each sample carries whichever progress
@@ -141,6 +166,14 @@ export type DeferredObjectivePlanHistoryEntry = {
   // empty. Optional for backward compatibility with v3 entries. Added in
   // schema v4.
   revisions?: DeferredObjectivePlanHistoryRevisionLogEntry[];
+  // Per-hour delivery contributions captured by the recorder, one entry per
+  // hour the runtime fed a `recordHourlyDelivery` contribution. Optional —
+  // legacy v4 entries (from before this field shipped) and runs that never
+  // received a contribution persist without it; the postmortem suppresses
+  // the bar strip in that case. Added in schema v4 (extension; no migration
+  // — v4 is unreleased so existing v4 entries simply load with the field
+  // absent). See `DeferredObjectivePlanHistoryHourlyContribution`.
+  hourlyContributions?: DeferredObjectivePlanHistoryHourlyContribution[];
 };
 
 // Runtime cap on `progressSamples` per entry lives in

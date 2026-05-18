@@ -828,3 +828,14 @@ export {
   type DeferredPlanHistoryChartMode,
   type DeferredPlanHistoryChartPoint,
 } from './deferredPlanHistoryChartData.js';
+
+// ─── Per-hour bar strip (v2.7.3) ──────────────────────────────────────────────
+//
+// Re-exported from `deferredPlanHistoryHourlyStrip.ts` so the postmortem view
+// consumes one entry point. Producer-resolves the strip payload — the view
+// never branches on the entry's optional fields.
+export {
+  resolveHistoryDetailHourlyStrip,
+  type DeferredPlanHistoryHourlyStripData,
+  type HourlyStripBucket,
+} from './deferredPlanHistoryHourlyStrip.js';
