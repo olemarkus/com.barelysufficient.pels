@@ -197,3 +197,143 @@ export const computeEnergyBarScaleKWh = (
   if (overshoot <= budgetKWh) return budgetKWh;
   return overshoot * 1.05;
 };
+
+// ─── Decision sentence (named-subject declarative voice) ─────────────────────
+// Single plain-language conclusion at the bottom of the Overview hero. The
+// builder lives in shared-domain so the runtime logger and the settings UI
+// emit byte-identical wording (see `feedback_ui_text_shared_with_logs.md`).
+// Priority ladder is mirrored in `notes/overview-hero-spec.md` § "Decision
+// sentence" — keep both in sync.
+//
+// Voice: third-person observational. The house is the named subject; PELS is
+// never "I". No exclamation marks (Nordic register). No em-dash diagnostic
+// shape ("Doing X — because Y"). Reading order is the action first, then the
+// constraint that motivates it.
+
+export type DecisionSentenceInput = {
+  limitedCount: number;
+  resumingCount: number;
+  freshness: PowerFreshnessState | undefined;
+  dryRun: boolean;
+  overHardLimit: boolean;
+  projectedOverBudget: boolean;
+  safePaceKw: number | null;
+};
+
+export type DecisionSentenceResult = {
+  text: string;
+  positive: boolean;
+};
+
+const formatDevices = (n: number): string => `${n} ${n === 1 ? 'device' : 'devices'}`;
+
+export const buildDecisionSentence = (
+  input: DecisionSentenceInput,
+): DecisionSentenceResult => {
+  // 1. No data.
+  if (input.freshness === 'stale_fail_closed') {
+    return {
+      text: 'Power readings have dropped. Devices stay limited until data returns.',
+      positive: false,
+    };
+  }
+
+  // 2. Above hard cap.
+  if (input.overHardLimit) {
+    return {
+      text: 'Over the hard cap right now. Easing devices off.',
+      positive: false,
+    };
+  }
+
+  // 3. Simulation mode would act.
+  if (input.dryRun && input.limitedCount > 0) {
+    return {
+      text: `${formatDevices(input.limitedCount)} would be limited if simulation mode were off.`,
+      positive: false,
+    };
+  }
+
+  // 4. Actively limiting.
+  if (input.limitedCount > 0) {
+    const safePaceText = input.safePaceKw !== null
+      ? ` so the house stays under ${formatKw(input.safePaceKw)}`
+      : '';
+    return {
+      text: `Holding back ${formatDevices(input.limitedCount)}${safePaceText}.`,
+      positive: false,
+    };
+  }
+
+  // 5. Resuming.
+  if (input.resumingCount > 0) {
+    return {
+      text: `Bringing ${formatDevices(input.resumingCount)} back online. Power has stayed under the safe pace.`,
+      positive: true,
+    };
+  }
+
+  // 6. Projected over budget.
+  if (input.projectedOverBudget) {
+    return {
+      text: 'On pace to overshoot this hour’s energy budget.',
+      positive: false,
+    };
+  }
+
+  // 7. On track.
+  return { text: 'Quiet hour. Nothing to do.', positive: true };
+};
+
+// ─── Anticipation subline (next cheap window) ────────────────────────────────
+// Surfaces the cheapest upcoming hour beneath the energy section so the user
+// can anticipate a good moment for high-load appliances. Returns `null` when
+// no upcoming price data exists. Staleness gating is the caller's
+// responsibility — `PlanHero` compares `latestFetchedAtMs` against its own
+// freshness window before invoking this helper. The caller also decides
+// further suppression rules (e.g. when the chip rail already shows a
+// `Price low` chip — avoid doubling up).
+//
+// The unit label is supplied by the caller so this helper stays
+// scheme-agnostic (Nordpool øre vs Flow/Homey neutral units).
+
+export type CheapestUpcomingHourInput = {
+  hours: ReadonlyArray<{ startsAtMs: number; price: number }>;
+  nowMs: number;
+  // How far ahead to look. Defaults to 18h so "tonight" and "tomorrow morning"
+  // are both eligible without dragging in next-week noise.
+  horizonMs?: number;
+  unitLabel: string;
+  // Locale-formatted clock time renderer (`02:00`). Pulled out for testability
+  // — the production caller passes the settings-UI locale formatter.
+  formatClockTime: (timestampMs: number) => string;
+};
+
+const DEFAULT_HORIZON_MS = 18 * 60 * 60 * 1000;
+
+const formatPriceForSubline = (price: number, unitLabel: string): string => {
+  // Norwegian øre values are integer-friendly (whole-number øre); everything
+  // else (e.g. "kr/kWh") gets two decimals to match the standard pricing
+  // convention used across the rest of the UI — "1.20 kr/kWh".
+  if (unitLabel.toLowerCase().startsWith('øre')) {
+    return `${Math.round(price)} ${unitLabel}`;
+  }
+  return `${price.toFixed(2)} ${unitLabel}`;
+};
+
+export const formatCheapestUpcomingHour = (
+  input: CheapestUpcomingHourInput,
+): string | null => {
+  const horizonMs = input.horizonMs ?? DEFAULT_HORIZON_MS;
+  const windowEnd = input.nowMs + horizonMs;
+  const upcoming = input.hours.filter((hour) => (
+    hour.startsAtMs > input.nowMs && hour.startsAtMs <= windowEnd
+  ));
+  if (upcoming.length === 0) return null;
+  const cheapest = upcoming.reduce((best, hour) => (
+    hour.price < best.price ? hour : best
+  ));
+  const clockText = input.formatClockTime(cheapest.startsAtMs);
+  const priceText = formatPriceForSubline(cheapest.price, input.unitLabel);
+  return `Cheapest hour ahead: ${clockText}, ${priceText}.`;
+};

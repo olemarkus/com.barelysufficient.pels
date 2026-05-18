@@ -197,7 +197,7 @@ describe('Redesign plan UI', () => {
         devices: [],
       });
       expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
-        .toBe('No action needed — this hour is on track.');
+        .toBe('Quiet hour. Nothing to do.');
     });
 
     it('writes the hard-cap decision sentence when power is over the configured maximum', async () => {
@@ -208,6 +208,8 @@ describe('Redesign plan UI', () => {
           headroomKw: -3.5,
           hardCapLimitKw: 8,
           hardCapHeadroomKw: -1.5,
+          controlledKw: 3.0,
+          uncontrolledKw: 6.5,
           powerFreshnessState: 'fresh',
           usedKWh: 0.8,
           hourBudgetKWh: 5,
@@ -218,7 +220,10 @@ describe('Redesign plan UI', () => {
         ],
       });
       expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
-        .toBe('Hard cap exceeded — limiting devices now.');
+        .toBe('Over the hard cap right now. Easing devices off.');
+      // Breathing motion must run in the over-hard-cap case too — it's the
+      // most-active limiting state and the gate should not freeze it.
+      expect(document.querySelector('.pels-meter-segments__seg--managed[data-limiting]')).not.toBeNull();
     });
 
     it('writes the actively-limiting decision sentence when one device is held below safe pace', async () => {
@@ -239,10 +244,10 @@ describe('Redesign plan UI', () => {
         ],
       });
       expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
-        .toBe('Limiting 1 device — staying below the safe pace.');
+        .toBe('Holding back 1 device so the house stays under 5.0 kW.');
     });
 
-    it('uses "above the safe pace" wording when limiting and current power is above safe pace', async () => {
+    it('uses the same declarative voice when limiting above safe pace', async () => {
       await renderPlanSnapshot({
         meta: {
           totalKw: 7.0,
@@ -260,7 +265,7 @@ describe('Redesign plan UI', () => {
         ],
       });
       expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
-        .toBe('Limiting 1 device — current power is above the safe pace.');
+        .toBe('Holding back 1 device so the house stays under 5.0 kW.');
     });
 
     it('reflects projected-over-budget in the decision sentence so it does not contradict the Above budget chip', async () => {
@@ -280,7 +285,7 @@ describe('Redesign plan UI', () => {
         devices: [],
       });
       expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
-        .toBe('This hour is projected to go over budget.');
+        .toBe('On pace to overshoot this hour’s energy budget.');
     });
 
     it('surfaces the "X kW above safe pace" subline when current power is above safe pace', async () => {

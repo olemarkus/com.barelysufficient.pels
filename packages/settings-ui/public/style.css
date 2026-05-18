@@ -2059,6 +2059,21 @@ md-primary-tab.tab[active]:hover {
   background: var(--pels-status-critical);
 }
 
+/* v2.7.3 managed-segment breathing: a single live moment on the Overview hero
+ * while PELS is actively limiting. Opacity-only oscillation (0.85 ↔ 1.0) over
+ * 3.5s; no hue shift, no scale change. The hero is the single source of "PELS
+ * is doing something right now" — keep the motion contained here. */
+@keyframes pels-managed-breathing {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pels-meter-segments__seg--managed[data-limiting] {
+    animation: pels-managed-breathing 3.5s ease-in-out infinite;
+  }
+}
+
 /* Sublegend below a hero meter — renders only when the bar carries two or
    more markers (single-marker bars rely on the per-marker `aria-label` and
    the visible position alone). Swatch geometry mirrors the matching
@@ -2277,14 +2292,14 @@ md-primary-tab.tab[active]:hover {
   color: var(--pels-text-supporting-color);
 }
 
-/* Replaces the literal U+26A0 emoji previously appended to the projected
-   subline (TODO #4, 2026-05-16). `WarningIcon` inherits `currentColor`; pair
-   it with the existing `[data-tone="warn"]` rule on the subline so the icon
-   tracks the warn voice. */
-.plan-hero__subline-warn-icon {
-  display: inline-flex;
-  vertical-align: -0.125em;
-  color: var(--pels-status-on-warning);
+/* v2.7.3 anticipation subline: surfaces the next cheap window beneath the
+ * energy section so the user can plan high-load appliances. Sits below the
+ * energy bar (after `.plan-hero__bar-group`) with a small breathing margin so
+ * it reads as a third tier of information rather than another header. Accent
+ * color stays muted — anticipation is information, not a call to action. */
+.plan-hero__subline--anticipation {
+  margin-top: var(--spacing-2);
+  color: var(--pels-text-supporting-color);
 }
 
 /* Queued-headline "why" subline (e.g. "Waiting for tomorrow's prices through

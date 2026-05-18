@@ -141,10 +141,16 @@ Supporting text:
 Managed 3.2 kW · Background 3.8 kW
 ```
 
-When no managed load:
-```
-Background 0.7 kW · No managed load active
-```
+The supporting line is hidden entirely when PELS controls no load
+(`controlledKw === 0`) — printing "No managed load active" reads as
+stage-direction copy and adds noise on the happy path. Background-only
+households see the gauge segments without an underline.
+
+Motion (v2.7.3): the managed segment of the power bar carries a single live
+moment while PELS is actively limiting — a 3.5s opacity oscillation
+(0.85 ↔ 1.0). Accent green at rest, no hue shift, no scale change. The
+animation honours `prefers-reduced-motion: reduce`. Driven by a
+`data-limiting` attribute on `.pels-meter-segments__seg--managed`.
 
 ---
 
@@ -154,24 +160,43 @@ Background 0.7 kW · No managed load active
 
 Normal:
 ```
-Energy this hour
-1.0 of 5.0 kWh used · projected 4.4 kWh
-38 min left
+Energy used this hour
+1.0 of 5.0 kWh used
+projected 4.4 kWh
+[ bar ]
+Cheapest hour ahead: 02:00, 18 øre/kWh.
 ```
 
 Projected over budget:
 ```
-Energy this hour
-1.0 of 5.0 kWh used · projected 5.4 kWh ⚠
-38 min left
+Energy used this hour
+1.0 of 5.0 kWh used
+projected 5.4 kWh         (warn tone on the subline)
+[ bar with projection marker in warn tone ]
 ```
 
 No projection available:
 ```
-Energy this hour
+Energy used this hour
 1.0 of 5.0 kWh used
-38 min left
+[ bar ]
 ```
+
+Subtractions (v2.7.3 loveable batch):
+- The ⚠ glyph on the projected-overshoot subline was removed. The
+  projection marker on the bar plus the `Above budget` chip already carry
+  the tone — the glyph read as a Windows-toolbar artifact.
+- The `38 min left` subline was removed. The projection marker on the bar
+  implies the time axis already; the line was tautological.
+
+Additions (v2.7.3 loveable batch):
+- An *anticipation subline* renders beneath the energy bar surfacing the
+  cheapest upcoming hour from the price horizon, e.g.
+  `Cheapest hour ahead: 02:00, 18 øre/kWh.`. It is suppressed when no
+  upcoming price data exists or when the payload is stale (latest entry
+  more than 6h in the past). The helper
+  (`formatCheapestUpcomingHour`) lives in shared-domain so the runtime
+  logger can emit the same line.
 
 Projection formula: `projectedKWh = usedKWh + (currentKw × minutesRemaining / 60)`
 
@@ -194,30 +219,39 @@ Standard Material linear progress bar with a projected-end marker.
 
 Required. One plain-language conclusion at the bottom of the card.
 
-Source of truth in code: `packages/settings-ui/src/ui/views/PlanHero.tsx`
-(`buildDecisionSentence`, currently around lines 108-186). Keep this ladder
-in sync — the code comment cross-links back to this section.
+Source of truth in code: `packages/shared-domain/src/planHeroSummary.ts`
+(`buildDecisionSentence`). The settings-UI hero (`PlanHero.tsx`) is a thin
+adapter that maps device arrays + projection tone to the helper's counts and
+booleans. Keep this ladder in sync — the code comment cross-links back to
+this section.
+
+Voice (v2.7.3): named-subject declarative copy. The *house* is the subject;
+PELS is never first-person. No em-dash diagnostic shape ("Doing X — because
+Y"). No exclamation marks (Nordic register). Action first, then the
+constraint that motivates it. The runtime logger imports this helper so log
+lines mirror the on-screen wording verbatim (see
+`feedback_ui_text_shared_with_logs.md`).
 
 Priority order (first matching condition wins):
 
-1. No data: `No live power data — keeping devices limited until readings return.`
-2. Above hard cap: `Hard cap exceeded — limiting devices now.`
-3. Simulation mode would act: `Would limit 2 devices — simulation mode is enabled.`
-4. Actively limiting: `Limiting 2 devices — current power is above the safe pace.`
-   When current power is below the safe pace (cooldown after a recent shed)
-   the trailing reason swaps to `staying below the safe pace` so the sentence
-   stays factual.
-5. Restoring: `Resuming 1 device — power has stayed below the safe pace.`
-6. Projected over budget: `This hour is projected to go over budget.`
+1. No data: `Power readings have dropped. Devices stay limited until data returns.`
+2. Above hard cap: `Over the hard cap right now. Easing devices off.`
+3. Simulation mode would act: `2 devices would be limited if simulation mode were off.`
+4. Actively limiting: `Holding back 2 devices so the house stays under 12.0 kW.`
+   The safe-pace clause is dropped when the value is unavailable
+   (`Holding back 2 devices.`).
+5. Restoring: `Bringing 1 device back online. Power has stayed under the safe pace.`
+6. Projected over budget: `On pace to overshoot this hour’s energy budget.`
    Fires when no devices are being limited or resumed but the projected hour
    energy already trips the `warning` / `critical` projection tone, so the
    conclusion stays consistent with the `Above budget` status chip surfaced
    by `resolveHeroStatus`.
-7. On track: `No action needed — this hour is on track.`
+7. On track: `Quiet hour. Nothing to do.`
 
-Simulation mode wording must be hypothetical throughout:
-- `Would limit 2 devices — simulation mode is enabled.`
-- Not: `Limiting 2 devices` (implies PELS acted when it did not)
+Simulation mode wording must be hypothetical throughout. The subject is the
+device count, not PELS:
+- `2 devices would be limited if simulation mode were off.`
+- Not: `Limiting 2 devices` (implies PELS acted when it did not).
 
 ---
 
