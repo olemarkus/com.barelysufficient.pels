@@ -288,7 +288,7 @@ export const resolveSteppedStatusLine = (
 
 export const resolveSteppedTemperatureText = (device: {
   currentTemperature?: number;
-  plannedTarget?: number | null;
+  plannedTarget?: number;
 }): string | null => {
   const { currentTemperature, plannedTarget } = device;
   if (typeof currentTemperature !== 'number') return null;

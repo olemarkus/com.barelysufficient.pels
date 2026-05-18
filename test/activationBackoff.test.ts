@@ -51,7 +51,6 @@ const buildPlanDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanD
   currentState: 'off',
   plannedState: 'keep',
   currentTarget: null,
-  plannedTarget: null,
   ...overrides,
 });
 

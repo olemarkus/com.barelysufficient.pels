@@ -24,7 +24,6 @@ DevicePlanDevice => {
     currentState: 'on',
     plannedState: 'keep',
     currentTarget: null,
-    plannedTarget: null,
     reason: legacyDeviceReason('keep')!,
     ...rest,
     ...(reason !== undefined

@@ -53,7 +53,7 @@ export type PlanDevicesDeps = {
 };
 
 const SKIP_PLANNED_TARGET = Symbol('skip-planned-target');
-type ResolvedPlannedTarget = number | null | typeof SKIP_PLANNED_TARGET;
+type ResolvedPlannedTarget = number | undefined | typeof SKIP_PLANNED_TARGET;
 const supportsTemperatureDevice = (device: PlanInputDevice): boolean => {
   return supportsTemperatureBoostDevice(device);
 };
@@ -151,7 +151,7 @@ function resolvePlannedTarget(params: {
   deps: PlanDevicesDeps;
 }): ResolvedPlannedTarget {
   const { dev, desiredForMode, deferredTargetTempByDeviceId, supportsTemperature, deps } = params;
-  if (!supportsTemperature) return null;
+  if (!supportsTemperature) return undefined;
   const target = getPrimaryTargetCapability(dev.targets);
   const deferredC = deferredTargetTempByDeviceId[dev.id];
   const hasDeferred = typeof deferredC === 'number';
@@ -286,7 +286,7 @@ function buildBasePlanDevice(params: {
   binaryCommandPending: boolean;
   currentState: string;
   currentTarget: number | null;
-  plannedTarget: number | null;
+  plannedTarget: number | undefined;
   controllable: boolean;
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
   shedSet: Set<string>;
@@ -354,7 +354,7 @@ function buildBasePlanDevice(params: {
     currentState,
     plannedState,
     currentTarget,
-    plannedTarget: resolvedPlannedTarget,
+    ...(resolvedPlannedTarget !== undefined ? { plannedTarget: resolvedPlannedTarget } : {}),
     observationStale: dev.observationStale,
     communicationModel: dev.communicationModel,
     controlModel: dev.controlModel,

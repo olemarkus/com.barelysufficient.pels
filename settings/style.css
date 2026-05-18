@@ -2907,13 +2907,6 @@ md-primary-tab.tab[active]:hover {
   min-height: calc(var(--font-size-sm) * var(--font-line-height-cozy));
 }
 
-.plan-card--temperature .plan-card__temp-line--placeholder {
-  /* Visible "Temperature unavailable" placeholder — dim relative to the live
-     temperature line so it reads as a missing-data signal rather than data. */
-  color: var(--text-secondary);
-  font-style: italic;
-}
-
 .plan-card--temperature .plan-card__temp-reason {
   margin: 0;
   font-size: var(--font-size-sm);

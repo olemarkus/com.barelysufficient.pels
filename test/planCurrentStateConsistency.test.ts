@@ -30,7 +30,6 @@ const buildPlan = (overrides: Partial<DevicePlan['devices'][number]> = {}): Devi
     currentState: 'off',
     plannedState: 'keep',
     currentTarget: null,
-    plannedTarget: null,
     controllable: true,
     ...overrides,
   }],
