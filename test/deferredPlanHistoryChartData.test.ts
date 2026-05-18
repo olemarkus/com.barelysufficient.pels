@@ -363,6 +363,47 @@ describe('resolveHistoryDetailChartData', () => {
       });
       expect(resolveHistoryDetailChartData(missedEntry).metAtMs).toBeNull();
     });
+
+    it('places metMarkerValue on the target for target-reached met runs', () => {
+      const entry = buildEntry({
+        outcome: 'met',
+        metReason: undefined,
+        metAtMs: DEADLINE_MS - HOUR_MS,
+        finalProgressC: 65,
+        targetTemperatureC: 65,
+        originalPlan: buildSnapshot(),
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.metMarkerValue).toBe(65);
+    });
+
+    it('places metMarkerValue on the frozen finalProgress for stalled met runs', () => {
+      // The chart marker must land on the observed line (where the device
+      // actually stopped) rather than the target line (which the run
+      // never crossed). Connected 300 regression: target 65, plateau 61.8.
+      const entry = buildEntry({
+        outcome: 'met',
+        metReason: 'stalled',
+        metAtMs: DEADLINE_MS - 3 * HOUR_MS,
+        finalProgressC: 61.8,
+        targetTemperatureC: 65,
+        originalPlan: buildSnapshot(),
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.metMarkerValue).toBeCloseTo(61.8, 1);
+      // `target` keeps pointing at the configured setpoint so the
+      // horizontal reference line still renders.
+      expect(data.target).toBe(65);
+    });
+
+    it('returns null metMarkerValue when no marker timestamp exists', () => {
+      const missedEntry = buildEntry({
+        outcome: 'missed',
+        metAtMs: null,
+        originalPlan: buildSnapshot(),
+      });
+      expect(resolveHistoryDetailChartData(missedEntry).metMarkerValue).toBeNull();
+    });
   });
 
   describe('window', () => {

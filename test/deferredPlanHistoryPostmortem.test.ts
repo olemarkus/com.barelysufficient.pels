@@ -131,6 +131,54 @@ describe('formatPlanHistoryPostmortem', () => {
       expect(result.sentence).toContain('65.0 °C');
       expect(result.sentence).toContain('before the deadline');
     });
+
+    it('resolves met-by-stall when the recorder promoted on idle-classifier near_target_idle', () => {
+      // Connected 300 regression: tank plateaued at 61.8 °C against a
+      // 65 °C target. The metReason='stalled' marker carries the truth
+      // that PELS accepted the run as done without crossing target.
+      const entry = buildEntry({
+        outcome: 'met',
+        metReason: 'stalled',
+        metAtMs: DEADLINE_MS - 3 * HOUR_MS,
+        finalProgressC: 61.8,
+        targetTemperatureC: 65,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('met-by-stall');
+      expect(result.sentence).toContain('61.8 °C');
+      expect(result.sentence).toContain('65.0 °C');
+      // Met-by-stall must not borrow the timing copy of margin/buzzer —
+      // the timing math is irrelevant when the reason is "settled below".
+      expect(result.sentence).not.toMatch(/before/);
+    });
+
+    it('stall postmortem ignores buzzer-window timing — the plateau, not the deadline gap, drives the variant', () => {
+      // metAtMs lands 2 minutes before the deadline (would be at-buzzer
+      // under the timing-only branch) but the stall promotion takes
+      // precedence so the user reads the right cause.
+      const entry = buildEntry({
+        outcome: 'met',
+        metReason: 'stalled',
+        metAtMs: DEADLINE_MS - 2 * 60 * 1000,
+        finalProgressC: 61.8,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('met-by-stall');
+    });
+
+    it('met-by-stall sentence drops to a generic fallback when finalProgress is missing', () => {
+      // Defensive: a legacy entry hand-rewritten without finalProgressC
+      // should still get a sentence rather than throwing.
+      const entry = buildEntry({
+        outcome: 'met',
+        metReason: 'stalled',
+        metAtMs: DEADLINE_MS - HOUR_MS,
+        finalProgressC: null,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('met-by-stall');
+      expect(result.sentence).toMatch(/PELS counted/);
+    });
   });
 
   describe('missed outcome', () => {

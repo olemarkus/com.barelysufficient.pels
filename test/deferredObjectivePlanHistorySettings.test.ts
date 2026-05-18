@@ -230,4 +230,55 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     });
     expect(result.entries).toHaveLength(0);
   });
+
+  it('accepts metReason:"stalled" on met entries (optional field, byte-stable upgrade)', () => {
+    const stalledEntry = {
+      ...v3Entry,
+      id: 'stalled-1',
+      outcome: 'met',
+      metReason: 'stalled',
+      metAtMs: HOUR_MS,
+      finalProgressC: 61.8,
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [stalledEntry],
+    });
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]!.metReason).toBe('stalled');
+  });
+
+  it('drops an entry with metReason on a non-met outcome (contract violation)', () => {
+    // The recorder is responsible for not writing metReason on missed/
+    // replaced/abandoned/unknown; the validator enforces it on read-back
+    // so a hand-edited / corrupted persisted payload doesn't surface
+    // "stalled but missed" to the UI.
+    const malformed = {
+      ...v3Entry,
+      id: 'malformed-1',
+      outcome: 'missed',
+      metReason: 'stalled',
+      metAtMs: null,
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [malformed],
+    });
+    expect(result.entries).toHaveLength(0);
+  });
+
+  it('drops an entry whose metReason is an unknown string', () => {
+    const malformed = {
+      ...v3Entry,
+      id: 'malformed-2',
+      outcome: 'met',
+      metReason: 'bogus',
+      metAtMs: HOUR_MS,
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [malformed],
+    });
+    expect(result.entries).toHaveLength(0);
+  });
 });

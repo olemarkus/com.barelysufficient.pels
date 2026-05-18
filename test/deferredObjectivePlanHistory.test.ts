@@ -1663,4 +1663,293 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(saved()!.entries[0]!.revisions).toBeUndefined();
     });
   });
+
+  describe('stall promotion (`metReason: "stalled"`)', () => {
+    // Regression target: production Connected 300 run 7791d6c5 — the tank
+    // plateaued at ~61.8 °C against a 65 °C target after ~10 h. The horizon
+    // planner kept reporting `on_track` / `cannot_meet` instead of
+    // `satisfied`, so the existing path classified the run as `missed`.
+    // With the idle-classifier bridge in place, the recorder accepts the
+    // device's "as warm as it'll hold" plateau as a success.
+    it('promotes a non-satisfied run to met when the classifier reports near_target_idle', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const stallNearTarget = () => 'near_target_idle' as const;
+
+      // Run starts cold; classifier hasn't fired yet.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60.9 })],
+        0,
+      );
+      // 3 hours in: device has plateaued near setpoint; the classifier
+      // reports `near_target_idle`. The horizon planner still says
+      // `on_track` because (target − current) > 0.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
+        3 * HOUR_MS,
+        null,
+        stallNearTarget,
+      );
+      // 5 hours in: tank drifts down a bit (post-stall cooling). Without
+      // the freeze, `finalProgressC` would track this drift; with the
+      // freeze it should stay at 61.8.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60.4 })],
+        5 * HOUR_MS,
+        null,
+        stallNearTarget,
+      );
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('met');
+      expect(entry.metReason).toBe('stalled');
+      expect(entry.metAtMs).toBe(3 * HOUR_MS);
+      expect(entry.finalProgressC).toBeCloseTo(61.8, 1);
+    });
+
+    it('does not write metReason on runs that crossed the target normally', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
+      recorder.observe(
+        [makeDiag({
+          deviceId: 'dev',
+          deadlineAtMs,
+          currentTemperatureC: 66,
+          status: 'satisfied',
+          horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
+        })],
+        3 * HOUR_MS,
+      );
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('met');
+      expect(entry.metReason).toBeUndefined();
+    });
+
+    it('ignores `unresponsive` — only `near_target_idle` triggers stall met', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const stuckUnresponsive = () => 'unresponsive' as const;
+
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 20 })],
+        0,
+        null,
+        stuckUnresponsive,
+      );
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 20 })],
+        3 * HOUR_MS,
+        null,
+        stuckUnresponsive,
+      );
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('missed');
+      expect(entry.metReason).toBeUndefined();
+    });
+
+    it('keeps the stall promotion sticky across subsequent plannable ticks reporting below-target progress', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const stallNearTarget = () => 'near_target_idle' as const;
+      const noClassifier = () => undefined;
+
+      // First tick: brand-new record. The carryover guard skips promotion
+      // here regardless of classifier state.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
+        HOUR_MS,
+        null,
+        stallNearTarget,
+      );
+      // Second tick: existing record, classifier still reports
+      // near_target_idle → promotion fires here.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
+        2 * HOUR_MS,
+        null,
+        stallNearTarget,
+      );
+      // Classifier subsequently exits idle (tank cooled below the
+      // hysteresis exit threshold) — the recorder must NOT downgrade the
+      // already-stalled record; the device having accepted the run as
+      // done is not retracted by later drift.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })],
+        4 * HOUR_MS,
+        null,
+        noClassifier,
+      );
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('met');
+      expect(entry.metReason).toBe('stalled');
+      expect(entry.finalProgressC).toBeCloseTo(61.8, 1);
+    });
+
+    it('skips stall promotion on the first tick of a new record — stale classification carryover guard', () => {
+      // Regression for PR #888 review (chatgpt-codex-connector): the
+      // classifier ticks AFTER plan emission, so the result the recorder
+      // reads on the cycle a record is first seen belongs to whatever
+      // objective ran for this device on the previous tick. After a
+      // `finalizeForUserChange` swap, that stale `near_target_idle` must
+      // not auto-complete the brand-new run on tick 1. The next tick —
+      // where the classifier has re-evaluated against the current
+      // objective — handles promotion through the existing-record path.
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const stallNearTarget = () => 'near_target_idle' as const;
+
+      // Brand-new record — classifier already says near_target_idle from
+      // the *previous* run's plateau. The recorder must not promote here.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
+        0,
+        null,
+        stallNearTarget,
+      );
+      // Subsequent tick: classification is fresh and authoritative.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 51 })],
+        HOUR_MS,
+        null,
+        stallNearTarget,
+      );
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('met');
+      expect(entry.metReason).toBe('stalled');
+      // Promotion lands on the second tick, not the first.
+      expect(entry.metAtMs).toBe(HOUR_MS);
+    });
+
+    it('captures the live diagnostic reading into finalProgress at promotion time even on a non-plannable tick', () => {
+      // Regression for PR #888 review (Copilot): when stall fires via a
+      // non-plannable tick (e.g. status='unknown' carrying a trustworthy
+      // currentTemperatureC), `recordObservedTick` doesn't refresh
+      // `finalProgress*`, so without an explicit capture in
+      // `promoteRecordToStalled` the freeze would pin to the previous
+      // plannable tick's reading rather than the live plateau. The
+      // chart marker and the postmortem caption would then both read
+      // the stale value.
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const stallNearTarget = () => 'near_target_idle' as const;
+      const unknown = (): DeferredObjectiveDiagnostic['status'] => 'unknown';
+
+      // First tick: brand-new record at 50 °C — first-tick gate skips
+      // promotion. `mergeRecord` runs (status='on_track' plannable).
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
+        0,
+      );
+      // Second tick: classifier says near_target_idle, but the diag
+      // arrives with status='unknown' (non-plannable). The live reading
+      // is 61.8 °C — that is the value the stalled entry must freeze.
+      recorder.observe(
+        [makeDiag({
+          deviceId: 'dev',
+          deadlineAtMs,
+          currentTemperatureC: 61.8,
+          status: unknown(),
+          // `objective_missing_charge_rate` is a non-plannable reason
+          // outside the untrustworthy set — the diag carries a real
+          // temperature reading, so `hasTrustworthyProgress` should let
+          // promotion capture it.
+          reasonCode: 'objective_missing_charge_rate',
+          horizonPlan: undefined,
+        })],
+        HOUR_MS,
+        null,
+        stallNearTarget,
+      );
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('met');
+      expect(entry.metReason).toBe('stalled');
+      // The promotion captured the live plateau reading, not the prior
+      // plannable tick's 50 °C value.
+      expect(entry.finalProgressC).toBeCloseTo(61.8, 1);
+    });
+
+    it('does not promote when only the first tick fires near_target_idle (no subsequent ticks)', () => {
+      // Locks in the producer-side gate: if a brand-new run sees a stale
+      // `near_target_idle` on its only cycle and the deadline immediately
+      // elapses, the entry must finalize as `missed` rather than silently
+      // met by carryover.
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const stallNearTarget = () => 'near_target_idle' as const;
+
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
+        0,
+        null,
+        stallNearTarget,
+      );
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('missed');
+      expect(entry.metReason).toBeUndefined();
+    });
+
+    it('a stalled run replaced by the user before its deadline still finalizes as met (stall promotion is terminal)', () => {
+      // `classifyOutcome` returns `'met'` whenever the in-progress record
+      // is satisfied, regardless of the finalize reason — so once stall
+      // has fired, a subsequent user-replace doesn't downgrade the
+      // outcome. The metReason rides through. The contract validator's
+      // "metReason only on met" guard is a defensive read-time check for
+      // hand-edited / corrupted persisted payloads; the recorder itself
+      // never produces the violating combination.
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const stallNearTarget = () => 'near_target_idle' as const;
+
+      // Two ticks to clear the first-tick carryover guard; promotion lands
+      // on the second tick.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
+        HOUR_MS,
+        null,
+        stallNearTarget,
+      );
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
+        2 * HOUR_MS,
+        null,
+        stallNearTarget,
+      );
+      recorder.finalizeForUserChange('dev', 3 * HOUR_MS, 'replaced');
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('met');
+      expect(entry.metReason).toBe('stalled');
+    });
+  });
 });

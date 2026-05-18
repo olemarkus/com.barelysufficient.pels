@@ -88,7 +88,19 @@ export type PlanBuilderDeps = {
   observeDeferredObjectivePlanHistory?: (
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,
+    getStallClassification?: (
+      deviceId: string,
+    ) => 'near_target_idle' | 'unresponsive' | undefined,
   ) => void;
+  // Reader for the per-device idle classification from the observer layer
+  // (`createIdleClassifier`). Threaded through so the planHistory recorder
+  // can promote a deferred-objective run to `met` / `metReason: 'stalled'`
+  // when the device has settled near its setpoint. Optional so test harnesses
+  // and pre-classification call paths still work — absence means no
+  // promotion will fire (target-reached path unchanged).
+  getStallClassification?: (
+    deviceId: string,
+  ) => 'near_target_idle' | 'unresponsive' | undefined;
   observeDeferredObjectiveActivePlans?: (
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,
@@ -196,7 +208,11 @@ export class PlanBuilder {
     const deferredEvaluations = this.trackDuration('evaluate_deferred_objectives_ms', () => (
       this.evaluateDeferredObjectives(devices, dailyBudgetSnapshot, nowTs)
     ));
-    this.deps.observeDeferredObjectivePlanHistory?.(deferredEvaluations, nowTs);
+    this.deps.observeDeferredObjectivePlanHistory?.(
+      deferredEvaluations,
+      nowTs,
+      this.deps.getStallClassification,
+    );
     this.deps.observeDeferredObjectiveActivePlans?.(deferredEvaluations, nowTs);
     const deferredAdmission = applyDeferredObjectiveAdmission(deferredEvaluations, devices);
     const { devices: admittedDevices, forceShedSet } = applyDeferredAdmissionToInput(devices, deferredAdmission);

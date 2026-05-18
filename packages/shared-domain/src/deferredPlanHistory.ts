@@ -345,6 +345,14 @@ export type DeferredPlanHistoryPostmortemVariant =
   | 'met-with-margin'
   | 'met-with-overshoot'
   | 'met-at-buzzer'
+  // The device's own controller stopped drawing close to its setpoint, and
+  // the idle classifier (`lib/observer/idleClassifier.ts`) reported
+  // `near_target_idle` — at which point PELS marked the smart task done
+  // without the progress series literally crossing the target. The result
+  // chip stays the standard `'ok'` "Succeeded", but the postmortem
+  // sentence is distinct so the user understands why the final reading is
+  // below target.
+  | 'met-by-stall'
   | 'missed-by-shortfall'
   | 'missed-by-budget-exhaustion'
   | 'abandoned-by-clear'
@@ -436,6 +444,7 @@ const wasOvershoot = (
 type PostmortemEntry = Pick<
   DeferredObjectivePlanHistoryEntry,
   'outcome'
+  | 'metReason'
   | 'objectiveKind'
   | 'targetTemperatureC'
   | 'targetPercent'
@@ -479,10 +488,50 @@ const resolveMetTimingLabels = (
   return { targetLabel, metAtLabel, deadlineLabel, marginMs };
 };
 
+const resolveStalledMetPostmortem = (
+  entry: PostmortemEntry,
+): DeferredPlanHistoryPostmortem => {
+  // The stall path's defining feature is that the final reading sits below
+  // the configured target — the device's controller decided to stop
+  // heating before we crossed it. Lead with the value we accepted, name
+  // the target so the gap is obvious, and explicitly tell the user we
+  // counted it as done. Falls through to a target-less plain sentence if
+  // either piece is missing so a malformed entry still gets a sentence.
+  const finalLabel = formatFinalProgressValue(
+    entry.objectiveKind,
+    entry.finalProgressC,
+    entry.finalProgressPercent,
+  );
+  const targetLabel = formatTargetValue(
+    entry.objectiveKind,
+    entry.targetTemperatureC,
+    entry.targetPercent,
+  );
+  if (finalLabel !== null && targetLabel !== null) {
+    return {
+      variant: 'met-by-stall',
+      sentence: `Settled at ${finalLabel} — close enough to ${targetLabel} to call it done.`,
+    };
+  }
+  return {
+    variant: 'met-by-stall',
+    sentence: 'The device settled close to its target and PELS counted the smart task as done.',
+  };
+};
+
 const resolveMetPostmortem = (
   entry: PostmortemEntry,
   timeZone: string,
 ): DeferredPlanHistoryPostmortem => {
+  // The stall promotion path is checked first so the postmortem reflects
+  // the *reason* we marked the run done, not the timing math (which would
+  // otherwise route a plateau that happens to fall in the final hour
+  // through `met-at-buzzer`). The recorder only sets `metReason: 'stalled'`
+  // on outcomes it finalizes as `met`, so the field is authoritative once
+  // present.
+  if (entry.metReason === 'stalled') {
+    return resolveStalledMetPostmortem(entry);
+  }
   const timing = resolveMetTimingLabels(entry, timeZone);
   const overshot = wasOvershoot(
     entry.objectiveKind,

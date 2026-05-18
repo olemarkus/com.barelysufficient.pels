@@ -282,10 +282,10 @@ export function createPlanEngine(ctx: AppContext) {
     structuredLog: ctx.getStructuredLogger('plan'),
     debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
     deferredObjectiveDebugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
-    observeDeferredObjectivePlanHistory: (diagnostics, nowMs) => {
+    observeDeferredObjectivePlanHistory: (diagnostics, nowMs, getStallClassification) => {
       const recorder = requireDeferredObjectivePlanHistoryRecorder(ctx);
       const activePlans = ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null;
-      recorder.observe(diagnostics, nowMs, activePlans);
+      recorder.observe(diagnostics, nowMs, activePlans, getStallClassification);
       // Persist the watermark when we flushed new history (recorder is clean and the save
       // succeeded). Otherwise, if the recorder is clean and enough time has passed since the
       // last watermark write, also advance it — this keeps the back-fill window small during
@@ -308,6 +308,16 @@ export function createPlanEngine(ctx: AppContext) {
       recorder.observe(diagnostics, nowMs);
       recorder.flushIfDirty();
     },
+    // Read through `ctx.planService` at call time rather than capturing a
+    // reference at engine construction — `createPlanEngine` runs before
+    // `createPlanService`, so the service does not yet exist here. Returning
+    // `undefined` for an unclassified device (which is also what the
+    // classifier returns for `active` devices) means the recorder treats
+    // missing-classifier as "no stall promotion" and the target-reached
+    // path remains unchanged.
+    getStallClassification: (deviceId) => (
+      ctx.planService?.getStallClassification(deviceId)
+    ),
     getDeferredObjectiveStatusBus: () => ctx.deferredObjectiveStatusBus,
     disableDeferredObjective: (deviceId) => disableDeferredObjectiveInSettings(ctx, deviceId),
     log: (...args: unknown[]) => ctx.log(...args),

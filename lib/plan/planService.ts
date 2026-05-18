@@ -201,6 +201,21 @@ export class PlanService {
     return this.deps.planEngine.buildDevicePlanSnapshot(devices);
   }
 
+  // Bridge from the observer-layer idle classifier into the plan layer.
+  // Surfaced so the deferred-objective history recorder (lives in `lib/plan`,
+  // wired in `appInit.ts`) can promote a smart task to `met` / `'stalled'`
+  // when the device has settled near its setpoint. The classifier ticks
+  // *after* plan emission (`tickIdleClassifier`), so on a given cycle the
+  // recorder sees the state derived from the previous plan — that lag is
+  // negligible against the 15-min `IDLE_UNRESPONSIVE_MIN_DURATION_MS`
+  // window, but it does mean a fresh boot returns `undefined` until at
+  // least one plan tick has run.
+  getStallClassification(
+    deviceId: string,
+  ): 'near_target_idle' | 'unresponsive' | undefined {
+    return this.idleClassifier.getClassification(deviceId);
+  }
+
   computeDynamicSoftLimit(): number {
     return this.deps.planEngine.computeDynamicSoftLimit();
   }

@@ -468,11 +468,13 @@ export default tseslint.config(
     // (`progressSamples`, `deliveredKWh` + `totalCost`, `revisions[]`) pushed it slightly past
     // the default 500-line budget; the most reusable helpers
     // (`captureRevisionSnapshot`, progress-ring + revision-log helpers) live in
-    // `planHistoryV4Helpers.ts`. Target: <=500 once a later PR splits the in-progress record
-    // into its own module.
+    // `planHistoryV4Helpers.ts`. The v2.7.3 stall-promotion bridge added
+    // `promoteRecordToStalled`, `computeMergedMetState`, and the per-diagnostic
+    // helper extracted from `observe()`. Target: <=500 once a later PR splits the
+    // in-progress record into its own module.
     files: ['lib/plan/deferredObjectives/planHistory.ts'],
     rules: {
-      'max-lines': ['warn', { max: 520, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 620, skipBlankLines: true, skipComments: true }],
     },
   },
   {
@@ -517,12 +519,14 @@ export default tseslint.config(
   {
     // deferredPlanHistory aggregates the smart-task history formatters (postmortem, missed
     // reason, observed coverage, overshoot line, chart-data resolver). v2.7.2 PR 6 added the
-    // overshoot helper + Usage-link label + miss-streak resolver, pushing the file slightly
-    // past the 500-line budget. Target: <=500 once a future PR splits the chart-data resolver
-    // (`deferredPlanHistoryChartData.ts`) out from the postmortem/list-shape helpers.
+    // overshoot helper + Usage-link label + miss-streak resolver; v2.7.3 stall promotion
+    // added `met-by-stall` variant + `resolveStalledMetPostmortem`, pushing the file
+    // further past the 500-line budget. Target: <=500 once a future PR splits the
+    // chart-data resolver (`deferredPlanHistoryChartData.ts`) out from the
+    // postmortem/list-shape helpers.
     files: ['packages/shared-domain/src/deferredPlanHistory.ts'],
     rules: {
-      'max-lines': ['warn', { max: 560, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 580, skipBlankLines: true, skipComments: true }],
     },
   },
 );
