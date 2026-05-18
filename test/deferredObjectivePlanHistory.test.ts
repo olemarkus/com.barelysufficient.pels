@@ -1351,13 +1351,13 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
       // Three priced hours: 1.0 kWh @ 0.50 + 1.5 kWh @ 0.80 + 0.5 kWh @ 1.20 = 3.0 kWh, 2.30 cost.
       recorder.recordHourlyDelivery({
-        deviceId: 'dev', deadlineAtMs, hourStartMs: HOUR_MS, deliveredKWh: 1.0, priceValue: 0.50,
+        deviceId: 'dev', deadlineAtMs, hourStartMs: HOUR_MS, deliveredKWh: 1.0, priceValue: 0.50, tone: 'cheap',
       });
       recorder.recordHourlyDelivery({
-        deviceId: 'dev', deadlineAtMs, hourStartMs: 2 * HOUR_MS, deliveredKWh: 1.5, priceValue: 0.80,
+        deviceId: 'dev', deadlineAtMs, hourStartMs: 2 * HOUR_MS, deliveredKWh: 1.5, priceValue: 0.80, tone: 'normal',
       });
       recorder.recordHourlyDelivery({
-        deviceId: 'dev', deadlineAtMs, hourStartMs: 3 * HOUR_MS, deliveredKWh: 0.5, priceValue: 1.20,
+        deviceId: 'dev', deadlineAtMs, hourStartMs: 3 * HOUR_MS, deliveredKWh: 0.5, priceValue: 1.20, tone: 'expensive',
       });
       recorder.observe([], deadlineAtMs);
       recorder.flushIfDirty();
@@ -1365,6 +1365,49 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const entry = saved()!.entries[0]!;
       expect(entry.deliveredKWh).toBeCloseTo(3.0);
       expect(entry.totalCost).toBeCloseTo(0.50 + 1.20 + 0.60);
+      // Each contribution lands on its own per-hour bucket so the postmortem
+      // bar strip (v2.7.3) reads one bar per delivered hour. Totals still
+      // match the sum, but the per-hour rows preserve the tone/price the
+      // caller resolved at contribution time.
+      expect(entry.hourlyContributions).toHaveLength(3);
+      expect(entry.hourlyContributions![0]).toEqual({
+        atMs: HOUR_MS, deliveredKWh: 1.0, priceValue: 0.50, tone: 'cheap',
+      });
+      expect(entry.hourlyContributions![1]).toEqual({
+        atMs: 2 * HOUR_MS, deliveredKWh: 1.5, priceValue: 0.80, tone: 'normal',
+      });
+      expect(entry.hourlyContributions![2]).toEqual({
+        atMs: 3 * HOUR_MS, deliveredKWh: 0.5, priceValue: 1.20, tone: 'expensive',
+      });
+    });
+
+    it('merges duplicate hourly contributions onto a single bucket and suppresses the field when no contribution arrived', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      // Two contributions for the same hour (aggregator replay): kWh summed,
+      // the fresher tone/price wins. Mid-hour `hourStartMs` floors to the
+      // hour boundary so the postmortem reads a stable axis.
+      recorder.observe([makeDiag({ deviceId: 'dev-a', deadlineAtMs, currentTemperatureC: 50 })], 0);
+      recorder.recordHourlyDelivery({
+        deviceId: 'dev-a', deadlineAtMs, hourStartMs: HOUR_MS + 15 * 60_000, deliveredKWh: 0.4, priceValue: 0.30, tone: 'cheap',
+      });
+      recorder.recordHourlyDelivery({
+        deviceId: 'dev-a', deadlineAtMs, hourStartMs: HOUR_MS + 45 * 60_000, deliveredKWh: 0.6, priceValue: 0.40, tone: 'normal',
+      });
+      // Run B never receives a contribution → `hourlyContributions` stays
+      // absent, mirroring the existing `deliveredKWh` suppression contract.
+      recorder.observe([makeDiag({ deviceId: 'dev-b', deadlineAtMs, currentTemperatureC: 45 })], 0);
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entriesByDeviceId = new Map(saved()!.entries.map((e) => [e.deviceId, e]));
+      const merged = entriesByDeviceId.get('dev-a')!;
+      expect(merged.hourlyContributions).toHaveLength(1);
+      expect(merged.hourlyContributions![0]).toEqual({
+        atMs: HOUR_MS, deliveredKWh: 1.0, priceValue: 0.40, tone: 'normal',
+      });
+      expect(entriesByDeviceId.get('dev-b')!.hourlyContributions).toBeUndefined();
     });
 
     it('persists `deliveredKWh: 0` on a real-but-zero contribution but suppresses both fields when no contribution arrived', () => {
@@ -1376,7 +1419,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // Both fields persist (the feed ran, the run is "this was free").
       recorder.observe([makeDiag({ deviceId: 'dev-a', deadlineAtMs, currentTemperatureC: 50 })], 0);
       recorder.recordHourlyDelivery({
-        deviceId: 'dev-a', deadlineAtMs, hourStartMs: HOUR_MS, deliveredKWh: 0, priceValue: -0.10,
+        deviceId: 'dev-a', deadlineAtMs, hourStartMs: HOUR_MS, deliveredKWh: 0, priceValue: -0.10, tone: 'cheap',
       });
       // Run B never receives a contribution. Both fields stay absent.
       recorder.observe([makeDiag({ deviceId: 'dev-b', deadlineAtMs, currentTemperatureC: 45 })], 0);
@@ -1395,7 +1438,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       // No `observe` call — recorder has no in-progress record for this device.
       recorder.recordHourlyDelivery({
-        deviceId: 'ghost', deadlineAtMs: HOUR_MS, hourStartMs: 0, deliveredKWh: 1.0, priceValue: 0.50,
+        deviceId: 'ghost', deadlineAtMs: HOUR_MS, hourStartMs: 0, deliveredKWh: 1.0, priceValue: 0.50, tone: 'normal',
       });
       // No persist should happen — recorder is clean.
       expect(recorder.isDirty()).toBe(false);
@@ -1410,11 +1453,11 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
       // Negative kWh — dropped.
       recorder.recordHourlyDelivery({
-        deviceId: 'dev', deadlineAtMs, hourStartMs: HOUR_MS, deliveredKWh: -1.0, priceValue: 0.50,
+        deviceId: 'dev', deadlineAtMs, hourStartMs: HOUR_MS, deliveredKWh: -1.0, priceValue: 0.50, tone: 'normal',
       });
       // NaN price — dropped.
       recorder.recordHourlyDelivery({
-        deviceId: 'dev', deadlineAtMs, hourStartMs: HOUR_MS, deliveredKWh: 1.0, priceValue: Number.NaN,
+        deviceId: 'dev', deadlineAtMs, hourStartMs: HOUR_MS, deliveredKWh: 1.0, priceValue: Number.NaN, tone: 'normal',
       });
       recorder.observe([], deadlineAtMs);
       recorder.flushIfDirty();

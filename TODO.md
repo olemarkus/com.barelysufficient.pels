@@ -29,6 +29,20 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
+- [ ] Wire `DeferredObjectivePlanHistoryRecorder.recordHourlyDelivery`
+      into the runtime so the v2.7.3 per-hour bar strip actually populates
+      in production. The contract field (`hourlyContributions`), the
+      recorder method, the producer (`resolveHistoryDetailHourlyStrip`),
+      and the view (`HourlyStrip` in `DeadlinePlanHistoryDetail.tsx`) all
+      ship in v2.7.3, but `grep -rn "recordHourlyDelivery"` shows zero
+      production callers — only tests. Result on first ship: every real
+      v2.7.3 entry finalizes with `hourlyContributions: undefined` and the
+      strip is suppressed. Wire from the existing per-hour cost rollup
+      site that feeds `deliveredKWh` / `totalCost`, resolving the price
+      tone against the live cheap/normal/expensive thresholds at
+      contribution time so the postmortem reads a stable band. Adversarial
+      review on `v2.7.3/hourly-contributions` (2026-05-18).
+
 *v2.7.1 release-review findings (2026-05-17). Six items below from the
 six-agent fan-out pass on `v2.7.0..HEAD`; safe for the next patch
 release, not v2.7.1 merge-blockers.*

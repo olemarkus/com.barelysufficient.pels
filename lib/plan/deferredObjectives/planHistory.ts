@@ -5,6 +5,8 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredObjectivePlanHistoryEntry,
+  DeferredObjectivePlanHistoryHourlyContribution,
+  DeferredObjectivePlanHistoryHourlyTone,
   DeferredObjectivePlanHistoryObservedInterval,
   DeferredObjectivePlanHistoryProgressSample,
   DeferredObjectivePlanHistoryRevisionLogEntry,
@@ -16,10 +18,12 @@ import { DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION } from './planHistorySettings';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import { buildEndedEventFromEntry, type DeferredObjectiveEndedBus } from './endedEventBus';
 import {
+  appendHourlyContribution,
   appendRevisionLogIfNew,
   captureRevisionSnapshot,
   drainProgressSamples,
   hasTrustworthyProgress,
+  hourBucketMs,
   recordProgressSample,
   seedProgressSamples,
 } from './planHistoryV4Helpers';
@@ -58,6 +62,7 @@ type InProgressRecord = Omit<
   | 'deliveredKWh'
   | 'totalCost'
   | 'revisions'
+  | 'hourlyContributions'
 > & {
   satisfied: boolean;
   // True original plan for this run, captured the first cycle an active plan
@@ -101,6 +106,16 @@ type InProgressRecord = Omit<
   // ~5-10 entries at most. No explicit cap; tracked in `TODO.md` as a v2.7.2
   // follow-up if a pathological replan loop ever surfaces.
   revisions: DeferredObjectivePlanHistoryRevisionLogEntry[];
+  // Per-hour delivery contributions appended on every `recordHourlyDelivery`
+  // call. Each entry mirrors one contribution: hour-aligned `atMs`,
+  // delivered kWh, the spot-price the recorder summed into `totalCost`, and
+  // the price tone the caller resolved. The postmortem bar strip
+  // (`DeadlinePlanHistoryDetail`) reads this list to render one bar per
+  // hour. Persisted only when at least one contribution was recorded —
+  // empty runs stay byte-stable across upgrades, gated by
+  // `hasDeliveryContribution` the same way `deliveredKWh` / `totalCost`
+  // are.
+  hourlyContributions: DeferredObjectivePlanHistoryHourlyContribution[];
 };
 
 
@@ -238,6 +253,7 @@ const startRecord = (
     totalCost: 0,
     hasDeliveryContribution: false,
     revisions: [],
+    hourlyContributions: [],
   };
 };
 
@@ -461,6 +477,13 @@ const finalizeRecord = (
     ...(record.hasDeliveryContribution
       ? { deliveredKWh: record.deliveredKWh, totalCost: record.totalCost }
       : {}),
+    // Per-hour contributions are persisted only when at least one was
+    // appended — runs that never received a contribution stay byte-stable
+    // across upgrades, mirroring the `deliveredKWh` / `totalCost`
+    // suppression contract above.
+    ...(record.hourlyContributions.length > 0
+      ? { hourlyContributions: record.hourlyContributions.slice() }
+      : {}),
     ...(record.revisions.length > 0 ? { revisions: record.revisions.slice() } : {}),
   };
 };
@@ -536,6 +559,12 @@ export type DeferredObjectivePlanHistoryHourlyDelivery = {
   hourStartMs: number;
   deliveredKWh: number;
   priceValue: number;
+  // Price-tier classification for the hour, resolved by the caller (the
+  // runtime wiring) against the live cheap/normal/expensive thresholds.
+  // Captured at contribution time so the postmortem reads a stable band
+  // even if thresholds shift in a later version. See
+  // `DeferredObjectivePlanHistoryHourlyTone`.
+  tone: DeferredObjectivePlanHistoryHourlyTone;
 };
 
 export class DeferredObjectivePlanHistoryRecorder {
@@ -652,11 +681,25 @@ export class DeferredObjectivePlanHistoryRecorder {
     const key = buildKey(contribution.deviceId, contribution.deadlineAtMs);
     const record = this.inProgress.get(key);
     if (!record) return;
+    // Hour-align the timestamp the postmortem renders against so duplicate
+    // contributions for the same hour land on the same bucket (the strip
+    // sums kWh into the existing entry and keeps the latest tone/price).
+    // Floor against the contribution's `hourStartMs` rather than `nowMs`
+    // because the caller may replay a missed hour from an aggregator
+    // cadence that doesn't match real time.
+    const hourAtMs = hourBucketMs(contribution.hourStartMs);
+    const hourlyContributions = appendHourlyContribution(record.hourlyContributions, {
+      atMs: hourAtMs,
+      deliveredKWh: contribution.deliveredKWh,
+      priceValue: contribution.priceValue,
+      tone: contribution.tone,
+    });
     this.inProgress.set(key, {
       ...record,
       deliveredKWh: record.deliveredKWh + contribution.deliveredKWh,
       totalCost: record.totalCost + contribution.priceValue * contribution.deliveredKWh,
       hasDeliveryContribution: true,
+      hourlyContributions,
     });
   }
 

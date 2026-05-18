@@ -12,8 +12,11 @@ import {
   formatPlanHistoryProgressLine,
   formatPlanHistoryReachedAtLine,
   resolveHistoryDetailChartData,
+  resolveHistoryDetailHourlyStrip,
   type DeferredPlanHistoryChartData,
   type DeferredPlanHistoryChartPoint,
+  type DeferredPlanHistoryHourlyStripData,
+  type HourlyStripBucket,
   formatPlanHistoryRevisionEntry,
   type PlanHistoryRevisionLogRow,
   formatPlanHistoryUsageDayLinkLabel,
@@ -862,6 +865,151 @@ const formatUsageLinkDate = (ms: number, timeZone: string): string => {
   }).format(date);
 };
 
+// ─── Per-hour bar strip (v2.7.3) ──────────────────────────────────────────────
+//
+// Renders one bar per hour aligned on the same window as the trajectory
+// chart above, answering "when did each hour run, and what did each hour
+// cost?" — owner walk #11 + #14 concerns. Every conditional (cheap-hour
+// glow, planned-but-skipped outline, kWh fallback) is resolved by the
+// producer (`resolveHistoryDetailHourlyStrip`); this component is a pure
+// mapper.
+
+const formatStripHourLabel = (atMs: number, timeZone: string): string => (
+  new Date(atMs).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone,
+  })
+);
+
+// Price in the user's display unit. `priceValue` is already the same
+// currency-major value the recorder sums into `totalCost`, so we render it
+// straight through with the page-level `costUnit` qualifier (e.g. "kr",
+// "EUR") — no minor-unit conversion. Empty `costUnit` (the prop default
+// before a currency is resolved) drops the qualifier rather than fabricate
+// one. Whole-øre/öre/cent display follows the money convention used
+// elsewhere in PELS: minor-unit denominations render as integers (no
+// fractional øre); major-unit denominations keep two decimals.
+const formatStripPrice = (priceValue: number | null, costUnit: string): string | null => {
+  if (priceValue === null || !Number.isFinite(priceValue)) return null;
+  const isMinorUnit = costUnit === 'øre' || costUnit === 'öre' || costUnit === 'cent';
+  const decimals = isMinorUnit ? 0 : 2;
+  const value = priceValue.toFixed(decimals);
+  return costUnit === '' ? value : `${value} ${costUnit}`;
+};
+
+const formatStripKWh = (kwh: number): string | null => {
+  if (!Number.isFinite(kwh) || kwh <= 0) return null;
+  return `${kwh.toFixed(2)} kWh`;
+};
+
+const buildStripTooltip = (
+  bucket: HourlyStripBucket,
+  timeZone: string,
+  costUnit: string,
+): string => {
+  // "time · 0.42 kWh · 0.18 kr · planned" / "time · skipped". Skipped means
+  // the hour was scheduled but never delivered — we suppress kWh and price
+  // on those buckets so the tooltip doesn't contradict itself (the bucket's
+  // `kwh` field carries the planned fallback for bar-height context, not
+  // for the tooltip). Planned-and-delivered keeps the kWh + price + marker.
+  // No exclamation marks, no emoji — per the voice constraint.
+  const parts: string[] = [formatStripHourLabel(bucket.atMs, timeZone)];
+  if (bucket.outlinePresent) {
+    parts.push('skipped');
+    return parts.join(' · ');
+  }
+  const kwhText = formatStripKWh(bucket.kwh);
+  if (kwhText !== null) parts.push(kwhText);
+  const priceText = formatStripPrice(bucket.priceValue, costUnit);
+  if (priceText !== null) parts.push(priceText);
+  if (bucket.planned && bucket.delivered) {
+    parts.push('planned');
+  }
+  return parts.join(' · ');
+};
+
+const resolveBarHeightPercent = (
+  bucket: HourlyStripBucket,
+  maxKwh: number,
+): number => {
+  if (maxKwh <= 0) return 0;
+  if (bucket.kwh <= 0) return 0;
+  // Floor at 8 % so a tiny delivered bar is still visible against the
+  // strip baseline; outlined-only buckets stay at 0 so the dashed outline
+  // floats at the baseline without a visible fill.
+  const ratio = bucket.kwh / maxKwh;
+  if (bucket.outlinePresent) return 0;
+  return Math.max(8, Math.round(ratio * 100));
+};
+
+const HourlyStripLegend = () => (
+  // Legend-as-sample-chips (design synthesis loveable touch #2). Three
+  // `.plan-chip` instances with embedded tone-coloured bars consume the
+  // same chip primitive Overview hero uses — keeps chip sizing/spacing
+  // tokens in one place. A visually-hidden caption announces the three
+  // tiers to screen readers (the chips themselves carry their tier label
+  // as visible text). Per `feedback_design_tokens.md`, all colour /
+  // spacing tokens are inherited from `.plan-chip` + the
+  // `--pels-chart-hour-tone-*` family.
+  <div class="hourly-strip__legend">
+    <span class="visually-hidden">
+      Bars are shaded by price tier: cheap, normal, or peak.
+    </span>
+    <span class="plan-chip plan-chip--muted hourly-strip__legend-item">
+      <span class="hourly-strip__legend-bar" data-tone="cheap" aria-hidden="true" />
+      <span class="hourly-strip__legend-label">cheap</span>
+    </span>
+    <span class="plan-chip plan-chip--muted hourly-strip__legend-item">
+      <span class="hourly-strip__legend-bar" data-tone="normal" aria-hidden="true" />
+      <span class="hourly-strip__legend-label">normal</span>
+    </span>
+    <span class="plan-chip plan-chip--muted hourly-strip__legend-item">
+      <span class="hourly-strip__legend-bar" data-tone="expensive" aria-hidden="true" />
+      <span class="hourly-strip__legend-label">peak</span>
+    </span>
+  </div>
+);
+
+const HourlyStrip = ({ data, timeZone, costUnit }: {
+  data: Extract<DeferredPlanHistoryHourlyStripData, { mode: 'present' }>;
+  timeZone: string;
+  costUnit: string;
+}) => {
+  const maxKwh = data.buckets.reduce((acc, bucket) => Math.max(acc, bucket.kwh), 0);
+  return (
+    <div class="hourly-strip" role="img" aria-label="Per-hour delivery and price">
+      <HourlyStripLegend />
+      <ol class="hourly-strip__bars">
+        {data.buckets.map((bucket) => {
+          const heightPercent = resolveBarHeightPercent(bucket, maxKwh);
+          const tooltip = buildStripTooltip(bucket, timeZone, costUnit);
+          return (
+            <li
+              key={bucket.atMs}
+              class="hourly-strip__bucket"
+              data-tone={bucket.tone ?? 'gap'}
+              data-outline={bucket.outlinePresent ? 'true' : 'false'}
+              data-cheapest={bucket.cheapestDeliveredHighlight ? 'true' : 'false'}
+              data-planned={bucket.planned ? 'true' : 'false'}
+              data-delivered={bucket.delivered ? 'true' : 'false'}
+              data-tooltip={tooltip}
+              tabIndex={0}
+              aria-label={tooltip}
+            >
+              <span
+                class="hourly-strip__bar"
+                style={`height: ${heightPercent}%;`}
+              />
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+};
+
 export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Props) => {
   const deadlineLine = formatPlanHistoryDeadlineLine(entry, timeZone);
   const progressLine = formatPlanHistoryProgressLine(entry);
@@ -915,6 +1063,10 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
   // reset-via-useEffect inside.
   const [chartCollapsed, setChartCollapsed] = useState(hero.chartCollapsedByDefault);
   const chartData = resolveHistoryDetailChartData(entry);
+  // Per-hour bar strip data resolved at the producer; the view layer never
+  // inspects `hourlyContributions` or the snapshot's planned hours. When
+  // the producer returns `absent` the strip is suppressed.
+  const hourlyStrip = resolveHistoryDetailHourlyStrip(entry);
   const labels = deadlineLabels(entry.objectiveKind);
   const observedSeriesName = labels.actualDeviceSeriesName;
   // Legacy mode also drives the row builder so the existing kWh-bar fallback
@@ -958,6 +1110,14 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
           <p class="pels-card-supporting">
             No hourly schedule was saved for this run.
           </p>
+          {/* When no schedule was recorded but the runtime did feed
+            * hourly delivery contributions, the postmortem still has a
+            * useful answer to "when did each hour run, and what did each
+            * hour cost?" — render the strip inside the empty-state card so
+            * the surface isn't a dead end. */}
+          {hourlyStrip.mode === 'present' && (
+            <HourlyStrip data={hourlyStrip} timeZone={timeZone} costUnit={costUnit} />
+          )}
         </section>
       ) : (
         <section class="pels-surface-card budget-redesign-card deadline-horizon-card">
@@ -992,6 +1152,15 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
               hasFinalSeries={hasFinalSeries}
               observedSeriesName={observedSeriesName}
             />
+          )}
+          {/* Per-hour bar strip lives inside the chart card so the time
+            * axis reads continuous with the trajectory above. Suppressed
+            * for entries without `hourlyContributions` (producer returns
+            * `absent`) and while the chart is collapsed (receipt-shape
+            * on Succeeded). Owner walk #11 + #14: answers "when did each
+            * hour run, and what did each hour cost?" at a glance. */}
+          {!chartCollapsed && hourlyStrip.mode === 'present' && (
+            <HourlyStrip data={hourlyStrip} timeZone={timeZone} costUnit={costUnit} />
           )}
         </section>
       )}
