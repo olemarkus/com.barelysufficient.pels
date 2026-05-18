@@ -6,6 +6,7 @@ import {
   usageHeroProjection,
 } from './dom.ts';
 import { getStartOfDayInTimeZone, getZonedParts } from './timezone.ts';
+import { formatTypicalDayLine } from '../../../shared-domain/src/usageVoice.ts';
 
 export type PowerStatsLike = {
   today: number;
@@ -78,10 +79,9 @@ const setElementText = (el: HTMLElement | null, text: string | null) => {
   target.hidden = false;
 };
 
-const isWeekendDate = (date: Date, timeZone: string): boolean => {
+const getZonedWeekday = (date: Date, timeZone: string): number => {
   const { year, month, day } = getZonedParts(date, timeZone);
-  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-  return weekday === 0 || weekday === 6;
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 };
 
 export type PaceContext = {
@@ -140,14 +140,10 @@ export const formatDeltaChipLabel = (ctx: PaceContext): { label: string; tone: C
 
 export const formatProjectionText = (ctx: PaceContext): string | null => {
   if (ctx.projected === null) return null;
-  const projectedDiff = ctx.projected - ctx.typicalDay;
-  if (Math.abs(projectedDiff) < PROJECTION_ON_TRACK_KWH) {
-    return `On track for ~${ctx.projected.toFixed(1)} kWh by midnight.`;
-  }
-  // Prose drops the redundant delta number — the chip carries it — but keeps
-  // the projection figure so the user still sees the absolute end-of-day kWh.
-  const direction = projectedDiff > 0 ? 'above' : 'below';
-  return `On track for ~${ctx.projected.toFixed(1)} kWh by midnight (${direction} typical).`;
+  // Tightened copy: the chip already carries the delta + direction, so the
+  // prose just names the landing figure in plain language. "Tonight" replaces
+  // "by midnight" because users live in a day-of-week vocabulary, not clocks.
+  return `On pace to finish near ${ctx.projected.toFixed(1)} kWh tonight.`;
 };
 
 export const resolveHeroTone = (ctx: PaceContext): 'ok' | 'warn' | 'alert' => {
@@ -232,7 +228,8 @@ export const renderUsageHero = (
   if (usageHeroHeadline) usageHeroHeadline.textContent = `${stats.today.toFixed(1)} kWh today`;
 
   const now = new Date();
-  const isWeekend = isWeekendDate(now, timeZone);
+  const weekdayIndex = getZonedWeekday(now, timeZone);
+  const isWeekend = weekdayIndex === 0 || weekdayIndex === 6;
   const typicalDay = isWeekend ? stats.weekendAvg : stats.weekdayAvg;
   if (!stats.hasPatternData || typicalDay <= 0) {
     renderHeroEmpty(todayText);
@@ -240,10 +237,9 @@ export const renderUsageHero = (
   }
 
   const ctx = computePaceContext(stats.today, typicalDay, now, timeZone);
-  const typicalLabel = isWeekend ? 'weekend' : 'weekday';
   setElementText(
     usageHeroComparison,
-    `Today · ${todayText}. Typical ${typicalLabel}: ${typicalDay.toFixed(1)} kWh.`,
+    `Today · ${todayText}. ${formatTypicalDayLine(weekdayIndex, typicalDay)}`,
   );
 
   const chip = formatDeltaChipLabel(ctx);

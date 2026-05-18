@@ -168,12 +168,17 @@ Reserve *plan* for the planning layer. Smart-task surfaces use *deadline*, *obje
 The operating mode (Home, Away, Night, or any user-authored name) is rendered
 on the Settings page with the English structural prefix `Mode:` followed by
 the untranslated mode name — e.g. `Mode: Home`, `Mode: Hjemme`. Source helper:
-`formatModeSummary` in `packages/settings-ui/src/ui/modeLabels.ts`.
+`formatModeSummary` in `packages/shared-domain/src/modeLabels.ts`.
 
 The older `${name} mode` form was retired in PR9 (owner walk 2026-05-17)
 because it produced awkward mid-phrase code-switches at non-English locales
 (e.g. `Hjemme mode`). Putting the English word first keeps it unambiguously
 chrome, and lets the user-authored name stand alone.
+
+An intent-line variant (`Hjemme · holding the house under 12 kW until 23:00`)
+was scoped for v2.7.3 but deferred — see TODO.md. PELS does not yet persist
+intent text alongside modes, so shipping the optional parameter would have
+added an unused branch.
 
 The Overview hero does not chip the mode — see
 `notes/overview-hero-spec.md` § "Chip row".

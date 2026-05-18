@@ -46,7 +46,6 @@ type DailyHistoryPoint = { date: string; kWh: number };
 const DAILY_HISTORY_DAYS = 14;
 
 type HourlyPatternView = 'all' | 'weekday' | 'weekend';
-type DailyHistoryRange = '7' | '14';
 const MIN_RELIABLE_SAMPLES_PER_HOUR = 2;
 const ZERO_KWH_EPSILON = 1e-9;
 
@@ -256,10 +255,8 @@ let powerUsageNavReady = false;
 let latestPowerStats: PowerStatsSummary = getEmptyPowerStats();
 let latestPowerStatsTimeZone = getHomeyTimezone();
 let hourlyPatternView: HourlyPatternView = 'all';
-let dailyHistoryRange: DailyHistoryRange = '14';
 let usageHistoryToggleReady = false;
 let setHourlyPatternToggleActive: (view: HourlyPatternView | null) => void = () => {};
-let setDailyHistoryToggleActive: (range: DailyHistoryRange | null) => void = () => {};
 
 const getPowerReadModel = async (): Promise<SettingsUiPowerPayload> => {
   const payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
@@ -302,8 +299,10 @@ const getHourlyPatternPoints = (stats: PowerStatsSummary): HourlyPatternPoint[] 
   return stats.hourlyPatternAll;
 };
 
+// The 7-day range toggle was removed in v2.7.3 — "this week" framing on the
+// hero already covers the short window, and the history view rewards more data.
 const getDailyHistoryPoints = (stats: PowerStatsSummary): DailyHistoryPoint[] => (
-  stats.dailyHistory.slice(0, Number(dailyHistoryRange))
+  stats.dailyHistory.slice(0, DAILY_HISTORY_DAYS)
 );
 
 const renderPowerSummary = (stats: PowerStatsSummary, timeZone: string) => {
@@ -393,7 +392,6 @@ const resolveDailyBudgetKWhForChart = (): number | null => {
 
 const renderDailyHistory = (stats: PowerStatsSummary, timeZone: string) => {
   if (!dailyList || !dailyEmpty) return;
-  setDailyHistoryToggleActive(dailyHistoryRange);
   const points = getDailyHistoryPoints(stats);
   if (!points.length) {
     renderDailyHistoryChartEcharts({
@@ -439,25 +437,10 @@ const initUsageHistoryToggles = () => {
     setHourlyPatternToggleActive(hourlyPatternView);
   }
 
-  const historyMount = document.getElementById('daily-history-range-mount');
-  if (historyMount) {
-    const hint = document.getElementById('daily-history-range-hint');
-    const { element, setActive } = createToggleGroup<DailyHistoryRange>(
-      [
-        { value: '7', label: '7 days' },
-        { value: '14', label: '14 days' },
-      ],
-      'Daily history range',
-      (range) => {
-        dailyHistoryRange = range;
-        if (hint) hint.textContent = `Last ${range} days`;
-        renderDailyHistory(latestPowerStats, latestPowerStatsTimeZone);
-      },
-    );
-    historyMount.replaceWith(element);
-    setDailyHistoryToggleActive = setActive;
-    setDailyHistoryToggleActive(dailyHistoryRange);
-  }
+  // The daily-history range toggle was retired in v2.7.3 — only 14d remained
+  // after dropping the redundant 7d option, so the toggle itself disappears.
+  // The mount element is removed by the surrounding HTML; this initializer no
+  // longer touches it, and the hint (if still present) is left as-is.
 };
 
 const renderUsageHistorySections = () => {

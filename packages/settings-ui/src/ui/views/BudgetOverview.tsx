@@ -33,15 +33,15 @@ import type { PriceLevelChip } from '../../../../shared-domain/src/priceLevelChi
 
 export type BudgetLocalView = 'plan' | 'adjust';
 export type BudgetStatus = 'noPlan' | 'within' | 'tight' | 'over';
-export type BudgetDeltaTone = 'ok' | 'warn' | 'alert';
 
 export type BudgetHeroData = {
   headlineLabel: string | null;
   comparison: string;
-  delta: { label: string; tone: BudgetDeltaTone } | null;
+  splitComparison: string | null;
   headroomLine: string | null;
   splitLine: string | null;
   priceTagline: string | null;
+  priceLevelChip: PriceLevelChip | null;
   decision: string | null;
   heroTone: 'ok' | 'warn' | 'alert';
 };
@@ -167,12 +167,6 @@ const ToggleGroup = <T extends string>({
 
 // ─── Budget Hero ──────────────────────────────────────────────────────────────
 
-const deltaChipClass = (tone: BudgetDeltaTone): string => {
-  if (tone === 'alert') return 'plan-chip plan-chip--alert';
-  if (tone === 'warn') return 'plan-chip plan-chip--warn';
-  return 'plan-chip plan-chip--ok';
-};
-
 const BudgetHero = ({ hero }: { hero: BudgetHeroData }) => (
   <section class="plan-hero pels-hero" data-tone={hero.heroTone}>
     <div id="budget-plan-summary" class="plan-hero__section">
@@ -181,20 +175,31 @@ const BudgetHero = ({ hero }: { hero: BudgetHeroData }) => (
       )}
       <div class="plan-hero__headline-row">
         <div id="budget-redesign-comparison" class="plan-hero__headline">{hero.comparison}</div>
-        {hero.delta && (
-          <span id="budget-redesign-delta" class={deltaChipClass(hero.delta.tone)}>
-            {hero.delta.label}
-          </span>
-        )}
       </div>
+      {(hero.splitComparison !== null || hero.priceLevelChip !== null) && (
+        <div class="plan-hero__subline-row">
+          {hero.splitComparison !== null && (
+            <span id="budget-redesign-split-comparison" class="plan-hero__subline">{hero.splitComparison}</span>
+          )}
+          {hero.priceLevelChip !== null && (
+            <span
+              id="budget-redesign-price-level-chip"
+              class={`plan-chip plan-chip--${hero.priceLevelChip.tone}`}
+              data-price-level={hero.priceLevelChip.priceLevel}
+            >
+              {hero.priceLevelChip.label}
+            </span>
+          )}
+        </div>
+      )}
       {hero.headroomLine !== null && (
-        <div class="plan-hero__subline plan-hero__subline--muted">{hero.headroomLine}</div>
+        <div class="plan-hero__subline plan-hero__subline--muted plan-hero__subline--headroom">{hero.headroomLine}</div>
       )}
       {hero.splitLine !== null && (
         <div class="plan-hero__subline plan-hero__subline--muted">{hero.splitLine}</div>
       )}
       {hero.priceTagline !== null && (
-        <div class="plan-hero__subline plan-hero__subline--muted">{hero.priceTagline}</div>
+        <div id="budget-redesign-price-tagline" class="plan-hero__subline plan-hero__subline--muted">{hero.priceTagline}</div>
       )}
       {hero.decision !== null && (
         <p class="plan-hero__decision">{hero.decision}</p>
