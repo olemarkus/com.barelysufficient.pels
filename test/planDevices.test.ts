@@ -1408,4 +1408,97 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       );
     });
   });
+
+  // docs/technical.md:222 — while any other managed device is limited, a stepped device on
+  // keep is capped at its lowest non-zero step. Wires through buildInitialPlanDevices to
+  // confirm the shedSet-derived flag flows into resolveSteppedKeepDesiredStepId end-to-end.
+  describe('stepped keep invariant (shed side)', () => {
+    const buildStepped = (overrides = {}) => steppedInputDevice({
+      id: 'heater',
+      name: 'Water heater',
+      selectedStepId: 'medium',
+      desiredStepId: 'medium',
+      currentOn: true,
+      ...overrides,
+    });
+
+    const buildBinary = (id: string) => buildPlanInputDevice({
+      id,
+      name: id,
+      currentOn: true,
+    });
+
+    it('clamps a stepped keep device to lowest non-zero step when another device is shed', () => {
+      const [stepped] = buildInitialPlanDevices({
+        context: buildContext([buildStepped(), buildBinary('thermostat')]),
+        state: createPlanEngineState(),
+        shedSet: new Set(['thermostat']),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deps: defaultDeps,
+      });
+
+      expect(stepped.id).toBe('heater');
+      expect(stepped.plannedState).toBe('keep');
+      expect(stepped.desiredStepId).toBe('low');
+    });
+
+    it('leaves a stepped keep device alone when shedSet is empty', () => {
+      const [stepped] = buildInitialPlanDevices({
+        context: buildContext([buildStepped(), buildBinary('thermostat')]),
+        state: createPlanEngineState(),
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deps: defaultDeps,
+      });
+
+      expect(stepped.desiredStepId).toBe('medium');
+    });
+
+    it('ignores phantom underspecified set_step shed entries when deciding the invariant', () => {
+      // Device B is in shedSet with set_step shed action, but it's already at the lowest active
+      // step — resolveSteppedLoadDirectShedStepId returns the same step (no change). Mirrors the
+      // phantom case that hasExecutableShedDevices filters out of keep-invariant posture.
+      const keepStepped = buildStepped({ id: 'heater' });
+      const phantomStepped = steppedInputDevice({
+        id: 'phantom',
+        name: 'phantom',
+        selectedStepId: 'low',
+        desiredStepId: 'low',
+        currentOn: true,
+      });
+
+      const [stepped] = buildInitialPlanDevices({
+        context: buildContext([keepStepped, phantomStepped]),
+        state: createPlanEngineState(),
+        shedSet: new Set(['phantom']),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deps: {
+          ...defaultDeps,
+          getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
+        },
+      });
+
+      expect(stepped.id).toBe('heater');
+      expect(stepped.plannedState).toBe('keep');
+      // Phantom shedSet entry doesn't count as posture, so the keep device stays at medium.
+      expect(stepped.desiredStepId).toBe('medium');
+    });
+
+    it('does not trigger the invariant when the only shed device is the stepped device itself', () => {
+      const [stepped] = buildInitialPlanDevices({
+        context: buildContext([buildStepped()]),
+        state: createPlanEngineState(),
+        shedSet: new Set(['heater']),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deps: defaultDeps,
+      });
+
+      // Self-shed: plannedState becomes shed, not keep — the invariant clamp doesn't apply.
+      expect(stepped.plannedState).toBe('shed');
+    });
+  });
 });

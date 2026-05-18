@@ -143,6 +143,55 @@ describe('planSteppedLoad', () => {
     }))).toBe(plannerNormalized);
   });
 
+  // docs/technical.md:222 — stepped device on keep is capped at lowest non-zero step
+  // while any other device is being limited this cycle.
+  it('clamps observed-on keep desired step to lowest non-zero when any other device is limited', () => {
+    const baseDevice = steppedPlanDevice({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'medium',
+      desiredStepId: 'medium',
+    });
+
+    expect(resolveSteppedKeepDesiredStepId(baseDevice)).toBe('medium');
+    expect(resolveSteppedKeepDesiredStepId(baseDevice, { anyOtherDeviceLimited: false })).toBe('medium');
+    expect(resolveSteppedKeepDesiredStepId(baseDevice, { anyOtherDeviceLimited: true })).toBe('low');
+
+    expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'max',
+      desiredStepId: 'max',
+    }), { anyOtherDeviceLimited: true })).toBe('low');
+  });
+
+  it('leaves keep desired step unchanged when device is already at lowest non-zero step', () => {
+    expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+    }), { anyOtherDeviceLimited: true })).toBe('low');
+  });
+
+  it('preserves off→low normalization when other devices are limited', () => {
+    expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'medium',
+      desiredStepId: 'off',
+    }), { anyOtherDeviceLimited: true })).toBe('low');
+  });
+
+  it('does not apply the shed-invariant clamp for shed-intent devices', () => {
+    expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
+      currentState: 'on',
+      plannedState: 'shed',
+      selectedStepId: 'medium',
+      desiredStepId: 'medium',
+    }), { anyOtherDeviceLimited: true })).toBe('medium');
+  });
+
   it('resolves shed targets conservatively for turn-off and set-step behavior', () => {
     expect(getSteppedLoadShedTargetStep({
       device: steppedInputDevice({ selectedStepId: 'max' }),

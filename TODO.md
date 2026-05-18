@@ -1470,34 +1470,6 @@ consolidation + a11y polish (8 P2)`.*
       log entries") covers the log-noise half.
       Files: `lib/app/appSnapshotHelpers.ts`, observer/device-state freshness helpers,
       snapshot-refresh tests.
-- [ ] Deferred-objective diagnostics advertise plan inputs that admission won't apply for
-      cap-on devices. `lib/plan/deferredObjectives/admission.ts:72-77` intentionally only
-      overrides the cap-off (`device.controllable === false`) fallback — the inline comment
-      is explicit that soft objectives "should not bypass restore admission, cooldowns, or
-      daily-budget logic" when capacity control is on. But the diagnostic emitted upstream
-      (`diagnosticsBridge.ts`) still publishes `requestedMinimumStepId`,
-      `usesDeadlineReserve`, and per-bucket `plannedUsefulEnergyKWh` regardless of
-      device-controllable state. Result: the runtime log, flow tokens, and (potentially)
-      UI/devtools surfaces all describe a planning intent the executor never seeds for
-      cap-on devices, so an operator inspecting "why my heater isn't running" cannot tell
-      from the diagnostic alone that admission has silently no-op'd. In this audit window
-      80/80 horizon plans for `Connected 300` (cap-on water heater) emitted
-      `requestedMinimumStepId:"low"` and `usesDeadlineReserve:true` while the device was
-      held off the entire session by the normal capacity guard.
-      Why P2: behavior is correct by design; the gap is observability, not control
-      integrity. Related to but distinct from the existing P2 about `enforcement: 'hard'`
-      having no behavioral effect on EV deadlines (`TODO.md` "Make `enforcement: 'hard'`
-      actually bypass…").
-      Acceptance: either (a) the diagnostic carries a flag that marks plan intent as
-      advisory-only when `device.controllable === true && enforcement === 'soft'` (so UI
-      and trigger token consumers can render the soft contract honestly), or (b) those
-      fields are suppressed for that case. Acceptance test: cap-on soft objective in
-      `cannot_meet` produces a diagnostic that does not invite a "we'll heat at low step"
-      reading.
-      Files: `lib/plan/deferredObjectives/diagnosticsBridge.ts`,
-      `lib/plan/deferredObjectives/admission.ts` (read-only — comment is the contract),
-      `flowCards/deadlineObjectiveCards.ts` (trigger token shape), diagnostics-bridge tests.
-      Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
 - [ ] Quiet duplicate-snapshot `objective_profile_non_monotonic_time` rejections.
       `lib/core/deviceManagerParseSnapshot.ts:58-84` (`resolveLastFreshDataMs`) takes
       `Math.max(...)` over multiple Homey capability `lastUpdated` timestamps. When the
@@ -1938,6 +1910,60 @@ should not be folded into the same PR.
       mode = ~8,640/day). Per-device emit-on-transition + N-minute heartbeat would
       keep the signal useful without flooding the log buffer (RSS headroom is ~30 MB
       per `project_homey_rss_limit`). Files: `lib/plan/planDevices.ts`.
+
+- [ ] Symmetric phantom-shed filter for the shed-side keep-invariant clamp.
+      `lib/plan/planDevices.ts:isPhantomSetStepShed` mirrors the
+      `lib/executor/executablePlanProjection.ts:isDroppedUnderspecifiedSetStepShed`
+      filter at plan-build time, but omits the `!isHeldByRestoreAdmission`
+      conjunct because plan reasons aren't computed at the pre-pass call site
+      (top of `buildInitialPlanDevices`, before the `.map()`). Result: in the
+      niche state where a stepped+`set_step` device is in `shedSet` AND held
+      by restore admission AND its target step doesn't resolve (or equals
+      selectedStepId), the plan-build mirror filters it from
+      `effectiveShedSet` while the executor projection would keep it in
+      posture. An unrelated stepped keep device that should have been clamped
+      to lowestActive per docs/technical.md:222 then stays at its current
+      step. Inverse-direction asymmetry vs. the codex P1 closed in PR #891.
+      Why P3: very narrow trigger; user-visible incident (Connected 300
+      stuck at medium during overshoot) is fixed by the shipped clamp; no
+      observed prod occurrence of this corner.
+      Acceptance: either (a) two-pass build (compute reasons first, then
+      re-derive `effectiveShedSet` from finished plan devices using the real
+      `isHeldByRestoreAdmission` predicate), or (b) thread the restore-hold
+      signal into `PlanInputDevice` so the pre-pass can read it without a
+      second pass. Acceptance test: stepped device A on keep at medium,
+      stepped device B with `set_step` shed action held by restore admission
+      in `shedSet`, assert A's `desiredStepId` clamps to lowestActive.
+      Files: `lib/plan/planDevices.ts`, `lib/plan/keepInvariantPosture.ts`,
+      `lib/executor/executablePlanProjection.ts` (read-only reference),
+      `test/planDevices.test.ts`.
+      Source: adversarial-review on PR #891 (2026-05-18).
+
+- [ ] Wire deferred-objective step intent into cascade control (future feature).
+      Today `lib/plan/deferredObjectives/horizonPlanner.ts:158,188` computes a
+      `requestedMinimumStepId` per planned bucket and emits it via
+      `lib/plan/deferredObjectives/admission.ts:53-57` on the `DeferredAdmissionDecision`,
+      but no consumer reads it for control — it reaches diagnostics, log payloads,
+      and flow tokens only. Smart tasks today are admission-only ("may this device
+      run?"); they do not steer step level. The cascade picks step independently
+      from device priority, soft-cap pressure, and its own step-down policy.
+      Future capability: opt-in path where the cascade consults the horizon's
+      requested step as a step-down hint during soft overshoot. Likely gated on
+      `enforcement === 'hard'` so soft objectives stay advisory per the
+      `lib/plan/deferredObjectives/admission.ts:72-77` design comment ("soft
+      objectives should not bypass restore admission, cooldowns, or daily-budget
+      logic"). Pairs naturally with the P2 about `enforcement: 'hard'` having no
+      behavioral effect on EV deadlines.
+      Why P3: speculative future feature, not a defect. Current behavior is the
+      documented soft-objective contract. The audit-window symptom (Connected 300
+      cap-on water heater emitting `requestedMinimumStepId:"low"` over 80/80
+      horizon plans with no executor effect, while the cascade shed thermostats
+      to absorb soft overshoot) is intentional.
+      Files: `lib/plan/deferredObjectives/admission.ts`,
+      `lib/plan/deferredObjectives/horizonPlanner.ts`,
+      `lib/plan/shedding/selection.ts`, `lib/plan/shedding/candidates.ts`,
+      `notes/deferred-load-objectives/` (design doc when picked up).
+      Source: investigation 2026-05-18 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
 
 - [ ] Add Playwright assertion that the segmented short/full labels never co-render.
       PR 3.2 introduced a dual-label pattern on `.segmented__option-label--full` /
