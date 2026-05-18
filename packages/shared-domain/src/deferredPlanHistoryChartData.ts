@@ -65,6 +65,14 @@ export type DeferredPlanHistoryChartData = {
   // crossed the target. Null when the run missed / abandoned or no
   // `metAtMs` was recorded.
   metAtMs: number | null;
+  // Y-coordinate to plot the met marker at. For target-reached runs this is
+  // the target; for stalled runs (`metReason === 'stalled'`) it's the
+  // frozen final progress (the plateau the device settled at) so the marker
+  // lands on the observed line, not above it. Null exactly when `metAtMs`
+  // is null. Producer-side resolution per
+  // `feedback_layering_resolution_in_producer` — the chart view never
+  // branches on outcome / metReason / kind to pick the coordinate.
+  metMarkerValue: number | null;
 };
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -205,6 +213,35 @@ const pickMetMarker = (
   return entry.metAtMs;
 };
 
+// Y-coordinate for the met marker. Target-reached runs land on the target
+// line (their natural reading); stalled runs land on the captured plateau
+// reading from `finalProgress*`, which is exactly where the observed line
+// stopped. Falls back to `null` if either the marker timestamp is absent
+// or the entry's frozen plateau reading is missing — the chart treats null
+// the same as a no-marker run.
+const pickMetMarkerValue = (
+  entry: Pick<
+    DeferredObjectivePlanHistoryEntry,
+    'outcome'
+    | 'metReason'
+    | 'metAtMs'
+    | 'objectiveKind'
+    | 'targetTemperatureC'
+    | 'targetPercent'
+    | 'finalProgressC'
+    | 'finalProgressPercent'
+  >,
+): number | null => {
+  if (pickMetMarker(entry) === null) return null;
+  if (entry.metReason === 'stalled') {
+    const finalProgress = entry.objectiveKind === 'temperature'
+      ? entry.finalProgressC
+      : entry.finalProgressPercent;
+    return Number.isFinite(finalProgress) ? finalProgress : null;
+  }
+  return pickTargetValue(entry);
+};
+
 type ChartDataEntry = Pick<
   DeferredObjectivePlanHistoryEntry,
   'objectiveKind'
@@ -212,12 +249,15 @@ type ChartDataEntry = Pick<
   | 'targetPercent'
   | 'startProgressC'
   | 'startProgressPercent'
+  | 'finalProgressC'
+  | 'finalProgressPercent'
   | 'startedAtMs'
   | 'deadlineAtMs'
   | 'originalPlan'
   | 'finalPlan'
   | 'progressSamples'
   | 'metAtMs'
+  | 'metReason'
   | 'outcome'
 >;
 
@@ -261,6 +301,7 @@ const composeTrajectoryData = (
     observed,
     target: pickTargetValue(entry),
     metAtMs: pickMetMarker(entry),
+    metMarkerValue: pickMetMarkerValue(entry),
   };
 };
 
@@ -278,6 +319,7 @@ const composeLegacyData = (
   observed: [],
   target: pickTargetValue(entry),
   metAtMs: pickMetMarker(entry),
+  metMarkerValue: pickMetMarkerValue(entry),
 });
 
 /**

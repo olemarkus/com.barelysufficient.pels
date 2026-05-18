@@ -540,7 +540,7 @@ export const buildHistoryDetailTrajectoryOption = (
         // The metAtMs marker sits on the planned staircase — the postmortem
         // sentence "Hit 65 °C at 11:57" lands here. Only attached to the
         // original series so a revised overlay doesn't double-mark.
-        markPoint: data.metAtMs !== null && data.target !== null && !hasPlannedFinal
+        markPoint: data.metAtMs !== null && data.metMarkerValue !== null && !hasPlannedFinal
           ? {
             symbol: 'circle',
             symbolSize: 10,
@@ -548,7 +548,7 @@ export const buildHistoryDetailTrajectoryOption = (
             label: { show: false },
             data: [{
               name: MET_MARK_NAME,
-              coord: [data.metAtMs, data.target],
+              coord: [data.metAtMs, data.metMarkerValue],
             }],
           }
           : undefined,
@@ -561,7 +561,7 @@ export const buildHistoryDetailTrajectoryOption = (
         lineStyle: { color: palette.device, width: 2 },
         itemStyle: { color: palette.device },
         data: toEchartsData(data.plannedFinal!),
-        markPoint: data.metAtMs !== null && data.target !== null
+        markPoint: data.metAtMs !== null && data.metMarkerValue !== null
           ? {
             symbol: 'circle',
             symbolSize: 10,
@@ -569,7 +569,7 @@ export const buildHistoryDetailTrajectoryOption = (
             label: { show: false },
             data: [{
               name: MET_MARK_NAME,
-              coord: [data.metAtMs, data.target],
+              coord: [data.metAtMs, data.metMarkerValue],
             }],
           }
           : undefined,

@@ -12,6 +12,7 @@ import type {
   DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
   DeferredObjectivePlanHistoryV4,
+  DeferredObjectivePlanMetReason,
   DeferredObjectivePlanOutcome,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION } from './planHistorySettings';
@@ -63,8 +64,12 @@ type InProgressRecord = Omit<
   | 'totalCost'
   | 'revisions'
   | 'hourlyContributions'
+  | 'metReason'
 > & {
   satisfied: boolean;
+  // `null` for target-reached / in-flight; `'stalled'` once the idle
+  // classifier promoted the run. Sticky, reset only by clearSatisfiedWithProgress.
+  metReason: DeferredObjectivePlanMetReason | null;
   // True original plan for this run, captured the first cycle an active plan
   // exists for `(deviceId, deadlineAtMs)`. We snapshot `plan.original` when
   // it's present so a recorder picking up mid-run (app restart, back-fill)
@@ -241,6 +246,7 @@ const startRecord = (
     usedPolicyAvoid: diag.horizonPlan?.usesPolicyAvoid ?? false,
     observedIntervals: [{ fromMs: nowMs, toMs: nowMs }],
     satisfied: currentlySatisfied,
+    metReason: null,
     // Seed `originalPlan` with the richer of `plan.original` / `plan.latest`
     // so a recorder picking up mid-run after the planner has already expanded
     // the schedule does not anchor on a stale first revision. Subsequent
@@ -342,25 +348,56 @@ const backfillStartProgress = (
 });
 
 
+// Stall-promoted records freeze `satisfied` and `finalProgress*` at the
+// plateau reading. Without the freeze, post-stall samples would
+// overwrite "as warm as the device would hold" and the next plannable
+// tick would re-derive `currentlySatisfied = false` and unflag the run.
+const computeMergedMetState = (
+  record: InProgressRecord,
+  diag: DeferredObjectiveDiagnostic,
+  nowMs: number,
+): {
+  satisfied: boolean;
+  metAtMs: number | null;
+  finalProgressC: number | null;
+  finalProgressPercent: number | null;
+} => {
+  const stallPromoted = record.satisfied && record.metReason === 'stalled';
+  if (stallPromoted) {
+    return {
+      satisfied: true,
+      metAtMs: record.metAtMs,
+      finalProgressC: record.finalProgressC,
+      finalProgressPercent: record.finalProgressPercent,
+    };
+  }
+  const currentlySatisfied = isSatisfiedStatus(diag.status);
+  return {
+    satisfied: currentlySatisfied,
+    metAtMs: currentlySatisfied ? (record.metAtMs ?? nowMs) : null,
+    finalProgressC: captureProgressC(diag) ?? record.finalProgressC,
+    finalProgressPercent: captureProgressPercent(diag) ?? record.finalProgressPercent,
+  };
+};
+
 const mergeRecord = (
   record: InProgressRecord,
   diag: DeferredObjectiveDiagnostic,
   nowMs: number,
   plan: DeferredObjectiveActivePlanV1 | undefined,
 ): InProgressRecord => {
-  const currentlySatisfied = isSatisfiedStatus(diag.status);
-  const metAtMs = currentlySatisfied ? (record.metAtMs ?? nowMs) : null;
+  const merged = computeMergedMetState(record, diag, nowMs);
   return {
     ...record,
     deviceName: diag.deviceName ?? record.deviceName,
     ...backfillStartProgress(record, diag),
-    finalProgressC: captureProgressC(diag) ?? record.finalProgressC,
-    finalProgressPercent: captureProgressPercent(diag) ?? record.finalProgressPercent,
+    finalProgressC: merged.finalProgressC,
+    finalProgressPercent: merged.finalProgressPercent,
     usedDeadlineReserve: record.usedDeadlineReserve || (diag.horizonPlan?.usesDeadlineReserve ?? false),
     usedPolicyAvoid: record.usedPolicyAvoid || (diag.horizonPlan?.usesPolicyAvoid ?? false),
     observedIntervals: extendIntervals(record.observedIntervals, nowMs),
-    satisfied: currentlySatisfied,
-    metAtMs,
+    satisfied: merged.satisfied,
+    metAtMs: merged.metAtMs,
     progressSamples: recordProgressSample(record.progressSamples, diag, nowMs),
     ...refreshPlanSnapshots(record, plan),
   };
@@ -381,6 +418,7 @@ const clearSatisfiedWithProgress = (
     observedIntervals: extendIntervals(record.observedIntervals, nowMs),
     satisfied: false,
     metAtMs: null,
+    metReason: null,
     progressSamples: recordProgressSample(record.progressSamples, diag, nowMs),
     ...refreshPlanSnapshots(record, plan),
   };
@@ -399,13 +437,56 @@ const recordObservedTick = (
   ...refreshPlanSnapshots(record, plan),
 });
 
+// Promote a run to satisfied(stalled) when the classifier reports
+// `near_target_idle`. Idempotent — already-satisfied records pass
+// through. Plateau value captured here is what the history reads back;
+// classifier owns the 5 °C / 15 min band (see notes/idle-classification.md).
+// Snapshots `finalProgress*` from the current diagnostic at promotion
+// time when the reading is trustworthy: `recordNonPlannableTick` routes
+// through `recordObservedTick`, which doesn't refresh `finalProgress*`,
+// so without this capture the freeze would pin to the previous
+// plannable tick's value rather than the reading that triggered stall.
+// Falls back to whatever the record already holds when the diag's
+// progress isn't trustworthy.
+const promoteRecordToStalled = (
+  record: InProgressRecord,
+  diag: DeferredObjectiveDiagnostic,
+  nowMs: number,
+): InProgressRecord => {
+  if (record.satisfied) return record;
+  const captureFromDiag = hasTrustworthyProgress(diag);
+  return {
+    ...record,
+    finalProgressC: captureFromDiag
+      ? (captureProgressC(diag) ?? record.finalProgressC)
+      : record.finalProgressC,
+    finalProgressPercent: captureFromDiag
+      ? (captureProgressPercent(diag) ?? record.finalProgressPercent)
+      : record.finalProgressPercent,
+    satisfied: true,
+    metAtMs: nowMs,
+    metReason: 'stalled',
+  };
+};
+
 const recordNonPlannableTick = (
   record: InProgressRecord,
   diag: DeferredObjectiveDiagnostic,
   nowMs: number,
   plan: DeferredObjectiveActivePlanV1 | undefined,
 ): InProgressRecord => {
-  if (record.satisfied && hasTrustworthyProgress(diag) && !diagnosticProgressAtTarget(diag)) {
+  // Stalled records skip the re-open path: "device settled below target" is
+  // exactly the state the stall promotion accepts as terminal. Re-opening
+  // would discard the carefully-frozen `metAtMs` / `finalProgress*` we
+  // captured at the plateau and produce a noisy "satisfied → not satisfied"
+  // oscillation against the idle classifier's exit hysteresis. Target-reached
+  // mets keep the existing clear-on-drift behavior.
+  if (
+    record.satisfied
+    && record.metReason !== 'stalled'
+    && hasTrustworthyProgress(diag)
+    && !diagnosticProgressAtTarget(diag)
+  ) {
     return clearSatisfiedWithProgress(record, diag, nowMs, plan);
   }
   return recordObservedTick(record, diag, nowMs, plan);
@@ -439,6 +520,7 @@ const finalizeRecord = (
   reason: 'deadline_passed' | 'replaced' | 'abandoned',
 ): DeferredObjectivePlanHistoryEntry => {
   const drainedSamples = drainProgressSamples(record.progressSamples);
+  const outcome = classifyOutcome(record, reason);
   return {
     id: randomUUID(),
     deviceId: record.deviceId,
@@ -454,8 +536,13 @@ const finalizeRecord = (
     finalProgressC: record.finalProgressC,
     finalProgressPercent: record.finalProgressPercent,
     initialEnergyNeededKWh: record.initialEnergyNeededKWh,
-    outcome: classifyOutcome(record, reason),
+    outcome,
     metAtMs: record.metAtMs,
+    // Only persist `metReason` on `met` outcomes. The contract forbids it on
+    // any other outcome (see `hasValidOutcome` in `planHistorySettings.ts`),
+    // and a stalled record that finalizes as `replaced` / `abandoned` /
+    // `unknown` should not carry a `met`-only field into history.
+    ...(outcome === 'met' && record.metReason !== null ? { metReason: record.metReason } : {}),
     usedDeadlineReserve: record.usedDeadlineReserve,
     usedPolicyAvoid: record.usedPolicyAvoid,
     observedIntervals: record.observedIntervals.slice(),
@@ -487,6 +574,13 @@ const finalizeRecord = (
     ...(record.revisions.length > 0 ? { revisions: record.revisions.slice() } : {}),
   };
 };
+
+// Reads through the observer-layer idle classifier
+// (`lib/observer/idleClassifier.ts`). Only `near_target_idle` promotes;
+// `unresponsive` is a hardware-fault signal and is deliberately ignored.
+export type DeferredObjectiveStallClassificationReader = (
+  deviceId: string,
+) => 'near_target_idle' | 'unresponsive' | undefined;
 
 export type DeferredObjectiveBackfillConfig = {
   deviceId: string;
@@ -584,36 +678,71 @@ export class DeferredObjectivePlanHistoryRecorder {
     diagnostics: readonly DeferredObjectiveDiagnostic[],
     nowMs: number,
     activePlans: DeferredObjectiveActivePlansV1 | null = null,
+    getStallClassification?: DeferredObjectiveStallClassificationReader,
   ): void {
     const seenKeys = new Set<InProgressKey>();
     for (const diag of diagnostics) {
       if (diag.deadlineAtMs === null) continue;
       const key = buildKey(diag.deviceId, diag.deadlineAtMs);
       seenKeys.add(key);
-      const existing = this.inProgress.get(key);
-      const plannable = isPlannableStatus(diag.status) || isSatisfiedStatus(diag.status);
-      const plan = findPlanForRecord(activePlans, { deviceId: diag.deviceId, deadlineAtMs: diag.deadlineAtMs });
-      if (existing) {
-        // Plannable diagnostics roll forward progress + planning flags. Unknown/invalid still
-        // count as observation ("PELS was watching"). If an already-met run later reports
-        // trustworthy below-target progress, clear the live met marker; otherwise preserve
-        // the last trustworthy progress.
-        const next = plannable
-          ? mergeRecord(existing, diag, nowMs, plan)
-          : recordNonPlannableTick(existing, diag, nowMs, plan);
-        this.inProgress.set(key, next);
-        continue;
-      }
-      // Begin tracking on first sight of a future-dated deadline, regardless of status. The
-      // deadline event is the recorded thing; observation quality is captured separately via
-      // observedIntervals + progress nullability. The stale-deadline guard still applies so a
-      // diagnostic whose deadline has already passed doesn't create a junk record finalized on
-      // the same cycle.
-      if (diag.deadlineAtMs <= nowMs) continue;
-      const next = startRecord(diag, nowMs, plan);
-      if (next) this.inProgress.set(key, next);
+      this.observeDiagnostic(diag, key, nowMs, activePlans, getStallClassification);
     }
     this.finalizeStaleRecords(seenKeys, nowMs);
+  }
+
+  // Runs after merge/start so the freeze-on-met-time logic in `mergeRecord`
+  // doesn't overwrite the plateau on the cycle stall is declared.
+  private maybePromoteOnStall(
+    record: InProgressRecord,
+    diag: DeferredObjectiveDiagnostic,
+    nowMs: number,
+    getStallClassification?: DeferredObjectiveStallClassificationReader,
+  ): InProgressRecord {
+    const classification = getStallClassification?.(diag.deviceId);
+    return classification === 'near_target_idle'
+      ? promoteRecordToStalled(record, diag, nowMs)
+      : record;
+  }
+
+  private observeDiagnostic(
+    diag: DeferredObjectiveDiagnostic,
+    key: InProgressKey,
+    nowMs: number,
+    activePlans: DeferredObjectiveActivePlansV1 | null,
+    getStallClassification?: DeferredObjectiveStallClassificationReader,
+  ): void {
+    const plan = findPlanForRecord(activePlans, { deviceId: diag.deviceId, deadlineAtMs: diag.deadlineAtMs! });
+    const existing = this.inProgress.get(key);
+    if (existing) {
+      const plannable = isPlannableStatus(diag.status) || isSatisfiedStatus(diag.status);
+      // Plannable diagnostics roll forward progress + planning flags. Unknown/invalid still
+      // count as observation ("PELS was watching"). If an already-met run later reports
+      // trustworthy below-target progress, clear the live met marker; otherwise preserve
+      // the last trustworthy progress.
+      const merged = plannable
+        ? mergeRecord(existing, diag, nowMs, plan)
+        : recordNonPlannableTick(existing, diag, nowMs, plan);
+      this.inProgress.set(key, this.maybePromoteOnStall(merged, diag, nowMs, getStallClassification));
+      return;
+    }
+    // Begin tracking on first sight of a future-dated deadline, regardless of status. The
+    // deadline event is the recorded thing; observation quality is captured separately via
+    // observedIntervals + progress nullability. The stale-deadline guard still applies so a
+    // diagnostic whose deadline has already passed doesn't create a junk record finalized on
+    // the same cycle.
+    if (diag.deadlineAtMs! <= nowMs) return;
+    const next = startRecord(diag, nowMs, plan);
+    if (!next) return;
+    // Deliberately skip stall promotion on first-seen records. The
+    // classification ticks AFTER plan emission (`tickIdleClassifier`), so the
+    // value we'd read here is the *previous* cycle's result — which belongs
+    // to whatever objective ran for this device on the prior tick. After a
+    // `finalizeForUserChange` swap (user replaced target / deadline), that
+    // stale `near_target_idle` would falsely auto-complete the brand-new run
+    // on its first tick and stick until finalization. The next tick — where
+    // the classifier has had a chance to re-evaluate against the actual
+    // current objective — handles promotion through the `existing` branch.
+    this.inProgress.set(key, next);
   }
 
   /**

@@ -10,6 +10,17 @@ export type DeferredObjectivePlanOutcome =
   | 'replaced'
   | 'unknown';
 
+// Why a 'met' run was marked done. Absent on the default "reached target"
+// path so legacy entries (and the overwhelming majority of clean met runs)
+// persist byte-stable. 'stalled' is the idle-classifier `near_target_idle`
+// promotion: the device stopped drawing close to its setpoint, so PELS
+// declared the objective satisfied without the progress series literally
+// crossing the target threshold. See `notes/idle-classification.md` for the
+// 5 °C / 15 min thresholds and the Connected 300 worked example. Added in
+// v2.7.3 — no schema-version bump because the field is optional and
+// validators accept absence as the legacy shape.
+export type DeferredObjectivePlanMetReason = 'stalled';
+
 export type DeferredObjectivePlanHistoryDiscoveredFrom = 'observation' | 'backfill';
 
 export type DeferredObjectivePlanHistoryObservedInterval = {
@@ -118,6 +129,12 @@ export type DeferredObjectivePlanHistoryEntry = {
   finalProgressPercent: number | null;
   initialEnergyNeededKWh: number;
   outcome: DeferredObjectivePlanOutcome;
+  // When `outcome === 'met'` and absent, the run is interpreted as having
+  // literally crossed the target (the existing semantics). `'stalled'` flags
+  // the idle-classifier promotion path — see `DeferredObjectivePlanMetReason`.
+  // Always absent for non-`met` outcomes; producers must not write it on
+  // missed/abandoned/replaced/unknown entries.
+  metReason?: DeferredObjectivePlanMetReason;
   metAtMs: number | null;
   usedDeadlineReserve: boolean;
   usedPolicyAvoid: boolean;

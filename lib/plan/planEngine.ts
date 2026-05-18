@@ -67,6 +67,7 @@ export type PlanEngineDeps = {
   deferredObjectiveDebugStructured?: StructuredDebugEmitter;
   observeDeferredObjectivePlanHistory?: PlanBuilderDeps['observeDeferredObjectivePlanHistory'];
   observeDeferredObjectiveActivePlans?: PlanBuilderDeps['observeDeferredObjectiveActivePlans'];
+  getStallClassification?: PlanBuilderDeps['getStallClassification'];
   getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
   disableDeferredObjective?: (deviceId: string) => void;
   markSteppedLoadDesiredStepIssued: (params: {
@@ -119,6 +120,7 @@ export class PlanEngine {
       deferredObjectiveDebugStructured: deps.deferredObjectiveDebugStructured,
       observeDeferredObjectivePlanHistory: deps.observeDeferredObjectivePlanHistory,
       observeDeferredObjectiveActivePlans: deps.observeDeferredObjectiveActivePlans,
+      getStallClassification: deps.getStallClassification,
       getDeferredObjectiveStatusBus: deps.getDeferredObjectiveStatusBus,
       disableDeferredObjective: deps.disableDeferredObjective,
       log: deps.log,

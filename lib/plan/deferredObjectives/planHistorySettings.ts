@@ -12,6 +12,7 @@ import type {
   DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
   DeferredObjectivePlanHistoryV4,
+  DeferredObjectivePlanMetReason,
   DeferredObjectivePlanOutcome,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { isFiniteNumber } from '../../utils/appTypeGuards';
@@ -37,6 +38,10 @@ const isOutcome = (value: unknown): value is DeferredObjectivePlanOutcome => (
     || value === 'abandoned'
     || value === 'replaced'
     || value === 'unknown'
+);
+
+const isMetReason = (value: unknown): value is DeferredObjectivePlanMetReason => (
+  value === 'stalled'
 );
 
 const isFiniteOrNull = (value: unknown): value is number | null => (
@@ -160,11 +165,19 @@ const hasValidProgress = (v: Record<string, unknown>): boolean => (
     && isFiniteNumber(v.initialEnergyNeededKWh)
 );
 
-const hasValidOutcome = (v: Record<string, unknown>): boolean => (
-  isOutcome(v.outcome)
-    && typeof v.usedDeadlineReserve === 'boolean'
-    && typeof v.usedPolicyAvoid === 'boolean'
-);
+const hasValidOutcome = (v: Record<string, unknown>): boolean => {
+  if (!isOutcome(v.outcome)) return false;
+  if (typeof v.usedDeadlineReserve !== 'boolean') return false;
+  if (typeof v.usedPolicyAvoid !== 'boolean') return false;
+  // `metReason` is optional and only meaningful on `met` outcomes. Reject
+  // entries that carry it on any other outcome (treat as schema tamper)
+  // so the consumer never has to disambiguate "stalled but missed".
+  if (v.metReason !== undefined) {
+    if (!isMetReason(v.metReason)) return false;
+    if (v.outcome !== 'met') return false;
+  }
+  return true;
+};
 
 const hasValidCoverage = (v: Record<string, unknown>): boolean => (
   Array.isArray(v.observedIntervals)
