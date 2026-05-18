@@ -1909,6 +1909,36 @@ should not be folded into the same PR.
 
 ## P3 Future and Exploratory Work
 
+- [ ] Surface mode-target misconfiguration to the user. When a managed temperature
+      device has no target set for the active operating mode, the planner falls back
+      to the device's current `target_temperature` capability value and logs
+      `missing_mode_target` (topic `plan`). When both are missing, the planner emits
+      `missing_mode_target_and_current_target` and either drops the device for the
+      cycle or — if a deferred (deadline) objective is active — uses the deadline
+      target as the rescue seed and keeps planning. The settings UI should warn the
+      user (e.g. in the device detail page or on the operating-mode page) so they
+      can configure the missing target instead of relying on whatever the thermostat
+      happens to be set to or on the deadline rescue path.
+      Files: `lib/plan/planDevices.ts` (`resolveTemperatureSeed`,
+      `resolvePlannedTarget`), settings UI device detail / operating-mode views.
+
+- [ ] Add abandon-grace to the mode-target-missing skip path. Today a single transient
+      Homey SDK miss on `getPrimaryTargetCapability(dev.targets)?.value` drops the
+      device from the plan for that cycle (and re-runs every plan cycle while the miss
+      persists). Per `feedback_homey_sdk_unreliable`, capability reads can transiently
+      fail during cold-start, re-pair, or zone reload. Track consecutive missed-read
+      cycles per device in `PlanEngineState` and only skip after a grace window
+      (e.g. 3–5 cycles); within grace, reuse the last successfully resolved target.
+      Files: `lib/plan/planDevices.ts`, `lib/plan/planEngineState.ts`.
+
+- [ ] Throttle `missing_mode_target` / `missing_mode_target_and_current_target` events
+      per device. The emitter is already gated by the `plan` debug topic (off by
+      default), so production volume is bounded — but when users enable the topic,
+      a stuck misconfigured device fires every plan cycle (10 s in `homey_energy`
+      mode = ~8,640/day). Per-device emit-on-transition + N-minute heartbeat would
+      keep the signal useful without flooding the log buffer (RSS headroom is ~30 MB
+      per `project_homey_rss_limit`). Files: `lib/plan/planDevices.ts`.
+
 - [ ] Add Playwright assertion that the segmented short/full labels never co-render.
       PR 3.2 introduced a dual-label pattern on `.segmented__option-label--full` /
       `--short` toggled by `@media (max-width: 360px)`. If a future CSS regression
