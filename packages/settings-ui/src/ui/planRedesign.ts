@@ -5,14 +5,17 @@ import {
   type SettingsUiPlanPayload,
   type SettingsUiPowerPayload,
   type SettingsUiPowerStatus,
+  type SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
 import { getApiReadModel } from './homey.ts';
+import { getPricesReadModel } from './prices.ts';
 import { renderPlanOverview } from './views/PlanOverview.tsx';
 import { planNeedsLiveUpdates } from './planLiveData.ts';
 import { state } from './state.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot } from './planTypes.ts';
 
 let cachedPowerStatus: SettingsUiPowerStatus | null = null;
+let cachedPrices: SettingsUiPricesPayload | null = null;
 let currentPlan: PlanSnapshot | null = null;
 let currentRenderedAtMs = 0;
 let liveTickInterval: ReturnType<typeof setInterval> | null = null;
@@ -73,6 +76,7 @@ const doRender = () => {
   renderPlanOverview(surface, {
     plan: currentPlan,
     power: cachedPowerStatus,
+    prices: cachedPrices,
     context: { dryRun: state.dryRun },
     renderedAtMs: currentRenderedAtMs,
     nowMs: now,
@@ -101,12 +105,22 @@ export const updatePlanPower = (power: SettingsUiPowerStatus | null): void => {
   doRender();
 };
 
+const readPricesForPlanRefresh = async (): Promise<SettingsUiPricesPayload | null> => {
+  try {
+    return await getPricesReadModel();
+  } catch {
+    return null;
+  }
+};
+
 export const refreshPlan = async () => {
-  const [plan, power] = await Promise.all([
+  const [plan, power, prices] = await Promise.all([
     getPlanSnapshot(),
     readPowerStatusForPlanRefresh(),
+    readPricesForPlanRefresh(),
   ]);
   cachedPowerStatus = power;
+  cachedPrices = prices;
   renderPlan(plan);
 };
 

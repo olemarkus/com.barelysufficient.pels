@@ -1,27 +1,10 @@
 import type { SettingsUiBootstrap, SettingsUiPricesPayload } from '../../../contracts/src/settingsUiApi.ts';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../../contracts/src/dailyBudgetTypes.ts';
+import { normalizeCombinedPrices, isFiniteNumber } from './combinedPrices.ts';
 
 export const ONE_HOUR_MS = 60 * 60 * 1000;
 
-const isRecord = (candidate: unknown): candidate is Record<string, unknown> => (
-  Boolean(candidate) && typeof candidate === 'object' && !Array.isArray(candidate)
-);
-
-export const isFiniteNumber = (candidate: unknown): candidate is number => (
-  typeof candidate === 'number' && Number.isFinite(candidate)
-);
-
-type PriceEntryLike = {
-  startsAt: string;
-  total: number;
-  isCheap?: boolean;
-  isExpensive?: boolean;
-};
-
-type CombinedPricesLike = {
-  prices?: unknown;
-  days?: unknown;
-};
+export { isFiniteNumber };
 
 export type HorizonHour = {
   startsAtMs: number;
@@ -30,38 +13,6 @@ export type HorizonHour = {
   isCheap?: boolean;
   isExpensive?: boolean;
   plannedOtherKWh: number;
-};
-
-const getCombinedPrices = (payload: SettingsUiPricesPayload): PriceEntryLike[] => {
-  const combined = payload.combinedPrices as CombinedPricesLike | unknown[] | null;
-  let entries: unknown[] = [];
-  if (Array.isArray(combined)) {
-    entries = combined;
-  } else if (combined && typeof combined === 'object') {
-    const days = (combined as CombinedPricesLike).days;
-    if (days && typeof days === 'object' && !Array.isArray(days)) {
-      entries = Object.values(days as Record<string, unknown>).flatMap((day) => (
-        day && typeof day === 'object' && Array.isArray((day as { hours?: unknown }).hours)
-          ? ((day as { hours: unknown[] }).hours)
-          : []
-      ));
-    } else if (Array.isArray((combined as CombinedPricesLike).prices)) {
-      entries = (combined as CombinedPricesLike).prices as unknown[];
-    }
-  }
-  return entries.flatMap((entry) => {
-    if (!isRecord(entry) || typeof entry.startsAt !== 'string') return [];
-    let total: number | null = null;
-    if (isFiniteNumber(entry.total)) total = entry.total;
-    else if (isFiniteNumber(entry.totalPrice)) total = entry.totalPrice;
-    if (!isFiniteNumber(total)) return [];
-    return [{
-      startsAt: entry.startsAt,
-      total,
-      ...(entry.isCheap === true ? { isCheap: true } : {}),
-      ...(entry.isExpensive === true ? { isExpensive: true } : {}),
-    }];
-  });
 };
 
 const getDailyBudgetDayByBucket = (
@@ -110,7 +61,7 @@ export const collectHorizonHours = (params: {
   windowStartMs: number;
   prices: SettingsUiPricesPayload;
 }): HorizonHour[] => (
-  getCombinedPrices(params.prices)
+  normalizeCombinedPrices(params.prices.combinedPrices)
     .map((price) => ({ price, startsAtMs: new Date(price.startsAt).getTime() }))
     .filter(({ startsAtMs }) => Number.isFinite(startsAtMs))
     .map(({ price, startsAtMs }) => ({

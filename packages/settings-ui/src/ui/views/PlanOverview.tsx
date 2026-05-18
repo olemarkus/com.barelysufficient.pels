@@ -3,11 +3,15 @@ import { PlanHero, type HeroContext } from './PlanHero.tsx';
 import { PlanSteppedCard } from './PlanSteppedCard.tsx';
 import { PlanGenericCard, PlanTemperatureCard } from './PlanDeviceCards.tsx';
 import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
-import type { SettingsUiPowerStatus } from '../../../../contracts/src/settingsUiApi.ts';
+import type {
+  SettingsUiPowerStatus,
+  SettingsUiPricesPayload,
+} from '../../../../contracts/src/settingsUiApi.ts';
 
 type OverviewProps = {
   plan: PlanSnapshot | null;
   power: SettingsUiPowerStatus | null;
+  prices: SettingsUiPricesPayload | null;
   context: HeroContext;
   renderedAtMs: number;
   nowMs: number;
@@ -38,7 +42,7 @@ const PlanCard = ({
   return <PlanGenericCard dev={dev} plan={plan} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
 };
 
-const PlanOverviewRoot = ({ plan, power, context, renderedAtMs, nowMs }: OverviewProps) => {
+const PlanOverviewRoot = ({ plan, power, prices, context, renderedAtMs, nowMs }: OverviewProps) => {
   const devices = plan
     ? [...(plan.devices ?? [])].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999))
     : [];
@@ -49,7 +53,7 @@ const PlanOverviewRoot = ({ plan, power, context, renderedAtMs, nowMs }: Overvie
 
   return (
     <div>
-      <PlanHero plan={plan} power={power} context={context} renderedAtMs={renderedAtMs} nowMs={nowMs} />
+      <PlanHero plan={plan} power={power} prices={prices} context={context} renderedAtMs={renderedAtMs} nowMs={nowMs} />
       <div id="plan-hour-strip" class="plan-hour-strip" hidden />
       {emptyMessage && <p id="plan-empty" class="muted">{emptyMessage}</p>}
       <div id="plan-cards" class="plan-cards">

@@ -1,12 +1,15 @@
 import {
+  buildDecisionSentence,
   computeEnergyBarScaleKWh,
   formatAboveHardCapSubline,
   formatAboveSafePaceSubline,
+  formatCheapestUpcomingHour,
   formatEnergyMeterMarkerLabels,
   formatEnergyUsedOfBudget,
   formatFreshnessChip,
   formatHeroHeadline,
   formatPowerMeterMarkerLabels,
+  type DecisionSentenceInput,
   type PlanHeroMetaInput,
 } from '../packages/shared-domain/src/planHeroSummary';
 
@@ -135,6 +138,136 @@ describe('hero meter marker labels', () => {
       short: 'Projected this hour',
       aria: 'Projected this hour 4.4 kWh',
     });
+  });
+});
+
+describe('buildDecisionSentence', () => {
+  const baseline = (overrides: Partial<DecisionSentenceInput> = {}): DecisionSentenceInput => ({
+    limitedCount: 0,
+    resumingCount: 0,
+    freshness: 'fresh',
+    dryRun: false,
+    overHardLimit: false,
+    projectedOverBudget: false,
+    safePaceKw: 12,
+    ...overrides,
+  });
+
+  it('returns the quiet-hour copy when nothing is happening', () => {
+    expect(buildDecisionSentence(baseline())).toEqual({
+      text: 'Quiet hour. Nothing to do.',
+      positive: true,
+    });
+  });
+
+  it('routes stale_fail_closed to the no-data line first', () => {
+    expect(buildDecisionSentence(baseline({
+      freshness: 'stale_fail_closed',
+      limitedCount: 3,
+      overHardLimit: true,
+    })).text).toBe('Power readings have dropped. Devices stay limited until data returns.');
+  });
+
+  it('reports over-hard-cap before active limiting', () => {
+    expect(buildDecisionSentence(baseline({
+      overHardLimit: true,
+      limitedCount: 2,
+    })).text).toBe('Over the hard cap right now. Easing devices off.');
+  });
+
+  it('uses hypothetical voice in simulation mode', () => {
+    expect(buildDecisionSentence(baseline({
+      dryRun: true,
+      limitedCount: 2,
+    })).text).toBe('2 devices would be limited if simulation mode were off.');
+  });
+
+  it('names the house and the safe-pace target when actively limiting', () => {
+    expect(buildDecisionSentence(baseline({
+      limitedCount: 4,
+      safePaceKw: 12.0,
+    })).text).toBe('Holding back 4 devices so the house stays under 12.0 kW.');
+  });
+
+  it('singular-form devices when only one is held', () => {
+    expect(buildDecisionSentence(baseline({
+      limitedCount: 1,
+    })).text).toBe('Holding back 1 device so the house stays under 12.0 kW.');
+  });
+
+  it('omits the safe-pace clause when the value is unavailable', () => {
+    expect(buildDecisionSentence(baseline({
+      limitedCount: 2,
+      safePaceKw: null,
+    })).text).toBe('Holding back 2 devices.');
+  });
+
+  it('describes resuming with a positive tone', () => {
+    expect(buildDecisionSentence(baseline({
+      resumingCount: 1,
+    }))).toEqual({
+      text: 'Bringing 1 device back online. Power has stayed under the safe pace.',
+      positive: true,
+    });
+  });
+
+  it('warns about projected overshoot without an em-dash', () => {
+    expect(buildDecisionSentence(baseline({
+      projectedOverBudget: true,
+    })).text).toBe('On pace to overshoot this hour’s energy budget.');
+  });
+});
+
+describe('formatCheapestUpcomingHour', () => {
+  const clock = (timestampMs: number): string => {
+    const d = new Date(timestampMs);
+    return `${d.getUTCHours().toString().padStart(2, '0')}:00`;
+  };
+
+  const HOUR = 60 * 60 * 1000;
+  const NOW_MS = Date.UTC(2026, 4, 17, 20, 0, 0);
+
+  it('returns null when no hours are upcoming', () => {
+    expect(formatCheapestUpcomingHour({
+      hours: [{ startsAtMs: NOW_MS - HOUR, price: 5 }],
+      nowMs: NOW_MS,
+      unitLabel: 'øre/kWh',
+      formatClockTime: clock,
+    })).toBeNull();
+  });
+
+  it('picks the cheapest upcoming hour within the default horizon', () => {
+    expect(formatCheapestUpcomingHour({
+      hours: [
+        { startsAtMs: NOW_MS + HOUR, price: 40 },
+        { startsAtMs: NOW_MS + 6 * HOUR, price: 18 },
+        { startsAtMs: NOW_MS + 12 * HOUR, price: 35 },
+      ],
+      nowMs: NOW_MS,
+      unitLabel: 'øre/kWh',
+      formatClockTime: clock,
+    })).toBe('Cheapest hour ahead: 02:00, 18 øre/kWh.');
+  });
+
+  it('drops hours past the horizon window', () => {
+    expect(formatCheapestUpcomingHour({
+      hours: [
+        { startsAtMs: NOW_MS + HOUR, price: 50 },
+        { startsAtMs: NOW_MS + 30 * HOUR, price: 2 }, // outside default 18h horizon
+      ],
+      nowMs: NOW_MS,
+      unitLabel: 'øre/kWh',
+      formatClockTime: clock,
+    })).toBe('Cheapest hour ahead: 21:00, 50 øre/kWh.');
+  });
+
+  it('formats non-øre units with two decimals', () => {
+    expect(formatCheapestUpcomingHour({
+      hours: [{ startsAtMs: NOW_MS + HOUR, price: 1.25 }],
+      nowMs: NOW_MS,
+      unitLabel: 'kr/kWh',
+      formatClockTime: clock,
+    })).toBe('Cheapest hour ahead: 21:00, 1.25 kr/kWh.');
   });
 });
 

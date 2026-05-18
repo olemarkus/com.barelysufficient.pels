@@ -57,6 +57,13 @@ started 2026-05-17). In scope for the train: `norgespris-historical-snapshot-tz`
 and settings-UI safety items not on the v2.7.2 path. Skip these items in
 v2.7.1 release-review passes.*
 
+- [ ] v2.7.3 — `notes/overview-hero-spec.md` sketch order tightening
+      (projected above bar in diagram).
+- [ ] v2.7.3 — end-to-end tz-aware test for `formatCheapestUpcomingHour`
+      in `test:unit:tz`.
+- [ ] v2.7.3 — audit flow-card / push notification copy to share the new
+      decision-sentence voice (no logger yet).
+
 - [x] Budget page needs a current cheap/expensive price-level chip. PR9
       (`v2-7-2-pr9-overview-calm-down`, 2026-05-17) demoted the
       Overview hero's price-level chip on the basis that "should I run
@@ -532,6 +539,16 @@ v2.7.1 release-review passes.*
       chart as evidence when a plan was recorded. Decide whether `unknown`
       should fall back to a collapsed-chart shape or stay quiet, and update
       `notes/v2-7-2/postmortem-chart-policy.md` to match the resolved policy.
+
+- [ ] v2.7.3 — Refresh overview prices on realtime `prices_updated` events.
+      The hero anticipation subline ("Cheapest hour ahead …") depends on
+      `cachedPrices`, but realtime price updates only invalidate the prices
+      cache + refresh price tabs (`realtime.ts#handlePricesUpdated`). The
+      overview can keep showing stale/missing anticipation text until an
+      unrelated plan refresh runs (tab switch, plan update, etc.). Add a
+      plan-side prices refresh path so the overview stays in sync.
+      Deferred from PR #885 (codex P2 review thread on
+      `packages/settings-ui/src/ui/planRedesign.ts:124`).
 
 - [ ] v2.7.3 — iOS Homey chrome inset may exceed 56 px (PWA + status bar + nav bar);
       confirm via screenshot from user, then split `--pels-homey-mobile-chrome` per
@@ -2243,5 +2260,4 @@ should not be folded into the same PR.
       consolidation question.
       Files: `packages/settings-ui/public/style.css`.
 
-- [ ] PR #887 bot DEFER — `deferredPlanHistoryReceipt.ts` hardcoded user-facing strings (Started, Ready, Delivered, etc.) — gemini suggested lifting to a shared-domain messages module for log/UI parity. Worth doing alongside the broader voice-share rule but scope > 30 LOC and crosses files; defer to a v2.7.4 copy-share PR.
-- [ ] PR #887 bot DEFER — `deadlinePlanHistoryDetailHero.ts` treats `unknown` outcomes as `quietAbandoned` (no chart card). Copilot suggested showing the chart card for `unknown` and possibly `replaced` per the policy doc. Behavioural design choice — needs policy alignment in `notes/v2-7-2/postmortem-chart-policy.md` before code change.
+- [ ] v2.7.4 salvage from closed PR #883 (`v2.7.3/budget-usage-loveable`) — Budget half superseded by `dd92fa42`; Usage-half items remain undelivered: "Your typical Sunday runs X kWh" day-aware voice (`usageHero.ts` + `usageVoice.ts`), drop the 7d toggle in `power.ts` (keep 14d only), NBSP between number and `kr` in any Usage money copy, NOK money line on Usage (deferred). Small focused PR.
