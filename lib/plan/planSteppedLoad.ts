@@ -172,18 +172,26 @@ export const resolveSteppedLoadTransition = (
 export const resolveSteppedKeepDesiredStepId = (
   device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'> & StepIdentityFields
   & { currentState?: string; plannedState?: string },
+  options: { anyOtherDeviceLimited?: boolean } = {},
 ): string | undefined => {
   const profile = getSteppedLoadProfileForDevice(device);
   if (!profile) return device.desiredStepId;
   if (device.plannedState !== 'keep') return device.desiredStepId;
 
-  const lowestActiveStepId = getSteppedLoadLowestActiveStep(profile)?.id;
-  if (!lowestActiveStepId) return device.desiredStepId;
+  const lowestActiveStep = getSteppedLoadLowestActiveStep(profile);
+  const lowestActiveStepId = lowestActiveStep?.id;
+  if (!lowestActiveStepId || !lowestActiveStep) return device.desiredStepId;
 
   if (isObservedOn(device)) {
-    return device.desiredStepId && isSteppedLoadOffStep(profile, device.desiredStepId)
+    const baseStepId = device.desiredStepId && isSteppedLoadOffStep(profile, device.desiredStepId)
       ? lowestActiveStepId
       : device.desiredStepId;
+    return clampToLowestActiveWhenOtherDevicesLimited({
+      profile,
+      stepId: baseStepId,
+      lowestActiveStep,
+      anyOtherDeviceLimited: options.anyOtherDeviceLimited === true,
+    });
   }
 
   if (isObservedOff(device)) {
@@ -192,7 +200,31 @@ export const resolveSteppedKeepDesiredStepId = (
 
   const selectedStep = getSteppedLoadStep(profile, resolvePlannerEffectiveStepId(device));
   if (!selectedStep || selectedStep.planningPowerW <= 0) return lowestActiveStepId;
-  return selectedStep.id;
+  return clampToLowestActiveWhenOtherDevicesLimited({
+    profile,
+    stepId: selectedStep.id,
+    lowestActiveStep,
+    anyOtherDeviceLimited: options.anyOtherDeviceLimited === true,
+  });
+};
+
+// docs/technical.md:222 — "While any other managed device is still limited, stepped devices
+// are capped at their lowest non-zero step." Symmetric to applyKeepInvariantShedBlock on the
+// restore path: if a stepped device is currently above lowest-non-zero and any other device
+// is being limited this cycle, clamp the keep desired step down so the executor issues a
+// step-down command (e.g. medium -> low) instead of holding the higher step.
+const clampToLowestActiveWhenOtherDevicesLimited = (params: {
+  profile: SteppedLoadProfile;
+  stepId: string | undefined;
+  lowestActiveStep: SteppedLoadStep;
+  anyOtherDeviceLimited: boolean;
+}): string | undefined => {
+  const { profile, stepId, lowestActiveStep, anyOtherDeviceLimited } = params;
+  if (!anyOtherDeviceLimited || !stepId) return stepId;
+  if (stepId === lowestActiveStep.id) return stepId;
+  const step = getSteppedLoadStep(profile, stepId);
+  if (!step || step.planningPowerW <= lowestActiveStep.planningPowerW) return stepId;
+  return lowestActiveStep.id;
 };
 
 export const getSteppedLoadNextRestoreStep = (
