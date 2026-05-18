@@ -151,7 +151,7 @@ function resolvePlannedTarget(params: {
   // target if the price-adjusted mode target falls below it. The price-opt delta combines only
   // with the mode side; the deadline target is never further modulated.
   const deferredC = deferredTargetTempByDeviceId[dev.id];
-  if (typeof deferredC === 'number' && Number.isFinite(deferredC)) {
+  if (typeof deferredC === 'number') {
     plannedTarget = plannedTarget === null ? deferredC : Math.max(plannedTarget, deferredC);
   }
   if (plannedTarget !== null) {

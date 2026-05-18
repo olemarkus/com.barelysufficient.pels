@@ -6,7 +6,7 @@ import type {
 } from './statusBus';
 
 const formatTargetText = (diagnostic: DeferredObjectiveDiagnostic): string => {
-  if (diagnostic.objectiveKind === 'temperature' && diagnostic.targetTemperatureC !== null) {
+  if (diagnostic.objectiveKind === 'temperature') {
     return `${formatNumber(diagnostic.targetTemperatureC)} °C`;
   }
   if (diagnostic.objectiveKind === 'ev_soc' && diagnostic.targetPercent !== null) {
@@ -28,9 +28,7 @@ const computeShortfall = (diagnostic: DeferredObjectiveDiagnostic): {
     ? Math.round(energy * 100) / 100
     : null;
 
-  if (diagnostic.objectiveKind === 'temperature'
-    && diagnostic.targetTemperatureC !== null
-    && diagnostic.currentTemperatureC !== null) {
+  if (diagnostic.objectiveKind === 'temperature' && diagnostic.currentTemperatureC !== null) {
     const delta = diagnostic.targetTemperatureC - diagnostic.currentTemperatureC;
     if (delta > 0) {
       return { shortfallKwh, shortfallText: `${formatNumber(delta)} °C below target` };

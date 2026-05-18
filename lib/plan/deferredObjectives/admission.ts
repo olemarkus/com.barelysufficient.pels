@@ -108,10 +108,13 @@ export const buildDeferredTargetOverrides = (
 ): Record<string, number> => {
   const overrides: Record<string, number> = {};
   for (const diag of diagnostics) {
+    if (diag.objectiveKind !== 'temperature') continue;
     if (!PLANNABLE_STATUSES.has(diag.status)) continue;
     const currentBucket = diag.horizonPlan?.currentBucket;
     if (!currentBucket || currentBucket.plannedUsefulEnergyKWh <= 0) continue;
-    if (diag.targetTemperatureC === null || !Number.isFinite(diag.targetTemperatureC)) continue;
+    // Defensive: persisted settings can yield NaN/Infinity on corrupt reads; the type-level
+    // `number` invariant does not survive Homey settings drift. See feedback_homey_sdk_unreliable.
+    if (!Number.isFinite(diag.targetTemperatureC)) continue;
     overrides[diag.deviceId] = diag.targetTemperatureC;
   }
   return overrides;
