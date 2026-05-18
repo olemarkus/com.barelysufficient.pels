@@ -4,14 +4,13 @@ import {
   settingsCapacityLimitInput,
   settingsCapacityMarginInput,
 } from './dom.ts';
-import { formatCost, type CostDisplay } from './dailyBudgetCost.ts';
+import type { CostDisplay } from './dailyBudgetCost.ts';
 import { formatKWh } from './dailyBudgetFormat.ts';
 import {
   renderBudgetOverview,
   type BudgetAdjustData,
   type BudgetChartData,
   type BudgetConfidenceData,
-  type BudgetDeltaTone,
   type BudgetHeroData,
   type BudgetLocalView,
   type BudgetOverviewProps,
@@ -32,6 +31,7 @@ import {
   updateBudgetAdjustField,
 } from './budgetAdjustController.ts';
 import { resolveAllocationWarning } from './dailyBudgetAllocationWarning.ts';
+import { resolvePriceLevelChip } from '../../../shared-domain/src/priceLevelChips.ts';
 
 export type BudgetDayView = BudgetRedesignDayView;
 
@@ -39,6 +39,7 @@ type RenderState = {
   payload: DailyBudgetUiPayload | null;
   view: BudgetDayView;
   costDisplay: CostDisplay;
+  priceLevel: string | null;
 };
 
 let currentBudgetLocalView: BudgetLocalView = 'plan';
@@ -47,8 +48,21 @@ let latestRenderState: RenderState = {
   payload: null,
   view: 'today',
   costDisplay: { unit: 'kr', divisor: 100 },
+  priceLevel: null,
 };
 let budgetSurface: HTMLElement | null = null;
+
+// Side-channel for power-derived signals not carried on the daily budget
+// payload itself. Realtime power ticks push the current cheap/normal/expensive
+// price tag through here so the Budget hero chip stays live without forcing a
+// full budget-plan refresh on every tick. Intended single consumer is
+// `dailyBudget.updateBudgetPower`; callers outside that thin adapter should
+// not invoke this directly.
+export const updateBudgetPriceLevel = (priceLevel: string | null): void => {
+  if (latestRenderState.priceLevel === priceLevel) return;
+  latestRenderState = { ...latestRenderState, priceLevel };
+  doRender();
+};
 
 const getBudgetSurface = (): HTMLElement | null => (
   budgetSurface ??= document.getElementById('budget-redesign-surface')
@@ -116,6 +130,13 @@ const formatComparisonKWh = (value: number): string => (
   Number.isFinite(value) ? value.toFixed(1) : '--'
 );
 
+// Shared "is the projection close enough to the budget to call it on target?"
+// gate. Used by both `resolveStatus` (decides tone) and `resolveSplitComparison`
+// (decides whether the subline says "on" vs "under" / "over"); keeping the two
+// in lockstep avoids the chip/prose disagreement TODO 490 cured for usage hero.
+const BUDGET_TOLERANCE_RATIO = 0.01;
+const budgetTolerance = (budget: number): number => Math.max(0.1, budget * BUDGET_TOLERANCE_RATIO);
+
 const resolveComparisonValue = (
   payload: DailyBudgetDayPayload,
   view: BudgetDayView,
@@ -125,20 +146,44 @@ const resolveComparisonValue = (
   return computeProjectedUse(payload);
 };
 
-const formatComparisonLine = (
+// Headline names the landing kWh in prose; the `value / budget` divisor moves
+// to `splitComparison` so the headline reads as story rather than a stat row.
+const formatComparisonLine = (payload: DailyBudgetDayPayload, view: BudgetDayView): string => {
+  const value = formatComparisonKWh(resolveComparisonValue(payload, view));
+  if (view === 'yesterday') return `Yesterday hit ${value} kWh`;
+  if (view === 'tomorrow') return `Tomorrow plans ~${value} kWh`;
+  return `Landing at ~${value} kWh`;
+};
+
+export const resolveSplitComparison = (
   payload: DailyBudgetDayPayload,
   view: BudgetDayView,
-): string => {
-  const value = resolveComparisonValue(payload, view);
+  status: BudgetStatus,
+): string | null => {
   const budget = payload.budget.dailyBudgetKWh;
-  return `${formatComparisonKWh(value)} / ${formatComparisonKWh(budget)} kWh`;
+  if (!Number.isFinite(budget) || budget <= 0) return null;
+  const budgetText = formatComparisonKWh(budget);
+  const value = resolveComparisonValue(payload, view);
+  const diff = value - budget;
+  const absDelta = formatComparisonKWh(Math.abs(diff));
+  // `tight` (projection inside the tolerance band) gets a direction qualifier
+  // so a barely-over day reads differently from a barely-under one — the old
+  // chip carried that signal via colour and `Over by` / `kWh to spare`; the
+  // subline restores it in prose.
+  if (status === 'tight') {
+    const direction = diff >= 0 ? 'over' : 'under';
+    return `${absDelta} ${direction} your ${budgetText} budget — close.`;
+  }
+  if (status === 'over') return `${absDelta} over your ${budgetText} budget.`;
+  if (Math.abs(diff) <= budgetTolerance(budget)) return `On your ${budgetText} budget.`;
+  return `${absDelta} under your ${budgetText} budget.`;
 };
 
 const resolveStatus = (payload: DailyBudgetDayPayload | null, view: BudgetDayView): BudgetStatus => {
   if (!payload || payload.budget.enabled !== true || sum(payload.buckets.plannedKWh) <= 0) return 'noPlan';
   const budget = payload.budget.dailyBudgetKWh;
   if (!Number.isFinite(budget) || budget <= 0) return 'noPlan';
-  const tolerance = Math.max(0.1, budget * 0.01);
+  const tolerance = budgetTolerance(budget);
   let comparable = computeProjectedUse(payload);
   if (view === 'yesterday') comparable = sum(payload.buckets.actualKWh);
   if (view === 'tomorrow') {
@@ -154,26 +199,6 @@ const resolveTone = (status: BudgetStatus): BudgetHeroData['heroTone'] => {
   if (status === 'over') return 'alert';
   if (status === 'tight') return 'warn';
   return 'ok';
-};
-
-export const resolveDeltaPill = (
-  payload: DailyBudgetDayPayload,
-  view: BudgetDayView,
-  status: BudgetStatus,
-): { label: string; tone: BudgetDeltaTone } | null => {
-  const budget = payload.budget.dailyBudgetKWh;
-  if (!Number.isFinite(budget) || budget <= 0) return null;
-  const tolerance = Math.max(0.1, budget * 0.01);
-  const value = resolveComparisonValue(payload, view);
-  const diff = value - budget;
-  if (status === 'over') return { label: `Over by ${formatComparisonKWh(diff)} kWh`, tone: 'alert' };
-  if (status === 'tight') return { label: 'Close to budget', tone: 'warn' };
-  if (status === 'within') {
-    if (view === 'yesterday') return { label: `${formatComparisonKWh(Math.abs(diff))} kWh under`, tone: 'ok' };
-    if (Math.abs(diff) <= tolerance) return { label: 'On budget', tone: 'ok' };
-    return { label: `${formatComparisonKWh(Math.abs(diff))} kWh to spare`, tone: 'ok' };
-  }
-  return null;
 };
 
 const SPLIT_COVERAGE_THRESHOLD = 0.5;
@@ -236,30 +261,39 @@ export const resolveDominantCause = (payload: DailyBudgetDayPayload): DominantCa
   return actualBgShare - plannedBgShare > BACKGROUND_SHARE_GAP ? 'background' : 'managed';
 };
 
-const resolvePriceTagline = (
+// Whole-kroner NOK projection — only when price data is reliable, so we never
+// quote a number we can't back up. Øre precision reads as audit, not story.
+//
+// `nb-NO` formatter applies a thin space as the thousands separator so larger
+// numbers (`1 234 kr`) read naturally; non-breaking spaces wrap the value to
+// `kr` so the unit cannot orphan onto its own line at 320 px viewports.
+const NOK_FORMATTER = new Intl.NumberFormat('nb-NO', { maximumFractionDigits: 0 });
+const NBSP = ' ';
+export const resolvePriceTagline = (
   payload: DailyBudgetDayPayload | null,
   view: BudgetDayView,
+  costDisplay: CostDisplay,
 ): string | null => {
   if (!payload || view === 'yesterday') return null;
-  if (payload.budget.enabled !== true || payload.budget.priceShapingEnabled !== true) return null;
-  return isPriceReliable(payload) ? 'Using cheaper hours' : 'Using cheaper hours (price data unavailable)';
+  if (payload.budget.enabled !== true) return null;
+  if (!isPriceReliable(payload)) return null;
+  const cost = computeEstimatedCost({ payload, view });
+  if (cost === null || !Number.isFinite(cost)) return null;
+  const krValue = Math.round(cost / Math.max(1, costDisplay.divisor));
+  if (krValue <= 0) return null;
+  const kr = NOK_FORMATTER.format(krValue);
+  const tense = view === 'tomorrow' ? "tomorrow's prices" : "today's prices";
+  return `≈${NBSP}${kr}${NBSP}kr at ${tense}.`;
 };
 
-export const resolveHeadroomLine = (
-  payload: DailyBudgetDayPayload,
-  costDisplay: CostDisplay,
-): string => {
-  // `remainingKWh = dailyBudgetKWh - usedNowKWh` (see
-  // `lib/dailyBudget/dailyBudgetState.ts`). The hero headline shows
-  // projected-vs-budget; this subline names *used* as the baseline so the two
-  // numbers don't read as if they should add up.
+export const resolveHeadroomLine = (payload: DailyBudgetDayPayload): string => {
+  // `remainingKWh = dailyBudgetKWh - usedNowKWh`. NOK lives on `priceTagline`;
+  // this subline stays kWh-only to avoid duplicating it.
   const remaining = payload.state.remainingKWh;
-  const status = Number.isFinite(remaining) && remaining < 0
-    ? `${formatKWh(Math.abs(remaining), 1)} over budget already used`
-    : `${formatKWh(remaining, 1)} left in today's budget`;
-  const cost = computeEstimatedCost({ payload, view: 'today' });
-  if (cost === null) return status;
-  return `${status} · est. ${formatCost(cost, costDisplay)} today`;
+  if (Number.isFinite(remaining) && remaining < 0) {
+    return `${formatKWh(Math.abs(remaining), 1)} over budget already used`;
+  }
+  return `${formatKWh(remaining, 1)} left in today's budget`;
 };
 
 const resolveNoPlanLine = (view: BudgetDayView, budgetEnabled: boolean): string => {
@@ -308,21 +342,34 @@ export const resolveDecisionLine = (
   return resolveTodayLine(payload, status);
 };
 
-export const resolveHeroData = (
-  viewPayload: DailyBudgetDayPayload | null,
-  view: BudgetDayView,
-  costDisplay: CostDisplay,
-  status: BudgetStatus,
-  budgetEnabled: boolean,
-): BudgetHeroData => {
+export type ResolveHeroDataParams = {
+  viewPayload: DailyBudgetDayPayload | null;
+  view: BudgetDayView;
+  costDisplay: CostDisplay;
+  status: BudgetStatus;
+  budgetEnabled: boolean;
+  priceLevel?: string | null;
+};
+
+export const resolveHeroData = (params: ResolveHeroDataParams): BudgetHeroData => {
+  const {
+    viewPayload, view, costDisplay, status, budgetEnabled, priceLevel = null,
+  } = params;
+  // Chip only on `today` — yesterday is historical, tomorrow's chip would refer
+  // to tonight's prices rather than the displayed day, which would be misleading.
+  const priceLevelChip = view === 'today' ? resolvePriceLevelChip(priceLevel) : null;
   if (!budgetEnabled || !viewPayload || viewPayload.budget.enabled !== true || status === 'noPlan') {
     return {
       headlineLabel: null,
       comparison: budgetEnabled ? 'Waiting for daily budget data' : 'Daily budget off',
-      delta: null,
+      splitComparison: null,
       headroomLine: null,
       splitLine: null,
       priceTagline: null,
+      // Chip is paired with the landing-today story — when there is no plan to
+      // land or the budget is off, the rest of the hero is silent and a lone
+      // `Price low` chip would read as an inconsistent voice in the surface.
+      priceLevelChip: null,
       decision: resolveNoPlanLine(view, budgetEnabled),
       heroTone: 'ok',
     };
@@ -330,10 +377,11 @@ export const resolveHeroData = (
   return {
     headlineLabel: HEADLINE_LABEL_BY_VIEW[view],
     comparison: formatComparisonLine(viewPayload, view),
-    delta: resolveDeltaPill(viewPayload, view, status),
-    headroomLine: view === 'today' ? resolveHeadroomLine(viewPayload, costDisplay) : null,
+    splitComparison: resolveSplitComparison(viewPayload, view, status),
+    headroomLine: view === 'today' ? resolveHeadroomLine(viewPayload) : null,
     splitLine: view === 'today' ? resolveSplitLine(viewPayload) : null,
-    priceTagline: resolvePriceTagline(viewPayload, view),
+    priceTagline: resolvePriceTagline(viewPayload, view, costDisplay),
+    priceLevelChip,
     decision: resolveDecisionLine(viewPayload, view, status, budgetEnabled),
     heroTone: resolveTone(status),
   };
@@ -527,7 +575,7 @@ const resolveAdjustData = (): BudgetAdjustData => {
 let externalOnDayChange: (v: BudgetDayView) => void = () => {};
 
 const buildProps = (): BudgetOverviewProps => {
-  const { payload, view, costDisplay } = latestRenderState;
+  const { payload, view, costDisplay, priceLevel } = latestRenderState;
   const viewPayload = resolveViewPayload(payload, view);
   const status = resolveStatus(viewPayload, view);
   const adjust = resolveAdjustData();
@@ -541,7 +589,7 @@ const buildProps = (): BudgetOverviewProps => {
   return {
     localView: effectiveLocalView,
     view,
-    hero: resolveHeroData(viewPayload, view, costDisplay, status, budgetEnabled),
+    hero: resolveHeroData({ viewPayload, view, costDisplay, status, budgetEnabled, priceLevel }),
     chart: resolveChartData(planPayload, view, currentChartMode, status, costDisplay),
     confidence: resolveConfidenceData(planPayload, view, status),
     adjust,
@@ -573,7 +621,7 @@ export const renderBudgetRedesign = (
   view: BudgetDayView,
   costDisplay: CostDisplay,
 ) => {
-  latestRenderState = { payload, view, costDisplay };
+  latestRenderState = { ...latestRenderState, payload, view, costDisplay };
   doRender();
 };
 

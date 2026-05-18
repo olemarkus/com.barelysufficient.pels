@@ -4,12 +4,13 @@ import {
   resolveComparisonDay,
   resolveConfidenceData,
   resolveDecisionLine,
-  resolveDeltaPill,
   resolveDominantCause,
   resolveEffectiveLocalView,
   resolveHeadroomLine,
   resolveHeroData,
   resolvePlanPayload,
+  resolvePriceTagline,
+  resolveSplitComparison,
   resolveSplitLine,
 } from '../src/ui/budgetRedesign.ts';
 import { resolveAllocationWarning } from '../src/ui/dailyBudgetAllocationWarning.ts';
@@ -173,28 +174,66 @@ describe('resolveDecisionLine', () => {
 
 describe('resolveHeroData', () => {
   it('uses persisted disabled state even when the day payload is still enabled', () => {
-    const hero = resolveHeroData(buildPayload({ enabled: true }), 'today', costDisplay, 'within', false);
+    const hero = resolveHeroData({ viewPayload: buildPayload({ enabled: true }), view: 'today', costDisplay: costDisplay, status: 'within', budgetEnabled: false });
     expect(hero.comparison).toBe('Daily budget off');
     expect(hero.decision).toBe('Enable daily budget to build a daily plan.');
     expect(hero.headlineLabel).toBeNull();
+    expect(hero.splitComparison).toBeNull();
   });
 
   it('labels the today headline as projected so it does not read as used-so-far', () => {
     const payload = buildPayload();
-    const hero = resolveHeroData(payload, 'today', costDisplay, 'within', true);
+    const hero = resolveHeroData({ viewPayload: payload, view: 'today', costDisplay: costDisplay, status: 'within', budgetEnabled: true });
     expect(hero.headlineLabel).toBe('Projected today');
   });
 
   it("labels yesterday's headline as a finished total", () => {
     const payload = buildPayload();
-    const hero = resolveHeroData(payload, 'yesterday', costDisplay, 'within', true);
+    const hero = resolveHeroData({ viewPayload: payload, view: 'yesterday', costDisplay: costDisplay, status: 'within', budgetEnabled: true });
     expect(hero.headlineLabel).toBe("Yesterday's total");
   });
 
   it("labels tomorrow's headline as planned", () => {
     const payload = buildPayload();
-    const hero = resolveHeroData(payload, 'tomorrow', costDisplay, 'within', true);
+    const hero = resolveHeroData({ viewPayload: payload, view: 'tomorrow', costDisplay: costDisplay, status: 'within', budgetEnabled: true });
     expect(hero.headlineLabel).toBe('Planned for tomorrow');
+  });
+
+  it('splits the headline from the budget comparison subline', () => {
+    const payload = buildPayload();
+    const hero = resolveHeroData({ viewPayload: payload, view: 'today', costDisplay: costDisplay, status: 'within', budgetEnabled: true });
+    expect(hero.comparison).toMatch(/^Landing at ~/);
+    expect(hero.comparison).not.toContain('/');
+    expect(hero.splitComparison).toMatch(/your 60\.0 budget\.$/);
+  });
+
+  describe('priceLevelChip', () => {
+    // The chip rides alongside the splitComparison subline on the today view
+    // only — yesterday is historical and tomorrow's `priceLevel` describes
+    // tonight's prices rather than the displayed day.
+    const payload = buildPayload();
+    it('renders the cheap chip with the info tone', () => {
+      const hero = resolveHeroData({ viewPayload: payload, view: 'today', costDisplay: costDisplay, status: 'within', budgetEnabled: true, priceLevel: 'cheap' });
+      expect(hero.priceLevelChip).toEqual({ label: 'Price low', tone: 'info', priceLevel: 'cheap' });
+    });
+    it('renders the expensive chip with the warn tone', () => {
+      const hero = resolveHeroData({ viewPayload: payload, view: 'today', costDisplay: costDisplay, status: 'within', budgetEnabled: true, priceLevel: 'expensive' });
+      expect(hero.priceLevelChip).toEqual({ label: 'Price high', tone: 'warn', priceLevel: 'expensive' });
+    });
+    it('suppresses the chip on the normal level', () => {
+      const hero = resolveHeroData({ viewPayload: payload, view: 'today', costDisplay: costDisplay, status: 'within', budgetEnabled: true, priceLevel: 'normal' });
+      expect(hero.priceLevelChip).toBeNull();
+    });
+    it('suppresses the chip when priceLevel is null (stale or unknown)', () => {
+      const hero = resolveHeroData({ viewPayload: payload, view: 'today', costDisplay: costDisplay, status: 'within', budgetEnabled: true, priceLevel: null });
+      expect(hero.priceLevelChip).toBeNull();
+    });
+    it('suppresses the chip on yesterday and tomorrow views', () => {
+      expect(resolveHeroData({ viewPayload: payload, view: 'yesterday', costDisplay: costDisplay, status: 'within', budgetEnabled: true, priceLevel: 'cheap' }).priceLevelChip)
+        .toBeNull();
+      expect(resolveHeroData({ viewPayload: payload, view: 'tomorrow', costDisplay: costDisplay, status: 'within', budgetEnabled: true, priceLevel: 'expensive' }).priceLevelChip)
+        .toBeNull();
+    });
   });
 });
 
@@ -205,41 +244,98 @@ describe('resolveChartData', () => {
   });
 });
 
-describe('resolveDeltaPill', () => {
-  it('returns alert pill with delta for over budget today', () => {
+describe('resolveSplitComparison', () => {
+  it("spells out under-budget as 'under your N budget'", () => {
+    const payload = buildPayload({
+      plannedKWh: Array.from({ length: 24 }, () => 1.0),
+      actualKWh: Array.from({ length: 24 }, (_, i) => (i < 12 ? 1.0 : 0)),
+    });
+    expect(resolveSplitComparison(payload, 'today', 'within')).toMatch(/under your 60\.0 budget\.$/);
+  });
+
+  it("spells out over-budget as 'over your N budget'", () => {
     const payload = buildPayload({
       plannedKWh: Array.from({ length: 24 }, () => 2.6),
       actualKWh: Array.from({ length: 24 }, (_, i) => (i < 12 ? 2.6 : 0)),
     });
-    const pill = resolveDeltaPill(payload, 'today', 'over');
-    expect(pill?.tone).toBe('alert');
-    expect(pill?.label).toMatch(/^Over by /);
+    expect(resolveSplitComparison(payload, 'today', 'over')).toMatch(/over your 60\.0 budget\.$/);
   });
 
-  it('returns warn pill labelled "Close to budget" for tight', () => {
-    const payload = buildPayload();
-    expect(resolveDeltaPill(payload, 'today', 'tight')).toEqual({
-      label: 'Close to budget',
-      tone: 'warn',
+  it('returns null when the budget is not finite', () => {
+    const payload = buildPayload({ budgetKWh: 0 });
+    expect(resolveSplitComparison(payload, 'today', 'within')).toBeNull();
+  });
+
+  it('keeps direction in the tight subline so barely-over does not read the same as barely-under', () => {
+    const overTight = buildPayload({
+      plannedKWh: Array.from({ length: 24 }, () => 2.51),
+      actualKWh: Array.from({ length: 24 }, (_, i) => (i < 12 ? 2.51 : 0)),
     });
+    const underTight = buildPayload({
+      plannedKWh: Array.from({ length: 24 }, () => 2.49),
+      actualKWh: Array.from({ length: 24 }, (_, i) => (i < 12 ? 2.49 : 0)),
+    });
+    expect(resolveSplitComparison(overTight, 'today', 'tight')).toMatch(/ over your 60\.0 budget — close\.$/);
+    expect(resolveSplitComparison(underTight, 'today', 'tight')).toMatch(/ under your 60\.0 budget — close\.$/);
   });
+});
 
-  it('returns ok pill with headroom for within today', () => {
+describe('resolvePriceTagline', () => {
+  // Cost stays in `costDisplay.divisor`-scaled units (øre); a price of 150
+  // (1.50 kr/kWh) × 2 kWh/h × 24 h = 7200 øre = 72 kr after dividing.
+  const reliablePrice = Array.from({ length: 24 }, () => 150);
+
+  it('renders a whole-kroner NOK tagline for today when price data is reliable', () => {
     const payload = buildPayload({
-      plannedKWh: Array.from({ length: 24 }, () => 1.0),
+      plannedKWh: Array.from({ length: 24 }, () => 2.0),
+      actualKWh: Array.from({ length: 24 }, (_, i) => (i < 12 ? 2.0 : 0)),
+      price: reliablePrice,
     });
-    const pill = resolveDeltaPill(payload, 'today', 'within');
-    expect(pill?.tone).toBe('ok');
-    expect(pill?.label).toMatch(/kWh to spare$/);
+    // 12 buckets actual × 2.0 kWh + 12 buckets planned × 2.0 kWh = 48 kWh ×
+    // 150 øre/kWh = 7200 øre = 72 kr after dividing by `costDisplay.divisor`.
+    // Pinning the exact value catches divisor regressions that a shape-only
+    // match would silently accept.
+    // NBSP (U+00A0) keeps `≈ 72 kr` from breaking across lines on a 320 px
+    // viewport — `\u00A0` pins the test to the non-breaking form.
+    expect(resolvePriceTagline(payload, 'today', costDisplay))
+      .toBe(`≈\u00A072\u00A0kr at today's prices.`);
   });
 
-  it('reports yesterday under savings as ok pill', () => {
+  it('formats thousands with the Norwegian thin-space separator', () => {
+    // 24 buckets × 50 kWh × 1000 øre/kWh = 1,200,000 øre = 12 000 kr.
+    // `Intl.NumberFormat('nb-NO')` inserts a thin space (U+202F or U+00A0
+    // depending on ICU build) as the thousands separator; the assertion is
+    // structural so it passes against either.
     const payload = buildPayload({
-      actualKWh: Array.from({ length: 24 }, () => 2.0),
+      plannedKWh: Array.from({ length: 24 }, () => 50),
+      price: Array.from({ length: 24 }, () => 1000),
     });
-    const pill = resolveDeltaPill(payload, 'yesterday', 'within');
-    expect(pill?.tone).toBe('ok');
-    expect(pill?.label).toMatch(/kWh under$/);
+    const result = resolvePriceTagline(payload, 'tomorrow', costDisplay);
+    expect(result).not.toBeNull();
+    expect(result).toMatch(/^≈\u00A012[\u00A0\u202F]000\u00A0kr at tomorrow's prices\.$/);
+  });
+
+  it('uses tomorrow tense for the tomorrow view', () => {
+    const payload = buildPayload({
+      plannedKWh: Array.from({ length: 24 }, () => 2.0),
+      price: reliablePrice,
+    });
+    expect(resolvePriceTagline(payload, 'tomorrow', costDisplay)).toMatch(/tomorrow's prices/);
+  });
+
+  it("returns null on the yesterday view (no projection to quote)", () => {
+    const payload = buildPayload({ price: reliablePrice });
+    expect(resolvePriceTagline(payload, 'yesterday', costDisplay)).toBeNull();
+  });
+
+  it('returns null when price data is unreliable', () => {
+    const payload = buildPayload({ price: Array.from({ length: 24 }, () => Number.NaN) });
+    expect(resolvePriceTagline(payload, 'today', costDisplay)).toBeNull();
+  });
+
+  it('returns null when budget is disabled', () => {
+    const payload = buildPayload({ enabled: false, price: reliablePrice });
+    expect(resolvePriceTagline(payload, 'today', costDisplay)).toBeNull();
   });
 });
 
@@ -327,13 +423,24 @@ describe('resolveDominantCause', () => {
 describe('resolveHeadroomLine', () => {
   it('frames positive remaining as energy left in the budget', () => {
     const payload = buildPayload({ remainingKWh: 7.7 });
-    expect(resolveHeadroomLine(payload, costDisplay)).toMatch(/^7\.7 kWh left in today's budget/);
+    expect(resolveHeadroomLine(payload)).toBe("7.7 kWh left in today's budget");
   });
 
   it('frames negative remaining as already-used overdraw', () => {
     const payload = buildPayload({ remainingKWh: -1.3 });
-    expect(resolveHeadroomLine(payload, costDisplay))
-      .toMatch(/^1\.3 kWh over budget already used/);
+    expect(resolveHeadroomLine(payload)).toBe('1.3 kWh over budget already used');
+  });
+
+  it("does not duplicate the NOK money line even when reliable prices are present", () => {
+    // Regression: an earlier shape included `· est. N kr today` here, which
+    // duplicated the new priceTagline subline. With reliable prices supplied,
+    // confirm the headroom output stays kWh-only.
+    const payload = buildPayload({
+      remainingKWh: 7.7,
+      price: Array.from({ length: 24 }, () => 150),
+    });
+    expect(resolveHeadroomLine(payload)).not.toContain('kr');
+    expect(resolveHeadroomLine(payload)).not.toMatch(/·/);
   });
 });
 

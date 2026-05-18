@@ -2123,6 +2123,18 @@ md-primary-tab.tab[active]:hover {
   line-height: var(--pels-text-supporting-font-line-height);
 }
 
+/* Subline + chip pairing — the Budget hero places the live cheap/expensive
+ * `plan-chip` beside the split-comparison subline so the price signal reads as
+ * extra context on the same comparison line, not a separate chip rail. Wraps
+ * at narrow widths so 320 px viewports keep the chip on its own row instead
+ * of crowding the subline. */
+.plan-hero__subline-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
 /* M3: one tonal story per surface. The hero rim + status chip + power-bar
    overshoot carry the warn/alert signal — the subline stays neutral primary.
    `data-tone` is still honoured on the warn rung so projection sublines (which

@@ -57,17 +57,12 @@ started 2026-05-17). In scope for the train: `norgespris-historical-snapshot-tz`
 and settings-UI safety items not on the v2.7.2 path. Skip these items in
 v2.7.1 release-review passes.*
 
-- [ ] Budget page needs a current cheap/expensive price-level chip. PR9
-      (`v2-7-2-pr9-overview-calm-down`, 2026-05-17) demoted the
-      Overview hero's price-level chip on the basis that "should I run
-      loads now?" is a Budget concern, but the Budget page does not
-      currently surface a live `priceLevel` chip — only static "Use
-      cheaper hours" copy and price-shaping settings. Add a chip on
-      BudgetOverview that mirrors the demoted `PRICE_LEVEL_CHIPS`
-      mapping (`cheap → Price low`, `expensive → Price high`) sourced
-      from `power.priceLevel` on the live snapshot. Promote to P1 if
-      owner walks reveal users miss the cue between Overview demotion
-      and Budget chip landing.
+- [x] ~~Budget page needs a current cheap/expensive price-level chip.~~
+      Closed by PR #883 (v2.7.3/budget-usage-loveable): `resolvePriceLevelChip`
+      now lives in `packages/shared-domain/src/priceLevelChips.ts` and the
+      Budget hero renders `Price low` (info) / `Price high` (warn) beside
+      the `splitComparison` subline on the `today` view, sourced from the
+      live `power.priceLevel` realtime tick.
 
 - [ ] Norgespris historical display uses live monthly cap snapshot, not
       snapshot-at-the-time. `priceServiceNorway.ts` initialises
@@ -518,6 +513,12 @@ v2.7.1 release-review passes.*
 - [ ] v2.7.3 — iOS Homey chrome inset may exceed 56 px (PWA + status bar + nav bar);
       confirm via screenshot from user, then split `--pels-homey-mobile-chrome` per
       pointer/platform if needed. Deferred from v2.7.2/PR7 fixup.
+- [ ] v2.7.3 — Mode-summary intent line: render `Hjemme · holding the house under
+      12 kW until 23:00` (vs the chrome label `Mode: Hjemme`) on the Settings active
+      mode card. Blocked on persisting an `intent` string alongside each mode; the
+      `formatModeSummary` helper in `packages/shared-domain/src/modeLabels.ts` will
+      grow an optional `intent` arg at the same time. Deferred from v2.7.3
+      budget-usage-loveable to avoid shipping unused production-code branches.
 
 - [ ] Smart-tasks panel loses its visible title in loading / error / empty
       states after the v2.7.3 `smart-tasks-list-hero` PR dropped the static
@@ -1012,17 +1013,10 @@ consolidation + a11y polish (8 P2)`.*
       update mobile screenshots/e2e coverage.
       Files: `packages/settings-ui/public/index.html`,
       `packages/settings-ui/src/ui/deviceDetail/**`, device-detail e2e tests/screenshots.
-- [ ] Evaluate whether Usage needs both 7-day and 14-day daily-history views.
-      The Usage history card defaults to "Last 14 days" and exposes a 7 / 14 day segmented
-      range toggle (`packages/settings-ui/public/index.html:408-412`,
-      `packages/settings-ui/src/ui/power.ts:45,48,242,400-413`). Daily history is already capped
-      at 14 days in the UI, so this is mainly a product and layout question: whether the 14-day
-      option adds enough value over a simpler 7-day view to justify the extra control.
-      Minimum acceptable completion: decide whether to keep both ranges, make 7 days the only
-      daily-history view, or keep 14 days as an advanced/secondary option; update the title, range
-      hint, toggle, chart tests, and screenshots to match.
-      Files: `packages/settings-ui/public/index.html`, `packages/settings-ui/src/ui/power.ts`,
-      usage chart tests/screenshots.
+- [x] ~~Evaluate whether Usage needs both 7-day and 14-day daily-history views.~~
+      Closed by PR #883 (v2.7.3/budget-usage-loveable): the 7 / 14 day segmented
+      toggle was removed in favour of a single 14-day daily-history view —
+      the "this week" hero framing already carries the 7-day signal.
 - [ ] Improve dropdown menu UX in the redesigned Settings UI.
       The Planning behavior card still uses compact `md-filled-select` controls for short option
       sets (`packages/settings-ui/src/ui/views/BudgetOverview.tsx:560-599`). In the Homey-sized

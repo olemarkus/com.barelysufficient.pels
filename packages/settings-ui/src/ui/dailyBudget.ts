@@ -3,7 +3,12 @@ import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { type CostDisplay } from './dailyBudgetCost.ts';
 import { getPricesReadModel } from './prices.ts';
-import { initBudgetRedesignHandlers, renderBudgetRedesign, type BudgetDayView } from './budgetRedesign.ts';
+import {
+  initBudgetRedesignHandlers,
+  renderBudgetRedesign,
+  updateBudgetPriceLevel,
+  type BudgetDayView,
+} from './budgetRedesign.ts';
 import { setBudgetAdjustRefresh } from './budgetAdjustController.ts';
 import { resolveCostDisplayFromCombinedPrices } from './priceUnit.ts';
 
@@ -18,6 +23,16 @@ const renderDailyBudget = (payload: DailyBudgetUiPayload | null) => {
 
 export const rerenderDailyBudget = () => {
   renderDailyBudget(latestDailyBudgetPayload);
+};
+
+// Side-channel for power-derived signals that aren't carried on the daily
+// budget payload itself. Price-level (cheap/expensive) is consumed by the
+// Budget hero chip; piping it through realtime keeps the chip live without
+// rebuilding the budget payload on every power tick.
+export const updateBudgetPower = (
+  power: { priceLevel?: string | null } | null,
+): void => {
+  updateBudgetPriceLevel(power?.priceLevel ?? null);
 };
 
 export const refreshDailyBudgetPlan = async (payloadOverride?: DailyBudgetUiPayload | null) => {

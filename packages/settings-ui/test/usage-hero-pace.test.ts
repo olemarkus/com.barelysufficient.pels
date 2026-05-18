@@ -147,18 +147,17 @@ describe('formatProjectionText', () => {
     expect(formatProjectionText(ctx)).toBeNull();
   });
 
-  it('uses a simple sentence when the projection lands near typical', () => {
-    const ctx = computePaceContext(6, 12, atUtcHour(12), 'UTC');
-    expect(formatProjectionText(ctx)).toBe('On track for ~12.0 kWh by midnight.');
-  });
+  it('names the landing figure in plain language without re-quoting the delta', () => {
+    // Chip carries +/- vs typical; the prose just states the landing figure.
+    const onTrack = computePaceContext(6, 12, atUtcHour(12), 'UTC');
+    expect(formatProjectionText(onTrack)).toBe('On pace to finish near 12.0 kWh tonight.');
 
-  it('keeps the projection figure but drops the duplicate delta number', () => {
-    // The chip carries the kWh delta; the prose just names the direction.
     const high = computePaceContext(7.5, 12, atUtcHour(12), 'UTC');
-    expect(formatProjectionText(high)).toBe('On track for ~15.0 kWh by midnight (above typical).');
+    expect(formatProjectionText(high)).toBe('On pace to finish near 15.0 kWh tonight.');
+    expect(formatProjectionText(high)).not.toMatch(/above typical|by midnight/);
 
     const low = computePaceContext(4, 12, atUtcHour(12), 'UTC');
-    expect(formatProjectionText(low)).toBe('On track for ~8.0 kWh by midnight (below typical).');
+    expect(formatProjectionText(low)).toBe('On pace to finish near 8.0 kWh tonight.');
   });
 });
 

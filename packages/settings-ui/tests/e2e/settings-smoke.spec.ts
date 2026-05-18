@@ -159,8 +159,11 @@ test.describe('Settings UI (smoke)', () => {
     await expect(page.getByRole('button', { name: 'Apply changes' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Discard preview' })).toHaveCount(0);
 
-    await expect(page.locator('#budget-redesign-comparison')).toContainText('/');
+    // v2.7.3: comparison split into headline + subline. Headline names the
+    // landing kWh in prose; the `value / budget` divisor moved to the subline.
+    await expect(page.locator('#budget-redesign-comparison')).toContainText('Landing at');
     await expect(page.locator('#budget-redesign-comparison')).toContainText('kWh');
+    await expect(page.locator('#budget-redesign-split-comparison')).toContainText('budget');
     await expect(page.locator('#budget-plan-summary')).toContainText("left in today's budget");
     await expect(page.locator('#budget-plan-summary')).toContainText('Managed');
     await expect(page.locator('#budget-plan-summary')).toContainText('Background');
@@ -175,7 +178,7 @@ test.describe('Settings UI (smoke)', () => {
     await page.getByRole('button', { name: 'Tomorrow' }).click();
     await expect(page.locator('#budget-redesign-comparison')).toContainText('kWh');
     await expect(page.locator('#budget-plan-summary .plan-hero__decision')).toContainText('Most planned use');
-    await expect(page.locator('#budget-plan-summary .plan-hero__subline')).not.toContainText("left in today's budget");
+    await expect(page.locator('#budget-plan-summary .plan-hero__subline--headroom')).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Yesterday' }).click();
     await expect(page.locator('#budget-redesign-comparison')).toContainText('kWh');
