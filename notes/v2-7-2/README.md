@@ -83,7 +83,6 @@ so the train ships one coherent Smart-tasks refresh:
 
 Out of scope (kept on their current tier):
 
-- `notification_text` token on `deadline_ended` flow trigger (P3, L2440)
 - Live → completed → history in-place transition (P3, L2455)
 - Hard-deadline enforcement / mode override
   (`notes/hard-deadlines/README.md`)
@@ -181,9 +180,9 @@ not block the v2.7.2 ship.
 - `notes/smart-task-ui/README.md` — the strategic foundation. Read first.
 - `notes/deferred-load-objectives/README.md` — shared objective model,
   reason codes, status semantics.
-- `notes/smart-task-flow-cards/README.md` — flow card design and the
-  rejected `notification_text` discussion (revisit for the missed-case
-  P3 item if v2.7.3 picks it up).
+- `notes/smart-task-flow-cards/README.md` — flow card design. Rule 4
+  states that notification-text composition stays in the user's flow
+  (no `notification_text` token on any trigger).
 - `notes/objective-profile-bands.md` — the band math that PR 4's
   planned-staircase trajectory derives from.
 - `notes/ui-terminology.md` — canonical chip / state / kind copy that

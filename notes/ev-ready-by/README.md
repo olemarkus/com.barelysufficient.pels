@@ -220,12 +220,13 @@ deliver notifications directly.
   `measured_deviation` revision when divergence sustains beyond a
   threshold. Drives the `risk_reason` trigger token.
 - **Expanded trigger tokens**. `flowCards/deadlineObjectiveCards.ts` emits
-  5 tokens for `deadline_status_changed`. Add `planned_start_local`,
+  2 tokens for `deadline_status_changed`. Add `planned_start_local`,
   `planned_finish_local`, `required_kwh`, `planning_speed_kw`,
-  `estimated_duration_text`, `risk_reason`, and a composed
-  `notification_text` token. Token sources already live on the
-  active-plan recorder's `latest` revision (`energyNeededKWh`,
-  `planStatus`, `kwhPerUnitSource`, bucket allocation).
+  `estimated_duration_text`, and `risk_reason`. Token sources already
+  live on the active-plan recorder's `latest` revision (`energyNeededKWh`,
+  `planStatus`, `kwhPerUnitSource`, bucket allocation). A composed
+  `notification_text` token is explicitly *not* part of this proposal —
+  see `notes/smart-task-flow-cards/README.md` Rule 4.
 
 Files: `lib/plan/deferredObjectives/activePlanRecorder.ts`,
 `flowCards/deadlineObjectiveCards.ts`,

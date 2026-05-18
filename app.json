@@ -282,13 +282,6 @@
             "title": {
               "en": "Status"
             }
-          },
-          {
-            "name": "notification_text",
-            "type": "string",
-            "title": {
-              "en": "Notification text"
-            }
           }
         ],
         "id": "deadline_status_changed"

@@ -237,16 +237,16 @@ See `TODO.md` for the discrete entries. The split (loosely):
 - **vNext**: trust-signal additions — postmortem resolver, cost line,
   picked-N-of-M caption, delivered-so-far strip, miss-streak aggregate,
   cross-link to Usage. Mostly P1/P2.
-- **Future**: design rethinks — fold detail into list, `notification_text`
-  for missed deadlines, live→history in-place transition. P3.
+- **Future**: design rethinks — fold detail into list, live→history
+  in-place transition. P3.
 
 ## Related work
 
 - `notes/deferred-load-objectives/README.md` — shared objective model,
   reason codes, status semantics.
-- `notes/smart-task-flow-cards/README.md` — flow card design, the
-  rejected `notification_text` discussion (worth revisiting for the
-  asymmetric missed case).
+- `notes/smart-task-flow-cards/README.md` — flow card design. Rule 4
+  keeps notification-text composition in the user's flow; PELS does not
+  emit a `notification_text` token on any trigger.
 - `notes/ev-ready-by/README.md` — EV-specific UX slice, references this
   surface.
 - `TODO.md` P0/P1 entries from commit `b1e67f31` cover the polish punch

@@ -1796,21 +1796,6 @@ should not be folded into the same PR.
       branch in `prepareDocsSource` outright.
       Files: `scripts/sidebarFilter.mjs`, `scripts/build-docs-channels.mjs`,
       `test/sidebarFilter.test.ts`.
-- [ ] Compose a `notification_text` token on the `deadline_ended` flow trigger for
-      `outcome = missed` only. `notes/smart-task-flow-cards/README.md` deliberately rejected
-      a composed `notification_text` based on Homey-app conventions (other apps emit thin
-      tokens for lifecycle events). The convention argument is sound for symmetric lifecycle
-      events but weaker for the asymmetric-cost case of a missed deadline: a user holding
-      "Smart task missed for Connected 300" is mid-shower with no hot water and would
-      strongly benefit from a one-sentence reason in the notification itself, instead of
-      tapping into the Settings UI to find out. Sourced from the same postmortem resolver
-      the history detail uses (`packages/shared-domain/src/deferredPlanHistory.ts`); flow-only
-      addition, no new diagnostic data needed.
-      Why P3: revisits a deliberate-rejection design decision; small but should be debated
-      with the flow-card slice in `notes/smart-task-flow-cards/README.md` before landing.
-      Related: `notes/smart-task-ui/README.md` Q2.
-      Files: `.homeycompose/flow/triggers/deadline_ended.json`,
-      `flowCards/smartTaskTokens.ts`, `notes/smart-task-flow-cards/README.md` (update).
 - [ ] Replace the live → completed → history hard-cut with an in-place transition.
       When a deadline passes, `DeadlinePlan.tsx` short-circuits to a thin "Smart task
       finished — See History" card and the user is bounced. Live-Homey walk noted this is
@@ -1829,10 +1814,9 @@ should not be folded into the same PR.
       reason}" for ~24 h after a finalized miss. The user lands on the active task when
       they open the app worried about the same deadline pattern; the breadcrumb avoids the
       Smart tasks → past row → detail dance. Sourced from the same postmortem resolver as
-      the history detail and the missed-notification text.
-      Why P3: notification → app breadcrumb; meaningful for the panic-visitor persona but
-      lower-effort variants (the postmortem on history detail, the missed-deadline
-      notification text) cover the same ground at lower cost.
+      the history detail.
+      Why P3: app breadcrumb on top of the existing postmortem on history detail; meaningful
+      for the panic-visitor persona but lower-effort variants cover the same ground.
       Related: `notes/smart-task-ui/README.md` Q2.
       Files: `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
       `packages/settings-ui/src/ui/deadlinePlan.ts` (recent-miss query against
