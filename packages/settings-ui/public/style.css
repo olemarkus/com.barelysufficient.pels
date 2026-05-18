@@ -4469,6 +4469,62 @@ details[open] > summary .disclosure-chevron {
   gap: var(--spacing-3);
 }
 
+/* Consolidated Budget page header (v2.7.3 rhythm pass): folds the previous
+   panel-level `pels-hero` (eyebrow + h2) and the Plan/Adjust segmented control
+   into one row, recovering ~80–90 px of vertical chrome at 480 px. The mode
+   toggle becomes a tertiary text button on the right; the price-level chip
+   (recovered from PR9 Overview demotion) rides in between. */
+.budget-page-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--spacing-2) var(--spacing-3);
+  padding: var(--spacing-3) 0 var(--spacing-2);
+}
+
+.budget-page-header__heading {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.budget-page-header__title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--font-line-height-tight);
+  color: var(--pels-text-headline-color);
+}
+
+.budget-page-header__chips {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.budget-page-header__chips:empty {
+  display: none;
+}
+
+.budget-page-header__action {
+  justify-self: end;
+}
+
+/* Below 360 px the three-column grid runs out of room — drop the action onto
+   its own row so headline + chips can use the full width. */
+@media (max-width: 360px) {
+  .budget-page-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .budget-page-header__action {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
 .budget-redesign-allocation-warning {
   align-items: flex-start;
 }
@@ -4558,19 +4614,38 @@ details[open] > summary .disclosure-chevron {
   gap: var(--spacing-2);
 }
 
-.budget-confidence-card__details summary {
-  width: fit-content;
+/* Title row collapses the previous three-line layout (title / supporting copy /
+   "What this means" disclosure) into one row: title + value chip + chevron at
+   480 px. The supporting copy moves inside the disclosure body. */
+.budget-confidence-card__details summary,
+.budget-confidence-card__summary {
   cursor: pointer;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: var(--spacing-1);
+  gap: var(--spacing-2);
   list-style: none;
-  color: var(--accent);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
 }
 
 .budget-confidence-card__details summary::-webkit-details-marker {
+  display: none;
+}
+
+.budget-confidence-card__summary .budget-confidence-card__summary-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.budget-confidence-card__explainer {
+  color: var(--accent);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.budget-confidence-card__details[open] .budget-confidence-card__explainer {
+  /* Hide the inline affordance once expanded — the body content takes over. */
   display: none;
 }
 

@@ -10,7 +10,7 @@ const openDevices = async (page: Page) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
   await page.getByRole('tab', { name: 'Settings' }).click();
-  await page.locator('[data-settings-target="devices"]').click();
+  await page.locator('.settings-nav-card[data-settings-target="devices"]').click();
   await expect(page.locator('#devices-panel')).toBeVisible();
 };
 

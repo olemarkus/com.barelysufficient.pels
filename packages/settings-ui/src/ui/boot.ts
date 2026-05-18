@@ -56,6 +56,7 @@ import { initElectricityPricesView, initPriceAwareDevicesView } from './priceCon
 import {
   initDailyBudgetHandlers,
   refreshDailyBudgetPlan,
+  updateBudgetPower,
 } from './dailyBudget.ts';
 import { loadBudgetAdjust } from './budgetAdjustController.ts';
 import {
@@ -207,6 +208,11 @@ const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
     }
     primeApiCache(SETTINGS_UI_PLAN_PATH, { plan: bootstrap.plan ?? null });
     primeApiCache(SETTINGS_UI_POWER_PATH, bootstrap.power);
+    // Seed the Budget price-level chip from cached power status so the chip
+    // is visible on first render. Without this it stays hidden until the
+    // first `power_updated` realtime push lands (gh-address-comments review
+    // on PR #884; chatgpt-codex finding).
+    updateBudgetPower(bootstrap.power?.status ?? null);
     primeApiCache(SETTINGS_UI_PRICES_PATH, bootstrap.prices);
     // Persist active plans so device cards can read EV schedule state without
     // re-fetching the full bootstrap on every render cycle.

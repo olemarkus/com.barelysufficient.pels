@@ -57,17 +57,16 @@ started 2026-05-17). In scope for the train: `norgespris-historical-snapshot-tz`
 and settings-UI safety items not on the v2.7.2 path. Skip these items in
 v2.7.1 release-review passes.*
 
-- [ ] Budget page needs a current cheap/expensive price-level chip. PR9
+- [x] Budget page needs a current cheap/expensive price-level chip. PR9
       (`v2-7-2-pr9-overview-calm-down`, 2026-05-17) demoted the
       Overview hero's price-level chip on the basis that "should I run
-      loads now?" is a Budget concern, but the Budget page does not
-      currently surface a live `priceLevel` chip — only static "Use
-      cheaper hours" copy and price-shaping settings. Add a chip on
-      BudgetOverview that mirrors the demoted `PRICE_LEVEL_CHIPS`
-      mapping (`cheap → Price low`, `expensive → Price high`) sourced
-      from `power.priceLevel` on the live snapshot. Promote to P1 if
-      owner walks reveal users miss the cue between Overview demotion
-      and Budget chip landing.
+      loads now?" is a Budget concern, but the Budget page did not
+      then surface a live `priceLevel` chip. *(landed in
+      `v2-7-3-budget-rhythm-and-polish`, 2026-05-18: chip mapping moved
+      to `packages/shared-domain/src/priceLevelChips.ts` so runtime
+      logs and UI agree; chip renders in the new consolidated Budget
+      page header beside the eyebrow/headline. Wired through
+      `updateBudgetPower` on the realtime power tick.)*
 
 - [ ] Norgespris historical display uses live monthly cap snapshot, not
       snapshot-at-the-time. `priceServiceNorway.ts` initialises
@@ -743,7 +742,28 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       +2 instead of +1, biasing the typical-day averages slightly low.
       Files: `lib/core/powerTracker.ts` (`aggregateAndPruneHistory`).
 
-- [ ] Budget tab vertical rhythm + density audit. The user's live walk 2026-05-16
+- [x] Budget tab vertical rhythm + density audit. *(landed in
+      `v2-7-3-budget-rhythm-and-polish`, 2026-05-18.)*
+      - (1) **Daily-budget header tile collapsed.** Removed the panel-level
+        `pels-hero` (`#budget-panel > header.pels-hero`) and folded the
+        eyebrow + headline into a new `.budget-page-header` row that also
+        carries the price-level chip and the mode action — one card's worth
+        of vertical chrome removed.
+      - (2) **Plan/Adjust + Yesterday/Today/Tomorrow no longer stack as two
+        segmented controls.** Plan/Adjust folded into a tertiary text button
+        (`Adjust` in Plan view, `Done` in Adjust view) on the right of the
+        new header; Y/T/T remains the only segmented control in Plan view.
+        E2E tests updated for the new structure.
+      - (3) **Plan-confidence card collapses at 480 px.** The summary row now
+        carries the title, the inline "What this means" affordance, the
+        level + percent chip, and the chevron on a single line; the body
+        copy + breakdown table reveal on `[open]` only.
+      - Baseline rhythm sweep: spacing on the new header (`var(--spacing-3)`
+        top, `var(--spacing-2)` bottom; gap `var(--spacing-2) var(--spacing-3)`)
+        matches the rest of the budget view's `--spacing-3` cadence; no
+        hardcoded pixels introduced.
+
+- [x] (Original v2.7.3 spec, kept for context) Budget tab vertical rhythm + density audit. The user's live walk 2026-05-16
       flagged the page as feeling visually loose / off-rhythm at the dialog's actual
       width.
 
@@ -1367,38 +1387,30 @@ consolidation + a11y polish (8 P2)`.*
       indicator follows the deep-link.
       Files: `packages/settings-ui/src/ui/deadlinePlanRouter.ts`,
       `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
-- [ ] Add a budget-line overlay to the daily-usage 14-day chart.
-      Today the bar chart shows kWh values only; days that exceeded the daily budget or hard
-      cap are visually identical to compliant days. Add a horizontal budget reference line and
-      color over-budget bars in the warn tone so the user can spot bad days at a glance.
-      Files: `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`.
+- [x] Add a budget-line overlay to the daily-usage 14-day chart. *(landed in
+      `v2-7-3-budget-rhythm-and-polish`, 2026-05-18: dashed warn-tone reference
+      line via `markLine` + per-bar warn color when value > budgetKWh.)*
 - [x] Fix the Usage heatmap "Unreliable data" swatch color.
       The legend swatch in `#power-legend` uses `--color-surface-4` (`#232b38`) while the actual
       heatmap cells use `--pels-chart-unreliable-cell` (`#2a3242`) — perceptibly different. Bind
       the swatch to the same token. While there, delete the dead `.usage-legend__swatch--warn`
       class (never instantiated, references the wrong negative-bg token).
       Files: `packages/settings-ui/public/style.css`, `settings/style.css` (regen).
-- [ ] Collapse the Advanced "Data management" / "Daily budget tuning" disclosures by default.
-      Both currently render expanded on first view of the Settings → Advanced surface.
-      "Data management" lists destructive recovery tools (reset, refresh, etc.) and "Daily
-      budget tuning" surfaces low-level planner knobs — neither belongs open before the user
-      has asked for them.
-      Files: `packages/settings-ui/public/index.html`,
-      `packages/settings-ui/src/ui/advanced.ts`.
-- [ ] Add a hero summary to the Electricity prices settings panel.
-      The panel today opens at the source/tariff configuration; the actual *current* price
-      tier and the cheap/expensive thresholds the user sees on Budget aren't visible at the top
-      of this panel. A user can't confirm "Yes, PELS thinks 18 öre is cheap right now" without
-      digging through the form. Add a small summary card at the panel top: current tier, cheap
-      threshold, expensive threshold, last-fetched timestamp.
-      Files: `packages/settings-ui/public/index.html` (Electricity prices panel hero),
-      `packages/settings-ui/src/ui/electricityPrices.ts`,
-      `packages/settings-ui/public/style.css`.
-- [ ] Link the Price-aware devices empty state to Settings → Devices.
-      Today the empty state references the "Settings > Devices" path as plain text. Make it a
-      direct link / button that navigates to the Devices sub-panel.
-      Files: `packages/settings-ui/src/ui/priceAwareDevices.ts`,
-      `packages/settings-ui/public/index.html`.
+- [x] Collapse the Advanced "Data management" / "Daily budget tuning" disclosures by default.
+      *(landed in `v2-7-3-budget-rhythm-and-polish`, 2026-05-18: removed `open` from
+      the Debug-logging and Daily-budget-tuning `<details>` in `packages/settings-ui/public/index.html`.
+      Data-management was already closed.)*
+- [~] Add a hero summary to the Electricity prices settings panel. *(partial, landed in
+      `v2-7-3-budget-rhythm-and-polish`, 2026-05-18: one-sentence lede added under the panel
+      `pels-hero` h2 so users know what the panel controls.)* Remaining for a later pass:
+      a live "current tier / cheap / expensive / last-fetched" summary card. That requires
+      a new wiring path from the price service into the settings UI and was out of scope.
+      Files: `packages/settings-ui/src/ui/views/ElectricityPricesView.tsx` (done);
+      `packages/settings-ui/public/index.html` (Electricity prices panel hero — pending);
+      `packages/settings-ui/src/ui/electricityPrices.ts` (pending).
+- [x] Link the Price-aware devices empty state to Settings → Devices. *(landed in
+      `v2-7-3-budget-rhythm-and-polish`, 2026-05-18: added `MdOutlinedButton` with
+      `data-settings-target="devices"` below the empty-state copy in `PriceAwareDevicesView.tsx`.)*
 - [ ] Consolidate the three near-identical pulse keyframe animations.
       `settings/style.css` defines three pulse keyframes at 1.4 s / 1.5 s / 1.6 s — imperceptibly
       different and not driven from a shared token. Pick one duration, expose as a token, and
@@ -1809,6 +1821,58 @@ should not be folded into the same PR.
       either a Homey-side theme signal we can read at runtime, or source values
       whose post-invert form preserves the same role tone. Park until Homey
       ships a signal or until we move to a theme-handshake protocol.
+
+*Bot-review findings carried forward from the v2.7.3 BOU train (PRs #881,
+#882, #884), 2026-05-18.*
+
+- [ ] Lift `budgetRedesign.ts` back under the 500-line `max-lines` cap.
+      PR #884 raised the override to accommodate the new
+      `BudgetPageHeader` + price-level-chip wiring. Extract the chip
+      resolver + page-header builder into helper modules (or push the
+      header builder back into `BudgetOverview.tsx` as a view-local
+      component) so the central file shrinks. The exemption is intentional
+      for the train batch, not the end state.
+      Source: gemini-code-assist on PR #884, `eslint.config.mjs:514`.
+      Files: `packages/settings-ui/src/ui/budgetRedesign.ts`,
+      `eslint.config.mjs` (drop the override line once back under 500).
+
+- [ ] Restore an `<h2>` page heading on the Usage panel.
+      PR #881 demoted "Energy history" from `<h2>` to `<p class="eyebrow">`
+      as part of the hero double-capsule trim, leaving Usage without a
+      heading at the panel level. Other panels (Overview, Budget, Smart
+      tasks, Settings) all carry an `<h2>` as the panel landmark heading;
+      Usage now skips that level which breaks the document outline for
+      screen-reader users.
+      Source: gemini-code-assist on PR #881 (medium) at
+      `packages/settings-ui/public/index.html:178` and
+      `settings/index.html:178`.
+      Acceptance: visually-hidden `<h2>` if the design wants the eyebrow
+      to remain the only visible label, OR promote the eyebrow back to a
+      visible `<h2>` styled like an eyebrow.
+
+- [ ] Audit `settings/index.html` ↔ `packages/settings-ui/public/index.html`
+      sync at PR-author time.
+      PR #881's "Smart tasks eyebrow" change landed in `settings/index.html`
+      (the built output) but not in `packages/settings-ui/public/index.html`
+      (the source). A future `npm run build:settings` will regenerate
+      `settings/index.html` from source and silently revert the eyebrow
+      drop. Verify the source and re-sync (or document why the two
+      diverged in the PR description).
+      Source: gemini-code-assist on PR #881, `settings/index.html` (high).
+      Files: both index.html files.
+
+- [ ] Move PR #882's hardcoded user copy into shared-domain helpers.
+      PR #882 introduced two inline strings the PR description acknowledged
+      as exceptions (TV-stue temperature placeholder at
+      `PlanDeviceCards.tsx:462`; projected-energy text at
+      `PlanHero.tsx:556`). Both should be folded into
+      `packages/shared-domain/**` helpers per
+      `feedback_ui_text_shared_with_logs` so logging surfaces the same
+      wording.
+      Source: gemini-code-assist on PR #882 (2× medium).
+      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
+      `packages/settings-ui/src/ui/views/PlanHero.tsx`,
+      `packages/shared-domain/src/deviceOverview.ts` (or new helper).
 
 ## P3 Future and Exploratory Work
 

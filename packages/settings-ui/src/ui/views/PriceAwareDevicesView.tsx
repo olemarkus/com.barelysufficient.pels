@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import type { PriceOptDevice } from '../priceConfigTypes.ts';
-import { MdIconButton, MdSwitch, MdTextButton } from './materialWebJSX.tsx';
+import { MdIconButton, MdOutlinedButton, MdSwitch, MdTextButton } from './materialWebJSX.tsx';
 import { ArrowBackIcon } from './icons.tsx';
 
 export type PriceAwareDevicesViewProps = {
@@ -214,10 +214,13 @@ const DevicesSection = ({
       <div class="settings-form-card">
         <h3 class="section-title">Devices</h3>
         <p class="muted">
-          No eligible devices. Mark a temperature device as managed in
-          {' '}
-          Settings &rsaquo; Devices, then return here.
+          No eligible devices. Mark a temperature device as managed in Settings &rsaquo; Devices, then return here.
         </p>
+        <div class="form__actions">
+          <MdOutlinedButton type="button" class="btn ghost" data-settings-target="devices">
+            Open Settings &rsaquo; Devices
+          </MdOutlinedButton>
+        </div>
       </div>
     );
   }

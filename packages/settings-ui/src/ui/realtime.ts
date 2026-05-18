@@ -49,7 +49,7 @@ import {
   renderPriorities,
 } from './modes.ts';
 import { refreshPriceConfigView, reloadPriceConfigSettings, updatePriceConfigDevices } from './priceConfig.ts';
-import { refreshDailyBudgetPlan } from './dailyBudget.ts';
+import { refreshDailyBudgetPlan, updateBudgetPower } from './dailyBudget.ts';
 import { discardBudgetAdjust, refreshBudgetAdjust } from './budgetAdjustController.ts';
 import { loadDailyBudgetTuningSettings } from './dailyBudgetTuning.ts';
 import { parsePlanSnapshot, refreshPlan, renderPlan, updatePlanPower, type PlanSnapshot } from './plan.ts';
@@ -345,6 +345,7 @@ const handlePowerUpdated = (power: unknown) => {
     });
   }
   updatePlanPower(payload?.status ?? null);
+  updateBudgetPower(payload?.status ?? null);
   updateStaleDataStatusFromPowerPayload(payload ?? null);
   refreshPowerDataIfVisible('realtime power_updated', {
     force: hasFullTracker,

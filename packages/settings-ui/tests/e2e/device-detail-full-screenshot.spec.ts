@@ -35,7 +35,7 @@ const openDeviceDetail = async (page: Page, deviceId: string) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
   await page.getByRole('tab', { name: 'Settings' }).click();
-  await page.locator('[data-settings-target="devices"]').click();
+  await page.locator('.settings-nav-card[data-settings-target="devices"]').click();
   const row = page.locator(`#devices-panel [data-device-id="${deviceId}"]`).first();
   await expect(row).toBeVisible();
   await row.locator('.pels-device-card__detail-button').click();
@@ -105,7 +105,7 @@ test('generic EV charger', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
   await page.getByRole('tab', { name: 'Settings' }).click();
-  await page.locator('[data-settings-target="devices"]').click();
+  await page.locator('.settings-nav-card[data-settings-target="devices"]').click();
   const row = page.locator('#devices-panel [data-device-id="dev_evcharger"]').first();
   await expect(row).toBeVisible();
   await row.locator('.pels-device-card__detail-button').click();
