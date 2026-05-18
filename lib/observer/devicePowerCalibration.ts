@@ -7,12 +7,11 @@
  * samples; this module only contains the EMA math, gating policy, and query
  * helpers.
  *
- * Two query primitives are exposed for the asymmetric admission / delivery
- * decision: callers ask for the conservative-high power when sizing headroom
- * commitments and for the conservative-low power when promising energy
- * delivery. Step-aware delta helpers express the same asymmetry for
- * shed-relief and restore-admission deltas while preserving the "use live
- * measurement for the 'from' side when available" rule.
+ * Two query primitives are exposed for admission / delivery decisions.
+ * Samples are accepted only inside the configured step band, so learned
+ * values never exceed the configured step ceiling. Step-aware delta helpers
+ * preserve the "use live measurement for the 'from' side when available"
+ * rule.
  */
 
 import type {
@@ -50,6 +49,7 @@ export type RecordSampleInput = {
   stepId: string;
   measuredPowerKw: number;
   nameplateKw: number;
+  lowerStepCeilingKw?: number;
   dataObservedAtMs?: number;
   nowMs: number;
 };
@@ -60,6 +60,8 @@ export type RecordSampleSkipReason =
   | 'stale_observation'
   | 'cadence_throttled'
   | 'below_floor'
+  | 'below_lower_step'
+  | 'above_step_ceiling'
   | 'anomaly';
 
 export type RecordSampleOutcome =
@@ -151,12 +153,10 @@ export function recordSample(
 }
 
 /**
- * Conservative-high power for "is it safe to admit this draw?" decisions.
- * Below the confidence threshold or for unknown devices the caller's
- * nameplate is returned. When confident, the observed EMA is allowed to
- * override the nameplate only when it would *raise* the assumed draw —
- * mis-labelled devices that consistently exceed nameplate get tracked at
- * their real draw.
+ * Learned power for "is it safe to admit this draw?" decisions. Samples
+ * above the caller-provided nameplate are rejected before they reach the EMA,
+ * so a confident estimate may learn below the configured step power but never
+ * above it.
  */
 export function getAdmissionPowerKw(
   snapshot: PowerCalibrationSnapshot,
@@ -164,19 +164,25 @@ export function getAdmissionPowerKw(
   stepId: string,
   nameplateKw: number,
 ): number {
-  const step = snapshot.devices[deviceId]?.steps[stepId];
-  if (step === undefined || !isConfident(step)) return Math.max(0, nameplateKw);
-  return Math.max(0, Math.max(nameplateKw, step.observedKw));
+  return getBoundedConfidentPowerKw(snapshot, deviceId, stepId, nameplateKw);
 }
 
 /**
  * Conservative-low power for "how much energy will I actually deliver?"
  * decisions. Below confidence the nameplate is returned. When confident, the
- * observed EMA caps the value only when it would *lower* the assumed
- * delivery — a device that over-delivers is not penalized in admission and
- * is not banked on for delivery beyond its labelled rating.
+ * observed EMA can only lower the configured step power because samples above
+ * that ceiling are rejected before they reach the EMA.
  */
 export function getDeliveryPowerKw(
+  snapshot: PowerCalibrationSnapshot,
+  deviceId: string,
+  stepId: string,
+  nameplateKw: number,
+): number {
+  return getBoundedConfidentPowerKw(snapshot, deviceId, stepId, nameplateKw);
+}
+
+function getBoundedConfidentPowerKw(
   snapshot: PowerCalibrationSnapshot,
   deviceId: string,
   stepId: string,
@@ -253,6 +259,8 @@ function evaluateRecordSampleGates(params: {
     return 'cadence_throttled';
   }
   if (isBelowActiveFloor(input, config.minActiveFloorKw)) return 'below_floor';
+  if (isBelowLowerStep(input)) return 'below_lower_step';
+  if (isAboveStepCeiling(input)) return 'above_step_ceiling';
   return null;
 }
 
@@ -281,6 +289,16 @@ function isBelowActiveFloor(
 ): boolean {
   const floor = Math.max(minActiveFloorKw ?? 0, 0.05, 0.1 * input.nameplateKw);
   return input.measuredPowerKw < floor;
+}
+
+function isBelowLowerStep(input: RecordSampleInput): boolean {
+  return isFiniteNumber(input.lowerStepCeilingKw)
+    && input.lowerStepCeilingKw > 0
+    && input.measuredPowerKw <= input.lowerStepCeilingKw;
+}
+
+function isAboveStepCeiling(input: RecordSampleInput): boolean {
+  return input.measuredPowerKw > input.nameplateKw;
 }
 
 function hasNameplateDriftedBeyondTolerance(params: {

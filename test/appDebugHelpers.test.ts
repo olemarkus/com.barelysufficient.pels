@@ -348,9 +348,31 @@ describe('appDebugHelpers', () => {
               currentTarget: 18,
               plannedTarget: 21,
               controllable: true,
+              stepPowerCalibration: {
+                low: { admissionPowerKw: 1.2, deliveryPowerKw: 1.1 },
+              },
               reason: { code: 'keep', detail: null },
             },
           ],
+        }),
+      },
+      powerCalibrationStore: {
+        getSnapshot: vi.fn().mockReturnValue({
+          version: 1,
+          devices: {
+            'dev-1': {
+              lastTouchedMs: Date.parse('2026-03-12T10:04:00.000Z'),
+              steps: {
+                low: {
+                  observedKw: 1.1,
+                  nameplateAtSampleKw: 1.25,
+                  samples: 6,
+                  sustainedSeconds: 300,
+                  lastSampleMs: Date.parse('2026-03-12T10:04:00.000Z'),
+                },
+              },
+            },
+          },
         }),
       },
       error: vi.fn(),
@@ -380,7 +402,22 @@ describe('appDebugHelpers', () => {
         currentTarget: 18,
         plannedTarget: 21,
         reason: 'keep',
+        stepPowerCalibration: {
+          low: { admissionPowerKw: 1.2, deliveryPowerKw: 1.1 },
+        },
       }),
+      powerCalibration: {
+        lastTouchedMs: Date.parse('2026-03-12T10:04:00.000Z'),
+        steps: {
+          low: {
+            observedKw: 1.1,
+            nameplateAtSampleKw: 1.25,
+            samples: 6,
+            sustainedSeconds: 300,
+            lastSampleMs: Date.parse('2026-03-12T10:04:00.000Z'),
+          },
+        },
+      },
       observedSources: {
         snapshotRefresh: {
           observedAt: '2026-03-12T10:05:00.000Z',

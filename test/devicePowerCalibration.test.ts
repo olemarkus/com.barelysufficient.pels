@@ -46,6 +46,35 @@ describe('recordSample acceptance gates', () => {
     if (!outcome.accepted) expect(outcome.reason).toBe('below_floor');
   });
 
+  it('rejects when measured is at or below the step underneath', () => {
+    const snapshot = createEmptyPowerCalibrationSnapshot();
+    const equalToLower = recordSample(snapshot, baseSample({
+      measuredPowerKw: 1.25,
+      nameplateKw: 1.75,
+      lowerStepCeilingKw: 1.25,
+    }));
+    expect(equalToLower.accepted).toBe(false);
+    if (!equalToLower.accepted) expect(equalToLower.reason).toBe('below_lower_step');
+
+    const belowLower = recordSample(snapshot, baseSample({
+      measuredPowerKw: 1.1,
+      nameplateKw: 1.75,
+      lowerStepCeilingKw: 1.25,
+    }));
+    expect(belowLower.accepted).toBe(false);
+    if (!belowLower.accepted) expect(belowLower.reason).toBe('below_lower_step');
+  });
+
+  it('rejects when measured is above the configured step ceiling', () => {
+    const snapshot = createEmptyPowerCalibrationSnapshot();
+    const outcome = recordSample(snapshot, baseSample({
+      measuredPowerKw: 1.81,
+      nameplateKw: 1.25,
+    }));
+    expect(outcome.accepted).toBe(false);
+    if (!outcome.accepted) expect(outcome.reason).toBe('above_step_ceiling');
+  });
+
   it('rejects stale observations', () => {
     const snapshot = createEmptyPowerCalibrationSnapshot();
     const outcome = recordSample(snapshot, baseSample({
@@ -74,14 +103,14 @@ describe('recordSample acceptance gates', () => {
     for (let i = 0; i < 6; i += 1) {
       const outcome = recordSample(snapshot, baseSample({
         nowMs: i * 70_000,
-        measuredPowerKw: 2.75,
+        measuredPowerKw: 0.5,
       }));
       expect(outcome.accepted).toBe(true);
       if (outcome.accepted) snapshot = outcome.snapshot;
     }
     const anomaly = recordSample(snapshot, baseSample({
       nowMs: 6 * 70_000 + 70_000,
-      measuredPowerKw: 50,
+      measuredPowerKw: 2.5,
     }));
     expect(anomaly.accepted).toBe(false);
     if (!anomaly.accepted) expect(anomaly.reason).toBe('anomaly');
@@ -107,7 +136,7 @@ describe('EMA updates and confidence gates', () => {
     expect(getAdmissionPowerKw(snapshot, 'dev1', 'high', 3)).toBe(3);
   });
 
-  it('once confident, delivery caps at nameplate while admission floors at it', () => {
+  it('once confident, admission and delivery can learn below the configured step ceiling', () => {
     let snapshot = createEmptyPowerCalibrationSnapshot();
     for (let i = 0; i < 6; i += 1) {
       const outcome = recordSample(snapshot, baseSample({
@@ -117,21 +146,30 @@ describe('EMA updates and confidence gates', () => {
       if (outcome.accepted) snapshot = outcome.snapshot;
     }
     expect(getDeliveryPowerKw(snapshot, 'dev1', 'high', 3)).toBeCloseTo(2.5, 1);
-    expect(getAdmissionPowerKw(snapshot, 'dev1', 'high', 3)).toBe(3);
+    expect(getAdmissionPowerKw(snapshot, 'dev1', 'high', 3)).toBeCloseTo(2.5, 1);
   });
 
-  it('over-delivering devices admit at the observed value, not nameplate', () => {
+  it('does not learn above the configured step ceiling', () => {
     let snapshot = createEmptyPowerCalibrationSnapshot();
     for (let i = 0; i < 6; i += 1) {
       const outcome = recordSample(snapshot, baseSample({
         nowMs: i * 70_000,
-        measuredPowerKw: 3.4,
+        measuredPowerKw: 2.9,
         nameplateKw: 3,
       }));
       if (outcome.accepted) snapshot = outcome.snapshot;
     }
-    expect(getDeliveryPowerKw(snapshot, 'dev1', 'high', 3)).toBe(3);
-    expect(getAdmissionPowerKw(snapshot, 'dev1', 'high', 3)).toBeCloseTo(3.4, 1);
+    expect(getDeliveryPowerKw(snapshot, 'dev1', 'high', 3)).toBeCloseTo(2.9, 1);
+    expect(getAdmissionPowerKw(snapshot, 'dev1', 'high', 3)).toBeCloseTo(2.9, 1);
+
+    const overCeiling = recordSample(snapshot, baseSample({
+      nowMs: 7 * 70_000,
+      measuredPowerKw: 3.4,
+      nameplateKw: 3,
+    }));
+    expect(overCeiling.accepted).toBe(false);
+    if (!overCeiling.accepted) expect(overCeiling.reason).toBe('above_step_ceiling');
+    expect(getAdmissionPowerKw(snapshot, 'dev1', 'high', 3)).toBeCloseTo(2.9, 1);
   });
 });
 
