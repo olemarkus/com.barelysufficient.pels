@@ -4,7 +4,6 @@ import {
   usageHeroComparison,
   usageHeroDelta,
   usageHeroProjection,
-  usageWeeklyAvg,
 } from './dom.ts';
 import { getStartOfDayInTimeZone, getZonedParts } from './timezone.ts';
 
@@ -83,17 +82,6 @@ const isWeekendDate = (date: Date, timeZone: string): boolean => {
   const { year, month, day } = getZonedParts(date, timeZone);
   const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
   return weekday === 0 || weekday === 6;
-};
-
-export const computeBlendedDailyAvg = (stats: PowerStatsLike): number => {
-  const hasWeekday = stats.weekdayAvg > 0;
-  const hasWeekend = stats.weekendAvg > 0;
-  if (hasWeekday && hasWeekend) {
-    return (stats.weekdayAvg * 5 + stats.weekendAvg * 2) / 7;
-  }
-  if (hasWeekday) return stats.weekdayAvg;
-  if (hasWeekend) return stats.weekendAvg;
-  return 0;
 };
 
 export type PaceContext = {
@@ -242,11 +230,6 @@ export const renderUsageHero = (
   todayText: string,
 ): void => {
   if (usageHeroHeadline) usageHeroHeadline.textContent = `${stats.today.toFixed(1)} kWh today`;
-  if (usageWeeklyAvg) {
-    usageWeeklyAvg.textContent = stats.hasPatternData
-      ? `${computeBlendedDailyAvg(stats).toFixed(1)} kWh`
-      : '-- kWh';
-  }
 
   const now = new Date();
   const isWeekend = isWeekendDate(now, timeZone);

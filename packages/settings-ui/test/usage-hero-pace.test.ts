@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  computeBlendedDailyAvg,
   computePaceContext,
   formatDeltaChipLabel,
   formatProjectionText,
@@ -28,21 +27,6 @@ const atZonedHour = (timeZone: string, hour: number, minute = 0): Date => {
   const offsetHours = localNoonHour - 12;
   return new Date(Date.UTC(2026, 4, 11, hour - offsetHours, minute, 0));
 };
-
-const baseStats = (overrides: Partial<{ weekdayAvg: number; weekendAvg: number }> = {}) => ({
-  today: 0,
-  week: 0,
-  month: 0,
-  weekdayAvg: 0,
-  weekendAvg: 0,
-  hourlyPatternAll: [],
-  hourlyPatternWeekday: [],
-  hourlyPatternWeekend: [],
-  hourlyPatternMeta: '',
-  dailyHistory: [],
-  hasPatternData: false,
-  ...overrides,
-});
 
 describe('computePaceContext', () => {
   it('reads the wall-clock hour from the supplied timezone, not the runtime', () => {
@@ -197,25 +181,3 @@ describe('resolveHeroTone', () => {
   });
 });
 
-describe('computeBlendedDailyAvg', () => {
-  it('returns the weekday/weekend weighted blend when both have data', () => {
-    const avg = computeBlendedDailyAvg(baseStats({ weekdayAvg: 10, weekendAvg: 17 }));
-    expect(avg).toBeCloseTo((10 * 5 + 17 * 2) / 7, 5);
-  });
-
-  it('returns the weekday average untouched when only weekdays have data', () => {
-    // Avoid zero-filling weekends; otherwise a fresh install would underreport
-    // (10 × 5 / 7 ≈ 7.1) for users who haven't accumulated a weekend yet.
-    const avg = computeBlendedDailyAvg(baseStats({ weekdayAvg: 10, weekendAvg: 0 }));
-    expect(avg).toBe(10);
-  });
-
-  it('returns the weekend average untouched when only weekends have data', () => {
-    const avg = computeBlendedDailyAvg(baseStats({ weekdayAvg: 0, weekendAvg: 14 }));
-    expect(avg).toBe(14);
-  });
-
-  it('returns 0 when neither day type has data', () => {
-    expect(computeBlendedDailyAvg(baseStats())).toBe(0);
-  });
-});

@@ -804,7 +804,7 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       line; drop the duplicate copies.
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
 
-- [ ] Usage heatmap: color-scale legend on the right edge lacks a kWh unit label.
+- [x] Usage heatmap: color-scale legend on the right edge lacks a kWh unit label.
       Live-walk 2026-05-16 (`/tmp/pels-live-walk/03-usage-detailed-480.png`) shows
       the heatmap right-edge color scale with numeric values but no unit. Add `kWh`
       (or `kr/kWh` if that's what the scale encodes — verify) so the user knows
@@ -831,14 +831,14 @@ consolidation + a11y polish (8 P2)`.*
       Files: `packages/settings-ui/src/ui/views/UsageOverview.tsx` (or wherever
       the heatmap week-nav lives), `packages/settings-ui/public/style.css`.
 
-- [ ] Usage hero "Daily avg" stat duplicates the "Typical weekend: 62.8 kWh"
+- [x] Usage hero "Daily avg" stat duplicates the "Typical weekend: 62.8 kWh"
       already in the subline. Live walk 2026-05-16
       (`/tmp/pels-rewalk/usage/02-usage-hero-480.png`): same number rendered
       twice in a single hero, only 24 px apart. Pick one location and drop the
       other.
       Files: `packages/settings-ui/src/ui/views/UsageOverview.tsx`.
 
-- [ ] Usage hero double-capsule wastes ~80 px of vertical real estate. Live
+- [x] Usage hero double-capsule wastes ~80 px of vertical real estate. Live
       walk 2026-05-16 (`/tmp/pels-rewalk/usage/02-usage-hero-480.png`,
       `/tmp/pels-rewalk/usage/01-usage-480-full.png`): the
       `<header class="pels-hero">` "USAGE / Energy history" eyebrow capsule
@@ -850,7 +850,7 @@ consolidation + a11y polish (8 P2)`.*
       Files: `packages/settings-ui/src/ui/views/UsageOverview.tsx`,
       `packages/settings-ui/public/style.css` (`.pels-hero` markup / padding).
 
-- [ ] Usage tab chart palettes don't share a family. Live walk 2026-05-16:
+- [x] Usage tab chart palettes don't share a family. Live walk 2026-05-16:
       three unrelated palettes coexist on the same tab — Daily-usage bars are
       ECharts-default blue, segmented active uses the accent green
       `rgba(34,197,94,0.28)`, heatmap is teal-to-red. None reference the
@@ -1345,7 +1345,7 @@ consolidation + a11y polish (8 P2)`.*
       cap are visually identical to compliant days. Add a horizontal budget reference line and
       color over-budget bars in the warn tone so the user can spot bad days at a glance.
       Files: `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`.
-- [ ] Fix the Usage heatmap "Unreliable data" swatch color.
+- [x] Fix the Usage heatmap "Unreliable data" swatch color.
       The legend swatch in `#power-legend` uses `--color-surface-4` (`#232b38`) while the actual
       heatmap cells use `--pels-chart-unreliable-cell` (`#2a3242`) — perceptibly different. Bind
       the swatch to the same token. While there, delete the dead `.usage-legend__swatch--warn`

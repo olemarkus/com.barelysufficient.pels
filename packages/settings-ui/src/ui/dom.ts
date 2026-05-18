@@ -78,7 +78,6 @@ export const usageHeroHeadline = document.getElementById('usage-hero-headline') 
 export const usageHeroComparison = document.getElementById('usage-hero-comparison') as HTMLElement | null;
 export const usageHeroDelta = document.getElementById('usage-hero-delta') as HTMLElement | null;
 export const usageHeroProjection = document.getElementById('usage-hero-projection') as HTMLElement | null;
-export const usageWeeklyAvg = document.getElementById('usage-weekly-avg') as HTMLElement | null;
 export const tabs = Array.from(document.querySelectorAll<HTMLElement>('.tab'));
 export const tabListEntries: MdTabListEntry[] = Array
   .from(document.querySelectorAll<MdTabsElement>('md-tabs.tabs'))

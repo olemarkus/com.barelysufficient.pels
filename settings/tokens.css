@@ -221,14 +221,14 @@
   --pels-chart-actual: var(--color-semantic-text-primary);
   --pels-chart-plan: var(--color-role-good);
   --pels-chart-plan-fill: color-mix(in srgb, var(--color-role-good) 10%, transparent);
-  --pels-chart-measured: var(--color-role-info);
+  --pels-chart-measured: var(--color-semantic-accent);
   --pels-chart-managed: var(--color-role-warn);
   --pels-chart-background: var(--color-role-info);
   --pels-chart-warn: var(--color-role-warn);
   --pels-chart-danger: var(--color-role-danger);
   --pels-chart-forecast: var(--color-role-info);
-  --pels-chart-heatmap-low: var(--color-role-good);
-  --pels-chart-heatmap-high: var(--color-role-danger);
+  --pels-chart-heatmap-low: color-mix(in srgb, var(--color-semantic-accent) 18%, var(--color-surface-1));
+  --pels-chart-heatmap-high: var(--color-semantic-accent);
   --pels-chart-current-border: var(--color-state-info-border);
   --pels-chart-muted: var(--color-semantic-text-muted);
   --pels-chart-tooltip-bg: var(--color-overlay-toast);
