@@ -5,6 +5,45 @@
 const timeZoneOffsetErrorLogged = new Set<string>();
 const DAY_START_SEARCH_WINDOW_MS = 72 * 60 * 60 * 1000;
 
+// Intl.DateTimeFormat is the dominant cost of getZonedParts / getTimeZoneOffsetMinutes
+// in plan-build (60% of plan-build CPU per a 2026-05-18 CPU profile). The constructor
+// is expensive (ICU initialization); the formatter itself is reusable for any date.
+// Cache one instance per (timezone, options-shape) since timezones rarely change at
+// runtime. Bounded by the number of distinct timezones in use (typically 1-2 per
+// session); no eviction needed.
+const zonedPartsFormatterByTimezone = new Map<string, Intl.DateTimeFormat>();
+const offsetFormatterByTimezone = new Map<string, Intl.DateTimeFormat>();
+
+const getZonedPartsFormatter = (timeZone: string): Intl.DateTimeFormat => {
+    const cached = zonedPartsFormatterByTimezone.get(timeZone);
+    if (cached) return cached;
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+        hourCycle: 'h23',
+    });
+    zonedPartsFormatterByTimezone.set(timeZone, formatter);
+    return formatter;
+};
+
+const getOffsetFormatter = (timeZone: string): Intl.DateTimeFormat => {
+    const cached = offsetFormatterByTimezone.get(timeZone);
+    if (cached) return cached;
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        timeZoneName: 'shortOffset',
+        hour: '2-digit',
+    });
+    offsetFormatterByTimezone.set(timeZone, formatter);
+    return formatter;
+};
+
 const compareDateKeys = (left: string, right: string): number => {
     if (left < right) return -1;
     if (left > right) return 1;
@@ -37,11 +76,7 @@ export function getHourBucketKey(nowMs: number = Date.now()): string {
 export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
     let primaryError: unknown;
     try {
-        const parts = new Intl.DateTimeFormat('en-US', {
-            timeZone,
-            timeZoneName: 'shortOffset',
-            hour: '2-digit',
-        }).formatToParts(date);
+        const parts = getOffsetFormatter(timeZone).formatToParts(date);
         const tzName = parts.find((part) => part.type === 'timeZoneName')?.value ?? '';
         const match = tzName.match(/GMT([+-]\d{1,2})(?::(\d{2}))?/);
         if (!match) throw new Error('Missing GMT offset');
@@ -81,23 +116,16 @@ export function getZonedParts(date: Date, timeZone: string): {
     minute: number;
     second: number;
 } {
-    const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-        hourCycle: 'h23',
-    }).formatToParts(date);
-    const map = parts.reduce<Record<string, string>>((acc, part) => {
+    const parts = getZonedPartsFormatter(timeZone).formatToParts(date);
+    // Mutate a single record instead of `reduce` with spread — saves 6 object
+    // allocations per call (one per non-literal part).
+    const map: Record<string, string> = {};
+    for (const part of parts) {
         if (part.type !== 'literal') {
-            return { ...acc, [part.type]: part.value };
+            // eslint-disable-next-line functional/immutable-data -- local scratch; avoids 6 spread allocs
+            map[part.type] = part.value;
         }
-        return acc;
-    }, {});
+    }
     const rawHour = Number(map.hour);
     const hour = rawHour === 24 ? 0 : rawHour;
     return {
