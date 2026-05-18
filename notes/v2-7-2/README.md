@@ -147,8 +147,34 @@ P0/P1 findings from any critic: fix in the same PR. P2/P3: route to
 | 2026-05-17 | PR 3 | one-sentence postmortem + outcome-asymmetric history hero — succeeded receipt vs missed diagnosis vs abandoned log, snapshot `dailyBudgetExhaustedBucketCount` capture, PR #856 P2 missed-reason fold-in |
 | 2026-05-17 | PR 4 | actual-vs-plan progress chart on history detail — planned staircase (`hours / kwhPerUnitMean` integrated from start progress), observed-progress line from v4 `progressSamples[]`, dashed target reference, `metAtMs` marker; v3 entries fall back to the legacy kWh-bar chart with a "Schedule only — observations not recorded" note |
 | 2026-05-17 | PR 5 | per-replan revision log on history detail — `revisionReason` + `formatPlanHistoryRevisionEntry`, `What changed` card co-gated with the chart (auto-visible on Missed, opt-in on Succeeded/Abandoned), legacy v3 fallback retained for `revisions`-less entries |
+| 2026-05-17 | PR 6 | smart-task list polish + Usage cross-link + PR #856 P2 fold-ins (`b2119d34`) |
+| 2026-05-17 | PR 7 | pending hero — route `objective_missing_charge_rate` to "Learning energy use" for thermostats (`61823c18`); deadline-plan mobile chrome overlap fix (chip-rail clip + close-X collision) (`eb8f0720`) |
+| 2026-05-17 | PR 8 | route "Review device" recourse to device-detail — fix dead-end button on missed-plan history (`fd80aa31`) |
+| 2026-05-17 | PR 9 | Overview calm-down — chip-rail declutter, drop redundant priority chip, Hjemme-mode copy fix (`29920f06`) |
+| 2026-05-17 | PR 10 | postmortem clarity — schedule-toggle rename, outcome-caption promotion (`d9b299f3`) |
+| 2026-05-17 → 18 | v2.7.3 scope absorbed | the train kept landing past the original PR 1–7 plan: Overview card-rhythm + chip primitives (`47fc7a20`), Usage palette unification (`d5930f6d`), per-hour bar strip + v4 hourly contributions (`bc870240`), Smart tasks populated hero (`693bcf33`), Budget tab rhythm + price-level chip (`dd92fa42`), history loveable (`2e1df177`), Overview loveable (`888d5b83`), stall-promotion device-plateau acceptance (`dd29ef0e`), revision-log replan-label fix (`cb2fb055`), stepped keep-invariant + plannedTarget non-nullable + mode-target fallback (`b5f08bfa`, `9b9225ba`, `8ebd982c`), Norgespris historical TZ + power-tracker daily TZ (`7ab9d475`), Norgespris adjustment for historical price rows (`7c6c4363`). All commits ship as v2.7.2. The `notes/v2-7-2/postmortem-chart-policy.md` v2.7.3-history-loveable section refers to these. |
 
-Update as PRs merge into `v2.7.2`.
+`package.json` and `.homeycompose/app.json` still read pre-bump at the
+end of this train; the version bump (and changelog) is the final step
+before the release closes.
+
+## Carrying issue (release-review 2026-05-18)
+
+`DeferredObjectivePlanHistoryRecorder.recordHourlyDelivery` has **zero
+production callers** — confirmed via `grep -rn` across `lib/`, `flowCards/`,
+`drivers/`, root entry points. The per-hour bar strip (`hourlyContributions`),
+postmortem cost narrative (`deliveredKWh` / `totalCost`), and any UI that
+reads those fields silently degrade on v2.7.2 production runs:
+`finalizeRecord` gates the v4 delivery fields on `hasDeliveryContribution`
+(planHistory.ts:564-572), so every real entry persists with
+`hasDeliveryContribution: false` and **omits** `deliveredKWh` /
+`totalCost` / `hourlyContributions` from the JSON entirely (not `0` /
+`[]`). `progressSamples` and `revisions[]` *are* wired (via
+`recordProgressSample` at planHistory.ts:401/422/436 and
+`appendRevisionLogIfNew` at line 319), so the actual-vs-plan chart and
+revisions card render correctly. Only the delivery / cost / hourly path
+is dark. Tracked as a P1 in `TODO.md`; suppression is graceful so it does
+not block the v2.7.2 ship.
 
 ## Related notes
 
