@@ -5879,6 +5879,64 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 /* Smart tasks list (top-level Smart tasks tab) */
+
+/* Populated-state hero rendered by `DeadlinesList.tsx` above the card list.
+ * Reuses the `.plan-hero` / `.pels-hero` primitive (shape, padding, tone rim,
+ * surface tier) so the four sibling panels keep an identical hero rhythm.
+ * The wrapper class only adds the spacing rule below — without it the hero
+ * sits flush against the first card and reads as part of the list, not as
+ * the page-level answer to "are my deadlines on track?". */
+.deadlines-list-hero {
+  margin-bottom: var(--spacing-3);
+}
+
+/* Hero subline affordance: when the subline names a specific card, the
+ * subline wraps in this button so the user can scroll the named card into
+ * view. Styled as a quiet inline affordance — no chrome that competes with
+ * the headline; just a hover/focus underline and a chevron suffix that
+ * signals tappability. The negative-margin / padding pattern keeps the
+ * visual line tight while expanding the touch target to ≥ 48 px tall, in
+ * line with the Android Material touch-target floor. */
+.deadlines-list-hero__nav-target {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--spacing-1);
+  margin: calc(-1 * var(--spacing-2)) calc(-1 * var(--spacing-2));
+  padding: var(--spacing-2) var(--spacing-2);
+  min-height: 48px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--transition-fast);
+}
+
+.deadlines-list-hero__nav-target:hover,
+.deadlines-list-hero__nav-target:focus-visible {
+  background: var(--color-surface-3);
+}
+
+.deadlines-list-hero__nav-target:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.deadlines-list-hero__nav-target-text {
+  text-decoration: underline;
+  text-decoration-color: var(--muted);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.deadlines-list-hero__nav-target-chevron {
+  color: var(--muted);
+  font-size: var(--font-size-base);
+  line-height: 1;
+}
+
 .deadline-list {
   display: grid;
   gap: var(--spacing-2);

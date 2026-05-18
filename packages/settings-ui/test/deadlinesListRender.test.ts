@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   renderDeadlinesList,
   type DeadlinesListCard,
@@ -31,6 +31,14 @@ const mountIntoBody = (): HTMLElement => {
   document.body.appendChild(mount);
   return mount;
 };
+
+// Each test appends a fresh mount to `document.body`; clean up between runs
+// so the subline-affordance scroll handler (which uses
+// `document.querySelectorAll('.deadline-list-card')`) can't pick up cards
+// rendered by an earlier test in the same file.
+afterEach(() => {
+  document.body.replaceChildren();
+});
 
 describe('DeadlinesList', () => {
   it('renders a confidence chip when the card carries a confidence band', () => {
@@ -100,6 +108,80 @@ describe('DeadlinesList', () => {
       cards: [buildCard({ statusId: 'on_track' })],
     });
     expect(mount.querySelector('.deadline-list-card__when-row--accent')).not.toBeNull();
+  });
+
+  // Populated-state hero (v2.7.3 loveable batch). The renderer asks the shared
+  // resolver for a hero copy and mounts it above the card list. The hero is
+  // suppressed for empty `cards` arrays (the empty-state paragraph already
+  // owns that voice) and present otherwise — the four assertions below pin
+  // both branches plus the headline / subline mounting points so regressions
+  // surface on this view rather than on the resolver alone.
+  it('renders the populated-state hero above the card list', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ statusId: 'on_track' })],
+    });
+    const hero = mount.querySelector('.deadlines-list-hero');
+    expect(hero).not.toBeNull();
+    expect(hero?.querySelector('.plan-hero__headline')?.textContent).toBe('1 deadline on track.');
+    expect(hero?.querySelector('.plan-hero__subline')?.textContent).toContain('Connected 300');
+  });
+
+  it('escalates the populated-state hero tone when any card is at risk', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [
+        buildCard({ statusId: 'on_track' }),
+        buildCard({ deviceId: 'dev_boiler', deviceName: 'Boiler', statusId: 'at_risk' }),
+      ],
+    });
+    const hero = mount.querySelector('.deadlines-list-hero');
+    expect(hero?.getAttribute('data-tone')).toBe('warn');
+    expect(hero?.querySelector('.plan-hero__headline')?.textContent).toBe('1 of 2 deadlines at risk.');
+  });
+
+  it('does not render the populated-state hero on the empty state', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, { status: 'ready', cards: [] });
+    expect(mount.querySelector('.deadlines-list-hero')).toBeNull();
+  });
+
+  // Subline affordance: when the resolver emits a sublineTarget, the subline
+  // wraps in a button that scrolls the named card into view. Verifies the
+  // button mounts with the correct data attribute and that clicking it
+  // dispatches `scrollIntoView` on the matching card row.
+  it('renders the subline as a button keyed to the named card', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [
+        buildCard({ deviceId: 'dev_water_heater', statusId: 'on_track' }),
+        buildCard({ deviceId: 'dev_boiler', deviceName: 'Boiler', statusId: 'on_track' }),
+      ],
+    });
+    const button = mount.querySelector<HTMLButtonElement>('.deadlines-list-hero__nav-target');
+    expect(button).not.toBeNull();
+    expect(button?.getAttribute('data-deadline-card-id')).toBe('dev_water_heater');
+  });
+
+  it('scrolls the named card into view when the subline affordance is clicked', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [
+        buildCard({ deviceId: 'dev_water_heater', statusId: 'on_track' }),
+        buildCard({ deviceId: 'dev_boiler', deviceName: 'Boiler', statusId: 'on_track' }),
+      ],
+    });
+    const card = mount.querySelector<HTMLElement>('.deadline-list-card[data-device-id="dev_water_heater"]');
+    expect(card).not.toBeNull();
+    const scrollSpy = vi.fn();
+    if (card) card.scrollIntoView = scrollSpy;
+    const button = mount.querySelector<HTMLButtonElement>('.deadlines-list-hero__nav-target');
+    button?.click();
+    expect(scrollSpy).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
   });
 });
 
