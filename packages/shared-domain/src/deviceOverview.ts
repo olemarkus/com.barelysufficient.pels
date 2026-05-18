@@ -240,7 +240,9 @@ const WAITING_FOR_AVAILABLE_POWER = 'Waiting for available power';
 const appendOverviewStatus = (statusMsg: string, extraStatus: string | null): string => {
   if (!extraStatus) return statusMsg;
   if (statusMsg === '' || statusMsg === WAITING_FOR_AVAILABLE_POWER) return extraStatus;
-  return `${statusMsg} - ${extraStatus}`;
+  // Em-dash separator matches the device-card status copy convention. Spec:
+  // notes/ui-terminology.md:9, TODO #8 (2026-05-16).
+  return `${statusMsg} — ${extraStatus}`;
 };
 
 export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOverviewStrings => {

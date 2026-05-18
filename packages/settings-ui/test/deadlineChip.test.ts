@@ -6,9 +6,13 @@ import { createEmptyDeferredObjectiveSettings } from '../../contracts/src/deferr
 
 const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 
-const renderChip = (deviceId: string, nowMs: number = NOW_MS): HTMLDivElement => {
+const renderChip = (
+  deviceId: string,
+  nowMs: number = NOW_MS,
+  deviceName?: string,
+): HTMLDivElement => {
   const mount = document.createElement('div');
-  render(h(DeadlineChip, { deviceId, nowMs }), mount);
+  render(h(DeadlineChip, { deviceId, deviceName, nowMs }), mount);
   return mount;
 };
 
@@ -44,6 +48,42 @@ describe('DeadlineChip', () => {
     expect(link?.textContent).toBe('Smart task');
     expect(link?.getAttribute('href')).toBe('./?page=deadline-plan&deviceId=connected-300');
     expect(link?.classList.contains('plan-chip--link')).toBe(true);
+  });
+
+  it('uses the device name in the aria-label so SR users hear which card the chip belongs to', () => {
+    state.deferredObjectiveSettings = {
+      version: 1,
+      objectivesByDeviceId: {
+        'connected-300': {
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 65,
+          deadlineAtMs: futureDeadline(),
+        },
+      },
+    };
+
+    const link = renderChip('connected-300', NOW_MS, 'Connected 300').querySelector('a');
+    expect(link?.getAttribute('aria-label')).toBe('Smart task for Connected 300');
+  });
+
+  it('falls back to a generic aria-label when no device name is provided', () => {
+    state.deferredObjectiveSettings = {
+      version: 1,
+      objectivesByDeviceId: {
+        'connected-300': {
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 65,
+          deadlineAtMs: futureDeadline(),
+        },
+      },
+    };
+
+    const link = renderChip('connected-300').querySelector('a');
+    expect(link?.getAttribute('aria-label')).toBe('Smart task');
   });
 
   it('renders nothing when the entry exists but is disabled', () => {

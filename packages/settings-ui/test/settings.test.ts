@@ -1524,7 +1524,7 @@ describe('Plan sorting', () => {
 
     const heldCard = document.querySelector('#plan-cards [data-device-id="b1"]') as HTMLElement | null;
     expect(heldCard?.dataset.stateKind).toBe('held');
-    expect(heldCard?.querySelector('.plan-state-chip')).toBeNull();
+    expect(heldCard?.querySelector('.plan-state-chip-wrap .plan-chip')).toBeNull();
   });
 
   it('shows measured and expected power in usage line when available', async () => {

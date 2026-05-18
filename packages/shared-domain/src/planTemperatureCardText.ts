@@ -48,6 +48,8 @@ export const resolveTemperatureLine = (device: TemperatureDevice): string | null
   const targetText = typeof currentTarget === 'number' && currentTarget !== plannedTarget
     ? `${currentTarget.toFixed(0)}° → ${plannedTarget.toFixed(0)}°`
     : `${plannedTarget.toFixed(0)}°`;
+  // Middle-dot separator for the data line — em-dash is reserved for status
+  // copy (see notes/ui-terminology.md:9). Source: TODO #8.
   return `${currentTemperature.toFixed(1)}° · target ${targetText}`;
 };
 
@@ -74,7 +76,7 @@ const resolveHeadroomGapKw = (reason: unknown): number | null => {
 
 const resolveWaitingText = (reason: unknown): string => {
   const gap = resolveHeadroomGapKw(reason);
-  return gap !== null ? `Waiting to resume · ${gap.toFixed(1)} kW more needed` : 'Waiting for available power';
+  return gap !== null ? `Waiting to resume — ${gap.toFixed(1)} kW more needed` : 'Waiting for available power';
 };
 
 export const resolveTemperatureReasonLine = (device: TemperatureDevice): string | null => {
@@ -88,8 +90,8 @@ export const resolveTemperatureReasonLine = (device: TemperatureDevice): string 
   if (kind === 'idle') return null;
   if (kind === 'resuming') return 'Resuming';
   if (isWaitingReason(reasonCode)) return resolveWaitingText(device.reason);
-  if (reasonCode === PLAN_REASON_CODES.dailyBudget) return "Limited · staying within today's budget";
-  if (reasonCode === PLAN_REASON_CODES.hourlyBudget) return "Limited · this hour is near the hard cap";
-  if (isLimitedReason(reasonCode)) return 'Limited · staying under the hard cap';
+  if (reasonCode === PLAN_REASON_CODES.dailyBudget) return "Limited — staying within today's budget";
+  if (reasonCode === PLAN_REASON_CODES.hourlyBudget) return "Limited — this hour is near the hard cap";
+  if (isLimitedReason(reasonCode)) return 'Limited — staying under the hard cap';
   return kind === 'held' ? 'Lowered by PELS' : null;
 };

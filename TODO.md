@@ -509,6 +509,30 @@ v2.7.1 release-review passes.*
       confirm via screenshot from user, then split `--pels-homey-mobile-chrome` per
       pointer/platform if needed. Deferred from v2.7.2/PR7 fixup.
 
+- [ ] Overview device-card status copy is inlined in `PlanDeviceCards.tsx`
+      (and `PlanSteppedCard.tsx`) instead of routed through a shared-domain
+      helper, duplicating the same `"Limited — staying under the hard cap"`
+      / `"Still reporting … after pause — …"` strings against
+      `planTemperatureCardText.ts` and `planSteppedCardText.ts`. The v2.7.3
+      punctuation-drift PR fixed the separator but did not consolidate. Per
+      `feedback_ui_text_shared_with_logs`, UI-visible strings must live in
+      `packages/shared-domain/**` helpers so runtime logging picks up the same
+      wording. Surface for a follow-up: extract a `resolvePlanGenericReasonText`
+      helper alongside `resolveTemperatureReasonLine` and have both call sites
+      consume it.
+      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
+      `packages/settings-ui/src/ui/views/PlanSteppedCard.tsx`,
+      `packages/shared-domain/src/planReasonFormatting.ts`.
+
+- [ ] Overview device-card stack still spans 128–163 px after the v2.7.3
+      `min-height: calc(var(--spacing-8) * 4)` floor on `.plan-card` — the
+      floor only raises the short cards; tall cards keep their natural
+      height. If the audit re-flags rhythm, the next step is to convert the
+      conditional rows (reason line, stepped controls, ev state) into a
+      reserved-slot grid so card heights converge.
+      Files: `packages/settings-ui/public/style.css`,
+      `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`.
+
 
 *Smart-task history-detail trio below was demoted from P1 in the v2.7.1
 release-review pass (2026-05-17). All three depend on the history schema
@@ -788,79 +812,12 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       Files: `packages/settings-ui/src/ui/views/UsageOverview.tsx`,
       `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`.
 
-- [ ] Overview "Termostat TV-stue" device card missing temperature line.
-      Live-walk 2026-05-16 (`/tmp/pels-rewalk/overview/07-tv-stue-missing-temp.png`):
-      renders as `On / 0.0 kW` only; every other temperature card shows
-      `xx.x° · target yy°`. Card height drops to 99 px while peers are 125 px.
-      Data fallback inconsistency when the measure is missing/null — either render
-      a placeholder ("Temperature unavailable") or reserve the line so the card
-      grid stays uniform.
-      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
-      `packages/shared-domain/src/...` (per-device summary builder).
-
-- [ ] Overview cards use two parallel chip primitive families for similar roles.
-      Live-walk 2026-05-16: Elbillader uses `plan-state-chip plan-state-chip--neutral`
-      (`/tmp/pels-rewalk/overview/15-elbillader-card.png`); Nordic S4 REL uses
-      `plan-chip plan-chip--muted` (`/tmp/pels-rewalk/overview/16-nordic-s4-card.png`).
-      Same semantic role ("manual control" / off-by-user status) rendered through
-      two unrelated chip primitives. Token/primitive consolidation gap; pick one
-      chip family and migrate the other call sites.
-      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
-      `packages/settings-ui/public/style.css` (chip primitive definitions),
-      `settings/style.css` (regen).
-
-- [ ] Overview "Smart task" chip nested in clickable card has no `aria-label`.
-      Live-walk 2026-05-16 (`/tmp/pels-rewalk/overview/14-connected-300-card.png`):
-      the chip is rendered as `<a>` and announces only "Smart task link" to screen
-      readers. Add `aria-label="Smart task for {deviceName}"` and clarify the
-      hit-target so the chip click separates from the parent card-navigation click.
-      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`.
-
-- [ ] Overview hero warning indicator uses raw unicode emoji instead of the
-      design-system SVG icon set. Live-walk 2026-05-16
-      (`/tmp/pels-rewalk/overview/18-hero-states-compare.png` right pane): the
-      "projected X kWh ⚠️" annotation in above-safe-pace state renders a literal
-      ⚠️ character rather than the project's SVG icon primitive used everywhere
-      else. Design-system inconsistency.
-      Files: `packages/settings-ui/src/ui/views/PlanHero.tsx`,
-      `packages/settings-ui/src/ui/...` (icon imports).
-
-- [ ] Overview energy bar `--projected` marker misaligned with printed projection.
-      Live-walk 2026-05-16 (`/tmp/pels-rewalk/overview/10-energy-used-bar-detail.png`,
-      `02-overview-hero-480.png`): teal projected dot sits at ~75 % of the track
-      while the printed projection reads 1.95 / 2.3 ≈ 85 %. Either the marker
-      uses a different basis or there's a small positioning bug. Reconcile so the
-      visual position matches the printed number to within 1-2 %.
-      Files: `packages/settings-ui/src/ui/views/PlanHero.tsx`,
-      `packages/settings-ui/public/style.css` (marker percent calculation).
-
-- [ ] Overview hero "Safe pace now X kW" subline disappears in above-safe-pace
-      state. Live-walk 2026-05-16
-      (`/tmp/pels-rewalk/overview/18-hero-states-compare.png`): the safe-pace
-      numeric reference is shown only in the on-pace state; in the very state
-      the user most wants the number ("how much over am I?"), the subline
-      vanishes leaving only "Power Now". Keep the safe-pace reference visible
-      in both states.
-      Files: `packages/settings-ui/src/ui/views/PlanHero.tsx`,
-      `packages/shared-domain/src/...` (copy resolver).
-
-- [ ] Overview device-card stack has uneven vertical rhythm.
-      Live-walk 2026-05-16 (`/tmp/pels-rewalk/overview/01-overview-480-full.png`,
-      `04-overview-bottom-cards-480.png`): card heights vary 99–163 px because
-      the temperature line, status-reason line, and stepped-control row are
-      conditional. Stack reads as jagged on the tall list. Reserve content with
-      a min-height or render placeholder lines so the card grid stays uniform.
-      Files: `packages/settings-ui/public/style.css` (`.plan-card` min-height /
-      content reservation), `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`.
-
-- [ ] Punctuation drift on device-card status copy: spec uses em-dash
-      (`Limited — staying under the hard cap`, per `notes/ui-terminology.md:9`),
-      live render uses middle-dot (`Limited · staying under the hard cap`).
-      Live-walk 2026-05-16 noted as a verified-not-glitch but flagged for
-      consistency. Pick one separator and apply across the per-device status
-      copy helpers.
-      Files: `packages/shared-domain/src/...` (per-device status copy),
-      `notes/ui-terminology.md` (if the dot is the new intent).
+*Eight Overview-surface P2 polish items from the 2026-05-16 live-walk audit
+(TV-stue missing temp line, chip-primitive consolidation, Smart-task aria,
+hero warning emoji, projected-marker alignment, safe-pace subline visibility,
+device-card vertical rhythm floor, em-dash punctuation drift) shipped in
+v2.7.3 — see commit `chore(v2.7.3): Overview card-rhythm + chip-primitive
+consolidation + a11y polish (8 P2)`.*
 
 - [ ] Usage heatmap week-navigation chevrons have no visible chrome + use the
       wrong ARIA attribute. Live walk 2026-05-16
