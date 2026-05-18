@@ -7,10 +7,6 @@ import type {
 } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import {
   formatPlanHistoryDeadlineLine,
-  formatPlanHistoryObservedCoverage,
-  formatPlanHistoryOvershootLine,
-  formatPlanHistoryProgressLine,
-  formatPlanHistoryReachedAtLine,
   resolveHistoryDetailChartData,
   resolveHistoryDetailHourlyStrip,
   type DeferredPlanHistoryChartData,
@@ -706,19 +702,11 @@ const TrajectoryChart = ({ data, timeZone, observedSeriesName, ariaLabel }: {
 // Usage / Insights as a follow-up affordance.
 const HistoryDetailHero = ({
   hero,
-  progressLine,
-  reachedAtLine,
-  coverageLine,
   revisionUpdatesLine,
-  overshootLine,
   usageLink,
 }: {
   hero: DeadlinePlanHistoryHeroPayload;
-  progressLine: string | null;
-  reachedAtLine: string | null;
-  coverageLine: string | null;
   revisionUpdatesLine: string | null;
-  overshootLine: string | null;
   usageLink: { href: string; label: string; deviceId: string } | null;
 }) => (
   <section
@@ -749,14 +737,69 @@ const HistoryDetailHero = ({
     >
       {hero.lead.sentence}
     </p>
+    {/* v2.7.3 — receipt-shaped 3-row timeline below the outcome line on
+      * Succeeded heroes. Producer suppresses the timeline when fewer than two
+      * rows could be composed honestly; the view never inspects row count. */}
+    {hero.receiptTimeline !== null && hero.receiptTimeline.length > 0 && (
+      <ol class="plan-history-detail__receipt" aria-label="Run receipt">
+        {hero.receiptTimeline.map((row) => (
+          <li key={`${row.label}-${row.time}`} class="plan-history-detail__receipt-row">
+            <span class="plan-history-detail__receipt-dot" aria-hidden="true" />
+            <span class="plan-history-detail__receipt-time">{row.time}</span>
+            <span class="plan-history-detail__receipt-label">{row.label}</span>
+            {row.detail !== null && (
+              <span class="plan-history-detail__receipt-detail">{row.detail}</span>
+            )}
+          </li>
+        ))}
+      </ol>
+    )}
     {hero.secondary !== null && (
       <p class="plan-history-detail__secondary">{hero.secondary}</p>
     )}
-    {overshootLine !== null && (
-      <p class="plan-history-detail__overshoot">{overshootLine}</p>
+    {/* Cost narrative chip — rendered on Succeeded + Missed, suppressed on
+      * Abandoned. Tone is muted/info (never red) per
+      * `notes/v2-7-2/postmortem-chart-policy.md` v2.7.3 update. */}
+    {hero.costNarrative !== null && (
+      <p class="plan-history-detail__cost-narrative">
+        <span class="plan-chip plan-chip--muted plan-history-detail__cost-narrative-chip">
+          {hero.costNarrative}
+        </span>
+      </p>
+    )}
+    {hero.overshootLine !== null && (
+      <p class="plan-history-detail__overshoot">{hero.overshootLine}</p>
     )}
     {hero.whyLine !== null && (
       <p class="plan-history-detail__missed-reason">Why: {hero.whyLine}</p>
+    )}
+    {/* Shortfall chip — blameless summary below the diagnosis sentence on
+      * Missed heroes. Tone is muted (info-shaped, never red) per the
+      * v2.7.3 history-loveable spec. */}
+    {hero.shortfallChip !== null && (
+      <p class="plan-history-detail__shortfall">
+        <span class="plan-chip plan-chip--muted plan-history-detail__shortfall-chip">
+          {hero.shortfallChip}
+        </span>
+      </p>
+    )}
+    {/* Abandoned <details> — collapsed by default, Material disclosure idiom
+      * (Android chevron). Renders the producer-resolved body lines inside the
+      * disclosure so the hero stays a single sentence + expansion. */}
+    {hero.abandonedDetails !== null && (
+      <details class="plan-history-detail__abandoned-details">
+        <summary class="plan-history-detail__abandoned-summary">What we know</summary>
+        <ul class="plan-history-detail__abandoned-body">
+          {hero.abandonedDetails.finalizedClock !== null && (
+            <li class="plan-history-detail__abandoned-line">
+              Finalized at {hero.abandonedDetails.finalizedClock}.
+            </li>
+          )}
+          {hero.abandonedDetails.lines.map((line) => (
+            <li key={line} class="plan-history-detail__abandoned-line">{line}</li>
+          ))}
+        </ul>
+      </details>
     )}
     {hero.recourse !== null && (
       <div class="plan-hero__recourse plan-history-detail__recourse">
@@ -770,13 +813,19 @@ const HistoryDetailHero = ({
         </button>
       </div>
     )}
-    {progressLine !== null && (
+    {hero.progressLine !== null && (
       <p class="plan-history-detail__progress">
-        {progressLine}
-        {reachedAtLine !== null && <span class="plan-history-detail__reached">  ·  {reachedAtLine}</span>}
+        {hero.progressLine}
+        {hero.reachedAtLine !== null && <span class="plan-history-detail__reached">  ·  {hero.reachedAtLine}</span>}
       </p>
     )}
-    {coverageLine !== null && <p class="pels-card-supporting">{coverageLine}</p>}
+    {/* On Missed, progressLine is suppressed but reachedAtLine still carries
+      * signal (when did the device actually hit / give up); render it on its
+      * own line so the Why + recourse stack still has the time cue. */}
+    {hero.progressLine === null && hero.reachedAtLine !== null && (
+      <p class="plan-history-detail__progress">{hero.reachedAtLine}</p>
+    )}
+    {hero.coverageLine !== null && <p class="pels-card-supporting">{hero.coverageLine}</p>}
     {revisionUpdatesLine !== null && <p class="pels-card-supporting">{revisionUpdatesLine}</p>}
     {usageLink !== null && (
       <p class="plan-history-detail__usage-link">
@@ -1012,9 +1061,6 @@ const HourlyStrip = ({ data, timeZone, costUnit }: {
 
 export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Props) => {
   const deadlineLine = formatPlanHistoryDeadlineLine(entry, timeZone);
-  const progressLine = formatPlanHistoryProgressLine(entry);
-  const reachedAtLine = formatPlanHistoryReachedAtLine(entry, timeZone);
-  const coverageLine = formatPlanHistoryObservedCoverage(entry);
   // Resolve the per-revision rows once. A non-empty array switches the surface
   // from the hero fallback line to the dedicated `RevisionsCard` below the
   // chart — see comment on `formatRevisionUpdatesLine` for the legacy v3
@@ -1028,10 +1074,6 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
   const revisionUpdatesLine = revisionRows.length > 0
     ? null
     : formatRevisionUpdatesLine(entry.revisionCount);
-  // Overshoot resolver returns null on non-`met` outcomes and on `met` entries
-  // whose final reading stayed within the 5 °C / 10 % threshold; the view
-  // suppresses the line in either case.
-  const overshootLine = formatPlanHistoryOvershootLine(entry);
   // Cross-link to the same-day Usage chart for this device. Per
   // `notes/smart-task-ui/README.md` "Cross-surface: vs Usage / Insights",
   // the asymmetric link helps users investigating a miss see the device's
@@ -1098,14 +1140,10 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
     <article class="plan-history-detail" aria-label={`${hero.eyebrow} ${ariaHeading}`}>
       <HistoryDetailHero
         hero={hero}
-        progressLine={progressLine}
-        reachedAtLine={reachedAtLine}
-        coverageLine={coverageLine}
         revisionUpdatesLine={revisionUpdatesLine}
-        overshootLine={overshootLine}
         usageLink={usageLink}
       />
-      {!hasChartData ? (
+      {hero.quietAbandoned ? null : !hasChartData ? (
         <section class="pels-surface-card">
           <p class="pels-card-supporting">
             No hourly schedule was saved for this run.

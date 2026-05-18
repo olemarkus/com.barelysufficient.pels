@@ -1851,6 +1851,145 @@ md-primary-tab.tab[active]:hover {
   font-size: var(--font-size-sm);
 }
 
+/* v2.7.3 — Succeeded "receipt" timeline rendered below the outcome headline.
+ * Three rows max, each carrying a leading dot + tabular-nums clock + label +
+ * optional detail tail. tabular-nums keeps the time column aligned across
+ * rows; the dot is a small accent-toned marker (no SVG/icon dependency) so
+ * the timeline reads as a receipt rather than a generic list. */
+.plan-history-detail__receipt {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.plan-history-detail__receipt-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: baseline;
+  gap: var(--spacing-1) var(--spacing-2);
+  padding: var(--spacing-1) 0;
+}
+
+.plan-history-detail__receipt-dot {
+  /* 8 px dot — bound to `--spacing-2` so a token bump nudges this with the
+   * rest of the receipt rhythm (v2.7.3 P2 token-binding fold-in). */
+  width: var(--spacing-2);
+  height: var(--spacing-2);
+  border-radius: var(--radius-full);
+  background: var(--color-base-accent-default);
+  align-self: center;
+}
+
+.plan-history-detail__receipt-time {
+  color: var(--pels-text-primary);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-semibold);
+  min-width: 4.5ch;
+}
+
+.plan-history-detail__receipt-label {
+  color: var(--pels-text-primary);
+}
+
+.plan-history-detail__receipt-detail {
+  /* Detail tail spans from the time column through the end of the row,
+   * wrapping onto a fresh line beneath the time + label pair so it never
+   * crowds the label on narrow widths. Muted weight keeps the time the
+   * loudest token in the row. */
+  grid-column: 2 / -1;
+  color: var(--pels-text-secondary);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Cost narrative chip (Succeeded + Missed). Renders as a paragraph wrapping
+ * the existing `.plan-chip--muted` primitive — the wrapper exists so the
+ * chip has its own row, not so we override its tone. */
+.plan-history-detail__cost-narrative {
+  margin: 0;
+}
+
+.plan-history-detail__cost-narrative-chip {
+  white-space: normal;
+  font-size: var(--font-size-sm);
+}
+
+/* Missed shortfall summary chip. Same chip primitive as the cost narrative;
+ * separate wrapper class lets us tune the row independently if the rhythm
+ * needs adjustment later. */
+.plan-history-detail__shortfall {
+  margin: 0;
+}
+
+.plan-history-detail__shortfall-chip {
+  white-space: normal;
+  font-size: var(--font-size-sm);
+}
+
+/* Abandoned `<details>` disclosure — Android-flavoured Material expansion
+ * (chevron, not iOS arrow). The summary is the affordance; the body is a
+ * quiet list that the user opts into. */
+.plan-history-detail__abandoned-details {
+  margin: 0;
+}
+
+.plan-history-detail__abandoned-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-height: var(--pels-touch-target-min);
+  padding: var(--spacing-1) var(--spacing-2);
+  border-radius: var(--radius-md);
+  color: var(--pels-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  list-style: none;
+}
+
+/* Hide the default disclosure triangle in WebKit so we can rely on the
+ * `::before` chevron below. Firefox respects `list-style: none` already. */
+.plan-history-detail__abandoned-summary::-webkit-details-marker {
+  display: none;
+}
+
+.plan-history-detail__abandoned-summary::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentcolor;
+  border-bottom: 2px solid currentcolor;
+  transform: rotate(-45deg);
+  transition: transform var(--transition-fast);
+}
+
+.plan-history-detail__abandoned-details[open]
+  > .plan-history-detail__abandoned-summary::before {
+  transform: rotate(45deg);
+}
+
+.plan-history-detail__abandoned-summary:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.plan-history-detail__abandoned-body {
+  list-style: none;
+  margin: var(--spacing-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.plan-history-detail__abandoned-line {
+  color: var(--pels-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
 .plan-history-empty {
   padding: var(--spacing-3);
 }
@@ -6160,6 +6299,25 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   color: var(--muted);
   border-top: 1px solid var(--panel-border);
   padding-top: var(--spacing-4);
+}
+
+/* v2.7.3 — weekly archive section breaks in the past-tasks list. The group
+ * wraps a quiet heading + the existing card list so the weekly stripe does
+ * the emotional work without changing per-row content. The heading uses the
+ * empty-copy muted weight on purpose — section breaks should land like
+ * margin notes, not section dividers. */
+.deadlines-history__week-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.deadlines-history__week {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ─── Usage panel redesign ─────────────────────────────────────────────────── */

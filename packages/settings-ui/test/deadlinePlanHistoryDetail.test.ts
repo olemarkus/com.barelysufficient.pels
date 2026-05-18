@@ -322,7 +322,13 @@ describe('DeadlinePlanHistoryDetail', () => {
     }));
     const reason = root.querySelector('.plan-history-detail__missed-reason');
     expect(reason).not.toBeNull();
-    expect(reason?.textContent).toMatch(/couldn.t reserve enough energy/i);
+    // v2.7.3 — blameless rewrite. The cannot_meet branch reads "PELS
+    // couldn't reserve enough cheap hours before the deadline." with no
+    // recourse copy (the recourse button carries that signal).
+    expect(reason?.textContent).toMatch(/couldn.t reserve enough cheap hours/i);
+    // Recourse copy must not duplicate the recourse button.
+    expect(reason?.textContent?.toLowerCase()).not.toContain('try lowering');
+    expect(reason?.textContent?.toLowerCase()).not.toContain('moving the deadline');
   });
 
   it('omits the missed-reason sentence on succeeded entries', async () => {
@@ -330,18 +336,36 @@ describe('DeadlinePlanHistoryDetail', () => {
     expect(root.querySelector('.plan-history-detail__missed-reason')).toBeNull();
   });
 
-  it('renders the observed-vs-target progress line even on missed entries', async () => {
+  // v2.7.3 — the legacy `formatPlanHistoryProgressLine` paragraph
+  // ("Charged 50.0 → 38.0 °C, target 65.0 °C") is retired on every outcome
+  // shape. Missed entries surface the same "by how much" signal via the
+  // shortfall chip + reachedAtLine; the progressLine paragraph was density
+  // duplication (`pels-ux-fit` finding).
+  it('retires the legacy progress paragraph on missed entries (shortfall chip carries the signal)', async () => {
     const root = await mount(buildEntry({
       outcome: 'missed',
       startProgressC: 50,
       finalProgressC: 38,
       targetTemperatureC: 65,
     }));
+    // No `__progress` paragraph (the legacy "Charged X → Y, target Z" line
+    // is gone). The reachedAtLine fallback may render the same element
+    // class when present, but the body never contains the start-reading
+    // (start kWh) the legacy paragraph led with.
     const progress = root.querySelector('.plan-history-detail__progress');
-    expect(progress).not.toBeNull();
-    expect(progress?.textContent).toContain('50.0 °C');
-    expect(progress?.textContent).toContain('38.0 °C');
-    expect(progress?.textContent).toContain('target 65.0 °C');
+    if (progress !== null) {
+      expect(progress.textContent).not.toContain('target 65.0 °C');
+    }
+  });
+
+  it('retires the legacy progress paragraph on succeeded entries (receipt timeline carries the signal)', async () => {
+    const root = await mount(buildEntry({
+      outcome: 'met',
+      finalProgressC: 65,
+      metAtMs: DEADLINE_MS - 18 * 60 * 1000,
+    }));
+    expect(root.querySelector('.plan-history-detail__progress')).toBeNull();
+    expect(root.querySelector('.plan-history-detail__overshoot')).toBeNull();
   });
 
   // v2.7.2 PR 3 — outcome-asymmetric hero shapes. Each shape carries a
@@ -428,7 +452,7 @@ describe('DeadlinePlanHistoryDetail', () => {
       expect(recourseBtn?.dataset.deadlineRecourseDeviceId).toBe('dev_water_heater');
     });
 
-    it('Abandoned shape: tone=muted, postmortem present, no recourse, chart collapsed', async () => {
+    it('Abandoned shape: tone=muted, quiet — no chart card, no recourse, <details> body for evidence (v2.7.3)', async () => {
       const root = await mount(buildEntry({
         outcome: 'abandoned',
         objectiveKind: 'ev_soc',
@@ -439,6 +463,7 @@ describe('DeadlinePlanHistoryDetail', () => {
         finalProgressC: null,
         finalProgressPercent: 45,
         finalizedAtMs: DEADLINE_MS - 13 * HOUR_MS,
+        deliveredKWh: 0.4,
         originalPlan: buildRevision(),
         finalPlan: buildRevision(),
       }));
@@ -449,9 +474,14 @@ describe('DeadlinePlanHistoryDetail', () => {
       // No recourse / Why on Abandoned.
       expect(root.querySelector('.plan-history-detail__recourse')).toBeNull();
       expect(root.querySelector('.plan-history-detail__missed-reason')).toBeNull();
-      // Chart collapsed by default on Abandoned.
-      expect(root.querySelector('.plan-history-detail__chart-toggle')).not.toBeNull();
+      // v2.7.3: the chart card is suppressed entirely on Abandoned — the
+      // hero collapses to eyebrow + sentence + Material <details>.
+      expect(root.querySelector('.plan-history-detail__chart-toggle')).toBeNull();
       expect(root.querySelector('.deadline-horizon-chart')).toBeNull();
+      // Evidence-on-demand lives inside the disclosure.
+      const details = root.querySelector('details.plan-history-detail__abandoned-details');
+      expect(details).not.toBeNull();
+      expect(details!.textContent).toMatch(/0\.4 kWh delivered before it stopped/);
     });
 
     it('Succeeded hero has a "View details" toggle that expands the chart on click', async () => {

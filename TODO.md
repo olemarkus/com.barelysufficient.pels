@@ -514,6 +514,25 @@ v2.7.1 release-review passes.*
       `packages/settings-ui/tests/e2e/`.
 ## P2 Product, Observability, and Maintainability
 
+- [ ] v2.7.3 — Smart-task history receipt + chip helpers in
+      `packages/shared-domain/src/deferredPlanHistoryReceipt.ts` still inline
+      every user-facing string (Started, Ready, Largest planned hour, Delivered,
+      Week, on average, etc.). gemini flagged this on PR #887: when a real
+      localization story lands these need to route through a labels module
+      similar to `deadlineLabels.ts` so runtime logging + UI consume the same
+      vocabulary (see `feedback_ui_text_shared_with_logs`). Out of scope for
+      v2.7.3 — full externalization is a separate sweep across all of
+      `packages/shared-domain/src/**`.
+
+- [ ] v2.7.3 — Smart-task history-detail hero treats `unknown` outcomes as
+      `quietAbandoned` (no chart card) alongside `abandoned`/`replaced`.
+      copilot reviewer on PR #887 (`deadlinePlanHistoryDetailHero.ts:242`)
+      noted the chart policy note only calls out Abandoned + Replaced as the
+      no-chart shapes, and `unknown` entries may still want the comparison
+      chart as evidence when a plan was recorded. Decide whether `unknown`
+      should fall back to a collapsed-chart shape or stay quiet, and update
+      `notes/v2-7-2/postmortem-chart-policy.md` to match the resolved policy.
+
 - [ ] v2.7.3 — iOS Homey chrome inset may exceed 56 px (PWA + status bar + nav bar);
       confirm via screenshot from user, then split `--pels-homey-mobile-chrome` per
       pointer/platform if needed. Deferred from v2.7.2/PR7 fixup.
@@ -646,16 +665,13 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       Files: `packages/shared-domain/src/deviceOverview.ts`,
       `notes/ui-terminology.md`.
 
-- [ ] `formatPlanHistoryMissedReason` recourse copy is wrong when the
-      cause was daily-budget-exhausted. `deferredPlanHistory.ts:160-180`
-      collapses that branch into the `cannot_meet` copy "Try lowering
-      the target or moving the deadline later" — but the correct
-      recourse in that case is raising the daily budget. Either persist
-      the `dailyBudgetExhausted` distinction in the history snapshot
-      (requires v3→v4 migration, claimed by v2.7.2 train) or soften copy
-      to "Try lowering the target, moving the deadline later, or raising
-      today's energy budget." Source: `adversarial-review` skill.
-      Files: `packages/shared-domain/src/deferredPlanHistory.ts:160-180`.
+- [x] `formatPlanHistoryMissedReason` rewritten as blameless explainer in
+      v2.7.3 — sentence answers only "what happened" (recourse copy moved
+      to the recourse button via `resolveMissedHistoryRecourse`). Per
+      `feedback_hard_cap_is_physical.md` no branch recommends raising the
+      cap or daily budget; the button surfaces the appropriate "lower
+      target / move deadline / lower daily budget" action.
+      Files: `packages/shared-domain/src/deferredPlanHistory.ts`.
 
 - [ ] `activePlanRecorder.ts:584-594` sets explicit `undefined` on
       snapshot fields and relies on `JSON.stringify` dropping them. The
@@ -2226,3 +2242,6 @@ should not be folded into the same PR.
       Why P3: no defect; documented so a future reviewer doesn't re-open the
       consolidation question.
       Files: `packages/settings-ui/public/style.css`.
+
+- [ ] PR #887 bot DEFER — `deferredPlanHistoryReceipt.ts` hardcoded user-facing strings (Started, Ready, Delivered, etc.) — gemini suggested lifting to a shared-domain messages module for log/UI parity. Worth doing alongside the broader voice-share rule but scope > 30 LOC and crosses files; defer to a v2.7.4 copy-share PR.
+- [ ] PR #887 bot DEFER — `deadlinePlanHistoryDetailHero.ts` treats `unknown` outcomes as `quietAbandoned` (no chart card). Copilot suggested showing the chart card for `unknown` and possibly `replaced` per the policy doc. Behavioural design choice — needs policy alignment in `notes/v2-7-2/postmortem-chart-policy.md` before code change.

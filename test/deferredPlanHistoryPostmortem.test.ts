@@ -250,7 +250,7 @@ describe('formatPlanHistoryPostmortem', () => {
   });
 });
 
-describe('formatPlanHistoryMissedReason (v2.7.2 PR 3 budget-exhaustion fold-in)', () => {
+describe('formatPlanHistoryMissedReason (v2.7.3 blameless rewrite)', () => {
   it('returns a daily-budget-pointing sentence when the final snapshot reports budget exhaustion', () => {
     const entry = buildEntry({
       outcome: 'missed',
@@ -261,8 +261,34 @@ describe('formatPlanHistoryMissedReason (v2.7.2 PR 3 budget-exhaustion fold-in)'
     });
     const result = formatPlanHistoryMissedReason(entry);
     expect(result).not.toBeNull();
-    expect(result).toContain('daily energy budget');
     expect(result).toContain('daily budget');
+  });
+
+  it('blameless rewrite — does not recommend lowering the target or moving the deadline', () => {
+    // Recourse copy lives on the recourse button; the Why line must not
+    // duplicate it. Per `feedback_hard_cap_is_physical.md` no branch
+    // suggests raising the cap either.
+    const budgetEntry = buildEntry({
+      outcome: 'missed',
+      finalPlan: buildSnapshot({
+        planStatus: 'cannot_meet',
+        dailyBudgetExhaustedBucketCount: 3,
+      }),
+    });
+    const cannotEntry = buildEntry({
+      outcome: 'missed',
+      finalPlan: buildSnapshot({ planStatus: 'cannot_meet' }),
+    });
+    for (const result of [
+      formatPlanHistoryMissedReason(budgetEntry),
+      formatPlanHistoryMissedReason(cannotEntry),
+    ]) {
+      expect(result).not.toBeNull();
+      expect(result!.toLowerCase()).not.toContain('try lowering');
+      expect(result!.toLowerCase()).not.toContain('moving the deadline');
+      expect(result!.toLowerCase()).not.toContain('hard cap');
+      expect(result!.toLowerCase()).not.toContain('raising');
+    }
   });
 
   it('keeps the cannot_meet fallback sentence when no budget exhaustion is recorded', () => {
@@ -274,7 +300,7 @@ describe('formatPlanHistoryMissedReason (v2.7.2 PR 3 budget-exhaustion fold-in)'
       }),
     });
     const result = formatPlanHistoryMissedReason(entry);
-    expect(result).toContain("couldn't reserve enough energy");
+    expect(result).toContain("couldn't reserve enough cheap hours");
   });
 
   it('returns null for non-missed outcomes', () => {

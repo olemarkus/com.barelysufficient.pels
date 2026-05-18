@@ -2,6 +2,7 @@ import { render } from 'preact';
 import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { SMART_TASK_PAST_EMPTY_COPY } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { formatMissStreakAggregateLine } from '../../../../shared-domain/src/deferredPlanHistory.ts';
+import { groupPlanHistoryByIsoWeek } from '../../../../shared-domain/src/deferredPlanHistoryReceipt.ts';
 import { PlanHistoryCard } from './DeadlinePlanHistory.tsx';
 
 export type DeadlinesHistoryListState =
@@ -11,7 +12,15 @@ export type DeadlinesHistoryListState =
   // — same heading shape as `ready`, but a copy line instead of cards.
   | { status: 'hidden' }
   | { status: 'empty' }
-  | { status: 'ready'; entries: DeferredObjectivePlanHistoryEntry[]; timeZone: string };
+  | {
+      status: 'ready';
+      entries: DeferredObjectivePlanHistoryEntry[];
+      timeZone: string;
+      // Cost unit suffix for the weekly section roll-ups (e.g. `kr`). Empty
+      // / null drops the cost half of the heading; the section break still
+      // renders. v2.7.3.
+      costUnit?: string;
+    };
 
 type MissStreakBadge = { deviceId: string; deviceName: string; line: string };
 
@@ -60,6 +69,15 @@ const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryListState 
     );
   }
   const badges = resolveMissStreakBadges(state.entries);
+  // v2.7.3 — ISO-week section breaks. Producer-resolved grouping + heading copy
+  // so the view layer never inspects per-week aggregates. The weekly stripe is
+  // the emotional anchor for the archive shape; per-row content stays exactly
+  // as the existing `PlanHistoryCard` renders it.
+  const weekGroups = groupPlanHistoryByIsoWeek(
+    state.entries,
+    state.timeZone,
+    state.costUnit ?? '',
+  );
   return (
     <section class="deadlines-history" aria-labelledby="deadlines-history-title">
       <h3 id="deadlines-history-title" class="deadlines-history__heading">Past tasks</h3>
@@ -74,15 +92,20 @@ const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryListState 
           ))}
         </ul>
       )}
-      <div class="plan-history-list">
-        {state.entries.map((entry) => (
-          <PlanHistoryCard
-            key={entry.id}
-            entry={entry}
-            timeZone={state.timeZone}
-          />
-        ))}
-      </div>
+      {weekGroups.map((group) => (
+        <div key={group.weekKey} class="deadlines-history__week-group">
+          <h4 class="deadlines-history__week">{group.heading}</h4>
+          <div class="plan-history-list">
+            {group.entries.map((entry) => (
+              <PlanHistoryCard
+                key={entry.id}
+                entry={entry}
+                timeZone={state.timeZone}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
     </section>
   );
 };
