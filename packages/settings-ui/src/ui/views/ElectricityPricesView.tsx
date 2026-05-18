@@ -64,6 +64,9 @@ const Header = () => (
       <div>
         <p class="eyebrow">Electricity prices</p>
         <h2>Source and rules</h2>
+        <p class="muted electricity-prices-hero__lede">
+          Choose where prices come from and what counts as cheap or expensive. PELS uses these to shape the daily budget toward cheaper hours.
+        </p>
       </div>
     </header>
   </>

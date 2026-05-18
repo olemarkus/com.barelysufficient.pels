@@ -29,6 +29,7 @@ import {
 } from '../../../../contracts/src/dailyBudgetConstants.ts';
 import type { BudgetAdjustDraft, BudgetAdjustStatus } from '../budgetAdjustController.ts';
 import type { AllocationWarning } from '../dailyBudgetAllocationWarning.ts';
+import type { PriceLevelChip } from '../../../../shared-domain/src/priceLevelChips.ts';
 
 export type BudgetLocalView = 'plan' | 'adjust';
 export type BudgetStatus = 'noPlan' | 'within' | 'tight' | 'over';
@@ -98,6 +99,7 @@ export type BudgetOverviewProps = {
   confidence: BudgetConfidenceData;
   adjust: BudgetAdjustData;
   allocationWarning: AllocationWarning | null;
+  priceLevelChip: PriceLevelChip | null;
   onLocalViewChange: (v: BudgetLocalView) => void;
   onDayChange: (v: BudgetRedesignDayView) => void;
   onChartModeChange: (v: BudgetRedesignChartMode) => void;
@@ -341,26 +343,23 @@ const BudgetConfidenceCard = ({ confidence }: { confidence: BudgetConfidenceData
   return (
     <section class="pels-surface-card budget-redesign-card budget-confidence-card">
       <MdElevation aria-hidden="true" />
-      <div class="budget-card-header">
-        <div>
-          <h3 class="plan-card__title">Plan confidence</h3>
-          <p class="pels-card-supporting">
-            How well PELS can predict this plan from recent complete days.
-          </p>
-        </div>
-        <span id="budget-plan-confidence-value" class="budget-confidence-card__value">
-          <span>{confidence.label}</span>
-          <small>{confidence.percent}</small>
-        </span>
-      </div>
       <details class="budget-confidence-card__details">
-        <summary>
-          <span>What this means</span>
+        {/* Title row collapses the expander affordance + level + percent onto a
+            single line so the card occupies one row of vertical chrome at rest. */}
+        <summary class="budget-confidence-card__summary">
+          <span class="budget-confidence-card__summary-title">
+            <span class="plan-card__title">Plan confidence</span>
+            <small class="budget-confidence-card__explainer">What this means</small>
+          </span>
+          <span id="budget-plan-confidence-value" class="budget-confidence-card__value">
+            <span>{confidence.label}</span>
+            <small>{confidence.percent}</small>
+          </span>
           <ExpandMoreIcon class="disclosure-chevron" />
         </summary>
         <p class="pels-card-supporting budget-confidence-card__explanation">
-          Based on recent complete days. Higher confidence means your usage pattern has been regular
-          and managed devices have followed earlier plans.
+          How well PELS can predict this plan from recent complete days. Higher confidence means your
+          usage pattern has been regular and managed devices have followed earlier plans.
         </p>
         {confidence.details.length > 0 && (
           <div class="budget-settings-list budget-settings-list--compact">
@@ -770,6 +769,67 @@ const BudgetAdjustView = ({
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
+// Consolidated page header that folds together what previously occupied three
+// vertical bands: the panel's `pels-hero` (eyebrow + title), the segmented
+// Plan/Adjust selector, and the price-level chip (recovered from PR9's Overview
+// demotion). Plan/Adjust collapses to a tertiary text button — only one mode
+// (Plan) carries a day-picker below, so a full segmented control was overkill.
+const BudgetPageHeader = ({
+  localView,
+  budgetEnabled,
+  priceLevelChip,
+  onLocalViewChange,
+}: {
+  localView: BudgetLocalView;
+  budgetEnabled: boolean;
+  priceLevelChip: PriceLevelChip | null;
+  onLocalViewChange: (v: BudgetLocalView) => void;
+}) => {
+  const inPlan = localView === 'plan';
+  const toggleLabel = inPlan ? 'Adjust' : 'Done';
+  // When the daily budget is disabled the user is force-pinned into Adjust
+  // view (resolveEffectiveLocalView snaps localView → 'adjust'). The toggle
+  // therefore has nowhere to go: disable it and surface the tooltip the
+  // prior segmented control carried (parity with v2.7.2). Without this guard,
+  // clicking the enabled "Done" silently discards a dirty Adjust draft and
+  // snaps right back to Adjust — the user sees nothing change.
+  const toggleDisabled = !budgetEnabled;
+  const toggleTitle = !budgetEnabled
+    ? 'Enable daily budget to see the plan.'
+    : (inPlan ? 'Adjust budget settings' : 'Return to budget plan');
+  const onToggleClick = () => onLocalViewChange(inPlan ? 'adjust' : 'plan');
+  const chipToneCls = priceLevelChip
+    ? (priceLevelChip.tone === 'warn' ? 'plan-chip--warn' : 'plan-chip--info')
+    : '';
+  return (
+    <header class="budget-page-header">
+      <div class="budget-page-header__heading">
+        <span class="eyebrow">Budget</span>
+        <h2 class="budget-page-header__title">Daily budget</h2>
+      </div>
+      {priceLevelChip && (
+        <div class="budget-page-header__chips">
+          <span
+            class={`plan-chip ${chipToneCls}`}
+            data-price-level={priceLevelChip.priceLevel}
+          >
+            {priceLevelChip.label}
+          </span>
+        </div>
+      )}
+      <MdTextButton
+        id="budget-redesign-mode-toggle"
+        class="budget-page-header__action"
+        title={toggleTitle}
+        {...(toggleDisabled ? { disabled: true } : {})}
+        onClick={onToggleClick}
+      >
+        {toggleLabel}
+      </MdTextButton>
+    </header>
+  );
+};
+
 const BudgetOverviewRoot = ({
   localView,
   view,
@@ -778,6 +838,7 @@ const BudgetOverviewRoot = ({
   confidence,
   adjust,
   allocationWarning,
+  priceLevelChip,
   onLocalViewChange,
   onDayChange,
   onChartModeChange,
@@ -789,19 +850,11 @@ const BudgetOverviewRoot = ({
   const budgetEnabled = adjust.active.enabled;
   return (
   <div>
-    <ToggleGroup
-      options={[
-        {
-          value: 'plan' as const,
-          label: 'Plan',
-          disabled: !budgetEnabled,
-          title: budgetEnabled ? undefined : 'Enable daily budget to see the plan.',
-        },
-        { value: 'adjust' as const, label: 'Adjust' },
-      ]}
-      value={localView}
-      ariaLabel="Budget view"
-      onChange={onLocalViewChange}
+    <BudgetPageHeader
+      localView={localView}
+      budgetEnabled={budgetEnabled}
+      priceLevelChip={priceLevelChip}
+      onLocalViewChange={onLocalViewChange}
     />
     {localView === 'plan' && (
       <div class="budget-redesign-view">

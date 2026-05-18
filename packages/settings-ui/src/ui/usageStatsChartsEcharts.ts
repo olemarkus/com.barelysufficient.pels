@@ -19,6 +19,7 @@ type UsageStatsPalette = {
   tooltipBackground: string;
   tooltipText: string;
   tooltipBorder: string;
+  overBudget: string;
 };
 
 export type HourlyPatternPoint = {
@@ -65,6 +66,7 @@ const USAGE_STATS_PALETTE_VARS = {
   tooltipBackground: '--pels-chart-tooltip-bg',
   tooltipText: '--pels-chart-tooltip-text',
   tooltipBorder: '--pels-chart-tooltip-border',
+  overBudget: '--pels-chart-warn',
 } as const satisfies Record<keyof UsageStatsPalette, string>;
 
 const resolvePalette = (container: HTMLElement): UsageStatsPalette => (
@@ -241,12 +243,41 @@ const buildHourlyPatternOption = (params: {
   };
 };
 
+const BAR_RADIUS: [number, number, number, number] = [4, 4, 0, 0];
+
+const resolveBarItemStyle = (value: number, budgetKWh: number | null, palette: UsageStatsPalette) => {
+  if (budgetKWh !== null && Number.isFinite(value) && value > budgetKWh) {
+    return { color: palette.overBudget, borderRadius: BAR_RADIUS };
+  }
+  return { color: palette.bar, borderRadius: BAR_RADIUS };
+};
+
+const buildBudgetMarkLine = (budgetKWh: number, palette: UsageStatsPalette) => ({
+  symbol: 'none',
+  silent: true,
+  animation: false,
+  label: {
+    show: true,
+    position: 'insideEndTop' as const,
+    formatter: `Budget ${budgetKWh.toFixed(1)} kWh`,
+    color: palette.muted,
+    fontSize: 10,
+  },
+  lineStyle: {
+    color: palette.overBudget,
+    type: 'dashed' as const,
+    width: 1,
+  },
+  data: [{ yAxis: budgetKWh }],
+});
+
 const buildDailyHistoryOption = (params: {
   points: DailyHistoryPoint[];
   timeZone: string;
   palette: UsageStatsPalette;
+  budgetKWh: number | null;
 }): EChartsOption => {
-  const { points, timeZone, palette } = params;
+  const { points, timeZone, palette, budgetKWh } = params;
   const ordered = [...points].sort((a, b) => a.date.localeCompare(b.date));
   const values = ordered.map((point) => point.kWh);
   const dates = ordered.map((point) => point.date);
@@ -255,7 +286,10 @@ const buildDailyHistoryOption = (params: {
     return formatDateInTimeZone(date, { month: 'short', day: 'numeric' }, timeZone);
   });
   const labelEvery = resolveLabelEvery(labels.length);
-  const maxValue = Math.max(1, ...values);
+  // When the budget line would sit above the tallest bar, include it in the
+  // axis ceiling so the reference still renders inside the chart frame.
+  const showBudgetLine = budgetKWh !== null && Number.isFinite(budgetKWh) && budgetKWh > 0;
+  const maxValue = Math.max(1, ...values, showBudgetLine ? (budgetKWh as number) : 0);
   const yAxis = roundedAxisMaxToInterval(maxValue, Y_AXIS_SPLIT_NUMBER);
 
   return {
@@ -327,16 +361,13 @@ const buildDailyHistoryOption = (params: {
       {
         name: 'Daily total',
         type: 'bar',
-        data: values,
+        data: values.map((value) => ({ value, itemStyle: resolveBarItemStyle(value, budgetKWh, palette) })),
         barMaxWidth: 16,
         barMinHeight: 2,
-        itemStyle: {
-          color: palette.bar,
-          borderRadius: [4, 4, 0, 0],
-        },
         emphasis: { disabled: true },
         blur: { disabled: true },
         select: { disabled: true },
+        ...(showBudgetLine ? { markLine: buildBudgetMarkLine(budgetKWh as number, palette) } : {}),
       },
     ],
   };
@@ -371,8 +402,9 @@ export const renderDailyHistoryChartEcharts = (params: {
   container: HTMLElement;
   points: DailyHistoryPoint[];
   timeZone: string;
+  budgetKWh?: number | null;
 }): boolean => {
-  const { container, points, timeZone } = params;
+  const { container, points, timeZone, budgetKWh = null } = params;
   if (!Array.isArray(points) || points.length === 0) {
     disposePlot('daily');
     container.replaceChildren();
@@ -384,6 +416,7 @@ export const renderDailyHistoryChartEcharts = (params: {
       points,
       timeZone,
       palette: resolvePalette(container),
+      budgetKWh,
     }), { notMerge: true });
     return true;
   } catch (error) {

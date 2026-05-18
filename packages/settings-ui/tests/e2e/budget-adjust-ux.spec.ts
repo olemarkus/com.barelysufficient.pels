@@ -131,40 +131,42 @@ test('budget adjust → preview → apply walkthrough', async ({ page }, testInf
   await undoBtn.click();
   await expect(kwhField).toHaveJSProperty('value', '20', { timeout: 5000 });
 
-  // 8. Switch back to Plan to confirm new state.
-  await page.getByRole('button', { name: 'Plan', exact: true }).click();
+  // 8. Switch back to Plan via the header Done action to confirm new state.
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
   await page.waitForTimeout(500);
   await shot(page, '07-plan-after-apply');
 });
 
 /**
- * Regression guard for the Plan/Adjust segmented control: Homey injects a host
+ * Regression guard for Budget segmented controls: Homey injects a host
  * stylesheet in the settings WebView and the previous single-class selector
  * (`.segmented__option[aria-pressed="true"]`) lost the cascade fight, so the
  * selected option rendered identically to the unselected one. The CSS now uses
  * a `.segmented` parent + duplicate-attribute trick to win specificity without
  * `!important`. This test asserts the computed selected vs unselected swatches
- * actually differ — guarding against any future host-CSS regression.
+ * actually differ on the Yesterday/Today/Tomorrow control — guarding against
+ * any future host-CSS regression. (v2.7.3: Plan/Adjust was folded into a
+ * text-button header action, so this test now exercises the day picker instead.)
  */
-test('Budget Plan/Adjust segmented: selected option is visually distinct', async ({ page }) => {
+test('Budget day-picker segmented: selected option is visually distinct', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('tablist')).toBeVisible();
   await page.getByRole('tab', { name: 'Budget' }).click();
   await expect(page.locator('#budget-redesign-surface')).toBeVisible();
 
-  const planBtn = page.getByRole('button', { name: 'Plan', exact: true });
-  const adjustBtn = page.getByRole('button', { name: 'Adjust', exact: true });
+  const todayBtn = page.getByRole('button', { name: 'Today', exact: true });
+  const tomorrowBtn = page.getByRole('button', { name: 'Tomorrow', exact: true });
 
-  // Plan is the default selected option.
-  await expect(planBtn).toHaveAttribute('aria-pressed', 'true');
-  await expect(adjustBtn).toHaveAttribute('aria-pressed', 'false');
+  // Today is the default selected option.
+  await expect(todayBtn).toHaveAttribute('aria-pressed', 'true');
+  await expect(tomorrowBtn).toHaveAttribute('aria-pressed', 'false');
 
-  const readBackground = (locator: typeof planBtn) => locator.evaluate(
+  const readBackground = (locator: typeof todayBtn) => locator.evaluate(
     (el) => getComputedStyle(el).backgroundColor,
   );
 
-  const selectedBg = await readBackground(planBtn);
-  const unselectedBg = await readBackground(adjustBtn);
+  const selectedBg = await readBackground(todayBtn);
+  const unselectedBg = await readBackground(tomorrowBtn);
 
   // Selected must render a real (non-transparent) tonal fill that differs
   // from the unselected sibling's background.

@@ -12,7 +12,7 @@ const requestLegacyUi = async (page: Page) => {
 const openSettingsSection = async (page: Page, target: string) => {
   await page.getByRole('tab', { name: 'Settings' }).click();
   await expect(page.locator('#settings-panel')).toBeVisible();
-  const sectionButton = page.locator(`[data-settings-target="${target}"]`);
+  const sectionButton = page.locator(`.settings-nav-card[data-settings-target="${target}"]`);
   await expect(sectionButton).toBeVisible();
   await sectionButton.scrollIntoViewIfNeeded();
   await sectionButton.click();
@@ -153,7 +153,9 @@ test.describe('Settings UI (smoke)', () => {
 
     await page.getByRole('tab', { name: 'Budget' }).click();
     await expect(page.locator('#budget-panel')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Plan', exact: true })).toBeVisible();
+    // v2.7.3: Plan/Adjust segmented control was folded into a tertiary header
+    // action ("Adjust" in Plan view, "Done" in Adjust view) — `Plan` no longer
+    // exists as a stand-alone button.
     await expect(page.getByRole('button', { name: 'Adjust', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Preview changes' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Apply changes' })).toHaveCount(0);

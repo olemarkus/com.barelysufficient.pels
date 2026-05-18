@@ -32,6 +32,7 @@ import {
   updateBudgetAdjustField,
 } from './budgetAdjustController.ts';
 import { resolveAllocationWarning } from './dailyBudgetAllocationWarning.ts';
+import { resolvePriceLevelChip } from '../../../shared-domain/src/priceLevelChips.ts';
 
 export type BudgetDayView = BudgetRedesignDayView;
 
@@ -39,6 +40,7 @@ type RenderState = {
   payload: DailyBudgetUiPayload | null;
   view: BudgetDayView;
   costDisplay: CostDisplay;
+  priceLevel: string | null;
 };
 
 let currentBudgetLocalView: BudgetLocalView = 'plan';
@@ -47,6 +49,13 @@ let latestRenderState: RenderState = {
   payload: null,
   view: 'today',
   costDisplay: { unit: 'kr', divisor: 100 },
+  priceLevel: null,
+};
+
+export const updateBudgetPriceLevel = (priceLevel: string | null): void => {
+  if (latestRenderState.priceLevel === priceLevel) return;
+  latestRenderState = { ...latestRenderState, priceLevel };
+  doRender();
 };
 let budgetSurface: HTMLElement | null = null;
 
@@ -546,6 +555,7 @@ const buildProps = (): BudgetOverviewProps => {
     confidence: resolveConfidenceData(planPayload, view, status),
     adjust,
     allocationWarning: view === 'today' ? resolveAllocationWarning(planPayload) : null,
+    priceLevelChip: resolvePriceLevelChip(latestRenderState.priceLevel),
     onLocalViewChange: (v) => {
       if (currentBudgetLocalView === 'adjust' && v !== 'adjust') discardBudgetAdjust();
       currentBudgetLocalView = v;
@@ -573,7 +583,7 @@ export const renderBudgetRedesign = (
   view: BudgetDayView,
   costDisplay: CostDisplay,
 ) => {
-  latestRenderState = { payload, view, costDisplay };
+  latestRenderState = { ...latestRenderState, payload, view, costDisplay };
   doRender();
 };
 

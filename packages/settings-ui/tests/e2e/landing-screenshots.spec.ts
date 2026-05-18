@@ -24,7 +24,7 @@ const prepPage = async (page: import('@playwright/test').Page) => {
 
 const openSettingsSection = async (page: import('@playwright/test').Page, target: string) => {
   await page.getByRole('tab', { name: 'Settings' }).click();
-  await page.locator(`[data-settings-target="${target}"]`).click();
+  await page.locator(`.settings-nav-card[data-settings-target="${target}"]`).click();
 };
 
 test('overview', async ({ page }) => {

@@ -27,6 +27,7 @@ import {
   renderDailyHistoryChartEcharts,
   renderHourlyPatternChartEcharts,
 } from './usageStatsChartsEcharts.ts';
+import { getBudgetAdjustView } from './budgetAdjustController.ts';
 import {
   formatDateInTimeZone,
   getDateKeyInTimeZone,
@@ -380,6 +381,16 @@ const renderHourlyPattern = (stats: PowerStatsSummary) => {
   hourlyPattern.appendChild(message);
 };
 
+// Resolve the configured daily-budget kWh for the history chart's overlay.
+// Returns null when the budget is disabled, missing, or non-finite — callers
+// pass the value through to the chart which suppresses the overlay on null.
+const resolveDailyBudgetKWhForChart = (): number | null => {
+  const view = getBudgetAdjustView();
+  if (!view.active?.enabled) return null;
+  const value = view.active?.dailyBudgetKWh;
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+};
+
 const renderDailyHistory = (stats: PowerStatsSummary, timeZone: string) => {
   if (!dailyList || !dailyEmpty) return;
   setDailyHistoryToggleActive(dailyHistoryRange);
@@ -398,6 +409,7 @@ const renderDailyHistory = (stats: PowerStatsSummary, timeZone: string) => {
     container: dailyList,
     points,
     timeZone,
+    budgetKWh: resolveDailyBudgetKWhForChart(),
   });
   dailyEmpty.hidden = rendered;
   if (rendered) return;

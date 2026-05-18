@@ -13,7 +13,7 @@ const openTopTab = async (page: Page, name: string) => {
 const openSettingsSection = async (page: Page, target: string) => {
   await openTopTab(page, 'Settings');
   await expect(page.locator('#settings-panel')).toBeVisible();
-  await page.locator(`[data-settings-target="${target}"]`).click();
+  await page.locator(`.settings-nav-card[data-settings-target="${target}"]`).click();
 };
 
 const expectNoHorizontalOverflow = async (page: Page, label: string) => {
