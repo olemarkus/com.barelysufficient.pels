@@ -30,50 +30,44 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 ## P1 Correctness, Data Integrity, and Supported UX
 
 - [ ] Wire `DeferredObjectivePlanHistoryRecorder.recordHourlyDelivery`
-      into the runtime so the v2.7.3 per-hour bar strip actually populates
-      in production. The contract field (`hourlyContributions`), the
-      recorder method, the producer (`resolveHistoryDetailHourlyStrip`),
-      and the view (`HourlyStrip` in `DeadlinePlanHistoryDetail.tsx`) all
-      ship in v2.7.3, but `grep -rn "recordHourlyDelivery"` shows zero
-      production callers — only tests. Result on first ship: every real
-      v2.7.3 entry finalizes with `hourlyContributions: undefined` and the
-      strip is suppressed. Wire from the existing per-hour cost rollup
-      site that feeds `deliveredKWh` / `totalCost`, resolving the price
-      tone against the live cheap/normal/expensive thresholds at
-      contribution time so the postmortem reads a stable band. Adversarial
-      review on `v2.7.3/hourly-contributions` (2026-05-18).
+      into the runtime so the history-detail loveable affordances
+      shipping in v2.7.2 actually populate. The contract field
+      (`hourlyContributions`), the recorder method, the producers
+      (`resolveHistoryDetailHourlyStrip`, postmortem cost narrative via
+      `deliveredKWh`/`totalCost`), and the views (`HourlyStrip`, cost
+      chip) all ship in v2.7.2, but `grep -rn "recordHourlyDelivery"`
+      shows zero production callers — only tests. Net effect on the
+      v2.7.2 ship: `finalizeRecord` gates the v4 delivery fields on
+      `hasDeliveryContribution` (planHistory.ts:564-572), so every real
+      entry persists with `hasDeliveryContribution: false` and **omits**
+      `deliveredKWh` / `totalCost` / `hourlyContributions` from the JSON
+      entirely (not `0` / `[]`); the per-hour strip is suppressed and
+      the cost narrative chip is hidden. Audit paths that key on
+      `undefined`/missing fields to detect the dark path will work as
+      designed. `progressSamples`, `revisions[]`, and
+      `revisionSnapshot.kwhPerUnitMean` *are* wired (via
+      `recordProgressSample` at planHistory.ts:401/422/436 and
+      `appendRevisionLogIfNew` at line 319), so the actual-vs-plan chart
+      and revisions card render correctly. Only the delivery / cost /
+      hourly path is dark. Suppression is graceful (no broken UI), so
+      this is patch-release follow-up rather than a v2.7.2 blocker.
+      Wire from the per-hour cost rollup site that already computes
+      per-hour kWh, resolving the price tone against the live
+      cheap/normal/expensive thresholds at contribution time so the
+      postmortem reads a stable band. Adversarial review on
+      `v2.7.3/hourly-contributions` branch (2026-05-18); scope confirmed
+      by v2.7.2 notes-drift audit (2026-05-18).
 
 *v2.7.1 release-review findings (2026-05-17). Six items below from the
 six-agent fan-out pass on `v2.7.0..HEAD`; safe for the next patch
 release, not v2.7.1 merge-blockers.*
 
-*Claimed by the **v2.7.3 PR train** (parallel worktrees off `origin/main`,
-started 2026-05-17). In scope for the train: `norgespris-historical-snapshot-tz`,
-`stepped-load-draft-close-handler`, `settings-panel-hero-structure`,
-`overview-hero-spec-drift`, `daily-budget-warning-terminology`,
-`planhero-tooltip-shared-origin`, `smart-task-redundant-eyebrow`,
-`smart-task-homey-terminology-sync`, `loading-skeleton-five-panels`,
-`smart-task-leaf-icon-palette`. Theme: remaining P1 polish, terminology,
-and settings-UI safety items not on the v2.7.2 path. Skip these items in
-v2.7.1 release-review passes.*
-
-- [ ] v2.7.3 — `notes/overview-hero-spec.md` sketch order tightening
+- [ ] `notes/overview-hero-spec.md` sketch order tightening
       (projected above bar in diagram).
-- [ ] v2.7.3 — end-to-end tz-aware test for `formatCheapestUpcomingHour`
+- [ ] End-to-end tz-aware test for `formatCheapestUpcomingHour`
       in `test:unit:tz`.
-- [ ] v2.7.3 — audit flow-card / push notification copy to share the new
+- [ ] Audit flow-card / push notification copy to share the new
       decision-sentence voice (no logger yet).
-
-- [x] Budget page needs a current cheap/expensive price-level chip. PR9
-      (`v2-7-2-pr9-overview-calm-down`, 2026-05-17) demoted the
-      Overview hero's price-level chip on the basis that "should I run
-      loads now?" is a Budget concern, but the Budget page did not
-      then surface a live `priceLevel` chip. *(landed in
-      `v2-7-3-budget-rhythm-and-polish`, 2026-05-18: chip mapping moved
-      to `packages/shared-domain/src/priceLevelChips.ts` so runtime
-      logs and UI agree; chip renders in the new consolidated Budget
-      page header beside the eyebrow/headline. Wired through
-      `updateBudgetPower` on the realtime power tick.)*
 
 - [ ] Norgespris historical display uses live monthly cap snapshot, not
       snapshot-at-the-time. `priceServiceNorway.ts` initialises
@@ -224,162 +218,6 @@ v2.7.1 release-review passes.*
       Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
       `lib/plan/deferredObjectives/diagnosticsBridge.ts`,
       `packages/contracts/src/` (diagnostic reason additions), device-card tests.
-- [x] Show planning speed and estimated duration on the EV deadline-plan page.
-      `packages/settings-ui/src/ui/deadlinePlan.ts:153,164` shows kWh and hours-until-deadline.
-      Add "Planning speed: X.X kW" and "Estimated time: Yh Zm" near the energy line, tagged
-      with a speed-mode badge ("Auto" / "Learning…" today; "Manual" / "Conservative" once P3
-      lands). Plumb the EV side of the existing per-step power calibration view
-      (`lib/app/appInit.ts:468-487`, either a synthetic 1-step profile or an EV-specific
-      branch) so `resolveStepDeliveryUsefulKw` serves Automatic mode without duplication.
-      Why P1: this is not a P0 blocker for the flow-card percent deadline, but it is the core
-      trust signal users need soon after the actuation fix.
-      Also surface the kWhPerUnit provenance the planner is using so users do not need to read
-      logs or settings to understand EV learning state: whether the current plan is using the
-      bootstrap estimate or the learned profile, the learned `kWhPerUnit` value, accepted sample
-      count, confidence, and the last accepted sample timestamp. The active-plan recorder
-      already carries `kwhPerUnitSource`; the rest comes from the EV learning store.
-      Design: `notes/ev-ready-by/README.md`.
-      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`, `lib/app/appInit.ts`,
-      `lib/plan/deferredObjectives/diagnosticsBridge.ts`, EV learning store, calibration view
-      tests.
-      *(shipped — `formatMetaLine` in `packages/settings-ui/src/ui/deadlinePlanHero.ts:153`
-      composes a dot-separated meta line with energy · speed · duration · speed-mode label.
-      `resolveSpeedModeLabel` (L171-173) renders Auto / Learning… badges. Planning speed flows
-      from `lib/plan/deferredObjectives/planningSpeed.ts::resolvePlanningSpeedKw`, fed by EV
-      synthetic 1-step calibration in `lib/app/appInit.ts:496-498::buildEvChargerCalibrationView`.
-      Duration via `formatEstimatedDuration` in
-      `lib/plan/deferredObjectives/activePlanDuration.ts`; initial snapshot via
-      `resolvePlanLevelDurationSnapshot` (activePlanRecorder.ts:578). Provenance rows via
-      `resolveKwhPerUnitProvenanceRows` in `deadlinePlanInputs.ts:60-64`. Shipping commits:
-      8720af37 (live plan hero) + 4b88a325 (snapshot initial duration). Tests:
-      `test/deferredObjectiveActivePlan.test.ts`,
-      `packages/settings-ui/test/deadlinePlan.test.ts`. The original TODO asked for labeled
-      "Planning speed:" / "Estimated time:" rows; what shipped is a single dot-separated meta
-      line — see new P2 below for the optional split.)*
-- [x] Make "Cannot finish" hero copy always name a reason. *(landed in `50bd8d7c`: the bare `cannotMeetFallback` branch was replaced with a reasoned-or-honest sentence; the producer-side `resolveCannotMeetMeta` always returns named copy.)* `deadlinePlan.ts:resolveCannotMeetMeta`
-      has three branches: `cannotMeetDailyBudgetExhausted`, `cannotMeetShortfall(text)`, and a
-      bare `cannotMeetFallback`. The fallback path renders the warning chip with no reasoned
-      explanation, which is the worst combination — user sees a problem signal but cannot tell
-      what's wrong.
-      Why P1: copy bug that undermines trust precisely in the moment users need it. Replace the
-      fallback with either a named reason from the diagnostic (e.g. plan-status reason code) or
-      escalate to logging + show a generic-but-honest copy ("PELS can't determine why this task
-      is at risk — check the device's setup").
-      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`,
-      `packages/shared-domain/src/deadlineLabels.ts`.
-- [x] Surface `objective_invalid_session` (car unplugged) on hero and list. The diagnostics
-      bridge already emits `objective_invalid_session` when SoC reads invalid (car unplugged or
-      session ended), and the user-facing flow status maps to `'waiting'`. The hero and list
-      both render "Waiting" without explanation. Add a copy branch — "Charging plan paused —
-      car unplugged" — to the pending-reason handling in `deadlinePlan.ts` and to the list-card
-      status chip (extension of the entry above).
-      Why P1: users plug back in expecting PELS to resume; with no signal they may think the
-      task is broken. Companion to the existing P1 entry "Surface EV deadline device-card
-      state" which already covers the device card.
-      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`,
-      `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
-      `packages/shared-domain/src/deadlineLabels.ts`,
-      `lib/plan/deferredObjectives/diagnosticsBridge.ts` (confirm the reason flows into the
-      pending-payload).
-      *(shipped — hero copy "Charging plan paused — EV unplugged" via
-      `packages/shared-domain/src/deadlineLabels.ts:584-590` consumed by `buildPendingHero` in
-      `deadlinePlan.ts:236-260` with chip "Paused — unplugged" via `resolvePendingLiveState`
-      (L65-68). List card via `resolveSmartTaskListStatus` (deadlineLabels.ts:145-174) wired
-      through `deadlinesList.ts:72-79`. Device card "Charging plan paused — car unplugged" via
-      `resolveEvCardStateLine` (deadlineLabels.ts:652-685) consumed by `EvDeadlineStateLine` in
-      `PlanDeviceCards.tsx:100-104`. Diagnostics via `diagnosticProgress.ts:39` +
-      `activePlanRecorder.ts:204,218,452`. Tests: `deadlinesList.test.ts:295-334`,
-      `deadlinePlan.test.ts:2722-2780,3819-3829`, `evDeadlineStateLine.test.ts:178-249`.
-      Shipping commits: c37fcb9b + cd4bce6d + 8720af37.)*
-- [x] Disambiguate the "Waiting" chip across Smart task surfaces. *(landed in `cd4bce6d`: chip cleanup canonicalises `Building plan…` / `Scheduled` / `Paused — unplugged` variants; live-state chip dropped from active hero so the kind chip carries identity and the headline carries state.)* Today the same chip text
-      serves three meanings: plan still being built (`pending: true`), plan ready but charging
-      not started yet (queued for first bucket), and (proposed via existing entry above) car
-      unplugged. Split into `Building plan…` / `Queued` / `Paused — unplugged` chip variants
-      so users can tell at a glance which is active. Pair with the
-      `objective_invalid_session` entry above so the unplugged variant lands in the same pass.
-      Why P1: trust signal — three indistinguishable "Waiting" states erode confidence in what
-      PELS is doing right now.
-      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
-      `packages/settings-ui/src/ui/deadlinePlan.ts`,
-      `packages/shared-domain/src/deadlineLabels.ts`.
-- [x] Suppress live-plan original-series in legend and chart when identical to current. *(landed in `cd4bce6d`: the live-plan original-series legend + chart suppress when every hour's `originalDeviceKwh === deviceKwh`, mirroring the existing history-detail behaviour.)*
-      `DeadlinePlanHistoryDetail.tsx:317-320` already gates `hasOriginalSeries` on
-      `Math.abs(originalKwh - finalKwh) > 0.001`. The live `DeadlinePlan.tsx` always renders the
-      original-series legend entry plus the dashed-border bar (with transparent fill when
-      `originalDeviceKwh === 0`), producing two visually near-identical legend entries on
-      first-load plans that haven't revised. Mirror the history-detail suppression: hide the
-      series and the legend entry when every hour's `originalDeviceKwh === deviceKwh`.
-      Why P1: chart clutter on the most common case (first-load, never-revised plan) — small UI
-      fix with measurable first-impression payoff.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
-- [x] Canonicalize chip ordering across Smart task surfaces. *(landed in `cd4bce6d`: ordering canonicalised across hero + list — kind identity first, state second.)* Today three orderings ship:
-      list card `[kind, ?Waiting]`, pending hero `[Waiting, kind]`, live hero `[state, kind,
-      ?cannotMeet, ?confidence]`. Pick one canonical order — suggested: kind first as identity,
-      state second as live signal — and apply uniformly so glance-scanning the same chip across
-      surfaces lands on the same position.
-      Why P1: first-impression consistency; inconsistent ordering hurts glance comprehension
-      of a multi-surface feature.
-      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
-      `packages/settings-ui/src/ui/deadlinePlan.ts`.
-- [x] Hero headline indicates planned start window when not currently active. *(landed in `50bd8d7c`: queued hero now emits `headlineReason` subline — "Waiting for tomorrow's prices through HH:MM" / "Today's budget is full — next cheap window after midnight" / "Cheaper than now — starts at HH:MM" — alongside the existing time-anchored headline.)* Today when
-      `firstChargingHour` exists but its `startsAtMs > nowMs`, `resolveHeroHeadline`
-      (`packages/settings-ui/src/ui/deadlinePlan.ts`) returns `Waiting until HH:MM`. When the
-      hero is in the active-now branch it returns `Charging now` / `Heating now`. The bare
-      "On track" branch can fire when there's no `firstChargingHour` at all; consider whether
-      that branch should instead say something like "On track — no action needed yet" or
-      similar. Audit and tighten the headline so users always get a concrete time or status
-      cue rather than a bare status label.
-      Why P1: hero is the top-line user signal; bare "On track" is the weakest possible answer
-      to "what's happening?".
-      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`.
-- [x] Rename `deadline_ended.json` dropdown option keys from `title` to `label`. Sibling
-      trigger / condition JSONs (`deadline_status_changed.json`, `deadline_status_is.json`,
-      condition `outcome`-typed cards across the project) all use `label: { en: … }` on
-      dropdown option objects. `deadline_ended.json` uses `title` — non-standard per the
-      Homey SDK convention and may render raw ids (`succeeded`/`missed`/`abandoned`) in the
-      mobile UI instead of the localized labels. ~1-minute fix.
-      Files: `.homeycompose/flow/triggers/deadline_ended.json`.
-      Resolved by upstream: commit 50a395c5 dropped the outcome dropdown entirely from
-      `deadline_ended.json`, so no dropdown option keys remain to rename. The dropdown was
-      replaced by stable-id tokens that flow authors filter on downstream.
-- [x] Decouple Smart tasks list empty-state copy from flow-card action titles. *(landed in `cd4bce6d`: empty state now references the PELS `Heat … by Ready by` / `Charge … by Ready by` Flow actions so users can find them in the picker.)*
-      `DeadlinesList.tsx:99-100` hard-codes "Add heating task" / "Add charging task" as the
-      action names. The flow-card redesign P0 may rename or unify the actions; this copy
-      would then silently go stale. Either extract action titles to a shared label constant
-      consumed by both the `.homeycompose/flow/actions/*.json` source and the UI, or drop the
-      names entirely (e.g. "Open the Flow editor to schedule a heating or charging task").
-      Why P1 polish: depends on flow-card redesign sequencing; bundle with that work for
-      single-PR safety.
-      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
-      `.homeycompose/flow/actions/set_*_deadline.json` (if shared constants).
-- [x] Surface built-in device control when it blocks device management. *(landed in `41a481a2`: inline notice next to the disabled toggle pointing the user to the activation switch; first-open auto-expands the Setup section and the action button scrolls + focuses the wiring switch.)*
-      The control still exists (`packages/settings-ui/public/index.html:1017-1029`) and is wired
-      by `packages/settings-ui/src/ui/deviceDetail/nativeWiring.ts`, but it is conditional and
-      lives inside the collapsed Setup section. Meanwhile unsupported activation can leave
-      "Managed by PELS" disabled with only a tooltip and list-row explanation. For native-wiring
-      required devices, users can reasonably miss the hidden switch and think the option is gone.
-      Minimum acceptable completion: when a device requires built-in device control before it can
-      be managed, the device detail panel makes that action visible near the disabled management
-      control or automatically opens or highlights the Setup section, and tests cover the blocked
-      management path.
-      Files: `packages/settings-ui/public/index.html`,
-      `packages/settings-ui/src/ui/deviceDetail/nativeWiring.ts`,
-      `packages/settings-ui/src/ui/deviceDetail/index.ts`,
-      `packages/settings-ui/src/ui/devices.ts`, device-detail tests.
-- [x] Apply Norgespris to historical price rows instead of falling back to spot pricing. *(landed in `7c6c4363`: past hours under `norway_price_model = norgespris` now include the Norgespris adjustment; only current and future hours decrement the forward-looking monthly cap projection. Strømstøtte behavior unchanged.)*
-      `buildCombinedHourlyPricesNorway()` currently skips the Norgespris adjustment for every
-      hour before the current hour (`lib/price/priceServiceNorway.ts:221-239`). That avoids
-      consuming the forward-looking monthly cap estimate, but it also makes past rows under the
-      Norgespris model show spot-price totals. Split "display the fixed-price model" from
-      "consume estimated remaining cap" so historical rows still use Norgespris while only current
-      and future rows affect the remaining-cap projection.
-      Why P1: cost history and any UI using past combined prices can show the wrong price model
-      after the user selects Norgespris.
-      Minimum acceptable completion: past same-month rows under `norway_price_model = norgespris`
-      include a Norgespris adjustment and total, past rows do not reduce current /
-      future cap eligibility, and strømstøtte behavior is unchanged.
-      Files: `lib/price/priceServiceNorway.ts`, `test/norgesprisPriceService.test.ts`,
-      price UI/widget tests that render past combined prices.
 - [ ] Align user-visible Homey labels, Flow cards, and public docs with the redesigned Settings UI
       terminology.
       The settings UI mostly follows `notes/ui-terminology.md`, but Homey-facing labels and public
@@ -403,10 +241,6 @@ v2.7.1 release-review passes.*
       `packages/settings-ui/test/helpers/homeyApiMock.ts`,
       `packages/contracts/src/settingsUiApi.ts`,
       settings UI mock and browser smoke tests.
-- [x] ~~Drop the redundant "SMART TASKS" eyebrow above the same-named h2 on the Smart tasks tab.~~
-      Landed in v2.7.3 PR #880 (`v2.7.3/smart-tasks-list-hero`) — the static `<h2>Smart tasks</h2>`
-      header was removed from `#deadlines-panel`; the populated-state hero now owns the
-      eyebrow + headline slot and the empty-state renders an explanatory paragraph.
 - [ ] Add loading skeletons across the five panels.
       Loading state today is a plain `<p class="muted">Awaiting data…</p>` in all panels —
       identical wording, identical styling, no M3 shimmer / skeleton. First-paint after the
@@ -415,71 +249,6 @@ v2.7.1 release-review passes.*
       card placeholders) and use it everywhere.
       Files: `packages/settings-ui/src/ui/views/*.tsx`,
       `packages/settings-ui/public/style.css`.
-- [x] Sweep Budget panel for remaining planner-noun leakage and terminology drift.
-      Two sibling sites still leak `plan` as a planner noun: `budgetRedesign.ts:245` emits
-      "Cheaper-hour planning" (compare to the documented "Use cheaper hours" wording in the
-      Adjust view and `docs/daily-budget.md`); `BudgetOverview.tsx:582` uses the section heading
-      "Planning behavior" (consider "Shaping behavior" / "Budget shaping"). Both should align
-      with the rest of the planner-noun sweep landing alongside the smart-task copy work.
-      Files: `packages/settings-ui/src/ui/budgetRedesign.ts`,
-      `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
-      `packages/shared-domain/src/**` (if helpers exist there).
-- [x] Fix Budget chart legend color collision between Managed and Price series.
-      `tokens.css:219, 224` both bind to `--color-role-warn` (orange). The two series are
-      distinguishable only by shape (filled circle vs line), which is fragile at small swatch
-      sizes. Reassign the Price series to a distinct semantic token (or extend the chart palette
-      with a dedicated `--pels-chart-price` hue that contrasts both Managed and Background).
-      Files: `tokens/component.json`, `settings/tokens.css` (regen),
-      `packages/settings-ui/src/ui/budgetRedesignChart.ts`.
-- [x] Remove the ghost "Warning" legend entry from the Usage day ECharts chart.
-      *(landed in PR 3.1 — `usageDayChartEcharts.ts` now adds a zero-data dummy
-      bar series named "Warning" alongside the "Measured" series whenever
-      warn bars are present. The legend's `Warning` entry binds to this real
-      series so ECharts no longer drops it; `barMaxWidth` caps both series so
-      the dummy can't shrink the real bars.)*
-- [x] Surface confidence and progress on Smart-tasks list cards. *(landed in `832c53ba`: `Confidence low/medium/high` chip + `currently 18.5 °C` / `currently 45 %` line beside the target. Helpers in shared-domain so logs and UI share strings.)*
-      `DeadlinesListCard` shows kind chip + device + target + ready-by + status, but no
-      confidence indicator and no current-value indicator. A user scanning the list cannot tell
-      which queued task is in trouble without tapping into each one. Add a small confidence
-      chip ("Low" / "Medium" / "High" — matching the hero detail page's confidence chip) and a
-      "currently X" row line ("currently 18 °C", "currently 45 %") so the list answers "what's
-      at risk?" at a glance.
-      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
-      `packages/contracts/src/settingsUiApi.ts` (add `confidence` / `currentValue` to the list
-      card shape if not already there),
-      `packages/shared-domain/src/deadlineLabels.ts` (confidence label per kind).
-- [x] Smart-tasks list: empty Past tasks section silently vanishes; date format inconsistent *(landed in `832c53ba`: new `empty` state on `DeadlinesHistoryListState` renders the heading + explanatory line; both active and past lists routed through `formatSmartTaskListDateTime(ms, timeZone)` so dates render uniformly as `Sat 16 May 06:50`.)*
-      between active and past cards.
-      The Past tasks region lives in `DeadlinesHistoryList.tsx`; when `historyEntries.length === 0`
-      it renders as `null` instead of an explanatory placeholder — leaves the user wondering where
-      the section is supposed to be. Same panel, active cards rendered in `DeadlinesList.tsx` use
-      `Sat 16 May, 06:50` (with comma) while past cards in `DeadlinesHistoryList.tsx` use
-      `Mon 11 May 23:00` (no comma). Pick one format helper and route both lists through it; add
-      an empty-state stanza for past tasks ("No completed tasks yet — they'll appear here after
-      a smart task finishes.").
-      Files: `packages/settings-ui/src/ui/views/DeadlinesHistoryList.tsx`,
-      `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
-      `packages/shared-domain/src/dateFormat.ts` (or wherever the date helper lives).
-- [x] Promote the History detail outcome chip and add a scoping eyebrow. *(landed in `832c53ba`: outcome chip promoted to its own row above the heading; `Smart task` eyebrow added; device name on the heading line with timestamp following in muted text. Per `feedback_terminology_plan_vs_deadline`, the eyebrow is `Smart task`, not `Smart task plan`.)*
-      Today the past-plan detail opens with an 18 px semibold h1 timestamp ("Mon 11 May 23:00")
-      and an 11 px chip ("Succeeded") tucked to the right — the timestamp answers first and the
-      outcome (the thing the user came to confirm) is the quietest element. Also: no eyebrow
-      labels the surface as "Past plan" / "Smart task plan", so a user landing here from a
-      deep-link or notification has no scoping ("PELS" in the dialog title bar is not enough).
-      Fix: add a "Smart task plan" eyebrow above the heading, raise the outcome chip to be
-      visually at least the weight of the timestamp (or move it inline above), and bring the
-      device name onto the heading line.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
-      `packages/settings-ui/public/style.css`.
-- [x] Unify hero structure across the five settings panels. *(landed in `polish-v2.7.3-hero-structure-and-spec`: Settings panel hero contents wrapped in canonical `<div>` to match all other panels.)*
-      Every panel except Settings uses `<header class="pels-hero"><div><eyebrow><h2></div></header>`;
-      the Settings panel hero (`#settings-panel`) drops the inner `<div>` wrapper and puts the
-      eyebrow, h2, and supporting paragraph as direct grid children. The result is a different
-      vertical rhythm, most noticeable at 320 px where the Settings hero feels taller and looser
-      than its siblings. Fix: re-wrap Settings hero contents in the canonical `<div>`.
-      Files: `packages/settings-ui/public/index.html` (Settings panel hero),
-      `packages/settings-ui/public/style.css` (verify selector specificity still wins).
 - [ ] Unify the hero and section-label primitive across every settings-UI surface.
       Overview hero, Budget header, Usage header, Smart tasks header, Settings header, Advanced
       header, and deadline-plan hero should read as one component: same eyebrow (font-size,
@@ -519,19 +288,59 @@ v2.7.1 release-review passes.*
       `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
       `packages/settings-ui/src/ui/power.ts`, generated `settings/`, screenshot suite under
       `packages/settings-ui/tests/e2e/`.
+
+*v2.7.2 release-review findings (2026-05-18). Two copy-locality items
+from the `pels-copy-and-terminology` agent fan-out on `v2.7.1..HEAD`;
+graceful but should ship in the next patch.*
+
+- [ ] Move stepped-status fallback string to shared-domain.
+      `packages/settings-ui/src/ui/views/PlanSteppedCard.tsx:115`
+      inlines `'Limited — staying under the hard cap'` as a fallback for
+      the stepped-load held state. All sibling status text already routes
+      through `resolveSteppedStatusLine` / `planStateLabels`; this
+      fallback should join them so the runtime planner log emits the
+      same wording when a stepped device is held without a profile.
+      Why P1: violates Rule 4 (UI text shared with logs) for a status
+      sentence newly introduced by the v2.7.2 train.
+      Acceptance: string lives in
+      `packages/shared-domain/src/planStateLabels.ts`; `PlanSteppedCard.tsx`
+      imports it with no inline literal; planner log emits identical text.
+      Files: `packages/settings-ui/src/ui/views/PlanSteppedCard.tsx`,
+      `packages/shared-domain/src/planStateLabels.ts`.
+      Source: `pels-copy-and-terminology` agent, v2.7.2 release-review pass.
+
+- [ ] Move Budget finish-of-day hero sentences to shared-domain.
+      `packages/settings-ui/src/ui/budgetRedesign.ts:314,343,364`
+      introduces new user-visible decision sentences inlined in
+      settings-ui: `'Yesterday finished over budget.'`,
+      `'Yesterday finished within budget.'`,
+      `'Finished over the daily budget.'`,
+      `'Finished within budget.'`, plus the `resolveHeadroomLine` output.
+      The Budget page is the canonical "should I run loads now?" surface;
+      these decision sentences should live in shared-domain so any
+      planner / log echo can quote the exact phrasing the user saw.
+      Why P1: violates Rule 4 (UI text shared with logs) for newly
+      introduced hero copy.
+      Acceptance: strings move to a new
+      `packages/shared-domain/src/dailyBudgetHeroStrings.ts`;
+      `budgetRedesign.ts` imports without inline literals.
+      Files: `packages/settings-ui/src/ui/budgetRedesign.ts`,
+      new `packages/shared-domain/src/dailyBudgetHeroStrings.ts`.
+      Source: `pels-copy-and-terminology` agent, v2.7.2 release-review pass.
+
 ## P2 Product, Observability, and Maintainability
 
-- [ ] v2.7.3 — Smart-task history receipt + chip helpers in
+- [ ] Smart-task history receipt + chip helpers in
       `packages/shared-domain/src/deferredPlanHistoryReceipt.ts` still inline
       every user-facing string (Started, Ready, Largest planned hour, Delivered,
       Week, on average, etc.). gemini flagged this on PR #887: when a real
       localization story lands these need to route through a labels module
       similar to `deadlineLabels.ts` so runtime logging + UI consume the same
-      vocabulary (see `feedback_ui_text_shared_with_logs`). Out of scope for
-      v2.7.3 — full externalization is a separate sweep across all of
+      vocabulary (see `feedback_ui_text_shared_with_logs`). Out of scope for any single release —
+      full externalization is a separate sweep across all of
       `packages/shared-domain/src/**`.
 
-- [ ] v2.7.3 — Smart-task history-detail hero treats `unknown` outcomes as
+- [ ] Smart-task history-detail hero treats `unknown` outcomes as
       `quietAbandoned` (no chart card) alongside `abandoned`/`replaced`.
       copilot reviewer on PR #887 (`deadlinePlanHistoryDetailHero.ts:242`)
       noted the chart policy note only calls out Abandoned + Replaced as the
@@ -540,7 +349,7 @@ v2.7.1 release-review passes.*
       should fall back to a collapsed-chart shape or stay quiet, and update
       `notes/v2-7-2/postmortem-chart-policy.md` to match the resolved policy.
 
-- [ ] v2.7.3 — Refresh overview prices on realtime `prices_updated` events.
+- [ ] Refresh overview prices on realtime `prices_updated` events.
       The hero anticipation subline ("Cheapest hour ahead …") depends on
       `cachedPrices`, but realtime price updates only invalidate the prices
       cache + refresh price tabs (`realtime.ts#handlePricesUpdated`). The
@@ -550,12 +359,12 @@ v2.7.1 release-review passes.*
       Deferred from PR #885 (codex P2 review thread on
       `packages/settings-ui/src/ui/planRedesign.ts:124`).
 
-- [ ] v2.7.3 — iOS Homey chrome inset may exceed 56 px (PWA + status bar + nav bar);
+- [ ] iOS Homey chrome inset may exceed 56 px (PWA + status bar + nav bar);
       confirm via screenshot from user, then split `--pels-homey-mobile-chrome` per
-      pointer/platform if needed. Deferred from v2.7.2/PR7 fixup.
+      pointer/platform if needed. Deferred from v2.7.2 PR7 fixup.
 
 - [ ] Smart-tasks panel loses its visible title in loading / error / empty
-      states after the v2.7.3 `smart-tasks-list-hero` PR dropped the static
+      states after the v2.7.2 `smart-tasks-list-hero` PR dropped the static
       `<h2>Smart tasks</h2>`. Other panels (Overview, Budget, Usage, Settings)
       keep a persistent header, so the Smart tasks tab is now inconsistent
       when the populated hero is not rendered. Options: (a) restore a small
@@ -571,7 +380,7 @@ v2.7.1 release-review passes.*
       (and `PlanSteppedCard.tsx`) instead of routed through a shared-domain
       helper, duplicating the same `"Limited — staying under the hard cap"`
       / `"Still reporting … after pause — …"` strings against
-      `planTemperatureCardText.ts` and `planSteppedCardText.ts`. The v2.7.3
+      `planTemperatureCardText.ts` and `planSteppedCardText.ts`. The v2.7.2
       punctuation-drift PR fixed the separator but did not consolidate. Per
       `feedback_ui_text_shared_with_logs`, UI-visible strings must live in
       `packages/shared-domain/**` helpers so runtime logging picks up the same
@@ -582,7 +391,7 @@ v2.7.1 release-review passes.*
       `packages/settings-ui/src/ui/views/PlanSteppedCard.tsx`,
       `packages/shared-domain/src/planReasonFormatting.ts`.
 
-- [ ] Overview device-card stack still spans 128–163 px after the v2.7.3
+- [ ] Overview device-card stack still spans 128–163 px after the v2.7.2
       `min-height: calc(var(--spacing-8) * 4)` floor on `.plan-card` — the
       floor only raises the short cards; tall cards keep their natural
       height. If the audit re-flags rhythm, the next step is to convert the
@@ -614,15 +423,6 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       spec asked for split labeled rows ("Planning speed: 3.2 kW" / "Estimated time: 3h 50m").
       Function is identical, this is a copy/layout preference. Pick one direction and document
       in `notes/ev-ready-by/README.md`.
-
-- [x] `notes/overview-hero-spec.md` decision-sentence ladder drift. *(landed in `polish-v2.7.3-hero-structure-and-spec`: spec updated to document all 7 branches, "projected over budget" inserted between Restoring and On track, code cross-link added.)*
-      note documents 6 branches; `PlanHero.tsx:108` now has 7 (added
-      "projected over budget"). The note's own "keep this ladder in
-      sync" instruction is referenced from the code comment. Update the
-      note to match, or move it to historical if the spec/code contract
-      is retired. Source: `pels-ux-fit` agent.
-      Files: `notes/overview-hero-spec.md`,
-      `packages/settings-ui/src/ui/views/PlanHero.tsx:108`.
 
 - [ ] Resolution-in-producer smell in `deadlinePlanInputs.ts:51-55`. UI
       branches on `latest.kwhPerUnitSource === 'bootstrap'` to recompute
@@ -682,14 +482,6 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       Files: `packages/shared-domain/src/deviceOverview.ts`,
       `notes/ui-terminology.md`.
 
-- [x] `formatPlanHistoryMissedReason` rewritten as blameless explainer in
-      v2.7.3 — sentence answers only "what happened" (recourse copy moved
-      to the recourse button via `resolveMissedHistoryRecourse`). Per
-      `feedback_hard_cap_is_physical.md` no branch recommends raising the
-      cap or daily budget; the button surfaces the appropriate "lower
-      target / move deadline / lower daily budget" action.
-      Files: `packages/shared-domain/src/deferredPlanHistory.ts`.
-
 - [ ] `activePlanRecorder.ts:584-594` sets explicit `undefined` on
       snapshot fields and relies on `JSON.stringify` dropping them. The
       comment is intentional, but the in-memory object exposes explicit
@@ -700,14 +492,6 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       field is only set when defined.
       Source: `adversarial-review` skill.
       Files: `lib/plan/deferredObjectives/activePlanRecorder.ts:584-594`.
-
-- [x] Smart task history detail: rebuild around temperature/SoC actual-vs-plan, not
-      hourly bar comparisons. *(Step 1 landed in `a5b8116a` as v2.7.2/PR1 — schema v4
-      with `progressSamples`, `kwhPerUnitMean`, `revisions[]`. Step 2 landed in the
-      v2.7.2/PR4 commit on this train — `DeadlinePlanHistoryDetail.tsx` now renders a
-      stepped planned staircase + observed-progress line on a unit-space y-axis,
-      target reference, `metAtMs` marker, and falls back to the legacy kWh-bar
-      chart when neither samples nor `kwhPerUnitMean` was captured.)*
 
 - [ ] Add `deliveredKWh` and `totalCost` to `DeferredObjectivePlanHistoryEntry`.
       The History detail page is supposed to answer "how much did it cost?" and "by how much
@@ -775,31 +559,6 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       +2 instead of +1, biasing the typical-day averages slightly low.
       Files: `lib/core/powerTracker.ts` (`aggregateAndPruneHistory`).
 
-- [x] Budget tab vertical rhythm + density audit. *(landed in
-      `v2-7-3-budget-rhythm-and-polish`, 2026-05-18.)*
-      - (1) **Daily-budget header tile collapsed.** Removed the panel-level
-        `pels-hero` (`#budget-panel > header.pels-hero`) and folded the
-        eyebrow + headline into a new `.budget-page-header` row that also
-        carries the price-level chip and the mode action — one card's worth
-        of vertical chrome removed.
-      - (2) **Plan/Adjust + Yesterday/Today/Tomorrow no longer stack as two
-        segmented controls.** Plan/Adjust folded into a tertiary text button
-        (`Adjust` in Plan view, `Done` in Adjust view) on the right of the
-        new header; Y/T/T remains the only segmented control in Plan view.
-        E2E tests updated for the new structure.
-      - (3) **Plan-confidence card collapses at 480 px.** The summary row now
-        carries the title, the inline "What this means" affordance, the
-        level + percent chip, and the chevron on a single line; the body
-        copy + breakdown table reveal on `[open]` only.
-      - Baseline rhythm sweep: spacing on the new header (`var(--spacing-3)`
-        top, `var(--spacing-2)` bottom; gap `var(--spacing-2) var(--spacing-3)`)
-        matches the rest of the budget view's `--spacing-3` cadence; no
-        hardcoded pixels introduced.
-
-- [x] (Original v2.7.3 spec, kept for context) Budget tab vertical rhythm + density audit. The user's live walk 2026-05-16
-      flagged the page as feeling visually loose / off-rhythm at the dialog's actual
-      width.
-
       **Acceptance bar — fix all three of these consolidation candidates (or
       explicitly close each with a one-line "rejected because…" in the PR):**
       1. **Daily-budget header tile collapses out of its own card.** Today the
@@ -835,13 +594,6 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       Files: `packages/settings-ui/public/style.css` (segmented spacing, card
       padding, section gaps), `packages/settings-ui/src/ui/views/BudgetOverview.tsx`
       (markup consolidation for #1 and #3), `settings/style.css` (regen).
-
-- [x] Overview Power-Now bar end-marker leaves a small visible gap from the main fill. *(landed in `polish-v2.7.3-hero-structure-and-spec`: `box-shadow: 0 0 0 0.5px` added to both marker variants so sub-pixel gaps are closed.)*
-      Live-walk 2026-05-16 (`/tmp/pels-live-walk/overview-hero-480.png`) shows the
-      orange "current draw" marker rendering slightly offset from the right edge of the
-      filled bar — visually ragged. Minor visual rough edge on a hero element.
-      Files: `packages/settings-ui/src/ui/views/PlanHero.tsx`,
-      `packages/settings-ui/public/style.css`.
 
 - [ ] Settings → Advanced page H2 "Device diagnostics" doesn't describe the page.
       Live-walk 2026-05-16 (`/tmp/pels-live-walk/05-settings-advanced-480-1.png`):
@@ -880,14 +632,6 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       line; drop the duplicate copies.
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
 
-- [x] Usage heatmap: color-scale legend on the right edge lacks a kWh unit label.
-      Live-walk 2026-05-16 (`/tmp/pels-live-walk/03-usage-detailed-480.png`) shows
-      the heatmap right-edge color scale with numeric values but no unit. Add `kWh`
-      (or `kr/kWh` if that's what the scale encodes — verify) so the user knows
-      what intensity means.
-      Files: `packages/settings-ui/src/ui/views/UsageOverview.tsx`,
-      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`.
-
 *Eight Overview-surface P2 polish items from the 2026-05-16 live-walk audit
 (TV-stue missing temp line, chip-primitive consolidation, Smart-task aria,
 hero warning emoji, projected-marker alignment, safe-pace subline visibility,
@@ -906,51 +650,6 @@ consolidation + a11y polish (8 P2)`.*
       so users see something tappable.
       Files: `packages/settings-ui/src/ui/views/UsageOverview.tsx` (or wherever
       the heatmap week-nav lives), `packages/settings-ui/public/style.css`.
-
-- [x] Usage hero "Daily avg" stat duplicates the "Typical weekend: 62.8 kWh"
-      already in the subline. Live walk 2026-05-16
-      (`/tmp/pels-rewalk/usage/02-usage-hero-480.png`): same number rendered
-      twice in a single hero, only 24 px apart. Pick one location and drop the
-      other.
-      Files: `packages/settings-ui/src/ui/views/UsageOverview.tsx`.
-
-- [x] Usage hero double-capsule wastes ~80 px of vertical real estate. Live
-      walk 2026-05-16 (`/tmp/pels-rewalk/usage/02-usage-hero-480.png`,
-      `/tmp/pels-rewalk/usage/01-usage-480-full.png`): the
-      `<header class="pels-hero">` "USAGE / Energy history" eyebrow capsule
-      sits above the actual `34.x kWh` hero card with no content between
-      them. Two stacked dark capsules consuming ~80 px before the user reaches
-      the headline number. Same shape as the Budget tab's "Daily-budget header
-      tile" candidate in the P2 rhythm audit — fold the eyebrow into the
-      hero card.
-      Files: `packages/settings-ui/src/ui/views/UsageOverview.tsx`,
-      `packages/settings-ui/public/style.css` (`.pels-hero` markup / padding).
-
-- [x] Usage tab chart palettes don't share a family. Live walk 2026-05-16:
-      three unrelated palettes coexist on the same tab — Daily-usage bars are
-      ECharts-default blue, segmented active uses the accent green
-      `rgba(34,197,94,0.28)`, heatmap is teal-to-red. None reference the
-      documented PELS accent. Pick a palette family rooted in the accent and
-      apply across all three chart types so the tab reads as one surface.
-      Files: `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
-      `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,
-      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
-      `settings/tokens.css` (chart palette tokens).
-
-- [x] Delete the dead `#shell-nav .tab[data-tab="settings"]` block at *(landed in `polish-v2.7.3-hero-structure-and-spec`: 7-line block removed; Settings tab now inherits compact-mode font sizes correctly.)*
-      `packages/settings-ui/public/style.css:397-403`. The selector duplicates `.tab`'s
-      base `margin-left`, `padding-inline`, and `opacity` declarations, and its
-      `font-size` / `font-weight` declarations actively fight the compact-mode media
-      query at `style.css:2420,2427` — keeping the Settings tab at the non-compact label
-      size (13px) while the other four tabs (Overview, Budget, Usage, Smart tasks) shrink
-      to the compact size (11px) at narrow widths. Result: Settings reads as visibly
-      larger and bolder than the other four in the top nav, breaking typographic
-      consistency on the first thing a user sees. Live-confirmed at 480px in both
-      light-wrap and dark-wrap via PR #817's fixture
-      (`packages/settings-ui/test/fixtures/homey-wrap/homey-wrap-nav.png`). Fix: delete
-      the whole block (leftover from a previous design iteration; nothing else depends
-      on it). Regen `settings/style.css`.
-      Files: `packages/settings-ui/public/style.css`, `settings/style.css` (regen).
 
 - [ ] Idle classifier: surface a signal when a device has a temperature setpoint but no
       `currentTemperature` reading. Today `lib/observer/idleDetector.ts` requires
@@ -1420,19 +1119,6 @@ consolidation + a11y polish (8 P2)`.*
       indicator follows the deep-link.
       Files: `packages/settings-ui/src/ui/deadlinePlanRouter.ts`,
       `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
-- [x] Add a budget-line overlay to the daily-usage 14-day chart. *(landed in
-      `v2-7-3-budget-rhythm-and-polish`, 2026-05-18: dashed warn-tone reference
-      line via `markLine` + per-bar warn color when value > budgetKWh.)*
-- [x] Fix the Usage heatmap "Unreliable data" swatch color.
-      The legend swatch in `#power-legend` uses `--color-surface-4` (`#232b38`) while the actual
-      heatmap cells use `--pels-chart-unreliable-cell` (`#2a3242`) — perceptibly different. Bind
-      the swatch to the same token. While there, delete the dead `.usage-legend__swatch--warn`
-      class (never instantiated, references the wrong negative-bg token).
-      Files: `packages/settings-ui/public/style.css`, `settings/style.css` (regen).
-- [x] Collapse the Advanced "Data management" / "Daily budget tuning" disclosures by default.
-      *(landed in `v2-7-3-budget-rhythm-and-polish`, 2026-05-18: removed `open` from
-      the Debug-logging and Daily-budget-tuning `<details>` in `packages/settings-ui/public/index.html`.
-      Data-management was already closed.)*
 - [~] Add a hero summary to the Electricity prices settings panel. *(partial, landed in
       `v2-7-3-budget-rhythm-and-polish`, 2026-05-18: one-sentence lede added under the panel
       `pels-hero` h2 so users know what the panel controls.)* Remaining for a later pass:
@@ -1441,9 +1127,6 @@ consolidation + a11y polish (8 P2)`.*
       Files: `packages/settings-ui/src/ui/views/ElectricityPricesView.tsx` (done);
       `packages/settings-ui/public/index.html` (Electricity prices panel hero — pending);
       `packages/settings-ui/src/ui/electricityPrices.ts` (pending).
-- [x] Link the Price-aware devices empty state to Settings → Devices. *(landed in
-      `v2-7-3-budget-rhythm-and-polish`, 2026-05-18: added `MdOutlinedButton` with
-      `data-settings-target="devices"` below the empty-state copy in `PriceAwareDevicesView.tsx`.)*
 - [ ] Consolidate the three near-identical pulse keyframe animations.
       `settings/style.css` defines three pulse keyframes at 1.4 s / 1.5 s / 1.6 s — imperceptibly
       different and not driven from a shared token. Pick one duration, expose as a token, and
@@ -1678,12 +1361,6 @@ consolidation + a11y polish (8 P2)`.*
       `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
       `packages/settings-ui/src/ui/views/DeadlinePlanHistory.tsx` (past list row variant),
       overshoot-resolver tests.
-- [x] ~~Surface miss-streak aggregate on the Smart tasks landing page when recent miss density
-      is high.~~ Struck during PR #880 fix-up: miss-streak aggregate deferred; v2.7.3 loveable
-      policy disallows streak counters. A "3 of last 4 missed" badge punishes the user with
-      pattern guilt without giving them a remedy on the same surface — exactly the anti-loveable
-      shape the v2.7.3 train is trimming. The individual Missed chips already let the user
-      drill into any past task. Revisit only if a same-surface remedy lands first.
 - [ ] Reuse one chart vocabulary for past-hours-in-a-live-run and past-hours-in-history.
       Today the live chart paints planned bars + a dotted measured line; the eye treats them
       as separate. After a run, the history chart shows planned bars + (eventually, when the
@@ -1827,7 +1504,7 @@ should not be folded into the same PR.
       whose post-invert form preserves the same role tone. Park until Homey
       ships a signal or until we move to a theme-handshake protocol.
 
-*Bot-review findings carried forward from the v2.7.3 BOU train (PRs #881,
+*Bot-review findings carried forward from the v2.7.2 BOU train (PRs #881,
 #882, #884), 2026-05-18.*
 
 - [ ] Lift `budgetRedesign.ts` back under the 500-line `max-lines` cap.
@@ -2316,9 +1993,9 @@ should not be folded into the same PR.
       consolidation question.
       Files: `packages/settings-ui/public/style.css`.
 
-- [ ] v2.7.4 salvage from closed PR #883 (`v2.7.3/budget-usage-loveable`) — Budget half superseded by `dd92fa42`; Usage-half items remain undelivered: "Your typical Sunday runs X kWh" day-aware voice (`usageHero.ts` + `usageVoice.ts`), drop the 7d toggle in `power.ts` (keep 14d only), NBSP between number and `kr` in any Usage money copy, NOK money line on Usage (deferred). Small focused PR.
+- [ ] Salvage from closed PR #883 (`v2.7.3/budget-usage-loveable`) — Budget half superseded by `dd92fa42`; Usage-half items remain undelivered: "Your typical Sunday runs X kWh" day-aware voice (`usageHero.ts` + `usageVoice.ts`), drop the 7d toggle in `power.ts` (keep 14d only), NBSP between number and `kr` in any Usage money copy, NOK money line on Usage (deferred). Small focused PR.
 
-- [ ] v2.7.3 follow-up — `replanReason.ts`'s `resolveHorizonPriceWatermark`
+- [ ] `replanReason.ts`'s `resolveHorizonPriceWatermark`
       uses `max(plannedBuckets[].endMs)` as the price-horizon watermark, but
       buckets are clamped to `deadlineAtMs` in the runtime path
       (`policyHorizon.ts` / `bucketAllocation.ts`), so the value is typically
