@@ -1,5 +1,6 @@
 import type { ComponentChild } from 'preact';
 import {
+  computeEnergyBarScaleKWh,
   formatAboveHardCapSubline,
   formatAboveSafePaceSubline,
   formatEnergyMeterMarkerLabels,
@@ -9,6 +10,7 @@ import {
   formatPowerMeterMarkerLabels,
   type HeroMeterMarkerLabels,
 } from '../../../../shared-domain/src/planHeroSummary.ts';
+import { WarningIcon } from './icons.tsx';
 import {
   HERO_INFO_TOOLTIP_TEXT,
   formatHardCapTooltip,
@@ -466,7 +468,7 @@ const resolvePowerSubline = (
     return formatAboveHardCapSubline(meta.hardCapHeadroomKw, headline.hardLimitKw);
   }
   if (headline.overSoftLimit) {
-    return formatAboveSafePaceSubline(headline.headroomKw);
+    return formatAboveSafePaceSubline(headline.headroomKw, headline.softLimitKw);
   }
   return `Safe pace now ${headline.softLimitKw.toFixed(1)} kW`;
 };
@@ -514,7 +516,10 @@ const EnergyMeterFill = ({ scale, scaleKWh }: { scale: EnergyBarScale; scaleKWh:
 );
 
 const EnergyMeter = ({ scale }: { scale: EnergyBarScale }) => {
-  const scaleKWh = Math.max(scale.budgetKWh, scale.projectedKWh ?? 0, scale.usedKWh) * 1.05;
+  // Shared with the energy section's projected-text computation so the marker's
+  // visual position matches the printed `projected / budget` ratio when under
+  // budget. See `computeEnergyBarScaleKWh`.
+  const scaleKWh = computeEnergyBarScaleKWh(scale.budgetKWh, scale.projectedKWh, scale.usedKWh);
   const projectionTone = resolveProjectionTone(scale);
   const markers: MeterMarker[] = [
     {
@@ -548,15 +553,27 @@ const EnergySection = ({ meta }: { meta: PlanMetaSnapshot }) => {
   const usedText = formatEnergyUsedOfBudget(scale.usedKWh, scale.budgetKWh);
   const projectionTone = resolveProjectionTone(scale);
   const projectedText = scale.projectedKWh !== null
-    ? `projected ${scale.projectedKWh.toFixed(2)} kWh${projectionTone === 'good' ? '' : ' ⚠'}`
+    ? `projected ${scale.projectedKWh.toFixed(2)} kWh`
     : null;
+  const projectionWarn = projectedText !== null && projectionTone !== 'good';
   const minutesText = minutesRemaining !== null ? `${Math.round(minutesRemaining)} min left` : null;
   return (
     <div class="plan-hero__section">
       <p class="plan-hero__section-label eyebrow">Energy used this hour</p>
       <div class="plan-hero__headline">{usedText}</div>
       {projectedText !== null && (
-        <div class="plan-hero__subline">{projectedText}</div>
+        <div class="plan-hero__subline">
+          {projectedText}
+          {projectionWarn && (
+            <>
+              {' '}
+              {/* Decorative — the subline text "projected X.XX kWh" plus the
+                  parent `Above budget` status chip already announce the warn
+                  signal to screen readers. */}
+              <WarningIcon class="plan-hero__subline-warn-icon" />
+            </>
+          )}
+        </div>
       )}
       {minutesText !== null && (
         <div class="plan-hero__subline plan-hero__subline--muted">{minutesText}</div>

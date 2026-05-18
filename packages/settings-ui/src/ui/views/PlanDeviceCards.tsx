@@ -81,8 +81,15 @@ const handleChipKeyUp = (event: KeyboardEvent): void => {
   if (target instanceof HTMLAnchorElement) target.click();
 };
 
-export const DeadlineChip = ({ deviceId, nowMs }: { deviceId: string; nowMs: number }) => {
+export const DeadlineChip = (
+  { deviceId, deviceName, nowMs }: { deviceId: string; deviceName?: string; nowMs: number },
+) => {
   if (!hasActiveDeadlineObjective(deviceId, nowMs)) return null;
+  // Screen readers otherwise hear only the chip text ("Smart task") + link
+  // role; in a clickable card the chip's destination is then ambiguous.
+  // Naming it after the device disambiguates from the parent card-navigation
+  // hit-target. Spec: TODO #3 (2026-05-16).
+  const ariaLabel = deviceName ? `Smart task for ${deviceName}` : 'Smart task';
   return (
     <a
       class="plan-chip plan-chip--info plan-chip--link"
@@ -90,6 +97,7 @@ export const DeadlineChip = ({ deviceId, nowMs }: { deviceId: string; nowMs: num
       onClick={stopActivation}
       onKeyDown={handleChipKeyDown}
       onKeyUp={handleChipKeyUp}
+      aria-label={ariaLabel}
       data-tooltip="Open smart task"
     >
       Smart task
@@ -152,12 +160,28 @@ const isPlanStateKind = (value: string | undefined): value is PlanStateKind => (
   || value === 'unknown'
 );
 
+// Maps a `PlanStateTone` (active/idle/held/resuming/neutral/warning) onto the
+// `plan-chip--{modifier}` family so the device-state chip uses the same
+// primitive as the "Always on", Boost, Smart-task, and starvation chips. Spec:
+// TODO #2 (chip-primitive consolidation, 2026-05-16). Previous family
+// `plan-state-chip` is no longer referenced from app code.
+const PLAN_STATE_CHIP_MODIFIER: Record<string, string> = {
+  active: 'good',
+  resuming: 'good',
+  held: 'limited',
+  idle: 'muted',
+  neutral: 'muted',
+  warning: 'alert',
+};
+
 const resolveStatePresentation = (dev: PlanDeviceSnapshot) => {
   const kind = isPlanStateKind(dev.stateKind) ? dev.stateKind : resolvePlanStateKind(dev);
+  const tone = dev.stateTone ?? PLAN_STATE_TONE[kind];
   return {
     kind,
     label: PLAN_STATE_LABEL[kind],
-    tone: dev.stateTone ?? PLAN_STATE_TONE[kind],
+    tone,
+    chipModifier: PLAN_STATE_CHIP_MODIFIER[tone] ?? 'muted',
   };
 };
 
@@ -185,10 +209,10 @@ const resolveReasonText = (dev: PlanDeviceSnapshot): string => {
   }
   const kind = isPlanStateKind(dev.stateKind) ? dev.stateKind : resolvePlanStateKind(dev);
   if (isTrivialReason(dev.reason)) {
-    return kind === 'held' ? 'Limited · staying under the hard cap' : '';
+    return kind === 'held' ? 'Limited — staying under the hard cap' : '';
   }
   if (isDeviceReason(dev.reason)) return formatReasonSummary(dev.reason);
-  if (kind === 'held') return 'Limited · staying under the hard cap';
+  if (kind === 'held') return 'Limited — staying under the hard cap';
   // Final fallback for malformed snapshots — keep it user-facing so internal
   // planner terms never leak when the upstream reason payload is missing.
   return '';
@@ -259,7 +283,7 @@ const resolveReportedLoadReason = (dev: PlanDeviceSnapshot): string => {
   const measured = formatKw(dev.measuredPowerKw);
   const detail = normalizeInlineDetail((dev.reason as { detail?: unknown } | undefined)?.detail);
   return detail
-    ? `Still reporting ${measured} kW after pause · ${detail}`
+    ? `Still reporting ${measured} kW after pause — ${detail}`
     : `Still reporting ${measured} kW after pause`;
 };
 
@@ -323,8 +347,9 @@ export const PlanGenericCard = ({
           {shouldShowStateChip(presentation.kind, hasTimer) && (
             <span class="plan-state-chip-wrap">
               <span
-                class={`plan-state-chip plan-state-chip--${presentation.tone}`}
+                class={`plan-chip plan-chip--${presentation.chipModifier}`}
                 data-state-kind={presentation.kind}
+                data-state-tone={presentation.tone}
                 role="img"
                 aria-label={presentation.label}
                 data-tooltip={presentation.label}
@@ -342,7 +367,7 @@ export const PlanGenericCard = ({
               {starvationBadge.label}
             </span>
           )}
-          <DeadlineChip deviceId={dev.id} nowMs={nowMs} />
+          <DeadlineChip deviceId={dev.id} deviceName={dev.name} nowMs={nowMs} />
         </div>
       </div>
 
@@ -417,7 +442,7 @@ export const PlanTemperatureCard = ({
             </span>
           )}
           <IdleClassificationChip dev={displayDev} />
-          <DeadlineChip deviceId={dev.id} nowMs={nowMs} />
+          <DeadlineChip deviceId={dev.id} deviceName={dev.name} nowMs={nowMs} />
         </div>
       </div>
 
@@ -427,12 +452,14 @@ export const PlanTemperatureCard = ({
       </div>
 
       {/* Always render the temperature line so cards keep a uniform height even
-          when current temperature or planned target is missing from the snapshot. */}
+          when current temperature or planned target is missing from the snapshot.
+          When the snapshot lacks either value, render a visible "Temperature
+          unavailable" placeholder so the card still explains why the line is
+          empty (TODO 2026-05-16 #1, TV-stue thermostat). */}
       <p
         class={`plan-card__temp-line${temperatureLine === null ? ' plan-card__temp-line--placeholder' : ''}`}
-        aria-hidden={temperatureLine === null ? 'true' : undefined}
       >
-        {temperatureLine ?? ''}
+        {temperatureLine ?? 'Temperature unavailable'}
       </p>
       {reasonLine !== null && <p class="plan-card__temp-reason">{reasonLine}</p>}
       <IdleClassificationLine dev={displayDev} />

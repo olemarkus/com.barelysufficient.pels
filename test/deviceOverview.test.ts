@@ -75,7 +75,7 @@ describe('device overview formatter', () => {
         status: 'stale',
       },
       reason: r('inactive'),
-    }).statusMsg).toBe('Off for now - EV battery: 42 %, stale');
+    }).statusMsg).toBe('Off for now — EV battery: 42 %, stale');
   });
 
   it('formats legacy keep devices blocked by meter settling without inventing shed state', () => {

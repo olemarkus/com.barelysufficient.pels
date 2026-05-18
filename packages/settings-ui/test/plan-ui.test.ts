@@ -299,7 +299,7 @@ describe('Redesign plan UI', () => {
         devices: [],
       });
       const subline = document.querySelector('.plan-hero .plan-hero__subline') as HTMLElement | null;
-      expect(subline?.textContent?.trim()).toBe('1.5 kW above safe pace');
+      expect(subline?.textContent?.trim()).toBe('1.5 kW above safe pace (5.0 kW)');
     });
 
     it('surfaces the "X kW above hard cap (Y kW)" subline when current power is above hard cap', async () => {
@@ -442,7 +442,7 @@ describe('Redesign plan UI', () => {
       expect(
         card?.querySelectorAll(':scope > *:not(md-elevation):not(md-ripple)'),
       ).toHaveLength(3);
-      expect((card?.querySelector('.plan-state-chip') as HTMLElement | null)?.textContent?.trim()).toBe('Running');
+      expect((card?.querySelector('.plan-state-chip-wrap .plan-chip') as HTMLElement | null)?.textContent?.trim()).toBe('Running');
       expect(getMetricText('dev-heat')).toBe('1.2 kW');
       expect(getReasonText('dev-heat')).toBe('Raising target 21° to 22°');
       expect(card?.querySelector('.plan-card__metric--power')).toBeTruthy();
@@ -463,7 +463,7 @@ describe('Redesign plan UI', () => {
         ],
       });
   
-      const chip = document.querySelector('[data-device-id="dev-held"] .plan-state-chip') as HTMLElement | null;
+      const chip = document.querySelector('[data-device-id="dev-held"] .plan-state-chip-wrap .plan-chip') as HTMLElement | null;
       expect(chip).toBeNull();
       // Safe pace subline shown when devices are held
       const subline = document.querySelector('.plan-hero .plan-hero__subline') as HTMLElement | null;

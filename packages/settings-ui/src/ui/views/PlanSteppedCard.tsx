@@ -112,7 +112,7 @@ export const PlanSteppedCard = ({
   const tempText = resolveSteppedTemperatureText(displayDev);
   const secondaryText = evState ?? tempText ?? null;
   const resolvedStatusText = profile ? resolveSteppedStatusLine(displayDev, profile, nowMs) : null;
-  const statusText = resolvedStatusText ?? (stateKind === 'held' ? 'Limited · staying under the hard cap' : null);
+  const statusText = resolvedStatusText ?? (stateKind === 'held' ? 'Limited — staying under the hard cap' : null);
 
   const cardClasses = [
     'device-row plan-card plan-card--stepped clickable',
@@ -147,7 +147,7 @@ export const PlanSteppedCard = ({
           {displayDev.temperatureBoostActive !== true && displayDev.evBoostActive === true && (
             <span class="plan-chip plan-chip--ok" data-tooltip="EV boost is active">Boost</span>
           )}
-          <DeadlineChip deviceId={dev.id} nowMs={nowMs} />
+          <DeadlineChip deviceId={dev.id} deviceName={dev.name} nowMs={nowMs} />
         </div>
       </div>
 

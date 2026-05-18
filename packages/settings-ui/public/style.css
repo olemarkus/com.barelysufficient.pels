@@ -2138,6 +2138,16 @@ md-primary-tab.tab[active]:hover {
   color: var(--pels-text-supporting-color);
 }
 
+/* Replaces the literal U+26A0 emoji previously appended to the projected
+   subline (TODO #4, 2026-05-16). `WarningIcon` inherits `currentColor`; pair
+   it with the existing `[data-tone="warn"]` rule on the subline so the icon
+   tracks the warn voice. */
+.plan-hero__subline-warn-icon {
+  display: inline-flex;
+  vertical-align: -0.125em;
+  color: var(--pels-status-on-warning);
+}
+
 /* Queued-headline "why" subline (e.g. "Waiting for tomorrow's prices through
  * HH:MM"). Sits between the headline and the device/target subline so the
  * user reads it as a direct answer to the headline. Primary-supporting tone
@@ -2231,6 +2241,12 @@ md-primary-tab.tab[active]:hover {
 
 .plan-card {
   padding-left: calc(var(--spacing-4) + (var(--chip-border-width) * 2));
+  /* Reserve a uniform vertical rhythm across the device-card stack regardless
+     of which conditional rows (temperature line, reason line, stepped control,
+     ev state) are present. Peer card heights cluster around 4× --spacing-8
+     (128 px) in the live walk, so anchor the floor there to avoid the 99-px
+     vs 163-px jaggies called out in the 2026-05-16 audit. Spec: TODO #7. */
+  min-height: calc(var(--spacing-8) * 4);
 }
 
 .plan-card:hover,
@@ -2738,7 +2754,10 @@ md-primary-tab.tab[active]:hover {
 }
 
 .plan-card--temperature .plan-card__temp-line--placeholder {
-  visibility: hidden;
+  /* Visible "Temperature unavailable" placeholder — dim relative to the live
+     temperature line so it reads as a missing-data signal rather than data. */
+  color: var(--text-secondary);
+  font-style: italic;
 }
 
 .plan-card--temperature .plan-card__temp-reason {
@@ -3031,48 +3050,11 @@ md-primary-tab.tab[active]:hover {
   }
 }
 
-.plan-state-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: var(--chip-padding-block) var(--chip-padding-inline);
-  border-radius: var(--chip-radius);
-  border: var(--chip-border-width) solid var(--panel-border);
-  background: var(--color-surface-4);
-  font-size: var(--chip-font-size);
-  font-weight: var(--chip-font-weight);
-  line-height: var(--chip-line-height);
-  white-space: nowrap;
-}
-
-.plan-state-chip--active {
-  background: var(--color-state-positive-bg);
-  border: 1px solid var(--color-state-positive-border);
-  color: var(--color-state-positive-text);
-}
-
-.plan-state-chip--held {
-  background: var(--color-state-warning-bg);
-  border: 1px solid var(--color-state-warning-border);
-  color: var(--color-state-warning-text);
-}
-
-.plan-state-chip--resuming {
-  background: var(--color-state-positive-bg);
-  border: 1px solid var(--color-state-positive-border);
-  color: var(--color-state-positive-text);
-}
-
-.plan-state-chip--idle,
-.plan-state-chip--neutral {
-  background: color-mix(in srgb, var(--color-surface-5) 82%, transparent);
-  color: var(--text-secondary);
-}
-
-.plan-state-chip--warning {
-  background: var(--color-state-negative-bg);
-  border: 1px solid var(--color-state-negative-border);
-  color: var(--color-state-negative-text);
-}
+/* `plan-state-chip` chip primitive removed 2026-05-17 (TODO #2). The device
+   state chip now renders as `.plan-chip.plan-chip--{good|warn|limited|...}`
+   so the Overview cards use a single chip family. The wrap (`.plan-state-chip-wrap`)
+   and cooldown progress (`.plan-state-chip__timer`) selectors remain because
+   they style the chip + progress-circle pair, not the chip primitive itself. */
 
 .device-row:last-child {
   border-bottom: none;

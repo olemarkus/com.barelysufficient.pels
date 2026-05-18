@@ -1,4 +1,5 @@
 import {
+  computeEnergyBarScaleKWh,
   formatAboveHardCapSubline,
   formatAboveSafePaceSubline,
   formatEnergyMeterMarkerLabels,
@@ -138,15 +139,39 @@ describe('hero meter marker labels', () => {
 });
 
 describe('above-threshold subline formatters', () => {
-  it('renders the overshoot kW when above safe pace', () => {
-    expect(formatAboveSafePaceSubline(-1.5)).toBe('1.5 kW above safe pace');
+  it('renders the overshoot kW and safe pace reference when above safe pace', () => {
+    expect(formatAboveSafePaceSubline(-1.5, 5.0)).toBe('1.5 kW above safe pace (5.0 kW)');
   });
 
-  it('clamps to zero when headroom is positive (defensive)', () => {
-    expect(formatAboveSafePaceSubline(2.0)).toBe('0.0 kW above safe pace');
+  it('clamps overshoot to zero when headroom is positive but still surfaces the reference', () => {
+    expect(formatAboveSafePaceSubline(2.0, 5.0)).toBe('0.0 kW above safe pace (5.0 kW)');
   });
 
   it('renders overshoot kW + the hard cap value when above hard cap', () => {
     expect(formatAboveHardCapSubline(-0.5, 5.0)).toBe('0.5 kW above hard cap (5.0 kW)');
+  });
+});
+
+describe('computeEnergyBarScaleKWh — projected marker alignment', () => {
+  // Regression for TODO #5 (2026-05-16): when projected is below budget, the
+  // marker's visual position must match the printed `projected / budget`
+  // ratio. Earlier behaviour multiplied the scale by 1.05 even in the
+  // under-budget branch, so the dot sat ~5 % low.
+  it('uses budget as the upper bound when projected is at or below budget', () => {
+    expect(computeEnergyBarScaleKWh(2.3, 1.95, 1.0)).toBe(2.3);
+    // Projection / scale lines up with printed ratio (1.95 / 2.3 ≈ 0.848).
+    expect(1.95 / computeEnergyBarScaleKWh(2.3, 1.95, 1.0)).toBeCloseTo(0.848, 2);
+  });
+
+  it('opens headroom past budget when projected overshoots so the overshoot is visible', () => {
+    expect(computeEnergyBarScaleKWh(2.3, 2.6, 1.0)).toBeCloseTo(2.6 * 1.05, 5);
+  });
+
+  it('uses budget when projected is null and used is below budget', () => {
+    expect(computeEnergyBarScaleKWh(2.3, null, 1.0)).toBe(2.3);
+  });
+
+  it('opens headroom past budget when used alone overshoots without a projection', () => {
+    expect(computeEnergyBarScaleKWh(2.3, null, 2.5)).toBeCloseTo(2.5 * 1.05, 5);
   });
 });

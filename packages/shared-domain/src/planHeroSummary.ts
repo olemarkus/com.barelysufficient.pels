@@ -167,9 +167,12 @@ export const formatEnergyMeterMarkerLabels = (
 // The subline copy matches `notes/overview-hero-spec.md` § "Power now" and is
 // rendered when the chip indicates the hero is above one of the thresholds.
 
-export const formatAboveSafePaceSubline = (headroomKw: number): string => {
+// Keep the safe-pace numeric reference visible in the above-safe-pace state so
+// the user can compare "how much over" against the actual target. Spec:
+// `notes/overview-hero-spec.md` § "Power now".
+export const formatAboveSafePaceSubline = (headroomKw: number, safePaceKw: number): string => {
   const overshootKw = Math.max(0, -headroomKw);
-  return `${formatKw(overshootKw)} above safe pace`;
+  return `${formatKw(overshootKw)} above safe pace (${formatKw(safePaceKw)})`;
 };
 
 export const formatAboveHardCapSubline = (
@@ -178,4 +181,19 @@ export const formatAboveHardCapSubline = (
 ): string => {
   const overshootKw = Math.max(0, -hardCapHeadroomKw);
   return `${formatKw(overshootKw)} above hard cap (${formatKw(hardCapKw)})`;
+};
+
+// Energy-bar scale used by the Overview hero. When projected is at-or-below
+// budget the budget marker sits at 100 % so the projected dot's visual position
+// matches the printed `projected / budget` ratio; when projected overshoots,
+// the scale tracks the projection (with 5 % headroom) so the overshoot is
+// visible past the budget marker. Source: TODO #5 fix, 2026-05-17.
+export const computeEnergyBarScaleKWh = (
+  budgetKWh: number,
+  projectedKWh: number | null,
+  usedKWh: number,
+): number => {
+  const overshoot = Math.max(projectedKWh ?? 0, usedKWh);
+  if (overshoot <= budgetKWh) return budgetKWh;
+  return overshoot * 1.05;
 };

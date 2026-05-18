@@ -190,25 +190,25 @@ const resolveSettlingStatusLine = (reason: DeviceReason, nowMs: number): string 
   if (reason.code === PLAN_REASON_CODES.headroomCooldown) {
     if (reason.kind === 'recent_pels_restore') {
       const ago = resolveElapsedAgoText(reason.countdownStartedAtMs, nowMs);
-      return `Resumed ${ago} · checking power reading`;
+      return `Resumed ${ago} — checking power reading`;
     }
-    return `Limited · will try to resume in ${formatSec(reason.remainingSec)} if power is available`;
+    return `Limited — will try to resume in ${formatSec(reason.remainingSec)} if power is available`;
   }
   if (reason.code === PLAN_REASON_CODES.cooldownRestore) {
     const ago = resolveElapsedAgoText(reason.countdownStartedAtMs, nowMs);
-    return `Resumed ${ago} · checking power reading`;
+    return `Resumed ${ago} — checking power reading`;
   }
   if (reason.code === PLAN_REASON_CODES.cooldownShedding) {
-    return `Limited · will try to resume in ${formatSec(reason.remainingSec)} if power is available`;
+    return `Limited — will try to resume in ${formatSec(reason.remainingSec)} if power is available`;
   }
   if (reason.code === PLAN_REASON_CODES.meterSettling) {
-    return `Waiting for power meter to stabilise · ${formatSec(reason.remainingSec)}`;
+    return `Waiting for power meter to stabilise — ${formatSec(reason.remainingSec)}`;
   }
   if (reason.code === PLAN_REASON_CODES.activationBackoff) {
-    return `Briefly holding · ${formatSec(reason.remainingSec)}`;
+    return `Briefly holding — ${formatSec(reason.remainingSec)}`;
   }
   if (reason.code === PLAN_REASON_CODES.restorePending) {
-    return `Queued to resume · ${formatSec(reason.remainingSec)}`;
+    return `Queued to resume — ${formatSec(reason.remainingSec)}`;
   }
   if (reason.code === PLAN_REASON_CODES.neutralStartupHold) {
     return 'Holding at startup';
@@ -239,14 +239,14 @@ const resolveBlockedStatusLine = (device: SteppedDevice, profile: SteppedLoadPro
   if (!targetId || !isPoweredStep(profile, targetId)) return null;
   if (isSteppedCardOffLikeState(device.currentState)) {
     const gap = resolveHeadroomGapKw(device.reason);
-    return gap !== null ? `Waiting to resume · ${gap.toFixed(1)} kW more needed` : null;
+    return gap !== null ? `Waiting to resume — ${gap.toFixed(1)} kW more needed` : null;
   }
   const currentId = resolveCurrentStepId(device);
   const currentIdx = findStepIndex(profile, currentId);
   const targetIdx = findStepIndex(profile, targetId);
   if (currentIdx >= 0 && targetIdx > currentIdx) {
     const gap = resolveHeadroomGapKw(device.reason);
-    return gap !== null ? `Waiting to increase · ${gap.toFixed(1)} kW more needed` : null;
+    return gap !== null ? `Waiting to increase — ${gap.toFixed(1)} kW more needed` : null;
   }
   return null;
 };
@@ -254,11 +254,11 @@ const resolveBlockedStatusLine = (device: SteppedDevice, profile: SteppedLoadPro
 const resolveOffStatusLine = (device: SteppedDevice): string | null => {
   if (isWaitingReason(device.reason.code)) {
     const gap = resolveHeadroomGapKw(device.reason);
-    return gap !== null ? `Waiting to resume · ${gap.toFixed(1)} kW more needed` : 'Waiting for available power';
+    return gap !== null ? `Waiting to resume — ${gap.toFixed(1)} kW more needed` : 'Waiting for available power';
   }
-  if (device.reason.code === PLAN_REASON_CODES.dailyBudget) return "Limited · staying within today's budget";
-  if (device.reason.code === PLAN_REASON_CODES.hourlyBudget) return "Limited · this hour is near the hard cap";
-  if (isLimitedReason(device.reason.code)) return 'Limited · staying under the hard cap';
+  if (device.reason.code === PLAN_REASON_CODES.dailyBudget) return "Limited — staying within today's budget";
+  if (device.reason.code === PLAN_REASON_CODES.hourlyBudget) return "Limited — this hour is near the hard cap";
+  if (isLimitedReason(device.reason.code)) return 'Limited — staying under the hard cap';
   return null;
 };
 
@@ -277,7 +277,7 @@ export const resolveSteppedStatusLine = (
     const n = r.shedDeviceCount;
     const stepLabel = formatStepDisplayLabelInternal(r.maxStep);
     const noun = n === 1 ? 'device' : 'devices';
-    return `Limited to ${stepLabel} · ${n} ${noun} still limited`;
+    return `Limited to ${stepLabel} — ${n} ${noun} still limited`;
   }
   const blocked = resolveBlockedStatusLine(device, profile);
   if (blocked !== null) return blocked;

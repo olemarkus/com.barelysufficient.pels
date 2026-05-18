@@ -41,7 +41,7 @@ describe('resolveTemperatureReasonLine', () => {
         swapReserveKw: null,
         swapTargetName: null,
       },
-    })).toBe('Waiting to resume · 0.8 kW more needed');
+    })).toBe('Waiting to resume — 0.8 kW more needed');
   });
 
   it('does not show idle as a reason line', () => {
@@ -61,6 +61,6 @@ describe('resolveTemperatureReasonLine', () => {
       currentTemperature: 20.2,
       plannedTarget: 21,
       reason: { code: 'daily_budget', detail: null },
-    })).toBe("Limited · staying within today's budget");
+    })).toBe("Limited — staying within today's budget");
   });
 });
