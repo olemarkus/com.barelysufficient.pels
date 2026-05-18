@@ -1439,6 +1439,7 @@ class PelsApp extends Homey.App {
         capacityGuard: this.capacityGuard,
         powerCalibrationStore: this.powerCalibrationStore,
         objectiveProfileDebugStructured: this.getStructuredDebugEmitter('objective_profiles', 'objective_profiles'),
+        powerCalibrationDebugStructured: this.getStructuredDebugEmitter('power_calibration', 'power_calibration'),
         schedulePlanRebuild: async () => {
           await schedulePlanRebuildFromSignal({
             scheduler: this.planRebuildScheduler,

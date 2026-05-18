@@ -3,10 +3,10 @@
  *
  * Persists an EMA of the measured power a stepped device delivers while at a
  * given step, together with enough metadata to gate confidence and detect
- * nameplate changes. Used by the planner and horizon planner to pick asymmetric
- * admission (conservative-high) and delivery (conservative-low) power
- * estimates without falling back to static nameplate values once enough
- * evidence is available.
+ * nameplate changes. Used by the planner and horizon planner to pick
+ * admission and delivery estimates without falling back to static nameplate
+ * values once enough evidence is available. Samples outside the configured
+ * step band are rejected by the runtime recorder before they update the EMA.
  *
  * Types only — the runtime value `POWER_CALIBRATION_VERSION` and the factory
  * `createEmptyPowerCalibrationSnapshot` live in

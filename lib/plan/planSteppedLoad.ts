@@ -398,9 +398,9 @@ function resolveRestoreFromContribution(params: {
 
 // Per the "resolution belongs in producer" rule, the producer
 // (`appInit.buildStepPowerCalibrationView`) has already bound each
-// calibrated value against the nameplate (admission floors at nameplate,
-// delivery caps at nameplate). The plan layer trusts the view; helpers
-// here only fall back to nameplate when no view entry is present.
+// calibrated value to samples inside the configured step's power band. The
+// plan layer trusts the view; helpers here only fall back to nameplate when
+// no view entry is present.
 function resolveStepAdmissionKw(
   device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'stepPowerCalibration'>,
   stepId: string | undefined,

@@ -9,6 +9,7 @@
 import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 import {
+  type RecordSampleSkipReason,
   type RecordSampleConfig,
   type RecordSampleInput,
   type RecordSampleOutcome,
@@ -53,6 +54,26 @@ export type IngestStats = {
   accepted: number;
   skipped: number;
   reset: number;
+  skippedByReason: Partial<Record<PowerCalibrationSkipReason, number>>;
+  rejectedSamples: PowerCalibrationRejectedSample[];
+  rejectedSamplesTruncated: number;
+};
+
+export type PowerCalibrationSkipReason = RecordSampleSkipReason | 'ineligible_snapshot';
+
+export type PowerCalibrationRejectedSample = {
+  deviceId: string;
+  deviceName: string;
+  stepId: string;
+  measuredPowerKw: number;
+  nameplateKw: number;
+  lowerStepCeilingKw: number | null;
+  reason: RecordSampleSkipReason;
+};
+
+export type IngestDevicesOptions = {
+  collectRejectedSamples?: boolean;
+  rejectedSampleLimit?: number;
 };
 
 /**
@@ -105,23 +126,49 @@ export class PowerCalibrationStore {
   /** Walk a TargetDeviceSnapshot batch and dispatch samples for eligible
    * stepped-load devices. Honors freshness, materialization, and floor gates;
    * delegates the per-sample EMA / nameplate / cadence gates to `recordSample`. */
-  ingestDevices(snapshots: readonly TargetDeviceSnapshot[], nowMs: number): IngestStats {
-    const stats: IngestStats = { accepted: 0, skipped: 0, reset: 0 };
+  ingestDevices(
+    snapshots: readonly TargetDeviceSnapshot[],
+    nowMs: number,
+    options: IngestDevicesOptions = {},
+  ): IngestStats {
+    const collectRejectedSamples = options.collectRejectedSamples ?? true;
+    const rejectedSampleLimit = normalizeRejectedSampleLimit(options.rejectedSampleLimit);
+    let accepted = 0;
+    let skipped = 0;
+    let reset = 0;
+    let rejectedSamplesTruncated = 0;
+    const skippedByReason = new Map<PowerCalibrationSkipReason, number>();
+    const rejectedSamples: PowerCalibrationRejectedSample[] = [];
     for (const snapshot of snapshots) {
       const sample = buildSampleFromDeviceSnapshot(snapshot, nowMs);
       if (!sample) {
-        stats.skipped += 1;
+        skipped += 1;
+        incrementSkipReason(skippedByReason, 'ineligible_snapshot');
         continue;
       }
       const outcome = this.recordSample(sample);
       if (outcome.accepted) {
-        stats.accepted += 1;
-        if (outcome.reset) stats.reset += 1;
-      } else {
-        stats.skipped += 1;
+        accepted += 1;
+        if (outcome.reset) reset += 1;
+        continue;
       }
+      skipped += 1;
+      incrementSkipReason(skippedByReason, outcome.reason);
+      if (!collectRejectedSamples) continue;
+      if (rejectedSamples.length >= rejectedSampleLimit) {
+        rejectedSamplesTruncated += 1;
+        continue;
+      }
+      rejectedSamples.push(buildRejectedSample(snapshot, sample, outcome.reason));
     }
-    return stats;
+    return {
+      accepted,
+      skipped,
+      reset,
+      skippedByReason: Object.fromEntries(skippedByReason.entries()),
+      rejectedSamples,
+      rejectedSamplesTruncated,
+    };
   }
 
   /** Drop devices that haven't been touched in `pruneMaxAgeMs`. Returns true
@@ -393,43 +440,107 @@ function buildSampleFromDeviceSnapshot(
   snapshot: TargetDeviceSnapshot,
   nowMs: number,
 ): RecordSampleInput | null {
-  if (snapshot.controlModel !== 'stepped_load') return null;
-  const profile = snapshot.steppedLoadProfile;
-  if (!profile || !Array.isArray(profile.steps) || profile.steps.length === 0) return null;
-  const reportedStepId = snapshot.reportedStepId;
-  if (typeof reportedStepId !== 'string' || reportedStepId.length === 0) return null;
-  // Only sample when the actual step is *reported* (real telemetry, not an
-  // assumed-step fallback) and matches the reported step. Sampling on an
-  // assumed step would attribute measured power to a step the device may
-  // never have visited.
-  if (snapshot.actualStepSource !== 'reported') return null;
-  if (snapshot.actualStepId !== reportedStepId) return null;
-  if (snapshot.stepCommandPending === true) return null;
-  if (!isFiniteNumber(snapshot.measuredPowerKw) || snapshot.measuredPowerKw < 0) return null;
-  // Require a finite freshness timestamp. Without one, `recordSample`'s
-  // freshness gate short-circuits, allowing arbitrarily stale samples through
-  // — which contradicts the documented "fresh within 60s" sampling policy.
-  if (!isFiniteNumber(snapshot.lastFreshDataMs)) return null;
+  if (!isEligiblePowerCalibrationSnapshot(snapshot)) return null;
 
-  const nameplateKw = resolveStepNameplateKw(profile, reportedStepId);
-  if (nameplateKw === null) return null;
-  if (nameplateKw <= 0) return null; // off-step or zero-power step — skip
+  const profile = snapshot.steppedLoadProfile;
+  const reportedStepId = snapshot.reportedStepId;
+  const stepBand = resolveStepPowerBandKw(profile, reportedStepId);
+  if (stepBand === null) return null;
+  if (stepBand.nameplateKw <= 0) return null; // off-step or zero-power step — skip
 
   return {
     deviceId: snapshot.id,
     stepId: reportedStepId,
     measuredPowerKw: snapshot.measuredPowerKw,
-    nameplateKw,
+    nameplateKw: stepBand.nameplateKw,
+    ...(stepBand.lowerStepCeilingKw !== undefined ? { lowerStepCeilingKw: stepBand.lowerStepCeilingKw } : {}),
     dataObservedAtMs: snapshot.lastFreshDataMs,
     nowMs,
   };
 }
 
-function resolveStepNameplateKw(profile: SteppedLoadProfile, stepId: string): number | null {
+function normalizeRejectedSampleLimit(limit: number | undefined): number {
+  if (limit === undefined) return Number.POSITIVE_INFINITY;
+  if (!Number.isFinite(limit) || limit <= 0) return 0;
+  return Math.floor(limit);
+}
+
+function isEligiblePowerCalibrationSnapshot(
+  snapshot: TargetDeviceSnapshot,
+): snapshot is TargetDeviceSnapshot & {
+  controlModel: 'stepped_load';
+  steppedLoadProfile: SteppedLoadProfile;
+  reportedStepId: string;
+  actualStepId: string;
+  actualStepSource: 'reported';
+  measuredPowerKw: number;
+  lastFreshDataMs: number;
+} {
+  if (snapshot.controlModel !== 'stepped_load') return false;
+  if (!snapshot.steppedLoadProfile || !Array.isArray(snapshot.steppedLoadProfile.steps)) return false;
+  if (snapshot.steppedLoadProfile.steps.length === 0) return false;
+  if (typeof snapshot.reportedStepId !== 'string' || snapshot.reportedStepId.length === 0) return false;
+  // Only sample when the actual step is *reported* (real telemetry, not an
+  // assumed-step fallback) and matches the reported step. Sampling on an
+  // assumed step would attribute measured power to a step the device may
+  // never have visited.
+  if (snapshot.actualStepSource !== 'reported') return false;
+  if (snapshot.actualStepId !== snapshot.reportedStepId) return false;
+  if (snapshot.stepCommandPending === true) return false;
+  if (!isFiniteNumber(snapshot.measuredPowerKw) || snapshot.measuredPowerKw < 0) return false;
+  // Require a finite freshness timestamp. Without one, `recordSample`'s
+  // freshness gate short-circuits, allowing arbitrarily stale samples through
+  // — which contradicts the documented "fresh within 60s" sampling policy.
+  return isFiniteNumber(snapshot.lastFreshDataMs);
+}
+
+function resolveStepPowerBandKw(profile: SteppedLoadProfile, stepId: string): {
+  nameplateKw: number;
+  lowerStepCeilingKw: number | undefined;
+} | null {
   const step = profile.steps.find((entry) => entry.id === stepId);
   if (!step) return null;
   if (!isFiniteNumber(step.planningPowerW)) return null;
-  return step.planningPowerW / 1000;
+  const lowerStep = profile.steps
+    .filter((entry) => isLowerPowerStep(entry, stepId, step.planningPowerW))
+    .sort((left, right) => right.planningPowerW - left.planningPowerW)[0];
+  return {
+    nameplateKw: step.planningPowerW / 1000,
+    lowerStepCeilingKw: lowerStep ? lowerStep.planningPowerW / 1000 : undefined,
+  };
+}
+
+function isLowerPowerStep(
+  entry: SteppedLoadProfile['steps'][number],
+  stepId: string,
+  stepPlanningPowerW: number,
+): boolean {
+  return entry.id !== stepId
+    && isFiniteNumber(entry.planningPowerW)
+    && entry.planningPowerW < stepPlanningPowerW;
+}
+
+function incrementSkipReason(
+  counts: Map<PowerCalibrationSkipReason, number>,
+  reason: PowerCalibrationSkipReason,
+): void {
+  counts.set(reason, (counts.get(reason) ?? 0) + 1);
+}
+
+function buildRejectedSample(
+  snapshot: TargetDeviceSnapshot,
+  sample: RecordSampleInput,
+  reason: RecordSampleSkipReason,
+): PowerCalibrationRejectedSample {
+  return {
+    deviceId: sample.deviceId,
+    deviceName: snapshot.name,
+    stepId: sample.stepId,
+    measuredPowerKw: sample.measuredPowerKw,
+    nameplateKw: sample.nameplateKw,
+    lowerStepCeilingKw: sample.lowerStepCeilingKw ?? null,
+    reason,
+  };
 }
 
 export { POWER_CALIBRATION_CONSTANTS };

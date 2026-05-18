@@ -233,8 +233,9 @@ export type PlanInputDevice = {
   /**
    * Per-step calibrated power view, populated at plan-build time from the
    * persisted power-calibration store. When a `(deviceId, stepId)` pair has
-   * confident observations, `admissionPowerKw` carries the
-   * conservative-high estimate and `deliveryPowerKw` the conservative-low.
+   * confident observations, admission and delivery estimates are learned from
+   * samples inside that configured step's power band and bounded by its
+   * configured step power.
    * Missing entries mean the planner should fall back to `planningPowerW`
    * from the profile.
    */

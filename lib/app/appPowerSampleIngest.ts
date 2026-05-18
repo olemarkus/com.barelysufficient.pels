@@ -9,7 +9,9 @@ import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from '../plan/plan
 import type { TargetDeviceSnapshot } from '../utils/types';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/src/powerFreshness';
-import type { PowerCalibrationStore } from './appPowerCalibrationWiring';
+import type { IngestStats, PowerCalibrationStore } from './appPowerCalibrationWiring';
+
+const POWER_CALIBRATION_DEBUG_REJECTED_SAMPLE_LIMIT = 20;
 
 export type PowerTrackerPersistReason =
   | 'scheduled'
@@ -70,6 +72,7 @@ export async function recordPowerSampleForApp(params: {
   schedulePlanRebuild: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
   objectiveProfileDebugStructured?: StructuredDebugEmitter;
+  powerCalibrationDebugStructured?: StructuredDebugEmitter;
   powerCalibrationStore?: PowerCalibrationStore;
 }): Promise<void> {
   const snapshotStart = Date.now();
@@ -83,6 +86,7 @@ export async function recordPowerSampleForApp(params: {
     schedulePlanRebuild,
     saveState,
     objectiveProfileDebugStructured,
+    powerCalibrationDebugStructured,
     powerCalibrationStore,
   } = params;
   const hourBudgetKWh = Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
@@ -104,7 +108,11 @@ export async function recordPowerSampleForApp(params: {
     debugStructured: objectiveProfileDebugStructured,
   });
   if (powerCalibrationStore && snapshot.length > 0) {
-    powerCalibrationStore.ingestDevices(snapshot, nowMs);
+    const calibrationStats = powerCalibrationStore.ingestDevices(snapshot, nowMs, {
+      collectRejectedSamples: powerCalibrationDebugStructured !== undefined,
+      rejectedSampleLimit: POWER_CALIBRATION_DEBUG_REJECTED_SAMPLE_LIMIT,
+    });
+    emitPowerCalibrationIngestDebug(calibrationStats, powerCalibrationDebugStructured);
   }
   addPerfDuration('power_sample_snapshot_ms', Date.now() - snapshotStart);
   await recordPowerSampleCore({
@@ -119,6 +127,30 @@ export async function recordPowerSampleForApp(params: {
     rebuildPlanFromCache: schedulePlanRebuild,
     saveState,
   });
+}
+
+function emitPowerCalibrationIngestDebug(
+  stats: IngestStats,
+  debugStructured: StructuredDebugEmitter | undefined,
+): void {
+  if (!debugStructured) return;
+  if (!hasPowerCalibrationIngestActivity(stats)) return;
+  debugStructured({
+    event: 'power_calibration_ingest',
+    accepted: stats.accepted,
+    skipped: stats.skipped,
+    reset: stats.reset,
+    skippedByReason: stats.skippedByReason,
+    rejectedSamples: stats.rejectedSamples,
+    rejectedSamplesTruncated: stats.rejectedSamplesTruncated,
+  });
+}
+
+function hasPowerCalibrationIngestActivity(stats: IngestStats): boolean {
+  return stats.accepted > 0
+    || stats.skipped > 0
+    || stats.reset > 0
+    || stats.rejectedSamples.length > 0;
 }
 
 export function persistPowerTrackerStateForApp(params: {

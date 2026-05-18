@@ -14,6 +14,11 @@ export const DEBUG_LOGGING_TOPICS = [
     description: 'Learned temperature and EV progress profiling diagnostics.',
   },
   {
+    id: 'power_calibration',
+    label: 'Power calibration',
+    description: 'Per-device step power calibration samples and drops.',
+  },
+  {
     id: 'deferred_objectives',
     label: 'Ready-by-time diagnostics',
     description: 'Ready-by-time planning diagnostics.',

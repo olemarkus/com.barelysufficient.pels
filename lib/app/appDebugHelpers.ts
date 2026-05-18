@@ -2,13 +2,17 @@
 /* eslint-disable functional/immutable-data -- debug payload assembly is local and not shared mutable state. */
 import type Homey from 'homey';
 import type {
+  DeviceCalibration,
+  PowerCalibrationSnapshot,
+} from '../../packages/contracts/src/powerCalibration';
+import type {
   DeviceDebugObservedSource,
   DeviceDebugObservedSources,
   DeviceManager,
 } from '../core/deviceManager';
 import { formatDeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { DEVICES_API_PATH, getRawDevices } from '../core/deviceManagerHomeyApi';
-import type { DevicePlan } from '../plan/planTypes';
+import type { DevicePlan, StepPowerCalibrationView } from '../plan/planTypes';
 import type { HomeyDeviceLike } from '../utils/types';
 import { isHomeyDeviceLike } from '../utils/types';
 import type { TargetDeviceSnapshot } from '../utils/types';
@@ -95,6 +99,7 @@ type PelsPlanDeviceSummary = {
   plannedTarget?: number;
   reason?: string;
   controllable?: boolean;
+  stepPowerCalibration?: Record<string, StepPowerCalibrationView>;
   pendingTargetCommand?: DevicePlan['devices'][number]['pendingTargetCommand'];
 };
 
@@ -102,6 +107,7 @@ type PelsDeviceDebugState = {
   present: boolean;
   targetSnapshot: PelsTargetSnapshotSummary | null;
   planDevice: PelsPlanDeviceSummary | null;
+  powerCalibration?: DeviceCalibration | null;
   observedSources?: PelsObservedSourcesSummary;
   error?: string;
 };
@@ -460,9 +466,15 @@ const compactPelsPlanDevice = (
     plannedTarget: device.plannedTarget,
     reason: formatDeviceReason(device.reason),
     controllable: device.controllable,
+    stepPowerCalibration: device.stepPowerCalibration,
     pendingTargetCommand: device.pendingTargetCommand,
   };
 };
+
+const getPelsPowerCalibration = (
+  snapshot: PowerCalibrationSnapshot | null | undefined,
+  deviceId: string,
+): DeviceCalibration | null => snapshot?.devices[deviceId] ?? null;
 
 const getRawManagerDeviceEntry = async (params: {
   deviceId: string;
@@ -676,6 +688,7 @@ export async function logHomeyDeviceForDebugFromApp(params: {
   const runtimeApp = app as Homey.App & {
     deviceManager?: DeviceManager;
     planService?: { getLatestPlanSnapshot?: () => DevicePlan | null };
+    powerCalibrationStore?: { getSnapshot?: () => PowerCalibrationSnapshot };
   };
   if (!runtimeApp.deviceManager) return false;
   return logHomeyDeviceForDebug({
@@ -690,10 +703,15 @@ export async function logHomeyDeviceForDebugFromApp(params: {
         runtimeApp.planService?.getLatestPlanSnapshot?.()
           ?.devices.find((entry) => entry.id === targetDeviceId) ?? null,
       );
+      const powerCalibration = getPelsPowerCalibration(
+        runtimeApp.powerCalibrationStore?.getSnapshot?.(),
+        targetDeviceId,
+      );
       return {
-        present: Boolean(targetSnapshot || planDevice),
+        present: Boolean(targetSnapshot || planDevice || powerCalibration),
         targetSnapshot,
         planDevice,
+        powerCalibration,
         observedSources: buildObservedSourcesSummary(
           runtimeApp.deviceManager?.getDebugObservedSources?.(targetDeviceId),
         ),
@@ -723,6 +741,7 @@ export async function logHomeyDeviceComparisonForDebugFromApp(params: {
   const runtimeApp = app as Homey.App & {
     deviceManager?: DeviceManager;
     planService?: { getLatestPlanSnapshot?: () => DevicePlan | null };
+    powerCalibrationStore?: { getSnapshot?: () => PowerCalibrationSnapshot };
   };
   if (!runtimeApp.deviceManager) return false;
   return logHomeyDeviceComparisonForDebug({
@@ -741,10 +760,15 @@ export async function logHomeyDeviceComparisonForDebugFromApp(params: {
         runtimeApp.planService?.getLatestPlanSnapshot?.()
           ?.devices.find((entry) => entry.id === targetDeviceId) ?? null,
       );
+      const powerCalibration = getPelsPowerCalibration(
+        runtimeApp.powerCalibrationStore?.getSnapshot?.(),
+        targetDeviceId,
+      );
       return {
-        present: Boolean(targetSnapshot || planDevice),
+        present: Boolean(targetSnapshot || planDevice || powerCalibration),
         targetSnapshot,
         planDevice,
+        powerCalibration,
         observedSources: buildObservedSourcesSummary(
           runtimeApp.deviceManager?.getDebugObservedSources?.(targetDeviceId),
         ),

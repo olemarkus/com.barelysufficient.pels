@@ -18,6 +18,7 @@ import {
   schedulePlanRebuildFromPowerSample,
   schedulePlanRebuildFromSignal,
 } from '../lib/app/appPowerHelpers';
+import { PowerCalibrationStore } from '../lib/app/appPowerCalibrationWiring';
 import { shouldSkipShortfallRebuildFromPlanSummary } from '../lib/app/appPowerRebuildShortfallSuppression';
 import { PlanRebuildScheduler } from '../lib/app/planRebuildScheduler';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';
@@ -2085,6 +2086,66 @@ describe('recordPowerSampleForApp', () => {
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'objective_profile_sample_recorded',
       deviceId: 'heater-objective',
+    }));
+  });
+
+  it('emits power calibration ingest stats with dropped sample details', async () => {
+    let tracker: PowerTrackerState = {};
+    const debugStructured = vi.fn();
+    const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
+    const start = Date.UTC(2025, 0, 1, 0, 0, 0);
+    const getLatestTargetSnapshot = () => ([
+      {
+        id: 'hoiax-1',
+        name: 'Connected 300',
+        targets: [],
+        controlModel: 'stepped_load' as const,
+        steppedLoadProfile: {
+          model: 'stepped_load' as const,
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 1250 },
+            { id: 'medium', planningPowerW: 1750 },
+          ],
+        },
+        reportedStepId: 'low',
+        actualStepId: 'low',
+        actualStepSource: 'reported' as const,
+        measuredPowerKw: 1.81,
+        lastFreshDataMs: start,
+      },
+    ]);
+
+    await recordPowerSampleForApp({
+      currentPowerW: 1810,
+      nowMs: start,
+      capacitySettings: { limitKw: 10, marginKw: 0.2 },
+      getLatestTargetSnapshot,
+      powerTracker: tracker,
+      powerCalibrationStore: store,
+      powerCalibrationDebugStructured: debugStructured,
+      schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
+      saveState: (nextState) => {
+        tracker = nextState;
+      },
+    });
+
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'power_calibration_ingest',
+      accepted: 0,
+      skipped: 1,
+      reset: 0,
+      skippedByReason: { above_step_ceiling: 1 },
+      rejectedSamples: [expect.objectContaining({
+        deviceId: 'hoiax-1',
+        deviceName: 'Connected 300',
+        stepId: 'low',
+        measuredPowerKw: 1.81,
+        nameplateKw: 1.25,
+        lowerStepCeilingKw: 0,
+        reason: 'above_step_ceiling',
+      })],
+      rejectedSamplesTruncated: 0,
     }));
   });
 });
