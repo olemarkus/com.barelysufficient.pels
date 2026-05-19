@@ -105,8 +105,16 @@ export type DeferredObjectiveKwhPerUnitProvenanceV1 = {
   // is 'bootstrap'.
   acceptedSamples: number;
   // Confidence band of the learned profile (`low` / `medium` / `high`). Null
-  // when source is 'bootstrap'.
+  // when source is 'bootstrap'. This is the raw per-sample CV-based stat —
+  // honest about variance, but on thermal devices it sits at "low" effectively
+  // forever. Kept on the provenance for logs/diagnostics; the chip reads
+  // `displayConfidence` instead.
   confidence: 'low' | 'medium' | 'high' | null;
+  // Band-aware aggregate driving the smart-task chip. Reflects whether the
+  // bands actually integrated for this resolution are well-supported, not the
+  // raw per-sample CV. Optional for backward compatibility — older persisted
+  // plans fall back to `confidence`. Null when no learned profile yet.
+  displayConfidence?: 'low' | 'medium' | 'high' | null;
   // Last accepted sample timestamp; null when there is no profile yet.
   lastAcceptedAtMs: number | null;
 };

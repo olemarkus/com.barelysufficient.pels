@@ -7,6 +7,7 @@ import type {
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import type { DeferredObjectiveActivePlanV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
+import { resolveChipConfidence } from '../../../shared-domain/src/deadlineLabels.ts';
 import { isFiniteNumber } from './deadlinePlanData.ts';
 
 export const resolveUsefulPowerKw = (device: TargetDeviceSnapshot): number | null => {
@@ -111,5 +112,12 @@ export const resolveEnergyNeededKWh = (params: {
   // profile to render the timeline.
   const revisionEnergy = params.activePlan.latest?.energyNeededKWh;
   if (!isFiniteNumber(revisionEnergy) || revisionEnergy <= 0) return null;
-  return { energyNeededKWh: revisionEnergy, confidence: params.profile?.kwhPerUnit?.confidence ?? null };
+  // Producer-resolved per `feedback_layering_resolution_in_producer.md`: the
+  // shared-domain helper owns the preference chain. The UI sees one flat
+  // value and never branches on provenance / source / kind.
+  const confidence = resolveChipConfidence({
+    provenance: params.activePlan.kwhPerUnitProvenance,
+    profileConfidence: params.profile?.kwhPerUnit?.confidence ?? null,
+  });
+  return { energyNeededKWh: revisionEnergy, confidence };
 };
