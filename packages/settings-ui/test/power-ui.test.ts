@@ -215,6 +215,117 @@ describe('power page stats (buckets-only)', () => {
     vi.restoreAllMocks();
   });
 
+  it('clears the heatmap box and shows selected-week copy when that week has no entries', async () => {
+    await installHomeyClient({}, 'UTC');
+    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 0, 15, 12, 0, 0));
+    const { renderPowerUsage } = await import('../src/ui/power.ts');
+
+    renderPowerUsage([{ hour: new Date('2025-01-13T00:00:00.000Z'), kWh: 1.2 }]);
+    const powerList = document.querySelector('#power-list') as HTMLElement;
+    const powerEmpty = document.querySelector('#power-empty') as HTMLElement;
+    expect(powerList.querySelector('svg')).not.toBeNull();
+    expect(powerList.style.height).toBe('240px');
+
+    renderPowerUsage([{ hour: new Date('2025-01-06T00:00:00.000Z'), kWh: 0.8 }]);
+
+    expect(powerList.querySelector('svg')).toBeNull();
+    expect(powerList.style.height).toBe('');
+    expect(powerList.style.minHeight).toBe('');
+    expect(powerEmpty.hidden).toBe(false);
+    expect(powerEmpty.textContent).toBe('No hourly usage for the selected week.');
+    vi.restoreAllMocks();
+  });
+
+  it('clears heatmap inline styles when echarts render fails', async () => {
+    vi.doMock('../src/ui/echartsRegistry.ts', () => ({
+      initEcharts: vi.fn(() => {
+        throw new Error('boom');
+      }),
+      encodeHtml: (value: string) => value,
+    }));
+    const { renderPowerWeekChart } = await import('../src/ui/powerWeekChartEcharts.ts');
+    const powerList = document.querySelector('#power-list') as HTMLElement;
+
+    const rendered = renderPowerWeekChart({
+      container: powerList,
+      entries: [{ hour: new Date('2025-01-13T00:00:00.000Z'), kWh: 1.2 }],
+      startMs: Date.parse('2025-01-13T00:00:00.000Z'),
+      endMs: Date.parse('2025-01-20T00:00:00.000Z'),
+      timeZone: 'UTC',
+    });
+
+    expect(rendered).toBe(false);
+    expect(powerList.style.height).toBe('');
+    expect(powerList.style.minHeight).toBe('');
+    expect(powerList.style.getPropertyValue('-webkit-tap-highlight-color')).toBe('');
+    vi.doUnmock('../src/ui/echartsRegistry.ts');
+  });
+
+  it('aggregates repeated fall-back local hours into one honest heatmap cell', async () => {
+    const setOption = vi.fn();
+    const initEcharts = vi.fn(() => ({
+      setOption,
+      resize: vi.fn(),
+      dispose: vi.fn(),
+    }));
+    vi.doMock('../src/ui/echartsRegistry.ts', () => ({
+      initEcharts,
+      encodeHtml: (value: string) => value,
+    }));
+    const { renderPowerWeekChart } = await import('../src/ui/powerWeekChartEcharts.ts');
+    const powerList = document.querySelector('#power-list') as HTMLElement;
+
+    const rendered = renderPowerWeekChart({
+      container: powerList,
+      entries: [
+        { hour: new Date('2025-10-26T00:00:00.000Z'), kWh: 0.7 },
+        { hour: new Date('2025-10-26T01:00:00.000Z'), kWh: 0.8 },
+      ],
+      // Europe/Oslo local week: 2025-10-20 00:00 through 2025-10-27 00:00.
+      startMs: Date.parse('2025-10-19T22:00:00.000Z'),
+      endMs: Date.parse('2025-10-26T23:00:00.000Z'),
+      timeZone: 'Europe/Oslo',
+    });
+
+    expect(rendered).toBe(true);
+    const option = setOption.mock.calls[0][0] as {
+      series?: Array<{ type?: string; data?: Array<{ value: [number, number, number]; bucketCount?: number }> }>;
+      tooltip?: { formatter?: (params: unknown) => string };
+      visualMap?: { max?: number };
+    };
+    const heatmapData = option.series?.find((series) => series.type === 'heatmap')?.data ?? [];
+    expect(heatmapData).toHaveLength(1);
+    expect(heatmapData[0]?.value[1]).toBe(2);
+    expect(heatmapData[0]?.value[2]).toBeCloseTo(1.5, 6);
+    expect(heatmapData[0]?.bucketCount).toBe(2);
+    expect(option.visualMap?.max).toBeCloseTo(1.5, 6);
+    const tooltip = option.tooltip?.formatter?.({ data: heatmapData[0] }) ?? '';
+    expect(tooltip).toContain('2 measured hours');
+    expect(tooltip).toContain('1.50 kWh total');
+    vi.doUnmock('../src/ui/echartsRegistry.ts');
+  });
+
+  it('uses local week boundaries when navigating across DST', async () => {
+    await installHomeyClient({}, 'Europe/Oslo');
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2025-03-31T12:00:00.000Z'));
+    const { renderPowerUsage } = await import('../src/ui/power.ts');
+    const entries = [
+      // 2025-03-23 23:30 in Europe/Oslo is still the Sunday before the selected local week.
+      { hour: new Date('2025-03-23T22:30:00.000Z'), kWh: 0.8 },
+    ];
+
+    renderPowerUsage(entries);
+    const prev = document.querySelector('#power-week-prev') as HTMLButtonElement;
+    prev.click();
+
+    const powerList = document.querySelector('#power-list') as HTMLElement;
+    const powerEmpty = document.querySelector('#power-empty') as HTMLElement;
+    expect(powerList.querySelector('svg')).toBeNull();
+    expect(powerEmpty.hidden).toBe(false);
+    expect(powerEmpty.textContent).toBe('No hourly usage for the selected week.');
+    vi.restoreAllMocks();
+  });
+
   it('renders heatmap chart when hourly budget is present', async () => {
     const buckets = buildBuckets('2025-01-13T00:00:00.000Z', 2, 1.2);
     const hourlyBudgets = Object.fromEntries(Object.keys(buckets).map((iso) => [iso, 1.0]));
