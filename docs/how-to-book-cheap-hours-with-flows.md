@@ -51,7 +51,7 @@ Create a Flow like this:
 | Flow part | Card |
 | --- | --- |
 | **When** | PELS: **Current price is one of the lowest before a time** |
-| **Then** | PELS: **Enable capacity control for device** |
+| **Then** | PELS: **Enable power-limit control for device** |
 
 Card arguments:
 
@@ -75,7 +75,7 @@ One common shape is:
 | --- | --- |
 | **When** | Every hour |
 | **And** | PELS: **Current price is one of the lowest before a time** is false |
-| **Then** | PELS: **Disable capacity control for device** |
+| **Then** | PELS: **Disable power-limit control for device** |
 | **Then** | Charger, heater, or device app: stop charging, turn off, or set output to idle |
 
 Use the same **Hours**, **Lowest count**, and **End hour** values as the enabling Flow.
@@ -95,8 +95,8 @@ Flows:
 
 | Purpose | Cards |
 | --- | --- |
-| Allow charging in selected hours | **Current price is one of the lowest before a time** with `Hours = 12`, `Lowest count = 5`, `End hour = 7` -> **Enable capacity control for device** |
-| Stop allowing charging outside selected hours | Hourly trigger + same lowest-price condition is false -> **Disable capacity control for device** -> charger app: stop charging |
+| Allow charging in selected hours | **Current price is one of the lowest before a time** with `Hours = 12`, `Lowest count = 5`, `End hour = 7` -> **Enable power-limit control for device** |
+| Stop allowing charging outside selected hours | Hourly trigger + same lowest-price condition is false -> **Disable power-limit control for device** -> charger app: stop charging |
 
 During selected hours, PELS can start or increase charging only when the hard cap and priority rules allow it. Outside selected hours, PELS does not try to run the charger as part of power limiting.
 

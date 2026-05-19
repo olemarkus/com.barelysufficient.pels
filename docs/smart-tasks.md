@@ -102,7 +102,7 @@ The Smart tasks view shows current tasks and past tasks. Flow cards can also rea
 
 If no active task is stored for a device, that device simply has no Smart task status.
 
-Use **Smart task status changed** for notifications, and **Smart task missed** when you want an alert after a task passes the ready-by time without reaching its target.
+Use **Smart task status changed** for live notifications as a task is being tracked. Use **Smart task ended** when you want an alert after the task run concludes — it fires once with an **Outcome** tag of `succeeded`, `missed`, or `abandoned`. Filter on the tag for the case you care about, for example `Outcome = missed` for a "task did not reach its target" notification.
 
 ## Practical Examples
 
