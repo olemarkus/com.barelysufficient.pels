@@ -14,7 +14,7 @@ If PELS is not installed yet, get it from the [Homey App Store](https://homey.ap
 ## Before you begin
 
 - PELS must already be installed on your Homey Pro.
-- You need a power meter or another Flow source that can report current load in watts (e.g. Tibber Pulse, a HAN port reader, or Homey Energy).
+- You need a whole-home power meter paired with Homey (e.g. Tibber Pulse, AMS/HAN reader, P1 reader, Shelly EM) or another Flow source that can report current load in watts.
 - You should know which devices in your home use the most power and can tolerate being turned down temporarily.
 
 ## Open PELS settings
@@ -23,17 +23,13 @@ Open **Apps -> PELS -> Settings** in Homey. This is where all configuration happ
 
 ## Step 1: Connect your power meter
 
-Without live power input, PELS cannot know how much power your home is using. There are two ways to feed power data to PELS:
+Without live power input, PELS cannot know how much power your home is using.
 
-**Option A: Homey Energy (recommended if your meter is already paired)**
+**Easiest path — use Homey Energy.** If your power meter is paired with Homey and has **Tracks total home energy consumption** enabled in its device settings, no Flow is needed. Go to **Settings > Limits & safety** and set **Power source** to **Homey Energy**. PELS starts polling automatically. This works for any meter Homey recognises as a whole-home tracker — Tibber Pulse, P1/HAN readers, Shelly EM, and similar.
 
-If your power meter is paired with Homey and has **Tracks total home energy consumption** enabled, go to **Settings > Limits & safety** and set **Power source** to **Homey Energy**. PELS will start polling automatically. See [Using Homey Energy](/homey-energy) for details.
+See [Using Homey Energy](/homey-energy) for the full walkthrough, including how to also read electricity prices from Homey Energy (especially useful outside Norway).
 
-**Option B: Flow card**
-
-Create a Homey Flow that calls **Report power usage** whenever your meter updates. This is typically a single Flow with your power meter as the trigger and the PELS action card as the action.
-
-Common meter sources are Tibber Pulse, AMS/HAN readers, or any device that reports total household watts.
+**Alternative — feed power via Flow.** If your meter is not in Homey Energy, or you want to combine sources before sending the value to PELS, create a Homey Flow that calls the **Report power usage** action whenever your meter updates. Input is current power in watts.
 
 Once power data is flowing, the **Overview** page starts showing real data.
 

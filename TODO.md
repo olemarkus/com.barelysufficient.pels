@@ -277,6 +277,13 @@ maintenance-tier polish without user-visible impact at supported widths.
 Re-applied after the train merged because the in-session TODO additions
 were rolled back before they could land.*
 
+- [ ] Docs vocabulary sweep: "capacity step" still appears in
+      `docs/smart-tasks.md` and the `docs/cost-saving-functions.md`
+      neighbourhood. Index and Getting Started were reframed to "hourly
+      limit / power-based tariff" in PR #931; remaining occurrences
+      should be reconciled so the docs are internally consistent.
+      Source: `pels-copy-and-terminology` agent, PR #931 review.
+
 - [ ] Verify structured-debug back-pressure on the `power_calibration` topic.
       `lib/app/appPowerCalibrationWiring.ts:522-542` emits one
       structured debug record per accepted/skipped sample. With several
