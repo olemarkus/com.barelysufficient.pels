@@ -492,7 +492,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     }
   });
 
-  it('does not attribute a later overshoot after a thermostat restore has shown load and survived the next power sample', async () => {
+  it('attributes a delayed overshoot within the attribution window even after the device has shown initial load', async () => {
     vi.useFakeTimers();
     try {
       const state = createPlanEngineState();
@@ -585,7 +585,10 @@ describe('PlanBuilder overshoot diagnostics', () => {
         event: 'overshoot_entered',
         overshootTotalDeltaKw: 0.55,
       }));
-      expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
+      // Penalty-clear now happens at attribution-window expiry, not on the
+      // first clean sample. A delayed overshoot at T+30s (within the 2-min
+      // window) is still attributed back to the recently-restored device.
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
         event: 'overshoot_attributed',
         deviceId: 'restored-thermostat',
       }));

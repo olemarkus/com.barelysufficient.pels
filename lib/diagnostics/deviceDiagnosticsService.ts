@@ -130,6 +130,15 @@ export type DeviceDiagnosticsBackoffTransition =
     penaltyLevel: number;
     elapsedMs: number;
     nowTs: number;
+  }
+  | {
+    kind: 'attempt_closed_by_admission';
+    deviceId: string;
+    source: ActivationAttemptSource | null;
+    previousPenaltyLevel: number;
+    penaltyLevel: 0;
+    elapsedMs: number;
+    nowTs: number;
   };
 
 export type DeviceDiagnosticsRecorder = {
@@ -520,6 +529,17 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
         this.deps.logDebug(
           `Diagnostics: activation attempt closed by shed ${formatDeviceRef(transition.deviceId, live.name)} `
           + `source=${transition.source ?? 'unknown'} penalty=${transition.penaltyLevel} `
+          + `elapsed=${formatDurationSeconds(transition.elapsedMs)}`,
+        );
+        break;
+      case 'attempt_closed_by_admission':
+        this.addCount(transition.deviceId, transition.nowTs, 'stableActivationCount', 1);
+        live.currentPenaltyLevel = 0;
+        this.deps.logDebug(
+          `Diagnostics: activation attempt closed by admission (penalty released) `
+          + `${formatDeviceRef(transition.deviceId, live.name)} `
+          + `source=${transition.source ?? 'unknown'} `
+          + `penalty=${transition.previousPenaltyLevel}->0 `
           + `elapsed=${formatDurationSeconds(transition.elapsedMs)}`,
         );
         break;
