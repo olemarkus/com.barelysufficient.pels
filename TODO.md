@@ -132,67 +132,8 @@ release, not v2.7.1 merge-blockers.*
       `packages/shared-domain/src/planHeroSummary.ts`.
       Source: `pels-copy-and-terminology` agent, v2.7.1 release-review pass.
 
-- [ ] Pending smart-task hero is missing `headlineReason` + `recourse`.
-      `DeadlinePlan.tsx:792` `PendingHero` only exposes
-      `headline / subline / metaLine`. The ready hero adds
-      `headlineReason` and `recourse`, both of which answer the page
-      mission ("when and at what price, and why those hours?"). A task
-      that lands pending for hours (no prices yet / pre-window) leaves
-      the user with no "why" line and no recourse — every newly-created
-      smart task lands on this hero first.
-      Why P1 (not P0): same shape already shipped in v2.7.0; this is a
-      first-impression gap, not a regression introduced by v2.7.1.
-      `pels-ux-fit` graded P0; downgraded because the rubric reserves P0
-      for introduced bugs or exposed half-implemented features.
-      Acceptance: pending hero mirrors `headlineReason` (at minimum) and
-      `recourse` when available. Wording stays plain ("prices land at
-      14:00", "task starts at 02:00", etc.).
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx:792`,
-      `packages/shared-domain/src/deadlineLabels.ts` (pending reason
-      copy).
-      Source: `pels-ux-fit` agent, v2.7.1 release-review pass.
-
 *Pro Homey runtime-log audit (2026-05-17, log
 `/tmp/pels/start.main.0a4464c3.stdout.log`, 2h40m window).*
-
-- [ ] Profile recovery armed on a thermostat that cannot reach
-      `recoveryTargetValue` locks learning out for up to 24h.
-      `lib/core/objectiveProfileRecovery.ts:67-106` disarms only when
-      `sample.value ≥ recoveryTargetValue` (recovered) or after
-      `RECOVERY_SAFETY_TIMEOUT_MS = 24h` (timed out). A capacity-shed
-      heater (cap-on) that cools below its previously-armed target will
-      stay in `reject_recovering` indefinitely — every sample rejected,
-      no stat update, no band update, no kwh-per-unit refinement —
-      because the device is *cooling away* from the target, not warming
-      toward it. In this audit window `Connected 300` (water heater
-      with an active 65 °C / 16:00 smart task) was held off the full
-      session and emitted 4× `reject_recovering` with
-      `recoveryTargetValue:60.1`, sample drifting 45.3 → 44.7 °C.
-      `Nordic S4 REL` showed the same pattern (armed 19.8 °C, sample
-      13.8 → 15.1 °C, 6× rejected). When this happens, the smart-task
-      planner keeps consuming the *stale* learned rate
-      (`kWhPerDegreeC` from before the lockout) and reports
-      `rateConfidence:"low"` forever even when fresh samples are
-      available. Worst case: the only thermostats users routinely place
-      under smart-task control are also the ones most likely to trigger
-      this lockout, because the smart task itself is what's shedding
-      them.
-      Why P1: data-integrity / planner-input bug; visible user impact
-      is "smart task says cannot finish and never improves". Not a
-      release blocker by itself (current behavior is degraded, not
-      destructive), but should ship in the next patch.
-      Acceptance: add a forward-progress check to `resolveArmedRecovery`
-      so a device that has been armed for ≥ N minutes with zero net
-      forward progress disarms cleanly (treat as "we lost the refill
-      assumption; resume baseline learning") instead of waiting 24h.
-      Cross-check that the disarm clears `recoveryTargetValue` /
-      `recoveryArmedAtMs` and preserves `samples` / `bands` per
-      `notes/objective-profile-bands.md`.
-      Files: `lib/core/objectiveProfileRecovery.ts`,
-      `lib/core/objectiveProfiles.ts` (recovery dispatch),
-      `notes/objective-profile-bands.md` (update the "Interaction with
-      #775 recovery window" section), recovery tests.
-      Source: Pro Homey runtime-log audit 2026-05-17.
 
 - [ ] Refresh the PELS leaf icon to match the new eco palette. The current app icon and any
       in-UI leaf graphic should align with the leaf-green primary (`#16a34a`) rather than the

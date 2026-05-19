@@ -513,11 +513,20 @@ export const mockHomeyInstance = {
     _actionCardAutocompleteListeners: {} as Record<string, Record<string, (query: string) => Promise<any>>>,
     _conditionCardAutocompleteListeners: {} as Record<string, Record<string, (query: string) => Promise<any>>>,
     _triggerCardAutocompleteListeners: {} as Record<string, Record<string, (query: string) => Promise<any>>>,
-    createToken: async (id: string, { value }: { value: any }) => {
-      mockHomeyInstance.flow._tokens[id] = { value };
+    createToken: async (id: string, opts: { value: any; type?: string; title?: string }) => {
+      const entry: any = {
+        value: opts.value,
+        type: opts.type,
+        title: opts.title,
+        setValueCount: 0,
+        setValueCalls: [] as any[],
+      };
+      mockHomeyInstance.flow._tokens[id] = entry;
       return {
         setValue: async (nextValue: any) => {
-          mockHomeyInstance.flow._tokens[id].value = nextValue;
+          entry.value = nextValue;
+          entry.setValueCount += 1;
+          entry.setValueCalls.push(nextValue);
         },
       };
     },

@@ -48,10 +48,22 @@ The effective `kWhPerUnit` reported back to the planner is `energy / remainingUn
 
 ## Interaction with #775 recovery window
 
-The recovery window suspends all stat updates while armed. The new buffer/band logic is reached only via `buildAcceptedProfileSample`, which runs only on the non-recovery path. Recovery's `disarm_recovery` path destructures `recoveryTargetValue`/`recoveryArmedAtMs` via `...rest` but preserves `samples` and `bands`. So:
+The recovery window suspends all stat updates while armed. The new buffer/band logic is reached only via `buildAcceptedProfileSample`, which runs only on the non-recovery path. Recovery's `disarm_recovery` path destructures `recoveryTargetValue`/`recoveryArmedAtMs` (and `recoveryNoProgressSamples`) via `...rest` but preserves `samples` and `bands`. So:
 
 - A refill cycle does not push samples into the buffer.
 - Bands learned before a drop survive the drop unchanged and resume estimating after recovery.
+
+### Forward-progress disarm
+
+`resolveArmedRecovery` disarms on three conditions, in order:
+
+1. **Recovered** — `sample.value >= recoveryTargetValue` (pre-drop value reached).
+2. **Safety timeout** — armed age ≥ `RECOVERY_SAFETY_TIMEOUT_MS` (24h hard cap).
+3. **No progress** — `RECOVERY_NO_PROGRESS_SAMPLE_LIMIT` consecutive samples with non-positive delta vs the previous sample. A delta above `RECOVERY_PROGRESS_EPSILON` resets the counter.
+
+The third condition exists for cap-shed thermostats: when a smart task is itself shedding the heater, the device cools *away* from the pre-drop value and would otherwise sit in `reject_recovering` for the full 24h timeout, blocking all stat and band updates. The no-progress disarm treats this as "we lost the refill assumption; resume baseline learning" — recovery fields clear, the disarming sample becomes the new baseline, `samples` / `bands` survive.
+
+The disarm event carries `disarmReason: 'recovered' | 'safety_timeout' | 'no_progress'` for telemetry; the action itself remains `disarm_recovery` for all three paths.
 
 ## Why not …
 

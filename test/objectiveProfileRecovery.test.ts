@@ -3,6 +3,7 @@ import {
   updateObjectiveProfilesFromSnapshot,
 } from '../lib/core/objectiveProfiles';
 import {
+  RECOVERY_NO_PROGRESS_SAMPLE_LIMIT,
   RECOVERY_SAFETY_TIMEOUT_MS,
   SHARP_FALL_SOC_PERCENT,
   SHARP_FALL_TEMPERATURE_C,
@@ -253,6 +254,125 @@ describe('objective profile recovery window', () => {
       event: 'objective_profile_recovery_state',
       action: 'disarm_recovery',
     }));
+  });
+
+  it('disarms after sustained no-progress samples instead of waiting 24h (cap-shed cooling pattern)', () => {
+    // Reproduces the Connected 300 field pattern: armed at the pre-drop value,
+    // device then cools *away* from the target (cap-shed cannot heat). Without
+    // the forward-progress disarm, the window would stay armed for 24h.
+    const debugStructured = vi.fn();
+    let profile: DeviceObjectiveProfile | undefined = updateDeviceObjectiveProfile({
+      previous: undefined,
+      sample: {
+        observedAtMs: startMs,
+        value: 60.1,
+        unit: 'degree_c',
+        crediblePowerW: 2000,
+        powerSource: 'measured',
+      },
+    });
+    // Initial sharp drop arms the recovery window.
+    profile = updateDeviceObjectiveProfile({
+      previous: profile,
+      sample: {
+        observedAtMs: startMs + hourMs,
+        value: 45.3,
+        unit: 'degree_c',
+        crediblePowerW: 2000,
+        powerSource: 'measured',
+      },
+    });
+    expect(profile.recoveryTargetValue).toBe(60.1);
+    expect(RECOVERY_NO_PROGRESS_SAMPLE_LIMIT).toBeGreaterThanOrEqual(2);
+
+    // Feed `RECOVERY_NO_PROGRESS_SAMPLE_LIMIT` cooling samples. Each shows a
+    // non-positive delta vs the previous sample, so the no-progress counter
+    // monotonically increments. The Kth sample disarms.
+    const coolingTrack = [45.1, 44.9, 44.8, 44.7].slice(0, RECOVERY_NO_PROGRESS_SAMPLE_LIMIT);
+    for (let step = 0; step < coolingTrack.length; step += 1) {
+      profile = updateDeviceObjectiveProfile({
+        previous: profile,
+        sample: {
+          observedAtMs: startMs + hourMs + (step + 1) * hourMs,
+          value: coolingTrack[step],
+          unit: 'degree_c',
+          crediblePowerW: 2000,
+          powerSource: 'measured',
+        },
+        deviceId: 'heater-1',
+        debugStructured,
+      });
+    }
+
+    // After the Kth cooling sample, the window disarms via no-progress.
+    expect(profile.recoveryTargetValue).toBeUndefined();
+    expect(profile.recoveryArmedAtMs).toBeUndefined();
+    expect(profile.recoveryNoProgressSamples).toBeUndefined();
+    expect(profile.lastSample.value).toBe(coolingTrack[coolingTrack.length - 1]);
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'objective_profile_recovery_state',
+      action: 'disarm_recovery',
+      disarmReason: 'no_progress',
+    }));
+
+    // The next non-recovery sample is the first eligible to update stats, and
+    // bands/samples buffers (if any) survive the disarm path.
+    profile = updateDeviceObjectiveProfile({
+      previous: profile,
+      sample: {
+        observedAtMs: startMs + hourMs + (coolingTrack.length + 1) * hourMs,
+        value: coolingTrack[coolingTrack.length - 1] + 1.0,
+        unit: 'degree_c',
+        crediblePowerW: 2000,
+        powerSource: 'measured',
+      },
+    });
+    expect(profile.acceptedSamples).toBe(1);
+  });
+
+  it('keeps the recovery window armed during a slow-but-trending-up rebuild', () => {
+    // Control case for the forward-progress disarm: positive but small deltas
+    // must reset the no-progress counter so a real slow rebuild does not get
+    // mistakenly disarmed before reaching the pre-drop target.
+    let profile: DeviceObjectiveProfile | undefined = updateDeviceObjectiveProfile({
+      previous: undefined,
+      sample: {
+        observedAtMs: startMs,
+        value: 60,
+        unit: 'degree_c',
+        crediblePowerW: 2000,
+        powerSource: 'measured',
+      },
+    });
+    profile = updateDeviceObjectiveProfile({
+      previous: profile,
+      sample: {
+        observedAtMs: startMs + hourMs,
+        value: 45,
+        unit: 'degree_c',
+        crediblePowerW: 2000,
+        powerSource: 'measured',
+      },
+    });
+    expect(profile.recoveryTargetValue).toBe(60);
+
+    // Six positive-delta samples — more than the no-progress limit — must keep
+    // the window armed because each shows forward progress.
+    const reheatTrack = [45.5, 46.1, 46.8, 47.4, 48.0, 48.5];
+    for (let step = 0; step < reheatTrack.length; step += 1) {
+      profile = updateDeviceObjectiveProfile({
+        previous: profile,
+        sample: {
+          observedAtMs: startMs + hourMs + (step + 1) * hourMs,
+          value: reheatTrack[step],
+          unit: 'degree_c',
+          crediblePowerW: 2000,
+          powerSource: 'measured',
+        },
+      });
+      expect(profile.recoveryTargetValue).toBe(60);
+    }
+    expect(profile.recoveryNoProgressSamples ?? 0).toBe(0);
   });
 
   it('disarms after the 24h safety timeout even when the value never recovers', () => {

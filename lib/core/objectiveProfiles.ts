@@ -5,7 +5,7 @@ import type {
 } from './objectiveProfileTypes';
 import type { PowerTrackerState } from './powerTrackerTypes';
 import { shouldEmitRejectedProfileSample } from './objectiveProfileRejectionLogging';
-import { resolveRecoveryState, type RecoveryAction } from './objectiveProfileRecovery';
+import { resolveRecoveryState, type RecoveryAction, type RecoveryDisarmReason } from './objectiveProfileRecovery';
 import { updateProfileStat } from './objectiveProfileStats';
 import { appendSampleToBuffer, fitBandsFromSamples } from './objectiveProfileBands';
 import { buildObjectiveProfileSample } from './objectiveProfileSamples';
@@ -143,6 +143,7 @@ export function updateDeviceObjectiveProfile(params: {
   if (recovery.action !== 'noop' && recovery.nextProfile) {
     emitRecoveryStateEvent({
       action: recovery.action,
+      disarmReason: recovery.disarmReason,
       previous,
       nextProfile: recovery.nextProfile,
       sample,
@@ -269,6 +270,7 @@ function buildRejectedProfileSample(params: {
 
 function emitRecoveryStateEvent(params: {
   action: RecoveryAction;
+  disarmReason?: RecoveryDisarmReason;
   previous: DeviceObjectiveProfile;
   nextProfile: DeviceObjectiveProfile;
   sample: DeviceObjectiveProfileSample;
@@ -276,7 +278,16 @@ function emitRecoveryStateEvent(params: {
   deviceName?: string;
   debugStructured?: ObjectiveProfileDebugEmitter;
 }): void {
-  const { action, previous, nextProfile, sample, deviceId, deviceName, debugStructured } = params;
+  const {
+    action,
+    disarmReason,
+    previous,
+    nextProfile,
+    sample,
+    deviceId,
+    deviceName,
+    debugStructured,
+  } = params;
   if (!debugStructured) return;
   // Prefer the post-state for the recovery target so `arm_recovery` reports
   // the value being protected, not the (undefined) prior value.
@@ -286,6 +297,7 @@ function emitRecoveryStateEvent(params: {
   debugStructured({
     event: 'objective_profile_recovery_state',
     action,
+    ...(disarmReason ? { disarmReason } : {}),
     deviceId,
     ...(deviceName ? { deviceName } : {}),
     profileKind: previous.kind,
