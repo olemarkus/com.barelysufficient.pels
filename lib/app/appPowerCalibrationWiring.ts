@@ -509,11 +509,14 @@ export function createCalibrationSnapshotMutationHook(params: {
       if (previous !== undefined && nowMs - previous < minIntervalMs) return;
     }
     const outcome = getStore().ingestDeviceSnapshot(snapshot, nowMs);
-    // Only record the debounce cursor after the store actually saw a sample.
-    // Recording it earlier would let an ineligible snapshot (e.g. stepCommandPending,
-    // stale lastFreshDataMs, actualStepSource !== 'reported') swallow the next valid
-    // sample for up to minIntervalMs.
-    if (outcome !== null && debounceKey !== null) {
+    // Only record the debounce cursor on an accepted sample. The debounce
+    // exists solely to stop chatty telemetry from saturating EMA `alpha`, and
+    // `alpha` only advances on accepted samples — `recordSample` does not
+    // mutate state on rejection. Debouncing on rejected outcomes
+    // (`stale_observation`, `above_step_ceiling`, etc.) would silently drop
+    // the next valid sample for up to minIntervalMs without protecting
+    // anything in return.
+    if (outcome?.accepted === true && debounceKey !== null) {
       lastIngestMsByDeviceStep.set(debounceKey, nowMs);
     }
     if (!outcome || !debugStructured) return;
