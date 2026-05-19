@@ -21,10 +21,15 @@ import { buildEndedEventFromEntry, type DeferredObjectiveEndedBus } from './ende
 import {
   appendHourlyContribution,
   appendRevisionLogIfNew,
+  buildFinalHourContribution,
   captureRevisionSnapshot,
+  detectHourRollover,
   drainProgressSamples,
   hasTrustworthyProgress,
   hourBucketMs,
+  type HourPriceResolver,
+  type HourProgressSnapshot,
+  pickKwhPerUnit,
   recordProgressSample,
   seedProgressSamples,
 } from './planHistoryV4Helpers';
@@ -121,6 +126,30 @@ type InProgressRecord = Omit<
   // `hasDeliveryContribution` the same way `deliveredKWh` / `totalCost`
   // are.
   hourlyContributions: DeferredObjectivePlanHistoryHourlyContribution[];
+  // First trustworthy progress reading observed in the currently-open hour.
+  // The internal hour-rollover detector uses this as the "hour opening"
+  // anchor — when the next observation lands in a later hour bucket, the
+  // delta (opening → latest reading in the closing hour) is converted to
+  // delivered kWh using `lastKWhPerUnit` and emitted as a contribution.
+  // `null` when no trustworthy reading has been observed yet (cold start,
+  // sensor offline) so the rollover skips emission until coverage resumes.
+  //
+  // Lossy-restart contract: this field is **not persisted** across PELS
+  // restarts. The in-progress map is rebuilt from live diagnostics, so a
+  // restart mid-run re-anchors the opening at the post-restart reading.
+  // Any progress delivered between the pre-restart opening and the first
+  // post-restart observation is lost from the postmortem strip (it lands
+  // in *neither* hour). Persisting requires a new settings key — tracked
+  // in `TODO.md`. See `restarts mid-run drop the in-flight hour anchor`
+  // regression test below for the pinned behaviour.
+  currentHourOpening: HourProgressSnapshot | null;
+  // Effective kWh-per-unit factor from the most recent diagnostic. Cached
+  // on the record so `finalizeRecord` can flush the still-open hour's
+  // contribution without re-reading a diagnostic (the finalization paths
+  // — `finalizeStaleRecords`, `finalizeForUserChange` — do not carry one).
+  // `null` when no diagnostic ever resolved a profile. Same lossy-restart
+  // contract as `currentHourOpening` — see above.
+  lastKWhPerUnit: number | null;
 };
 
 
@@ -260,7 +289,25 @@ const startRecord = (
     hasDeliveryContribution: false,
     revisions: [],
     hourlyContributions: [],
+    currentHourOpening: seedHourOpening(diag, nowMs),
+    lastKWhPerUnit: pickKwhPerUnit(diag),
   };
+};
+
+// Anchor the hour-rollover detector at run start. We adopt the first
+// trustworthy reading as the opening of the current hour so a run that
+// starts mid-hour and finalizes inside the same hour can still flush a
+// contribution at finalize-time. Returns null when the start diagnostic
+// carries no trustworthy progress — the rollover detector will adopt the
+// first later cycle that does.
+const seedHourOpening = (
+  diag: DeferredObjectiveDiagnostic,
+  nowMs: number,
+): HourProgressSnapshot | null => {
+  if (!hasTrustworthyProgress(diag)) return null;
+  const value = diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : diag.currentPercent;
+  if (value === null) return null;
+  return { hourMs: hourBucketMs(nowMs), value };
 };
 
 
@@ -634,6 +681,16 @@ export type PlanHistoryPersistDeps = {
   // (`met`/`missed`/`abandoned`) before publishing — backfill entries and
   // `replaced`/`unknown` outcomes never reach the bus.
   endedBus?: DeferredObjectiveEndedBus;
+  // Resolve the spot price and price tone (cheap/normal/expensive) for an
+  // hour-aligned timestamp. The internal hour-rollover detector calls this
+  // when it closes an hour so per-hour `hourlyContributions` carry a stable
+  // band even if cheap/normal/expensive thresholds shift in a later
+  // version. Returning `null` (no price data yet, hour outside the
+  // published horizon) causes that hour's contribution to be skipped
+  // rather than fabricated. The dep is optional so the recorder remains
+  // useful in tests and for callers that drive `recordHourlyDelivery`
+  // directly with their own pricing.
+  resolveHourPrice?: HourPriceResolver;
 };
 
 // Per-hour delivery contribution fed into the recorder by the runtime
@@ -722,7 +779,11 @@ export class DeferredObjectivePlanHistoryRecorder {
       const merged = plannable
         ? mergeRecord(existing, diag, nowMs, plan)
         : recordNonPlannableTick(existing, diag, nowMs, plan);
-      this.inProgress.set(key, this.maybePromoteOnStall(merged, diag, nowMs, getStallClassification));
+      const withRollover = this.applyHourlyDeliveryRollover(merged, diag, nowMs);
+      this.inProgress.set(
+        key,
+        this.maybePromoteOnStall(withRollover, diag, nowMs, getStallClassification),
+      );
       return;
     }
     // Begin tracking on first sight of a future-dated deadline, regardless of status. The
@@ -784,7 +845,8 @@ export class DeferredObjectivePlanHistoryRecorder {
   finalizeForUserChange(deviceId: string, nowMs: number, reason: 'replaced' | 'abandoned'): void {
     for (const [key, record] of this.inProgress) {
       if (record.deviceId !== deviceId) continue;
-      this.pushEntry(finalizeRecord(record, nowMs, reason));
+      const flushed = this.flushOpenHourAtFinalize(record);
+      this.pushEntry(finalizeRecord(flushed, nowMs, reason));
       this.inProgress.delete(key);
     }
   }
@@ -832,10 +894,130 @@ export class DeferredObjectivePlanHistoryRecorder {
     });
   }
 
+  // Drive the internal hour-rollover detector after a cycle's progress
+  // sample has been recorded. Each closed-hour contribution is folded into
+  // the record exactly the same way `recordHourlyDelivery` does — sharing
+  // the merge helper guarantees the postmortem totals stay consistent
+  // whether the contribution arrived from this runtime wiring or from an
+  // external aggregator. The `currentHourOpening` anchor and cached
+  // `lastKWhPerUnit` are always refreshed so the next cycle's rollover sees
+  // the freshest values, even on cycles that produced no contribution.
+  private applyHourlyDeliveryRollover(
+    record: InProgressRecord,
+    diag: DeferredObjectiveDiagnostic,
+    nowMs: number,
+  ): InProgressRecord {
+    if (!hasTrustworthyProgress(diag)) return record;
+    const nowProgress = diag.objectiveKind === 'temperature'
+      ? diag.currentTemperatureC
+      : diag.currentPercent;
+    if (nowProgress === null) return record;
+    const kWhPerUnit = pickKwhPerUnit(diag);
+    // Anchor an opening on the first trustworthy reading even when
+    // kWh/unit isn't resolved yet — once a profile lands later in the run
+    // we can still attribute the closing hour using the freshly-resolved
+    // factor. Skip emission for the prior hour if kWh/unit was missing
+    // when it closed.
+    if (record.currentHourOpening === null) {
+      return {
+        ...record,
+        currentHourOpening: { hourMs: hourBucketMs(nowMs), value: nowProgress },
+        lastKWhPerUnit: kWhPerUnit ?? record.lastKWhPerUnit,
+      };
+    }
+    if (kWhPerUnit === null) {
+      // No factor yet — keep the existing opening so the eventual
+      // resolution can still attribute against it, but skip emission.
+      return { ...record, lastKWhPerUnit: kWhPerUnit ?? record.lastKWhPerUnit };
+    }
+    const rollover = detectHourRollover({
+      opening: record.currentHourOpening,
+      nowProgress,
+      nowMs,
+      kWhPerUnit,
+      resolvePrice: this.deps.resolveHourPrice,
+    });
+    if (rollover === null) {
+      // No transition — only refresh the cached kWh/unit so finalize-time
+      // flush uses the latest factor.
+      return { ...record, lastKWhPerUnit: kWhPerUnit };
+    }
+    return this.foldContributionsIntoRecord({
+      record,
+      contributions: rollover.contributions,
+      nextOpening: rollover.nextOpening,
+      kWhPerUnit,
+    });
+  }
+
+  // Pure merge of zero-or-more emitted contributions into an in-progress
+  // record. Mirrors the totals math in `recordHourlyDelivery` so external
+  // aggregator pushes and the internal rollover path agree byte-for-byte
+  // on the persisted entry. Always advances `currentHourOpening` and
+  // `lastKWhPerUnit` so finalize-time flushing has the right anchor even
+  // when no contribution fired this cycle.
+  private foldContributionsIntoRecord(params: {
+    record: InProgressRecord;
+    contributions: readonly DeferredObjectivePlanHistoryHourlyContribution[];
+    nextOpening: HourProgressSnapshot;
+    kWhPerUnit: number;
+  }): InProgressRecord {
+    const { record, contributions, nextOpening, kWhPerUnit } = params;
+    if (contributions.length === 0) {
+      return { ...record, currentHourOpening: nextOpening, lastKWhPerUnit: kWhPerUnit };
+    }
+    let { hourlyContributions, deliveredKWh, totalCost } = record;
+    for (const contribution of contributions) {
+      hourlyContributions = appendHourlyContribution(hourlyContributions, contribution);
+      deliveredKWh += contribution.deliveredKWh;
+      totalCost += contribution.deliveredKWh * contribution.priceValue;
+    }
+    return {
+      ...record,
+      hourlyContributions,
+      deliveredKWh,
+      totalCost,
+      hasDeliveryContribution: true,
+      currentHourOpening: nextOpening,
+      lastKWhPerUnit: kWhPerUnit,
+    };
+  }
+
+  // Flush a final contribution for the still-open hour when the run
+  // finalizes. Without this, a sub-hour run (short EV top-up, brief
+  // thermal nudge) that never crossed an hour boundary would record
+  // `hasDeliveryContribution: false` and drop its delivery entirely. The
+  // helper returns the record updated with the flushed contribution (or
+  // the original record if no flush was possible — no opening anchor, no
+  // measurable delta, no kWh/unit, or no price resolver).
+  private flushOpenHourAtFinalize(record: InProgressRecord): InProgressRecord {
+    const finalProgress = record.objectiveKind === 'temperature'
+      ? record.finalProgressC
+      : record.finalProgressPercent;
+    const contribution = buildFinalHourContribution({
+      opening: record.currentHourOpening,
+      finalProgress,
+      kWhPerUnit: record.lastKWhPerUnit,
+      resolvePrice: this.deps.resolveHourPrice,
+    });
+    if (contribution === null) return record;
+    return this.foldContributionsIntoRecord({
+      record,
+      contributions: [contribution],
+      // Advance the opening past the just-flushed hour so a (defensive)
+      // re-entry wouldn't double-count it. Finalization deletes the record
+      // immediately after, so this assignment is informational, not
+      // load-bearing.
+      nextOpening: { hourMs: record.currentHourOpening!.hourMs, value: finalProgress! },
+      kWhPerUnit: record.lastKWhPerUnit!,
+    });
+  }
+
   private finalizeStaleRecords(seenKeys: ReadonlySet<InProgressKey>, nowMs: number): void {
     for (const [key, record] of this.inProgress) {
       if (record.deadlineAtMs <= nowMs) {
-        this.pushEntry(finalizeRecord(record, nowMs, 'deadline_passed'));
+        const flushed = this.flushOpenHourAtFinalize(record);
+        this.pushEntry(finalizeRecord(flushed, nowMs, 'deadline_passed'));
         this.inProgress.delete(key);
         continue;
       }
@@ -844,7 +1026,8 @@ export class DeferredObjectivePlanHistoryRecorder {
       // window before declaring the run abandoned, in case the device briefly drops out and
       // recovers.
       if (nowMs - lastObservedAtMs(record) >= ABANDON_GRACE_MS) {
-        this.pushEntry(finalizeRecord(record, nowMs, 'abandoned'));
+        const flushed = this.flushOpenHourAtFinalize(record);
+        this.pushEntry(finalizeRecord(flushed, nowMs, 'abandoned'));
         this.inProgress.delete(key);
       }
     }
