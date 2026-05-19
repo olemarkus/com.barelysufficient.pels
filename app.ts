@@ -807,7 +807,13 @@ class PelsApp extends Homey.App {
   }
   private async initPriceCoordinator(): Promise<void> {
     this.priceCoordinator = createPriceCoordinator(this.ctx);
-    this.priceFlowTagPublisher = createPriceFlowTagPublisher(this.ctx);
+    const publisher = createPriceFlowTagPublisher(this.ctx);
+    this.priceFlowTagPublisher = publisher;
+    await publisher.init();
+    // Publish whatever the persisted price store already holds, so HomeyScript
+    // reads at startup see real data (and the right `unit`) instead of the
+    // placeholder default — without waiting for the first price refresh.
+    await publisher.publish('startup');
   }
   private initDailyBudgetService(): void {
     this.dailyBudgetService = new DailyBudgetService({

@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { PriceFlowTagPublisher, PRICE_LIST_UPDATED_TRIGGER_ID } from '../lib/price/priceFlowTags';
+import { PriceFlowTagPublisher, PRICE_FLOW_TAG_ID, PRICE_LIST_UPDATED_TRIGGER_ID } from '../lib/price/priceFlowTags';
 import { mockHomeyInstance } from './mocks/homey';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../lib/price/priceTypes';
 
@@ -34,6 +34,8 @@ const triggersFor = (id: string): { tokens: Record<string, unknown> }[] => (
   (mockHomeyInstance.flow._triggerCardTriggers[id] ?? []) as { tokens: Record<string, unknown> }[]
 );
 
+const tokenValue = (): string => (mockHomeyInstance.flow._tokens[PRICE_FLOW_TAG_ID] as { value: string }).value;
+
 const newPublisher = () => new PriceFlowTagPublisher({
   homey: mockHomeyInstance as any,
   requestPriceRefetch: () => {},
@@ -51,17 +53,19 @@ describe('PriceFlowTagPublisher', () => {
     vi.useRealTimers();
   });
 
-  it('fires the trigger with valid JSON when no prices exist', async () => {
+  it('creates the global price token on init with a valid empty-JSON default', async () => {
     const publisher = newPublisher();
-    await publisher.publish('startup');
-    const triggers = triggersFor(PRICE_LIST_UPDATED_TRIGGER_ID);
-    expect(triggers).toHaveLength(1);
-    const parsed = JSON.parse(triggers[0].tokens.prices_json as string);
+    await publisher.init();
+    const token = mockHomeyInstance.flow._tokens[PRICE_FLOW_TAG_ID] as { type: string; value: string };
+    expect(token).toBeDefined();
+    expect(token.type).toBe('string');
+    const parsed = JSON.parse(token.value);
     expect(parsed.today).toEqual([]);
     expect(parsed.tomorrow).toEqual([]);
+    expect(parsed.unit).toBe('price units');
   });
 
-  it('fires the trigger with the lean export when prices exist', async () => {
+  it('publishes the export to both the token and the trigger when prices exist', async () => {
     mockHomeyInstance.settings.set('combined_prices', buildStore({
       days: {
         '2026-05-17': { hours: day('2026-05-17', 24) },
@@ -69,13 +73,15 @@ describe('PriceFlowTagPublisher', () => {
       },
     }));
     const publisher = newPublisher();
+    await publisher.init();
     await publisher.publish('test');
+    const tokenParsed = JSON.parse(tokenValue());
+    expect(tokenParsed.today).toHaveLength(24);
+    expect(tokenParsed.tomorrow).toHaveLength(24);
+    expect(tokenParsed.unit).toBe('øre/kWh');
     const triggers = triggersFor(PRICE_LIST_UPDATED_TRIGGER_ID);
     expect(triggers).toHaveLength(1);
-    const parsed = JSON.parse(triggers[0].tokens.prices_json as string);
-    expect(parsed.today).toHaveLength(24);
-    expect(parsed.tomorrow).toHaveLength(24);
-    expect(parsed.unit).toBe('øre/kWh');
+    expect(JSON.parse(triggers[0].tokens.prices_json as string)).toEqual(tokenParsed);
   });
 
   it('suppresses duplicate publishes when content fingerprint is unchanged', async () => {
@@ -83,16 +89,21 @@ describe('PriceFlowTagPublisher', () => {
       days: { '2026-05-17': { hours: day('2026-05-17', 24) } },
     }));
     const publisher = newPublisher();
+    await publisher.init();
     await publisher.publish('first');
+    const setValueCountAfterFirst = (mockHomeyInstance.flow._tokens[PRICE_FLOW_TAG_ID] as { setValueCount: number }).setValueCount;
     await publisher.publish('second-identical');
+    const setValueCountAfterSecond = (mockHomeyInstance.flow._tokens[PRICE_FLOW_TAG_ID] as { setValueCount: number }).setValueCount;
+    expect(setValueCountAfterSecond).toBe(setValueCountAfterFirst);
     expect(triggersFor(PRICE_LIST_UPDATED_TRIGGER_ID)).toHaveLength(1);
   });
 
-  it('fires the trigger again when content changes', async () => {
+  it('fires both surfaces again when content changes', async () => {
     mockHomeyInstance.settings.set('combined_prices', buildStore({
       days: { '2026-05-17': { hours: day('2026-05-17', 24, 50) } },
     }));
     const publisher = newPublisher();
+    await publisher.init();
     await publisher.publish('first');
     mockHomeyInstance.settings.set('combined_prices', buildStore({
       days: { '2026-05-17': { hours: day('2026-05-17', 24, 80) } },
@@ -100,8 +111,8 @@ describe('PriceFlowTagPublisher', () => {
     await publisher.publish('second');
     const triggers = triggersFor(PRICE_LIST_UPDATED_TRIGGER_ID);
     expect(triggers).toHaveLength(2);
-    const parsed = JSON.parse(triggers[1].tokens.prices_json as string);
-    expect(parsed.today).toHaveLength(24);
+    const tokenParsed = JSON.parse(tokenValue());
+    expect(tokenParsed.today[0]).toBe(80);
   });
 
   it('reflects tomorrow arrival as a non-empty tomorrow array', async () => {
@@ -109,6 +120,7 @@ describe('PriceFlowTagPublisher', () => {
       days: { '2026-05-17': { hours: day('2026-05-17', 24) } },
     }));
     const publisher = newPublisher();
+    await publisher.init();
     await publisher.publish('first');
     mockHomeyInstance.settings.set('combined_prices', buildStore({
       days: {
@@ -117,10 +129,8 @@ describe('PriceFlowTagPublisher', () => {
       },
     }));
     await publisher.publish('tomorrow-arrived');
-    const triggers = triggersFor(PRICE_LIST_UPDATED_TRIGGER_ID);
-    expect(triggers).toHaveLength(2);
-    const parsed = JSON.parse(triggers[1].tokens.prices_json as string);
-    expect(parsed.tomorrow).toHaveLength(24);
+    const tokenParsed = JSON.parse(tokenValue());
+    expect(tokenParsed.tomorrow).toHaveLength(24);
   });
 
   it('emits standard double-quoted JSON parseable by JSON.parse without preprocessing', async () => {
@@ -128,8 +138,9 @@ describe('PriceFlowTagPublisher', () => {
       days: { '2026-05-17': { hours: day('2026-05-17', 24) } },
     }));
     const publisher = newPublisher();
+    await publisher.init();
     await publisher.publish('test');
-    const raw = triggersFor(PRICE_LIST_UPDATED_TRIGGER_ID)[0].tokens.prices_json as string;
+    const raw = tokenValue();
     expect(raw.startsWith('{')).toBe(true);
     expect(raw).not.toMatch(/'/);
     expect(raw).toMatch(/"today":\s*\[/);
@@ -143,15 +154,15 @@ describe('PriceFlowTagPublisher', () => {
       days: { '2026-05-17': { hours: day('2026-05-17', 24, 50) } },
     }));
     let throwNext = true;
-    const triggerCalls: unknown[] = [];
+    const setValueCalls: string[] = [];
     const publisher = new PriceFlowTagPublisher({
       homey: {
         ...mockHomeyInstance,
         flow: {
           ...mockHomeyInstance.flow,
-          getTriggerCard: () => ({
-            trigger: async (tokens: Record<string, unknown>) => {
-              triggerCalls.push(tokens);
+          createToken: async () => ({
+            setValue: async (v: string) => {
+              setValueCalls.push(v);
               if (throwNext) { throwNext = false; throw new Error('transient'); }
             },
           }),
@@ -162,10 +173,36 @@ describe('PriceFlowTagPublisher', () => {
       logDebug: () => {},
       error: () => {},
     });
+    await publisher.init();
     await publisher.publish('first');
-    // Same content again — must retry because the prior trigger threw, so
-    // fingerprint should not have advanced.
     await publisher.publish('second-identical');
-    expect(triggerCalls).toHaveLength(2);
+    expect(setValueCalls).toHaveLength(2);
+  });
+
+  it('retries createToken on the next publish when init throws', async () => {
+    let throwNext = true;
+    let createCalls = 0;
+    const publisher = new PriceFlowTagPublisher({
+      homey: {
+        ...mockHomeyInstance,
+        flow: {
+          ...mockHomeyInstance.flow,
+          createToken: async (id: string, opts: { type: string; title: string; value: unknown }) => {
+            createCalls += 1;
+            if (throwNext) { throwNext = false; throw new Error('flow-down'); }
+            return mockHomeyInstance.flow.createToken(id, opts);
+          },
+        },
+      } as any,
+      requestPriceRefetch: () => {},
+      log: () => {},
+      logDebug: () => {},
+      error: () => {},
+    });
+    await publisher.init();
+    expect(createCalls).toBe(1);
+    await publisher.publish('after-recover');
+    expect(createCalls).toBe(2);
+    expect(mockHomeyInstance.flow._tokens[PRICE_FLOW_TAG_ID]).toBeDefined();
   });
 });
