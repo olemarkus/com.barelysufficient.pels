@@ -86,6 +86,7 @@ export const planDeferredObjectiveHorizon = (
   const allocation = resolveAllocation({
     activeSteps,
     buckets,
+    committed: input.committed === true,
     committedHours: input.committedHours,
     energyNeededKWh,
     epsilonKWh,
@@ -108,18 +109,23 @@ export const planDeferredObjectiveHorizon = (
 const resolveAllocation = (params: {
   activeSteps: NonEmptyObjectiveSteps;
   buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
+  committed: boolean;
   committedHours: DeferredObjectiveHorizonInput['committedHours'];
   energyNeededKWh: number;
   epsilonKWh: number;
 }): BucketAllocationResult => {
   const step = params.activeSteps[0];
-  if (params.committedHours !== undefined && params.committedHours.length > 0) {
+  // Branch on `committed`, not `committedHours.length`. An active commitment
+  // with zero allocated hours (e.g. a previously stored `cannot_meet` plan)
+  // must stay on the committed-replan path so the allocator cannot silently
+  // recover by re-running the fresh optimizer against the new horizon.
+  if (params.committed) {
     return allocateCommittedEnergyToBuckets({
       buckets: params.buckets,
       step,
       energyNeededKWh: params.energyNeededKWh,
       epsilonKWh: params.epsilonKWh,
-      committedHours: params.committedHours,
+      committedHours: params.committedHours ?? [],
     });
   }
   return allocateEnergyToBuckets({
