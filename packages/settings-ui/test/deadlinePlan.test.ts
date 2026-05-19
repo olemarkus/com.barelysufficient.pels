@@ -1851,16 +1851,16 @@ describe('deadline plan page payload', () => {
       nowMs: now.getTime(),
     }));
 
+    // `Learned rate` row is intentionally absent — the card's headline row now
+    // carries the rate value, so the provenance section drops the duplicate.
     const labels = payload.planInputs.provenanceRows.map((row) => row.label);
-    expect(labels).toEqual(['Source', 'Learned rate', 'Samples', 'Last sample']);
+    expect(labels).toEqual(['Source', 'Samples', 'Most recent sample']);
     const byLabel = Object.fromEntries(payload.planInputs.provenanceRows.map((row) => [row.label, row.value]));
     expect(byLabel.Source).toBe('Learned profile');
-    expect(byLabel['Learned rate']).toBe('0.42 kWh/%');
     expect(byLabel.Samples).toBe('12 accepted samples · medium confidence');
-    // The "Last sample" value is locale/timezone-formatted by the browser; we
-    // pin only that it is non-empty so the production formatter stays free to
-    // evolve without breaking the test on CI machines with different locales.
-    expect(byLabel['Last sample'].length).toBeGreaterThan(0);
+    // `lastAccepted` sits 2h before `now`, well inside the 24h freshness
+    // window — expect a relative "Updated …" string, not a stale timestamp.
+    expect(byLabel['Most recent sample']).toBe('Updated 2 hours ago');
   });
 
   it('surfaces a single "Bootstrap estimate" provenance row when the plan still uses bootstrap', () => {

@@ -79,6 +79,7 @@ export const buildPlanInputs = (params: {
   // refining as PELS observes charging" note rendered next to the rate row;
   // suppressed when the rate came from the learned profile.
   usingBootstrap: boolean;
+  nowMs: number;
 }): DeadlinePlanPayload['planInputs'] => {
   return {
     perUnitRateLabel: formatPerUnitRateLabel(params.rateMean, params.labels.perUnitRateUnit),
@@ -86,7 +87,7 @@ export const buildPlanInputs = (params: {
     maxPowerLabel: formatMaxPowerLabel(resolveLowestActiveStepKw(params.device)),
     provenanceRows: resolveKwhPerUnitProvenanceRows({
       provenance: params.provenance,
-      unitSuffix: params.labels.perUnitRateUnit,
+      nowMs: params.nowMs,
       formatAcceptedAt,
     }),
   };

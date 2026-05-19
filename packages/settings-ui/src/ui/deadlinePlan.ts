@@ -601,6 +601,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       labels,
       device,
       provenance: activePlan!.kwhPerUnitProvenance,
+      nowMs,
       ...resolveKwhPerUnitDisplayRate({ latest, profile, objectiveKind: objective.kind }),
     }),
   };
