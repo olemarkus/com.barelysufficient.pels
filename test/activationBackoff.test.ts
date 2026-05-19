@@ -4,6 +4,7 @@ import {
   ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
   ACTIVATION_SETBACK_RESTORE_BLOCK_MS,
   closeActivationAttemptForShed,
+  getActivationPenaltyLevel,
   getActivationRestoreBlockRemainingMs,
   recordActivationAttemptStart,
   recordActivationSetback,
@@ -357,6 +358,115 @@ describe('activation backoff', () => {
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
   });
 
+  it('clears accumulated penalty when a cautious admission is confirmed by observed draw and a clean whole-home sample', () => {
+    // The cautious admission proved itself: device drew what we expected and the household
+    // stayed in budget through the attribution window. Penalty must release so the next
+    // admission starts at the base bar — otherwise the device carries a permanent tax for
+    // a single past coincidence.
+    const state = createPlanEngineState();
+    const start = Date.now();
+
+    state.activationAttemptByDevice['dev-1'] = {
+      penaltyLevel: 2,
+      lastSetbackMs: start - 60_000,
+    };
+
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'dev-1',
+      source: 'pels_restore',
+      nowTs: start,
+    });
+
+    syncConfirmedRestoreAttributionState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + 10_000,
+      observation: {
+        currentOn: true,
+        measuredPowerKw: 0.2,
+        deviceClass: 'thermostat',
+        lastFreshDataMs: start + 10_000,
+      },
+      wholeHomePowerSampleAtMs: start + 10_000,
+      cleanWholeHomeSample: false,
+    });
+
+    expect(getActivationPenaltyLevel(state, 'dev-1')).toBe(2);
+
+    const closingSync = syncConfirmedRestoreAttributionState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + 20_000,
+      observation: {
+        currentOn: true,
+        measuredPowerKw: 0.25,
+        deviceClass: 'thermostat',
+        lastFreshDataMs: start + 20_000,
+      },
+      wholeHomePowerSampleAtMs: start + 20_000,
+      cleanWholeHomeSample: true,
+    });
+
+    expect(closingSync.attemptOpen).toBe(false);
+    expect(closingSync.stateChanged).toBe(true);
+    expect(getActivationPenaltyLevel(state, 'dev-1')).toBe(0);
+    expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
+  });
+
+  it('clears penalty for an EV charger step-up (evcharger participates in the confirmed-restore class set)', () => {
+    // Stepped EV chargers go through the same attempt lifecycle as binary thermostats:
+    // executor calls recordActivationAttemptStarted with source 'pels_restore' for a
+    // step-up command. The cautious admission must release its penalty on settlement
+    // — otherwise EV chargers carry the same permanent tax the binary fix removed.
+    const state = createPlanEngineState();
+    const start = Date.now();
+
+    state.activationAttemptByDevice['ev-1'] = {
+      penaltyLevel: 1,
+      lastSetbackMs: start - 60_000,
+    };
+
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'ev-1',
+      source: 'pels_restore',
+      nowTs: start,
+    });
+
+    syncConfirmedRestoreAttributionState({
+      state,
+      deviceId: 'ev-1',
+      nowTs: start + 10_000,
+      observation: {
+        currentOn: true,
+        measuredPowerKw: 6.5,
+        deviceClass: 'evcharger',
+        lastFreshDataMs: start + 10_000,
+      },
+      wholeHomePowerSampleAtMs: start + 10_000,
+      cleanWholeHomeSample: false,
+    });
+
+    const closingSync = syncConfirmedRestoreAttributionState({
+      state,
+      deviceId: 'ev-1',
+      nowTs: start + 20_000,
+      observation: {
+        currentOn: true,
+        measuredPowerKw: 7.0,
+        deviceClass: 'evcharger',
+        lastFreshDataMs: start + 20_000,
+      },
+      wholeHomePowerSampleAtMs: start + 20_000,
+      cleanWholeHomeSample: true,
+    });
+
+    expect(closingSync.attemptOpen).toBe(false);
+    expect(getActivationPenaltyLevel(state, 'ev-1')).toBe(0);
+    expect(state.activationAttemptByDevice['ev-1']).toBeUndefined();
+  });
+
   it('does not quietly close attribution when the device is already off on the next power sample', () => {
     const state = createPlanEngineState();
     const start = Date.now();
@@ -628,11 +738,13 @@ describe('activation backoff', () => {
       .toBeNull();
   });
 
-  it('has no cooldown before any failure, then doubles repeated failures and caps at 30 minutes', () => {
+  it('has no cooldown before any failure, then applies a flat 5-minute cooldown at every penalty level', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
     expect(getActivationRestoreBlockRemainingMs({ state, deviceId: 'dev-1', nowTs: start })).toBeNull();
+    expect(ACTIVATION_SETBACK_RESTORE_BLOCK_MS).toBe(5 * 60 * 1000);
+    expect(ACTIVATION_BACKOFF_CLEAR_WINDOW_MS).toBe(5 * 60 * 1000);
 
     recordActivationAttemptStart({
       state,
@@ -667,9 +779,9 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: secondStart + 60_000,
-    })).toBe(ACTIVATION_SETBACK_RESTORE_BLOCK_MS * 2);
+    })).toBe(ACTIVATION_SETBACK_RESTORE_BLOCK_MS);
 
-    const thirdStart = secondStart + (ACTIVATION_SETBACK_RESTORE_BLOCK_MS * 2) + 61_000;
+    const thirdStart = secondStart + ACTIVATION_SETBACK_RESTORE_BLOCK_MS + 61_000;
     recordActivationAttemptStart({
       state,
       deviceId: 'dev-1',
@@ -1573,7 +1685,7 @@ describe('overshoot-after-restore attribution', () => {
     expect(state.activationAttemptByDevice['dev-a']?.lastSetbackMs).toBe(nowTs);
     const block = getActivationRestoreBlockRemainingMs({ state, deviceId: 'dev-a', nowTs });
     expect(block).not.toBeNull();
-    expect(block).toBeGreaterThan(9 * 60 * 1000);
+    expect(block).toBeGreaterThan(4 * 60 * 1000);
   });
 
   it('does not attribute overshoot to a device restored outside the attribution window', () => {

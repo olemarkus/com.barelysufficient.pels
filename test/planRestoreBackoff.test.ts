@@ -1879,7 +1879,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('pre-stick shed writes lastSetbackMs and blocks restore for 10 minutes', () => {
+  it('pre-stick shed writes lastSetbackMs and blocks restore for the cooldown window', () => {
     // §3.1: Prove restore→overshoot→shed loop is broken when shed happens before stick window.
     const state = createPlanEngineState();
     const deviceId = 'dev-heater';
@@ -2454,7 +2454,7 @@ describe('restore admission — headroom and penalty gates', () => {
     // Fresh setback — block in effect
     state.activationAttemptByDevice[deviceId] = {
       penaltyLevel: 1,
-      lastSetbackMs: now - 1_000, // 1s ago, block runs for 10min
+      lastSetbackMs: now - 1_000, // 1s ago, cooldown still active
     };
 
     const result = applyRestorePlan({
