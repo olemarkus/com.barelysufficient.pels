@@ -551,6 +551,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       energyNeededKWh,
       hoursLeft,
       confidence: energy?.confidence ?? null,
+      planStatus: latest.planStatus,
       nowMs,
       cannotMeet,
       shortfallUnits: cannotMeetUnits,

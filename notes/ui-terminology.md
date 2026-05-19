@@ -122,11 +122,13 @@ Source of truth: `packages/shared-domain/src/deadlineLabels.ts`. Pull every labe
 | Plan inputs card title | `Smart task inputs` | `Smart task inputs` |
 
 The live deadline-plan hero shows only the kind chip plus the cannot-finish chip
-(and confidence as `Estimating` / `Refining` when learning is in progress). The
-headline carries the live state directly (`Heating from HH:MM`, `Charging now`,
-`On track — no action needed yet`, `Cannot finish`), so a separate state chip
-duplicated information. The pending hero and the smart-task list still emit a
-state chip because there the state is the only available signal.
+(and confidence as `Estimating` / `Refining` when learning is in progress,
+except on true cannot-finish heroes where the cannot-finish chip and reason own
+that row). The headline carries the live state directly (`Heating from HH:MM`,
+`Charging now`, `On track — no action needed yet`, `Cannot finish`), so a
+separate state chip duplicated information. The pending hero and the smart-task
+list still emit a state chip because there the state is the only available
+signal.
 
 Rule: a temperature device must never render the words *charge*, *charging*, or *EV* in user-facing text.
 
