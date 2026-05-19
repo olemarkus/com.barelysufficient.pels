@@ -380,7 +380,7 @@ export class DeferredObjectiveActivePlanRecorder {
       this.writeFirstRevision(diag, signature, candidateHours, reason, nowMs);
       return;
     }
-    const backfilled = this.backfillCommitmentIfMissing(current, nowMs);
+    const backfilled = this.backfillCommitmentIfMissing(current, signature, nowMs);
     this.maybeWriteReplanRevision(diag, signature, candidateHours, backfilled, nowMs);
   }
 
@@ -399,11 +399,22 @@ export class DeferredObjectiveActivePlanRecorder {
   // handlers, and any plan with `latest !== null` has already left the pending
   // state — so by the time we reach this path the legacy record is stable
   // enough to commit.
+  //
+  // We also gate the backfill on the persisted `objectiveSignature` matching
+  // the current diagnostic's resolved signature. When they differ (e.g. the
+  // user changed the target/enforcement before the upgrade was observed), the
+  // persisted `latest.hours` correspond to the OLD objective — committing to
+  // them would lock in stale hours for the new target. In that case we skip;
+  // `maybeWriteReplanRevision` will then detect the signature change and
+  // write a fresh revision with the correct commitment via the first-revision
+  // path.
   private backfillCommitmentIfMissing(
     current: DeferredObjectiveActivePlanV1,
+    currentSignature: string,
     nowMs: number,
   ): DeferredObjectiveActivePlanV1 {
     if (current.commitment) return current;
+    if (current.objectiveSignature !== currentSignature) return current;
     const latest = current.latest as DeferredObjectiveActivePlanRevisionV1;
     if (latest.hours.length === 0) return current;
     const backfilled: DeferredObjectiveActivePlanV1 = {

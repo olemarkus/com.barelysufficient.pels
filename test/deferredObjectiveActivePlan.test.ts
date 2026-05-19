@@ -1445,6 +1445,30 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       expect(plan?.commitment).toBeUndefined();
     });
 
+    it('does not backfill when the persisted signature mismatches the current diagnostic', () => {
+      // Legacy plan was persisted for target 65C, but the user changed the
+      // objective to 70C before the upgrade was observed. The persisted
+      // `latest.hours` reflect the OLD target — backfilling would commit the
+      // executor to hours for an objective the user no longer wants. Skip
+      // backfill in this case; `maybeWriteReplanRevision` then writes a fresh
+      // revision under the new signature, and the next observe cycle (with
+      // signatures aligned) will commit the new schedule.
+      const persisted = buildLegacyPersisted();
+      const { deps } = buildPersistDeps(persisted);
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+      // Diagnostic resolves a different signature (70C vs persisted 65C).
+      const diag = makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        targetTemperatureC: 70,
+      });
+      recorder.observe([diag], 2 * HOUR_MS);
+
+      const plan = recorder.getPlanForTests('dev');
+      expect(plan?.commitment).toBeUndefined();
+    });
+
     it('does not rewrite commitment once one is present', () => {
       // Once `commitment` is set (either by `writeFirstRevision` on new
       // plans or by an earlier backfill), subsequent cycles must leave it
