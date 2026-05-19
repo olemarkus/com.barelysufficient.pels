@@ -74,6 +74,11 @@ export default class PriceService {
     private errorLog?: (...args: unknown[]) => void,
     private getHomeyEnergyApi?: () => HomeyEnergyApi | null,
   ) { }
+
+  private onCombinedPricesUpdated?: (reason: string) => void;
+  setOnCombinedPricesUpdated(listener: ((reason: string) => void) | undefined): void {
+    this.onCombinedPricesUpdated = listener;
+  }
   private getSettingValue(key: string): unknown { return this.homey.settings.get(key) as unknown; }
   private getNumberSetting(key: string, fallback: number): number {
     const value = this.getSettingValue(key);
@@ -275,6 +280,7 @@ export default class PriceService {
     }
     this.homey.settings.set(COMBINED_PRICES, payload);
     this.emitRealtime('prices_updated', payload);
+    this.onCombinedPricesUpdated?.('changed');
   }
 
   getCombinedHourlyPrices(): CombinedHourlyPrice[] {

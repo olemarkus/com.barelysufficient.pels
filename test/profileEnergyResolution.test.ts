@@ -1,6 +1,9 @@
 import { progressCurrentValue } from '../lib/plan/deferredObjectives/diagnosticsBridge';
 import type { DeferredObjectiveProgressResolution } from '../lib/plan/deferredObjectives/diagnosticProgress';
-import { resolveProfileEnergy } from '../lib/plan/deferredObjectives/profileEnergyResolution';
+import {
+  resolveDisplayConfidence,
+  resolveProfileEnergy,
+} from '../lib/plan/deferredObjectives/profileEnergyResolution';
 import type {
   DeviceObjectiveProfile,
   ObjectiveProfileBand,
@@ -194,5 +197,126 @@ describe('progressCurrentValue', () => {
       progress: okProgress({ currentPercent: null }),
       objectiveKind: 'ev_soc',
     })).toBeUndefined();
+  });
+});
+
+describe('resolveDisplayConfidence (band-aware)', () => {
+  it('falls back to the global confidence when bands are absent', () => {
+    expect(resolveDisplayConfidence({
+      bands: undefined,
+      globalConfidence: 'low',
+      remainingUnits: 5,
+      currentValue: 50,
+    })).toBe('low');
+  });
+
+  it('falls back to global when currentValue is missing', () => {
+    expect(resolveDisplayConfidence({
+      bands: [band(40, 60, 0.3, 20)],
+      globalConfidence: 'medium',
+      remainingUnits: 5,
+      currentValue: undefined,
+    })).toBe('medium');
+  });
+
+  it('falls back to global when remainingUnits is non-positive', () => {
+    expect(resolveDisplayConfidence({
+      bands: [band(40, 60, 0.3, 20)],
+      globalConfidence: 'high',
+      remainingUnits: 0,
+      currentValue: 50,
+    })).toBe('high');
+  });
+
+  it('falls back to global when an overlapping band is underpopulated', () => {
+    // 3 samples is below MIN_BAND_SAMPLES_FOR_INTEGRATION (4) — the model
+    // would lean on the global mean for that slice, so confidence isn't
+    // band-aware-trustworthy.
+    expect(resolveDisplayConfidence({
+      bands: [band(40, 60, 0.3, 3)],
+      globalConfidence: 'low',
+      remainingUnits: 5,
+      currentValue: 50,
+    })).toBe('low');
+  });
+
+  it('falls back to global when bands leave the interval partially uncovered', () => {
+    // Bands cover [40, 60) but the integration interval is [50, 70). The
+    // upper half [60, 70) sits outside any band → fall back.
+    expect(resolveDisplayConfidence({
+      bands: [band(40, 60, 0.3, 20)],
+      globalConfidence: 'low',
+      remainingUnits: 20,
+      currentValue: 50,
+    })).toBe('low');
+  });
+
+  it('aggregates over fully-covered qualifying bands taking the minimum', () => {
+    // Integration over [50, 70) crosses two adjacent bands; min(high, medium)
+    // = medium.
+    const result = resolveDisplayConfidence({
+      bands: [
+        { lowerInclusive: 40, upperExclusive: 60, sampleCount: 20, mean: 0.3, m2: 0, confidence: 'high' },
+        { lowerInclusive: 60, upperExclusive: 80, sampleCount: 20, mean: 0.5, m2: 0, confidence: 'medium' },
+      ],
+      globalConfidence: 'low',
+      remainingUnits: 20,
+      currentValue: 50,
+    });
+    expect(result).toBe('medium');
+  });
+
+  it('regression: thermal pattern with global low but every band medium+ returns medium', () => {
+    // Classic complaint: thousands of samples on a thermostat, global CV
+    // forces `low`, but bands are individually tight. The chip should reflect
+    // band quality, not the global noise floor.
+    const result = resolveDisplayConfidence({
+      bands: [
+        { lowerInclusive: 40, upperExclusive: 50, sampleCount: 60, mean: 0.55, m2: 0, confidence: 'medium' },
+        { lowerInclusive: 50, upperExclusive: 60, sampleCount: 80, mean: 0.38, m2: 0, confidence: 'high' },
+        { lowerInclusive: 60, upperExclusive: 70, sampleCount: 50, mean: 0.62, m2: 0, confidence: 'medium' },
+      ],
+      globalConfidence: 'low',
+      remainingUnits: 30,
+      currentValue: 40,
+    });
+    expect(result).toBe('medium');
+  });
+});
+
+describe('resolveProfileEnergy displayConfidence', () => {
+  it('exposes a band-aware displayConfidence on the learned resolution', () => {
+    const tracker = buildTracker(buildProfile({
+      kwhPerUnit: { ...stat(0.4), confidence: 'low' },
+      bands: [
+        { lowerInclusive: 40, upperExclusive: 60, sampleCount: 20, mean: 0.4, m2: 0, confidence: 'high' },
+      ],
+    }));
+    const result = resolveProfileEnergy({
+      powerTracker: tracker,
+      deviceId: 'device-1',
+      objectiveKind: 'temperature',
+      remainingUnits: 5,
+      currentValue: 50,
+    });
+    expect(result.reasonCode).toBeNull();
+    if (result.reasonCode !== null) return;
+    expect(result.rateConfidence).toBe('low');
+    expect(result.displayConfidence).toBe('high');
+  });
+
+  it('returns null displayConfidence on the EV bootstrap path', () => {
+    const tracker: PowerTrackerState = { objectiveProfiles: {} };
+    const result = resolveProfileEnergy({
+      powerTracker: tracker,
+      deviceId: 'device-1',
+      objectiveKind: 'ev_soc',
+      remainingUnits: 20,
+      currentValue: 40,
+    });
+    expect(result.reasonCode).toBeNull();
+    if (result.reasonCode !== null) return;
+    expect(result.kwhPerUnitSource).toBe('bootstrap');
+    expect(result.displayConfidence).toBeNull();
   });
 });

@@ -48,10 +48,22 @@ The effective `kWhPerUnit` reported back to the planner is `energy / remainingUn
 
 ## Interaction with #775 recovery window
 
-The recovery window suspends all stat updates while armed. The new buffer/band logic is reached only via `buildAcceptedProfileSample`, which runs only on the non-recovery path. Recovery's `disarm_recovery` path destructures `recoveryTargetValue`/`recoveryArmedAtMs` via `...rest` but preserves `samples` and `bands`. So:
+The recovery window suspends all stat updates while armed. The new buffer/band logic is reached only via `buildAcceptedProfileSample`, which runs only on the non-recovery path. Recovery's `disarm_recovery` path destructures `recoveryTargetValue`/`recoveryArmedAtMs` (and `recoveryNoProgressSamples`) via `...rest` but preserves `samples` and `bands`. So:
 
 - A refill cycle does not push samples into the buffer.
 - Bands learned before a drop survive the drop unchanged and resume estimating after recovery.
+
+### Forward-progress disarm
+
+`resolveArmedRecovery` disarms on three conditions, in order:
+
+1. **Recovered** — `sample.value >= recoveryTargetValue` (pre-drop value reached).
+2. **Safety timeout** — armed age ≥ `RECOVERY_SAFETY_TIMEOUT_MS` (24h hard cap).
+3. **No progress** — `RECOVERY_NO_PROGRESS_SAMPLE_LIMIT` consecutive samples with non-positive delta vs the previous sample. A delta above `RECOVERY_PROGRESS_EPSILON` resets the counter.
+
+The third condition exists for cap-shed thermostats: when a smart task is itself shedding the heater, the device cools *away* from the pre-drop value and would otherwise sit in `reject_recovering` for the full 24h timeout, blocking all stat and band updates. The no-progress disarm treats this as "we lost the refill assumption; resume baseline learning" — recovery fields clear, the disarming sample becomes the new baseline, `samples` / `bands` survive.
+
+The disarm event carries `disarmReason: 'recovered' | 'safety_timeout' | 'no_progress'` for telemetry; the action itself remains `disarm_recovery` for all three paths.
 
 ## Why not …
 
@@ -67,6 +79,22 @@ Before this change, `kwhPerUnitProvenance.kWhPerUnit` on an active plan recorded
 Consequence: **two plans for the same device starting from different SoCs or temperatures can record different `kWhPerUnit` even when nothing in the model has changed.** This is intentional — the recorded value reflects what was actually used to size this plan. Operators reading provenance should treat it as "rate used for this plan," not "the device's learned rate."
 
 If a UI surface needs the stable learned mean separately, it can read `objectiveProfiles[deviceId].kwhPerUnit.mean` directly from `power_tracker_state`.
+
+## `displayConfidence` for the smart-task chip
+
+The active-plan provenance carries two confidence values:
+
+- `confidence` — the raw per-sample CV-based stat from `objectiveProfileStats.resolveProfileConfidence`. Honest about per-sample noise. On thermal devices this sits at `low` effectively forever (stratification + ambient drift + draw history pushes CV above 0.75 regardless of sample count). Kept for logs and diagnostics.
+- `displayConfidence` — the band-aware aggregate driving the "Estimating" / "Refining" chip. Reflects whether the bands actually integrated for this resolution are well-supported.
+
+`resolveDisplayConfidence` aggregates per the rule:
+
+1. No bands, or no `currentValue`, or non-positive `remainingUnits` → fall back to global.
+2. An overlapping band has `sampleCount < MIN_BAND_SAMPLES_FOR_INTEGRATION` → fall back to global (we'd lean on the global mean for that slice anyway).
+3. Bands don't fully cover `[current, target]` (within a 1e-6 tolerance) → fall back to global.
+4. Otherwise → `min(confidence)` across overlapping bands.
+
+The UI consumer in `packages/settings-ui/src/ui/deadlinePlanResolvers.ts` reads `provenance.displayConfidence` first, falls back to `provenance.confidence`, then to the live profile's stat. Producer-resolved per `feedback_layering_resolution_in_producer.md`: the UI never branches on bands or per-band fields.
 
 ## Tunables
 

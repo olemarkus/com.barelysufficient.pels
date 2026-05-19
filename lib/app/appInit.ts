@@ -8,6 +8,7 @@ import {
 import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
 import { PlanService } from '../plan/planService';
 import { PriceCoordinator } from '../price/priceCoordinator';
+import { PriceFlowTagPublisher } from '../price/priceFlowTags';
 import { readPriceStore } from '../price/priceStore';
 import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import { resolveHomeyEnergyApiFromSdk } from '../utils/homeyEnergy';
@@ -453,6 +454,21 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
     logDebug: (...args: unknown[]) => ctx.logDebug('price', ...args),
     error: (...args: unknown[]) => ctx.error(...args),
     structuredLog: ctx.getStructuredLogger('price'),
+    onCombinedPricesUpdated: (reason) => {
+      const publisher = ctx.priceFlowTagPublisher;
+      if (!publisher) return;
+      publisher.publish(reason).catch((error) => ctx.error('PriceFlowTagPublisher.publish failed', error));
+    },
+  });
+}
+
+export function createPriceFlowTagPublisher(ctx: AppContext): PriceFlowTagPublisher {
+  return new PriceFlowTagPublisher({
+    homey: ctx.homey,
+    requestPriceRefetch: () => ctx.priceCoordinator?.updateCombinedPrices(),
+    log: (...args: unknown[]) => ctx.log(...args),
+    logDebug: (...args: unknown[]) => ctx.logDebug('price', ...args),
+    error: (...args: unknown[]) => ctx.error(...args),
   });
 }
 

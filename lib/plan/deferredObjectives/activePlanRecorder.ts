@@ -222,11 +222,15 @@ const resolveProvenance = (
   const confidence = source === 'learned' && isProvenanceConfidence(diag.rateConfidence)
     ? diag.rateConfidence
     : null;
+  const displayConfidence = source === 'learned' && isProvenanceConfidence(diag.displayConfidence)
+    ? diag.displayConfidence
+    : null;
   return {
     source,
     kWhPerUnit: typeof learnedKwh === 'number' && Number.isFinite(learnedKwh) ? learnedKwh : null,
     acceptedSamples: source === 'learned' ? diag.kwhPerUnitAcceptedSamples : 0,
     confidence,
+    displayConfidence,
     lastAcceptedAtMs: source === 'learned' ? diag.kwhPerUnitLastAcceptedAtMs : null,
   };
 };
