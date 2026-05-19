@@ -531,7 +531,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // Legacy persisted plans (recorded before this snapshot shipped) carry no
     // `initialPlanningSpeedKw` / `initialEstimatedDurationText`. The next
     // replan revision must backfill from the new revision so the hero meta
-    // line stops falling back to the shrinking per-revision value.
+    // line stops falling back to the shrinking per-revision value. Drive the
+    // replan via a `planStatus` transition so the commitment-backfilled
+    // schedule envelope stays stable while metadata drifts.
     const legacyPlan: DeferredObjectiveActivePlansV1 = {
       version: 1,
       plansByDeviceId: {
@@ -577,9 +579,11 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       energyNeededKWh: 4.5,
       horizonPlan: makeHorizon([
         makeBucket(2 * HOUR_MS, 1.5),
-        makeBucket(3 * HOUR_MS, 1.5),
-        makeBucket(4 * HOUR_MS, 1.5),
-      ]),
+      ], {
+        status: 'at_risk',
+        statusDetail: 'planned_using_deadline_reserve',
+        energyNeededKWh: 4.5,
+      }),
     })], 2 * HOUR_MS);
 
     const plan = recorder.getPlanForTests('dev');
@@ -1324,6 +1328,141 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const { deps } = buildPersistDeps(persisted);
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
     expect(recorder.getActivePlansSnapshot().plansByDeviceId.dev?.latest?.revision).toBe(1);
+  });
+
+  describe('commitment backfill on legacy persisted plans', () => {
+    const legacyHours = [
+      { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: 4 * HOUR_MS, plannedKWh: 1.5 },
+    ];
+
+    const buildLegacyPersisted = (
+      overrides: Partial<DeferredObjectiveActivePlansV1['plansByDeviceId'][string]> = {},
+    ): DeferredObjectiveActivePlansV1 => ({
+      version: 1,
+      plansByDeviceId: {
+        dev: {
+          deviceId: 'dev',
+          deviceName: 'Water Heater',
+          objectiveKind: 'temperature',
+          targetTemperatureC: 65,
+          targetPercent: null,
+          deadlineAtMs: 6 * HOUR_MS,
+          startedAtMs: 0,
+          pending: false,
+          objectiveSignature: '["temperature",65,null,21600000,"soft"]',
+          original: {
+            revision: 1,
+            revisedAtMs: HOUR_MS,
+            computedFromPricesUpTo: 5 * HOUR_MS,
+            reason: 'flow_card',
+            hours: legacyHours,
+          },
+          latest: {
+            revision: 1,
+            revisedAtMs: HOUR_MS,
+            computedFromPricesUpTo: 5 * HOUR_MS,
+            reason: 'flow_card',
+            hours: legacyHours,
+          },
+          ...overrides,
+        },
+      },
+    });
+
+    it('adopts the latest schedule as the committed envelope on a legacy plan', () => {
+      // v2.7.3 persisted plans never set `commitment`, so the executor falls
+      // back to fresh optimisation every cycle. The recorder must quietly
+      // backfill the existing schedule as the committed envelope on the first
+      // observe cycle after upgrade.
+      const persisted = buildLegacyPersisted();
+      const { deps } = buildPersistDeps(persisted);
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+      const observeAtMs = 2 * HOUR_MS;
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], observeAtMs);
+
+      const plan = recorder.getPlanForTests('dev');
+      expect(plan?.commitment).toEqual({
+        committedAtMs: observeAtMs,
+        hours: legacyHours,
+      });
+    });
+
+    it('skips backfill when the legacy plan is pending', () => {
+      // Pending plans have no committed allocation yet; the next observe
+      // cycle should write the first revision via `writeFirstRevision`,
+      // which already sets `commitment`. Backfill must not run.
+      const persisted = buildLegacyPersisted({
+        pending: true,
+        original: null,
+        latest: null,
+      });
+      const { deps } = buildPersistDeps(persisted);
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], 2 * HOUR_MS);
+
+      const plan = recorder.getPlanForTests('dev');
+      // The pending plan should transition into a fresh first revision
+      // (which sets commitment via writeFirstRevision), not via the
+      // legacy-backfill path. The committedAtMs therefore matches the
+      // observe timestamp regardless; the test below pins the contract.
+      expect(plan?.pending).toBe(false);
+      expect(plan?.commitment?.committedAtMs).toBe(2 * HOUR_MS);
+      expect(plan?.original?.revision).toBe(1);
+    });
+
+    it('does not backfill commitment when the latest schedule is empty', () => {
+      // An empty `latest.hours` means the planner accepted zero hours
+      // (target already satisfied). Committing to an empty envelope would
+      // freeze the plan against ever scheduling more hours, which is not
+      // what the user agreed to.
+      const persisted = buildLegacyPersisted({
+        original: {
+          revision: 1,
+          revisedAtMs: HOUR_MS,
+          computedFromPricesUpTo: 5 * HOUR_MS,
+          reason: 'flow_card',
+          hours: [],
+        },
+        latest: {
+          revision: 1,
+          revisedAtMs: HOUR_MS,
+          computedFromPricesUpTo: 5 * HOUR_MS,
+          reason: 'flow_card',
+          hours: [],
+        },
+      });
+      const { deps } = buildPersistDeps(persisted);
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+      const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+      recorder.observe([diag], 2 * HOUR_MS);
+
+      const plan = recorder.getPlanForTests('dev');
+      expect(plan?.commitment).toBeUndefined();
+    });
+
+    it('does not rewrite commitment once one is present', () => {
+      // Once `commitment` is set (either by `writeFirstRevision` on new
+      // plans or by an earlier backfill), subsequent cycles must leave it
+      // alone — the committed envelope is the stable schedule, not a
+      // recomputed snapshot.
+      const existingCommitment = {
+        committedAtMs: HOUR_MS,
+        hours: legacyHours,
+      };
+      const persisted = buildLegacyPersisted({ commitment: existingCommitment });
+      const { deps } = buildPersistDeps(persisted);
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], 5 * HOUR_MS);
+
+      const plan = recorder.getPlanForTests('dev');
+      expect(plan?.commitment).toEqual(existingCommitment);
+    });
   });
 
   describe('normalizeDeferredObjectiveActivePlans (persisted-plan round trip)', () => {
