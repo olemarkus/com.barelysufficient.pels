@@ -271,6 +271,58 @@ graceful but should ship in the next patch.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] Persist `currentHourOpening` / `lastKWhPerUnit` across PELS restarts.
+      The v2.8.0 `recordHourlyDelivery` wiring tracks these on the in-memory
+      `InProgressRecord` but does not write them to
+      `DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING`. Homey runtime restarts
+      (settings change, OOM, deploy) reset the hour anchor; any progress
+      delivered between the pre-restart opening and the first post-restart
+      observation is dropped from the postmortem strip. Contract is documented
+      in `lib/plan/deferredObjectives/planHistory.ts:InProgressRecord` and the
+      `restarts mid-run drop the in-flight hour anchor` regression test pins
+      the observed behaviour. Persist alongside the rest of the in-progress
+      record so the strip stays whole across restarts.
+      Source: `pels-runtime-reality` agent, v2.8.0 PR1 review pass.
+      Files: `lib/plan/deferredObjectives/planHistory.ts`,
+      `packages/contracts/src/deferredObjectiveActivePlans.ts`.
+
+- [ ] Prorate postmortem-strip delivery across unobserved multi-hour gaps
+      under `power_source = flow`. The v2.8.0 hour-rollover detector
+      attributes the full delta of an N-hour observation gap to the opening
+      hour, leaving intermediate hours blank. Acceptable for
+      `power_source = homey_energy` (10 s poll → gaps rare) but systematically
+      mis-attributes cost for quiet flow-driven devices. Requires independent
+      per-hour power telemetry to do correctly — out of scope for the initial
+      wiring. Contract documented in `planHistoryV4Helpers.ts:detectHourRollover`.
+      Source: `pels-runtime-reality` agent, v2.8.0 PR1 review pass.
+
+- [ ] Extract postmortem tone classification into `packages/shared-domain/`
+      next to the existing price-chip classifier. v2.8.0 PR1's
+      `resolveTone` helper in `lib/app/appInit.ts` consumes
+      `entry.isCheap`/`entry.isExpensive` directly (no re-derivation), but
+      lives in the wiring layer. A shared helper would let the postmortem
+      strip and the live price chip share one classification surface.
+      Source: `pels-layering-guardian` agent, v2.8.0 PR1 review pass.
+
+- [ ] Type the combined-prices `ctx` accessor in `lib/app/appInit.ts`.
+      `readPriceStore` returns a typed `CombinedPricesV2 | null`, so the
+      v2.8.0 PR1 resolver no longer casts through `unknown`. Track a contract
+      type for any remaining `ctx.getCombinedHourlyPrices()` callers in
+      drivers/flowCards so they share the same type surface.
+      Source: `pels-layering-guardian` agent, v2.8.0 PR1 review pass.
+
+- [ ] Reduce `lib/plan/deferredObjectives/planHistory.ts` `max-lines`
+      override (currently 720, was 620 pre-v2.8.0). Bumped to host the
+      hour-rollover detector and finalize-time flush. Target: lower once the
+      in-progress record + finalize paths split into their own module, or
+      once the postmortem tone helper extraction (above) lets the file shrink.
+      Source: `pels-layering-guardian` agent, v2.8.0 PR1 review pass.
+
+- [ ] Reduce `lib/app/appInit.ts` `max-lines` override (currently 520).
+      Bumped in v2.8.0 PR1 to host the per-hour price resolver. Target: <=500
+      once the resolver moves into a dedicated module alongside the other
+      deferred-objective wiring (or the shared-domain tone helper above lands).
+
 - [ ] Refresh stale smart-task UX notes that still mention "move deadline
       later" as a missed-task recourse. `notes/ui-terminology.md` now defines
       the canonical recourse pair as `Lower daily budget` / `Review device`;

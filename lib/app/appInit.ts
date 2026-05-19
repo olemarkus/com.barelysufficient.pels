@@ -9,7 +9,7 @@ import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
 import { PlanService } from '../plan/planService';
 import { PriceCoordinator } from '../price/priceCoordinator';
 import { PriceFlowTagPublisher } from '../price/priceFlowTags';
-import { readPriceStore } from '../price/priceStore';
+import { flattenAllHours, readPriceStore } from '../price/priceStore';
 import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import { resolveHomeyEnergyApiFromSdk } from '../utils/homeyEnergy';
 import type { FlowHomeyLike, TargetDeviceSnapshot } from '../utils/types';
@@ -116,10 +116,53 @@ export function createDeferredObjectivePlanHistoryRecorder(
       }
     },
     endedBus: ctx.deferredObjectiveEndedBus,
+    // Resolve hourly spot price + tone for the internal hour-rollover
+    // detector. Reads the persisted V2 combined-prices store directly so
+    // the postmortem consumes the producer's already-resolved
+    // `isCheap`/`isExpensive` flags (per `feedback_layering_resolution_in_producer`).
+    // Missing entries / unloaded payload return `null` so the postmortem
+    // skips that hour rather than fabricating a contribution.
+    resolveHourPrice: (hourStartMs) => resolveHourPriceFromContext(ctx, hourStartMs),
   });
   runStartupBackfill(ctx, recorder);
   return recorder;
 }
+
+// Look up the persisted V2 combined-prices entry whose hour-aligned
+// `startsAt` equals `hourStartMs` and map its already-resolved
+// `isCheap`/`isExpensive` flags onto the postmortem tone enum. Consuming
+// the producer's classification directly keeps the postmortem tone in
+// lockstep with the live price chip (same flag set, same min-diff, same
+// thresholds) — no re-derivation, no drift. Returns `null` when no entry
+// covers the hour, when `total` is non-finite, or when the payload hasn't
+// loaded yet — all three are best-effort skip cases.
+const resolveTone = (entry: {
+  isCheap?: boolean;
+  isExpensive?: boolean;
+}): 'cheap' | 'normal' | 'expensive' => {
+  if (entry.isCheap) return 'cheap';
+  if (entry.isExpensive) return 'expensive';
+  return 'normal';
+};
+
+const resolveHourPriceFromContext = (
+  ctx: AppContext,
+  hourStartMs: number,
+): { priceValue: number; tone: 'cheap' | 'normal' | 'expensive' } | null => {
+  const store = readPriceStore(
+    { homey: ctx.homey, requestRefetch: () => ctx.priceCoordinator?.updateCombinedPrices() },
+    new Date(),
+    ctx.homey.clock.getTimezone(),
+  );
+  if (!store) return null;
+  for (const entry of flattenAllHours(store)) {
+    const entryStart = new Date(entry.startsAt).getTime();
+    if (!Number.isFinite(entryStart) || entryStart !== hourStartMs) continue;
+    if (!Number.isFinite(entry.total)) return null;
+    return { priceValue: entry.total, tone: resolveTone(entry) };
+  }
+  return null;
+};
 
 function runStartupBackfill(
   ctx: AppContext,
