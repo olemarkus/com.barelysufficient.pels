@@ -26,8 +26,10 @@ import type { DeadlinePlanHeroTone, DeadlinePlanPayload } from './views/Deadline
 // so it stays in sync with the hero rim tone: `alert` (red) for
 // `cannot_meet`, `warn` (amber) for `at_risk`. The confidence chip is
 // suppressed when `confidence === 'high'` because the common case carries no
-// useful signal; the caller passes action-oriented text ("Estimating" /
-// "Refining") for low / medium confidence.
+// useful signal; it is also suppressed for true `cannot_meet` heroes because
+// the Cannot-finish chip and body reason own that row. The caller passes
+// action-oriented text ("Estimating" / "Refining") for low / medium
+// confidence when it remains useful.
 export const buildHeroChips = (params: {
   labels: DeadlineLabels;
   cannotMeet: boolean;
@@ -50,6 +52,14 @@ export const resolveConfidenceChipText = (confidence: string | null): string | n
   if (confidence === 'low') return 'Estimating';
   if (confidence === 'medium') return 'Refining';
   return null;
+};
+
+export const resolveLiveHeroConfidenceChipText = (params: {
+  confidence: string | null;
+  planStatus: DeferredObjectiveActivePlanStatusV1;
+}): string | null => {
+  if (params.planStatus === 'cannot_meet') return null;
+  return resolveConfidenceChipText(params.confidence);
 };
 
 // Maps the planner's `planStatus` to the hero's CSS rim tone. Resolved at the
@@ -188,6 +198,7 @@ export type BuildHeroInput = {
   energyNeededKWh: number;
   hoursLeft: number;
   confidence: string | null;
+  planStatus: DeferredObjectiveActivePlanStatusV1;
   nowMs: number;
   cannotMeet: boolean;
   // Remaining shortfall against the target after the planner's best-effort
@@ -320,7 +331,10 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
       labels: params.labels,
       cannotMeet: params.cannotMeet,
       cannotMeetChipTone,
-      confidenceChipText: resolveConfidenceChipText(params.confidence),
+      confidenceChipText: resolveLiveHeroConfidenceChipText({
+        confidence: params.confidence,
+        planStatus: params.planStatus,
+      }),
     }),
     tone: params.tone,
     sectionLabel: params.labels.sectionLabel,

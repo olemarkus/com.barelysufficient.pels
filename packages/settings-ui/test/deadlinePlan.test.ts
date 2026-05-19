@@ -907,6 +907,15 @@ describe('deadline plan page payload', () => {
       homeyToday: null,
       homeyTomorrow: null,
     };
+    const activePlan = buildHeaterActivePlan({
+      now,
+      deadline,
+      plannedHourOffsets: [0, 1],
+      plannedKWhPerHour: 2,
+      targetTemperatureC: 65,
+      energyNeededKWh: 16,
+      planStatus: 'cannot_meet',
+    });
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
       deferred_objectives: {
@@ -921,15 +930,10 @@ describe('deadline plan page payload', () => {
           },
         },
       },
-    }, buildHeaterActivePlan({
-      now,
-      deadline,
-      plannedHourOffsets: [0, 1],
-      plannedKWhPerHour: 2,
-      targetTemperatureC: 65,
-      energyNeededKWh: 16,
-      planStatus: 'cannot_meet',
-    }));
+    }, activePlan);
+    const profile = bootstrap.power.tracker?.objectiveProfiles?.heater;
+    if (!profile?.kwhPerUnit) throw new Error('expected heater profile');
+    profile.kwhPerUnit.confidence = 'low';
 
     const payload = expectOk(testExports.buildObjectivePayload({
       bootstrap,
@@ -942,6 +946,11 @@ describe('deadline plan page payload', () => {
     // The Cannot-finish chip mirrors the hero rim — `cannot_meet` → `alert`
     // on both — so the user never sees a red rim with an amber chip.
     expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish' && chip.tone === 'alert')).toBe(true);
+    expect(payload.hero.chips.map((chip) => chip.text)).toEqual(['Temperature', 'Cannot finish']);
+    expect(payload.hero.chips.some((chip) => chip.text === 'Estimating')).toBe(false);
+    // The redundant headline remains suppressed; the chip and reason line
+    // carry the cannot-finish signal without adding a second headline.
+    expect(payload.hero.headline).toBeNull();
     // Shortfall copy names the cause in plain language ("may not reach the
     // target temperature") rather than rendering a raw °C delta; the meta
     // line still carries the Needs/duration magnitude after the sentence.
@@ -3077,6 +3086,24 @@ describe('resolveConfidenceChipText', () => {
   it('returns null when no confidence is available so the chip is suppressed', async () => {
     const { resolveConfidenceChipText } = await import('../src/ui/deadlinePlanHero.ts');
     expect(resolveConfidenceChipText(null)).toBeNull();
+  });
+});
+
+describe('resolveLiveHeroConfidenceChipText', () => {
+  it('suppresses low-confidence copy for true cannot-meet heroes', async () => {
+    const { resolveLiveHeroConfidenceChipText } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveLiveHeroConfidenceChipText({
+      confidence: 'low',
+      planStatus: 'cannot_meet',
+    })).toBeNull();
+  });
+
+  it('keeps low-confidence copy for at-risk heroes', async () => {
+    const { resolveLiveHeroConfidenceChipText } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveLiveHeroConfidenceChipText({
+      confidence: 'low',
+      planStatus: 'at_risk',
+    })).toBe('Estimating');
   });
 });
 
