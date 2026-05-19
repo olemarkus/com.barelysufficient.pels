@@ -17,9 +17,14 @@ import {
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import type { DeferredObjectivePlanRevisionEvent } from './planRevisionBus';
-
-const KWH_ROUNDING_FACTOR = 1000;
-const ONE_HOUR_MS = 60 * 60 * 1000;
+import {
+  buildHoursFromHorizonPlan,
+  resolveProjectedFinishAtMs,
+  sameHourSchedule,
+  shouldFireNotification,
+} from './activePlanSchedule';
+import { roundKWh } from './activePlanMath';
+import { buildObjectiveSignature } from './activePlanSignature';
 
 // Persisted plans store mixed objective kinds, so derive the nullable
 // persisted value from the discriminated diagnostic.
@@ -33,8 +38,6 @@ const diagTargetTemperatureC = (diag: DeferredObjectiveDiagnostic): number | nul
 // at least an hour without seeing the diagnostic before declaring the
 // objective abandoned.
 const ABANDON_GRACE_MS = 60 * 60 * 1000;
-
-const roundKWh = (value: number): number => Math.round(value * KWH_ROUNDING_FACTOR) / KWH_ROUNDING_FACTOR;
 
 export type ActivePlanPersistDeps = {
   load: () => DeferredObjectiveActivePlansV1 | null;
@@ -53,20 +56,6 @@ export type ActivePlanFlowCardSeed = {
   enforcement: 'soft' | 'hard';
 };
 
-export const buildObjectiveSignature = (params: {
-  objectiveKind: 'temperature' | 'ev_soc';
-  targetTemperatureC: number | null;
-  targetPercent: number | null;
-  deadlineAtMs: number;
-  enforcement: 'soft' | 'hard';
-}): string => JSON.stringify([
-  params.objectiveKind,
-  params.targetTemperatureC,
-  params.targetPercent,
-  params.deadlineAtMs,
-  params.enforcement,
-]);
-
 const buildSignatureFromDiagnostic = (diag: DeferredObjectiveDiagnostic): string | null => {
   if (diag.deadlineAtMs === null) return null;
   return buildObjectiveSignature({
@@ -76,89 +65,6 @@ const buildSignatureFromDiagnostic = (diag: DeferredObjectiveDiagnostic): string
     deadlineAtMs: diag.deadlineAtMs,
     enforcement: diag.enforcement,
   });
-};
-
-const buildHoursFromHorizonPlan = (
-  diag: DeferredObjectiveDiagnostic,
-): DeferredObjectiveActivePlanHourV1[] | null => {
-  const horizonPlan = diag.horizonPlan;
-  if (!horizonPlan) return null;
-  // The horizon planner trims the current bucket's start to `nowMs` and may
-  // split a single hour into two segments at `planningEndMs` (see
-  // `bucketAllocation.ts`), so plannedBucket startMs values can be
-  // mid-hour. The Settings UI keys planned usage by hour-aligned price-horizon
-  // start timestamps, so floor each bucket to its containing hour and sum
-  // segments that collapse into the same hour.
-  const byHour = new Map<number, number>();
-  for (const bucket of horizonPlan.plannedBuckets) {
-    if (bucket.plannedUsefulEnergyKWh <= 0) continue;
-    const hourStart = Math.floor(bucket.startMs / ONE_HOUR_MS) * ONE_HOUR_MS;
-    byHour.set(hourStart, (byHour.get(hourStart) ?? 0) + bucket.plannedUsefulEnergyKWh);
-  }
-  return [...byHour.entries()]
-    .map(([startsAtMs, plannedKWh]) => ({ startsAtMs, plannedKWh: roundKWh(plannedKWh) }))
-    .sort((left, right) => left.startsAtMs - right.startsAtMs);
-};
-
-const resolveProjectedFinishAtMs = (
-  diag: DeferredObjectiveDiagnostic,
-): number | null => {
-  const horizonPlan = diag.horizonPlan;
-  if (!horizonPlan) return null;
-  // The last planned bucket may be only partially used; estimate finish time
-  // from its fill ratio so the trigger token reflects realistic completion,
-  // not just the hour boundary.
-  let lastPlannedBucket: typeof horizonPlan.plannedBuckets[number] | null = null;
-  for (const bucket of horizonPlan.plannedBuckets) {
-    if (bucket.plannedUsefulEnergyKWh <= 0) continue;
-    if (lastPlannedBucket === null || bucket.startMs > lastPlannedBucket.startMs) {
-      lastPlannedBucket = bucket;
-    }
-  }
-  if (lastPlannedBucket === null) return null;
-  const bucketDurationMs = lastPlannedBucket.endMs - lastPlannedBucket.startMs;
-  if (bucketDurationMs <= 0) return null;
-  const capacity = lastPlannedBucket.usefulEnergyCapacityKWh;
-  const fraction = capacity > 0
-    ? Math.min(1, Math.max(0, lastPlannedBucket.plannedUsefulEnergyKWh / capacity))
-    : 1;
-  return Math.round(lastPlannedBucket.startMs + fraction * bucketDurationMs);
-};
-
-// Schedule comparison: two hour lists are equivalent iff they cover the same
-// set of hour-aligned `startsAtMs` values, in order. `plannedKWh` is
-// deliberately excluded — a shrinking `energyNeededKWh` (e.g. consumption
-// during the same set of charging hours) redistributes kWh across the same
-// hours without changing the user-visible schedule, and must not fire a
-// "new plan" notification.
-// User-facing notification gate. Fires only when the number of charging
-// hours actually changes — same-count swaps still persist a revision but
-// stay quiet on the flow bus. Empty schedules split by intent: a
-// `satisfied` collapse is suppressed (target met — no plan to notify about,
-// and the token template would render as the malformed "…reach goal at .
-// 0 kWh remaining"); a `cannot_meet` or `invalid` collapse fires so
-// automations see "your plan blew up" even when the planner stays in the
-// same status across a statusDetail worsening (e.g.
-// cannot_meet/target_cannot_be_met → cannot_meet/no_bucket_capacity).
-const shouldFireNotification = (
-  previousHourCount: number,
-  nextHourCount: number,
-  planStatus: DeferredObjectiveActivePlanRevisionV1['planStatus'],
-): boolean => {
-  if (previousHourCount === nextHourCount) return false;
-  if (nextHourCount > 0) return true;
-  return planStatus === 'cannot_meet' || planStatus === 'invalid';
-};
-
-const sameHourSchedule = (
-  a: readonly DeferredObjectiveActivePlanHourV1[],
-  b: readonly DeferredObjectiveActivePlanHourV1[],
-): boolean => {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    if (a[i]!.startsAtMs !== b[i]!.startsAtMs) return false;
-  }
-  return true;
 };
 
 const createPlanFromSeed = (seed: ActivePlanFlowCardSeed, nowMs: number): DeferredObjectiveActivePlanV1 => ({
@@ -359,6 +265,30 @@ const hasMetadataDriftedWithinSchedule = (params: {
     || previousExhausted !== diag.dailyBudgetExhaustedBucketCount;
 };
 
+const resolveSourceTransition = (params: {
+  latest: DeferredObjectiveActivePlanRevisionV1;
+  diag: DeferredObjectiveDiagnostic;
+}): { sourceChanged: boolean; sourceRefined: boolean } => {
+  const previousSource = resolveLatestKwhPerUnitSource(params.latest);
+  const nextSource = params.diag.kwhPerUnitSource;
+  return {
+    sourceChanged: nextSource !== null && previousSource !== nextSource,
+    sourceRefined: previousSource === 'bootstrap' && nextSource === 'learned',
+  };
+};
+
+const shouldWriteReplanRevision = (params: {
+  objectiveChanged: boolean;
+  scheduleChanged: boolean;
+  metadataDriftedWithinSchedule: boolean;
+  sourceChanged: boolean;
+}): boolean => (
+  params.objectiveChanged
+    || params.scheduleChanged
+    || params.metadataDriftedWithinSchedule
+    || params.sourceChanged
+);
+
 export class DeferredObjectiveActivePlanRecorder {
   private plans: Record<string, DeferredObjectiveActivePlanV1>;
 
@@ -381,13 +311,8 @@ export class DeferredObjectiveActivePlanRecorder {
   // before the next plan cycle has a chance to compute a horizon.
   markPending(seed: ActivePlanFlowCardSeed, nowMs: number): void {
     const existing = this.plans[seed.deviceId];
-    if (existing && existing.deadlineAtMs === seed.deadlineAtMs) {
-      // Same deadline: leave signature/targets/kind alone so the next observe()
-      // cycle can detect an objective change naturally and write a revision
-      // with reason `objective_changed`. Updating those fields here would mask
-      // the diff because `maybeWriteReplanRevision` compares the diagnostic's
-      // signature against `current.objectiveSignature`. Refresh only the
-      // cosmetic device name.
+    const signature = buildObjectiveSignature(seed);
+    if (existing && existing.deadlineAtMs === seed.deadlineAtMs && existing.objectiveSignature === signature) {
       if (existing.deviceName !== seed.deviceName) {
         this.plans[seed.deviceId] = { ...existing, deviceName: seed.deviceName };
         this.dirty = true;
@@ -517,6 +442,10 @@ export class DeferredObjectiveActivePlanRecorder {
       startedAtMs,
       pending: false,
       objectiveSignature: signature,
+      commitment: {
+        committedAtMs: nowMs,
+        hours,
+      },
       ...(provenance ? { kwhPerUnitProvenance: provenance } : {}),
       ...(revision.planningSpeedKw !== undefined ? { initialPlanningSpeedKw: revision.planningSpeedKw } : {}),
       ...(revision.estimatedDurationText !== undefined
@@ -546,10 +475,11 @@ export class DeferredObjectiveActivePlanRecorder {
     // is null, so we can dereference it directly here.
     const latest = current.latest as DeferredObjectiveActivePlanRevisionV1;
     const horizonPlan = diag.horizonPlan as NonNullable<typeof diag.horizonPlan>;
+    const effectiveHours = current.commitment?.hours ?? hours;
     const objectiveChanged = current.objectiveSignature !== signature;
     // Schedule change = user-visible "new plan" (set of charging hours).
     // Drives the `deadline_plan_changed` flow trigger.
-    const scheduleChanged = !sameHourSchedule(latest.hours, hours);
+    const scheduleChanged = !sameHourSchedule(latest.hours, effectiveHours);
     // Same charging hours but consumer-visible status fields drifted — see
     // `hasMetadataDriftedWithinSchedule` for the field list. Covers
     // `planStatus` transitions (drives the "Can't fully meet" chip) and
@@ -571,20 +501,22 @@ export class DeferredObjectiveActivePlanRecorder {
     // change" rather than coercing it to `'learned'` — otherwise a bootstrap
     // revision followed by a satisfied diagnostic would spuriously fire
     // `rate_refined` even though nothing was learned.
-    const previousSource = resolveLatestKwhPerUnitSource(latest);
-    const nextSource = diag.kwhPerUnitSource;
-    const sourceChanged = nextSource !== null && previousSource !== nextSource;
-    const sourceRefined = previousSource === 'bootstrap' && nextSource === 'learned';
+    const { sourceChanged, sourceRefined } = resolveSourceTransition({ latest, diag });
     // TODO: device_unavailable + measured_deviation triggers — wired here once
     // device-level metering exists. For now those reasons are not used.
-    if (!objectiveChanged && !scheduleChanged && !metadataDriftedWithinSchedule && !sourceChanged) return;
+    if (!shouldWriteReplanRevision({
+      objectiveChanged,
+      scheduleChanged,
+      metadataDriftedWithinSchedule,
+      sourceChanged,
+    })) return;
     const reason = resolveReplanReason({
       objectiveChanged,
       sourceRefined,
       pricesAdvanced: hasPriceHorizonAdvanced(latest, diag),
     });
     const nextRevision = latest.revision + 1;
-    const revision = buildRevision({ diag, hours, revision: nextRevision, reason, nowMs });
+    const revision = buildRevision({ diag, hours: effectiveHours, revision: nextRevision, reason, nowMs });
     const provenance = resolveProvenance(diag);
     // Provenance updates are best-effort; preserve the existing snapshot when
     // the new diagnostic didn't resolve a profile so we don't clobber useful
@@ -617,9 +549,9 @@ export class DeferredObjectiveActivePlanRecorder {
       deviceId: diag.deviceId,
       revision: nextRevision,
       reason,
-      hourCount: hours.length,
+      hourCount: effectiveHours.length,
     });
-    if (shouldFireNotification(latest.hours.length, hours.length, horizonPlan.status)) {
+    if (shouldFireNotification(latest.hours.length, effectiveHours.length, horizonPlan.status)) {
       this.deps.onRevisionWritten?.({
         deviceId: diag.deviceId,
         deviceName: diag.deviceName ?? current.deviceName,
@@ -690,4 +622,3 @@ export class DeferredObjectiveActivePlanRecorder {
     this.deps.debugStructured(payload);
   }
 }
-

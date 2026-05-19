@@ -1,4 +1,5 @@
 import type {
+  DeferredObjectiveActivePlanCommitmentV1,
   DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlanRevisionReason,
   DeferredObjectiveActivePlanRevisionV1,
@@ -96,6 +97,15 @@ const isRevisionOrNull = (value: unknown): value is DeferredObjectiveActivePlanR
   value === null || isRevision(value)
 );
 
+const isCommitment = (value: unknown): value is DeferredObjectiveActivePlanCommitmentV1 | undefined => {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return isFiniteNumber(v.committedAtMs)
+    && Array.isArray(v.hours)
+    && v.hours.every(isPlanHour);
+};
+
 // Identity-and-target fields the persisted plan must carry verbatim. Split
 // out so `isActivePlan` keeps its complexity score below the codebase ceiling
 // — the optional-snapshot / revision / provenance checks all live in their
@@ -128,7 +138,8 @@ const isActivePlan = (value: unknown): value is DeferredObjectiveActivePlanV1 =>
     && isRevisionOrNull(v.original)
     && isRevisionOrNull(v.latest)
     && isKwhPerUnitProvenance(v.kwhPerUnitProvenance)
-    && hasValidPlanLevelDurationSnapshot(v);
+    && hasValidPlanLevelDurationSnapshot(v)
+    && isCommitment(v.commitment);
 };
 
 export const normalizeDeferredObjectiveActivePlans = (

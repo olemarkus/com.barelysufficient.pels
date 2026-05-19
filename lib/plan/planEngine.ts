@@ -17,6 +17,7 @@ import {
   type HeadroomUsageObservation,
 } from './planHeadroomDevice';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
+import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import {
   decoratePlanWithPendingTargetCommands,
@@ -46,6 +47,7 @@ export type PlanEngineDeps = {
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
   getDeferredObjectiveSettings?: () => DeferredObjectiveSettingsV1;
+  getDeferredObjectiveActivePlans?: () => DeferredObjectiveActivePlansV1 | null;
   getTimeZone: () => string;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   getPriorityForDevice: (deviceId: string) => number;
@@ -110,6 +112,7 @@ export class PlanEngine {
       getPowerTracker: deps.getPowerTracker,
       getDailyBudgetSnapshot: deps.getDailyBudgetSnapshot,
       getDeferredObjectiveSettings: deps.getDeferredObjectiveSettings,
+      getDeferredObjectiveActivePlans: deps.getDeferredObjectiveActivePlans,
       getTimeZone: deps.getTimeZone,
       getPriorityForDevice: deps.getPriorityForDevice,
       getShedBehavior: deps.getShedBehavior,

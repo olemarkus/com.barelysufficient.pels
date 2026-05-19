@@ -141,6 +141,10 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
       { startsAtMs: 4 * HOUR_MS, plannedKWh: 1.5 },
     ]);
+    expect(plan.commitment).toEqual({
+      committedAtMs: HOUR_MS,
+      hours: plan.latest?.hours,
+    });
   });
 
   it('marks pending when the flow card fires before any horizon plan exists', () => {
@@ -466,25 +470,24 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(firstPlan?.initialEstimatedDurationText).toBe('3h');
     expect(firstPlan?.latest?.estimatedDurationText).toBe('3h');
 
-    // Replan revision after the device has consumed half the energy and
-    // re-prices land. Latest revision's estimatedDurationText shrinks to
-    // 1h 30m; the plan-level snapshot must stay 3h.
+    // Fresh optimizer output after the device has consumed half the energy
+    // does not mutate a committed plan. The plan-level snapshot and latest
+    // revision both stay on the original 3h commitment.
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
       energyNeededKWh: 2.25,
       planningSpeedKw: 1.5,
       horizonPlan: makeHorizon([
-        // Different schedule to trigger a replan revision.
+        // Different schedule that used to trigger a replan revision.
         makeBucket(3 * HOUR_MS, 1.125),
         makeBucket(4 * HOUR_MS, 1.125),
       ]),
     })], 2 * HOUR_MS);
 
     const replannedPlan = recorder.getPlanForTests('dev');
-    expect(replannedPlan?.latest?.revision).toBe(2);
-    expect(replannedPlan?.latest?.estimatedDurationText).toBe('1h 30m');
-    // The plan-level snapshot stayed frozen.
+    expect(replannedPlan?.latest?.revision).toBe(1);
+    expect(replannedPlan?.latest?.estimatedDurationText).toBe('3h');
     expect(replannedPlan?.initialPlanningSpeedKw).toBe(1.5);
     expect(replannedPlan?.initialEstimatedDurationText).toBe('3h');
   });
@@ -586,7 +589,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan?.initialEstimatedDurationText).toBe('2h 15m');
   });
 
-  it('calls onRevisionWritten with allocationChanged=true and projectedFinishAtMs from last bucket fill', () => {
+  it('does not call onRevisionWritten when fresh optimization changes the committed hour count', () => {
     const events: Array<{
       deviceId: string;
       reason: string;
@@ -614,9 +617,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
     expect(events).toEqual([]);
 
-    // Second observe shrinks the hour count from 3 to 2 (count change is the
-    // notification trigger). Last bucket starts at 5h and fills 1.0 of its
-    // 3.0 kWh capacity → finish 1/3 of an hour in.
+    // Second observe would shrink the hour count from 3 to 2 under the old
+    // mutable implementation. A committed plan ignores that optimizer churn.
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
@@ -626,17 +628,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       ]),
     })], 2 * HOUR_MS);
 
-    expect(events).toHaveLength(1);
-    // First revision had startsAtMs {2h, 3h, 4h}; second has {1h, 5h} — hour
-    // count dropped from 3 to 2, which is what fires the trigger.
-    expect(events[0]).toEqual({
-      deviceId: 'dev',
-      reason: 'prices_revised',
-      allocationChanged: true,
-      hours: 2,
-      energyNeededKWh: 2.5,
-      projectedFinishAtMs: 5 * HOUR_MS + Math.round((1.0 / 3.0) * HOUR_MS),
-    });
+    expect(events).toHaveLength(0);
+    expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
 
     // Third observe with identical hours — no further notification.
     recorder.observe([makeDiag({
@@ -647,7 +640,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(5 * HOUR_MS, 1.0),
       ]),
     })], 3 * HOUR_MS);
-    expect(events).toHaveLength(1);
+    expect(events).toHaveLength(0);
   });
 
   it('does not emit onRevisionWritten or write a new revision when only plannedKWh / energyNeededKWh shifts within the same hours', () => {
@@ -775,7 +768,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(firstRevision);
   });
 
-  it('emits the current schedule hour count on each revision rather than a lifetime accumulation', () => {
+  it('keeps the committed hour count through optimizer hour-count churn', () => {
     const events: Array<{ reason: string; hours: number }> = [];
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder({
@@ -813,26 +806,18 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       ]),
     })], 4 * HOUR_MS);
 
-    // First replan extends the horizon (5h → 6h end) → prices_revised.
-    // Second replan trims buckets without extending the horizon (still
-    // ending at 6h) → schedule_revised. The split lets the user-visible
-    // "Tomorrow's prices published" label fire only when prices actually
-    // arrived.
-    expect(events).toEqual([
-      { reason: 'prices_revised', hours: 2 },
-      { reason: 'schedule_revised', hours: 1 },
-    ]);
+    expect(events).toEqual([]);
     expect(recorder.getPlanForTests('dev')?.latest?.hours).toEqual([
-      { startsAtMs: 5 * HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: 4 * HOUR_MS, plannedKWh: 1.5 },
     ]);
   });
 
   it('does not emit onRevisionWritten when the set of charging hours swaps within the same count', () => {
     // The replanner can pick a different set of cheap hours of the same width
-    // (e.g. price ranking shuffles equally-cheap slots). Without a
-    // "significant time change" detector we cannot distinguish a real plan
-    // shift from a near-equivalent reshuffle, so the bus stays quiet. The
-    // revision is still persisted so the Settings UI sees fresh metadata.
+    // (e.g. price ranking shuffles equally-cheap slots). Once a plan is
+    // committed, the active record ignores the reshuffle entirely.
     const events: Array<{ reason: string }> = [];
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder({
@@ -853,7 +838,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     })], 2 * HOUR_MS);
 
     expect(events).toEqual([]);
-    expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
+    expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
   });
 
   it('does not emit onRevisionWritten when the schedule empties because the objective was satisfied', () => {
@@ -929,24 +914,19 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       }),
     })], 2 * HOUR_MS);
 
-    // Bucket collapse to empty shifts the schedule without consuming a fresher
-    // price horizon (the next-revision `computedFromPricesUpTo` is null when
-    // there are no planned buckets), so the reason is `schedule_revised`.
-    expect(events).toEqual([
-      { reason: 'schedule_revised', hours: 0, planStatus: 'cannot_meet' },
-    ]);
-    // Revision still persists so the Settings UI sees the cannot_meet state.
+    // The committed schedule does not collapse, so the plan-changed bus stays
+    // quiet. A metadata revision still persists the degraded status.
+    expect(events).toEqual([]);
     expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
     expect(recorder.getPlanForTests('dev')?.latest?.energyNeededKWh).toBe(4.5);
     expect(recorder.getPlanForTests('dev')?.latest?.planStatus).toBe('cannot_meet');
+    expect(recorder.getPlanForTests('dev')?.latest?.hours).toHaveLength(3);
   });
 
-  it('emits a prices_revised revision when the price horizon advances (new bucket extends the horizon end)', () => {
-    // The schedule's last bucket extends further into the future after the
-    // second observe — that's the planner consuming a newer price horizon
-    // than the first revision. `prices_revised` is the right label here
-    // because the user-visible promise ("Tomorrow's prices published") is
-    // actually true.
+  it('does not emit a prices_revised revision when a committed plan sees a later price horizon', () => {
+    // The fresh schedule's last bucket extends further into the future after
+    // the second observe. That used to rewrite the active plan; committed
+    // schedules keep the original hours instead.
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
@@ -965,8 +945,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     })], 2 * HOUR_MS);
 
     const plan = recorder.getPlanForTests('dev');
-    expect(plan?.latest?.reason).toBe('prices_revised');
-    expect(plan?.latest?.revision).toBe(2);
+    expect(plan?.latest?.reason).toBe('flow_card');
+    expect(plan?.latest?.revision).toBe(1);
     expect(plan?.original?.revision).toBe(1);
   });
 
@@ -1029,7 +1009,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan?.latest?.revision).toBe(2);
   });
 
-  it('stays on prices_revised when source is unchanged across a price shift', () => {
+  it('does not revise when source is unchanged across a committed-plan price shift', () => {
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
@@ -1049,7 +1029,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       ]),
     })], 2 * HOUR_MS);
 
-    expect(recorder.getPlanForTests('dev')?.latest?.reason).toBe('prices_revised');
+    expect(recorder.getPlanForTests('dev')?.latest?.reason).toBe('flow_card');
+    expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
   });
 
   it('does not emit rate_refined for the learned → bootstrap regression (rare profile loss)', () => {
@@ -1238,11 +1219,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(saved()!.plansByDeviceId.dev).toBeUndefined();
   });
 
-  it('reflects an objective_changed revision when markPending precedes observe with a different target', () => {
-    // Regression: markPending on the same deadline must NOT update the stored
-    // objectiveSignature, otherwise the next observe() cycle sees matching
-    // signatures and writes `prices_revised` (or skips) instead of
-    // `objective_changed`. See PR #643 review threads 4 and 6.
+  it('starts a new pending plan when markPending receives a different target for an already committed plan', () => {
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
@@ -1250,11 +1227,20 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
     expect(recorder.getPlanForTests('dev')?.latest?.reason).toBe('flow_card');
 
-    // 2. User edits the target via the flow card; markPending fires with a
-    //    new target but the same deadline.
+    // 2. User edits the target via the flow card. A committed plan is not
+    // revised in place; the old active record is abandoned and replaced by a
+    // fresh pending entry for the new objective.
     recorder.markPending(buildSeed({ targetTemperatureC: 70 }), 2 * HOUR_MS);
 
-    // 3. The next plan cycle observes a diagnostic with the new target.
+    const pending = recorder.getPlanForTests('dev');
+    expect(pending?.pending).toBe(true);
+    expect(pending?.original).toBeNull();
+    expect(pending?.latest).toBeNull();
+    expect(pending?.targetTemperatureC).toBe(70);
+    expect(pending?.startedAtMs).toBe(2 * HOUR_MS);
+
+    // 3. The next plan cycle observes a diagnostic with the new target and
+    // writes a new first revision, not `objective_changed` revision 2.
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
@@ -1267,8 +1253,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     })], 3 * HOUR_MS);
 
     const plan = recorder.getPlanForTests('dev');
-    expect(plan?.latest?.reason).toBe('objective_changed');
-    expect(plan?.latest?.revision).toBe(2);
+    expect(plan?.latest?.reason).toBe('prices_arrived');
+    expect(plan?.latest?.revision).toBe(1);
     expect(plan?.objectiveSignature).toContain('70');
   });
 
@@ -1445,6 +1431,27 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       const normalized = normalizeDeferredObjectiveActivePlans(persisted);
       expect(normalized.plansByDeviceId.dev?.initialPlanningSpeedKw).toBe(1.5);
       expect(normalized.plansByDeviceId.dev?.initialEstimatedDurationText).toBe('3h');
+    });
+
+    it('round-trips a committed schedule on the plan', () => {
+      const commitment = {
+        committedAtMs: HOUR_MS,
+        hours: [
+          { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
+          { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
+        ],
+      };
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: {
+            ...basePlan({ reason: 'flow_card' }),
+            commitment,
+          },
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev?.commitment).toEqual(commitment);
     });
 
     it('drops a plan whose initialPlanningSpeedKw is non-positive', () => {

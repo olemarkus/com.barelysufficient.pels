@@ -7,11 +7,16 @@ import {
 import { buildDeferredObjectiveDebugPayload } from './diagnosticDebugPayload';
 import type { DailyBudgetUiPayload } from '../../dailyBudget/dailyBudgetTypes';
 import type { StructuredDebugEmitter } from '../../logging/logger';
+import type {
+  DeferredObjectiveActivePlanHourV1,
+  DeferredObjectiveActivePlansV1,
+} from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import { sortSteppedLoadSteps } from '../../utils/deviceControlProfiles';
 import type { PlanInputDevice } from '../planTypes';
 import { formatDeadlineLocalTime } from './deadline';
 import { planDeferredObjectiveHorizon } from './horizonPlanner';
 import { resolveStepDeliveryUsefulKw } from './objectiveStepPower';
+import { buildObjectiveSignature } from './activePlanSignature';
 import { firstPositiveFinite, resolvePlanningSpeedKw } from './planningSpeed';
 import {
   resolveObjectiveProgress,
@@ -114,6 +119,7 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   priceOptimizationEnabled: boolean;
+  activePlans?: DeferredObjectiveActivePlansV1 | null;
 }): DeferredObjectiveDiagnostic[] => {
   const deviceById = new Map(params.devices.map((device) => [device.id, device]));
   return Object.entries(params.settings.objectivesByDeviceId)
@@ -220,6 +226,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   priceOptimizationEnabled: boolean;
+  activePlans?: DeferredObjectiveActivePlansV1 | null;
 }): DeferredObjectiveDiagnostic => {
   const {
     nowMs,
@@ -230,6 +237,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
     powerTracker,
     dailyBudgetSnapshot,
     priceOptimizationEnabled,
+    activePlans,
   } = params;
   const base = buildDiagnosticBase({
     deviceId,
@@ -263,6 +271,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
       progress,
       policyHorizon: { buckets: [], horizonBucketCount: 0, dailyBudgetExhaustedBucketCount: 0, reasonCode: null },
       deadlineAtMs: objective.deadlineAtMs,
+      activePlans,
     });
   }
 
@@ -296,6 +305,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
     progress,
     policyHorizon,
     deadlineAtMs: objective.deadlineAtMs,
+    activePlans,
   });
 };
 
@@ -309,8 +319,20 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   progress: DeferredObjectiveProgressResolution;
   policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>;
   deadlineAtMs: number;
+  activePlans?: DeferredObjectiveActivePlansV1 | null;
 }): DeferredObjectiveDiagnostic => {
-  const { nowMs, deviceId, objective, device, powerTracker, base, progress, policyHorizon, deadlineAtMs } = params;
+  const {
+    nowMs,
+    deviceId,
+    objective,
+    device,
+    powerTracker,
+    base,
+    progress,
+    policyHorizon,
+    deadlineAtMs,
+    activePlans,
+  } = params;
   if (progress.reasonCode) {
     return withUnknown({
       ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
@@ -368,6 +390,11 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     },
     steps,
     buckets: policyHorizon.buckets,
+    committedHours: resolveCommittedHours({
+      activePlans,
+      deviceId,
+      objective,
+    }),
   });
 
   return {
@@ -384,6 +411,25 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     requestedMinimumStepId: horizonPlan.requestedMinimumStepId,
     horizonPlan,
   };
+};
+
+const resolveCommittedHours = (params: {
+  activePlans?: DeferredObjectiveActivePlansV1 | null;
+  deviceId: string;
+  objective: DeferredObjectiveSettingsEntry;
+}): DeferredObjectiveActivePlanHourV1[] | undefined => {
+  const plan = params.activePlans?.plansByDeviceId[params.deviceId];
+  if (!plan || plan.pending || !plan.commitment) return undefined;
+  if (plan.deadlineAtMs !== params.objective.deadlineAtMs) return undefined;
+  if (plan.objectiveKind !== params.objective.kind) return undefined;
+  if (plan.objectiveSignature !== buildObjectiveSignature({
+    objectiveKind: params.objective.kind,
+    targetTemperatureC: params.objective.kind === 'temperature' ? params.objective.targetTemperatureC : null,
+    targetPercent: params.objective.kind === 'ev_soc' ? params.objective.targetPercent : null,
+    deadlineAtMs: params.objective.deadlineAtMs,
+    enforcement: params.objective.enforcement,
+  })) return undefined;
+  return plan.commitment.hours;
 };
 
 const buildDiagnosticBase = (params: {

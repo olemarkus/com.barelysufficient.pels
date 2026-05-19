@@ -119,6 +119,32 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.currentBucket?.plannedUsefulEnergyKWh).toBeCloseTo(1);
   });
 
+  it('keeps committed hours even when a fresh optimization would prefer another bucket', () => {
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 2,
+        deadlineAtMs: NOW_MS + (3 * HOUR_MS),
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'avoid'),
+        bucket(1, 'preferred'),
+        bucket(2, 'avoid'),
+      ],
+      committedHours: [
+        { startsAtMs: NOW_MS, plannedKWh: 1 },
+        { startsAtMs: NOW_MS + (2 * HOUR_MS), plannedKWh: 1 },
+      ],
+    });
+
+    expect(plan.status).toBe('at_risk');
+    expect(plan.requestedMinimumStepId).toBe('low');
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBe(0);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(1);
+  });
+
   it('preserves deadline margin before using a preferred bucket inside the reserve window', () => {
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,

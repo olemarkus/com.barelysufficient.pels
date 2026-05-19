@@ -1,4 +1,5 @@
 import {
+  allocateCommittedEnergyToBuckets,
   allocateEnergyToBuckets,
   normalizeHorizonBuckets,
   type BucketAllocationResult,
@@ -85,6 +86,7 @@ export const planDeferredObjectiveHorizon = (
   const allocation = resolveAllocation({
     activeSteps,
     buckets,
+    committedHours: input.committedHours,
     energyNeededKWh,
     epsilonKWh,
   });
@@ -106,14 +108,27 @@ export const planDeferredObjectiveHorizon = (
 const resolveAllocation = (params: {
   activeSteps: NonEmptyObjectiveSteps;
   buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
+  committedHours: DeferredObjectiveHorizonInput['committedHours'];
   energyNeededKWh: number;
   epsilonKWh: number;
-}): BucketAllocationResult => allocateEnergyToBuckets({
-  buckets: params.buckets,
-  step: params.activeSteps[0],
-  energyNeededKWh: params.energyNeededKWh,
-  epsilonKWh: params.epsilonKWh,
-});
+}): BucketAllocationResult => {
+  const step = params.activeSteps[0];
+  if (params.committedHours !== undefined && params.committedHours.length > 0) {
+    return allocateCommittedEnergyToBuckets({
+      buckets: params.buckets,
+      step,
+      energyNeededKWh: params.energyNeededKWh,
+      epsilonKWh: params.epsilonKWh,
+      committedHours: params.committedHours,
+    });
+  }
+  return allocateEnergyToBuckets({
+    buckets: params.buckets,
+    step,
+    energyNeededKWh: params.energyNeededKWh,
+    epsilonKWh: params.epsilonKWh,
+  });
+};
 
 const buildPlanFromAllocation = (params: {
   input: DeferredObjectiveHorizonInput;
