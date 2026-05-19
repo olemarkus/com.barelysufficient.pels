@@ -58,6 +58,7 @@ export class AppSnapshotHelpers {
     getNow: () => Date;
     logPeriodicStatus: (options?: { includeDeviceHealth?: boolean }) => void;
     disableUnsupportedDevices: (snapshot: TargetDeviceSnapshot[]) => void;
+    seedMissingModeTargets: (snapshot: TargetDeviceSnapshot[]) => void;
     getFlowReportedDeviceIds: () => string[];
     emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
     emitSettingsUiDevicesUpdated: () => void;
@@ -286,6 +287,7 @@ export class AppSnapshotHelpers {
 
     const snapshot = this.deps.getLatestTargetSnapshot();
     this.deps.disableUnsupportedDevices(snapshot);
+    this.deps.seedMissingModeTargets(snapshot);
     const enforcedSnapshot = snapshot.map((device) => ({
       ...device,
       managed: this.deps.resolveManagedState(device.id),
