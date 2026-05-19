@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- Activation backoff state transitions and countdown metadata share private helpers. */
 import type {
   ActivationAttemptState,
   ActivationAttemptSource,
@@ -13,9 +12,9 @@ import { isFiniteNumber } from '../utils/appTypeGuards';
 export type { ActivationAttemptSource } from './planState';
 
 export const ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS = OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS;
-export const ACTIVATION_BACKOFF_CLEAR_WINDOW_MS = 5 * 60 * 1000;
-export const ACTIVATION_BACKOFF_MAX_LEVEL = 4;
 export const ACTIVATION_SETBACK_RESTORE_BLOCK_MS = 5 * 60 * 1000;
+export const ACTIVATION_BACKOFF_CLEAR_WINDOW_MS = ACTIVATION_SETBACK_RESTORE_BLOCK_MS;
+export const ACTIVATION_BACKOFF_MAX_LEVEL = 4;
 
 export type ActivationBackoffObservation = {
   available?: boolean;
@@ -154,14 +153,9 @@ const hasAttributionWindowExpired = (attemptStartedMs: number, nowTs: number): b
 
 const remainingSeconds = (remainingMs: number): number => Math.max(0, Math.ceil(remainingMs / 1000));
 
-const getCooldownMsForPenaltyLevel = (penaltyLevel: number): number => {
-  const clamped = clampPenaltyLevel(penaltyLevel);
-  if (clamped <= 0) return 0;
-  return Math.min(
-    ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
-    ACTIVATION_SETBACK_RESTORE_BLOCK_MS * (2 ** (clamped - 1)),
-  );
-};
+const getCooldownMsForPenaltyLevel = (penaltyLevel: number): number => (
+  clampPenaltyLevel(penaltyLevel) > 0 ? ACTIVATION_SETBACK_RESTORE_BLOCK_MS : 0
+);
 
 const getClearRemainingSec = (
   state: PlanEngineState,
@@ -427,9 +421,11 @@ export function syncConfirmedRestoreAttributionState(params: {
     cleanWholeHomeSample: params.cleanWholeHomeSample,
   })) {
     stateChanged = closeAttempt(state, deviceId) || stateChanged;
-    // The cautious admission proved itself: the device drew what we expected and
-    // the household stayed in budget through the attribution window. Release the
-    // accumulated penalty so the next admission starts at the base bar.
+    // The cautious admission proved itself: the device drew non-trivial power
+    // after attempt start and a subsequent whole-home sample stayed in budget.
+    // Release the accumulated penalty so the next admission starts at the base
+    // bar. Tightening the gate to require draw vs the expected step power is
+    // tracked in TODO.md.
     stateChanged = setPenaltyLevel(state, deviceId, 0) || stateChanged;
     return { stateChanged, attemptOpen: false };
   }
