@@ -3,7 +3,7 @@ title: Technical Reference
 description: Internal planner behavior, budget logic, cooldowns, estimation rules, and system assumptions used by PELS.
 ---
 
-# PELS - Technical Documentation
+# Technical Reference
 
 This document explains the internal logic and assumptions PELS uses to manage your devices. It uses the public vocabulary from the user guide in headings and prose. Raw planner terms are shown only in code-style text or where they are still part of diagnostics, metrics, or existing Homey Flow card names.
 

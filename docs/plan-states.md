@@ -40,7 +40,6 @@ Chips stay short. The status line below a chip explains why a device is waiting,
 | **Waiting for power reading to stabilise** | PELS recently changed or observed a device and is waiting for meter readings to settle. |
 | **Delaying restart after recent failed attempt** | A previous resume caused new pressure, so PELS is waiting longer before trying again. |
 | **Making room for higher-priority device** | PELS is limiting a lower-priority device so a higher-priority one can run. |
-| **Manual** | The device is managed, but PELS is not allowed to limit or resume it for power. |
 
 ## Raw Planner Fields
 

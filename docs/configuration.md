@@ -35,26 +35,9 @@ For the planner-state mapping, see [Plan States](/plan-states).
 
 ## Budget
 
-The Budget page is the daily planning surface. It shows whether the selected day is on plan and lets you adjust the daily budget model.
+The Budget page is the daily planning surface. It shows whether the selected day is on plan (**Plan** view) and lets you preview and apply changes to the daily budget model (**Adjust** view).
 
-Local views:
-
-| View | What it does |
-| --- | --- |
-| **Plan** | Shows progress, hourly plan, confidence, and the current daily-budget status. |
-| **Adjust** | Lets you preview and apply changes before they become active. |
-
-Budget settings include:
-
-| Setting | What it does |
-| --- | --- |
-| **Enable daily budget** | Turns daily pacing on or off. |
-| **Daily budget (kWh)** | Target daily energy use. |
-| **Use cheaper hours** | When prices are reliable, lets the day's budget lean toward cheaper hours so more of the energy is used when electricity is cheap. |
-| **Background usage reserve** | How much of the daily budget PELS sets aside for everyday loads it cannot control — lights, fridges, the TV, anything not managed by PELS. A larger reserve protects against surprise consumption; a smaller reserve leaves more room for heaters and chargers. |
-| **Managed device flexibility** | How willing PELS is to push managed heaters or chargers toward cheaper hours. Low keeps usage close to normal; high actively shifts work toward the cheap end of the day. |
-
-Read [Daily Energy Budget](/daily-budget) before changing the advanced tuning values.
+See [Daily Energy Budget](/daily-budget#where-to-configure-it) for the full description of each view and setting (Enable daily budget, Daily budget kWh, Use cheaper hours, Background usage reserve, Managed device flexibility). Read it before changing the advanced tuning values.
 
 ## Usage
 
