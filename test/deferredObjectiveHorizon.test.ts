@@ -175,9 +175,13 @@ describe('planDeferredObjectiveHorizon', () => {
   });
 
   it('runs the fresh optimizer when committed is false regardless of committedHours', () => {
-    // Regression guard: a legacy / non-committed call must route to the fresh
-    // optimizer. Same buckets as the previous case but `committed: false`
-    // produces a fully on-track plan.
+    // Regression guard: an explicit `committed: false` must route to the fresh
+    // optimizer even when `committedHours` is non-empty (e.g. a stale legacy
+    // payload). Same buckets as the committed=true/empty case, but with a
+    // populated committedHours array pointing at a worse hour. The fresh
+    // optimizer would prefer all three `preferred` buckets, so an `on_track`
+    // result with the full energy planned proves the `committed: false` flag
+    // wins over the supplied committedHours data.
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
       objective: objective({
@@ -191,6 +195,10 @@ describe('planDeferredObjectiveHorizon', () => {
         bucket(2, 'preferred'),
       ],
       committed: false,
+      committedHours: [
+        { startsAtMs: NOW_MS, plannedKWh: 1 },
+        { startsAtMs: NOW_MS + (2 * HOUR_MS), plannedKWh: 1 },
+      ],
     });
 
     expect(plan.status).toBe('on_track');

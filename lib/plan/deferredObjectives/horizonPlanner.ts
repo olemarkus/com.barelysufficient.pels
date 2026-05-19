@@ -86,7 +86,10 @@ export const planDeferredObjectiveHorizon = (
   const allocation = resolveAllocation({
     activeSteps,
     buckets,
-    committed: input.committed === true,
+    committed: resolveCommittedFlag({
+      committed: input.committed,
+      committedHours: input.committedHours,
+    }),
     committedHours: input.committedHours,
     energyNeededKWh,
     epsilonKWh,
@@ -99,6 +102,24 @@ export const planDeferredObjectiveHorizon = (
     allocation,
     epsilonKWh,
   });
+};
+
+// Backward-compatible resolution of the committed flag. New callers pass an
+// explicit boolean (`true` enters the committed-replan path, `false` forces
+// the fresh optimizer regardless of `committedHours`). Legacy callers that
+// only supplied `committedHours` and left `committed` undefined fall back to
+// the historical length-based gate so we don't silently break them during the
+// migration window — they will keep behaving as before until updated to pass
+// an explicit boolean.
+const resolveCommittedFlag = (params: {
+  committed: DeferredObjectiveHorizonInput['committed'];
+  committedHours: DeferredObjectiveHorizonInput['committedHours'];
+}): boolean => {
+  if (params.committed === true) return true;
+  if (params.committed === undefined) {
+    return (params.committedHours?.length ?? 0) > 0;
+  }
+  return false;
 };
 
 // We plan against the lowest non-zero step only. That is the commitment we can
