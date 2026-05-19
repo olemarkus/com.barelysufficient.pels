@@ -2180,6 +2180,25 @@ describe('createCalibrationSnapshotMutationHook', () => {
     expect(debugStructured).toHaveBeenCalledTimes(2);
   });
 
+  it('does not debounce after an ineligible call — first eligible sample still lands', () => {
+    // Regression: previously the debounce cursor was advanced before the
+    // eligibility check, so an ineligible first call (e.g. stepCommandPending,
+    // assumed step) would swallow the next valid sample for up to
+    // minIntervalMs — exactly the startup/step-change transitions this hook
+    // is meant to capture.
+    const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
+    const debugStructured = vi.fn();
+    const hook = createCalibrationSnapshotMutationHook({
+      getStore: () => store,
+      debugStructured,
+      minIntervalMs: 30_000,
+    });
+    hook(makeSnapshot({ actualStepSource: 'assumed', measuredPowerKw: 1.1 }), start);
+    expect(debugStructured).not.toHaveBeenCalled();
+    hook(makeSnapshot({ measuredPowerKw: 1.1 }), start + 1_000);
+    expect(debugStructured).toHaveBeenCalledTimes(1);
+  });
+
   it('debounces per (device, step) independently', () => {
     const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
     const debugStructured = vi.fn();

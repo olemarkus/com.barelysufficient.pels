@@ -500,16 +500,22 @@ export function createCalibrationSnapshotMutationHook(params: {
   const minIntervalMs = params.minIntervalMs ?? DEFAULT_HOOK_CADENCE_MIN_INTERVAL_MS;
   const lastIngestMsByDeviceStep = new Map<string, number>();
   return (snapshot, nowMs) => {
-    if (minIntervalMs > 0) {
-      const stepId = snapshot.reportedStepId;
-      if (typeof stepId === 'string' && stepId.length > 0) {
-        const key = `${snapshot.id} ${stepId}`;
-        const previous = lastIngestMsByDeviceStep.get(key);
-        if (previous !== undefined && nowMs - previous < minIntervalMs) return;
-        lastIngestMsByDeviceStep.set(key, nowMs);
-      }
+    const stepId = snapshot.reportedStepId;
+    const debounceKey = minIntervalMs > 0 && typeof stepId === 'string' && stepId.length > 0
+      ? `${snapshot.id}::${stepId}`
+      : null;
+    if (debounceKey !== null) {
+      const previous = lastIngestMsByDeviceStep.get(debounceKey);
+      if (previous !== undefined && nowMs - previous < minIntervalMs) return;
     }
     const outcome = getStore().ingestDeviceSnapshot(snapshot, nowMs);
+    // Only record the debounce cursor after the store actually saw a sample.
+    // Recording it earlier would let an ineligible snapshot (e.g. stepCommandPending,
+    // stale lastFreshDataMs, actualStepSource !== 'reported') swallow the next valid
+    // sample for up to minIntervalMs.
+    if (outcome !== null && debounceKey !== null) {
+      lastIngestMsByDeviceStep.set(debounceKey, nowMs);
+    }
     if (!outcome || !debugStructured) return;
     if (outcome.accepted) {
       debugStructured({
