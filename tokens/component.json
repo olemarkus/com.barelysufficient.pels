@@ -178,6 +178,10 @@
         "selected-text": { "value": "{color.semantic.text.inverse}" }
       }
     },
+    "control-track-3x": {
+      "value": "144px",
+      "comment": "Three touch-target slots wide. Encoded as the absolute px value because Style Dictionary cannot resolve a calc against another token at build time; keep in sync with pels.touch-target.min (currently 48 px) so this stays equal to 3 * pels.touch-target.min."
+    },
     "deadline-close": {
       "size": { "value": "{pels.touch-target.min}" },
       "background": { "value": "{pels.surface-container-high}" },
