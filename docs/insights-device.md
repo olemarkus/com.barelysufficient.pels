@@ -16,22 +16,22 @@ PELS includes a virtual device called **PELS Insights**. It is the easiest way t
 
 ## What it shows
 
-The Insights device exposes these useful readings. Some Homey capability labels may use older wording in current app versions; the meanings below use the same vocabulary as the rest of these docs.
+The Insights device exposes these readings. The labels below match the capability titles shown in Homey.
 
 | Reading | Meaning |
 | --- | --- |
 | **Operating mode** | Current PELS mode selected in settings or by Flow |
-| **Capacity guard** | Whether PELS projects an hourly hard-cap breach and cannot limit any more load |
+| **Manual action needed** | Whether PELS projects an hourly hard-cap breach and cannot limit any more load |
 | **Available power** | Extra power PELS can fit before the current safe pace |
-| **Safe pace now** | Current effective pace used for power limiting |
+| **Current safe pace** | Current effective pace used for power limiting |
 | **Used this hour** | Energy consumed so far in the current hour |
 | **Daily budget remaining** | Remaining daily budget, when daily pacing is enabled |
 | **Daily budget exceeded** | Whether the daily plan is currently over target |
 | **Limit reason** | Why devices are currently constrained or why limiting is active |
-| **Managed load** | Current managed device usage |
-| **Background usage** | Current background usage |
+| **Managed device usage** | Power currently being drawn by managed devices |
+| **Background usage** | Power currently being drawn outside managed devices |
 | **Price level** | Current price bucket relative to the day average |
-| **Devices running** | Number of managed devices not currently limited |
+| **Devices active** | Number of managed devices not currently limited |
 | **Devices limited** | Number of managed devices currently limited |
 
 ## When it is most useful
