@@ -35,12 +35,12 @@ editLink: false
         <p>Heaters, floor heating, water heaters, ventilation, or EV charging are the most common ones. PELS works best when some of these can be turned down for a while without causing problems.</p>
       </article>
       <article class="landing-card">
-        <h3>You want to stay within your capacity step</h3>
-        <p>If you are on a grid tariff where going over your hourly limit bumps you to a more expensive step, PELS can keep you under the limit automatically.</p>
+        <h3>You want to stay within your hourly limit</h3>
+        <p>If you are on a capacity-based grid tariff (effekttrinn in Norway, similar steps in parts of Sweden and Finland) where going over your hourly limit bumps you to a more expensive step, PELS can keep you under the limit automatically.</p>
       </article>
       <article class="landing-card">
         <h3>You want flexible load to run when power is cheap</h3>
-        <p>PELS can move heating, charging, and task-based load toward cheaper hours, so you spend less without having to check prices yourself.</p>
+        <p>PELS can move heating, charging, and task-based load toward cheaper hours, so you spend less without having to check prices yourself. This works anywhere with dynamic hourly electricity prices — see <a href="homey-energy.html">Using Homey Energy</a> if you are outside Norway.</p>
       </article>
     </div>
   </section>
