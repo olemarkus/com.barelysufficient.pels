@@ -14,12 +14,14 @@ const STUB_ACCEPTED_AT = 'May 14 12:30';
 const formatAcceptedAt = (ms: number): string => (
   ms === ACCEPTED_AT_MS ? STUB_ACCEPTED_AT : `t=${ms}`
 );
+const ONE_MIN_MS = 60 * 1000;
+const ONE_HOUR_MS = 60 * ONE_MIN_MS;
 
 describe('resolveKwhPerUnitProvenanceRows', () => {
   it('returns an empty list when provenance is absent', () => {
     expect(resolveKwhPerUnitProvenanceRows({
       provenance: undefined,
-      unitSuffix: 'kWh/%',
+      nowMs: ACCEPTED_AT_MS,
       formatAcceptedAt,
     })).toEqual([]);
   });
@@ -34,12 +36,12 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
     };
     expect(resolveKwhPerUnitProvenanceRows({
       provenance,
-      unitSuffix: 'kWh/%',
+      nowMs: ACCEPTED_AT_MS,
       formatAcceptedAt,
     })).toEqual([{ label: 'Source', value: 'Bootstrap estimate' }]);
   });
 
-  it('renders source/learned-rate/samples/last-sample rows for fully-populated learned provenance', () => {
+  it('renders source/samples/last-sample rows for fully-populated learned provenance — no duplicate "Learned rate" row', () => {
     const provenance: DeferredObjectiveKwhPerUnitProvenanceV1 = {
       source: 'learned',
       kWhPerUnit: 0.42,
@@ -49,30 +51,61 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
     };
     expect(resolveKwhPerUnitProvenanceRows({
       provenance,
-      unitSuffix: 'kWh/%',
+      nowMs: ACCEPTED_AT_MS + 5 * ONE_MIN_MS,
       formatAcceptedAt,
     })).toEqual([
       { label: 'Source', value: 'Learned profile' },
-      { label: 'Learned rate', value: '0.42 kWh/%' },
       { label: 'Samples', value: '12 accepted samples · medium confidence' },
-      { label: 'Last sample', value: STUB_ACCEPTED_AT },
+      { label: 'Most recent sample', value: 'Updated 5 min ago' },
     ]);
   });
 
-  it('omits the learned-rate row when the mean is missing or non-positive', () => {
+  it('emits "Updated just now" when the most recent sample is fresher than one minute', () => {
     const provenance: DeferredObjectiveKwhPerUnitProvenanceV1 = {
       source: 'learned',
-      kWhPerUnit: null,
+      kWhPerUnit: 0.5,
       acceptedSamples: 3,
       confidence: 'low',
       lastAcceptedAtMs: ACCEPTED_AT_MS,
     };
     const rows = resolveKwhPerUnitProvenanceRows({
       provenance,
-      unitSuffix: 'kWh/°C',
+      nowMs: ACCEPTED_AT_MS + 15 * 1000,
       formatAcceptedAt,
     });
-    expect(rows.map((row) => row.label)).toEqual(['Source', 'Samples', 'Last sample']);
+    expect(rows.find((row) => row.label === 'Most recent sample')?.value).toBe('Updated just now');
+  });
+
+  it('emits hour-resolution copy past the one-hour boundary', () => {
+    const provenance: DeferredObjectiveKwhPerUnitProvenanceV1 = {
+      source: 'learned',
+      kWhPerUnit: 0.5,
+      acceptedSamples: 3,
+      confidence: 'low',
+      lastAcceptedAtMs: ACCEPTED_AT_MS,
+    };
+    const rows = resolveKwhPerUnitProvenanceRows({
+      provenance,
+      nowMs: ACCEPTED_AT_MS + 3 * ONE_HOUR_MS,
+      formatAcceptedAt,
+    });
+    expect(rows.find((row) => row.label === 'Most recent sample')?.value).toBe('Updated 3 hours ago');
+  });
+
+  it('marks the row as stale and surfaces the absolute timestamp past 24h', () => {
+    const provenance: DeferredObjectiveKwhPerUnitProvenanceV1 = {
+      source: 'learned',
+      kWhPerUnit: 0.5,
+      acceptedSamples: 4,
+      confidence: 'medium',
+      lastAcceptedAtMs: ACCEPTED_AT_MS,
+    };
+    const rows = resolveKwhPerUnitProvenanceRows({
+      provenance,
+      nowMs: ACCEPTED_AT_MS + 48 * ONE_HOUR_MS,
+      formatAcceptedAt,
+    });
+    expect(rows.find((row) => row.label === 'Most recent sample')?.value).toBe(`Stale — ${STUB_ACCEPTED_AT}`);
   });
 
   it('omits the samples row when acceptedSamples is zero', () => {
@@ -85,11 +118,10 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
     };
     expect(resolveKwhPerUnitProvenanceRows({
       provenance,
-      unitSuffix: 'kWh/%',
+      nowMs: ACCEPTED_AT_MS,
       formatAcceptedAt,
     })).toEqual([
       { label: 'Source', value: 'Learned profile' },
-      { label: 'Learned rate', value: '0.50 kWh/%' },
     ]);
   });
 
@@ -103,7 +135,7 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
     };
     const rows = resolveKwhPerUnitProvenanceRows({
       provenance,
-      unitSuffix: 'kWh/%',
+      nowMs: ACCEPTED_AT_MS,
       formatAcceptedAt,
     });
     const samples = rows.find((row) => row.label === 'Samples');
@@ -120,7 +152,7 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
     };
     const rows = resolveKwhPerUnitProvenanceRows({
       provenance,
-      unitSuffix: 'kWh/%',
+      nowMs: ACCEPTED_AT_MS,
       formatAcceptedAt,
     });
     const samples = rows.find((row) => row.label === 'Samples');

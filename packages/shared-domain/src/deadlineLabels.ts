@@ -627,8 +627,8 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     },
     targetUnit: '°C',
     planInputsCardTitle: 'Smart task inputs',
-    planInputsRateRowLabel: 'Energy per unit',
-    planInputsMaxPowerRowLabel: 'Max power per hour',
+    planInputsRateRowLabel: 'Energy needed per °C',
+    planInputsMaxPowerRowLabel: 'Heating power',
     perUnitRateUnit: 'kWh/°C',
     planInputsRateBootstrapNote: null,
     revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE,
@@ -707,8 +707,8 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     },
     targetUnit: '%',
     planInputsCardTitle: 'Smart task inputs',
-    planInputsRateRowLabel: 'Energy per unit',
-    planInputsMaxPowerRowLabel: 'Max power per hour',
+    planInputsRateRowLabel: 'Energy needed per %',
+    planInputsMaxPowerRowLabel: 'Charging power',
     perUnitRateUnit: 'kWh/%',
     planInputsRateBootstrapNote: 'Estimated — refining as PELS observes charging.',
     revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE,
@@ -809,14 +809,42 @@ const CONFIDENCE_TEXT: Record<'low' | 'medium' | 'high', string> = {
   high: 'high confidence',
 };
 
-const formatLearnedValue = (kWhPerUnit: number, unitSuffix: DeadlineLabels['perUnitRateUnit']): string => (
-  `${kWhPerUnit.toFixed(2)} ${unitSuffix}`
-);
-
 const formatSamplesLine = (acceptedSamples: number, confidence: 'low' | 'medium' | 'high' | null): string => {
   const sampleWord = acceptedSamples === 1 ? 'sample' : 'samples';
   const base = `${acceptedSamples} accepted ${sampleWord}`;
   return confidence === null ? base : `${base} · ${CONFIDENCE_TEXT[confidence]}`;
+};
+
+// Freshness window before a learned profile counts as stale. After this, the
+// row shows "Stale — <timestamp>" so the user knows the value behind the chip
+// is older than yesterday's reality.
+const SAMPLE_STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+const ONE_MINUTE_MS = 60 * 1000;
+const ONE_HOUR_MS = 60 * ONE_MINUTE_MS;
+
+// Browser-side relative-time text for the most recent accepted sample. Stays
+// in shared-domain so runtime breadcrumbs and the UI render the same phrasing
+// (per `feedback_ui_text_shared_with_logs.md`). The caller supplies
+// `formatAcceptedAt` only for the stale branch — runtime callers pass a
+// timezone-aware Intl formatter; the UI passes a `toLocaleString` wrapper.
+const formatLastSampleValue = (params: {
+  lastMs: number;
+  nowMs: number;
+  formatAcceptedAt: (ms: number) => string;
+}): string => {
+  const { lastMs, nowMs, formatAcceptedAt } = params;
+  const ageMs = Math.max(0, nowMs - lastMs);
+  if (ageMs >= SAMPLE_STALE_THRESHOLD_MS) {
+    return `Stale — ${formatAcceptedAt(lastMs)}`;
+  }
+  if (ageMs < ONE_MINUTE_MS) return 'Updated just now';
+  if (ageMs < ONE_HOUR_MS) {
+    const minutes = Math.max(1, Math.round(ageMs / ONE_MINUTE_MS));
+    return `Updated ${minutes} min ago`;
+  }
+  const hours = Math.max(1, Math.round(ageMs / ONE_HOUR_MS));
+  const unit = hours === 1 ? 'hour' : 'hours';
+  return `Updated ${hours} ${unit} ago`;
 };
 
 // ─── Cost + delivered-so-far hero lines (v2.7.2 PR 2) ────────────────────────
@@ -995,10 +1023,10 @@ export const resolveMissedHistoryRecourse = (params: {
 // on `source`, raw kWh values, or null fields.
 export const resolveKwhPerUnitProvenanceRows = (params: {
   provenance: DeferredObjectiveKwhPerUnitProvenanceV1 | undefined;
-  unitSuffix: DeadlineLabels['perUnitRateUnit'];
+  nowMs: number;
   formatAcceptedAt: (ms: number) => string;
 }): KwhPerUnitProvenanceRow[] => {
-  const { provenance, unitSuffix, formatAcceptedAt } = params;
+  const { provenance, nowMs, formatAcceptedAt } = params;
   if (!provenance) return [];
   if (provenance.source === 'bootstrap') {
     // Bootstrap rows describe the cold-start state. The plan-inputs row note
@@ -1006,15 +1034,25 @@ export const resolveKwhPerUnitProvenanceRows = (params: {
     // single Source row is enough here — adding "0 samples" would be noisy.
     return [{ label: 'Source', value: 'Bootstrap estimate' }];
   }
+  // `Learned profile` source no longer carries a redundant `Learned rate` row
+  // (the card's headline already shows the rate value). Surface only the
+  // facts the headline doesn't repeat: sample count + confidence, and the
+  // recency of the most recent sample (recency is a separate signal from the
+  // confidence chip — the chip is "how many / how tight," "Most recent
+  // sample" is "how long since we saw fresh evidence").
   const rows: KwhPerUnitProvenanceRow[] = [{ label: 'Source', value: 'Learned profile' }];
-  if (provenance.kWhPerUnit !== null && Number.isFinite(provenance.kWhPerUnit) && provenance.kWhPerUnit > 0) {
-    rows.push({ label: 'Learned rate', value: formatLearnedValue(provenance.kWhPerUnit, unitSuffix) });
-  }
   if (provenance.acceptedSamples > 0) {
     rows.push({ label: 'Samples', value: formatSamplesLine(provenance.acceptedSamples, provenance.confidence) });
   }
   if (provenance.lastAcceptedAtMs !== null && Number.isFinite(provenance.lastAcceptedAtMs)) {
-    rows.push({ label: 'Last sample', value: formatAcceptedAt(provenance.lastAcceptedAtMs) });
+    rows.push({
+      label: 'Most recent sample',
+      value: formatLastSampleValue({
+        lastMs: provenance.lastAcceptedAtMs,
+        nowMs,
+        formatAcceptedAt,
+      }),
+    });
   }
   return rows;
 };
