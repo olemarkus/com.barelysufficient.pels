@@ -392,6 +392,25 @@
         "id": "price_level_changed"
       },
       {
+        "id": "price_list_updated",
+        "title": {
+          "en": "PELS price list was updated"
+        },
+        "titleFormatted": {
+          "en": "PELS price list was updated"
+        },
+        "tokens": [
+          {
+            "name": "prices_json",
+            "type": "string",
+            "title": {
+              "en": "Price list JSON"
+            },
+            "example": "{\"today\":[],\"tomorrow\":[],\"unit\":\"øre/kWh\"}"
+          }
+        ]
+      },
+      {
         "title": {
           "en": "Current price is one of the lowest before a time"
         },

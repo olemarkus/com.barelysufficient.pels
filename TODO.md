@@ -132,26 +132,6 @@ release, not v2.7.1 merge-blockers.*
       `packages/shared-domain/src/planHeroSummary.ts`.
       Source: `pels-copy-and-terminology` agent, v2.7.1 release-review pass.
 
-- [ ] Pending smart-task hero is missing `headlineReason` + `recourse`.
-      `DeadlinePlan.tsx:792` `PendingHero` only exposes
-      `headline / subline / metaLine`. The ready hero adds
-      `headlineReason` and `recourse`, both of which answer the page
-      mission ("when and at what price, and why those hours?"). A task
-      that lands pending for hours (no prices yet / pre-window) leaves
-      the user with no "why" line and no recourse — every newly-created
-      smart task lands on this hero first.
-      Why P1 (not P0): same shape already shipped in v2.7.0; this is a
-      first-impression gap, not a regression introduced by v2.7.1.
-      `pels-ux-fit` graded P0; downgraded because the rubric reserves P0
-      for introduced bugs or exposed half-implemented features.
-      Acceptance: pending hero mirrors `headlineReason` (at minimum) and
-      `recourse` when available. Wording stays plain ("prices land at
-      14:00", "task starts at 02:00", etc.).
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx:792`,
-      `packages/shared-domain/src/deadlineLabels.ts` (pending reason
-      copy).
-      Source: `pels-ux-fit` agent, v2.7.1 release-review pass.
-
 *Pro Homey runtime-log audit (2026-05-17, log
 `/tmp/pels/start.main.0a4464c3.stdout.log`, 2h40m window).*
 
