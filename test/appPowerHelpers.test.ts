@@ -2199,6 +2199,33 @@ describe('createCalibrationSnapshotMutationHook', () => {
     expect(debugStructured).toHaveBeenCalledTimes(1);
   });
 
+  it('does not debounce after a rejected sample — first accepted sample still lands', () => {
+    // Regression: a rejected outcome (stale_observation, above_step_ceiling,
+    // etc.) leaves the store untouched, so advancing the debounce cursor
+    // would swallow the next valid sample without protecting anything in
+    // return. The debounce exists only to stop accepted-sample chatter from
+    // saturating EMA `alpha`.
+    const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
+    const debugStructured = vi.fn();
+    const hook = createCalibrationSnapshotMutationHook({
+      getStore: () => store,
+      debugStructured,
+      minIntervalMs: 30_000,
+    });
+    // First call: above-step-ceiling rejection.
+    hook(makeSnapshot({ measuredPowerKw: 1.81 }), start);
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'power_calibration_sample_skipped',
+      reason: 'above_step_ceiling',
+    }));
+    debugStructured.mockClear();
+    // Second call: valid sample 1 s later. Must not be debounced.
+    hook(makeSnapshot({ measuredPowerKw: 1.1 }), start + 1_000);
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'power_calibration_sample_accepted',
+    }));
+  });
+
   it('debounces per (device, step) independently', () => {
     const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
     const debugStructured = vi.fn();
