@@ -560,6 +560,75 @@ describe('activation backoff', () => {
     expect(closingSync.penaltyLevel).toBe(2);
   });
 
+  it('ignores a clean whole-home sample that arrives after the attribution window has already expired', () => {
+    // Stale-meter bypass guard: if the meter is stale during the entire 2-min
+    // window and recovers only after the window expires, the late clean
+    // sample must NOT count as evidence. Otherwise a plan-build that runs
+    // syncConfirmedRestoreAttributionState (which records the late sample)
+    // immediately before syncActivationPenaltyState (which closes/clears)
+    // would silently release penalty in defiance of the stale-meter guard.
+    const state = createPlanEngineState();
+    const start = Date.now();
+
+    state.activationAttemptByDevice['dev-1'] = {
+      penaltyLevel: 2,
+      lastSetbackMs: start - 60_000,
+    };
+
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'dev-1',
+      source: 'pels_restore',
+      nowTs: start,
+    });
+
+    // Observed draw arrives within the window (e.g. device-level telemetry
+    // works while the household-aggregate meter is stale).
+    syncConfirmedRestoreAttributionState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + 30_000,
+      observation: {
+        currentOn: true,
+        measuredPowerKw: 0.2,
+        deviceClass: 'thermostat',
+        lastFreshDataMs: start + 30_000,
+      },
+      wholeHomePowerSampleAtMs: null,
+      cleanWholeHomeSample: false,
+    });
+
+    // First clean whole-home sample arrives after the 2-min window expired.
+    const postWindowMs = start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 10_000;
+    syncConfirmedRestoreAttributionState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: postWindowMs,
+      observation: {
+        currentOn: true,
+        measuredPowerKw: 0.2,
+        deviceClass: 'thermostat',
+        lastFreshDataMs: postWindowMs,
+      },
+      wholeHomePowerSampleAtMs: postWindowMs,
+      cleanWholeHomeSample: true,
+    });
+
+    // Late sample must not be recorded as within-window evidence.
+    expect(state.activationAttemptByDevice['dev-1']).not.toHaveProperty('cleanWholeHomeSampleAtMs');
+
+    const closingSync = syncActivationPenaltyState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: postWindowMs + 1_000,
+      observation: { currentOn: true, available: true, measuredPowerKw: 0.2 },
+    });
+    expect(closingSync.attemptOpen).toBe(false);
+    expect(closingSync.penaltyLevel).toBe(2);
+    expect(closingSync.transitions).toEqual([]);
+    expect(getActivationPenaltyLevel(state, 'dev-1')).toBe(2);
+  });
+
   it('does not clear penalty at window expiry when the main meter never produced a clean sample (stale meter)', () => {
     // Stale-meter guard: with `cleanWholeHomeSample` never true during the
     // window, "no setback fired" is not evidence of capacity compliance — the
