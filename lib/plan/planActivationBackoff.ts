@@ -13,9 +13,9 @@ import { isFiniteNumber } from '../utils/appTypeGuards';
 export type { ActivationAttemptSource } from './planState';
 
 export const ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS = OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS;
-export const ACTIVATION_BACKOFF_CLEAR_WINDOW_MS = 30 * 60 * 1000;
+export const ACTIVATION_BACKOFF_CLEAR_WINDOW_MS = 5 * 60 * 1000;
 export const ACTIVATION_BACKOFF_MAX_LEVEL = 4;
-export const ACTIVATION_SETBACK_RESTORE_BLOCK_MS = 10 * 60 * 1000;
+export const ACTIVATION_SETBACK_RESTORE_BLOCK_MS = 5 * 60 * 1000;
 
 export type ActivationBackoffObservation = {
   available?: boolean;
@@ -42,6 +42,7 @@ const RESTORE_ATTRIBUTION_DEVICE_CLASSES = new Set([
   'heatpump',
   'airconditioning',
   'airtreatment',
+  'evcharger',
 ]);
 
 const clampPenaltyLevel = (value: unknown): number => {
@@ -426,6 +427,10 @@ export function syncConfirmedRestoreAttributionState(params: {
     cleanWholeHomeSample: params.cleanWholeHomeSample,
   })) {
     stateChanged = closeAttempt(state, deviceId) || stateChanged;
+    // The cautious admission proved itself: the device drew what we expected and
+    // the household stayed in budget through the attribution window. Release the
+    // accumulated penalty so the next admission starts at the base bar.
+    stateChanged = setPenaltyLevel(state, deviceId, 0) || stateChanged;
     return { stateChanged, attemptOpen: false };
   }
 
