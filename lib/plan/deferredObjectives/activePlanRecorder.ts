@@ -380,7 +380,42 @@ export class DeferredObjectiveActivePlanRecorder {
       this.writeFirstRevision(diag, signature, candidateHours, reason, nowMs);
       return;
     }
-    this.maybeWriteReplanRevision(diag, signature, candidateHours, current, nowMs);
+    const backfilled = this.backfillCommitmentIfMissing(current, nowMs);
+    this.maybeWriteReplanRevision(diag, signature, candidateHours, backfilled, nowMs);
+  }
+
+  // Plans persisted before the stable-schedule commitment shipped (v2.7.3 and
+  // earlier) carry `latest.hours` but no `commitment`, which causes
+  // `maybeWriteReplanRevision` and `resolveCommittedHours` to keep treating the
+  // allocation as advisory — the executor re-optimises every cycle. Quietly
+  // adopt the existing `latest.hours` as the committed envelope so the
+  // post-upgrade behaviour matches new plans. No revision is emitted: this is
+  // a data-shape migration, not a user-visible replan.
+  //
+  // Caller has already ensured `!current.pending` and `current.latest !== null`.
+  // Skipping when `latest.hours` is empty preserves the "no hours scheduled"
+  // shape rather than committing to an empty envelope. We do not race with
+  // `markPending` / `clearForDevice`: both run synchronously from flow card
+  // handlers, and any plan with `latest !== null` has already left the pending
+  // state — so by the time we reach this path the legacy record is stable
+  // enough to commit.
+  private backfillCommitmentIfMissing(
+    current: DeferredObjectiveActivePlanV1,
+    nowMs: number,
+  ): DeferredObjectiveActivePlanV1 {
+    if (current.commitment) return current;
+    const latest = current.latest as DeferredObjectiveActivePlanRevisionV1;
+    if (latest.hours.length === 0) return current;
+    const backfilled: DeferredObjectiveActivePlanV1 = {
+      ...current,
+      commitment: {
+        committedAtMs: nowMs,
+        hours: latest.hours,
+      },
+    };
+    this.plans[current.deviceId] = backfilled;
+    this.dirty = true;
+    return backfilled;
   }
 
   private ensurePendingRecord(
