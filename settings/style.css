@@ -5900,7 +5900,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 .price-aware-grid__head,
 .price-aware-grid__row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 144px 144px;
+  grid-template-columns: minmax(0, 1fr) var(--pels-control-track-3x) var(--pels-control-track-3x);
   gap: var(--spacing-3);
   align-items: center;
 }

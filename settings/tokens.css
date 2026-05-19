@@ -81,6 +81,7 @@
   --color-border-strong: #56627a;
   --color-overlay-backdrop: rgba(0, 0, 0, 0.6);
   --pels-touch-target-min: 48px;
+  --pels-control-track-3x: 144px; /** Three touch-target slots wide. Encoded as the absolute px value because Style Dictionary cannot resolve a calc against another token at build time; keep in sync with pels.touch-target.min (currently 48 px) so this stays equal to 3 * pels.touch-target.min. */
   --chip-padding-inline: 10px;
   --chip-border-width: 1px;
   --shadow-primary-glow: 0 16px 30px rgba(var(--color-base-accent-default-rgb), 0.25);
