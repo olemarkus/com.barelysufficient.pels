@@ -8,6 +8,7 @@ import {
   shiftDateKey,
 } from './timezone.ts';
 import type { UsageDayEntry } from './usageDayView.ts';
+import { formatPowerUsageHourlyTotal } from '../../../shared-domain/src/powerUsageStrings.ts';
 
 type PowerUsageEntry = UsageDayEntry;
 
@@ -234,14 +235,13 @@ const buildTooltipFormatter = (
   const dayLabel = dayLabels[dayIdx] ?? '';
   const hourStr = String(hour).padStart(2, '0');
   const nextHour = String((hour + 1) % 24).padStart(2, '0');
-  const measuredHoursLine = data.bucketCount > 1 ? [`${data.bucketCount} measured hours`] : [];
-  const kWhLabel = data.bucketCount > 1
-    ? `${(kWh as number).toFixed(2)} kWh total`
-    : `${(kWh as number).toFixed(2)} kWh`;
+  // The `kWh total` suffix on aggregated cells already signals that the number
+  // sums more than one physical hour, so a separate "N measured hours" line is
+  // redundant and exposes internal vocabulary (`bucket`).
+  const kWhLabel = formatPowerUsageHourlyTotal(kWh, { aggregated: data.bucketCount > 1 });
   return [
     encodeHtml(dayLabel),
     encodeHtml(`${hourStr}:00–${nextHour}:00`),
-    ...measuredHoursLine.map((line) => encodeHtml(line)),
     encodeHtml(kWhLabel),
   ].join('<br/>');
 };

@@ -300,8 +300,10 @@ describe('power page stats (buckets-only)', () => {
     expect(heatmapData[0]?.bucketCount).toBe(2);
     expect(option.visualMap?.max).toBeCloseTo(1.5, 6);
     const tooltip = option.tooltip?.formatter?.({ data: heatmapData[0] }) ?? '';
-    expect(tooltip).toContain('2 measured hours');
     expect(tooltip).toContain('1.50 kWh total');
+    // The "kWh total" suffix already signals aggregation; the bucket-count
+    // line exposed internal vocabulary and has been dropped (v2.7.4 train).
+    expect(tooltip).not.toMatch(/measured hours/i);
     vi.doUnmock('../src/ui/echartsRegistry.ts');
   });
 
