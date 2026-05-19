@@ -134,14 +134,14 @@
     "triggers": [
       {
         "title": {
-          "en": "Capacity guard: manual action needed"
+          "en": "Hard cap breach imminent — manual action needed"
         },
         "titleFormatted": {
-          "en": "Capacity guard predicts hourly hard cap breach; manual action needed"
+          "en": "Hard cap breach imminent — no managed devices left to limit"
         },
         "args": [],
         "hint": {
-          "en": "Triggers when PELS projects that the hourly hard cap will be breached at the current run rate and there are no managed devices left to limit. This is an emergency situation requiring immediate manual intervention. Note: This only triggers for hourly hard cap breaches, never for daily budget violations."
+          "en": "Fires when PELS expects this hour to exceed the hard cap and every managed device is already turned off or at its lowest step. Use it to alert someone to turn something off by hand. Daily budget overruns do not fire this trigger."
         },
         "id": "capacity_shortfall"
       },
@@ -153,7 +153,7 @@
           "en": "Smart task ended for [[device]]"
         },
         "hint": {
-          "en": "Fires once when a smart task run concludes — succeeded (target reached and held), missed (ready-by time passed below target), or abandoned (cleared by the user or device dropped out for an extended period). Filter on the [[outcome]] tag downstream; values are stable lowercase ids: succeeded / missed / abandoned."
+          "en": "Fires once when a smart task ends. The [[outcome]] tag tells you how it ended — succeeded (target reached and held), missed (ready-by time passed before reaching the target), or abandoned (cleared by hand or the device dropped out). Values are stable lowercase ids — filter on them downstream."
         },
         "args": [
           {
@@ -288,13 +288,13 @@
       },
       {
         "title": {
-          "en": "Desired stepped load changed for"
+          "en": "Stepped device target changed"
         },
         "titleFormatted": {
-          "en": "Desired stepped load changed for [[device]]"
+          "en": "PELS wants [[device]] at a different step"
         },
         "hint": {
-          "en": "Triggers when PELS wants a stepped-load device to move to another configured step."
+          "en": "Fires when PELS decides a stepped device should move to a different configured step. Use it in flows that translate PELS intent into a vendor-specific action."
         },
         "args": [
           {
@@ -304,7 +304,7 @@
               "en": "Device"
             },
             "placeholder": {
-              "en": "Select stepped-load device"
+              "en": "Select a stepped device"
             }
           }
         ],
@@ -654,7 +654,7 @@
           }
         ],
         "hint": {
-          "en": "Checks if the current available power plus the device's estimated usage is enough to add the requested load. Built-in hysteresis keeps this false for about 60 seconds after a meaningful step-down or recent PELS control on the same device, and repeated failed re-activations require extra available power before it turns true again."
+          "en": "True when the house has room for this device to draw the requested kW. PELS waits about 60 seconds after limiting the device, and asks for extra room when recent attempts to bring it back already fell short — so flows do not flap the device on and off."
         },
         "id": "has_headroom_for_device"
       },
@@ -1022,7 +1022,7 @@
           "en": "Report power [[power]] W"
         },
         "hint": {
-          "en": "Feed instantaneous power (W) from a meter to track hourly energy usage and feed capacity guard."
+          "en": "Send the current whole-house power reading (W) from your meter so PELS can track hourly energy use and stay under the hard cap."
         },
         "args": [
           {

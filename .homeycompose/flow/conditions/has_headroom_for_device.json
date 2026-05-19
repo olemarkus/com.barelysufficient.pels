@@ -24,6 +24,6 @@
     }
   ],
   "hint": {
-    "en": "Checks if the current available power plus the device's estimated usage is enough to add the requested load. Built-in hysteresis keeps this false for about 60 seconds after a meaningful step-down or recent PELS control on the same device, and repeated failed re-activations require extra available power before it turns true again."
+    "en": "True when the house has room for this device to draw the requested kW. PELS waits about 60 seconds after limiting the device, and asks for extra room when recent attempts to bring it back already fell short — so flows do not flap the device on and off."
   }
 }
