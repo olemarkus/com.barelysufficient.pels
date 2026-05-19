@@ -29,4 +29,13 @@ describe('powerUsageStrings', () => {
     expect(formatPowerUsageHourlyTotal(1.5, { aggregated: true })).toBe('1.50 kWh total');
     expect(formatPowerUsageHourlyTotal(2.345, { aggregated: true })).toBe('2.35 kWh total');
   });
+
+  it('renders non-finite kWh values as 0.00 so tooltips and log lines stay readable', () => {
+    expect(formatPowerUsageHourlyTotal(Number.NaN, { aggregated: false })).toBe('0.00 kWh');
+    expect(formatPowerUsageHourlyTotal(Number.POSITIVE_INFINITY, { aggregated: false })).toBe('0.00 kWh');
+    expect(formatPowerUsageHourlyTotal(Number.NEGATIVE_INFINITY, { aggregated: false })).toBe('0.00 kWh');
+    expect(formatPowerUsageHourlyTotal(Number.NaN, { aggregated: true })).toBe('0.00 kWh total');
+    expect(formatPowerUsageHourlyTotal(Number.POSITIVE_INFINITY, { aggregated: true })).toBe('0.00 kWh total');
+    expect(formatPowerUsageHourlyTotal(Number.NEGATIVE_INFINITY, { aggregated: true })).toBe('0.00 kWh total');
+  });
 });

@@ -26,6 +26,9 @@ export const formatPowerUsageHourlyTotal = (
   kWh: number,
   options: { aggregated: boolean },
 ): string => {
-  const formatted = kWh.toFixed(2);
+  // Defensive: NaN/±Infinity can leak in from malformed buckets or division by
+  // zero in callers. Render as 0.00 so log lines and tooltips stay readable.
+  const safeKWh = Number.isFinite(kWh) ? kWh : 0;
+  const formatted = safeKWh.toFixed(2);
   return options.aggregated ? `${formatted} kWh total` : `${formatted} kWh`;
 };
