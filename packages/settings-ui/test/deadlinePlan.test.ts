@@ -3127,6 +3127,65 @@ describe('resolveLiveHeroConfidenceChipText', () => {
   });
 });
 
+// `resolveHeroHeadline` gates the live hero headline on rim tone (not on
+// the broader cannot-meet flag), so at-risk heroes keep their live-state
+// headline while only `tone === 'alert'` collapses to null. See
+// `notes/ui-terminology.md` and the comment above the function in
+// `deadlinePlanHero.ts`.
+describe('resolveHeroHeadline', () => {
+  const labels = deadlineLabels('temperature');
+  const HOUR_MS = 60 * 60 * 1000;
+  // Use local-time construction so the formatter (which renders local HH:MM)
+  // matches a deterministic 16:00 regardless of host timezone.
+  const queuedHourStartsAtMs = new Date(2026, 0, 1, 16, 0, 0, 0).getTime();
+  const queuedHour = {
+    startsAtMs: queuedHourStartsAtMs,
+    endMs: queuedHourStartsAtMs + HOUR_MS,
+    price: 0,
+    plannedOtherKWh: 0,
+  };
+
+  it('suppresses the headline only on alert (cannot-finish) heroes', async () => {
+    const { resolveHeroHeadline } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveHeroHeadline({
+      labels,
+      firstChargingHour: queuedHour,
+      nowMs: queuedHour.startsAtMs - 60_000,
+      tone: 'alert',
+    })).toBeNull();
+  });
+
+  it('preserves the "from HH:MM" live-state headline on at-risk heroes', async () => {
+    const { resolveHeroHeadline } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveHeroHeadline({
+      labels,
+      firstChargingHour: queuedHour,
+      nowMs: queuedHour.startsAtMs - 60_000,
+      tone: 'warn',
+    })).toBe('Heating from 16:00');
+  });
+
+  it('returns "Heating now" when the first scheduled hour has already started', async () => {
+    const { resolveHeroHeadline } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveHeroHeadline({
+      labels,
+      firstChargingHour: queuedHour,
+      nowMs: queuedHour.startsAtMs + 60_000,
+      tone: 'good',
+    })).toBe('Heating now');
+  });
+
+  it('returns the on-track sentinel when no hour is scheduled', async () => {
+    const { resolveHeroHeadline } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveHeroHeadline({
+      labels,
+      firstChargingHour: undefined,
+      nowMs: queuedHour.startsAtMs,
+      tone: 'good',
+    })).toBe('On track — no action needed yet');
+  });
+});
+
 // `resolveQueuedHeadlineReason` answers "why does my smart task start at HH:MM
 // instead of now?" — the line below the queued headline. The resolver
 // suppresses itself outside the queued state so the on-track / cannot-meet
@@ -3530,6 +3589,40 @@ describe('cost + delivered-so-far hero lines', () => {
     // No "won't reach by" copy — at-risk still uses the hopeful shape.
     expect(payload.hero.deliveredSoFarLine).not.toMatch(/won.t reach/i);
     expect(payload.hero.deliveredSoFarLine).toMatch(/now 18.0 °C of 30.0 °C target/);
+    // At-risk heroes keep their live-state headline ("Heating now" when the
+    // first scheduled hour has already started). The chip warns, but the
+    // headline answers "what is the device doing right now?" — only true
+    // cannot-finish heroes collapse the headline (see the cannot-meet test
+    // below).
+    expect(payload.hero.headline).toBe('Heating now');
+  });
+
+  it('at-risk: queued first hour preserves the "Heating from HH:MM" live-state headline', () => {
+    // Regression for at-risk smart-task heroes losing their live-state
+    // headline. Producer must split the cannot-meet gate from the at-risk
+    // status so the headline collapses only on `tone === 'alert'`.
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const prices = buildStubPrices(now, 6, 100);
+    const plan = buildHeaterActivePlan({
+      now,
+      deadline,
+      plannedHourOffsets: [3, 4], // queued — first hour starts at 16:00 local
+      plannedKWhPerHour: 2,
+      targetTemperatureC: 30,
+      energyNeededKWh: 4,
+      planStatus: 'at_risk',
+    });
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap: buildStubBootstrap(now, deadline, plan, 30),
+      deviceId: 'heater',
+      devices: buildHeaterDevice(18),
+      prices,
+      nowMs: now.getTime(),
+    }));
+    expect(payload.hero.tone).toBe('warn');
+    // Queued at-risk hero keeps the kind-shaped "from HH:MM" live state.
+    expect(payload.hero.headline).toBe('Heating from 16:00');
   });
 
   it('cannot-meet: delivered line gains the "won\'t reach by HH:MM" tail', () => {
@@ -3558,6 +3651,11 @@ describe('cost + delivered-so-far hero lines', () => {
     expect(payload.hero.deliveredSoFarLine).toMatch(/still 40\.0 °C of 65\.0 °C target/);
     // Deadline at 16:00 local time (now=14:00 + 2h).
     expect(payload.hero.deliveredSoFarLine).toMatch(/won.t reach by 16:00/);
+    // Cannot-meet keeps the headline suppressed — the Cannot-finish chip and
+    // body postmortem already carry the signal; the headline must not duplicate
+    // it. Pairs with the at-risk regression above to prove the split gate
+    // didn't regress cannot-meet behaviour.
+    expect(payload.hero.headline).toBeNull();
   });
 
   it('suppresses the cost line when the cost unit is empty (Flow / Homey scheme without priceUnit)', () => {

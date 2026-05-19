@@ -87,20 +87,24 @@ export const resolveHeroTone = (
   return 'good';
 };
 
-// Returns the live hero's headline string. Producer suppresses the cannot-meet
-// headline (returns `null`) because the cannot-finish chip already says the
-// same words and the body postmortem expands on the cause — repeating
-// "Cannot finish" at headline height (per `TODO 1569` / lived-walk
-// 2026-05-16) read as alarm spam rather than information. The chip + body
-// pair carries the entire signal; the headline collapses on this branch so
-// the section flows chip → subline → meta line directly.
+// Returns the live hero's headline string. Producer suppresses the headline
+// (returns `null`) only on true cannot-finish heroes (`tone === 'alert'`)
+// because the cannot-finish chip already says the same words and the body
+// postmortem expands on the cause — repeating "Cannot finish" at headline
+// height (per `TODO 1569` / lived-walk 2026-05-16) read as alarm spam rather
+// than information. The chip + body pair carries the entire signal on that
+// branch so the section flows chip → subline → meta line directly. At-risk
+// heroes (`tone === 'warn'`) keep their live-state headline ("Heating from
+// HH:MM" / "Charging from HH:MM") per `notes/ui-terminology.md`: the
+// At-risk chip warns, but the headline still answers "what is the device
+// doing right now?".
 export const resolveHeroHeadline = (params: {
   labels: DeadlineLabels;
   firstChargingHour: HorizonHour | undefined;
   nowMs: number;
-  cannotMeet: boolean;
+  tone: DeadlinePlanHeroTone;
 }): string | null => {
-  if (params.cannotMeet) return null;
+  if (params.tone === 'alert') return null;
   if (!params.firstChargingHour) return 'On track — no action needed yet';
   if (params.firstChargingHour.startsAtMs <= params.nowMs) {
     return `${params.labels.activeChipLabel} now`;
