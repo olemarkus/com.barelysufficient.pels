@@ -36,7 +36,7 @@ editLink: false
       </article>
       <article class="landing-card">
         <h3>You want to stay within your hourly limit</h3>
-        <p>If you are on a capacity-based grid tariff (effekttrinn in Norway, similar steps in parts of Sweden and Finland) where going over your hourly limit bumps you to a more expensive step, PELS can keep you under the limit automatically.</p>
+        <p>If you are on a power-based grid tariff (effekttrinn in Norway, and similar power-tariff models in Sweden and Finland) where consumption above a chosen level costs more, PELS can keep your hourly draw under the limit automatically.</p>
       </article>
       <article class="landing-card">
         <h3>You want flexible load to run when power is cheap</h3>
