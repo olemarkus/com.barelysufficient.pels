@@ -314,7 +314,12 @@ export class PlanBuilder {
       nowTs,
     });
     this.state.softOvershootPendingSinceMs = overshootDecision.pendingSinceMs;
-    this.syncConfirmedRestoreAttributionAttempts(devices, nowTs);
+    this.syncConfirmedRestoreAttributionAttempts(
+      devices,
+      this.powerTracker.lastTimestamp ?? null,
+      context.powerKnown && context.headroom >= 0,
+      nowTs,
+    );
 
     const sheddingPlan = await this.trackDurationAsync(
       'plan_shedding_ms',
@@ -335,6 +340,8 @@ export class PlanBuilder {
 
   private syncConfirmedRestoreAttributionAttempts(
     devices: PlanInputDevice[],
+    wholeHomePowerSampleAtMs: number | null,
+    cleanWholeHomeSample: boolean,
     nowTs: number,
   ): void {
     for (const device of devices) {
@@ -351,6 +358,8 @@ export class PlanBuilder {
           observationStale: device.observationStale,
           lastFreshDataMs: device.lastFreshDataMs,
         },
+        wholeHomePowerSampleAtMs,
+        cleanWholeHomeSample,
       });
     }
   }
