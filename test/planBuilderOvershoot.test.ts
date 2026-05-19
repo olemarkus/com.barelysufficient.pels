@@ -676,7 +676,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
 
       expect(state.activationAttemptByDevice['restored-thermostat']).toMatchObject({
         startedMs: start - 1_000,
-        observedActivePowerAtMs: start + 10_000,
       });
 
       structuredLog.info.mockClear();
@@ -789,7 +788,6 @@ describe('PlanBuilder overshoot diagnostics', () => {
 
       expect(state.activationAttemptByDevice['restored-thermostat']).toMatchObject({
         startedMs: start - 1_000,
-        observedActivePowerAtMs: start + 10_000,
       });
 
       structuredLog.info.mockClear();

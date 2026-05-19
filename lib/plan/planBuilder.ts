@@ -318,7 +318,6 @@ export class PlanBuilder {
       devices,
       this.powerTracker.lastTimestamp ?? null,
       context.powerKnown && context.headroom >= 0,
-      nowTs,
     );
 
     const sheddingPlan = await this.trackDurationAsync(
@@ -342,22 +341,11 @@ export class PlanBuilder {
     devices: PlanInputDevice[],
     wholeHomePowerSampleAtMs: number | null,
     cleanWholeHomeSample: boolean,
-    nowTs: number,
   ): void {
     for (const device of devices) {
       syncConfirmedRestoreAttributionAttempt({
         state: this.state,
         deviceId: device.id,
-        nowTs,
-        observation: {
-          available: device.available,
-          currentState: device.currentState,
-          currentOn: device.currentOn,
-          measuredPowerKw: device.measuredPowerKw,
-          deviceClass: device.deviceClass,
-          observationStale: device.observationStale,
-          lastFreshDataMs: device.lastFreshDataMs,
-        },
         wholeHomePowerSampleAtMs,
         cleanWholeHomeSample,
       });

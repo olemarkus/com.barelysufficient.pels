@@ -30,7 +30,6 @@ export type ActivationAttemptState = {
   lastSetbackMs?: number;
   startedMs?: number;
   source?: ActivationAttemptSource;
-  observedActivePowerAtMs?: number;
   /**
    * Set to the timestamp of the first clean whole-home sample seen after the
    * attempt started. Used as evidence at window expiry that the household
