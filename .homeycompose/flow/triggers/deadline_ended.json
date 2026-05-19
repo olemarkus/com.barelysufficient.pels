@@ -6,7 +6,7 @@
     "en": "Smart task ended for [[device]]"
   },
   "hint": {
-    "en": "Fires once when a smart task run concludes — succeeded (target reached and held), missed (ready-by time passed below target), or abandoned (cleared by the user or device dropped out for an extended period). Filter on the [[outcome]] tag downstream; values are stable lowercase ids: succeeded / missed / abandoned."
+    "en": "Fires once when a smart task ends. The [[outcome]] tag tells you how it ended — succeeded (target reached and held), missed (ready-by time passed before reaching the target), or abandoned (cleared by hand or the device dropped out). Values are stable lowercase ids — filter on them downstream."
   },
   "args": [
     {

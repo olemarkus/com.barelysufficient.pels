@@ -1,12 +1,12 @@
 {
   "title": {
-    "en": "Capacity guard: manual action needed"
+    "en": "Hard cap breach imminent — manual action needed"
   },
   "titleFormatted": {
-    "en": "Capacity guard predicts hourly hard cap breach; manual action needed"
+    "en": "Hard cap breach imminent — no managed devices left to limit"
   },
   "args": [],
   "hint": {
-    "en": "Triggers when PELS projects that the hourly hard cap will be breached at the current run rate and there are no managed devices left to limit. This is an emergency situation requiring immediate manual intervention. Note: This only triggers for hourly hard cap breaches, never for daily budget violations."
+    "en": "Fires when PELS expects this hour to exceed the hard cap and every managed device is already turned off or at its lowest step. Use it to alert someone to turn something off by hand. Daily budget overruns do not fire this trigger."
   }
 }

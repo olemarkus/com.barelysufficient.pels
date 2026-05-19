@@ -1,12 +1,12 @@
 {
   "title": {
-    "en": "Desired stepped load changed for"
+    "en": "Stepped device target changed"
   },
   "titleFormatted": {
-    "en": "Desired stepped load changed for [[device]]"
+    "en": "PELS wants [[device]] at a different step"
   },
   "hint": {
-    "en": "Triggers when PELS wants a stepped-load device to move to another configured step."
+    "en": "Fires when PELS decides a stepped device should move to a different configured step. Use it in flows that translate PELS intent into a vendor-specific action."
   },
   "args": [
     {
@@ -16,7 +16,7 @@
         "en": "Device"
       },
       "placeholder": {
-        "en": "Select stepped-load device"
+        "en": "Select a stepped device"
       }
     }
   ],

@@ -6,7 +6,7 @@
     "en": "Report power [[power]] W"
   },
   "hint": {
-    "en": "Feed instantaneous power (W) from a meter to track hourly energy usage and feed capacity guard."
+    "en": "Send the current whole-house power reading (W) from your meter so PELS can track hourly energy use and stay under the hard cap."
   },
   "args": [
     {
