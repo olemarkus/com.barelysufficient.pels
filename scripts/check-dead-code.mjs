@@ -131,6 +131,7 @@ const allowedUnusedExportPatterns = [
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - deadlineLabels$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveEvCardStateLine$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveKwhPerUnitProvenanceRows$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveChipConfidence$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatConfidenceChipLabel$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatSmartTaskListConfidenceChipLabel$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatSmartTaskCurrentValueLine$/,
