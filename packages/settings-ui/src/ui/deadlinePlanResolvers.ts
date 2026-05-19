@@ -1,6 +1,9 @@
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import { getSteppedLoadLowestActiveStep } from '../../../contracts/src/deviceControlProfiles.ts';
-import type { DeviceObjectiveProfile } from '../../../contracts/src/objectiveProfileTypes.ts';
+import type {
+  DeviceObjectiveProfile,
+  ObjectiveProfileConfidence,
+} from '../../../contracts/src/objectiveProfileTypes.ts';
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import type { DeferredObjectiveActivePlanV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
@@ -101,7 +104,7 @@ export const resolveProfile = (
 export const resolveEnergyNeededKWh = (params: {
   profile: DeviceObjectiveProfile | null;
   activePlan: DeferredObjectiveActivePlanV1;
-}): { energyNeededKWh: number; confidence: string | null } | null => {
+}): { energyNeededKWh: number; confidence: ObjectiveProfileConfidence | null } | null => {
   // The recorder stores `energyNeededKWh` straight from the horizon planner —
   // authoritative even under `cannot_meet` (allocated hours can round to zero
   // for sub-second remaining buckets). The UI never needs its own learned

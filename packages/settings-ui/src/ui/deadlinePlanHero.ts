@@ -1,7 +1,9 @@
 import type { DeferredObjectiveActivePlanStatusV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
+import type { ObjectiveProfileConfidence } from '../../../contracts/src/objectiveProfileTypes.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import {
+  formatConfidenceChipLabel,
   formatDeadlineCostMetaLine,
   formatDeadlineDeliveredSoFarLine,
   type DeadlineCannotMeetRecourse,
@@ -15,47 +17,53 @@ import {
 } from './deadlinePlanFormatters.ts';
 import type { DeadlinePlanHeroTone, DeadlinePlanPayload } from './views/DeadlinePlan.tsx';
 
-// Canonical chip order `[kind, ?cannotMeet, ?confidence]` — kind identity
-// reads first across every Smart-task surface. The live-state chip is no
-// longer rendered on the active hero: the headline already says
-// "Heating from HH:MM" / "Charging from HH:MM" / "On track …" / "Cannot
-// finish", so the chip duplicated information instead of adding signal. The
-// pending hero still emits its own state chip (Building plan… / Paused —
-// unplugged) via `deadlinePlan.ts:buildPendingHero`, where the state is the
-// only available signal. The cannot-meet chip tone is supplied by the caller
-// so it stays in sync with the hero rim tone: `alert` (red) for
-// `cannot_meet`, `warn` (amber) for `at_risk`. The confidence chip is
+export type DeadlineHeroStatusChip = { text: string; tone: 'alert' | 'warn' };
+
+export const resolveHeroStatusChip = (params: {
+  labels: DeadlineLabels;
+  planStatus: DeferredObjectiveActivePlanStatusV1;
+}): DeadlineHeroStatusChip | null => {
+  if (params.planStatus === 'cannot_meet') {
+    return { text: params.labels.cannotMeetChipLabel, tone: 'alert' };
+  }
+  if (params.planStatus === 'at_risk') {
+    return { text: params.labels.atRiskChipLabel, tone: 'warn' };
+  }
+  return null;
+};
+
+// Canonical chip order `[kind, ?status, ?confidence]` — kind identity reads
+// first across every Smart-task surface. Most live states stay in the headline:
+// "Heating from HH:MM" / "Charging from HH:MM" / "On track …". Pending heroes
+// still emit their own state chip (Building plan… / Paused — unplugged) via
+// `deadlinePlan.ts:buildPendingHero`, where the state is the only available
+// signal. The active hero keeps only the risk/failure status chip (`At risk` /
+// `Cannot finish`) so the warning row matches the list. The confidence chip is
 // suppressed when `confidence === 'high'` because the common case carries no
 // useful signal; it is also suppressed for true `cannot_meet` heroes because
 // the Cannot-finish chip and body reason own that row. The caller passes
-// action-oriented text ("Estimating" / "Refining") for low / medium
-// confidence when it remains useful.
+// action-oriented text ("Estimating" / "Refining") for low / medium confidence
+// when it remains useful.
 export const buildHeroChips = (params: {
   labels: DeadlineLabels;
-  cannotMeet: boolean;
-  cannotMeetChipTone: 'alert' | 'warn';
+  statusChip: DeadlineHeroStatusChip | null;
   confidenceChipText: string | null;
 }): DeadlinePlanPayload['hero']['chips'] => [
   { text: params.labels.kindChipLabel, tone: 'info' },
-  ...(params.cannotMeet
-    ? [{ text: params.labels.cannotMeetChipLabel, tone: params.cannotMeetChipTone }]
-    : []),
+  ...(params.statusChip ? [params.statusChip] : []),
   ...(params.confidenceChipText !== null
     ? [{ text: params.confidenceChipText, tone: 'muted' as const }]
     : []),
 ];
 
-// Live-confidence chip: `high` carries no signal worth a chip — suppress.
-// `low` and `medium` map to action-oriented words so the user reads the chip
-// as PELS's current learning state rather than a bare quality score.
-export const resolveConfidenceChipText = (confidence: string | null): string | null => {
-  if (confidence === 'low') return 'Estimating';
-  if (confidence === 'medium') return 'Refining';
-  return null;
-};
+// Live-confidence chip: delegate the vocabulary to shared-domain so the hero
+// and Smart-task list cannot drift.
+export const resolveConfidenceChipText = (
+  confidence: ObjectiveProfileConfidence | null | undefined,
+): string | null => formatConfidenceChipLabel(confidence);
 
 export const resolveLiveHeroConfidenceChipText = (params: {
-  confidence: string | null;
+  confidence: ObjectiveProfileConfidence | null;
   planStatus: DeferredObjectiveActivePlanStatusV1;
 }): string | null => {
   if (params.planStatus === 'cannot_meet') return null;
@@ -197,7 +205,7 @@ export type BuildHeroInput = {
   deadlineAtMs: number;
   energyNeededKWh: number;
   hoursLeft: number;
-  confidence: string | null;
+  confidence: ObjectiveProfileConfidence | null;
   planStatus: DeferredObjectiveActivePlanStatusV1;
   nowMs: number;
   cannotMeet: boolean;
@@ -313,24 +321,21 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
     estimatedDurationText: params.estimatedDurationText,
     speedModeLabel,
   });
-  // When the chip says "Cannot finish" we must not fall back to the on-track
-  // meta copy alone — that loses the answer to "how bad is this?" (e.g.
-  // "29.6 °C short" is meaningless without "needs 17 kWh, 8 hours left").
-  // Compose the reasoned cannot-meet sentence with the `Needs N kWh · …`
-  // context so both signals coexist on a single line.
+  // When the hero is warning/failure shaped we must not fall back to the
+  // on-track meta copy alone — that loses the answer to "how bad is this?"
+  // (e.g. "29.6 °C short" is meaningless without "needs 17 kWh, 8 hours
+  // left"). Compose the reasoned sentence with the `Needs N kWh · …` context
+  // so both signals coexist on a single line.
   const metaLine = params.cannotMeet
     ? `${resolveCannotMeetMeta(params)} ${baseMetaLine}`
     : baseMetaLine;
-  // The cannot-meet chip mirrors the hero rim: `alert` (red) for `cannot_meet`
-  // and `warn` (amber) for `at_risk`. Anything else means `cannotMeet` is false
-  // and the chip isn't rendered, so the fallback never reaches the UI; it
-  // exists only so the union narrows for the `chip.tone` type.
-  const cannotMeetChipTone: 'alert' | 'warn' = params.tone === 'alert' ? 'alert' : 'warn';
   return {
     chips: buildHeroChips({
       labels: params.labels,
-      cannotMeet: params.cannotMeet,
-      cannotMeetChipTone,
+      statusChip: resolveHeroStatusChip({
+        labels: params.labels,
+        planStatus: params.planStatus,
+      }),
       confidenceChipText: resolveLiveHeroConfidenceChipText({
         confidence: params.confidence,
         planStatus: params.planStatus,

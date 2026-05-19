@@ -96,15 +96,26 @@ export const resolveSmartTaskListReadyByTone = (
 };
 
 // Confidence chip label shown on the live hero and the Smart-tasks list card.
-// Centralised so the two surfaces stay phrased identically — the hero already
-// renders `Confidence ${value}` inline; this wraps that single formatting
-// rule. Returns `null` when no confidence band is available, so the caller can
-// skip rendering without inventing copy.
+// Centralised so the two surfaces stay phrased identically. High confidence is
+// the normal state and carries no useful chip signal; low / medium confidence
+// render as short action-state words rather than bare quality scores.
 export const formatConfidenceChipLabel = (
   confidence: ObjectiveProfileConfidence | null | undefined,
 ): string | null => {
-  if (confidence !== 'low' && confidence !== 'medium' && confidence !== 'high') return null;
-  return `Confidence ${confidence}`;
+  if (confidence === 'low') return 'Estimating';
+  if (confidence === 'medium') return 'Refining';
+  return null;
+};
+
+// Smart-task list confidence chip. Cannot-finish cards already carry the
+// strongest state chip and body/detail copy; matching the live hero, suppress
+// confidence there so the row does not mix "cannot finish" with "estimating".
+export const formatSmartTaskListConfidenceChipLabel = (params: {
+  confidence: ObjectiveProfileConfidence | null | undefined;
+  statusId: SmartTaskListStatusId;
+}): string | null => {
+  if (params.statusId === 'cannot_meet') return null;
+  return formatConfidenceChipLabel(params.confidence);
 };
 
 // "currently 18.5 °C" / "currently 45 %" line shown on Smart-tasks list cards
@@ -295,6 +306,7 @@ export type DeadlineLabels = {
   // card all draw from this map so the three surfaces stay in sync. Replaces
   // the prior single `waitingChipLabel`; see `DeadlineLiveState`.
   liveStateChipLabel: Record<DeadlineLiveState, string>;
+  atRiskChipLabel: string;
   cannotMeetChipLabel: string;
   // Honest fallback for `Cannot finish` when no specific reason is available.
   // Never paired with the chip alone — the meta line always names a reason so
@@ -545,6 +557,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       paused_unplugged: 'Scheduled',
       ok: 'On track',
     },
+    atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk,
     cannotMeetChipLabel: 'Cannot finish',
     cannotMeetUnknownReason: 'PELS can\'t determine why this task is at risk. '
       + 'Check this heater\'s power readings and setpoint range.',
@@ -631,6 +644,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       paused_unplugged: 'Paused — unplugged',
       ok: 'On track',
     },
+    atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk,
     cannotMeetChipLabel: 'Cannot finish',
     cannotMeetUnknownReason: 'PELS can\'t determine why this charging task is at risk. '
       + 'Check the EV charger\'s power readings and charge-rate configuration.',
