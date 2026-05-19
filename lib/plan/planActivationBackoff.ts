@@ -459,6 +459,7 @@ export function syncConfirmedRestoreAttributionState(params: {
     params.cleanWholeHomeSample
     && isFiniteNumber(params.wholeHomePowerSampleAtMs)
     && params.wholeHomePowerSampleAtMs > attemptStartedMs
+    && !hasAttributionWindowExpired(attemptStartedMs, params.wholeHomePowerSampleAtMs)
     && getCleanWholeHomeSampleAtMs(state, deviceId) === null
   ) {
     stateChanged = recordCleanWholeHomeSampleAtMs(state, deviceId, params.wholeHomePowerSampleAtMs) || stateChanged;
